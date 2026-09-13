@@ -3,7 +3,27 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+
+    // Tests are ESM, because that is how vitest runs them — they use
+    // `import.meta.url` to locate fixtures. The app config sets
+    // module: NodeNext, which resolves to CommonJS here (package.json declares
+    // no "type": "module"), and CommonJS makes `import.meta` an error. So this
+    // config type-checked the tests under a module system they are never
+    // executed in, and every such test failed to compile.
+    //
+    // Nothing noticed because nothing ran it: `npm run build` compiles only
+    // src, and a bare `tsc --noEmit` uses the app config. CI running
+    // `npm run typecheck` is what surfaced it.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+
+    // The frontend is plain JavaScript, and a couple of tests import from it
+    // to check the browser and the server agree (game-window-parity imports
+    // lib/period.js). Without allowJs those imports are an implicit `any`,
+    // which strict mode rejects. Inference only — checkJs stays off, so the
+    // frontend is not itself type-checked here.
+    "allowJs": true
   },
   "include": ["src", "tests", "vitest.config.ts"]
 }

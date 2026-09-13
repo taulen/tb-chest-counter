@@ -111,6 +111,11 @@ describe('goalWarnThreshold', () => {
     // must be amber and one point less must be red.
     for (let goal = 1; goal <= 3000; goal++) {
       const n = goalWarnThreshold(goal);
+      // null only comes back for a goal that is zero, negative or not finite,
+      // none of which this sweep produces — so it is a broken invariant rather
+      // than a case to skip, and saying which goal did it beats a null deref
+      // three lines down.
+      if (n === null) throw new Error(`goal=${goal} produced no amber threshold`);
       expect(goalStatusClassFor(n, goal), `goal=${goal} n=${n}`).not.toBe('goal-cell-low');
       if (n > 0) {
         expect(goalStatusClassFor(n - 1, goal), `goal=${goal} n-1=${n - 1}`).toBe('goal-cell-low');
