@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TB Chest Counter - Login</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'oled' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/base.css">
+  <link rel="stylesheet" href="/login.css">
+</head>
+<body>
+  <div class="login-card">
+    <h1>TB Chest Counter</h1>
+    <p class="subtitle">Sign in to continue</p>
+    <div class="error" id="error"></div>
+    <form id="loginForm">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" class="input" autocomplete="username" required autofocus>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" class="input" autocomplete="current-password" required>
+      <button type="submit" class="btn">Sign In</button>
+    </form>
+  </div>
+  <script src="/login.js"></script>
+</body>
+</html>

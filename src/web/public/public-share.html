@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <meta name="referrer" content="no-referrer">
+  <title>TB Chest Counter</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'oled' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/base.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/external.css">
+  <link rel="stylesheet" href="/public-share.css">
+</head>
+<body class="public-share-body">
+  <div class="header public-share-header">
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+        <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+        <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
+        <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
+        <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
+        <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
+      </svg>
+      <h1 id="clanName">TB Chest Counter</h1>
+    </div>
+  </div>
+
+  <nav id="shareNav" class="public-share-nav">
+    <a href="#leaderboard" class="active" data-tab="leaderboard">Leaderboard</a>
+    <a href="#chesttracker" data-tab="chesttracker" id="ctTab" class="is-hidden">ChestTracker</a>
+  </nav>
+
+  <div class="container" id="content"></div>
+
+  <script type="module" src="/public-share.js"></script>
+</body>
+</html>

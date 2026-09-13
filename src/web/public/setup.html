@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TB Chest Counter Setup</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'oled' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <!-- No `?v=` here: versionHtmlAssets rewrites these onto a /v/<build>/
+       PATH prefix, and it only matches a reference ending in .css/.js. A
+       query string would both skip the rewrite and be ignored by Cloudflare's
+       extension-based cache key. See src/web/asset-versioning.ts. -->
+  <link rel="stylesheet" href="/base.css">
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body>
+  <main class="setup-shell">
+    <section class="setup-card">
+      <div class="setup-topbar">
+        <div class="theme-segmented" role="group" aria-label="Theme">
+          <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button">Light</button>
+          <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button">Dark</button>
+          <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
+        </div>
+      </div>
+      <h1>TB Chest Counter Setup</h1>
+      <p class="setup-intro">Create the first account, or bring an existing install's database across.</p>
+
+      <!-- Same segmented track as the theme picker above (base.css), narrowed
+           to two columns. Reused rather than re-styled so the two switchers on
+           this card read as the same control. -->
+      <div class="theme-segmented setup-mode-switch" role="group" aria-label="Setup mode">
+        <button class="theme-segmented-btn is-active" data-action="set-setup-mode" data-mode="new" type="button" aria-pressed="true">New install</button>
+        <button class="theme-segmented-btn" data-action="set-setup-mode" data-mode="restore" type="button" aria-pressed="false">Restore a backup</button>
+      </div>
+
+      <div id="setupMessage" class="setup-message is-hidden"></div>
+
+      <form id="setupForm" class="setup-form" novalidate>
+        <h2>Super Admin</h2>
+        <div class="grid-2">
+          <label>
+            Username
+            <input id="adminUsername" class="input" type="text" required minlength="3" maxlength="32" autocomplete="username">
+          </label>
+          <label>
+            Password
+            <input id="adminPassword" class="input" type="password" required autocomplete="new-password">
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="submitBtn" class="btn btn-primary" type="submit">Complete Setup</button>
+        </div>
+        <p class="muted">Everything else — database path, web port, scan interval — starts on its default and is editable later from the System page.</p>
+      </form>
+
+      <form id="restoreForm" class="setup-form is-hidden" novalidate>
+        <h2>Restore a backup</h2>
+        <p class="setup-intro">Upload a <code>.db</code> or <code>.db.gz</code> backup from an existing install. Clans, members, chest history, scoring, users and superadmins all come back with it — sign in afterwards with the credentials you already had.</p>
+        <label>
+          Backup file
+          <input id="restoreFile" class="input" type="file" accept=".db,.gz,.db.gz" required>
+        </label>
+        <div class="actions">
+          <button id="restoreBtn" class="btn btn-primary" type="submit">Restore and finish</button>
+        </div>
+        <p class="muted">Total Battle sign-in is not part of a backup — after restoring, open each clan on the Clans page and run the login bridge once.</p>
+      </form>
+
+      <div id="authScreen" class="auth-screen is-hidden">
+        <h2>Total Battle Authentication</h2>
+        <p class="setup-intro">Sign in to Total Battle below so the scanner can run in the background. The browser opens inside this page — no need to leave setup.</p>
+
+        <div id="tbAuthStatus" class="auth-status"></div>
+
+        <div class="actions">
+          <button id="launchBridgeBtn" class="btn btn-primary">Log in to Total Battle</button>
+          <button id="recheckAuthBtn" class="btn" type="button">Re-check status</button>
+        </div>
+
+        <!-- Shared in-app login bridge panel. The setup.js bootstrap
+             calls bindLoginBridgeActions on the surrounding card so the
+             panel's Save/Cancel/Reload/Paste buttons wire up without
+             needing the main app's central dispatcher. -->
+        <div id="loginBridgeMount"></div>
+
+        <div class="setup-callout">
+          <p class="setup-callout-title">After this step</p>
+          <p class="muted">You'll be redirected to the dashboard. Calibration and the first member-list capture run from there — the scanner stays paused until both are done, in order: <strong>Calibrate → Capture members → First scan</strong>.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/setup.js"></script>
+</body>
+</html>

@@ -1,0 +1,5090 @@
+﻿/* Reset + the full theme-token system (dark / light / oled) now live in
+   base.css, which every page loads before this file. */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Topbar (header + nav stick as one unit) ─── */
+/* Wrapping header and nav in a single sticky container avoids the
+   "menu slides up a few px before sticking" glitch we used to get
+   from giving each its own `top` value — the gap inevitably drifted
+   whenever the header's actual height changed (theme, clan switcher,
+   long status text, etc.). */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* ─── Header ─── */
+.header {
+  background: var(--bg-header-grad);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  /* Positioning context for the absolutely-positioned error panel
+     (.status-error-details) so it floats relative to *this* element's
+     bottom edge, not whichever ancestor happens to be positioned. */
+  position: relative;
+}
+
+.brand {
+  grid-column: 2;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  transition: opacity var(--transition);
+}
+
+.brand:hover {
+  opacity: 0.85;
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .3));
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+}
+
+.header-right {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.user-info {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Multi-clan: read-only clan label for clan-scoped users. */
+.clan-indicator {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--subtle-bg);
+  border: 1px solid var(--subtle-bg-strong);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.clan-indicator-label {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+.clan-indicator-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Superadmin clan-switcher dropdown. Same visual weight as the
+   read-only label so the header stays balanced. The select inherits
+   color-scheme from :root / [data-theme] so the native popup matches
+   the active theme on Windows / older Chrome where it would otherwise
+   render in the OS theme. */
+.clan-switcher {
+  display: inline-flex;
+  align-items: center;
+}
+.clan-switcher select {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.clan-switcher select option {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+
+.user-menu-btn:hover {
+  background: var(--hover-overlay);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.user-menu-btn[aria-expanded="true"] {
+  background: var(--hover-overlay);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.user-menu-chevron {
+  opacity: 0.6;
+  transition: transform var(--transition);
+}
+
+.user-menu-btn[aria-expanded="true"] .user-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.user-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  min-width: 180px;
+  padding: 6px;
+  z-index: 200;
+}
+
+.user-menu[hidden] {
+  display: none;
+}
+
+.user-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: background var(--transition);
+}
+
+.user-menu-item:hover {
+  background: var(--hover-overlay-strong);
+}
+
+.user-menu-item-danger {
+  color: var(--accent-red);
+}
+
+.user-menu-item-danger:hover {
+  background: var(--accent-red-bg);
+}
+
+/* Theme picker (segmented row at the top of the user menu). iOS-style
+   single track: the buttons themselves are borderless and sit in a
+   recessed container; the active one becomes a soft pill that lifts
+   off the track via background + a hairline shadow. The recessed-vs-
+   raised contrast does the visual work, no per-button outlines. */
+.user-menu-section {
+  padding: 8px 8px 6px;
+}
+.user-menu-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 0 4px 6px;
+}
+.user-menu-divider {
+  height: 1px;
+  margin: 4px 4px 6px;
+  background: var(--border);
+}
+/* .theme-segmented* moved to base.css (shared with the setup wizard). */
+
+.user-name {
+  color: inherit;
+  font-size: 13px;
+}
+
+/* Mobile account section in slide-out nav (hidden on desktop) */
+.nav-mobile-account {
+  display: none;
+}
+
+.header .status {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.next-scan {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding: 5px 12px;
+  border: 1px solid var(--accent-gold-border);
+  background: var(--accent-gold-bg);
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+
+.next-scan:empty {
+  display: none;
+}
+
+.header .status .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 6px rgba(52, 211, 153, .4);
+  flex-shrink: 0;
+}
+
+.header .status .dot.error {
+  background: var(--accent-red);
+  box-shadow: 0 0 6px rgba(248, 113, 113, .4);
+}
+
+.header .status .dot.scanning {
+  background: var(--accent-amber);
+  box-shadow: 0 0 6px rgba(245, 158, 11, .4);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.status-error-btn {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-red);
+  background: var(--accent-red-bg);
+  border: 1px solid var(--accent-red-border-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: 0.2px;
+}
+.status-error-btn:hover {
+  background: var(--accent-red-bg-strong);
+}
+
+.status-error-details {
+  position: absolute;
+  /* Anchored to .header (which is position: relative). top: 100% drops
+     us flush with the header's bottom border regardless of how tall
+     the header actually rendered — no magic offset to drift. */
+  top: calc(100% + 4px);
+  right: 20px;
+  max-width: min(520px, calc(100vw - 40px));
+  background: var(--status-error-bg);
+  border: 1px solid var(--accent-red-border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-error-panel);
+  z-index: 100;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.45;
+}
+.status-error-details .err-phase {
+  color: var(--accent-red);
+  font-weight: 700;
+  margin-bottom: 4px;
+  font-family: var(--font-sans, inherit);
+}
+.status-error-details .err-when {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-top: 6px;
+  font-family: var(--font-sans, inherit);
+}
+
+.failure-phase-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--accent-red-bg);
+  border: 1px solid var(--accent-red-border-soft);
+  color: var(--accent-red);
+  cursor: help;
+  vertical-align: middle;
+}
+
+.session-error-banner {
+  background: var(--status-error-bg);
+  border: 1px solid var(--accent-red-border);
+  border-left: 3px solid var(--accent-red);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+.session-error-phase {
+  color: var(--accent-red);
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.session-error-message {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Very subtle, non-blocking hint under the session chest list when a scan
+   captured no receive-times (earn_time fell back to scan time). Purely
+   informational — NOT an error, so no banner/box/red styling, just muted text. */
+.session-earntime-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+.session-earntime-note a { color: inherit; text-decoration: underline; }
+
+/* ─── Hamburger (mobile) ─── */
+.hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  color: var(--text-secondary);
+  transition: color var(--transition);
+}
+
+.hamburger:hover { color: var(--text-primary); }
+
+.hamburger svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+/* ─── Navigation ─── */
+nav {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 0;
+  justify-content: center;
+}
+
+nav a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition);
+  white-space: nowrap;
+  position: relative;
+}
+
+/* Small "needs attention" indicator rendered inline next to nav-link
+   text. Driven by app.js / refreshNavDots(): toggling .is-hidden hides
+   the dot; removing it lights the indicator. Color is intentionally
+   not gold so it doesn't read as "active tab". */
+.nav-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  margin-left: 6px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+/* Level pill rendered in the Recent Warnings table on the System page.
+   Two tones: warn (amber) and error/fatal (red). */
+.log-level-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.log-level-warn {
+  background: var(--accent-amber-bg);
+  color: var(--accent-amber-text);
+  border: 1px solid var(--accent-amber-border);
+}
+.log-level-error {
+  background: var(--status-error-row-bg);
+  color: var(--status-error-text);
+  border: 1px solid var(--status-error-row-border);
+}
+.log-message {
+  font-size: 12px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+nav a:hover {
+  color: var(--text-primary);
+  background: var(--row-hover-overlay-strong);
+}
+
+nav a.active {
+  color: var(--accent-gold);
+  border-bottom-color: var(--accent-gold);
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+/* Mobile compact-row helper: the summary line packed into a table's
+   primary cell is only revealed by the <=640px expandable-row engine.
+   On desktop it must never render (the real columns carry the data). */
+.mrow-sub {
+  display: none;
+}
+
+/* ─── Source Chart Card ─── */
+/* ─── Main Container ─── */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* ─── Onboarding banner ─── */
+/* Top-of-page strip surfaced by /api/status when calibration or member
+   capture is still pending. Sticks the next required step in front of
+   the operator regardless of which page they're on — anywhere the
+   header renders, the banner renders. */
+.onboarding-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 10px;
+  /* Theme-aware gold tint. Dark and OLED inherit the rgba(240,192,64,*)
+     pair; light theme overrides to rgba(184,138,0,*) so the banner stays
+     legible on a white card instead of glowing yellow. */
+  background: var(--accent-gold-bg-strong);
+}
+.onboarding-banner-icon {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--accent-gold);
+}
+.onboarding-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+.onboarding-banner-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.onboarding-banner-text {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.onboarding-banner .btn {
+  flex-shrink: 0;
+}
+/* Stage pips: four dots that fill in as calibration progresses, so the banner
+   shows distance travelled rather than only that something is missing. */
+.onboarding-banner-progress {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+}
+.onboarding-pip {
+  width: 26px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-light);
+}
+.onboarding-pip.is-done {
+  background: var(--accent-gold);
+}
+.onboarding-pip.is-next {
+  background: var(--accent-blue);
+}
+
+/* ─── Setup checklist (System page) ───
+   The ordered "do these, in this order" list shown above every other card
+   while the scanner still can't run. Removes itself once every required step
+   is done — it's an onboarding aid, not furniture. */
+/* Border-only by default: the calibration card wears this while it's the
+   outstanding step, and it's a tall card with a screenshot canvas in it — a
+   full-surface tint behind that reads as a warning state for the image, not
+   for the step. The checklist, which is short and entirely about the prompt,
+   opts into the filled treatment below. */
+.card-attention {
+  border-color: var(--accent-gold-border);
+}
+details.card-attention > .card-header {
+  background: var(--accent-gold-bg-strong);
+}
+.setup-checklist {
+  background: var(--accent-gold-bg-strong);
+}
+.setup-checklist-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.setup-checklist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.setup-checklist-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.setup-checklist-step.is-next {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue);
+}
+.setup-checklist-step.is-complete .setup-checklist-label {
+  color: var(--text-secondary);
+}
+.setup-checklist-mark {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+.setup-checklist-step.is-complete .setup-checklist-mark {
+  background: var(--accent-gold);
+  color: var(--text-on-accent);
+}
+.setup-checklist-step.is-next .setup-checklist-mark {
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+}
+.setup-checklist-label {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.setup-checklist-action {
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .setup-checklist-step {
+    flex-wrap: wrap;
+  }
+  .setup-checklist-label {
+    flex-basis: calc(100% - 32px);
+  }
+  .setup-checklist-action {
+    margin-left: 32px;
+  }
+}
+
+/* Trigger for a stage's worked example. Reads as a link, behaves as the crop
+   triggers elsewhere (hover previews, click enlarges). */
+.calibration-example-link {
+  color: var(--accent-blue);
+  cursor: zoom-in;
+  font-size: 13px;
+}
+.calibration-example-link:hover,
+.calibration-example-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Stage buttons inside the wizard carry their own state marker, so six
+   identical buttons no longer read as six equally-plausible next moves. */
+.calibration-stage-btn.is-complete .calibration-stage-mark {
+  color: var(--accent-gold);
+}
+.calibration-stage-mark {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* A short outline pulse to put the eye on whatever was just asked for: the
+   checklist when the onboarding banner points at it, or the single button that
+   moves a calibration stage forward. Not scoped to .card — the same two-beat
+   ring reads correctly on a button. */
+@keyframes attention-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  30% { box-shadow: 0 0 0 3px var(--accent-blue); }
+}
+.is-flashing {
+  animation: attention-flash 1s ease-in-out 2;
+}
+@media (max-width: 640px) {
+  .onboarding-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .onboarding-banner .btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ─── Stats Grid ─── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  box-shadow: var(--shadow-card);
+  transition: transform var(--transition), box-shadow var(--transition);
+  border-top: 3px solid var(--accent-gold);
+}
+
+.stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-elevated);
+}
+
+.stat-card .label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent-gold);
+  margin-top: 4px;
+  line-height: 1.1;
+}
+
+.stat-card .sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+/* ─── Page Sections ─── */
+.page-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 32px 0 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-section-title:first-child {
+  margin-top: 0;
+}
+
+.page-section-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* ─── Cards ─── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.card-body {
+  padding: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Collapsible cards on the system page. Use native <details>/<summary>
+   so the open/closed state is preserved by the browser without any JS.
+   The .card and .card-header rules already give the right look — we
+   just need to make <summary> behave like the header (clickable, with
+   its own row), nudge the default disclosure marker into the corner,
+   and rotate it on open. */
+details.card-collapsible {
+  /* details inherits .card styling but the summary needs a pointer. */
+}
+details.card-collapsible > summary.card-header {
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 1px solid transparent;
+  position: relative;
+  padding-right: 40px;
+}
+details.card-collapsible[open] > summary.card-header {
+  border-bottom-color: var(--border);
+}
+details.card-collapsible > summary.card-header::-webkit-details-marker {
+  display: none;
+}
+details.card-collapsible > summary.card-header::after {
+  content: "▸";
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+details.card-collapsible[open] > summary.card-header::after {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.card-body-padded {
+  padding: 18px;
+}
+
+/* ─── Analytics Type Panel ─── */
+.analytics-type-panel {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) 1fr;
+  gap: 20px;
+  align-items: start;
+  overflow: visible;
+}
+
+.type-summary-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 6px;
+}
+
+.type-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.type-summary-card strong {
+  font-size: 36px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.type-summary-card span:last-child {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.type-breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.type-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--transition);
+}
+
+.type-row:hover {
+  border-color: var(--border-light);
+}
+
+.type-row-main,
+.type-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.type-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  text-transform: capitalize;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.type-row-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--type-rare);
+  flex-shrink: 0;
+}
+
+.type-row-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.type-row-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--type-row-bar-bg);
+  overflow: hidden;
+}
+
+.type-row-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Compact single-line variant used on the member detail page. */
+.type-breakdown-list:has(> .type-row--compact) {
+  gap: 4px;
+}
+.type-row--compact {
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 12px;
+  gap: 12px;
+}
+.type-row--compact .type-row-name {
+  width: 84px;
+  flex-shrink: 0;
+}
+.type-row--compact .type-row-bar {
+  flex: 1;
+  width: auto;
+}
+.type-row--compact .type-row-value {
+  font-size: 15px;
+  min-width: 36px;
+  text-align: right;
+}
+.type-row--compact .type-row-pct {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: right;
+}
+
+.type-row-bar span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--type-rare);
+  border-radius: inherit;
+}
+
+.type-row.type-common .type-row-dot,
+.type-row.type-common .type-row-bar span { background: var(--type-common); }
+.type-row.type-uncommon .type-row-dot,
+.type-row.type-uncommon .type-row-bar span { background: var(--type-uncommon); }
+.type-row.type-rare .type-row-dot,
+.type-row.type-rare .type-row-bar span { background: var(--type-rare); }
+.type-row.type-epic .type-row-dot,
+.type-row.type-epic .type-row-bar span { background: var(--type-epic); }
+.type-row.type-legendary .type-row-dot,
+.type-row.type-legendary .type-row-bar span { background: var(--type-legendary); }
+.type-row.type-arena .type-row-dot,
+.type-row.type-arena .type-row-bar span { background: var(--type-arena); }
+.type-row.type-event .type-row-dot,
+.type-row.type-event .type-row-bar span { background: var(--type-event); }
+.type-row.type-unknown .type-row-dot,
+.type-row.type-unknown .type-row-bar span { background: var(--type-unknown); }
+
+/* ─── Tables ─── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 480px;
+}
+
+th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+
+td {
+  padding: 10px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--row-divider);
+}
+
+tr:hover {
+  background: var(--row-hover-overlay);
+}
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition);
+  /* Keep the sort arrow on the same line as the label. Narrow fixed-
+     width columns like "Rank" would otherwise wrap "RANK" and " ▲"
+     onto two lines. */
+  white-space: nowrap;
+}
+
+th.sortable:hover {
+  color: var(--text-primary);
+}
+
+/* Two-line table cell: primary value on top, muted secondary (e.g. source) below. */
+.cell-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cell-stacked-primary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-stacked-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Member Links ─── */
+.member-link {
+  color: var(--accent-blue);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color var(--transition);
+}
+
+.member-link:hover {
+  color: var(--accent-blue-hover);
+  text-decoration: underline;
+}
+
+/* ─── Ranks ─── */
+.rank {
+  font-weight: 700;
+  color: var(--accent-gold);
+}
+
+.rank-1 { color: var(--rank-1); }
+.rank-2 { color: var(--rank-2); }
+.rank-3 { color: var(--rank-3); }
+
+/* ─── Chest Type Badges ─── */
+.chest-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.chest-type.common { background: var(--chest-common-bg); color: var(--chest-common-text); }
+.chest-type.uncommon { background: var(--chest-uncommon-bg); color: var(--chest-uncommon-text); }
+.chest-type.rare { background: var(--chest-rare-bg); color: var(--chest-rare-text); }
+.chest-type.epic { background: var(--chest-epic-bg); color: var(--chest-epic-text); }
+.chest-type.legendary { background: var(--chest-legendary-bg); color: var(--chest-legendary-text); }
+.chest-type.arena { background: var(--chest-arena-bg); color: var(--chest-arena-text); }
+.chest-type.event { background: var(--chest-event-bg); color: var(--chest-event-text); }
+.chest-type.unknown { background: var(--chest-unknown-bg); color: var(--chest-unknown-text); }
+
+/* ─── Buttons ─── */
+.btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.3;
+}
+
+.btn:not(:disabled):hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+}
+
+/* A disabled button had no styling of its own, so it was indistinguishable
+   from a live one — full colour, normal cursor, and a hover state that lit up
+   like a working control. "Save Stage" before every target is marked was the
+   case that bit: the click does nothing, and looks exactly like the app
+   ignoring you rather than like a button that isn't ready yet. Scoped on the
+   hover rules above rather than layered over them, so nothing has to win a
+   specificity fight to stay looking dead. */
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: var(--text-on-accent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: var(--accent-blue-hover);
+  border-color: var(--accent-blue-hover);
+}
+
+.btn-compact {
+  margin-left: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-tight {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-danger {
+  color: var(--accent-red);
+}
+
+.btn-gold {
+  background: var(--accent-gold-dim);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+
+/* ─── Period Selector & Leaderboard Controls ─── */
+.period-selector {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Selected state for any toggle button, not just the ones inside a period
+   selector. This rule used to be scoped to .period-selector, so every toggle
+   added since — the Breakdown dimension switch, the Clan Activity metric
+   switch, "Sustained only" — set .active and looked exactly like it was off. */
+.period-selector .btn.active,
+.metric-toggle .btn.active,
+.btn.active {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: var(--text-on-accent);
+}
+
+.leaderboard-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.leaderboard-title-row {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.leaderboard-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.leaderboard-controls .btn {
+  min-height: 34px;
+}
+
+/* Leaderboard table: lock column widths so clicking the period arrows
+   doesn't cause the columns to shimmy as the data changes. Without
+   table-layout: fixed the browser re-computes widths on every re-render
+   based on the longest name / largest number in the current page, which
+   looked like a layout thrash during arrow navigation. */
+.leaderboard-table {
+  table-layout: fixed;
+}
+
+.leaderboard-table .col-rank {
+  width: 80px;
+}
+
+.leaderboard-table .col-player {
+  /* Remaining width after the other three fixed columns. */
+  width: auto;
+}
+
+.leaderboard-table .col-num {
+  width: 110px;
+}
+
+/* Right-align numeric columns and give them tabular numerals so digits
+   occupy the same width regardless of value ("1,234" and "9,876" line
+   up perfectly). The whole row of numbers no longer jitters between
+   scans / period changes. */
+.leaderboard-table th.num,
+.leaderboard-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keep the player cell from overflowing when someone has a very long
+   name — clip with an ellipsis instead of pushing the numeric columns
+   out of alignment. */
+.leaderboard-table td[data-label="Player"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hero level is a 2-3 digit number — a full .col-num would leave it
+   swimming. Must stay AFTER the .col-num rule: both selectors have the
+   same specificity, so source order is what decides. */
+.leaderboard-table .col-level {
+  width: 84px;
+}
+
+/* Points-goal status, washed across the WHOLE row — rank, player, chests and
+   the rest — so the status is legible without reading any single column.
+   Applied to the <tr>, and via background-IMAGE rather than background-color,
+   which is what makes the rest of the table keep working:
+
+     - `tr:hover { background: var(--row-hover-overlay) }` (a shorthand, so it
+       resets background-image) has specificity (0,1,1); this selector is
+       (0,2,2), so the tint survives while hover's COLOR still applies beneath
+       it. A tinted row keeps its hover feedback instead of going inert.
+     - Below 640px the compact-row engine sets `.table-responsive tr {
+       background: var(--bg-card) }` — also (0,1,1) — to draw each row as a
+       card. A translucent background-image composites straight over that, so
+       the phone layout tints the whole card with no separate rule and no
+       !important anywhere.
+
+   The Points cell keeps its own stronger tint on top (below), so the row says
+   "on pace / behind" and the cell says which number decided it. */
+.leaderboard-table tbody tr.goal-row-ok {
+  background-image: linear-gradient(var(--goal-row-ok-bg), var(--goal-row-ok-bg));
+}
+.leaderboard-table tbody tr.goal-row-warn {
+  background-image: linear-gradient(var(--goal-row-warn-bg), var(--goal-row-warn-bg));
+}
+.leaderboard-table tbody tr.goal-row-low {
+  background-image: linear-gradient(var(--goal-row-low-bg), var(--goal-row-low-bg));
+}
+
+/* The Points cell itself: one step stronger than the row wash, plus the
+   matched text colour, so the number that produced the status is the one that
+   states it. Same idea as the ChestTracker tab's .ext-cell-*, but deliberately
+   its own class AND token set — those thresholds mirror chesttracker.com's SPA
+   and have to keep matching it, while these are the clan's own standard (green
+   at the goal, amber from 66%, red below) and have to mute together with the
+   row wash on OLED. The !important keeps the cell tint the last word over any
+   row-level background a table may add later. */
+.leaderboard-table td.goal-cell-ok {
+  background: var(--goal-cell-ok-bg) !important;
+  color: var(--accent-green-soft-text);
+}
+.leaderboard-table td.goal-cell-warn {
+  background: var(--goal-cell-warn-bg) !important;
+  color: var(--accent-warn-text);
+}
+.leaderboard-table td.goal-cell-low {
+  background: var(--goal-cell-low-bg) !important;
+  color: var(--accent-red-soft-text);
+}
+
+/* The small "Weekly goal: 25,000 points" line above the table.
+   Pads itself: .card-body is deliberately padding:0 (the tables inside it
+   supply their own insets), so a non-table child that doesn't pad sits flush
+   against the card border — 18px matches .pagination and the card header. */
+.leaderboard-goal-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 12px 18px 10px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.leaderboard-goal-hint strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.leaderboard-goal-hint .goal-hint-src {
+  opacity: 0.75;
+}
+/* Solid rather than the cell's own translucent --accent-green-bg-strong:
+   at 9px that 12%-alpha wash is invisible against the card. Same hue
+   family, so the dot still reads as "this is the green you're chasing". */
+.leaderboard-goal-hint .goal-hint-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  background: var(--accent-green);
+}
+
+/* Dashboard weekly card lives in a narrower half-width card. Tighten
+   the rank column so "#N" sits close to the player name instead of
+   leaving a wide visual gap. */
+.dashboard-weekly-table .col-rank {
+  width: 60px;
+}
+
+/* Period navigation row (← label →) on the leaderboard when a
+   daily/weekly/monthly/yearly period is active. */
+.period-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.period-nav .period-nav-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.period-nav .btn {
+  padding: 4px 12px;
+  font-size: 16px;
+  line-height: 1;
+  min-width: 36px;
+}
+
+/* ─── Two Column Grid ─── */
+.two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* ─── Clan Records card (Analytics page) ─── */
+.records-podium-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.records-podium {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+}
+
+.records-podium-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+}
+
+.records-podium-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.records-podium-row:last-child {
+  border-bottom: 0;
+}
+
+.records-podium-medal {
+  font-size: 22px;
+  line-height: 1;
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.records-podium-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.records-podium-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.records-podium-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Stack podiums vertically on narrow screens. */
+@media (max-width: 640px) {
+  .records-podium-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Member profile page single-day record badge */
+.record-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-gold);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 8px;
+  margin-top: 6px;
+}
+
+.record-badge .record-badge-medal {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ─── Forms & Inputs ─── */
+.input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  min-width: 0;
+  width: 100%;
+  max-width: 280px;
+  transition: border-color var(--transition);
+}
+
+.input-member {
+  max-width: 160px;
+}
+
+.members-filter {
+  max-width: 240px;
+  margin-left: auto;
+}
+
+/* Lock the members table so sorting/filtering doesn't reflow columns. */
+.members-table {
+  table-layout: fixed;
+}
+.members-table .col-member { width: auto; }
+.members-table .col-date { width: 180px; }
+.members-table .col-metric { width: 130px; }
+.members-table th.num,
+.members-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Member-detail history tabs (Chests / Triumphal Chests / Resources) plus the
+   Captured Raw OCR list under them. Locked for the same reason as the roster
+   table above, and for one more: flipping a tab swaps a table with a different
+   column count into the same card, and paging swaps a whole tbody. Without
+   fixed widths each page sized its columns from its own longest cell, so
+   Prev/Next visibly re-laid the table out. Every tab keeps the site column
+   order — identifying info left, date last. */
+.member-chests-table,
+.member-triumphals-table,
+.member-resources-table,
+.member-ocr-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.member-chests-table .col-chest { width: auto; }
+.member-chests-table .col-type { width: 110px; }
+.member-chests-table .col-source { width: 220px; }
+.member-chests-table .col-points { width: 90px; }
+/* 180px: the full `YYYY/MM/DD HH:MM:SS` stamp, same as .members-table. */
+.member-chests-table .col-date { width: 180px; }
+
+.member-triumphals-table .col-chest { width: auto; }
+.member-triumphals-table .col-source { width: 260px; }
+.member-triumphals-table .col-date { width: 180px; }
+
+/* Mirrors .resources-table's widths so the same ledger rows read identically
+   here and on the Resources admin page. The date is a bare game day
+   (`YYYY/MM/DD`), hence 140px rather than 180px. */
+.member-resources-table .col-resource { width: auto; }
+.member-resources-table .col-direction { width: 90px; }
+.member-resources-table .col-amount { width: 115px; }
+.member-resources-table .col-date { width: 140px; }
+
+.member-ocr-table .col-ocr { width: auto; }
+.member-ocr-table .col-session { width: 90px; }
+.member-ocr-table .col-date { width: 180px; }
+
+.member-chests-table th.num,
+.member-chests-table td.num,
+.member-resources-table th.num,
+.member-resources-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clip the identity cell rather than letting a long chest / resource name
+   wrap and make one row taller than its neighbours. Only the primary cell —
+   the mobile expand panel reveals the unroled cells and must not clip them.
+   Same rule as .leaderboard-table td[data-label="Player"]. */
+.member-chests-table td[data-role="primary"],
+.member-triumphals-table td[data-role="primary"],
+.member-resources-table td[data-role="primary"],
+.member-ocr-table td[data-role="primary"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.members-table td[data-label="Name"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--accent-blue-bg);
+}
+
+select.input {
+  cursor: pointer;
+}
+
+label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.inline-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.import-row {
+  align-items: center;
+}
+
+/* ─── Member Detail Page ─── */
+.member-detail-header {
+  align-items: flex-start;
+}
+
+.member-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.member-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.member-rank-badge.top-3 {
+  border-color: var(--accent-gold);
+  background: var(--accent-gold-bg);
+  box-shadow: 0 0 0 2px var(--accent-gold-bg);
+}
+
+.member-rank-badge.rank-1 { border-color: var(--rank-1); box-shadow: 0 0 0 2px var(--rank-1-glow); }
+.member-rank-badge.rank-2 { border-color: var(--rank-2); box-shadow: 0 0 0 2px var(--rank-2-glow); }
+.member-rank-badge.rank-3 { border-color: var(--rank-3); box-shadow: 0 0 0 2px var(--rank-3-glow); }
+
+.member-rank-medal {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.member-rank-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+.member-rank-value {
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+
+/* Bump specificity above `.stat-card .value` (28px) so dates render at the
+   intended 18px and don't overflow narrow stat cards. */
+.stat-card .value.member-detail-date {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Sub lines that pack two facts onto one row (Seen = recency + tenure start,
+   Might = exact figure + game day). A stat card is only 160px at its minimum,
+   so these clip to one line instead of wrapping and making the whole strip a
+   row taller; every caller repeats the full text in a title attribute. */
+.stat-card .sub.stat-sub-tight,
+.stat-card .sub.stat-sub-exact {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Weekly progress cards */
+.progress-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.progress-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+
+.progress-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  grid-column: 1;
+}
+
+.progress-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent-gold);
+  line-height: 1.1;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.progress-delta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-wrap: wrap;
+  grid-column: 1;
+}
+
+.progress-arrow {
+  font-size: 11px;
+}
+
+.progress-up {
+  color: var(--accent-green);
+}
+
+.progress-down {
+  color: var(--accent-red);
+}
+
+.progress-flat {
+  color: var(--text-secondary);
+}
+
+.progress-vs {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  /* Put Back (and any Delete/Back action cluster) at the TOP of a detail
+     header, left-aligned and compact, instead of orphaned full-width
+     below the title + rank badge. column-reverse lifts the trailing
+     button above the title without reordering the markup. */
+  .member-detail-header {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .member-detail-header > .btn,
+  .member-detail-header > .header-actions {
+    align-self: flex-start;
+  }
+
+  .member-detail-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .stat-card .value.member-detail-date {
+    font-size: 16px;
+  }
+
+  .progress-value {
+    font-size: 18px;
+  }
+
+  .progress-card {
+    padding: 10px 12px;
+  }
+}
+
+/* ─── Pagination ─── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-wrap: wrap;
+}
+
+.pagination-info {
+  color: var(--text-secondary);
+  font-size: 13px;
+  flex: 1;
+  text-align: center;
+}
+
+.pagination .btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ─── Empty State ─── */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+}
+
+.empty-state p {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+/* ─── Actions Bar ─── */
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px;
+  flex-wrap: wrap;
+}
+
+/* ─── Collapsible Sections ─── */
+.collapse-toggle {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 8px 0;
+  user-select: none;
+  font-weight: 500;
+  transition: color var(--transition);
+}
+
+.collapse-toggle:hover {
+  color: var(--text-primary);
+}
+
+.details-content {
+  margin-top: 12px;
+}
+
+details > table {
+  margin-top: 8px;
+}
+
+/* Clan-card sub-section toggles. Use the disclosure marker as the
+   chevron and make the inline h3 sit flush with it so the summary
+   reads as a heading. */
+.clan-subsection-summary {
+  cursor: pointer;
+  user-select: none;
+  list-style-position: outside;
+  padding: 4px 0;
+}
+.clan-subsection-summary:hover h3 {
+  color: var(--text-primary);
+}
+
+/* ─── Data Transfer ─── */
+.transfer-export-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.transfer-import-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.transfer-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: 14px;
+}
+
+.transfer-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.transfer-card-danger {
+  border-color: var(--transfer-card-danger-border);
+  background: var(--transfer-card-danger-bg);
+}
+
+.transfer-fields {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 10px;
+  align-items: end;
+}
+
+.transfer-fields .input {
+  max-width: none;
+}
+
+.transfer-fields-single {
+  grid-template-columns: 1fr;
+}
+
+.transfer-actions-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.transfer-progress-area {
+  margin-top: 10px;
+}
+
+.transfer-status {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--bg-surface);
+}
+
+.transfer-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+  font-size: 13px;
+}
+
+.transfer-status-row strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.transfer-status-row span {
+  color: var(--text-secondary);
+}
+
+.transfer-status-success {
+  border-color: var(--status-success-border);
+}
+
+.transfer-status-success .transfer-status-row strong {
+  color: var(--status-success-text);
+}
+
+.transfer-status-error {
+  border-color: var(--status-error-row-border2);
+}
+
+.transfer-status-error .transfer-status-row strong {
+  color: var(--status-error-row-text);
+}
+
+.transfer-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--transfer-progress-track);
+  overflow: hidden;
+}
+
+.transfer-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-blue) 0%, var(--accent-blue-hover) 100%);
+  transition: width 220ms ease;
+}
+
+.import-preview-output {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.import-preview-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.import-preview-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.import-preview-errors {
+  margin-top: 6px;
+  color: var(--accent-gold);
+  max-height: 120px;
+  overflow: auto;
+}
+
+/* ─── Utility Classes ─── */
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-0 { margin-bottom: 0; }
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.ml-4 { margin-left: 4px; }
+.mtb-12 { margin: 12px 0; }
+.muted-copy { color: var(--text-secondary); font-size: 13px; }
+
+/* Body-copy paragraphs need breathing room below them. The global
+   * { margin: 0 } reset stripped the browser default, so without this
+   intro text was sitting flush against the next stats grid / table /
+   form row. Scoped to direct children of card-body so it doesn't
+   compound with .hint-text inline captions or in-row helpers. */
+.card-body > p.muted-copy,
+.card-body-padded > p.muted-copy { margin-bottom: 12px; }
+.card-body > p.muted-copy:last-child,
+.card-body-padded > p.muted-copy:last-child { margin-bottom: 0; }
+/* Smaller hint paragraph used for inline form field captions. */
+.hint-text { font-size: 12px; margin-bottom: 0; }
+.nowrap { white-space: nowrap; }
+.arrow-sep { padding: 8px; color: var(--text-secondary); }
+.col-edit { width: 200px; }
+.col-actions { width: 80px; }
+
+.audit-details {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .audit-details {
+    max-width: none;
+    text-align: right;
+    word-break: break-word;
+  }
+}
+
+/* ─── Modal System ─── */
+.modal-root {
+  position: relative;
+  z-index: 1000;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-modal-backdrop);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.modal-overlay.visible {
+  opacity: 1;
+}
+
+.modal-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  padding: 24px;
+  max-width: 440px;
+  width: 100%;
+  transform: translateY(8px);
+  transition: transform 0.18s ease;
+}
+
+.modal-overlay.visible .modal-card {
+  transform: translateY(0);
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  letter-spacing: -0.2px;
+}
+
+.modal-body {
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 18px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.modal-input {
+  width: 100%;
+  max-width: none;
+  margin-bottom: 18px;
+  font-size: 14px;
+  padding: 10px 12px;
+}
+
+.modal-form {
+  margin-bottom: 18px;
+}
+
+.modal-form .modal-input {
+  margin-bottom: 12px;
+}
+
+.modal-form .modal-input:last-of-type {
+  margin-bottom: 8px;
+}
+
+.modal-form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.modal-form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-actions .btn {
+  min-width: 92px;
+}
+
+.btn-danger-solid {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  color: var(--text-on-accent);
+}
+
+.btn-danger-solid:hover {
+  filter: brightness(1.12);
+}
+
+@media (max-width: 480px) {
+  .modal-card {
+    padding: 18px;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
+}
+
+/* ─── Toasts ─── */
+.toast-root {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1100;
+  pointer-events: none;
+  max-width: calc(100vw - 32px);
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  padding: 12px 16px;
+  min-width: 260px;
+  max-width: 380px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.toast-success { border-left-color: var(--accent-green); }
+.toast-error { border-left-color: var(--accent-red); }
+.toast-info { border-left-color: var(--accent-blue); }
+
+.toast-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  letter-spacing: -0.1px;
+}
+
+.toast-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+@media (max-width: 480px) {
+  .toast-root {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+  }
+
+  .toast {
+    max-width: none;
+    width: 100%;
+  }
+}
+
+/* ─── Mobile Nav Overlay ─── */
+.nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--bg-mobile-overlay);
+  z-index: 98;
+}
+
+.nav-overlay.visible {
+  display: block;
+}
+
+/* ──────────────────────────────────────── */
+/* ─── RESPONSIVE: Tablet (<=960px) ────── */
+/* ──────────────────────────────────────── */
+@media (max-width: 960px) {
+  .two-col-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-type-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-import-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ──────────────────────────────────────── */
+/* ─── RESPONSIVE: Mobile (<=640px) ────── */
+/* ──────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Header */
+  .header {
+    padding: 10px 14px;
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .brand {
+    grid-column: 1;
+    justify-self: start;
+    gap: 8px;
+  }
+
+  .brand-logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  .header h1 {
+    font-size: 16px;
+  }
+
+  .header-right {
+    grid-column: 3;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .header .status span:not(.dot) {
+    display: none;
+  }
+
+  /* Clan control is superadmin-heavy; a normal user only needs to read
+     the active clan name. Cap its width on mobile so a long clan name
+     truncates instead of shoving the hamburger off the edge. */
+  .clan-switcher,
+  .clan-indicator {
+    min-width: 0;
+  }
+  .clan-switcher select,
+  .clan-indicator-name {
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .next-scan {
+    display: none;
+  }
+
+  /* Hide the desktop user menu on mobile - account actions move
+     into the slide-out hamburger nav instead */
+  .user-info {
+    display: none !important;
+  }
+
+  /* Show the mobile account section at the bottom of the slide-out nav */
+  .nav-mobile-account {
+    display: block;
+    margin-top: auto;
+    padding: 16px 24px 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .nav-mobile-account-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+  }
+
+  .nav-mobile-account-name {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+    margin-bottom: 12px;
+    word-break: break-word;
+  }
+
+  .nav-mobile-account-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-primary);
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+    margin-bottom: 8px;
+    transition: background var(--transition);
+  }
+
+  .nav-mobile-account-btn:hover {
+    background: var(--subtle-bg);
+  }
+
+  .nav-mobile-account-btn-danger {
+    color: var(--accent-red);
+    border-color: var(--accent-red-border-soft);
+  }
+
+  .nav-mobile-account-btn-danger:hover {
+    background: var(--accent-red-bg);
+  }
+
+  /* Show hamburger, hide desktop nav */
+  .hamburger {
+    display: block;
+  }
+
+  nav {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 260px;
+    flex-direction: column;
+    justify-content: flex-start;
+    background: var(--bg-card);
+    border-left: 1px solid var(--border);
+    border-bottom: none;
+    box-shadow: var(--shadow-mobile-nav);
+    z-index: 200;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    padding-top: 16px;
+    overflow-y: auto;
+  }
+
+  nav.open {
+    transform: translateX(0);
+  }
+
+  nav a {
+    padding: 14px 24px;
+    font-size: 15px;
+    border-bottom: none;
+    border-left: 3px solid transparent;
+  }
+
+  nav a.active {
+    border-bottom: none;
+    border-left-color: var(--accent-gold);
+    background: var(--accent-gold-active-bg);
+  }
+
+  nav a:hover {
+    background: var(--subtle-bg);
+  }
+
+  .nav-overlay.visible {
+    display: block;
+    z-index: 199;
+  }
+
+  /* Container */
+  .container {
+    padding: 14px 10px;
+  }
+
+  /* Stats */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 14px 12px;
+  }
+
+  .stat-card .value {
+    font-size: 22px;
+  }
+
+  .stat-card .label {
+    font-size: 10px;
+  }
+
+  /* Cards */
+  .card {
+    border-radius: var(--radius-md);
+    margin-bottom: 14px;
+  }
+
+  .card-header {
+    padding: 12px 14px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .card-body-padded {
+    padding: 14px;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     Compact expandable rows (mobile). Replaces the old "one line per
+     column" stacked-card transform that made wide tables unusable in
+     portrait. Collapsed, each row is a tight card:
+         [lead]  Name                    12 345  ›
+                 summary line             CAPTION
+     Tap to reveal the remaining columns as label/value rows.
+
+     Renderer contract — desktop is untouched (all of this only
+     applies <=640px). On the <td>s of a .table-responsive table:
+       data-role="lead"     small left badge (rank #, guards level…)
+       data-role="primary"  identity cell; wrap the name in
+                            .mrow-name and add an optional .mrow-sub
+                            span for the collapsed summary line
+       data-role="metric"   headline value; its data-label becomes
+                            the tiny caption under the number
+       data-role="hidden"   surfaced elsewhere (e.g. in .mrow-sub) —
+                            never shown, never triggers the expander
+       (unmarked)           hidden while collapsed, revealed in the
+                            expand panel as a label/value row
+     Rows whose cells carry NO data-role fall back to the readable
+     stacked layout below, so un-migrated tables keep working. */
+  .table-responsive {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border-collapse: collapse;
+  }
+  .table-responsive thead { display: none; }
+  .table-responsive tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .table-responsive tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    column-gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    position: relative;
+  }
+
+  /* A row is expandable when it has an unmarked (collapsible) cell.
+     :has() lets pure CSS mark it tappable + grow the chevron. */
+  .table-responsive tr:has(td[data-role="primary"]):has(td:not([data-role]):not(:empty)) {
+    cursor: pointer;
+    padding-right: 30px;
+  }
+  .table-responsive tr:has(td[data-role="primary"]):has(td:not([data-role]):not(:empty))::after {
+    content: "";
+    position: absolute;
+    right: 13px;
+    top: 19px;
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+    transform: rotate(-45deg);
+    transition: transform var(--transition);
+  }
+  .table-responsive tr.is-open::after { transform: rotate(45deg); }
+
+  /* Cells hidden by default; roles opt specific ones back in. */
+  .table-responsive td {
+    display: none;
+    padding: 0;
+    border: 0;
+    width: auto;
+  }
+  .table-responsive td[data-role="hidden"] { display: none; }
+
+  .table-responsive td[data-role="lead"] {
+    display: grid;
+    place-items: center;
+    grid-column: 1;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 7px;
+    background: var(--subtle-bg);
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    align-self: center;
+  }
+
+  .table-responsive td[data-role="primary"] {
+    display: block;
+    grid-column: 2;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  /* No lead badge → primary spans from the left edge. */
+  .table-responsive tr:not(:has(td[data-role="lead"])) td[data-role="primary"] {
+    grid-column: 1 / 3;
+  }
+  .mrow-name {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mrow-sub {
+    display: block;
+    margin-top: 1px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .table-responsive td[data-role="metric"] {
+    display: block;
+    grid-column: 3;
+    text-align: right;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--accent-gold);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    align-self: center;
+  }
+  /* Goal status has to be restated here, and with a third class in the
+     selector. `.table-responsive td[data-role="metric"]` above and
+     `.leaderboard-table td.goal-cell-*` (see the desktop rules) have the SAME
+     specificity (0,2,1), the metric rule is declared later in this file, and a
+     media query adds no specificity — so source order was handing the win to
+     --accent-gold and the mobile Points cell showed gold digits over the
+     status wash. Only the background survived, and only because it is
+     !important. (external.css's .ext-cell-* twin escapes this purely because
+     that file is <link>ed after style.css.) */
+  .leaderboard-table td[data-role="metric"].goal-cell-ok {
+    color: var(--accent-green-soft-text);
+  }
+  .leaderboard-table td[data-role="metric"].goal-cell-warn {
+    color: var(--accent-warn-text);
+  }
+  .leaderboard-table td[data-role="metric"].goal-cell-low {
+    color: var(--accent-red-soft-text);
+  }
+
+  .table-responsive td[data-role="metric"]::after {
+    content: attr(data-label);
+    display: block;
+    margin-top: 1px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .table-responsive td[data-role="metric"][data-label=""]::after { content: none; }
+
+  /* Expand panel — reveal unmarked cells as label/value rows. */
+  .table-responsive tr.is-open td:not([data-role]):not(:empty) {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--row-divider-mobile);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .table-responsive tr.is-open td:not([data-role])::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .table-responsive tr.is-open td.col-actions::before,
+  .table-responsive tr.is-open td.col-tx-actions::before,
+  .table-responsive tr.is-open td[data-label=""]::before { content: none; }
+  .table-responsive tr.is-open td.col-actions,
+  .table-responsive tr.is-open td.col-tx-actions { justify-content: flex-end; }
+
+  /* ── Fallback: rows with no roled cells keep the readable stacked
+     layout, so any not-yet-migrated .table-responsive still works. ── */
+  .table-responsive tr:not(:has(td[data-role])) {
+    display: block;
+    padding: 10px 12px;
+  }
+  .table-responsive tr:not(:has(td[data-role])) td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--row-divider-mobile);
+    font-size: 13px;
+  }
+  .table-responsive tr:not(:has(td[data-role])) td:last-child { border-bottom: 0; }
+  .table-responsive tr:not(:has(td[data-role])) td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .table-responsive tr:not(:has(td[data-role])) td:empty,
+  .table-responsive tr:not(:has(td[data-role])) td[data-label=""] { display: none; }
+  .table-responsive tr:not(:has(td[data-role])) td.col-actions { justify-content: flex-end; }
+  .table-responsive tr:not(:has(td[data-role])) td.col-actions::before { display: none; }
+
+  /* The chest-type collectors table keeps its richer native per-member
+     drill-down on mobile (every secondary cell is data-role="hidden", so
+     the generic chevron never appears). Give the row its own affordance
+     and rotate it via the .expanded class its own JS toggles. (Events
+     rows use the generic column-expander instead — see events.js.) */
+  .table-responsive tr.chest-collector-row {
+    cursor: pointer;
+    padding-right: 30px;
+  }
+  .table-responsive tr.chest-collector-row::after {
+    content: "";
+    position: absolute;
+    right: 13px;
+    top: 19px;
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+    transform: rotate(-45deg);
+    transition: transform var(--transition);
+  }
+  .table-responsive tr.chest-collector-row.expanded::after {
+    transform: rotate(45deg);
+  }
+
+  /* Its injected detail row is a full-width panel, not a grid card —
+     override the grid `tr` layout the engine applies to every row, and
+     let the wide breakdown table scroll inside the panel instead of
+     overflowing the viewport. */
+  .table-responsive tr.chest-collector-details {
+    display: block;
+    padding: 0;
+    background: var(--details-bg);
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+  }
+  .table-responsive tr.chest-collector-details > td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .table-responsive tr.chest-collector-details > td::before { content: none; }
+  .chest-collector-details-inner { overflow-x: auto; }
+  .chest-collector-details-inner .chest-history-table { min-width: 460px; }
+
+  /* Non-responsive tables fall back to horizontal scroll */
+  table:not(.table-responsive) {
+    min-width: 520px;
+  }
+
+  th, td {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  /* Leaderboard */
+  .leaderboard-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  /* Keep all timeframe buttons (Daily … All) on ONE line — they grow to
+     fill the width when they fit and scroll horizontally if they don't,
+     instead of wrapping "All" onto an orphaned second row. */
+  .period-selector {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .period-selector::-webkit-scrollbar { display: none; }
+
+  .period-selector .btn {
+    flex: 1 0 auto;
+    text-align: center;
+    padding: 8px 6px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .period-nav {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Forms */
+  .inline-form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inline-form-row .btn {
+    width: 100%;
+  }
+
+  .input {
+    max-width: none;
+  }
+
+  .input-member {
+    max-width: none;
+  }
+
+  .col-edit {
+    width: 140px;
+  }
+
+  .col-actions {
+    width: 70px;
+  }
+
+  /* Admin forms */
+  .arrow-sep {
+    text-align: center;
+    padding: 2px;
+  }
+
+  /* Buttons */
+  .btn {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .btn-compact {
+    padding: 6px 10px;
+  }
+
+  /* Type breakdown */
+  .type-summary-card {
+    padding: 16px;
+  }
+
+  .type-summary-card strong {
+    font-size: 28px;
+  }
+
+  .type-row {
+    padding: 12px;
+  }
+
+  .type-row-value {
+    font-size: 18px;
+  }
+
+  .type-row--compact {
+    padding: 6px 10px;
+    gap: 10px;
+  }
+
+  .type-row--compact .type-row-name {
+    width: 72px;
+  }
+
+  /* Transfer */
+  .transfer-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-export-row .btn {
+    flex: 1;
+  }
+}
+
+/* ──────────────────────────────────────── */
+/* ─── RESPONSIVE: Small phones (<=380px)  */
+/* ──────────────────────────────────────── */
+@media (max-width: 380px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-card .value {
+    font-size: 20px;
+  }
+
+  .container {
+    padding: 10px 8px;
+  }
+}
+
+/* Hover-trigger for evidence crops ("OCR Missing Player Name" admin rows,
+ * unresolved resource rows, first-seen members). Hover previews it, click opens
+ * the zoomable lightbox — hence zoom-in rather than a plain help cursor. */
+.unknown-crop-hover {
+  cursor: zoom-in;
+  text-decoration: underline dotted;
+  user-select: none;
+}
+
+/* Any element carrying a native title attribute gets the help cursor
+ * so the "there's extra info on hover" affordance is consistent across
+ * the site. Excludes interactive controls — buttons, links, form
+ * inputs, and anything with a data-action handler or button role —
+ * because their pointer/click semantics take priority over the
+ * help-cursor hint. (This selector out-specifies a plain class rule, so
+ * anything with its own cursor needs to be excluded here, not merely
+ * declared later.) */
+[title]:not(button):not(a):not(input):not(select):not(textarea):not(.btn):not([data-action]):not([role="button"]) {
+  cursor: help;
+}
+
+/* Floating preview panel that shows the saved debug crop PNG. Appended
+ * to document.body so it escapes any table overflow clipping.
+ *
+ * The caps are viewport-relative and generous: the crops are ~1000px-wide game
+ * screenshots, and any fixed cap below that downscales the one thing the
+ * operator is here to read. `min()` keeps a small window honest, and the panel
+ * is measured (not assumed) when positioned — see placeCropPreview in ui.js. */
+.unknown-crop-preview {
+  position: absolute;
+  z-index: 9999;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow: var(--shadow-crop-preview);
+  padding: 6px;
+  pointer-events: none;
+  max-width: min(660px, 94vw);
+}
+
+.unknown-crop-preview img {
+  display: block;
+  max-width: min(648px, 92vw);
+  max-height: min(760px, 82vh);
+  height: auto;
+  width: auto;
+}
+
+/* Shown in place of the image when a crop has aged out of retention. */
+.unknown-crop-preview-empty {
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  max-width: 280px;
+}
+
+/* Resource-import row crops are a full history row: ~1000px wide and only ~70px
+ * tall. Squeezed into the square cap they shrink to unreadable, so the wide
+ * variant trades height it doesn't need for the width it does — enough to clear
+ * 1000px and render at natural size on any normal desktop. */
+.unknown-crop-preview-wide {
+  max-width: min(1120px, 96vw);
+}
+
+.unknown-crop-preview-wide img {
+  max-width: min(1108px, 94vw);
+  max-height: min(420px, 50vh);
+}
+
+/* ─── Evidence-crop lightbox ───
+ * Click a crop trigger to read it properly: a full-screen stage that opens
+ * scaled to fit and zooms past 1:1, which the row-anchored hover panel can't. */
+.crop-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-lightbox-backdrop);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.crop-lightbox.visible {
+  opacity: 1;
+}
+
+.crop-lightbox-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.crop-lightbox-zoom {
+  margin-right: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* Scroll container for the zoomed image. Grid rather than centred flex: an auto
+ * track grows to the item, so an image bigger than the stage stays fully
+ * scrollable instead of losing its top-left to centring. */
+.crop-lightbox-stage {
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+/* Scaling deliberately left at the browser default (smoothed) — these are
+ * screenshots of text, which reads better upscaled soft than pixelated. */
+.crop-lightbox-stage img {
+  display: block;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* Only advertise dragging once the image actually overflows the stage. */
+.crop-lightbox-stage.is-pannable {
+  cursor: grab;
+}
+
+.crop-lightbox-stage.is-pannable:active {
+  cursor: grabbing;
+}
+
+.crop-lightbox-empty {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* Hover previews are dead weight on touch — there's no hover, and the tap that
+ * would trigger one already opens the lightbox. */
+@media (hover: none) {
+  .unknown-crop-preview {
+    display: none;
+  }
+}
+
+/* Collectors table on the chest detail page. Rows are clickable to
+ * expand an inline per-member history. Column widths are fixed via
+ * a <colgroup> so sorting the table doesn't cause columns to resize
+ * based on the new row order. */
+.chest-collectors-table {
+  table-layout: fixed;
+}
+
+.chest-collectors-table .col-caret { width: 28px; }
+.chest-collectors-table .col-rank { width: 72px; }
+.chest-collectors-table .col-member { width: auto; }
+.chest-collectors-table .col-num { width: 110px; }
+.chest-collectors-table .col-last-seen { width: 140px; }
+
+.chest-collectors-table th.num,
+.chest-collectors-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chest-collectors-table th.caret-col {
+  width: 28px;
+}
+
+.chest-collectors-table td[data-label="Member"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chest-collectors-table .last-seen-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.chest-collector-row {
+  cursor: pointer;
+}
+
+.chest-collector-row:hover {
+  background: var(--row-hover-overlay-strong);
+}
+
+.chest-collector-row.expanded {
+  background: var(--accent-blue-soft);
+}
+
+.chest-collector-caret {
+  width: 28px;
+  text-align: center;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.chest-collector-row.expanded .caret {
+  color: var(--accent-blue);
+}
+
+.chest-collector-details > td {
+  padding: 0;
+  background: var(--details-bg);
+  border-top: 0;
+}
+
+.chest-collector-details-inner {
+  padding: 12px 18px 16px 40px;
+}
+
+.chest-history-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.chest-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.chest-history-table th,
+.chest-history-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--code-bg);
+  text-align: left;
+}
+
+.chest-history-table th {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.chest-history-table th.num,
+.chest-history-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chest-history-table .history-date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+/* Mobile — when the parent table stacks into cards, keep the expand row
+ * contents readable instead of inheriting the per-cell stacking. */
+@media (max-width: 640px) {
+  .chest-collector-details > td {
+    display: block;
+    padding: 0;
+  }
+  .chest-collector-details > td::before {
+    content: none;
+  }
+  .chest-collector-details-inner {
+    padding: 12px;
+  }
+  .chest-history-table,
+  .chest-history-table thead,
+  .chest-history-table tbody,
+  .chest-history-table tr,
+  .chest-history-table th,
+  .chest-history-table td {
+    display: revert;
+  }
+}
+
+/* ─── Build footer ────────────────────────────────────────────── */
+/*
+ * Tiny "running build XXXXXXX" footer at the bottom of every page.
+ * Populated by app.js after fetching /api/health on load — full SHA +
+ * commit timestamp surface in the title-attribute tooltip.
+ */
+.build-footer {
+  padding: 0.75rem 1rem 1.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.build-footer .build-info {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ─── Shared utilities ────────────────────────────────────────── */
+
+/* Stretch a form-row child to consume remaining horizontal space. */
+.form-row-grow {
+  flex: 1;
+}
+
+/* Standalone "or type a custom value" row — sits beneath an
+   inline-form-row whose primary control is a dropdown. Spans the full
+   width and indents slightly so it reads as a follow-up to the main
+   row instead of a fresh field. */
+.merge-custom-row {
+  margin-top: 8px;
+  max-width: 480px;
+}
+
+/* Subtle horizontal rule used between sub-sections inside a card. */
+.section-divider {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+}
+
+/* Narrow numeric/short-text input override. Use on inputs that should
+   stay roughly two-digits wide regardless of the form-row layout. */
+.input-narrow {
+  max-width: 100px;
+}
+
+/* Cautionary text (gold) — sibling of .muted-copy but for advisory
+   notes the operator should glance at before changing a setting. */
+.warning-text {
+  color: var(--accent-gold);
+}
+
+/* Numbered or bulleted help lists rendered inside <details> blocks. */
+.help-list {
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+/* Inline status pill rendered next to/under a save action. Drives the
+   colour from a tone modifier so the same component can show neutral,
+   success, or error outcomes without inline styles. */
+.status-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin: 0;
+}
+/* Tone modifiers — also usable standalone on any text element to tint
+   it red/green/gold without the .status-message base layout. */
+.is-error { color: var(--accent-red); }
+.is-success { color: var(--accent-green); }
+.is-warning { color: var(--accent-gold); }
+
+/* Loading / placeholder text. Subtler than .muted-copy and italicised
+   so the eye scans past it instead of treating it as content. */
+.is-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Action cluster pinned to the right side of a card-header (e.g. the
+   per-session detail page's Delete + Back row). */
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Analytics top-contributors tables (Top Chests / Top Points). Locked
+   widths so the rank pill and metric column stay narrow while the
+   player name flexes. */
+.top-contributors-table {
+  table-layout: fixed;
+}
+.top-contributors-table .col-rank { width: 80px; }
+.top-contributors-table .col-player { width: auto; }
+.top-contributors-table .col-count { width: 110px; }
+.top-contributors-table td[data-label="Player"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* All Users table: lock the narrow columns so the username can grow
+   into the available space. */
+.users-table {
+  table-layout: fixed;
+}
+.users-table .col-user-name { width: auto; }
+.users-table .col-user-role { width: 140px; }
+.users-table .col-user-clan { width: 160px; }
+.users-table .col-user-date { width: 160px; }
+
+/* Orphaned-user row: tint to flag the anomaly (account with no clan).
+   The badge in the Clan column already says "⚠ No clan"; the tint
+   makes the row scannable from across the table. */
+.users-table tr.user-row-orphan td {
+  background: var(--accent-warn-bg);
+}
+
+/* Gold "needs-attention" pill. Sibling of .chest-type, but semantic:
+   used for "⚠ No clan" on orphan rows so we don't repurpose a rarity
+   token for a warning indicator. Reads from the warn theme tokens so
+   light + dark + OLED all retone in one place. */
+.badge-warn {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--accent-warn-bg);
+  color: var(--accent-warn-text);
+}
+
+/* Inline Assign button paired with the badge-warn in the Clan
+   column. Keeps the action visually colocated with the missing
+   data it patches so the Actions column doesn't need to widen and
+   spill onto a horizontal scrollbar. */
+.users-table .clan-cell-orphan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Audit log: lock the columns that have a known shape (timestamp,
+   username pill, action label) and let Details soak up the rest. */
+.audit-table {
+  table-layout: fixed;
+}
+.audit-table .col-audit-time { width: 160px; }
+.audit-table .col-audit-user { width: 140px; }
+.audit-table .col-audit-action { width: 200px; }
+
+/* Admin merge-rules tables: lock widths so the trailing Delete button
+   column stays a fixed pill no matter how long the from/to strings are.
+   Mirrors the locked-width pattern used by Members and Leaderboard. */
+.merge-rules-table {
+  table-layout: fixed;
+}
+.merge-rules-table .col-merge-from { width: 40%; }
+.merge-rules-table .col-merge-to { width: 40%; }
+.merge-rules-table .col-merge-created { width: 180px; }
+.merge-rules-table td[data-label="From"],
+.merge-rules-table td[data-label="To"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Calibration wizard — screenshot + SVG overlay anchored on top of an
+   inline-block wrapper so the overlay percentages reference the image
+   bounds. Display is JS-toggled via inline style.display because the
+   wizard hides/shows the whole block during stage transitions. */
+.calibration-canvas {
+  margin-top: 12px;
+}
+.calibration-image-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  cursor: crosshair;
+  user-select: none;
+}
+.calibration-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.calibration-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Slug + numeric id annotation rendered alongside the clan card title.
+   Lighter weight so the name remains the primary read. */
+.clan-card-meta {
+  font-weight: 400;
+}
+
+/* Daily digest status line + nested error list under the Discord
+   panel. Sits flush under the form actions, not as a heading. */
+.digest-status-line {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.digest-status-errors {
+  margin: 4px 0 0 18px;
+  font-size: 12px;
+  padding-left: 0;
+}
+
+/* Form-row container for the share-url pill — keeps gap and centring
+   consistent across the two sub-rows that wrap one. */
+.share-url-row {
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0 4px;
+}
+
+/* Read-only "click to copy" URL field used on the Clans page share
+   block. The cursor + select-all hint that the box is the value, not
+   a label, so the user can also drag-select it. */
+.share-url-pill {
+  flex: 1 1 auto;
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border-light);
+  transition: border-color var(--transition), background-color var(--transition);
+}
+.share-url-pill:hover,
+.share-url-pill:focus-visible {
+  border-color: var(--accent-blue);
+  background: var(--bg-card-hover);
+  outline: none;
+}
+/* Children are non-interactive so the whole pill is a single click target
+   (the clans.js dispatcher reads data-action off ev.target). */
+.share-url-pill > * {
+  pointer-events: none;
+}
+.share-url-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+.share-url-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.share-url-hint {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color var(--transition);
+}
+.share-url-pill:hover .share-url-icon,
+.share-url-pill:hover .share-url-hint,
+.share-url-pill:focus-visible .share-url-icon,
+.share-url-pill:focus-visible .share-url-hint {
+  color: var(--accent-blue);
+}
+.share-url-pill.is-copied {
+  border-color: var(--accent-green);
+}
+.share-url-pill.is-copied .share-url-icon,
+.share-url-pill.is-copied .share-url-hint {
+  color: var(--accent-green);
+}
+
+/* Secondary "Analytics & history" action under the share controls. */
+.share-secondary-actions {
+  margin-top: 10px;
+}
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+}
+.btn-ghost:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+.btn-ghost svg {
+  flex: none;
+}
+
+/* ─── Rich content modal (shared header + close button) ─── */
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.modal-head .modal-title {
+  margin-bottom: 0;
+}
+.modal-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background-color var(--transition);
+}
+.modal-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+.modal-content {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+/* ─── Share link analytics + recovery modal ─── */
+/* The modal reuses the 920px wide card; the inner column is capped so the
+   panel reads as a centered column on wide screens instead of stretching. */
+.share-analytics {
+  max-width: 560px;
+  margin: 0 auto;
+}
+/* Armed state for the two-step Disable button. */
+.btn-armed {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  color: var(--text-on-accent);
+}
+.btn-sm {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+.sa-url {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  overflow-x: auto;
+  white-space: nowrap;
+  margin-bottom: 14px;
+}
+.sa-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.sa-stat {
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  text-align: center;
+}
+.sa-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+.sa-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.sa-spark-wrap {
+  margin-bottom: 20px;
+}
+.sa-spark-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.sa-spark-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.sa-spark-total {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sa-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 56px;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+}
+.sa-spark-bar {
+  flex: 1;
+  min-width: 0;
+  background: var(--border-light);
+  border-radius: 1px;
+  transition: background-color var(--transition);
+}
+.sa-spark-bar.has-views {
+  background: var(--accent-gold);
+}
+.sa-history {
+  border-top: 1px solid var(--border-light);
+  padding-top: 16px;
+}
+.sa-history-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.sa-history-sub {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.sa-hist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.sa-hist-row:last-child {
+  border-bottom: none;
+}
+.sa-hist-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sa-hist-token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.sa-hist-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sa-hist-empty,
+.sa-empty {
+  margin: 0;
+  font-size: 13px;
+}
+.sa-banner {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-green);
+  background: var(--bg-input);
+  color: var(--accent-green);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sa-footnote {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Inline checkbox + label row. Keeps the box and its text on the same
+   baseline; otherwise <label> defaults to display:block which stacks
+   the text underneath the checkbox. */
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+}
+.checkbox-row input[type="checkbox"] {
+  margin: 0;
+}
+
+/* Stat-card value sized down for short string content (provider name,
+   trigger pill) so it doesn't dwarf the surrounding numeric values. */
+.stat-card .value.value-text {
+  font-size: 1rem;
+}
+.stat-card .value.value-pill {
+  font-size: 1.1rem;
+}
+
+/* Login bridge (inline + modal) moved to base.css (shared with setup). */
+
+/* Default styling for the inline h3 inside .clan-subsection-summary.
+   Keeps the heading flush with the disclosure triangle without per-
+   instance inline styles. */
+.clan-subsection-summary h3 {
+  display: inline-block;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* ─── Resources page ─── */
+
+.resources-upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.resources-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.resources-upload-label {
+  width: 130px;
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.resources-file-input {
+  flex: 1;
+}
+
+.resources-upload-result {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.resources-upload-result.is-hidden { display: none; }
+.resources-upload-result.is-loading {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.resources-upload-result.upload-success {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green-bg-strong);
+}
+.resources-upload-result.upload-error {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+  border: 1px solid var(--accent-red-border-soft);
+}
+.resources-upload-result.upload-mixed {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+}
+
+.upload-progress-header {
+  font-size: 0.875rem;
+  margin-bottom: 6px;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.upload-stats {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.upload-progress-bar-wrap {
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+.upload-progress-bar {
+  height: 100%;
+  background: var(--accent-gold);
+  border-radius: 4px;
+  transition: width 0.25s ease;
+}
+.upload-progress-indeterminate {
+  width: 40%;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+.upload-active-files {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-log {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.upload-log-ok    { color: var(--accent-green); }
+.upload-log-error { color: var(--accent-red); }
+
+.input-tight {
+  width: 100%;
+  padding: 3px 5px;
+  font-size: 0.8rem;
+  height: auto;
+  min-width: 0;
+}
+
+.input-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.speedup-amount-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.8rem;
+}
+.speedup-amount-edit .speedup-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.speedup-amount-edit .input-tight {
+  width: 52px;
+  min-width: 0;
+  text-align: right;
+}
+
+.resources-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.resources-filter-bar .input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.resources-filter-bar .btn {
+  flex-shrink: 0;
+}
+
+.resources-table,
+.resources-batches-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.resources-table .col-member     { width: auto; }
+.resources-table .col-resource   { width: 250px; }
+.resources-table .col-direction  { width: 90px; }
+.resources-table .col-amount     { width: 115px; }
+.resources-table .col-date       { width: 140px; }
+/* 140px: enough for "Save" + "Cancel" side-by-side in btn-tight; "Edit" alone looks fine too */
+.resources-table .col-tx-actions { width: 140px; }
+
+.resources-batches-table .col-uploaded-at    { width: auto; }
+.resources-batches-table .col-batch-source   { width: 100px; }
+.resources-batches-table .col-upload-date    { width: 130px; }
+.resources-batches-table .col-file-count     { width: 60px; }
+.resources-batches-table .col-row-count      { width: 60px; }
+.resources-batches-table .col-error-count    { width: 60px; }
+.resources-batches-table .col-actions-narrow { width: 80px; }
+
+/* ─── Post-import "resolve unknowns" modal ─────────────────────────────────── */
+
+/* Wider variant of the shared .modal-card for the inline-editable table. */
+.modal-card-wide {
+  max-width: 920px;
+}
+
+.unknown-modal-hint {
+  margin-bottom: 14px;
+}
+
+/* The row table scrolls inside the card so a big batch of unknowns never
+   pushes the action buttons off-screen; the sticky <th> stays visible. */
+.unknown-modal-scroll {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.unknown-modal-table {
+  min-width: 660px;
+}
+
+/* Just the hover glyph — keep it from stealing width from the editable fields. */
+.unknown-modal-table .col-crop {
+  width: 34px;
+  text-align: center;
+}
+
+.unknown-modal-table th,
+.unknown-modal-table td {
+  padding: 7px 10px;
+  vertical-align: middle;
+}
+
+.unknown-modal-table select[data-field="resource"] {
+  min-width: 140px;
+}
+
+.unknown-modal-table input[data-field="amount"] {
+  max-width: 90px;
+}
+
+.unknown-modal-table tr.is-resolved {
+  opacity: 0.55;
+}
+
+.unknown-modal-table .col-tx-actions {
+  white-space: nowrap;
+}
+
+.unknown-row-status {
+  margin-left: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.unknown-row-status.is-ok    { color: var(--accent-green); }
+.unknown-row-status.is-error { color: var(--accent-red); }
+
+.resource-direction {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.resource-sent {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+}
+
+.resource-took {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+}
+
+/* Batch provenance pills (Upload History → Source). Reuses .resource-direction's
+   geometry so every pill on the page is the same shape, and stays on theme
+   variables — the light theme uses a different accent gold. Deliberately quieter
+   than sent/took: provenance is context, not the value being read. */
+.resource-batch-auto {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+}
+
+.resource-batch-upload {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.resource-type-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Truncate long resource names to one line inside the fixed-width
+   Resource column (mirrors the Player/Name ellipsis treatment on the
+   leaderboard + members tables). min-width:0 lets the flex item shrink
+   below its content width so text-overflow can kick in; the full name
+   is available via the title tooltip set in resourceIconHtml(). */
+.resource-type-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.resource-icon-img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.empty-state-cell {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px 0;
+}
+
+.col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 700px) {
+  .resources-filter-bar .input {
+    max-width: 100%;
+  }
+  .resources-table .col-resource,
+  .resources-table .col-direction,
+  .resources-table .col-amount,
+  .resources-table .col-date {
+    width: auto;
+  }
+}
+
+/* ─── Resources: two-tab bar ─────────────────────────────────────────── */
+.resources-tabs {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin-bottom: 16px;
+}
+.resources-tab {
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: background 0.15s, color 0.15s;
+}
+.resources-tab:hover { color: var(--text-primary); }
+.resources-tab.is-active {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+}
+
+/* Events sub-tabs carry a small "next occurrence" schedule line, so each tab
+   is a two-line stack (name + muted schedule). Scoped to .events-tabs so the
+   Resources sub-tabs stay single-line. Wraps on narrow screens. */
+.events-tabs { flex-wrap: wrap; }
+.events-tabs .resources-tab {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.2;
+}
+.events-tabs .event-tab-next {
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.events-tabs .event-tab-next.is-live { color: var(--accent-green-soft-text); }
+
+/* ─── Resources: overview controls (scope + range + bucket) ──────────── */
+.resources-controls { margin-bottom: 16px; }
+.resources-controls-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.resources-scope-select { max-width: 260px; }
+.resources-range-group,
+.resources-bucket-group { display: inline-flex; gap: 4px; }
+.resources-range-btn.is-active,
+.resources-bucket-btn.is-active {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+  border-color: var(--accent-gold-border);
+}
+.card-header-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ─── Resources: per-resource card grid (small multiples) ────────────── */
+.resources-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.resources-cards.is-loading { opacity: 0.5; }
+.resource-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.resource-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-card-hover);
+}
+.resource-card.is-selected {
+  border-color: var(--accent-gold-border);
+  box-shadow: 0 0 0 1px var(--accent-gold-border);
+  background: var(--accent-gold-bg);
+}
+.resource-card-head { display: flex; align-items: center; gap: 8px; }
+.resource-card-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+.resource-card-amount {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  font-variant-numeric: tabular-nums;
+}
+.resource-card-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.resource-card-donor {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Resources: inline sparkline (shared: cards + member rows) ───────── */
+.resource-spark { width: 100%; height: 28px; display: block; margin: 2px 0; }
+.resource-spark-line {
+  fill: none;
+  stroke: var(--accent-green);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.resource-spark-area { fill: var(--accent-green-bg); stroke: none; }
+
+/* ─── Resources: over-time chart + donors table ──────────────────────── */
+.resources-chart-wrap { position: relative; height: 340px; }
+.resources-donors-table { table-layout: fixed; width: 100%; }
+.resources-donors-table .col-rank { width: 80px; }
+.resources-donors-table .col-player { width: auto; }
+.resources-donors-table .col-num { width: 140px; }
+.resources-donors-table tr.is-me { background: var(--accent-gold-bg); }
+.resources-nondonors-table { table-layout: fixed; width: 100%; }
+.resources-nondonors-table .col-player { width: auto; }
+
+/* ─── Resources: Totals matrix (member × resource type) ──────────────── */
+.resources-totals-scroll { overflow-x: auto; }
+.resources-totals-table { table-layout: fixed; min-width: 780px; }
+.resources-totals-table .col-player { width: 132px; }
+.resources-totals-table .col-rtype { width: 58px; }
+/* Compact cells so the matrix fits without horizontal scroll. */
+.resources-totals-table th,
+.resources-totals-table td { padding: 6px 6px; }
+.resources-totals-table td.col-num { font-size: 0.82rem; }
+.resources-totals-zero { color: var(--text-muted); }
+
+/* Icon-over-name column headers. Top-aligned so every icon sits on the same
+   line regardless of how many lines its name wraps to. */
+.resources-totals-table th.rtype-th { white-space: normal; vertical-align: top; cursor: pointer; }
+.rtype-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+  line-height: 1.15;
+}
+.rtype-head .resource-icon-img { width: 26px; height: 26px; }
+.rtype-head-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.rtype-head-arrow {
+  font-size: 0.62rem;
+  color: var(--accent-gold);
+  min-height: 0.7rem;
+}
+.resources-totals-table th.rtype-th.is-sorted .rtype-head-name { color: var(--accent-gold); }
+
+/* Totals header: title left, period selector + nav right (wraps on narrow). */
+.resources-totals-header { flex-wrap: wrap; gap: 10px; }
+.resources-totals-title { display: flex; flex-direction: column; gap: 2px; }
+.resources-totals-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Fixed-width label + always-present nav keeps the controls from shifting
+   when switching timeframes (weekly range vs a short year vs All). */
+.resources-totals-nav .period-nav-label {
+  min-width: 178px;
+  text-align: center;
+}
+
+/* ─── Events page ─────────────────────────────────────────────────────── */
+/* Header: title left, timeframe selector + nav right (wraps on narrow). */
+.events-header { flex-wrap: wrap; gap: 10px; }
+.events-title { display: flex; flex-direction: column; gap: 2px; }
+.events-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Fixed-width label so switching timeframe doesn't shift the controls —
+   same trick as .resources-totals-nav. 200px fits the weekly date range. */
+.events-nav .period-nav-label { min-width: 200px; text-align: center; }
+/* "live" marker on the current in-progress occurrence in the selector. Sized
+   and set to read as part of the window label ("Jul 26–30 · live"), not as a
+   badge: as a pill it sat oddly in the label's fixed-width slot, which centres
+   label + marker together and so shoved the date off-centre only on the live
+   run. Soft green text (not white on solid green, which is low-contrast where
+   --accent-green is a bright mint) — reads cleanly in light, dark, and OLED. */
+.events-occ-live {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-green-soft-text);
+}
+/* Wide matrices (many chest/level columns) scroll horizontally on narrow. */
+.events-scroll { overflow-x: auto; }
+.events-table td.col-num { font-size: 0.82rem; }
+/* Expandable participant rows (drill into a member's chest breakdown). */
+.events-table .col-caret { width: 28px; }
+.events-table th.caret-col { width: 28px; }
+.events-row { cursor: pointer; }
+.events-row:hover { background: var(--row-hover-overlay-strong); }
+.events-row.expanded { background: var(--accent-blue-soft); }
+.events-row .caret { color: var(--text-secondary); user-select: none; }
+.events-detail-inner { padding: 12px 16px; }
+/* Right-align numeric column HEADERS so they sit directly above their
+   right-aligned .col-num cells (headers default to left otherwise). */
+.events-table th.num,
+.events-level-table th.num { text-align: right; }
+.events-level-table .col-level { width: 48%; }
+.events-zero { color: var(--text-muted); }
+/* Catalog-vs-data mismatch banner. A dead event rule renders as a column of
+   zeros that looks exactly like "nobody played", so it gets said out loud. */
+.events-config-warning {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--accent-gold-border);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--accent-gold-bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.events-config-warning-title {
+  font-weight: 700;
+  color: var(--accent-gold);
+  margin-bottom: 6px;
+}
+.events-config-warning ul { margin: 0; padding-left: 20px; }
+.events-config-warning li { margin-top: 2px; }
+.events-config-warning code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent-gold-bg-strong);
+  font-size: 12px;
+}
+/* Header/cell markers on a column whose rule resolved to nothing. */
+.events-unresolved-mark {
+  margin-left: 3px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  cursor: help;
+}
+.events-unresolved {
+  color: var(--accent-gold);
+  cursor: help;
+  font-weight: 700;
+}
+/* Aggregated cell (e.g. Dark Omens' combined Minor/Major/Epic) — hint that a
+   per-chest split is available on hover. */
+.events-combined {
+  cursor: help;
+  border-bottom: 1px dotted var(--text-muted);
+}
+/* Lead summary card (e.g. Ancients "Vaults Taken Down") — accent the value. */
+.stat-card.stat-card-lead { border-color: var(--accent-gold); }
+.stat-card.stat-card-lead .value { color: var(--accent-gold); }
+/* Finish Reward card subline — the chest count under the recipient name. */
+.events-finish-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* "Did not participate" list: wrapping chips of member links. .card-body has
+   no padding of its own, so pad the list here. */
+.events-np-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; }
+.events-np-item {
+  display: inline-flex;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 0.88rem;
+}
+
+/* Mobile: the event picker's tabs have uneven widths (some carry a
+   schedule subline, some don't), so a wrapping flex row ragged-stacks
+   into a 3-2-1 mess with the active tab stranded. Turn it into a tidy
+   2-column grid of equal tab cards instead — every event visible at a
+   glance, uniform sizes, active clearly highlighted. The timeframe /
+   occurrence cluster below fills the width and centers. */
+@media (max-width: 640px) {
+  .events-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+    margin: 0 0 16px;
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  .events-tabs .resources-tab {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px 8px;
+    min-height: 52px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+  }
+  .events-tabs .resources-tab.is-active {
+    border-color: var(--accent-gold-border);
+    background: var(--accent-gold-bg-strong);
+  }
+
+  .events-controls {
+    width: 100%;
+    justify-content: center;
+  }
+  .events-nav {
+    width: 100%;
+    justify-content: center;
+  }
+  .events-nav .period-nav-label {
+    min-width: 0;
+    flex: 1;
+    text-align: center;
+  }
+}
+
+/* ─── Resources: modernized upload (dropzone + thumbnails) ───────────── */
+.resources-dropzone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.resources-dropzone:hover { border-color: var(--accent-blue); }
+.resources-dropzone.is-drag {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-soft-strong);
+}
+.resources-dropzone:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+.resources-dropzone-icon { font-size: 1.8rem; }
+.resources-dropzone-text { color: var(--text-secondary); margin-top: 6px; }
+.resources-dropzone-text strong { color: var(--text-primary); }
+.resources-dropzone-browse { color: var(--accent-blue); text-decoration: underline; }
+.resources-dropzone-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+.resources-thumbs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.resources-thumbs:empty { display: none; }
+.resource-thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+}
+.resource-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.resource-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-red);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.resources-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.resources-upload-summary { color: var(--text-secondary); font-size: 0.85rem; }
+
+/* ─── Resources: per-member donated cards (member detail page) ────────────
+   A uniform card grid (reuses .resources-cards + the .resource-card-* text
+   styles from the Overview page) so every resource lines up regardless of
+   amount width. Unlike the Overview cards these are informational, not
+   clickable — hence a dedicated, non-interactive container class. */
+.resource-member-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+@media (max-width: 700px) {
+  .resources-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .resources-chart-wrap { height: 280px; }
+  /* Totals table collapses to the shared card layout — drop the wide min-width. */
+  .resources-totals-table { min-width: 0; }
+  .resources-totals-scroll { overflow-x: visible; }
+}
+
+/* ─── Might tracking (Might page, member-detail card, Analytics trend) ──────
+   Charts need an explicitly sized wrapper: Chart.js with
+   maintainAspectRatio:false grows to fill its parent, and a parent with no
+   height collapses to zero. */
+.chart-container {
+  position: relative;
+  height: 340px;
+}
+
+.chart-container--compact {
+  height: 220px;
+}
+
+/* Chart.js draws its legend inside the canvas, so a legend row shortens the plot
+   rather than sitting above it. Given back here, so the member might chart keeps
+   the same plot height whether or not hero level is along for the ride. */
+.chart-container--legend {
+  height: 248px;
+}
+
+/* Member picker for the comparison chart. A wrapping chip row rather than a
+   multi-select: the selected set has to stay visible while reading the chart,
+   and each chip carries its own series colour so the legend and the picker
+   agree without the user matching names twice. */
+.might-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  /* Roughly six rows of chips before scrolling, so a 60-member roster can
+     never push the chart itself off-screen. */
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.might-chip {
+  border: 1px solid var(--border-light);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.might-chip.active {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+  font-weight: 600;
+}
+
+.might-compare-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Inline checkbox label — the global `label` rule is block with a bottom
+   margin, which would drop the control onto its own line inside the header. */
+.might-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.might-toggle-label input {
+  cursor: pointer;
+}
+
+.might-compare-chart {
+  height: 420px;
+}
+
+/* Locked widths + tabular numerals, matching the leaderboard/members tables so
+   sorting can't reflow the columns. */
+.might-table {
+  table-layout: fixed;
+}
+.might-table .col-rank { width: 64px; }
+.might-table .col-member { width: auto; }
+.might-table .col-metric { width: 150px; }
+.might-table .col-date { width: 110px; }
+/* Date-only, and it must never wrap the row onto a second line. */
+.might-table td[data-label="Last Seen"] { white-space: nowrap; }
+.might-table th.num,
+.might-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.might-table td[data-label="Member"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Member-page might card header. The growth figure is the whole point of the
+   card, so it gets a tinted up/down pill instead of sitting in the muted hint
+   line with everything else. Colours come from the same accent tokens as the
+   Sent/Took pills, so it tracks the theme (light uses different accents). */
+.might-trend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.might-trend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Specificity beats the bare .progress-up/.progress-down colour rules. */
+.might-trend-pill.progress-up {
+  background: var(--accent-green-bg);
+  border-color: var(--accent-green-bg-strong);
+  color: var(--accent-green);
+}
+.might-trend-pill.progress-down {
+  background: var(--accent-red-bg);
+  border-color: var(--accent-red-border-soft);
+  color: var(--accent-red);
+}
+.might-trend-pill.progress-flat {
+  background: var(--subtle-bg);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.might-trend-arrow {
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Changing the window refetches and redraws only this card, so dim it for the
+   one round-trip rather than leaving the old line looking current. */
+#memberMightCard.is-loading {
+  opacity: 0.55;
+  transition: opacity var(--transition);
+}
+
+/* Secondary read: same colour, dimmed and fenced off by a hairline so the
+   delta and the percentage don't run together into one long figure. */
+.might-trend-pct {
+  padding-left: 7px;
+  border-left: 1px solid currentColor;
+  font-weight: 600;
+  opacity: 0.72;
+}
+
+@media (max-width: 700px) {
+  .chart-container { height: 260px; }
+  .chart-container--compact { height: 200px; }
+  .chart-container--legend { height: 228px; }
+  .might-compare-chart { height: 320px; }
+  .might-chips { max-height: 150px; }
+  .might-table { min-width: 0; }
+}
+
+/* ─── Resource capture debug-screenshot gallery ──────────────────────────────── */
+/* Thumbnails of every scroll page from a manual collection. Wide-and-short crops,
+   so the grid gives each one full width at a small height rather than square
+   tiles that would crush the rows into illegibility. */
+.resources-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.resources-debug-shot {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.resources-debug-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* The frames are the evidence — never let a layout rule crop them. */
+  object-fit: contain;
+}
+
+.resources-debug-shot figcaption {
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  /* Filenames carry the page number and are long; wrap rather than truncate so
+     the page order stays readable. */
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Analytics timeframe controls ─────────────────────────────────────── */
+/* Mirrors .resources-controls: the selector and its ← label → nav sit in one
+   card above everything the timeframe governs, so it reads as the control for
+   the page rather than for the card nearest it. */
+.analytics-controls { margin-bottom: 16px; }
+.analytics-controls-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+/* Fixed label width so the arrows don't jump as the label text changes
+   length between timeframes (same treatment as the resources totals nav). */
+.analytics-nav .period-nav-label {
+  min-width: 178px;
+  text-align: center;
+}
+
+/* Period-over-period delta under a stat value. Colour is the secondary
+   signal here — the arrow and the words carry the meaning on their own, so
+   this stays readable for anyone who can't separate the two hues. */
+.stat-delta {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stat-delta.is-up { color: var(--accent-green); }
+.stat-delta.is-down { color: var(--accent-red); }
+.stat-delta.is-flat { color: var(--text-muted); }
+
+/* "31 of 47" — the roster denominator is context, not the headline. */
+.stat-card .value .stat-of {
+  font-size: 0.6em;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .analytics-controls-body { gap: 8px; }
+  /* Let the label shrink rather than push the arrows off the row. */
+  .analytics-nav .period-nav-label { min-width: 0; flex: 1 1 auto; }
+  .analytics-nav { width: 100%; }
+}
+
+/* Segmented [Chests | Points] switch in the Clan Activity card header. */
+.metric-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.metric-toggle .btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  /* The header is title-left / toggle-right on desktop; stack it rather than
+     squeezing the title to nothing. */
+  .metric-toggle { width: 100%; }
+  .metric-toggle .btn { flex: 1 1 0; }
+}
+
+/* Breakdown card: filter box and the show-all toggle under the list. */
+.breakdown-filter {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.breakdown-more {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* Scope note above the contributor table: it explains what the numbers do and
+   don't include, so it sits between the header and the rows rather than being
+   a tooltip nobody hovers. */
+/* Explanatory line under a card header. NO max-width: these live in full-width
+   cards, and capping the measure left a narrow column of text with an empty
+   half of the card beside it. Keeping the copy short is what keeps it readable,
+   not clipping the column. */
+.card-note {
+  padding: 0 16px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.attention-table .muted-num { color: var(--text-muted); }
+
+/* Member profile timeframe control. Sits above the stat cards, which it
+   governs; the Weekly Progress card below is deliberately outside its scope
+   and says so in its own header. */
+.member-period-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.member-nav .period-nav-label {
+  min-width: 178px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .member-nav { width: 100%; }
+  .member-nav .period-nav-label { min-width: 0; flex: 1 1 auto; }
+}
+
+/* The gap line under a member's rank. Sits between the timeframe control and
+   the stat cards, because it is context for the rank badge above rather than
+   another statistic. */
+.member-rank-gap {
+  margin: -4px 0 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Movers: the change column and the badge for someone the sweep has removed. */
+.mover-delta { font-variant-numeric: tabular-nums; }
+.mover-delta.is-up { color: var(--accent-green); }
+.mover-delta.is-down { color: var(--accent-red); }
+.mover-delta.is-flat { color: var(--text-muted); }
+
+.mover-left-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ─── Concentration tile ─────────────────────────────────────────────── */
+/* A stat tile like its neighbours, not a card beside them: as its own card it
+   was half again their height with the content floating in the middle. */
+.stat-card-concentration {
+  display: flex;
+  flex-direction: column;
+}
+.stat-card-concentration .sub {
+  /* Two short lines rather than one clipped one on a narrow column. */
+  line-height: 1.35;
+}
+
+/* Bars scale to the series' own maximum, not to 100%. A share that sits around
+   17% every week drew eight identical stubs along the floor otherwise. */
+.concentration-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 26px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+.concentration-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--chart-bar-source);
+  border-radius: 2px 2px 0 0;
+}
+
+/* ─── Activity clock ──────────────────────────────────────────────────── */
+/* Plain CSS grid, no Chart.js: 84 cells whose only job is to be shaded. */
+.clock-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.clock-row {
+  display: grid;
+  grid-template-columns: 42px repeat(12, minmax(18px, 1fr));
+  gap: 3px;
+  align-items: center;
+}
+.clock-day-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+  padding-right: 4px;
+}
+.clock-col-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+.clock-cell {
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  /* Gold over TRANSPARENT, not over --bg-elevated. Mixing gold into a blue-grey
+     surface makes olive, which is what turned this grid into a wall of mud. */
+  background: transparent;
+}
+.clock-l0 { background: transparent; }
+.clock-l1 { background: color-mix(in srgb, var(--accent-gold) 18%, transparent); }
+.clock-l2 { background: color-mix(in srgb, var(--accent-gold) 40%, transparent); }
+.clock-l3 { background: color-mix(in srgb, var(--accent-gold) 66%, transparent); }
+.clock-l4 { background: var(--accent-gold); }
+
+/* The game-day rollover. A neutral rule, not an accent colour — a purple stripe
+   through a gold ramp reads as data rather than as an axis annotation. */
+.clock-cell.is-rollover {
+  box-shadow: inset 2px 0 0 var(--text-secondary);
+}
+.clock-col-label.is-rollover {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.clock-note { margin-top: 12px; }
+
+@media (max-width: 640px) {
+  .clock-row { grid-template-columns: 34px repeat(12, minmax(14px, 1fr)); }
+  .clock-cell { height: 16px; }
+}
+
+/* Contributor table: consistency columns and the sustained filter. */
+.contributors-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.of-days { color: var(--text-muted); font-size: 0.85em; }
+
+
+/* ─── Member consistency ──────────────────────────────────────────────── */
+.consistency-stats { margin-bottom: 12px; }
+
+.consistency-verdict {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.consistency-verdict.is-up { color: var(--accent-green); }
+.consistency-verdict.is-down { color: var(--accent-red); }
+
+/* 90 bars plus a rolling-average marker, in plain CSS. */
+.consistency-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 84px;
+  overflow-x: auto;
+}
+.consistency-col {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.consistency-bar {
+  width: 100%;
+  background: var(--chart-bar-blue);
+  border-radius: 1px 1px 0 0;
+}
+/* The rolling mean as a floating tick per column rather than an SVG path —
+   90 absolutely-positioned marks read as a line and cost no library. */
+.consistency-mean {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--accent-gold);
+  opacity: 0.85;
+}
+.consistency-note { margin-top: 10px; }
+
+/* Pace band above the contributor table. */
+.pace-band {
+  padding: 10px 16px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.pace-figure {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.pace-sep { color: var(--text-muted); }
+.pace-risk { color: var(--accent-red); }
+/* The projection is an assumption, so the caveat travels with the number
+   rather than living in a tooltip nobody opens. */
+.pace-caveat {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  flex-basis: 100%;
+}
+
+/* ─── Member pace ─────────────────────────────────────────────────────── */
+.member-pace { margin: 0 0 16px; }
+.member-pace-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.member-pace-target {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.member-pace-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow: visible;
+}
+.member-pace-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px 0 0 4px;
+  background: var(--accent-gold);
+}
+.member-pace-fill.goal-cell-ok { background: var(--accent-green); }
+.member-pace-fill.goal-cell-warn { background: var(--accent-gold); }
+.member-pace-fill.goal-cell-low { background: var(--accent-red); }
+/* Where you would be if you were exactly on pace. The distance between this
+   and the end of the fill IS the message. */
+.member-pace-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--text-primary);
+  opacity: 0.55;
+  border-radius: 1px;
+}
+
+.source-mix-rest { margin: 10px 0 0; font-size: 12px; }
+
+/* Export link sits with the timeframe controls it exports. */
+.leaderboard-export { white-space: nowrap; }
+
+/* ─── Capture health (System) ─────────────────────────────────────────── */
+.scanhealth-chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 90px;
+  border-bottom: 1px solid var(--border);
+}
+.scanhealth-bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  background: var(--chart-bar-blue);
+  border-radius: 1px 1px 0 0;
+}
+/* Three times the median. Marked, not alarmed — a long scan after a big event
+   is normal; a run of them is not. */
+.scanhealth-bar.is-slow { background: var(--accent-gold); }
+.scanhealth-bar.has-errors { background: var(--accent-red); }
+/* Never completed. Full height and hatched, because zero would draw the worst
+   outcome as the fastest one. */
+.scanhealth-bar.is-unfinished {
+  background: repeating-linear-gradient(
+    45deg, var(--accent-red), var(--accent-red) 3px, transparent 3px, transparent 6px);
+}
+.scanhealth-median {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--text-secondary);
+  opacity: 0.7;
+}
+.scanhealth-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.scanhealth-warn { color: var(--accent-red); }
+
+/* ─── Event run-over-run ──────────────────────────────────────────────── */
+.evseries-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 90px;
+}
+.evseries-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.evseries-bar {
+  width: 100%;
+  background: var(--chart-bar-source);
+  border-radius: 3px 3px 0 0;
+}
+.evseries-bar.is-current { background: var(--accent-gold); }
+/* A run with no data is a GAP, not a zero — the event may predate this clan's
+   history, and a zero bar claims they turned up and scored nothing. */
+.evseries-gap {
+  width: 100%;
+  height: 100%;
+  border-bottom: 2px dotted var(--border);
+}
+.evseries-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.evseries-note { margin-top: 10px; }

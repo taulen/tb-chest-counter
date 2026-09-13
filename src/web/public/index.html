@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TB Chest Counter</title>
+  <!-- Apply the user's saved theme synchronously before the stylesheet
+       paints so the page never flashes the wrong palette on reload.
+       App.js will rewrite this once /auth/me returns the server-stored
+       preference (which may differ from this browser's last choice). -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'oled' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (_) { /* localStorage may be blocked; default to dark */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/base.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/external.css">
+  <!-- Served from the installed chart.js package (see /vendor route), not a
+       CDN: a self-hosted tool should not need a third party to be up, and the
+       CSP would otherwise have to allow an external script origin. -->
+  <script src="/vendor/chart.umd.js"></script>
+</head>
+<body>
+  <div class="topbar">
+  <div class="header">
+    <a href="#dashboard" class="brand">
+      <svg class="brand-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <!-- Chest lid -->
+        <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+        <!-- Chest body -->
+        <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+        <!-- Dark metal band -->
+        <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
+        <!-- Lock plate -->
+        <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
+        <!-- Keyhole -->
+        <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
+        <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
+      </svg>
+      <h1>TB Chest Counter</h1>
+    </a>
+    <div class="header-right">
+      <div class="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText" class="is-loading">Loading...</span>
+        <button id="statusErrorBtn" class="status-error-btn is-hidden" type="button" aria-label="Show last scan error details">Details</button>
+      </div>
+      <div class="next-scan" id="nextScan"></div>
+      <div id="statusErrorDetails" class="status-error-details is-hidden" role="status"></div>
+      <!-- Multi-clan: read-only label for clan-scoped users; superadmins
+           get a dropdown to switch which clan they're viewing. -->
+      <div id="clanIndicator" class="clan-indicator is-hidden" aria-live="polite">
+        <span class="clan-indicator-label">Clan</span>
+        <span id="clanIndicatorName" class="clan-indicator-name"></span>
+      </div>
+      <div id="clanSwitcher" class="clan-switcher is-hidden">
+        <select id="clanSwitcherSelect" aria-label="Active clan"></select>
+      </div>
+      <div id="userInfo" class="user-info is-hidden">
+        <button id="userMenuBtn" class="user-menu-btn" aria-haspopup="true" aria-expanded="false">
+          <span id="userName" class="user-name"></span>
+          <svg class="user-menu-chevron" viewBox="0 0 12 12" width="10" height="10" fill="currentColor" aria-hidden="true">
+            <path d="M2 4 L6 8 L10 4 Z"/>
+          </svg>
+        </button>
+        <div id="userMenu" class="user-menu" hidden>
+          <div class="user-menu-section">
+            <div class="user-menu-section-label">Theme</div>
+            <div class="theme-segmented" role="group" aria-label="Color theme">
+              <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button">Light</button>
+              <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button">Dark</button>
+              <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
+            </div>
+          </div>
+          <div class="user-menu-divider" role="separator"></div>
+          <button class="user-menu-item" data-action="open-change-password">Change Password</button>
+          <button class="user-menu-item user-menu-item-danger" id="logoutBtn">Logout</button>
+        </div>
+      </div>
+      <button class="hamburger" id="hamburgerBtn" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="nav-overlay" id="navOverlay"></div>
+
+  <nav id="navBar">
+    <a href="#" class="active" data-page="dashboard">Dashboard</a>
+    <a href="#" data-page="analytics">Analytics</a>
+    <a href="#" data-page="leaderboard">Leaderboard</a>
+    <a href="#" data-page="might" id="navMight" class="is-hidden">Might</a>
+    <a href="#" data-page="resources" id="navResources" class="is-hidden">Resources<span id="navResourcesDot" class="nav-dot is-hidden" aria-label="Resource rows need review"></span></a>
+    <a href="#" data-page="events">Events</a>
+    <a href="#" data-page="triumphal">Triumphal Chests</a>
+    <a href="#" data-page="members">Members</a>
+    <a href="#" data-page="sessions">Scan History</a>
+    <a href="#" data-page="external" id="navExternal" class="is-hidden">ChestTracker</a>
+    <a href="#" data-page="admin" id="navAdmin" class="is-hidden">Admin<span id="navAdminDot" class="nav-dot is-hidden" aria-label="Items need review"></span></a>
+    <a href="#" data-page="users" id="navUsers" class="is-hidden">Users</a>
+    <!-- Superadmin-only: manage clans (create, rename, archive, Discord
+         + ChestTracker per-clan settings, delete). -->
+    <a href="#" data-page="clans" id="navClans" class="is-hidden">Clans</a>
+    <!-- Superadmin-only: instance-wide settings (scan interval,
+         calibration, restart, backup/import). -->
+    <a href="#" data-page="system" id="navSystem" class="is-hidden">System<span id="navSystemDot" class="nav-dot is-hidden" aria-label="New warnings logged"></span></a>
+    <!-- Mobile-only account section at the bottom of the slide-out menu -->
+    <div class="nav-mobile-account">
+      <div class="nav-mobile-account-label">Account</div>
+      <div class="nav-mobile-account-name" id="navMobileUserName"></div>
+      <button class="nav-mobile-account-btn" data-action="open-change-password-mobile">Change Password</button>
+      <button class="nav-mobile-account-btn nav-mobile-account-btn-danger" id="logoutBtnMobile">Logout</button>
+    </div>
+  </nav>
+  </div>
+
+  <div class="container">
+    <!-- Onboarding banner — surfaced by app.js when /api/status reports
+         calibration or member capture isn't done yet. Hidden by default
+         and shown once status arrives. Sits OUTSIDE the page swap region
+         so it doesn't get clobbered on route changes. -->
+    <div id="onboardingBanner" class="onboarding-banner is-hidden" role="status"></div>
+  </div>
+
+  <div class="container" id="content">
+  </div>
+
+  <div class="modal-root" id="modalRoot"></div>
+
+  <!-- Build footer. Populated on load by app.js from /api/health so the
+       operator can confirm at a glance which commit is running. The full
+       SHA + commit timestamp live in the title attribute on hover. -->
+  <footer class="build-footer">
+    <span id="buildInfo" class="build-info" title="">Loading…</span>
+  </footer>
+
+  <!-- app.js loads external.js transitively via its `import { renderExternal }`.
+       Keeping the entry point a single module script is enough — the
+       browser deduplicates and resolves dependencies in order. -->
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

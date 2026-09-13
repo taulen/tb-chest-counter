@@ -1,0 +1,498 @@
+/* Setup page is standalone. Reset + theme tokens now come from base.css
+   (loaded before this file); only setup-specific styles remain here. */
+
+body {
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+.setup-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 14px 44px;
+}
+
+.setup-card {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-setup-card);
+}
+
+/* Theme picker sits top-right of the setup card. The segmented row itself
+   is styled in base.css (shared with the app's user menu). */
+.setup-topbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.setup-topbar .theme-segmented {
+  min-width: 240px;
+}
+
+/* New install / Restore a backup. Same segmented track as the theme picker
+   (base.css) with one column fewer, so the card has one control idiom rather
+   than two. */
+.setup-mode-switch {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 320px;
+  margin: 16px 0 4px;
+}
+
+/* File input: the shared .input box is built for typed text, so give the
+   native button room and keep it on the theme's surface colours. */
+input[type="file"].input {
+  padding: 7px 10px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+input[type="file"].input::file-selector-button {
+  margin-right: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+input[type="file"].input::file-selector-button:hover {
+  background: var(--bg-card-hover);
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+  color: var(--accent-gold);
+  letter-spacing: -0.3px;
+}
+
+/* Section headings mirror the main app's .page-section-title — uppercase
+   gold so each step in the setup form reads as a discrete section. */
+h2 {
+  margin: 20px 0 10px;
+  font-size: 12px;
+  color: var(--accent-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+
+.setup-intro {
+  margin: 8px 0 16px;
+  color: var(--text-secondary);
+}
+
+.setup-form {
+  display: grid;
+}
+
+.grid-1,
+.grid-2,
+.grid-3 {
+  display: grid;
+  gap: 12px;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: border-color var(--transition);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--accent-blue-bg);
+}
+
+.checkbox-row {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions {
+  margin-top: 18px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition);
+}
+
+.btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+}
+
+.btn-primary {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-blue-hover);
+  border-color: var(--accent-blue-hover);
+}
+
+.btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.muted {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.setup-message {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.setup-message.ok {
+  border-color: var(--status-success-border);
+  color: var(--accent-green);
+}
+
+.setup-message.error {
+  border-color: var(--status-error-border);
+  color: var(--accent-red);
+}
+
+.setup-callout {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.setup-callout-title {
+  margin: 0 0 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+.auth-screen {
+  margin-top: 16px;
+}
+
+.auth-status {
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 13px;
+}
+
+#stateUploadSection {
+  position: relative;
+  z-index: 5;
+}
+
+#stateUploadSection .btn,
+#stateUploadSection .input {
+  position: relative;
+  z-index: 6;
+  pointer-events: auto;
+}
+
+.post-setup-plan {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.post-setup-plan h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.post-setup-plan ol {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.progress-meta {
+  margin-top: 10px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #8fa8c2;
+}
+
+.progress-meta strong {
+  color: #d7e7f8;
+  font-weight: 600;
+}
+
+.live-activity-panel {
+  margin-top: 14px;
+  border: 2px solid #2f7cff;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #0a1b2f 0%, #081321 100%);
+  padding: 12px;
+  animation: panelPulse 1.8s ease-in-out infinite;
+}
+
+.live-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.live-pill {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #ff5f57;
+  color: #ffffff;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  font-weight: 700;
+}
+
+.live-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #35d07f;
+  box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.8);
+  animation: liveDot 1.1s infinite;
+}
+
+.live-activity-now {
+  color: #dff0ff;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.live-activity-feed {
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid #274665;
+  border-radius: 8px;
+  background: #07101a;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.live-activity-row {
+  color: #bdd8f2;
+  margin-bottom: 6px;
+}
+
+.live-activity-time {
+  color: #7fa4c8;
+  margin-right: 6px;
+}
+
+@keyframes liveDot {
+  0% { box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.9); }
+  100% { box-shadow: 0 0 0 8px rgba(53, 208, 127, 0); }
+}
+
+@keyframes panelPulse {
+  0%, 100% { border-color: #2f7cff; }
+  50% { border-color: #5ba0ff; }
+}
+
+.member-review-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 7, 14, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 16px;
+}
+
+.member-review-card {
+  width: min(980px, 96vw);
+  max-height: 86vh;
+  overflow: auto;
+  border: 2px solid #2f7cff;
+  background: #0c1622;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.member-review-card h3 {
+  margin: 0 0 8px;
+  color: #e5f1ff;
+}
+
+.member-review-list {
+  border: 1px solid #274665;
+  border-radius: 8px;
+  background: #07101a;
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.member-review-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.member-review-table th,
+.member-review-table td {
+  border-bottom: 1px solid #1c2e42;
+  padding: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.member-review-table th {
+  color: #a9c6e6;
+}
+
+.member-review-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Login bridge (inline + modal) moved to base.css (shared with the app). */
+
+.muted-copy {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.plan-done {
+  color: #7ee2a8;
+}
+
+.plan-running {
+  color: #9cc7ff;
+}
+
+.plan-failed {
+  color: #ffadad;
+}
+
+.plan-manual {
+  color: #f6d37a;
+}
+
+@media (max-width: 900px) {
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .setup-shell {
+    padding: 16px 8px 32px;
+  }
+
+  .setup-card {
+    padding: 16px 14px;
+    border-radius: 12px;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+
+  h2 {
+    font-size: 14px;
+  }
+
+  .member-review-card {
+    padding: 12px 10px;
+    width: 100%;
+    max-height: 92vh;
+  }
+
+  .member-review-modal {
+    padding: 8px;
+    align-items: flex-start;
+    padding-top: 24px;
+  }
+
+  .progress-meta {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .btn {
+    padding: 11px 14px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #stateUploadSection .actions {
+    flex-direction: column;
+  }
+
+  #stateUploadSection .input {
+    max-width: none !important;
+  }
+}

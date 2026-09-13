@@ -1,0 +1,43 @@
+.public-share-header {
+  cursor: default;
+}
+
+.public-share-header .brand {
+  cursor: default;
+}
+
+.public-share-nav {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.public-share-nav a {
+  padding: 12px 18px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+  transition: color var(--transition);
+}
+
+.public-share-nav a.active {
+  color: var(--accent-gold);
+  border-bottom-color: var(--accent-gold);
+}
+
+.public-share-nav a:hover {
+  color: var(--text-primary);
+}
+
+.public-share-nav a.is-hidden {
+  display: none;
+}
+
+.public-share-snapshot-meta {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 12px;
+}

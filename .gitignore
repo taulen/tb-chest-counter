@@ -1,0 +1,20 @@
+node_modules/
+.env
+*.log
+/data/
+# Machine-local Claude Code settings (permissions allowlist) — not shared.
+.claude/settings.local.json
+# Source maps in the committed build — debug-only, not needed at runtime.
+dist/**/*.map
+config.json
+# Local scratch: underscore-prefixed debug / one-off extraction scripts and
+# their image outputs (the maintained tooling lives in scripts/).
+_paddle_row*.png
+_debug_*.png
+_debug_*.mjs
+_extract_*.mjs
+
+# Scratch files used to hand a multi-line message to `git commit -F`.
+*.tmp
+*.tmp.mjs
+*.tmp.test.ts

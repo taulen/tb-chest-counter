@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # The tests never drive a browser — they run against fixtures and a
+      # temp-file SQLite database. Downloading ~400MB of Chromium to not use it
+      # would double the job for nothing.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the Dockerfile's base image, so a native module that builds
+          # here is one that builds there.
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test:run
+
+      # The Dockerfile has no build step — it copies the committed dist/. So a
+      # change that compiles but was never committed is a change that does not
+      # ship, and nothing about the source would look wrong. Rebuild and require
+      # the result to match what the commit carries.
+      #
+      # `npm run build` runs the config guards first, so this step covers those
+      # too: the name-keyed configuration whose failure mode is a silent zero.
+      - name: Build, and check dist/ is current
+        run: |
+          npm run build
+          if ! git diff --quiet -- dist; then
+            echo "::error::dist/ is out of date. Run 'npm run build' and commit dist/ with your change."
+            git diff --stat -- dist
+            exit 1
+          fi

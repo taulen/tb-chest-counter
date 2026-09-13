@@ -1,0 +1,111 @@
+/* Login page is standalone. Reset + theme tokens now come from base.css
+   (loaded before this file); only login-specific styles remain here. */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: var(--shadow-login-card);
+}
+
+h1 {
+  text-align: center;
+  color: var(--accent-gold);
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: -0.3px;
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 28px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  margin-bottom: 14px;
+  transition: border-color var(--transition);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--accent-blue-bg);
+}
+
+.btn {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-blue);
+  border-radius: var(--radius-sm);
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+  margin-top: 4px;
+}
+
+.btn:hover {
+  background: var(--accent-blue-hover);
+  border-color: var(--accent-blue-hover);
+}
+
+.btn:active {
+  transform: scale(0.99);
+}
+
+.error {
+  color: var(--accent-red);
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 12px;
+  display: none;
+  padding: 8px;
+  background: var(--accent-red-bg);
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 420px) {
+  .login-card {
+    padding: 28px 20px;
+    border-radius: 12px;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+}

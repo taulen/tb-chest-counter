@@ -1,0 +1,63 @@
+name: Bug report
+description: Something the scanner, dashboard or bot got wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most failures here are the game showing something unexpected rather than
+        the code being wrong about what it saw — so logs and a screenshot are
+        usually worth more than a description.
+
+        For anything exploitable, please use a
+        [private security advisory](https://github.com/taulen/tb-chest-counter/security/advisories/new)
+        instead of this form.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        The System page keeps the recent warnings; `docker logs <container>` has
+        the rest. Paste the lines around the failure, not just the last one —
+        the cause is usually a few lines above the symptom.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Build
+      description: >
+        From the dashboard footer, or `GET /api/health` (it reports `builtAt`
+        and a fingerprint). "Latest main" is fine if you build it yourself.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Scanning / OCR
+        - Calibration
+        - Login bridge
+        - Dashboard
+        - Discord bot
+        - Resources
+        - Setup / install
+        - Something else
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: >
+        If it is a scanning or calibration problem, a picture of what the game
+        looked like at the time usually answers it outright. `data/screenshots/`
+        holds the scanner's own debug captures.

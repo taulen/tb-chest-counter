@@ -1,0 +1,435 @@
+.ext-intro {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+/* Collapsible cards on the ChestTracker tab itself (Ingest status,
+ * Snapshot history). The wrapper is a regular .card so it picks up
+ * the site's background + border, but the <summary> sits directly
+ * inside it without a .card-header, so it needs its own padding to
+ * match .card-header's 14/18 rhythm. */
+.ext-collapsible-card details > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+}
+.ext-collapsible-card details > summary::-webkit-details-marker {
+  display: none;
+}
+.ext-collapsible-card details > summary::before {
+  content: "▸";
+  margin-right: 8px;
+  color: var(--text-secondary);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.ext-collapsible-card details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.ext-collapsible-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.ext-collapsible-meta {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  /* Push the meta text to the right edge so caret + title stay grouped
+   * on the left. Using auto-margin instead of justify-content:
+   * space-between keeps the title hugging its caret instead of
+   * floating to the middle of the summary. */
+  margin-left: auto;
+}
+.ext-collapsible-meta code {
+  background: var(--code-bg);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+.ext-collapsible-body {
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.ext-summary-lines {
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+}
+.ext-summary-lines code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.ext-intro code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.ext-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.ext-settings-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.ext-settings-grid input[type="text"],
+.ext-settings-grid input[type="number"] {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: inherit;
+  border-radius: 4px;
+  font: inherit;
+}
+.ext-enable-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  align-self: end;
+  padding-bottom: 0.45rem;
+}
+
+.ext-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.ext-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.ext-status-sep {
+  opacity: 0.4;
+}
+.ext-status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.ext-status-dot.ok {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green-bg-strong);
+}
+.ext-status-dot.idle {
+  background: var(--text-muted);
+}
+
+.ext-error-line {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--accent-red-bg);
+  border-left: 3px solid var(--accent-red);
+  border-radius: 3px;
+  font-size: 0.85rem;
+  color: var(--accent-red);
+}
+
+.ext-subheader {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.ext-snapshots-table tbody tr {
+  cursor: pointer;
+}
+.ext-snapshots-table tbody tr:hover {
+  background: var(--row-hover-overlay-strong);
+}
+.ext-snapshot-row-active {
+  background: var(--accent-blue-soft-strong) !important;
+}
+
+.ext-detail-header {
+  margin-bottom: 16px;
+}
+
+/* Title + week-stepper share the top row of the detail card: title on the
+ * left, prev/next week arrows pushed to the right. Wraps to two lines on
+ * narrow screens. The stepper itself reuses the global .period-nav look. */
+.ext-detail-titlerow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ext-detail-titlerow .ext-subheader {
+  margin: 0;
+}
+.ext-week-nav {
+  margin: 0;
+}
+.ext-week-nav-tag {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Tracker (share-code) picker. Sits between the title and the week
+ * stepper, and only renders when a clan has more than one code — a clan
+ * that never changed tracker sees the header exactly as before. The
+ * title row's `justify-content: space-between` would strand it against
+ * the stepper, so it takes the auto margin and the stepper stays right. */
+.ext-archive-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 0 4px;
+}
+.ext-archive-picker-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.ext-archive-select {
+  width: auto;
+  max-width: 340px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+/* Banner shown while viewing a tracker the clan no longer polls. Uses the
+ * warning token rather than error red — nothing is broken, the data is
+ * just historical. */
+.ext-archive-notice {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-gold-border);
+  border-left: 3px solid var(--accent-gold);
+  border-radius: var(--radius-md);
+  background: var(--accent-gold-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ext-archive-notice code {
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  /* Let the picker take its own full line rather than squeezing the
+     title and stepper onto slivers. */
+  .ext-archive-picker {
+    margin: 0;
+    width: 100%;
+  }
+  .ext-archive-select {
+    flex: 1;
+    max-width: none;
+  }
+}
+
+/* Metadata strip under the title — matches the dashboard's stat-card
+ * visual language: --bg-card background, --border outline, uppercase
+ * text-secondary labels, gold accent on headline counters. A thin
+ * gold top stripe echoes the 3px gold cap used on stat-cards but
+ * scaled down since this strip sits inside another card. */
+.ext-meta-strip {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  border-top: 2px solid var(--accent-gold);
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  justify-content: start;
+  gap: 14px 28px;
+  align-items: end;
+}
+.ext-meta-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.ext-meta-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  line-height: 1;
+}
+.ext-meta-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: inherit;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ext-meta-value-accent {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent-gold);
+  line-height: 1.1;
+}
+
+/* Headline value + week-over-week delta sit on the same baseline so
+ * adding a delta doesn't push the Players/Chests/Points stats down
+ * relative to the timing fields on the left. */
+.ext-meta-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ext-meta-delta {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  cursor: help;
+}
+.ext-meta-delta-up {
+  color: var(--accent-green);
+}
+.ext-meta-delta-down {
+  color: var(--accent-red);
+}
+.ext-meta-delta-flat {
+  color: var(--text-secondary);
+}
+.ext-meta-delta-none {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+  .ext-meta-strip {
+    grid-template-columns: repeat(2, max-content);
+    gap: 12px 20px;
+  }
+  .ext-meta-value-accent {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Even two max-content columns overflow a phone once the wide
+     timing/window strings appear — go to a fluid 2-up grid, let values
+     wrap, and give the extra-wide "Week window" row its own full line. */
+  .ext-meta-strip {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+    padding: 12px 14px;
+  }
+  .ext-meta-value {
+    white-space: normal;
+  }
+  .ext-meta-item:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+  .ext-meta-value-accent {
+    font-size: 20px;
+  }
+
+  /* The compact-row engine renders the Points column as the headline
+     metric. Give it chip padding so the target-status background reads
+     as an intentional pill rather than a full-bleed cell fill. */
+  .ext-detail-table td[data-role="metric"] {
+    padding: 3px 8px;
+    border-radius: 8px;
+  }
+}
+
+.ext-detail-meta {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.ext-filter-row {
+  margin-bottom: 0.75rem;
+}
+.ext-filter-row input {
+  width: 100%;
+  max-width: 320px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: inherit;
+  border-radius: 4px;
+}
+.ext-detail-table th,
+.ext-detail-table td {
+  white-space: nowrap;
+  text-align: center;
+}
+/* Player column reads best left-aligned (names are proper nouns, not
+ * numbers) — everything else stays centered under its header. */
+.ext-detail-table th:first-child,
+.ext-detail-table td:first-child {
+  text-align: left;
+}
+
+/* Zebra striping + vertical separators on the detail table only.
+ * Each row gets a faint tint on even rows so the eye can follow a
+ * player across ~15 columns, and a 1px right border on every cell
+ * (except the last) gives columns gentle lanes without looking
+ * like a spreadsheet. */
+.ext-detail-table tbody tr:nth-child(even) td {
+  background: var(--zebra-bg);
+}
+.ext-detail-table tbody tr:hover td {
+  background: var(--accent-blue-soft-hover);
+}
+.ext-detail-table th,
+.ext-detail-table td {
+  border-right: 1px solid var(--code-bg);
+}
+.ext-detail-table th:last-child,
+.ext-detail-table td:last-child {
+  border-right: none;
+}
+
+/* Target-met status cells. Mirror chesttracker.com's coloring:
+ *   ok   = actual >= target           (subtle green)
+ *   warn = actual >= 50% of target    (subtle amber)
+ *   low  = actual < 50% of target     (subtle red, includes 0)
+ * The !important on bg wins over the zebra-striping rule above so
+ * status color is always the last word on a cell. */
+.ext-detail-table td.ext-cell-ok {
+  background: var(--accent-green-bg-strong) !important;
+  color: var(--accent-green-soft-text);
+}
+.ext-detail-table td.ext-cell-warn {
+  background: var(--accent-warn-bg) !important;
+  color: var(--accent-warn-text);
+}
+.ext-detail-table td.ext-cell-low {
+  background: var(--accent-red-bg-strong) !important;
+  color: var(--accent-red-soft-text);
+}
+
+.ext-targets-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}

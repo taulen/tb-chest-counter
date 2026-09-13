@@ -1,0 +1,117 @@
+services:
+  # Service key kept short on purpose. Some platforms ignore `container_name`
+  # — Portainer deploying to Swarm is the common one, and so does any setup
+  # that scales the service — and then Docker falls back to naming containers
+  # `<compose project>-<service>-<n>`. With a service called
+  # "tb-chest-counter" that produced "tb-chest-counter-test-tb-chest-counter-1"
+  # on a stack named tb-chest-counter-test: the name said itself twice and the
+  # INSTANCE_NAME below looked like it had done nothing. As "app" the fallback
+  # reads "<your-stack-name>-app-1", which is both shorter and true.
+  app:
+    build: .
+    # Optional explicit container name. Unset gives "tb-chest-counter", which
+    # is what the docs use for `docker exec` / `docker logs`.
+    #
+    # Not the thing that separates two instances — the Compose project name
+    # does that (`docker compose -p <name>`), along with a distinct
+    # DATA_VOLUME. See "Running a second instance" in the README.
+    container_name: ${INSTANCE_NAME:-tb-chest-counter}
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - WEB_PORT=3000
+      - HEADLESS=${HEADLESS:-true}
+      # OCR is PaddleOCR (PP-OCRv6_small, ONNX) — no engine toggle. The Total
+      # Battle game URL is hardcoded in src/config/game-url.ts (clan switching
+      # happens inside the game's canvas, not via different URLs), so there's
+      # nothing to configure per deployment.
+      - SCAN_INTERVAL_MS=${SCAN_INTERVAL_MS:-7200000}
+      - DB_PATH=/app/data/tb-chests.db
+      # Multi-clan: storage-state files now live under
+      # /app/data/clans/<id>/storage-state.json. STORAGE_STATE_PATH below
+      # is consulted only by migrateLegacyClanFiles() on first boot to
+      # relocate an existing single-clan deployment's auth file.
+      - STORAGE_STATE_PATH=/app/data/auth/storage-state.json
+      # Discord is configured per-clan in-app (tokens/channels/toggles live in
+      # the DB, edited from the Clans page), and OCR/scoring settings live in
+      # app.env / the DB — so no DISCORD_* or AI-vision API-key vars belong here.
+      # V8 old-space ceiling. Deliberately well below the container `memory:`
+      # limit below, because this is a ceiling, not a reservation: V8 does not
+      # collect in earnest until it approaches the limit, so a 4096 setting in a
+      # 5g cgroup let Node sit on GBs of garbage while Chromium's GPU process
+      # needed the same headroom — and the kernel resolved that by OOM-killing
+      # the renderer. The heavy consumers here are native anyway (ONNX Runtime
+      # arenas, sharp, Chromium), none of which this covers. Raise it if a large
+      # analytics query ever hits a V8 heap OOM; that is the one workload that
+      # materialises many rows as JS objects.
+      - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_MB:-1536}
+      # ONNX Runtime's CPU memory arena. Default (unset/0) = OFF, which trades
+      # some OCR speed for not holding a high-water-mark reservation between
+      # scans. Set to 1 to restore ORT's default caching allocator. Full
+      # reasoning in src/vision/paddle-service.ts.
+      - ONNX_CPU_MEM_ARENA=${ONNX_CPU_MEM_ARENA:-}
+      # ORT intra-op thread count. Explicit so ORT doesn't try to pin threads
+      # with pthread_setaffinity_np, which fails noisily in a container.
+      - ONNX_INTRA_OP_THREADS=${ONNX_INTRA_OP_THREADS:-4}
+      # GPU-accelerated rendering. 1 = the scanner runs new-headless Chromium and
+      # renders the game's WebGL on the host iGPU (via /dev/dri below, ANGLE
+      # Vulkan) instead of the CPU. Requires /dev/dri present in the LXC and its
+      # renderD128 world-readable (0666 udev rule). Default 0 = headless software
+      # rendering, unchanged. Full host setup in docs/igpu-passthrough.md.
+      - SCANNER_GPU=${SCANNER_GPU:-0}
+      # How the login bridge's browser gets a display.
+      #   headless (default) = Chromium's NEW headless: a full browser
+      #     rendering offscreen, no X server. The screencast, input relay and
+      #     persistent profile all work exactly as before — an admin still
+      #     drives it by hand — and it is the ONLY mode where WebGL can reach
+      #     the iGPU, because the surface comes from the render node, not a
+      #     window.
+      #   xvfb = the old headed-on-virtual-X path. Escape hatch only: Xvfb is a
+      #     pure software framebuffer, so it can never be GPU-accelerated.
+      - LOGIN_BRIDGE_DISPLAY=${LOGIN_BRIDGE_DISPLAY:-headless}
+      # iGPU offload for the login bridge. Unset follows SCANNER_GPU, which is
+      # right in headless mode since that is the configuration the recipe was
+      # validated in. Set 0/1 to decide independently. If the GPU path is
+      # broken, WebGL context creation never completes rather than erroring —
+      # the bridge detects that, logs it, and relaunches software-rendered.
+      - LOGIN_BRIDGE_GPU=${LOGIN_BRIDGE_GPU:-}
+      # Override the login-bridge screencast quality profile. Default 'auto'
+      # measures the WebSocket round-trip to your browser and picks from that.
+      # Force with 'local' (high quality/full framerate) or 'remote' (frugal).
+      - LOGIN_BRIDGE_STREAM_PROFILE=${LOGIN_BRIDGE_STREAM_PROFILE:-auto}
+      # Resolution the bridge browser RENDERS at (client scales to fit). With
+      # WebGL on the CPU — the bridge's normal state — this is the only lever
+      # that raises the game's own framerate, since software rasterising is
+      # per-pixel work. 960x600 is ~45% fewer pixels than the 1280x800 default
+      # and renders correspondingly faster, at the cost of a softer picture.
+      - LOGIN_BRIDGE_VIEWPORT=${LOGIN_BRIDGE_VIEWPORT:-1280x800}
+    ports:
+      - "${HOST_WEB_PORT:-3010}:3000"
+    # iGPU passthrough for GPU rendering. Requires /dev/dri to exist in the LXC
+    # (Proxmox → LXC passthrough first) or the container won't start. Access is
+    # by the render node's 0666 mode — no group_add / idmap needed. Comment out
+    # to run without the iGPU. See docs/igpu-passthrough.md.
+    devices:
+      - /dev/dri:/dev/dri
+    volumes:
+      # Single mounted volume holds the SQLite DB (tb-chests.db, with the
+      # ChestTracker data folded in), runtime settings (app.env), screenshots,
+      # gzip backups, and the per-clan auth dirs at /app/data/clans/<id>/.
+      - tb-chest-data:/app/data
+    deploy:
+      resources:
+        limits:
+          # Hard CPU ceiling. This LXC is a shared host (many other services),
+          # so the scanner must not hog cores during a scan — the game's
+          # software rendering can otherwise spike across ~half the host and
+          # starve the neighbours. 4 CPUs is plenty (scans are infrequent and a
+          # bit slower is fine); tune via CPU_LIMIT.
+          cpus: '${CPU_LIMIT:-4}'
+          memory: ${MEMORY_LIMIT:-5g}
+        reservations:
+          cpus: '${CPU_RESERVATION:-2}'
+          memory: 1g
+
+volumes:
+  tb-chest-data:
+    name: ${DATA_VOLUME:-tb-chest-data}
