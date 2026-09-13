@@ -38,8 +38,27 @@ export function makeTestDb(): { dbPath: string; cleanup: () => void } {
   const dbPath = path.join(tmpDir, 'test.db');
   initDatabase(dbPath);
 
+  // Point DB_PATH at the temp database too.
+  //
+  // initDatabase takes the path as an argument, but plenty of code resolves it
+  // independently from the environment — db-backup.ts is the one that bit:
+  // deleting a clan takes a pre-action backup, which reads
+  // `process.env.DB_PATH || './data/tb-chests.db'` and throws when that file is
+  // absent. On a developer machine a stray ./data/tb-chests.db exists, so the
+  // route returned 200 and the test passed; on a clean checkout it does not,
+  // the backup threw, and the route returned 500. The test was passing for a
+  // reason that had nothing to do with the code under test.
+  //
+  // Setting it here makes every path-resolving helper agree with the database
+  // the test is actually using, and keeps their side effects (backups) inside
+  // the temp directory that cleanup removes.
+  const previousDbPath = process.env.DB_PATH;
+  process.env.DB_PATH = dbPath;
+
   const cleanup = (): void => {
     closeDb();
+    if (previousDbPath === undefined) delete process.env.DB_PATH;
+    else process.env.DB_PATH = previousDbPath;
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {
