@@ -33,17 +33,26 @@
  * Foreign keys stay ON throughout and the whole thing is one transaction: a
  * mapping mistake aborts the restore rather than writing half a clan.
  *
+ * ── User accounts ─────────────────────────────────────────────────────────────
+ *
+ * They come back too, password hashes included, so the clan's members sign in
+ * with the credentials they already had. Two guards, both reported rather than
+ * silent:
+ *
+ *   - A username already live is SKIPPED, never overwritten. The live account
+ *     might be a different person, or the same person already recreated by
+ *     hand, and either way the row in front of us is the current one.
+ *   - `superadmin` is restored as `admin`. A backup file must not be a way to
+ *     mint instance-wide power; the operator running the restore already has
+ *     it and can promote deliberately.
+ *
  * ── What is deliberately NOT restored ─────────────────────────────────────────
  *
- *  - `users`. Accounts are not clan data, and re-inserting password hashes and
- *    roles from a file is a security-relevant act that deserves its own
- *    deliberate feature rather than riding along inside a data restore. The
- *    inspect step reports how many were attached so the operator knows to
- *    recreate them. Rows that pointed at a user (`uploaded_by`, `created_by`,
- *    `revoked_by`) are matched by USERNAME against the live table and left NULL
- *    when there is no match — all three columns are nullable.
  *  - `audit_log`. History, with a nullable clan_id that the delete already
  *    cleared; interleaving two logs' ids is not worth the mess.
+ *  - `user_sessions`. Login sessions are ephemeral and their tokens are unique;
+ *    resurrecting months-old ones would hand out live credentials nobody asked
+ *    for. Restored users sign in again with their existing passwords.
  *  - Global config (`source_point_overrides`, `triumphal_chest_points`,
  *    `ct_config`). Shared and current — the live values win.
  */
@@ -90,6 +99,15 @@ export interface BackupInspection {
   clans: BackupClanSummary[];
 }
 
+/** What happened to the clan's user accounts. Every field is worth surfacing. */
+export interface RestoredUsers {
+  restored: string[];
+  /** Usernames already present live, left untouched. */
+  skipped: string[];
+  /** Restored as `admin` because the backup had them as `superadmin`. */
+  demoted: string[];
+}
+
 export interface ClanRestoreResult {
   sourceClanId: number;
   clanId: number;
@@ -97,6 +115,7 @@ export interface ClanRestoreResult {
   /** Rows inserted, per table. Zero-count tables are omitted. */
   tables: Record<string, number>;
   totalRows: number;
+  users: RestoredUsers;
 }
 
 /**
@@ -353,6 +372,7 @@ export function restoreClanFromBackup(
     const offPlayerRef = maxId(db, 'ct_player_ref');
     const offShareLink = maxId(db, 'share_links');
 
+    const users: RestoredUsers = { restored: [], skipped: [], demoted: [] };
     const tables: Record<string, number> = {};
     const record = (table: string, n: number): void => {
       if (n > 0) tables[table] = (tables[table] ?? 0) + n;
@@ -454,8 +474,49 @@ export function restoreClanFromBackup(
         usedChestDefs,
       );
 
-      // Users are not restored; rows that pointed at one are matched by
-      // username against whoever is live now, and left NULL otherwise.
+      // ── 2b. The clan's user accounts ──────────────────────────────────────
+      //
+      // Done as a row loop rather than one INSERT…SELECT because each row needs
+      // a decision (skip a taken username, demote a superadmin) and there are
+      // nine of them, not ninety thousand. Column list is still intersected
+      // with the live schema so an older backup restores what it has.
+      const userCols = copyableColumns(db, 'users', ['id']);
+      if (userCols.length > 0) {
+        const srcUsers = db.prepare(
+          `SELECT * FROM ${SRC}.users WHERE clan_id = ?`,
+        ).all(sourceClanId) as Record<string, unknown>[];
+
+        const usernameTaken = db.prepare('SELECT 1 AS ok FROM main.users WHERE username = ?');
+        const insertUser = db.prepare(
+          `INSERT INTO main.users (${userCols.join(', ')}) `
+          + `VALUES (${userCols.map((c) => `@${c}`).join(', ')})`,
+        );
+
+        for (const u of srcUsers) {
+          const username = String(u.username);
+          if (usernameTaken.get(username)) {
+            users.skipped.push(username);
+            continue;
+          }
+          const row: Record<string, unknown> = {};
+          for (const c of userCols) row[c] = u[c] ?? null;
+          row.clan_id = targetId;
+          // created_by points into users(id) and the creator may be later in
+          // this same loop, so it is resolved in the fixup below instead.
+          row.created_by = null;
+          if (row.role === 'superadmin') {
+            row.role = 'admin';
+            users.demoted.push(username);
+          }
+          insertUser.run(row);
+          users.restored.push(username);
+        }
+        record('users', users.restored.length);
+      }
+
+      // Maps every source user id onto whoever holds that username live —
+      // the ones just restored AND any that already existed, which is what
+      // makes a skipped username still resolve its references correctly.
       db.prepare('CREATE TEMP TABLE map_user (old INTEGER PRIMARY KEY, new INTEGER NOT NULL)').run();
       db.prepare(
         `INSERT INTO temp.map_user (old, new)
@@ -463,6 +524,29 @@ export function restoreClanFromBackup(
       ).run();
 
       const userExpr = (col: string): string => `(SELECT new FROM temp.map_user WHERE old = s.${col})`;
+
+      // created_by, now that every restored account exists and is mapped. Left
+      // NULL when the creator was a superadmin outside this clan (not restored,
+      // and possibly not live) — the column is nullable for exactly that.
+      db.prepare(
+        `UPDATE main.users
+            SET created_by = (
+              SELECT (SELECT new FROM temp.map_user WHERE old = s.created_by)
+                FROM ${SRC}.users s WHERE s.username = main.users.username
+            )
+          WHERE username IN (SELECT username FROM ${SRC}.users WHERE clan_id = ${sourceClanId})
+            AND clan_id = ${targetId}`,
+      ).run();
+
+      // The clan row went in before its creator existed.
+      db.prepare(
+        `UPDATE main.clans
+            SET created_by = (
+              SELECT (SELECT new FROM temp.map_user WHERE old = s.created_by)
+                FROM ${SRC}.clans s WHERE s.id = ${sourceClanId}
+            )
+          WHERE id = ${targetId}`,
+      ).run();
 
       // ── 3. The clan's own tables, deepest-first ───────────────────────────
       record('members', copyTable(db, {
@@ -652,10 +736,23 @@ export function restoreClanFromBackup(
     const totalRows = Object.values(tables).reduce((a, b) => a + b, 0);
     log.info(
       `Restored clan "${name}" from backup as clan #${targetId}: ${totalRows} row(s) across `
-      + `${Object.keys(tables).length} table(s)`,
+      + `${Object.keys(tables).length} table(s), ${users.restored.length} user account(s)`,
     );
+    if (users.skipped.length > 0) {
+      log.warn(
+        { noAlert: true },
+        `Clan restore left ${users.skipped.length} account(s) alone — the username is already in use: `
+        + users.skipped.join(', '),
+      );
+    }
+    if (users.demoted.length > 0) {
+      log.warn(
+        { noAlert: true },
+        `Clan restore brought back ${users.demoted.join(', ')} as admin rather than superadmin.`,
+      );
+    }
 
-    return { sourceClanId, clanId: targetId, name, tables, totalRows };
+    return { sourceClanId, clanId: targetId, name, tables, totalRows, users };
   } finally {
     try {
       db.prepare(`DETACH DATABASE ${SRC}`).run();

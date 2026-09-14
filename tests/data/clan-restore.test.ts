@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { deleteClan } from '../../src/data/repositories/clan-repo.js';
+import { deleteUser } from '../../src/data/repositories/user-repo.js';
 import { inspectBackupClans, restoreClanFromBackup } from '../../src/data/clan-restore.js';
 import { makeTestDb, seedTwoClans, seedChestData } from '../helpers/test-db.js';
 
@@ -27,6 +29,22 @@ const CLAN_B_NAME = 'Clan #2';
 
 let ctx: { dbPath: string; cleanup: () => void };
 let backupPath: string;
+
+/**
+ * Reproduce how a clan actually got hard-deleted, because the order is the
+ * whole reason the accounts needed restoring.
+ *
+ * `deleteClan` refuses while any user is still scoped to the clan, so the
+ * operator deleted the nine accounts first and then the clan — nine
+ * irreversible steps to reach the "reversible" one. That is what soft delete
+ * now prevents, and what this path has to undo.
+ */
+function hardDeleteClanLikeSeptember(clanId: number): void {
+  const ids = getDb().prepare('SELECT id FROM users WHERE clan_id = ?').all(clanId) as { id: number }[];
+  for (const u of ids) deleteUser(u.id);
+  const result = deleteClan(clanId);
+  expect(result, `hard delete of clan ${clanId} failed`).toEqual({ ok: true });
+}
 
 /** Checkpoint the WAL and copy the live file — what a real backup does. */
 function snapshotDb(dbPath: string): string {
@@ -137,6 +155,18 @@ function seedEverything(clanId: number): void {
     `INSERT INTO poll_log (polled_at, share_code, window_start, window_end, trigger, status, clan_id)
      VALUES (?, 'SHARE1', '2026-08-25', '2026-09-01', 'scheduled', 200, ?)`,
   ).run(now, clanId);
+
+  // Accounts, including one that created another — users.created_by is a
+  // self-referencing FK and the creator can be inserted after the account it
+  // created, which is the ordering the restore has to survive.
+  const owner = db.prepare(
+    `INSERT INTO users (username, password_hash, role, created_at, clan_id)
+     VALUES (?, 'hash-owner', 'admin', ?, ?) RETURNING id`,
+  ).get(`owner${clanId}`, now, clanId) as { id: number };
+  db.prepare(
+    `INSERT INTO users (username, password_hash, role, created_at, clan_id, created_by)
+     VALUES (?, 'hash-member', 'user', ?, ?, ?)`,
+  ).run(`member${clanId}`, now, clanId, owner.id);
 }
 
 /** Every table the restore is responsible for, scoped to one clan. */
@@ -203,7 +233,7 @@ describe('restoreClanFromBackup', () => {
     const expectedA = countsFor(1);
     const expectedAPoints = pointsByMember(1);
 
-    expect(deleteClan(2)).toEqual({ ok: true });
+    hardDeleteClanLikeSeptember(2);
     expect(countsFor(2).chest_records).toBe(0);
 
     const result = restoreClanFromBackup(backupPath, 2);
@@ -219,7 +249,7 @@ describe('restoreClanFromBackup', () => {
   });
 
   it('reports every table it wrote, and nothing it did not', () => {
-    deleteClan(2);
+    hardDeleteClanLikeSeptember(2);
     const result = restoreClanFromBackup(backupPath, 2);
 
     // Every seeded table appears in the report with a non-zero count — the
@@ -230,14 +260,15 @@ describe('restoreClanFromBackup', () => {
     expect(result.totalRows).toBe(
       Object.values(result.tables).reduce((a, b) => a + b, 0),
     );
-    // Accounts are deliberately not part of a data restore.
-    expect(result.tables.users).toBeUndefined();
+    expect(result.tables.users).toBe(2);
+    // History and live credentials stay out of it.
     expect(result.tables.audit_log).toBeUndefined();
+    expect(result.tables.user_sessions).toBeUndefined();
   });
 
   it('matches global reference rows instead of duplicating them', () => {
     const db = getDb();
-    deleteClan(2);
+    hardDeleteClanLikeSeptember(2);
     const chestsBefore = (db.prepare('SELECT COUNT(*) n FROM chests').get() as { n: number }).n;
     const sourcesBefore = (db.prepare('SELECT COUNT(*) n FROM chest_sources').get() as { n: number }).n;
     const typesBefore = (db.prepare('SELECT COUNT(*) n FROM resource_types').get() as { n: number }).n;
@@ -264,7 +295,7 @@ describe('restoreClanFromBackup', () => {
 
   it('lands on a fresh id when the original is taken by a different clan', () => {
     const db = getDb();
-    deleteClan(2);
+    hardDeleteClanLikeSeptember(2);
     db.prepare(
       `INSERT INTO clans (id, name, slug, game_url, is_active, created_at)
        VALUES (2, 'Someone Else', 'someone-else', 'https://totalbattle.com', 1, ?)`,
@@ -279,10 +310,124 @@ describe('restoreClanFromBackup', () => {
 
   it('rolls back completely when the restore cannot finish', () => {
     const db = getDb();
-    deleteClan(2);
+    hardDeleteClanLikeSeptember(2);
     const before = countsFor(2);
     expect(() => restoreClanFromBackup(backupPath, 999)).toThrow(/no clan with id 999/i);
     expect(countsFor(2)).toEqual(before);
+  });
+});
+
+describe('restoreClanFromBackup: user accounts', () => {
+  beforeEach(() => {
+    ctx = makeTestDb();
+    seedTwoClans();
+    seedEverything(1);
+    seedEverything(2);
+    backupPath = snapshotDb(ctx.dbPath);
+  });
+
+  afterEach(() => ctx.cleanup());
+
+  const userRow = (username: string) => getDb().prepare(
+    'SELECT id, username, password_hash, role, clan_id, created_by FROM users WHERE username = ?',
+  ).get(username) as
+    | { id: number; username: string; password_hash: string; role: string; clan_id: number; created_by: number | null }
+    | undefined;
+
+  it('brings the accounts back with their password hashes and roles', () => {
+    hardDeleteClanLikeSeptember(2);
+    expect(userRow('owner2')).toBeUndefined();
+
+    const result = restoreClanFromBackup(backupPath, 2);
+    expect(result.users.restored.sort()).toEqual(['member2', 'owner2']);
+    expect(result.users.skipped).toEqual([]);
+    expect(result.users.demoted).toEqual([]);
+
+    const owner = userRow('owner2')!;
+    // The hash is the whole point: without it nobody can sign in and the
+    // account is a shell the operator has to reset anyway.
+    expect(owner.password_hash).toBe('hash-owner');
+    expect(owner.role).toBe('admin');
+    expect(owner.clan_id).toBe(2);
+
+    const member = userRow('member2')!;
+    expect(member.role).toBe('user');
+    // users.created_by is remapped onto the restored creator's NEW id, not
+    // left pointing at whatever id that number means in this database.
+    expect(member.created_by).toBe(owner.id);
+    expect(getDb().pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('leaves a username that is already taken alone', () => {
+    hardDeleteClanLikeSeptember(2);
+    const now = new Date().toISOString();
+    // Somebody recreated the account by hand before the restore ran.
+    getDb().prepare(
+      `INSERT INTO users (username, password_hash, role, created_at, clan_id)
+       VALUES ('owner2', 'hash-recreated-by-hand', 'user', ?, 1)`,
+    ).run(now);
+
+    const result = restoreClanFromBackup(backupPath, 2);
+    expect(result.users.skipped).toEqual(['owner2']);
+    expect(result.users.restored).toEqual(['member2']);
+
+    // The live row wins, untouched — password, role and clan all as they were.
+    const live = userRow('owner2')!;
+    expect(live.password_hash).toBe('hash-recreated-by-hand');
+    expect(live.role).toBe('user');
+    expect(live.clan_id).toBe(1);
+
+    // …and the skipped account still resolves as a reference target, so the
+    // restored rows that pointed at it are not orphaned.
+    expect(userRow('member2')!.created_by).toBe(live.id);
+  });
+
+  it('will not mint a superadmin out of a backup file', () => {
+    hardDeleteClanLikeSeptember(2);
+
+    // The superadmin is planted in the BACKUP, not in the live database — which
+    // is the threat this guard exists for. A backup is a file: whoever can put
+    // one in front of the restore route would otherwise be choosing who holds
+    // instance-wide power. (It also has to be done this way: deleteUser refuses
+    // to remove the last superadmin, so the live row could never be cleared.)
+    const file = new Database(backupPath, { fileMustExist: true });
+    file.prepare("UPDATE users SET role = 'superadmin' WHERE username = 'owner2'").run();
+    file.close();
+
+    const result = restoreClanFromBackup(backupPath, 2);
+    expect(result.users.demoted).toEqual(['owner2']);
+    expect(userRow('owner2')!.role).toBe('admin');
+    // And nobody gained instance-wide power from a file.
+    const supers = getDb().prepare(
+      "SELECT COUNT(*) n FROM users WHERE role = 'superadmin'",
+    ).get() as { n: number };
+    expect(supers.n).toBe(0);
+  });
+
+  it('does not restore login sessions', () => {
+    const now = new Date().toISOString();
+    const owner = userRow('owner2')!;
+    getDb().prepare(
+      `INSERT INTO user_sessions (user_id, token, expires_at, created_at) VALUES (?, 'stale-token', ?, ?)`,
+    ).run(owner.id, now, now);
+    const refreshed = snapshotDb(ctx.dbPath);
+    hardDeleteClanLikeSeptember(2);
+
+    restoreClanFromBackup(refreshed, 2);
+    const session = getDb().prepare("SELECT id FROM user_sessions WHERE token = 'stale-token'").get();
+    expect(session).toBeUndefined();
+  });
+
+  it('restores the clan row\'s creator once the accounts exist', () => {
+    const owner = userRow('owner2')!;
+    getDb().prepare('UPDATE clans SET created_by = ? WHERE id = 2').run(owner.id);
+    const refreshed = snapshotDb(ctx.dbPath);
+    hardDeleteClanLikeSeptember(2);
+
+    restoreClanFromBackup(refreshed, 2);
+    const clan = getDb().prepare('SELECT created_by FROM clans WHERE id = 2').get() as
+      { created_by: number | null };
+    expect(clan.created_by).toBe(userRow('owner2')!.id);
   });
 });
 
@@ -300,7 +445,7 @@ describe('inspectBackupClans', () => {
   });
 
   it('lists both clans with their counts and flags what is already live', () => {
-    deleteClan(2);
+    hardDeleteClanLikeSeptember(2);
     const inspection = inspectBackupClans(backupPath);
 
     expect(inspection.schemaVersion).toBeGreaterThan(0);
@@ -318,6 +463,7 @@ describe('inspectBackupClans', () => {
     expect(b.counts.chestRecords).toBe(3);
     expect(b.counts.triumphalRecords).toBe(1);
     expect(b.counts.resourceTransactions).toBe(2);
+    expect(b.counts.users).toBe(2);
     expect(b.newestChestAt).not.toBeNull();
   });
 

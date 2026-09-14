@@ -650,9 +650,10 @@ function clanRestoreCardHtml(backups) {
           this database already has rather than duplicated.
         </p>
         <p class="muted-copy mb-12">
-          <strong>User accounts are not restored.</strong> They are not clan data — recreate them on the
-          Users page and point them at the clan. Everything else (members, chests, scans, resources,
-          snapshots, merge rules, share links) comes back.
+          Everything comes back: members, chests, scans, resources, snapshots, merge rules, share links,
+          and the clan's <strong>user accounts with their existing passwords</strong>. A username that is
+          already taken is left alone rather than overwritten, and a <code>superadmin</code> in the backup
+          comes back as <code>admin</code> — both are reported after the restore.
         </p>
 
         <div class="inline-form-row mb-12">
@@ -712,7 +713,7 @@ function clanRestoreResultsHtml() {
       <td data-label="Triumphal" class="num" data-role="hidden">${(n.triumphalRecords || 0).toLocaleString()}</td>
       <td data-label="Scans" class="num" data-role="hidden">${(n.scanSessions || 0).toLocaleString()}</td>
       <td data-label="Resources" class="num" data-role="hidden">${(n.resourceTransactions || 0).toLocaleString()}</td>
-      <td data-label="Freshness" data-role="hidden">${fresh}${n.users ? ` · ${n.users} user account(s), not restored` : ''}</td>
+      <td data-label="Freshness" data-role="hidden">${fresh}${n.users ? ` · ${n.users} user account(s)` : ''}</td>
       <td class="col-actions">${action}</td>
     </tr>`;
   }).join('');
@@ -871,7 +872,10 @@ export async function runClanRestore(fileName, clanId, rerender) {
   const rowHint = summary
     ? `\n\n${(summary.counts?.members || 0).toLocaleString()} members, `
       + `${(summary.counts?.chestRecords || 0).toLocaleString()} chest records, `
-      + `${(summary.counts?.resourceTransactions || 0).toLocaleString()} resource rows.`
+      + `${(summary.counts?.resourceTransactions || 0).toLocaleString()} resource rows`
+      + (summary.counts?.users
+        ? `, and ${summary.counts.users} user account(s) — restored with their existing passwords.`
+        : '.')
     : '';
 
   const ok = await confirmDialog(
@@ -910,9 +914,20 @@ export async function runClanRestore(fileName, clanId, rerender) {
   const perTable = Object.entries(result.tables || {})
     .map(([table, n]) => `${table} ${Number(n).toLocaleString()}`)
     .join(', ');
+
+  // The account outcomes are the part an operator has to act on — a skipped
+  // username means somebody still can't sign in — so they go in the persistent
+  // status line, not just the toast that disappears.
+  const u = result.users || { restored: [], skipped: [], demoted: [] };
+  const accountNotes = [];
+  if (u.restored.length) accountNotes.push(`${u.restored.length} user account(s) restored with their existing passwords`);
+  if (u.skipped.length) accountNotes.push(`${u.skipped.length} left alone — username already in use: ${u.skipped.join(', ')}`);
+  if (u.demoted.length) accountNotes.push(`restored as admin rather than superadmin: ${u.demoted.join(', ')}`);
+
   clanRestore.inspection = null;
   setClanRestoreStatus(
     `Restored "${result.name}" as clan #${result.clanId} — ${Number(result.totalRows).toLocaleString()} rows. `
+    + (accountNotes.length ? `${accountNotes.join('. ')}. ` : '')
     + `Snapshot before the restore: ${result.preRestoreBackup}.`,
     'success',
   );
