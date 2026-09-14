@@ -7,7 +7,7 @@ import { logAction } from '../../../data/repositories/user-repo.js';
 import { requireClanAdmin } from '../../middleware/auth.js';
 import { reloadClanBot, sendClanTestMessage, sendClanDigestDmTest, isClanBotConnected } from '../../../discord/bot.js';
 import { normalizeDigestRecipients } from '../../../discord/digest-recipients.js';
-import { fetchDiscordDirectory, describeDiscordError } from '../../../discord/directory.js';
+import { fetchDiscordDirectory, fetchBotGuilds, describeDiscordError } from '../../../discord/directory.js';
 import { loadConfig } from '../../../config/index.js';
 import { childLogger } from '../../../utils/logger.js';
 import { createClanSubRouter } from './_shared.js';
@@ -138,9 +138,37 @@ export function createDiscordRouter(): Router {
       return;
     }
     const requested = typeof body.guildId === 'string' ? body.guildId.trim() : '';
-    const guildId = requested || clan.discordGuildId || null;
+    const saved = clan.discordGuildId || '';
     try {
-      res.json(await fetchDiscordDirectory(token, guildId));
+      // A superadmin browses the bot's whole reach. A clan admin does not.
+      //
+      // The guild list is a property of the TOKEN, not of the clan: a bot
+      // invited to two servers reports both, so without this an admin of one
+      // clan could open the other clan's channel list and — via the recipient
+      // picker — its member roster, then point their own clan's reports at a
+      // channel over there. Pinning them to the guild their clan already uses
+      // stops the sideways browse.
+      //
+      // It is a speed bump, NOT a security boundary, and must not be mistaken
+      // for one: the same admin can rewrite this clan's bot token through the
+      // same requireClanAdmin gate, and can still paste any channel id into
+      // the manual field. The only real isolation between two clans is a
+      // separate bot application per clan, which is what the setup help on
+      // the page recommends.
+      const pinnable = req.user!.role !== 'superadmin' && saved;
+      // Reachability decides whether the pin applies. A saved guild the bot
+      // has since been removed from would otherwise pin the admin to a dead
+      // server: no channels, and no way to select a live one.
+      const reachable = pinnable
+        ? (await fetchBotGuilds(token)).some((g) => g.id === saved)
+        : false;
+      const pinned = reachable ? saved : null;
+      // The guilds call above is served from the same 60s cache this one
+      // reads, so the pin costs no extra round trip to Discord.
+      const dir = await fetchDiscordDirectory(token, pinned ?? (requested || saved || null));
+      res.json(pinned
+        ? { ...dir, guilds: dir.guilds.filter((g) => g.id === pinned), scopedToGuildId: pinned }
+        : { ...dir, scopedToGuildId: null });
     } catch (err) {
       log.warn({ err, clanId: id }, 'Discord directory lookup failed');
       res.status(400).json({ error: describeDiscordError(err) });

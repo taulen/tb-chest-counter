@@ -775,13 +775,17 @@ async function loadDiscordDirectory(el, clanId, guildId) {
     }
     const guildName = j.guilds?.find((g) => g.id === j.guildId)?.name || '';
     discordDirectories.set(clanId, { ...j, guildName });
+    // The server list is pinned for a clan admin (see the directory route).
+    // Say so, or a one-entry dropdown reads as "the bot is only in one
+    // server" and the next question is why the other one disappeared.
+    const pinned = j.scopedToGuildId ? ' Server locked to your clan — a superadmin can move it.' : '';
     if (!j.guilds?.length) {
       setStatus('This bot has not been invited to any server yet — run the OAuth2 invite URL first.');
     } else if (!j.guildId) {
       setStatus(`${j.guilds.length} server${j.guilds.length === 1 ? '' : 's'} — pick one to load its channels.`);
     } else {
       setStatus(`${j.channels.length} channel${j.channels.length === 1 ? '' : 's'} in ${guildName}`
-        + (j.membersUnavailable ? '' : `, ${j.members.length} member${j.members.length === 1 ? '' : 's'}`) + '.');
+        + (j.membersUnavailable ? '' : `, ${j.members.length} member${j.members.length === 1 ? '' : 's'}`) + '.' + pinned);
     }
     syncDiscordPickers(el, clanId);
   } catch {
