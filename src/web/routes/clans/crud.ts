@@ -7,7 +7,10 @@ import {
   setClanActive,
   setClanScanIntervalMinutes,
   setClanPublicShareToken,
-  deleteClan,
+  softDeleteClan,
+  restoreDeletedClan,
+  listDeletedClans,
+  getClanByIdIncludingDeleted,
 } from '../../../data/repositories/clan-repo.js';
 import { setSessionActiveClan, logAction } from '../../../data/repositories/user-repo.js';
 import {
@@ -21,7 +24,7 @@ import { generateUniqueShareToken } from '../../../utils/share-token.js';
 import { createPreActionBackup } from '../../../utils/db-backup.js';
 import { requireAuth, requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { childLogger } from '../../../utils/logger.js';
-import { createClanSubRouter, publicClan, publicClanWithCounts } from './_shared.js';
+import { createClanSubRouter, deletedClanSummary, publicClan, publicClanWithCounts } from './_shared.js';
 import type { OnboardState } from './onboard.js';
 
 const log = childLogger('clans-route');
@@ -68,6 +71,20 @@ export function createCrudRouter(onboardState: OnboardState): Router {
       delete shape.publicShareToken;
     }
     res.json({ clans: [shape], activeClanId: own.id, defaultInactivityDays });
+  });
+
+  /**
+   * Clans that have been soft-deleted, with the row counts they still hold —
+   * the restore list on the System page. Superadmin only; `getClanById` hides
+   * these from every other surface, which is the whole point.
+   *
+   * MUST stay above `GET /:clanId`. Express matches in registration order and
+   * `router.param('clanId')` answers 400 for a non-numeric segment, so
+   * registering this later makes /api/clans/deleted a confident
+   * "Invalid clanId" instead of a listing.
+   */
+  router.get('/deleted', requireSuperAdmin, (_req, res) => {
+    res.json({ clans: listDeletedClans().map(deletedClanSummary) });
   });
 
   /**
@@ -245,9 +262,22 @@ export function createCrudRouter(onboardState: OnboardState): Router {
   });
 
   /**
-   * Delete a clan and all its data. Superadmin only. Refuses if it's the
-   * last remaining clan or if any users are still attached. The
-   * superadmin needs to reassign or delete those users first.
+   * Remove a clan. Superadmin only. Refuses only if it's the last one left.
+   *
+   * This is a SOFT delete: the clan and every row it owns stay in the database
+   * and the clan is marked instead, so the operation is reversible from the
+   * System page. It used to be a cascade across ~20 tables whose only safety
+   * net was the snapshot taken on the line above — and in September that net
+   * held by luck, not design.
+   *
+   * The old "detach the users first" refusal is gone with it. Nothing is
+   * destroyed now, so there is nothing to protect the users from; keeping the
+   * guard would only recreate the trap where making the reversible operation
+   * possible required nine irreversible ones first.
+   *
+   * The snapshot stays anyway. It costs one gzip (debounced to at most one per
+   * ten minutes) and it is the difference between "undo the flag" and "undo
+   * whatever else went wrong at the same time".
    */
   router.delete('/:clanId', requireSuperAdmin, async (req, res) => {
     const id = req.parsedClanId!;
@@ -257,19 +287,33 @@ export function createCrudRouter(onboardState: OnboardState): Router {
       return;
     }
 
-    // Snapshot the live DB before nuking the clan and all its data.
-    // If the backup fails the throw bubbles to the JSON error
-    // middleware and the delete is skipped — that's the point.
     await createPreActionBackup(`pre-delete-clan-${target.name}`);
 
-    const result = deleteClan(id);
+    const result = softDeleteClan(id);
     if (!result.ok) {
       res.status(409).json({ error: result.reason });
       return;
     }
     onboardState.clear(id);
-    logAction(req.user!.id, 'clan.delete', { clanId: id });
-    res.json({ ok: true });
+    logAction(req.user!.id, 'clan.delete', { clanId: id, soft: true });
+    res.json({ ok: true, soft: true, name: target.name });
+  });
+
+  /** Put a soft-deleted clan back. Nothing moved, so this is the flag flip. */
+  router.post('/:clanId/restore', requireSuperAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    const target = getClanByIdIncludingDeleted(id);
+    if (!target) {
+      res.status(404).json({ error: 'Clan not found' });
+      return;
+    }
+    const result = restoreDeletedClan(id);
+    if (!result.ok) {
+      res.status(409).json({ error: result.reason });
+      return;
+    }
+    logAction(req.user!.id, 'clan.restore', { clanId: id });
+    res.json({ ok: true, clanId: id, name: target.name });
   });
 
   /**

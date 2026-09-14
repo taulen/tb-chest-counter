@@ -619,6 +619,24 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // Soft delete for clans.
+    //
+    // Deleting a clan used to run a cascade across ~20 tables, and the only
+    // thing standing between an operator and permanent loss was the pre-action
+    // snapshot taken moments before. That is a backup, not a safety net: it
+    // expires under retention, it has to be found, and restoring from it is a
+    // separate piece of machinery. A clan deleted in September was recoverable
+    // only because one such file happened to still exist.
+    //
+    // So the rows now stay and the clan is marked instead. Empty string rather
+    // than NULL for the same reason the rest of this schema uses it — the
+    // lookups all read `deleted_at = ''`, and a NULL would silently never match.
+    version: 73,
+    sql: `
+      ALTER TABLE clans ADD COLUMN deleted_at TEXT NOT NULL DEFAULT '';
+    `,
+  },
 ];
 
 /**

@@ -98,6 +98,16 @@ export interface Clan {
    * all: resolveLeaderboardGoal() treats the pair as off unless BOTH the flag is
    * set and the number is positive.
    */
+  /**
+   * ISO timestamp when the clan was soft-deleted, or '' while it is live.
+   *
+   * Every lookup in this file filters on `deleted_at = ''`, so a deleted clan
+   * is invisible to the other ~50 call sites without any of them knowing this
+   * column exists. Read it through `listDeletedClans` /
+   * `getClanByIdIncludingDeleted`, which are the only two ways back in.
+   */
+  deletedAt: string;
+
   leaderboardGoalEnabled: boolean;
   leaderboardWeeklyGoalPoints: number | null;
 }
@@ -154,19 +164,59 @@ function rowToClan(row: Record<string, unknown>): Clan {
     inactivityDays: (row.inactivity_days as number | null) ?? null,
     leaderboardGoalEnabled: !!(row.leaderboard_goal_enabled as number),
     leaderboardWeeklyGoalPoints: (row.leaderboard_weekly_goal_points as number | null) ?? null,
+    deletedAt: (row.deleted_at as string) || '',
   };
 }
 
+/**
+ * Appended to every clan lookup below.
+ *
+ * A soft-deleted clan has to disappear from the whole application — the clan
+ * picker, the scan loop, the Discord digest, the ChestTracker poller, its own
+ * public share link — while its rows stay in place. Doing that at each of the
+ * ~50 call sites would be a list nobody could keep complete; doing it in the
+ * five functions they all go through is one line each.
+ */
+const LIVE = "deleted_at = ''";
+
+/** Live clans only. A soft-deleted one is listed by `listDeletedClans`. */
 export function listClans(options: { activeOnly?: boolean } = {}): Clan[] {
   const db = getDb();
   const query = options.activeOnly
-    ? 'SELECT * FROM clans WHERE is_active = 1 ORDER BY id'
-    : 'SELECT * FROM clans ORDER BY id';
+    ? `SELECT * FROM clans WHERE is_active = 1 AND ${LIVE} ORDER BY id`
+    : `SELECT * FROM clans WHERE ${LIVE} ORDER BY id`;
   const rows = db.prepare(query).all() as Record<string, unknown>[];
   return rows.map(rowToClan);
 }
 
+/**
+ * Soft-deleted clans, newest deletion first — the System page's restore list.
+ * Deliberately a separate function rather than a flag on `listClans`: a caller
+ * that forgets a flag gets the safe answer, and a caller that wants the
+ * deleted ones has to say so.
+ */
+export function listDeletedClans(): Clan[] {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT * FROM clans WHERE deleted_at != '' ORDER BY deleted_at DESC",
+  ).all() as Record<string, unknown>[];
+  return rows.map(rowToClan);
+}
+
 export function getClanById(id: number): Clan | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM clans WHERE id = ? AND ${LIVE}`).get(id) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? rowToClan(row) : null;
+}
+
+/**
+ * The one lookup that can see a soft-deleted clan. Only the restore path and
+ * the deleted-clans listing should use it — everything else wants `getClanById`,
+ * which refuses a deleted clan and is why nothing else had to change.
+ */
+export function getClanByIdIncludingDeleted(id: number): Clan | null {
   const db = getDb();
   const row = db.prepare('SELECT * FROM clans WHERE id = ?').get(id) as
     | Record<string, unknown>
@@ -176,7 +226,7 @@ export function getClanById(id: number): Clan | null {
 
 export function getClanBySlug(slug: string): Clan | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM clans WHERE slug = ?').get(slug) as
+  const row = db.prepare(`SELECT * FROM clans WHERE slug = ? AND ${LIVE}`).get(slug) as
     | Record<string, unknown>
     | undefined;
   return row ? rowToClan(row) : null;
@@ -186,7 +236,7 @@ export function getClanByPublicShareToken(token: string): Clan | null {
   if (!token) return null;
   const db = getDb();
   const row = db
-    .prepare('SELECT * FROM clans WHERE public_share_token = ?')
+    .prepare(`SELECT * FROM clans WHERE public_share_token = ? AND ${LIVE}`)
     .get(token) as Record<string, unknown> | undefined;
   return row ? rowToClan(row) : null;
 }
@@ -196,9 +246,10 @@ export function setClanPublicShareToken(id: number, token: string): void {
   db.prepare('UPDATE clans SET public_share_token = ? WHERE id = ?').run(token, id);
 }
 
+/** Live clans only — this is what the "cannot delete the last clan" guard reads. */
 export function clanCount(): number {
   const db = getDb();
-  const row = db.prepare('SELECT COUNT(*) as c FROM clans').get() as { c: number };
+  const row = db.prepare(`SELECT COUNT(*) as c FROM clans WHERE ${LIVE}`).get() as { c: number };
   return row.c;
 }
 
@@ -433,8 +484,75 @@ export function setClanResourceAutoCapture(id: number, enabled: boolean): void {
 }
 
 /**
+ * Hide a clan and everything it owns, without destroying a single row.
+ *
+ * This is what `DELETE /api/clans/:id` does now. The hard cascade below still
+ * exists but nothing in the UI reaches it, because the cascade is how a clan's
+ * entire history was lost in September: it ran, the pre-action snapshot was the
+ * only copy left, and it survived by luck rather than design.
+ *
+ * Two things it deliberately does NOT do:
+ *
+ *   - It does not require the clan's users to be detached first. That guard is
+ *     exactly what made the loss permanent — satisfying it meant deleting nine
+ *     accounts before the clan could go, so the "reversible" operation was
+ *     preceded by nine irreversible ones. Users stay attached and come back
+ *     with the clan; until then `requireClanContext` tells them their clan is
+ *     unavailable rather than silently dropping them into clan #1.
+ *   - It does not free the clan's name, slug or share token. They stay owned by
+ *     the hidden clan so a restore cannot collide with something created in the
+ *     meantime — and so the clan comes back on the same public link.
+ *
+ * Sessions parked on the clan lose their pointer, so a superadmin who was
+ * viewing it falls back to a live clan on the next request instead of looking
+ * at a clan that no longer answers.
+ */
+export function softDeleteClan(id: number): { ok: true } | { ok: false; reason: string } {
+  const db = getDb();
+  if (clanCount() <= 1) return { ok: false, reason: 'Cannot delete the last remaining clan' };
+
+  const existing = db.prepare(
+    "SELECT id FROM clans WHERE id = ? AND deleted_at = ''",
+  ).get(id) as { id: number } | undefined;
+  if (!existing) return { ok: false, reason: 'Clan not found' };
+
+  const now = new Date().toISOString();
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE clans SET deleted_at = ?, is_active = 0 WHERE id = ?').run(now, id);
+    db.prepare('UPDATE user_sessions SET active_clan_id = NULL WHERE active_clan_id = ?').run(id);
+  });
+  tx();
+
+  log.info(`Soft-deleted clan #${id} — rows retained, restorable from the System page`);
+  return { ok: true };
+}
+
+/**
+ * Bring a soft-deleted clan back. Nothing was moved, so this is the flag flip
+ * the delete is the mirror of — `is_active` included, since the delete cleared
+ * it and a clan restored as inactive would still be invisible to the scan loop.
+ */
+export function restoreDeletedClan(id: number): { ok: true } | { ok: false; reason: string } {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT id FROM clans WHERE id = ? AND deleted_at != ''",
+  ).get(id) as { id: number } | undefined;
+  if (!row) return { ok: false, reason: 'No deleted clan with that id' };
+
+  db.prepare("UPDATE clans SET deleted_at = '', is_active = 1 WHERE id = ?").run(id);
+  log.info(`Restored soft-deleted clan #${id}`);
+  return { ok: true };
+}
+
+/**
+ * Permanently destroy a clan and every row it owns. **No route calls this.**
+ *
+ * Kept as the primitive a deliberate manual purge would use, and because
+ * tests/data/fk-delete-guards.test.ts drives it to prove the clan-scoped table
+ * list is still complete — a new table with an FK to clans(id) fails that test
+ * whether or not anyone ever purges. `softDeleteClan` is what the UI does.
+ *
  * Refuses if this is the last clan or if any users are still scoped to it.
- * Caller is responsible for archiving/reassigning users first.
  */
 export function deleteClan(id: number): { ok: true } | { ok: false; reason: string } {
   const db = getDb();

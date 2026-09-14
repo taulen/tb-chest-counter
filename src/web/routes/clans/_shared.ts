@@ -4,6 +4,7 @@ import {
   getMemberCount,
 } from '../../../data/repositories/member-repo.js';
 import { getScanSessionCount } from '../../../data/repositories/session-repo.js';
+import { getTotalChestCount } from '../../../data/repositories/chest-repo.js';
 import { clanStorageStatePath } from '../../../config/clan-paths.js';
 import type { Clan } from '../../../data/repositories/clan-repo.js';
 import { parseClanIdParam } from '../../middleware/parse-clan-id.js';
@@ -43,6 +44,27 @@ export function publicClanWithCounts(c: Clan) {
     memberCount: getMemberCount(c.id),
     scanCount: getScanSessionCount(c.id),
     authenticated: fs.existsSync(clanStorageStatePath(c.id)),
+  };
+}
+
+/**
+ * A soft-deleted clan, as the System page's restore list shows it.
+ *
+ * The counts are the point of the row rather than decoration: the whole claim
+ * soft delete makes is that nothing was destroyed, and a number the operator
+ * can compare against what they remember is the only way that claim is
+ * checkable from the UI. All three read the same tables the live clan used —
+ * the rows never moved, so nothing here is a special deleted-clan query.
+ */
+export function deletedClanSummary(c: Clan) {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    deletedAt: c.deletedAt,
+    memberCount: getMemberCount(c.id),
+    scanCount: getScanSessionCount(c.id),
+    chestCount: getTotalChestCount(c.id),
   };
 }
 

@@ -404,7 +404,10 @@ export async function renderClans(el, refreshClanIndicator) {
     } else if (action === 'clan-delete' && clanId) {
       const clanName = target.getAttribute('data-clan-name') || '';
       const ok = await confirmDialog(
-        `Delete clan "${clanName}" and ALL of its data (members, scans, chests, settings)? This cannot be undone. Reassign or delete its users first if any are still attached.`,
+        `Delete clan "${clanName}"? It disappears from the clan picker, the scanner, Discord and its public `
+        + 'share link, and its members can no longer sign in to it.\n\n'
+        + 'Its data — members, scans, chests, resources, settings — is KEPT, and a superadmin can put the '
+        + 'clan back from System → Deleted Clans.',
         {
           title: `Delete clan "${clanName}"`,
           confirmLabel: 'Continue',
@@ -413,10 +416,11 @@ export async function renderClans(el, refreshClanIndicator) {
         },
       );
       if (!ok) return;
-      // Second-step confirmation: type the clan name to proceed. The
-      // first dialog could be muscle-memory-clicked; making the user
-      // retype the name is a cheap guard against deleting the wrong
-      // clan.
+      // Second-step confirmation: type the clan name to proceed. Kept even
+      // though the delete is now reversible — the disruptive half isn't the
+      // data, it's that everyone in the clan is locked out until someone
+      // notices, and that still shouldn't happen to the wrong clan by a
+      // muscle-memory click.
       const typed = await promptDialog(
         `To confirm, type the clan name exactly: ${clanName}`,
         {

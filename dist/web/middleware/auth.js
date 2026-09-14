@@ -68,7 +68,12 @@ function resolveActiveClanId(user, sessionActiveClanId) {
     if (user.role !== 'superadmin') {
         return user.clanId ?? null;
     }
-    if (sessionActiveClanId !== null)
+    // A superadmin can be parked on a clan that has since been soft-deleted
+    // (the delete clears the pointer, but a session issued before the column
+    // existed, or a stale cached id, can still name one). getClanById refuses a
+    // deleted clan, so fall through to the first live one rather than scoping
+    // the request to something invisible.
+    if (sessionActiveClanId !== null && (0, clan_repo_js_1.getClanById)(sessionActiveClanId))
         return sessionActiveClanId;
     const all = (0, clan_repo_js_1.listClans)();
     return all[0]?.id ?? null;
@@ -160,6 +165,19 @@ function requireClanContext(req, res, next) {
         res.status(403).json({
             error: 'Your account is not assigned to a clan. Ask a superadmin to reassign it.',
             code: 'orphaned_user',
+        });
+        return;
+    }
+    // Soft delete keeps every row, so a member of a deleted clan would otherwise
+    // carry on reading it exactly as before — the clan would be hidden from the
+    // picker and the scan loop while still fully readable by the people who were
+    // in it. getClanById returns null for a deleted clan, which makes this the
+    // same gate as the orphan case above and for the same reason: without it
+    // `req.clanId ?? 1` quietly hands them clan #1.
+    if (req.user.role !== 'superadmin' && req.user.clanId !== null && !(0, clan_repo_js_1.getClanById)(req.user.clanId)) {
+        res.status(403).json({
+            error: 'Your clan has been removed. Ask a superadmin to restore it or reassign your account.',
+            code: 'deleted_clan',
         });
         return;
     }

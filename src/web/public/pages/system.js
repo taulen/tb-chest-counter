@@ -329,6 +329,7 @@ export async function renderSystem(el, options = {}) {
   let settings;
   let scannerSettings;
   let backupsResp;
+  let deletedClansResp;
   let logBufferResp;
   let rawOcrCapture;
   let mightSettings;
@@ -337,11 +338,15 @@ export async function renderSystem(el, options = {}) {
   let calibration;
   let status;
   try {
-    [settings, scannerSettings, backupsResp, logBufferResp, rawOcrCapture, mightSettings,
+    [settings, scannerSettings, backupsResp, deletedClansResp, logBufferResp, rawOcrCapture, mightSettings,
      resourceCapture, scanHealth, calibration, status] = await Promise.all([
       api('/admin/settings'),
       api('/admin/scanner-settings').catch(() => null),
       api('/admin/backups').catch(() => ({ backups: [] })),
+      // Lives on /api/clans, not /api/admin — the clan router owns clan state.
+      fetch('/api/clans/deleted', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : { clans: [] }))
+        .catch(() => ({ clans: [] })),
       api('/admin/log-buffer').catch(() => ({ entries: [] })),
       api('/admin/settings/raw-ocr-capture').catch(() => ({ enabled: false, capturedCounts: { chestRecords: 0, triumphalChestRecords: 0 } })),
       api('/might/settings').catch(() => ({ enabled: false, calibrated: false, cropIncludesMight: false, lastCapture: null })),
@@ -361,6 +366,7 @@ export async function renderSystem(el, options = {}) {
     return;
   }
   const backups = Array.isArray(backupsResp?.backups) ? backupsResp.backups : [];
+  const deletedClans = Array.isArray(deletedClansResp?.clans) ? deletedClansResp.clans : [];
   const logEntries = Array.isArray(logBufferResp?.entries) ? logBufferResp.entries : [];
 
   // Auto-open Recent Warnings if anything has been logged since the
@@ -543,6 +549,8 @@ export async function renderSystem(el, options = {}) {
       </div>
     </details>
 
+    ${deletedClansCardHtml(deletedClans)}
+
     <h2 class="page-section-title">Backup &amp; Export</h2>
     <p class="page-section-intro">Download a catalog of chest names + sources or a full database snapshot. The server also takes automatic snapshots: a daily rotation, plus one before any destructive admin action (delete user, delete clan).</p>
 
@@ -631,8 +639,12 @@ function clanRestoreCardHtml(backups) {
       <summary class="card-header"><h2>Restore a Single Clan</h2></summary>
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">
-          Deleting a clan removes its rows but the backup taken immediately beforehand still holds them.
-          This pulls <strong>one clan</strong> out of any backup and adds it back next to the live data —
+          For a clan deleted <strong>before</strong> soft delete existed, whose rows are genuinely gone.
+          Deleting a clan now keeps everything and is undone from <strong>Deleted Clans</strong> above —
+          you should not normally need this card.
+        </p>
+        <p class="muted-copy mb-12">
+          It pulls <strong>one clan</strong> out of a backup and adds it back next to the live data —
           unlike the full restores above, no other clan is rewound. Member, session and chest ids are
           renumbered on the way in, and chest names, sources and resource types are matched to the rows
           this database already has rather than duplicated.
@@ -654,18 +666,9 @@ function clanRestoreCardHtml(backups) {
           <button class="btn btn-primary" data-action="clan-restore-inspect">Read clans</button>
         </div>
 
-        <div class="inline-form-row mb-12">
-          <div class="form-row-grow">
-            <label for="clanRestoreUpload">…or upload a backup from your machine first</label>
-            <input type="file" id="clanRestoreUpload" class="input" accept=".db,.db.gz,.gz,application/octet-stream,application/gzip">
-          </div>
-          <button class="btn" data-action="clan-restore-upload">Upload to server</button>
-        </div>
         <p class="muted-copy mb-12">
-          Uploading only stores the file — nothing is read out of it until you pick a clan below.
-          <strong>Gzip a large <code>.db</code> first</strong> (a <code>.db.gz</code> is about a third the
-          size): the upload is base64-encoded and the request cap is 110&nbsp;MB encoded, i.e. roughly
-          80&nbsp;MB of file.
+          Only backups already on the server are listed. To use one that isn't, copy it into the
+          <code>data/backups</code> volume and reload this page.
         </p>
 
         <div id="clanRestoreStatus">${status}</div>
@@ -759,44 +762,81 @@ function setClanRestoreStatus(message, tone = 'info') {
     : '';
 }
 
-/**
- * Stage a backup from the operator's machine onto the server, so the inspect
- * and restore steps — both of which take a filename — can reach it. Nothing is
- * read out of the file here and the live database is not touched.
- */
-export async function uploadClanRestoreBackup(rerender) {
-  const input = $('#clanRestoreUpload');
-  const file = input?.files?.[0];
-  if (!file) return notify('Choose a .db or .db.gz backup file first.', 'Upload backup');
+// ─── Deleted clans ───
+//
+// Deleting a clan hides it and keeps every row, so this card is the undo. The
+// counts are what makes the promise checkable: they are read from the same
+// tables the clan used while it was live, because nothing moved.
 
-  const lowerName = file.name.toLowerCase();
-  if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
-    return notify('Please select a .db or .db.gz backup file.', 'Upload backup');
-  }
+function deletedClansCardHtml(clans) {
+  if (!clans || clans.length === 0) return '';
 
-  setClanRestoreStatus(`Reading ${file.name}…`);
-  try {
-    const buffer = await file.arrayBuffer();
-    setClanRestoreStatus(`Encoding ${(buffer.byteLength / (1024 * 1024)).toFixed(1)} MB…`);
-    const contentBase64 = arrayBufferToBase64(buffer);
-    setClanRestoreStatus('Uploading to the server…');
+  const rows = clans.map((c) => {
+    const when = c.deletedAt ? formatDate(c.deletedAt) : 'unknown';
+    return `<tr>
+      <td data-label="Clan" data-role="lead"><span class="mrow-name">${esc(c.name)}</span><span class="mrow-sub">deleted ${esc(when)}</span></td>
+      <td data-label="Deleted" data-role="hidden">${esc(when)}</td>
+      <td data-label="Members" class="num" data-role="metric">${Number(c.memberCount || 0).toLocaleString()}</td>
+      <td data-label="Chests" class="num" data-role="primary">${Number(c.chestCount || 0).toLocaleString()}</td>
+      <td data-label="Scans" class="num" data-role="hidden">${Number(c.scanCount || 0).toLocaleString()}</td>
+      <td class="col-actions">
+        <button class="btn btn-tight btn-primary" data-action="restore-clan"
+          data-clan-id="${c.id}" data-clan-name="${esc(c.name)}">Restore</button>
+      </td>
+    </tr>`;
+  }).join('');
 
-    const result = await apiPost('/admin/backups/upload', { fileName: file.name, contentBase64 });
-    if (result.error) {
-      setClanRestoreStatus(result.error, 'error');
-      return notify(result.error, 'Upload failed');
-    }
+  return `
+    <h2 class="page-section-title">Deleted Clans (${clans.length})</h2>
+    <p class="page-section-intro">Deleting a clan hides it everywhere — the clan picker, the scanner, Discord, its public share link — but keeps every row. Restoring puts it back exactly as it was, on the same id and the same share link. Its members can't sign in to it while it sits here.</p>
+    <details class="card card-collapsible" data-section-key="system-deleted-clans" open>
+      <summary class="card-header"><h2>Restore a Deleted Clan</h2></summary>
+      <div class="card-body card-body-padded">
+        <div class="table-responsive-wrap">
+          <table class="table-responsive">
+            <colgroup>
+              <col>
+              <col style="width: 18%;">
+              <col style="width: 11%;">
+              <col style="width: 11%;">
+              <col style="width: 10%;">
+              <col style="width: 12%;">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Clan</th>
+                <th>Deleted</th>
+                <th class="num">Members</th>
+                <th class="num">Chests</th>
+                <th class="num">Scans</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+  `;
+}
 
-    clanRestore.fileName = result.fileName;
-    clanRestore.inspection = null;
-    setClanRestoreStatus(`Stored as ${result.fileName}. Select it above and read its clans.`, 'success');
-    notify(`Backup stored as ${result.fileName}.`, 'Upload complete');
-    if (typeof rerender === 'function') await rerender('system');
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    setClanRestoreStatus(`Upload failed: ${message}`, 'error');
-    notify(message, 'Upload failed');
-  }
+export async function restoreDeletedClan(clanId, clanName, rerender) {
+  if (!Number.isFinite(clanId)) return;
+  const ok = await confirmDialog(
+    `Restore "${clanName || `clan #${clanId}`}"? It comes back with all of its data, on the same id `
+    + 'and the same public share link, and its members can sign in again.',
+    {
+      title: 'Restore clan',
+      confirmLabel: 'Restore',
+      cancelLabel: 'Cancel',
+    },
+  );
+  if (!ok) return;
+
+  const result = await mustOk(apiPost(`/clans/${clanId}/restore`, {}), 'Restore failed');
+  if (!result) return;
+  notify(`Restored "${result.name}".`, 'Clan restored');
+  if (typeof rerender === 'function') await rerender('system');
 }
 
 /** Read the clan list out of the selected backup. Read-only. */

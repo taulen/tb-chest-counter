@@ -133,7 +133,12 @@ import {
 } from '../../../src/web/middleware/auth.js';
 import { makeTestDb, seedTwoClans, seedChestData } from '../../helpers/test-db.js';
 import * as userRepo from '../../../src/data/repositories/user-repo.js';
-import { setClanPublicShareToken } from '../../../src/data/repositories/clan-repo.js';
+import {
+  getClanById,
+  restoreDeletedClan,
+  setClanPublicShareToken,
+  softDeleteClan,
+} from '../../../src/data/repositories/clan-repo.js';
 import { getDb } from '../../../src/data/database.js';
 
 type Persona = 'super' | 'admin1' | 'admin2' | 'user1' | 'orphan' | 'unauth';
@@ -247,6 +252,8 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'PUT /admin/scanner-settings', method: 'put', path: '/api/admin/scanner-settings', body: { scanDebugFirstN: 5 } },
       { name: 'PUT /auth/users/:id/clan', method: 'put', path: '/api/auth/users/__ID__/clan', body: { clanId: 2 } },
       { name: 'POST /clans', method: 'post', path: '/api/clans', body: { name: 'TestClan' } },
+      { name: 'GET /clans/deleted', method: 'get', path: '/api/clans/deleted' },
+      { name: 'POST /clans/:id/restore', method: 'post', path: '/api/clans/2/restore', body: {} },
       { name: 'GET /members/:id/raw-ocr', method: 'get', path: '/api/members/__M1__/raw-ocr' },
       // Source point values are a global scoring table — reads are admin-tier
       // (see ADMIN_TIER below), but every write is superadmin-only.
@@ -447,6 +454,81 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     it('cannot list users (requireAdmin orphan-check)', async () => {
       const r = await send('get', '/api/auth/users', 'orphan');
       expect(r.status).toBe(403);
+    });
+  });
+
+  // ─── soft-deleted clan containment ────────────────────────────
+  //
+  // Soft delete keeps every row, so the people who were in the clan are the
+  // ones most likely to keep reading it: their user.clanId still points at a
+  // clan whose chest_records, members and sessions are all exactly where they
+  // were. Nothing in the route handlers knows about `deleted_at` — the whole
+  // defence is that `getClanById` refuses a deleted clan, which turns this
+  // into the same gate as the orphan case above.
+  //
+  // Getting it wrong in the other direction is just as bad: `req.clanId ?? 1`
+  // means a user let through with no clan context reads clan #1 instead.
+
+  describe('members of a soft-deleted clan are locked out', () => {
+    const CLAN_SCOPED = ['/api/stats', '/api/members', '/api/leaderboard', '/api/sessions'];
+
+    it('clan-2 admin and user lose access once clan 2 is deleted', async () => {
+      // Baseline: they can read their own clan before the delete, so a
+      // failure below is the delete and not a broken persona.
+      for (const p of CLAN_SCOPED) {
+        expectStatus((await send('get', p, 'admin2')).status, [200, 304]);
+      }
+
+      expect(softDeleteClan(2)).toEqual({ ok: true });
+
+      for (const p of CLAN_SCOPED) {
+        const r = await send('get', p, 'admin2');
+        expect(r.status, `${p} returned ${r.status}`).toBe(403);
+        expect(r.body.code).toBe('deleted_clan');
+      }
+    });
+
+    it('does not quietly hand them clan #1 instead', async () => {
+      softDeleteClan(2);
+      const r = await send('get', '/api/stats', 'admin2');
+      // The failure mode that matters is a 200 carrying someone else's data.
+      expect(r.status).toBe(403);
+    });
+
+    it('leaves the other clan and superadmins alone', async () => {
+      softDeleteClan(2);
+      for (const p of CLAN_SCOPED) {
+        expectStatus((await send('get', p, 'admin1')).status, [200, 304]);
+        expectStatus((await send('get', p, 'super')).status, [200, 304]);
+      }
+    });
+
+    it('gives access back on restore', async () => {
+      softDeleteClan(2);
+      expect((await send('get', '/api/stats', 'admin2')).status).toBe(403);
+
+      expect(restoreDeletedClan(2)).toEqual({ ok: true });
+      expectStatus((await send('get', '/api/stats', 'admin2')).status, [200, 304]);
+    });
+
+    it('DELETE /api/clans/:id soft-deletes rather than destroying rows', async () => {
+      const chestsBefore = (getDb().prepare(
+        'SELECT COUNT(*) n FROM chest_records WHERE clan_id = 2',
+      ).get() as { n: number }).n;
+      expect(chestsBefore).toBeGreaterThan(0);
+
+      const r = await send('delete', '/api/clans/2', 'super');
+      expectStatus(r.status, 200);
+
+      const chestsAfter = (getDb().prepare(
+        'SELECT COUNT(*) n FROM chest_records WHERE clan_id = 2',
+      ).get() as { n: number }).n;
+      expect(chestsAfter).toBe(chestsBefore);
+      expect(getClanById(2)).toBeNull();
+
+      // …and it comes back through the route, not just the repository.
+      expectStatus((await send('post', '/api/clans/2/restore', 'super', {})).status, 200);
+      expect(getClanById(2)).not.toBeNull();
     });
   });
 

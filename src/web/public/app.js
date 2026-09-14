@@ -106,9 +106,9 @@ import {
   restoreServerBackup,
   createManualBackup,
   deleteServerBackup,
-  uploadClanRestoreBackup,
   inspectClanRestoreBackup,
   runClanRestore,
+  restoreDeletedClan,
   refreshLogBuffer,
 } from './pages/system.js';
 import {
@@ -606,8 +606,8 @@ if (contentEl) {
     if (action === 'restore-server-backup') return restoreServerBackup(target.dataset.fileName, loadPage);
     if (action === 'create-manual-backup') return createManualBackup(loadPage);
     if (action === 'delete-server-backup') return deleteServerBackup(target.dataset.fileName, loadPage);
-    if (action === 'clan-restore-upload') return uploadClanRestoreBackup(loadPage);
     if (action === 'clan-restore-inspect') return inspectClanRestoreBackup(loadPage);
+    if (action === 'restore-clan') return restoreDeletedClan(Number.parseInt(target.dataset.clanId || '0', 10), target.dataset.clanName, loadPage);
     if (action === 'clan-restore-run') return runClanRestore(target.dataset.fileName, Number.parseInt(target.dataset.clanId || '0', 10), loadPage);
     if (action === 'resources-page-prev') return changeResourcesPage(-1, loadPage);
     if (action === 'resources-page-next') return changeResourcesPage(1, loadPage);

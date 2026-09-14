@@ -46,7 +46,7 @@ import {
   gameDateFor, daysBetweenGameDates, gameWeekWindow, currentGameDate,
 } from '../../utils/game-day.js';
 import { getScanCoverage } from '../../data/repositories/session-repo.js';
-import { createPreActionBackup, listBackups, resolveBackupPath, saveUploadedBackup } from '../../utils/db-backup.js';
+import { createPreActionBackup, listBackups, resolveBackupPath } from '../../utils/db-backup.js';
 import { inspectBackupClans, restoreClanFromBackup } from '../../data/clan-restore.js';
 import { getEntries as getLogEntries, latestEntryAt as latestLogEntryAt } from '../../utils/log-buffer.js';
 import { parseLeaderboardQuery, queryLeaderboard, resolveWeeklyGoalPoints } from './leaderboard-handler.js';
@@ -1978,44 +1978,6 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       if (tempPath && fs.existsSync(tempPath)) {
         fs.unlinkSync(tempPath);
       }
-    }
-  });
-
-  // POST /api/admin/backups/upload { fileName, contentBase64 }
-  // Park an uploaded backup on the server's disk WITHOUT touching the live
-  // database. Needed because pulling one clan out of a backup is two steps —
-  // inspect, then restore — and re-uploading 60MB between them is absurd.
-  // Also the only way to get a backup that lives on the operator's laptop
-  // (an off-box snapshot, a file someone downloaded months ago) in front of
-  // the restore routes at all.
-  router.post('/admin/backups/upload', requireSuperAdmin, (req, res) => {
-    try {
-      const { fileName, contentBase64 } = parseDbBackupPayload(req.body);
-      const lowerName = fileName.toLowerCase();
-      if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
-        return res.status(400).json({ error: 'Backup file must be a .db or .db.gz file' });
-      }
-
-      const buffer = Buffer.from(contentBase64, 'base64');
-      if (buffer.length < 16) {
-        return res.status(400).json({ error: 'Backup file is too small or invalid' });
-      }
-
-      // A gzip is checked by its magic bytes only. Inflating 175MB here just to
-      // read sixteen header bytes would double the peak memory of an upload for
-      // no gain: this route writes a file, it does not touch the database, and
-      // the inspect step decompresses and validates properly before anything
-      // is read out of it.
-      const gzipped = buffer[0] === 0x1f && buffer[1] === 0x8b;
-      if (!gzipped && !buffer.subarray(0, 16).toString('utf8').startsWith('SQLite format 3')) {
-        return res.status(400).json({ error: 'File does not appear to be a valid SQLite backup' });
-      }
-
-      const storedAs = saveUploadedBackup(fileName, buffer);
-      logAction(req.user!.id, 'upload_backup', { fileName, storedAs, bytes: buffer.length });
-      return res.json({ ok: true, fileName: storedAs, bytes: buffer.length });
-    } catch (err) {
-      return res.status(400).json({ error: `Upload failed: ${err instanceof Error ? err.message : String(err)}` });
     }
   });
 

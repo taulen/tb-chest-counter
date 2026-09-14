@@ -5,11 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.publicClan = publicClan;
 exports.publicClanWithCounts = publicClanWithCounts;
+exports.deletedClanSummary = deletedClanSummary;
 exports.createClanSubRouter = createClanSubRouter;
 const fs_1 = __importDefault(require("fs"));
 const express_1 = require("express");
 const member_repo_js_1 = require("../../../data/repositories/member-repo.js");
 const session_repo_js_1 = require("../../../data/repositories/session-repo.js");
+const chest_repo_js_1 = require("../../../data/repositories/chest-repo.js");
 const clan_paths_js_1 = require("../../../config/clan-paths.js");
 const parse_clan_id_js_1 = require("../../middleware/parse-clan-id.js");
 /**
@@ -46,6 +48,26 @@ function publicClanWithCounts(c) {
         memberCount: (0, member_repo_js_1.getMemberCount)(c.id),
         scanCount: (0, session_repo_js_1.getScanSessionCount)(c.id),
         authenticated: fs_1.default.existsSync((0, clan_paths_js_1.clanStorageStatePath)(c.id)),
+    };
+}
+/**
+ * A soft-deleted clan, as the System page's restore list shows it.
+ *
+ * The counts are the point of the row rather than decoration: the whole claim
+ * soft delete makes is that nothing was destroyed, and a number the operator
+ * can compare against what they remember is the only way that claim is
+ * checkable from the UI. All three read the same tables the live clan used —
+ * the rows never moved, so nothing here is a special deleted-clan query.
+ */
+function deletedClanSummary(c) {
+    return {
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        deletedAt: c.deletedAt,
+        memberCount: (0, member_repo_js_1.getMemberCount)(c.id),
+        scanCount: (0, session_repo_js_1.getScanSessionCount)(c.id),
+        chestCount: (0, chest_repo_js_1.getTotalChestCount)(c.id),
     };
 }
 /**

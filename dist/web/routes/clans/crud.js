@@ -54,6 +54,19 @@ function createCrudRouter(onboardState) {
         res.json({ clans: [shape], activeClanId: own.id, defaultInactivityDays });
     });
     /**
+     * Clans that have been soft-deleted, with the row counts they still hold —
+     * the restore list on the System page. Superadmin only; `getClanById` hides
+     * these from every other surface, which is the whole point.
+     *
+     * MUST stay above `GET /:clanId`. Express matches in registration order and
+     * `router.param('clanId')` answers 400 for a non-numeric segment, so
+     * registering this later makes /api/clans/deleted a confident
+     * "Invalid clanId" instead of a listing.
+     */
+    router.get('/deleted', auth_js_1.requireSuperAdmin, (_req, res) => {
+        res.json({ clans: (0, clan_repo_js_1.listDeletedClans)().map(_shared_js_1.deletedClanSummary) });
+    });
+    /**
      * Fetch a single clan. Superadmin: any clan. Admin/user: only their own.
      * Used by the per-clan Discord/CT settings pages so they can render the
      * current values for editing.
@@ -223,9 +236,22 @@ function createCrudRouter(onboardState) {
         res.json({ ok: true, publicShareToken: result.token });
     });
     /**
-     * Delete a clan and all its data. Superadmin only. Refuses if it's the
-     * last remaining clan or if any users are still attached. The
-     * superadmin needs to reassign or delete those users first.
+     * Remove a clan. Superadmin only. Refuses only if it's the last one left.
+     *
+     * This is a SOFT delete: the clan and every row it owns stay in the database
+     * and the clan is marked instead, so the operation is reversible from the
+     * System page. It used to be a cascade across ~20 tables whose only safety
+     * net was the snapshot taken on the line above — and in September that net
+     * held by luck, not design.
+     *
+     * The old "detach the users first" refusal is gone with it. Nothing is
+     * destroyed now, so there is nothing to protect the users from; keeping the
+     * guard would only recreate the trap where making the reversible operation
+     * possible required nine irreversible ones first.
+     *
+     * The snapshot stays anyway. It costs one gzip (debounced to at most one per
+     * ten minutes) and it is the difference between "undo the flag" and "undo
+     * whatever else went wrong at the same time".
      */
     router.delete('/:clanId', auth_js_1.requireSuperAdmin, async (req, res) => {
         const id = req.parsedClanId;
@@ -234,18 +260,31 @@ function createCrudRouter(onboardState) {
             res.status(404).json({ error: 'Clan not found' });
             return;
         }
-        // Snapshot the live DB before nuking the clan and all its data.
-        // If the backup fails the throw bubbles to the JSON error
-        // middleware and the delete is skipped — that's the point.
         await (0, db_backup_js_1.createPreActionBackup)(`pre-delete-clan-${target.name}`);
-        const result = (0, clan_repo_js_1.deleteClan)(id);
+        const result = (0, clan_repo_js_1.softDeleteClan)(id);
         if (!result.ok) {
             res.status(409).json({ error: result.reason });
             return;
         }
         onboardState.clear(id);
-        (0, user_repo_js_1.logAction)(req.user.id, 'clan.delete', { clanId: id });
-        res.json({ ok: true });
+        (0, user_repo_js_1.logAction)(req.user.id, 'clan.delete', { clanId: id, soft: true });
+        res.json({ ok: true, soft: true, name: target.name });
+    });
+    /** Put a soft-deleted clan back. Nothing moved, so this is the flag flip. */
+    router.post('/:clanId/restore', auth_js_1.requireSuperAdmin, (req, res) => {
+        const id = req.parsedClanId;
+        const target = (0, clan_repo_js_1.getClanByIdIncludingDeleted)(id);
+        if (!target) {
+            res.status(404).json({ error: 'Clan not found' });
+            return;
+        }
+        const result = (0, clan_repo_js_1.restoreDeletedClan)(id);
+        if (!result.ok) {
+            res.status(409).json({ error: result.reason });
+            return;
+        }
+        (0, user_repo_js_1.logAction)(req.user.id, 'clan.restore', { clanId: id });
+        res.json({ ok: true, clanId: id, name: target.name });
     });
     /**
      * Switch which clan a superadmin is currently viewing. Persists to the
