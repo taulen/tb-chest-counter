@@ -1917,7 +1917,13 @@ function createApiRouter(scanLoop) {
             // fails nothing is written. Adding a clan is far less destructive than
             // removing one, but it is still tens of thousands of rows landing in
             // shared tables, and reversing it by hand is not a thing anyone wants.
-            const preRestoreBackup = path_1.default.basename(await (0, db_backup_js_1.createPreActionBackup)(`pre-action-restore-clan-${clanId}`));
+            //
+            // `protect` is load-bearing, not defensive: this snapshot is itself a
+            // pre-action file, so writing it makes a 4th under a keep-3 policy and
+            // the prune takes the OLDEST — which is exactly the `pre-delete-clan-*`
+            // snapshot being restored from. Without this the restore deletes its own
+            // source before reading it.
+            const preRestoreBackup = path_1.default.basename(await (0, db_backup_js_1.createPreActionBackup)(`pre-action-restore-clan-${clanId}`, { protect: path_1.default.basename(sourcePath) }));
             const result = (0, clan_restore_js_1.restoreClanFromBackup)(sourcePath, clanId);
             (0, user_repo_js_1.logAction)(req.user.id, 'clan.restore', {
                 fileName,

@@ -74,8 +74,19 @@ function backupsDir(): string {
  * After a successful write, prunes the backups directory per-kind (see
  * RETENTION). Pruning is best-effort (failures here are logged but don't
  * propagate).
+ *
+ * `options.protect` names one backup (basename) the prune must not touch.
+ * There is exactly one situation that needs it and it is not hypothetical:
+ * restoring a clan out of an old `pre-delete-clan-*` snapshot takes a
+ * pre-action snapshot of its own first, which makes a 4th file under a
+ * keep-3 policy — and the oldest file, the one about to be deleted, is
+ * precisely the snapshot being restored FROM. The restore would destroy its
+ * own source on the first click.
  */
-export async function createPreActionBackup(label: string): Promise<string> {
+export async function createPreActionBackup(
+  label: string,
+  options: { protect?: string } = {},
+): Promise<string> {
   const dbPath = resolveDbPath();
   if (!fs.existsSync(dbPath)) {
     throw new Error(`Cannot create pre-action backup: ${dbPath} does not exist`);
@@ -116,7 +127,7 @@ export async function createPreActionBackup(label: string): Promise<string> {
 
   log.info(`Pre-action backup created: ${outPath}`);
 
-  pruneOldBackups(dir);
+  pruneOldBackups(dir, options.protect);
   return outPath;
 }
 
@@ -146,10 +157,11 @@ function findRecentPreAction(dir: string, windowMs: number): string | null {
 
 /**
  * Prune the backups directory per-kind (see RETENTION). `pre-import`
- * snapshots are left untouched. Best-effort: enumeration/unlink failures
- * are logged, never thrown.
+ * snapshots are left untouched, and so is `protect` if given — see
+ * createPreActionBackup. Best-effort: enumeration/unlink failures are
+ * logged, never thrown.
  */
-function pruneOldBackups(dir: string): void {
+function pruneOldBackups(dir: string, protect?: string): void {
   try {
     const now = Date.now();
     const byKind = new Map<string, BackupFile[]>();
@@ -157,6 +169,7 @@ function pruneOldBackups(dir: string): void {
       if (!name.endsWith('.db.gz') && !name.endsWith('.db')) continue;
       const kind = classifyBackup(name);
       if (kind === 'pre-import') continue; // forward-undo; never auto-pruned
+      if (protect && name === protect) continue; // in use by the caller right now
       const full = path.join(dir, name);
       const list = byKind.get(kind) ?? [];
       list.push({ full, mtimeMs: fs.statSync(full).mtimeMs });
