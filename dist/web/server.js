@@ -285,6 +285,9 @@ function startWebServer(port, scanLoop, options = {}) {
     const restoreBodyLimit = express_1.default.json({ limit: '110mb' });
     app.use('/api/import/backup-db', restoreBodyLimit);
     app.use('/api/setup/restore-backup', restoreBodyLimit);
+    // Staging a backup on the server's disk so a clan can be pulled out of it
+    // carries the same payload as a full restore, just without the swap.
+    app.use('/api/admin/backups/upload', restoreBodyLimit);
     // Resource screenshots arrive as an array of base64 images, each allowed up
     // to ~27MB encoded (see MAX_UPLOAD_BASE64_BYTES) and several per upload. The
     // route enforces the per-image size itself; this only has to be roomy enough

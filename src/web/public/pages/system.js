@@ -29,6 +29,20 @@ let transferStatus = {
   tone: 'info',
 };
 
+// Clan-restore workbench state. Survives a re-render of the page the same way
+// transferStatus does, because inspecting a backup and then restoring out of it
+// are two round trips and losing the inspection between them would mean
+// re-uploading the file.
+//
+//   fileName   — backup currently selected (a basename in data/backups)
+//   inspection — { schemaVersion, clans: [...] } from /admin/backups/clans
+//   status     — { message, tone } painted above the results
+let clanRestore = {
+  fileName: '',
+  inspection: null,
+  status: null,
+};
+
 // In-progress calibration. Shape:
 //   {
 //     stage: 'main' | 'sidebars' | 'gifts' | 'members' | 'worldmap' | 'capital',
@@ -573,6 +587,8 @@ export async function renderSystem(el, options = {}) {
         </div>
       </div>
     </details>
+
+    ${clanRestoreCardHtml(backups)}
   `;
 
   // Repaint any in-flight import status into the freshly-rendered DOM.
@@ -586,6 +602,285 @@ export async function renderSystem(el, options = {}) {
   if (options.focus === 'calibration') {
     requestAnimationFrame(() => focusSetupTarget());
   }
+}
+
+// ─── Restore a single clan out of a backup ───
+//
+// The two restore paths above swap the whole file, which cannot undo a clan
+// deletion: every other clan would be rewound to the same moment, losing
+// however many weeks of scanning have happened since. This card reads one clan
+// out of a backup and adds it alongside the live data instead.
+
+function clanRestoreCardHtml(backups) {
+  const options = (backups || []).map((b) => {
+    const when = formatDate(new Date(b.mtimeMs).toISOString());
+    const mb = (b.bytes / (1024 * 1024)).toFixed(1);
+    const label = `${when} — ${backupKindLabel(b.kind)} — ${b.fileName} (${mb} MB)`;
+    const selected = b.fileName === clanRestore.fileName ? ' selected' : '';
+    return `<option value="${esc(b.fileName)}"${selected}>${esc(label)}</option>`;
+  }).join('');
+
+  const status = clanRestore.status
+    ? `<div class="transfer-status transfer-status-${esc(clanRestore.status.tone || 'info')}">
+         <div class="transfer-status-row"><strong>${esc(clanRestore.status.message)}</strong></div>
+       </div>`
+    : '';
+
+  return `
+    <details class="card card-collapsible" data-section-key="system-clan-restore">
+      <summary class="card-header"><h2>Restore a Single Clan</h2></summary>
+      <div class="card-body card-body-padded">
+        <p class="muted-copy mb-12">
+          Deleting a clan removes its rows but the backup taken immediately beforehand still holds them.
+          This pulls <strong>one clan</strong> out of any backup and adds it back next to the live data —
+          unlike the full restores above, no other clan is rewound. Member, session and chest ids are
+          renumbered on the way in, and chest names, sources and resource types are matched to the rows
+          this database already has rather than duplicated.
+        </p>
+        <p class="muted-copy mb-12">
+          <strong>User accounts are not restored.</strong> They are not clan data — recreate them on the
+          Users page and point them at the clan. Everything else (members, chests, scans, resources,
+          snapshots, merge rules, share links) comes back.
+        </p>
+
+        <div class="inline-form-row mb-12">
+          <div class="form-row-grow">
+            <label for="clanRestoreFile">Backup on the server</label>
+            <select id="clanRestoreFile" class="input">
+              <option value="">Select a backup…</option>
+              ${options}
+            </select>
+          </div>
+          <button class="btn btn-primary" data-action="clan-restore-inspect">Read clans</button>
+        </div>
+
+        <div class="inline-form-row mb-12">
+          <div class="form-row-grow">
+            <label for="clanRestoreUpload">…or upload a backup from your machine first</label>
+            <input type="file" id="clanRestoreUpload" class="input" accept=".db,.db.gz,.gz,application/octet-stream,application/gzip">
+          </div>
+          <button class="btn" data-action="clan-restore-upload">Upload to server</button>
+        </div>
+        <p class="muted-copy mb-12">
+          Uploading only stores the file — nothing is read out of it until you pick a clan below.
+          <strong>Gzip a large <code>.db</code> first</strong> (a <code>.db.gz</code> is about a third the
+          size): the upload is base64-encoded and the request cap is 110&nbsp;MB encoded, i.e. roughly
+          80&nbsp;MB of file.
+        </p>
+
+        <div id="clanRestoreStatus">${status}</div>
+        ${clanRestoreResultsHtml()}
+      </div>
+    </details>
+  `;
+}
+
+function clanRestoreResultsHtml() {
+  const inspection = clanRestore.inspection;
+  if (!inspection) return '';
+  const clans = Array.isArray(inspection.clans) ? inspection.clans : [];
+  if (clans.length === 0) {
+    return '<p class="muted-copy">That backup holds no clans.</p>';
+  }
+
+  const rows = clans.map((c) => {
+    const n = c.counts || {};
+    const fresh = c.newestChestAt
+      ? `newest chest ${esc(formatDate(c.newestChestAt))}`
+      : 'no chests';
+    // A live clan under the same name means the restore would double its rows,
+    // so the server refuses it — say so here rather than letting the operator
+    // find out by clicking.
+    const action = c.nameTakenLive
+      ? '<span class="muted-copy">Already live</span>'
+      : `<button class="btn btn-tight btn-danger" data-action="clan-restore-run"
+           data-file-name="${esc(inspection.fileName || clanRestore.fileName)}"
+           data-clan-id="${c.clanId}">Restore</button>`;
+    const landing = c.nameTakenLive
+      ? 'a clan of this name is already live'
+      : c.idTakenLive
+        ? `id ${c.clanId} is taken — lands on a new id`
+        : `lands back on id ${c.clanId}`;
+
+    return `<tr>
+      <td data-label="Clan" data-role="lead"><span class="mrow-name">${esc(c.name)}</span><span class="mrow-sub">${esc(landing)}</span></td>
+      <td data-label="Members" class="num" data-role="metric">${(n.members || 0).toLocaleString()}</td>
+      <td data-label="Chests" class="num" data-role="primary">${(n.chestRecords || 0).toLocaleString()}</td>
+      <td data-label="Triumphal" class="num" data-role="hidden">${(n.triumphalRecords || 0).toLocaleString()}</td>
+      <td data-label="Scans" class="num" data-role="hidden">${(n.scanSessions || 0).toLocaleString()}</td>
+      <td data-label="Resources" class="num" data-role="hidden">${(n.resourceTransactions || 0).toLocaleString()}</td>
+      <td data-label="Freshness" data-role="hidden">${fresh}${n.users ? ` · ${n.users} user account(s), not restored` : ''}</td>
+      <td class="col-actions">${action}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <hr class="section-divider">
+    <p class="muted-copy mb-12">Clans inside <code>${esc(inspection.fileName || clanRestore.fileName)}</code>
+      (schema v${esc(String(inspection.schemaVersion ?? '?'))}). Counts are what the backup holds — check them
+      against what you expect before restoring.</p>
+    <div class="table-responsive-wrap">
+      <table class="table-responsive">
+        <colgroup>
+          <col>
+          <col style="width: 9%;">
+          <col style="width: 9%;">
+          <col style="width: 9%;">
+          <col style="width: 8%;">
+          <col style="width: 10%;">
+          <col style="width: 20%;">
+          <col style="width: 11%;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Clan</th>
+            <th class="num">Members</th>
+            <th class="num">Chests</th>
+            <th class="num">Triumphal</th>
+            <th class="num">Scans</th>
+            <th class="num">Resources</th>
+            <th>Freshness</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function setClanRestoreStatus(message, tone = 'info') {
+  clanRestore.status = message ? { message, tone } : null;
+  const el = $('#clanRestoreStatus');
+  if (!el) return;
+  el.innerHTML = clanRestore.status
+    ? `<div class="transfer-status transfer-status-${esc(tone)}">
+         <div class="transfer-status-row"><strong>${esc(message)}</strong></div>
+       </div>`
+    : '';
+}
+
+/**
+ * Stage a backup from the operator's machine onto the server, so the inspect
+ * and restore steps — both of which take a filename — can reach it. Nothing is
+ * read out of the file here and the live database is not touched.
+ */
+export async function uploadClanRestoreBackup(rerender) {
+  const input = $('#clanRestoreUpload');
+  const file = input?.files?.[0];
+  if (!file) return notify('Choose a .db or .db.gz backup file first.', 'Upload backup');
+
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
+    return notify('Please select a .db or .db.gz backup file.', 'Upload backup');
+  }
+
+  setClanRestoreStatus(`Reading ${file.name}…`);
+  try {
+    const buffer = await file.arrayBuffer();
+    setClanRestoreStatus(`Encoding ${(buffer.byteLength / (1024 * 1024)).toFixed(1)} MB…`);
+    const contentBase64 = arrayBufferToBase64(buffer);
+    setClanRestoreStatus('Uploading to the server…');
+
+    const result = await apiPost('/admin/backups/upload', { fileName: file.name, contentBase64 });
+    if (result.error) {
+      setClanRestoreStatus(result.error, 'error');
+      return notify(result.error, 'Upload failed');
+    }
+
+    clanRestore.fileName = result.fileName;
+    clanRestore.inspection = null;
+    setClanRestoreStatus(`Stored as ${result.fileName}. Select it above and read its clans.`, 'success');
+    notify(`Backup stored as ${result.fileName}.`, 'Upload complete');
+    if (typeof rerender === 'function') await rerender('system');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    setClanRestoreStatus(`Upload failed: ${message}`, 'error');
+    notify(message, 'Upload failed');
+  }
+}
+
+/** Read the clan list out of the selected backup. Read-only. */
+export async function inspectClanRestoreBackup(rerender) {
+  const select = $('#clanRestoreFile');
+  const fileName = select?.value || '';
+  if (!fileName) return notify('Select a backup first.', 'Restore a clan');
+
+  clanRestore.fileName = fileName;
+  clanRestore.inspection = null;
+  setClanRestoreStatus(`Reading ${fileName}…`);
+
+  const result = await mustOk(
+    api(`/admin/backups/clans?file=${encodeURIComponent(fileName)}`),
+    'Could not read backup',
+  );
+  if (!result) {
+    setClanRestoreStatus(`Could not read ${fileName}.`, 'error');
+    if (typeof rerender === 'function') await rerender('system');
+    return;
+  }
+
+  clanRestore.inspection = result;
+  setClanRestoreStatus(`${(result.clans || []).length} clan(s) found in ${fileName}.`, 'success');
+  if (typeof rerender === 'function') await rerender('system');
+}
+
+export async function runClanRestore(fileName, clanId, rerender) {
+  if (!fileName || !Number.isFinite(clanId)) return;
+  const summary = (clanRestore.inspection?.clans || []).find((c) => c.clanId === clanId);
+  const label = summary ? `${summary.name} (id ${clanId})` : `clan id ${clanId}`;
+  const rowHint = summary
+    ? `\n\n${(summary.counts?.members || 0).toLocaleString()} members, `
+      + `${(summary.counts?.chestRecords || 0).toLocaleString()} chest records, `
+      + `${(summary.counts?.resourceTransactions || 0).toLocaleString()} resource rows.`
+    : '';
+
+  const ok = await confirmDialog(
+    `Restore ${label} from "${fileName}"?${rowHint}\n\n`
+    + 'This ADDS the clan back alongside the live data — no other clan is changed. '
+    + 'A snapshot is taken first.',
+    {
+      title: 'Restore clan',
+      confirmLabel: 'Continue',
+      cancelLabel: 'Cancel',
+      danger: true,
+    },
+  );
+  if (!ok) return;
+
+  const typed = await promptDialog('Type RESTORE to confirm:', {
+    title: 'Restore clan',
+    confirmLabel: 'Restore',
+    cancelLabel: 'Cancel',
+  });
+  if (typed === null) return;
+  if (String(typed).trim().toUpperCase() !== 'RESTORE') {
+    return notify('Confirmation did not match — nothing was restored.', 'Restore cancelled');
+  }
+
+  setClanRestoreStatus(`Restoring ${label}… this can take a minute on a large backup.`);
+  const result = await mustOk(
+    apiPost('/admin/backups/restore-clan', { fileName, clanId }),
+    'Clan restore failed',
+  );
+  if (!result) {
+    setClanRestoreStatus(`Restore of ${label} failed.`, 'error');
+    return;
+  }
+
+  const perTable = Object.entries(result.tables || {})
+    .map(([table, n]) => `${table} ${Number(n).toLocaleString()}`)
+    .join(', ');
+  clanRestore.inspection = null;
+  setClanRestoreStatus(
+    `Restored "${result.name}" as clan #${result.clanId} — ${Number(result.totalRows).toLocaleString()} rows. `
+    + `Snapshot before the restore: ${result.preRestoreBackup}.`,
+    'success',
+  );
+  notify(
+    `Restored "${result.name}" as clan #${result.clanId}: ${Number(result.totalRows).toLocaleString()} rows (${perTable}).`,
+    'Clan restored',
+  );
+  if (typeof rerender === 'function') await rerender('system');
 }
 
 function renderBackupsTable(backups) {

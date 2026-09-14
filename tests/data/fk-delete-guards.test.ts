@@ -97,6 +97,14 @@ function liveChildren(parent: string): string[] {
 /**
  * Populate one row in every table that references clan 2, its member, and
  * user 2 — i.e. the worst case each delete path has to survive.
+ *
+ * Plus the handful of CLAN-SCOPED tables that carry a clan_id with no foreign
+ * key behind it: chest_daily_summary and the ChestTracker ingest chain. The
+ * drift detector above is built from `PRAGMA foreign_key_list` and is blind to
+ * those by construction, which is exactly how the ingest tables stayed in
+ * deleteClan's blind spot — a deleted clan's poll history and snapshots simply
+ * stayed in the database. They are seeded here so the behavioural test can
+ * assert on them directly.
  */
 function seedEverything(): { clanId: number; userId: number; memberId: number } {
   const db = getDb();
@@ -200,6 +208,34 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
      VALUES (2, 'guard-session', ?, ?, ?)`,
   ).run(now, now, clanId);
 
+  // ChestTracker ingest: clan-scoped, but only by convention — no FK to clans.
+  const playerRef = db.prepare(
+    `INSERT INTO ct_player_ref (clan_id, name) VALUES (?, 'GuardPlayer') RETURNING id`,
+  ).get(clanId) as { id: number };
+  const snapshot = db.prepare(
+    `INSERT INTO snapshot (clan_id, fetched_at, share_code, window_start, window_end, duration_days)
+     VALUES (?, ?, 'GUARDCODE', '2026-07-13', '2026-07-20', 7) RETURNING id`,
+  ).get(clanId, now) as { id: number };
+  db.prepare(
+    `INSERT INTO player_snapshot (snapshot_id, player_ref_id, guards_level, points, chests, clan_id)
+     VALUES (?, ?, 1, 5, 1, ?)`,
+  ).run(snapshot.id, playerRef.id, clanId);
+  db.prepare(
+    `INSERT INTO player_category (snapshot_id, player_ref_id, category, chests, clan_id)
+     VALUES (?, ?, 'Crypt', 1, ?)`,
+  ).run(snapshot.id, playerRef.id, clanId);
+  const defRef = db.prepare(
+    `INSERT INTO chest_definition_ref (type, name, source, points)
+     VALUES ('common', 'Guard Chest', 'Guard Source', 5) RETURNING id`,
+  ).get() as { id: number };
+  db.prepare(
+    'INSERT INTO snapshot_chest_definition (snapshot_id, chest_definition_ref_id, clan_id) VALUES (?, ?, ?)',
+  ).run(snapshot.id, defRef.id, clanId);
+  db.prepare(
+    `INSERT INTO poll_log (polled_at, share_code, window_start, window_end, trigger, status, clan_id)
+     VALUES (?, 'GUARDCODE', '2026-07-13', '2026-07-20', 'scheduled', 200, ?)`,
+  ).run(now, clanId);
+
   return { clanId, userId: 2, memberId: member.id };
 }
 
@@ -258,6 +294,23 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     const sess = db.prepare("SELECT active_clan_id FROM user_sessions WHERE token = 'guard-session'")
       .get() as { active_clan_id: number | null };
     expect(sess.active_clan_id).toBeNull();
+
+    // Nothing clan-scoped is left behind, FK or not. A survivor here is not
+    // harmless: clans(id) is an AUTOINCREMENT the next clan can be handed, and
+    // orphaned rows would then read as that clan's history.
+    const residue: Record<string, string> = {
+      chest_daily_summary: 'SELECT COUNT(*) c FROM chest_daily_summary WHERE clan_id = ?',
+      ct_player_ref: 'SELECT COUNT(*) c FROM ct_player_ref WHERE clan_id = ?',
+      snapshot: 'SELECT COUNT(*) c FROM snapshot WHERE clan_id = ?',
+      player_snapshot: 'SELECT COUNT(*) c FROM player_snapshot WHERE clan_id = ?',
+      player_category: 'SELECT COUNT(*) c FROM player_category WHERE clan_id = ?',
+      snapshot_chest_definition: 'SELECT COUNT(*) c FROM snapshot_chest_definition WHERE clan_id = ?',
+      poll_log: 'SELECT COUNT(*) c FROM poll_log WHERE clan_id = ?',
+    };
+    for (const [table, sql] of Object.entries(residue)) {
+      const row = db.prepare(sql).get(clanId) as { c: number };
+      expect(row.c, `${table} still holds rows for the deleted clan`).toBe(0);
+    }
   });
 
   it('deleteUser removes a user referenced from every direction', () => {

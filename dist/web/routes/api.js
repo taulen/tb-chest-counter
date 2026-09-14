@@ -73,6 +73,7 @@ const chestSummaryRepo = __importStar(require("../../data/repositories/chest-sum
 const game_day_js_1 = require("../../utils/game-day.js");
 const session_repo_js_1 = require("../../data/repositories/session-repo.js");
 const db_backup_js_1 = require("../../utils/db-backup.js");
+const clan_restore_js_1 = require("../../data/clan-restore.js");
 const log_buffer_js_1 = require("../../utils/log-buffer.js");
 const leaderboard_handler_js_1 = require("./leaderboard-handler.js");
 function createPreImportBackup() {
@@ -1834,6 +1835,101 @@ function createApiRouter(scanLoop) {
             if (tempPath && fs_1.default.existsSync(tempPath)) {
                 fs_1.default.unlinkSync(tempPath);
             }
+        }
+    });
+    // POST /api/admin/backups/upload { fileName, contentBase64 }
+    // Park an uploaded backup on the server's disk WITHOUT touching the live
+    // database. Needed because pulling one clan out of a backup is two steps —
+    // inspect, then restore — and re-uploading 60MB between them is absurd.
+    // Also the only way to get a backup that lives on the operator's laptop
+    // (an off-box snapshot, a file someone downloaded months ago) in front of
+    // the restore routes at all.
+    router.post('/admin/backups/upload', auth_js_1.requireSuperAdmin, (req, res) => {
+        try {
+            const { fileName, contentBase64 } = parseDbBackupPayload(req.body);
+            const lowerName = fileName.toLowerCase();
+            if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
+                return res.status(400).json({ error: 'Backup file must be a .db or .db.gz file' });
+            }
+            const buffer = Buffer.from(contentBase64, 'base64');
+            if (buffer.length < 16) {
+                return res.status(400).json({ error: 'Backup file is too small or invalid' });
+            }
+            // A gzip is checked by its magic bytes only. Inflating 175MB here just to
+            // read sixteen header bytes would double the peak memory of an upload for
+            // no gain: this route writes a file, it does not touch the database, and
+            // the inspect step decompresses and validates properly before anything
+            // is read out of it.
+            const gzipped = buffer[0] === 0x1f && buffer[1] === 0x8b;
+            if (!gzipped && !buffer.subarray(0, 16).toString('utf8').startsWith('SQLite format 3')) {
+                return res.status(400).json({ error: 'File does not appear to be a valid SQLite backup' });
+            }
+            const storedAs = (0, db_backup_js_1.saveUploadedBackup)(fileName, buffer);
+            (0, user_repo_js_1.logAction)(req.user.id, 'upload_backup', { fileName, storedAs, bytes: buffer.length });
+            return res.json({ ok: true, fileName: storedAs, bytes: buffer.length });
+        }
+        catch (err) {
+            return res.status(400).json({ error: `Upload failed: ${err instanceof Error ? err.message : String(err)}` });
+        }
+    });
+    // GET /api/admin/backups/clans?file=<basename>
+    // What clans does this backup hold, and how much data does each carry?
+    // Read-only — the operator sees the row counts before committing.
+    router.get('/admin/backups/clans', auth_js_1.requireSuperAdmin, (req, res) => {
+        const fileName = String(req.query.file ?? '').trim();
+        if (!fileName)
+            return res.status(400).json({ error: 'file query param is required' });
+        const sourcePath = (0, db_backup_js_1.resolveBackupPath)(fileName);
+        if (!sourcePath)
+            return res.status(404).json({ error: 'Backup file not found' });
+        try {
+            return res.json({ fileName, ...(0, clan_restore_js_1.inspectBackupClans)(sourcePath) });
+        }
+        catch (err) {
+            return res.status(400).json({ error: `Could not read backup: ${err instanceof Error ? err.message : String(err)}` });
+        }
+    });
+    // POST /api/admin/backups/restore-clan { fileName, clanId }
+    // Pull ONE clan out of a backup and add it to the live database, leaving
+    // every other clan untouched. This is the counterpart to DELETE /api/clans/:id
+    // — the whole-file restore next to it cannot undo a clan deletion without
+    // also rewinding every clan that has been scanning ever since.
+    router.post('/admin/backups/restore-clan', auth_js_1.requireSuperAdmin, async (req, res) => {
+        if (scanLoop) {
+            const state = scanLoop.getState();
+            if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING || state === enums_js_1.AppState.NAVIGATING || state === enums_js_1.AppState.CHECKING_AUTH) {
+                return res.status(409).json({ error: `Cannot restore a clan while the scanner is active (${state}).` });
+            }
+        }
+        const body = (req.body ?? {});
+        const fileName = String(body.fileName ?? '').trim();
+        const clanId = Number.parseInt(String(body.clanId ?? ''), 10);
+        if (!fileName)
+            return res.status(400).json({ error: 'fileName is required' });
+        if (!Number.isFinite(clanId) || clanId <= 0) {
+            return res.status(400).json({ error: 'clanId must be a positive integer' });
+        }
+        const sourcePath = (0, db_backup_js_1.resolveBackupPath)(fileName);
+        if (!sourcePath)
+            return res.status(404).json({ error: 'Backup file not found' });
+        try {
+            // Same contract as the clan delete: snapshot first, and if the snapshot
+            // fails nothing is written. Adding a clan is far less destructive than
+            // removing one, but it is still tens of thousands of rows landing in
+            // shared tables, and reversing it by hand is not a thing anyone wants.
+            const preRestoreBackup = path_1.default.basename(await (0, db_backup_js_1.createPreActionBackup)(`pre-action-restore-clan-${clanId}`));
+            const result = (0, clan_restore_js_1.restoreClanFromBackup)(sourcePath, clanId);
+            (0, user_repo_js_1.logAction)(req.user.id, 'clan.restore', {
+                fileName,
+                sourceClanId: result.sourceClanId,
+                clanId: result.clanId,
+                rows: result.totalRows,
+                preRestoreBackup,
+            });
+            return res.json({ ok: true, ...result, restoredFrom: fileName, preRestoreBackup });
+        }
+        catch (err) {
+            return res.status(400).json({ error: `Clan restore failed: ${err instanceof Error ? err.message : String(err)}` });
         }
     });
     // --- Analytics ---

@@ -470,6 +470,29 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     // rows behind would resurrect the dead clan's numbers if the id is reused.
     db.prepare('DELETE FROM chest_daily_summary WHERE clan_id = ?').run(id);
 
+    // The ChestTracker ingest tables carry a clan_id with NO foreign key to
+    // clans(id) — they predate multi-clan and the column was bolted on with a
+    // DEFAULT rather than a reference. So nothing here fails if they are
+    // skipped, the fk-delete-guards test (which works from the live FK list)
+    // cannot see them, and they were in fact being left behind: a deleted
+    // clan's poll history and snapshots survived, ready to be re-attributed to
+    // whoever next took the id. Same argument as chest_daily_summary above.
+    //
+    // Order matters within the group even though clans doesn't enforce it:
+    // player_snapshot/player_category reference ct_player_ref WITHOUT cascade.
+    db.prepare(
+      'DELETE FROM player_category WHERE snapshot_id IN (SELECT id FROM snapshot WHERE clan_id = ?)',
+    ).run(id);
+    db.prepare(
+      'DELETE FROM player_snapshot WHERE snapshot_id IN (SELECT id FROM snapshot WHERE clan_id = ?)',
+    ).run(id);
+    db.prepare(
+      'DELETE FROM snapshot_chest_definition WHERE snapshot_id IN (SELECT id FROM snapshot WHERE clan_id = ?)',
+    ).run(id);
+    db.prepare('DELETE FROM snapshot WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM ct_player_ref WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM poll_log WHERE clan_id = ?').run(id);
+
     // discord_member_links CASCADEs off members, but it also holds its own
     // clans(id) FK — so clear it explicitly rather than relying on the member
     // delete below to take it out sideways.

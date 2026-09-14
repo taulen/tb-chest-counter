@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createPreActionBackup = createPreActionBackup;
 exports.listBackups = listBackups;
 exports.resolveBackupPath = resolveBackupPath;
+exports.saveUploadedBackup = saveUploadedBackup;
 exports.startDailyBackupSchedule = startDailyBackupSchedule;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -242,6 +243,33 @@ function resolveBackupPath(fileName) {
     if (!fs_1.default.existsSync(fullReal))
         return null;
     return fullReal;
+}
+/**
+ * Park an uploaded backup file in the backups directory so the disk-backed
+ * routes (list / inspect / restore / download / delete) can all work off it.
+ *
+ * The point is that inspecting a backup and then restoring a clan out of it are
+ * two requests: without this, the operator would upload the same 60MB twice,
+ * once per step. Staging it once turns every subsequent step into a filename.
+ *
+ * Named with a `-manual` suffix so `classifyBackup` files it under the manual
+ * retention policy (keep 5, no age cap) rather than being mistaken for part of
+ * the daily rotation. Returns the basename it was stored as.
+ */
+function saveUploadedBackup(originalName, buffer) {
+    const dir = backupsDir();
+    fs_1.default.mkdirSync(dir, { recursive: true });
+    const gzipped = buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const stem = path_1.default.basename(originalName)
+        .replace(/\.db(\.gz)?$/i, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60) || 'upload';
+    const fileName = `${timestamp}-uploaded-${stem}-manual.db${gzipped ? '.gz' : ''}`;
+    fs_1.default.writeFileSync(path_1.default.join(dir, fileName), buffer);
+    log.info(`Uploaded backup stored as ${fileName} (${buffer.length} bytes)`);
+    return fileName;
 }
 /**
  * Daily backup scheduler. On boot, takes a backup immediately if one
