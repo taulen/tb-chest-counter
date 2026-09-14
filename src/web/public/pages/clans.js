@@ -441,6 +441,13 @@ export async function renderClans(el, refreshClanIndicator) {
       } catch {
         notify('Delete failed.', 'Delete clan');
       }
+    } else if (action === 'clan-discord-directory-load' && clanId) {
+      await loadDiscordDirectory(el, clanId, el.querySelector(`#clan-discord-guild-${clanId}`)?.value || undefined);
+    } else if (action === 'clan-discord-manual-toggle' && clanId) {
+      // The checkbox has already flipped by the time the click lands here.
+      if (target.checked) discordManualMode.add(clanId);
+      else discordManualMode.delete(clanId);
+      syncDiscordPickers(el, clanId);
     } else if (action === 'clan-onboard-capture' && clanId) {
       try {
         const r = await fetch(`/api/clans/${clanId}/onboard/capture-members`, { method: 'POST' });
@@ -463,11 +470,50 @@ export async function renderClans(el, refreshClanIndicator) {
   };
   el.addEventListener('click', el._clanActionHandler);
 
+  // The Discord pickers are <select>s, which never fire a click-with-intent —
+  // same single-listener discipline as above, since `el` outlives the render.
+  if (el._clanChangeHandler) el.removeEventListener('change', el._clanChangeHandler);
+  el._clanChangeHandler = async (ev) => {
+    const changed = ev.target;
+    const target = changed instanceof Element ? changed.closest('[data-action]') : null;
+    if (!(target instanceof HTMLElement)) return;
+    const action = target.getAttribute('data-action');
+    const clanIdAttr = target.getAttribute('data-clan-id');
+    const clanId = clanIdAttr ? Number.parseInt(clanIdAttr, 10) : null;
+    if (!clanId) return;
+    if (action === 'clan-discord-guild-change') {
+      // Channels and members are per-server, so switching server invalidates
+      // both. Clear the channel rather than carry a selection that belongs to
+      // the old server — that mismatch is precisely the silent misconfiguration
+      // the dropdowns exist to prevent.
+      const channel = el.querySelector(`#clan-discord-channel-${clanId}`);
+      if (channel) channel.value = '';
+      await loadDiscordDirectory(el, clanId, target.value || undefined);
+    } else if (action === 'clan-discord-add-recipient') {
+      const picked = target.value;
+      target.value = '';
+      if (!picked) return;
+      const input = el.querySelector(`#clan-discord-digest-share-${clanId}`);
+      if (!input) return;
+      const ids = input.value.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean);
+      if (!ids.includes(picked)) ids.push(picked);
+      input.value = ids.join(', ');
+      updateRecipientNames(el, clanId);
+    }
+  };
+  el.addEventListener('change', el._clanChangeHandler);
+
   // Kick off a status poll for any clan currently mid-onboarding so the
   // status pill ("Capturing members…", "Running first scan…") refreshes
   // automatically without a page reload.
   for (const clan of clans) {
     pollClanOnboardStatus(clan.id, el);
+    // Populate the Discord dropdowns without being asked. The lookup is a
+    // read of the clan's own bot and is cached server-side for a minute, so
+    // the re-render after every mutation on this page costs nothing.
+    if (clan.discordTokenSet) void loadDiscordDirectory(el, clan.id);
+    const shareInput = el.querySelector(`#clan-discord-digest-share-${clan.id}`);
+    if (shareInput) shareInput.addEventListener('input', () => updateRecipientNames(el, clan.id));
   }
 
   // Show what a weekly target works out to per day / month / year, live as
@@ -573,6 +619,176 @@ function renderAuthCopy(clan) {
   return 'No login saved yet. Sign in below before activating this clan for scans.';
 }
 
+// ─── Discord server / channel / member pickers ───
+//
+// The three Discord fields (guild, channel, digest DM recipients) are all
+// snowflakes, and the old form asked the operator to produce them by hand:
+// switch Developer Mode on, right-click the server icon, right-click the
+// channel, right-click each recipient. Every one of those is an 18-digit
+// number with no feedback if it lands in the wrong field — the bot connects
+// happily and simply never posts.
+//
+// So the bot reads its own view of Discord (POST /discord/directory) and the
+// fields become dropdowns of names. Two rules hold this together:
+//
+//  1. The <select> carries the SAME element id the save handler reads
+//     (`clan-discord-guild-N` / `clan-discord-channel-N`). A select's .value
+//     is a string like an input's, so nothing downstream knows the
+//     difference, and manual mode can swap a text input straight back in.
+//  2. A stored id that isn't in the fetched list is never silently dropped —
+//     it renders as its own selected option. A bot removed from a server, or
+//     a lookup that failed, must not quietly blank a working configuration
+//     the moment someone opens the page.
+
+/** clanId → last successful directory response. Survives re-renders. */
+const discordDirectories = new Map();
+/** clanIds where the operator asked for raw ID entry instead of dropdowns. */
+const discordManualMode = new Set();
+
+/**
+ * One Server/Channel field: a <select> of names, or a plain text input when
+ * `entries` is null (manual mode, or nothing loaded from Discord yet).
+ */
+function renderDiscordPicker(clanId, kind, storedValue, entries, placeholder) {
+  const id = `clan-discord-${kind}-${clanId}`;
+  const value = storedValue || '';
+  if (!entries) {
+    return `<input id="${id}" class="input" type="text" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}">`;
+  }
+  const known = entries.some((e) => e.id === value);
+  let options = `<option value=""${value ? '' : ' selected'}>— none —</option>`;
+  // A configured id the list doesn't contain still has to be selectable, or
+  // opening the page would silently clear it on the next save.
+  if (value && !known) {
+    options += `<option value="${escapeHtml(value)}" selected>${escapeHtml(value)} (not in this list)</option>`;
+  }
+  const groups = new Map();
+  for (const entry of entries) {
+    const group = entry.categoryName || '';
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(entry);
+  }
+  for (const [group, items] of groups) {
+    const body = items
+      .map((e) => `<option value="${escapeHtml(e.id)}"${e.id === value ? ' selected' : ''}>${escapeHtml(pickerLabel(kind, e))}</option>`)
+      .join('');
+    options += group ? `<optgroup label="${escapeHtml(group)}">${body}</optgroup>` : body;
+  }
+  return `<select id="${id}" class="input" data-action="clan-discord-${kind}-change" data-clan-id="${clanId}">${options}</select>`;
+}
+
+function pickerLabel(kind, entry) {
+  if (kind === 'channel') return `#${entry.name}`;
+  return entry.name;
+}
+
+/**
+ * The "add a DM recipient" dropdown. The stored value stays a comma-separated
+ * ID list in the existing text field — picking a name appends to it — because
+ * that field is also the escape hatch for someone who is in the server but
+ * whom the member lookup can't see (no privileged intent).
+ */
+function renderRecipientPicker(clanId, dir, manual) {
+  if (manual || !dir) return '';
+  if (dir.membersUnavailable) {
+    return `<p class="muted-copy mt-4 hint-text">${escapeHtml(dir.membersUnavailable)}</p>`;
+  }
+  if (!dir.members || !dir.members.length) return '';
+  const options = dir.members
+    .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}${m.username && m.username !== m.name ? ` (@${escapeHtml(m.username)})` : ''}</option>`)
+    .join('');
+  return `<select class="input mt-4" data-action="clan-discord-add-recipient" data-clan-id="${clanId}">`
+    + `<option value="">+ Add a recipient from ${escapeHtml(dir.guildName || 'the server')}…</option>${options}</select>`;
+}
+
+/**
+ * Re-render the three pickers in place from the cached directory, keeping
+ * whatever the form currently holds. Deliberately NOT a full renderClans():
+ * that would blow away a bot token typed but not yet saved, which is exactly
+ * the moment the operator is most likely to hit "load from Discord".
+ */
+function syncDiscordPickers(el, clanId) {
+  const manual = discordManualMode.has(clanId);
+  const dir = manual ? null : discordDirectories.get(clanId) || null;
+  const guildField = el.querySelector(`#clan-discord-guild-field-${clanId}`);
+  const channelField = el.querySelector(`#clan-discord-channel-field-${clanId}`);
+  if (!guildField || !channelField) return;
+  const guildValue = el.querySelector(`#clan-discord-guild-${clanId}`)?.value ?? '';
+  const channelValue = el.querySelector(`#clan-discord-channel-${clanId}`)?.value ?? '';
+  guildField.innerHTML = renderDiscordPicker(clanId, 'guild', guildValue, dir?.guilds ?? null, 'Server ID');
+  // Channels belong to one server. If the loaded directory is for a different
+  // server than the one now selected, offer no list rather than a list of
+  // channels that cannot receive this clan's messages.
+  const channels = dir && dir.guildId && dir.guildId === guildValue ? dir.channels : null;
+  channelField.innerHTML = renderDiscordPicker(clanId, 'channel', channelValue, channels, 'Channel ID');
+  const memberField = el.querySelector(`#clan-discord-member-field-${clanId}`);
+  if (memberField) {
+    const forThisGuild = dir && dir.guildId && dir.guildId === guildValue ? dir : null;
+    memberField.innerHTML = renderRecipientPicker(clanId, forThisGuild, manual);
+  }
+  updateRecipientNames(el, clanId);
+}
+
+/**
+ * Resolve the comma-separated recipient IDs to names under the field. An ID
+ * that resolves to nothing is called out rather than left looking configured —
+ * a mistyped digit currently costs a silent daily DM.
+ */
+function updateRecipientNames(el, clanId) {
+  const out = el.querySelector(`#clan-discord-recipients-names-${clanId}`);
+  if (!out) return;
+  const raw = el.querySelector(`#clan-discord-digest-share-${clanId}`)?.value ?? '';
+  const ids = raw.split(/[\s,;]+/).map((s) => s.replace(/^<@!?/, '').replace(/>$/, '').trim()).filter(Boolean);
+  const dir = discordDirectories.get(clanId);
+  if (!ids.length || !dir || !dir.members?.length) {
+    out.textContent = '';
+    return;
+  }
+  const byId = new Map(dir.members.map((m) => [m.id, m.name]));
+  out.innerHTML = 'Resolves to: ' + ids
+    .map((id) => (byId.has(id)
+      ? escapeHtml(byId.get(id))
+      : `<span class="warning-text">${escapeHtml(id)} (not found in this server)</span>`))
+    .join(', ');
+}
+
+/**
+ * Ask the server to read the bot's Discord. Sends the token currently in the
+ * form when there is one, so the lists work before the first save; the server
+ * falls back to the stored token and never persists what is sent here.
+ */
+async function loadDiscordDirectory(el, clanId, guildId) {
+  const status = el.querySelector(`#clan-discord-dir-status-${clanId}`);
+  const setStatus = (text) => { if (status) status.textContent = text; };
+  const token = el.querySelector(`#clan-discord-token-${clanId}`)?.value.trim() || '';
+  setStatus('Reading from Discord…');
+  try {
+    const r = await fetch(`/api/clans/${clanId}/discord/directory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token || undefined, guildId: guildId || undefined }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      setStatus(j.error || 'Discord lookup failed.');
+      return;
+    }
+    const guildName = j.guilds?.find((g) => g.id === j.guildId)?.name || '';
+    discordDirectories.set(clanId, { ...j, guildName });
+    if (!j.guilds?.length) {
+      setStatus('This bot has not been invited to any server yet — run the OAuth2 invite URL first.');
+    } else if (!j.guildId) {
+      setStatus(`${j.guilds.length} server${j.guilds.length === 1 ? '' : 's'} — pick one to load its channels.`);
+    } else {
+      setStatus(`${j.channels.length} channel${j.channels.length === 1 ? '' : 's'} in ${guildName}`
+        + (j.membersUnavailable ? '' : `, ${j.members.length} member${j.members.length === 1 ? '' : 's'}`) + '.');
+    }
+    syncDiscordPickers(el, clanId);
+  } catch {
+    setStatus('Discord lookup failed.');
+  }
+}
+
 function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays) {
   const intervalVal = clan.scanIntervalMinutes ?? '';
   const intervalPlaceholder = Number.isFinite(defaultScanIntervalMinutes)
@@ -585,6 +801,13 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
   // never round-trip the actual token to the browser; the input is
   // empty by default and only updates the stored token if non-empty.
   const tokenPlaceholder = clan.discordTokenSet ? '••••••••• (leave blank to keep)' : 'Bot token';
+  // Names already read from Discord, so a re-render (every save, every
+  // mutation on this page) redraws the dropdowns populated instead of
+  // flashing back to bare ID boxes while the refetch is in flight.
+  const cachedDir = discordManualMode.has(clan.id) ? null : discordDirectories.get(clan.id) ?? null;
+  const cachedChannels = cachedDir && cachedDir.guildId && cachedDir.guildId === clan.discordGuildId
+    ? cachedDir.channels
+    : null;
   return `
     <div class="card" data-clan-card-id="${clan.id}">
       <div class="card-header">
@@ -620,15 +843,26 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
             <li>Go to <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">discord.com/developers/applications</a> → <strong>New Application</strong>.</li>
             <li>Left sidebar → <strong>Bot</strong> → <strong>Reset Token</strong> → copy it and paste into <em>Bot token</em> below.</li>
             <li>Left sidebar → <strong>OAuth2 → URL Generator</strong>. Scopes: <code>bot</code> and <code>applications.commands</code>. Bot permissions: <code>Send Messages</code> and <code>Embed Links</code>. Open the generated URL, pick this clan's server, authorize.</li>
-            <li>In Discord: <strong>User Settings → Advanced → Developer Mode</strong> = ON. Right-click the <strong>server icon</strong> → <strong>Copy Server ID</strong> and paste into <em>Guild ID</em>. Right-click the target channel → <strong>Copy Channel ID</strong> and paste into <em>Channel ID</em>.</li>
+            <li>Paste the token above and click <strong>Reload from Discord</strong> — the <em>Server</em> and <em>Channel</em> dropdowns fill in with the names the bot can actually see. Pick the server first; its channels load with it. (Nothing here needs Developer Mode or a copied ID; tick <em>Enter IDs manually</em> if you'd rather paste them.)</li>
             <li>Tick <strong>Enabled</strong>, click <strong>Save Discord</strong>, then click <strong>Send test message</strong> to verify. With a Guild ID set, slash commands (<code>/leaderboard</code>, <code>/status</code>) appear in that server instantly. Each clan runs its own bot, so a fresh bot per clan keeps tokens / channels isolated.</li>
           </ol>
         </details>
         <div class="inline-form-row">
           <div><label class="checkbox-row"><input type="checkbox" id="clan-discord-enabled-${clan.id}" ${clan.discordEnabled ? 'checked' : ''}> Enabled</label></div>
           <div><label>Bot token</label><input id="clan-discord-token-${clan.id}" class="input" type="password" placeholder="${tokenPlaceholder}"></div>
-          <div><label>Channel ID</label><input id="clan-discord-channel-${clan.id}" class="input" type="text" value="${escapeHtml(clan.discordChannelId)}"></div>
-          <div><label>Guild ID</label><input id="clan-discord-guild-${clan.id}" class="input" type="text" value="${escapeHtml(clan.discordGuildId)}"></div>
+          <div class="form-row-grow"><label>Server</label>
+            <div id="clan-discord-guild-field-${clan.id}">${renderDiscordPicker(clan.id, 'guild', clan.discordGuildId, cachedDir?.guilds ?? null, 'Server ID')}</div>
+          </div>
+          <div class="form-row-grow"><label>Channel</label>
+            <div id="clan-discord-channel-field-${clan.id}">${renderDiscordPicker(clan.id, 'channel', clan.discordChannelId, cachedChannels, 'Channel ID')}</div>
+          </div>
+        </div>
+        <div class="inline-form-row mt-8">
+          <button class="btn" data-action="clan-discord-directory-load" data-clan-id="${clan.id}">Reload from Discord</button>
+          <label class="checkbox-row" title="Fall back to pasting raw 18-digit IDs — for a bot that cannot list its own servers, or a channel Discord will not return">
+            <input type="checkbox" data-action="clan-discord-manual-toggle" data-clan-id="${clan.id}" ${discordManualMode.has(clan.id) ? 'checked' : ''}> Enter IDs manually
+          </label>
+          <span class="muted-copy hint-text" id="clan-discord-dir-status-${clan.id}"></span>
         </div>
         <div class="inline-form-row mt-8">
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-reports-${clan.id}" ${clan.discordScanReportsEnabled ? 'checked' : ''}> Post scan reports</label>
@@ -638,18 +872,20 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         </div>
         <div class="inline-form-row mt-8">
           <div class="form-row-grow">
-            <label>Daily digest DM recipients (Discord user IDs, comma-separated, optional)</label>
-            <input id="clan-discord-digest-share-${clan.id}" class="input" type="text"
+            <label>Daily digest DM recipients (optional)</label>
+            <div id="clan-discord-member-field-${clan.id}">${renderRecipientPicker(clan.id, cachedChannels ? cachedDir : null, discordManualMode.has(clan.id))}</div>
+            <input id="clan-discord-digest-share-${clan.id}" class="input mt-4" type="text"
               value="${escapeHtml(clan.discordDailyDigestShareUserId || '')}"
               placeholder="e.g. 123456789012345678, 234567890123456789 — leave blank to disable">
+            <p class="muted-copy mt-4 hint-text" id="clan-discord-recipients-names-${clan.id}"></p>
             <p class="muted-copy mt-4 hint-text">When set, the bot also DMs each of these users a plain-text version of the digest that pastes cleanly into in-game chat. Separate IDs with commas (up to 20). Each recipient must share a server with the bot and allow DMs from server members — one who doesn't still gets flagged, and everyone else's DM goes out.</p>
           </div>
         </div>
         <details class="mb-12 mt-8">
           <summary class="collapse-toggle">How do I find a Discord user ID?</summary>
           <ol class="muted-copy help-list">
-            <li>In Discord: <strong>User Settings → Advanced → Developer Mode</strong> = ON (one-time, same toggle as for Channel/Guild ID).</li>
-            <li>Right-click the recipient's name (in any channel, member list, or DM) → <strong>Copy User ID</strong>.</li>
+            <li>Normally you don't: pick them from the <strong>Add a recipient</strong> dropdown above, which lists the selected server's members. It needs <strong>Developer Portal → Bot → Privileged Gateway Intents → SERVER MEMBERS INTENT</strong> switched on; without it the dropdown says so and you can fall back to IDs.</li>
+            <li>By hand: <strong>User Settings → Advanced → Developer Mode</strong> = ON, right-click the recipient's name → <strong>Copy User ID</strong>.</li>
             <li>Paste the 17–19 digit ID into the field above and click <strong>Save Discord</strong>. For several recipients, separate the IDs with commas: <code>123…, 234…</code>.</li>
             <li>Each recipient must share at least one server with this clan's bot, and have <strong>Privacy Settings → "Direct messages from server members"</strong> enabled for that server.</li>
             <li>Click <strong>Send test DM</strong> to confirm — they should each get a DM titled with <code>[TEST DM — current game day so far]</code>, and the toast names anyone it couldn't reach.</li>

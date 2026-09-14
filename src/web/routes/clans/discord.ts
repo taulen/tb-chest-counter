@@ -7,6 +7,7 @@ import { logAction } from '../../../data/repositories/user-repo.js';
 import { requireClanAdmin } from '../../middleware/auth.js';
 import { reloadClanBot, sendClanTestMessage, sendClanDigestDmTest, isClanBotConnected } from '../../../discord/bot.js';
 import { normalizeDigestRecipients } from '../../../discord/digest-recipients.js';
+import { fetchDiscordDirectory, describeDiscordError } from '../../../discord/directory.js';
 import { loadConfig } from '../../../config/index.js';
 import { childLogger } from '../../../utils/logger.js';
 import { createClanSubRouter } from './_shared.js';
@@ -105,6 +106,45 @@ export function createDiscordRouter(): Router {
       return;
     }
     res.status(400).json({ error: result.error || 'DM test failed' });
+  });
+
+  /**
+   * Read the bot's own view of Discord so the settings form can offer
+   * dropdowns of server / channel / member NAMES instead of snowflakes an
+   * operator has to right-click-copy with Developer Mode on. Pasting the
+   * wrong 18-digit number into the wrong field is the single most common
+   * way this integration is misconfigured, and it fails silently: the bot
+   * connects, and simply never posts anywhere.
+   *
+   * POST, not GET, for two reasons: the token may be supplied in the body
+   * (so the lists can be browsed before the settings are saved — otherwise
+   * the first-time flow is save-blind-then-fix), and a secret must not ride
+   * in a query string where it lands in access logs.
+   */
+  router.post('/:clanId/discord/directory', requireClanAdmin, async (req, res) => {
+    const id = req.parsedClanId!;
+    const clan = getClanById(id);
+    if (!clan) {
+      res.status(404).json({ error: 'Clan not found' });
+      return;
+    }
+    const body = req.body ?? {};
+    // An unsaved token typed into the form wins over the stored one; it is
+    // used for this lookup only and never persisted here.
+    const typed = typeof body.token === 'string' ? body.token.trim() : '';
+    const token = typed || clan.discordToken;
+    if (!token) {
+      res.status(400).json({ error: 'Add the bot token first — the dropdowns are read from Discord with it.' });
+      return;
+    }
+    const requested = typeof body.guildId === 'string' ? body.guildId.trim() : '';
+    const guildId = requested || clan.discordGuildId || null;
+    try {
+      res.json(await fetchDiscordDirectory(token, guildId));
+    } catch (err) {
+      log.warn({ err, clanId: id }, 'Discord directory lookup failed');
+      res.status(400).json({ error: describeDiscordError(err) });
+    }
   });
 
   return router;
