@@ -256,7 +256,7 @@ function requireClanAccess(req, res, next) {
  * This is `requireClanAccess` PLUS an admin-role assertion. Use it for
  * per-clan *configuration / action* routes under /api/clans — Discord
  * settings, ChestTracker share code, onboarding scans, resource toggle,
- * share-token generate/disable. Those are administrative actions, not
+ * share-link create/disable. Those are administrative actions, not
  * things a plain `user`-role clan member should be able to perform.
  *
  * Why this exists: `/api/clans` is mounted with NO mount-level auth, so

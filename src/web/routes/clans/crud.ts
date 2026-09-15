@@ -6,7 +6,6 @@ import {
   renameClan,
   setClanActive,
   setClanScanIntervalMinutes,
-  setClanPublicShareToken,
   softDeleteClan,
   restoreDeletedClan,
   listDeletedClans,
@@ -15,12 +14,16 @@ import {
 import { setSessionActiveClan, logAction } from '../../../data/repositories/user-repo.js';
 import {
   createShareLink,
-  revokeActiveShareLink,
+  listActiveShareLinks,
+  revokeShareLink,
+  setShareLinkLabel,
+  restoreShareLink,
+  deleteShareLink,
   getShareLinkAnalytics,
-  recoverShareLink,
+  normalizeShareLinkLabel,
 } from '../../../data/repositories/share-link-repo.js';
 import { loadConfig } from '../../../config/index.js';
-import { generateUniqueShareToken } from '../../../utils/share-token.js';
+import { generateUniqueShareToken, validateVanityKey } from '../../../utils/share-token.js';
 import { createPreActionBackup } from '../../../utils/db-backup.js';
 import { requireAuth, requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { childLogger } from '../../../utils/logger.js';
@@ -29,8 +32,14 @@ import type { OnboardState } from './onboard.js';
 
 const log = childLogger('clans-route');
 
+/** `:linkId` as a positive integer, or null when the segment isn't one. */
+function parseLinkId(raw: string | string[] | undefined): number | null {
+  const n = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 /**
- * Clan CRUD: list, fetch, create, rename, delete, share-token
+ * Clan CRUD: list, fetch, create, rename, delete, public share-link
  * generate/disable, and the superadmin "switch active clan" route.
  *
  * The DELETE handler also clears the onboard state for the removed
@@ -54,7 +63,11 @@ export function createCrudRouter(onboardState: OnboardState): Router {
     // per-clan settings input can show it as its "blank = default" hint.
     const defaultInactivityDays = loadConfig().memberInactivityDays;
     if (req.user.role === 'superadmin') {
-      res.json({ clans: listClans().map(publicClanWithCounts), activeClanId: req.clanId ?? null, defaultInactivityDays });
+      res.json({
+        clans: listClans().map((c) => ({ ...publicClanWithCounts(c), shareLinks: listActiveShareLinks(c.id) })),
+        activeClanId: req.clanId ?? null,
+        defaultInactivityDays,
+      });
       return;
     }
     const own = req.user.clanId !== null ? getClanById(req.user.clanId) : null;
@@ -62,13 +75,13 @@ export function createCrudRouter(onboardState: OnboardState): Router {
       res.json({ clans: [], activeClanId: null, defaultInactivityDays });
       return;
     }
-    // Plain members can't manage the public share link (generate/disable
-    // is admin-only), so don't hand them the live token — it grants
+    // Plain members can't manage public share links (create/disable is
+    // admin-only), so don't hand them the live keys — each one grants
     // anonymous read access they could leak outside the clan. Admins and
-    // superadmins keep it so the Clans settings page can render it.
+    // superadmins get them so the Clans settings page can render the list.
     const shape: Record<string, unknown> = publicClanWithCounts(own);
-    if (req.user.role === 'user') {
-      delete shape.publicShareToken;
+    if (req.user.role !== 'user') {
+      shape.shareLinks = listActiveShareLinks(own.id);
     }
     res.json({ clans: [shape], activeClanId: own.id, defaultInactivityDays });
   });
@@ -180,85 +193,142 @@ export function createCrudRouter(onboardState: OnboardState): Router {
   });
 
   /**
-   * Generate (or regenerate) the public read-only share token for a clan.
-   * Anyone with the resulting URL `/{token}` can view the clan's
-   * leaderboard (and ChestTracker tab if enabled) without logging in.
-   * Regenerating overwrites the column, so any prior URL is invalidated
-   * immediately. The outgoing token is revoked into the share_links ledger
-   * (reason 'regenerated') so its usage history survives. Admin or
+   * Every public share link a clan holds — live ones with their own 30-day
+   * visit series, plus recently disabled ones for the recovery list. Powers
+   * the "analytics & history" modal on the Clans settings page. Admin or
    * superadmin only.
+   *
+   * A clan may hold any number of live links; each carries its own counters,
+   * which is the point — "which link is people actually using" is only
+   * answerable if the Discord link and the forum link are separate rows.
    */
-  router.post('/:clanId/share-token', requireClanAdmin, (req, res) => {
-    const id = req.parsedClanId!;
-    const existing = getClanById(id);
-    if (!existing) {
-      res.status(404).json({ error: 'Clan not found' });
-      return;
-    }
-    const token = generateUniqueShareToken();
-    if (existing.publicShareToken) {
-      revokeActiveShareLink(id, 'regenerated', req.user!.id);
-    }
-    setClanPublicShareToken(id, token);
-    createShareLink(id, token, req.user!.id);
-    logAction(req.user!.id, 'clan.share_token.generate', { clanId: id });
-    res.json({ ok: true, publicShareToken: token });
-  });
-
-  /**
-   * Disable public sharing by clearing the live token. The token is revoked
-   * (not deleted) in the share_links ledger — reason 'disabled' — so it keeps
-   * its usage history and can be recovered from the analytics modal. Admin or
-   * superadmin only.
-   */
-  router.delete('/:clanId/share-token', requireClanAdmin, (req, res) => {
+  router.get('/:clanId/share-links', requireClanAdmin, (req, res) => {
     const id = req.parsedClanId!;
     if (!getClanById(id)) {
       res.status(404).json({ error: 'Clan not found' });
       return;
     }
-    revokeActiveShareLink(id, 'disabled', req.user!.id);
-    setClanPublicShareToken(id, '');
-    logAction(req.user!.id, 'clan.share_token.disable', { clanId: id });
+    res.json(getShareLinkAnalytics(id, 8));
+  });
+
+  /**
+   * Create another public read-only share link for a clan. Anyone with the
+   * resulting URL `/{key}` can view the clan's leaderboard (and ChestTracker
+   * tab if enabled) without logging in.
+   *
+   * `key` is optional: omit it for a generated 6-char token, or supply a
+   * vanity key (3-10 chars, a-z0-9) to choose the URL. `label` is a note for
+   * the admin's own benefit and never leaves the admin UI. Existing links are
+   * untouched — rotating a link is now "add the new one, disable the old one
+   * once it has stopped being used", which no longer breaks anyone mid-flight.
+   */
+  router.post('/:clanId/share-links', requireClanAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    if (!getClanById(id)) {
+      res.status(404).json({ error: 'Clan not found' });
+      return;
+    }
+    const label = normalizeShareLinkLabel(req.body?.label);
+    const rawKey = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+
+    let token: string;
+    let isVanity = false;
+    if (rawKey) {
+      const check = validateVanityKey(rawKey);
+      if (!check.ok) {
+        res.status(400).json({ error: check.error });
+        return;
+      }
+      token = check.key;
+      isVanity = true;
+    } else {
+      token = generateUniqueShareToken();
+    }
+
+    const link = createShareLink(id, token, req.user!.id, { label, isVanity });
+    logAction(req.user!.id, 'clan.share_link.create', { clanId: id, linkId: link.id, isVanity });
+    res.json({ ok: true, link });
+  });
+
+  /**
+   * Rename one link. The label is the only editable field — a key is part of
+   * a URL people already hold, so changing it in place would silently break
+   * those URLs while looking like a rename.
+   */
+  router.patch('/:clanId/share-links/:linkId', requireClanAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    const linkId = parseLinkId(req.params.linkId);
+    if (linkId === null) {
+      res.status(400).json({ error: 'A valid linkId is required' });
+      return;
+    }
+    if (!setShareLinkLabel(id, linkId, normalizeShareLinkLabel(req.body?.label))) {
+      res.status(404).json({ error: 'Link not found' });
+      return;
+    }
     res.json({ ok: true });
   });
 
   /**
-   * Usage analytics for the clan's public share link, plus the most-recent
-   * revoked links for the recovery list. Powers the "analytics & history"
-   * modal on the Clans settings page. Admin or superadmin only.
+   * Disable one link. The row is revoked (not deleted) so it keeps its usage
+   * history and can be restored from the analytics modal. The clan's other
+   * links keep working. Admin or superadmin only.
    */
-  router.get('/:clanId/share-token/analytics', requireClanAdmin, (req, res) => {
+  router.delete('/:clanId/share-links/:linkId', requireClanAdmin, (req, res) => {
     const id = req.parsedClanId!;
-    if (!getClanById(id)) {
-      res.status(404).json({ error: 'Clan not found' });
-      return;
-    }
-    res.json(getShareLinkAnalytics(id, 3));
-  });
-
-  /**
-   * Recover a previously-disabled share link, making its token live again
-   * (swapping out any current active link). Admin or superadmin only.
-   */
-  router.post('/:clanId/share-token/recover', requireClanAdmin, (req, res) => {
-    const id = req.parsedClanId!;
-    if (!getClanById(id)) {
-      res.status(404).json({ error: 'Clan not found' });
-      return;
-    }
-    const linkId = Number(req.body?.linkId);
-    if (!Number.isInteger(linkId) || linkId <= 0) {
+    const linkId = parseLinkId(req.params.linkId);
+    if (linkId === null) {
       res.status(400).json({ error: 'A valid linkId is required' });
       return;
     }
-    const result = recoverShareLink(id, linkId);
+    if (!revokeShareLink(id, linkId, 'disabled', req.user!.id)) {
+      res.status(404).json({ error: 'Link not found or already disabled' });
+      return;
+    }
+    logAction(req.user!.id, 'clan.share_link.disable', { clanId: id, linkId });
+    res.json({ ok: true });
+  });
+
+  /**
+   * Restore a previously-disabled link. No longer swaps anything out — the
+   * clan simply holds one more live link than it did.
+   */
+  router.post('/:clanId/share-links/:linkId/restore', requireClanAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    const linkId = parseLinkId(req.params.linkId);
+    if (linkId === null) {
+      res.status(400).json({ error: 'A valid linkId is required' });
+      return;
+    }
+    const result = restoreShareLink(id, linkId);
     if (!result.ok) {
       res.status(409).json({ error: result.reason });
       return;
     }
-    logAction(req.user!.id, 'clan.share_token.recover', { clanId: id, linkId });
-    res.json({ ok: true, publicShareToken: result.token });
+    logAction(req.user!.id, 'clan.share_link.restore', { clanId: id, linkId });
+    res.json({ ok: true, token: result.token });
+  });
+
+  /**
+   * Permanently delete a disabled link, discarding its history. The only
+   * reason to do this is to free a vanity key for reuse — a key stays claimed
+   * for as long as any row holds it, including a revoked one, so that an old
+   * URL can never be repointed at a different clan by accident.
+   */
+  router.delete('/:clanId/share-links/:linkId/permanent', requireClanAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    const linkId = parseLinkId(req.params.linkId);
+    if (linkId === null) {
+      res.status(400).json({ error: 'A valid linkId is required' });
+      return;
+    }
+    const result = deleteShareLink(id, linkId);
+    if (!result.ok) {
+      res.status(409).json({ error: result.reason });
+      return;
+    }
+    logAction(req.user!.id, 'clan.share_link.delete', { clanId: id, linkId });
+    res.json({ ok: true });
   });
 
   /**

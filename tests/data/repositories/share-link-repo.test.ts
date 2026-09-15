@@ -2,25 +2,25 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   createShareLink,
-  revokeActiveShareLink,
-  getActiveShareLink,
+  listActiveShareLinks,
+  resolveActiveShareLink,
+  revokeShareLink,
+  restoreShareLink,
+  deleteShareLink,
+  setShareLinkLabel,
   shareLinkTokenExists,
+  getShareLink,
   recordVisit,
   recordApiHit,
   recordBeacon,
   listRecentRevoked,
   getShareLinkAnalytics,
-  recoverShareLink,
 } from '../../../src/data/repositories/share-link-repo.js';
-import {
-  getClanById,
-  setClanPublicShareToken,
-  deleteClan,
-} from '../../../src/data/repositories/clan-repo.js';
+import { deleteClan } from '../../../src/data/repositories/clan-repo.js';
 import { createUser } from '../../../src/data/repositories/user-repo.js';
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 
-describe('share-link-repo (usage ledger, analytics, recovery)', () => {
+describe('share-link-repo (multi-link ledger, analytics, recovery)', () => {
   let cleanup: () => void;
 
   beforeEach(() => {
@@ -39,39 +39,62 @@ describe('share-link-repo (usage ledger, analytics, recovery)', () => {
     expect(link.token).toBe('AAA111');
     expect(link.revokedAt).toBeNull();
     expect(shareLinkTokenExists('AAA111')).toBe(true);
-    expect(getActiveShareLink(1)?.token).toBe('AAA111');
+    expect(shareLinkTokenExists('ZZZ999')).toBe(false);
+    expect(resolveActiveShareLink('AAA111')?.id).toBe(link.id);
   });
 
-  it('records page visits (hit + daily rollup) and API hits', () => {
-    createShareLink(1, 'AAA111', 1);
-    recordVisit('AAA111');
-    recordVisit('AAA111');
-    recordApiHit('AAA111');
+  it('holds several live links for one clan, each counting separately', () => {
+    const a = createShareLink(1, 'AAA111', 1, { label: 'Discord' });
+    const b = createShareLink(1, 'bbb222', 1, { label: 'Forum', isVanity: true });
 
-    const active = getActiveShareLink(1)!;
-    expect(active.hitCount).toBe(2);
-    expect(active.apiHitCount).toBe(1);
-    expect(active.lastUsedAt).toBeTruthy();
+    expect(listActiveShareLinks(1).map((l) => l.token).sort()).toEqual(['AAA111', 'bbb222']);
 
+    recordVisit(a.id);
+    recordVisit(a.id);
+    recordVisit(b.id);
+    recordApiHit(b.id);
+
+    const byId = new Map(listActiveShareLinks(1).map((l) => [l.id, l]));
+    expect(byId.get(a.id)!.hitCount).toBe(2);
+    expect(byId.get(a.id)!.apiHitCount).toBe(0);
+    expect(byId.get(b.id)!.hitCount).toBe(1);
+    expect(byId.get(b.id)!.apiHitCount).toBe(1);
+    expect(byId.get(b.id)!.label).toBe('Forum');
+    expect(byId.get(b.id)!.isVanity).toBe(true);
+
+    // Each link's sparkline series is its own.
     const analytics = getShareLinkAnalytics(1);
-    const totalDaily = analytics.daily.reduce((s, d) => s + d.views, 0);
-    expect(totalDaily).toBe(2);
+    expect(analytics.links.length).toBe(2);
+    const seriesA = analytics.links.find((l) => l.id === a.id)!.daily;
+    expect(seriesA.reduce((s, d) => s + d.views, 0)).toBe(2);
   });
 
-  it('recording usage against an unknown token is a silent no-op', () => {
-    expect(() => recordVisit('NOPE00')).not.toThrow();
-    expect(() => recordApiHit('NOPE00')).not.toThrow();
-    expect(() => recordBeacon('NOPE00', { event: 'enter', isReturning: false })).not.toThrow();
+  it('resolves a vanity key case-insensitively but a generated token exactly', () => {
+    createShareLink(1, 'family', 1, { isVanity: true });
+    createShareLink(1, 'AbCd12', 1);
+
+    expect(resolveActiveShareLink('family')?.token).toBe('family');
+    expect(resolveActiveShareLink('FAMILY')?.token).toBe('family');
+    expect(resolveActiveShareLink('Family')?.token).toBe('family');
+
+    expect(resolveActiveShareLink('AbCd12')?.token).toBe('AbCd12');
+    expect(resolveActiveShareLink('abcd12')).toBeNull();
   });
 
-  it('folds analytics beacons into the aggregate counters', () => {
-    createShareLink(1, 'AAA111', 1);
-    recordBeacon('AAA111', { event: 'enter', isReturning: false }); // unique
-    recordBeacon('AAA111', { event: 'enter', isReturning: true }); // repeat
-    recordBeacon('AAA111', { event: 'leave', durationMs: 30000, changedTimeframe: true });
-    recordBeacon('AAA111', { event: 'leave', durationMs: 10000, changedTimeframe: false });
+  it('treats a key as taken regardless of case, so a vanity cannot shadow a token', () => {
+    createShareLink(1, 'AbCd12', 1);
+    expect(shareLinkTokenExists('abcd12')).toBe(true);
+    expect(shareLinkTokenExists('ABCD12')).toBe(true);
+  });
 
-    const a = getActiveShareLink(1)!;
+  it('records beacon aggregates against the link they belong to', () => {
+    const link = createShareLink(1, 'AAA111', 1);
+    recordBeacon(link.id, { event: 'enter', isReturning: false }); // unique
+    recordBeacon(link.id, { event: 'enter', isReturning: true }); // repeat
+    recordBeacon(link.id, { event: 'leave', durationMs: 30000, changedTimeframe: true });
+    recordBeacon(link.id, { event: 'leave', durationMs: 10000, changedTimeframe: false });
+
+    const a = getShareLink(1, link.id)!;
     expect(a.uniqueVisits).toBe(1);
     expect(a.returnVisits).toBe(1);
     expect(a.durationSamples).toBe(2);
@@ -79,74 +102,83 @@ describe('share-link-repo (usage ledger, analytics, recovery)', () => {
     expect(a.timeframeChanges).toBe(1);
   });
 
-  it('revokes the active link and surfaces it under recent revoked', () => {
-    createShareLink(1, 'AAA111', 1);
-    setClanPublicShareToken(1, 'AAA111');
-    revokeActiveShareLink(1, 'disabled', 1);
+  it('ignores counters for a link id that does not exist', () => {
+    expect(() => recordVisit(9999)).not.toThrow();
+    expect(() => recordApiHit(9999)).not.toThrow();
+    expect(() => recordBeacon(9999, { event: 'enter', isReturning: false })).not.toThrow();
+  });
 
-    expect(getActiveShareLink(1)).toBeNull();
+  it('revokes one link and leaves the clan’s others live', () => {
+    const a = createShareLink(1, 'AAA111', 1);
+    const b = createShareLink(1, 'BBB222', 1);
+
+    expect(revokeShareLink(1, a.id, 'disabled', 1)).toBe(true);
+    expect(listActiveShareLinks(1).map((l) => l.token)).toEqual(['BBB222']);
+    expect(resolveActiveShareLink('AAA111')).toBeNull();
+    expect(resolveActiveShareLink('BBB222')?.id).toBe(b.id);
+
     const revoked = listRecentRevoked(1);
     expect(revoked.length).toBe(1);
     expect(revoked[0].token).toBe('AAA111');
     expect(revoked[0].revokeReason).toBe('disabled');
   });
 
-  it('recovers a disabled link, restoring it as active and mirroring the clans column', () => {
-    createShareLink(1, 'AAA111', 1);
-    setClanPublicShareToken(1, 'AAA111');
-    revokeActiveShareLink(1, 'disabled', 1);
-    setClanPublicShareToken(1, '');
-
-    const revokedId = listRecentRevoked(1)[0].id;
-    const res = recoverShareLink(1, revokedId);
-    expect(res.ok).toBe(true);
-    expect(getActiveShareLink(1)?.token).toBe('AAA111');
-    expect(getClanById(1)?.publicShareToken).toBe('AAA111');
+  it('refuses to revoke a link belonging to another clan', () => {
+    const a = createShareLink(2, 'CCC333', 1);
+    expect(revokeShareLink(1, a.id, 'disabled', 1)).toBe(false);
+    expect(resolveActiveShareLink('CCC333')).not.toBeNull();
   });
 
-  it('recovering swaps out whatever link is currently active', () => {
-    // An old link, later disabled.
-    createShareLink(1, 'OLD111', 1);
-    setClanPublicShareToken(1, 'OLD111');
-    revokeActiveShareLink(1, 'disabled', 1);
-    setClanPublicShareToken(1, '');
-    const oldId = listRecentRevoked(1)[0].id;
+  it('restores a revoked link without touching the live ones', () => {
+    const a = createShareLink(1, 'AAA111', 1);
+    createShareLink(1, 'BBB222', 1);
+    revokeShareLink(1, a.id, 'disabled', 1);
 
-    // A newer active link.
-    createShareLink(1, 'NEW222', 1);
-    setClanPublicShareToken(1, 'NEW222');
-
-    const res = recoverShareLink(1, oldId);
+    const res = restoreShareLink(1, a.id);
     expect(res.ok).toBe(true);
-    expect(getActiveShareLink(1)?.token).toBe('OLD111');
-    expect(getClanById(1)?.publicShareToken).toBe('OLD111');
-    // The previously-active NEW222 is now revoked (reason 'swapped').
-    const revokedTokens = listRecentRevoked(1, 5).map((r) => r.token);
-    expect(revokedTokens).toContain('NEW222');
+    expect(listActiveShareLinks(1).map((l) => l.token).sort()).toEqual(['AAA111', 'BBB222']);
+    expect(listRecentRevoked(1)).toEqual([]);
+
+    // Restoring an already-live link is a no-op refusal, not a silent success.
+    expect(restoreShareLink(1, a.id).ok).toBe(false);
   });
 
-  it('refuses to recover a token that is now live on another clan', () => {
-    createShareLink(1, 'DUP111', 1);
-    setClanPublicShareToken(1, 'DUP111');
-    revokeActiveShareLink(1, 'disabled', 1);
-    setClanPublicShareToken(1, '');
-    // Another clan somehow holds the same token live.
-    setClanPublicShareToken(2, 'DUP111');
+  it('renames a link without disturbing its key', () => {
+    const a = createShareLink(1, 'AAA111', 1);
+    expect(setShareLinkLabel(1, a.id, '  Discord  ')).toBe(true);
+    expect(getShareLink(1, a.id)!.label).toBe('Discord');
+    expect(getShareLink(1, a.id)!.token).toBe('AAA111');
+  });
 
-    const revokedId = listRecentRevoked(1)[0].id;
-    const res = recoverShareLink(1, revokedId);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toMatch(/elsewhere/i);
+  it('permanently deletes only a disabled link, and frees its key', () => {
+    const a = createShareLink(1, 'family', 1, { isVanity: true });
+    recordVisit(a.id); // seeds a share_link_daily row too
+
+    // A live link cannot be deleted — disabling comes first.
+    expect(deleteShareLink(1, a.id).ok).toBe(false);
+
+    revokeShareLink(1, a.id, 'disabled', 1);
+    expect(deleteShareLink(1, a.id).ok).toBe(true);
+    expect(shareLinkTokenExists('family')).toBe(false);
+    expect(listRecentRevoked(1)).toEqual([]);
+  });
+
+  it('keeps a revoked key claimed until it is deleted', () => {
+    const a = createShareLink(1, 'family', 1, { isVanity: true });
+    revokeShareLink(1, a.id, 'disabled', 1);
+    // Still taken: the URL is recoverable, so handing the key to another clan
+    // would silently repoint links people already hold.
+    expect(shareLinkTokenExists('family')).toBe(true);
   });
 
   it('deleting a clan cascades its share-link ledger + daily rollup', () => {
-    createShareLink(2, 'DELME2', 1);
-    recordVisit('DELME2'); // seeds a share_link_daily row too
+    const link = createShareLink(2, 'DELME2', 1);
+    recordVisit(link.id); // seeds a share_link_daily row too
 
     const res = deleteClan(2);
     expect(res.ok).toBe(true);
     // Both the ledger row and its daily rollup are gone (no FK violation).
     expect(shareLinkTokenExists('DELME2')).toBe(false);
-    expect(getShareLinkAnalytics(2).active).toBeNull();
+    expect(getShareLinkAnalytics(2).links).toEqual([]);
   });
 });

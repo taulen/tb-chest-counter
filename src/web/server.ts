@@ -510,10 +510,13 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // header — the public-share router applies its own headers per response.
   app.use('/api/public', createPublicShareApiRouter());
 
-  // Public share top-level token handler. Acts only on paths that match
-  // the 6-char token regex; everything else falls through to the rest
-  // of the routing table. Must be registered *before* requireAuth so
-  // anonymous visitors with the URL don't get redirected to /login.
+  // Public share top-level key handler. Acts only on single-segment paths
+  // that match the share-key regex (3-10 alphanumerics — a generated token or
+  // an admin-chosen vanity key) and aren't in RESERVED_SHARE_KEYS; everything
+  // else falls through to the rest of the routing table. Must be registered
+  // *before* requireAuth so anonymous visitors with the URL don't get
+  // redirected to /login — and *after* /login, /base.css and the public-share
+  // assets, which is why those names are reserved against vanity keys.
   app.use(publicShareTokenHandler);
 
   // Auth API (login/logout - partially public)

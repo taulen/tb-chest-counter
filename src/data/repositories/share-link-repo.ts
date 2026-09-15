@@ -4,11 +4,20 @@ import { childLogger } from '../../utils/logger.js';
 const log = childLogger('share-link-repo');
 
 /**
- * The share_links table is an append-only ledger of a clan's public
- * read-only share tokens. The live token stays authoritative on
- * clans.public_share_token (that's what /<token> resolution reads); each
- * row here mirrors one token's lifecycle — active while revoked_at IS NULL,
- * revoked otherwise — plus aggregate usage counters.
+ * share_links is the ONLY authority on what `/<key>` resolves to.
+ *
+ * It used to be a ledger mirroring one live token on clans.public_share_token,
+ * which capped a clan at a single public link. A clan now holds as many active
+ * links as it likes — one per audience (Discord, the forum, a recruiting post) —
+ * and every link carries its own counters, so "which link is actually being
+ * used" became a question the data can answer. Migration v73 dropped the clans
+ * column outright rather than keeping it as a "primary" link: two sources of
+ * truth for the same resolution is exactly the drift that column would have
+ * been.
+ *
+ * A row is live while revoked_at IS NULL and revoked otherwise; a revoked row
+ * keeps its history and can be restored or permanently deleted (which is the
+ * only way to free a vanity key for reuse).
  *
  * We keep aggregate counts + timestamps only (no per-visit rows, no IP or
  * user-agent) to preserve the share path's noindex / no-referrer / no-store
@@ -19,6 +28,10 @@ export interface ShareLink {
   id: number;
   clanId: number;
   token: string;
+  /** Admin-supplied note ("Discord", "recruiting post"). Empty when unnamed. */
+  label: string;
+  /** True when the key was chosen by an admin rather than generated. */
+  isVanity: boolean;
   createdAt: string;
   createdBy: number | null;
   revokedAt: string | null;
@@ -38,11 +51,18 @@ export interface ShareLink {
   timeframeChanges: number;
 }
 
+/** A link plus its own 30-day visit series — one card in the analytics modal. */
+export interface ShareLinkWithSeries extends ShareLink {
+  daily: { day: string; views: number }[];
+}
+
 function rowToShareLink(row: Record<string, unknown>): ShareLink {
   return {
     id: row.id as number,
     clanId: row.clan_id as number,
     token: row.token as string,
+    label: (row.label as string) || '',
+    isVanity: !!(row.is_vanity as number),
     createdAt: row.created_at as string,
     createdBy: (row.created_by as number | null) ?? null,
     revokedAt: (row.revoked_at as string | null) ?? null,
@@ -60,20 +80,26 @@ function rowToShareLink(row: Record<string, unknown>): ShareLink {
   };
 }
 
-/** Insert a new active ledger row for a freshly generated token. */
+/** Trim + cap a user-supplied label. Empty string means "unnamed". */
+export function normalizeShareLinkLabel(raw: unknown): string {
+  return typeof raw === 'string' ? raw.trim().slice(0, 60) : '';
+}
+
+/** Insert a new active link for a clan. */
 export function createShareLink(
   clanId: number,
   token: string,
   createdBy: number | null,
+  opts: { label?: string; isVanity?: boolean } = {},
 ): ShareLink {
   const db = getDb();
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      `INSERT INTO share_links (clan_id, token, created_at, created_by)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO share_links (clan_id, token, created_at, created_by, label, is_vanity)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(clanId, token, now, createdBy);
+    .run(clanId, token, now, createdBy, normalizeShareLinkLabel(opts.label), opts.isVanity ? 1 : 0);
   const created = db
     .prepare('SELECT * FROM share_links WHERE id = ?')
     .get(result.lastInsertRowid as number) as Record<string, unknown>;
@@ -81,59 +107,157 @@ export function createShareLink(
 }
 
 /**
- * Mark the clan's currently-active token as revoked. reason is one of
- * 'disabled' | 'regenerated' | 'swapped'. No-op if nothing is active.
+ * Resolve a URL key to its LIVE link row. Exact match first (generated tokens
+ * are case-sensitive, which is where their 62^6 entropy lives); a vanity key,
+ * stored lowercase, also answers to any casing a visitor types.
  */
-export function revokeActiveShareLink(
-  clanId: number,
-  reason: string,
-  userId: number | null,
-): void {
+export function resolveActiveShareLink(token: string): ShareLink | null {
+  if (!token) return null;
   const db = getDb();
-  db.prepare(
-    `UPDATE share_links
-     SET revoked_at = ?, revoked_by = ?, revoke_reason = ?
-     WHERE clan_id = ? AND revoked_at IS NULL`,
-  ).run(new Date().toISOString(), userId, reason, clanId);
-}
-
-export function getActiveShareLink(clanId: number): ShareLink | null {
-  const db = getDb();
-  const row = db
-    .prepare('SELECT * FROM share_links WHERE clan_id = ? AND revoked_at IS NULL')
-    .get(clanId) as Record<string, unknown> | undefined;
-  return row ? rowToShareLink(row) : null;
-}
-
-/** True if any ledger row (active or revoked) already holds this token. */
-export function shareLinkTokenExists(token: string): boolean {
-  const db = getDb();
-  const row = db.prepare('SELECT 1 FROM share_links WHERE token = ?').get(token);
-  return !!row;
+  const exact = db
+    .prepare('SELECT * FROM share_links WHERE token = ? AND revoked_at IS NULL')
+    .get(token) as Record<string, unknown> | undefined;
+  if (exact) return rowToShareLink(exact);
+  const vanity = db
+    .prepare(
+      'SELECT * FROM share_links WHERE is_vanity = 1 AND token = ? AND revoked_at IS NULL',
+    )
+    .get(token.toLowerCase()) as Record<string, unknown> | undefined;
+  return vanity ? rowToShareLink(vanity) : null;
 }
 
 /**
- * Count a page load of /<token>. Best-effort: bumps the ledger row's
+ * True if any row (active or revoked, any clan) already holds this key,
+ * compared case-INSENSITIVELY. Revoked rows count: their key is recoverable,
+ * so handing it to someone else would silently repoint an old URL at a
+ * different clan.
+ */
+export function shareLinkTokenExists(token: string): boolean {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT 1 FROM share_links WHERE token = ? COLLATE NOCASE')
+    .get(token);
+  return !!row;
+}
+
+/** One link, scoped to the clan that owns it (so a linkId can't cross clans). */
+export function getShareLink(clanId: number, linkId: number): ShareLink | null {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT * FROM share_links WHERE id = ? AND clan_id = ?')
+    .get(linkId, clanId) as Record<string, unknown> | undefined;
+  return row ? rowToShareLink(row) : null;
+}
+
+/** Every live link a clan holds, newest first. */
+export function listActiveShareLinks(clanId: number): ShareLink[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT * FROM share_links
+       WHERE clan_id = ? AND revoked_at IS NULL
+       ORDER BY created_at DESC, id DESC`,
+    )
+    .all(clanId) as Record<string, unknown>[];
+  return rows.map(rowToShareLink);
+}
+
+/** Revoke one link. Returns false when the id isn't this clan's or is already revoked. */
+export function revokeShareLink(
+  clanId: number,
+  linkId: number,
+  reason: string,
+  userId: number | null,
+): boolean {
+  const db = getDb();
+  const res = db
+    .prepare(
+      `UPDATE share_links
+       SET revoked_at = ?, revoked_by = ?, revoke_reason = ?
+       WHERE id = ? AND clan_id = ? AND revoked_at IS NULL`,
+    )
+    .run(new Date().toISOString(), userId, reason, linkId, clanId);
+  return res.changes > 0;
+}
+
+/** Rename (or clear the name of) one link. */
+export function setShareLinkLabel(clanId: number, linkId: number, label: string): boolean {
+  const db = getDb();
+  const res = db
+    .prepare('UPDATE share_links SET label = ? WHERE id = ? AND clan_id = ?')
+    .run(normalizeShareLinkLabel(label), linkId, clanId);
+  return res.changes > 0;
+}
+
+/**
+ * Bring a revoked link back. No swap any more — a clan can hold any number of
+ * live links, so restoring one leaves the others alone. The ledger's unique
+ * key means nobody else can have taken the token in the meantime, which is
+ * what makes this unconditional.
+ */
+export function restoreShareLink(
+  clanId: number,
+  linkId: number,
+): { ok: true; token: string } | { ok: false; reason: string } {
+  const db = getDb();
+  const link = getShareLink(clanId, linkId);
+  if (!link) return { ok: false, reason: 'Link not found' };
+  if (link.revokedAt == null) return { ok: false, reason: 'That link is already active' };
+  db.prepare(
+    `UPDATE share_links SET revoked_at = NULL, revoked_by = NULL, revoke_reason = ''
+     WHERE id = ?`,
+  ).run(linkId);
+  log.info(`Restored share link #${linkId} for clan #${clanId}`);
+  return { ok: true, token: link.token };
+}
+
+/**
+ * Permanently delete a revoked link, freeing its key for reuse — the only
+ * reason this exists, since a vanity key stays claimed for as long as any row
+ * holds it. Refuses to touch a live link: deleting one is indistinguishable
+ * from revoking it except that the history goes too.
+ */
+export function deleteShareLink(
+  clanId: number,
+  linkId: number,
+): { ok: true } | { ok: false; reason: string } {
+  const db = getDb();
+  const link = getShareLink(clanId, linkId);
+  if (!link) return { ok: false, reason: 'Link not found' };
+  if (link.revokedAt == null) {
+    return { ok: false, reason: 'Disable the link before deleting it' };
+  }
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM share_link_daily WHERE link_id = ?').run(linkId);
+    db.prepare('DELETE FROM share_links WHERE id = ?').run(linkId);
+  });
+  tx();
+  log.info(`Deleted share link #${linkId} (${link.token}) for clan #${clanId}`);
+  return { ok: true };
+}
+
+/**
+ * Count a page load of /<key>. Best-effort: bumps the row's
  * hit_count/last_used_at and the per-day rollup in one transaction, and
  * swallows any error so a counter hiccup never breaks the public page.
+ *
+ * Takes a link id rather than a token: the caller has already resolved the
+ * row (including the vanity case-fold), so re-looking-it-up by the string the
+ * visitor typed would miscount a differently-cased vanity URL.
  */
-export function recordVisit(token: string): void {
+export function recordVisit(linkId: number): void {
   try {
     const db = getDb();
-    const link = db.prepare('SELECT id FROM share_links WHERE token = ?').get(token) as
-      | { id: number }
-      | undefined;
-    if (!link) return;
     const now = new Date().toISOString();
     const day = now.slice(0, 10);
     const tx = db.transaction(() => {
       db.prepare(
         'UPDATE share_links SET hit_count = hit_count + 1, last_used_at = ? WHERE id = ?',
-      ).run(now, link.id);
+      ).run(now, linkId);
       db.prepare(
         `INSERT INTO share_link_daily (link_id, day, views) VALUES (?, ?, 1)
          ON CONFLICT(link_id, day) DO UPDATE SET views = views + 1`,
-      ).run(link.id, day);
+      ).run(linkId, day);
     });
     tx();
   } catch (err) {
@@ -145,28 +269,30 @@ export function recordVisit(token: string): void {
  * Count a data-API request (/api/public/:token/*). Best-effort — a data
  * page fires several of these per visit, so this is a secondary metric.
  */
-export function recordApiHit(token: string): void {
+export function recordApiHit(linkId: number): void {
   try {
-    const db = getDb();
-    db.prepare(
-      'UPDATE share_links SET api_hit_count = api_hit_count + 1, api_last_used_at = ? WHERE token = ?',
-    ).run(new Date().toISOString(), token);
+    getDb()
+      .prepare(
+        'UPDATE share_links SET api_hit_count = api_hit_count + 1, api_last_used_at = ? WHERE id = ?',
+      )
+      .run(new Date().toISOString(), linkId);
   } catch (err) {
     log.warn({ err }, 'recordApiHit failed (ignored)');
   }
 }
 
 /**
- * Fold a client analytics beacon into the ledger's aggregate counters.
+ * Fold a client analytics beacon into one link's aggregate counters.
  * Best-effort — swallows errors so a bad/absent beacon never surfaces. The
- * caller (public beacon route) has already validated + clamped the payload.
+ * caller (public beacon route) has already resolved the link and clamped the
+ * payload.
  *
  * `enter` events classify the viewer (new vs returning, decided client-side
  * from localStorage). `leave` events contribute a visit-duration sample and,
  * if the viewer switched day/week/month while reading, a timeframe-change tick.
  */
 export function recordBeacon(
-  token: string,
+  linkId: number,
   payload: {
     event: 'enter' | 'leave';
     isReturning?: boolean;
@@ -176,14 +302,9 @@ export function recordBeacon(
 ): void {
   try {
     const db = getDb();
-    const link = db.prepare('SELECT id FROM share_links WHERE token = ?').get(token) as
-      | { id: number }
-      | undefined;
-    if (!link) return;
-
     if (payload.event === 'enter') {
       const col = payload.isReturning ? 'return_visits' : 'unique_visits';
-      db.prepare(`UPDATE share_links SET ${col} = ${col} + 1 WHERE id = ?`).run(link.id);
+      db.prepare(`UPDATE share_links SET ${col} = ${col} + 1 WHERE id = ?`).run(linkId);
       return;
     }
 
@@ -197,14 +318,14 @@ export function recordBeacon(
            duration_samples = duration_samples + 1,
            timeframe_changes = timeframe_changes + ?
        WHERE id = ?`,
-    ).run(durationMs, tfTick, link.id);
+    ).run(durationMs, tfTick, linkId);
   } catch (err) {
     log.warn({ err }, 'recordBeacon failed (ignored)');
   }
 }
 
 /** Most-recently revoked links for a clan (for the recovery list). */
-export function listRecentRevoked(clanId: number, limit = 3): ShareLink[] {
+export function listRecentRevoked(clanId: number, limit = 5): ShareLink[] {
   const db = getDb();
   const rows = db
     .prepare(
@@ -217,77 +338,40 @@ export function listRecentRevoked(clanId: number, limit = 3): ShareLink[] {
   return rows.map(rowToShareLink);
 }
 
+/**
+ * One link's daily visit series over the trailing `days` UTC days. Sparse —
+ * missing days mean zero, and the frontend fills them.
+ */
+export function getShareLinkDaily(linkId: number, days = 30): { day: string; views: number }[] {
+  const db = getDb();
+  const cutoff = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return db
+    .prepare(
+      `SELECT day, views FROM share_link_daily
+       WHERE link_id = ? AND day >= ?
+       ORDER BY day ASC`,
+    )
+    .all(linkId, cutoff) as { day: string; views: number }[];
+}
+
 export interface ShareLinkAnalytics {
-  active: ShareLink | null;
-  daily: { day: string; views: number }[];
+  links: ShareLinkWithSeries[];
   recentRevoked: ShareLink[];
 }
 
 /**
- * Active-link analytics for the Clans settings modal: the live link, its
- * last-30-day daily visit series (sparse — gaps mean zero, the frontend
- * fills them), and up to `revokedLimit` recoverable links.
+ * Analytics for every live link a clan holds — each with its own 30-day
+ * series, which is the point of per-link counters: the modal compares the
+ * Discord link against the forum link rather than showing one merged total.
  */
-export function getShareLinkAnalytics(clanId: number, revokedLimit = 3): ShareLinkAnalytics {
-  const db = getDb();
-  const active = getActiveShareLink(clanId);
-  let daily: { day: string; views: number }[] = [];
-  if (active) {
-    // 30-day window ending today (UTC). 29 whole days back + today.
-    const cutoff = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-    daily = db
-      .prepare(
-        `SELECT day, views FROM share_link_daily
-         WHERE link_id = ? AND day >= ?
-         ORDER BY day ASC`,
-      )
-      .all(active.id, cutoff) as { day: string; views: number }[];
-  }
-  return { active, daily, recentRevoked: listRecentRevoked(clanId, revokedLimit) };
-}
-
-/**
- * Restore a previously-revoked link. Swaps it in as the active token: the
- * clan's current active link (if any) is revoked as 'swapped', the chosen
- * row is un-revoked, and its token is mirrored back onto
- * clans.public_share_token. Refuses if the token has since been reissued
- * live to another clan (astronomically unlikely, but the guard keeps the
- * clans-column uniqueness invariant intact).
- */
-export function recoverShareLink(
-  clanId: number,
-  linkId: number,
-): { ok: true; token: string } | { ok: false; reason: string } {
-  const db = getDb();
-  const link = db
-    .prepare('SELECT * FROM share_links WHERE id = ? AND clan_id = ?')
-    .get(linkId, clanId) as Record<string, unknown> | undefined;
-  if (!link) return { ok: false, reason: 'Link not found' };
-  if (link.revoked_at == null) return { ok: false, reason: 'That link is already active' };
-
-  const token = link.token as string;
-  const owner = db
-    .prepare("SELECT id FROM clans WHERE public_share_token = ?")
-    .get(token) as { id: number } | undefined;
-  if (owner && owner.id !== clanId) {
-    return { ok: false, reason: 'That link code is in use elsewhere and can no longer be restored' };
-  }
-
-  const now = new Date().toISOString();
-  const tx = db.transaction(() => {
-    db.prepare(
-      `UPDATE share_links SET revoked_at = ?, revoke_reason = 'swapped'
-       WHERE clan_id = ? AND revoked_at IS NULL`,
-    ).run(now, clanId);
-    db.prepare(
-      `UPDATE share_links SET revoked_at = NULL, revoked_by = NULL, revoke_reason = ''
-       WHERE id = ?`,
-    ).run(linkId);
-    db.prepare('UPDATE clans SET public_share_token = ? WHERE id = ?').run(token, clanId);
-  });
-  tx();
-  log.info(`Recovered share link #${linkId} for clan #${clanId}`);
-  return { ok: true, token };
+export function getShareLinkAnalytics(clanId: number, revokedLimit = 5): ShareLinkAnalytics {
+  return {
+    links: listActiveShareLinks(clanId).map((link) => ({
+      ...link,
+      daily: getShareLinkDaily(link.id),
+    })),
+    recentRevoked: listRecentRevoked(clanId, revokedLimit),
+  };
 }

@@ -160,49 +160,113 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
     });
   });
 
-  describe('public share-token lifecycle + analytics/recovery', () => {
-    it('generate → analytics → disable → recover round-trip', async () => {
-      const gen = await request(app).post('/api/clans/1/share-token');
+  describe('public share links — multiple per clan, vanity keys, analytics', () => {
+    it('add → analytics → disable → restore round-trip, other links untouched', async () => {
+      const gen = await request(app).post('/api/clans/1/share-links').send({ label: 'Discord' });
       expect(gen.status).toBe(200);
-      const token = gen.body.publicShareToken as string;
+      const token = gen.body.link.token as string;
       expect(typeof token).toBe('string');
+      expect(gen.body.link.label).toBe('Discord');
+      expect(gen.body.link.isVanity).toBe(false);
 
-      // Analytics shows the active link, no revoked history yet.
-      const a1 = await request(app).get('/api/clans/1/share-token/analytics');
+      // A second link coexists with the first — this is the whole feature.
+      const gen2 = await request(app).post('/api/clans/1/share-links').send({});
+      const token2 = gen2.body.link.token as string;
+      expect(token2).not.toBe(token);
+
+      const a1 = await request(app).get('/api/clans/1/share-links');
       expect(a1.status).toBe(200);
-      expect(a1.body.active?.token).toBe(token);
+      expect(a1.body.links.map((l: { token: string }) => l.token).sort()).toEqual(
+        [token, token2].sort(),
+      );
       expect(a1.body.recentRevoked).toEqual([]);
+      // Each live link carries its own series, not a merged one.
+      for (const l of a1.body.links) expect(Array.isArray(l.daily)).toBe(true);
 
-      // Disable revokes (not deletes) — one recoverable link remains.
-      const del = await request(app).delete('/api/clans/1/share-token');
+      // Disabling one revokes (not deletes) it and leaves the other live.
+      const linkId = gen.body.link.id as number;
+      const del = await request(app).delete(`/api/clans/1/share-links/${linkId}`);
       expect(del.status).toBe(200);
-      const a2 = await request(app).get('/api/clans/1/share-token/analytics');
-      expect(a2.body.active).toBeNull();
-      expect(a2.body.recentRevoked.length).toBe(1);
+      const a2 = await request(app).get('/api/clans/1/share-links');
+      expect(a2.body.links.map((l: { token: string }) => l.token)).toEqual([token2]);
+      expect(a2.body.recentRevoked.map((r: { token: string }) => r.token)).toEqual([token]);
 
-      // Recover brings the same token back as the active link.
-      const linkId = a2.body.recentRevoked[0].id;
-      const rec = await request(app).post('/api/clans/1/share-token/recover').send({ linkId });
+      // Restore adds it back alongside the other — no swap any more.
+      const rec = await request(app).post(`/api/clans/1/share-links/${linkId}/restore`);
       expect(rec.status).toBe(200);
-      expect(rec.body.publicShareToken).toBe(token);
-
-      const a3 = await request(app).get('/api/clans/1/share-token/analytics');
-      expect(a3.body.active?.token).toBe(token);
+      expect(rec.body.token).toBe(token);
+      const a3 = await request(app).get('/api/clans/1/share-links');
+      expect(a3.body.links.map((l: { token: string }) => l.token).sort()).toEqual(
+        [token, token2].sort(),
+      );
     });
 
-    it('regenerating revokes the previous token into history', async () => {
-      const token1 = (await request(app).post('/api/clans/1/share-token')).body.publicShareToken;
-      const token2 = (await request(app).post('/api/clans/1/share-token')).body.publicShareToken;
-      expect(token2).not.toBe(token1);
+    it('accepts a vanity key, lowercases it, and refuses a duplicate', async () => {
+      const ok = await request(app).post('/api/clans/1/share-links').send({ key: 'FamilY' });
+      expect(ok.status).toBe(200);
+      expect(ok.body.link.token).toBe('family');
+      expect(ok.body.link.isVanity).toBe(true);
 
-      const a = await request(app).get('/api/clans/1/share-token/analytics');
-      expect(a.body.active?.token).toBe(token2);
-      expect(a.body.recentRevoked.map((r: { token: string }) => r.token)).toContain(token1);
+      const dupe = await request(app).post('/api/clans/1/share-links').send({ key: 'family' });
+      expect(dupe.status).toBe(400);
+      expect(dupe.body.error).toMatch(/taken/i);
+
+      // Another clan can't claim it either — the key is a global namespace.
+      const crossClan = await request(app).post('/api/clans/2/share-links').send({ key: 'FAMILY' });
+      expect(crossClan.status).toBe(400);
     });
 
-    it('recover rejects a missing/invalid linkId', async () => {
-      const res = await request(app).post('/api/clans/1/share-token/recover').send({ linkId: 'nope' });
-      expect(res.status).toBe(400);
+    it('refuses a malformed or reserved vanity key', async () => {
+      for (const key of ['ab', 'waytoolongkey', 'has space', 'has-dash', 'under_score', 'ünï']) {
+        const res = await request(app).post('/api/clans/1/share-links').send({ key });
+        expect(res.status, `key ${key} should be refused`).toBe(400);
+      }
+      const reserved = await request(app).post('/api/clans/1/share-links').send({ key: 'login' });
+      expect(reserved.status).toBe(400);
+      expect(reserved.body.error).toMatch(/reserved/i);
+    });
+
+    it('renames a link without changing its key', async () => {
+      const gen = await request(app).post('/api/clans/1/share-links').send({ key: 'family' });
+      const linkId = gen.body.link.id as number;
+
+      const ren = await request(app)
+        .patch(`/api/clans/1/share-links/${linkId}`)
+        .send({ label: 'Recruiting post' });
+      expect(ren.status).toBe(200);
+
+      const a = await request(app).get('/api/clans/1/share-links');
+      expect(a.body.links[0].label).toBe('Recruiting post');
+      expect(a.body.links[0].token).toBe('family');
+    });
+
+    it('permanent delete only applies to a disabled link, and frees the key', async () => {
+      const gen = await request(app).post('/api/clans/1/share-links').send({ key: 'family' });
+      const linkId = gen.body.link.id as number;
+
+      // Live links can't be deleted outright.
+      const tooSoon = await request(app).delete(`/api/clans/1/share-links/${linkId}/permanent`);
+      expect(tooSoon.status).toBe(409);
+
+      await request(app).delete(`/api/clans/1/share-links/${linkId}`);
+      // Still claimed while it sits in the recovery list.
+      const stillTaken = await request(app).post('/api/clans/1/share-links').send({ key: 'family' });
+      expect(stillTaken.status).toBe(400);
+
+      const gone = await request(app).delete(`/api/clans/1/share-links/${linkId}/permanent`);
+      expect(gone.status).toBe(200);
+      const reclaimed = await request(app).post('/api/clans/1/share-links').send({ key: 'family' });
+      expect(reclaimed.status).toBe(200);
+    });
+
+    it('rejects a non-numeric linkId and refuses another clan’s link', async () => {
+      const bad = await request(app).post('/api/clans/1/share-links/nope/restore');
+      expect(bad.status).toBe(400);
+
+      const other = await request(app).post('/api/clans/2/share-links').send({});
+      const otherId = other.body.link.id as number;
+      const crossClan = await request(app).delete(`/api/clans/1/share-links/${otherId}`);
+      expect(crossClan.status).toBe(404);
     });
   });
 

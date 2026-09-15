@@ -5,13 +5,28 @@ import {
   getClanById,
   getClanByIdIncludingDeleted,
   getClanBySlug,
-  getClanByPublicShareToken,
   listClans,
   listDeletedClans,
   restoreDeletedClan,
   softDeleteClan,
 } from '../../src/data/repositories/clan-repo.js';
+import {
+  createShareLink,
+  resolveActiveShareLink,
+} from '../../src/data/repositories/share-link-repo.js';
 import { makeTestDb, seedTwoClans, seedChestData } from '../helpers/test-db.js';
+
+/**
+ * What the public `/<key>` route actually does: resolve the key through the
+ * share_links ledger, then look the clan up with the LIVE filter. A hidden
+ * clan's link has to go dark even though its ledger row is untouched — that
+ * second step is the whole guard, so the test exercises both halves rather
+ * than a repo function that only does one.
+ */
+function resolveShareClan(token: string) {
+  const link = resolveActiveShareLink(token);
+  return link ? getClanById(link.clanId) : null;
+}
 
 /**
  * Soft delete has exactly one failure mode worth testing for, and it is not
@@ -45,7 +60,7 @@ describe('softDeleteClan', () => {
     seedTwoClans();
     seedChestData(1);
     seedChestData(2);
-    getDb().prepare('UPDATE clans SET public_share_token = ? WHERE id = 2').run(TOKEN);
+    createShareLink(2, TOKEN, null);
   });
 
   afterEach(() => ctx.cleanup());
@@ -64,7 +79,7 @@ describe('softDeleteClan', () => {
     expect(listClans({ activeOnly: true }).map((c) => c.id)).toEqual([1]);
     expect(getClanById(2)).toBeNull();
     expect(getClanBySlug('clan-2')).toBeNull();
-    expect(getClanByPublicShareToken(TOKEN)).toBeNull();
+    expect(resolveShareClan(TOKEN)).toBeNull();
     expect(clanCount()).toBe(1);
 
     // Except the two deliberate ways back in.
@@ -146,7 +161,7 @@ describe('restoreDeletedClan', () => {
     seedTwoClans();
     seedChestData(1);
     seedChestData(2);
-    getDb().prepare('UPDATE clans SET public_share_token = ? WHERE id = 2').run(TOKEN);
+    createShareLink(2, TOKEN, null);
   });
 
   afterEach(() => ctx.cleanup());
@@ -164,7 +179,7 @@ describe('restoreDeletedClan', () => {
     // invisible to the scan loop, which is the subtler half of "back".
     expect(clan!.isActive).toBe(true);
     expect(listClans({ activeOnly: true }).map((c) => c.id)).toEqual([1, 2]);
-    expect(getClanByPublicShareToken(TOKEN)?.id).toBe(2);
+    expect(resolveShareClan(TOKEN)?.id).toBe(2);
     expect(countChests(2)).toBe(chestsBefore);
     expect(listDeletedClans()).toEqual([]);
   });

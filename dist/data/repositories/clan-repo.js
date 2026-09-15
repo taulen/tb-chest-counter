@@ -6,8 +6,6 @@ exports.listDeletedClans = listDeletedClans;
 exports.getClanById = getClanById;
 exports.getClanByIdIncludingDeleted = getClanByIdIncludingDeleted;
 exports.getClanBySlug = getClanBySlug;
-exports.getClanByPublicShareToken = getClanByPublicShareToken;
-exports.setClanPublicShareToken = setClanPublicShareToken;
 exports.clanCount = clanCount;
 exports.createClan = createClan;
 exports.renameClan = renameClan;
@@ -62,7 +60,6 @@ function rowToClan(row) {
         ctShareCode: row.ct_share_code || '',
         ctPollIntervalHours: row.ct_poll_interval_hours ?? null,
         ctBackfillWeeks: row.ct_backfill_weeks ?? null,
-        publicShareToken: row.public_share_token || '',
         lastDigestAt: row.last_digest_at || '',
         lastDigestChannelError: row.last_digest_channel_error || '',
         lastDigestDmError: row.last_digest_dm_error || '',
@@ -131,19 +128,6 @@ function getClanBySlug(slug) {
     const db = (0, database_js_1.getDb)();
     const row = db.prepare(`SELECT * FROM clans WHERE slug = ? AND ${LIVE}`).get(slug);
     return row ? rowToClan(row) : null;
-}
-function getClanByPublicShareToken(token) {
-    if (!token)
-        return null;
-    const db = (0, database_js_1.getDb)();
-    const row = db
-        .prepare(`SELECT * FROM clans WHERE public_share_token = ? AND ${LIVE}`)
-        .get(token);
-    return row ? rowToClan(row) : null;
-}
-function setClanPublicShareToken(id, token) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('UPDATE clans SET public_share_token = ? WHERE id = ?').run(token, id);
 }
 /** Live clans only — this is what the "cannot delete the last clan" guard reads. */
 function clanCount() {

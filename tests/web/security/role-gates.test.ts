@@ -136,9 +136,9 @@ import * as userRepo from '../../../src/data/repositories/user-repo.js';
 import {
   getClanById,
   restoreDeletedClan,
-  setClanPublicShareToken,
   softDeleteClan,
 } from '../../../src/data/repositories/clan-repo.js';
+import { createShareLink } from '../../../src/data/repositories/share-link-repo.js';
 import { getDb } from '../../../src/data/database.js';
 
 type Persona = 'super' | 'admin1' | 'admin2' | 'user1' | 'orphan' | 'unauth';
@@ -344,8 +344,8 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'PUT /clans/1/resources', method: 'put', path: '/api/clans/1/resources', body: { enabled: true } },
       { name: 'PUT /clans/1/inactivity', method: 'put', path: '/api/clans/1/inactivity', body: { enabled: true } },
       { name: 'PUT /clans/1/leaderboard-goal', method: 'put', path: '/api/clans/1/leaderboard-goal', body: { enabled: true, weeklyPoints: 25000 } },
-      { name: 'POST /clans/1/share-token', method: 'post', path: '/api/clans/1/share-token', body: {} },
-      { name: 'DELETE /clans/1/share-token', method: 'delete', path: '/api/clans/1/share-token' },
+      { name: 'GET /clans/1/share-links', method: 'get', path: '/api/clans/1/share-links' },
+      { name: 'POST /clans/1/share-links', method: 'post', path: '/api/clans/1/share-links', body: {} },
     ];
 
     for (const ep of CLAN_ADMIN) {
@@ -663,15 +663,20 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expect(failedForAdmin!.errorPhase).toBe('Navigating to Gifts tab');
     });
 
-    it('GET /clans withholds publicShareToken from a plain member, keeps it for admins', async () => {
-      setClanPublicShareToken(1, 'aAaA11');
+    it('GET /clans withholds share links from a plain member, keeps them for admins', async () => {
+      createShareLink(1, 'aAaA11', null);
 
       const asUser = await send('get', '/api/clans', 'user1');
       expect(asUser.status).toBe(200);
-      expect(asUser.body.clans[0]).not.toHaveProperty('publicShareToken');
+      // Each key grants anonymous read access, so a member who can't manage
+      // them must not be handed one to leak.
+      expect(asUser.body.clans[0]).not.toHaveProperty('shareLinks');
+      expect(JSON.stringify(asUser.body)).not.toContain('aAaA11');
 
       const asAdmin = await send('get', '/api/clans', 'admin1');
-      expect(asAdmin.body.clans[0].publicShareToken).toBe('aAaA11');
+      expect(asAdmin.body.clans[0].shareLinks.map((l: { token: string }) => l.token)).toEqual([
+        'aAaA11',
+      ]);
     });
   });
 

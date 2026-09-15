@@ -4,8 +4,9 @@
 //   app.use(publicShareTokenHandler)          // top-level token page
 // Both are mounted AHEAD of requireAuth, so anyone with the URL hits
 // them. This file locks down the guarantees the audit relied on:
-//   1. every route validates the 6-char token and resolves it to exactly
-//      one clan; a bad/absent/revoked token is 404 (never a default clan).
+//   1. every route validates the share key and resolves it through the
+//      share_links ledger to exactly one clan; a bad/absent/revoked key is
+//      404 (never a default clan). A clan may hold several live keys.
 //   2. the acting clan is pinned by the TOKEN, never by client input — a
 //      ?clanId query can't pivot to another clan's data.
 //   3. only safe read-only aggregates are exposed; no secrets/PII.
@@ -19,18 +20,18 @@ import {
   createPublicShareApiRouter,
   publicShareTokenHandler,
 } from '../../../src/web/routes/public-share.js';
-import {
-  setClanPublicShareToken,
-  setClanChestTrackerSettings,
-} from '../../../src/data/repositories/clan-repo.js';
+import { setClanChestTrackerSettings } from '../../../src/data/repositories/clan-repo.js';
 import {
   createShareLink,
-  getActiveShareLink,
+  revokeShareLink,
+  getShareLink,
 } from '../../../src/data/repositories/share-link-repo.js';
 import { insertSnapshot } from '../../../src/data/repositories/external-repo.js';
 import { makeTestDb, seedTwoClans, seedChestData } from '../../helpers/test-db.js';
 
-const TOKEN_A = 'aAaA11'; // clan 1 — matches SHARE_TOKEN_REGEX /^[A-Za-z0-9]{6}$/
+const TOKEN_A = 'aAaA11'; // clan 1 — a generated token, case-sensitive
+const VANITY_A = 'family'; // clan 1's second live link, an admin-chosen key
+let linkIdA = 0;
 const CODE_A = 'CTCODEA';
 const CODE_B = 'CTCODEB';
 
@@ -63,8 +64,10 @@ describe('public share surface (anonymous, token-gated)', () => {
     // clan and clan 2's rows must never surface through clan 1's token).
     seedChestData(1);
     seedChestData(2);
-    // Only clan 1 gets a public share token; clan 2 stays private.
-    setClanPublicShareToken(1, TOKEN_A);
+    // Only clan 1 gets public share links; clan 2 stays private. It holds
+    // two at once, which is the point: both must resolve to the same clan.
+    linkIdA = createShareLink(1, TOKEN_A, null).id;
+    createShareLink(1, VANITY_A, null, { isVanity: true });
 
     app = express();
     app.use(express.json());
@@ -100,17 +103,33 @@ describe('public share surface (anonymous, token-gated)', () => {
     });
 
     it('malformed token (wrong length / chars) never resolves', async () => {
-      // Too short and with a symbol — fails SHARE_TOKEN_REGEX, so resolveClan
+      // Too long and with symbols — fails SHARE_TOKEN_REGEX, so resolveShare
       // returns null before any DB hit.
-      for (const bad of ['abc', 'toolong7', 'ab_12$']) {
+      for (const bad of ['waytoolongkey', 'ab_12$', 'ab']) {
         const r = await request(app).get(`/api/public/${bad}/clan`);
         expect([400, 404], `${bad} → ${r.status}`).toContain(r.status);
       }
     });
 
-    it('revoked token stops resolving (disable clears the column)', async () => {
-      setClanPublicShareToken(1, '');
+    it('revoking one link stops it resolving and leaves the other live', async () => {
+      revokeShareLink(1, linkIdA, 'disabled', null);
       expect((await request(app).get('/api/public/aAaA11/clan')).status).toBe(404);
+      expect((await request(app).get(`/api/public/${VANITY_A}/clan`)).status).toBe(200);
+    });
+
+    it('a vanity key resolves in any case; a generated token only exactly', async () => {
+      expect((await request(app).get('/api/public/FAMILY/clan')).status).toBe(200);
+      expect((await request(app).get('/api/public/Family/clan')).status).toBe(200);
+      // Lower-casing a generated token must NOT resolve — its 62^6 entropy
+      // lives in the case, and a case-fold would throw most of it away.
+      expect((await request(app).get('/api/public/aaaa11/clan')).status).toBe(404);
+    });
+
+    it('a reserved path is never claimed as a share key', async () => {
+      // publicShareTokenHandler sits ahead of the whole routing table, so a
+      // segment the app owns has to fall through rather than 404 as a bad key.
+      const r = await request(app).get('/login');
+      expect(r.status).toBe(418); // hit the fall-through sentinel
     });
 
     it('token page: valid → 200 HTML, bad → 404 HTML, non-token path falls through', async () => {
@@ -121,6 +140,9 @@ describe('public share surface (anonymous, token-gated)', () => {
 
       const bad = await request(app).get('/ZZ9zz9'); // valid format, unowned
       expect(bad.status).toBe(404);
+
+      const vanity = await request(app).get(`/${VANITY_A}`);
+      expect(vanity.status).toBe(200);
 
       const notToken = await request(app).get('/some/deeper/path');
       expect(notToken.status).toBe(418); // hit the fall-through sentinel
@@ -142,10 +164,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       expect(unowned.status).toBe(204);
     });
 
-    it('folds counters into the ledger without counting as an API hit', async () => {
-      // The suite seeds the token straight onto clans; add a matching ledger
-      // row so the beacon has somewhere to land.
-      createShareLink(1, TOKEN_A, null);
+    it('folds counters into the link it was fired from, not an API hit', async () => {
       await request(app)
         .post('/api/public/aAaA11/beacon')
         .send({ event: 'enter', isReturning: false });
@@ -153,11 +172,11 @@ describe('public share surface (anonymous, token-gated)', () => {
         .post('/api/public/aAaA11/beacon')
         .send({ event: 'leave', durationMs: 5000, changedTimeframe: true });
 
-      const link = getActiveShareLink(1)!;
+      const link = getShareLink(1, linkIdA)!;
       expect(link.uniqueVisits).toBe(1);
       expect(link.durationSamples).toBe(1);
       expect(link.timeframeChanges).toBe(1);
-      // The beacon bypasses resolveClan(), so it must NOT bump apiHitCount.
+      // The beacon bypasses resolveShare(), so it must NOT bump apiHitCount.
       expect(link.apiHitCount).toBe(0);
     });
   });
@@ -191,7 +210,7 @@ describe('public share surface (anonymous, token-gated)', () => {
         'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardWeeklyGoalPoints',
       ]);
       const raw = JSON.stringify(r.body);
-      expect(raw).not.toContain('aAaA11'); // publicShareToken not echoed
+      expect(raw).not.toContain('aAaA11'); // the share key is not echoed
       expect(raw).not.toContain(CODE_A); // raw ct share code downgraded to boolean
       expect(r.body.ctEnabled).toBe(true);
     });

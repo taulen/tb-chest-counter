@@ -341,33 +341,71 @@ export async function renderClans(el, refreshClanIndicator) {
       } catch {
         notify('Save failed.', 'Leaderboard goal');
       }
-    } else if (action === 'clan-share-generate' && clanId) {
-      // Regenerate was removed: to rotate a link, Disable (recoverable) then
-      // Generate a fresh one. Generate is only shown when no link is active.
+    } else if (action === 'clan-share-create' && clanId) {
+      // A clan holds as many live links as it wants, so this only ever ADDS
+      // one — rotating a link is "add the replacement, disable the old one
+      // once it has gone quiet", which never strands anyone mid-flight.
+      const keyEl = el.querySelector(`#clan-share-key-${clanId}`);
+      const labelEl = el.querySelector(`#clan-share-label-${clanId}`);
+      const body = {
+        key: keyEl ? keyEl.value.trim() : '',
+        label: labelEl ? labelEl.value.trim() : '',
+      };
+      target.disabled = true;
       try {
-        const r = await fetch(`/api/clans/${clanId}/share-token`, { method: 'POST' });
+        const r = await fetch(`/api/clans/${clanId}/share-links`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Failed to generate share link', 'Share link');
+        if (!r.ok) {
+          target.disabled = false;
+          return notify(j.error || 'Failed to create share link', 'Share link');
+        }
         renderClans(el, refreshClanIndicator);
       } catch {
-        notify('Failed to generate share link.', 'Share link');
+        target.disabled = false;
+        notify('Failed to create share link.', 'Share link');
+      }
+    } else if (action === 'clan-share-rename' && clanId) {
+      const linkId = Number.parseInt(target.getAttribute('data-link-id'), 10);
+      if (!Number.isInteger(linkId)) return;
+      const name = await promptDialog('Name this link — for your own reference only; visitors never see it.', {
+        title: 'Name share link',
+        defaultValue: target.getAttribute('data-label') || '',
+      });
+      if (name === null) return;
+      try {
+        const r = await fetch(`/api/clans/${clanId}/share-links/${linkId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: name }),
+        });
+        const j = await r.json();
+        if (!r.ok) return notify(j.error || 'Rename failed', 'Share link');
+        renderClans(el, refreshClanIndicator);
+      } catch {
+        notify('Rename failed.', 'Share link');
       }
     } else if (action === 'clan-share-disable' && clanId) {
       // Two-step confirm. The first click arms the button ("Click again to
       // confirm") for a few seconds; only a second click opens the dialog.
       // Guards against a stray click wiping a link others may be using.
+      const linkId = Number.parseInt(target.getAttribute('data-link-id'), 10);
+      if (!Number.isInteger(linkId)) return;
       if (target.dataset.armed !== '1') {
         armDisableButton(target);
         return;
       }
       disarmButton(target);
       const ok = await confirmDialog(
-        'Disable the share link? The URL stops working immediately, but the link keeps its history and can be restored later from “Analytics & history”.',
+        'Disable this share link? The URL stops working immediately and the clan’s other links are unaffected. It keeps its history and can be restored later from “Analytics & history”.',
         { title: 'Disable share link', confirmLabel: 'Disable', danger: true },
       );
       if (!ok) return;
       try {
-        const r = await fetch(`/api/clans/${clanId}/share-token`, { method: 'DELETE' });
+        const r = await fetch(`/api/clans/${clanId}/share-links/${linkId}`, { method: 'DELETE' });
         const j = await r.json();
         if (!r.ok) return notify(j.error || 'Failed to disable share link', 'Share link');
         renderClans(el, refreshClanIndicator);
@@ -377,7 +415,9 @@ export async function renderClans(el, refreshClanIndicator) {
     } else if (action === 'clan-share-analytics' && clanId) {
       openShareAnalytics(clanId, el, refreshClanIndicator);
     } else if (action === 'clan-share-copy' && clanId) {
-      const field = el.querySelector(`#clan-share-url-${clanId}`);
+      // The pill is per-link now, so copy from the one that was clicked —
+      // a per-clan id would always have copied the first link in the list.
+      const field = target.closest('.share-url-pill');
       if (!field) return;
       const url = field.getAttribute('data-share-url') || '';
       try {
@@ -990,30 +1030,26 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         <details class="clan-subsection">
         <summary class="clan-subsection-summary"><h3>Public share link</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">Anyone with this URL can view this clan's leaderboard${clan.ctShareCode ? ' and ChestTracker tab' : ''} — no login required. Disabling stops the URL immediately; you can restore it later from Analytics &amp; history, or generate a fresh one.</p>
-        ${clan.publicShareToken ? `
-        <div class="inline-form-row share-url-row">
-          <div
-            id="clan-share-url-${clan.id}"
-            class="share-url-pill"
-            data-action="clan-share-copy"
-            data-clan-id="${clan.id}"
-            data-share-url="${escapeHtml(window.location.origin + '/' + clan.publicShareToken)}"
-            title="Click to copy"
-            role="button"
-            tabindex="0"
-          >
-            <span class="share-url-icon" aria-hidden="true">${COPY_ICON_SVG}</span>
-            <span class="share-url-text">${escapeHtml(window.location.origin + '/' + clan.publicShareToken)}</span>
-            <span class="share-url-hint" aria-hidden="true">Click to copy</span>
-          </div>
-          <button class="btn btn-danger" data-action="clan-share-disable" data-clan-id="${clan.id}">Disable</button>
+        <p class="muted-copy mb-8">Anyone with one of these URLs can view this clan's leaderboard${clan.ctShareCode ? ' and ChestTracker tab' : ''} — no login required. Each link counts its own visits, so give every place you post one its own link and Analytics will tell you which is actually being used. Disabling a link stops that URL immediately and leaves the others alone; you can restore it later from Analytics &amp; history.</p>
+        ${(clan.shareLinks || []).length ? `
+        <div class="share-link-list">
+          ${(clan.shareLinks || []).map((link) => shareLinkRowHtml(clan.id, link)).join('')}
         </div>
         ` : `
-        <div class="actions">
-          <button class="btn btn-primary" data-action="clan-share-generate" data-clan-id="${clan.id}">Generate share link</button>
-        </div>
+        <p class="muted-copy share-link-empty">No share links yet.</p>
         `}
+        <div class="inline-form-row share-add-row mt-8">
+          <div>
+            <label for="clan-share-key-${clan.id}">Custom key (optional)</label>
+            <input id="clan-share-key-${clan.id}" class="input" type="text" maxlength="10" placeholder="e.g. family" autocomplete="off" spellcheck="false">
+          </div>
+          <div>
+            <label for="clan-share-label-${clan.id}">Name (optional)</label>
+            <input id="clan-share-label-${clan.id}" class="input" type="text" maxlength="60" placeholder="e.g. Discord" autocomplete="off">
+          </div>
+          <button class="btn btn-primary" data-action="clan-share-create" data-clan-id="${clan.id}">Add link</button>
+        </div>
+        <p class="muted-copy mt-8">Leave the key blank for a random one. A custom key is 3&ndash;10 characters, letters a&ndash;z and digits 0&ndash;9 only, and can't be changed once created &mdash; people already hold the URL.</p>
         <div class="share-secondary-actions">
           <button class="btn btn-ghost btn-sm" data-action="clan-share-analytics" data-clan-id="${clan.id}">${CHART_ICON_SVG}<span>Analytics &amp; history</span></button>
         </div>
@@ -1046,7 +1082,44 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
   `;
 }
 
-// ─── Public share link: two-step disable + analytics/recovery modal ───
+// ─── Public share links: per-link rows, two-step disable, analytics modal ───
+
+/**
+ * One live link on the clan card: a click-to-copy URL pill, its name and
+ * visit count, and per-link rename/disable buttons.
+ *
+ * The visit count rides along here rather than living only in the analytics
+ * modal because it is the reason several links exist at all — seeing "0
+ * visits" next to the link you pasted somewhere is the signal you wanted.
+ */
+function shareLinkRowHtml(clanId, link) {
+  const url = window.location.origin + '/' + link.token;
+  return `
+    <div class="share-link-row">
+      <div
+        class="share-url-pill"
+        data-action="clan-share-copy"
+        data-clan-id="${clanId}"
+        data-share-url="${escapeHtml(url)}"
+        title="Click to copy"
+        role="button"
+        tabindex="0"
+      >
+        <span class="share-url-icon" aria-hidden="true">${COPY_ICON_SVG}</span>
+        <span class="share-url-text">${escapeHtml(url)}</span>
+        <span class="share-url-hint" aria-hidden="true">Click to copy</span>
+      </div>
+      <div class="share-link-side">
+        <span class="share-link-name">${link.label ? escapeHtml(link.label) : '<span class="muted-copy">Unnamed</span>'}</span>
+        <span class="share-link-count muted-copy">${link.hitCount} visit${link.hitCount === 1 ? '' : 's'}</span>
+      </div>
+      <div class="share-link-actions">
+        <button class="btn btn-sm" data-action="clan-share-rename" data-clan-id="${clanId}" data-link-id="${link.id}" data-label="${escapeHtml(link.label || '')}">Name</button>
+        <button class="btn btn-danger btn-sm" data-action="clan-share-disable" data-clan-id="${clanId}" data-link-id="${link.id}">Disable</button>
+      </div>
+    </div>`;
+}
+
 
 /**
  * Arm the Disable button as the first step of the two-step confirm. It
@@ -1135,41 +1208,49 @@ function formatDuration(ms) {
 }
 
 function renderShareAnalytics(data, opts = {}) {
-  const active = data?.active || null;
+  const links = Array.isArray(data?.links) ? data.links : [];
   const revoked = Array.isArray(data?.recentRevoked) ? data.recentRevoked : [];
   const origin = window.location.origin;
   const banner = opts.banner
     ? `<div class="sa-banner">${escapeHtml(opts.banner)}</div>`
     : '';
 
-  let activeHtml;
-  if (active) {
-    const url = origin + '/' + active.token;
-    const avgVisit = active.durationSamples > 0
-      ? formatDuration(active.durationMsTotal / active.durationSamples)
-      : '—';
-    activeHtml = `
+  // One card per live link. Splitting the stats per link is the whole point of
+  // allowing several: a merged total can't tell you which posting works.
+  const activeHtml = links.length
+    ? links.map((link) => {
+        const url = origin + '/' + link.token;
+        const avgVisit = link.durationSamples > 0
+          ? formatDuration(link.durationMsTotal / link.durationSamples)
+          : '—';
+        return `
       <div class="sa-active">
-        <div class="sa-url" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
-        <div class="sa-stats">
-          ${saStat('Visits', String(active.hitCount), 'Total times the page was opened')}
-          ${saStat('Unique visitors', String(active.uniqueVisits), 'First-time viewers (best-effort, per browser)')}
-          ${saStat('Repeat views', String(active.returnVisits), 'Views from returning viewers')}
-          ${saStat('Avg. visit', avgVisit, 'Average time spent on the page')}
-          ${saStat('Timeframe switches', String(active.timeframeChanges), 'Visits where the viewer changed day/week/month')}
-          ${saStat('Last viewed', active.lastUsedAt ? formatRelativeTime(active.lastUsedAt) : 'never')}
-          ${saStat('Created', formatRelativeTime(active.createdAt))}
-          ${saStat('Data requests', String(active.apiHitCount), 'Background API calls the page made')}
+        <div class="sa-head">
+          <div class="sa-url" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
+          ${link.label ? `<span class="sa-tag">${escapeHtml(link.label)}</span>` : ''}
+          ${link.isVanity ? '<span class="sa-tag sa-tag-muted">custom key</span>' : ''}
         </div>
-        ${buildSparkline(data.daily)}
-        <p class="muted-copy sa-footnote">Unique/repeat, average visit and timeframe switches are best-effort — they need JavaScript and a completed page view, so they under-count vs total Visits.</p>
+        <div class="sa-stats">
+          ${saStat('Visits', String(link.hitCount), 'Total times this link was opened')}
+          ${saStat('Unique visitors', String(link.uniqueVisits), 'First-time viewers (best-effort, per browser)')}
+          ${saStat('Repeat views', String(link.returnVisits), 'Views from returning viewers')}
+          ${saStat('Avg. visit', avgVisit, 'Average time spent on the page')}
+          ${saStat('Timeframe switches', String(link.timeframeChanges), 'Visits where the viewer changed day/week/month')}
+          ${saStat('Last viewed', link.lastUsedAt ? formatRelativeTime(link.lastUsedAt) : 'never')}
+          ${saStat('Created', formatRelativeTime(link.createdAt))}
+          ${saStat('Data requests', String(link.apiHitCount), 'Background API calls the page made')}
+        </div>
+        ${buildSparkline(link.daily)}
       </div>`;
-  } else {
-    activeHtml = `
+      }).join('')
+    : `
       <div class="sa-empty">
-        <p class="muted-copy">No active share link right now.${revoked.length ? ' Restore a recent one below, or generate a fresh link from the settings panel.' : ' Generate one from the settings panel to start sharing.'}</p>
+        <p class="muted-copy">No active share links right now.${revoked.length ? ' Restore a recent one below, or add a fresh link from the settings panel.' : ' Add one from the settings panel to start sharing.'}</p>
       </div>`;
-  }
+
+  const footnote = links.length
+    ? '<p class="muted-copy sa-footnote">Unique/repeat, average visit and timeframe switches are best-effort — they need JavaScript and a completed page view, so they under-count vs total Visits.</p>'
+    : '';
 
   const historyRows = revoked.length
     ? revoked
@@ -1177,82 +1258,109 @@ function renderShareAnalytics(data, opts = {}) {
           (r) => `
         <div class="sa-hist-row">
           <div class="sa-hist-main">
-            <span class="sa-hist-token">${escapeHtml(maskShareToken(r.token))}</span>
-            <span class="sa-hist-meta">${r.hitCount} visit${r.hitCount === 1 ? '' : 's'} · disabled ${escapeHtml(formatRelativeTime(r.revokedAt))}</span>
+            <span class="sa-hist-token">${escapeHtml(r.isVanity ? r.token : maskShareToken(r.token))}</span>
+            <span class="sa-hist-meta">${r.label ? escapeHtml(r.label) + ' · ' : ''}${r.hitCount} visit${r.hitCount === 1 ? '' : 's'} · disabled ${escapeHtml(formatRelativeTime(r.revokedAt))}</span>
           </div>
-          <button class="btn btn-sm" data-action="share-recover" data-link-id="${r.id}">Recover</button>
+          <div class="sa-hist-actions">
+            <button class="btn btn-sm" data-action="share-recover" data-link-id="${r.id}">Restore</button>
+            <button class="btn btn-danger btn-sm" data-action="share-forget" data-link-id="${r.id}">Delete</button>
+          </div>
         </div>`,
         )
         .join('')
-    : '<p class="muted-copy sa-hist-empty">No disabled links to recover.</p>';
+    : '<p class="muted-copy sa-hist-empty">No disabled links.</p>';
 
   return `
     <div class="share-analytics">
       ${banner}
       ${activeHtml}
+      ${footnote}
       <div class="sa-history">
-        <h4 class="sa-history-title">Recently disabled</h4>
-        <p class="muted-copy sa-history-sub">Restore an accidentally disabled link — its old URL starts working again. Restoring swaps out the current active link.</p>
+        <h4 class="sa-history-title">Disabled links</h4>
+        <p class="muted-copy sa-history-sub">Restore an accidentally disabled link — its old URL starts working again, alongside whatever links are already live. Deleting one discards its history and frees its key for reuse; until then the key stays claimed so an old URL can never be repointed at someone else.</p>
         ${historyRows}
       </div>
     </div>`;
 }
 
 /**
- * Open the analytics + recovery modal for a clan's share link. Fetches usage
- * stats + recent revoked links, renders them, and wires the Recover buttons
- * (which re-fetch and re-render both the modal and the underlying card).
+ * Open the analytics + recovery modal for a clan's share links. Fetches every
+ * live link with its own 30-day series plus the recently disabled ones, then
+ * wires the Restore / Delete buttons (which re-fetch and re-render both the
+ * modal and the underlying card).
  */
 async function openShareAnalytics(clanId, el, refreshClanIndicator) {
-  let data;
+  const load = () =>
+    fetch(`/api/clans/${clanId}/share-links`).then((r) => r.json().then((j) => ({ ok: r.ok, j })));
+
+  let first;
   try {
-    const r = await fetch(`/api/clans/${clanId}/share-token/analytics`);
-    data = await r.json();
-    if (!r.ok) return notify(data.error || 'Failed to load analytics', 'Share link');
+    first = await load();
+    if (!first.ok) return notify(first.j.error || 'Failed to load analytics', 'Share link');
   } catch {
     return notify('Failed to load share link analytics.', 'Share link');
   }
   const modal = contentModal({
-    title: 'Public share link · analytics & history',
-    html: renderShareAnalytics(data),
+    title: 'Public share links · analytics & history',
+    html: renderShareAnalytics(first.j),
     wide: true,
   });
   if (!modal) return;
 
   modal.content.addEventListener('click', async (ev) => {
-    const btn = ev.target.closest('[data-action="share-recover"]');
+    const btn = ev.target.closest('[data-action="share-recover"], [data-action="share-forget"]');
     if (!btn) return;
     const linkId = Number.parseInt(btn.getAttribute('data-link-id'), 10);
     if (!Number.isInteger(linkId)) return;
+    const forget = btn.getAttribute('data-action') === 'share-forget';
+
+    if (forget) {
+      const ok = await confirmDialog(
+        'Delete this link permanently? Its visit history is discarded and its key becomes available again — including to another clan.',
+        { title: 'Delete share link', confirmLabel: 'Delete', danger: true },
+      );
+      if (!ok) return;
+    }
+
     btn.disabled = true;
+    const url = forget
+      ? `/api/clans/${clanId}/share-links/${linkId}/permanent`
+      : `/api/clans/${clanId}/share-links/${linkId}/restore`;
     try {
-      const r = await fetch(`/api/clans/${clanId}/share-token/recover`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ linkId }),
-      });
+      const r = await fetch(url, { method: forget ? 'DELETE' : 'POST' });
       const j = await r.json();
       if (!r.ok) {
-        notify(j.error || 'Recover failed', 'Share link');
+        notify(j.error || (forget ? 'Delete failed' : 'Restore failed'), 'Share link');
         btn.disabled = false;
         return;
       }
-      const restoredUrl = j.publicShareToken
-        ? `${window.location.origin}/${j.publicShareToken}`
-        : '';
-      notify(restoredUrl ? `Restored — ${restoredUrl} is live again.` : 'Share link restored.', 'Share link');
-      // Re-fetch so the modal shows the restored link as active (with a
-      // success banner) and the history reflects the swap; also re-render the
-      // page card underneath so its URL pill updates.
+      const restoredUrl = !forget && j.token ? `${window.location.origin}/${j.token}` : '';
+      notify(
+        forget
+          ? 'Link deleted — its key is free again.'
+          : restoredUrl
+            ? `Restored — ${restoredUrl} is live again.`
+            : 'Share link restored.',
+        'Share link',
+      );
+      // Re-fetch so the modal shows the restored link among the active ones
+      // (with a success banner) and the history reflects the change; also
+      // re-render the page card underneath so its link list updates.
       try {
-        const fresh = await fetch(`/api/clans/${clanId}/share-token/analytics`).then((rr) => rr.json());
-        modal.setHtml(renderShareAnalytics(fresh, { banner: '✓ Restored — this link is live again.' }));
+        const fresh = await load();
+        modal.setHtml(
+          renderShareAnalytics(fresh.j, {
+            banner: forget
+              ? '✓ Deleted — that key is available again.'
+              : '✓ Restored — this link is live again.',
+          }),
+        );
       } catch {
         modal.close();
       }
       renderClans(el, refreshClanIndicator);
     } catch {
-      notify('Recover failed.', 'Share link');
+      notify(forget ? 'Delete failed.' : 'Restore failed.', 'Share link');
       btn.disabled = false;
     }
   });

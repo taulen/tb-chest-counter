@@ -40,10 +40,6 @@ export interface Clan {
   ctPollIntervalHours: number | null;
   ctBackfillWeeks: number | null;
 
-  // Public read-only share. Empty string when disabled. Six case-sensitive
-  // alphanumerics resolve to /<token> on the public-share router.
-  publicShareToken: string;
-
   // Status of the most recent scheduled daily-digest run. lastDigestAt
   // is empty until the first run completes. The two error fields are
   // empty on success and contain a short message on failure so the
@@ -147,7 +143,6 @@ function rowToClan(row: Record<string, unknown>): Clan {
     ctShareCode: (row.ct_share_code as string) || '',
     ctPollIntervalHours: (row.ct_poll_interval_hours as number | null) ?? null,
     ctBackfillWeeks: (row.ct_backfill_weeks as number | null) ?? null,
-    publicShareToken: (row.public_share_token as string) || '',
     lastDigestAt: (row.last_digest_at as string) || '',
     lastDigestChannelError: (row.last_digest_channel_error as string) || '',
     lastDigestDmError: (row.last_digest_dm_error as string) || '',
@@ -230,20 +225,6 @@ export function getClanBySlug(slug: string): Clan | null {
     | Record<string, unknown>
     | undefined;
   return row ? rowToClan(row) : null;
-}
-
-export function getClanByPublicShareToken(token: string): Clan | null {
-  if (!token) return null;
-  const db = getDb();
-  const row = db
-    .prepare(`SELECT * FROM clans WHERE public_share_token = ? AND ${LIVE}`)
-    .get(token) as Record<string, unknown> | undefined;
-  return row ? rowToClan(row) : null;
-}
-
-export function setClanPublicShareToken(id: number, token: string): void {
-  const db = getDb();
-  db.prepare('UPDATE clans SET public_share_token = ? WHERE id = ?').run(token, id);
 }
 
 /** Live clans only — this is what the "cannot delete the last clan" guard reads. */

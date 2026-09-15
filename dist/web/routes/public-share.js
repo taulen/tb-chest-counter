@@ -98,15 +98,33 @@ function paramAsString(p) {
         return p[0] ?? '';
     return p ?? '';
 }
-function resolveClan(token) {
+/**
+ * Resolve a URL key to the clan behind it, via the share_links ledger — the
+ * sole authority since v74. A clan can hold several live keys at once, so the
+ * link row (not the clan) is what usage is counted against: that per-key split
+ * is the whole reason multiple links exist.
+ *
+ * Returns null for a key that doesn't resolve OR whose clan has been soft
+ * deleted (getClanById filters those), so a revoked link and a deleted clan
+ * are indistinguishable from outside.
+ */
+function resolveShare(token) {
     if (!share_token_js_1.SHARE_TOKEN_REGEX.test(token))
         return null;
-    const clan = (0, clan_repo_js_1.getClanByPublicShareToken)(token);
+    const link = (0, share_link_repo_js_1.resolveActiveShareLink)(token);
+    if (!link)
+        return null;
+    const clan = (0, clan_repo_js_1.getClanById)(link.clanId);
+    if (!clan)
+        return null;
     // Count the data-API hit (best-effort; never blocks the response). Page
     // loads are counted separately in publicShareTokenHandler.
-    if (clan)
-        (0, share_link_repo_js_1.recordApiHit)(token);
-    return clan;
+    (0, share_link_repo_js_1.recordApiHit)(link.id);
+    return { clan, linkId: link.id };
+}
+/** Thin wrapper for the handlers that only need the clan. */
+function resolveClan(token) {
+    return resolveShare(token)?.clan ?? null;
 }
 /**
  * Public-side twin of the authenticated router's resolveShareCode: pick
@@ -123,17 +141,18 @@ function resolvePublicShareCode(clanId, currentCode, requested) {
     return archived.some((a) => a.shareCode === asked) ? asked : currentCode;
 }
 /**
- * Top-level token-page handler. Mounted in server.ts ahead of the
- * requireAuth middleware. Only acts on paths matching the token regex
- * (a single 6-char alphanumeric segment). Anything else — /login,
- * /robots.txt, /css/foo.css, /any-other-path — falls through via
- * next() to the rest of the routing table.
+ * Top-level share-page handler. Mounted in server.ts ahead of the
+ * requireAuth middleware. Only acts on paths matching the share-key regex
+ * (a single alphanumeric segment, 3-10 chars — wide enough for both a
+ * generated token and a vanity key). Anything else — /robots.txt,
+ * /css/foo.css, a multi-segment path — falls through via next() to the rest
+ * of the routing table, as does any segment in RESERVED_SHARE_KEYS.
  *
  * Express 5's path-to-regexp doesn't support inline regex constraints,
  * so we do the match here in middleware instead of in the route path.
  */
 function publicShareTokenHandler(req, res, next) {
-    // Only handle GETs of bare /<token> — let everything else through.
+    // Only handle GETs of a bare /<key> — let everything else through.
     if (req.method !== 'GET') {
         next();
         return;
@@ -143,8 +162,16 @@ function publicShareTokenHandler(req, res, next) {
         next();
         return;
     }
-    const clan = (0, clan_repo_js_1.getClanByPublicShareToken)(segs[0]);
-    if (!clan) {
+    if (share_token_js_1.RESERVED_SHARE_KEYS.has(segs[0].toLowerCase())) {
+        // A path the app itself owns can never be a share key (validateVanityKey
+        // refuses them), so hand it straight back to the routing table rather
+        // than answering "share link not found" for /login or /dashboard.
+        next();
+        return;
+    }
+    const link = (0, share_link_repo_js_1.resolveActiveShareLink)(segs[0]);
+    const clan = link ? (0, clan_repo_js_1.getClanById)(link.clanId) : null;
+    if (!link || !clan) {
         // 404 (not 401) so probing doesn't leak which 6-char strings are valid.
         // Serve a styled page rather than bare text so a mistyped or revoked
         // link lands somewhere readable.
@@ -152,8 +179,8 @@ function publicShareTokenHandler(req, res, next) {
         res.status(404).type('html').send(renderShareNotFound());
         return;
     }
-    // Count this page load against the link's usage ledger (best-effort).
-    (0, share_link_repo_js_1.recordVisit)(segs[0]);
+    // Count this page load against THIS link's counters (best-effort).
+    (0, share_link_repo_js_1.recordVisit)(link.id);
     applyShareHeaders(res);
     res.type('html').send(readHtmlWithVersion('public-share.html'));
 }
@@ -293,15 +320,16 @@ function createPublicShareApiRouter() {
     // a hand-crafted POST can't store absurd numbers.
     router.post('/:token/beacon', (0, express_1.json)({ limit: '1kb' }), (req, res) => {
         const token = paramAsString(req.params.token);
-        // Validate the token WITHOUT going through resolveClan() — the beacon
+        // Resolve the link WITHOUT going through resolveShare() — the beacon
         // must not inflate the api-hit counter.
-        if (share_token_js_1.SHARE_TOKEN_REGEX.test(token) && (0, clan_repo_js_1.getClanByPublicShareToken)(token)) {
+        const link = share_token_js_1.SHARE_TOKEN_REGEX.test(token) ? (0, share_link_repo_js_1.resolveActiveShareLink)(token) : null;
+        if (link && (0, clan_repo_js_1.getClanById)(link.clanId)) {
             const body = (req.body ?? {});
             const event = body.event === 'leave' ? 'leave' : body.event === 'enter' ? 'enter' : null;
             if (event) {
                 const rawMs = Number(body.durationMs);
                 const durationMs = Math.min(Math.max(Number.isFinite(rawMs) ? rawMs : 0, 0), 6 * 60 * 60 * 1000);
-                (0, share_link_repo_js_1.recordBeacon)(token, {
+                (0, share_link_repo_js_1.recordBeacon)(link.id, {
                     event,
                     isReturning: !!body.isReturning,
                     durationMs,

@@ -637,6 +637,60 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE clans ADD COLUMN deleted_at TEXT NOT NULL DEFAULT '';
     `,
   },
+  {
+    // Many public share links per clan, each with its own counters, plus
+    // admin-chosen vanity keys.
+    //
+    // share_links was already a per-token ledger; what capped a clan at one
+    // live link was clans.public_share_token, the column `/<token>` actually
+    // resolved through. This migration moves resolution onto the ledger and
+    // drops that column rather than keeping it as a "primary" link: the whole
+    // failure mode of the old design was two places claiming to know which
+    // token is live, and a clan with five links has no honest answer to put
+    // in a single column.
+    //
+    // The backfill is the load-bearing half. A clan whose token predates the
+    // ledger has no share_links row at all, and dropping the column without
+    // seeding one would take its live URL offline silently — the exact class
+    // of failure (a link that 404s while the data is still right there) this
+    // codebase has already paid for once at the edge.
+    version: 74,
+    run: (database): void => {
+      database.exec(`ALTER TABLE share_links ADD COLUMN label TEXT NOT NULL DEFAULT ''`);
+      database.exec(`ALTER TABLE share_links ADD COLUMN is_vanity INTEGER NOT NULL DEFAULT 0`);
+
+      // Seed a live ledger row for any clan holding a token the ledger doesn't
+      // know about (pre-ledger installs), so no working URL goes dark.
+      const orphans = database
+        .prepare(
+          `SELECT id, public_share_token AS token FROM clans
+            WHERE public_share_token != ''
+              AND public_share_token NOT IN (SELECT token FROM share_links)`,
+        )
+        .all() as { id: number; token: string }[];
+      const insertLink = database.prepare(
+        `INSERT INTO share_links (clan_id, token, created_at, created_by)
+         VALUES (?, ?, ?, NULL)`,
+      );
+      const now = new Date().toISOString();
+      for (const o of orphans) insertLink.run(o.id, o.token, now);
+
+      // A clan's token could also exist in the ledger as REVOKED while the
+      // column still pointed at it (they were updated independently before
+      // this). The column was authoritative, so trust it and re-activate.
+      database
+        .prepare(
+          `UPDATE share_links SET revoked_at = NULL, revoked_by = NULL, revoke_reason = ''
+            WHERE revoked_at IS NOT NULL
+              AND token IN (SELECT public_share_token FROM clans WHERE public_share_token != '')`,
+        )
+        .run();
+
+      // The index has to go first — SQLite refuses to drop an indexed column.
+      database.exec('DROP INDEX IF EXISTS idx_clans_public_share_token');
+      database.exec('ALTER TABLE clans DROP COLUMN public_share_token');
+    },
+  },
 ];
 
 /**

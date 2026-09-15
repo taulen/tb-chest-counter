@@ -1,8 +1,13 @@
 import path from 'path';
 import fs from 'fs';
 import { Router, json, type Request, type Response, type NextFunction } from 'express';
-import { getClanByPublicShareToken } from '../../data/repositories/clan-repo.js';
-import { recordVisit, recordApiHit, recordBeacon } from '../../data/repositories/share-link-repo.js';
+import { getClanById } from '../../data/repositories/clan-repo.js';
+import {
+  resolveActiveShareLink,
+  recordVisit,
+  recordApiHit,
+  recordBeacon,
+} from '../../data/repositories/share-link-repo.js';
 import { parseLeaderboardQuery, queryLeaderboard, resolveWeeklyGoalPoints } from './leaderboard-handler.js';
 import {
   listSnapshots,
@@ -11,10 +16,11 @@ import {
   getLatestSnapshot,
   getLatestPollAt,
 } from '../../data/repositories/external-repo.js';
-import { SHARE_TOKEN_REGEX } from '../../utils/share-token.js';
+import { SHARE_TOKEN_REGEX, RESERVED_SHARE_KEYS } from '../../utils/share-token.js';
 import { loadConfig } from '../../config/index.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
 import { versionHtmlAssets } from '../asset-versioning.js';
+import type { Clan } from '../../data/repositories/clan-repo.js';
 
 const PUBLIC_DIR = path.resolve('src/web/public');
 
@@ -103,13 +109,31 @@ function paramAsString(p: string | string[] | undefined): string {
   return p ?? '';
 }
 
-function resolveClan(token: string) {
+/**
+ * Resolve a URL key to the clan behind it, via the share_links ledger — the
+ * sole authority since v74. A clan can hold several live keys at once, so the
+ * link row (not the clan) is what usage is counted against: that per-key split
+ * is the whole reason multiple links exist.
+ *
+ * Returns null for a key that doesn't resolve OR whose clan has been soft
+ * deleted (getClanById filters those), so a revoked link and a deleted clan
+ * are indistinguishable from outside.
+ */
+function resolveShare(token: string): { clan: Clan; linkId: number } | null {
   if (!SHARE_TOKEN_REGEX.test(token)) return null;
-  const clan = getClanByPublicShareToken(token);
+  const link = resolveActiveShareLink(token);
+  if (!link) return null;
+  const clan = getClanById(link.clanId);
+  if (!clan) return null;
   // Count the data-API hit (best-effort; never blocks the response). Page
   // loads are counted separately in publicShareTokenHandler.
-  if (clan) recordApiHit(token);
-  return clan;
+  recordApiHit(link.id);
+  return { clan, linkId: link.id };
+}
+
+/** Thin wrapper for the handlers that only need the clan. */
+function resolveClan(token: string): Clan | null {
+  return resolveShare(token)?.clan ?? null;
 }
 
 /**
@@ -131,17 +155,18 @@ function resolvePublicShareCode(
 }
 
 /**
- * Top-level token-page handler. Mounted in server.ts ahead of the
- * requireAuth middleware. Only acts on paths matching the token regex
- * (a single 6-char alphanumeric segment). Anything else — /login,
- * /robots.txt, /css/foo.css, /any-other-path — falls through via
- * next() to the rest of the routing table.
+ * Top-level share-page handler. Mounted in server.ts ahead of the
+ * requireAuth middleware. Only acts on paths matching the share-key regex
+ * (a single alphanumeric segment, 3-10 chars — wide enough for both a
+ * generated token and a vanity key). Anything else — /robots.txt,
+ * /css/foo.css, a multi-segment path — falls through via next() to the rest
+ * of the routing table, as does any segment in RESERVED_SHARE_KEYS.
  *
  * Express 5's path-to-regexp doesn't support inline regex constraints,
  * so we do the match here in middleware instead of in the route path.
  */
 export function publicShareTokenHandler(req: Request, res: Response, next: NextFunction): void {
-  // Only handle GETs of bare /<token> — let everything else through.
+  // Only handle GETs of a bare /<key> — let everything else through.
   if (req.method !== 'GET') {
     next();
     return;
@@ -151,8 +176,16 @@ export function publicShareTokenHandler(req: Request, res: Response, next: NextF
     next();
     return;
   }
-  const clan = getClanByPublicShareToken(segs[0]);
-  if (!clan) {
+  if (RESERVED_SHARE_KEYS.has(segs[0].toLowerCase())) {
+    // A path the app itself owns can never be a share key (validateVanityKey
+    // refuses them), so hand it straight back to the routing table rather
+    // than answering "share link not found" for /login or /dashboard.
+    next();
+    return;
+  }
+  const link = resolveActiveShareLink(segs[0]);
+  const clan = link ? getClanById(link.clanId) : null;
+  if (!link || !clan) {
     // 404 (not 401) so probing doesn't leak which 6-char strings are valid.
     // Serve a styled page rather than bare text so a mistyped or revoked
     // link lands somewhere readable.
@@ -160,8 +193,8 @@ export function publicShareTokenHandler(req: Request, res: Response, next: NextF
     res.status(404).type('html').send(renderShareNotFound());
     return;
   }
-  // Count this page load against the link's usage ledger (best-effort).
-  recordVisit(segs[0]);
+  // Count this page load against THIS link's counters (best-effort).
+  recordVisit(link.id);
   applyShareHeaders(res);
   res.type('html').send(readHtmlWithVersion('public-share.html'));
 }
@@ -308,15 +341,16 @@ export function createPublicShareApiRouter(): Router {
   // a hand-crafted POST can't store absurd numbers.
   router.post('/:token/beacon', json({ limit: '1kb' }), (req, res) => {
     const token = paramAsString(req.params.token);
-    // Validate the token WITHOUT going through resolveClan() — the beacon
+    // Resolve the link WITHOUT going through resolveShare() — the beacon
     // must not inflate the api-hit counter.
-    if (SHARE_TOKEN_REGEX.test(token) && getClanByPublicShareToken(token)) {
+    const link = SHARE_TOKEN_REGEX.test(token) ? resolveActiveShareLink(token) : null;
+    if (link && getClanById(link.clanId)) {
       const body = (req.body ?? {}) as Record<string, unknown>;
       const event = body.event === 'leave' ? 'leave' : body.event === 'enter' ? 'enter' : null;
       if (event) {
         const rawMs = Number(body.durationMs);
         const durationMs = Math.min(Math.max(Number.isFinite(rawMs) ? rawMs : 0, 0), 6 * 60 * 60 * 1000);
-        recordBeacon(token, {
+        recordBeacon(link.id, {
           event,
           isReturning: !!body.isReturning,
           durationMs,

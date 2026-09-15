@@ -3466,6 +3466,61 @@ details > table {
   color: var(--accent-green);
 }
 
+/* ─── Multiple share links per clan ───
+   One row per live link: the copy pill, then its name + visit count, then the
+   per-link actions. Wraps to a stacked block on narrow screens rather than
+   squeezing the URL, which is the part people need to read. */
+.share-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+.share-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.share-link-row .share-url-pill {
+  flex: 1 1 260px;
+}
+.share-link-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+  font-size: 12px;
+}
+.share-link-name {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-link-count {
+  font-size: 11px;
+}
+.share-link-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.share-link-empty {
+  margin: 12px 0 4px;
+}
+/* The "add a link" row: custom key, name, button. Both inputs stay narrow so
+   the 10-char key field doesn't read as a free-text field. */
+.share-add-row {
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.share-add-row .input {
+  max-width: 220px;
+}
+
 /* Secondary "Analytics & history" action under the share controls. */
 .share-secondary-actions {
   margin-top: 10px;
@@ -3535,6 +3590,43 @@ details > table {
 .btn-sm {
   padding: 5px 12px;
   font-size: 12px;
+}
+/* One card per live link. The divider is what stops several links reading as
+   one long stat wall. */
+.sa-active + .sa-active {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border-light);
+}
+.sa-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.sa-head .sa-url {
+  flex: 1 1 240px;
+  margin-bottom: 0;
+}
+.sa-tag {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.sa-tag-muted {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.sa-hist-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
 }
 .sa-url {
   padding: 10px 14px;

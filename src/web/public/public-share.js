@@ -23,7 +23,11 @@ import {
 } from './lib/chesttracker-render.js';
 import { initMobileRows } from './lib/mobile-rows.js';
 
-const PATH_TOKEN_RE = /^\/([A-Za-z0-9]{6})\/?$/;
+// Mirrors SHARE_TOKEN_REGEX on the server: a generated 6-char token OR an
+// admin-chosen vanity key (3-10 chars, a-z0-9). The server already refused to
+// serve this page for anything that doesn't resolve, so this only has to be
+// wide enough not to reject a key the server accepted.
+const PATH_TOKEN_RE = /^\/([A-Za-z0-9]{3,10})\/?$/;
 const tokenMatch = window.location.pathname.match(PATH_TOKEN_RE);
 const token = tokenMatch ? tokenMatch[1] : null;
 
