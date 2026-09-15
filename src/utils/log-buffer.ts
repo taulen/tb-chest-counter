@@ -27,11 +27,20 @@ export interface LogBufferEntry {
   alert: boolean;
 }
 
-const MAX_ENTRIES = 20;
+// Why 100 and not the original 20: at 20, a burst evicted everything else,
+// so the cap itself destroyed evidence. On 2026-09-15 three identical
+// "Discord member lookup failed" lines held three of the twenty slots — three
+// real problems that could not be shown — and 19 entries in a single day meant
+// the buffer turned over daily. The System page now folds identical messages
+// into one row with a count and collapses the informational ones, so a larger
+// buffer costs nothing in reading effort; it is bounded prose, held once.
+const MAX_ENTRIES = 100;
 const FILE_PATH = path.join('data', 'warnings.jsonl');
 // Soft cap on the on-disk file. When we'd exceed it on append we rewrite
-// the file from the in-memory buffer so it stays bounded.
-const MAX_FILE_BYTES = 16 * 1024;
+// the file from the in-memory buffer so it stays bounded. Scaled with
+// MAX_ENTRIES: the rewrite path dumps the whole ring buffer, so a cap below
+// what the buffer holds would rewrite the file on nearly every append.
+const MAX_FILE_BYTES = 128 * 1024;
 
 const buffer: LogBufferEntry[] = [];
 

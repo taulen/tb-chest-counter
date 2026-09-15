@@ -10,6 +10,7 @@
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
 import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate, forgetDetailsState } from '../lib/ui.js';
 import { getCurrentUser, getLastSeenSystemWarningAt } from '../lib/state.js';
+import { warningHeadline, hasMoreThanHeadline, splitWarnings } from '../lib/warning-digest.js';
 
 // Stable key for the Recent Warnings <details> card. Used both as the
 // data-section-key attribute (so the persisted-state map keys off this
@@ -992,39 +993,71 @@ function backupKindLabel(kind) {
   }
 }
 
+function renderWarningRow(e) {
+  const isError = e.levelName === 'error' || e.levelName === 'fatal';
+  const levelClass = isError ? 'log-level-error' : 'log-level-warn';
+  const headline = warningHeadline(e.msg);
+  // Only offer the expander when there is genuinely more to read. A row whose
+  // headline already is the whole message must not pretend to hide something.
+  const hasMore = hasMoreThanHeadline(e.msg, headline);
+  const when = formatDate(new Date(e.ts).toISOString());
+  const repeat = e.count > 1
+    ? `<span class="warn-repeat" title="Logged ${e.count} times. The time shown is the most recent.">×${e.count}</span>`
+    : '';
+  const meta = `<span class="warn-meta">${e.module ? esc(e.module) : 'root'} · ${esc(when)}</span>`;
+  const head = `<span class="log-level-badge ${levelClass}">${esc(e.levelName)}</span><span class="warn-headline">${esc(headline)}</span>${repeat}`;
+
+  if (!hasMore) {
+    return `<li class="warn-item">
+      <div class="warn-row warn-row-flat">${head}</div>
+      ${meta}
+    </li>`;
+  }
+  // An explicit section key so an expanded row stays expanded across the
+  // re-renders that any action on this page triggers. Without one, ui.js falls
+  // back to the summary text with every digit stripped — and these headlines
+  // differ mainly BY their digits ("wrote 2 row(s)" vs "wrote 5 row(s)"), so
+  // two unrelated warnings would share a key and expand together.
+  const key = esc(`warn:${e.levelName}:${e.module}:${headline}`);
+  return `<li class="warn-item">
+    <details class="warn-details" data-section-key="${key}">
+      <summary class="warn-row">${head}</summary>
+      <p class="log-message warn-full">${esc(e.msg)}</p>
+    </details>
+    ${meta}
+  </li>`;
+}
+
+/**
+ * Recent warnings, split by whether they are asking for anything.
+ *
+ * The split reuses the `alert` flag that already drives the System nav dot
+ * (`log.warn({ noAlert: true }, ...)` at the call site), so one place decides
+ * whether something is actionable rather than the UI forming a second opinion.
+ * Informational starts collapsed: those entries are worth keeping and not
+ * worth reading on the way to the ones that matter.
+ */
 function renderLogBufferTable(entries) {
   if (!entries || entries.length === 0) {
     return '<p class="muted-copy">No warnings or errors recorded. The buffer fills as the app runs — empty here means smooth operation.</p>';
   }
-  const rows = entries.map((e) => {
-    const when = formatDate(new Date(e.ts).toISOString());
-    const levelClass = e.levelName === 'error' || e.levelName === 'fatal' ? 'log-level-error' : 'log-level-warn';
-    const moduleLabel = e.module ? esc(e.module) : '<span class="muted-copy">root</span>';
-    return `<tr>
-      <td data-label="When" data-role="primary"><span class="mrow-name">${esc(when)}</span><span class="mrow-sub">${moduleLabel}</span></td>
-      <td data-label="Level" data-role="metric"><span class="log-level-badge ${levelClass}">${esc(e.levelName)}</span></td>
-      <td data-label="Module" data-role="hidden">${moduleLabel}</td>
-      <td data-label="Message"><code class="log-message">${esc(e.msg)}</code></td>
-    </tr>`;
-  }).join('');
-  return `<div class="table-responsive-wrap">
-    <table class="table-responsive">
-      <colgroup>
-        <col style="width: 22%;">
-        <col style="width: 10%;">
-        <col style="width: 18%;">
-        <col>
-      </colgroup>
-      <thead>
-        <tr>
-          <th>When</th>
-          <th>Level</th>
-          <th>Module</th>
-          <th>Message</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+  const { attention, fyi } = splitWarnings(entries);
+
+  const attentionHtml = attention.length === 0
+    ? '<p class="muted-copy">Nothing is asking for attention.</p>'
+    : `<ul class="warn-list">${attention.map(renderWarningRow).join('')}</ul>`;
+
+  const fyiHtml = fyi.length === 0
+    ? ''
+    : `<details class="warn-group" data-section-key="system-warnings-fyi">
+        <summary class="warn-group-summary">Informational (${fyi.length})</summary>
+        <ul class="warn-list mt-8">${fyi.map(renderWarningRow).join('')}</ul>
+      </details>`;
+
+  return `<div class="warn-panel">
+    <h3 class="warn-group-title">Needs attention (${attention.length})</h3>
+    ${attentionHtml}
+    ${fyiHtml}
   </div>`;
 }
 

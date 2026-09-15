@@ -444,7 +444,16 @@ export async function ensureOnGiftsTab(
     // actually hit. `canvas` for both means the game received them and chose
     // not to open the panel; anything else means an overlay ate them, which a
     // screenshot alone can never show.
+    // noAlert: this fires once per failed attempt, and the retries exist
+    // precisely because attempt 1 failing is ordinary — a popup that a later
+    // Escape clears, a panel that had not painted yet. Two of these landed on
+    // the System page on 2026-09-15 for a navigation that then went on to
+    // fail for a different reason entirely, and a per-attempt note that
+    // cannot distinguish "recovered" from "did not" is not something to ask
+    // an operator to read. Giving up after all three attempts is a log.error
+    // below, and that is what alerts.
     log.warn(
+      { noAlert: true },
       `Navigation verification failed (screen state: ${verifyState}; `
       + `CLAN click hit <${clanTarget}>, Gifts click hit <${giftsTarget}>)`,
     );

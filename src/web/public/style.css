@@ -469,6 +469,105 @@ nav a {
   white-space: pre-wrap;
 }
 
+/* ─── Recent Warnings list (System page) ───────────────────────────────
+   Replaced a four-column table that printed every log message in full.
+   The messages are written for a log file and run to 600+ characters, so
+   the table was a wall of prose with no way to tell an idle note from a
+   real fault — and the observed outcome was that the whole card got
+   dismissed unread.
+
+   Each entry is now a headline row that expands, grouped into "Needs
+   attention" and a collapsed "Informational" set. Colour carries no
+   meaning on its own here: the level pill keeps its text label, so the
+   grouping and the wording still read without it. */
+.warn-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+}
+
+.warn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.warn-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  padding: 8px 10px;
+}
+
+/* The row is the whole hit target, so the disclosure triangle is not the
+   only thing you can aim at — the headline itself is small enough on a
+   phone that requiring a hit on the marker would be unusable. */
+.warn-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.warn-row::-webkit-details-marker { display: none; }
+.warn-row-flat { cursor: default; }
+
+.warn-headline {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.warn-details[open] .warn-headline {
+  font-weight: 600;
+}
+
+/* Count of identical messages folded into this row. */
+.warn-repeat {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--row-hover-overlay-strong);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.warn-meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.warn-full {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.warn-group {
+  margin-top: 14px;
+}
+
+.warn-group-summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 0;
+}
+.warn-group-summary:hover { color: var(--text-primary); }
+
 nav a:hover {
   color: var(--text-primary);
   background: var(--row-hover-overlay-strong);
