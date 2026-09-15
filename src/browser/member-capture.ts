@@ -605,10 +605,13 @@ export async function ensureOnMembersTab(
     + 'that Escape cannot close is covering the UI.',
   );
   try {
-    const { navigateToGame, waitForInteractiveGame, dismissPopups } = await import('./auth.js');
+    // Through about:blank, so the game server sees the old connection close
+    // before the new one authenticates — going straight from the live game to
+    // a fresh load of it is what can read as a second login. See
+    // reloadGameCleanly's header.
+    const { reloadGameCleanly, dismissPopups } = await import('./auth.js');
     const { TB_GAME_URL } = await import('../config/game-url.js');
-    await navigateToGame(page, TB_GAME_URL);
-    await waitForInteractiveGame(page);
+    await reloadGameCleanly(page, TB_GAME_URL);
     await dismissPopups(page, 4);
 
     log.info(`Post-reload: clicking CLAN at (${clanClick.x}, ${clanClick.y}) then Members at (${membersClick.x}, ${membersClick.y}).`);

@@ -408,6 +408,60 @@ export async function waitForInteractiveGame(page: Page): Promise<void> {
   );
 }
 
+/**
+ * How long to sit on about:blank before loading the game again, giving the
+ * game server time to process the old connection's close.
+ */
+const SOCKET_DRAIN_MS = 3_000;
+
+/**
+ * Reload the game the long way round: park on about:blank, let the old
+ * connection die, then navigate in fresh.
+ *
+ * Both recovery paths that reload (navigator's third navigation attempt,
+ * member-capture's last resort) exist for the same reason — a store/offer
+ * popup Escape cannot close — and both used to go straight from the live game
+ * to a fresh load of it. That is the one move in this codebase that can make
+ * the game think the account signed in twice.
+ *
+ * The 2026-09-15 clan #2 cycle is the case in point, and the sequence is
+ * legible in the log:
+ *   17:44:53  game loads
+ *   17:45:39  never settles — 45s, 13 Escapes (healthy is ~18s, 2)
+ *   17:46:12  the crop shows a "PHARAOH'S VALUE BAZAAR" offer panel
+ *   17:46:19  navigation has failed twice; recovery reload fires
+ *   17:47:02  "Connection lost / Someone has logged into your account from
+ *             another device. Would you like to reconnect?"
+ * That was the only reload in the whole day's log, and the only kick. Three
+ * other navigations that day loaded in 18-20s and never went near this path.
+ *
+ * The mechanism is a hypothesis, not something we can observe from outside:
+ * the reloaded client authenticates before the server has finished tearing
+ * down the socket the unloading document held, so it counts as a second
+ * concurrent login and the newcomer gets offered the session back. about:blank
+ * plus a drain window makes the disconnect unambiguous and puts a clear gap
+ * between the two logins.
+ *
+ * Cheap insurance either way: this only runs on a path that has already
+ * failed twice and is committed to costing tens of seconds. If a kick still
+ * follows a reload after this, the hypothesis was wrong and the cause is
+ * outside the app — the SESSION_KICKED detection in navigator.ts now aborts
+ * the scan cleanly and names it in the log, so the next occurrence says so
+ * instead of inventing a chest.
+ */
+export async function reloadGameCleanly(page: Page, gameUrl: string): Promise<void> {
+  try {
+    await page.goto('about:blank', { waitUntil: 'load', timeout: 15_000 });
+    await randomDelay(SOCKET_DRAIN_MS, SOCKET_DRAIN_MS + 1_000);
+  } catch (err) {
+    // Not worth abandoning the reload over — the fresh navigation below is
+    // still strictly better than repeating the clicks that just failed.
+    log.debug(`about:blank teardown before reload failed: ${(err as Error).message}`);
+  }
+  await navigateToGame(page, gameUrl);
+  await waitForInteractiveGame(page);
+}
+
 export async function dismissPopups(page: Page, maxAttempts: number = 12): Promise<void> {
   // Use Escape key only - clicking coordinates risks hitting game tiles
   for (let i = 0; i < maxAttempts; i++) {

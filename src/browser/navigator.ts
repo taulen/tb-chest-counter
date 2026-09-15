@@ -477,9 +477,12 @@ export async function ensureOnGiftsTab(
     if (attempt === 2) {
       try {
         log.info('Reloading the game before the final navigation attempt');
-        const { waitForInteractiveGame } = await import('./auth.js');
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await waitForInteractiveGame(page);
+        // Via about:blank rather than page.reload(): a straight reload can
+        // read as a second concurrent login and get the fresh page kicked.
+        // See reloadGameCleanly's header for the 2026-09-15 sequence.
+        const { reloadGameCleanly } = await import('./auth.js');
+        const { TB_GAME_URL } = await import('../config/game-url.js');
+        await reloadGameCleanly(page, TB_GAME_URL);
       } catch (err) {
         log.warn({ noAlert: true }, `Reload before the final navigation attempt failed: ${(err as Error).message}`);
       }
