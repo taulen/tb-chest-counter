@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseGiftCards = parseGiftCards;
 const chest_names_js_1 = require("./chest-names.js");
+const screen_state_js_1 = require("./screen-state.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('gift-parser');
 /**
@@ -28,6 +29,25 @@ const log = (0, logger_js_1.childLogger)('gift-parser');
  * directly without driving OCR.
  */
 function parseGiftCards(text) {
+    // The game's "Connection lost" dialog is drawn over the open panel, and its
+    // body — "Someone has logged into your account from another device." — ends
+    // in a phrase this parser is built to look for. "from another" satisfies the
+    // From-line matcher below, with "Connection lost" sitting immediately above
+    // it as the pending name, so the dialog reads out as a perfectly well-formed
+    // gift: player "another", chest "Connection lost". That is exactly what was
+    // inserted into clan #2 on 2026-09-15, and it also minted "another" as a
+    // clan member, which then showed up in the might capture's roster.
+    //
+    // Refusing the whole text (rather than dropping the one bad card) is
+    // deliberate: the dialog means the session is dead, so any real card visible
+    // behind it cannot be claimed by a click either, and the callers all treat
+    // "no cards" as a signal to look at the screen state — which now classifies
+    // this same text as SESSION_KICKED and aborts the scan.
+    const kickReason = (0, screen_state_js_1.describeSessionKickText)(text);
+    if (kickReason !== null) {
+        log.warn({ noAlert: true }, `Refusing to parse gift cards — ${kickReason}. No cards can be claimed while it is up.`);
+        return [];
+    }
     const gifts = [];
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     // Most recent line that looks like a gift name: carries a 3+ letter

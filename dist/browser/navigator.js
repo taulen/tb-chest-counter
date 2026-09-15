@@ -16,6 +16,7 @@ const sharp_1 = __importDefault(require("sharp"));
 const screenshotter_js_1 = require("./screenshotter.js");
 const image_js_1 = require("../utils/image.js");
 const viewport_js_1 = require("../config/viewport.js");
+const screen_state_js_1 = require("../vision/screen-state.js");
 const logger_js_1 = require("../utils/logger.js");
 const calibration_js_1 = require("../config/calibration.js");
 Object.defineProperty(exports, "CalibrationMissingError", { enumerable: true, get: function () { return calibration_js_1.CalibrationMissingError; } });
@@ -192,6 +193,15 @@ async function verifyGiftsViaCardCrop(screenshot, vision, cardCropPcts) {
         }
         const cardBuffer = await (0, image_js_1.cropRegion)(screenshot, region);
         const { entries: cards, rawText } = await vision.extractCardsFromCrop(cardBuffer);
+        // Before anything else: the kick dialog overlays the gifts panel, so this
+        // crop can hold real cards AND the dialog at once. On 2026-09-15 it held
+        // both, this function returned 'gifts', and the scan proceeded to click
+        // through a session the game had already closed. parseGiftCards now
+        // refuses that text, so `cards` would be empty here — but "empty" would
+        // read as an empty list, which is a quiet, wrong ending. Say what it is.
+        const kickReason = (0, screen_state_js_1.describeSessionKickText)(rawText);
+        if (kickReason !== null)
+            throw new SessionKickedError(`Session kicked: ${kickReason}`);
         if (cards.length > 0)
             return 'gifts';
         // No chest card parsed — could be an empty list, a wrong screen, or
@@ -212,7 +222,12 @@ async function verifyGiftsViaCardCrop(screenshot, vision, cardCropPcts) {
             return 'no_chest';
         return 'not_gifts';
     }
-    catch {
+    catch (err) {
+        // The blanket catch is here so a crop/OCR hiccup degrades to "tell me
+        // nothing" rather than failing navigation. A kick is not a hiccup — it is
+        // a verdict this function was the first to reach — so it rides through.
+        if (err instanceof SessionKickedError)
+            throw err;
         return null;
     }
 }
@@ -241,6 +256,10 @@ async function ensureOnGiftsTab(page, vision, tab = 'gifts', opts = {}) {
         const durationMs = vision.getLastMaintenanceDurationMs?.() ?? null;
         log.warn(`Game is in maintenance mode - aborting scan${durationMs ? ` (~${Math.round(durationMs / 60_000)} min remaining)` : ''}`);
         throw new MaintenanceModeError('Game is in maintenance mode', durationMs);
+    }
+    if (state === enums_js_1.ScreenState.SESSION_KICKED) {
+        log.warn('Game reports the session was closed by another login - aborting scan');
+        throw new SessionKickedError();
     }
     if (state === enums_js_1.ScreenState.LOGIN_REQUIRED) {
         log.warn('Login required - cannot navigate');
@@ -377,6 +396,10 @@ async function ensureOnGiftsTab(page, vision, tab = 'gifts', opts = {}) {
             const durationMs = vision.getLastMaintenanceDurationMs?.() ?? null;
             log.warn(`Game is in maintenance mode - aborting scan${durationMs ? ` (~${Math.round(durationMs / 60_000)} min remaining)` : ''}`);
             throw new MaintenanceModeError('Game is in maintenance mode', durationMs);
+        }
+        if (verifyState === enums_js_1.ScreenState.SESSION_KICKED) {
+            log.warn('Game reports the session was closed by another login - aborting scan');
+            throw new SessionKickedError();
         }
         if (verifyState === enums_js_1.ScreenState.LOGIN_REQUIRED) {
             log.warn('Login screen detected after navigation');

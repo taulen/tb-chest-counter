@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseMaintenanceDuration = parseMaintenanceDuration;
 exports.looksLikeStoreOverlayText = looksLikeStoreOverlayText;
+exports.describeSessionKickText = describeSessionKickText;
+exports.looksLikeSessionKickedText = looksLikeSessionKickedText;
 exports.classifyScreenStateText = classifyScreenStateText;
 /**
  * Engine-agnostic screen-state classification from OCR text.
@@ -88,6 +90,50 @@ function looksLikeStoreOverlayText(rawText) {
     return signals >= 3;
 }
 /**
+ * Diagnose the game's "Connection lost" dialog from OCR text.
+ *
+ * The dialog reads "Connection lost / Someone has logged into your account
+ * from another device. Would you like to reconnect?" and it is drawn OVER
+ * whatever panel was open, so a card crop taken while it is up contains both
+ * the real gift cards and the dialog's prose. That prose is what makes it
+ * dangerous rather than merely unhelpful: "...from another device" satisfies
+ * the gift parser's From-line matcher, so the dialog parses as a gift whose
+ * player is "another" and whose chest is "Connection lost". Both got written
+ * to clan #2 on 2026-09-15 (and "another" had already been sitting in clan
+ * #1's roster), because nothing downstream ever looked at this text — the
+ * capture loop only consults the screen state when a batch yields ZERO cards,
+ * and this dialog yields one.
+ *
+ * Returns a short reason for logs/the thrown error, or null when the text
+ * shows no dialog. Two tiers, because the two readings differ in what they
+ * justify claiming:
+ *  - the account sentence is a verdict on its own, and survives OCR well (the
+ *    real read lost "So" from "Someone" and "de" from "device" but kept
+ *    "logged into your account" intact);
+ *  - the bare banner means the socket dropped without saying why, which still
+ *    aborts the scan but must not be reported as a second login.
+ *
+ * Tolerant of Paddle's dropped spaces (checked against a space-stripped copy)
+ * and of o↔0 / l↔1 confusions in the two anchor phrases.
+ */
+function describeSessionKickText(rawText) {
+    const text = rawText.toLowerCase();
+    const compact = text.replace(/\s+/g, '');
+    const has = (phrase) => text.includes(phrase) || compact.includes(phrase.replace(/\s+/g, ''));
+    if (/[l1][o0]gged\s*int[o0]?\s*[yv][o0]ur\s*acc/.test(text)
+        || /[l1][o0]ggedint[o0]?[yv][o0]uracc/.test(compact)) {
+        return 'the game reported another device logged into this game account';
+    }
+    if (has('connection lost') || has('connection was lost')) {
+        return 'the game showed its "Connection lost" dialog';
+    }
+    return null;
+}
+/** Boolean form of describeSessionKickText, for the parser's fast guard. */
+function looksLikeSessionKickedText(rawText) {
+    return describeSessionKickText(rawText) !== null;
+}
+/**
  * Classify OCR text into a ScreenState. `rawText` is the recognised text
  * (any casing); this function lowercases it and also derives a space-stripped
  * copy so PaddleOCR's spaceless output matches the same phrase checks.
@@ -104,6 +150,12 @@ function classifyScreenStateText(rawText) {
         || has('game is undergoing')
         || (has('maintenance') && (has('dear players') || has('started at')))) {
         return { state: enums_js_1.ScreenState.MAINTENANCE, maintenanceDurationMs: parseMaintenanceDuration(text) };
+    }
+    // Kick dialog SECOND, for the same short-circuit reason as maintenance: it
+    // is an overlay, so the panel underneath still supplies "gifts"/"clan"
+    // keywords and would otherwise win the GIFT_TAB branch below.
+    if (describeSessionKickText(rawText) !== null) {
+        return { state: enums_js_1.ScreenState.SESSION_KICKED, maintenanceDurationMs: null };
     }
     if (has('no gifts') || has('no gift')) {
         return { state: enums_js_1.ScreenState.NO_GIFTS, maintenanceDurationMs: null };

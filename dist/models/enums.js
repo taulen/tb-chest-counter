@@ -36,6 +36,8 @@ var ScreenState;
     ScreenState["MAIN_GAME"] = "main_game";
     ScreenState["POPUP"] = "popup";
     ScreenState["MAINTENANCE"] = "maintenance";
+    /** The game's "Connection lost" dialog: the account was signed in elsewhere. */
+    ScreenState["SESSION_KICKED"] = "session_kicked";
     ScreenState["UNKNOWN"] = "unknown";
 })(ScreenState || (exports.ScreenState = ScreenState = {}));
 var AppState;

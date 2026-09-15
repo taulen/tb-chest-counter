@@ -63,6 +63,7 @@ const calibration_js_1 = require("../config/calibration.js");
 const viewport_js_1 = require("../config/viewport.js");
 const member_list_sweep_js_1 = require("./member-list-sweep.js");
 const screen_state_js_1 = require("../vision/screen-state.js");
+const deadline_js_1 = require("../utils/deadline.js");
 // Shared with the might sweep, which measured these — see member-list-sweep.ts.
 // This sweep's own ceiling used to be 50, which is where a 100-member roster
 // came back as 88: it ran out of pages, and running out looks exactly like
@@ -369,22 +370,71 @@ function cropPctToPixels(crop, canvasBounds, screenshotSize) {
         height: Math.max(80, bottom - top),
     };
 }
+/**
+ * The game canvas's bounding rect, or null when the page can't give a usable
+ * one (the caller then falls back to whole-screenshot percentages).
+ *
+ * This is the same probe as navigator.ts's getCanvasBounds and it carries the
+ * same three protections, which it spent a long time without:
+ *
+ *  - **Largest canvas, not the first.** `querySelector('canvas')` returns
+ *    whichever comes first in the DOM. The game inserts helper canvases
+ *    (text metrics, atlases) and parks them off-screen at left ≈ -1000000,
+ *    the standard way to hide an element that still has to be laid out.
+ *  - **Reject off-screen rects.** That helper passed the old width/height
+ *    guard — it is a real, large canvas, just not on screen. Every
+ *    percentage then resolved against a left of -1000000, which is where
+ *    the clan #2 might capture's "calibrated Members sidebar coord
+ *    (-999416, 384)" came from: a perfectly calibrated 0.3 xPct landing a
+ *    million pixels to the left of the viewport. Nothing errored — the click
+ *    went nowhere, the panel never opened, and the failure message blamed
+ *    the operator's Stage 2 calibration.
+ *  - **A deadline.** page.evaluate has no timeout of its own (no timeout
+ *    field in its wire schema, so Playwright arms no timer) and this needs
+ *    the renderer's main thread, which is exactly what a wedged browser
+ *    cannot supply.
+ *
+ * Why it bit on a clan switch specifically: the rect is read once, right
+ * after a fresh launch + navigation, while the game is still assembling its
+ * canvases — the window in which a helper canvas is most likely to be the
+ * first one in the DOM.
+ */
+const CANVAS_RECT_DEADLINE_MS = 15_000;
 async function getCanvasRect(page) {
     try {
-        const rect = await page.evaluate(() => {
-            const canvas = document.querySelector('canvas');
-            if (!canvas)
+        const probe = await (0, deadline_js_1.withDeadline)(page.evaluate(() => {
+            const rects = Array.from(document.querySelectorAll('canvas')).map((canvas) => {
+                const r = canvas.getBoundingClientRect();
+                return { left: r.left, top: r.top, width: r.width, height: r.height };
+            });
+            if (rects.length === 0)
                 return null;
-            const r = canvas.getBoundingClientRect();
-            return {
-                left: r.left,
-                top: r.top,
-                width: r.width,
-                height: r.height,
-            };
-        });
-        if (!rect || rect.width < 200 || rect.height < 150)
+            let largest = 0;
+            for (let i = 1; i < rects.length; i++) {
+                if (rects[i].width * rects[i].height > rects[largest].width * rects[largest].height) {
+                    largest = i;
+                }
+            }
+            return { rect: rects[largest], count: rects.length, wasFirst: largest === 0 };
+        }), CANVAS_RECT_DEADLINE_MS, 'member-capture canvas rect probe');
+        if (!probe)
             return null;
+        const rect = probe.rect;
+        if (probe.count > 1 && !probe.wasFirst) {
+            log.warn({ noAlert: true }, `Canvas rect: ${probe.count} canvases on the page; using the largest `
+                + `(${Math.round(rect.width)}x${Math.round(rect.height)}) — it is NOT the first in the DOM.`);
+        }
+        if (rect.width < 200 || rect.height < 150)
+            return null;
+        // Off-screen: the rect is real but useless as a click origin. Returning
+        // null hands the caller the screenshot-percentage path, which is correct
+        // for a full-page screenshot of a 1920x1080 viewport.
+        if (rect.left < -100 || rect.top < -100) {
+            log.warn(`Canvas rect is off-screen (left=${Math.round(rect.left)}, top=${Math.round(rect.top)}) — `
+                + 'ignoring it and using whole-screenshot percentages instead. Clicks derived from this rect '
+                + 'would have landed outside the viewport entirely.');
+            return null;
+        }
         return rect;
     }
     catch {

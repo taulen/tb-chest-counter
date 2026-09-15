@@ -32,6 +32,8 @@ export enum ScreenState {
   MAIN_GAME = 'main_game',
   POPUP = 'popup',
   MAINTENANCE = 'maintenance',
+  /** The game's "Connection lost" dialog: the account was signed in elsewhere. */
+  SESSION_KICKED = 'session_kicked',
   UNKNOWN = 'unknown',
 }
 

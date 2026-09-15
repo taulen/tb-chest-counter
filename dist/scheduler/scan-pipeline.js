@@ -56,6 +56,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UNKNOWN_PLAYER_NAME = void 0;
 exports.scanCardsPipelined = scanCardsPipelined;
 const navigator_js_1 = require("../browser/navigator.js");
+const screen_state_js_1 = require("../vision/screen-state.js");
 const input_js_1 = require("../browser/input.js");
 const screenshotter_js_1 = require("../browser/screenshotter.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
@@ -278,6 +279,12 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
     const cropTimes = [];
     const probeResults = [];
     let captureExitReason = 'cap';
+    // Set when the game's "Connection lost" dialog is seen mid-sweep. Not thrown
+    // here: the crops already collected stand for chests whose Open click landed
+    // BEFORE the session died, so they still have to go through the OCR phase and
+    // be written. The throw happens once that is done, which is also what lets
+    // scan-finalize apply its partial-keep rule instead of rolling the scan back.
+    let sessionKickReason = null;
     let totalClicks = 0;
     const captureStartedAt = Date.now();
     const oomKillsAtStart = (0, memory_snapshot_js_1.memorySnapshot)().oomKills;
@@ -390,6 +397,22 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
             }
             probeMs = Date.now() - probeStartedAt;
             probeResults.push(probeOk ? probeCards : null);
+            // The dialog can appear at any point in the sweep, and it parses as zero
+            // cards now — which without this would read as "list emptied, exiting
+            // normally" and book the scan as a clean success. Stop clicking (every
+            // further click is delivered to a dead session) but keep the crops.
+            if (probeOk && sessionKickReason === null) {
+                const kickReason = (0, screen_state_js_1.describeSessionKickText)(probeRawText);
+                if (kickReason !== null) {
+                    sessionKickReason = kickReason;
+                    log.warn(`pipelined: batch ${batch} — ${kickReason}. Stopping the sweep; the ${crops.length} crop(s) already captured still go through OCR and are recorded.`);
+                    captureExitReason = 'popup';
+                    crops.pop(); // this crop is the dialog, not cards
+                    cropTimes.pop();
+                    probeResults.pop();
+                    break;
+                }
+            }
             // Debug: save annotated PNGs of the first N batches.
             if (isDebugIteration && fullScreenshot) {
                 try {
@@ -884,6 +907,13 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
         log.warn(`pipelined: ${skippedInserts} insert(s) were skipped as duplicates (chestsFound=${tabResult.chestsFound}, newChests=${tabResult.newChests}). Per-collision details at debug level in chest-repo.`);
     }
     // No bulk Claim — every Open click already claimed its chest.
+    //
+    // Everything above has been written, so the kick can finally be reported.
+    // scan-finalize's SessionKickedError branch keeps those rows and marks the
+    // session COMPLETED-with-error when any exist, FAILED when none do.
+    if (sessionKickReason !== null) {
+        throw new navigator_js_1.SessionKickedError(`Session kicked mid-sweep: ${sessionKickReason}`);
+    }
     return tabResult;
 }
 //# sourceMappingURL=scan-pipeline.js.map
