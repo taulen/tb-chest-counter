@@ -234,8 +234,35 @@ export async function scanCardsPipelined(
   // apart — adding ~100ms of OCR is negligible and lets us detect the
   // empty state immediately without wasting screenshots.
   const CLICKS_PER_BATCH = 4;
-  const CLICK_DELAY_MIN_MS = 80;
-  const CLICK_DELAY_MAX_MS = 140;
+  // Gap between the four Open clicks of a batch.
+  //
+  // Raised from 80–140ms, because a click that lands while the list is still
+  // sliding up doesn't consume its card — and the card is then still on screen
+  // for the next screenshot and gets recorded a SECOND time. Measured against
+  // the two things the game itself pins to a known number: an Ancients run is
+  // capped at 12 chests per member and 32 of 319 members who reached the cap
+  // read 13 or 14 (0.98% of their rows); the 2026-08-24 Olympus clan finish
+  // reward, a flat 1000 chests, was stored as 1006 (0.6%). One click in ~150.
+  //
+  // The extra ~0.4s per batch is ~10% of a healthy ~4s batch. That is the
+  // cheaper side of the trade: a phantom chest is indistinguishable from a
+  // real one after the fact (see the jitter note below), so it can only be
+  // prevented, never cleaned up.
+  const CLICK_DELAY_MIN_MS = 140;
+  const CLICK_DELAY_MAX_MS = 220;
+  /**
+   * Pixels of jitter around the calibrated click point, applied before every
+   * click rather than aiming at the same pixel four times.
+   *
+   * Two reasons. Chromium counts repeated presses at one point inside the
+   * double-click window as click 2, 3, 4 of a chain, and a canvas game is free
+   * to treat those differently from four single clicks; a pointer move of more
+   * than a couple of pixels breaks the chain. And a re-render that swaps the
+   * element under a stationary cursor doesn't always re-arm its hover state,
+   * where a move always does. The Open button is ~110×34 CSS px, so ±4 stays
+   * well inside it.
+   */
+  const CLICK_JITTER_PX = 4;
   // After the 4th click in a batch, give the game time to populate the
   // next set of cards before we screenshot. Without this delay the top
   // card's player-name region is often still rendering and OCR catches
@@ -539,8 +566,10 @@ export async function scanCardsPipelined(
         // deadline here surfaces as a throw into the catch below, which already
         // exits the capture phase with every collected crop intact.
         const clickStartedAt = Date.now();
-        await mouseMove(page, viewportClickX, viewportClickY);
         for (let c = 0; c < CLICKS_PER_BATCH; c++) {
+          // Move before every click, not once for the batch — see CLICK_JITTER_PX.
+          const jitter = () => Math.round((Math.random() * 2 - 1) * CLICK_JITTER_PX);
+          await mouseMove(page, viewportClickX + jitter(), viewportClickY + jitter());
           await mouseDown(page);
           await mouseUp(page);
           const delay = CLICK_DELAY_MIN_MS + Math.random() * (CLICK_DELAY_MAX_MS - CLICK_DELAY_MIN_MS);
