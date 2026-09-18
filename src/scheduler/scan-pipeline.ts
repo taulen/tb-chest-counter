@@ -40,7 +40,6 @@ import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
 import { memorySnapshot } from '../utils/memory-snapshot.js';
 import { giftEarnedAtMs } from '../utils/gift-time.js';
-import { repeatedLeadingCards, type SeenCard, type SeenCrop } from './crop-overlap.js';
 import { cropRegion, annotateScreenshot } from '../utils/image.js';
 import { MISSING_NAME_CROP_DIR } from '../utils/crop-dirs.js';
 
@@ -193,39 +192,6 @@ export async function scanCardsPipelined(
     ? triumphalPointsRepo.getKnownChestNames()
     : [];
   const triumphalKnownSet = new Set(triumphalKnownNames);
-
-  /**
-   * Resolve a card's OCR'd player name to a roster member, from two OCR
-   * passes: `playerName` from the multi-language worker (reads
-   * Arabic/Cyrillic/CJK correctly) and `playerNameEnglish` from the
-   * English-only worker (reads Latin names cleanly but transliterates
-   * non-Latin names into garbage — "أوزيريس" comes out as "gs sow").
-   *
-   *  - If the multi-lang reading is predominantly non-Latin script the player
-   *    genuinely has a non-Latin name; trust multi-lang outright (the English
-   *    pass is garbage).
-   *  - Otherwise both passes are Latin: apply an English bias (~99% of members
-   *    have Latin names, and the multi-lang worker occasionally
-   *    homoglyph-mangles them). Prefer the English candidate when it resolves
-   *    to a known member; fall back to multi-lang only when English doesn't
-   *    resolve but multi-lang does; default to the English guess when neither
-   *    resolves so brand-new Latin players aren't imported with stray Cyrillic.
-   *
-   * Pure, and lifted out of the OCR loop so `cardIdentity` below can resolve a
-   * card the same way without re-implementing any of this.
-   */
-  const resolvePlayerName = (card: { playerName: string; playerNameEnglish?: string }): string => {
-    const cleanedPlayerMulti = cleanPlayerName(card.playerName);
-    const cleanedPlayerEng = card.playerNameEnglish ? cleanPlayerName(card.playerNameEnglish) : '';
-    if (!cleanedPlayerEng || isLikelyNonLatinName(cleanedPlayerMulti)) {
-      return matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
-    }
-    const matchedEng = matchKnownPlayer(cleanedPlayerEng, knownMembers, inactiveMemberNames);
-    if (matchedEng !== cleanedPlayerEng) return matchedEng;
-    const matchedMulti = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
-    if (matchedMulti !== cleanedPlayerMulti) return matchedMulti;
-    return matchedEng;
-  };
 
   // Compute the VIEWPORT click target. Playwright's page.mouse.click()
   // uses viewport CSS pixels, and canvasBounds is reported in viewport
@@ -671,50 +637,6 @@ export async function scanCardsPipelined(
   // normal-tab unknown-chest counters above.
   const newTriumphalNamesSeen = new Set<string>();
   const newTriumphalSamples: string[] = [];
-
-  // ─── Crop-boundary de-duplication ───
-  //
-  // About one Open click in ten doesn't consume its card, so the bottom of one
-  // crop reappears at the top of the next and was being recorded twice — 11%
-  // of every chest in the database. The matching rule, the evidence and the
-  // validation live in ./crop-overlap.ts; what stays here is turning this
-  // sweep's OCR into the identities that rule compares.
-
-  /**
-   * What makes two readings the same gift: the member, chest and source the
-   * insert path would land on — not the raw OCR, which reads the same card
-   * differently from a different row of the crop. Re-resolved here rather than
-   * reused from the loop below, because the loop's resolution is interleaved
-   * with side effects (member upsert, review-queue counters) that must only
-   * happen for cards that survive this check. Every function used is pure.
-   */
-  const cardIdentity = (card: ProbeResult[number]): string => {
-    const player = applyMergeRulesCached(playerMergeCache, resolvePlayerName(card));
-    const chest = target === 'triumphal'
-      ? correctTriumphalChestName(
-        card.chestName,
-        triumphalKnownNames.length ? triumphalKnownNames : undefined,
-      ) ?? ''
-      : applyMergeRulesCached(chestMergeCache, correctChestName(card.chestName));
-    const source = applyMergeRulesCached(sourceMergeCache, cleanSource(card.source));
-    // JSON rather than a delimiter: a member name is arbitrary OCR text and
-    // could contain any separator character.
-    return JSON.stringify([player, chest, source]);
-  };
-
-  const seenCardsOf = (cards: ProbeResult, cropMs: number): SeenCard[] =>
-    cards.map((card) => {
-      // -1 as the fallback marks "no countdown read" — giftEarnedAtMs returns
-      // the fallback verbatim, and a real earn time is never negative.
-      const earnedAt = giftEarnedAtMs(card.timeLeft, cropMs, -1);
-      return { identity: cardIdentity(card), earnedAt: earnedAt < 0 ? null : earnedAt };
-    });
-
-  /** The previous crop AS SEEN — before its own re-reads were dropped, since
-   *  the screen showed them either way. */
-  let prevCrop: SeenCrop | null = null;
-  let rereadCards = 0;
-
   for (let i = 0; i < crops.length; i++) {
     reportProgress('scan', `Processing… ${i + 1}/${crops.length} crops (${chestsInserted} chests, ${reOcrCount} re-OCRs)`);
 
@@ -753,22 +675,6 @@ export async function scanCardsPipelined(
 
       // Screenshot time of THIS crop — the reference for earned_at (see below).
       const cropCapturedMs = cropTimes[i];
-
-      // Drop the cards this crop shares with the one before it (see the
-      // crop-boundary block above). `prevCrop` keeps the FULL reading, because
-      // what the screen showed is what the next crop can repeat.
-      const seenCards = seenCardsOf(cards, cropCapturedMs);
-      const repeated = prevCrop ? repeatedLeadingCards(prevCrop, seenCards, cropCapturedMs) : 0;
-      prevCrop = { cards: seenCards, cropMs: cropCapturedMs };
-      if (repeated > 0) {
-        rereadCards += repeated;
-        cards = cards.slice(repeated);
-        log.debug(
-          `pipelined: crop ${i + 1}/${crops.length} — dropped ${repeated} card(s) already recorded from the previous crop`,
-        );
-        if (cards.length === 0) continue;
-      }
-
       let savedCropPathForCrop: string | null = null;
       let cropSaveAttempted = false;
       /**
@@ -795,7 +701,47 @@ export async function scanCardsPipelined(
       for (const card of cards) {
         // Set when this row needs its screenshot kept — drives debugCropPath below.
         let rowNeedsCrop = false;
-        const matchedPlayer = resolvePlayerName(card);
+        // Resolve the player name from two OCR passes: `playerName` from
+        // the multi-language worker (reads Arabic/Cyrillic/CJK correctly)
+        // and `playerNameEnglish` from the English-only worker (reads
+        // Latin names cleanly but transliterates non-Latin names into
+        // garbage — "أوزيريس" comes out as "gs sow").
+        //
+        //  - If the multi-lang reading is predominantly non-Latin script
+        //    the player genuinely has a non-Latin name; trust multi-lang
+        //    outright (the English pass is garbage).
+        //  - Otherwise both passes are Latin: apply an English bias
+        //    (~99% of members have Latin names, and the multi-lang worker
+        //    occasionally homoglyph-mangles them). Prefer the English
+        //    candidate when it resolves to a known member; fall back to
+        //    multi-lang only when English doesn't resolve but multi-lang
+        //    does; default to the English guess when neither resolves so
+        //    brand-new Latin players aren't imported with stray Cyrillic.
+        const cleanedPlayerMulti = cleanPlayerName(card.playerName);
+        const cleanedPlayerEng = card.playerNameEnglish
+          ? cleanPlayerName(card.playerNameEnglish)
+          : '';
+        let cleanedPlayer: string;
+        let matchedPlayer: string;
+        if (!cleanedPlayerEng || isLikelyNonLatinName(cleanedPlayerMulti)) {
+          cleanedPlayer = cleanedPlayerMulti;
+          matchedPlayer = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
+        } else {
+          const matchedEng = matchKnownPlayer(cleanedPlayerEng, knownMembers, inactiveMemberNames);
+          if (matchedEng !== cleanedPlayerEng) {
+            cleanedPlayer = cleanedPlayerEng;
+            matchedPlayer = matchedEng;
+          } else {
+            const matchedMulti = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
+            if (matchedMulti !== cleanedPlayerMulti) {
+              cleanedPlayer = cleanedPlayerMulti;
+              matchedPlayer = matchedMulti;
+            } else {
+              cleanedPlayer = cleanedPlayerEng;
+              matchedPlayer = matchedEng;
+            }
+          }
+        }
         const cleanedSource = applyMergeRulesCached(sourceMergeCache, cleanSource(card.source));
         let correctedPlayer = applyMergeRulesCached(playerMergeCache, matchedPlayer);
 
@@ -986,16 +932,6 @@ export async function scanCardsPipelined(
   log.info(
     `pipelined: OCR phase done. ${tabResult.newChests} chests inserted, ${reOcrCount} re-OCRs, ${ocrFailures} OCR failures`,
   );
-  // Re-reads are expected (~1 click in 10 doesn't consume its card), so this is
-  // a rate to watch, not an error. The number is the count of gifts that would
-  // have been recorded twice; it says nothing was lost.
-  if (rereadCards > 0) {
-    const pct = ((100 * rereadCards) / (rereadCards + tabResult.chestsFound)).toFixed(1);
-    log.info(
-      `pipelined: dropped ${rereadCards} card(s) (${pct}%) that the next screenshot re-read from the previous one — ` +
-        'each was already recorded from the crop it first appeared in',
-    );
-  }
   // Earn-time health: how often the gift "time left" countdown was readable.
   if (chestsInserted > 0) {
     const msg = `pipelined: earn-time capture — ${earnTimeParsed}/${chestsInserted} cards had a readable "time left" (rest stored scan time as earned_at)`;
