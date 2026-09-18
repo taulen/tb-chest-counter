@@ -147,6 +147,17 @@ describe('sameOcrSkeleton', () => {
     expect(sameOcrSkeleton('XERN', 'Kern')).toBe(false);
   });
 
+  it('keeps an alt account apart from the member it is suffixed from', () => {
+    // The skeleton strips digits, so FELI and FELI 2 both came out "fell" and the
+    // second of the clan's two real players was collapsed away as a re-read of the
+    // first on every capture. A digit no letter looks like settles it first.
+    expect(sameOcrSkeleton('FELI', 'FELI 2')).toBe(false);
+    expect(sameOcrSkeleton('Toupie', 'Toupie2')).toBe(false);
+    expect(sameOcrSkeleton('Kurt 2', 'Kurt 3')).toBe(false);
+    // …but 0/1/5/8 still fold, which is what the whole skeleton is for.
+    expect(sameOcrSkeleton('Sezoto', 'Sezot0')).toBe(true);
+  });
+
   it('is not fooled by an empty or punctuation-only reading', () => {
     // Stripping to nothing would make every such pair "equal", collapsing unrelated
     // rows onto one member.

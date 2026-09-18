@@ -4,6 +4,7 @@ import {
   normalizeNonLatin,
   transliterateCyrillicHomoglyphs,
   levenshtein,
+  namesDifferByAltSuffix,
 } from '../../src/vision/ocr-normalize.js';
 
 /**
@@ -63,6 +64,58 @@ describe('normalizeNonLatin', () => {
   it('strips Arabic combining diacritics (harakat / tanwin)', () => {
     // Same base letters, one with a tanwin mark (U+064B) — must collapse.
     expect(normalizeNonLatin('سيريزواً')).toBe(normalizeNonLatin('سيريزوا'));
+  });
+});
+
+/**
+ * The rule that separates an alt account from OCR damage. Every matcher in the
+ * project consults it, so the cases live here rather than being restated per caller.
+ *
+ * Roster names below are real ones from the Sep 5 backup.
+ */
+describe('namesDifferByAltSuffix', () => {
+  it('separates a numeric alt from the name it is suffixed from', () => {
+    expect(namesDifferByAltSuffix('FELI 2', 'FELI')).toBe(true);
+    expect(namesDifferByAltSuffix('FELI', 'FELI 2')).toBe(true);
+    expect(namesDifferByAltSuffix('FELI2', 'FELI')).toBe(true);
+    expect(namesDifferByAltSuffix('Toupie2', 'Toupie')).toBe(true);
+    expect(namesDifferByAltSuffix('Kurt 2', 'Kurt 3')).toBe(true);
+  });
+
+  it('separates a 2+ character roman-numeral alt', () => {
+    expect(namesDifferByAltSuffix('FLOKI II', 'FLOKI')).toBe(true);
+    expect(namesDifferByAltSuffix('Morarn III', 'Morarn')).toBe(true);
+    expect(namesDifferByAltSuffix('Somename IV', 'Somename')).toBe(true);
+  });
+
+  it('stays silent on a single trailing i, v or x — those are name endings', () => {
+    // Also the commonest character for OCR to drop, so treating one as identity
+    // would split a real member in two.
+    expect(namesDifferByAltSuffix('Levi', 'Lev')).toBe(false);
+    expect(namesDifferByAltSuffix('Max', 'Ma')).toBe(false);
+  });
+
+  it('stays silent on the digits that stand in for letters', () => {
+    // 0→o, 5→s, 1→l, 8→b: a difference in one of these is OCR damage, and the
+    // matchers must stay free to repair it.
+    expect(namesDifferByAltSuffix('050', 'oSo')).toBe(false);
+    expect(namesDifferByAltSuffix('Toup1e', 'Toupie')).toBe(false);
+    expect(namesDifferByAltSuffix('bacardy1', 'bacardy')).toBe(false);
+    expect(namesDifferByAltSuffix('Sezot0', 'Sezoto')).toBe(false);
+  });
+
+  it('is silent on two unrelated names and on the same name twice', () => {
+    // It answers "are these separate accounts", not "are these the same player" —
+    // an unrelated pair is left for distance to reject.
+    expect(namesDifferByAltSuffix('Bain', 'Fain')).toBe(false);
+    expect(namesDifferByAltSuffix('alex21rus', 'alex21rus')).toBe(false);
+    expect(namesDifferByAltSuffix('Warrior 1977', 'War rior 1977')).toBe(false);
+    expect(namesDifferByAltSuffix('', 'FELI')).toBe(false);
+  });
+
+  it('applies to non-Latin names, which despace would flatten to nothing', () => {
+    expect(namesDifferByAltSuffix('علي 2', 'علي')).toBe(true);
+    expect(namesDifferByAltSuffix('علي', 'علي')).toBe(false);
   });
 });
 

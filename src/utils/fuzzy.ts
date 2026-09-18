@@ -1,5 +1,7 @@
 import type { ClanMember } from '../models/types.js';
-import { foldDiacritics, despace, despaceKeepingCase } from '../vision/ocr-normalize.js';
+import {
+  foldDiacritics, despace, despaceKeepingCase, namesDifferByAltSuffix,
+} from '../vision/ocr-normalize.js';
 
 export function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -75,8 +77,11 @@ function prepareKeyKeepingCase(raw: string): string {
  * surfacing in the New Members review queue.
  *
  * Known limitation, unfixable by any budget: two real players 1 edit apart (this
- * roster has XERN and Kern) can absorb each other, as can a numeric-suffix alt
- * ("Toupie2" vs "Toupie"). Distance 1 is the minimum any fuzzy match must allow.
+ * roster has XERN and Kern) can absorb each other. Distance 1 is the minimum any
+ * fuzzy match must allow. The numeric-suffix alt that used to be listed here
+ * ("Toupie2" vs "Toupie", and the live "FELI" / "FELI 2") is no longer one of them —
+ * it was never a budget problem, and `namesDifferByAltSuffix` separates those on the
+ * characters instead.
  */
 function editBudget(a: string, b: string): number {
   return Math.max(a.length, b.length) >= 6 ? 2 : 1;
@@ -176,6 +181,10 @@ export function fuzzyMatchMember(
   let bestDist = Infinity;
   for (const m of members) {
     const mNorm = prepareKey(m.normalizedName);
+    // A numeric or roman-numeral alt suffix is a different account, and no budget can
+    // express that: "FELI 2" is 1 edit from "FELI", the floor every fuzzy matcher has
+    // to allow. Checked before distance so it can't be undercut by a closer neighbour.
+    if (namesDifferByAltSuffix(rawName, m.name)) continue;
     const dist = levenshtein(key, mNorm);
     if (dist > editBudget(key, mNorm) || dist >= bestDist) continue;
     // Reject when folding case is what made these look alike — see

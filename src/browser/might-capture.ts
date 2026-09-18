@@ -31,6 +31,7 @@ import { mouseMove, mouseWheel } from './input.js';
 import { MEMBER_LIST_MAX_PAGES, MEMBER_LIST_DRY_PAGES_TO_STOP } from './member-list-sweep.js';
 import { captureFullPage } from './screenshotter.js';
 import { cleanPlayerName } from '../vision/player-names.js';
+import { namesDifferByAltSuffix } from '../vision/ocr-normalize.js';
 import { childLogger } from '../utils/logger.js';
 import { requireMemberListCrop } from '../config/calibration.js';
 import { DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT } from '../config/viewport.js';
@@ -584,6 +585,11 @@ export async function fillLevelsFromAvatarStrip(
  * nothing else needs it.
  */
 export function sameOcrSkeleton(a: string, b: string): boolean {
+  // The skeleton throws digits away, which is right for the ones that are letter
+  // lookalikes and wrong for the rest: it collapsed "FELI" and "FELI 2" onto "fell"
+  // and reported one player read twice, so the second member was dropped from every
+  // capture. Identity digits are settled first, on the unskeletonised names.
+  if (namesDifferByAltSuffix(a, b)) return false;
   const skeleton = (s: string): string => s
     .toLowerCase()
     .replace(/[il1|!]/g, 'l')  // capital-I, lowercase-l, one, pipe, bang

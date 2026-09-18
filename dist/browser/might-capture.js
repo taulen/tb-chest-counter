@@ -18,6 +18,7 @@ const input_js_1 = require("./input.js");
 const member_list_sweep_js_1 = require("./member-list-sweep.js");
 const screenshotter_js_1 = require("./screenshotter.js");
 const player_names_js_1 = require("../vision/player-names.js");
+const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
 const logger_js_1 = require("../utils/logger.js");
 const calibration_js_1 = require("../config/calibration.js");
 const viewport_js_1 = require("../config/viewport.js");
@@ -444,6 +445,12 @@ async function fillLevelsFromAvatarStrip(pageCrop, canonH, pairs, allAnchorYs) {
  * nothing else needs it.
  */
 function sameOcrSkeleton(a, b) {
+    // The skeleton throws digits away, which is right for the ones that are letter
+    // lookalikes and wrong for the rest: it collapsed "FELI" and "FELI 2" onto "fell"
+    // and reported one player read twice, so the second member was dropped from every
+    // capture. Identity digits are settled first, on the unskeletonised names.
+    if ((0, ocr_normalize_js_1.namesDifferByAltSuffix)(a, b))
+        return false;
     const skeleton = (s) => s
         .toLowerCase()
         .replace(/[il1|!]/g, 'l') // capital-I, lowercase-l, one, pipe, bang

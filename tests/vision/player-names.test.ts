@@ -67,6 +67,28 @@ describe('matchKnownPlayer', () => {
     expect(matchKnownPlayer('PropofolDok', ['PropofolDoc'])).toBe('PropofolDoc');
   });
 
+  it('keeps an alt account off the member it is suffixed from', () => {
+    // Live case: one clan holds FELI and FELI 2, two different players, and every
+    // chest FELI 2 opened was filed under FELI. The OCR-normalized tier is what did
+    // it — it DELETES digits, so both sides read "feli" and matched exactly, above
+    // any distance check. Both directions, since either can be the one on the roster.
+    expect(matchKnownPlayer('FELI 2', ['FELI'])).toBe('FELI 2');
+    expect(matchKnownPlayer('FELI', ['FELI 2'])).toBe('FELI');
+    expect(matchKnownPlayer('Toupie2', ['Toupie'])).toBe('Toupie2');
+    expect(matchKnownPlayer('FLOKI II', ['FLOKI'])).toBe('FLOKI II');
+    // With both on the roster each must still resolve to itself, exactly.
+    expect(matchKnownPlayer('FELI 2', ['FELI', 'FELI 2'])).toBe('FELI 2');
+    expect(matchKnownPlayer('FELI', ['FELI', 'FELI 2'])).toBe('FELI');
+  });
+
+  it('keeps matching digits this OCR confuses with letters', () => {
+    // 0/1/5/8 stand in for o/l/s/b, so a difference in one is damage, not identity —
+    // the tier above exists for exactly that and must keep working.
+    expect(matchKnownPlayer('050', ['oSo'])).toBe('oSo');
+    expect(matchKnownPlayer('Toup1e', ['Toupie'])).toBe('Toupie');
+    expect(matchKnownPlayer('Sm4sH', ['Sm4sh'])).toBe('Sm4sh');
+  });
+
   it('rejects short-name collisions where edit distance is 2 of 5 chars', () => {
     // "Niien" → "Biin" edit distance is exactly 2, but they're
     // different players. The threshold scales with length so names

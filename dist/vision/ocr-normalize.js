@@ -10,6 +10,7 @@ exports.transliterateCyrillicHomoglyphs = transliterateCyrillicHomoglyphs;
 exports.foldDiacritics = foldDiacritics;
 exports.despace = despace;
 exports.despaceKeepingCase = despaceKeepingCase;
+exports.namesDifferByAltSuffix = namesDifferByAltSuffix;
 exports.ocrNormalize = ocrNormalize;
 exports.normalizeNonLatin = normalizeNonLatin;
 exports.levenshtein = levenshtein;
@@ -103,6 +104,101 @@ function despace(s) {
  */
 function despaceKeepingCase(s) {
     return foldDiacritics(s).replace(/[^A-Za-z0-9]/g, '');
+}
+/**
+ * The digits in a name that NO letter looks like. So "Sm4sH" yields "4", "Bully26"
+ * yields "26", and "bacardy1" yields "" because that 1 is genuinely ambiguous with
+ * l and I.
+ *
+ * The folded set — 0→o, 5→s, 1→l, 8→b, 9→g — is exactly what might-capture's
+ * `sameOcrSkeleton` collapses, and both come off the same live roster readings
+ * ("mimo0000" for "mimooooo", "Me9rond" for "Megrond"). Leaving 9 out was enough to
+ * make this rule reject that real pair, so the two sets stay in step: a digit
+ * belongs here only when no letter genuinely looks like it. Note `ocrNormalize`
+ * folds a smaller set (no 9→g) because it also deletes every digit afterwards, so
+ * the difference never showed there.
+ *
+ * Order is preserved, so this is a signature rather than a set: "Player37" and
+ * "Player73" have different ones.
+ */
+function identityDigits(s) {
+    return (foldDiacritics(s)
+        .toLowerCase()
+        .replace(/0/g, 'o')
+        .replace(/5/g, 's')
+        .replace(/1/g, 'l')
+        .replace(/8/g, 'b')
+        .replace(/9/g, 'g')
+        .match(/[0-9]/g) ?? []).join('');
+}
+/**
+ * A roman numeral used as an alt-account marker, 2+ characters. Deliberately does
+ * NOT include the one-character forms: "i", "v" and "x" are ordinary name endings
+ * (Levi, Max) and a single trailing character is also the commonest thing for OCR
+ * to drop, so treating one as identity would split real members apart.
+ */
+const ALT_ROMAN_SUFFIX = /^(?:i{2,3}|iv|vi{1,3}|ix|xi{1,2})$/;
+/** Letters and digits of any script, spacing and punctuation gone. */
+function altKey(s) {
+    return foldDiacritics(s.normalize('NFKC')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+/**
+ * True when two names differ in a way that marks them as SEPARATE ACCOUNTS rather
+ * than one name with OCR damage — a numeric or roman-numeral alt suffix.
+ *
+ * Real case that forced this: one clan holds both "FELI" and "FELI 2", two distinct
+ * players. Every matcher merged them, and it took three different mechanisms to do it:
+ *
+ *   despaced keys      feli2 / feli    1 edit against a budget of 1   → merged
+ *   ocrNormalize       "feli" / "feli" the 2 is DELETED, so this is
+ *                                      an EXACT match, reached before
+ *                                      any distance check at all      → merged
+ *   sameOcrSkeleton    fell / fell     same, digits stripped          → merged
+ *
+ * So no edit budget could have saved it: two of the three never measured a distance.
+ * The lever has to be the characters themselves, and it exists — a digit that no
+ * letter resembles is not something PaddleOCR invents or drops. "FELI 2" is read as
+ * "FELI 2"; the 2 was only ever discarded on OUR side, by normalizers written when
+ * digits were assumed to be letter noise (oSo ↔ 050) rather than identity.
+ *
+ * That assumption is still right for 0/1/5/8/9, which is why {@link identityDigits}
+ * folds those away first and this guard stays silent on them — "mikl"/"mikI",
+ * "oSo"/"050" and "Megrond"/"Me9rond" keep merging exactly as before. It is the other
+ * five digits (2, 3, 4, 6, 7), and a 2+ character roman numeral, that mean a
+ * different player.
+ *
+ * Measured against the live roster (251 members, Sep 5 backup): 8 members carry an
+ * identity digit and no pair the matchers currently collapse is separated by this —
+ * it costs nothing that works today. The clan's existing "FLOKI" / "FLOKI II" pair
+ * is the roman half of the same convention, two members that survive as two only
+ * because their exact spellings happened to be read first; 2 edits apart on a
+ * 2-edit budget, they were one bad read from collapsing the same way.
+ *
+ * The residual risk is the mirror image — a genuine OCR misread of an identity digit
+ * ("Sm4sH" read as "SmasH") now fails to match and mints a duplicate member. That is
+ * the deliberate direction: a duplicate lands in the New Members review queue with a
+ * crop attached and an admin merges it, while a silent absorption is unrecoverable —
+ * the absorbed player's chests are already filed under someone else's name.
+ *
+ * Known gap, accepted: an alt suffixed with 0, 1, 5, 8 or 9 ("Cordarus 1") is
+ * invisible to this, because those digits really are what OCR substitutes for letters.
+ */
+function namesDifferByAltSuffix(a, b) {
+    // Keyed Unicode-aware rather than through despace, which keeps only [a-z0-9] and so
+    // flattens every non-Latin name to the empty string. The two names this has to
+    // separate can be Arabic or Cyrillic with a Latin "2" on the end just as easily as
+    // Latin ones, and that path has its own distance tier with the same 1-edit floor.
+    // For an ASCII name this produces exactly what despace does.
+    const ka = altKey(a);
+    const kb = altKey(b);
+    if (!ka || !kb || ka === kb)
+        return false;
+    if (identityDigits(ka) !== identityDigits(kb))
+        return true;
+    const [shorter, longer] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+    return shorter.length >= 3
+        && longer.startsWith(shorter)
+        && ALT_ROMAN_SUFFIX.test(longer.slice(shorter.length));
 }
 function ocrNormalize(s) {
     return foldDiacritics(transliterateCyrillicHomoglyphs(s))

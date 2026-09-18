@@ -231,11 +231,43 @@ describe('fuzzyMatchMember', () => {
     expect(exactMatchMember('ABCD', roster)?.id).toBe(1);
   });
 
-  it('still absorbs a numeric-suffix alt — case cannot separate those', () => {
-    // "Toupie2" is 1 edit from "Toupie" both folded and cased, so it is
-    // indistinguishable from OCR damage by distance alone. Recorded, not fixed:
-    // it needs a structural rule (reject a trailing-digit-only difference).
+  it('keeps a numeric-suffix alt off the member it is one edit from', () => {
+    // The structural rule this used to be recorded as needing. Distance cannot help:
+    // "Toupie2" is 1 edit from "Toupie" folded AND cased, and the live pair that
+    // forced the fix — "FELI 2" against member "FELI" — is 1 edit on a 5-character
+    // key, the floor every fuzzy matcher has to allow.
     expect(levenshtein('Toupie2', 'Toupie')).toBe(1);
-    expect(fuzzyMatchMember('Toupie2', [mk('Toupie', 1)])?.name).toBe('Toupie');
+    expect(fuzzyMatchMember('Toupie2', [mk('Toupie', 1)])).toBeNull();
+    expect(fuzzyMatchMember('FELI 2', [mk('FELI', 1)])).toBeNull();
+    expect(fuzzyMatchMember('FELI', [mk('FELI 2', 1)])).toBeNull();
+  });
+
+  it('matches each of an alt pair to itself when both are on the roster', () => {
+    // Splitting them is only half the job — each still has to resolve, and exactly.
+    const roster = [mk('FELI', 1), mk('FELI 2', 2)];
+    expect(fuzzyMatchMember('FELI', roster)?.id).toBe(1);
+    expect(fuzzyMatchMember('FELI 2', roster)?.id).toBe(2);
+    expect(fuzzyMatchMember('FELI2', roster)?.id).toBe(2);
+  });
+
+  it('separates a 2+ character roman-numeral alt', () => {
+    // The live roster carries FLOKI and FLOKI II as two members. Despaced they are
+    // "floki" and "flokiii" — 2 edits on a 2-edit budget, one bad read from collapsing.
+    expect(fuzzyMatchMember('FLOKI II', [mk('FLOKI', 1)])).toBeNull();
+    expect(fuzzyMatchMember('FLOKI', [mk('FLOKI II', 1)])).toBeNull();
+  });
+
+  it('leaves homoglyph digits alone — they are OCR damage, not identity', () => {
+    // 0/1/5/8 are what this OCR substitutes for o/l/s/b, so a difference in one is
+    // exactly the damage the budget exists to repair. Only 2,3,4,6,7,9 are identity.
+    expect(fuzzyMatchMember('Toup1e', [mk('Toupie', 1)])?.name).toBe('Toupie');
+    expect(fuzzyMatchMember('bacardy1', [mk('bacardyl', 1)])?.name).toBe('bacardyl');
+    // …and a single trailing i or v is an ordinary name ending, not a roman numeral.
+    expect(fuzzyMatchMember('Levi', [mk('Lev', 1)])?.name).toBe('Lev');
+  });
+
+  it('still matches a name whose identity digits are unchanged', () => {
+    expect(fuzzyMatchMember('a1ex21rus', ROSTER)?.name).toBe('alex21rus');
+    expect(fuzzyMatchMember('War rior 1977', ROSTER)?.name).toBe('Warrior 1977');
   });
 });

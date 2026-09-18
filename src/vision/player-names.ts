@@ -2,7 +2,9 @@
  * Player-name OCR cleanup and fuzzy matching against the known-member
  * list. Shared normalizers and edit distance live in ocr-normalize.ts.
  */
-import { ocrNormalize, normalizeNonLatin, levenshtein, despace } from './ocr-normalize.js';
+import {
+  ocrNormalize, normalizeNonLatin, levenshtein, despace, namesDifferByAltSuffix,
+} from './ocr-normalize.js';
 
 /**
  * Clean up an OCR player name: strip trailing periods, quotes, pipe
@@ -125,6 +127,9 @@ export function matchKnownPlayer(
     let bestDist = Infinity;
     for (const name of knownNames) {
       const nlKnown = normalizeNonLatin(name);
+      // Same alt-suffix rule as the Latin path below: normalizeNonLatin keeps digits,
+      // so a name and its "… 2" sit one edit apart here too.
+      if (namesDifferByAltSuffix(ocrName, name)) continue;
       if (nlKnown.length >= 3 && nlInput.length >= 3) {
         const maxLen = Math.max(nlInput.length, nlKnown.length);
         const allowedDist = maxLen >= 6 ? 2 : 1;
@@ -146,10 +151,18 @@ export function matchKnownPlayer(
   // 2. OCR-normalized exact match — handles digit↔letter confusions
   // like oSo→050 (o→0, S→5), which basic normalization misses
   // because it only lowercases and strips punctuation.
+  //
+  // This tier is where "FELI 2" was landing on member "FELI": ocrNormalize maps the
+  // digits it treats as letters and then DELETES the rest, so both sides came out as
+  // "feli" and the two players matched exactly, one tier above anything that measures
+  // a distance. namesDifferByAltSuffix is what tells the two apart — see its comment
+  // for why the 2 is identity and the 0/1/5/8 this tier exists for are not.
   const ocrNormInput = ocrNormalize(ocrName);
   if (ocrNormInput) {
     for (const name of exactCandidates) {
-      if (ocrNormalize(name) === ocrNormInput) return name;
+      if (ocrNormalize(name) === ocrNormInput && !namesDifferByAltSuffix(ocrName, name)) {
+        return name;
+      }
     }
   }
 
@@ -182,6 +195,10 @@ export function matchKnownPlayer(
   let bestLevDist = Infinity;
   for (const name of knownNames) {
     const normKnown = despace(name);
+    // An alt suffix is identity, not damage: "FELI 2" is 1 edit from member "FELI"
+    // on a 5-character name, which is inside the smallest budget any fuzzy matcher
+    // can have. Only the characters can separate them.
+    if (namesDifferByAltSuffix(ocrName, name)) continue;
     if (normKnown.length >= 3 && normInput.length >= 3) {
       const maxLen = Math.max(normInput.length, normKnown.length);
       const allowedDist = maxLen >= 6 ? 2 : 1;
