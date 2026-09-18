@@ -257,13 +257,23 @@ describe('fuzzyMatchMember', () => {
     expect(fuzzyMatchMember('FLOKI', [mk('FLOKI II', 1)])).toBeNull();
   });
 
-  it('leaves homoglyph digits alone — they are OCR damage, not identity', () => {
-    // 0/1/5/8 are what this OCR substitutes for o/l/s/b, so a difference in one is
-    // exactly the damage the budget exists to repair. Only 2,3,4,6,7,9 are identity.
+  it('leaves a SUBSTITUTED homoglyph digit alone — that is OCR damage', () => {
+    // 0/1/5/8/9 are what this OCR writes for o/l/s/b/g, so a digit standing where a
+    // letter stands is exactly the damage the budget exists to repair.
     expect(fuzzyMatchMember('Toup1e', [mk('Toupie', 1)])?.name).toBe('Toupie');
     expect(fuzzyMatchMember('bacardy1', [mk('bacardyl', 1)])?.name).toBe('bacardyl');
+    expect(fuzzyMatchMember('Me9rond', [mk('Megrond', 1)])?.name).toBe('Megrond');
     // …and a single trailing i or v is an ordinary name ending, not a roman numeral.
     expect(fuzzyMatchMember('Levi', [mk('Lev', 1)])?.name).toBe('Lev');
+  });
+
+  it('separates an APPENDED digit even when that digit is a homoglyph', () => {
+    // "Cordarus 1" is a live member. Nothing bolts a digit onto an otherwise intact
+    // name, so the append is the alt convention, not a misread of a trailing letter —
+    // that would be a substitution, which leaves the length alone.
+    expect(fuzzyMatchMember('Cordarus 1', [mk('Cordarus', 1)])).toBeNull();
+    expect(fuzzyMatchMember('Cordarus', [mk('Cordarus 1', 1)])).toBeNull();
+    expect(fuzzyMatchMember('Stafford85', [mk('Stafford', 1)])).toBeNull();
   });
 
   it('still matches a name whose identity digits are unchanged', () => {

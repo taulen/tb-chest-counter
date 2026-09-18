@@ -132,12 +132,26 @@ function identityDigits(s) {
         .match(/[0-9]/g) ?? []).join('');
 }
 /**
- * A roman numeral used as an alt-account marker, 2+ characters. Deliberately does
- * NOT include the one-character forms: "i", "v" and "x" are ordinary name endings
- * (Levi, Max) and a single trailing character is also the commonest thing for OCR
- * to drop, so treating one as identity would split real members apart.
+ * What may sit on the end of a COMPLETE other name and mark an alt account: a run of
+ * digits, or a 2+ character roman numeral.
+ *
+ * Every digit qualifies here, including the 0/1/5/8/9 that {@link identityDigits}
+ * folds away, and the difference between the two rules is append versus substitute.
+ * A homoglyph digit is a SUBSTITUTION — it stands where a letter stands, so the name
+ * keeps its length ("Toup1e" for "Toupie", "Me9rond" for "Megrond", "050" for "oSo",
+ * "mimo0000" for "mimooooo"). Not one measured OCR error appends a digit to a name
+ * that is otherwise entirely intact. So "Cordarus 1" next to "Cordarus" is the alt
+ * convention, not damage, and reading it as damage is what left three names on the
+ * live roster ("bacardy1", "Stafford85", "Cordarus 1") one join away from silently
+ * absorbing their own base name.
+ *
+ * The roman forms deliberately EXCLUDE the one-character "i", "v" and "x": those are
+ * ordinary name endings (Levi, Max), and a single trailing character is also the
+ * commonest thing for OCR to drop, so treating one as identity would split real
+ * members apart. A digit does not have that problem — a trailing letter misread as a
+ * digit is a substitution, which this branch never sees.
  */
-const ALT_ROMAN_SUFFIX = /^(?:i{2,3}|iv|vi{1,3}|ix|xi{1,2})$/;
+const ALT_SUFFIX = /^(?:[0-9]+|i{2,3}|iv|vi{1,3}|ix|xi{1,2})$/;
 /** Letters and digits of any script, spacing and punctuation gone. */
 function altKey(s) {
     return foldDiacritics(s.normalize('NFKC')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
@@ -161,18 +175,26 @@ function altKey(s) {
  * "FELI 2"; the 2 was only ever discarded on OUR side, by normalizers written when
  * digits were assumed to be letter noise (oSo ↔ 050) rather than identity.
  *
- * That assumption is still right for 0/1/5/8/9, which is why {@link identityDigits}
- * folds those away first and this guard stays silent on them — "mikl"/"mikI",
- * "oSo"/"050" and "Megrond"/"Me9rond" keep merging exactly as before. It is the other
- * five digits (2, 3, 4, 6, 7), and a 2+ character roman numeral, that mean a
- * different player.
+ * Two rules, because a digit can mean either thing depending on WHERE it sits:
  *
- * Measured against the live roster (251 members, Sep 5 backup): 8 members carry an
- * identity digit and no pair the matchers currently collapse is separated by this —
- * it costs nothing that works today. The clan's existing "FLOKI" / "FLOKI II" pair
- * is the roman half of the same convention, two members that survive as two only
- * because their exact spellings happened to be read first; 2 edits apart on a
- * 2-edit budget, they were one bad read from collapsing the same way.
+ *   {@link identityDigits}  a digit anywhere in the name, but only the five (2, 3, 4,
+ *                           6, 7) that no letter resembles. 0/1/5/8/9 are folded away
+ *                           first, so "mikl"/"mikI", "oSo"/"050", "Toup1e"/"Toupie"
+ *                           and "Megrond"/"Me9rond" keep merging exactly as before.
+ *   {@link ALT_SUFFIX}      ANY digit run, or a 2+ character roman numeral, APPENDED
+ *                           to the whole of the other name. A homoglyph digit is a
+ *                           substitution and leaves the length alone, so nothing that
+ *                           rule protects can reach this one — which is what lets it
+ *                           cover "Cordarus 1", where the suffix is a folded digit.
+ *
+ * Measured against the live roster (251 members, Sep 5 backup): every one of the 251
+ * still resolves to itself through both matchers, and no pair they currently collapse
+ * is separated by this — it costs nothing that works today. What it removes from the
+ * collision list is the clan's own "FLOKI" / "FLOKI II", the roman half of the same
+ * convention: two members that survive as two only because their exact spellings
+ * happened to be read first, 2 edits apart on a 2-edit budget. The roster also carries
+ * "bacardy1", "Stafford85" and "Cordarus 1", none of whose base names is a member
+ * today — each one join away from the same silent absorption.
  *
  * The residual risk is the mirror image — a genuine OCR misread of an identity digit
  * ("Sm4sH" read as "SmasH") now fails to match and mints a duplicate member. That is
@@ -180,8 +202,8 @@ function altKey(s) {
  * crop attached and an admin merges it, while a silent absorption is unrecoverable —
  * the absorbed player's chests are already filed under someone else's name.
  *
- * Known gap, accepted: an alt suffixed with 0, 1, 5, 8 or 9 ("Cordarus 1") is
- * invisible to this, because those digits really are what OCR substitutes for letters.
+ * What this still cannot see is an alt that is not a suffix at all: a tag, a prefix,
+ * or a spelling the player chose themselves. Nothing in a name can reveal those.
  */
 function namesDifferByAltSuffix(a, b) {
     // Keyed Unicode-aware rather than through despace, which keeps only [a-z0-9] and so
@@ -195,10 +217,13 @@ function namesDifferByAltSuffix(a, b) {
         return false;
     if (identityDigits(ka) !== identityDigits(kb))
         return true;
+    // One name is the whole of the other plus an alt marker. Checked on top of the digit
+    // signature because it reaches the suffixes that signature deliberately folds away:
+    // "Cordarus 1" is "Cordarus" plus an appended digit, and no OCR error appends one.
     const [shorter, longer] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
     return shorter.length >= 3
         && longer.startsWith(shorter)
-        && ALT_ROMAN_SUFFIX.test(longer.slice(shorter.length));
+        && ALT_SUFFIX.test(longer.slice(shorter.length));
 }
 function ocrNormalize(s) {
     return foldDiacritics(transliterateCyrillicHomoglyphs(s))

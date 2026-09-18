@@ -95,13 +95,24 @@ describe('namesDifferByAltSuffix', () => {
     expect(namesDifferByAltSuffix('Max', 'Ma')).toBe(false);
   });
 
-  it('stays silent on the digits that stand in for letters', () => {
-    // 0→o, 5→s, 1→l, 8→b: a difference in one of these is OCR damage, and the
-    // matchers must stay free to repair it.
+  it('stays silent on a digit SUBSTITUTED for a letter', () => {
+    // 0→o, 5→s, 1→l, 8→b, 9→g: a digit standing where a letter stands is OCR damage,
+    // and the matchers must stay free to repair it. Every case here keeps its length.
     expect(namesDifferByAltSuffix('050', 'oSo')).toBe(false);
     expect(namesDifferByAltSuffix('Toup1e', 'Toupie')).toBe(false);
-    expect(namesDifferByAltSuffix('bacardy1', 'bacardy')).toBe(false);
+    expect(namesDifferByAltSuffix('Me9rond', 'Megrond')).toBe(false);
     expect(namesDifferByAltSuffix('Sezot0', 'Sezoto')).toBe(false);
+    expect(namesDifferByAltSuffix('mimo0000', 'mimooooo')).toBe(false);
+  });
+
+  it('separates a digit APPENDED to a whole name, whatever the digit', () => {
+    // The other half of the same coin: no OCR error bolts a digit onto a name that is
+    // otherwise intact, so an appended one is the alt convention even when it is one
+    // of the five that get folded above. All three are live roster names whose base
+    // name joining the clan would otherwise be absorbed into them.
+    expect(namesDifferByAltSuffix('Cordarus 1', 'Cordarus')).toBe(true);
+    expect(namesDifferByAltSuffix('bacardy1', 'bacardy')).toBe(true);
+    expect(namesDifferByAltSuffix('Stafford85', 'Stafford')).toBe(true);
   });
 
   it('is silent on two unrelated names and on the same name twice', () => {
