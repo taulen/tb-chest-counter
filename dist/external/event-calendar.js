@@ -283,6 +283,69 @@ async function groupsFor(eventKey) {
 // long-lived clan, can't turn the "older" arrow into an endless walk.
 const MAX_CYCLE_WINDOWS = 60;
 /**
+ * The feed is a ROLLING window, not an archive: measured 2026-09-18 it carried
+ * 2026-08-18 → 2026-12-18, i.e. about a month back. A 6-day event therefore
+ * still has five past runs in it, but a 24-day one (Ragnarök, Dark Omens,
+ * Olympus, Armageddon, Hell Forge) has ONE or TWO — which is exactly what made
+ * the Events page's "older" arrow stop dead after a step or two while "All
+ * time" kept showing the clan's full history.
+ *
+ * Every tracked event in the feed is strictly periodic — 6, 12 or 24 days, with
+ * zero exceptions across 374 VEVENTs spanning four months — so runs that have
+ * aged out are reconstructed by stepping that period back from the feed's
+ * earliest run. Two guards keep that from inventing history:
+ *
+ *  - the period must be PROVEN by the feed (three runs, identical gaps); an
+ *    event with an irregular or unknown cadence is left exactly as it was, and
+ *  - the walk stops at the clan's oldest chest for the event, so an event the
+ *    game introduced last month can't grow runs from before it existed.
+ *
+ * Reconstructed windows are flagged `estimated` and the page marks them, since
+ * their dates are a projection of the schedule rather than a record of it.
+ */
+const MAX_BACKFILL_WINDOWS = 60;
+/**
+ * The event's run-to-run period, in ms — but only when the feed proves it:
+ * three runs whose gaps are all identical. Anything less regular returns null
+ * and gets no backfill.
+ */
+function inferPeriodMs(groups) {
+    if (groups.length < 3)
+        return null;
+    const period = groups[1].start - groups[0].start;
+    if (!(period > 0))
+        return null;
+    for (let i = 1; i < groups.length - 1; i++) {
+        if (groups[i + 1].start - groups[i].start !== period)
+            return null;
+    }
+    return period;
+}
+/** Feed runs, preceded by the reconstructed ones the feed no longer carries. */
+function backfilledGroups(groups, eventKey, clanId) {
+    const feed = groups.map((g) => ({ start: g.start, end: g.end, estimated: false }));
+    if (clanId == null || !groups.length)
+        return feed;
+    const period = inferPeriodMs(groups);
+    if (period == null)
+        return feed;
+    const floorMs = dataFloorMs(eventKey, clanId);
+    const earliest = groups[0].start;
+    if (floorMs >= earliest)
+        return feed;
+    // A run the feed emitted with days missing is SHORT (the 2026-09-03 Dark
+    // Omens arrived as its "(Day 1/2)" row alone), so size reconstructed windows
+    // by the longest run seen rather than by the first one — and never longer
+    // than the period, which would run one window into the next.
+    const lenMs = Math.min(Math.max(...groups.map((g) => g.end - g.start)), period);
+    const older = [];
+    for (let start = earliest - period; start + period > floorMs && older.length < MAX_BACKFILL_WINDOWS; start -= period) {
+        older.push({ start, end: start + lenMs, estimated: true });
+    }
+    older.reverse();
+    return [...older, ...feed];
+}
+/**
  * Occurrence spans for a rolling-cycle event (see `cycle` in the catalog),
  * ascending: the cycle containing now, plus every earlier cycle back to the one
  * holding `floorMs`. Boundaries are exact multiples of the cycle length from the
@@ -305,9 +368,11 @@ function cycleGroups(cycle, floorMs) {
     }
     return groups;
 }
-// Oldest cycle worth listing: the one holding this event's first chest for the
-// clan. Without a clan (or with no chests yet) only the current cycle is shown.
-function cycleFloorMs(eventKey, clanId) {
+// Oldest window worth listing: the one holding this event's first chest for the
+// clan. Without a clan (or with no chests yet) nothing older than now is listed
+// — a rolling cycle then shows only the current one, and a feed event gets no
+// reconstructed runs.
+function dataFloorMs(eventKey, clanId) {
     if (clanId == null)
         return Date.now();
     const first = (0, event_repo_js_1.getEventDataStart)(eventKey, clanId);
@@ -349,6 +414,7 @@ async function getEventSchedule(eventKey) {
             resetAt: new Date(upcoming.end).toISOString(),
             label: labelFor(upcoming.start, upcoming.end),
             isCurrent: false,
+            estimated: false,
         }
         : null;
     return { next, live, cycleEndsAt: null };
@@ -363,17 +429,26 @@ async function getEventSchedule(eventKey) {
  * same event. For a rolling-cycle event `clanId` instead decides how far back
  * the cycles go (the clan's oldest chest for the event).
  *
+ * The feed only reaches about a month back, so a feed-driven event's older runs
+ * are reconstructed from its proven cadence and flagged `estimated` — see
+ * `backfilledGroups`.
+ *
  * Returns [] for events with neither a calendar mapping nor a cycle, and when
  * the feed is empty.
  */
 async function getEventOccurrences(eventKey, clanId) {
     const cycle = (0, event_catalog_js_1.getEventDef)(eventKey)?.cycle;
     const base = cycle
-        ? cycleGroups(cycle, cycleFloorMs(eventKey, clanId))
-        : await groupsFor(eventKey);
+        ? cycleGroups(cycle, dataFloorMs(eventKey, clanId)).map((g) => ({ ...g, estimated: false }))
+        : backfilledGroups(await groupsFor(eventKey), eventKey, clanId);
     if (!base.length)
         return [];
-    const groups = base.map((g) => ({ start: g.start, end: g.end, to: g.end }));
+    const groups = base.map((g) => ({
+        start: g.start,
+        end: g.end,
+        to: g.end,
+        estimated: g.estimated,
+    }));
     const now = Date.now();
     for (let i = 0; i < groups.length; i++) {
         const g = groups[i];
@@ -405,6 +480,7 @@ async function getEventOccurrences(eventKey, clanId) {
         resetAt: new Date(g.end).toISOString(),
         label: labelFor(g.start, g.end),
         isCurrent: g.start <= now && now < g.end,
+        estimated: g.estimated,
     }));
 }
 //# sourceMappingURL=event-calendar.js.map

@@ -416,6 +416,13 @@ function occurrenceControlsHtml() {
   const live = isCurrent && occMode !== 'cycle'
     ? '<span class="events-occ-live" title="Event in progress">· live</span>'
     : '';
+  // Runs older than the calendar feed's ~1-month reach have dates projected
+  // from the event's cadence, not read from the feed. The totals are still the
+  // clan's own chests — only the window's edges are inferred — so this is a
+  // quiet footnote on the label, not a warning.
+  const est = !isAll && occ && occ.estimated
+    ? '<span class="events-occ-est" title="Dates projected from this event\'s schedule — the calendar feed only carries about a month of history">· est.</span>'
+    : '';
   const labelTitle = isCurrent && occMode === 'cycle' && occ.to
     ? ` title="Current cycle — resets in ${esc(timeLeftUntil(occ.to))}"`
     : '';
@@ -430,7 +437,7 @@ function occurrenceControlsHtml() {
   return `
     <div class="period-nav events-nav">
       <button class="btn btn-tight" data-occ-nav="prev" ${prevDisabled ? 'disabled' : ''} title="${isAll ? `Oldest ${unit}` : `Older ${unit}`}">←</button>
-      <span class="period-nav-label"${labelTitle}>${esc(label)}${live}</span>
+      <span class="period-nav-label"${labelTitle}>${esc(label)}${live}${est}</span>
       <button class="btn btn-tight" data-occ-nav="next" ${nextDisabled ? 'disabled' : ''} title="${isAll ? `Newest ${unit}` : `Newer ${unit}`}">→</button>
     </div>
     <button class="btn ${isAll ? 'active' : ''}" data-occ-all title="${isAll ? `Showing all ${unit}s — pick a single one with the arrows` : `Aggregate across all ${unit}s`}">All time</button>`;
@@ -456,13 +463,16 @@ function eventSeriesCardHtml() {
 
   const peak = Math.max(1, ...runs.map((r) => r.points || 0));
   const bars = runs.map((r) => {
+    // Runs older than the calendar feed's reach carry projected dates (see
+    // `estimated`), so the hover text says so rather than presenting them as read.
+    const est = r.estimated ? ' (estimated dates)' : '';
     if (r.points === null) {
-      return `<span class="evseries-col" title="${esc(r.label)}: no data">
+      return `<span class="evseries-col" title="${esc(r.label)}${est}: no data">
           <span class="evseries-gap"></span>
         </span>`;
     }
     const h = Math.max(2, Math.round((r.points / peak) * 100));
-    return `<span class="evseries-col" title="${esc(r.label)}: ${r.points.toLocaleString()} pts · ${(r.chests ?? 0).toLocaleString()} chests · ${(r.participants ?? 0).toLocaleString()} players">
+    return `<span class="evseries-col" title="${esc(r.label)}${est}: ${r.points.toLocaleString()} pts · ${(r.chests ?? 0).toLocaleString()} chests · ${(r.participants ?? 0).toLocaleString()} players">
         <span class="evseries-bar${r.isCurrent ? ' is-current' : ''}" style="height: ${h}%"></span>
       </span>`;
   }).join('');

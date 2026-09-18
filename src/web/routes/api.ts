@@ -945,6 +945,9 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
         from: occ.from,
         to: occ.to,
         isCurrent: !!occ.isCurrent,
+        // Reconstructed from the event's cadence rather than read from the
+        // calendar feed (which only reaches ~a month back) — the chart says so.
+        estimated: !!occ.estimated,
         // Null rather than 0 for a run with no data at all: the event may
         // predate this clan's history, and drawing that as a zero says the
         // clan turned up and scored nothing.

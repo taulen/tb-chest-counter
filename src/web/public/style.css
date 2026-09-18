@@ -4431,6 +4431,15 @@ details > table {
   font-weight: 600;
   color: var(--accent-green-soft-text);
 }
+/* Occurrence whose dates were projected from the event's cadence (the calendar
+   feed only reaches ~a month back) — a footnote, so it sits back from the label. */
+.events-occ-est {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: help;
+}
 /* Wide matrices (many chest/level columns) scroll horizontally on narrow. */
 .events-scroll { overflow-x: auto; }
 .events-table td.col-num { font-size: 0.82rem; }
