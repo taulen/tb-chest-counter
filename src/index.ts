@@ -11,6 +11,7 @@ import {
   startAllClanBots,
   stopAllBots as stopAllDiscordBots,
   postScanReport,
+  onClanScanCompleted,
 } from './discord/bot.js';
 import { printScanReport } from './output/console-report.js';
 import { cleanOldScreenshots } from './browser/screenshotter.js';
@@ -150,6 +151,9 @@ async function main(): Promise<void> {
       // disabled, no token, or the bot isn't yet running.
       printScanReport(result);
       postScanReport(clanId, result).catch(() => {});
+      // A daily digest held back at the rollover goes out now, once this
+      // scan has collected the chests earned in the day's last minutes.
+      onClanScanCompleted(clanId).catch(() => {});
     });
 
     // Start web dashboard

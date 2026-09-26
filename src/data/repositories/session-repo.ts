@@ -28,6 +28,24 @@ function rowToSession(row: Record<string, unknown>): ScanSession {
   };
 }
 
+/**
+ * True when a real (non-import) scan for this clan both started at or after
+ * `sinceIso` and completed successfully. The daily digest waits on this: the
+ * chests earned just before the rollover are only collected by the first scan
+ * that starts after it.
+ */
+export function hasCompletedScanStartedSince(clanId: number, sinceIso: string): boolean {
+  const row = getDb().prepare(`
+    SELECT 1 FROM scan_sessions
+    WHERE clan_id = ?
+      AND status = ?
+      AND trigger_source <> 'import'
+      AND started_at >= ?
+    LIMIT 1
+  `).get(clanId, ScanStatus.COMPLETED, sinceIso);
+  return row !== undefined;
+}
+
 export function createSession(
   triggerSource: ScanTriggerSource,
   clanId: number,

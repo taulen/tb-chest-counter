@@ -607,7 +607,7 @@ function updateGoalPreview(el, clanId) {
 function renderDigestStatus(clan) {
   if (!clan.discordEnabled || !clan.discordDailyDigestEnabled) return '';
   if (!clan.lastDigestAt) {
-    return `<p class="muted-copy digest-status-line">Last digest: never run yet — fires at the next configured rollover hour.</p>`;
+    return `<p class="muted-copy digest-status-line">Last digest: never run yet — sends after the first scan following the next rollover.</p>`;
   }
   const when = formatRelativeTime(clan.lastDigestAt);
   const channelOk = !clan.lastDigestChannelError;

@@ -131,6 +131,9 @@ async function main() {
             // disabled, no token, or the bot isn't yet running.
             (0, console_report_js_1.printScanReport)(result);
             (0, bot_js_1.postScanReport)(clanId, result).catch(() => { });
+            // A daily digest held back at the rollover goes out now, once this
+            // scan has collected the chests earned in the day's last minutes.
+            (0, bot_js_1.onClanScanCompleted)(clanId).catch(() => { });
         });
         // Start web dashboard
         if (config.webEnabled) {

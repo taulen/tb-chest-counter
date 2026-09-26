@@ -335,7 +335,7 @@ function formatDailyDigestShareText(data, options = {}) {
         // character column.
         const dotCount = Math.max(2, maxPrefixLen - prefix.length + 2);
         const leaders = LEADER.repeat(dotCount);
-        const line = `${prefix} ${leaders} ${p.chests} ${chestsLabel} (${p.points.toLocaleString('en-US')} pts)`;
+        const line = `${prefix} ${leaders} ${p.chests} ${chestsLabel} (${p.points.toLocaleString('en-US')})`;
         if (totalLen + line.length + 1 > DM_MESSAGE_MAX)
             break;
         lines.push(line);

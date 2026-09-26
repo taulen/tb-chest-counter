@@ -44,11 +44,13 @@ exports.isClanBotConnected = isClanBotConnected;
 exports.postReauthRequiredNotice = postReauthRequiredNotice;
 exports.postReauthResolvedNotice = postReauthResolvedNotice;
 exports.sendClanTestMessage = sendClanTestMessage;
+exports.onClanScanCompleted = onClanScanCompleted;
 const discord_js_1 = require("discord.js");
 const commands_js_1 = require("./commands.js");
 const embeds_js_1 = require("./embeds.js");
 const digest_recipients_js_1 = require("./digest-recipients.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
+const sessionRepo = __importStar(require("../data/repositories/session-repo.js"));
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('discord');
@@ -218,6 +220,7 @@ async function startBotForClan(clan, gameDayRolloverUtcHour) {
         digestShareUserIds: (0, digest_recipients_js_1.parseDigestRecipients)(clan.discordDailyDigestShareUserId),
         digestUtcHour: gameDayRolloverUtcHour,
         digestTimer: null,
+        pendingDigest: null,
     };
     clans.set(clan.id, ctx);
     const shared = await ensureClient(ctx.token);
@@ -275,6 +278,8 @@ async function stopClanBot(clanId) {
         return;
     if (ctx.digestTimer)
         clearTimeout(ctx.digestTimer);
+    if (ctx.pendingDigest)
+        clearTimeout(ctx.pendingDigest.fallbackTimer);
     clans.delete(clanId);
     const shared = clients.get(ctx.token);
     if (!shared)
@@ -608,13 +613,87 @@ function scheduleNextDigest(clanId) {
     ctx.digestTimer = setTimeout(async () => {
         ctx.digestTimer = null;
         try {
-            await sendDailyDigestForClan(clanId);
+            // The scheduled instant, not the clock: a timer firing a hair early
+            // would otherwise resolve to the previous day's rollover.
+            await armDigest(clanId, target);
         }
         catch (err) {
             log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
         }
         scheduleNextDigest(clanId);
     }, delayMs);
+}
+/**
+ * How long a digest waits for its post-rollover scan before it goes out
+ * anyway. Two scan intervals, floored at an hour: a scan already running at
+ * the rollover doesn't count, so the qualifying one can legitimately finish
+ * well over one interval later. Only reached when scanning is paused or
+ * keeps failing — a digest a few hours late beats one never sent.
+ */
+async function digestFallbackMs() {
+    const { loadConfig } = await import('../config/index.js');
+    return Math.max(60 * 60 * 1000, loadConfig().scanIntervalMs * 2);
+}
+/**
+ * Queue the digest for the game day that closed at `rollover`, to be sent
+ * once the first scan that STARTS after the rollover has completed.
+ *
+ * Why not send at the rollover itself: chests earned in the last minutes of
+ * the game day are still sitting on the Gifts tab until the next scan claims
+ * them, and their earn time (effective_at) puts them in the day that just
+ * closed. A digest fired at the rollover is therefore short exactly those
+ * points, and disagrees with the in-game one-day leaderboard. A scan already
+ * in flight at the rollover doesn't qualify — it may have passed the Gifts
+ * tab before the day closed.
+ *
+ * If that scan already happened (a boot catch-up hours after the rollover),
+ * this sends immediately.
+ */
+async function armDigest(clanId, rollover) {
+    const ctx = clans.get(clanId);
+    if (!ctx)
+        return;
+    if (ctx.pendingDigest) {
+        clearTimeout(ctx.pendingDigest.fallbackTimer);
+        ctx.pendingDigest = null;
+    }
+    if (sessionRepo.hasCompletedScanStartedSince(clanId, rollover.toISOString())) {
+        await sendDailyDigestForClan(clanId, rollover);
+        return;
+    }
+    const fallbackMs = await digestFallbackMs();
+    const fallbackTimer = setTimeout(() => {
+        const current = clans.get(clanId);
+        if (!current?.pendingDigest || current.pendingDigest.rollover.getTime() !== rollover.getTime())
+            return;
+        current.pendingDigest = null;
+        log.warn(`Clan #${clanId}: no scan completed within ${Math.round(fallbackMs / 60_000)} min of rollover ${rollover.toISOString()} — sending the daily digest without it`);
+        sendDailyDigestForClan(clanId, rollover).catch((err) => {
+            log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
+        });
+    }, fallbackMs);
+    ctx.pendingDigest = { rollover, fallbackTimer };
+    log.info(`Clan #${clanId}: rollover ${rollover.toISOString()} reached — daily digest will send after the next completed scan`);
+}
+/**
+ * Called by the scan loop after every successful scan. Releases a digest
+ * waiting on this clan's first post-rollover scan (see armDigest).
+ */
+async function onClanScanCompleted(clanId) {
+    const ctx = clans.get(clanId);
+    const pending = ctx?.pendingDigest;
+    if (!ctx || !pending)
+        return;
+    if (!sessionRepo.hasCompletedScanStartedSince(clanId, pending.rollover.toISOString()))
+        return;
+    clearTimeout(pending.fallbackTimer);
+    ctx.pendingDigest = null;
+    try {
+        await sendDailyDigestForClan(clanId, pending.rollover);
+    }
+    catch (err) {
+        log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
+    }
 }
 /**
  * The most recent rollover instant at or before `now`. Mirror of the
@@ -695,8 +774,10 @@ async function catchUpMissedDigest(clanId) {
         return;
     }
     log.info(`Clan #${clanId}: daily digest for game day ${gameDayKey} (rollover ${rollover.toISOString()}) ` +
-        `was missed while offline (last sent ${clan.lastDigestAt}) — sending catch-up now`);
-    await sendDailyDigestForClan(clanId, rollover);
+        `was missed while offline (last sent ${clan.lastDigestAt}) — catching up`);
+    // Sends now if a post-rollover scan already completed, otherwise waits
+    // for one like the scheduled digest does.
+    await armDigest(clanId, rollover);
 }
 function shortenError(err, max = 200) {
     const msg = String(err instanceof Error ? err.message : err);
@@ -742,13 +823,12 @@ function resolveCompletedGameDay(now, rolloverHour) {
 /**
  * Post (and DM) the daily digest for one clan.
  *
- * `windowRef` selects which game day is reported: the scheduled fire
- * passes nothing, so the window is resolved from the current clock (the
- * timer fires ~at the rollover, and resolveCompletedGameDay snaps to the
- * nearest rollover, absorbing drift). The boot-time catch-up passes the
- * exact missed rollover instant so the reported window is that day's
- * closed [rollover-24h, rollover) — the correct historical data — rather
- * than whatever "now" resolves to after an outage.
+ * `windowRef` selects which game day is reported. Every scheduled path
+ * (armDigest, via the rollover timer or the boot catch-up) passes the exact
+ * rollover instant, so the window is that day's closed [rollover-24h,
+ * rollover) even though the send itself now happens a scan later. Without
+ * it the window is resolved from the current clock, snapped to the nearest
+ * rollover.
  */
 async function sendDailyDigestForClan(clanId, windowRef) {
     const ctx = clans.get(clanId);

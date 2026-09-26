@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.invalidateScanStats = invalidateScanStats;
+exports.hasCompletedScanStartedSince = hasCompletedScanStartedSince;
 exports.createSession = createSession;
 exports.updateSession = updateSession;
 exports.getRecentSessions = getRecentSessions;
@@ -39,6 +40,23 @@ function rowToSession(row) {
         errorMessage: row.error_message || null,
         errorPhase: row.error_phase || null,
     };
+}
+/**
+ * True when a real (non-import) scan for this clan both started at or after
+ * `sinceIso` and completed successfully. The daily digest waits on this: the
+ * chests earned just before the rollover are only collected by the first scan
+ * that starts after it.
+ */
+function hasCompletedScanStartedSince(clanId, sinceIso) {
+    const row = (0, database_js_1.getDb)().prepare(`
+    SELECT 1 FROM scan_sessions
+    WHERE clan_id = ?
+      AND status = ?
+      AND trigger_source <> 'import'
+      AND started_at >= ?
+    LIMIT 1
+  `).get(clanId, enums_js_1.ScanStatus.COMPLETED, sinceIso);
+    return row !== undefined;
 }
 function createSession(triggerSource, clanId) {
     const db = (0, database_js_1.getDb)();
