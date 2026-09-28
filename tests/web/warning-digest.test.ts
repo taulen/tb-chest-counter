@@ -136,6 +136,20 @@ describe('groupWarnings', () => {
     expect(out).toHaveLength(2);
   });
 
+  it('never folds a resolved entry into an outstanding one of the same text', () => {
+    // A re-auth error that came back after the fix is a new problem. Folded
+    // together, it would either hide under Informational or drag the resolved
+    // ones back into Needs attention.
+    const out = groupWarnings([
+      at(3, 'Clan #2 needs re-authentication', { levelName: 'error', level: 50 }),
+      at(2, 'Clan #2 needs re-authentication', { levelName: 'error', level: 50, alert: false, resolvedAt: 2.5 }),
+      at(1, 'Clan #2 needs re-authentication', { levelName: 'error', level: 50, alert: false, resolvedAt: 2.5 }),
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out.find((e: { resolvedAt?: number }) => e.resolvedAt == null).count).toBe(1);
+    expect(out.find((e: { resolvedAt?: number }) => e.resolvedAt != null).count).toBe(2);
+  });
+
   it('orders newest first', () => {
     const out = groupWarnings([at(1, 'a'), at(3, 'c'), at(2, 'b')]);
     expect(out.map((e: { msg: string }) => e.msg)).toEqual(['c', 'b', 'a']);
@@ -160,6 +174,14 @@ describe('splitWarnings', () => {
     ]);
     expect(attention).toHaveLength(1);
     expect(attention[0].msg).toBe(REAL.deadRefs);
+    expect(fyi).toHaveLength(1);
+  });
+
+  it('files a resolved entry under Informational', () => {
+    const { attention, fyi } = splitWarnings([
+      { ts: 2, level: 50, levelName: 'error', module: 'scanner', msg: 'Clan #2 needs re-authentication', alert: false, resolvedAt: 3 },
+    ]);
+    expect(attention).toHaveLength(0);
     expect(fyi).toHaveLength(1);
   });
 

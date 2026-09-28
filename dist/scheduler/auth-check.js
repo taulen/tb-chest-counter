@@ -61,13 +61,16 @@ async function performAuthCheck(ctx) {
             await (0, auth_js_1.navigateToGame)(page, game_url_js_1.TB_GAME_URL);
             const loggedIn = await (0, auth_js_1.checkLoginStatus)(page);
             if (!loggedIn) {
-                log.warn('Not logged in');
+                // Same resolveKey as the re-auth error below: the next session that
+                // loads the game retires these too (see clearClanNeedsReauth).
+                const resolveKey = (0, clan_repo_js_1.reauthWarningKey)(ctx.clanId);
+                log.warn({ resolveKey }, 'Not logged in');
                 if (!ctx.config.headless) {
                     await (0, auth_js_1.performManualLogin)(page, session.context, ctx.config);
                     noteSessionHealthy(ctx.clanId);
                     return { ok: true, session };
                 }
-                log.error('Cannot login in headless mode. Please run with HEADLESS=false first to authenticate.');
+                log.error({ resolveKey }, 'Cannot login in headless mode. Please run with HEADLESS=false first to authenticate.');
                 return { ok: false, session };
             }
             noteSessionHealthy(ctx.clanId);
@@ -111,7 +114,9 @@ async function performAuthCheck(ctx) {
                     ? 'saved Total Battle session is logged out'
                     : 'saved Total Battle session cannot load the game canvas';
                 const reason = `Clan #${ctx.clanId} needs re-authentication — ${cause}. Open Clans → Refresh login.`;
-                log.error(reason);
+                // Keyed so the System page retires it once the flag clears, instead
+                // of listing it under "Needs attention" long after the fix.
+                log.error({ resolveKey: (0, clan_repo_js_1.reauthWarningKey)(ctx.clanId) }, reason);
                 ctx.reportProgress('auth', 'Saved login expired — re-authenticate via Clans → Refresh login.');
                 if (firstTime) {
                     // Fire and forget — Discord delivery shouldn't block the

@@ -78,11 +78,16 @@ export function hasMoreThanHeadline(msg, headline) {
  * stay distinct. The folded entry keeps the NEWEST timestamp, because the
  * question being asked of it is "is this still happening?", not "when did it
  * start" — `firstTs` carries the other end for anything that wants it.
+ *
+ * Resolved and outstanding entries never fold together: a re-auth error that
+ * came back after the last fix is a new problem, and folding it into the
+ * resolved ones would either hide it under "Informational" or drag them all
+ * back into "Needs attention".
  */
 export function groupWarnings(entries) {
   const byKey = new Map();
   for (const e of entries || []) {
-    const key = [e.levelName, e.module, e.msg].join('␟');
+    const key = [e.levelName, e.module, e.msg, e.resolvedAt != null ? 'resolved' : 'open'].join('␟');
     const seen = byKey.get(key);
     if (seen) {
       seen.count++;

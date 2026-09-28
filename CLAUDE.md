@@ -99,5 +99,6 @@ Three bounds keep it from recurring, and they are layered on purpose:
 
 ## Logging
 
-- `log.warn`/`log.error` land in a **20-entry** ring buffer surfaced on the System page ([log-buffer.ts](src/utils/log-buffer.ts)). A burst of repeated warnings evicts everything else, so anything on a hot path must coalesce via [log-throttle.ts](src/utils/log-throttle.ts) (one immediate line + one `repeated N×` summary per window).
+- `log.warn`/`log.error` land in a **100-entry** ring buffer surfaced on the System page ([log-buffer.ts](src/utils/log-buffer.ts)). A burst of repeated warnings evicts everything else, so anything on a hot path must coalesce via [log-throttle.ts](src/utils/log-throttle.ts) (one immediate line + one `repeated N×` summary per window).
 - Pass `log.warn({ noAlert: true }, ...)` for informational warnings that shouldn't light the System nav dot.
+- **An entry is a record, not a live status — it never clears itself.** When a warning reports a condition the app can later see go away, log it with `{ resolveKey: '<condition>' }` and call `resolveEntries(key)` where the condition clears; the entry then leaves "Needs attention" and is shown as resolved. Re-auth is the worked example (`reauthWarningKey` / `clearClanNeedsReauth` in [clan-repo.ts](src/data/repositories/clan-repo.ts)). Without it, "Clan #2 needs re-authentication ×14" sat under Needs attention for days after the login was fixed.

@@ -25,6 +25,16 @@ export interface LogBufferEntry {
   // `log.warn({ noAlert: true }, ...)` to stay in the list without
   // demanding a second red dot.
   alert: boolean;
+  // Names the CONDITION this entry reports, for entries whose condition the
+  // app can later see clear: `log.error({ resolveKey: 'reauth:clan:2' }, ...)`.
+  // Without it an entry is a plain record of something that happened, and it
+  // stays in "Needs attention" until newer entries evict it — which for a
+  // re-auth error meant sitting there for days after the login was fixed.
+  resolveKey?: string;
+  // Set by resolveEntries() once the condition cleared. Such an entry also
+  // has `alert: false`, so it leaves "Needs attention" and stops lighting the
+  // nav dot, but stays listed as evidence of what happened.
+  resolvedAt?: number;
 }
 
 // Why 100 and not the original 20: at 20, a burst evicted everything else,
@@ -102,6 +112,64 @@ function persistAppend(entry: LogBufferEntry): void {
     });
 }
 
+/**
+ * Rewrite the file from the ring buffer — the only way to persist a change to
+ * an entry already on disk. Queued on the same chain as the appends so the
+ * two can't interleave.
+ */
+function persistRewrite(): void {
+  writeChain = writeChain
+    .then(async () => {
+      if (!dirEnsured) {
+        await fs.promises.mkdir(path.dirname(FILE_PATH), { recursive: true });
+        dirEnsured = true;
+      }
+      const dump = buffer.map((e) => JSON.stringify(e)).join('\n') + (buffer.length ? '\n' : '');
+      await fs.promises.writeFile(FILE_PATH, dump);
+      approxFileBytes = Buffer.byteLength(dump);
+    })
+    .catch(() => {
+      approxFileBytes = -1;
+    });
+}
+
+/**
+ * Mark the outstanding entries for one condition as resolved, in place.
+ * Pure over the array it is given so it can be tested without the file.
+ *
+ * `legacyMatch` catches entries logged before their call site carried a
+ * `resolveKey` — they are still sitting in data/warnings.jsonl, and are
+ * exactly the stale rows that prompted this.
+ */
+export function markResolved(
+  entries: LogBufferEntry[],
+  key: string,
+  now: number,
+  legacyMatch?: (e: LogBufferEntry) => boolean,
+): number {
+  let n = 0;
+  for (const e of entries) {
+    if (e.resolvedAt !== undefined) continue;
+    const matches = e.resolveKey !== undefined ? e.resolveKey === key : legacyMatch?.(e) === true;
+    if (!matches) continue;
+    e.alert = false;
+    e.resolvedAt = now;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * The condition behind `key` has cleared: retire its outstanding entries.
+ * Cheap enough to call on every healthy cycle — it only touches the disk
+ * when something actually changed. Returns how many entries it resolved.
+ */
+export function resolveEntries(key: string, legacyMatch?: (e: LogBufferEntry) => boolean): number {
+  const n = markResolved(buffer, key, Date.now(), legacyMatch);
+  if (n > 0) persistRewrite();
+  return n;
+}
+
 export function loadPersistedEntries(): void {
   try {
     if (!fs.existsSync(FILE_PATH)) return;
@@ -121,6 +189,8 @@ export function loadPersistedEntries(): void {
             module: typeof obj.module === 'string' ? obj.module : '',
             msg: obj.msg,
             alert: obj.alert !== false, // missing/true → alerting (back-compat)
+            ...(typeof obj.resolveKey === 'string' ? { resolveKey: obj.resolveKey } : {}),
+            ...(typeof obj.resolvedAt === 'number' ? { resolvedAt: obj.resolvedAt } : {}),
           });
         }
       } catch {
@@ -181,6 +251,7 @@ export function createPinoSink(): Writable {
             msg: typeof parsed.msg === 'string' ? parsed.msg : '',
             // Opt-out flag from the call site: log.warn({ noAlert: true }, ...)
             alert: parsed.noAlert !== true,
+            ...(typeof parsed.resolveKey === 'string' ? { resolveKey: parsed.resolveKey } : {}),
           };
           pushEntry(entry);
           persistAppend(entry);

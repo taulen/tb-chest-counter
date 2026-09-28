@@ -548,6 +548,12 @@ nav a {
   color: var(--text-muted);
 }
 
+/* A warning whose condition the app saw clear (e.g. a clan signed in again). */
+.warn-resolved {
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
 .warn-full {
   margin: 8px 0 0;
   padding-top: 8px;

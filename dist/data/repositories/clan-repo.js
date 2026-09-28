@@ -17,6 +17,8 @@ exports.setClanDiscordSettings = setClanDiscordSettings;
 exports.setClanLastDigestStatus = setClanLastDigestStatus;
 exports.markClanNeedsReauth = markClanNeedsReauth;
 exports.clearClanNeedsReauth = clearClanNeedsReauth;
+exports.reauthWarningKey = reauthWarningKey;
+exports.reauthLegacyMatcher = reauthLegacyMatcher;
 exports.setClanChestTrackerSettings = setClanChestTrackerSettings;
 exports.setClanResourcesEnabled = setClanResourcesEnabled;
 exports.setClanResourceAutoCapture = setClanResourceAutoCapture;
@@ -25,6 +27,7 @@ exports.restoreDeletedClan = restoreDeletedClan;
 exports.deleteClan = deleteClan;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
+const log_buffer_js_1 = require("../../utils/log-buffer.js");
 const log = (0, logger_js_1.childLogger)('clan-repo');
 /**
  * URL-safe slug. Lowercase, runs of non-alphanumerics collapse to `-`,
@@ -267,12 +270,35 @@ function markClanNeedsReauth(id) {
  *
  * The `needs_reauth = 1` guard also keeps the happy path write-free: a
  * healthy clan's scan does not touch the row at all.
+ *
+ * It also retires the clan's re-auth warnings on the System page, and does
+ * so on EVERY call rather than only on the 1 → 0 transition. Those entries
+ * used to stay under "Needs attention" until newer warnings evicted them —
+ * days after the login was fixed — because nothing ever told the log buffer
+ * the condition had cleared. Running it on every healthy cycle also sweeps up
+ * entries whose flag was cleared before this existed. It only writes when it
+ * finds something, so the happy path stays write-free here too.
  */
 function clearClanNeedsReauth(id) {
     const db = (0, database_js_1.getDb)();
     const result = db.prepare(`UPDATE clans SET needs_reauth = 0, reauth_failed_at = ''
      WHERE id = ? AND needs_reauth = 1`).run(id);
+    (0, log_buffer_js_1.resolveEntries)(reauthWarningKey(id), reauthLegacyMatcher(id));
     return { recovered: result.changes > 0 };
+}
+/** The `resolveKey` every re-auth warning for a clan is logged under. */
+function reauthWarningKey(id) {
+    return `reauth:clan:${id}`;
+}
+/**
+ * Matches a clan's re-auth errors logged before they carried a resolveKey, on
+ * the message the auth check has always written: "Clan #<id> needs
+ * re-authentication — …". The " needs" right after the id is what keeps
+ * clan #1 from claiming clan #12's.
+ */
+function reauthLegacyMatcher(id) {
+    const prefix = `Clan #${id} needs re-authentication `;
+    return (e) => e.msg.startsWith(prefix);
 }
 function setClanChestTrackerSettings(id, s) {
     const db = (0, database_js_1.getDb)();

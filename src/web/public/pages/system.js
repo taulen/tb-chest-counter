@@ -1004,7 +1004,12 @@ function renderWarningRow(e) {
   const repeat = e.count > 1
     ? `<span class="warn-repeat" title="Logged ${e.count} times. The time shown is the most recent.">×${e.count}</span>`
     : '';
-  const meta = `<span class="warn-meta">${e.module ? esc(e.module) : 'root'} · ${esc(when)}</span>`;
+  // Resolved = the app saw the condition clear (e.g. the clan signed in
+  // again). Filed under Informational by its alert flag; this says why.
+  const resolved = e.resolvedAt != null
+    ? ` · <span class="warn-resolved">resolved ${esc(formatDate(new Date(e.resolvedAt).toISOString()))}</span>`
+    : '';
+  const meta = `<span class="warn-meta">${e.module ? esc(e.module) : 'root'} · ${esc(when)}${resolved}</span>`;
   const head = `<span class="log-level-badge ${levelClass}">${esc(e.levelName)}</span><span class="warn-headline">${esc(headline)}</span>${repeat}`;
 
   if (!hasMore) {

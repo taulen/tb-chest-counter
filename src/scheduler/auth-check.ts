@@ -23,7 +23,7 @@ import {
 import { TB_GAME_URL } from '../config/game-url.js';
 import { childLogger } from '../utils/logger.js';
 import { memorySnapshot } from '../utils/memory-snapshot.js';
-import { clearClanNeedsReauth, markClanNeedsReauth } from '../data/repositories/clan-repo.js';
+import { clearClanNeedsReauth, markClanNeedsReauth, reauthWarningKey } from '../data/repositories/clan-repo.js';
 import { postReauthRequiredNotice, postReauthResolvedNotice } from '../discord/bot.js';
 
 const log = childLogger('scanner');
@@ -88,13 +88,16 @@ export async function performAuthCheck(ctx: AuthCheckContext): Promise<AuthCheck
 
       const loggedIn = await checkLoginStatus(page);
       if (!loggedIn) {
-        log.warn('Not logged in');
+        // Same resolveKey as the re-auth error below: the next session that
+        // loads the game retires these too (see clearClanNeedsReauth).
+        const resolveKey = reauthWarningKey(ctx.clanId);
+        log.warn({ resolveKey }, 'Not logged in');
         if (!ctx.config.headless) {
           await performManualLogin(page, session.context, ctx.config);
           noteSessionHealthy(ctx.clanId);
           return { ok: true, session };
         }
-        log.error('Cannot login in headless mode. Please run with HEADLESS=false first to authenticate.');
+        log.error({ resolveKey }, 'Cannot login in headless mode. Please run with HEADLESS=false first to authenticate.');
         return { ok: false, session };
       }
 
@@ -143,7 +146,9 @@ export async function performAuthCheck(ctx: AuthCheckContext): Promise<AuthCheck
           ? 'saved Total Battle session is logged out'
           : 'saved Total Battle session cannot load the game canvas';
         const reason = `Clan #${ctx.clanId} needs re-authentication — ${cause}. Open Clans → Refresh login.`;
-        log.error(reason);
+        // Keyed so the System page retires it once the flag clears, instead
+        // of listing it under "Needs attention" long after the fix.
+        log.error({ resolveKey: reauthWarningKey(ctx.clanId) }, reason);
         ctx.reportProgress('auth', 'Saved login expired — re-authenticate via Clans → Refresh login.');
         if (firstTime) {
           // Fire and forget — Discord delivery shouldn't block the

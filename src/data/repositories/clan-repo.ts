@@ -1,5 +1,6 @@
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
+import { resolveEntries as resolveLogEntries } from '../../utils/log-buffer.js';
 
 const log = childLogger('clan-repo');
 
@@ -432,6 +433,14 @@ export function markClanNeedsReauth(id: number): { firstTime: boolean } {
  *
  * The `needs_reauth = 1` guard also keeps the happy path write-free: a
  * healthy clan's scan does not touch the row at all.
+ *
+ * It also retires the clan's re-auth warnings on the System page, and does
+ * so on EVERY call rather than only on the 1 → 0 transition. Those entries
+ * used to stay under "Needs attention" until newer warnings evicted them —
+ * days after the login was fixed — because nothing ever told the log buffer
+ * the condition had cleared. Running it on every healthy cycle also sweeps up
+ * entries whose flag was cleared before this existed. It only writes when it
+ * finds something, so the happy path stays write-free here too.
  */
 export function clearClanNeedsReauth(id: number): { recovered: boolean } {
   const db = getDb();
@@ -439,7 +448,24 @@ export function clearClanNeedsReauth(id: number): { recovered: boolean } {
     `UPDATE clans SET needs_reauth = 0, reauth_failed_at = ''
      WHERE id = ? AND needs_reauth = 1`,
   ).run(id);
+  resolveLogEntries(reauthWarningKey(id), reauthLegacyMatcher(id));
   return { recovered: result.changes > 0 };
+}
+
+/** The `resolveKey` every re-auth warning for a clan is logged under. */
+export function reauthWarningKey(id: number): string {
+  return `reauth:clan:${id}`;
+}
+
+/**
+ * Matches a clan's re-auth errors logged before they carried a resolveKey, on
+ * the message the auth check has always written: "Clan #<id> needs
+ * re-authentication — …". The " needs" right after the id is what keeps
+ * clan #1 from claiming clan #12's.
+ */
+export function reauthLegacyMatcher(id: number): (e: { msg: string }) => boolean {
+  const prefix = `Clan #${id} needs re-authentication `;
+  return (e) => e.msg.startsWith(prefix);
 }
 
 export function setClanChestTrackerSettings(id: number, s: ChestTrackerSettings): void {

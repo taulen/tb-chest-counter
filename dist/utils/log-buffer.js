@@ -13,6 +13,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.markResolved = markResolved;
+exports.resolveEntries = resolveEntries;
 exports.loadPersistedEntries = loadPersistedEntries;
 exports.getEntries = getEntries;
 exports.countSince = countSince;
@@ -96,6 +98,59 @@ function persistAppend(entry) {
         approxFileBytes = -1;
     });
 }
+/**
+ * Rewrite the file from the ring buffer — the only way to persist a change to
+ * an entry already on disk. Queued on the same chain as the appends so the
+ * two can't interleave.
+ */
+function persistRewrite() {
+    writeChain = writeChain
+        .then(async () => {
+        if (!dirEnsured) {
+            await fs_1.default.promises.mkdir(path_1.default.dirname(FILE_PATH), { recursive: true });
+            dirEnsured = true;
+        }
+        const dump = buffer.map((e) => JSON.stringify(e)).join('\n') + (buffer.length ? '\n' : '');
+        await fs_1.default.promises.writeFile(FILE_PATH, dump);
+        approxFileBytes = Buffer.byteLength(dump);
+    })
+        .catch(() => {
+        approxFileBytes = -1;
+    });
+}
+/**
+ * Mark the outstanding entries for one condition as resolved, in place.
+ * Pure over the array it is given so it can be tested without the file.
+ *
+ * `legacyMatch` catches entries logged before their call site carried a
+ * `resolveKey` — they are still sitting in data/warnings.jsonl, and are
+ * exactly the stale rows that prompted this.
+ */
+function markResolved(entries, key, now, legacyMatch) {
+    let n = 0;
+    for (const e of entries) {
+        if (e.resolvedAt !== undefined)
+            continue;
+        const matches = e.resolveKey !== undefined ? e.resolveKey === key : legacyMatch?.(e) === true;
+        if (!matches)
+            continue;
+        e.alert = false;
+        e.resolvedAt = now;
+        n++;
+    }
+    return n;
+}
+/**
+ * The condition behind `key` has cleared: retire its outstanding entries.
+ * Cheap enough to call on every healthy cycle — it only touches the disk
+ * when something actually changed. Returns how many entries it resolved.
+ */
+function resolveEntries(key, legacyMatch) {
+    const n = markResolved(buffer, key, Date.now(), legacyMatch);
+    if (n > 0)
+        persistRewrite();
+    return n;
+}
 function loadPersistedEntries() {
     try {
         if (!fs_1.default.existsSync(FILE_PATH))
@@ -116,6 +171,8 @@ function loadPersistedEntries() {
                         module: typeof obj.module === 'string' ? obj.module : '',
                         msg: obj.msg,
                         alert: obj.alert !== false, // missing/true → alerting (back-compat)
+                        ...(typeof obj.resolveKey === 'string' ? { resolveKey: obj.resolveKey } : {}),
+                        ...(typeof obj.resolvedAt === 'number' ? { resolvedAt: obj.resolvedAt } : {}),
                     });
                 }
             }
@@ -180,6 +237,7 @@ function createPinoSink() {
                         msg: typeof parsed.msg === 'string' ? parsed.msg : '',
                         // Opt-out flag from the call site: log.warn({ noAlert: true }, ...)
                         alert: parsed.noAlert !== true,
+                        ...(typeof parsed.resolveKey === 'string' ? { resolveKey: parsed.resolveKey } : {}),
                     };
                     pushEntry(entry);
                     persistAppend(entry);
