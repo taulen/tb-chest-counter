@@ -101,6 +101,23 @@ export function statusClassFor(actual, target) {
   return 'ext-cell-low';
 }
 
+// The words behind the cell colours — same idea, and the same glyphs, as the
+// leaderboard's goal cells (goalCellContentHtml in leaderboard-render.js), but
+// this tab keeps chesttracker.com's own 50% amber threshold.
+const STATUS_TEXT = {
+  'ext-cell-ok': { glyph: '✓', label: 'target reached' },
+  'ext-cell-warn': { glyph: '◐', label: 'at least half the target' },
+  'ext-cell-low': { glyph: '↓', label: 'below half the target' },
+};
+
+/** Glyph + value + spoken status for a target-coloured cell; just the value with no target. */
+export function statusCellHtml(actual, target, formatted = String(actual)) {
+  const s = STATUS_TEXT[statusClassFor(actual, target)];
+  if (!s) return formatted;
+  return `<span class="goal-glyph" aria-hidden="true">${s.glyph}</span>${formatted}`
+    + `<span class="visually-hidden">, ${s.label}</span>`;
+}
+
 // Compact delta badge rendered inline to the right of its headline
 // number. "vs last week" context moves into a title tooltip so the
 // badge itself stays short enough to share the line. Returns a muted
@@ -253,15 +270,19 @@ export function renderSnapshotDetailCardHtml({
     // Mobile compact-row roles: G is the lead badge, Player the identity
     // (with a chests·ancients summary line), Points the headline metric,
     // and every category column collapses into the tap-to-expand panel.
+    // The phone summary line repeats the chests status: the Chests column itself
+    // is hidden on phones, which used to drop that status entirely.
+    const chestsStatus = (v) => (targets ? statusCellHtml(v, targets.chests, String(v)) : String(v));
     const cells = [
-      `<td data-label="Player" data-role="primary"><span class="mrow-name">${esc(p.playerName)}</span><span class="mrow-sub">${chests} chests · ${ancients} ancients</span></td>`,
+      `<td data-label="Player" data-role="primary"><span class="mrow-name">${esc(p.playerName)}</span><span class="mrow-sub">${chestsStatus(chests)} chests · ${ancients} ancients</span></td>`,
       `<td data-label="G" data-role="lead">G${p.guardsLevel}</td>`,
-      `<td data-label="Points" class="${pointsCls}" data-role="metric">${points.toLocaleString()}</td>`,
-      `<td data-label="Chests" class="${chestsCls}" data-role="hidden">${chests}</td>`,
+      `<td data-label="Points" class="${pointsCls}" data-role="metric">${targets ? statusCellHtml(points, targets.points, points.toLocaleString()) : points.toLocaleString()}</td>`,
+      `<td data-label="Chests" class="${chestsCls}" data-role="hidden">${chestsStatus(chests)}</td>`,
       ...categoryKeys.map((k) => {
         const v = p.categories?.[k] || 0;
         const cls = k === 'ancients' ? ancientsCls : '';
-        return `<td data-label="${esc(shortCategory(k))}" class="${cls}">${v}</td>`;
+        const html = k === 'ancients' && targets ? statusCellHtml(v, targets.ancients) : v;
+        return `<td data-label="${esc(shortCategory(k))}" class="${cls}">${html}</td>`;
       }),
     ];
     return `<tr>${cells.join('')}</tr>`;

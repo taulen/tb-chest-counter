@@ -10,6 +10,7 @@
 
 import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
 import { computeGameWindowDates } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
@@ -110,7 +111,7 @@ function paint() {
   if (!mountedEl) return;
   const el = mountedEl;
   const { columns } = cache;
-  const arrow = (key) => sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+  const arrowFor = (key) => (sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '');
 
   const all = sortedRows();
   const total = all.length;
@@ -121,13 +122,19 @@ function paint() {
 
   const headCols = columns.map((c) => {
     const active = sort.key === `type-${c.id}`;
-    return `<th class="sortable rtype-th ${active ? 'is-sorted' : ''}" data-sort-key="type-${c.id}" title="${esc(c.name)}">
-      <span class="rtype-head">
+    // The icon / name / arrow stack lays its own arrow out, so it passes its own.
+    return sortableThHtml({
+      key: `type-${c.id}`,
+      sortState: sort,
+      className: `rtype-th${active ? ' is-sorted' : ''}`,
+      title: c.name,
+      arrowHtml: '',
+      labelHtml: `<span class="rtype-head">
         ${resourceIconOnly(c.slug)}
         <span class="rtype-head-name">${esc(c.name)}</span>
-        <span class="rtype-head-arrow">${arrow(`type-${c.id}`).trim()}</span>
-      </span>
-    </th>`;
+        <span class="rtype-head-arrow" aria-hidden="true">${arrowFor(`type-${c.id}`)}</span>
+      </span>`,
+    });
   }).join('');
 
   const colGroup = `<colgroup><col class="col-player">${columns.map(() => '<col class="col-rtype">').join('')}</colgroup>`;
@@ -183,7 +190,7 @@ function paint() {
           <table class="table-responsive resources-totals-table">
             ${colGroup}
             <thead><tr>
-              <th class="sortable" data-sort-key="member">Member${arrow('member')}</th>
+              ${sortableThHtml({ key: 'member', labelHtml: 'Member', sortState: sort })}
               ${headCols}
             </tr></thead>
             <tbody>${body}</tbody>

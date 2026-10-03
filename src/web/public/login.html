@@ -5,13 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TB Chest Counter - Login</title>
   <script>
+    // Theme before first paint. Mirrors resolveTheme() in lib/theme.js: a saved
+    // light / dark / oled wins; anything else ('auto', nothing saved, storage
+    // blocked) follows the device, with dark mode painted as OLED. Kept
+    // identical across all four HTML shells by tests/config/theme-bootstrap.test.ts.
     (function () {
-      try {
-        var t = localStorage.getItem('theme');
-        if (t === 'light' || t === 'oled' || t === 'dark') {
-          document.documentElement.setAttribute('data-theme', t);
-        }
-      } catch (_) {}
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (_) {}
+      if (t !== 'light' && t !== 'dark' && t !== 'oled') {
+        var light = false;
+        try { light = window.matchMedia('(prefers-color-scheme: light)').matches; } catch (_) {}
+        t = light ? 'light' : 'oled';
+      }
+      document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
   <link rel="stylesheet" href="/base.css">

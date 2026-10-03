@@ -18,6 +18,7 @@
 import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
 import { readToken } from '../lib/theme.js';
+import { describeChart } from '../lib/chart-a11y.js';
 import { computeGameWindowDates } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
@@ -636,6 +637,11 @@ function drawMainChart(typeById) {
         },
       },
     },
+  });
+  describeChart(mainChart, {
+    caption: `${type?.name || 'Resource'} sent and taken over time`,
+    xLabel: 'Period',
+    format: fmt,
   });
 }
 

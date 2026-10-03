@@ -14,6 +14,7 @@
 // auth page.
 
 import { esc } from './ui.js';
+import { sortableThHtml } from './sort-headers.js';
 import { renderPeriodNav } from './period-nav.js';
 import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
 
@@ -176,6 +177,38 @@ export function goalRowClassFor(actualPoints, goalPoints) {
   return status ? `goal-row-${status}` : '';
 }
 
+// The words behind the colours. A tint alone says nothing to a screen reader,
+// and red against green is the pair the most common colour blindness can't
+// tell apart — so every status also carries a glyph and its name.
+const GOAL_STATUS_TEXT = {
+  ok: { label: 'Goal reached', glyph: '✓' },
+  warn: { label: 'Close to goal', glyph: '◐' },
+  low: { label: 'Below goal', glyph: '↓' },
+};
+
+/** "Goal reached" / "Close to goal" / "Below goal" for a status, else ''. */
+export function goalStatusLabel(status) {
+  return GOAL_STATUS_TEXT[status]?.label || '';
+}
+
+/**
+ * Inner html for a goal-coloured number cell: a small glyph in front (fixed
+ * width, so right-aligned numbers stay aligned), the number, then the status in
+ * words for screen readers. With no goal it is just the number.
+ */
+export function goalCellContentHtml(value, goalPoints, formatted = (value || 0).toLocaleString()) {
+  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints)];
+  if (!s) return formatted;
+  return `<span class="goal-glyph" aria-hidden="true">${s.glyph}</span>${formatted}`
+    + `<span class="visually-hidden">, ${s.label.toLowerCase()}</span>`;
+}
+
+/** Tooltip for a goal-coloured cell, e.g. "Below goal — 4,210 of 7,143". */
+export function goalCellTitle(value, goalPoints) {
+  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints)];
+  return s ? `${s.label} — ${(value || 0).toLocaleString()} of ${Math.round(goalPoints).toLocaleString()}` : '';
+}
+
 /**
  * Compact might, for a column narrow enough to sit beside four others:
  * 1.2B / 340M / 12M / 850k. Mirrors the Might page's axis-tick formatter — the
@@ -250,9 +283,8 @@ export function renderLeaderboardCardHtml({
   faqIsNew = false,
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
-  const arrow = (key) => sortState.key === key
-    ? (sortState.dir === 'asc' ? ' ▲' : ' ▼')
-    : '';
+  const th = (key, labelHtml, className = '', title = '') =>
+    sortableThHtml({ key, labelHtml, sortState, action: actions.sort, className, title });
 
   const periodNavRow = renderPeriodNav({
     period,
@@ -294,8 +326,8 @@ export function renderLeaderboardCardHtml({
   // two secondary numbers belong on a phone. Rank/Player/Points keep their
   // lead/primary/metric roles, so the collapsed row looks exactly as it did.
   const mightHeadHtml = showMight
-    ? `<th class="sortable num" data-action="${actions.sort}" data-sort-key="level" title="Hero level at the latest daily snapshot">Level${arrow('level')}</th>
-        <th class="sortable num" data-action="${actions.sort}" data-sort-key="might" title="Might at the latest daily snapshot">Might${arrow('might')}</th>`
+    ? `${th('level', 'Level', 'num', 'Hero level at the latest daily snapshot')}
+        ${th('might', 'Might', 'num', 'Might at the latest daily snapshot')}`
     : '';
 
   const mightCellsHtml = (e) => showMight
@@ -306,7 +338,7 @@ export function renderLeaderboardCardHtml({
   // Unmarked for the same reason as Level/Might: on a phone it belongs in the
   // tap-to-expand panel, not in the collapsed row.
   const guardsHeadHtml = showGuards
-    ? `<th class="sortable num" data-action="${actions.sort}" data-sort-key="guards" title="Guardsmen level, estimated from Omen Essence and Scientific Tractates donations — hover a value for how sure and how recent">Guards${arrow('guards')}</th>`
+    ? th('guards', 'Guards', 'num', 'Guardsmen level, estimated from Omen Essence and Scientific Tractates donations — hover a value for how sure and how recent')
     : '';
   const guardsCellsHtml = (e) => showGuards
     ? `<td data-label="Guards" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`
@@ -321,10 +353,10 @@ export function renderLeaderboardCardHtml({
         ${showGuards ? '<col class="col-num col-guards">' : ''}
         ${showMight ? '<col class="col-num col-level"><col class="col-num">' : ''}
       </colgroup><thead><tr>
-        <th class="sortable" data-action="${actions.sort}" data-sort-key="rank">Rank${arrow('rank')}</th>
-        <th class="sortable" data-action="${actions.sort}" data-sort-key="name">Player${arrow('name')}</th>
-        <th class="sortable num" data-action="${actions.sort}" data-sort-key="chests" title="${EARNED_ONLY_HINT}">${esc(countLabel)}${arrow('chests')}</th>
-        <th class="sortable num" data-action="${actions.sort}" data-sort-key="points" title="${EARNED_ONLY_HINT}">Points${arrow('points')}</th>
+        ${th('rank', 'Rank')}
+        ${th('name', 'Player')}
+        ${th('chests', esc(countLabel), 'num', EARNED_ONLY_HINT)}
+        ${th('points', 'Points', 'num', EARNED_ONLY_HINT)}
         ${guardsHeadHtml}
         ${mightHeadHtml}
       </tr></thead><tbody>
@@ -332,7 +364,7 @@ export function renderLeaderboardCardHtml({
         <td data-label="Rank" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
         <td data-label="Player" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${e.totalChests.toLocaleString()} ${esc(countLabel.toLowerCase())}</span></td>
         <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
-        <td data-label="Points" class="num ${goalStatusClassFor(e.totalPoints, periodGoal)}" data-role="metric">${e.totalPoints.toLocaleString()}</td>
+        <td data-label="Points" class="num ${goalStatusClassFor(e.totalPoints, periodGoal)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal)}</td>
         ${guardsCellsHtml(e)}
         ${mightCellsHtml(e)}
       </tr>`).join('')}
@@ -347,7 +379,7 @@ export function renderLeaderboardCardHtml({
     ? `<div class="leaderboard-goal-hint">
         <span class="goal-hint-swatch" aria-hidden="true"></span>
         <span>${esc(GOAL_PERIOD_NOUN[period] || '')} goal: <strong>${periodGoal.toLocaleString()}</strong> points${period === 'weekly' ? '' : ` <span class="goal-hint-src">(from ${goalWeeklyPoints.toLocaleString()} / week)</span>`}</span>
-        <span class="goal-hint-src">amber from ${goalWarnThreshold(periodGoal).toLocaleString()}</span>
+        <span class="goal-hint-src">✓ green at the goal · ◐ amber from ${goalWarnThreshold(periodGoal).toLocaleString()} · ↓ red below</span>
       </div>`
     : '';
 

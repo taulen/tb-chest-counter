@@ -258,6 +258,100 @@ export function localDateKey(now = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+/** True when the visitor asked their OS for less motion. Read live, not cached. */
+export function prefersReducedMotion() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// ─── Dialog focus ─────────────────────────────────────────────
+//
+// Every overlay that behaves as a modal registers here while it is open. Before
+// this, none of them moved focus in, a keyboard user could Tab straight out to
+// the page behind, focus was dropped on <body> when they closed, and every
+// dialog listened for Escape on its own — so one Escape closed a confirm AND the
+// panel it was raised from.
+
+const dialogStack = [];
+let inertByDialogs = [];
+let dialogSeq = 0;
+
+/** Make everything except the topmost dialog (and the toasts) inert. */
+function applyDialogInert() {
+  for (const el of inertByDialogs) el.inert = false;
+  inertByDialogs = [];
+  const top = dialogStack[dialogStack.length - 1];
+  if (!top) return;
+  // Walk up from the dialog to <body>, silencing the siblings at each level —
+  // so a second dialog in #modalRoot also silences the first one.
+  for (let node = top.host; node && node !== document.body && node.parentElement; node = node.parentElement) {
+    for (const sib of node.parentElement.children) {
+      if (sib === node || sib.inert || sib.id === 'toastRoot' || top.keepLive.includes(sib)) continue;
+      if (sib.tagName === 'SCRIPT' || sib.tagName === 'STYLE' || sib.tagName === 'LINK') continue;
+      sib.inert = true;
+      inertByDialogs.push(sib);
+    }
+  }
+}
+
+if (typeof document !== 'undefined') {
+  // Capture phase, registered once at load: it runs before any dialog's own
+  // handlers, and only the TOPMOST dialog hears Escape. A dialog that wants
+  // Escape for itself (the login bridge forwards it to the game) passes no
+  // onEscape and is left alone.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || dialogStack.length === 0) return;
+    const top = dialogStack[dialogStack.length - 1];
+    if (typeof top.onEscape !== 'function') return;
+    event.preventDefault();
+    event.stopPropagation();
+    top.onEscape();
+  }, true);
+}
+
+/**
+ * Hold keyboard focus inside a modal for as long as it is open.
+ *
+ *  - focus moves to `initial` (default: the dialog card itself) and goes back
+ *    to whatever had it — or `returnTo` — when the dialog closes;
+ *  - the rest of the page is `inert`, so Tab and screen readers stay inside;
+ *  - Escape calls `onEscape`, for the topmost dialog only;
+ *  - the card is labelled by its title (`.modal-title` or `h2`) if it has one;
+ *  - `keepLive` elements stay interactive — a backdrop that closes on click.
+ *
+ * `host` is the element appended to the page (the overlay); `card` the
+ * role="dialog" element inside it. Returns release(), to call once on close.
+ */
+export function holdDialogFocus(host, {
+  card = host, initial = null, onEscape = null, returnTo = null, keepLive = [],
+} = {}) {
+  const opener = returnTo || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const title = card.querySelector('.modal-title, h2');
+  if (title && !card.hasAttribute('aria-labelledby') && !card.hasAttribute('aria-label')) {
+    if (!title.id) title.id = `dialog-title-${++dialogSeq}`;
+    card.setAttribute('aria-labelledby', title.id);
+  }
+  const entry = { host, onEscape, keepLive };
+  dialogStack.push(entry);
+  applyDialogInert();
+
+  const target = initial || card;
+  if (target === card && !card.hasAttribute('tabindex')) card.setAttribute('tabindex', '-1');
+  target.focus({ preventScroll: true });
+
+  let released = false;
+  return function release() {
+    if (released) return;
+    released = true;
+    const i = dialogStack.indexOf(entry);
+    if (i >= 0) dialogStack.splice(i, 1);
+    applyDialogInert();
+    // The opener may have been re-rendered away underneath us.
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+  };
+}
+
 /**
  * Backing implementation for notify / confirmDialog / promptDialog.
  * Renders into #modalRoot and resolves with the user's choice:
@@ -300,27 +394,30 @@ export function openModal({ title, message, type = 'info', defaultValue = null, 
     root.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add('visible'));
 
+    const card = overlay.querySelector('.modal-card');
     const input = overlay.querySelector('.modal-input');
     const confirmBtn = overlay.querySelector('.modal-confirm');
     const cancelBtn = overlay.querySelector('.modal-cancel');
 
+    let release = () => {};
     const cleanup = (result) => {
       overlay.classList.remove('visible');
       setTimeout(() => overlay.remove(), 180);
-      document.removeEventListener('keydown', onKey);
+      overlay.removeEventListener('keydown', onKey);
+      release();
       resolve(result);
     };
 
+    // Enter submits only from the prompt's text field. On a button it is left
+    // to the button: this used to confirm on ANY Enter, so Enter on a focused
+    // Cancel ran the destructive action it was meant to back out of.
     const onKey = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Enter' && isPrompt && e.target === input) {
         e.preventDefault();
-        cleanup(isPrompt ? null : false);
-      } else if (e.key === 'Enter' && (!isPrompt || document.activeElement === input)) {
-        e.preventDefault();
-        cleanup(isPrompt ? input.value : true);
+        cleanup(input.value);
       }
     };
-    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('keydown', onKey);
 
     confirmBtn.addEventListener('click', () => cleanup(isPrompt ? input.value : true));
     if (cancelBtn) cancelBtn.addEventListener('click', () => cleanup(isPrompt ? null : false));
@@ -328,12 +425,13 @@ export function openModal({ title, message, type = 'info', defaultValue = null, 
       if (e.target === overlay) cleanup(isPrompt ? null : false);
     });
 
-    if (input) {
-      input.focus();
-      input.select();
-    } else {
-      confirmBtn.focus();
-    }
+    // A destructive confirm opens on Cancel, so a reflexive Enter backs out.
+    release = holdDialogFocus(overlay, {
+      card,
+      initial: input || (danger && cancelBtn) || confirmBtn,
+      onEscape: () => cleanup(isPrompt ? null : false),
+    });
+    if (input) input.select();
   });
 }
 
@@ -356,6 +454,9 @@ function ensureToastRoot() {
     root = document.createElement('div');
     root.id = 'toastRoot';
     root.className = 'toast-root';
+    // Announced without moving focus — a toast is news, not a question.
+    root.setAttribute('role', 'status');
+    root.setAttribute('aria-live', 'polite');
     document.body.appendChild(root);
   }
   return root;
@@ -645,25 +746,25 @@ export function openCropLightbox(url, { returnFocusTo = null } = {}) {
   };
   document.addEventListener('keydown', onKey, true);
 
-  cropLightbox = { overlay, onKey, returnFocusTo };
   document.body.appendChild(overlay);
-  requestAnimationFrame(() => {
-    overlay.classList.add('visible');
-    // The stage, not the ✕ — landing on the close button makes a stray Enter
-    // dismiss the thing the operator just opened. Arrow keys scroll it instead.
-    stage.focus({ preventScroll: true });
-  });
+  // On the dialog stack for inert + focus return. Escape stays with onKey above,
+  // which owns it together with the zoom shortcuts — so no onEscape here.
+  // Focus goes to the stage, not the ✕ — landing on the close button makes a
+  // stray Enter dismiss the thing the operator just opened; arrow keys scroll
+  // the stage instead.
+  const release = holdDialogFocus(overlay, { initial: stage, returnTo: returnFocusTo });
+  cropLightbox = { overlay, onKey, release };
+  requestAnimationFrame(() => overlay.classList.add('visible'));
 }
 
 export function closeCropLightbox() {
   if (!cropLightbox) return;
-  const { overlay, onKey, returnFocusTo } = cropLightbox;
+  const { overlay, onKey, release } = cropLightbox;
   cropLightbox = null;
   document.removeEventListener('keydown', onKey, true);
   overlay.classList.remove('visible');
   setTimeout(() => overlay.remove(), 180);
-  // The trigger may have been re-rendered away underneath us.
-  if (returnFocusTo?.isConnected) returnFocusTo.focus();
+  release();
 }
 
 /**
@@ -820,27 +921,29 @@ export function selectDialog(message, options, {
     root.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add('visible'));
 
+    const card = overlay.querySelector('.modal-card');
     const select = overlay.querySelector('.modal-input');
     const confirmBtn = overlay.querySelector('.modal-confirm');
     const cancelBtn = overlay.querySelector('.modal-cancel');
 
+    let release = () => {};
     const cleanup = (result) => {
       overlay.classList.remove('visible');
       setTimeout(() => overlay.remove(), 180);
-      document.removeEventListener('keydown', onKey);
+      overlay.removeEventListener('keydown', onKey);
+      release();
       resolve(result);
     };
 
+    // Enter on the select submits; on a button it is left to the button (see
+    // openModal — Enter on Cancel used to confirm).
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        cleanup(null);
-      } else if (e.key === 'Enter') {
+      if (e.key === 'Enter' && e.target === select) {
         e.preventDefault();
         cleanup(select.value);
       }
     };
-    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('keydown', onKey);
 
     confirmBtn.addEventListener('click', () => cleanup(select.value));
     cancelBtn.addEventListener('click', () => cleanup(null));
@@ -848,7 +951,7 @@ export function selectDialog(message, options, {
       if (e.target === overlay) cleanup(null);
     });
 
-    select.focus();
+    release = holdDialogFocus(overlay, { card, initial: select, onEscape: () => cleanup(null) });
   });
 }
 
@@ -889,23 +992,24 @@ export function contentModal({ title = '', html = '', wide = false, className = 
   root.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add('visible'));
 
+  let release = () => {};
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
     overlay.classList.remove('visible');
     setTimeout(() => overlay.remove(), 180);
-    document.removeEventListener('keydown', onKey);
+    release();
   };
-  const onKey = (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      close();
-    }
-  };
-  document.addEventListener('keydown', onKey);
 
   overlay.querySelector('.modal-close').addEventListener('click', close);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
   });
+
+  // Focus lands on the dialog itself, so a screen reader announces its title
+  // and the next Tab reaches the first control.
+  release = holdDialogFocus(overlay, { card: overlay.querySelector('.modal-card'), onEscape: close });
 
   return {
     overlay,

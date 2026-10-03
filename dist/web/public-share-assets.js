@@ -38,6 +38,8 @@ exports.PUBLIC_SHARE_ASSETS = [
     'lib/period-nav.js',
     'lib/leaderboard-render.js',
     'lib/leaderboard-faq.js',
+    'lib/sort-headers.js',
+    'lib/theme.js',
     'lib/guards-format.js',
     'lib/chesttracker-render.js',
     'lib/mobile-rows.js',

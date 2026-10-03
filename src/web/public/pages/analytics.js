@@ -33,12 +33,14 @@ import {
   $, esc, formatDate, formatDateShort, formatRelativeTime,
   memberLink, chestHash, formatUtcDateKey, parseHashRoute, restoreDetailsState,
 } from '../lib/ui.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
+import { describeChart } from '../lib/chart-a11y.js';
 import {
   computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor,
 } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
-  scaleGoalForPeriod, goalWarnThreshold, goalStatusClassFor,
+  scaleGoalForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
 import { readToken } from '../lib/theme.js';
 
@@ -106,6 +108,8 @@ const SUSTAINED_MIN_ACTIVE_RATIO = 0.6;
 // them whenever the user picks a different theme — Chart.js snapshots colors at
 // construction time and won't pick up CSS variable changes otherwise.
 const activeCharts = new Set();
+// The chart just added — Sets keep insertion order.
+const lastChart = () => [...activeCharts].at(-1);
 
 function destroyActiveCharts() {
   for (const chart of activeCharts) {
@@ -596,7 +600,7 @@ function contributorsCardHtml(current) {
   const rows = contributorsSustainedOnly && canFilter ? all.filter(sustained) : all;
 
   const goalHint = periodGoal
-    ? `<span class="card-header-hint">Goal ${periodGoal.toLocaleString()} pts / member · amber from ${warnAt.toLocaleString()}</span>`
+    ? `<span class="card-header-hint">Goal ${periodGoal.toLocaleString()} pts / member · ◐ amber from ${warnAt.toLocaleString()} · ↓ red below</span>`
     : '';
 
   const minDays = windowDays ? Math.ceil(windowDays * SUSTAINED_MIN_ACTIVE_RATIO) : 0;
@@ -624,7 +628,7 @@ function contributorsCardHtml(current) {
           <td data-label="Player" data-role="primary"><span class="mrow-name">${memberLink(e.memberId, e.name)}</span><span class="mrow-sub">${e.chests.toLocaleString()} chests</span></td>
           <td data-label="Days" class="num" data-role="hidden">${e.activeDays.toLocaleString()}${windowDays ? ` <span class="of-days">/ ${windowDays}</span>` : ''}</td>
           <td data-label="Best day" class="num" data-role="hidden" title="${e.bestDayPoints.toLocaleString()} points on their best single day">${bestShare}%</td>
-          <td data-label="Points" class="num ${goalClass}" data-role="metric">${e.points.toLocaleString()}</td>
+          <td data-label="Points" class="num ${goalClass}" data-role="metric"${periodGoal ? ` title="${esc(goalCellTitle(e.points, periodGoal))}"` : ''}>${goalCellContentHtml(e.points, periodGoal)}</td>
         </tr>`;
       }).join('')
     : `<tr><td colspan="5"><div class="empty-state"><p>${contributorsSustainedOnly
@@ -1274,6 +1278,7 @@ function drawAnalyticsCharts() {
         },
       },
     }));
+    describeChart(lastChart(), { caption: 'Clan total might over the last 90 game days' });
   }
 
   // ─── Clan Activity ───
@@ -1404,6 +1409,10 @@ function drawAnalyticsCharts() {
         },
       },
     }));
+    describeChart(lastChart(), {
+      caption: `Clan ${metricLabel.toLowerCase()} ${bucketed ? 'per week' : 'per day'}, with active members and the previous period`,
+      xLabel: bucketed ? 'Week' : 'Date',
+    });
   }
 }
 
@@ -1581,9 +1590,9 @@ function renderChestDetail(data) {
   const medals = ['🥇', '🥈', '🥉'];
   const formatRank = (rank) => (rank <= 3 ? medals[rank - 1] : `#${rank}`);
 
-  const arrow = (key) => chestCollectorsSort.key === key
-    ? (chestCollectorsSort.dir === 'asc' ? ' ▲' : ' ▼')
-    : '';
+  const th = (key, labelHtml, className = '') => sortableThHtml({
+    key, labelHtml, sortState: chestCollectorsSort, action: 'sort-chest-collectors', className,
+  });
 
   const chestNameEnc = encodeURIComponent(data.chestName);
   const tableBody = hasData
@@ -1667,7 +1676,7 @@ function renderChestDetail(data) {
               <col class="col-num">
               <col class="col-num">
               <col class="col-last-seen">
-            </colgroup><thead><tr><th class="caret-col"></th><th class="sortable" data-action="sort-chest-collectors" data-sort-key="rank">Rank${arrow('rank')}</th><th class="sortable" data-action="sort-chest-collectors" data-sort-key="name">Member${arrow('name')}</th><th class="sortable num" data-action="sort-chest-collectors" data-sort-key="count">Count${arrow('count')}</th><th class="sortable num" data-action="sort-chest-collectors" data-sort-key="points">Points${arrow('points')}</th><th class="sortable" data-action="sort-chest-collectors" data-sort-key="lastSeen">Last Seen${arrow('lastSeen')}</th></tr></thead><tbody>${tableBody}</tbody></table>`
+            </colgroup><thead><tr><th class="caret-col"></th>${th('rank', 'Rank')}${th('name', 'Member')}${th('count', 'Count', 'num')}${th('points', 'Points', 'num')}${th('lastSeen', 'Last Seen')}</tr></thead><tbody>${tableBody}</tbody></table>`
           : '<div class="empty-state"><p>No collectors in this period.</p></div>'}
       </div>
     </div>

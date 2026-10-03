@@ -68,9 +68,9 @@ label {
 .btn {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid var(--accent-blue);
+  border: 1px solid var(--accent-blue-solid);
   border-radius: var(--radius-sm);
-  background: var(--accent-blue);
+  background: var(--accent-blue-solid);
   color: var(--text-on-accent);
   font-size: 13px;
   font-weight: 600;
@@ -80,8 +80,8 @@ label {
 }
 
 .btn:hover {
-  background: var(--accent-blue-hover);
-  border-color: var(--accent-blue-hover);
+  background: var(--accent-blue-solid-hover);
+  border-color: var(--accent-blue-solid-hover);
 }
 
 .btn:active {

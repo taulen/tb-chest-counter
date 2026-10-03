@@ -32,7 +32,7 @@ exports.logSystemAction = logSystemAction;
 exports.getAuditLog = getAuditLog;
 const crypto_1 = __importDefault(require("crypto"));
 const database_js_1 = require("../database.js");
-exports.ALLOWED_THEMES = ['dark', 'light', 'oled'];
+exports.ALLOWED_THEMES = ['auto', 'dark', 'light', 'oled'];
 function isValidTheme(value) {
     return typeof value === 'string' && exports.ALLOWED_THEMES.includes(value);
 }
@@ -114,8 +114,8 @@ function createUser(username, password, role = 'user', createdBy, clanId) {
         ? null
         : (clanId ?? 1);
     const result = db.prepare(`
-    INSERT INTO users (username, password_hash, role, clan_id, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO users (username, password_hash, role, clan_id, created_by, created_at, theme)
+    VALUES (?, ?, ?, ?, ?, ?, 'auto')
   `).run(normalizedUsername, passwordHash, role, resolvedClanId, createdBy ?? null, now);
     return {
         id: result.lastInsertRowid,
@@ -126,7 +126,9 @@ function createUser(username, password, role = 'user', createdBy, clanId) {
         createdAt: now,
         lastLogin: null,
         lastVisited: null,
-        theme: 'dark',
+        // A new account follows its device until its owner picks a theme. The
+        // column default stays 'dark' only for rows that predate 'auto'.
+        theme: 'auto',
     };
 }
 function updateTheme(id, theme) {

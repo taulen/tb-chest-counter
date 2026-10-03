@@ -8,7 +8,7 @@
 // page. Closing the page abandons the in-flight calibration.
 
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
-import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate, forgetDetailsState } from '../lib/ui.js';
+import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate, forgetDetailsState, prefersReducedMotion } from '../lib/ui.js';
 import { getCurrentUser, getLastSeenSystemWarningAt } from '../lib/state.js';
 import { warningHeadline, hasMoreThanHeadline, splitWarnings } from '../lib/warning-digest.js';
 
@@ -300,7 +300,7 @@ export function focusCalibrationCard({ scroll = true, flash = true } = {}) {
   const card = document.getElementById('calibrationCard');
   if (!card) return;
   card.open = true;
-  if (scroll) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (scroll) card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
   if (flash) flashElement(card);
 }
 

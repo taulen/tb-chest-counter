@@ -7,6 +7,7 @@ import {
   $, esc, formatDate, formatDateShort, formatGameDayShort, formatRelativeTime,
   memberHash, memberLink, chestHash, parseHashRoute, confirmDialog,
 } from '../lib/ui.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
 import {
   guardsCellHtml, guardsTitle, goldPassBadgeHtml, nameWithGoldPassHtml,
 } from '../lib/guards-format.js';
@@ -124,7 +125,8 @@ export function renderMembersTable(el) {
     ? cachedMembers.filter((m) => (m.name || '').toLowerCase().includes(filterText))
     : cachedMembers;
   const sortedMembers = sortMembers(filteredMembers, membersSort.key, membersSort.dir);
-  const arrow = (key) => membersSort.key === key ? (membersSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+  const th = (key, labelHtml, className = '', title = '') =>
+    sortableThHtml({ key, labelHtml, sortState: membersSort, action: 'sort-members', className, title });
 
   const countLabel = filterText
     ? `${sortedMembers.length} of ${cachedMembers.length}`
@@ -153,14 +155,14 @@ export function renderMembersTable(el) {
             <col class="col-date">
             ${isAdmin ? '<col class="col-actions">' : ''}
           </colgroup><thead><tr>
-            <th class="sortable" data-action="sort-members" data-sort-key="name">Name${arrow('name')}</th>
-            ${showGuards ? `<th class="sortable num" data-action="sort-members" data-sort-key="guards" title="Guardsmen level, estimated from Omen Essence and Scientific Tractates donations">Guards${arrow('guards')}</th>` : ''}
+            ${th('name', 'Name')}
+            ${showGuards ? th('guards', 'Guards', 'num', 'Guardsmen level, estimated from Omen Essence and Scientific Tractates donations') : ''}
             ${showMight ? `
-              <th class="sortable num" data-action="sort-members" data-sort-key="might">Might${arrow('might')}</th>
-              <th class="sortable num" data-action="sort-members" data-sort-key="mightDelta" title="Change over the last ~7 days">7d${arrow('mightDelta')}</th>
+              ${th('might', 'Might', 'num')}
+              ${th('mightDelta', '7d', 'num', 'Change over the last ~7 days')}
             ` : ''}
-            <th class="sortable" data-action="sort-members" data-sort-key="firstSeen">First Seen${arrow('firstSeen')}</th>
-            <th class="sortable" data-action="sort-members" data-sort-key="lastSeen">Last Seen${arrow('lastSeen')}</th>
+            ${th('firstSeen', 'First Seen')}
+            ${th('lastSeen', 'Last Seen')}
             ${isAdmin ? '<th>Actions</th>' : ''}
           </tr></thead><tbody>
             ${sortedMembers.map((m) => {

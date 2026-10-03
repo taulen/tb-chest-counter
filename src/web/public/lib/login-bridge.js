@@ -6,6 +6,7 @@
 
 import { apiPost } from './api.js';
 import { normalizeWheelDelta } from './wheel.js';
+import { holdDialogFocus } from './ui.js';
 
 // ---------- Panel markup ----------
 //
@@ -15,25 +16,27 @@ import { normalizeWheelDelta } from './wheel.js';
 //
 // Options:
 //   - modal: when true, the panel is tagged with .login-session-modal so
-//     the shared stylesheet renders it as a centered, dimmed overlay (used
-//     by the Clans page). Omitted on Setup, where the panel stays inline in
-//     the natural document flow.
+//     the shared stylesheet renders it as a centered, dimmed overlay, and it
+//     is a real modal dialog for the keyboard (see showLoginSessionPanel).
+//     Both the Clans page and the setup wizard pass it.
 export function loginBridgePanelHTML({ modal = false } = {}) {
   const panelClass = `login-session-panel${modal ? ' login-session-modal' : ''} is-hidden`;
+  const dialogAttrs = modal ? ' role="dialog" aria-modal="true" aria-labelledby="loginSessionTitle"' : '';
   return `
     <div id="loginSessionPanel" class="${panelClass}">
-      <div class="login-session-card">
-        <div class="login-session-card-header"><h2>Login session</h2></div>
+      <div class="login-session-card"${dialogAttrs}>
+        <div class="login-session-card-header"><h2 id="loginSessionTitle">Login session</h2></div>
         <div class="login-session-card-body">
           <div class="login-session-statusrow">
             <span id="loginSessionStatus" class="muted-copy"></span>
             <span class="muted-copy login-session-url" id="loginSessionUrl"></span>
           </div>
           <div id="loginSessionViewport" class="login-session-viewport">
-            <canvas id="loginSessionCanvas" class="login-session-canvas" width="1280" height="800" tabindex="0"></canvas>
+            <canvas id="loginSessionCanvas" class="login-session-canvas" width="1280" height="800" tabindex="0"
+              aria-label="Remote game browser. Keys typed here go to the game; Shift+Escape leaves it."></canvas>
             <div id="loginSessionOverlay" class="login-session-overlay">Connecting...</div>
           </div>
-          <p class="muted-copy login-session-hint">Click in the frame to type. Use the buttons below once you are fully in-game.</p>
+          <p class="muted-copy login-session-hint">Click in the frame to type — every key goes to the game, so press <kbd>Shift</kbd>+<kbd>Esc</kbd> to leave it. Use the buttons below once you are fully in-game.</p>
           <div class="login-session-actions">
             <button class="btn btn-primary" data-action="login-session-save">I'm logged in — save session</button>
             <button class="btn" data-action="login-session-paste">Paste…</button>
@@ -70,10 +73,24 @@ function setLoginSessionOverlay(text) {
   }
 }
 
+// While the modal panel is open it holds keyboard focus like any other dialog
+// (lib/ui.js holdDialogFocus). No onEscape: Escape belongs to the game while the
+// canvas has focus, and closing would end the session — Cancel is the button.
+let releasePanelFocus = null;
+
 function showLoginSessionPanel(show) {
   const panel = document.getElementById('loginSessionPanel');
   if (!panel) return;
   panel.classList.toggle('is-hidden', !show);
+  if (panel.classList.contains('login-session-modal')) {
+    if (show && !releasePanelFocus) {
+      releasePanelFocus = holdDialogFocus(panel, { card: panel.querySelector('.login-session-card') });
+    } else if (!show && releasePanelFocus) {
+      const release = releasePanelFocus;
+      releasePanelFocus = null;
+      release();
+    }
+  }
   // Drive the modal fade/slide entrance: reveal (display) first, then flip
   // .is-visible on the next frame so the transition has a starting state to
   // animate from. Inline (non-modal) usage ignores .is-visible entirely.
@@ -434,6 +451,21 @@ function attachLoginSessionSocket(width, height) {
   };
 
   addListener(canvas, 'keydown', (ev) => {
+    // The one combination NOT forwarded. Without it the canvas is a keyboard
+    // trap: Tab and Escape both go to the game, so a keyboard user who clicked
+    // in could never get back out. A login form never needs Shift+Escape.
+    if (ev.key === 'Escape' && ev.shiftKey) {
+      ev.preventDefault();
+      // The game already saw Shift go down, and its keyup will land on the
+      // button we move to — release it there, or the remote page types in
+      // capitals until the next Shift press.
+      sendJSON({ kind: 'key', type: 'keyup', key: 'Shift', code: 'ShiftLeft', keyCode: 16, modifiers: 0 });
+      const panel = document.getElementById('loginSessionPanel');
+      const next = panel?.querySelector('.login-session-actions .btn');
+      if (next) next.focus();
+      else canvas.blur();
+      return;
+    }
     if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'v' || ev.key === 'V')) {
       ev.preventDefault();
       void tryPasteFromClipboard();

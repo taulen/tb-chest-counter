@@ -2,9 +2,12 @@ import crypto from 'crypto';
 import { getDb } from '../database.js';
 
 export type UserRole = 'superadmin' | 'admin' | 'user';
-export type UserTheme = 'dark' | 'light' | 'oled';
+// 'auto' follows the device (Light in light mode, OLED in dark) — see
+// resolveTheme in src/web/public/lib/theme.js. It is a PREFERENCE; the page
+// always paints one of the other three.
+export type UserTheme = 'auto' | 'dark' | 'light' | 'oled';
 
-export const ALLOWED_THEMES: readonly UserTheme[] = ['dark', 'light', 'oled'];
+export const ALLOWED_THEMES: readonly UserTheme[] = ['auto', 'dark', 'light', 'oled'];
 
 export function isValidTheme(value: unknown): value is UserTheme {
   return typeof value === 'string' && (ALLOWED_THEMES as readonly string[]).includes(value);
@@ -139,8 +142,8 @@ export function createUser(
     : (clanId ?? 1);
 
   const result = db.prepare(`
-    INSERT INTO users (username, password_hash, role, clan_id, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO users (username, password_hash, role, clan_id, created_by, created_at, theme)
+    VALUES (?, ?, ?, ?, ?, ?, 'auto')
   `).run(normalizedUsername, passwordHash, role, resolvedClanId, createdBy ?? null, now);
 
   return {
@@ -152,7 +155,9 @@ export function createUser(
     createdAt: now,
     lastLogin: null,
     lastVisited: null,
-    theme: 'dark',
+    // A new account follows its device until its owner picks a theme. The
+    // column default stays 'dark' only for rows that predate 'auto'.
+    theme: 'auto',
   };
 }
 

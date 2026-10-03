@@ -22,6 +22,7 @@
 import { api } from '../lib/api.js';
 import { $, esc, formatDate, formatDateShort, formatGameDayShort, memberLink } from '../lib/ui.js';
 import { readToken } from '../lib/theme.js';
+import { describeChart, clearChartTable } from '../lib/chart-a11y.js';
 import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
 
 // Charts tracked individually so a redraw destroys only the one it replaces —
@@ -510,6 +511,7 @@ function drawTotalsChart() {
     },
     options: opts,
   });
+  describeChart(charts.totals, { caption: 'Clan total might over time' });
 }
 
 function drawCompareChart() {
@@ -519,7 +521,10 @@ function drawCompareChart() {
   // Swap between canvas and empty state in place rather than re-rendering the card.
   host.innerHTML = compareChartHtml();
   const canvas = $('#mightCompareChart');
-  if (!canvas || state.series.length === 0) return;
+  if (!canvas || state.series.length === 0) {
+    clearChartTable(host);
+    return;
+  }
 
   const t = chartTokens();
   // Union of every date any selected member has a reading for, so a member who
@@ -563,6 +568,7 @@ function drawCompareChart() {
     options: opts,
     plugins: spans.length > 0 ? [eventBandsPlugin(spans)] : [],
   });
+  describeChart(charts.compare, { caption: 'Might of the selected members over time' });
 }
 
 /**
@@ -994,6 +1000,7 @@ function drawMemberMightChart(points) {
     data: { labels: points.map((p) => p.gameDate), datasets },
     options: opts,
   });
+  describeChart(charts.member, { caption: "This member's might and hero level over time" });
 }
 
 /** Swap the card's contents for another window. One fetch, one redraw — the

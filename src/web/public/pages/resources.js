@@ -1,5 +1,8 @@
 import { api, apiPost, apiPut, apiPatch, apiDelete } from '../lib/api.js';
-import { esc, formatDate, formatGameDayShort, localDateKey, notify, confirmDialog, attachCropPreviews } from '../lib/ui.js';
+import {
+  esc, formatDate, formatGameDayShort, localDateKey, notify, confirmDialog, attachCropPreviews, holdDialogFocus,
+} from '../lib/ui.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
   formatResourceAmount, resourceIconHtml, directionPillHtml,
@@ -509,7 +512,7 @@ function openUnknownResourcesModal(rows, reload) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal-card modal-card-wide unknown-modal" role="dialog" aria-modal="true" aria-label="Resolve unknown resources">
+    <div class="modal-card modal-card-wide unknown-modal" role="dialog" aria-modal="true">
       <div class="modal-title">Resolve unknown resources</div>
       <p class="modal-form-hint unknown-modal-hint">
         The importer couldn't identify the resource for
@@ -538,12 +541,7 @@ function openUnknownResourcesModal(rows, reload) {
   // The modal lives in #modalRoot, outside the delegated #content listeners, so it
   // wires its own hover previews.
   attachCropPreviews(overlay);
-  requestAnimationFrame(() => {
-    overlay.classList.add('visible');
-    // Focus the first resource dropdown so the operator can pick-and-save
-    // straight from the keyboard without reaching for the mouse.
-    overlay.querySelector('select[data-field="resource"]')?.focus();
-  });
+  requestAnimationFrame(() => overlay.classList.add('visible'));
 
   let dirty = false; // any successful save → reload the admin page on close
   const remainingEl = overlay.querySelector('.unknown-remaining');
@@ -558,17 +556,25 @@ function openUnknownResourcesModal(rows, reload) {
     if (closeBtn) closeBtn.textContent = n === 0 ? 'Done' : 'Close';
   };
 
+  let closed = false;
   const cleanup = () => {
+    if (closed) return;
+    closed = true;
     overlay.classList.remove('visible');
     setTimeout(() => overlay.remove(), 180);
-    document.removeEventListener('keydown', onKey);
+    release();
     if (dirty) reload('resources/admin');
   };
 
-  const onKey = (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); cleanup(); }
-  };
-  document.addEventListener('keydown', onKey);
+  // Focus the first resource dropdown so the operator can pick-and-save
+  // straight from the keyboard without reaching for the mouse. The modal can
+  // open on its own after an upload, so there may be no opener to return to;
+  // holdDialogFocus copes.
+  const release = holdDialogFocus(overlay, {
+    card: overlay.querySelector('.modal-card'),
+    initial: overlay.querySelector('select[data-field="resource"]'),
+    onEscape: cleanup,
+  });
 
   // Save a single row. Returns true on success. `requireResource` (per-row
   // Save) rejects rows still set to "unknown"; Save-all passes false and
@@ -820,7 +826,9 @@ export async function renderResourcesAdmin(el, navigate) {
   // Defaulting to the game day, as this did, dated every upload made between
   // local midnight and 17:00 UTC a day early.
   const uploadDateKey = localDateKey();
-  const arrow = (key) => filters.sortBy === key ? (filters.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const th = (key, labelHtml) => sortableThHtml({
+    key, labelHtml, sortState: { key: filters.sortBy, dir: filters.sortDir }, action: 'resources-sort',
+  });
 
   const memberOptions = allMembers.map((m) =>
     `<option value="${m.id}" ${String(m.id) === filters.memberId ? 'selected' : ''}>${esc(m.name)}</option>`
@@ -959,11 +967,11 @@ export async function renderResourcesAdmin(el, navigate) {
             <col class="col-tx-actions">
           </colgroup>
           <thead><tr>
-            <th class="sortable" data-action="resources-sort" data-sort-key="member_name">Member${arrow('member_name')}</th>
-            <th class="sortable" data-action="resources-sort" data-sort-key="resource_type">Resource${arrow('resource_type')}</th>
-            <th class="sortable" data-action="resources-sort" data-sort-key="direction">Direction${arrow('direction')}</th>
-            <th class="sortable" data-action="resources-sort" data-sort-key="amount">Amount${arrow('amount')}</th>
-            <th class="sortable" data-action="resources-sort" data-sort-key="transaction_date">Date${arrow('transaction_date')}</th>
+            ${th('member_name', 'Member')}
+            ${th('resource_type', 'Resource')}
+            ${th('direction', 'Direction')}
+            ${th('amount', 'Amount')}
+            ${th('transaction_date', 'Date')}
             <th></th>
           </tr></thead>
           <tbody>${txRows}</tbody>

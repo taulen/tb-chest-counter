@@ -145,7 +145,8 @@ function renderHowTab({ mode, rolloverHr, board, notCounted }) {
   if (Number.isFinite(goalWeeklyPoints) && goalWeeklyPoints > 0) {
     items.push(qa('What do the row colours mean?', `<p>The clan's goal is
       <strong>${fmt(goalWeeklyPoints)}</strong> points a week, scaled to the timeframe you're
-      viewing. Green: goal reached. Amber: at least ${GOAL_WARN_PCT}% of it. Red: below that.</p>`));
+      viewing. ✓ Green: goal reached. ◐ Amber: at least ${GOAL_WARN_PCT}% of it. ↓ Red: below
+      that. The symbol in front of each member's points says the same as the colour.</p>`));
   }
   if (guards) {
     items.push(qa('What is the Guards column?', `<p>An estimate of each member's Guardsmen level,

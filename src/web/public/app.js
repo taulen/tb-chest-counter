@@ -12,6 +12,8 @@ import {
   memberHash, memberLink, sessionHash, chestHash, slugifyChestName,
   restoreDetailsState,
   attachCropPreviews,
+  holdDialogFocus,
+  prefersReducedMotion,
 } from './lib/ui.js';
 import { api, apiPost, apiPut, apiDelete, UnauthenticatedError } from './lib/api.js';
 import {
@@ -27,6 +29,7 @@ import {
 import { computeGameWindow, getCurrentGameDayKey, periodOffsetFromAnchor } from './lib/period.js';
 import { applyTheme, bindThemeSwitcher } from './lib/theme.js';
 import { initMobileRows } from './lib/mobile-rows.js';
+import { initSortableHeaders } from './lib/sort-headers.js';
 // renderExternalAdminCardHtml + wireExternalAdminHandlers are
 // exported by external.js but currently unused (the Admin tab
 // renders its own ChestTracker card via clans-page Discord/CT
@@ -435,17 +438,33 @@ const hamburgerBtn = $('#hamburgerBtn');
 const navOverlay = $('#navOverlay');
 const navBar = $('#navBar');
 
+// The open drawer is a modal: it covers the page, so focus moves into it, the
+// page behind goes inert, Escape closes it, and focus returns to the hamburger.
+let releaseMobileNav = null;
+
 function openMobileNav() {
-  if (navBar) navBar.classList.add('open');
+  if (!navBar || navBar.classList.contains('open')) return;
+  navBar.classList.add('open');
   if (navOverlay) navOverlay.classList.add('visible');
+  if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'true');
+  const first = navBar.querySelector('a:not(.is-hidden), button');
+  releaseMobileNav = holdDialogFocus(navBar, { initial: first, onEscape: closeMobileNav, keepLive: [navOverlay] });
 }
 
 function closeMobileNav() {
   if (navBar) navBar.classList.remove('open');
   if (navOverlay) navOverlay.classList.remove('visible');
+  if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'false');
+  if (releaseMobileNav) {
+    const release = releaseMobileNav;
+    releaseMobileNav = null;
+    release();
+  }
 }
 
 if (hamburgerBtn) {
+  hamburgerBtn.setAttribute('aria-expanded', 'false');
+  hamburgerBtn.setAttribute('aria-controls', 'navBar');
   hamburgerBtn.addEventListener('click', () => {
     navBar.classList.contains('open') ? closeMobileNav() : openMobileNav();
   });
@@ -458,16 +477,54 @@ if (navOverlay) {
 const statusErrorBtn = $('#statusErrorBtn');
 const statusErrorPanel = $('#statusErrorDetails');
 if (statusErrorBtn && statusErrorPanel) {
+  statusErrorBtn.setAttribute('aria-expanded', 'false');
   statusErrorBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     statusErrorPanel.classList.toggle('is-hidden');
+    statusErrorBtn.setAttribute('aria-expanded', String(!statusErrorPanel.classList.contains('is-hidden')));
   });
   document.addEventListener('click', (e) => {
     if (statusErrorPanel.classList.contains('is-hidden')) return;
     if (statusErrorPanel.contains(e.target) || statusErrorBtn.contains(e.target)) return;
     statusErrorPanel.classList.add('is-hidden');
+    statusErrorBtn.setAttribute('aria-expanded', 'false');
   });
 }
+
+// Escape closes the header's pop-outs (the user menu and the scan-error
+// details) and hands focus back to the button that opened them. Dialogs never
+// see this: their own Escape is taken in the capture phase (holdDialogFocus).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const menu = document.getElementById('userMenu');
+  if (menu && !menu.hidden) {
+    closeUserMenu();
+    document.getElementById('userMenuBtn')?.focus();
+    return;
+  }
+  if (statusErrorPanel && !statusErrorPanel.classList.contains('is-hidden')) {
+    statusErrorPanel.classList.add('is-hidden');
+    statusErrorBtn?.setAttribute('aria-expanded', 'false');
+    statusErrorBtn?.focus();
+  }
+});
+
+// The global reduced-motion rule in base.css can't reach a canvas: Chart.js
+// tweens every chart in, and the charts are rebuilt on each period or metric
+// switch, so the motion replays constantly. Follow the OS setting live.
+const chartAnimationDefault = window.Chart ? window.Chart.defaults.animation : undefined;
+function syncChartMotion() {
+  if (!window.Chart) return;
+  window.Chart.defaults.animation = prefersReducedMotion() ? false : chartAnimationDefault;
+}
+syncChartMotion();
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', syncChartMotion);
+
+// A drawer left open while the window grows past the phone breakpoint would
+// keep the page inert behind a menu that is no longer a drawer.
+window.matchMedia('(max-width: 640px)').addEventListener('change', (mq) => {
+  if (!mq.matches) closeMobileNav();
+});
 
 // ─── Navigation ───
 $$('nav a').forEach((link) => {
@@ -501,6 +558,8 @@ const contentEl = $('#content');
 if (contentEl) {
   // Mobile compact-row expand/collapse (delegated; survives re-renders).
   initMobileRows(contentEl);
+  // Keep focus on a sort header across the re-render its sort triggers.
+  initSortableHeaders(contentEl);
   contentEl.addEventListener('click', async (event) => {
     const target = event.target.closest('[data-action]');
     if (!target) return;
@@ -958,9 +1017,9 @@ function openChangePasswordModal() {
       <div class="modal-card" role="dialog" aria-modal="true">
         <div class="modal-title">Change Password</div>
         <div class="modal-form">
-          <label class="modal-form-label">Current Password</label>
+          <label class="modal-form-label" for="modalPwCurrent">Current Password</label>
           <input type="password" class="input modal-input" id="modalPwCurrent" autocomplete="current-password">
-          <label class="modal-form-label">New Password</label>
+          <label class="modal-form-label" for="modalPwNew">New Password</label>
           <input type="password" class="input modal-input" id="modalPwNew" autocomplete="new-password">
           <p class="modal-form-hint">Must be at least 10 characters with uppercase, lowercase, number, and symbol.</p>
         </div>
@@ -979,10 +1038,12 @@ function openChangePasswordModal() {
     const confirmBtn = overlay.querySelector('.modal-confirm');
     const cancelBtn = overlay.querySelector('.modal-cancel');
 
+    let release = () => {};
     const cleanup = (result) => {
       overlay.classList.remove('visible');
       setTimeout(() => overlay.remove(), 180);
-      document.removeEventListener('keydown', onKey);
+      overlay.removeEventListener('keydown', onKey);
+      release();
       resolve(result);
     };
 
@@ -1014,15 +1075,12 @@ function openChangePasswordModal() {
     };
 
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        cleanup(false);
-      } else if (e.key === 'Enter' && (document.activeElement === currentInput || document.activeElement === newInput)) {
+      if (e.key === 'Enter' && (e.target === currentInput || e.target === newInput)) {
         e.preventDefault();
         submit();
       }
     };
-    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('keydown', onKey);
 
     confirmBtn.addEventListener('click', submit);
     cancelBtn.addEventListener('click', () => cleanup(false));
@@ -1030,7 +1088,11 @@ function openChangePasswordModal() {
       if (e.target === overlay) cleanup(false);
     });
 
-    setTimeout(() => currentInput.focus(), 0);
+    release = holdDialogFocus(overlay, {
+      card: overlay.querySelector('.modal-card'),
+      initial: currentInput,
+      onEscape: () => cleanup(false),
+    });
   });
 }
 

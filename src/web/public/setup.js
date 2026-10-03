@@ -295,6 +295,7 @@ $('#recheckAuthBtn')?.addEventListener('click', checkTbAuthStatus);
 // Theme picker (top-right of the card). bindThemeSwitcher syncs the active
 // pill to the current theme and delegates clicks to applyTheme, which
 // caches the choice in localStorage so it carries into the app afterward.
-bindThemeSwitcher(document);
+// No server sync: there is no session to save it against yet.
+bindThemeSwitcher(document, { syncServer: false });
 
 bootstrapState();

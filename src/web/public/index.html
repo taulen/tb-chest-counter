@@ -9,13 +9,19 @@
        App.js will rewrite this once /auth/me returns the server-stored
        preference (which may differ from this browser's last choice). -->
   <script>
+    // Theme before first paint. Mirrors resolveTheme() in lib/theme.js: a saved
+    // light / dark / oled wins; anything else ('auto', nothing saved, storage
+    // blocked) follows the device, with dark mode painted as OLED. Kept
+    // identical across all four HTML shells by tests/config/theme-bootstrap.test.ts.
     (function () {
-      try {
-        var t = localStorage.getItem('theme');
-        if (t === 'light' || t === 'oled' || t === 'dark') {
-          document.documentElement.setAttribute('data-theme', t);
-        }
-      } catch (_) { /* localStorage may be blocked; default to dark */ }
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (_) {}
+      if (t !== 'light' && t !== 'dark' && t !== 'oled') {
+        var light = false;
+        try { light = window.matchMedia('(prefers-color-scheme: light)').matches; } catch (_) {}
+        t = light ? 'light' : 'oled';
+      }
+      document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
   <link rel="stylesheet" href="/base.css">
@@ -73,6 +79,7 @@
           <div class="user-menu-section">
             <div class="user-menu-section-label">Theme</div>
             <div class="theme-segmented" role="group" aria-label="Color theme">
+              <button class="theme-segmented-btn" data-action="set-theme" data-theme="auto" type="button" title="Follow your device: Light in light mode, OLED in dark mode">Auto</button>
               <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button">Light</button>
               <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button">Dark</button>
               <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
@@ -100,24 +107,32 @@
     <a href="#" data-page="analytics">Analytics</a>
     <a href="#" data-page="leaderboard">Leaderboard</a>
     <a href="#" data-page="might" id="navMight" class="is-hidden">Might</a>
-    <a href="#" data-page="resources" id="navResources" class="is-hidden">Resources<span id="navResourcesDot" class="nav-dot is-hidden" aria-label="Resource rows need review"></span></a>
+    <a href="#" data-page="resources" id="navResources" class="is-hidden">Resources<span id="navResourcesDot" class="nav-dot is-hidden"><span class="visually-hidden"> (resource rows need review)</span></span></a>
     <a href="#" data-page="events">Events</a>
     <a href="#" data-page="triumphal">Triumphal Chests</a>
     <a href="#" data-page="members">Members</a>
     <a href="#" data-page="sessions">Scan History</a>
     <a href="#" data-page="external" id="navExternal" class="is-hidden">ChestTracker</a>
-    <a href="#" data-page="admin" id="navAdmin" class="is-hidden">Admin<span id="navAdminDot" class="nav-dot is-hidden" aria-label="Items need review"></span></a>
+    <a href="#" data-page="admin" id="navAdmin" class="is-hidden">Admin<span id="navAdminDot" class="nav-dot is-hidden"><span class="visually-hidden"> (items need review)</span></span></a>
     <a href="#" data-page="users" id="navUsers" class="is-hidden">Users</a>
     <!-- Superadmin-only: manage clans (create, rename, archive, Discord
          + ChestTracker per-clan settings, delete). -->
     <a href="#" data-page="clans" id="navClans" class="is-hidden">Clans</a>
     <!-- Superadmin-only: instance-wide settings (scan interval,
          calibration, restart, backup/import). -->
-    <a href="#" data-page="system" id="navSystem" class="is-hidden">System<span id="navSystemDot" class="nav-dot is-hidden" aria-label="New warnings logged"></span></a>
+    <a href="#" data-page="system" id="navSystem" class="is-hidden">System<span id="navSystemDot" class="nav-dot is-hidden"><span class="visually-hidden"> (new warnings logged)</span></span></a>
     <!-- Mobile-only account section at the bottom of the slide-out menu -->
     <div class="nav-mobile-account">
       <div class="nav-mobile-account-label">Account</div>
       <div class="nav-mobile-account-name" id="navMobileUserName"></div>
+      <!-- The user menu (and its theme picker) is hidden on phones, which left
+           no way to change theme there at all. -->
+      <div class="theme-segmented nav-mobile-theme" role="group" aria-label="Color theme">
+        <button class="theme-segmented-btn" data-action="set-theme" data-theme="auto" type="button" title="Follow your device: Light in light mode, OLED in dark mode">Auto</button>
+        <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button">Light</button>
+        <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button">Dark</button>
+        <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
+      </div>
       <button class="nav-mobile-account-btn" data-action="open-change-password-mobile">Change Password</button>
       <button class="nav-mobile-account-btn nav-mobile-account-btn-danger" id="logoutBtnMobile">Logout</button>
     </div>

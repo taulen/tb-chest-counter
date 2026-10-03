@@ -22,7 +22,9 @@ import {
   renderArchivedNotice,
 } from './lib/chesttracker-render.js';
 import { initMobileRows } from './lib/mobile-rows.js';
+import { initSortableHeaders } from './lib/sort-headers.js';
 import { openLeaderboardFaq } from './lib/leaderboard-faq.js';
+import { bindThemeSwitcher } from './lib/theme.js';
 
 // Mirrors SHARE_TOKEN_REGEX on the server: a generated 6-char token OR an
 // admin-chosen vanity key (3-10 chars, a-z0-9). The server already refused to
@@ -31,6 +33,10 @@ import { openLeaderboardFaq } from './lib/leaderboard-faq.js';
 const PATH_TOKEN_RE = /^\/([A-Za-z0-9]{3,10})\/?$/;
 const tokenMatch = window.location.pathname.match(PATH_TOKEN_RE);
 const token = tokenMatch ? tokenMatch[1] : null;
+
+// The theme picker works even on a dead link. No server sync: there is no
+// session here to save the choice against, so it lives in this browser.
+bindThemeSwitcher(document, { syncServer: false });
 
 if (!token) {
   document.getElementById('content').innerHTML =
@@ -286,6 +292,7 @@ function start() {
 
     // Mobile compact-row expand/collapse (delegated; survives re-renders).
     initMobileRows(document.getElementById('content'));
+    initSortableHeaders(document.getElementById('content'));
 
     document.getElementById('content').addEventListener('click', (ev) => {
       const t = ev.target.closest('[data-action]');

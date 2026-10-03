@@ -32,7 +32,7 @@ body {
   margin-bottom: 12px;
 }
 .setup-topbar .theme-segmented {
-  min-width: 240px;
+  min-width: 280px;
 }
 
 /* New install / Restore a backup. Same segmented track as the theme picker
@@ -165,14 +165,14 @@ label {
 }
 
 .btn-primary {
-  border-color: var(--accent-blue);
-  background: var(--accent-blue);
+  border-color: var(--accent-blue-solid);
+  background: var(--accent-blue-solid);
   color: var(--text-on-accent);
 }
 
 .btn-primary:hover {
-  background: var(--accent-blue-hover);
-  border-color: var(--accent-blue-hover);
+  background: var(--accent-blue-solid-hover);
+  border-color: var(--accent-blue-solid-hover);
 }
 
 .btn:disabled {

@@ -6,6 +6,17 @@
   cursor: default;
 }
 
+/* Theme picker in the header's right-hand column (the brand owns the centre). */
+.public-share-theme {
+  grid-column: 3;
+  justify-self: end;
+}
+.public-share-theme-select {
+  width: auto;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .public-share-nav {
   display: flex;
   gap: 4px;

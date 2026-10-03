@@ -726,10 +726,10 @@ details.card-attention > .card-header {
 }
 .setup-checklist-step.is-complete .setup-checklist-mark {
   background: var(--accent-gold);
-  color: var(--text-on-accent);
+  color: var(--text-on-gold);
 }
 .setup-checklist-step.is-next .setup-checklist-mark {
-  background: var(--accent-blue);
+  background: var(--accent-blue-solid);
   color: var(--text-on-accent);
 }
 .setup-checklist-label {
@@ -1143,6 +1143,30 @@ th.sortable:hover {
   color: var(--text-primary);
 }
 
+/* The label inside a sortable header is a real <button> (lib/sort-headers.js),
+   which is what lets the keyboard sort. It must look exactly like the header
+   text it replaced, so everything a button brings is reset. */
+.th-sort-btn {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  cursor: pointer;
+}
+.th-sort-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* Two-line table cell: primary value on top, muted secondary (e.g. source) below. */
 .cell-stacked {
   display: flex;
@@ -1247,14 +1271,14 @@ th.sortable:hover {
 }
 
 .btn-primary {
-  background: var(--accent-blue);
-  border-color: var(--accent-blue);
+  background: var(--accent-blue-solid);
+  border-color: var(--accent-blue-solid);
   color: var(--text-on-accent);
 }
 
 .btn-primary:not(:disabled):hover {
-  background: var(--accent-blue-hover);
-  border-color: var(--accent-blue-hover);
+  background: var(--accent-blue-solid-hover);
+  border-color: var(--accent-blue-solid-hover);
 }
 
 .btn-compact {
@@ -1292,8 +1316,8 @@ th.sortable:hover {
 .period-selector .btn.active,
 .metric-toggle .btn.active,
 .btn.active {
-  background: var(--accent-blue);
-  border-color: var(--accent-blue);
+  background: var(--accent-blue-solid);
+  border-color: var(--accent-blue-solid);
   color: var(--text-on-accent);
 }
 
@@ -1440,9 +1464,7 @@ th.sortable:hover {
   color: var(--text-primary);
   font-weight: 600;
 }
-.leaderboard-goal-hint .goal-hint-src {
-  opacity: 0.75;
-}
+
 /* Solid rather than the cell's own translucent --accent-green-bg-strong:
    at 9px that 12%-alpha wash is invisible against the card. Same hue
    family, so the dot still reads as "this is the green you're chasing". */
@@ -2266,13 +2288,15 @@ details > table {
 }
 
 .btn-danger-solid {
-  background: var(--accent-red);
-  border-color: var(--accent-red);
+  background: var(--accent-red-solid);
+  border-color: var(--accent-red-solid);
   color: var(--text-on-accent);
 }
 
+/* Darker on hover, not brighter: a brightness() lift drags white text under 4.5:1. */
 .btn-danger-solid:hover {
-  filter: brightness(1.12);
+  background: var(--accent-red-solid-hover);
+  border-color: var(--accent-red-solid-hover);
 }
 
 @media (max-width: 480px) {
@@ -2475,6 +2499,10 @@ details > table {
     word-break: break-word;
   }
 
+  .nav-mobile-theme {
+    margin-bottom: 12px;
+  }
+
   .nav-mobile-account-btn {
     display: block;
     width: 100%;
@@ -2523,13 +2551,19 @@ details > table {
     box-shadow: var(--shadow-mobile-nav);
     z-index: 200;
     transform: translateX(100%);
-    transition: transform 0.25s ease;
+    /* visibility steps AFTER the slide-out (and before the slide-in), so the
+       closed drawer's links leave the Tab order instead of being reachable
+       off-screen — transform alone only moves them out of sight. */
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
     padding-top: 16px;
     overflow-y: auto;
   }
 
   nav.open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.25s ease, visibility 0s;
   }
 
   nav a {
@@ -3688,8 +3722,8 @@ details > table {
 }
 /* Armed state for the two-step Disable button. */
 .btn-armed {
-  background: var(--accent-red);
-  border-color: var(--accent-red);
+  background: var(--accent-red-solid);
+  border-color: var(--accent-red-solid);
   color: var(--text-on-accent);
 }
 .btn-sm {
@@ -3992,6 +4026,19 @@ details > table {
 @keyframes progress-slide {
   0%   { transform: translateX(-150%); }
   100% { transform: translateX(350%); }
+}
+/* The global reduced-motion rule would park the sliding segment on its end
+   frame — off the right edge, an empty track that reads as "stalled". A full,
+   still, striped bar says "working" without moving. */
+@media (prefers-reduced-motion: reduce) {
+  .upload-progress-indeterminate {
+    width: 100%;
+    animation: none !important;
+    transform: none;
+    background-image: repeating-linear-gradient(
+      45deg, transparent 0 6px, var(--subtle-bg-strong) 6px 12px
+    );
+  }
 }
 .upload-active-files {
   margin-top: 6px;
@@ -4621,7 +4668,7 @@ details > table {
   height: 20px;
   border: none;
   border-radius: 50%;
-  background: var(--accent-red);
+  background: var(--accent-red-solid);
   color: var(--text-on-accent);
   cursor: pointer;
   font-size: 14px;
@@ -5516,9 +5563,6 @@ details > table {
   70% { box-shadow: 0 0 0 8px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .leaderboard-faq-btn.is-new::after { animation: none; }
-}
 
 /* The card never outgrows the viewport: tabs and footer stay put and only the
    panel scrolls, so the tab bar is always reachable on a long points list. */
@@ -5749,4 +5793,62 @@ table.faq-matrix { min-width: 460px; }
   .faq-tabs .resources-tab { padding: 6px 12px; }
   .faq-steps > li { padding-left: 46px; }
   .faq-steps > li::before { left: 12px; }
+}
+
+/* ─── Chart data tables (lib/chart-a11y.js) ─────────────────────────────────
+   "Show data as table" under each Chart.js chart: the same numbers the canvas
+   draws, readable without a mouse or a screen. Collapsed by default so the
+   page looks as it did; scrolls inside itself so a 90-day table never pushes
+   the rest of the card away. */
+.chart-data {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.chart-data > summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.chart-data > summary:hover {
+  color: var(--text-primary);
+}
+.chart-data-scroll {
+  margin-top: 8px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+table.chart-data-table {
+  min-width: 0;
+}
+.chart-data-table th,
+.chart-data-table td {
+  padding: 5px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.chart-data-table tbody th {
+  position: static;
+  background: transparent;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.chart-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The non-colour half of a goal / target cell (goalCellContentHtml in
+   lib/leaderboard-render.js, statusCellHtml in lib/chesttracker-render.js).
+   Fixed width and in FRONT of the number, so right-aligned numbers still line
+   up whichever glyph a row gets. */
+.goal-glyph {
+  display: inline-block;
+  width: 1.1em;
+  margin-right: 3px;
+  text-align: center;
+  font-size: 0.9em;
 }

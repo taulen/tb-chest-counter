@@ -92,17 +92,21 @@ export function directionPillHtml(direction) {
  * Cheap enough to render many at once (card grid / member rows) without the
  * overhead of Chart.js canvases. Colors come from CSS via the .resource-spark
  * classes so it stays theme-aware.
+ *
+ * aria-hidden: it is decoration beside text that already states the totals
+ * (a resource card, a member row), so a screen reader skips it rather than
+ * announcing an unlabelled graphic.
  */
 export function resourceSparklineSvg(values) {
   const vals = Array.isArray(values) ? values : [];
   if (!vals.length || vals.every((v) => v === 0)) {
-    return '<svg class="resource-spark" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>';
+    return '<svg class="resource-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false"></svg>';
   }
   const max = Math.max(...vals, 1);
   const n = vals.length;
   const step = n > 1 ? 100 / (n - 1) : 0;
   const pts = vals.map((v, i) => `${(i * step).toFixed(2)},${(26 - (v / max) * 24).toFixed(2)}`).join(' ');
-  return `<svg class="resource-spark" viewBox="0 0 100 28" preserveAspectRatio="none">
+  return `<svg class="resource-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false">
     <polygon class="resource-spark-area" points="0,28 ${pts} 100,28"></polygon>
     <polyline class="resource-spark-line" points="${pts}"></polyline>
   </svg>`;

@@ -29,6 +29,7 @@
 
 import { api } from '../lib/api.js';
 import { esc, memberLink, formatDate } from '../lib/ui.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
 import { nameWithGoldPassHtml } from '../lib/guards-format.js';
 import { computeGameWindow, gameDaysUntil } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
@@ -531,7 +532,10 @@ function paint() {
   // "total" sort, and the Avg/Participant summary).
   players.forEach((p) => { p._ctotal = p.countableChests || 0; });
   const ranked = rankPlayers(players);
-  const arrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
+  const th = (key, labelHtml, className = '', title = '') => sortableThHtml({
+    key, labelHtml, sortState: sort, title,
+    className: [className, sort.key === key ? 'is-sorted' : ''].filter(Boolean).join(' '),
+  });
   const countableCols = matrixColumns.filter((c) => c.countInTotal !== false);
   const totalTitle = `Sum of: ${countableCols.map((c) => c.label).join(', ') || '—'}`;
 
@@ -687,14 +691,14 @@ function paint() {
       const key = `col:${c.key}`;
       const title = c.unresolved ? unresolvedTitle(c) : c.label;
       const mark = c.unresolved ? '<span class="events-unresolved-mark">!</span>' : '';
-      return `<th class="sortable num ${sort.key === key ? 'is-sorted' : ''}" data-sort-key="${esc(key)}" title="${esc(title)}">${esc(c.label)}${mark}${arrow(key)}</th>`;
+      return th(key, `${esc(c.label)}${mark}`, 'num', title);
     })
     .join('');
 
   // Informational Essence column header (Dark Omens only). Not a point column —
   // the title spells that out so nobody mistakes it for participation.
   const essenceHead = showEssence
-    ? `<th class="sortable num ${sort.key === 'essence' ? 'is-sorted' : ''}" data-sort-key="essence" title="Omen Essence donated (from Resources) — informational, not counted in Points">Essence${arrow('essence')}</th>`
+    ? th('essence', 'Essence', 'num', 'Omen Essence donated (from Resources) — informational, not counted in Points')
     : '';
 
   const colspan = matrixColumns.length + 5 + (showEssence ? 1 : 0);
@@ -791,12 +795,12 @@ function paint() {
             ${colGroup}
             <thead><tr>
               <th class="caret-col"></th>
-              <th class="sortable" data-sort-key="rank">Rank${arrow('rank')}</th>
-              <th class="sortable" data-sort-key="name">Player${arrow('name')}</th>
+              ${th('rank', 'Rank')}
+              ${th('name', 'Player')}
               ${headCols}
               ${essenceHead}
-              <th class="sortable num" data-sort-key="total" title="${esc(totalTitle)}">Total${arrow('total')}</th>
-              <th class="sortable num" data-sort-key="points">Points${arrow('points')}</th>
+              ${th('total', 'Total', 'num', totalTitle)}
+              ${th('points', 'Points', 'num')}
             </tr></thead>
             <tbody>${body}</tbody>
           </table>

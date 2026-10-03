@@ -7,13 +7,19 @@
   <meta name="referrer" content="no-referrer">
   <title>TB Chest Counter</title>
   <script>
+    // Theme before first paint. Mirrors resolveTheme() in lib/theme.js: a saved
+    // light / dark / oled wins; anything else ('auto', nothing saved, storage
+    // blocked) follows the device, with dark mode painted as OLED. Kept
+    // identical across all four HTML shells by tests/config/theme-bootstrap.test.ts.
     (function () {
-      try {
-        var t = localStorage.getItem('theme');
-        if (t === 'light' || t === 'oled' || t === 'dark') {
-          document.documentElement.setAttribute('data-theme', t);
-        }
-      } catch (_) {}
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (_) {}
+      if (t !== 'light' && t !== 'dark' && t !== 'oled') {
+        var light = false;
+        try { light = window.matchMedia('(prefers-color-scheme: light)').matches; } catch (_) {}
+        t = light ? 'light' : 'oled';
+      }
+      document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
   <link rel="stylesheet" href="/base.css">
@@ -33,6 +39,15 @@
         <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
       </svg>
       <h1 id="clanName">TB Chest Counter</h1>
+    </div>
+    <!-- Kept in this browser only: a share link has no account to save it to. -->
+    <div class="public-share-theme">
+      <select class="input public-share-theme-select" data-theme-select aria-label="Theme">
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="oled">OLED</option>
+      </select>
     </div>
   </div>
 
