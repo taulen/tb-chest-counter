@@ -37,22 +37,38 @@ Be clear-eyed about what you are running:
 - **Give superadmin to as few people as possible.** Superadmins can restore
   database backups, restart the container, and open the login bridge.
 - **The public share link is genuinely public.** `/<token>` needs no login by
-  design. Anyone with the URL sees that clan's leaderboard.
+  design. Anyone with the URL sees that clan's leaderboard — and its FAQ, which
+  names the clan's admins and the site's superadmins **by username** (accounts
+  that have signed in at least once) so visitors know who to ask for access.
+  Treat usernames as public and rely on the password: login is rate-limited and
+  passwords are hashed with scrypt.
 - **Back up the volume, and guard the backups.** A `.db` backup contains
   password hashes, Discord bot tokens and every member's history.
 
 ## Known gaps
 
-Listed because knowing is better than discovering:
+Listed because knowing is better than discovering. Last reviewed October 2026.
 
-- **Content-Security-Policy is off.** `helmet` is configured with
-  `contentSecurityPolicy: false`; the frontend uses inline handlers that a
-  default policy would break.
-- **Rate limiting is narrow.** Login is limited; most other endpoints are not.
-- **Error messages are not sanitised.** Some API errors return underlying
-  messages, which can disclose paths or SQL detail to an authenticated user.
-- **Uploads are large by default.** The JSON body limit is 100MB globally to
-  accommodate database restore, rather than being scoped to that one route.
+- **The Content-Security-Policy still allows inline script.** CSP is on —
+  scripts, styles, images and connections are limited to the app's own origin,
+  framing is refused (`frame-ancestors 'none'`), and `<base>` and form targets
+  are locked down. But `script-src` keeps `'unsafe-inline'`: every page carries
+  one small inline script that applies the theme before first paint. So the
+  policy stops scripts loading from elsewhere, not an injected inline one.
+- **Rate limiting is per IP and deliberately loose.** Login allows 20 attempts
+  per 15 minutes; the rest of the API allows 600 requests a minute as a
+  runaway backstop, not a quota. Behind a reverse proxy the limit keys on the
+  forwarded client address, so the proxy must set `X-Forwarded-For`.
+- **Some error messages are not sanitised.** Unhandled errors return only a
+  reference code (details go to the server log), but around two dozen handlers
+  on signed-in routes still return the underlying message, which can disclose
+  paths or SQL detail to an authenticated user. The public share routes don't.
+- **Three paths accept large bodies, before checking who is asking.** Requests
+  are capped at 1MB, except the two database-restore routes and resource
+  screenshot upload, which allow 110MB. Their handlers require a signed-in
+  admin (or the first-run setup), but the body is read before that check runs,
+  so an anonymous client can still make the server buffer up to 110MB on those
+  paths.
 
 ## Third-party terms
 

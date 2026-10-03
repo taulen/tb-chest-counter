@@ -59,11 +59,14 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement by using GitHub's
-**Report content** option — the **⋯** menu on any issue, pull request,
-discussion or comment — and choosing **Report to repository admins**. Reports
-made that way are seen only by the maintainers. All complaints will be reviewed
-and investigated promptly and fairly.
+reported to the community leaders responsible for enforcement by opening a
+[private report](https://github.com/taulen/tb-chest-counter/security/advisories/new)
+from the repository's **Security** tab, with a title starting "Code of conduct:".
+The form is meant for vulnerabilities, but it is the one private channel this
+repository has: only the maintainer can see what you send. For spam or abuse
+that also breaks GitHub's own rules, you can use **Report content → Report abuse**
+from the **⋯** menu on the post as well. All complaints will be reviewed and
+investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
