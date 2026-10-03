@@ -194,12 +194,35 @@ async function runResourceCapturePhase(ctx, page) {
      * valid this run. Scheduled runs are stable (all 35 real batches align at offset 0);
      * an operator pressing "Collect now" at another hour is what moves it.
      *
-     * Unproven means the withhold is simply off, which re-inserts rows already held —
-     * visible in the batch list and deletable. Failing the other way is not recoverable.
+     * Unproven means the withhold is simply off, which re-inserts rows already held.
+     * Failing the other way is silent loss, so that stays the default.
+     *
+     * When the marker row could not be located at all, the re-read rows can prove the
+     * mapping instead: if they line up with stored rows on the SAME dates far better
+     * than shifted a day either way, nothing has moved (alignmentProvesSameDates). A
+     * marker that WAS located under another date is the opposite evidence, and wins.
      */
-    const dateMappingProven = !!cursor?.newestDate
+    const oldestRead = capture.rows.reduce((min, r) => (min == null || r.transactionDate < min ? r.transactionDate : min), null);
+    // From the day before the oldest row read, so the one-day-shift comparison has
+    // stored rows to compare against.
+    const recorded = oldestRead == null
+        ? []
+        : (0, resource_repo_js_1.listRecordedScanRows)(clanId, new Date(Date.parse(`${oldestRead}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10));
+    const markerProvesDates = !!cursor?.newestDate
         && capture.cursorMatchDate != null
         && capture.cursorMatchDate === cursor.newestDate;
+    const alignment = !markerProvesDates && capture.cursorMatchDate == null && recorded.length > 0
+        ? (0, resource_sweep_rules_js_1.measureDateAlignment)(capture.rows, recorded, new Set(capture.completeDates))
+        : null;
+    const alignmentProves = alignment !== null && (0, resource_sweep_rules_js_1.alignmentProvesSameDates)(alignment);
+    const dateMappingProven = markerProvesDates || alignmentProves;
+    if (alignmentProves && alignment) {
+        const same = alignment.find((a) => a.offset === 0);
+        log.info(`Resource capture for clan #${clanId}: the marker row was not located, but ${same?.matched} of `
+            + `${same?.overlap} re-read row(s) match stored rows on the same dates (a day's shift either way: `
+            + `${alignment.filter((a) => a.offset !== 0).map((a) => `${a.matched}/${a.overlap}`).join(', ')}), `
+            + 'so dates still mean what they did and rows already recorded are withheld.');
+    }
     /**
      * Rows this clan already holds, declined rather than inserted.
      *
@@ -212,18 +235,23 @@ async function runResourceCapturePhase(ctx, page) {
      */
     const withheld = capture.rows.length === 0 || !dateMappingProven
         ? { rows: capture.rows, withheld: 0, byDate: {} }
-        : (0, resource_sweep_rules_js_1.withholdAlreadyRecorded)(capture.rows, (0, resource_repo_js_1.listRecordedScanRows)(clanId, capture.rows.reduce((min, r) => (r.transactionDate < min ? r.transactionDate : min), capture.rows[0].transactionDate)), new Set(capture.completeDates));
+        : (0, resource_sweep_rules_js_1.withholdAlreadyRecorded)(capture.rows, recorded, new Set(capture.completeDates));
     const writeRows = withheld.rows;
     if (!dateMappingProven && capture.rows.length > 0 && (cursor?.topRows.length ?? 0) > 0) {
         log.warn({ noAlert: true }, `Resource capture for clan #${clanId}: not comparing this read against rows already `
             + 'recorded, because the marker row '
             + (capture.cursorMatchDate == null
-                ? 'could not be located, so there is nothing to date-check against.'
+                ? 'could not be located, and the re-read rows did not line up with stored ones clearly '
+                    + 'enough to stand in for it'
+                    + (alignment
+                        ? ` (same dates ${alignment.filter((a) => a.offset === 0).map((a) => `${a.matched}/${a.overlap}`).join('')}, `
+                            + `shifted ${alignment.filter((a) => a.offset !== 0).map((a) => `${a.matched}/${a.overlap}`).join(', ')}).`
+                        : '.')
                 : `now reads as ${capture.cursorMatchDate} but was stored as ${cursor?.newestDate} — the `
                     + 'day labels have shifted relative to the 17:00 UTC game day, so every date this run '
                     + 'read is offset and matching on it would decline genuine rows.')
-            + ' Rows already held may therefore be written again; they are visible on the batch and '
-            + 'can be deleted, which is the recoverable direction.');
+            + ' Rows already held may therefore be written again — still the safer failure, since '
+            + 'withholding on dates that might not mean the same thing would decline genuine rows.');
     }
     if (withheld.withheld > 0) {
         const perDate = Object.entries(withheld.byDate)
@@ -404,7 +432,11 @@ async function runResourceCapturePhase(ctx, page) {
     const notes = [
         `Automated capture · game day ${gameDate}`,
         `${capture.pagesScanned} page(s), ${capture.totalRowsSeen} row(s) read`,
-        capture.cursorLost ? 'previous position not re-found — rows may duplicate earlier ones' : '',
+        capture.cursorLost
+            ? (dateMappingProven
+                ? 'previous position not re-found — rows already recorded were matched and withheld'
+                : 'previous position not re-found — rows may duplicate earlier ones')
+            : '',
         capture.deferredRows > 0
             ? `${capture.deferredRows} row(s) deferred — ${capture.openDates.join(', ')} still in progress`
             : '',

@@ -573,6 +573,74 @@ describe('findCursorIndex', () => {
   });
 });
 
+describe('findCursorIndex — rows the game re-sorted within a day', () => {
+  // Modelled on clan 1's 2026-09-16, stored on the 17th and read again on the 18th:
+  // every row present and byte-identical, small groups permuted. The positional rule
+  // aligned 4 of 12 and declared the cursor lost; the run then re-read ~450 rows.
+  const OLD = '2026-09-16';
+  const NEW = '2026-09-17';
+  const marker = [
+    row('Mightsmith', 1, 8, 15, OLD),
+    row('Nimdisen', 1, 1, 15, OLD),
+    row('Malashura', 1, 1, 15, OLD),
+    row('zara', 1, 5_931_618, 6, OLD),
+    row('Sm4sH', 1, 24_194_160, 6, OLD),
+    row('Fosida', 1, 6_152_387, 6, OLD),
+    row('Kratos', 1, 1_526_470, 6, OLD),
+    row('BIER', 1, 2, 15, OLD),
+    row('Fain', 1, 222_428, 6, OLD),
+    row('BIER', 1, 270_593, 6, OLD),
+    row('JIZZICA', 1, 2_336_668, 6, OLD),
+    row('Sexy Macho', 1, 8_300_695, 6, OLD),
+  ];
+  const below = [row('Misiu', 1, 4_981_125, 6, OLD), row('SHARDANAnox', 1, 425_269, 6, OLD)];
+  const newer = [
+    row('Legon', 1, 10_100_000, 11, NEW),
+    row('Glelinil', 1, 37_887_909, 2, NEW),
+    row('JustNick', 1, 36_216, 7, NEW),
+    row('its all glaivey', 1, 81, 7, NEW),
+  ];
+  /** The order the 18th actually read them in. */
+  const reread = [0, 1, 2, 4, 5, 6, 3, 7, 11, 10, 9, 8].map((i) => marker[i]);
+  const cursor = marker.map((r) => r.fingerprint);
+
+  it('re-finds the marker at the top of its day', () => {
+    const list = [...newer, ...reread, ...below];
+    expect(findCursorIndex(list, cursor)).toBe(newer.length);
+  });
+
+  it('never moves the cut up into newer rows, even past an unreadable marker row', () => {
+    // The newer day carries a "+1" line from a marker player, and this read garbled
+    // the marker's own top row. A window starting on that newer line scores nearly
+    // as well; taking it would skip a genuinely new row for good. Ties go DOWN.
+    const list = [
+      ...newer.slice(0, 3),
+      row('Nimdisen', 1, 1, 15, NEW),
+      row('Mightsmith', 1, 9, 15, OLD),
+      ...reread.slice(1),
+      ...below,
+    ];
+    expect(findCursorIndex(list, cursor)).toBeGreaterThanOrEqual(4);
+  });
+
+  it('refuses when every marker row also recurs on another day', () => {
+    // Twelve "+1" Loyalty lines, the same players on two days: nothing is distinctive,
+    // so an order-free match could just as well be the wrong day.
+    const loyal = (date: string) => Array.from({ length: 12 }, (_, i) => row(`p${i}`, 1, 1, 15, date));
+    const stored = loyal(OLD);
+    const list = [...loyal(NEW).reverse(), ...[...stored].reverse()];
+    expect(findCursorIndex(list, stored.map((r) => r.fingerprint))).toBe(-1);
+  });
+
+  it('refuses a match that does not start near the top of a day', () => {
+    // A marker always starts a day (it anchors on the first settled row), so the same
+    // rows found deep inside a day are not the marker.
+    const filler = Array.from({ length: 10 }, (_, i) => row(`f${i}`, 1, 100 + i, 6, OLD));
+    const list = [...newer, ...filler, ...reread];
+    expect(findCursorIndex(list, cursor)).toBe(-1);
+  });
+});
+
 describe('fingerprintsAlign', () => {
   it('treats an unresolved read as the same row as a resolved one', () => {
     expect(fingerprintsAlign('feli|-1|5000|x', 'feli|-1|5000|5')).toBe(true);

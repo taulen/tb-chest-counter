@@ -468,20 +468,123 @@ function scanCursorCandidates(prints, cursor) {
     }
     return { passing, best };
 }
+/** How far a within-day reshuffle has been seen to move a row: groups of 2-4. */
+const CURSOR_SHUFFLE_SLACK = 4;
+/**
+ * The marker re-found as a SET, for when the game re-sorted the rows inside it.
+ *
+ * A settled day keeps its rows but not always their order: small groups of 2-4
+ * adjacent rows — donations sharing a timestamp, by every appearance — come back
+ * permuted between reads. Measured on clan 1's 2026-09-16, read on the 17th and
+ * again on the 18th: all 163 rows present and byte-identical, 30-odd of them in
+ * swapped pairs and triples. When such a group sits inside the twelve marker rows,
+ * the positional match above sees "4 of 12 aligned" and declares the cursor lost,
+ * although every marker row is right there. That is what cost the 2026-09-03 and
+ * 2026-09-18 runs their position, and each re-read ~450 rows it already held.
+ *
+ * So this scores each window by how many of its rows are marker rows, in any order.
+ * Order was doing real work, though — it is what stops a coincidental block from
+ * matching — and two things replace it:
+ *
+ *   - **Distinctive rows.** At least CURSOR_MIN_RUN of the window's matches must be
+ *     marker rows that occur exactly once in the cursor AND once in the whole read.
+ *     A one-off amount like "zara +5,931,618" cannot coincide with anything; a block
+ *     of "+1" Loyalty Level lines, which recur daily for the same players, can. A
+ *     marker made only of those is left to the positional rule.
+ *   - **The top of a day.** The marker is anchored on the first settled row
+ *     (buildCursorFingerprints), so it always STARTS a day, and a reshuffle only
+ *     moves rows a few places. A window starting deeper into its day than
+ *     CURSOR_SHUFFLE_SLACK is not the marker: replayed over the pre-2026-09-05
+ *     batches, whose markers sat on the still-open day, an order-free match landed
+ *     190 rows into a day, which would have re-read all of them.
+ *   - **Ties go DOWN the list**, the opposite of the positional rule. The real risk
+ *     here is a window shifted up into the newer rows above the marker, by a newer
+ *     "+1" line from a marker player standing in for an unreadable marker row. A cut
+ *     too high skips genuinely new rows, silently and for good; a cut too low only
+ *     re-reads a row or two of the marker's own day.
+ *
+ * Only consulted when the positional rule found nothing, so it can never move a cut
+ * that ordering already established. `dayStart[i]` is the index of the first row of
+ * row i's date block.
+ */
+function scanShuffledCursor(prints, cursor, dayStart) {
+    if (cursor.length < resource_sweep_rules_js_1.CURSOR_MIN_RUN || prints.length < resource_sweep_rules_js_1.CURSOR_MIN_RUN)
+        return null;
+    // Read positions of the distinctive marker rows.
+    const distinctive = new Set();
+    for (const want of cursor) {
+        if (cursor.filter((c) => (0, resource_sweep_rules_js_1.fingerprintsAlign)(c, want)).length !== 1)
+            continue;
+        let at = -1;
+        let hits = 0;
+        for (let i = 0; i < prints.length && hits < 2; i++) {
+            if ((0, resource_sweep_rules_js_1.fingerprintsAlign)(prints[i], want)) {
+                hits++;
+                at = i;
+            }
+        }
+        if (hits === 1)
+            distinctive.add(at);
+    }
+    if (distinctive.size < resource_sweep_rules_js_1.CURSOR_MIN_RUN)
+        return null;
+    let best = null;
+    for (let at = 0; at + resource_sweep_rules_js_1.CURSOR_MIN_RUN <= prints.length; at++) {
+        if (at - dayStart[at] > CURSOR_SHUFFLE_SLACK)
+            continue;
+        const window = Math.min(cursor.length, prints.length - at);
+        let distinctiveIn = 0;
+        for (let i = at; i < at + window; i++)
+            if (distinctive.has(i))
+                distinctiveIn++;
+        if (distinctiveIn < resource_sweep_rules_js_1.CURSOR_MIN_RUN)
+            continue;
+        // Window rows paired with marker rows, each marker row used once.
+        const used = new Array(cursor.length).fill(false);
+        let matched = 0;
+        for (let i = at; i < at + window; i++) {
+            const j = cursor.findIndex((c, k) => !used[k] && (0, resource_sweep_rules_js_1.fingerprintsAlign)(prints[i], c));
+            if (j >= 0) {
+                used[j] = true;
+                matched++;
+            }
+        }
+        if (matched < requiredMatches(window))
+            continue;
+        if (best == null || matched >= best.matched)
+            best = { at, matched, window, start: 0 };
+    }
+    return best;
+}
 /**
  * Index in `rows` where the previous run's cursor begins, or -1 if not found.
  *
  * Everything BEFORE that index is new. Tries the stored sequence at each of its
  * own offsets, longest first, so a cursor whose leading rows read differently this
- * time still anchors on its tail. See scanCursorCandidates for the matching rule.
+ * time still anchors on its tail. See scanCursorCandidates for the matching rule,
+ * and scanShuffledCursor for the fallback when the game re-sorted the marker rows.
  */
 function findCursorIndex(rows, cursor, opts = {}) {
     if (cursor.length === 0 || rows.length === 0)
         return -1;
     const prints = rows.map((r) => r.fingerprint);
     const { passing } = scanCursorCandidates(prints, cursor);
-    if (!passing)
-        return -1;
+    if (!passing) {
+        const dayStart = rows.map(() => 0);
+        for (let i = 1; i < rows.length; i++) {
+            dayStart[i] = rows[i].transactionDate === rows[i - 1].transactionDate ? dayStart[i - 1] : i;
+        }
+        const shuffled = scanShuffledCursor(prints, cursor, dayStart);
+        if (!shuffled)
+            return -1;
+        if (!opts.quiet) {
+            log.info(`Resource capture: re-found the previous cursor at row ${shuffled.at} with its rows `
+                + `re-ordered — ${shuffled.matched} of ${shuffled.window} marker row(s) present in that `
+                + 'window, though not in the stored order (the game re-sorts rows that share a timestamp). '
+                + `The ${shuffled.at} row(s) above it are new.`);
+        }
+        return shuffled.at;
+    }
     // `quiet` is for the date-mapping probe, which locates the stored marker on a run
     // that deliberately ignored it (a backfill or a dry run). Announcing "re-found the
     // previous cursor" there would describe a stop that did not happen.

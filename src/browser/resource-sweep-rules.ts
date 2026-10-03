@@ -427,3 +427,97 @@ export function withholdAlreadyRecorded<T extends DatedRowIdentity & ResourceFie
   const kept = rows.filter((_, i) => !withheldAt[i]);
   return { rows: kept, withheld: rows.length - kept.length, byDate };
 }
+
+/* ------------------------------------------------------------------ *
+ *  Proving the date mapping when the marker row cannot be located
+ * ------------------------------------------------------------------ */
+
+/** Rows that must overlap stored dates before an alignment proves anything. */
+export const DATE_ALIGNMENT_MIN_ROWS = 20;
+/** Share of those rows that must match a stored row on the SAME date. */
+export const DATE_ALIGNMENT_MIN_SHARE = 0.5;
+/** How many times better the same-date match must be than a one-day shift. */
+export const DATE_ALIGNMENT_MIN_LEAD = 2;
+
+export interface DateAlignment {
+  /** Days added to each read row's date before comparing. */
+  offset: -1 | 0 | 1;
+  /** Read rows whose shifted date the clan holds rows for. */
+  overlap: number;
+  /** Of those, how many matched a stored row (each stored row used once). */
+  matched: number;
+}
+
+function shiftDay(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * How well this read lines up with the rows the clan already holds, as read, and
+ * shifted a day either way.
+ *
+ * Only dates the read covered completely count, the same scope the withhold uses,
+ * and only dates the clan holds rows for — the day that has just closed is new and
+ * says nothing. Matching is loose (no resource) and by multiplicity.
+ */
+export function measureDateAlignment(
+  rows: ReadonlyArray<DatedRowIdentity>,
+  recorded: ReadonlyArray<DatedRowIdentity>,
+  completeDates: ReadonlySet<string>,
+): DateAlignment[] {
+  const storedDates = new Set(recorded.map((r) => r.transactionDate));
+  return ([-1, 0, 1] as const).map((offset) => {
+    const pool = new Map<string, number>();
+    for (const r of recorded) {
+      const k = looseSweepKey(r);
+      pool.set(k, (pool.get(k) ?? 0) + 1);
+    }
+    let overlap = 0;
+    let matched = 0;
+    for (const r of rows) {
+      if (!completeDates.has(r.transactionDate)) continue;
+      const date = shiftDay(r.transactionDate, offset);
+      if (!storedDates.has(date)) continue;
+      overlap++;
+      const k = looseSweepKey({ ...r, transactionDate: date });
+      const n = pool.get(k) ?? 0;
+      if (n > 0) {
+        matched++;
+        pool.set(k, n - 1);
+      }
+    }
+    return { offset, overlap, matched };
+  });
+}
+
+/**
+ * Do the rows themselves prove this run dates rows the way the stored ones are
+ * dated — for a run that could not locate the marker row to check it directly?
+ *
+ * The withhold may only run once that is proven (see the phase's dateMappingProven),
+ * and the stored marker row is normally the proof. When the marker is lost the
+ * withhold used to switch off, accepting the duplicates on the grounds that they
+ * were "visible and deletable". They are not going to be deleted — historical rows
+ * stay as they are — so every lost run left ~450 permanent duplicates instead.
+ *
+ * The re-read ground is its own proof. Replayed over every lost batch in the
+ * 2026-09-28 backup, the same-date alignment beat a one-day shift in every one, and
+ * on the only lost run since the settled-day anchor it was 446 of 452 rows (99%)
+ * against 33% for the best shift — the shifts still match a third, because "+1"
+ * Loyalty lines and the 250k Gold Pass donation recur daily for the same players,
+ * which is why the bar is a lead over the shift and not only a share.
+ *
+ * Fails toward inserting: anything short of a clear, well-supported same-date
+ * alignment leaves the withhold off, exactly as before.
+ */
+export function alignmentProvesSameDates(alignment: ReadonlyArray<DateAlignment>): boolean {
+  const same = alignment.find((a) => a.offset === 0);
+  if (!same || same.overlap < DATE_ALIGNMENT_MIN_ROWS) return false;
+  const share = same.matched / same.overlap;
+  if (share < DATE_ALIGNMENT_MIN_SHARE) return false;
+  for (const a of alignment) {
+    if (a.offset === 0 || a.overlap === 0) continue;
+    if (share < DATE_ALIGNMENT_MIN_LEAD * (a.matched / a.overlap)) return false;
+  }
+  return true;
+}

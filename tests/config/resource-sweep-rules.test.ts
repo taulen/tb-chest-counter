@@ -14,11 +14,14 @@ import {
   ANCHOR_SAFE_STOP_REASONS,
   CURSOR_MIN_RUN,
   CURSOR_ROWS,
+  DATE_ALIGNMENT_MIN_ROWS,
   DATE_BACKSTOP_MARGIN_DAYS,
   REREAD_OPEN_DAY_DAYS,
+  alignmentProvesSameDates,
   buildCursorFingerprints,
   firstSettledRowIndex,
   maxDaysBackFor,
+  measureDateAlignment,
   readCompleteness,
   rowFingerprint,
   withholdAlreadyRecorded,
@@ -242,5 +245,55 @@ describe('withholdAlreadyRecorded', () => {
     const rows = [row('a', 1, '2026-09-04')];
     expect(withholdAlreadyRecorded(rows, [], complete).withheld).toBe(0);
     expect(withholdAlreadyRecorded(rows, [strip(rows[0])], new Set()).withheld).toBe(0);
+  });
+});
+
+describe('alignmentProvesSameDates', () => {
+  const DAYS = ['2026-09-14', '2026-09-15', '2026-09-16'];
+  /** A settled day: unique donations plus "+1" Loyalty lines that recur every day. */
+  const day = (date: string) => [
+    ...Array.from({ length: 12 }, (_, i) => row(`p${i}`, 1_000_000 + i * 7919 + date.charCodeAt(9) * 13, date)),
+    ...Array.from({ length: 4 }, (_, i) => row(`loyal${i}`, 1, date, 15)),
+  ];
+  const stored = DAYS.flatMap(day);
+  const complete = new Set(DAYS);
+
+  it('proves a lost run that re-read the same ground on the same dates', () => {
+    // The 2026-09-18 case: marker lost, everything it re-read already held.
+    const alignment = measureDateAlignment(stored, stored, complete);
+    expect(alignment.find((a) => a.offset === 0)).toEqual({ offset: 0, overlap: 48, matched: 48 });
+    expect(alignmentProvesSameDates(alignment)).toBe(true);
+  });
+
+  it('refuses a read whose dates moved a day', () => {
+    // A "Collect now" on the other side of the account's midnight: every row reads a
+    // day later. The daily "+1" lines still match on the same date, which is exactly
+    // the coincidence that must not be mistaken for proof.
+    const shifted = stored.map((r) => row(
+      r.rawPlayerName, r.amount,
+      new Date(Date.parse(`${r.transactionDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10),
+      r.resourceTypeId,
+    ));
+    const alignment = measureDateAlignment(shifted, stored, new Set(shifted.map((r) => r.transactionDate)));
+    expect(alignmentProvesSameDates(alignment)).toBe(false);
+  });
+
+  it('refuses too little overlap to judge', () => {
+    const few = stored.slice(0, DATE_ALIGNMENT_MIN_ROWS - 1);
+    expect(alignmentProvesSameDates(measureDateAlignment(few, stored, complete))).toBe(false);
+  });
+
+  it('refuses a same-date match that does not clearly beat a shift', () => {
+    // Half the read matches on the same date, a third matches a day off: not a lead.
+    expect(alignmentProvesSameDates([
+      { offset: -1, overlap: 90, matched: 30 },
+      { offset: 0, overlap: 90, matched: 46 },
+      { offset: 1, overlap: 60, matched: 5 },
+    ])).toBe(false);
+  });
+
+  it('ignores dates the read did not cover completely', () => {
+    const alignment = measureDateAlignment(stored, stored, new Set(['2026-09-16']));
+    expect(alignment.find((a) => a.offset === 0)?.overlap).toBe(16);
   });
 });
