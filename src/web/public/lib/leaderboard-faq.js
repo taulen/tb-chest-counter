@@ -111,7 +111,8 @@ function rolloverLabel(hr) {
   return `${utc} (${local} your time)`;
 }
 
-function renderHowTab({ mode, rolloverHr, goalWeeklyPoints, columns, notCounted }) {
+function renderHowTab({ mode, rolloverHr, board, notCounted }) {
+  const { goalWeeklyPoints = null, guards = false, might = false, goldPass = false } = board || {};
   const items = [];
 
   items.push(qa('How are points counted?', `<p>When a member opens a crypt, defeats a monster or
@@ -146,18 +147,18 @@ function renderHowTab({ mode, rolloverHr, goalWeeklyPoints, columns, notCounted 
       <strong>${fmt(goalWeeklyPoints)}</strong> points a week, scaled to the timeframe you're
       viewing. Green: goal reached. Amber: at least ${GOAL_WARN_PCT}% of it. Red: below that.</p>`));
   }
-  if (columns.guards) {
+  if (guards) {
     items.push(qa('What is the Guards column?', `<p>An estimate of each member's Guardsmen level,
       worked out from their Omen Essence and Scientific Tractates donations — it isn't read from
       the game. Hover a value to see how sure it is and how recent; a <strong>?</strong> means a
       single ambiguous donation is all it rests on.</p>`));
   }
-  if (columns.goldPass) {
+  if (goldPass) {
     items.push(qa('What does GP mean?', `<p>A Gold Pass holder this Triumphal cycle, spotted from a
       pass-reward Union Chest plus the 250k Scientific Tractates that come with it. A faded GP was
       seen last cycle but not yet this one.</p>`));
   }
-  if (columns.might) {
+  if (might) {
     items.push(qa('Where do Level and Might come from?', `<p>The hero level and Might on each
       member's in-game profile, as of the latest daily snapshot.</p>`));
   }
@@ -237,7 +238,12 @@ function renderFaqHtml(data, opts) {
   const guide = data?.pointsGuide || { sections: [], notCounted: [] };
   const tabs = [
     ['points', 'Chest points', renderPointsTab(guide)],
-    ['how', 'How it works', renderHowTab({ ...opts, notCounted: guide.notCounted || [] })],
+    ['how', 'How it works', renderHowTab({
+      mode: opts.mode,
+      rolloverHr: opts.rolloverHr,
+      board: data?.board,
+      notCounted: guide.notCounted || [],
+    })],
     opts.mode === 'public'
       ? ['access', 'Get full access', renderAccessTab({ clanName: opts.clanName, contacts: data?.contacts })]
       : ['contacts', 'Contacts', renderContactsTab({ contacts: data?.contacts })],
@@ -258,23 +264,21 @@ function renderFaqHtml(data, opts) {
 /**
  * Open the FAQ modal.
  *
- *  - `load`    — () => Promise<{ pointsGuide, contacts }>, the page's own fetch
- *                (authenticated api() or the public token endpoint).
+ *  - `load`    — () => Promise<{ pointsGuide, contacts, board }>, the page's
+ *                own fetch (authenticated api() or the public token endpoint).
  *  - `mode`    — 'member' | 'public'.
- *  - `clanName`, `rolloverHr`, `goalWeeklyPoints` — copy inputs the page has.
- *  - `columns` — { guards, might, goldPass }: which extras the board on screen
- *                shows, so the FAQ only explains what the reader can see. May
- *                be a function, read once `load` resolves — for a page that can
- *                open the FAQ before its board has loaded.
+ *  - `clanName`, `rolloverHr` — copy inputs the page already holds from init.
  *  - `initialTab` — 'points' (default) | 'how' | 'access' | 'contacts'.
+ *
+ * Which goal / Guards / GP / Might answers appear is decided by the SERVER
+ * (`board`), never by what the opening page happens to have rendered: the
+ * FAQ can open before the board has, and it must read the same either way.
  */
 export async function openLeaderboardFaq({
   load,
   mode = 'member',
   clanName = '',
   rolloverHr = 17,
-  goalWeeklyPoints = null,
-  columns = {},
   initialTab = 'points',
 }) {
   const modal = contentModal({
@@ -292,14 +296,7 @@ export async function openLeaderboardFaq({
     modal.setHtml('<p class="faq-lead">Couldn\'t load the FAQ. Close this and try again in a moment.</p>');
     return;
   }
-  modal.setHtml(renderFaqHtml(data, {
-    mode,
-    clanName,
-    rolloverHr,
-    goalWeeklyPoints,
-    columns: (typeof columns === 'function' ? columns() : columns) || {},
-    initialTab,
-  }));
+  modal.setHtml(renderFaqHtml(data, { mode, clanName, rolloverHr, initialTab }));
 
   modal.content.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-faq-tab]');

@@ -11,7 +11,7 @@ import { getGuardsSummaries } from '../../data/repositories/guards-repo.js';
 import { getGoldPassStatuses } from '../../data/repositories/gold-pass-repo.js';
 import { listSiteContacts, type SiteContacts } from '../../data/repositories/user-repo.js';
 import { buildPointsGuide, type PointsGuide } from '../../data/points-guide.js';
-import type { Clan } from '../../data/repositories/clan-repo.js';
+import { getClanById, type Clan } from '../../data/repositories/clan-repo.js';
 import type { LeaderboardEntry } from '../../models/types.js';
 import { loadConfig } from '../../config/index.js';
 import { currentGameDate } from '../../utils/game-day.js';
@@ -93,21 +93,58 @@ export function queryLeaderboard(
   });
 }
 
+/**
+ * What this clan's leaderboard shows beyond rank / chests / points — the
+ * columns and colouring the FAQ has answers for.
+ */
+export interface LeaderboardFeatures {
+  goalWeeklyPoints: number | null;
+  guards: boolean;
+  might: boolean;
+  goldPass: boolean;
+}
+
 export interface LeaderboardFaq {
   pointsGuide: PointsGuide;
   contacts: SiteContacts;
+  board: LeaderboardFeatures;
+}
+
+/**
+ * Decided here, from the same rows the board renders, rather than handed over
+ * by whichever page opened the FAQ. It used to be the latter, which tied the
+ * FAQ's text to render timing: the share page's top-nav link and #faq / #join
+ * deep links could open the FAQ before the board had loaded, and the Guards,
+ * GP and Might answers silently went missing.
+ *
+ * The all-time query is enough because these columns don't depend on the
+ * window: every window lists every active member, decorated with their latest
+ * might / guards / pass whatever period is on screen. It is the cached query
+ * the All tab already runs.
+ */
+function leaderboardFeatures(clan: Clan | null, clanId: number): LeaderboardFeatures {
+  const rows = queryLeaderboard(clanId, { from: undefined, to: undefined, includeAllMembers: true });
+  return {
+    goalWeeklyPoints: resolveWeeklyGoalPoints(clan),
+    // Same predicates the two pages use to decide their columns.
+    guards: rows.some((e) => e.guardsLevel != null),
+    might: rows.some((e) => e.might != null || e.heroLevel != null),
+    goldPass: rows.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
+  };
 }
 
 /**
  * Everything the leaderboard FAQ modal needs from the server: the points-per-
- * chest table (global — the scoring table has no clan) and who to contact
- * (this clan's admins plus the site's superadmins). Shared by /api/leaderboard/faq
- * and the public /api/public/:token/faq so the two modals can't disagree.
+ * chest table (global — the scoring table has no clan), who to contact (this
+ * clan's admins plus the site's superadmins), and which of the board's extras
+ * to explain. Shared by /api/leaderboard/faq and the public
+ * /api/public/:token/faq so the two modals can't disagree.
  */
 export function buildLeaderboardFaq(clanId: number): LeaderboardFaq {
   return {
     pointsGuide: buildPointsGuide(),
     contacts: listSiteContacts(clanId),
+    board: leaderboardFeatures(getClanById(clanId), clanId),
   };
 }
 

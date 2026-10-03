@@ -49,14 +49,12 @@ function start() {
   let goalWeeklyPoints = null;
   let clanName = '';
   let rolloverHr = 17;
-  // Which extras the last-rendered board showed, so the FAQ only explains
-  // what the visitor can see. Only known once the board has loaded — and the
-  // top-nav link and the #faq / #join deep links can open the FAQ before it
-  // has, which handed the FAQ an empty set and silently dropped the Guards,
-  // GP and Might answers. So the FAQ waits on boardLoaded before reading it.
-  let faqColumns = {};
-  let markBoardLoaded;
-  const boardLoaded = new Promise((resolve) => { markBoardLoaded = resolve; });
+  // Bumped by every render of #content. A render that awaited its fetch and
+  // finds the number moved on is stale and must not write: without this, a
+  // slower response landed last and won — an earlier period's numbers painted
+  // under the label just clicked, or the tab the visitor left overwriting the
+  // one they picked. The authenticated router guards the same way (navToken).
+  let renderSeq = 0;
   // Whether this browser has opened the FAQ before. Until it has, the board's
   // FAQ button carries a "new" dot. One flag for every share link — the FAQ
   // reads the same from all of them apart from the clan's names.
@@ -140,31 +138,31 @@ function start() {
   }
 
   async function renderLeaderboard() {
+    const seq = ++renderSeq;
     const el = document.getElementById('content');
     el.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+    // The window this render fetches, kept so the label it paints is the one
+    // its numbers belong to.
+    const period = currentPeriod;
+    const offset = currentPeriodOffset;
     const params = new URLSearchParams({ includeAll: '1' });
-    const win = computeGameWindow(currentPeriod, currentPeriodOffset);
+    const win = computeGameWindow(period, offset);
     if (win) { params.set('from', win.from); params.set('to', win.to); }
 
     let rows;
     try {
       rows = await fetchJson(`${API}/leaderboard?${params.toString()}`);
     } catch {
+      if (seq !== renderSeq) return;
       el.innerHTML = '<div class="empty-state"><p>Failed to load leaderboard.</p></div>';
-      markBoardLoaded(); // nothing to learn — don't leave the FAQ waiting
       return;
     }
+    if (seq !== renderSeq) return;
 
     const sorted = sortLeaderboardEntries(rows, leaderboardSort.key, leaderboardSort.dir);
     // Whole result set, not the visible page — see the auth page's note.
     const showMight = rows.some((e) => e.might != null || e.heroLevel != null);
     const showGuards = rows.some((e) => e.guardsLevel != null);
-    faqColumns = {
-      guards: showGuards,
-      might: showMight,
-      goldPass: rows.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
-    };
-    markBoardLoaded();
     const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
     if (currentPage < 1) currentPage = 1;
@@ -176,8 +174,8 @@ function start() {
       totalEntries: sorted.length,
       currentPage,
       totalPages,
-      period: currentPeriod,
-      offset: currentPeriodOffset,
+      period,
+      offset,
       sortState: leaderboardSort,
       // rolloverHr defaults to whatever we pushed into shared state
       // during init() from the /clan response.
@@ -202,21 +200,16 @@ function start() {
         .forEach((b) => b.classList.remove('is-new'));
     }
     openLeaderboardFaq({
-      load: async () => {
-        const [faq] = await Promise.all([fetchJson(`${API}/faq`), boardLoaded]);
-        return faq;
-      },
+      load: () => fetchJson(`${API}/faq`),
       mode: 'public',
       clanName,
       rolloverHr,
-      goalWeeklyPoints,
-      // Read after load() — i.e. after the board has — never at click time.
-      columns: () => faqColumns,
       initialTab,
     });
   }
 
   async function renderChestTracker() {
+    const seq = ++renderSeq;
     const el = document.getElementById('content');
     el.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
     let data;
@@ -234,9 +227,11 @@ function start() {
           .catch(() => []),
       ]);
     } catch {
+      if (seq !== renderSeq) return;
       el.innerHTML = '<div class="empty-state"><p>Failed to load ChestTracker data.</p></div>';
       return;
     }
+    if (seq !== renderSeq) return;
     const shareCode = data.shareCode || '';
     selectedShareCode = shareCode || null;
     const title = shareCode

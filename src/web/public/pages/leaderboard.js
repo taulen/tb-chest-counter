@@ -37,10 +37,6 @@ const ACTIONS = {
   openFaq: 'open-leaderboard-faq',
 };
 
-// What the last render showed, so the FAQ explains only the columns and goal
-// colouring the reader is actually looking at.
-let faqContext = { goalWeeklyPoints: null, columns: {} };
-
 export async function renderLeaderboard(el) {
   // The goal is a separate call because /leaderboard answers with a bare
   // array that the Dashboard also consumes — see the route comment. Fetched
@@ -61,14 +57,6 @@ export async function renderLeaderboard(el) {
   // columns as you page through it.
   const showMight = leaderboard.some((e) => e.might != null || e.heroLevel != null);
   const showGuards = leaderboard.some((e) => e.guardsLevel != null);
-  faqContext = {
-    goalWeeklyPoints: goal?.weeklyPoints ?? null,
-    columns: {
-      guards: showGuards,
-      might: showMight,
-      goldPass: leaderboard.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
-    },
-  };
 
   const totalEntries = sorted.length;
   const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
@@ -126,11 +114,13 @@ export function formatLeaderboardPeriodLabel(period, offset) {
 
 export function openLeaderboardFaqModal() {
   openLeaderboardFaq({
-    load: () => api('/leaderboard/faq'),
+    // signal: null — the modal is not a page load, so it must not ride the
+    // router's navigation abort signal (api() attaches it to every GET that
+    // doesn't bring its own). With it, any navigation while the FAQ was
+    // loading turned the modal into "Couldn't load the FAQ".
+    load: () => api('/leaderboard/faq', { signal: null }),
     mode: 'member',
     rolloverHr: getGameDayRolloverUtcHour(),
-    goalWeeklyPoints: faqContext.goalWeeklyPoints,
-    columns: faqContext.columns,
   });
 }
 

@@ -238,8 +238,9 @@ describe('public share surface (anonymous, token-gated)', () => {
       const r = await request(app).get('/api/public/aAaA11/faq');
       expect(r.status).toBe(200);
       // Exact key sets — the allow-list for what an anonymous visitor gets.
-      expect(Object.keys(r.body).sort()).toEqual(['contacts', 'pointsGuide']);
+      expect(Object.keys(r.body).sort()).toEqual(['board', 'contacts', 'pointsGuide']);
       expect(Object.keys(r.body.contacts).sort()).toEqual(['clanAdmins', 'siteAdmins']);
+      expect(Object.keys(r.body.board).sort()).toEqual(['goalWeeklyPoints', 'goldPass', 'guards', 'might']);
       // Most recently active first.
       expect(r.body.contacts.clanAdmins).toEqual(['adminnew', 'adminold']);
       expect(r.body.contacts.siteAdmins).toEqual(['boss']);
@@ -253,6 +254,27 @@ describe('public share surface (anonymous, token-gated)', () => {
 
     it('404s for a token nobody owns', async () => {
       expect((await request(app).get('/api/public/ZZ9zz9/faq')).status).toBe(404);
+    });
+
+    // The FAQ used to be told which extras to explain by the opening page, which
+    // could ask before its board had loaded. Now it is the server's answer, from
+    // the token clan's data. (Separate cases: the might lookup is cached.)
+    it('explains no board extras the clan has no data for', async () => {
+      const r = await request(app).get('/api/public/aAaA11/faq');
+      expect(r.body.board).toEqual({ goalWeeklyPoints: null, guards: false, might: false, goldPass: false });
+    });
+
+    it('explains Might once the clan has a might snapshot', async () => {
+      const alice = getDb().prepare(
+        "SELECT id FROM members WHERE clan_id = 1 AND name = 'Alice'",
+      ).get() as { id: number };
+      getDb().prepare(
+        `INSERT INTO member_snapshots (clan_id, member_id, game_date, level, power, captured_at)
+         VALUES (1, ?, '2026-09-30', 210, 123456789, ?)`,
+      ).run(alice.id, new Date().toISOString());
+
+      const r = await request(app).get('/api/public/aAaA11/faq');
+      expect(r.body.board.might).toBe(true);
     });
   });
 
