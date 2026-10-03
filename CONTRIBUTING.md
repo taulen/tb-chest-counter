@@ -3,6 +3,9 @@
 Thanks for looking. This is a self-hosted hobby project; contributions are
 welcome, and so are bug reports that just describe what happened.
 
+Everyone taking part — in issues, pull requests and Discussions — is expected
+to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Getting set up
 
 ```bash
