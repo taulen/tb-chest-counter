@@ -5479,7 +5479,46 @@ details > table {
   justify-content: space-between;
   gap: 12px;
 }
+/* Gold rather than a neutral .btn: it is the one way into "what is a chest
+   worth" and "how do I join", and a grey button beside the title read as
+   decoration. Both rules sit after .btn / .btn:hover at equal specificity. */
+.leaderboard-faq-btn {
+  position: relative;
+  padding: 6px 14px;
+  background: var(--accent-gold-bg-strong);
+  border-color: var(--accent-gold-border);
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+.leaderboard-faq-btn:not(:disabled):hover {
+  background: var(--accent-gold-dim);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
 .leaderboard-faq-btn svg { flex: none; }
+
+/* "Not opened yet" dot — the public page sets it until the visitor's first
+   open, so a newcomer's eye lands on it without it nagging anyone after. */
+.leaderboard-faq-btn.is-new::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+  border: 2px solid var(--bg-card);
+  animation: faq-new-pulse 1.8s ease-out infinite;
+}
+@keyframes faq-new-pulse {
+  0% { box-shadow: 0 0 0 0 var(--accent-gold-border); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leaderboard-faq-btn.is-new::after { animation: none; }
+}
 
 /* The card never outgrows the viewport: tabs and footer stay put and only the
    panel scrolls, so the tab bar is always reachable on a long points list. */

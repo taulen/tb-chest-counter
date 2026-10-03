@@ -239,13 +239,14 @@ function renderFaqHtml(data, opts) {
       ? ['access', 'Get full access', renderAccessTab({ clanName: opts.clanName, contacts: data?.contacts })]
       : ['contacts', 'Contacts', renderContactsTab({ contacts: data?.contacts })],
   ];
+  const active = tabs.some(([key]) => key === opts.initialTab) ? opts.initialTab : tabs[0][0];
   return `<div class="resources-tabs faq-tabs" role="tablist">
-      ${tabs.map(([key, label], i) => `<button type="button" role="tab"
-        class="resources-tab${i === 0 ? ' is-active' : ''}" aria-selected="${i === 0}"
+      ${tabs.map(([key, label]) => `<button type="button" role="tab"
+        class="resources-tab${key === active ? ' is-active' : ''}" aria-selected="${key === active}"
         data-faq-tab="${key}">${label}</button>`).join('')}
     </div>
     <div class="faq-panels">
-      ${tabs.map(([key, , html], i) => `<div class="faq-panel" role="tabpanel" data-faq-panel="${key}"${i === 0 ? '' : ' hidden'}>${html}</div>`).join('')}
+      ${tabs.map(([key, , html]) => `<div class="faq-panel" role="tabpanel" data-faq-panel="${key}"${key === active ? '' : ' hidden'}>${html}</div>`).join('')}
     </div>
     <div class="faq-footer">TB Chest Counter is open source —
       <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">see it on GitHub ↗</a></div>`;
@@ -260,6 +261,7 @@ function renderFaqHtml(data, opts) {
  *  - `clanName`, `rolloverHr`, `goalWeeklyPoints` — copy inputs the page has.
  *  - `columns` — { guards, might, goldPass }: which extras the board on screen
  *                shows, so the FAQ only explains what the reader can see.
+ *  - `initialTab` — 'points' (default) | 'how' | 'access' | 'contacts'.
  */
 export async function openLeaderboardFaq({
   load,
@@ -268,6 +270,7 @@ export async function openLeaderboardFaq({
   rolloverHr = 17,
   goalWeeklyPoints = null,
   columns = {},
+  initialTab = 'points',
 }) {
   const modal = contentModal({
     title: 'Leaderboard FAQ',
@@ -284,7 +287,7 @@ export async function openLeaderboardFaq({
     modal.setHtml('<p class="faq-lead">Couldn\'t load the FAQ. Close this and try again in a moment.</p>');
     return;
   }
-  modal.setHtml(renderFaqHtml(data, { mode, clanName, rolloverHr, goalWeeklyPoints, columns }));
+  modal.setHtml(renderFaqHtml(data, { mode, clanName, rolloverHr, goalWeeklyPoints, columns, initialTab }));
 
   modal.content.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-faq-tab]');

@@ -36,6 +36,33 @@
   display: none;
 }
 
+/* Pinned right and always visible, on either tab — the leaderboard card's own
+   FAQ button scrolls away and isn't there at all on the ChestTracker tab. */
+.public-share-nav a.public-share-nav-faq {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-gold);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.public-share-nav a.public-share-nav-faq:hover {
+  color: var(--accent-gold);
+  border-bottom-color: var(--accent-gold-border);
+}
+.public-share-nav-faq svg { flex: none; }
+
+/* Three items on a phone: tighten the padding, and below ~420px drop the
+   "& access" half so the row never wraps or scrolls. */
+@media (max-width: 480px) {
+  .public-share-nav { padding: 0 8px; }
+  .public-share-nav a { padding: 12px 10px; }
+}
+@media (max-width: 420px) {
+  .public-share-nav-faq .nav-faq-extra { display: none; }
+}
+
 .public-share-snapshot-meta {
   color: var(--text-secondary);
   font-size: 13px;

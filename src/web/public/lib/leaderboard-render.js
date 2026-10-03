@@ -244,6 +244,10 @@ export function renderLeaderboardCardHtml({
   // unauthenticated token, and a whole-roster download is a different thing
   // from a leaderboard someone can read.
   exportHref = null,
+  // FAQ button text, and whether it carries the "not opened yet" dot. The
+  // public page uses both to steer first-time visitors to "how do I join".
+  faqLabel = 'FAQ',
+  faqIsNew = false,
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
   const arrow = (key) => sortState.key === key
@@ -274,10 +278,10 @@ export function renderLeaderboardCardHtml({
     : '';
 
   const faqButton = actions.openFaq
-    ? `<button type="button" class="btn btn-tight leaderboard-faq-btn" data-action="${actions.openFaq}"
+    ? `<button type="button" class="btn leaderboard-faq-btn${faqIsNew ? ' is-new' : ''}" data-action="${actions.openFaq}"
          title="What each chest is worth, and how the board works">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
-        FAQ
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
+        ${esc(faqLabel)}
       </button>`
     : '';
 

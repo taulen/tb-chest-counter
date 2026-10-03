@@ -52,6 +52,18 @@ function start() {
   // Which extras the last-rendered board showed, so the FAQ only explains
   // what the visitor can see.
   let faqColumns = {};
+  // Whether this browser has opened the FAQ before. Until it has, the board's
+  // FAQ button carries a "new" dot. One flag for every share link — the FAQ
+  // reads the same from all of them apart from the clan's names.
+  const FAQ_SEEN_KEY = 'tbcc_faq_seen';
+  let faqSeen = (() => {
+    try {
+      return !!localStorage.getItem(FAQ_SEEN_KEY);
+    } catch {
+      // Storage blocked: show the dot; it just won't be remembered.
+      return false;
+    }
+  })();
   let currentTab = 'leaderboard';
   let currentPeriod = 'daily';
   let currentPeriodOffset = 0;
@@ -170,6 +182,26 @@ function start() {
       showMight,
       showGuards,
       goalWeeklyPoints,
+      faqLabel: 'FAQ & access',
+      faqIsNew: !faqSeen,
+    });
+  }
+
+  function openFaq(initialTab) {
+    if (!faqSeen) {
+      faqSeen = true;
+      try { localStorage.setItem(FAQ_SEEN_KEY, '1'); } catch { /* not remembered */ }
+      document.querySelectorAll('.leaderboard-faq-btn.is-new')
+        .forEach((b) => b.classList.remove('is-new'));
+    }
+    openLeaderboardFaq({
+      load: () => fetchJson(`${API}/faq`),
+      mode: 'public',
+      clanName,
+      rolloverHr,
+      goalWeeklyPoints,
+      columns: faqColumns,
+      initialTab,
     });
   }
 
@@ -232,6 +264,11 @@ function start() {
 
   function wireEvents() {
     document.getElementById('shareNav').addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-open-faq]')) {
+        ev.preventDefault();
+        openFaq();
+        return;
+      }
       const a = ev.target.closest('a[data-tab]');
       if (!a) return;
       ev.preventDefault();
@@ -278,14 +315,7 @@ function start() {
         currentPage = 1;
         renderLeaderboard();
       } else if (action === ACTIONS.openFaq) {
-        openLeaderboardFaq({
-          load: () => fetchJson(`${API}/faq`),
-          mode: 'public',
-          clanName,
-          rolloverHr,
-          goalWeeklyPoints,
-          columns: faqColumns,
-        });
+        openFaq();
       }
     });
   }
@@ -317,6 +347,10 @@ function start() {
     }
     wireEvents();
     renderCurrentTab();
+    // Deep links an admin can hand out: /<key>#faq opens the FAQ, /<key>#join
+    // opens it straight on "Get full access".
+    if (window.location.hash === '#faq') openFaq();
+    else if (window.location.hash === '#join') openFaq('access');
 
     // Fire the analytics beacons: 'enter' now (new vs returning), 'leave'
     // once the page is being unloaded/backgrounded. pagehide is the reliable
