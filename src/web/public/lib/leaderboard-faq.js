@@ -132,10 +132,13 @@ function renderHowTab({ mode, rolloverHr, goalWeeklyPoints, columns, notCounted 
       The game hands these to one account for the whole clan's placement, so counting them would
       rank whoever happened to receive them.</li>`);
   }
-  if (mode === 'member') {
-    excluded.push(`<li><strong>Triumphal chests</strong> — they have their own ranking on the
-      Triumphal Chests page.</li>`);
-  }
+  // Both modes: a share-link visitor opens triumphal chests too, and "why don't
+  // mine count?" is theirs to ask as much as a member's.
+  excluded.push(mode === 'member'
+    ? `<li><strong>Triumphal chests</strong> — they have their own ranking on the
+      Triumphal Chests page.</li>`
+    : `<li><strong>Triumphal chests</strong> — they're tracked separately, on their own page
+      on the full site (see <em>Get full access</em>).</li>`);
   if (excluded.length) items.push(qa("What doesn't count?", `<ul>${excluded.join('')}</ul>`));
 
   if (Number.isFinite(goalWeeklyPoints) && goalWeeklyPoints > 0) {
@@ -260,7 +263,9 @@ function renderFaqHtml(data, opts) {
  *  - `mode`    — 'member' | 'public'.
  *  - `clanName`, `rolloverHr`, `goalWeeklyPoints` — copy inputs the page has.
  *  - `columns` — { guards, might, goldPass }: which extras the board on screen
- *                shows, so the FAQ only explains what the reader can see.
+ *                shows, so the FAQ only explains what the reader can see. May
+ *                be a function, read once `load` resolves — for a page that can
+ *                open the FAQ before its board has loaded.
  *  - `initialTab` — 'points' (default) | 'how' | 'access' | 'contacts'.
  */
 export async function openLeaderboardFaq({
@@ -287,7 +292,14 @@ export async function openLeaderboardFaq({
     modal.setHtml('<p class="faq-lead">Couldn\'t load the FAQ. Close this and try again in a moment.</p>');
     return;
   }
-  modal.setHtml(renderFaqHtml(data, { mode, clanName, rolloverHr, goalWeeklyPoints, columns, initialTab }));
+  modal.setHtml(renderFaqHtml(data, {
+    mode,
+    clanName,
+    rolloverHr,
+    goalWeeklyPoints,
+    columns: (typeof columns === 'function' ? columns() : columns) || {},
+    initialTab,
+  }));
 
   modal.content.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-faq-tab]');

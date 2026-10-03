@@ -36,10 +36,11 @@
   display: none;
 }
 
-/* Pinned right and always visible, on either tab — the leaderboard card's own
-   FAQ button scrolls away and isn't there at all on the ChestTracker tab. */
+/* Always visible, on either tab — the leaderboard card's own FAQ button
+   scrolls away and isn't there at all on the ChestTracker tab. Sits in the
+   centred row with the tabs (the global `nav` rule centres it); no auto margin,
+   which would pull the tabs off-centre to the left. */
 .public-share-nav a.public-share-nav-faq {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;

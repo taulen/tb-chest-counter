@@ -50,8 +50,13 @@ function start() {
   let clanName = '';
   let rolloverHr = 17;
   // Which extras the last-rendered board showed, so the FAQ only explains
-  // what the visitor can see.
+  // what the visitor can see. Only known once the board has loaded — and the
+  // top-nav link and the #faq / #join deep links can open the FAQ before it
+  // has, which handed the FAQ an empty set and silently dropped the Guards,
+  // GP and Might answers. So the FAQ waits on boardLoaded before reading it.
   let faqColumns = {};
+  let markBoardLoaded;
+  const boardLoaded = new Promise((resolve) => { markBoardLoaded = resolve; });
   // Whether this browser has opened the FAQ before. Until it has, the board's
   // FAQ button carries a "new" dot. One flag for every share link — the FAQ
   // reads the same from all of them apart from the clan's names.
@@ -146,6 +151,7 @@ function start() {
       rows = await fetchJson(`${API}/leaderboard?${params.toString()}`);
     } catch {
       el.innerHTML = '<div class="empty-state"><p>Failed to load leaderboard.</p></div>';
+      markBoardLoaded(); // nothing to learn — don't leave the FAQ waiting
       return;
     }
 
@@ -158,6 +164,7 @@ function start() {
       might: showMight,
       goldPass: rows.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
     };
+    markBoardLoaded();
     const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
     if (currentPage < 1) currentPage = 1;
@@ -195,12 +202,16 @@ function start() {
         .forEach((b) => b.classList.remove('is-new'));
     }
     openLeaderboardFaq({
-      load: () => fetchJson(`${API}/faq`),
+      load: async () => {
+        const [faq] = await Promise.all([fetchJson(`${API}/faq`), boardLoaded]);
+        return faq;
+      },
       mode: 'public',
       clanName,
       rolloverHr,
       goalWeeklyPoints,
-      columns: faqColumns,
+      // Read after load() — i.e. after the board has — never at click time.
+      columns: () => faqColumns,
       initialTab,
     });
   }
