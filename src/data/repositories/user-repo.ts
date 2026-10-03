@@ -220,6 +220,36 @@ export function firstSuperadmin(): User | null {
   }
 }
 
+export interface SiteContacts {
+  /** The clan's admins, by username. */
+  clanAdmins: string[];
+  /** The site's superadmins, by username. */
+  siteAdmins: string[];
+}
+
+/**
+ * Who to ask for an account or for help, as the leaderboard FAQ lists them —
+ * including on the PUBLIC share page, so this returns usernames and nothing
+ * else. A username is the only name a site account has.
+ *
+ * Only accounts that have signed in at least once: an admin account nobody has
+ * ever used belongs to someone who may not know it exists, and pointing a
+ * visitor at them is a dead end. Most recently active first, so the person
+ * likeliest to answer leads.
+ */
+export function listSiteContacts(clanId: number): SiteContacts {
+  const rows = getDb().prepare(
+    `SELECT username, role FROM users
+      WHERE ((role = 'admin' AND clan_id = ?) OR role = 'superadmin')
+        AND (last_login IS NOT NULL OR last_visited IS NOT NULL)
+      ORDER BY MAX(COALESCE(last_visited, ''), COALESCE(last_login, '')) DESC, id`,
+  ).all(clanId) as { username: string; role: UserRole }[];
+  return {
+    clanAdmins: rows.filter((r) => r.role === 'admin').map((r) => r.username),
+    siteAdmins: rows.filter((r) => r.role === 'superadmin').map((r) => r.username),
+  };
+}
+
 /** How many superadmin accounts exist. Used by the setup wizard to refuse a
  *  restored database nobody could administer. */
 export function superadminCount(): number {

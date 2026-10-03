@@ -5471,3 +5471,243 @@ details > table {
 @media (max-width: 960px) {
   .makeup-grid { grid-template-columns: 1fr; }
 }
+
+/* ─── Leaderboard FAQ (button + modal) ──────────────────────────────────────
+   Shared by the authenticated Leaderboard and the public share page, which
+   both load this sheet. See lib/leaderboard-faq.js. */
+.leaderboard-title-row {
+  justify-content: space-between;
+  gap: 12px;
+}
+.leaderboard-faq-btn svg { flex: none; }
+
+/* The card never outgrows the viewport: tabs and footer stay put and only the
+   panel scrolls, so the tab bar is always reachable on a long points list. */
+.faq-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+}
+.faq-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.faq-tabs {
+  flex: none;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+.faq-tabs::-webkit-scrollbar { display: none; }
+.faq-tabs .resources-tab {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.faq-tabs .resources-tab:not(.is-active) { background: transparent; }
+.faq-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.faq-footer {
+  flex: none;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.faq-footer a { color: var(--accent-gold); }
+
+.faq-lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.faq-footnote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Points tab: the crypt/citadel matrix full width, then the smaller tables
+   flowing in balanced columns (one column on a phone). */
+.faq-points-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  overflow: hidden;
+  break-inside: avoid;
+  margin-bottom: 16px;
+}
+.faq-points-section h3 {
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+.faq-points-grid {
+  column-width: 300px;
+  column-gap: 16px;
+}
+.faq-matrix-scroll { overflow-x: auto; }
+
+/* table.* so these beat the phone rule that gives every non-responsive table a
+   520px floor — these are built to fit a modal. */
+table.faq-table {
+  min-width: 0;
+  width: 100%;
+}
+table.faq-matrix { min-width: 460px; }
+.faq-table th {
+  position: static;
+  padding: 7px 12px;
+}
+.faq-table td {
+  padding: 7px 12px;
+}
+.faq-table th.num,
+.faq-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.faq-table tbody tr:last-child > * { border-bottom: 0; }
+.faq-table .cell-stacked-primary,
+.faq-table .cell-stacked-sub {
+  white-space: normal;
+}
+.faq-matrix tbody th {
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--row-divider);
+}
+.faq-table td.faq-empty { color: var(--text-muted); }
+
+/* How it works tab */
+.faq-qa {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--row-divider);
+}
+.faq-qa:first-child { padding-top: 0; }
+.faq-qa:last-child { border-bottom: 0; }
+.faq-qa h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.faq-qa p,
+.faq-qa ul {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.faq-qa ul { padding-left: 18px; }
+.faq-qa li + li { margin-top: 4px; }
+.faq-qa strong { color: var(--text-primary); }
+
+/* Access / contacts tab */
+.faq-steps {
+  list-style: none;
+  counter-reset: faq-step;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.faq-steps > li {
+  counter-increment: faq-step;
+  position: relative;
+  padding: 12px 14px 12px 50px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.faq-steps > li::before {
+  content: counter(faq-step);
+  position: absolute;
+  left: 14px;
+  top: 11px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+}
+.faq-step-title,
+.faq-contact-head {
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.faq-steps p,
+.faq-contact-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.faq-steps a { color: var(--accent-gold); font-weight: 600; }
+.faq-contact-card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.faq-contact-card:last-child { margin-bottom: 0; }
+.faq-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.faq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 999px;
+  background: var(--accent-gold-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.faq-chip svg { flex: none; color: var(--accent-gold); }
+.faq-contact-card p.faq-none {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+@media (max-width: 480px) {
+  .faq-tabs .resources-tab { padding: 6px 12px; }
+  .faq-steps > li { padding-left: 46px; }
+  .faq-steps > li::before { left: 12px; }
+}

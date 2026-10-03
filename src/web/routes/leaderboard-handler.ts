@@ -9,6 +9,8 @@ import { getLeaderboard } from '../../data/repositories/chest-repo.js';
 import { getLatestMightByMember } from '../../data/repositories/might-repo.js';
 import { getGuardsSummaries } from '../../data/repositories/guards-repo.js';
 import { getGoldPassStatuses } from '../../data/repositories/gold-pass-repo.js';
+import { listSiteContacts, type SiteContacts } from '../../data/repositories/user-repo.js';
+import { buildPointsGuide, type PointsGuide } from '../../data/points-guide.js';
 import type { Clan } from '../../data/repositories/clan-repo.js';
 import type { LeaderboardEntry } from '../../models/types.js';
 import { loadConfig } from '../../config/index.js';
@@ -89,6 +91,24 @@ export function queryLeaderboard(
       goldPass: goldPass.get(row.memberId) ?? null,
     };
   });
+}
+
+export interface LeaderboardFaq {
+  pointsGuide: PointsGuide;
+  contacts: SiteContacts;
+}
+
+/**
+ * Everything the leaderboard FAQ modal needs from the server: the points-per-
+ * chest table (global — the scoring table has no clan) and who to contact
+ * (this clan's admins plus the site's superadmins). Shared by /api/leaderboard/faq
+ * and the public /api/public/:token/faq so the two modals can't disagree.
+ */
+export function buildLeaderboardFaq(clanId: number): LeaderboardFaq {
+  return {
+    pointsGuide: buildPointsGuide(),
+    contacts: listSiteContacts(clanId),
+  };
 }
 
 /**

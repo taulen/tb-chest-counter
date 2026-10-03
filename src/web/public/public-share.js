@@ -22,6 +22,7 @@ import {
   renderArchivedNotice,
 } from './lib/chesttracker-render.js';
 import { initMobileRows } from './lib/mobile-rows.js';
+import { openLeaderboardFaq } from './lib/leaderboard-faq.js';
 
 // Mirrors SHARE_TOKEN_REGEX on the server: a generated 6-char token OR an
 // admin-chosen vanity key (3-10 chars, a-z0-9). The server already refused to
@@ -46,6 +47,11 @@ function start() {
   // The clan's weekly points goal, from /clan. null when they haven't set one,
   // in which case the board renders exactly as it did before the feature.
   let goalWeeklyPoints = null;
+  let clanName = '';
+  let rolloverHr = 17;
+  // Which extras the last-rendered board showed, so the FAQ only explains
+  // what the visitor can see.
+  let faqColumns = {};
   let currentTab = 'leaderboard';
   let currentPeriod = 'daily';
   let currentPeriodOffset = 0;
@@ -107,6 +113,7 @@ function start() {
     pagePrev: 'page-prev',
     pageNext: 'page-next',
     sort: 'sort',
+    openFaq: 'open-faq',
   };
 
   async function fetchJson(url) {
@@ -134,6 +141,11 @@ function start() {
     // Whole result set, not the visible page — see the auth page's note.
     const showMight = rows.some((e) => e.might != null || e.heroLevel != null);
     const showGuards = rows.some((e) => e.guardsLevel != null);
+    faqColumns = {
+      guards: showGuards,
+      might: showMight,
+      goldPass: rows.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
+    };
     const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
     if (currentPage < 1) currentPage = 1;
@@ -265,6 +277,15 @@ function start() {
         }
         currentPage = 1;
         renderLeaderboard();
+      } else if (action === ACTIONS.openFaq) {
+        openLeaderboardFaq({
+          load: () => fetchJson(`${API}/faq`),
+          mode: 'public',
+          clanName,
+          rolloverHr,
+          goalWeeklyPoints,
+          columns: faqColumns,
+        });
       }
     });
   }
@@ -278,9 +299,11 @@ function start() {
         '<div class="empty-state"><p>This share link is invalid or has been revoked.</p></div>';
       return;
     }
+    clanName = info.clanName || '';
     document.getElementById('clanName').textContent = info.clanName || 'TB Chest Counter';
     document.title = `${info.clanName || 'Clan'} · Leaderboard`;
     if (Number.isFinite(info.gameDayRolloverUtcHour)) {
+      rolloverHr = info.gameDayRolloverUtcHour;
       // Push into the same shared state slot the auth app uses, so
       // computeGameWindow / formatPeriodLabel pick it up automatically.
       setGameDayRolloverUtcHour(info.gameDayRolloverUtcHour);

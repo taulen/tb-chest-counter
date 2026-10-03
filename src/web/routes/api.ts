@@ -50,7 +50,12 @@ import { getScanCoverage } from '../../data/repositories/session-repo.js';
 import { createPreActionBackup, listBackups, resolveBackupPath } from '../../utils/db-backup.js';
 import { inspectBackupClans, restoreClanFromBackup } from '../../data/clan-restore.js';
 import { getEntries as getLogEntries, latestEntryAt as latestLogEntryAt } from '../../utils/log-buffer.js';
-import { parseLeaderboardQuery, queryLeaderboard, resolveWeeklyGoalPoints } from './leaderboard-handler.js';
+import {
+  parseLeaderboardQuery,
+  queryLeaderboard,
+  resolveWeeklyGoalPoints,
+  buildLeaderboardFaq,
+} from './leaderboard-handler.js';
 
 function createPreImportBackup(): string {
   const dbPath = path.resolve(process.env.DB_PATH || './data/tb-chests.db');
@@ -812,6 +817,13 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
   router.get('/leaderboard/goal', (req, res) => {
     const clan = getClanById(req.clanId ?? 1);
     res.json({ weeklyPoints: resolveWeeklyGoalPoints(clan) });
+  });
+
+  // GET /api/leaderboard/faq — the FAQ modal's points-per-chest table and the
+  // clan's contacts. Twin of the public /api/public/:token/faq; both go through
+  // buildLeaderboardFaq.
+  router.get('/leaderboard/faq', (req, res) => {
+    res.json(buildLeaderboardFaq(req.clanId ?? 1));
   });
 
   // ── Triumphal Gifts ────────────────────────────────────────────────

@@ -863,16 +863,18 @@ export function selectDialog(message, options, {
  *   - `content`  — the .modal-content element (attach listeners here)
  *   - `setHtml(html)` — replace the body (e.g. after a recover action)
  *   - `close()`  — dismiss programmatically
+ * `className` is added to the card, for a modal that needs its own layout.
  * Returns null if #modalRoot is missing.
  */
-export function contentModal({ title = '', html = '', wide = false } = {}) {
+export function contentModal({ title = '', html = '', wide = false, className = '' } = {}) {
   const root = document.getElementById('modalRoot');
   if (!root) return null;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
+  const cardClass = ['modal-card', wide ? 'modal-card-wide' : '', className].filter(Boolean).join(' ');
   overlay.innerHTML = `
-    <div class="modal-card${wide ? ' modal-card-wide' : ''}" role="dialog" aria-modal="true">
+    <div class="${esc(cardClass)}" role="dialog" aria-modal="true">
       <div class="modal-head">
         <div class="modal-title">${escapeHtml(title)}</div>
         <button class="modal-close" type="button" aria-label="Close">&times;</button>

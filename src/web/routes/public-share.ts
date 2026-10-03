@@ -8,7 +8,12 @@ import {
   recordApiHit,
   recordBeacon,
 } from '../../data/repositories/share-link-repo.js';
-import { parseLeaderboardQuery, queryLeaderboard, resolveWeeklyGoalPoints } from './leaderboard-handler.js';
+import {
+  parseLeaderboardQuery,
+  queryLeaderboard,
+  resolveWeeklyGoalPoints,
+  buildLeaderboardFaq,
+} from './leaderboard-handler.js';
 import {
   listSnapshots,
   listClanShareCodes,
@@ -248,6 +253,21 @@ export function createPublicShareApiRouter(): Router {
       return;
     }
     res.json(queryLeaderboard(clan.id, parseLeaderboardQuery(req)));
+  });
+
+  // GET /:token/faq — the leaderboard FAQ modal: the global points-per-chest
+  // table, plus who a visitor can ask for an account. Contacts are this
+  // clan's admins and the site's superadmins, by USERNAME only (see
+  // listSiteContacts) — which is the point of the page, but it does put admin
+  // login names in front of anyone holding the link.
+  router.get('/:token/faq', (req, res) => {
+    const token = paramAsString(req.params.token);
+    const clan = resolveClan(token);
+    if (!clan) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(buildLeaderboardFaq(clan.id));
   });
 
   // GET /:token/external/latest — full latest-snapshot detail for the

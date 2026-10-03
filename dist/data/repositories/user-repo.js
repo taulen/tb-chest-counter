@@ -14,6 +14,7 @@ exports.authenticate = authenticate;
 exports.getUserById = getUserById;
 exports.getAllUsers = getAllUsers;
 exports.firstSuperadmin = firstSuperadmin;
+exports.listSiteContacts = listSiteContacts;
 exports.superadminCount = superadminCount;
 exports.deleteUser = deleteUser;
 exports.updateRole = updateRole;
@@ -179,6 +180,26 @@ function firstSuperadmin() {
     catch {
         return null;
     }
+}
+/**
+ * Who to ask for an account or for help, as the leaderboard FAQ lists them —
+ * including on the PUBLIC share page, so this returns usernames and nothing
+ * else. A username is the only name a site account has.
+ *
+ * Only accounts that have signed in at least once: an admin account nobody has
+ * ever used belongs to someone who may not know it exists, and pointing a
+ * visitor at them is a dead end. Most recently active first, so the person
+ * likeliest to answer leads.
+ */
+function listSiteContacts(clanId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT username, role FROM users
+      WHERE ((role = 'admin' AND clan_id = ?) OR role = 'superadmin')
+        AND (last_login IS NOT NULL OR last_visited IS NOT NULL)
+      ORDER BY MAX(COALESCE(last_visited, ''), COALESCE(last_login, '')) DESC, id`).all(clanId);
+    return {
+        clanAdmins: rows.filter((r) => r.role === 'admin').map((r) => r.username),
+        siteAdmins: rows.filter((r) => r.role === 'superadmin').map((r) => r.username),
+    };
 }
 /** How many superadmin accounts exist. Used by the setup wizard to refuse a
  *  restored database nobody could administer. */

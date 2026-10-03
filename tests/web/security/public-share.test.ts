@@ -28,6 +28,7 @@ import {
 } from '../../../src/data/repositories/share-link-repo.js';
 import { insertSnapshot } from '../../../src/data/repositories/external-repo.js';
 import { makeTestDb, seedTwoClans, seedChestData } from '../../helpers/test-db.js';
+import { getDb } from '../../../src/data/database.js';
 
 const TOKEN_A = 'aAaA11'; // clan 1 — a generated token, case-sensitive
 const VANITY_A = 'family'; // clan 1's second live link, an admin-chosen key
@@ -85,6 +86,7 @@ describe('public share surface (anonymous, token-gated)', () => {
     const API_ROUTES = [
       '/api/public/__TOK__/clan',
       '/api/public/__TOK__/leaderboard',
+      '/api/public/__TOK__/faq',
       '/api/public/__TOK__/external/latest',
       '/api/public/__TOK__/external/snapshots',
     ];
@@ -213,6 +215,44 @@ describe('public share surface (anonymous, token-gated)', () => {
       expect(raw).not.toContain('aAaA11'); // the share key is not echoed
       expect(raw).not.toContain(CODE_A); // raw ct share code downgraded to boolean
       expect(r.body.ctEnabled).toBe(true);
+    });
+  });
+
+  // ── FAQ: contacts are this clan's, by username only ──────────────
+  describe('/faq', () => {
+    function addUser(username: string, role: string, clanId: number | null, lastLogin: string | null): void {
+      getDb().prepare(
+        `INSERT INTO users (username, password_hash, role, clan_id, created_at, last_login)
+         VALUES (?, 'salt:hash-must-not-leak', ?, ?, ?, ?)`,
+      ).run(username, role, clanId, '2026-01-01T00:00:00.000Z', lastLogin);
+    }
+
+    it('names only this clan\'s signed-in admins and the site admins', async () => {
+      addUser('boss', 'superadmin', null, '2026-09-01T00:00:00.000Z');
+      addUser('adminold', 'admin', 1, '2026-08-01T00:00:00.000Z');
+      addUser('adminnew', 'admin', 1, '2026-09-20T00:00:00.000Z');
+      addUser('ghostadmin', 'admin', 1, null); // never signed in
+      addUser('otherclanadmin', 'admin', 2, '2026-09-20T00:00:00.000Z');
+      addUser('plainmember', 'user', 1, '2026-09-20T00:00:00.000Z');
+
+      const r = await request(app).get('/api/public/aAaA11/faq');
+      expect(r.status).toBe(200);
+      // Exact key sets — the allow-list for what an anonymous visitor gets.
+      expect(Object.keys(r.body).sort()).toEqual(['contacts', 'pointsGuide']);
+      expect(Object.keys(r.body.contacts).sort()).toEqual(['clanAdmins', 'siteAdmins']);
+      // Most recently active first.
+      expect(r.body.contacts.clanAdmins).toEqual(['adminnew', 'adminold']);
+      expect(r.body.contacts.siteAdmins).toEqual(['boss']);
+
+      const raw = JSON.stringify(r.body);
+      expect(raw).not.toContain('ghostadmin');
+      expect(raw).not.toContain('otherclanadmin');
+      expect(raw).not.toContain('plainmember');
+      expect(raw).not.toContain('hash-must-not-leak');
+    });
+
+    it('404s for a token nobody owns', async () => {
+      expect((await request(app).get('/api/public/ZZ9zz9/faq')).status).toBe(404);
     });
   });
 

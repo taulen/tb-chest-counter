@@ -759,6 +759,12 @@ function createApiRouter(scanLoop) {
         const clan = (0, clan_repo_js_1.getClanById)(req.clanId ?? 1);
         res.json({ weeklyPoints: (0, leaderboard_handler_js_1.resolveWeeklyGoalPoints)(clan) });
     });
+    // GET /api/leaderboard/faq — the FAQ modal's points-per-chest table and the
+    // clan's contacts. Twin of the public /api/public/:token/faq; both go through
+    // buildLeaderboardFaq.
+    router.get('/leaderboard/faq', (req, res) => {
+        res.json((0, leaderboard_handler_js_1.buildLeaderboardFaq)(req.clanId ?? 1));
+    });
     // ── Triumphal Gifts ────────────────────────────────────────────────
     // Bookkeeping-only endpoints. Triumphal chests live in their own
     // table, never count toward points, and don't appear in any normal

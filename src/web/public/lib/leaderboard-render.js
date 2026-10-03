@@ -217,6 +217,10 @@ const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
  *
  * The Gold Pass marker needs no flag: it rides after the name only on rows that
  * carry one, so a page whose rows never do (Triumphal) renders as before.
+ *
+ * An FAQ button sits in the title row when `actions.openFaq` is set — the two
+ * Leaderboards pass it, the Triumphal page doesn't (lib/leaderboard-faq.js
+ * explains the main board's points, not triumphal scoring).
  */
 export function renderLeaderboardCardHtml({
   title = 'Leaderboard',
@@ -267,6 +271,14 @@ export function renderLeaderboardCardHtml({
   const exportLink = exportHref
     ? `<a class="btn btn-tight leaderboard-export" href="${exportHref}" download
          title="Download this timeframe as CSV">Export CSV</a>`
+    : '';
+
+  const faqButton = actions.openFaq
+    ? `<button type="button" class="btn btn-tight leaderboard-faq-btn" data-action="${actions.openFaq}"
+         title="What each chest is worth, and how the board works">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
+        FAQ
+      </button>`
     : '';
 
   const periodSelector = PERIODS.map((p) =>
@@ -337,7 +349,7 @@ export function renderLeaderboardCardHtml({
 
   return `<div class="card">
     <div class="card-header leaderboard-header">
-      <div class="leaderboard-title-row"><h2>${esc(title)}</h2></div>
+      <div class="leaderboard-title-row"><h2>${esc(title)}</h2>${faqButton}</div>
       <div class="leaderboard-controls">
         <div class="period-selector">${periodSelector}</div>
         ${periodNavRow}

@@ -14,6 +14,7 @@ import {
   computeGameWindow, formatPeriodLabel, periodAnchorFromOffset, periodOffsetFromAnchor,
 } from '../lib/period.js';
 import { sortLeaderboardEntries, renderLeaderboardCardHtml } from '../lib/leaderboard-render.js';
+import { openLeaderboardFaq } from '../lib/leaderboard-faq.js';
 import {
   getGameDayRolloverUtcHour,
   getCurrentPeriod,
@@ -33,7 +34,12 @@ const ACTIONS = {
   pagePrev: 'leaderboard-page-prev',
   pageNext: 'leaderboard-page-next',
   sort: 'sort-leaderboard',
+  openFaq: 'open-leaderboard-faq',
 };
+
+// What the last render showed, so the FAQ explains only the columns and goal
+// colouring the reader is actually looking at.
+let faqContext = { goalWeeklyPoints: null, columns: {} };
 
 export async function renderLeaderboard(el) {
   // The goal is a separate call because /leaderboard answers with a bare
@@ -55,6 +61,14 @@ export async function renderLeaderboard(el) {
   // columns as you page through it.
   const showMight = leaderboard.some((e) => e.might != null || e.heroLevel != null);
   const showGuards = leaderboard.some((e) => e.guardsLevel != null);
+  faqContext = {
+    goalWeeklyPoints: goal?.weeklyPoints ?? null,
+    columns: {
+      guards: showGuards,
+      might: showMight,
+      goldPass: leaderboard.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
+    },
+  };
 
   const totalEntries = sorted.length;
   const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
@@ -109,6 +123,16 @@ export function formatLeaderboardPeriodLabel(period, offset) {
 }
 
 // ─── Action handlers ──────────────────────────────────────────
+
+export function openLeaderboardFaqModal() {
+  openLeaderboardFaq({
+    load: () => api('/leaderboard/faq'),
+    mode: 'member',
+    rolloverHr: getGameDayRolloverUtcHour(),
+    goalWeeklyPoints: faqContext.goalWeeklyPoints,
+    columns: faqContext.columns,
+  });
+}
 
 export function setLeaderboardSort(key, rerender) {
   if (sortState.key === key) {
