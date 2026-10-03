@@ -39,11 +39,12 @@ exports.GUARDS_MAX_LEVEL = 9;
 exports.ESSENCE_RESOURCE_SLUG = 'omen-essence';
 exports.TRACTATE_RESOURCE_SLUG = 'scientific-tractates';
 /**
- * Essence units by level. G4–G9 are each confirmed by dozens of full (70-unit)
- * donations across both clans; G2 and G3 rest on ONE observation each (a full
- * 207,200 = 70 × 2,960, and a partial 123,200 = 32 × 3,850), which is why they
- * are kept — they follow the ×1.3 ladder — but nothing leans on them. G1 has
- * never been seen donating.
+ * Essence units by level. G4–G8 are each confirmed by dozens of full (70-unit)
+ * donations across both clans. G9 by one full donation and 30 partials from 11
+ * members — G9s rarely donate in full. G3 by four full 269,500 donations from
+ * three clan-2 members in June–July 2026, who later donated at G4. G2 by a single
+ * full 207,200, kept because it sits on the ×1.3 ladder. G1 has never been seen
+ * donating.
  */
 exports.ESSENCE_UNITS = [
     { level: 2, unit: 2_960 },
