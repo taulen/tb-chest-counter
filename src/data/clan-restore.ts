@@ -591,6 +591,17 @@ export function restoreClanFromBackup(
         map: { member_id: `s.member_id + ${offMember}`, clan_id: String(targetId) },
       }));
 
+      record('member_guards_reports', copyTable(db, {
+        table: 'member_guards_reports',
+        where: `s.clan_id = ${sourceClanId}`,
+        drop: ['id'],
+        map: {
+          clan_id: String(targetId),
+          member_id: `s.member_id + ${offMember}`,
+          created_by: userExpr('created_by'),
+        },
+      }));
+
       record('chest_daily_summary', copyTable(db, {
         table: 'chest_daily_summary',
         where: `s.clan_id = ${sourceClanId}`,

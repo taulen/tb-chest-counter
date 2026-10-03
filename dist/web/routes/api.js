@@ -45,6 +45,7 @@ const zlib_1 = __importDefault(require("zlib"));
 const chestRepo = __importStar(require("../../data/repositories/chest-repo.js"));
 const triumphalChestRepo = __importStar(require("../../data/repositories/triumphal-chest-repo.js"));
 const eventRepo = __importStar(require("../../data/repositories/event-repo.js"));
+const gold_pass_repo_js_1 = require("../../data/repositories/gold-pass-repo.js");
 const event_catalog_js_1 = require("../../config/event-catalog.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
 const memberRepo = __importStar(require("../../data/repositories/member-repo.js"));
@@ -900,9 +901,23 @@ function createApiRouter(scanLoop) {
         const toParam = typeof req.query.to === 'string' ? req.query.to : undefined;
         const from = isValidIso(fromParam) ? fromParam : undefined;
         const to = isValidIso(toParam) ? toParam : undefined;
-        const result = eventRepo.getEventBreakdown(String(req.params.key || '').trim(), req.clanId ?? 1, from, to);
+        const key = String(req.params.key || '').trim();
+        const result = eventRepo.getEventBreakdown(key, req.clanId ?? 1, from, to);
         if (!result)
             return res.status(404).json({ error: 'Unknown event' });
+        // The Triumphal tab marks who held a Gold Pass in the cycle on screen. Same
+        // window, same Union Chests — goldPassForWindow reads them through this very
+        // breakdown — so the marker can never disagree with the column beside it.
+        if (key === 'triumphal' && from && to) {
+            const pass = (0, gold_pass_repo_js_1.goldPassForWindow)(req.clanId ?? 1, from, to, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
+            return res.json({
+                ...result,
+                goldPass: {
+                    basis: pass.basis,
+                    memberIds: [...pass.members].filter(([, e]) => e.goldPass).map(([id]) => id),
+                },
+            });
+        }
         res.json(result);
     });
     // GET /api/events/:key/member/:memberId?from=&to= — one member's chest

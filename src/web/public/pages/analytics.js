@@ -157,17 +157,20 @@ export async function renderAnalytics(el) {
   // Optional data from the opt-in might tracker, so it's fetched separately and
   // the card is simply absent when there's nothing to plot. Analytics must
   // never fail to render because of it.
-  const [mightTotals, goal] = await Promise.all([
+  const [mightTotals, goal, guards] = await Promise.all([
     api('/might/totals?days=90')
       .then((r) => (Array.isArray(r?.totals) ? r.totals : []))
       .catch(() => []),
     // Null when the clan hasn't configured one, which is a real state, not an
     // error — the contributor table simply carries no colour.
     api('/leaderboard/goal').catch(() => null),
+    // Guards levels and Gold Pass holders: inferred, not period-scoped, and
+    // optional — the card is simply absent if this fails.
+    api('/guards/overview').catch(() => null),
   ]);
   weeklyGoalPoints = Number.isFinite(goal?.weeklyPoints) ? goal.weeklyPoints : null;
 
-  staticData = { stats, mightTotals };
+  staticData = { stats, mightTotals, guards: guards && !guards.error ? guards : null };
   await reload();
 }
 
@@ -934,6 +937,83 @@ function activityClockCardHtml(current) {
     </div>`;
 }
 
+// Level-ups listed on the make-up card before the rest fold into a count.
+const MAKEUP_LEVEL_UPS_SHOWN = 8;
+
+/**
+ * Guardsmen levels and Gold Pass holders across the active roster. Both are
+ * about the clan as it is NOW, so the card ignores the timeframe above — and
+ * says so, the same way the might card does.
+ */
+function clanMakeupCardHtml() {
+  const clan = staticData?.guards?.clan;
+  if (!clan) return '';
+  const g = clan.guards;
+  const current = clan.goldPass?.current;
+  const previous = clan.goldPass?.previous;
+  const total = clan.activeMembers || 0;
+  if (!g || (g.estimated === 0 && !current?.holders && !previous?.holders)) return '';
+
+  const levelRows = g.distribution.map((d) => {
+    const pct = g.estimated > 0 ? Math.round((d.members / g.estimated) * 100) : 0;
+    return `<div class="type-row type-row--compact type-guards">
+      <span class="type-row-name"><span class="type-row-dot"></span>G${d.level}</span>
+      <div class="type-row-bar"><span style="width: ${Math.max(1, pct)}%"></span></div>
+      <span class="type-row-value">${d.members.toLocaleString()}</span>
+      <span class="type-row-pct">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  const gaps = [
+    g.unknown > 0 ? `${g.unknown.toLocaleString()} not revealed yet` : '',
+    g.stale > 0 ? `${g.stale.toLocaleString()} not seen donating for over ${staticData.guards.staleDays} days` : '',
+    g.lowConfidence > 0 ? `${g.lowConfidence.toLocaleString()} low confidence` : '',
+  ].filter(Boolean).join(' · ');
+
+  const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
+  const passHtml = current ? `
+    <div class="stat-card makeup-pass">
+      <div class="label">Gold Pass this cycle</div>
+      <div class="value">${current.holders.toLocaleString()}<span class="stat-of"> of ${total.toLocaleString()} · ${pct(current.holders)}%</span></div>
+      <div class="sub">Triumphal cycle ${esc(current.firstDay.replace(/-/g, '/'))} – ${esc(current.lastDay.replace(/-/g, '/'))}${previous ? ` · last cycle ${previous.holders.toLocaleString()}` : ''}</div>
+      ${current.basis === 'union-only' ? '<p class="muted-copy">This clan does not capture resources, so Union Chests alone decide it.</p>' : ''}
+    </div>` : '';
+
+  const ups = g.recentLevelUps || [];
+  const upsHtml = ups.length > 0 ? `
+    <div class="makeup-ups">
+      <div class="label">Level-ups, last 30 days</div>
+      <ul class="makeup-ups-list">
+        ${ups.slice(0, MAKEUP_LEVEL_UPS_SHOWN).map((u) => `<li>
+          <span class="makeup-ups-name">${memberLink(u.memberId, u.name)}</span>
+          <span>G${u.from} → <strong>G${u.to}</strong></span>
+          <span class="muted-copy" title="Seen at G${u.from} on ${esc(u.after)}, at G${u.to} on ${esc(u.by)}">by ${esc(u.by.replace(/-/g, '/'))}</span>
+        </li>`).join('')}
+      </ul>
+      ${ups.length > MAKEUP_LEVEL_UPS_SHOWN ? `<p class="muted-copy">and ${(ups.length - MAKEUP_LEVEL_UPS_SHOWN).toLocaleString()} more</p>` : ''}
+    </div>` : '';
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <h2>Guardsmen &amp; Gold Pass</h2>
+        <span class="card-header-hint">The clan now, whatever the timeframe above · <a class="member-link" href="#members">by member →</a></span>
+      </div>
+      <div class="card-body card-body-padded">
+        <div class="makeup-grid">
+          <div>
+            <div class="type-breakdown-list">${levelRows || '<p class="muted-copy">No levels revealed yet.</p>'}</div>
+            <p class="muted-copy makeup-note">Guards levels are estimated from Omen Essence and Scientific Tractates donations${gaps ? ` — ${gaps}` : ''}.</p>
+          </div>
+          <div>
+            ${passHtml}
+            ${upsHtml}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function paint() {
   if (!mountedEl) return;
   const el = mountedEl;
@@ -971,6 +1051,8 @@ function paint() {
         <div class="chart-container chart-container--compact"><canvas id="clanMightChart"></canvas></div>
       </div>
     </div>` : ''}
+
+    ${clanMakeupCardHtml()}
 
     <div class="two-col-grid">
       <div class="card">

@@ -691,6 +691,37 @@ const MIGRATIONS: Migration[] = [
       database.exec('ALTER TABLE clans DROP COLUMN public_share_token');
     },
   },
+  {
+    // Guards levels an admin entered by hand.
+    //
+    // The level itself is never stored: it is estimated on every read from the
+    // donations already in resource_transactions (src/data/guards-estimator.ts),
+    // so that one more day of evidence can overturn any earlier judgement — the
+    // same reason hero level is filtered on read rather than clamped on write.
+    // What the estimator cannot do without help is a member who never donates
+    // essence or tractates, or one whose rows are misattributed; this is where a
+    // leader records what a member told them. Each row is a DATED observation
+    // the estimator weighs like any other, so a report is a floor for its date
+    // and later donations can still carry the member above it.
+    //
+    // member_id cascades: a member deleted outright takes its reports with it.
+    // A MERGE must not rely on that — merge-repo repoints them first.
+    version: 75,
+    sql: `
+      CREATE TABLE IF NOT EXISTS member_guards_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 9),
+        observed_date TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_member_guards_reports_member
+        ON member_guards_reports(clan_id, member_id);
+    `,
+  },
 ];
 
 /**

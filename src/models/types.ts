@@ -305,6 +305,17 @@ export interface LeaderboardEntry {
    */
   might?: number | null;
   heroLevel?: number | null;
+  /**
+   * Estimated guards level and how far to trust it (see guards-repo.ts), also
+   * decorated on by queryLeaderboard. Null when the member has never donated
+   * anything the ladder can read.
+   */
+  guardsLevel?: number | null;
+  guardsConfidence?: 'high' | 'medium' | 'low' | null;
+  guardsAsOf?: string | null;
+  guardsStale?: boolean;
+  /** 'current' = Gold Pass this Triumphal cycle; 'previous' = last cycle only. */
+  goldPass?: 'current' | 'previous' | null;
 }
 
 export interface ScanStats {

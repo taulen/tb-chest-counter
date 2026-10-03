@@ -1,6 +1,8 @@
 import fs from 'fs';
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
+import { invalidateGuardsCache } from './guards-repo.js';
+import { invalidateGoldPassCache } from './gold-pass-repo.js';
 
 const log = childLogger('resource-repo');
 
@@ -8,6 +10,17 @@ export interface ResourceType {
   id: number;
   name: string;
   slug: string;
+}
+
+/**
+ * Guards levels and gold-pass status are both read off these rows. Their caches
+ * expire within a minute anyway; dropping them on every write is what makes an
+ * admin's edit or batch delete show up on the next page load rather than the
+ * one after.
+ */
+function dropDerivedCaches(clanId: number): void {
+  invalidateGuardsCache(clanId);
+  invalidateGoldPassCache(clanId);
 }
 
 /** Where a batch's rows came from. 'upload' = an admin dragged screenshots in;
@@ -215,6 +228,7 @@ export function insertTransactions(rows: InsertTransactionRow[]): { inserted: nu
     }
   });
   tx();
+  for (const clanId of new Set(rows.map((r) => r.clanId))) dropDerivedCaches(clanId);
   return { inserted: rows.length, skipped: 0 };
 }
 
@@ -520,6 +534,7 @@ export function deleteBatch(batchId: number, clanId: number): void {
     ).run(batchId, clanId);
   });
   tx();
+  dropDerivedCaches(clanId);
 
   for (const p of cropPaths) {
     try {
@@ -565,6 +580,7 @@ export function updateTransaction(
     id,
     clanId,
   );
+  dropDerivedCaches(clanId);
 }
 
 export function getResourceSummary(opts: {

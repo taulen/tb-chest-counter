@@ -91,6 +91,11 @@
   },
   {
     "type": "index",
+    "name": "idx_member_guards_reports_member",
+    "sql": "CREATE INDEX idx_member_guards_reports_member ON member_guards_reports(clan_id, member_id)"
+  },
+  {
+    "type": "index",
     "name": "idx_member_snapshots_clan",
     "sql": "CREATE INDEX idx_member_snapshots_clan ON member_snapshots(clan_id)"
   },
@@ -358,6 +363,11 @@
     "type": "table",
     "name": "discord_member_links",
     "sql": "CREATE TABLE discord_member_links ( clan_id INTEGER NOT NULL REFERENCES clans(id), discord_user_id TEXT NOT NULL, member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, linked_at TEXT NOT NULL, PRIMARY KEY (clan_id, discord_user_id) )"
+  },
+  {
+    "type": "table",
+    "name": "member_guards_reports",
+    "sql": "CREATE TABLE member_guards_reports ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 9), observed_date TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL )"
   },
   {
     "type": "table",

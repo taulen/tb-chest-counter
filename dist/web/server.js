@@ -23,6 +23,7 @@ const setup_mode_assets_js_1 = require("./setup-mode-assets.js");
 const asset_versioning_js_1 = require("./asset-versioning.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
+const guards_js_1 = require("./routes/guards.js");
 const auth_js_2 = require("./middleware/auth.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -512,6 +513,10 @@ function startWebServer(port, scanLoop, options = {}) {
     // guards with requireSuperAdmin. Kept as its own mount so the feature can be
     // disabled or removed without touching the chest-data routes.
     app.use('/api/might', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, might_js_1.createMightRouter)(scanLoop));
+    // Guards levels and Gold Pass holders — both inferred from resource and chest
+    // data, so the reads are visible to any clan member; the one write (an admin
+    // entering a member's level) guards with requireAdmin inside the router.
+    app.use('/api/guards', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, guards_js_1.createGuardsRouter)());
     // Serve shipped resource icon PNGs for the resource history page.
     app.use('/assets', auth_js_2.requireAuth, express_1.default.static(path_1.default.resolve('assets'), { maxAge: '86400000' }));
     // Chart.js from the dependency that is already installed, rather than a CDN.

@@ -22,6 +22,7 @@
 import { api } from '../lib/api.js';
 import { $, esc, formatDate, formatDateShort, formatGameDayShort, memberLink } from '../lib/ui.js';
 import { readToken } from '../lib/theme.js';
+import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
 
 // Charts tracked individually so a redraw destroys only the one it replaces —
 // Chart.js snapshots colours at construction, so they're rebuilt (not restyled)
@@ -186,11 +187,16 @@ export async function renderMight(el) {
   destroyAllCharts();
   el.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><p>Loading might data…</p></div></div></div>';
 
-  const [overview, totals, events] = await Promise.all([
+  const [overview, totals, events, guards] = await Promise.all([
     api(`/might/overview?deltaDays=${TABLE_DELTA_DAYS}`),
     api(`/might/totals?days=${windowDays}`),
     fetchEvents(),
+    // Inferred, optional: a failure only leaves the Guards column out.
+    api('/guards/overview').catch(() => null),
   ]);
+  const guardsByMember = new Map(
+    (Array.isArray(guards?.rows) ? guards.rows : []).map((r) => [r.memberId, r]),
+  );
 
   state = {
     overview,
@@ -223,7 +229,7 @@ export async function renderMight(el) {
     ${renderHeaderCard()}
     ${renderTotalsCard()}
     ${renderCompareCard()}
-    ${renderTableCard(rows)}
+    ${renderTableCard(rows, guardsByMember)}
   `;
 
   drawTotalsChart();
@@ -384,7 +390,8 @@ function renderCompareCard() {
   </div>`;
 }
 
-function renderTableCard(rows) {
+function renderTableCard(rows, guardsByMember = new Map()) {
+  const showGuards = [...guardsByMember.values()].some((g) => g.guards);
   const ranked = [...rows].sort((a, b) => {
     if (a.might === null && b.might === null) return (a.name || '').localeCompare(b.name || '');
     if (a.might === null) return 1;
@@ -408,18 +415,21 @@ function renderTableCard(rows) {
         <col class="col-member">
         <col class="col-metric">
         <col class="col-metric">
+        ${showGuards ? '<col class="col-guards">' : ''}
         ${showHero ? '<col class="col-metric">' : ''}
         <col class="col-date">
       </colgroup><thead><tr>
         <th>Rank</th><th>Member</th><th class="num">Might</th><th class="num">Change</th>
+        ${showGuards ? '<th class="num" title="Guardsmen level, estimated from Omen Essence and Scientific Tractates donations">Guards</th>' : ''}
         ${showHero ? '<th class="num">Hero Level</th>' : ''}
         <th>Last Seen</th>
       </tr></thead><tbody>
         ${ranked.map((r, i) => {
           const d = formatDelta(r.delta);
+          const g = guardsByMember.get(r.memberId);
           return `<tr>
             <td data-label="Rank" data-role="lead">${r.might === null ? '—' : i + 1}</td>
-            <td data-label="Member" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}</span></td>
+            <td data-label="Member" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(r.memberId, r.name), g?.goldPass)}</span></td>
             ${/* The reading's own game day qualifies the number, not the member, so
                   it rides on the Might cell instead of occupying a column — on a
                   daily sweep it's the same date for the whole roster, and the header
@@ -428,6 +438,7 @@ function renderTableCard(rows) {
             ${/* Change, Hero Level and Last Seen stay unmarked so the mobile
                   compact-row engine reveals them in the expand panel. */''}
             <td data-label="Change" class="num ${d.cls}">${d.arrow} ${d.text}</td>
+            ${showGuards ? `<td data-label="Guards" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
             ${showHero ? `<td data-label="Hero Level" class="num">${r.heroLevel ? r.heroLevel.toLocaleString('en-US') : '—'}</td>` : ''}
             ${/* Date only — the time never carried information here and it wrapped
                   the whole row onto two lines. */''}

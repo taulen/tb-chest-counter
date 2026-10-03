@@ -37,6 +37,7 @@ exports.PUBLIC_SHARE_ASSETS = [
     'lib/period.js',
     'lib/period-nav.js',
     'lib/leaderboard-render.js',
+    'lib/guards-format.js',
     'lib/chesttracker-render.js',
     'lib/mobile-rows.js',
     'lib/state.js',

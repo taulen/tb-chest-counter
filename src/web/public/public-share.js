@@ -133,6 +133,7 @@ function start() {
     const sorted = sortLeaderboardEntries(rows, leaderboardSort.key, leaderboardSort.dir);
     // Whole result set, not the visible page — see the auth page's note.
     const showMight = rows.some((e) => e.might != null || e.heroLevel != null);
+    const showGuards = rows.some((e) => e.guardsLevel != null);
     const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
     if (currentPage < 1) currentPage = 1;
@@ -155,6 +156,7 @@ function start() {
       playerCellHtml: (e) => esc(e.memberName),
       actions: ACTIONS,
       showMight,
+      showGuards,
       goalWeeklyPoints,
     });
   }

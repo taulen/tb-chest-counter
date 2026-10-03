@@ -43,6 +43,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     // still listed, because the point of this file is that every FK is
     // accounted for deliberately rather than by luck.
     'discord_member_links.member_id',
+    // Also ON DELETE CASCADE — and the player merge repoints it rather than
+    // letting the cascade silently drop an admin's entries.
+    'member_guards_reports.member_id',
     'member_snapshots.member_id',
     'resource_transactions.member_id',
     'triumphal_chest_records.member_id',
@@ -50,6 +53,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   users: [
     'audit_log.user_id',
     'clans.created_by',
+    'member_guards_reports.created_by',
     'resource_upload_batches.uploaded_by',
     'share_links.created_by',
     'share_links.revoked_by',
@@ -60,6 +64,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'audit_log.clan_id',
     'chest_type_overrides.clan_id',
     'discord_member_links.clan_id',
+    'member_guards_reports.clan_id',
     'members.clan_id',
     'merge_rules.clan_id',
     'resource_capture_cursor.clan_id',
@@ -159,6 +164,10 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     'INSERT INTO chest_daily_summary (clan_id, member_id, game_day, chests, points) VALUES (?, ?, ?, 1, 5)',
   ).run(clanId, member.id, '2026-07-20');
+  db.prepare(
+    `INSERT INTO member_guards_reports (clan_id, member_id, level, observed_date, created_by, created_at)
+     VALUES (?, ?, 8, '2026-07-20', 2, ?)`,
+  ).run(clanId, member.id, now);
 
   const typeId = (db.prepare('SELECT id FROM resource_types ORDER BY id LIMIT 1')
     .get() as { id: number }).id;
@@ -326,6 +335,9 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     const batch = db.prepare('SELECT uploaded_by FROM resource_upload_batches LIMIT 1').get() as
       { uploaded_by: number | null };
     expect(batch.uploaded_by).toBeNull();
+    const report = db.prepare('SELECT created_by FROM member_guards_reports LIMIT 1').get() as
+      { created_by: number | null };
+    expect(report.created_by).toBeNull();
     // The upload's transactions are untouched clan data.
     const txCount = db.prepare('SELECT COUNT(*) c FROM resource_transactions').get() as { c: number };
     expect(txCount.c).toBe(1);
@@ -344,6 +356,11 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
 
     expect(() => addMergeRule('player', 'Zoe', 'Yara', clanId)).not.toThrow();
     expect(db.prepare('SELECT id FROM members WHERE id = ?').get(memberId)).toBeUndefined();
+    // The cascade would have let the merge "succeed" by deleting it; it moved.
+    const report = db.prepare(
+      `SELECT m.name AS name FROM member_guards_reports r JOIN members m ON m.id = r.member_id`,
+    ).get() as { name: string } | undefined;
+    expect(report?.name).toBe('Yara');
   });
 
   it('a source merge leaves no record pointing at the deleted source row', () => {

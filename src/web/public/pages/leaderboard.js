@@ -54,6 +54,7 @@ export async function renderLeaderboard(el) {
   // the newest joiners lack a snapshot would otherwise gain and lose the two
   // columns as you page through it.
   const showMight = leaderboard.some((e) => e.might != null || e.heroLevel != null);
+  const showGuards = leaderboard.some((e) => e.guardsLevel != null);
 
   const totalEntries = sorted.length;
   const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
@@ -83,6 +84,7 @@ export async function renderLeaderboard(el) {
     playerCellHtml: (e) => memberLink(e.memberId, e.memberName),
     actions: ACTIONS,
     showMight,
+    showGuards,
     goalWeeklyPoints: goal?.weeklyPoints ?? null,
   });
 }

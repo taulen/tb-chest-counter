@@ -74,6 +74,11 @@ function seedEverything(clanId: number): void {
   ).run(clanId, seeded.members.alice);
 
   db.prepare(
+    `INSERT INTO member_guards_reports (clan_id, member_id, level, observed_date, note, created_at)
+     VALUES (?, ?, 8, '2026-09-01', 'told us in chat', ?)`,
+  ).run(clanId, seeded.members.alice, now);
+
+  db.prepare(
     `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
      VALUES (?, 'player', ?, 'Alice', ?)`,
   ).run(clanId, `Ailce${clanId}`, now);
@@ -176,6 +181,7 @@ const SCOPED_COUNTS: Record<string, (clanId: number) => string> = {
   chest_records: (c) => `SELECT COUNT(*) n FROM chest_records WHERE clan_id = ${c}`,
   triumphal_chest_records: (c) => `SELECT COUNT(*) n FROM triumphal_chest_records WHERE clan_id = ${c}`,
   member_snapshots: (c) => `SELECT COUNT(*) n FROM member_snapshots WHERE member_id IN (SELECT id FROM members WHERE clan_id = ${c})`,
+  member_guards_reports: (c) => `SELECT COUNT(*) n FROM member_guards_reports WHERE clan_id = ${c}`,
   chest_daily_summary: (c) => `SELECT COUNT(*) n FROM chest_daily_summary WHERE clan_id = ${c}`,
   merge_rules: (c) => `SELECT COUNT(*) n FROM merge_rules WHERE clan_id = ${c}`,
   chest_type_overrides: (c) => `SELECT COUNT(*) n FROM chest_type_overrides WHERE clan_id = ${c}`,

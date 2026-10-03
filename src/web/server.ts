@@ -18,6 +18,7 @@ import { SETUP_MODE_ASSETS } from './setup-mode-assets.js';
 import { versionHtmlAssets } from './asset-versioning.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
+import { createGuardsRouter } from './routes/guards.js';
 import { denyCaching, requireAdmin, requireAuth, requireClanContext, SESSION_COOKIE_NAME } from './middleware/auth.js';
 import { firstSuperadmin, logAction } from '../data/repositories/user-repo.js';
 import { childLogger } from '../utils/logger.js';
@@ -558,6 +559,11 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // guards with requireSuperAdmin. Kept as its own mount so the feature can be
   // disabled or removed without touching the chest-data routes.
   app.use('/api/might', requireAuth, requireClanContext, createMightRouter(scanLoop));
+
+  // Guards levels and Gold Pass holders — both inferred from resource and chest
+  // data, so the reads are visible to any clan member; the one write (an admin
+  // entering a member's level) guards with requireAdmin inside the router.
+  app.use('/api/guards', requireAuth, requireClanContext, createGuardsRouter());
 
   // Serve shipped resource icon PNGs for the resource history page.
   app.use('/assets', requireAuth, express.static(path.resolve('assets'), { maxAge: '86400000' }));

@@ -29,7 +29,19 @@ exports.getResourceDailySeries = getResourceDailySeries;
 const fs_1 = __importDefault(require("fs"));
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
+const guards_repo_js_1 = require("./guards-repo.js");
+const gold_pass_repo_js_1 = require("./gold-pass-repo.js");
 const log = (0, logger_js_1.childLogger)('resource-repo');
+/**
+ * Guards levels and gold-pass status are both read off these rows. Their caches
+ * expire within a minute anyway; dropping them on every write is what makes an
+ * admin's edit or batch delete show up on the next page load rather than the
+ * one after.
+ */
+function dropDerivedCaches(clanId) {
+    (0, guards_repo_js_1.invalidateGuardsCache)(clanId);
+    (0, gold_pass_repo_js_1.invalidateGoldPassCache)(clanId);
+}
 /**
  * Resource types that exist in the game but are NOT tracked per member —
  * they're clan-wide, so attributing them to individual members is noise.
@@ -124,6 +136,8 @@ function insertTransactions(rows) {
         }
     });
     tx();
+    for (const clanId of new Set(rows.map((r) => r.clanId)))
+        dropDerivedCaches(clanId);
     return { inserted: rows.length, skipped: 0 };
 }
 function listTransactions(opts) {
@@ -363,6 +377,7 @@ function deleteBatch(batchId, clanId) {
         db.prepare('DELETE FROM resource_upload_batches WHERE id = ? AND clan_id = ?').run(batchId, clanId);
     });
     tx();
+    dropDerivedCaches(clanId);
     for (const p of cropPaths) {
         try {
             fs_1.default.rmSync(p, { force: true });
@@ -388,6 +403,7 @@ function updateTransaction(id, clanId, updates) {
     SET resource_type_id = ?, direction = ?, amount = ?, transaction_date = ?
     WHERE id = ? AND clan_id = ?
   `).run(updates.resourceTypeId ?? null, updates.direction, updates.amount, updates.transactionDate, id, clanId);
+    dropDerivedCaches(clanId);
 }
 function getResourceSummary(opts) {
     const db = (0, database_js_1.getDb)();

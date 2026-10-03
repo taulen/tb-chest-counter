@@ -7,8 +7,12 @@
 import type { Request } from 'express';
 import { getLeaderboard } from '../../data/repositories/chest-repo.js';
 import { getLatestMightByMember } from '../../data/repositories/might-repo.js';
+import { getGuardsSummaries } from '../../data/repositories/guards-repo.js';
+import { getGoldPassStatuses } from '../../data/repositories/gold-pass-repo.js';
 import type { Clan } from '../../data/repositories/clan-repo.js';
 import type { LeaderboardEntry } from '../../models/types.js';
+import { loadConfig } from '../../config/index.js';
+import { currentGameDate } from '../../utils/game-day.js';
 
 function isValidIso(s: string | undefined): s is string {
   return !!s && !Number.isNaN(new Date(s).getTime());
@@ -50,6 +54,10 @@ export function parseLeaderboardQuery(req: Request): {
  * Joining them in SQL would tie one cache's lifetime to the other's and put a
  * might read on the Discord digest and CSV export paths that never asked for it.
  *
+ * The estimated guards level and Gold Pass status ride along the same way and
+ * for the same reasons — both are derived from resource and chest data on their
+ * own schedule. They describe the member NOW, whatever window the board shows.
+ *
  * getLatestMightByMember returns a SHARED, cached Map — never mutate it here.
  * Rows are rebuilt rather than assigned into, because getLeaderboard's own array
  * is cached too and writing to those objects would poison every later reader.
@@ -62,14 +70,23 @@ export function queryLeaderboard(
   const rows = getLeaderboard(clanId, from, to, {
     includeAllMembers: true,
   });
+  const rolloverHr = loadConfig().gameDayRolloverUtcHour;
   const might = getLatestMightByMember(clanId);
-  if (might.size === 0) return rows;
+  const guards = getGuardsSummaries(clanId, currentGameDate(rolloverHr));
+  const goldPass = getGoldPassStatuses(clanId, Date.now(), rolloverHr);
+  if (might.size === 0 && guards.size === 0 && goldPass.size === 0) return rows;
   return rows.map((row) => {
     const hit = might.get(row.memberId);
+    const g = guards.get(row.memberId);
     return {
       ...row,
       might: hit ? hit.might : null,
       heroLevel: hit ? hit.heroLevel : null,
+      guardsLevel: g ? g.level : null,
+      guardsConfidence: g ? g.confidence : null,
+      guardsAsOf: g ? g.asOf : null,
+      guardsStale: g ? g.stale : false,
+      goldPass: goldPass.get(row.memberId) ?? null,
     };
   });
 }

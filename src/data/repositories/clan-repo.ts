@@ -591,6 +591,8 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare(
       'DELETE FROM member_snapshots WHERE member_id IN (SELECT id FROM members WHERE clan_id = ?)',
     ).run(id);
+    // Cascades off members too, but also holds its own clans(id) FK.
+    db.prepare('DELETE FROM member_guards_reports WHERE clan_id = ?').run(id);
     // chest_daily_summary is a derived rollup with no FK, but leaving its
     // rows behind would resurrect the dead clan's numbers if the id is reused.
     db.prepare('DELETE FROM chest_daily_summary WHERE clan_id = ?').run(id);

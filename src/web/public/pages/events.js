@@ -29,6 +29,7 @@
 
 import { api } from '../lib/api.js';
 import { esc, memberLink, formatDate } from '../lib/ui.js';
+import { nameWithGoldPassHtml } from '../lib/guards-format.js';
 import { computeGameWindow, gameDaysUntil } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
@@ -614,11 +615,25 @@ function paint() {
       </div>`
     : '';
 
+  // Triumphal only: who held a Gold Pass in the cycle on screen (the API sends
+  // it only for that event). Counted over the same Union Chests as the table.
+  const goldPassIds = new Set(Array.isArray(cache.goldPass?.memberIds) ? cache.goldPass.memberIds : []);
+  const goldPassCard = cache.goldPass
+    ? `<div class="stat-card" title="${esc(cache.goldPass.basis === 'union-only'
+      ? 'Members with Union Chests from the pass track. This clan does not capture resources, so the 250k donation each pass chest makes cannot be checked.'
+      : 'Members with Union Chests from the pass track AND the exact 250k Scientific Tractates each pass chest donates')}">
+        <div class="label">Gold Pass</div><div class="value">${goldPassIds.size.toLocaleString()}</div>
+        <div class="sub">of ${(cache.uniqueParticipants || 0).toLocaleString()} participants</div>
+      </div>`
+    : '';
+  const goldPassTitle = 'Gold Pass in the cycle shown — Union Chests from the pass track plus the 250k Scientific Tractates each one donates';
+
   const statCards = `
     ${configWarnHtml}
     <div class="stats-grid">
       ${finishCards}
       ${vaultsCard}
+      ${goldPassCard}
       <div class="stat-card"><div class="label">Total Chests</div><div class="value">${(cache.totalChests || 0).toLocaleString()}</div></div>
       <div class="stat-card"><div class="label">Participants</div><div class="value">${(cache.uniqueParticipants || 0).toLocaleString()}</div></div>
       <div class="stat-card"><div class="label">Total Points</div><div class="value">${(cache.totalPoints || 0).toLocaleString()}</div></div>
@@ -721,7 +736,7 @@ function paint() {
           return `<tr class="events-row" data-member-id="${row.memberId ?? ''}" data-member-name="${esc(row.memberName)}">
             <td class="caret-col" data-role="hidden"><span class="caret">▸</span></td>
             <td data-label="Rank" data-role="lead">${row._rank}</td>
-            <td data-label="Player" data-role="primary"><span class="mrow-name">${memberLink(row.memberId, row.memberName)}</span><span class="mrow-sub">${(row._ctotal || 0).toLocaleString()} chests</span></td>
+            <td data-label="Player" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(row.memberId, row.memberName), goldPassIds.has(row.memberId) ? 'current' : null, goldPassTitle)}</span><span class="mrow-sub">${(row._ctotal || 0).toLocaleString()} chests</span></td>
             ${cells}
             ${essenceCell}
             <td data-label="Total" class="col-num" data-role="hidden">${(row._ctotal || 0).toLocaleString()}</td>

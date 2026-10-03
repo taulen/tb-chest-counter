@@ -15,6 +15,7 @@
 
 import { esc } from './ui.js';
 import { renderPeriodNav } from './period-nav.js';
+import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
 
 // Column-header hint for the two ranked metrics. The board leaves out
 // end-of-event clan rewards — the placement prize the game drops on one
@@ -55,6 +56,10 @@ export function sortLeaderboardEntries(entries, key, dir) {
         av = a.heroLevel;
         bv = b.heroLevel;
         break;
+      case 'guards':
+        av = a.guardsLevel;
+        bv = b.guardsLevel;
+        break;
       case 'might':
         av = a.might;
         bv = b.might;
@@ -65,8 +70,8 @@ export function sortLeaderboardEntries(entries, key, dir) {
         bv = b.totalPoints;
         break;
     }
-    // Might and hero level are null for anyone the daily snapshot has never
-    // read. Those rows sink to the bottom in BOTH directions rather than
+    // Might, hero level and guards level are null for anyone with no reading.
+    // Those rows sink to the bottom in BOTH directions rather than
     // riding the multiplier: ascending "lowest might first" should open with
     // the smallest real reading, not with a block of members who have no
     // reading at all. Nulls keep their input order relative to each other.
@@ -207,6 +212,11 @@ const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
  *    have no snapshot yet.
  *  - `goalWeeklyPoints` colours the Points cell against the clan's target for
  *    the selected period, and prints that target above the table.
+ *  - `showGuards` adds the estimated Guards level column, decided across the
+ *    whole roster for the same reason as `showMight`.
+ *
+ * The Gold Pass marker needs no flag: it rides after the name only on rows that
+ * carry one, so a page whose rows never do (Triumphal) renders as before.
  */
 export function renderLeaderboardCardHtml({
   title = 'Leaderboard',
@@ -223,6 +233,7 @@ export function renderLeaderboardCardHtml({
   playerCellHtml,
   actions,
   showMight = false,
+  showGuards = false,
   goalWeeklyPoints = null,
   // Optional: when present, a download link for the window on screen. The
   // public share page does not pass one — that endpoint answers to an
@@ -276,25 +287,37 @@ export function renderLeaderboardCardHtml({
         <td data-label="Might" class="num"${e.might == null ? '' : ` title="${e.might.toLocaleString()}"`}>${formatMightCompact(e.might)}</td>`
     : '';
 
+  // Unmarked for the same reason as Level/Might: on a phone it belongs in the
+  // tap-to-expand panel, not in the collapsed row.
+  const guardsHeadHtml = showGuards
+    ? `<th class="sortable num" data-action="${actions.sort}" data-sort-key="guards" title="Guardsmen level, estimated from Omen Essence and Scientific Tractates donations — hover a value for how sure and how recent">Guards${arrow('guards')}</th>`
+    : '';
+  const guardsCellsHtml = (e) => showGuards
+    ? `<td data-label="Guards" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`
+    : '';
+
   const tableHtml = pageEntries.length > 0
     ? `<table class="table-responsive leaderboard-table"><colgroup>
         <col class="col-rank">
         <col class="col-player">
         <col class="col-num">
         <col class="col-num">
+        ${showGuards ? '<col class="col-num col-guards">' : ''}
         ${showMight ? '<col class="col-num col-level"><col class="col-num">' : ''}
       </colgroup><thead><tr>
         <th class="sortable" data-action="${actions.sort}" data-sort-key="rank">Rank${arrow('rank')}</th>
         <th class="sortable" data-action="${actions.sort}" data-sort-key="name">Player${arrow('name')}</th>
         <th class="sortable num" data-action="${actions.sort}" data-sort-key="chests" title="${EARNED_ONLY_HINT}">${esc(countLabel)}${arrow('chests')}</th>
         <th class="sortable num" data-action="${actions.sort}" data-sort-key="points" title="${EARNED_ONLY_HINT}">Points${arrow('points')}</th>
+        ${guardsHeadHtml}
         ${mightHeadHtml}
       </tr></thead><tbody>
       ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal)}">
         <td data-label="Rank" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
-        <td data-label="Player" data-role="primary"><span class="mrow-name">${playerCellHtml(e)}</span><span class="mrow-sub">${e.totalChests.toLocaleString()} ${esc(countLabel.toLowerCase())}</span></td>
+        <td data-label="Player" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${e.totalChests.toLocaleString()} ${esc(countLabel.toLowerCase())}</span></td>
         <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
         <td data-label="Points" class="num ${goalStatusClassFor(e.totalPoints, periodGoal)}" data-role="metric">${e.totalPoints.toLocaleString()}</td>
+        ${guardsCellsHtml(e)}
         ${mightCellsHtml(e)}
       </tr>`).join('')}
     </tbody></table>`

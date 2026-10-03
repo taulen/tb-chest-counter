@@ -2,11 +2,14 @@
 // sortable columns; per-member detail view with rank badge, weekly
 // progress, chest type breakdown, and paginated chest history.
 
-import { api } from '../lib/api.js';
+import { api, apiPost, apiDelete, mustOk } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatGameDayShort, formatRelativeTime,
-  memberHash, memberLink, chestHash, parseHashRoute,
+  memberHash, memberLink, chestHash, parseHashRoute, confirmDialog,
 } from '../lib/ui.js';
+import {
+  guardsCellHtml, guardsTitle, goldPassBadgeHtml, nameWithGoldPassHtml,
+} from '../lib/guards-format.js';
 import {
   computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor,
 } from '../lib/period.js';
@@ -27,6 +30,9 @@ let cachedMembers = [];
 // memberId → { might, delta, gameDate }. Empty when might tracking is off or
 // has never captured, which is what hides the two columns.
 let cachedMightByMember = new Map();
+// memberId → { guards, goldPass } from /guards/overview. Empty when nothing has
+// been inferred yet, which hides the Guards column.
+let cachedGuardsByMember = new Map();
 let membersFilter = '';
 let membersSort = { key: 'name', dir: 'asc' };
 let currentMemberChestsPage = 1;
@@ -63,8 +69,22 @@ export async function renderMembers(el) {
   // Might is optional data from an opt-in feature, so it's fetched separately
   // and merged in. A failure (or the feature being off) just leaves the columns
   // out — the roster table must never break over it.
-  cachedMightByMember = await fetchMightMap();
+  [cachedMightByMember, cachedGuardsByMember] = await Promise.all([fetchMightMap(), fetchGuardsMap()]);
   renderMembersTable(el);
+}
+
+/**
+ * memberId → { guards, goldPass }. Inferred data, fetched separately for the
+ * same reason as might: a failure leaves the column out, never the roster.
+ */
+async function fetchGuardsMap() {
+  try {
+    const res = await api('/guards/overview');
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    return new Map(rows.map((r) => [r.memberId, { guards: r.guards, goldPass: r.goldPass }]));
+  } catch {
+    return new Map();
+  }
 }
 
 /**
@@ -98,6 +118,7 @@ export function renderMembersTable(el) {
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
   const showMight = cachedMightByMember.size > 0;
+  const showGuards = [...cachedGuardsByMember.values()].some((g) => g.guards);
   const filterText = membersFilter.trim().toLowerCase();
   const filteredMembers = filterText
     ? cachedMembers.filter((m) => (m.name || '').toLowerCase().includes(filterText))
@@ -126,12 +147,14 @@ export function renderMembersTable(el) {
         ? '<div class="empty-state"><p>No members match your search.</p></div>'
         : `<table class="table-responsive members-table"><colgroup>
             <col class="col-member">
+            ${showGuards ? '<col class="col-guards">' : ''}
             ${showMight ? '<col class="col-metric"><col class="col-metric">' : ''}
             <col class="col-date">
             <col class="col-date">
             ${isAdmin ? '<col class="col-actions">' : ''}
           </colgroup><thead><tr>
             <th class="sortable" data-action="sort-members" data-sort-key="name">Name${arrow('name')}</th>
+            ${showGuards ? `<th class="sortable num" data-action="sort-members" data-sort-key="guards" title="Guardsmen level, estimated from Omen Essence and Scientific Tractates donations">Guards${arrow('guards')}</th>` : ''}
             ${showMight ? `
               <th class="sortable num" data-action="sort-members" data-sort-key="might">Might${arrow('might')}</th>
               <th class="sortable num" data-action="sort-members" data-sort-key="mightDelta" title="Change over the last ~7 days">7d${arrow('mightDelta')}</th>
@@ -143,8 +166,10 @@ export function renderMembersTable(el) {
             ${sortedMembers.map((m) => {
               const might = cachedMightByMember.get(m.id);
               const d = formatMightDelta(might?.delta);
+              const g = cachedGuardsByMember.get(m.id);
               return `<tr>
-              <td data-label="Name" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td>
+              <td data-label="Name" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(m.id, m.name), g?.goldPass)}</span></td>
+              ${showGuards ? `<td data-label="Guards" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
               ${showMight ? `
                 <td data-label="Might" data-role="metric" class="num">${might?.might != null ? Number(might.might).toLocaleString('en-US') : '—'}</td>
                 <td data-label="7d" class="num ${d.cls}">${d.arrow} ${d.text}</td>
@@ -171,6 +196,15 @@ function sortMembers(members, key, dir) {
     if (key === 'name') {
       av = (av || '').toLowerCase();
       bv = (bv || '').toLowerCase();
+    } else if (key === 'guards') {
+      // Unknown sorts last in both directions, like might below.
+      const va = cachedGuardsByMember.get(a.id)?.guards?.level;
+      const vb = cachedGuardsByMember.get(b.id)?.guards?.level;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      av = va;
+      bv = vb;
     } else if (key === 'might' || key === 'mightDelta') {
       // Might lives in a side map, not on the member row. Members with no
       // reading sort last in both directions rather than colliding with 0 —
@@ -313,10 +347,173 @@ async function loadAndRenderMemberDetail(data) {
   const { buildMemberMightCard } = await import('./might.js');
   const mightCard = await buildMemberMightCard(data.id).catch(() => null);
   currentMemberMightDraw = mightCard?.draw ?? (() => {});
+  // Inferred data — a failure drops the cards, never the profile.
+  const guards = await api(`/guards/member/${data.id}`).catch(() => null);
   renderMemberDetail(
     data, chestPage, triumphalPage, rawOcrChests, rawOcrTriumphals,
     resourceCardHtml, mightCard?.html ?? '', mightCard?.statsHtml ?? '', resourcePage,
+    guards && !guards.error ? guards : null,
   );
+}
+
+// ─── Guards level + Gold Pass on the profile ───
+
+const EVIDENCE_LABEL = {
+  essence: 'Omen Essence',
+  tractate: 'Scientific Tractates',
+  report: 'Admin entry',
+};
+
+/** Headline stat: the estimated level, with the Gold Pass marker beside it. */
+function memberGuardsStatHtml(guards) {
+  if (!guards) return '';
+  const s = guards.summary;
+  const current = guards.goldPass?.[0];
+  const previous = guards.goldPass?.[1];
+  const pass = current?.goldPass ? 'current' : previous?.goldPass ? 'previous' : null;
+  const sub = s
+    ? `as of ${formatGameDayShort(s.asOf)} · ${s.confidence}${s.stale ? ' · old' : ''}`
+    : 'not revealed yet';
+  return `
+    <div class="stat-card">
+      <div class="label">Guards</div>
+      <div class="value guards-stat-value">${guardsCellHtml(s)}${goldPassBadgeHtml(pass)}</div>
+      <div class="sub" title="${esc(guardsTitle(s))}">${esc(sub)}</div>
+    </div>`;
+}
+
+function evidenceVerdict(row) {
+  if (row.kind === 'tractate' && row.belowLevel) {
+    return '<span class="guards-fit is-partial" title="A lower tier than their level — they donated less than they could">below level</span>';
+  }
+  if (row.agrees) return '<span class="guards-fit is-ok">fits</span>';
+  return '<span class="guards-fit is-miss" title="Fits no level on the path — most likely a misread, or another player\'s row filed under this one">ignored</span>';
+}
+
+function memberGuardsCardHtml(guards, memberId, isAdmin) {
+  if (!guards) return '';
+  const e = guards.estimate;
+  const s = guards.summary;
+  const reports = Array.isArray(guards.reports) ? guards.reports : [];
+
+  let headline;
+  if (!e) {
+    headline = `<p class="muted-copy">No donation yet that reveals this member's level. Omen Essence (Dark Omens)
+      and Scientific Tractates (Ragnarok) donations give it away — the next one will fill this in.</p>`;
+  } else {
+    const lastUp = e.levelUps.length > 0 ? e.levelUps[e.levelUps.length - 1] : null;
+    const upLine = lastUp
+      ? `Reached G${lastUp.to} between ${esc(formatGameDayShort(lastUp.after))} and ${esc(formatGameDayShort(lastUp.by))} (was G${lastUp.from}).`
+      : `G${e.level} since the first donation on record, ${esc(formatGameDayShort(e.firstSeen))}.`;
+    headline = `
+      <p class="guards-headline">${guardsCellHtml(s)}
+        <span>as of ${esc(formatGameDayShort(e.asOf))} · ${esc(e.confidence)} confidence</span></p>
+      <p class="muted-copy">${upLine}${s?.stale ? ` No new donations for over ${guards.staleDays} days, so it may be higher by now.` : ''}</p>`;
+  }
+
+  const evidence = e ? [...e.evidence].reverse() : [];
+  const evidenceHtml = evidence.length > 0 ? `
+    <details class="guards-details" data-section-key="member-guards-evidence">
+      <summary>What it is based on (${evidence.length})</summary>
+      <table class="table-responsive guards-evidence-table">
+        <colgroup><col class="col-date"><col class="col-donation"><col class="col-reads"><col class="col-fit"></colgroup>
+        <thead><tr><th>Date</th><th>Donation</th><th>Reads as</th><th>Verdict</th></tr></thead><tbody>
+        ${evidence.map((r) => `<tr>
+          <td data-label="Date">${esc(formatGameDayShort(r.date))}</td>
+          <td data-label="Donation" data-role="primary"><span class="mrow-name">${esc(EVIDENCE_LABEL[r.kind] || r.kind)}${r.amount != null ? ` ${Number(r.amount).toLocaleString('en-US')}` : ''}</span><span class="mrow-sub">${esc(formatGameDayShort(r.date))}</span></td>
+          <td data-label="Reads as">${r.levels.map((l) => `G${l}`).join(' / ')}${r.boosted ? ' <span class="muted-copy" title="Donated on the G9 essence unit that is 20% above the usual one — cause unknown, counted as G9">(+20% rate)</span>' : ''}</td>
+          <td data-label="Verdict" data-role="metric">${evidenceVerdict(r)}</td>
+        </tr>`).join('')}
+        </tbody></table>
+    </details>` : '';
+
+  const reportRows = reports.map((r) => `<li class="guards-report">
+      <span><strong>G${r.level}</strong> on ${esc(formatGameDayShort(r.observedDate))}${r.note ? ` — ${esc(r.note)}` : ''}
+        <span class="muted-copy">· ${esc(r.createdByName || 'deleted user')}</span></span>
+      ${isAdmin ? `<button class="btn btn-tight" data-guards-report-delete="${r.id}">Remove</button>` : ''}
+    </li>`).join('');
+
+  const adminHtml = isAdmin || reports.length > 0 ? `
+    <details class="guards-details" data-section-key="member-guards-entries"${reports.length > 0 ? ' open' : ''}>
+      <summary>Admin entries (${reports.length})</summary>
+      <p class="muted-copy">For a member who never donates, or one the donations get wrong. An entry pins the level on its date;
+        later donations can still carry the member higher.</p>
+      ${reports.length > 0 ? `<ul class="guards-report-list">${reportRows}</ul>` : ''}
+      ${isAdmin ? `<form class="guards-report-form" id="guardsReportForm" data-member-id="${memberId}">
+        <label>Level <select class="input" name="level">
+          ${[9, 8, 7, 6, 5, 4, 3, 2, 1].map((l) => `<option value="${l}"${s?.level === l ? ' selected' : ''}>G${l}</option>`).join('')}
+        </select></label>
+        <label>On <input class="input" type="date" name="observedDate" value="${esc(guards.today || '')}" max="${esc(guards.today || '')}"></label>
+        <label class="guards-report-note">Note <input class="input" type="text" name="note" maxlength="200" placeholder="e.g. told us in clan chat"></label>
+        <button class="btn btn-primary btn-tight" type="submit">Save</button>
+      </form>` : ''}
+    </details>` : '';
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <h2>Guardsmen</h2>
+        <span class="card-header-hint">Estimated from donations — the game never shows it</span>
+      </div>
+      <div class="card-body card-body-padded">
+        ${headline}
+        ${evidenceHtml}
+        ${adminHtml}
+      </div>
+    </div>`;
+}
+
+function memberGoldPassCardHtml(guards) {
+  const cycles = Array.isArray(guards?.goldPass) ? guards.goldPass : [];
+  if (cycles.length === 0) return '';
+  // Nothing in any cycle shown — skip the card rather than print a column of "no".
+  if (!cycles.some((c) => c.unionChests > 0 || c.passDonations > 0)) return '';
+  const unionOnly = cycles.some((c) => c.basis === 'union-only');
+  const rows = cycles.map((c) => `<tr>
+      <td data-label="Cycle" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(c.firstDay))} – ${esc(formatGameDayShort(c.lastDay))}${c.isCurrent ? ' <span class="muted-copy">(now)</span>' : ''}</span></td>
+      <td data-label="Union Chests" class="num">${c.unionChests.toLocaleString()}</td>
+      <td data-label="250k lines" class="num">${c.basis === 'union-only' ? '—' : c.passDonations.toLocaleString()}</td>
+      <td data-label="Gold Pass" data-role="metric">${c.goldPass ? goldPassBadgeHtml(c.isCurrent ? 'current' : 'previous') : '<span class="muted-copy">no</span>'}</td>
+    </tr>`).join('');
+  return `
+    <div class="card">
+      <div class="card-header">
+        <h2>Gold Pass</h2>
+        <span class="card-header-hint">Per Triumphal cycle</span>
+      </div>
+      <div class="card-body card-body-padded">
+        <p class="muted-copy mb-12">A cycle counts when the member got Union Chests from the pass track
+          <em>and</em> the exact 250k Scientific Tractates each pass chest donates.${unionOnly ? ' This clan does not capture resources, so the Union Chests alone decide it.' : ''}</p>
+        <table class="table-responsive gold-pass-table">
+          <colgroup><col class="col-cycle"><col class="col-num"><col class="col-num"><col class="col-pass"></colgroup>
+          <thead><tr><th>Triumphal cycle</th><th class="num">Union Chests</th><th class="num">250k lines</th><th>Gold Pass</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function wireMemberGuards(memberId) {
+  const form = document.getElementById('guardsReportForm');
+  form?.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(form);
+    const ok = await mustOk(apiPost(`/guards/member/${memberId}/reports`, {
+      level: Number(fd.get('level')),
+      observedDate: String(fd.get('observedDate') || ''),
+      note: String(fd.get('note') || ''),
+    }), 'Could not save the level');
+    if (ok) await reloadMemberDetail();
+  });
+  document.querySelectorAll('[data-guards-report-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!await confirmDialog('Remove this entry? The level goes back to what the donations say.', {
+        title: 'Remove guards entry', confirmLabel: 'Remove', danger: true,
+      })) return;
+      const ok = await mustOk(apiDelete(`/guards/reports/${btn.dataset.guardsReportDelete}`), 'Could not remove the entry');
+      if (ok) await reloadMemberDetail();
+    });
+  });
 }
 
 // Per-member "Resources donated" card — one row per resource type the member
@@ -785,8 +982,9 @@ function wireMemberPeriodControls() {
   });
 }
 
-function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total: 0 }, rawOcrChests = [], rawOcrTriumphals = [], resourceCardHtml = '', mightCardHtml = '', mightStatsHtml = '', resourcePage = { rows: [], total: 0 }) {
+function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total: 0 }, rawOcrChests = [], rawOcrTriumphals = [], resourceCardHtml = '', mightCardHtml = '', mightStatsHtml = '', resourcePage = { rows: [], total: 0 }, guards = null) {
   const content = $('#content');
+  const isAdmin = ['admin', 'superadmin'].includes(getCurrentUser()?.role);
   const chests = chestPage.chests || [];
   const total = chestPage.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / MEMBER_CHESTS_PAGE_SIZE));
@@ -944,6 +1142,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           ${/* Might + Hero Level from the daily member-list capture. Absent
                 entirely when might tracking has never run for this clan. */''}
           ${mightStatsHtml}
+          ${memberGuardsStatHtml(guards)}
         </div>
       </div>
     </div>
@@ -951,6 +1150,11 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     ${mightCardHtml}
 
     ${resourceCardHtml}
+
+    ${guards ? `<div class="two-col-grid guards-cards">
+      ${memberGuardsCardHtml(guards, data.id, isAdmin)}
+      ${memberGoldPassCardHtml(guards)}
+    </div>` : ''}
 
     ${memberConsistencyHtml(data)}
 
@@ -1140,12 +1344,13 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       // the OCR card needs a full re-render to swap its content.
       renderMemberDetail(
         data, chestPage, triumphalPage, rawOcrChests, rawOcrTriumphals,
-        resourceCardHtml, mightCardHtml, mightStatsHtml, resourcePage,
+        resourceCardHtml, mightCardHtml, mightStatsHtml, resourcePage, guards,
       );
     });
   }
 
   wireMemberPeriodControls();
+  wireMemberGuards(data.id);
 
   // Chart.js needs a live canvas, so this runs after the HTML is mounted — on
   // the first render and again after every tab flip's re-render.

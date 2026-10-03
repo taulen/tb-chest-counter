@@ -6,6 +6,7 @@ import zlib from 'zlib';
 import * as chestRepo from '../../data/repositories/chest-repo.js';
 import * as triumphalChestRepo from '../../data/repositories/triumphal-chest-repo.js';
 import * as eventRepo from '../../data/repositories/event-repo.js';
+import { goldPassForWindow } from '../../data/repositories/gold-pass-repo.js';
 import { getEventCatalogSummary, getEventDef } from '../../config/event-catalog.js';
 import { getEventOccurrences, getEventSchedule } from '../../external/event-calendar.js';
 import * as memberRepo from '../../data/repositories/member-repo.js';
@@ -966,13 +967,22 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     const toParam = typeof req.query.to === 'string' ? req.query.to : undefined;
     const from = isValidIso(fromParam) ? fromParam : undefined;
     const to = isValidIso(toParam) ? toParam : undefined;
-    const result = eventRepo.getEventBreakdown(
-      String(req.params.key || '').trim(),
-      req.clanId ?? 1,
-      from,
-      to,
-    );
+    const key = String(req.params.key || '').trim();
+    const result = eventRepo.getEventBreakdown(key, req.clanId ?? 1, from, to);
     if (!result) return res.status(404).json({ error: 'Unknown event' });
+    // The Triumphal tab marks who held a Gold Pass in the cycle on screen. Same
+    // window, same Union Chests — goldPassForWindow reads them through this very
+    // breakdown — so the marker can never disagree with the column beside it.
+    if (key === 'triumphal' && from && to) {
+      const pass = goldPassForWindow(req.clanId ?? 1, from, to, loadConfig().gameDayRolloverUtcHour);
+      return res.json({
+        ...result,
+        goldPass: {
+          basis: pass.basis,
+          memberIds: [...pass.members].filter(([, e]) => e.goldPass).map(([id]) => id),
+        },
+      });
+    }
     res.json(result);
   });
 

@@ -20,6 +20,9 @@ import { invalidate } from '../../utils/ttl-cache.js';
  * moment it commits. Without this they keep serving the pre-merge roster — two rows
  * for one player, one of them a name that no longer exists — for up to a minute.
  *
+ * Guards levels and gold-pass status are keyed by member id as well, so a merge
+ * leaves them describing a member that no longer exists until they expire.
+ *
  * Invalidated by key prefix rather than by importing the repos' own invalidators,
  * to avoid an import cycle — same approach member-repo takes.
  */
@@ -27,6 +30,8 @@ function invalidateMergeDerivedCaches(clanId: number): void {
   invalidate(`reviewQueueCount:${clanId}`);
   invalidate(`unknownChestsCount:${clanId}`);
   invalidate(`might:${clanId}:`);
+  invalidate(`guards:${clanId}:`);
+  invalidate(`goldpass:${clanId}:`);
 }
 
 const log = childLogger('merge-repo');
@@ -291,6 +296,13 @@ export function addMergeRule(
           if (txResult.changes > 0) {
             log.debug(`Player merge: remapped ${txResult.changes} resource transactions ("${fromValue}" → "${toValue}")`);
           }
+
+          // Guards levels an admin entered for either spelling are the same
+          // player's. The FK cascades, so skipping this would not fail — it
+          // would silently delete them with the source member below.
+          db.prepare(
+            'UPDATE member_guards_reports SET member_id = ? WHERE clan_id = ? AND member_id = ?',
+          ).run(toMember.id, clanId, fromMember.id);
 
           db.prepare('DELETE FROM members WHERE id = ?').run(fromMember.id);
         } else {

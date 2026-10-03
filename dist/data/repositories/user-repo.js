@@ -195,7 +195,7 @@ function deleteUser(id) {
         if (count.c <= 1)
             return false;
     }
-    // Six columns across five tables FK users(id). Sessions are throwaway and
+    // Eight columns across seven tables FK users(id). Sessions are throwaway and
     // get deleted; everything else is history or clan data that must OUTLIVE
     // the user — an audit trail you can erase by deleting the actor isn't an
     // audit trail — so those references are nulled out and render as an
@@ -209,6 +209,7 @@ function deleteUser(id) {
         db.prepare('UPDATE clans SET created_by = NULL WHERE created_by = ?').run(id);
         db.prepare('UPDATE share_links SET created_by = NULL WHERE created_by = ?').run(id);
         db.prepare('UPDATE share_links SET revoked_by = NULL WHERE revoked_by = ?').run(id);
+        db.prepare('UPDATE member_guards_reports SET created_by = NULL WHERE created_by = ?').run(id);
         // users.created_by is self-referential — other accounts this user made.
         db.prepare('UPDATE users SET created_by = NULL WHERE created_by = ?').run(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);
