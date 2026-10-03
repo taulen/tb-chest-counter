@@ -51,6 +51,7 @@ body:
         - Discord bot
         - Resources
         - Setup / install
+        - Accessibility
         - Something else
 
   - type: textarea

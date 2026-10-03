@@ -25,6 +25,7 @@
 - [ ] Schema change: a new migration after the current highest version, and a regenerated `tests/fixtures/schema-baseline.json` (`node scripts/update-schema-baseline.mjs`)
 - [ ] New configuration keyed by a name, path or list has a guard test in `tests/config/`
 - [ ] New UI uses the theme's CSS variables rather than hard-coded colours, so Light / Dark / OLED all work
+- [ ] New UI works from the keyboard and doesn't signal anything by colour alone — see `ACCESSIBILITY.md`
 - [ ] New asset references are plain paths (`/lib/thing.js`), never `?v=` — the server path-versions them
 
 <!-- See CONTRIBUTING.md for the reasoning behind each of these. -->
