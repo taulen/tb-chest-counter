@@ -2264,6 +2264,7 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       };
 
       let previous = null;
+      let previousToDate: { cutAt: string; totals: ReturnType<typeof chestSummaryRepo.getInstantWindowTotals> } | null = null;
       let movers: unknown[] = [];
       let coverage = null;
       if (compare && windowed) {
@@ -2281,9 +2282,36 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
           const prevFromDay = shift(fromDay!, -(span + 1));
           const prevToDay = shift(fromDay!, -1);
           previous = summaryOnly(prevFromDay, prevToDay);
-          movers = chestSummaryRepo.getMemberWindowComparison(
+          let comparison = chestSummaryRepo.getMemberWindowComparison(
             clanId, prevFromDay, prevToDay, fromDay!, toDay!,
           );
+
+          // A period still in progress is compared with the previous one at the
+          // SAME POINT — as far into it as now is into this one — not with all of
+          // it. Against the whole previous month, the 3rd of this one reads "down
+          // 95%" until the last days, which is a statement about the calendar, not
+          // the clan. `previous` stays whole for the activity chart, which lines the
+          // two up day by day and wants the rest of the old period as the target.
+          const elapsedMs = Date.now() - fromMs!;
+          if (elapsedMs > 0 && elapsedMs < toMs! - fromMs!) {
+            const prevStartMs = Date.parse(`${prevFromDay}T00:00:00Z`) + rollover * 3_600_000;
+            const cutMs = prevStartMs + elapsedMs;
+            previousToDate = {
+              cutAt: new Date(cutMs).toISOString(),
+              totals: chestSummaryRepo.getInstantWindowTotals(clanId, prevStartMs, cutMs),
+            };
+            const soFar = chestSummaryRepo.getMemberEarnedInInstantRange(clanId, prevStartMs, cutMs);
+            comparison = comparison
+              .map((r) => ({
+                ...r,
+                prevChests: soFar.get(r.memberId)?.chests ?? 0,
+                prevPoints: soFar.get(r.memberId)?.points ?? 0,
+              }))
+              .filter((r) => r.points > 0 || r.prevPoints > 0)
+              .sort((a, b) => b.points - a.points || b.prevPoints - a.prevPoints
+                || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+          }
+          movers = comparison;
           // Coverage is reported for the CURRENT window only. A gap in the
           // previous one understates the baseline, which flatters every delta
           // rather than inventing one, and saying so about a window nobody is
@@ -2306,6 +2334,7 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
         windowDays,
         current: buildWindow(fromDay, toDay, windowed ? { from: fromMs!, to: toMs! } : null),
         previous,
+        previousToDate,
         movers,
         coverage,
       };

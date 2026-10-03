@@ -291,6 +291,55 @@ export function getWindowTotals(
 }
 
 /**
+ * Clan totals over an exact [fromMs, toMs) instant range, read from chest_records
+ * rather than the rollup.
+ *
+ * For "this period so far vs the previous period at the same point". The rollup's
+ * unit is a whole game day, so it can only stop a comparison at a day boundary,
+ * and a period in progress is part-way through one — 14:00 on the 3rd compared
+ * against all of the 3rd last month still flatters the past by most of a day,
+ * which on a daily view is the entire comparison. Same buckets as the rollup
+ * (effective_at, rows with a member, the same clan-reward split), so the two read
+ * as one source. One clan's slice of a single period is a bounded scan.
+ */
+export function getInstantWindowTotals(
+  clanId: number,
+  fromMs: number,
+  toMs: number,
+): Omit<WindowTotals, 'rosterMembers'> {
+  const rewardIds = clanRewardChestIds().filter((id) => Number.isInteger(id));
+  const isEarned = rewardIds.length ? `chest_id NOT IN (${rewardIds.join(',')})` : '1';
+  return getDb().prepare(`
+    SELECT COUNT(*)                                                   AS chests,
+           COALESCE(SUM(point_value), 0)                              AS points,
+           COALESCE(SUM(CASE WHEN ${isEarned} THEN 1 ELSE 0 END), 0)  AS earnedChests,
+           COALESCE(SUM(CASE WHEN ${isEarned} THEN point_value ELSE 0 END), 0) AS earnedPoints,
+           COUNT(DISTINCT member_id)                                  AS activeMembers
+    FROM chest_records
+    WHERE clan_id = ? AND member_id IS NOT NULL AND effective_at >= ? AND effective_at < ?
+  `).get(clanId, fromMs, toMs) as Omit<WindowTotals, 'rosterMembers'>;
+}
+
+/**
+ * Each member's earned chests and points over an exact instant range — the
+ * per-member twin of getInstantWindowTotals, for the Movers comparison.
+ */
+export function getMemberEarnedInInstantRange(
+  clanId: number,
+  fromMs: number,
+  toMs: number,
+): Map<number, { chests: number; points: number }> {
+  const rows = getDb().prepare(`
+    SELECT member_id AS memberId, COUNT(*) AS chests, COALESCE(SUM(point_value), 0) AS points
+    FROM chest_records
+    WHERE clan_id = ? AND member_id IS NOT NULL AND effective_at >= ? AND effective_at < ?
+      ${clanRewardExclusionSql()}
+    GROUP BY member_id
+  `).all(clanId, fromMs, toMs) as Array<{ memberId: number; chests: number; points: number }>;
+  return new Map(rows.map((r) => [r.memberId, { chests: r.chests, points: r.points }]));
+}
+
+/**
  * How many members the clan had over a game-day window — the denominator for
  * `activeMembers`.
  *

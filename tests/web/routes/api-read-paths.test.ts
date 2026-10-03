@@ -370,6 +370,29 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
       expect(res.body.previous.toDay < res.body.current.fromDay).toBe(true);
     });
 
+    it('GET /api/analytics/window compares a period in progress with the same point of the last', async () => {
+      const from = new Date(Date.now() - 3 * 86_400_000).toISOString();
+      const to = new Date(Date.now() + 4 * 86_400_000).toISOString();
+      const res = await request(app)
+        .get('/api/analytics/window?from=' + from + '&to=' + to + '&compare=1');
+      expect(res.status).toBe(200);
+      expect(res.body.previousToDate).not.toBeNull();
+      expect(res.body.previousToDate.totals).toHaveProperty('chests');
+      // The cut falls inside the previous window, before this one starts.
+      expect(Date.parse(res.body.previousToDate.cutAt)).toBeLessThan(Date.parse(from));
+      // The whole previous window is still there for the chart.
+      expect(res.body.previous).toHaveProperty('totals');
+    });
+
+    it('GET /api/analytics/window compares a finished period with the whole previous one', async () => {
+      const from = new Date(Date.now() - 14 * 86_400_000).toISOString();
+      const to = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const res = await request(app)
+        .get('/api/analytics/window?from=' + from + '&to=' + to + '&compare=1');
+      expect(res.status).toBe(200);
+      expect(res.body.previousToDate).toBeNull();
+    });
+
     it('GET /api/analytics/window degrades to all-time on an invalid date', async () => {
       const res = await request(app).get('/api/analytics/window?from=nonsense&to=alsononsense');
       expect(res.status).toBe(200);

@@ -230,6 +230,42 @@ function periodControlsHtml() {
     </div>`;
 }
 
+// What the comparison is called when the period is still running and the API
+// compared it with the previous one at the same point, not with all of it.
+const SAME_POINT_LABEL = {
+  daily: 'this time yesterday',
+  weekly: 'this point last week',
+  monthly: 'this point last month',
+  yearly: 'this point last year',
+};
+
+/**
+ * What the deltas compare against: the previous period up to the same point
+ * while this one is still running (the server sends `previousToDate` only
+ * then), otherwise the whole previous period. Against all of last month, the
+ * 3rd of this one read "down 95%" until its final days.
+ */
+function comparisonBasis() {
+  const toDate = windowData?.previousToDate;
+  if (toDate?.totals) {
+    const cut = new Date(toDate.cutAt);
+    return {
+      totals: toDate.totals,
+      label: SAME_POINT_LABEL[period] || 'the same point last period',
+      title: `Compared with the ${PREVIOUS_LABEL[period] || 'previous period'} up to `
+        + `${cut.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} `
+        + '— as far into it as we are into this one',
+      samePoint: true,
+    };
+  }
+  return {
+    totals: windowData?.previous?.totals || null,
+    label: PREVIOUS_LABEL[period] || 'previous period',
+    title: '',
+    samePoint: false,
+  };
+}
+
 /**
  * The "▲ 12% vs previous week" line under a stat card.
  *
@@ -240,9 +276,10 @@ function periodControlsHtml() {
 function deltaHtml(current, previous) {
   if (period === 'all' || !windowData?.previous) return '';
   if (previous === null || previous === undefined) return '';
-  const label = PREVIOUS_LABEL[period] || 'previous period';
+  const { label, title } = comparisonBasis();
+  const titleAttr = title ? ` title="${esc(title)}"` : '';
   const diff = current - previous;
-  if (diff === 0) return `<div class="sub stat-delta is-flat">No change vs ${label}</div>`;
+  if (diff === 0) return `<div class="sub stat-delta is-flat"${titleAttr}>No change vs ${label}</div>`;
   const up = diff > 0;
   const arrow = up ? '▲' : '▼';
   const cls = up ? 'is-up' : 'is-down';
@@ -250,12 +287,12 @@ function deltaHtml(current, previous) {
   const magnitude = previous >= MIN_BASELINE_FOR_PERCENT
     ? `${Math.abs(Math.round((diff / previous) * 100))}%`
     : `${Math.abs(diff).toLocaleString()}`;
-  return `<div class="sub stat-delta ${cls}">${arrow} ${magnitude} vs ${label}</div>`;
+  return `<div class="sub stat-delta ${cls}"${titleAttr}>${arrow} ${magnitude} vs ${label}</div>`;
 }
 
 function statsGridHtml(current) {
   const cur = windowData?.current?.totals || {};
-  const prev = windowData?.previous?.totals || null;
+  const prev = comparisonBasis().totals;
   // The roster AS IT WAS over this window, not as it is now. `totalMembers` is
   // `is_active = 1` — today's roster — so pairing it with a window's distinct
   // earners counted everyone who has since left in the numerator only, and
@@ -723,7 +760,12 @@ function flagMover(row, windowStartMs) {
       && row.points < row.prevPoints * MOVER_DROP_RATIO) {
     const pct = Math.round((1 - row.points / row.prevPoints) * 100);
     const noun = MEMBER_PERIOD_NOUN_ANALYTICS[period] || 'period';
-    return { code: 'drop', label: `Down ${pct}% on their own previous ${noun}` };
+    return {
+      code: 'drop',
+      label: comparisonBasis().samePoint
+        ? `Down ${pct}% on their own ${SAME_POINT_LABEL[period] || `previous ${noun}`}`
+        : `Down ${pct}% on their own previous ${noun}`,
+    };
   }
   return null;
 }
@@ -788,7 +830,9 @@ function moversCardHtml() {
     <div class="card mt-24">
       <div class="card-header">
         <h2>Movers</h2>
-        <span class="card-header-hint">vs the ${PREVIOUS_LABEL[period] || 'previous period'}</span>
+        <span class="card-header-hint">vs ${comparisonBasis().samePoint
+          ? esc(comparisonBasis().label)
+          : `the ${PREVIOUS_LABEL[period] || 'previous period'}`}</span>
       </div>
       <div class="card-body">
         <table class="table-responsive">

@@ -25,6 +25,8 @@ exports.getSingleDayRecords = getSingleDayRecords;
 exports.getTopContributors = getTopContributors;
 exports.getWindowContributors = getWindowContributors;
 exports.getWindowTotals = getWindowTotals;
+exports.getInstantWindowTotals = getInstantWindowTotals;
+exports.getMemberEarnedInInstantRange = getMemberEarnedInInstantRange;
 exports.getWindowDailySeries = getWindowDailySeries;
 exports.getMemberWindowComparison = getMemberWindowComparison;
 exports.getConcentration = getConcentration;
@@ -229,6 +231,45 @@ function getWindowTotals(clanId, fromDay, toDay) {
     const params = windowed ? [clanId, fromDay, toDay] : [clanId];
     const totals = (0, database_js_1.getDb)().prepare(sql).get(...params);
     return { ...totals, rosterMembers: getWindowRosterSize(clanId, fromDay, toDay) };
+}
+/**
+ * Clan totals over an exact [fromMs, toMs) instant range, read from chest_records
+ * rather than the rollup.
+ *
+ * For "this period so far vs the previous period at the same point". The rollup's
+ * unit is a whole game day, so it can only stop a comparison at a day boundary,
+ * and a period in progress is part-way through one — 14:00 on the 3rd compared
+ * against all of the 3rd last month still flatters the past by most of a day,
+ * which on a daily view is the entire comparison. Same buckets as the rollup
+ * (effective_at, rows with a member, the same clan-reward split), so the two read
+ * as one source. One clan's slice of a single period is a bounded scan.
+ */
+function getInstantWindowTotals(clanId, fromMs, toMs) {
+    const rewardIds = (0, clan_reward_chests_js_1.clanRewardChestIds)().filter((id) => Number.isInteger(id));
+    const isEarned = rewardIds.length ? `chest_id NOT IN (${rewardIds.join(',')})` : '1';
+    return (0, database_js_1.getDb)().prepare(`
+    SELECT COUNT(*)                                                   AS chests,
+           COALESCE(SUM(point_value), 0)                              AS points,
+           COALESCE(SUM(CASE WHEN ${isEarned} THEN 1 ELSE 0 END), 0)  AS earnedChests,
+           COALESCE(SUM(CASE WHEN ${isEarned} THEN point_value ELSE 0 END), 0) AS earnedPoints,
+           COUNT(DISTINCT member_id)                                  AS activeMembers
+    FROM chest_records
+    WHERE clan_id = ? AND member_id IS NOT NULL AND effective_at >= ? AND effective_at < ?
+  `).get(clanId, fromMs, toMs);
+}
+/**
+ * Each member's earned chests and points over an exact instant range — the
+ * per-member twin of getInstantWindowTotals, for the Movers comparison.
+ */
+function getMemberEarnedInInstantRange(clanId, fromMs, toMs) {
+    const rows = (0, database_js_1.getDb)().prepare(`
+    SELECT member_id AS memberId, COUNT(*) AS chests, COALESCE(SUM(point_value), 0) AS points
+    FROM chest_records
+    WHERE clan_id = ? AND member_id IS NOT NULL AND effective_at >= ? AND effective_at < ?
+      ${(0, clan_reward_chests_js_1.clanRewardExclusionSql)()}
+    GROUP BY member_id
+  `).all(clanId, fromMs, toMs);
+    return new Map(rows.map((r) => [r.memberId, { chests: r.chests, points: r.points }]));
 }
 /**
  * How many members the clan had over a game-day window — the denominator for
