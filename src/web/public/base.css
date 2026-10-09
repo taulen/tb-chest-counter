@@ -547,9 +547,15 @@
   word-break: break-all;
 }
 .login-session-viewport {
-  position: relative;
   width: 100%;
   max-width: 1280px;
+}
+/* The frame itself, at the stream's native 1280:800. A separate box from the
+   viewport so the modal can let the viewport take all the room it has and
+   fit the frame inside it (see the modal block). */
+.login-session-screen {
+  position: relative;
+  width: 100%;
   aspect-ratio: 1280 / 800;
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -581,7 +587,19 @@
 .login-session-overlay.is-hidden {
   display: none;
 }
+.login-session-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .login-session-hint {
+  margin: 0;
   font-size: 12px;
 }
 
@@ -626,7 +644,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 8px;
   background: var(--bg-modal-backdrop);
   backdrop-filter: blur(4px);
   opacity: 0;
@@ -636,15 +654,29 @@
   opacity: 1;
 }
 
+/* Layout: the game frame on the left, everything else in a sidebar on the
+   right. The stream is 16:10 and nearly every desktop window is wider than
+   that, so the frame is bound by HEIGHT and the spare room is at the sides —
+   a sidebar spends that, where a row of controls under the frame would cost
+   frame height. .login-session-card-body is display:contents so its two
+   children (viewport, sidebar) sit on the card's grid next to the header. */
 .login-session-modal .login-session-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: auto;
-  max-width: min(96vw, 1680px);
-  max-height: 94vh;
-  overflow-y: auto;
-  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 248px;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "view head"
+    "view side";
+  gap: 10px 14px;
+  width: 100%;
+  /* Ultrawide: no wider than a full-height frame plus the sidebar, so the
+     frame stays beside its controls instead of floating in a wide gap.
+     38px = panel padding + card padding + border; 284px = sidebar + gap +
+     card padding + border. */
+  max-width: calc((100vh - 38px) * 1.6 + 284px);
+  height: 100%;
+  overflow: hidden;
+  padding: 10px;
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
@@ -655,60 +687,122 @@
 .login-session-panel.login-session-modal.is-visible .login-session-card {
   transform: translateY(0);
 }
+.login-session-modal .login-session-card-body {
+  display: contents;
+}
 
 .login-session-modal .login-session-card-header {
+  grid-area: head;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 .login-session-modal .login-session-card-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.2px;
   color: var(--text-primary);
 }
-
-.login-session-modal .login-session-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-
 .login-session-modal .login-session-statusrow {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.login-session-modal .login-session-url {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  word-break: normal;
 }
 
-/* Grow the game frame as large as the screen allows while preserving the
-   native 1280:800 ratio. Whichever of the width or height budget binds
-   first wins; the vh term reserves ~220px for the modal chrome. */
+/* The game frame fills its whole grid cell at 16:10: the viewport is a size
+   container and the frame is as wide as fits both ways (160cqh = 1.6 × the
+   cell's height). Nothing reserves a guessed number of pixels for chrome. */
 .login-session-modal .login-session-viewport {
-  width: min(calc(96vw - 88px), calc((94vh - 220px) * 1.6), 1600px);
-  max-width: 1600px;
-  margin: 0 auto;
+  grid-area: view;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+.login-session-modal .login-session-screen {
+  width: min(100cqw, 160cqh);
 }
 
-.login-session-modal .login-session-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.login-session-modal .login-session-side {
+  grid-area: side;
+  min-height: 0;
+  overflow-y: auto;
+}
+.login-session-modal .login-session-actions,
+.login-session-modal .login-session-links {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+.login-session-modal .login-session-actions .btn {
+  padding: 8px 12px;
+}
+.login-session-modal .login-session-links {
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
-.login-session-modal .login-session-actions .btn {
-  padding: 9px 16px;
+.login-session-modal .login-session-linkform {
+  flex: none;
+}
+.login-session-modal .login-session-hint {
+  margin-top: auto;
 }
 
-@media (max-width: 640px) {
-  .login-session-panel.login-session-modal {
-    padding: 12px;
-  }
+/* Portrait, or too narrow for a sidebar beside a usable frame: stack it —
+   header, frame, then the controls in wrapping rows — and size the card to
+   its content, since the width binds and a full-height card would only add
+   empty space under the frame. */
+@media (max-aspect-ratio: 1/1), (max-width: 760px) {
   .login-session-modal .login-session-card {
-    padding: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "head"
+      "view"
+      "side";
+    max-width: none;
+    height: auto;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  .login-session-modal .login-session-card-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+  }
+  .login-session-modal .login-session-viewport {
+    container-type: normal;
+  }
+  .login-session-modal .login-session-screen {
+    width: 100%;
+  }
+  .login-session-modal .login-session-side {
+    overflow: visible;
+  }
+  .login-session-modal .login-session-actions,
+  .login-session-modal .login-session-links {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
   }
   .login-session-modal .login-session-actions .btn {
     flex: 1 1 auto;
+  }
+  .login-session-modal .login-session-linkform {
+    flex: 1 1 260px;
   }
 }

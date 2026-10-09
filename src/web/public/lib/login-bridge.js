@@ -39,23 +39,29 @@ export function loginBridgePanelHTML({ modal = false, bonusLinks = false } = {})
   return `
     <div id="loginSessionPanel" class="${panelClass}">
       <div class="login-session-card"${dialogAttrs}>
-        <div class="login-session-card-header"><h2 id="loginSessionTitle">Login session</h2></div>
-        <div class="login-session-card-body">
+        <div class="login-session-card-header">
+          <h2 id="loginSessionTitle">Login session</h2>
           <div class="login-session-statusrow">
             <span id="loginSessionStatus" class="muted-copy"></span>
             <span class="muted-copy login-session-url" id="loginSessionUrl"></span>
           </div>
+        </div>
+        <div class="login-session-card-body">
           <div id="loginSessionViewport" class="login-session-viewport">
-            <canvas id="loginSessionCanvas" class="login-session-canvas" width="1280" height="800" tabindex="0"
-              aria-label="Remote game browser. Keys typed here go to the game; Shift+Escape leaves it."></canvas>
-            <div id="loginSessionOverlay" class="login-session-overlay">Connecting...</div>
+            <div class="login-session-screen">
+              <canvas id="loginSessionCanvas" class="login-session-canvas" width="1280" height="800" tabindex="0"
+                aria-label="Remote game browser. Keys typed here go to the game; Shift+Escape leaves it."></canvas>
+              <div id="loginSessionOverlay" class="login-session-overlay">Connecting...</div>
+            </div>
           </div>
-          <p class="muted-copy login-session-hint">Click in the frame to type — every key goes to the game, so press <kbd>Shift</kbd>+<kbd>Esc</kbd> to leave it. Use the buttons below once you are fully in-game.</p>${linksRow}
-          <div class="login-session-actions">
-            <button class="btn btn-primary" data-action="login-session-save">I'm logged in — save session</button>
-            <button class="btn" data-action="login-session-paste">Paste…</button>
-            <button class="btn" data-action="login-session-reload">Reload page</button>
-            <button class="btn" data-action="login-session-cancel">Cancel</button>
+          <div class="login-session-side">
+            <div class="login-session-actions">
+              <button class="btn btn-primary" data-action="login-session-save">I'm logged in — save session</button>
+              <button class="btn" data-action="login-session-paste">Paste…</button>
+              <button class="btn" data-action="login-session-reload">Reload page</button>
+              <button class="btn" data-action="login-session-cancel">Cancel</button>
+            </div>${linksRow}
+            <p class="muted-copy login-session-hint">Click in the frame to type — every key goes to the game; <kbd>Shift</kbd>+<kbd>Esc</kbd> leaves it. Save once you are fully in-game.</p>
           </div>
         </div>
       </div>
