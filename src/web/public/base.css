@@ -585,6 +585,32 @@
   font-size: 12px;
 }
 
+/* Bonus links: preset ?present= buttons plus a paste box (Clans only). */
+.login-session-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.login-session-links-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.login-session-linkform {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.login-session-linkform .input {
+  flex: 1 1 auto;
+  max-width: none;
+}
+.login-session-linkform .input[aria-invalid="true"] {
+  border-color: var(--accent-red-solid);
+}
+
 /* ─── Login bridge, modal presentation ──────────────────────────
    When the shared panel is tagged .login-session-modal it doubles as a
    centered overlay: .login-session-panel becomes the dimmed, blurred

@@ -7,6 +7,7 @@ exports.dispatchClientMessage = dispatchClientMessage;
 exports.parseClientMessage = parseClientMessage;
 const logger_js_1 = require("../../utils/logger.js");
 const log_throttle_js_1 = require("../../utils/log-throttle.js");
+const game_url_js_1 = require("../../config/game-url.js");
 const log = (0, logger_js_1.childLogger)('login-bridge-relay');
 // Input relay warnings are coalesced: a dead or wedged browser fails EVERY
 // forwarded event with the same error, and mousemove alone can produce
@@ -171,8 +172,15 @@ async function dispatchClientMessage(cdp, page, msg) {
                 return 'ok';
             }
             case 'navigate': {
-                if (typeof msg.url === 'string' && msg.url.startsWith('http')) {
-                    await page.goto(msg.url, { waitUntil: 'domcontentloaded' }).catch(() => { });
+                // Only the game's own domain — see totalBattleUrlOrNull. A rejected
+                // URL is dropped, not an error: the client validates the same rule
+                // before sending, so reaching here means a hand-crafted message.
+                const url = (0, game_url_js_1.totalBattleUrlOrNull)(msg.url);
+                if (url) {
+                    await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => { });
+                }
+                else {
+                    warner.warn('navigate-rejected', 'Refused a login-bridge navigation outside totalbattle.com');
                 }
                 return 'ok';
             }

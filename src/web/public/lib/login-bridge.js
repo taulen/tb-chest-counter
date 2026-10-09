@@ -19,9 +19,23 @@ import { holdDialogFocus } from './ui.js';
 //     the shared stylesheet renders it as a centered, dimmed overlay, and it
 //     is a real modal dialog for the keyboard (see showLoginSessionPanel).
 //     Both the Clans page and the setup wizard pass it.
-export function loginBridgePanelHTML({ modal = false } = {}) {
+//   - bonusLinks: when true, adds the row of preset in-game bonus links and
+//     a paste box for any other totalbattle.com link. Clans only — the
+//     setup wizard is signing in for the first time, not playing.
+export function loginBridgePanelHTML({ modal = false, bonusLinks = false } = {}) {
   const panelClass = `login-session-panel${modal ? ' login-session-modal' : ''} is-hidden`;
   const dialogAttrs = modal ? ' role="dialog" aria-modal="true" aria-labelledby="loginSessionTitle"' : '';
+  const linksRow = bonusLinks ? `
+          <div id="loginSessionLinks" class="login-session-links" role="group" aria-labelledby="loginSessionLinksLabel">
+            <span id="loginSessionLinksLabel" class="login-session-links-label">Bonus links</span>
+            ${BONUS_PRESETS.map((p) => `<button type="button" class="btn btn-sm" data-present="${p.code}" title="${presentUrl(p.code)}">${p.label}</button>`).join('')}
+            <form id="loginSessionLinkForm" class="login-session-linkform" novalidate>
+              <label class="visually-hidden" for="loginSessionLinkInput">Total Battle link</label>
+              <input id="loginSessionLinkInput" class="input" type="text" inputmode="url"
+                placeholder="Paste a totalbattle.com link…" autocomplete="off" spellcheck="false">
+              <button type="submit" class="btn btn-sm">Open</button>
+            </form>
+          </div>` : '';
   return `
     <div id="loginSessionPanel" class="${panelClass}">
       <div class="login-session-card"${dialogAttrs}>
@@ -36,7 +50,7 @@ export function loginBridgePanelHTML({ modal = false } = {}) {
               aria-label="Remote game browser. Keys typed here go to the game; Shift+Escape leaves it."></canvas>
             <div id="loginSessionOverlay" class="login-session-overlay">Connecting...</div>
           </div>
-          <p class="muted-copy login-session-hint">Click in the frame to type — every key goes to the game, so press <kbd>Shift</kbd>+<kbd>Esc</kbd> to leave it. Use the buttons below once you are fully in-game.</p>
+          <p class="muted-copy login-session-hint">Click in the frame to type — every key goes to the game, so press <kbd>Shift</kbd>+<kbd>Esc</kbd> to leave it. Use the buttons below once you are fully in-game.</p>${linksRow}
           <div class="login-session-actions">
             <button class="btn btn-primary" data-action="login-session-save">I'm logged in — save session</button>
             <button class="btn" data-action="login-session-paste">Paste…</button>
@@ -47,6 +61,39 @@ export function loginBridgePanelHTML({ modal = false } = {}) {
       </div>
     </div>
   `;
+}
+
+// ---------- Bonus links ----------
+//
+// The game hands out bonuses as links (`?present=<code>`) that are redeemed by
+// opening them while signed in — i.e. in the bridge's browser, which holds the
+// shared account. Add a recurring one here.
+const BONUS_PRESETS = [
+  { code: 'dragonroulette100', label: 'Dragon Roulette coins' },
+  { code: 'luckyroulette100', label: 'Lucky Roulette coins' },
+  { code: 'ramsesroulette100', label: '100 Ramses Roulette coins' },
+];
+
+function presentUrl(code) {
+  return `https://totalbattle.com/?present=${encodeURIComponent(code)}`;
+}
+
+// Mirrors totalBattleUrlOrNull in src/config/game-url.ts, which is the real
+// gate — this copy only exists to explain a refusal instead of dropping it.
+// More forgiving on input than the server: a pasted link without a scheme, or
+// on http, is upgraded to https before the same host rule applies.
+function totalBattleUrlOrNull(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = 'https://' + text;
+  let url;
+  try { url = new URL(text); } catch { return null; }
+  if (url.protocol === 'http:') url.protocol = 'https:';
+  if (url.protocol !== 'https:') return null;
+  if (url.username || url.password || url.port) return null;
+  const host = url.hostname.toLowerCase();
+  if (host !== 'totalbattle.com' && !host.endsWith('.totalbattle.com')) return null;
+  return url.href;
 }
 
 // ---------- Internal state ----------
@@ -501,6 +548,43 @@ function attachLoginSessionSocket(width, height) {
     const text = ev.clipboardData?.getData('text') || '';
     sendPastedText(text);
   });
+
+  // Bonus links. Navigating the bridge's page to the link is all it takes —
+  // the game reloads on it and redeems the present for the signed-in account.
+  const openGameLink = (url, what) => {
+    if (socket.readyState !== 1) {
+      setLoginSessionStatus('❌ Not connected to the remote browser.');
+      return false;
+    }
+    sendJSON({ kind: 'navigate', url });
+    setLoginSessionStatus(`Opening ${what}…`);
+    return true;
+  };
+  const linksRow = document.getElementById('loginSessionLinks');
+  if (linksRow) {
+    addListener(linksRow, 'click', (ev) => {
+      const btn = ev.target instanceof Element ? ev.target.closest('[data-present]') : null;
+      if (!btn) return;
+      const preset = BONUS_PRESETS.find((p) => p.code === btn.getAttribute('data-present'));
+      if (preset) openGameLink(presentUrl(preset.code), preset.label);
+    });
+  }
+  const linkForm = document.getElementById('loginSessionLinkForm');
+  const linkInput = document.getElementById('loginSessionLinkInput');
+  if (linkForm && linkInput) {
+    addListener(linkInput, 'input', () => linkInput.removeAttribute('aria-invalid'));
+    addListener(linkForm, 'submit', (ev) => {
+      ev.preventDefault();
+      if (!linkInput.value.trim()) return;
+      const url = totalBattleUrlOrNull(linkInput.value);
+      if (!url) {
+        linkInput.setAttribute('aria-invalid', 'true');
+        setLoginSessionStatus('❌ Only totalbattle.com links can be opened here.');
+        return;
+      }
+      if (openGameLink(url, url)) linkInput.value = '';
+    });
+  }
 
   loginSessionState.pasteHelper = tryPasteFromClipboard;
 }

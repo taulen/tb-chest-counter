@@ -141,23 +141,31 @@ describe('dispatchClientMessage — page navigation', () => {
     expect(page.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('navigate to http URL calls page.goto', async () => {
+  it('navigate to a totalbattle.com bonus link calls page.goto', async () => {
     const cdp = makeCdpStub();
     const page = makePageStub();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await dispatchClientMessage(cdp as any, page as any, {
-      kind: 'navigate', url: 'https://example.com',
+      kind: 'navigate', url: 'https://totalbattle.com/?present=dragonroulette100',
     });
-    expect(page.goto).toHaveBeenCalledWith('https://example.com', expect.any(Object));
+    expect(page.goto).toHaveBeenCalledWith(
+      'https://totalbattle.com/?present=dragonroulette100', expect.any(Object),
+    );
   });
 
-  it('rejects non-http URLs (no goto call)', async () => {
+  it.each([
+    'javascript:alert(1)',
+    'https://example.com',
+    'http://totalbattle.com/?present=x',
+    'https://totalbattle.com.evil.example/',
+    'https://totalbattle.com@evil.example/',
+    'https://nottotalbattle.com/',
+  ])('refuses %s (no goto call)', async (url) => {
     const cdp = makeCdpStub();
     const page = makePageStub();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await dispatchClientMessage(cdp as any, page as any, {
-      kind: 'navigate', url: 'javascript:alert(1)',
-    });
+    const result = await dispatchClientMessage(cdp as any, page as any, { kind: 'navigate', url });
+    expect(result).toBe('ok');
     expect(page.goto).not.toHaveBeenCalled();
   });
 });

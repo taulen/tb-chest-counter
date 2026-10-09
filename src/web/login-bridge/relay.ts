@@ -1,6 +1,7 @@
 import type { CDPSession, Page } from 'playwright';
 import { childLogger } from '../../utils/logger.js';
 import { createCoalescedWarner } from '../../utils/log-throttle.js';
+import { totalBattleUrlOrNull } from '../../config/game-url.js';
 
 const log = childLogger('login-bridge-relay');
 
@@ -226,8 +227,14 @@ export async function dispatchClientMessage(
         return 'ok';
       }
       case 'navigate': {
-        if (typeof msg.url === 'string' && msg.url.startsWith('http')) {
-          await page.goto(msg.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        // Only the game's own domain — see totalBattleUrlOrNull. A rejected
+        // URL is dropped, not an error: the client validates the same rule
+        // before sending, so reaching here means a hand-crafted message.
+        const url = totalBattleUrlOrNull(msg.url);
+        if (url) {
+          await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        } else {
+          warner.warn('navigate-rejected', 'Refused a login-bridge navigation outside totalbattle.com');
         }
         return 'ok';
       }

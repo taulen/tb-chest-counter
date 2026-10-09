@@ -115,7 +115,7 @@ export async function renderClans(el, refreshClanIndicator) {
          starts a session. Only one bridge runs at a time, so a single
          shared panel is enough; status text identifies which clan it
          belongs to. -->
-    ${loginBridgePanelHTML({ modal: true })}
+    ${loginBridgePanelHTML({ modal: true, bonusLinks: true })}
 
     ${isSuperAdmin ? `
     <div class="card">

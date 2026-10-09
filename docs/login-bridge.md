@@ -8,6 +8,15 @@ WebSocket. Two uses, both interactive:
 2. **Operating the account** — several admins share one game account and use the
    bridge from time to time to perform simple in-game actions.
 
+For (2), the Clans modal also carries **bonus links**: preset buttons for the
+game's recurring `?present=<code>` links plus a paste box. Opening one is just a
+`navigate` message — the game reloads on the link and redeems it for the
+signed-in account. The server only navigates to `https://` URLs on
+`totalbattle.com` or a subdomain (`totalBattleUrlOrNull` in
+[`game-url.ts`](../src/config/game-url.ts)); the bridge browser holds the shared
+account's session, so it must not be pointed anywhere else. Presets live in
+`BONUS_PRESETS` in the client.
+
 Server: [`src/web/login-bridge.ts`](../src/web/login-bridge.ts) plus the modules
 under [`src/web/login-bridge/`](../src/web/login-bridge/).
 Client: [`src/web/public/lib/login-bridge.js`](../src/web/public/lib/login-bridge.js).
