@@ -11,6 +11,12 @@ export const TB_GAME_URL = 'https://totalbattle.com';
 
 const TB_HOST = 'totalbattle.com';
 
+/** True for totalbattle.com itself or any subdomain of it. */
+export function isTotalBattleHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === TB_HOST || host.endsWith('.' + TB_HOST);
+}
+
 /**
  * The normalised href when `raw` is an https URL on totalbattle.com (or a
  * subdomain of it), otherwise null.
@@ -32,7 +38,6 @@ export function totalBattleUrlOrNull(raw: unknown): string | null {
   }
   if (url.protocol !== 'https:') return null;
   if (url.username || url.password || url.port) return null;
-  const host = url.hostname.toLowerCase();
-  if (host !== TB_HOST && !host.endsWith('.' + TB_HOST)) return null;
+  if (!isTotalBattleHost(url.hostname)) return null;
   return url.href;
 }

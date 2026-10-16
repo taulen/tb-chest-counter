@@ -388,6 +388,11 @@ function attachLoginSessionSocket(width, height) {
     } else if (msg.kind === 'quality' && typeof msg.quality === 'string') {
       // Mid-session step up or down on the quality ladder.
       setLoginSessionStatus(`Live (${msg.quality}) — interact below.`);
+    } else if (msg.kind === 'blocked') {
+      // The game linked somewhere off totalbattle.com and the server refused
+      // to follow. Without this the click just looks dead.
+      const host = typeof msg.host === 'string' && msg.host ? msg.host : 'another site';
+      setLoginSessionStatus(`🚫 Blocked a link to ${host} — only totalbattle.com opens here.`);
     } else if (msg.kind === 'fatal') {
       // The remote browser died (crash, OOM, exit). Nothing we send can
       // land any more, so stop rather than stream input into a corpse.

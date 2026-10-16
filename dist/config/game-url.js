@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TB_GAME_URL = void 0;
+exports.isTotalBattleHost = isTotalBattleHost;
 exports.totalBattleUrlOrNull = totalBattleUrlOrNull;
 /**
  * The Total Battle game URL is the same for every clan and every
@@ -13,6 +14,11 @@ exports.totalBattleUrlOrNull = totalBattleUrlOrNull;
  */
 exports.TB_GAME_URL = 'https://totalbattle.com';
 const TB_HOST = 'totalbattle.com';
+/** True for totalbattle.com itself or any subdomain of it. */
+function isTotalBattleHost(hostname) {
+    const host = hostname.toLowerCase();
+    return host === TB_HOST || host.endsWith('.' + TB_HOST);
+}
 /**
  * The normalised href when `raw` is an https URL on totalbattle.com (or a
  * subdomain of it), otherwise null.
@@ -38,8 +44,7 @@ function totalBattleUrlOrNull(raw) {
         return null;
     if (url.username || url.password || url.port)
         return null;
-    const host = url.hostname.toLowerCase();
-    if (host !== TB_HOST && !host.endsWith('.' + TB_HOST))
+    if (!isTotalBattleHost(url.hostname))
         return null;
     return url.href;
 }

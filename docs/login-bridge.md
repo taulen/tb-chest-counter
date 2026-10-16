@@ -17,6 +17,27 @@ signed-in account. The server only navigates to `https://` URLs on
 account's session, so it must not be pointed anywhere else. Presets live in
 `BONUS_PRESETS` in the client.
 
+The same rule holds for the page itself. The game links out (YouTube, Discord,
+Facebook), and following one would leave the shared, signed-in browser on the
+open web with the game unloaded. [`nav-guard.ts`](../src/web/login-bridge/nav-guard.ts)
+refuses every **top-level** navigation off `totalbattle.com` at the browser,
+however it was started: a click, `location.href`, a redirect hop. The admin
+sees "Blocked a link to …" in the status line and the game keeps running.
+Three choices there are load-bearing:
+
+- **CDP `Fetch`, not `page.route()`.** Playwright disables the HTTP cache while
+  any route is active, so the game would re-download every asset each session.
+  `Fetch` is scoped to `Document` requests, so assets and API calls never pause.
+- **Failed as `Aborted`.** `net::ERR_ABORTED` is the one failure Chromium does
+  not answer with an error page; any other reason would replace the game with
+  "This page has been blocked".
+- **Main frame only.** Iframes the game embeds may load from other hosts by
+  design; they're part of a totalbattle.com page.
+
+A `framenavigated` backstop in `login-bridge.ts` sends the page back to the game
+and warns if an off-site page ever commits anyway. That would mean the guard has
+a gap, and it should never fire.
+
 Server: [`src/web/login-bridge.ts`](../src/web/login-bridge.ts) plus the modules
 under [`src/web/login-bridge/`](../src/web/login-bridge/).
 Client: [`src/web/public/lib/login-bridge.js`](../src/web/public/lib/login-bridge.js).

@@ -22,6 +22,7 @@ const game_timezone_js_1 = require("../config/game-timezone.js");
 const xvfb_js_1 = require("./login-bridge/xvfb.js");
 const relay_js_1 = require("./login-bridge/relay.js");
 const screencast_js_1 = require("./login-bridge/screencast.js");
+const nav_guard_js_1 = require("./login-bridge/nav-guard.js");
 const deadline_js_1 = require("../utils/deadline.js");
 const link_quality_js_1 = require("./login-bridge/link-quality.js");
 const rtt_js_1 = require("./login-bridge/rtt.js");
@@ -95,10 +96,13 @@ const BROWSER_LAUNCH_TIMEOUT_MS = 90_000;
 //   STORAGE_STATE_TIMEOUT_MS  — reading cookies out for the save. Longer than
 //                               the probe because it serialises the whole
 //                               profile's cookie jar.
+//   NAV_GUARD_TIMEOUT_MS      — opening the navigation guard's CDP session and
+//                               enabling interception: three round trips.
 const TEARDOWN_STEP_TIMEOUT_MS = 5_000;
 const CONTEXT_CLOSE_TIMEOUT_MS = 15_000;
 const LIVENESS_PROBE_TIMEOUT_MS = 10_000;
 const STORAGE_STATE_TIMEOUT_MS = 20_000;
+const NAV_GUARD_TIMEOUT_MS = 10_000;
 // Adaptive streaming. Every window we compare frames sent against frames
 // dropped to backpressure and move at most one rung on the quality ladder.
 // 2s is long enough to be a real sample at any framerate and short enough that
@@ -382,6 +386,14 @@ class LoginBridge {
                 // unused capture above; harmless in production.
                 void originalOpen;
             });
+            // Keep the page the admins see on totalbattle.com — see nav-guard.ts.
+            // It gets a CDP session of its own for the page's whole life; the
+            // screencast's session is per-attach and goes away on every reconnect,
+            // and interception would go with it.
+            await (0, deadline_js_1.withDeadline)(async () => {
+                const guardCdp = await context.newCDPSession(page);
+                await (0, nav_guard_js_1.installNavigationGuard)(guardCdp, (url) => this.send({ kind: 'blocked', host: (0, nav_guard_js_1.hostOf)(url) }));
+            }, NAV_GUARD_TIMEOUT_MS, 'installing the navigation guard');
             await page.goto(gameUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch((err) => {
                 // A slow game load is routine and stays at debug. The browser
                 // vanishing mid-navigation is not — say so, because the liveness gate
@@ -422,7 +434,17 @@ class LoginBridge {
             page.on('framenavigated', (frame) => {
                 if (frame !== this.page?.mainFrame())
                     return;
-                this.send({ kind: 'url', url: frame.url() });
+                const url = frame.url();
+                this.send({ kind: 'url', url });
+                // Backstop for the navigation guard, which refuses an off-site load
+                // before it starts — so this should never fire. If it does, the guard
+                // has a gap and the game is already gone from the page: say so, and
+                // put the game back rather than leave the shared account on the web.
+                if (!(0, nav_guard_js_1.isAllowedTopLevelUrl)(url)) {
+                    log.warn(`Login bridge page reached ${(0, nav_guard_js_1.hostOf)(url)} past the navigation guard; returning to the game.`);
+                    this.send({ kind: 'blocked', host: (0, nav_guard_js_1.hostOf)(url) });
+                    void page.goto(gameUrl, { waitUntil: 'domcontentloaded' }).catch(() => { });
+                }
             });
             // Absolute cap: even a client that stays connected gets cut off so a
             // forgotten tab can't screencast the live game indefinitely.
@@ -743,7 +765,7 @@ class LoginBridge {
             await (0, deadline_js_1.settleWithDeadline)(cdp.detach(), TEARDOWN_STEP_TIMEOUT_MS, 'detaching the CDP session');
         }
     }
-    /** Control messages (ready / url / fatal) go as JSON text frames. */
+    /** Control messages (ready / url / quality / blocked / fatal) go as JSON text frames. */
     send(payload) {
         const sock = this.socket;
         if (!sock || sock.readyState !== 1)
