@@ -3,8 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SETUP_MODE_ASSETS = void 0;
 /**
  * The static files the setup wizard (/setup) is allowed to fetch before the
- * operator has an account — the pre-auth counterpart of PUBLIC_SHARE_ASSETS,
- * and it fails the same way.
+ * operator has an account. (Normal mode no longer needs a list like this: it
+ * serves every static file publicly — see ./frontend-assets.ts.)
  *
  * In setup mode the app serves these explicitly; everything else under
  * src/web/public sits behind requireAuth, whose rejection is a redirect. For a

@@ -13,9 +13,9 @@ import { createClansRouter } from './routes/clans.js';
 import { createSetupRouter, isSetupFlowActive } from './routes/setup.js';
 import { createExternalRouter } from './routes/external.js';
 import { createPublicShareApiRouter, publicShareTokenHandler } from './routes/public-share.js';
-import { PUBLIC_SHARE_ASSETS } from './public-share-assets.js';
 import { SETUP_MODE_ASSETS } from './setup-mode-assets.js';
 import { versionHtmlAssets } from './asset-versioning.js';
+import { createFrontendAssetRouter } from './frontend-assets.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
 import { createGuardsRouter } from './routes/guards.js';
@@ -421,19 +421,11 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   app.get('/login', (_req, res) => {
     sendHtml(res, 'login.html');
   });
-  app.get(['/login.js', '/v/:buildVersion/login.js'], (_req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'login.js'));
-  });
-  app.get(['/login.css', '/v/:buildVersion/login.css'], (_req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'login.css'));
-  });
 
-  // Shared base stylesheet (theme tokens + reset + shared components).
-  // Public and registered ahead of the authenticated static handler so
-  // every page resolves it here: login, public-share, and the app itself.
-  app.get(['/base.css', '/v/:buildVersion/base.css'], (_req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'base.css'));
-  });
+  // Every script, stylesheet and image the pages load, to anyone. Never put
+  // one behind requireAuth: Cloudflare stores the redirect against the asset
+  // URL whatever our headers say — see ./frontend-assets.ts for the outage.
+  app.use(createFrontendAssetRouter(PUBLIC_DIR, path.resolve('assets')));
 
   // robots.txt — disallow the public-share API namespace. The /<token>
   // page itself is short-form and unenumerable, so it relies on the
@@ -459,35 +451,6 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
       fingerprint: BUILD_INFO.fingerprint,
     });
   });
-
-  // Static assets used by the public-share page. Served unauthenticated so a
-  // viewer with the token URL can load the JS/CSS without bumping into
-  // requireAuth. The HTML itself is served by publicShareTokenHandler.
-  // The list lives in ./public-share-assets.ts so a guard test can compare it
-  // against public-share.js's real import graph — see the note there for why
-  // an omission is invisible until an anonymous visitor hits it.
-  for (const asset of PUBLIC_SHARE_ASSETS) {
-    // Accept both bare paths (for any old URL the browser may have
-    // cached) and the new `/v/<hash>/<asset>` paths the HTML rewrite
-    // produces. The /v/ form gets immutable+long max-age; the bare
-    // form keeps no-store as before.
-    app.get([`/${asset}`, `/v/:buildVersion/${asset}`], (req, res) => {
-      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-      const isVersioned = typeof req.params.buildVersion === 'string';
-      if (isVersioned) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      } else {
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-      }
-      res.sendFile(path.join(PUBLIC_DIR, asset), {
-        cacheControl: false,
-        lastModified: false,
-        etag: false,
-      });
-    });
-  }
 
   // Disable caching on all API responses. The dashboard reads stats and
   // tables that change frequently; a stale cached response makes it look
@@ -516,8 +479,8 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // an admin-chosen vanity key) and aren't in RESERVED_SHARE_KEYS; everything
   // else falls through to the rest of the routing table. Must be registered
   // *before* requireAuth so anonymous visitors with the URL don't get
-  // redirected to /login — and *after* /login, /base.css and the public-share
-  // assets, which is why those names are reserved against vanity keys.
+  // redirected to /login — and *after* /login and the frontend asset router,
+  // which is why those names are reserved against vanity keys.
   app.use(publicShareTokenHandler);
 
   // Auth API (login/logout - partially public)
@@ -565,70 +528,10 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // entering a member's level) guards with requireAdmin inside the router.
   app.use('/api/guards', requireAuth, requireClanContext, createGuardsRouter());
 
-  // Serve shipped resource icon PNGs for the resource history page.
+  // The rest of assets/ (OCR models, reference crops) stays behind a session —
+  // nothing a page loads lives there. resource-icons/ and calibration-examples/
+  // are served publicly by the frontend asset router above.
   app.use('/assets', requireAuth, express.static(path.resolve('assets'), { maxAge: '86400000' }));
-
-  // Chart.js from the dependency that is already installed, rather than a CDN.
-  //
-  // It was loaded from jsdelivr, which makes a self-hosted tool depend on a
-  // third party being up and on whatever that third party serves — and would
-  // force the CSP above to allow an external script origin. It is in
-  // package.json and therefore in the image; serve it from there.
-  app.get(['/vendor/chart.umd.js', '/v/:buildVersion/vendor/chart.umd.js'], requireAuth, (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.type('application/javascript');
-    res.sendFile(path.resolve('node_modules/chart.js/dist/chart.umd.js'));
-  });
-
-  // Versioned static asset router. The HTML rewrite in
-  // readHtmlWithVersion() prefixes every <script src> with
-  // `/v/<BUILD_VERSION>/...`. Strip the prefix here, then let
-  // express.static serve the underlying file.
-  //
-  // Why this exists: any cache layer between us and the browser
-  // (Cloudflare in our case) might cache `/lib/ui.js` aggressively
-  // and ignore Cache-Control + purge requests. Versioned URLs side-
-  // step that entirely — `/v/abc/lib/ui.js` and `/v/def/lib/ui.js`
-  // are different URLs that no shared cache key can collide on.
-  //
-  // Setting cache headers to `immutable` is intentional: the URL is
-  // unique-per-build by construction, so a cached `/v/abc/lib/ui.js`
-  // is always correct (the build hash never changes within one
-  // image). max-age 1 year + immutable lets browsers and CDNs
-  // aggressively reuse the response, which is what we want once the
-  // URL is content-versioned.
-  app.use('/v/:buildVersion', requireAuth, (req, res, next) => {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    next();
-  }, express.static(PUBLIC_DIR, { index: false }));
-
-  // Plain (un-versioned) static files. Kept for backwards-compat with
-  // any URL the browser may have cached pre-version-prefix, and for
-  // dev convenience when poking at the server with `curl /style.css`
-  // directly. Same no-store treatment as before.
-  // Set index: false so express.static doesn't short-circuit and serve the
-  // raw index.html on "/" - we need the SPA fallback to run sendHtml() which
-  // injects cache-busting version strings on asset references.
-  app.use(requireAuth, express.static(PUBLIC_DIR, {
-    index: false,
-    setHeaders: (res, filepath) => {
-      // HTML always no-store — that's what triggers the SPA fallback's
-      // ?v=BUILD_VERSION rewrite on the script src in index.html.
-      //
-      // JS / CSS also no-store. The HTML's cache-bust on `<script
-      // src="/app.js">` only versions the entry point; ES module
-      // `import` statements inside app.js refer to plain paths like
-      // `./lib/ui.js` with no version param, so the browser would
-      // happily serve a stale cached copy — and break with a "module
-      // does not provide an export named X" error if any new exports
-      // were added since the cached fetch. Matching HTML's no-store on
-      // JS/CSS costs a few extra KB per page load and is correct in
-      // all cases.
-      if (filepath.endsWith('.html') || filepath.endsWith('.js') || filepath.endsWith('.css')) {
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-      }
-    },
-  }));
 
   // SPA fallback - protected. Serves a freshly-rewritten index.html with
   // ?v=BUILD_VERSION on JS/CSS references.

@@ -116,10 +116,12 @@ export function resolveActiveClanId(user: User, sessionActiveClanId: number | nu
  * deployed. The origin was correct the whole time; the edge was still
  * answering for it, and no amount of redeploying could change that.
  *
- * Path-versioned asset URLs (see ../asset-versioning.ts) are the other half
- * of the defence — they make a deploy ask for URLs no cache has seen. This
- * half makes sure the mistake is never storable in the first place, so the
- * next allowlist gap costs one broken page load rather than a TTL.
+ * These headers do NOT stop Cloudflare, though. Its rules cache by extension
+ * and override the origin: a probe in Oct 2026 got this exact `302` back as
+ * `cf-cache-status: HIT` for ~22 hours. They still keep browsers and any other
+ * cache honest, but the real defence is never answering an asset URL with a
+ * rejection at all — which is why static files are public
+ * (../frontend-assets.ts) and path-versioned (../asset-versioning.ts).
  */
 export function denyCaching(res: Response): void {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');

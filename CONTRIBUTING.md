@@ -41,13 +41,20 @@ and none of its imports — and some CDNs key on path alone regardless. This has
 caused a real multi-hour outage; `tests/config/public-share-assets.test.ts`
 pins it.
 
+**3. Never put a static file behind a login.** Scripts, stylesheets and images
+are served to anyone by `src/web/frontend-assets.ts`; the login boundary is
+`/api` and the HTML pages. The CDN in front of production stores whatever an
+asset URL answers, so a "please log in" redirect cached against `app.js` blanks
+the app for everyone routed through that location for most of a day.
+`tests/web/security/frontend-assets.test.ts` pins it.
+
 ## The guard tests
 
 `tests/config/` holds pure tests that `npm run build` runs before compiling.
 They exist because this codebase has a recurring failure shape: **configuration
 that silently resolves to nothing**, which looks exactly like a real result of
 zero. Each guard pins one such surface — catalog chest names against the name
-corrector, the asset allowlists against the real import graphs, the calibration
+corrector, the setup wizard's asset allowlist against its real import graph, the calibration
 checklist against the gate that blocks scanning.
 
 If you add configuration that is keyed by a name, a path or a list, add the
