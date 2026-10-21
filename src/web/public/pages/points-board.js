@@ -31,6 +31,14 @@ const state = {
 let root = null;
 let canEdit = false;
 
+// Edits live in this module until saved, so a reload or closing the tab would
+// drop them silently — ask first, the way an unsaved form does.
+window.addEventListener('beforeunload', (e) => {
+  if (state.dirty.size === 0) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 const fmt = (n) => Number(n || 0).toLocaleString();
 const signed = (n) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `−${fmt(-n)}` : '±0');
 const plural = (n, one, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
@@ -111,6 +119,16 @@ function shellHtml() {
 // ─── Rendering ───
 
 function render() {
+  // Recalculate only ever has work when records are out of date — say so on
+  // the button rather than letting it look like the step that applies a save.
+  const recalc = root.querySelector('[data-pb="recalc"]');
+  if (recalc) {
+    const stale = state.board.staleRecords;
+    recalc.textContent = stale > 0 ? `Recalculate ${fmt(stale)} out of date` : 'Recalculate';
+    recalc.title = stale > 0
+      ? 'Bring stored chest records that no longer match their source value back in line'
+      : 'Every stored chest record already matches — nothing to recalculate';
+  }
   const body = root.querySelector('.pb-body');
   const focusKey = document.activeElement?.closest?.('.pb-board') ? document.activeElement.dataset.pbKey : null;
   body.innerHTML = `
@@ -137,10 +155,10 @@ function statusHtml() {
       : '<span>✓ every source has a value</span>',
     b.staleRecords > 0
       ? `<span class="pb-flag">⟳ ${plural(b.staleRecords, 'record')} out of date${canEdit ? ' — Recalculate fixes it' : ''}</span>`
-      : '<span>✓ all records up to date</span>',
+      : '<span>✓ all stored records match these values</span>',
   ];
   return `
-    <p class="muted-copy pb-intro">One <strong>global</strong> table: what each chest source is worth, for every clan. Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.${canEdit ? '' : ' <strong>Read-only</strong> — only a superadmin can change values.'}</p>
+    <p class="muted-copy pb-intro">One <strong>global</strong> table: what each chest source is worth, for every clan. Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.${canEdit ? ' Saving a value also updates every chest already recorded from that source, so a save never needs a Recalculate.' : ' <strong>Read-only</strong> — only a superadmin can change values.'}</p>
     <div class="pb-status">${parts.join('<span class="pb-dot" aria-hidden="true">·</span>')}</div>
   `;
 }
@@ -217,7 +235,7 @@ function valueControl(sourceKey, chestName, value, label) {
         aria-label="Points for ${esc(label)}">
       <span class="pb-unit" aria-hidden="true">pts</span>
     </label>
-    ${edited ? `<span class="pb-was">was ${fmt(value)}</span>` : ''}
+    ${edited ? `<span class="pb-was">not saved · was ${fmt(value)}</span>` : ''}
   `;
 }
 
@@ -318,7 +336,7 @@ function updateEditChrome(input) {
     control.appendChild(was);
   }
   if (was) {
-    if (edited) was.textContent = `was ${fmt(currentValue(input.dataset.sourceKey, input.dataset.chestName))}`;
+    if (edited) was.textContent = `not saved · was ${fmt(currentValue(input.dataset.sourceKey, input.dataset.chestName))}`;
     else was.remove();
   }
   const row = input.closest('.pb-row');
@@ -553,7 +571,7 @@ function reviewAndSave() {
       html: impactHtml(preview.impact, {
         edits: preview.edits,
         intro: preview.impact.records > 0
-          ? 'Every stored chest record of these sources is updated to match, in every clan.'
+          ? 'Saving updates these stored chest records right away, in every clan — there is nothing to Recalculate afterwards.'
           : 'No stored chest record changes — this only affects chests scanned from now on.',
       }),
       confirmLabel: 'Save changes',
@@ -573,11 +591,19 @@ function reviewAndSave() {
 }
 
 function recalculate() {
+  // Recalculate works from SAVED values only; with edits still pending it
+  // would report "nothing to do" and read as if the edits had been applied.
+  if (state.dirty.size > 0) {
+    return notify(
+      `You have ${plural(state.dirty.size, 'unsaved change')}. Recalculate only uses saved values — use Review & save first (saving updates the stored records itself).`,
+      'Save your changes first',
+    );
+  }
   return withBusy(async () => {
     const preview = await apiPost('/admin/source-points/recalculate', { dryRun: true });
     if (preview?.error) return notify(preview.error, 'Recalculate failed');
     if (preview.impact.records === 0) {
-      return notify('Every stored chest record already matches the current values.', 'Nothing to recalculate');
+      return notify('Every stored chest record already matches the current values — saves update records as they are made.', 'Nothing to recalculate');
     }
     const ok = await confirmImpact({
       title: 'Recalculate chest points?',
