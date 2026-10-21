@@ -366,7 +366,7 @@ function eventScheduleCardHtml(data) {
             <span class="arrow-sep">→</span>
             <div>
               <label for="scheduleActualDate">Actually starts</label>
-              <input type="date" id="scheduleActualDate" class="input">
+              <input type="date" id="scheduleActualDate" class="input" lang="sv">
             </div>
             <button class="btn btn-primary" data-action="save-schedule-correction">Save Correction</button>
           </div>

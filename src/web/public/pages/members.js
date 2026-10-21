@@ -445,7 +445,7 @@ function memberGuardsCardHtml(guards, memberId, isAdmin) {
         <label>Level <select class="input" name="level">
           ${[9, 8, 7, 6, 5, 4, 3, 2, 1].map((l) => `<option value="${l}"${s?.level === l ? ' selected' : ''}>G${l}</option>`).join('')}
         </select></label>
-        <label>On <input class="input" type="date" name="observedDate" value="${esc(guards.today || '')}" max="${esc(guards.today || '')}"></label>
+        <label>On <input class="input" type="date" name="observedDate" lang="sv" value="${esc(guards.today || '')}" max="${esc(guards.today || '')}"></label>
         <label class="guards-report-note">Note <input class="input" type="text" name="note" maxlength="200" placeholder="e.g. told us in clan chat"></label>
         <button class="btn btn-primary btn-tight" type="submit">Save</button>
       </form>` : ''}
