@@ -48,6 +48,7 @@ const eventRepo = __importStar(require("../../data/repositories/event-repo.js"))
 const gold_pass_repo_js_1 = require("../../data/repositories/gold-pass-repo.js");
 const event_catalog_js_1 = require("../../config/event-catalog.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
+const eventScheduleRepo = __importStar(require("../../data/repositories/event-schedule-repo.js"));
 const memberRepo = __importStar(require("../../data/repositories/member-repo.js"));
 const sessionRepo = __importStar(require("../../data/repositories/session-repo.js"));
 const mergeRepo = __importStar(require("../../data/repositories/merge-repo.js"));
@@ -2420,6 +2421,49 @@ function createApiRouter(scanLoop) {
             const removed = triumphalPointsRepo.deletePoints(chestName);
             reviewQueueRepo.invalidateReviewQueueCount();
             (0, user_repo_js_1.logAction)(req.user.id, 'delete_triumphal_points', { chestName, removed });
+            res.json({ ok: true, removed });
+        }
+        catch (err) {
+            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+        }
+    });
+    // ── Event Schedule Corrections ─────────────────────────────────────
+    // Global, superadmin-managed, like triumphal points: the calendar feed is
+    // one game-wide schedule, so a run it has wrong is wrong for every clan.
+    // Any admin may READ; only superadmins may change.
+    // GET /api/admin/event-schedule — feed runs per event + stored corrections.
+    router.get('/admin/event-schedule', auth_js_1.requireAdmin, async (_req, res) => {
+        try {
+            res.json(await (0, event_calendar_js_1.getScheduleCorrectionsView)());
+        }
+        catch (err) {
+            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+        }
+    });
+    // PUT /api/admin/event-schedule { eventKey, feedStart, actualDate }
+    router.put('/admin/event-schedule', auth_js_1.requireSuperAdmin, async (req, res) => {
+        const eventKey = String(req.body?.eventKey ?? '').trim();
+        const feedStart = String(req.body?.feedStart ?? '').trim();
+        const actualDate = String(req.body?.actualDate ?? '').trim();
+        try {
+            const result = await (0, event_calendar_js_1.saveScheduleCorrection)(eventKey, feedStart, actualDate, req.user.id);
+            if ('error' in result)
+                return res.status(400).json(result);
+            (0, user_repo_js_1.logAction)(req.user.id, 'set_event_schedule_correction', { eventKey, feedStart, actualDate });
+            res.json({ ok: true });
+        }
+        catch (err) {
+            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+        }
+    });
+    // DELETE /api/admin/event-schedule/:id — the feed's dates apply again.
+    router.delete('/admin/event-schedule/:id', auth_js_1.requireSuperAdmin, (req, res) => {
+        const id = Number.parseInt(String(req.params.id), 10);
+        if (!Number.isFinite(id))
+            return res.status(400).json({ error: 'Invalid id' });
+        try {
+            const removed = eventScheduleRepo.deleteCorrection(id);
+            (0, user_repo_js_1.logAction)(req.user.id, 'delete_event_schedule_correction', { id, removed });
             res.json({ ok: true, removed });
         }
         catch (err) {

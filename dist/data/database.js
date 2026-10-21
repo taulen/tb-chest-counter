@@ -707,6 +707,42 @@ const MIGRATIONS = [
         ON member_guards_reports(clan_id, member_id);
     `,
     },
+    {
+        // The event calendar stops being a pure pass-through of the tbclanportal
+        // feed (src/external/event-calendar.ts).
+        //
+        // event_calendar_runs is what the feed SAID, kept after it stops saying it.
+        // The feed is a rolling ~1-month window, and a run that ages out of it was
+        // previously re-projected from the event's cadence, which is only right while
+        // the game never moves anything. In Oct 2026 it moved the 24-day rotation
+        // (Dark Omens Oct 21 → Oct 15), and that projection would have put the run
+        // back on Oct 21 the moment it left the feed. Global, like the feed: one row
+        // per run the feed has shown as started, keyed by its start.
+        //
+        // event_schedule_corrections is the hand fix for a feed that is behind the
+        // game: tbclanportal still listed the Oct 2026 Olympus on Oct 30 when it ran
+        // Oct 24, and every public calendar copied it. A row moves ONE feed run, and
+        // only while the feed still lists a run at feed_start_at — so it falls inert
+        // by itself once the portal corrects its own feed.
+        version: 76,
+        sql: `
+      CREATE TABLE IF NOT EXISTS event_calendar_runs (
+        event_key TEXT NOT NULL,
+        start_at TEXT NOT NULL,
+        end_at TEXT NOT NULL,
+        PRIMARY KEY (event_key, start_at)
+      );
+      CREATE TABLE IF NOT EXISTS event_schedule_corrections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_key TEXT NOT NULL,
+        feed_start_at TEXT NOT NULL,
+        actual_start_at TEXT NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (event_key, feed_start_at)
+      );
+    `,
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

@@ -53,6 +53,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   users: [
     'audit_log.user_id',
     'clans.created_by',
+    'event_schedule_corrections.created_by',
     'member_guards_reports.created_by',
     'resource_upload_batches.uploaded_by',
     'share_links.created_by',

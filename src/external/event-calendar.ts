@@ -36,6 +36,11 @@
  * (Citadels, which is 24/7 ongoing) has no occurrences and keeps the page's
  * fixed Weekly/Monthly selector.
  *
+ * The feed is not the last word on a run's dates. It forgets runs after about
+ * a month (so seen runs are archived), and it lags the game when the game moves
+ * its rotation (so a superadmin can correct a run) — see `backfilledGroups` and
+ * `applyCorrections`.
+ *
  * Scan-time caveat: captured_at is the scan/claim time, not the in-game earn
  * time, so an occurrence's upper bound is extended to the first completed scan
  * after its reset (see getFirstCompletedAtOrAfter) to catch chests claimed just
@@ -46,6 +51,13 @@ import { childLogger } from '../utils/logger.js';
 import { EVENT_CATALOG, getEventDef } from '../config/event-catalog.js';
 import { getFirstCompletedAtOrAfter } from '../data/repositories/session-repo.js';
 import { getEventDataStart } from '../data/repositories/event-repo.js';
+import {
+  listArchivedRuns,
+  listCorrections,
+  setCorrection,
+  syncArchivedRuns,
+  type CalendarRun,
+} from '../data/repositories/event-schedule-repo.js';
 
 const log = childLogger('event-calendar');
 
@@ -167,11 +179,23 @@ function parseIcsUtc(v: string): number | null {
   return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
 }
 
-function parseVevents(text: string): VEvent[] {
+/** One parsed feed: the tracked VEVENTs, and how far back the feed reaches. */
+interface Feed {
+  events: VEvent[];
+  /**
+   * Earliest DTSTART of ANY VEVENT, tracked or not — where the feed's rolling
+   * window begins. Before it, the feed's silence about a run means nothing; at
+   * or after it, it means the run isn't (or is no longer) scheduled.
+   */
+  horizon: number | null;
+}
+
+function parseVevents(text: string): Feed {
   // Unfold RFC-5545 continuation lines (a CRLF/LF followed by space or tab).
   const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
   const lines = unfolded.split(/\r\n|\n|\r/);
   const out: VEvent[] = [];
+  let horizon: number | null = null;
   // Every "(Day i/n)" row seen, for the missing-day audit below.
   const declared: DeclaredDay[] = [];
   let inEvent = false;
@@ -189,6 +213,7 @@ function parseVevents(text: string): VEvent[] {
         const key = keyForSummary(summary);
         const start = parseIcsUtc(dtstart);
         const end = parseIcsUtc(dtend);
+        if (start !== null && (horizon === null || start < horizon)) horizon = start;
         if (key && start !== null && end !== null && end > start) {
           const span = declaredRunSpan(summary, start, end);
           if (span.declared) declared.push({ ...span.declared, key });
@@ -209,7 +234,7 @@ function parseVevents(text: string): VEvent[] {
     else if (name === 'DTEND') dtend = value;
   }
   warnOnMissingRunDays(declared);
-  return out;
+  return { events: out, horizon };
 }
 
 /**
@@ -243,7 +268,7 @@ function warnOnMissingRunDays(declared: DeclaredDay[]): void {
   }
 }
 
-async function fetchVevents(): Promise<VEvent[]> {
+async function fetchFeed(): Promise<Feed> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let text: string;
@@ -263,29 +288,103 @@ async function fetchVevents(): Promise<VEvent[]> {
 // In-process cache of the parsed feed (shared across clans). `inflight`
 // coalesces concurrent misses into one fetch; a fetch failure serves the last
 // good result when we have one, so a transient feed outage is invisible.
-let cache: { expires: number; events: VEvent[] } | null = null;
-let inflight: Promise<VEvent[]> | null = null;
+let cache: { expires: number; feed: Feed } | null = null;
+let inflight: Promise<Feed> | null = null;
 
-async function getVevents(): Promise<VEvent[]> {
+async function getFeed(): Promise<Feed> {
   const now = Date.now();
-  if (cache && cache.expires > now) return cache.events;
+  if (cache && cache.expires > now) return cache.feed;
   if (inflight) return inflight;
-  inflight = fetchVevents()
-    .then((events) => {
-      cache = { events, expires: Date.now() + TTL_MS };
-      log.info(`Loaded ${events.length} tracked calendar VEVENTs from ${FEED_URL}`);
-      return events;
+  inflight = fetchFeed()
+    .then((feed) => {
+      cache = { feed, expires: Date.now() + TTL_MS };
+      log.info(`Loaded ${feed.events.length} tracked calendar VEVENTs from ${FEED_URL}`);
+      archiveFeed(feed);
+      return feed;
     })
     .catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(`Event calendar fetch failed: ${msg}`);
-      if (cache) return cache.events; // serve stale rather than break the page
+      if (cache) return cache.feed; // serve stale rather than break the page
       throw err;
     })
     .finally(() => {
       inflight = null;
     });
   return inflight;
+}
+
+/**
+ * Fuse spans that touch or overlap into single runs, ascending. Shared by the
+ * feed's per-day VEVENTs, the archive merge and the corrections pass.
+ */
+function fuse(spans: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const groups: Array<{ start: number; end: number }> = [];
+  for (const s of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && s.start <= last.end) {
+      if (s.end > last.end) last.end = s.end;
+    } else {
+      groups.push({ start: s.start, end: s.end });
+    }
+  }
+  return groups;
+}
+
+/**
+ * Record every started run in this fetch (see `syncArchivedRuns`). Once per
+ * fetch, so at most every TTL. A failure costs nothing the feed doesn't still
+ * hold, so it is logged and swallowed rather than allowed to break the page.
+ */
+function archiveFeed(feed: Feed): void {
+  if (feed.horizon == null || !feed.events.length) return;
+  try {
+    const runs: CalendarRun[] = [];
+    for (const key of new Set(feed.events.map((e) => e.key))) {
+      for (const g of fuse(feed.events.filter((e) => e.key === key))) {
+        runs.push({ eventKey: key, start: g.start, end: g.end });
+      }
+    }
+    syncArchivedRuns(feed.horizon, Date.now(), runs);
+  } catch (err) {
+    log.warn(`Event calendar archive failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * An event's runs as the feed has given them: what it carries now, plus the
+ * archived runs from before its rolling window began. Corrections NOT applied.
+ */
+async function feedRunsFor(eventKey: string): Promise<Array<{ start: number; end: number }>> {
+  const feed = await getFeed();
+  const current = feed.events.filter((e) => e.key === eventKey);
+  const horizon = feed.horizon ?? Infinity;
+  const archived = listArchivedRuns(eventKey).filter((r) => r.start < horizon);
+  return fuse([...archived, ...current]);
+}
+
+/**
+ * Move each feed run an admin corrected (see `event_schedule_corrections`).
+ * A correction matches a run by its exact feed start, so once the portal fixes
+ * its own feed there is no run left at that start and the correction just stops
+ * applying — it never fights a feed that has caught up.
+ */
+function applyCorrections(
+  eventKey: string,
+  runs: Array<{ start: number; end: number }>,
+): Array<{ start: number; end: number }> {
+  const moves = new Map<number, number>();
+  for (const c of listCorrections()) {
+    if (c.eventKey === eventKey) moves.set(Date.parse(c.feedStartAt), Date.parse(c.actualStartAt));
+  }
+  if (!moves.size) return runs;
+  return fuse(
+    runs.map((r) => {
+      const to = moves.get(r.start);
+      return to === undefined ? r : { start: to, end: to + (r.end - r.start) };
+    }),
+  );
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -304,22 +403,10 @@ function labelFor(startMs: number, endMs: number): string {
   return `${MONTHS[am]} ${ad} – ${MONTHS[bm]} ${bd}`;
 }
 
-// Fuse an event's consecutive VEVENTs (touching/overlapping in time) into
-// occurrence spans, ascending. Shared by the occurrence list and the schedule.
+// An event's occurrence spans, ascending: feed + archive, with admin
+// corrections applied. Shared by the occurrence list and the schedule.
 async function groupsFor(eventKey: string): Promise<Array<{ start: number; end: number }>> {
-  const events = (await getVevents()).filter((e) => e.key === eventKey);
-  if (!events.length) return [];
-  events.sort((a, b) => a.start - b.start);
-  const groups: Array<{ start: number; end: number }> = [];
-  for (const ev of events) {
-    const last = groups[groups.length - 1];
-    if (last && ev.start <= last.end) {
-      if (ev.end > last.end) last.end = ev.end;
-    } else {
-      groups.push({ start: ev.start, end: ev.end });
-    }
-  }
-  return groups;
+  return applyCorrections(eventKey, await feedRunsFor(eventKey));
 }
 
 // A rolling cycle is infinite backwards, so the list is floored at the clan's
@@ -342,13 +429,22 @@ interface Span {
  * the Events page's "older" arrow stop dead after a step or two while "All
  * time" kept showing the clan's full history.
  *
- * Every tracked event in the feed is strictly periodic — 6, 12 or 24 days, with
- * zero exceptions across 374 VEVENTs spanning four months — so runs that have
- * aged out are reconstructed by stepping that period back from the feed's
- * earliest run. Two guards keep that from inventing history:
+ * Two things now stand in front of that reconstruction:
  *
- *  - the period must be PROVEN by the feed (three runs, identical gaps); an
- *    event with an irregular or unknown cadence is left exactly as it was, and
+ *  - the ARCHIVE (event_calendar_runs, v76) keeps every run the feed has shown,
+ *    so from v76 onwards an aged-out run keeps the dates it really had, and
+ *  - admin CORRECTIONS (event_schedule_corrections) move a run the feed has
+ *    wrong — the feed lags the game when the game moves its rotation, as it did
+ *    in Oct 2026.
+ *
+ * Only runs older than both are reconstructed. Every tracked event was strictly
+ * periodic through Sep 2026 — 6, 12 or 24 days, zero exceptions across 374
+ * VEVENTs spanning four months — so those are stepped back by that period from
+ * the earliest run on the cadence. Two guards keep that from inventing history:
+ *
+ *  - the period must be PROVEN by the runs (the most common gap, seen at least
+ *    twice and outnumbering every other); an event with an irregular or unknown
+ *    cadence is left exactly as it was, and
  *  - the walk stops at the clan's oldest chest for the event, so an event the
  *    game introduced last month can't grow runs from before it existed.
  *
@@ -358,21 +454,28 @@ interface Span {
 const MAX_BACKFILL_WINDOWS = 60;
 
 /**
- * The event's run-to-run period, in ms — but only when the feed proves it:
- * three runs whose gaps are all identical. Anything less regular returns null
- * and gets no backfill.
+ * The event's run-to-run period, in ms — but only when the runs prove it: the
+ * most common gap, seen at least twice and strictly more often than any other.
+ * Anything less regular returns null and gets no backfill.
+ *
+ * Not "every gap identical": the game does move single runs (Dark Omens'
+ * Oct 2026 run came 6 days early, turning its gaps into 18, 30, 24, 24), and
+ * the all-identical rule answered one moved run by dropping every
+ * reconstructed run of the event's history from the page.
  */
 function inferPeriodMs(groups: Array<{ start: number; end: number }>): number | null {
-  if (groups.length < 3) return null;
-  const period = groups[1].start - groups[0].start;
-  if (!(period > 0)) return null;
-  for (let i = 1; i < groups.length - 1; i++) {
-    if (groups[i + 1].start - groups[i].start !== period) return null;
+  const counts = new Map<number, number>();
+  for (let i = 0; i < groups.length - 1; i++) {
+    const gap = groups[i + 1].start - groups[i].start;
+    if (gap > 0) counts.set(gap, (counts.get(gap) ?? 0) + 1);
   }
-  return period;
+  const ranked = [...counts].sort((a, b) => b[1] - a[1]);
+  if (!ranked.length || ranked[0][1] < 2) return null;
+  if (ranked.length > 1 && ranked[1][1] === ranked[0][1]) return null;
+  return ranked[0][0];
 }
 
-/** Feed runs, preceded by the reconstructed ones the feed no longer carries. */
+/** Known runs, preceded by the reconstructed ones nothing records any more. */
 function backfilledGroups(
   groups: Array<{ start: number; end: number }>,
   eventKey: string,
@@ -385,6 +488,18 @@ function backfilledGroups(
   const floorMs = dataFloorMs(eventKey, clanId);
   const earliest = groups[0].start;
   if (floorMs >= earliest) return feed;
+  // Step back from the first run that sits ON the cadence (followed by a gap of
+  // exactly one period), not blindly from the earliest: when the earliest run
+  // is a moved one, stepping from it would shift every reconstructed run by the
+  // same few days. Projections that land on or after the earliest known run
+  // are skipped — the runs there are records, not guesses.
+  let anchor = earliest;
+  for (let i = 0; i < groups.length - 1; i++) {
+    if (groups[i + 1].start - groups[i].start === period) {
+      anchor = groups[i].start;
+      break;
+    }
+  }
   // A run the feed emitted with days missing is SHORT (the 2026-09-03 Dark
   // Omens arrived as its "(Day 1/2)" row alone), so size reconstructed windows
   // by the longest run seen rather than by the first one — and never longer
@@ -392,10 +507,11 @@ function backfilledGroups(
   const lenMs = Math.min(Math.max(...groups.map((g) => g.end - g.start)), period);
   const older: Span[] = [];
   for (
-    let start = earliest - period;
+    let start = anchor - period;
     start + period > floorMs && older.length < MAX_BACKFILL_WINDOWS;
     start -= period
   ) {
+    if (start + lenMs > earliest) continue;
     older.push({ start, end: start + lenMs, estimated: true });
   }
   older.reverse();
@@ -547,4 +663,132 @@ export async function getEventOccurrences(
       isCurrent: g.start <= now && now < g.end,
       estimated: g.estimated,
     }));
+}
+
+// ── Schedule corrections (superadmin) ───────────────────────────────
+
+/** How far back a correctable run may lie — enough to fix a run just missed. */
+const CORRECTABLE_PAST_MS = 30 * DAY_MS;
+/** A correction moves a run within its own cycle, never into another one. */
+const MAX_CORRECTION_SHIFT_MS = 30 * DAY_MS;
+
+export interface ScheduleRunView {
+  /** ISO UTC start of the run as the FEED lists it — the correction key. */
+  feedStart: string;
+  feedLabel: string;
+  /** Where a correction moved it, or null when the feed's dates stand. */
+  correctedStart: string | null;
+  correctedLabel: string | null;
+  correctionId: number | null;
+}
+
+export interface ScheduleCorrectionView {
+  id: number;
+  eventKey: string;
+  eventName: string;
+  feedStart: string;
+  feedLabel: string;
+  actualStart: string;
+  actualLabel: string;
+  /**
+   * False once the feed no longer lists a run at feedStart — normally because
+   * the portal fixed its own feed. The row then does nothing and can go.
+   */
+  active: boolean;
+}
+
+/** Feed-scheduled events (the only ones a correction applies to). */
+function calendarEvents() {
+  return EVENT_CATALOG.filter((e) => !e.cycle && e.calendarNames?.length).sort(
+    (a, b) => a.order - b.order,
+  );
+}
+
+/**
+ * The Admin page's view: every feed-scheduled event's recent and upcoming runs
+ * as the feed lists them, and every stored correction with whether it still
+ * applies.
+ */
+export async function getScheduleCorrectionsView(): Promise<{
+  events: Array<{ key: string; name: string; runs: ScheduleRunView[] }>;
+  corrections: ScheduleCorrectionView[];
+}> {
+  const now = Date.now();
+  const corrections = listCorrections();
+  const events = [];
+  const runsByKey = new Map<string, Array<{ start: number; end: number }>>();
+  for (const def of calendarEvents()) {
+    const runs = await feedRunsFor(def.key);
+    runsByKey.set(def.key, runs);
+    events.push({
+      key: def.key,
+      name: def.name,
+      runs: runs
+        .filter((r) => r.end > now - CORRECTABLE_PAST_MS)
+        .map((r) => {
+          const c = corrections.find(
+            (x) => x.eventKey === def.key && Date.parse(x.feedStartAt) === r.start,
+          );
+          const to = c ? Date.parse(c.actualStartAt) : null;
+          return {
+            feedStart: new Date(r.start).toISOString(),
+            feedLabel: labelFor(r.start, r.end),
+            correctedStart: to == null ? null : new Date(to).toISOString(),
+            correctedLabel: to == null ? null : labelFor(to, to + (r.end - r.start)),
+            correctionId: c?.id ?? null,
+          };
+        }),
+    });
+  }
+  return {
+    events,
+    corrections: corrections.map((c) => {
+      const feedStart = Date.parse(c.feedStartAt);
+      const actualStart = Date.parse(c.actualStartAt);
+      const run = runsByKey.get(c.eventKey)?.find((r) => r.start === feedStart);
+      // An inert correction no longer has a run to take a length from; label
+      // its start day alone.
+      const len = run ? run.end - run.start : DAY_MS;
+      return {
+        id: c.id,
+        eventKey: c.eventKey,
+        eventName: getEventDef(c.eventKey)?.name ?? c.eventKey,
+        feedStart: c.feedStartAt,
+        feedLabel: labelFor(feedStart, feedStart + len),
+        actualStart: c.actualStartAt,
+        actualLabel: labelFor(actualStart, actualStart + len),
+        active: !!run,
+      };
+    }),
+  };
+}
+
+/**
+ * Validate and store a correction. `actualDate` is the game day the run really
+ * opens on (YYYY-MM-DD); runs always open at the 17:00 UTC reset, so that is
+ * the only instant a correction may name. Returns an error string for bad
+ * input instead of throwing, so the route can answer 400.
+ */
+export async function saveScheduleCorrection(
+  eventKey: string,
+  feedStart: string,
+  actualDate: string,
+  userId: number | null,
+): Promise<{ error: string } | { ok: true }> {
+  const def = getEventDef(eventKey);
+  if (!def || def.cycle || !def.calendarNames?.length) {
+    return { error: 'Not a calendar-scheduled event' };
+  }
+  const feedMs = Date.parse(feedStart);
+  const run = (await feedRunsFor(eventKey)).find((r) => r.start === feedMs);
+  if (!run) return { error: 'The feed has no run of this event starting then' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(actualDate)) return { error: 'Date must be YYYY-MM-DD' };
+  const actualMs = Date.parse(`${actualDate}T17:00:00.000Z`);
+  if (!Number.isFinite(actualMs)) return { error: 'Invalid date' };
+  if (actualMs === feedMs) return { error: 'That is already the feed’s date' };
+  if (Math.abs(actualMs - feedMs) > MAX_CORRECTION_SHIFT_MS) {
+    return { error: 'A correction can move a run by at most 30 days' };
+  }
+  setCorrection(eventKey, feedMs, actualMs, userId);
+  return { ok: true };
 }

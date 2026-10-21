@@ -366,6 +366,16 @@
   },
   {
     "type": "table",
+    "name": "event_calendar_runs",
+    "sql": "CREATE TABLE event_calendar_runs ( event_key TEXT NOT NULL, start_at TEXT NOT NULL, end_at TEXT NOT NULL, PRIMARY KEY (event_key, start_at) )"
+  },
+  {
+    "type": "table",
+    "name": "event_schedule_corrections",
+    "sql": "CREATE TABLE event_schedule_corrections ( id INTEGER PRIMARY KEY AUTOINCREMENT, event_key TEXT NOT NULL, feed_start_at TEXT NOT NULL, actual_start_at TEXT NOT NULL, created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL, UNIQUE (event_key, feed_start_at) )"
+  },
+  {
+    "type": "table",
     "name": "member_guards_reports",
     "sql": "CREATE TABLE member_guards_reports ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 9), observed_date TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL )"
   },

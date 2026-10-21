@@ -233,6 +233,7 @@ function deleteUser(id) {
         db.prepare('UPDATE share_links SET created_by = NULL WHERE created_by = ?').run(id);
         db.prepare('UPDATE share_links SET revoked_by = NULL WHERE revoked_by = ?').run(id);
         db.prepare('UPDATE member_guards_reports SET created_by = NULL WHERE created_by = ?').run(id);
+        db.prepare('UPDATE event_schedule_corrections SET created_by = NULL WHERE created_by = ?').run(id);
         // users.created_by is self-referential — other accounts this user made.
         db.prepare('UPDATE users SET created_by = NULL WHERE created_by = ?').run(id);
         db.prepare('DELETE FROM users WHERE id = ?').run(id);

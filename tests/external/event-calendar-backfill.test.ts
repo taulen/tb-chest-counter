@@ -16,6 +16,12 @@ vi.mock('../../src/data/repositories/session-repo.js', () => ({
 vi.mock('../../src/data/repositories/event-repo.js', () => ({
   getEventDataStart: vi.fn(() => null),
 }));
+vi.mock('../../src/data/repositories/event-schedule-repo.js', () => ({
+  listArchivedRuns: vi.fn(() => []),
+  listCorrections: vi.fn(() => []),
+  setCorrection: vi.fn(),
+  syncArchivedRuns: vi.fn(),
+}));
 
 import { getEventOccurrences, getEventSchedule } from '../../src/external/event-calendar.js';
 import { getFirstCompletedAtOrAfter } from '../../src/data/repositories/session-repo.js';
