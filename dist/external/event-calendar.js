@@ -590,7 +590,7 @@ function calendarEvents() {
     return event_catalog_js_1.EVENT_CATALOG.filter((e) => !e.cycle && e.calendarNames?.length).sort((a, b) => a.order - b.order);
 }
 /**
- * The Admin page's view: every feed-scheduled event's recent and upcoming runs
+ * The System page's view: every feed-scheduled event's recent and upcoming runs
  * as the feed lists them, and every stored correction with whether it still
  * applies.
  */

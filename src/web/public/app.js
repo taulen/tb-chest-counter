@@ -114,6 +114,8 @@ import {
   runClanRestore,
   restoreDeletedClan,
   refreshLogBuffer,
+  saveScheduleCorrection,
+  deleteScheduleCorrection,
 } from './pages/system.js';
 import {
   renderClans,
@@ -146,8 +148,6 @@ import {
   doMergeSource,
   saveAllSourcePoints,
   saveAllTriumphalPoints,
-  saveScheduleCorrection,
-  deleteScheduleCorrection,
   acknowledgeReviewQueue,
   reassignUnknownRow,
   reassignUnknownBulk,

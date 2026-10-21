@@ -2635,12 +2635,13 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
   });
 
   // ── Event Schedule Corrections ─────────────────────────────────────
-  // Global, superadmin-managed, like triumphal points: the calendar feed is
-  // one game-wide schedule, so a run it has wrong is wrong for every clan.
-  // Any admin may READ; only superadmins may change.
+  // Global and superadmin-only, read and write — it lives on the System page.
+  // The calendar feed is one game-wide schedule with no clan in it, so a
+  // correction is too: a run the feed has wrong is wrong for every clan, and
+  // fixing it here fixes it for all of them.
 
   // GET /api/admin/event-schedule — feed runs per event + stored corrections.
-  router.get('/admin/event-schedule', requireAdmin, async (_req, res) => {
+  router.get('/admin/event-schedule', requireSuperAdmin, async (_req, res) => {
     try {
       res.json(await getScheduleCorrectionsView());
     } catch (err) {

@@ -314,6 +314,100 @@ function isCalibrationCardInView() {
   return rect.top >= 0 && rect.top < window.innerHeight * 0.6;
 }
 
+// Event Schedule — corrections for runs the tbclanportal calendar feed has on
+// the wrong dates (it lags the game when the game moves its rotation). One
+// game-wide schedule, so a correction applies to every clan. `data` comes from
+// GET /admin/event-schedule: each feed-scheduled event's recent + upcoming runs
+// as the feed lists them, and the stored corrections with whether each still
+// applies.
+function eventScheduleCardHtml(data) {
+  if (!data || data.error) {
+    return `
+      <details class="card card-collapsible" data-section-key="event-schedule">
+        <summary class="card-header"><h2>Event Schedule</h2></summary>
+        <div class="card-body card-body-padded"><p class="muted-copy">The event calendar feed is unavailable right now.</p></div>
+      </details>
+    `;
+  }
+  const corrections = data.corrections || [];
+  const applied = corrections.filter((c) => c.active).length;
+  const events = (data.events || []).filter((e) => e.runs.length > 0);
+  const runOption = (e, r) => {
+    const moved = r.correctedLabel ? ` → corrected to ${r.correctedLabel}` : '';
+    return `<option value="${esc(`${e.key}|${r.feedStart}`)}">${esc(e.name)} — ${esc(r.feedLabel)}${esc(moved)}</option>`;
+  };
+  return `
+    <details class="card card-collapsible" data-section-key="event-schedule">
+      <summary class="card-header"><h2>Event Schedule <span class="muted-copy">${applied > 0 ? `· ${applied} correction${applied === 1 ? '' : 's'} applied` : '· calendar dates'}</span></h2></summary>
+      <div class="card-body card-body-padded">
+        <p class="muted-copy mb-12">Event dates come from the <strong>tbclanportal calendar</strong>, which can lag when the game moves an event. If a run is on the wrong dates, correct it here: chests are counted into the corrected window and the Events page shows the corrected dates. Corrections apply to <strong>every clan</strong>, and each one stops applying by itself once the calendar is fixed.</p>
+        ${corrections.length > 0 ? `
+          <table class="table-responsive">
+            <thead><tr><th>Event</th><th>Calendar says</th><th>Actually</th><th>Status</th><th class="col-actions"></th></tr></thead>
+            <tbody>
+              ${corrections.map((c) => `<tr>
+                <td data-label="Event" data-role="lead">${esc(c.eventName)}</td>
+                <td data-label="Calendar says" data-role="metric">${esc(c.feedLabel)}</td>
+                <td data-label="Actually" data-role="primary">${esc(c.actualLabel)}</td>
+                <td data-label="Status">${c.active ? 'Applied' : '<span class="muted-copy" title="The calendar no longer lists a run on the original date, most likely because it was fixed. This correction does nothing now.">Calendar caught up, safe to remove</span>'}</td>
+                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-schedule-correction" data-correction-id="${c.id}">Remove</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        ` : '<p class="muted-copy">No corrections. Every run uses the calendar\'s dates.</p>'}
+        ${events.length > 0 ? `
+          <div class="inline-form-row mt-16">
+            <div>
+              <label for="scheduleRun">Run (as the calendar lists it)</label>
+              <select id="scheduleRun" class="input">
+                ${events.map((e) => `<optgroup label="${esc(e.name)}">${e.runs.map((r) => runOption(e, r)).join('')}</optgroup>`).join('')}
+              </select>
+            </div>
+            <span class="arrow-sep">→</span>
+            <div>
+              <label for="scheduleActualDate">Actually starts</label>
+              <input type="date" id="scheduleActualDate" class="input">
+            </div>
+            <button class="btn btn-primary" data-action="save-schedule-correction">Save Correction</button>
+          </div>
+          <p class="muted-copy mt-8">Pick the first day of the run. Runs open at the daily reset (17:00 UTC) and keep their length.</p>
+        ` : ''}
+      </div>
+    </details>
+  `;
+}
+
+export async function saveScheduleCorrection(rerender) {
+  const run = $('#scheduleRun')?.value || '';
+  const actualDate = $('#scheduleActualDate')?.value || '';
+  const sep = run.indexOf('|');
+  if (sep < 0) return notify('Pick a run first.', 'Save failed');
+  if (!actualDate) return notify('Pick the date the run actually starts.', 'Save failed');
+  const result = await apiPut('/admin/event-schedule', {
+    eventKey: run.slice(0, sep),
+    feedStart: run.slice(sep + 1),
+    actualDate,
+  });
+  if (result?.error) return notify(result.error, 'Save failed');
+  const scrollY = window.scrollY;
+  if (typeof rerender === 'function') await rerender('system');
+  window.scrollTo(0, scrollY);
+  notify('Correction saved. It applies to every clan.', 'Saved');
+}
+
+export async function deleteScheduleCorrection(id, rerender) {
+  if (!id) return;
+  const ok = await confirmDialog('The run goes back to the calendar\'s dates for every clan.', {
+    title: 'Remove correction?', confirmLabel: 'Remove', danger: true,
+  });
+  if (!ok) return;
+  const result = await apiDelete(`/admin/event-schedule/${id}`);
+  if (result?.error) return notify(result.error, 'Remove failed');
+  const scrollY = window.scrollY;
+  if (typeof rerender === 'function') await rerender('system');
+  window.scrollTo(0, scrollY);
+}
+
 export async function renderSystem(el, options = {}) {
   if (getCurrentUser()?.role !== 'superadmin') {
     el.innerHTML = '<div class="empty-state"><p>Super admin access required.</p></div>';
@@ -338,9 +432,10 @@ export async function renderSystem(el, options = {}) {
   let scanHealth;
   let calibration;
   let status;
+  let eventSchedule;
   try {
     [settings, scannerSettings, backupsResp, deletedClansResp, logBufferResp, rawOcrCapture, mightSettings,
-     resourceCapture, scanHealth, calibration, status] = await Promise.all([
+     resourceCapture, scanHealth, calibration, status, eventSchedule] = await Promise.all([
       api('/admin/settings'),
       api('/admin/scanner-settings').catch(() => null),
       api('/admin/backups').catch(() => ({ backups: [] })),
@@ -358,6 +453,7 @@ export async function renderSystem(el, options = {}) {
       // checklist at the top of the page.
       api('/admin/calibration').catch(() => null),
       api('/status').catch(() => null),
+      api('/admin/event-schedule').catch(() => null),
     ]);
   } catch (err) {
     // A navigation aborted this load — don't paint an error over the
@@ -467,6 +563,8 @@ export async function renderSystem(el, options = {}) {
         </div>
       </div>
     </details>
+
+    ${eventScheduleCardHtml(eventSchedule)}
 
     <details class="card card-collapsible${calibrationOutstanding(calibration) ? ' card-attention' : ''}" id="calibrationCard" data-section-key="scanner-calibration"${calibrationOutstanding(calibration) ? ' open' : ''}>
       <summary class="card-header">

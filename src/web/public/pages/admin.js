@@ -45,7 +45,7 @@ export async function renderAdmin(el) {
   // Scanner / Discord / ChestTracker / scan-interval data lives on the
   // System and Clans tabs now — the Admin page only fetches what it
   // actually renders (per-clan content management).
-  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, sourcePoints, triumphalPoints, eventSchedule, members, memberChestCounts, stats, reviewQueue, unknownChests] = await Promise.all([
+  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, sourcePoints, triumphalPoints, members, memberChestCounts, stats, reviewQueue, unknownChests] = await Promise.all([
     api('/admin/merge-rules?type=player'),
     api('/admin/merge-rules?type=chest'),
     api('/admin/merge-rules?type=source'),
@@ -53,7 +53,6 @@ export async function renderAdmin(el) {
     api('/admin/unique-sources'),
     api('/admin/source-points'),
     api('/admin/triumphal-points'),
-    api('/admin/event-schedule'),
     api('/members?include=inactive'),
     api('/admin/member-chest-counts'),
     api('/stats'),
@@ -381,8 +380,6 @@ export async function renderAdmin(el) {
 
     ${renderTriumphalPointsSection(triumphalPoints, isSuperadmin)}
 
-    ${renderEventScheduleSection(eventSchedule, isSuperadmin)}
-
   `;
 
   // ChestTracker Integration is now per-clan on the Clans tab; the
@@ -607,98 +604,6 @@ export async function saveAllTriumphalPoints(rerender) {
   } else {
     notify(`Saved ${toSet.length + toDelete.length} change${toSet.length + toDelete.length === 1 ? '' : 's'}.`, 'Saved');
   }
-}
-
-// Event Schedule — global, superadmin-managed corrections for runs the
-// tbclanportal calendar feed has on the wrong dates (it lags the game when the
-// game moves its rotation). `data` comes from GET /admin/event-schedule: each
-// feed-scheduled event's recent + upcoming runs as the feed lists them, and the
-// stored corrections with whether each still applies.
-function renderEventScheduleSection(data, isSuperadmin) {
-  if (!data || data.error) {
-    return `
-      <div class="card">
-        <div class="card-header"><h2>Event Schedule</h2></div>
-        <div class="card-body card-body-padded"><p class="muted-copy">The event calendar feed is unavailable right now.</p></div>
-      </div>
-    `;
-  }
-  const corrections = data.corrections || [];
-  const events = (data.events || []).filter((e) => e.runs.length > 0);
-  const runOption = (e, r) => {
-    const moved = r.correctedLabel ? ` → corrected to ${r.correctedLabel}` : '';
-    return `<option value="${esc(`${e.key}|${r.feedStart}`)}">${esc(e.name)} — ${esc(r.feedLabel)}${esc(moved)}</option>`;
-  };
-  return `
-    <div class="card">
-      <div class="card-header"><h2>Event Schedule</h2></div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">Event dates come from the <strong>tbclanportal calendar</strong>, which can lag when the game moves an event. If a run is on the wrong dates, correct it here: chests are counted into the corrected window and the Events page shows the corrected dates. A correction stops applying by itself once the calendar is fixed. ${isSuperadmin ? 'Applies to every clan.' : '<strong>Read-only</strong>: only a superadmin can change corrections.'}</p>
-        ${corrections.length > 0 ? `
-          <table class="table-responsive">
-            <thead><tr><th>Event</th><th>Calendar says</th><th>Actually</th><th>Status</th>${isSuperadmin ? '<th class="col-actions"></th>' : ''}</tr></thead>
-            <tbody>
-              ${corrections.map((c) => `<tr>
-                <td data-label="Event" data-role="lead">${esc(c.eventName)}</td>
-                <td data-label="Calendar says" data-role="metric">${esc(c.feedLabel)}</td>
-                <td data-label="Actually" data-role="primary">${esc(c.actualLabel)}</td>
-                <td data-label="Status">${c.active ? 'Applied' : '<span class="muted-copy" title="The calendar no longer lists a run on the original date, most likely because it was fixed. This correction does nothing now.">Calendar caught up, safe to remove</span>'}</td>
-                ${isSuperadmin ? `<td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-schedule-correction" data-correction-id="${c.id}">Remove</button></td>` : ''}
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        ` : '<p class="muted-copy">No corrections. Every run uses the calendar\'s dates.</p>'}
-        ${isSuperadmin && events.length > 0 ? `
-          <div class="inline-form-row mt-16">
-            <div>
-              <label for="scheduleRun">Run (as the calendar lists it)</label>
-              <select id="scheduleRun" class="input">
-                ${events.map((e) => `<optgroup label="${esc(e.name)}">${e.runs.map((r) => runOption(e, r)).join('')}</optgroup>`).join('')}
-              </select>
-            </div>
-            <span class="arrow-sep">→</span>
-            <div>
-              <label for="scheduleActualDate">Actually starts</label>
-              <input type="date" id="scheduleActualDate" class="input">
-            </div>
-            <button class="btn btn-primary" data-action="save-schedule-correction">Save Correction</button>
-          </div>
-          <p class="muted-copy mt-8">Pick the first day of the run. Runs open at the daily reset (17:00 UTC) and keep their length.</p>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
-
-export async function saveScheduleCorrection(rerender) {
-  const run = $('#scheduleRun')?.value || '';
-  const actualDate = $('#scheduleActualDate')?.value || '';
-  const sep = run.indexOf('|');
-  if (sep < 0) return notify('Pick a run first.', 'Save failed');
-  if (!actualDate) return notify('Pick the date the run actually starts.', 'Save failed');
-  const result = await apiPut('/admin/event-schedule', {
-    eventKey: run.slice(0, sep),
-    feedStart: run.slice(sep + 1),
-    actualDate,
-  });
-  if (result?.error) return notify(result.error, 'Save failed');
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
-  window.scrollTo(0, scrollY);
-  notify('Correction saved.', 'Saved');
-}
-
-export async function deleteScheduleCorrection(id, rerender) {
-  if (!id) return;
-  const ok = await confirmDialog('The run goes back to the calendar\'s dates.', {
-    title: 'Remove correction?', confirmLabel: 'Remove', danger: true,
-  });
-  if (!ok) return;
-  const result = await apiDelete(`/admin/event-schedule/${id}`);
-  if (result?.error) return notify(result.error, 'Remove failed');
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
-  window.scrollTo(0, scrollY);
 }
 
 function renderReviewQueueSection(queue) {
