@@ -61,8 +61,8 @@ function start() {
   // under the label just clicked, or the tab the visitor left overwriting the
   // one they picked. The authenticated router guards the same way (navToken).
   let renderSeq = 0;
-  // Whether this browser has opened the FAQ before. Until it has, the board's
-  // FAQ button carries a "new" dot. One flag for every share link — the FAQ
+  // Whether this browser has opened the FAQ before. Until it has, the tab
+  // row's FAQ link carries a "new" dot. One flag for every share link — the FAQ
   // reads the same from all of them apart from the clan's names.
   const FAQ_SEEN_KEY = 'tbcc_faq_seen';
   let faqSeen = (() => {
@@ -189,12 +189,12 @@ function start() {
       // Public page can't link to member detail (no auth, no router) —
       // render plain text instead of the auth memberLink helper.
       playerCellHtml: (e) => esc(e.memberName),
-      actions: ACTIONS,
+      // No FAQ button on the card: the tab row's "FAQ & access" is always on
+      // screen, on either tab, and two of the same button read as a mistake.
+      actions: { ...ACTIONS, openFaq: null },
       showMight,
       showGuards,
       goalWeeklyPoints,
-      faqLabel: 'FAQ & access',
-      faqIsNew: !faqSeen,
     });
   }
 
@@ -202,7 +202,7 @@ function start() {
     if (!faqSeen) {
       faqSeen = true;
       try { localStorage.setItem(FAQ_SEEN_KEY, '1'); } catch { /* not remembered */ }
-      document.querySelectorAll('.leaderboard-faq-btn.is-new')
+      document.querySelectorAll('.public-share-nav-faq.is-new')
         .forEach((b) => b.classList.remove('is-new'));
     }
     openLeaderboardFaq({
@@ -358,6 +358,7 @@ function start() {
     if (ctEnabled) {
       document.getElementById('ctTab').classList.remove('is-hidden');
     }
+    if (!faqSeen) document.querySelector('.public-share-nav-faq')?.classList.add('is-new');
     wireEvents();
     renderCurrentTab();
     // Deep links an admin can hand out: /<key>#faq opens the FAQ, /<key>#join

@@ -63,6 +63,9 @@ function renderShareNotFound(): string {
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
   <meta name="referrer" content="no-referrer">
   <title>Link not found</title>
+  <!-- base.css first: it holds the theme tokens and the font every other
+       sheet reads. Without it this page rendered in browser defaults. -->
+  <link rel="stylesheet" href="/v/${BUILD_VERSION}/base.css">
   <link rel="stylesheet" href="/v/${BUILD_VERSION}/style.css">
   <link rel="stylesheet" href="/v/${BUILD_VERSION}/public-share.css">
 </head>

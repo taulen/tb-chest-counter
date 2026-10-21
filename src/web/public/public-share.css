@@ -2,8 +2,21 @@
   cursor: default;
 }
 
+/* Centred, like the tabs under it: a share page is one board, read
+   straight down the middle, with no app shell around it. */
+.public-share-header {
+  grid-template-columns: 1fr auto 1fr;
+}
 .public-share-header .brand {
   cursor: default;
+  grid-column: 2;
+  justify-self: center;
+}
+/* Phones: no room to centre beside the theme picker — name left, picker right. */
+@media (max-width: 640px) {
+  .public-share-header { grid-template-columns: 1fr auto; }
+  .public-share-header .brand { grid-column: 1; justify-self: start; }
+  .public-share-theme { grid-column: 2; }
 }
 
 /* Theme picker in the header's right-hand column (the brand owns the centre). */
@@ -17,11 +30,11 @@
   font-size: 12px;
 }
 
-/* Tabs start on the content column's edge, under the clan name. */
 .public-share-nav {
   display: flex;
+  justify-content: center;
   gap: 4px;
-  padding: 0 calc(var(--shell-gutter) - 18px);
+  padding: 0 16px;
   background: var(--bg-topbar);
   border-bottom: 1px solid var(--border);
 }
@@ -66,6 +79,21 @@
   border-bottom-color: var(--accent-gold-border);
 }
 .public-share-nav-faq svg { flex: none; }
+
+/* "Not opened yet" dot — the visitor's first open clears it (public-share.js),
+   so a newcomer's eye lands on the FAQ without it nagging anyone after. */
+.public-share-nav a.public-share-nav-faq { position: relative; }
+.public-share-nav-faq.is-new::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+  animation: faq-new-pulse 1.8s ease-out infinite;
+}
 
 /* Three items on a phone: tighten the padding, and below ~420px drop the
    "& access" half so the row never wraps or scrolls. */

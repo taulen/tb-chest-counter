@@ -5885,7 +5885,18 @@ table.faq-matrix { min-width: 460px; }
 }
 
 @media (max-width: 480px) {
-  .faq-tabs .resources-tab { padding: 6px 12px; }
+  /* Three equal tabs across the full width: a row that scrolls hides its
+     third tab off the edge with nothing to say it's there. */
+  .faq-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-self: stretch;
+  }
+  .faq-tabs .resources-tab {
+    padding: 6px 4px;
+    font-size: 12.5px;
+    text-align: center;
+  }
   .faq-steps > li { padding-left: 46px; }
   .faq-steps > li::before { left: 12px; }
 }
