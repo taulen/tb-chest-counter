@@ -1215,6 +1215,37 @@ function updateNavState() {
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('system')) navPage = 'system';
   $$('nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage));
+  updatePageHead(navPage);
+}
+
+// One line under each page's title. Kept to what the page is FOR — the page
+// itself carries the detail.
+const PAGE_SUBTITLES = {
+  dashboard: 'The clan at a glance',
+  analytics: 'Trends, breakdowns and who carries the clan',
+  leaderboard: 'Points and chests, ranked',
+  might: 'Power over time, member by member',
+  resources: 'Clan Capital donations',
+  events: 'Event runs and who took part',
+  triumphal: 'Bank gifts and triumphal packages',
+  members: 'Everyone in the clan',
+  sessions: 'Every scan the bot has run',
+  external: 'Imported from ChestTracker',
+  admin: 'Corrections, review and scoring',
+  users: 'Accounts and roles',
+  clans: 'Clans, Discord and sharing',
+  system: 'Scanner, warnings and backups',
+};
+
+/** The page title is the active nav entry's own label, so the two never disagree. */
+function updatePageHead(navPage) {
+  const link = $(`nav a[data-page="${navPage}"]`);
+  const title = link?.querySelector('.nav-label')?.textContent || '';
+  const titleEl = $('#pageTitle');
+  const subEl = $('#pageSubtitle');
+  if (titleEl) titleEl.textContent = title;
+  if (subEl) subEl.textContent = PAGE_SUBTITLES[navPage] || '';
+  if (title) document.title = `${title} · TB Chest Counter`;
 }
 
 // ─── Nav "needs attention" dots ───

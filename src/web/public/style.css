@@ -2,13 +2,28 @@
    base.css, which every page loads before this file. */
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-sans);
+  /* Inter's tighter alternates: the disambiguated "1" and the open digits
+     read better in the dense number columns this app is made of. */
+  font-feature-settings: 'cv01', 'cv09', 'ss03';
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* The header and tab row share one left edge with the content column, so a
+   bar reads as part of the page, not a strip above it. On body, not .topbar:
+   the public share page uses the same .header without the app shell. */
+body {
+  --shell-gutter: max(20px, calc((100% - var(--content-max)) / 2 + 20px));
+}
+
+/* Numbers line up in every column without each table asking for it. */
+td, th, .stat-card .value, .num {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Topbar (header + nav stick as one unit) ─── */
@@ -21,16 +36,26 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
+  background: var(--bg-topbar);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Frosted bar on desktop only: backdrop-filter makes .topbar the containing
+   block for position:fixed descendants, and the phone nav drawer is one. */
+@media (min-width: 641px) {
+  .topbar {
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    backdrop-filter: saturate(160%) blur(14px);
+  }
 }
 
 /* ─── Header ─── */
 .header {
-  background: var(--bg-header-grad);
-  border-bottom: 1px solid var(--border);
-  padding: 14px 20px;
+  padding: 12px var(--shell-gutter) 6px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto 1fr;
   align-items: center;
+  gap: 16px;
   /* Positioning context for the absolutely-positioned error panel
      (.status-error-details) so it floats relative to *this* element's
      bottom edge, not whichever ancestor happens to be positioned. */
@@ -38,8 +63,8 @@ body {
 }
 
 .brand {
-  grid-column: 2;
-  justify-self: center;
+  grid-column: 1;
+  justify-self: start;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -58,16 +83,17 @@ body {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .3));
 }
 
-.header h1 {
-  font-size: 18px;
+.header h1,
+.brand-name {
+  font-size: 16px;
   font-weight: 700;
-  color: var(--accent-gold);
-  letter-spacing: -0.3px;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .header-right {
-  grid-column: 3;
+  grid-column: 2;
   justify-self: end;
   display: flex;
   align-items: center;
@@ -407,21 +433,25 @@ body {
 
 /* ─── Navigation ─── */
 nav {
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
   display: flex;
-  gap: 0;
-  justify-content: center;
+  gap: 2px;
+  justify-content: flex-start;
+  /* Inset by the tab's own padding so the first tab's TEXT sits on the
+     content edge, under the brand. */
+  padding: 0 calc(var(--shell-gutter) - 12px);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+nav::-webkit-scrollbar { display: none; }
 
 nav a {
   color: var(--text-secondary);
   text-decoration: none;
-  padding: 11px 18px;
-  font-size: 13px;
+  padding: 10px 12px 11px;
+  font-size: 13.5px;
   font-weight: 500;
   border-bottom: 2px solid transparent;
-  transition: all var(--transition);
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
   white-space: nowrap;
   position: relative;
 }
@@ -576,11 +606,11 @@ nav a {
 
 nav a:hover {
   color: var(--text-primary);
-  background: var(--row-hover-overlay-strong);
 }
 
 nav a.active {
-  color: var(--accent-gold);
+  color: var(--text-primary);
+  font-weight: 600;
   border-bottom-color: var(--accent-gold);
 }
 
@@ -598,10 +628,13 @@ nav a.active {
 /* ─── Source Chart Card ─── */
 /* ─── Main Container ─── */
 .container {
-  max-width: 1200px;
+  max-width: var(--content-max);
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px 20px;
 }
+/* The onboarding banner's container sits right above the page's own. */
+.container:has(> #onboardingBanner.is-hidden) { padding: 0; }
+.container:has(> #onboardingBanner) { padding-bottom: 0; }
 
 /* ─── Onboarding banner ─── */
 /* Top-of-page strip surfaced by /api/status when calibration or member
@@ -655,11 +688,13 @@ nav a.active {
   border-radius: 2px;
   background: var(--border-light);
 }
+/* Done is green and the step to take is gold — gold being the one colour
+   in the app that means "act here". */
 .onboarding-pip.is-done {
-  background: var(--accent-gold);
+  background: var(--accent-green);
 }
 .onboarding-pip.is-next {
-  background: var(--accent-blue);
+  background: var(--accent-gold);
 }
 
 /* ─── Setup checklist (System page) ───
@@ -705,8 +740,8 @@ details.card-attention > .card-header {
   background: var(--bg-card);
 }
 .setup-checklist-step.is-next {
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 1px var(--accent-blue);
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 1px var(--accent-gold);
 }
 .setup-checklist-step.is-complete .setup-checklist-label {
   color: var(--text-secondary);
@@ -725,12 +760,12 @@ details.card-attention > .card-header {
   color: var(--text-secondary);
 }
 .setup-checklist-step.is-complete .setup-checklist-mark {
-  background: var(--accent-gold);
-  color: var(--text-on-gold);
+  background: var(--accent-green-bg-strong);
+  color: var(--accent-green);
 }
 .setup-checklist-step.is-next .setup-checklist-mark {
-  background: var(--accent-blue-solid);
-  color: var(--text-on-accent);
+  background: var(--accent-gold);
+  color: var(--text-on-gold);
 }
 .setup-checklist-label {
   flex: 1;
@@ -805,34 +840,31 @@ details.card-attention > .card-header {
   margin-bottom: 20px;
 }
 
+/* A KPI tile: quiet label, one big neutral number. The brand shows as a faint
+   gold wash at the top rather than a hard rule, so a row of five tiles reads
+   as one band of figures instead of five banners. */
 .stat-card {
-  background: var(--bg-card);
+  background: linear-gradient(180deg, var(--accent-gold-active-bg), transparent 70%), var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 18px;
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
   box-shadow: var(--shadow-card);
-  transition: transform var(--transition), box-shadow var(--transition);
-  border-top: 3px solid var(--accent-gold);
-}
-
-.stat-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-elevated);
 }
 
 .stat-card .label {
   font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.06em;
   font-weight: 600;
 }
 
 .stat-card .value {
   font-size: 28px;
-  font-weight: 800;
-  color: var(--accent-gold);
-  margin-top: 4px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.025em;
+  margin-top: 6px;
   line-height: 1.1;
 }
 
@@ -845,14 +877,11 @@ details.card-attention > .card-header {
 
 /* ─── Page Sections ─── */
 .page-section-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent-gold);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  margin: 32px 0 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  font-size: 19px;
+  font-weight: 650;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 40px 0 4px;
 }
 
 .page-section-title:first-child {
@@ -877,7 +906,7 @@ details.card-attention > .card-header {
 }
 
 .card-header {
-  padding: 14px 18px;
+  padding: 15px 20px;
   border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
@@ -889,7 +918,7 @@ details.card-attention > .card-header {
 .card-header h2 {
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.015em;
 }
 
 .card-body {
@@ -920,22 +949,27 @@ details.card-collapsible[open] > summary.card-header {
 details.card-collapsible > summary.card-header::-webkit-details-marker {
   display: none;
 }
+/* The disclosure chevron, drawn in CSS so it matches the type around it
+   instead of being whatever glyph the font has for ▸. Shared by collapsible
+   card headers and .collapse-toggle. */
 details.card-collapsible > summary.card-header::after {
-  content: "▸";
+  content: "";
   position: absolute;
-  right: 18px;
+  right: 20px;
   top: 50%;
-  transform: translateY(-50%);
-  font-size: 14px;
-  color: var(--text-muted);
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: translateY(-70%) rotate(45deg);
   transition: transform 0.15s ease;
 }
 details.card-collapsible[open] > summary.card-header::after {
-  transform: translateY(-50%) rotate(90deg);
+  transform: translateY(-30%) rotate(-135deg);
 }
 
 .card-body-padded {
-  padding: 18px;
+  padding: 20px;
 }
 
 /* ─── Analytics Type Panel ─── */
@@ -1107,11 +1141,11 @@ table {
 
 th {
   text-align: left;
-  padding: 10px 14px;
+  padding: 10px 16px;
   font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
   font-weight: 600;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
@@ -1120,13 +1154,19 @@ th {
 }
 
 td {
-  padding: 10px 14px;
-  font-size: 13px;
+  padding: 11px 16px;
+  font-size: 13.5px;
   border-bottom: 1px solid var(--row-divider);
 }
 
+/* The card's own edge closes the table; a divider under the last row just
+   doubles it. */
+tbody tr:last-child > td {
+  border-bottom: 0;
+}
+
 tr:hover {
-  background: var(--row-hover-overlay);
+  background: var(--row-hover-overlay-strong);
 }
 
 th.sortable {
@@ -1191,22 +1231,34 @@ th.sortable:hover {
 }
 
 /* ─── Member Links ─── */
+/* A player name is the row's content, not a hyperlink in a paragraph: it
+   reads as text and shows it is clickable on hover. Every table in the app
+   is mostly names, and painting them all link-blue made every page loud. */
 .member-link {
-  color: var(--accent-blue);
+  color: var(--text-primary);
   text-decoration: none;
   font-weight: 500;
   transition: color var(--transition);
 }
 
 .member-link:hover {
-  color: var(--accent-blue-hover);
+  color: var(--accent-gold);
   text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* Inside a sentence the same class IS a link in a paragraph ("compare
+   members →"), and has to look like one. */
+:is(p, .muted-copy, .page-section-intro, .card-header span) .member-link {
+  color: var(--accent-gold);
 }
 
 /* ─── Ranks ─── */
+/* Medal colours for the podium only; everyone else is a plain number. */
 .rank {
-  font-weight: 700;
-  color: var(--accent-gold);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .rank-1 { color: var(--rank-1); }
@@ -1236,9 +1288,10 @@ th.sortable:hover {
 .btn {
   padding: 8px 14px;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   background: var(--bg-card);
   color: var(--text-primary);
+  font-family: inherit;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -1270,15 +1323,18 @@ th.sortable:hover {
   cursor: not-allowed;
 }
 
+/* The primary action wears the brand gold — the one accent the whole app
+   uses, so the action a page wants from you is the one gold thing on it. */
 .btn-primary {
-  background: var(--accent-blue-solid);
-  border-color: var(--accent-blue-solid);
-  color: var(--text-on-accent);
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: var(--text-on-gold);
+  font-weight: 600;
 }
 
 .btn-primary:not(:disabled):hover {
-  background: var(--accent-blue-solid-hover);
-  border-color: var(--accent-blue-solid-hover);
+  background: var(--accent-gold-hover);
+  border-color: var(--accent-gold-hover);
 }
 
 .btn-compact {
@@ -1316,9 +1372,10 @@ th.sortable:hover {
 .period-selector .btn.active,
 .metric-toggle .btn.active,
 .btn.active {
-  background: var(--accent-blue-solid);
-  border-color: var(--accent-blue-solid);
-  color: var(--text-on-accent);
+  background: var(--accent-gold-bg-strong);
+  border-color: var(--accent-gold-border);
+  color: var(--accent-gold);
+  font-weight: 600;
 }
 
 .leaderboard-header {
@@ -1610,9 +1667,10 @@ th.sortable:hover {
 
 /* ─── Forms & Inputs ─── */
 .input {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-family: inherit;
   background: var(--bg-input);
   color: var(--text-primary);
   font-size: 13px;
@@ -1710,8 +1768,8 @@ th.sortable:hover {
 
 .input:focus {
   outline: none;
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px var(--accent-blue-bg);
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px var(--accent-gold-bg-strong);
 }
 
 select.input {
@@ -1961,18 +2019,45 @@ label {
 }
 
 /* ─── Collapsible Sections ─── */
+/* A <summary> that shows or hides a list: drawn as a quiet pill with the
+   same CSS chevron as the collapsible cards, instead of the browser's
+   triangle-and-text. */
 .collapse-toggle {
   cursor: pointer;
   color: var(--text-secondary);
   font-size: 13px;
-  padding: 8px 0;
+  padding: 6px 12px 6px 10px;
   user-select: none;
   font-weight: 500;
-  transition: color var(--transition);
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--subtle-bg);
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+.collapse-toggle::-webkit-details-marker { display: none; }
+.collapse-toggle::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+details[open] > .collapse-toggle::before {
+  transform: rotate(45deg);
 }
 
 .collapse-toggle:hover {
   color: var(--text-primary);
+  background: var(--subtle-bg-strong);
+  border-color: var(--border-light);
 }
 
 .details-content {
@@ -1989,7 +2074,7 @@ details > table {
 .clan-subsection-summary {
   cursor: pointer;
   user-select: none;
-  list-style-position: outside;
+  list-style: none;
   padding: 4px 0;
 }
 .clan-subsection-summary:hover h3 {
@@ -2435,7 +2520,8 @@ details > table {
     height: 24px;
   }
 
-  .header h1 {
+  .header h1,
+  .brand-name {
     font-size: 16px;
   }
 
@@ -2537,7 +2623,16 @@ details > table {
     display: block;
   }
 
-  nav {
+  /* No blur on phones (see .topbar), so the bar must be opaque. */
+  .topbar {
+    background: var(--bg-primary);
+  }
+
+  /* The drawer is the app shell's nav only — the public share page's tab
+     row is a plain nav and stays a tab row on phones. */
+  .topbar nav {
+    padding-left: 0;
+    padding-right: 0;
     position: fixed;
     top: 0;
     right: 0;
@@ -2560,26 +2655,26 @@ details > table {
     overflow-y: auto;
   }
 
-  nav.open {
+  .topbar nav.open {
     transform: translateX(0);
     visibility: visible;
     transition: transform 0.25s ease, visibility 0s;
   }
 
-  nav a {
+  .topbar nav a {
     padding: 14px 24px;
     font-size: 15px;
     border-bottom: none;
     border-left: 3px solid transparent;
   }
 
-  nav a.active {
+  .topbar nav a.active {
     border-bottom: none;
     border-left-color: var(--accent-gold);
     background: var(--accent-gold-active-bg);
   }
 
-  nav a:hover {
+  .topbar nav a:hover {
     background: var(--subtle-bg);
   }
 
@@ -5900,9 +5995,10 @@ table.chart-data-table {
 }
 .pb-chip:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
 .pb-chip.active {
-  background: var(--accent-blue-solid);
-  border-color: var(--accent-blue-solid);
-  color: var(--text-on-accent);
+  background: var(--accent-gold-bg-strong);
+  border-color: var(--accent-gold-border);
+  color: var(--accent-gold);
+  font-weight: 600;
 }
 .pb-chip-flag:not(.active) { border-color: var(--accent-gold-border); color: var(--accent-gold); }
 .pb-chip-count {
@@ -5911,7 +6007,7 @@ table.chart-data-table {
   opacity: 0.8;
 }
 .pb-chip-edited { font-size: 11px; color: var(--accent-gold); }
-.pb-chip.active .pb-chip-edited { color: var(--text-on-accent); }
+.pb-chip.active .pb-chip-edited { color: var(--accent-gold); }
 
 .pb-list {
   border: 1px solid var(--border);
@@ -6160,4 +6256,268 @@ summary.pb-impact-heading { cursor: pointer; }
 .pb-members .pb-label { font-size: 13px; }
 @media (max-width: 640px) {
   .pb-members { margin-left: 12px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   App shell — three layouts from one piece of markup (index.html):
+
+     ≥1100px  a fixed left SIDEBAR: brand, grouped icon nav, and the clan /
+              status / account controls pinned to its foot.
+     641–1099 the top BAR: brand + controls, a row of text tabs under it.
+     ≤640px   the phone DRAWER (rules in the ≤640 block above), which now
+              shows the same groups and icons as the sidebar.
+
+   .header holds both the brand and the controls, so the sidebar uses
+   `display: contents` on it to lay the brand out at the top and the
+   controls at the bottom with the nav in between — no second copy of any
+   control, and every id app.js looks up stays where it was.
+   ══════════════════════════════════════════════════════════════════════ */
+
+body {
+  background-color: var(--bg-primary);
+  background-image: var(--bg-glow);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+.card,
+.stat-card {
+  box-shadow: var(--card-highlight), var(--shadow-card);
+}
+
+/* Nav icons: drawn by stroke, coloured by the link. */
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Top-bar layout (the default between the phone and sidebar breakpoints):
+   groups dissolve into one row of text tabs. */
+.nav-group { display: contents; }
+.nav-group-label { display: none; }
+.nav-icon { display: none; }
+/* A group with nothing visible in it (a member's "Manage") disappears. */
+.nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
+
+/* ─── Page head ─── */
+.page-head {
+  padding-top: 28px;
+  padding-bottom: 0;
+}
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+.page-subtitle {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.page-subtitle:empty { display: none; }
+.page-head + .container { padding-top: 20px; }
+
+/* ─── Podium ranks: a medal-tinted pill for the top three ─── */
+.rank.rank-1,
+.rank.rank-2,
+.rank.rank-3 {
+  display: inline-block;
+  min-width: 34px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 700;
+}
+.rank.rank-1 { background: var(--rank-1-glow); }
+.rank.rank-2 { background: var(--rank-2-glow); }
+.rank.rank-3 { background: var(--rank-3-glow); }
+
+/* ─── Phone drawer: groups + icons like the sidebar ─── */
+@media (max-width: 640px) {
+  .nav-group { display: block; }
+  .nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
+  .nav-group-label {
+    display: block;
+    padding: 14px 24px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .nav-icon { display: block; }
+  .topbar nav a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 24px;
+  }
+  .page-head { padding-top: 18px; }
+  .page-title { font-size: 24px; }
+}
+
+/* ─── Desktop sidebar ─── */
+@media (min-width: 1100px) {
+  :root { --sidebar-w: 248px; }
+
+  body:has(> .topbar) { padding-left: var(--sidebar-w); }
+
+  .topbar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--sidebar-w);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 12px 14px;
+    background: var(--bg-sidebar);
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .topbar .header { display: contents; }
+
+  .topbar .brand {
+    order: 0;
+    padding: 2px 10px 20px;
+  }
+  .topbar .brand-logo { width: 30px; height: 30px; }
+  .topbar .brand-name { font-size: 15.5px; }
+
+  .topbar nav {
+    order: 1;
+    flex-direction: column;
+    gap: 1px;
+    padding: 0;
+    overflow: visible;
+  }
+  .nav-group { display: block; margin-bottom: 14px; }
+  .nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
+  .nav-group-label {
+    display: block;
+    padding: 0 10px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .nav-icon { display: block; }
+
+  .topbar nav a {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 10px;
+    margin-bottom: 1px;
+    border-bottom: 0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .topbar nav a:hover {
+    background: var(--hover-overlay);
+  }
+  .topbar nav a.active {
+    background: var(--accent-gold-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--accent-gold);
+  }
+  .topbar nav a.active .nav-icon { color: var(--accent-gold); }
+  .topbar nav a .nav-dot { margin-left: auto; }
+
+  /* The controls row becomes the sidebar's foot. */
+  .topbar .header-right {
+    order: 2;
+    margin-top: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px 4px 0;
+    border-top: 1px solid var(--border);
+  }
+  .header-right > .status,
+  .header-right > .next-scan { padding: 0 6px; }
+  .clan-switcher,
+  .clan-switcher select,
+  .clan-indicator { width: 100%; }
+  .user-info { width: 100%; }
+  .user-menu-btn {
+    width: 100%;
+    justify-content: space-between;
+    border-color: var(--border);
+    background: var(--subtle-bg);
+  }
+  /* At the foot of the sidebar the account menu has to open upward. */
+  .user-menu {
+    top: auto;
+    bottom: calc(100% + 6px);
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
+  /* The scan-error panel was anchored under the header; in the sidebar it
+     floats beside it instead. */
+  .status-error-details {
+    position: fixed;
+    top: auto;
+    bottom: 16px;
+    left: calc(var(--sidebar-w) + 16px);
+    right: auto;
+  }
+
+  body:has(> .topbar) .container {
+    max-width: 1320px;
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+  .page-head { padding-top: 36px; }
+  .page-title { font-size: 30px; }
+}
+
+/* On a phone the bar has a logo, the clan switcher and the menu button to
+   fit; the page title right under it already says where you are. */
+@media (max-width: 640px) {
+  .brand-name { display: none; }
+}
+
+/* ─── Disclosure chevrons everywhere ───
+   No browser triangles: every <summary> drops its native marker, and any
+   summary that doesn't draw its own (card headers use ::after,
+   .collapse-toggle its own ::before, a warning row has none by design) gets
+   the same CSS chevron as the rest of the app. */
+summary {
+  list-style: none;
+  cursor: pointer;
+}
+summary::-webkit-details-marker { display: none; }
+summary:not(.card-header, .collapse-toggle, .warn-row)::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 10px 2px 2px;
+  vertical-align: middle;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  opacity: 0.7;
+}
+details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
+  transform: rotate(45deg);
 }

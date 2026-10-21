@@ -104,7 +104,6 @@ export async function renderClans(el, refreshClanIndicator) {
   }
 
   el.innerHTML = `
-    <h2 class="page-section-title">Clans</h2>
     <p class="page-section-intro">${isSuperAdmin
       ? "Each clan has its own member roster, chest data, browser session, Discord channel, and ChestTracker share code. The single-instance scanner cycles through every active clan in sequence on each scheduled interval."
       : "Manage your clan's Discord and ChestTracker integrations, refresh the Total Battle login session, and run member capture or first-scan onboarding."}</p>

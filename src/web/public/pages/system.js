@@ -480,7 +480,6 @@ export async function renderSystem(el, options = {}) {
   const scanIntervalLiveApplied = !!settings?.liveApplied;
 
   el.innerHTML = `
-    <h2 class="page-section-title">System</h2>
     <p class="page-section-intro">Instance-wide settings that affect every clan: scanner cadence, OCR calibration, and container lifecycle. Each card is collapsed by default — click the header to expand.</p>
 
     ${setupChecklistHtml(calibration, status)}

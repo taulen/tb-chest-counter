@@ -120,6 +120,8 @@ const PAIRS: Pair[] = [
   { label: 'button text on solid red', fg: '--text-on-accent', on: ['--accent-red-solid'], min: AA_TEXT },
   { label: 'button text on solid red (hover)', fg: '--text-on-accent', on: ['--accent-red-solid-hover'], min: AA_TEXT },
   { label: 'text on a gold fill', fg: '--text-on-gold', on: ['--accent-gold'], min: AA_TEXT },
+  // Gold is the primary button fill, so its hover state carries text too.
+  { label: 'text on a gold fill (hover)', fg: '--text-on-gold', on: ['--accent-gold-hover'], min: AA_TEXT },
   ...RARITIES.map((r) => ({ label: `${r} chest badge`, fg: `--chest-${r}-text`, on: [`--chest-${r}-bg`], min: AA_TEXT })),
   // Non-text: the keyboard focus outline against the surfaces it is drawn on.
   ...['--bg-primary', '--bg-card', '--bg-surface'].map((s) => ({

@@ -49,7 +49,7 @@
         <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
         <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
       </svg>
-      <h1>TB Chest Counter</h1>
+      <span class="brand-name">TB Chest Counter</span>
     </a>
     <div class="header-right">
       <div class="status">
@@ -102,25 +102,38 @@
 
   <div class="nav-overlay" id="navOverlay"></div>
 
+  <!-- Grouped nav. Each group hides itself (CSS :has) when every link in it
+       is hidden for this user's role, so a member never sees an empty
+       "Manage" heading. Icons are the sidebar's (desktop) and drawer's
+       (phone); the in-between top bar shows labels only. -->
   <nav id="navBar">
-    <a href="#" class="active" data-page="dashboard">Dashboard</a>
-    <a href="#" data-page="analytics">Analytics</a>
-    <a href="#" data-page="leaderboard">Leaderboard</a>
-    <a href="#" data-page="might" id="navMight" class="is-hidden">Might</a>
-    <a href="#" data-page="resources" id="navResources" class="is-hidden">Resources<span id="navResourcesDot" class="nav-dot is-hidden"><span class="visually-hidden"> (resource rows need review)</span></span></a>
-    <a href="#" data-page="events">Events</a>
-    <a href="#" data-page="triumphal">Triumphal Chests</a>
-    <a href="#" data-page="members">Members</a>
-    <a href="#" data-page="sessions">Scan History</a>
-    <a href="#" data-page="external" id="navExternal" class="is-hidden">ChestTracker</a>
-    <a href="#" data-page="admin" id="navAdmin" class="is-hidden">Admin<span id="navAdminDot" class="nav-dot is-hidden"><span class="visually-hidden"> (items need review)</span></span></a>
-    <a href="#" data-page="users" id="navUsers" class="is-hidden">Users</a>
-    <!-- Superadmin-only: manage clans (create, rename, archive, Discord
-         + ChestTracker per-clan settings, delete). -->
-    <a href="#" data-page="clans" id="navClans" class="is-hidden">Clans</a>
-    <!-- Superadmin-only: instance-wide settings (scan interval,
-         calibration, restart, backup/import). -->
-    <a href="#" data-page="system" id="navSystem" class="is-hidden">System<span id="navSystemDot" class="nav-dot is-hidden"><span class="visually-hidden"> (new warnings logged)</span></span></a>
+    <div class="nav-group">
+      <div class="nav-group-label">Overview</div>
+      <a href="#" class="active" data-page="dashboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="nav-label">Dashboard</span></a>
+      <a href="#" data-page="analytics"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg><span class="nav-label">Analytics</span></a>
+      <a href="#" data-page="leaderboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span class="nav-label">Leaderboard</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Clan</div>
+      <a href="#" data-page="members"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label">Members</span></a>
+      <a href="#" data-page="might" id="navMight" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg><span class="nav-label">Might</span></a>
+      <a href="#" data-page="events"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg><span class="nav-label">Events</span></a>
+      <a href="#" data-page="triumphal"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7z"/><path d="M5 20h14"/></svg><span class="nav-label">Triumphal Chests</span></a>
+      <a href="#" data-page="resources" id="navResources" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span class="nav-label">Resources</span><span id="navResourcesDot" class="nav-dot is-hidden"><span class="visually-hidden"> (resource rows need review)</span></span></a>
+      <a href="#" data-page="sessions"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><span class="nav-label">Scan History</span></a>
+      <a href="#" data-page="external" id="navExternal" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span class="nav-label">ChestTracker</span></a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Manage</div>
+      <a href="#" data-page="admin" id="navAdmin" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="nav-label">Admin</span><span id="navAdminDot" class="nav-dot is-hidden"><span class="visually-hidden"> (items need review)</span></span></a>
+      <a href="#" data-page="users" id="navUsers" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span class="nav-label">Users</span></a>
+      <!-- Superadmin-only: manage clans (create, rename, archive, Discord
+           + ChestTracker per-clan settings, delete). -->
+      <a href="#" data-page="clans" id="navClans" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg><span class="nav-label">Clans</span></a>
+      <!-- Superadmin-only: instance-wide settings (scan interval,
+           calibration, restart, backup/import). -->
+      <a href="#" data-page="system" id="navSystem" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="nav-label">System</span><span id="navSystemDot" class="nav-dot is-hidden"><span class="visually-hidden"> (new warnings logged)</span></span></a>
+    </div>
     <!-- Mobile-only account section at the bottom of the slide-out menu -->
     <div class="nav-mobile-account">
       <div class="nav-mobile-account-label">Account</div>
@@ -137,6 +150,12 @@
       <button class="nav-mobile-account-btn nav-mobile-account-btn-danger" id="logoutBtnMobile">Logout</button>
     </div>
   </nav>
+  </div>
+
+  <!-- The page's own title, set by app.js from the active nav entry. -->
+  <div class="container page-head" id="pageHead">
+    <h1 class="page-title" id="pageTitle"></h1>
+    <p class="page-subtitle" id="pageSubtitle"></p>
   </div>
 
   <div class="container">

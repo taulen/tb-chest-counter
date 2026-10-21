@@ -17,11 +17,12 @@
   font-size: 12px;
 }
 
+/* Tabs start on the content column's edge, under the clan name. */
 .public-share-nav {
   display: flex;
   gap: 4px;
-  padding: 0 16px;
-  background: var(--bg-card);
+  padding: 0 calc(var(--shell-gutter) - 18px);
+  background: var(--bg-topbar);
   border-bottom: 1px solid var(--border);
 }
 
@@ -35,7 +36,8 @@
 }
 
 .public-share-nav a.active {
-  color: var(--accent-gold);
+  color: var(--text-primary);
+  font-weight: 600;
   border-bottom-color: var(--accent-gold);
 }
 
