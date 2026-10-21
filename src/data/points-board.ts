@@ -68,12 +68,44 @@ export interface BoardSource {
   unset: boolean;
   /** Records whose stored value no longer matches the current one. */
   staleRecords: number;
+  /** The board group this source is shown under (see SOURCE_GROUPS), or null. */
+  group: string | null;
+}
+
+/**
+ * Several sources shown — and set — as one row. Purely presentation: every
+ * member keeps its own key, overrides and stored values, so a group can be
+ * redrawn without touching scoring.
+ */
+export interface BoardGroup {
+  id: string;
+  label: string;
+  category: SourceCategory;
 }
 
 export interface PointsBoard {
   categories: { key: SourceCategory; title: string; sources: number; unset: number }[];
   sources: BoardSource[];
+  groups: BoardGroup[];
   staleRecords: number;
+}
+
+/**
+ * Heroic monsters are one source per level, but the game pays them by tier, so
+ * thirty rows of mostly repeated numbers read better as six. The ranges are
+ * the admins' own tiers. A level outside every range (the game adding level
+ * 46) stays a row of its own rather than vanishing into a neighbour.
+ */
+const HEROIC_TIERS: readonly [number, number][] = [
+  [16, 19], [20, 24], [25, 29], [30, 35], [36, 40], [41, 45],
+];
+
+function sourceGroup(key: string, category: SourceCategory): BoardGroup | null {
+  if (category !== 'heroic') return null;
+  const level = Number(/(\d+)/.exec(key)?.[1]);
+  const tier = HEROIC_TIERS.find(([from, to]) => level >= from && level <= to);
+  if (!tier) return null;
+  return { id: `heroic-${tier[0]}-${tier[1]}`, label: `Heroic Monster · Level ${tier[0]}–${tier[1]}`, category };
 }
 
 export interface PointChange {
@@ -299,6 +331,7 @@ function buildBoard(groups: RecordGroup[], overrides: Map<string, number>): Poin
       chests,
       unset: chests.some((c) => c.unset),
       staleRecords: stale,
+      group: sourceGroup(key, category)?.id ?? null,
       rank: sortRank(key),
     });
   }
@@ -316,9 +349,17 @@ function buildBoard(groups: RecordGroup[], overrides: Map<string, number>): Poin
     })
     .filter((c) => c.sources > 0);
 
+  // In board order: a group sits where its first member would.
+  const boardGroups = new Map<string, BoardGroup>();
+  for (const s of sources) {
+    const g = sourceGroup(s.key, s.category);
+    if (g && !boardGroups.has(g.id)) boardGroups.set(g.id, g);
+  }
+
   return {
     categories,
     sources: sources.map(({ rank: _rank, ...s }) => s),
+    groups: [...boardGroups.values()],
     staleRecords: staleTotal,
   };
 }

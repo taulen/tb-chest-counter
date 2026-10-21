@@ -6148,3 +6148,16 @@ summary.pb-impact-heading { cursor: pointer; }
   .pb-impact-move { white-space: normal; }
   .pb-savebar { bottom: 8px; }
 }
+
+/* Chest Points: a group row (heroic tier) holds its levels as nested rows. */
+.pb-members {
+  margin: 0 10px 10px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.pb-members .pb-row:hover { background: var(--row-hover-overlay); }
+.pb-members .pb-label { font-size: 13px; }
+@media (max-width: 640px) {
+  .pb-members { margin-left: 12px; }
+}

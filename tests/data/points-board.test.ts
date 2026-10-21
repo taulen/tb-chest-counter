@@ -117,6 +117,29 @@ describe('board', () => {
     expect(tartaros).toMatchObject({ label: 'Tartaros Crypt · Level 10', category: 'crypts', points: 8, staleRecords: 0 });
   });
 
+  it('groups heroic levels into the admins\' tiers, leaving an unknown level on its own', () => {
+    for (const level of [16, 19, 20, 30, 35, 36, 45, 46]) {
+      record(`Level ${level} heroic Monster`, 'Undead Chest', 1, 25);
+    }
+    const board = getPointsBoard();
+    const groupOf = (level: number) => board.sources.find((s) => s.key === `level ${level} heroic monster`)?.group;
+    expect(groupOf(16)).toBe('heroic-16-19');
+    expect(groupOf(19)).toBe('heroic-16-19');
+    expect(groupOf(20)).toBe('heroic-20-24');
+    expect(groupOf(30)).toBe('heroic-30-35');
+    expect(groupOf(35)).toBe('heroic-30-35');
+    expect(groupOf(36)).toBe('heroic-36-40');
+    expect(groupOf(45)).toBe('heroic-41-45');
+    expect(groupOf(46)).toBeNull();
+    expect(board.groups.map((g) => g.label)).toEqual([
+      'Heroic Monster · Level 16–19', 'Heroic Monster · Level 20–24', 'Heroic Monster · Level 30–35',
+      'Heroic Monster · Level 36–40', 'Heroic Monster · Level 41–45',
+    ]);
+    // Nothing else is grouped.
+    seedCrypt();
+    expect(getPointsBoard().sources.find((s) => s.key === 'common 10')?.group).toBeNull();
+  });
+
   it('orders a ladder by level, not as strings', () => {
     record('Level 5 Crypt', 'Barbarian Chest', 1, 1);
     record('Level 25 Crypt', 'Barbarian Chest', 1, 275);

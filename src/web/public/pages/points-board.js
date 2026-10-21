@@ -25,6 +25,9 @@ const state = {
   expanded: new Set(),
   /** sourceKey → Set of chest names given their own line before any edit. */
   split: new Map(),
+  /** groupId → the tier value as typed. Display only: the edit itself lives
+   *  in `dirty`, one entry per level it moved. */
+  groupDirty: new Map(),
   busy: false,
 };
 
@@ -77,6 +80,10 @@ async function refresh() {
     const [sourceKey, chestName] = k.split('\t');
     const cur = currentValue(sourceKey, chestName);
     if (cur === null || String(cur) === v) state.dirty.delete(k);
+  }
+  for (const id of [...state.groupDirty.keys()]) {
+    const members = board.sources.filter((s) => s.group === id);
+    if (!members.some((m) => state.dirty.has(dirtyKey(m.key, '')))) state.groupDirty.delete(id);
   }
   if (!state.category || !validCategory(state.category)) {
     const saved = storedCategory();
@@ -165,11 +172,15 @@ function statusHtml() {
 
 function chipsHtml() {
   const b = state.board;
-  const unset = b.sources.filter((s) => s.unset).length;
+  const unset = b.sources.filter((s) => s.unset);
+  // Counts are rows on screen, so a heroic tier counts once, not per level.
+  const rows = (sources) => displayUnits(sources).length;
   const chips = [];
-  if (unset > 0) chips.push({ key: NEEDS_VALUE, title: '⚠ Needs a value', count: unset, flag: true });
-  for (const c of b.categories) chips.push({ key: c.key, title: c.title, count: c.sources, edited: editedIn(c.key) });
-  chips.push({ key: ALL, title: 'All', count: b.sources.length });
+  if (unset.length > 0) chips.push({ key: NEEDS_VALUE, title: '⚠ Needs a value', count: rows(unset), flag: true });
+  for (const c of b.categories) {
+    chips.push({ key: c.key, title: c.title, count: rows(b.sources.filter((s) => s.category === c.key)), edited: editedIn(c.key) });
+  }
+  chips.push({ key: ALL, title: 'All', count: rows(b.sources) });
   const searching = state.query.trim() !== '';
   return `
     <div class="pb-chips" role="group" aria-label="Source category">
@@ -204,9 +215,28 @@ function visibleSources() {
   return all.filter((s) => s.category === state.category);
 }
 
+/**
+ * The rows a list of sources draws as: a grouped source (a heroic tier) folds
+ * into its group's row, placed where its first member would be.
+ */
+function displayUnits(sources) {
+  const units = [];
+  const seen = new Set();
+  for (const s of sources) {
+    if (!s.group) {
+      units.push({ source: s });
+    } else if (!seen.has(s.group)) {
+      seen.add(s.group);
+      const group = state.board.groups.find((g) => g.id === s.group);
+      units.push(group ? { group } : { source: s });
+    }
+  }
+  return units;
+}
+
 function listHtml() {
-  const sources = visibleSources();
-  if (sources.length === 0) {
+  const units = displayUnits(visibleSources());
+  if (units.length === 0) {
     return `<p class="muted-copy pb-empty">${state.query.trim() ? `Nothing matches “${esc(state.query.trim())}”.` : 'Nothing here.'}</p>`;
   }
   // Across categories (search, All) a heading per category keeps the list
@@ -214,12 +244,122 @@ function listHtml() {
   const grouped = state.query.trim() !== '' || state.category === ALL || state.category === NEEDS_VALUE;
   const titles = new Map(state.board.categories.map((c) => [c.key, c.title]));
   let last = null;
-  return sources.map((s) => {
-    const heading = grouped && s.category !== last
-      ? `<div class="pb-group" role="presentation">${esc(titles.get(s.category) || s.category)}</div>` : '';
-    last = s.category;
-    return heading + sourceHtml(s);
+  return units.map((u) => {
+    const category = u.group ? u.group.category : u.source.category;
+    const heading = grouped && category !== last
+      ? `<div class="pb-group" role="presentation">${esc(titles.get(category) || category)}</div>` : '';
+    last = category;
+    return heading + (u.group ? groupHtml(u.group) : sourceHtml(u.source));
   }).join('');
+}
+
+// ─── Groups (heroic tiers): one row that sets every level in it ───
+
+const GROUP_PREFIX = 'group:';
+
+function groupMembers(groupId) {
+  return state.board.sources.filter((s) => s.group === groupId);
+}
+
+/** What the group pays: the value most of its members' records score. */
+function groupBase(members) {
+  const byValue = new Map();
+  for (const m of members) {
+    const v = byValue.get(m.points) || { records: 0, members: 0 };
+    v.records += m.records;
+    v.members += 1;
+    byValue.set(m.points, v);
+  }
+  let best = null;
+  for (const [points, v] of byValue) {
+    if (!best || v.records > best.records || (v.records === best.records && v.members > best.members)
+      || (v.records === best.records && v.members === best.members && points < best.points)) {
+      best = { points, ...v };
+    }
+  }
+  return best ? best.points : 0;
+}
+
+const levelOf = (s) => /(\d+)/.exec(s.key)?.[1] || s.label;
+
+function groupHtml(g) {
+  const members = groupMembers(g.id);
+  const base = groupBase(members);
+  const differing = members.filter((m) => m.points !== base);
+  const records = members.reduce((n, m) => n + m.records, 0);
+  const q = state.query.trim().toLowerCase();
+  // A search that found a member (not the tier itself) opens the tier.
+  const open = state.expanded.has(GROUP_PREFIX + g.id) || (q !== '' && !g.label.toLowerCase().includes(q));
+  const anyEdited = members.some((m) => [...state.dirty.keys()].some((k) => k.startsWith(`${m.key}\t`)));
+  const meta = [plural(members.length, 'level'), plural(records, 'chest')];
+  if (differing.length > 0) {
+    meta.push(`<span class="pb-meta-exc">${differing.map((m) => `Level ${esc(levelOf(m))} pays ${fmt(m.points)}`).join(', ')}</span>`);
+  }
+  const stale = members.reduce((n, m) => n + m.staleRecords, 0);
+  if (stale > 0) meta.push(`<span class="pb-flag">⟳ ${fmt(stale)} out of date</span>`);
+  const unset = members.some((m) => m.unset);
+
+  return `
+    <div class="pb-row pb-group-row${unset ? ' is-unset' : ''}${anyEdited ? ' has-edits' : ''}${open ? ' is-open' : ''}" role="listitem" data-group-id="${esc(g.id)}">
+      <div class="pb-main">
+        <div class="pb-name">
+          <span class="pb-label">${esc(g.label)}</span>
+          ${unset ? '<span class="badge-warn">⚠ Needs a value</span>' : ''}
+          <span class="pb-meta">${meta.join(' · ')}</span>
+        </div>
+        <div class="pb-control">${groupControl(g, base)}</div>
+        <button type="button" class="pb-expand" data-pb="expand" data-source-key="${esc(GROUP_PREFIX + g.id)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} levels for ${esc(g.label)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>
+      </div>
+      ${open ? `<div class="pb-members">${members.map(sourceHtml).join('')}</div>` : ''}
+    </div>
+  `;
+}
+
+function groupControl(g, base) {
+  if (!canEdit) return `<span class="pb-value-static">${fmt(base)}</span>`;
+  const raw = state.groupDirty.get(g.id);
+  const edited = raw !== undefined;
+  return `
+    <label class="pb-value${edited ? ' is-edited' : ''}">
+      <input type="number" class="input pb-input" min="0" step="1" inputmode="numeric"
+        value="${esc(edited ? raw : String(base))}" data-pb="group-value" data-pb-key="${esc(GROUP_PREFIX + g.id)}"
+        data-group-id="${esc(g.id)}" aria-label="Points for every level of ${esc(g.label)}">
+      <span class="pb-unit" aria-hidden="true">pts</span>
+    </label>
+    ${edited ? `<span class="pb-was">not saved · was ${fmt(base)}</span>` : ''}
+  `;
+}
+
+/**
+ * Typing a tier value edits every level that pays the tier's value; a level
+ * already paying something else keeps it (edit that level on its own to move
+ * it). The edits are ordinary per-source edits, so saving needs nothing new.
+ */
+function onGroupInput(input) {
+  const id = input.dataset.groupId;
+  const members = groupMembers(id);
+  const base = groupBase(members);
+  const raw = input.value.trim();
+  const reset = raw === '' || raw === String(base);
+  if (reset) state.groupDirty.delete(id);
+  else state.groupDirty.set(id, raw);
+  for (const m of members) {
+    if (m.points !== base) continue;
+    const k = dirtyKey(m.key, '');
+    if (reset) state.dirty.delete(k);
+    else state.dirty.set(k, raw);
+  }
+  const row = input.closest('.pb-group-row');
+  if (row) {
+    row.classList.toggle('has-edits', members.some((m) => [...state.dirty.keys()].some((k) => k.startsWith(`${m.key}\t`))));
+    input.closest('.pb-value')?.classList.toggle('is-edited', !reset);
+    const control = input.closest('.pb-control');
+    control?.querySelector('.pb-was')?.remove();
+    if (!reset && control) control.insertAdjacentHTML('beforeend', `<span class="pb-was">not saved · was ${fmt(base)}</span>`);
+    // Redraw the open member rows so they show the values they now carry.
+    for (const m of members) rerenderRow(m.key, { fallback: false });
+  }
+  refreshEditSummary();
 }
 
 function valueControl(sourceKey, chestName, value, label) {
@@ -347,7 +487,17 @@ function updateEditChrome(input) {
       const echo = row.querySelector('.pb-source-echo');
       if (echo) echo.textContent = fmt(state.dirty.get(k) ?? currentValue(key, ''));
     }
+    const groupRow = row.parentElement?.closest('.pb-group-row');
+    if (groupRow) {
+      const members = groupMembers(groupRow.dataset.groupId);
+      groupRow.classList.toggle('has-edits', members.some((m) => [...state.dirty.keys()].some((d) => d.startsWith(`${m.key}\t`))));
+    }
   }
+  refreshEditSummary();
+}
+
+/** Save bar + chip counts, the two places that summarise pending edits. */
+function refreshEditSummary() {
   const board = root.querySelector('.pb-board');
   const bar = board?.querySelector('.pb-savebar');
   if (bar) bar.outerHTML = saveBarHtml();
@@ -366,6 +516,10 @@ function wire() {
       if (list) list.innerHTML = listHtml();
       const chips = root.querySelector('.pb-chips');
       if (chips) chips.outerHTML = chipsHtml();
+      return;
+    }
+    if (t.dataset?.pb === 'group-value') {
+      onGroupInput(t);
       return;
     }
     if (t.dataset?.pb === 'value') {
@@ -413,6 +567,7 @@ function wire() {
     } else if (action === 'discard') {
       state.dirty.clear();
       state.split.clear();
+      state.groupDirty.clear();
       render();
     } else if (action === 'review') {
       reviewAndSave();
@@ -422,14 +577,24 @@ function wire() {
   });
 }
 
-function rerenderRow(sourceKey) {
-  const src = findSource(sourceKey);
-  const btn = root.querySelector(`[data-pb="expand"][data-source-key="${CSS.escape(sourceKey)}"]`)
-    || root.querySelector(`[data-pb-key="${CSS.escape(dirtyKey(sourceKey, ''))}"]`);
+/**
+ * Redraw one row (a source, or a group when `key` is `group:<id>`) in place.
+ * With `fallback: false` a row that isn't on screen is left alone instead of
+ * redrawing the whole list — what a tier edit wants for its closed members.
+ */
+function rerenderRow(key, { fallback = true } = {}) {
+  const group = key.startsWith(GROUP_PREFIX)
+    ? state.board.groups.find((g) => GROUP_PREFIX + g.id === key) : null;
+  const src = group ? null : findSource(key);
+  const btn = root.querySelector(`[data-pb="expand"][data-source-key="${CSS.escape(key)}"]`)
+    || (src ? root.querySelector(`[data-pb-key="${CSS.escape(dirtyKey(key, ''))}"]`) : null);
   const row = btn?.closest('.pb-row');
-  if (!src || !row) return render();
+  if ((!src && !group) || !row) {
+    if (fallback) render();
+    return;
+  }
   const tmp = document.createElement('div');
-  tmp.innerHTML = sourceHtml(src);
+  tmp.innerHTML = group ? groupHtml(group) : sourceHtml(src);
   row.replaceWith(tmp.firstElementChild);
 }
 
@@ -563,6 +728,7 @@ function reviewAndSave() {
     if (preview?.error) return notify(preview.error, 'Preview failed');
     if (preview.edits.length === 0) {
       state.dirty.clear();
+      state.groupDirty.clear();
       render();
       return notify('Those values are already in place — nothing to save.', 'No changes');
     }
@@ -582,6 +748,7 @@ function reviewAndSave() {
     if (result?.error) return notify(result.error, 'Save failed');
     state.dirty.clear();
     state.split.clear();
+    state.groupDirty.clear();
     await refresh();
     notify(
       `${plural(result.edits.length, 'change')} saved · ${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`,

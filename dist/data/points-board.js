@@ -42,6 +42,24 @@ exports.MAX_POINTS = 1_000_000;
 // reassignment, override writes) refreshes the board too.
 const BOARD_CACHE_KEY = 'sourceKeySummary:board';
 const BOARD_TTL_MS = 300000;
+/**
+ * Heroic monsters are one source per level, but the game pays them by tier, so
+ * thirty rows of mostly repeated numbers read better as six. The ranges are
+ * the admins' own tiers. A level outside every range (the game adding level
+ * 46) stays a row of its own rather than vanishing into a neighbour.
+ */
+const HEROIC_TIERS = [
+    [16, 19], [20, 24], [25, 29], [30, 35], [36, 40], [41, 45],
+];
+function sourceGroup(key, category) {
+    if (category !== 'heroic')
+        return null;
+    const level = Number(/(\d+)/.exec(key)?.[1]);
+    const tier = HEROIC_TIERS.find(([from, to]) => level >= from && level <= to);
+    if (!tier)
+        return null;
+    return { id: `heroic-${tier[0]}-${tier[1]}`, label: `Heroic Monster · Level ${tier[0]}–${tier[1]}`, category };
+}
 /** A change request the board can't place — surfaced as a 400. */
 class PointsChangeError extends Error {
 }
@@ -205,6 +223,7 @@ function buildBoard(groups, overrides) {
             chests,
             unset: chests.some((c) => c.unset),
             staleRecords: stale,
+            group: sourceGroup(key, category)?.id ?? null,
             rank: sortRank(key),
         });
     }
@@ -218,9 +237,17 @@ function buildBoard(groups, overrides) {
         return { key: c.key, title: c.title, sources: inCat.length, unset: inCat.filter((s) => s.unset).length };
     })
         .filter((c) => c.sources > 0);
+    // In board order: a group sits where its first member would.
+    const boardGroups = new Map();
+    for (const s of sources) {
+        const g = sourceGroup(s.key, s.category);
+        if (g && !boardGroups.has(g.id))
+            boardGroups.set(g.id, g);
+    }
     return {
         categories,
         sources: sources.map(({ rank: _rank, ...s }) => s),
+        groups: [...boardGroups.values()],
         staleRecords: staleTotal,
     };
 }
