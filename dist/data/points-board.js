@@ -1,0 +1,424 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PointsChangeError = exports.MAX_POINTS = void 0;
+exports.getPointsBoard = getPointsBoard;
+exports.previewPointChanges = previewPointChanges;
+exports.applyPointChanges = applyPointChanges;
+exports.previewRecalculate = previewRecalculate;
+/**
+ * The Chest Points admin board: one line per chest SOURCE with the value it
+ * pays, instead of one line per (source, chest name) with a default and an
+ * override each.
+ *
+ * Why a source is the unit. 90 of the ~100 sources seen in production pay every
+ * chest they drop the same amount — a Level 25 epic crypt is 450 whichever of
+ * its seventeen chests you get — so listing chests made a 369-row page whose
+ * information was ~100 numbers. The few sources that genuinely pay chests
+ * differently (Tartaros inside a common crypt, the three omen chests) show
+ * their odd ones out as exceptions under the source line.
+ *
+ * What the board shows is the EFFECTIVE value, never the layer it came from.
+ * The storage keeps its three layers (exact override → wildcard override →
+ * seeded default, see resolvePointsForKey), but which layer holds a number is
+ * an implementation detail an admin should not have to reason about — so a
+ * save is expressed as a target state ("this source pays 60, except Tartaros at
+ * 225") and planChanges works out the override rows that produce it.
+ *
+ * Every write is previewed first: previewPointChanges / previewRecalculate
+ * compute exactly which stored chest_records values would move, by how much,
+ * per clan, through the same resolver the write uses. Nothing is lost by a
+ * wrong save, but a save nobody can check before making is how values drift.
+ */
+const database_js_1 = require("./database.js");
+const ttl_cache_js_1 = require("../utils/ttl-cache.js");
+const clan_repo_js_1 = require("./repositories/clan-repo.js");
+const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
+const source_names_js_1 = require("../vision/source-names.js");
+const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+const source_categories_js_1 = require("./source-categories.js");
+/** Largest value a save accepts — the biggest real one is 10,000. */
+exports.MAX_POINTS = 1_000_000;
+// Under the summary's prefix on purpose: invalidateSourceKeySummary() drops by
+// prefix, so every site that already invalidates the summary (scan completion,
+// reassignment, override writes) refreshes the board too.
+const BOARD_CACHE_KEY = 'sourceKeySummary:board';
+const BOARD_TTL_MS = 300000;
+/** A change request the board can't place — surfaced as a 400. */
+class PointsChangeError extends Error {
+}
+exports.PointsChangeError = PointsChangeError;
+const IMPACT_LINE_LIMIT = 60;
+/**
+ * chest_records grouped down to (clan, source, chest, stored value), for live
+ * clans only — the same rows recalculateAllPoints walks, so a preview counts
+ * exactly what a write would touch.
+ */
+function loadRecordGroups() {
+    const clanIds = new Set((0, clan_repo_js_1.listClans)().map((c) => c.id));
+    const rows = (0, database_js_1.getDb)().prepare(`
+    SELECT cr.clan_id, cs.source, ch.name AS chest_name, cr.point_value, COUNT(*) AS cnt
+      FROM chest_records cr
+      JOIN chest_sources cs ON cs.id = cr.chest_source_id
+      JOIN chests ch ON ch.id = cr.chest_id
+     WHERE cs.source != ''
+     GROUP BY cr.clan_id, cr.chest_source_id, cr.chest_id, cr.point_value
+  `).all();
+    const keyOf = new Map();
+    const groups = [];
+    for (const r of rows) {
+        if (!clanIds.has(r.clan_id))
+            continue;
+        let key = keyOf.get(r.source);
+        if (key === undefined) {
+            key = (0, source_names_js_1.getSourceKey)(r.source);
+            keyOf.set(r.source, key);
+        }
+        if (!key)
+            continue;
+        groups.push({
+            clanId: r.clan_id,
+            source: r.source,
+            key,
+            canon: (0, source_names_js_1.canonicalSourceKey)(key),
+            chestName: r.chest_name,
+            stored: r.point_value,
+            count: r.cnt,
+        });
+    }
+    return groups;
+}
+const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+function titleCase(s) {
+    return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+/**
+ * The structured families get a name built from the key, because their most
+ * common in-game string is misleading: "common 20" is mostly read as
+ * "Tartaros Crypt level 20" yet pays the common-crypt ladder. Everything else
+ * is shown as the game spells it.
+ */
+function sourceLabel(key, category, sample, chestNames) {
+    let m = /^(common|rare|epic) (\d+)$/.exec(key);
+    if (m) {
+        const tartarosOnly = chestNames.length > 0
+            && chestNames.every((n) => (0, ocr_normalize_js_1.foldDiacritics)(n).toLowerCase().includes('tartaros'));
+        return `${tartarosOnly ? 'Tartaros' : titleCase(m[1])} Crypt · Level ${m[2]}`;
+    }
+    m = /^(elven|cursed) citadel (\d+)$/.exec(key);
+    if (m)
+        return `${m[1] === 'cursed' ? 'Cursed Citadel' : 'Citadel'} · Level ${m[2]}`;
+    if (category === 'heroic') {
+        const level = /(\d+)/.exec(key)?.[1];
+        return level ? `Heroic Monster · Level ${level}` : 'Heroic Monster';
+    }
+    if (category === 'runic' || category === 'vault') {
+        const name = category === 'runic' ? 'Raid Runic Squad' : 'Vault of the Ancients';
+        const range = (0, source_names_js_1.parseSourceLevelRange)(sample) ?? /(\d+)/.exec(key)?.[1];
+        return range ? `${name} · Level ${range.replace('-', '–')}` : name;
+    }
+    return sample || titleCase(key);
+}
+/** Order within a category: crypt tier / citadel kind first, then the label. */
+function sortRank(key, label) {
+    if (label.startsWith('Tartaros'))
+        return 3;
+    if (/^rare \d+$/.test(key))
+        return 1;
+    if (/^epic \d+$/.test(key))
+        return 2;
+    if (/^cursed citadel \d+$/.test(key))
+        return 1;
+    return 0;
+}
+/** The value most records score; ties go to the value more chests share, then the lower. */
+function majorityPoints(chests) {
+    const byValue = new Map();
+    for (const c of chests) {
+        const v = byValue.get(c.points) ?? { records: 0, chests: 0 };
+        v.records += c.records;
+        v.chests += 1;
+        byValue.set(c.points, v);
+    }
+    let best = null;
+    for (const entry of byValue) {
+        if (!best
+            || entry[1].records > best[1].records
+            || (entry[1].records === best[1].records && entry[1].chests > best[1].chests)
+            || (entry[1].records === best[1].records && entry[1].chests === best[1].chests && entry[0] < best[0])) {
+            best = entry;
+        }
+    }
+    return best ? best[0] : 0;
+}
+function buildBoard(groups, overrides) {
+    const overridden = new Set((0, source_points_repo_js_1.getAllOverrides)().map((o) => (0, source_points_repo_js_1.makeCacheKey)(o.sourceKey, o.chestName)));
+    // One bucket per CANONICAL key: a source read with and without spaces is
+    // one source, scored by one set of overrides.
+    const buckets = new Map();
+    for (const g of groups) {
+        let b = buckets.get(g.canon);
+        if (!b) {
+            b = { keys: new Map(), sources: new Map(), chests: new Map() };
+            buckets.set(g.canon, b);
+        }
+        b.keys.set(g.key, (b.keys.get(g.key) ?? 0) + g.count);
+        b.sources.set(g.source, (b.sources.get(g.source) ?? 0) + g.count);
+        const stored = b.chests.get(g.chestName) ?? new Map();
+        stored.set(g.stored, (stored.get(g.stored) ?? 0) + g.count);
+        b.chests.set(g.chestName, stored);
+    }
+    const mostCommon = (m) => [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? '';
+    const sources = [];
+    let staleTotal = 0;
+    for (const [canon, b] of buckets) {
+        // The spaced spelling of a key is the readable one; prefer it.
+        const key = [...b.keys.entries()]
+            .sort((a, c) => c[0].split(' ').length - a[0].split(' ').length || c[1] - a[1])[0][0];
+        const sample = mostCommon(b.sources);
+        const wildcardSet = overridden.has(`${canon}\t`);
+        let records = 0;
+        let stale = 0;
+        const chests = [];
+        for (const [name, stored] of b.chests) {
+            const points = (0, source_points_repo_js_1.resolvePointsForKey)(overrides, key, name);
+            let n = 0;
+            for (const [value, count] of stored) {
+                n += count;
+                if (value !== points)
+                    stale += count;
+            }
+            records += n;
+            chests.push({
+                name,
+                records: n,
+                points,
+                unset: points === 0 && !wildcardSet && !overridden.has(`${canon}\t${name}`) && !(0, source_names_js_1.hasDefaultPointsFor)(key, name),
+            });
+        }
+        chests.sort((a, c) => collator.compare(a.name, c.name));
+        const category = (0, source_categories_js_1.sourceCategory)(key);
+        const label = sourceLabel(key, category, sample, chests.map((c) => c.name));
+        staleTotal += stale;
+        sources.push({
+            key,
+            label,
+            source: sample,
+            category,
+            records,
+            points: majorityPoints(chests),
+            chests,
+            unset: chests.some((c) => c.unset),
+            staleRecords: stale,
+            rank: sortRank(key, label),
+        });
+    }
+    const order = new Map(source_categories_js_1.SOURCE_CATEGORIES.map((c, i) => [c.key, i]));
+    sources.sort((a, b) => (order.get(a.category) ?? 99) - (order.get(b.category) ?? 99)
+        || a.rank - b.rank
+        || collator.compare(a.label, b.label));
+    const categories = source_categories_js_1.SOURCE_CATEGORIES
+        .map((c) => {
+        const inCat = sources.filter((s) => s.category === c.key);
+        return { key: c.key, title: c.title, sources: inCat.length, unset: inCat.filter((s) => s.unset).length };
+    })
+        .filter((c) => c.sources > 0);
+    return {
+        categories,
+        sources: sources.map(({ rank: _rank, ...s }) => s),
+        staleRecords: staleTotal,
+    };
+}
+/** The board as the admin page reads it. Cached; every write invalidates it. */
+function getPointsBoard() {
+    return (0, ttl_cache_js_1.cached)(BOARD_CACHE_KEY, BOARD_TTL_MS, () => buildBoard(loadRecordGroups(), (0, source_points_repo_js_1.loadOverrides)()));
+}
+/**
+ * What re-resolving every record under `overrides` would change: per clan, and
+ * per (source, chest), largest point swing first.
+ */
+function computeImpact(groups, overrides, board, onlyCanon) {
+    const labels = new Map(board.sources.map((s) => [(0, source_names_js_1.canonicalSourceKey)(s.key), s]));
+    const clanNames = new Map((0, clan_repo_js_1.listClans)().map((c) => [c.id, c.name]));
+    const clans = new Map();
+    const lines = new Map();
+    let records = 0;
+    let delta = 0;
+    for (const g of groups) {
+        if (onlyCanon && !onlyCanon.has(g.canon))
+            continue;
+        const to = (0, source_points_repo_js_1.resolvePointsForKey)(overrides, g.key, g.chestName);
+        if (to === g.stored)
+            continue;
+        const d = (to - g.stored) * g.count;
+        records += g.count;
+        delta += d;
+        const clan = clans.get(g.clanId) ?? { records: 0, delta: 0 };
+        clan.records += g.count;
+        clan.delta += d;
+        clans.set(g.clanId, clan);
+        const id = `${g.canon}\t${to}`;
+        let line = lines.get(id);
+        if (!line) {
+            const src = labels.get(g.canon);
+            line = {
+                key: src?.key ?? g.key,
+                label: src?.label ?? g.source,
+                chests: [],
+                records: 0,
+                from: [],
+                to,
+                delta: 0,
+                fromSet: new Set(),
+                chestRecords: new Map(),
+            };
+            lines.set(id, line);
+        }
+        line.records += g.count;
+        line.delta += d;
+        line.fromSet.add(g.stored);
+        line.chestRecords.set(g.chestName, (line.chestRecords.get(g.chestName) ?? 0) + g.count);
+    }
+    const sorted = [...lines.values()]
+        .map(({ fromSet, chestRecords, ...l }) => ({
+        ...l,
+        from: [...fromSet].sort((a, b) => a - b),
+        chests: [...chestRecords.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name),
+    }))
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || b.records - a.records || collator.compare(a.label, b.label));
+    return {
+        records,
+        delta,
+        clans: [...clans.entries()]
+            .map(([id, c]) => ({ id, name: clanNames.get(id) ?? `Clan #${id}`, ...c }))
+            .sort((a, b) => a.id - b.id),
+        lines: sorted.slice(0, IMPACT_LINE_LIMIT),
+        moreLines: Math.max(0, sorted.length - IMPACT_LINE_LIMIT),
+    };
+}
+function validPoints(n) {
+    return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= exports.MAX_POINTS;
+}
+/**
+ * Turn the board-level target state into override rows.
+ *
+ * A source-level change means "every chest paying the source's value now pays
+ * v, and so does any chest this source drops in future": it sets the wildcard
+ * and lets those chests fall through to it. The source's exceptions keep their
+ * values — pinned with an exact row where the new wildcard would otherwise
+ * swallow them (a value that came from the old wildcard or from a per-chest
+ * seed, which the wildcard outranks). A chest-level change pins that chest.
+ * Any exact row that would only restate what the chest resolves to anyway is
+ * removed, so the table converges on the fewest rows that say the same thing.
+ */
+function planChanges(board, overrides, changes) {
+    const byCanon = new Map(board.sources.map((s) => [(0, source_names_js_1.canonicalSourceKey)(s.key), s]));
+    const perSource = new Map();
+    for (const c of changes) {
+        if (!c || typeof c.sourceKey !== 'string' || typeof c.chestName !== 'string') {
+            throw new PointsChangeError('Each change needs a sourceKey and a chestName');
+        }
+        if (!validPoints(c.points)) {
+            throw new PointsChangeError(`Points must be a whole number from 0 to ${exports.MAX_POINTS.toLocaleString('en')}`);
+        }
+        const canon = (0, source_names_js_1.canonicalSourceKey)(c.sourceKey);
+        if (!byCanon.has(canon))
+            throw new PointsChangeError(`Unknown source "${c.sourceKey}"`);
+        const list = perSource.get(canon) ?? [];
+        list.push(c);
+        perSource.set(canon, list);
+    }
+    const writes = [];
+    const edits = [];
+    const canonKeys = new Set();
+    for (const [canon, list] of perSource) {
+        const src = byCanon.get(canon);
+        const current = new Map(src.chests.map((c) => [c.name, c.points]));
+        const whole = list.find((c) => c.chestName === '');
+        const wholeChanged = whole !== undefined && whole.points !== src.points;
+        const target = new Map(current);
+        if (wholeChanged) {
+            for (const c of src.chests)
+                if (c.points === src.points)
+                    target.set(c.name, whole.points);
+        }
+        for (const c of list) {
+            if (c.chestName === '')
+                continue;
+            if (!current.has(c.chestName)) {
+                throw new PointsChangeError(`"${c.chestName}" has never dropped from ${src.label}`);
+            }
+            target.set(c.chestName, c.points);
+        }
+        const changedChests = src.chests.filter((c) => target.get(c.name) !== c.points);
+        if (!wholeChanged && changedChests.length === 0)
+            continue;
+        canonKeys.add(canon);
+        const wildcard = wholeChanged ? whole.points : overrides.get((0, source_points_repo_js_1.makeCacheKey)(src.key, ''));
+        if (wholeChanged) {
+            writes.push({ sourceKey: src.key, chestName: '', points: whole.points });
+            edits.push({ key: src.key, label: src.label, chestName: '', from: src.points, to: whole.points });
+        }
+        // With a new wildcard every chest's fallback moves, so every chest is
+        // re-checked; otherwise only the ones asked about.
+        for (const c of wholeChanged ? src.chests : changedChests) {
+            const to = target.get(c.name);
+            const fallback = wildcard ?? (0, source_names_js_1.getDefaultPointsFor)(src.key, c.name);
+            const hasExact = overrides.has((0, source_points_repo_js_1.makeCacheKey)(src.key, c.name));
+            if (to === fallback) {
+                if (hasExact)
+                    writes.push({ sourceKey: src.key, chestName: c.name, points: null });
+            }
+            else if (!hasExact || overrides.get((0, source_points_repo_js_1.makeCacheKey)(src.key, c.name)) !== to) {
+                writes.push({ sourceKey: src.key, chestName: c.name, points: to });
+            }
+            // A chest swept along by the source's new value is covered by the
+            // source line; only a chest moved on its own gets a line of its own.
+            const sweptByWhole = wholeChanged && c.points === src.points && to === whole.points;
+            if (to !== c.points && !sweptByWhole) {
+                edits.push({ key: src.key, label: src.label, chestName: c.name, from: c.points, to });
+            }
+        }
+    }
+    return { writes, edits, canonKeys };
+}
+function withWrites(overrides, writes) {
+    const next = new Map(overrides);
+    for (const w of writes) {
+        const k = (0, source_points_repo_js_1.makeCacheKey)(w.sourceKey, w.chestName);
+        if (w.points === null)
+            next.delete(k);
+        else
+            next.set(k, w.points);
+    }
+    return next;
+}
+/** Dry run of a save: the edits it amounts to and what they do to stored records. */
+function previewPointChanges(changes) {
+    const groups = loadRecordGroups();
+    const overrides = (0, source_points_repo_js_1.loadOverrides)();
+    const board = buildBoard(groups, overrides);
+    const plan = planChanges(board, overrides, changes);
+    return { edits: plan.edits, impact: computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys) };
+}
+/**
+ * Save: write the override rows, then recalculate every record of the sources
+ * touched — which also settles any of their records that were already stale,
+ * exactly as the preview reported.
+ */
+function applyPointChanges(changes) {
+    const groups = loadRecordGroups();
+    const overrides = (0, source_points_repo_js_1.loadOverrides)();
+    const board = buildBoard(groups, overrides);
+    const plan = planChanges(board, overrides, changes);
+    const impact = computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys);
+    (0, source_points_repo_js_1.writeOverrides)(plan.writes);
+    const updated = plan.canonKeys.size > 0 ? (0, source_points_repo_js_1.recalculateAllPoints)(plan.canonKeys) : 0;
+    return { edits: plan.edits, impact, updated };
+}
+/** Dry run of Recalculate: every record whose stored value is out of date. */
+function previewRecalculate() {
+    const groups = loadRecordGroups();
+    const overrides = (0, source_points_repo_js_1.loadOverrides)();
+    return computeImpact(groups, overrides, buildBoard(groups, overrides));
+}
+//# sourceMappingURL=points-board.js.map

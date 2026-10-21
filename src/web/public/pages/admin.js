@@ -1,6 +1,6 @@
 // Admin — content-management page for admins/superadmins. Member
 // rename + delete, OCR misread merge rules (player / chest / source),
-// chest-type rarity overrides, source-point overrides + recalc, the
+// chest-type rarity overrides, the Chest Points board (points-board.js), the
 // review queue (newly-discovered chest names / sources / members), and
 // the OCR-missing-player-name reassignment workflow with hover-preview
 // of the saved debug crops.
@@ -16,6 +16,7 @@ import {
   notify, confirmDialog, promptDialog,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
+import { mountPointsBoard } from './points-board.js';
 
 /**
  * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
@@ -39,19 +40,19 @@ export async function renderAdmin(el) {
     el.innerHTML = '<div class="empty-state"><p>Admin access required.</p></div>';
     return;
   }
-  // Source Point Values are a single global scoring table shared by every
-  // clan. Any admin can view it, but only superadmins can edit/recalculate.
+  // Chest Points and Triumphal Chest Points are global scoring tables shared
+  // by every clan. Any admin can view them, but only superadmins can edit.
   const isSuperadmin = currentUser?.role === 'superadmin';
   // Scanner / Discord / ChestTracker / scan-interval data lives on the
   // System and Clans tabs now — the Admin page only fetches what it
-  // actually renders (per-clan content management).
-  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, sourcePoints, triumphalPoints, members, memberChestCounts, stats, reviewQueue, unknownChests] = await Promise.all([
+  // actually renders (per-clan content management). Chest Points fetches
+  // its own (see mountPointsBoard below).
+  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, triumphalPoints, members, memberChestCounts, stats, reviewQueue, unknownChests] = await Promise.all([
     api('/admin/merge-rules?type=player'),
     api('/admin/merge-rules?type=chest'),
     api('/admin/merge-rules?type=source'),
     api('/admin/unique-chests'),
     api('/admin/unique-sources'),
-    api('/admin/source-points'),
     api('/admin/triumphal-points'),
     api('/members?include=inactive'),
     api('/admin/member-chest-counts'),
@@ -327,60 +328,19 @@ export async function renderAdmin(el) {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header"><h2>Source Point Values</h2></div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">One <strong>global scoring table</strong> shared by every clan — how many points each chest source is worth. Each source resolves in this order: a per-<strong>chest name</strong> value, else the source's <strong>wildcard</strong> value (applies to every chest from that source), else the built-in default. Use per-name values when a single source drops multiple chests that should score differently (e.g. "Dark Omens event" drops Minor, Major, and Epic Omen Chests). Rows tagged <span class="chest-type epic">New</span> have been seen in scans but have <strong>no point value yet</strong> (they score 0) — set a value to score them. ${isSuperadmin ? 'These values are managed here by superadmins.' : '<strong>Read-only</strong> — only a superadmin can change these values.'}</p>
-        ${isSuperadmin ? `<div class="mb-12">
-          <button class="btn" data-action="recalculate-source-points">Recalculate All Point Values</button>
-          <p class="muted-copy mt-4">Re-runs the source parser on every existing chest record <strong>across all clans</strong> and updates point values using the current defaults + values. Use this after the parser is updated or to clean up historical 0-point rows.</p>
-        </div>` : ''}
-        ${sourcePoints.length > 0 ? `
-          <details>
-            <summary class="collapse-toggle">Show source point values (${sourcePoints.length})</summary>
-            <div class="source-points-list mt-12">
-              ${sourcePoints.map((s) => {
-                // "New" = seen in scans but scores 0 with no value set anywhere:
-                // no hardcoded default AND no override. An explicit override of 0
-                // (wildcard or per-chest) is a non-null value, so it counts as
-                // reviewed and suppresses the badge.
-                const hasHardcodedDefault = s.chestRows.some((r) => r.fallbackPoints > 0);
-                const hasAnyOverride = s.wildcardOverride !== null || s.chestRows.some((r) => r.override !== null);
-                const needsAttention = !hasHardcodedDefault && !hasAnyOverride;
-                return `<details class="source-points-source${needsAttention ? ' row-needs-attention' : ''}">
-                <summary class="collapse-toggle">
-                  <strong>${esc(s.sourceKey)}</strong>${needsAttention ? ' <span class="chest-type epic" title="Seen in scans but has no point value yet — it currently scores 0. Set a wildcard or per-chest value to score it. Saving an explicit 0 also clears this badge.">New</span>' : ''}
-                  <span class="muted-copy">&nbsp;— ${s.totalCount} chest${s.totalCount === 1 ? '' : 's'} · default ${s.defaultPoints}${s.wildcardOverride !== null ? ` · wildcard ${s.wildcardOverride}` : ''}${s.sampleSource ? ` · e.g. "${esc(s.sampleSource)}"` : ''}</span>
-                </summary>
-                <table class="table-responsive mt-12">
-                  <thead><tr><th>Chest Name</th><th>Rarity</th><th>Chests</th><th>Effective</th><th>${isSuperadmin ? 'Override' : 'Value'}</th></tr></thead>
-                  <tbody>
-                    ${s.chestRows.map((r) => `<tr>
-                      <td data-label="Chest Name" data-role="primary"><span class="mrow-name">${r.isWildcard ? '<em>all chests (wildcard)</em>' : esc(r.chestName)}</span><span class="mrow-sub">${r.isWildcard || !r.chestType ? '' : `${esc(r.chestType)} · `}${r.count} chests</span></td>
-                      <td data-label="Rarity" data-role="hidden">${r.isWildcard || !r.chestType ? '' : `<span class="chest-type ${esc(r.chestType)}">${esc(r.chestType)}</span>`}</td>
-                      <td data-label="Chests" data-role="hidden">${r.count}</td>
-                      <td data-label="Effective" data-role="metric">${r.effectivePoints}</td>
-                      <td data-label="${isSuperadmin ? 'Override' : 'Value'}">
-                        <input type="number" class="input input-narrow source-points-input" min="0" step="1" value="${r.override ?? ''}" placeholder="${r.fallbackPoints}" data-source-key="${esc(s.sourceKey)}" data-chest-name="${esc(r.chestName)}" data-original-override="${r.override ?? ''}"${isSuperadmin ? '' : ' disabled'}>
-                      </td>
-                    </tr>`).join('')}
-                  </tbody>
-                </table>
-              </details>`;
-              }).join('')}
-            </div>
-            ${isSuperadmin ? `<div class="inline-form-row mt-16">
-              <button class="btn btn-primary" data-action="save-all-source-points">Save All Changes</button>
-            </div>
-            <p class="muted-copy mt-8">Saves every chest where the value was changed. Clear an input box to remove its value — that chest will fall through to the wildcard (or the built-in default if no wildcard is set). Historical chest records are backfilled across all clans.</p>` : ''}
-          </details>
-        ` : '<p class="muted-copy mt-12">No source data yet.</p>'}
-      </div>
-    </div>
+    <!-- Chest Points: self-contained, fills itself (pages/points-board.js). -->
+    <div class="card pb-card" id="pointsBoard"></div>
 
     ${renderTriumphalPointsSection(triumphalPoints, isSuperadmin)}
 
   `;
+
+  // Not awaited: the board loads its own data, so the rest of the page is
+  // usable while it does.
+  const pointsBoardEl = el.querySelector('#pointsBoard');
+  if (pointsBoardEl) mountPointsBoard(pointsBoardEl, { isSuperadmin }).catch((err) => {
+    if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
+  });
 
   // ChestTracker Integration is now per-clan on the Clans tab; the
   // single-clan card that used to live here has been removed.
@@ -442,83 +402,8 @@ export async function doMergeSource(rerender) {
   notify(`Merged "${from}" into "${to}".`, 'Merge complete');
 }
 
-export async function saveAllSourcePoints(rerender) {
-  const inputs = document.querySelectorAll('input.source-points-input');
-  if (inputs.length === 0) return;
-
-  // Collect changed rows only. Compare current value to data-original-override.
-  // Empty value with a previous override = clear it (DELETE)
-  // Filled value different from original = set it (PUT)
-  // Every input carries both sourceKey and chestName ('' for the wildcard row).
-  const toSet = [];
-  const toDelete = [];
-  for (const input of inputs) {
-    const sourceKey = input.dataset.sourceKey;
-    const chestName = input.dataset.chestName ?? '';
-    const original = input.dataset.originalOverride || '';
-    const current = input.value.trim();
-    if (current === original) continue;
-
-    const label = chestName === '' ? `${sourceKey} (wildcard)` : `${sourceKey} / ${chestName}`;
-    if (current === '') {
-      toDelete.push({ sourceKey, chestName, label });
-    } else {
-      const pointValue = Number.parseInt(current, 10);
-      if (!Number.isFinite(pointValue) || pointValue < 0) {
-        return notify(`"${label}" must be a non-negative integer`, 'Save failed');
-      }
-      toSet.push({ sourceKey, chestName, pointValue, label });
-    }
-  }
-
-  if (toSet.length === 0 && toDelete.length === 0) {
-    return notify('No changes to save.', 'Nothing to do');
-  }
-
-  const ok = await confirmDialog(
-    `Save ${toSet.length} override${toSet.length === 1 ? '' : 's'}${toDelete.length > 0 ? ` and reset ${toDelete.length} to default` : ''}?\n\nHistorical chest records will be backfilled automatically.`,
-    { title: 'Save all changes', confirmLabel: 'Save' },
-  );
-  if (!ok) return;
-
-  const scrollY = window.scrollY;
-  let totalBackfilled = 0;
-  const errors = [];
-
-  for (const entry of toSet) {
-    const result = await apiPut('/admin/source-points', {
-      sourceKey: entry.sourceKey,
-      chestName: entry.chestName,
-      pointValue: entry.pointValue,
-    });
-    if (result?.error) {
-      errors.push(`${entry.label}: ${result.error}`);
-    } else {
-      totalBackfilled += result.backfilled || 0;
-    }
-  }
-  for (const entry of toDelete) {
-    const qs = `sourceKey=${encodeURIComponent(entry.sourceKey)}&chestName=${encodeURIComponent(entry.chestName)}`;
-    const result = await apiDelete(`/admin/source-points?${qs}`);
-    if (result?.error) {
-      errors.push(`${entry.label}: ${result.error}`);
-    } else {
-      totalBackfilled += result.backfilled || 0;
-    }
-  }
-
-  if (typeof rerender === 'function') await rerender('admin');
-  window.scrollTo(0, scrollY);
-
-  if (errors.length > 0) {
-    notify(`Some changes failed:\n${errors.join('\n')}`, 'Partial save');
-  } else {
-    notify(`Saved ${toSet.length + toDelete.length} change${toSet.length + toDelete.length === 1 ? '' : 's'}. ${totalBackfilled} historical records updated.`, 'Saved');
-  }
-}
-
 // Triumphal Chest Points — global, superadmin-managed scoring for the
-// Bank Gifts tab (mirrors the Source Point Values card). `rows` come from
+// Bank Gifts tab (the per-chest sibling of the Chest Points card). `rows` come from
 // GET /admin/triumphal-points: every configured chest plus any chest
 // observed in scans but not yet valued (flagged `isNew`, sorted first).
 function renderTriumphalPointsSection(rows, isSuperadmin) {
@@ -562,7 +447,7 @@ export async function saveAllTriumphalPoints(rerender) {
 
   // Changed rows only. Empty value with a previous value = clear (DELETE,
   // reverts the chest to "new"). Filled value different from original =
-  // set it (PUT). Mirrors saveAllSourcePoints.
+  // set it (PUT).
   const toSet = [];
   const toDelete = [];
   for (const input of inputs) {
@@ -773,20 +658,6 @@ export async function reassignUnknownBulk(sessionId, rerender) {
   const scrollY = window.scrollY;
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
-}
-
-export async function recalculateSourcePoints(rerender) {
-  const ok = await confirmDialog('Re-run the source parser on every existing chest record and update point values? This is safe to run repeatedly.', {
-    title: 'Recalculate point values',
-    confirmLabel: 'Recalculate',
-  });
-  if (!ok) return;
-  const scrollY = window.scrollY;
-  const result = await apiPost('/admin/source-points/recalculate', {});
-  if (result?.error) return notify(result.error, 'Recalculate failed');
-  if (typeof rerender === 'function') await rerender('admin');
-  window.scrollTo(0, scrollY);
-  notify(`Recalculated ${result.updated || 0} chest records.`, 'Recalculate complete');
 }
 
 export async function deleteRule(id, rerender) {

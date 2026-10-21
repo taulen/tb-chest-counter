@@ -419,6 +419,19 @@ export function getDefaultPointsFor(key: string | null, chestName: string): numb
 }
 
 /**
+ * True when the built-in tables say anything at all about this chest from this
+ * source — a per-chest seed or a source-wide one. Separates "scores 0 because
+ * it was set to 0" (the Basilisk Chest seed) from "scores 0 because nobody has
+ * valued it yet", which is the only one the admin board flags.
+ */
+export function hasDefaultPointsFor(key: string | null, chestName: string): boolean {
+  if (!key) return false;
+  const canon = canonicalSourceKey(key);
+  if (chestName && SOURCE_CHEST_POINTS_CANONICAL.has(`${canon}\t${chestName}`)) return true;
+  return SOURCE_POINTS_CANONICAL.has(canon);
+}
+
+/**
  * True for keys produced by the structured pattern matchers in
  * `getSourceKey()` (crypt/citadel/vault/arena/etc.). False for keys generated
  * by the slug fallback — those represent source types the parser doesn't know

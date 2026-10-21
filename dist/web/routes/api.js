@@ -53,6 +53,7 @@ const memberRepo = __importStar(require("../../data/repositories/member-repo.js"
 const sessionRepo = __importStar(require("../../data/repositories/session-repo.js"));
 const mergeRepo = __importStar(require("../../data/repositories/merge-repo.js"));
 const sourcePointsRepo = __importStar(require("../../data/repositories/source-points-repo.js"));
+const pointsBoard = __importStar(require("../../data/points-board.js"));
 const triumphalPointsRepo = __importStar(require("../../data/repositories/triumphal-points-repo.js"));
 const reviewQueueRepo = __importStar(require("../../data/repositories/review-queue-repo.js"));
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
@@ -2320,59 +2321,48 @@ function createApiRouter(scanLoop) {
         res.json(chestRepo.getChestCountsByMember(req.clanId ?? 1));
     });
     // GET /api/admin/source-points
-    // The scoring table is global (same for every clan). Any admin may READ
-    // it; only superadmins may change it (the mutating routes below).
+    // The Chest Points board: one line per chest source with the value it pays
+    // (see src/data/points-board.ts). The scoring table is global (same for
+    // every clan). Any admin may READ it; only superadmins may change it.
     router.get('/admin/source-points', auth_js_1.requireAdmin, (_req, res) => {
-        res.json(sourcePointsRepo.getSourceKeySummary());
+        res.json(pointsBoard.getPointsBoard());
     });
-    // PUT /api/admin/source-points { sourceKey, chestName, pointValue }
-    // chestName = '' is the wildcard row (applies to any chest under this
-    // source that has no more-specific override). Global + superadmin-only.
-    router.put('/admin/source-points', auth_js_1.requireSuperAdmin, (req, res) => {
-        const sourceKey = String(req.body?.sourceKey ?? '').trim();
-        const chestName = String(req.body?.chestName ?? '');
-        const pointValue = Number.parseInt(String(req.body?.pointValue ?? ''), 10);
-        if (!sourceKey) {
-            return res.status(400).json({ error: 'sourceKey is required' });
-        }
-        if (!Number.isFinite(pointValue) || pointValue < 0) {
-            return res.status(400).json({ error: 'pointValue must be a non-negative integer' });
+    // POST /api/admin/source-points/changes { changes: [{ sourceKey, chestName, points }], dryRun? }
+    // chestName '' is the source's own value. With dryRun the save is only
+    // planned — the response says what it would change and by how much, so the
+    // page can show it before anyone commits. Global + superadmin-only.
+    router.post('/admin/source-points/changes', auth_js_1.requireSuperAdmin, (req, res) => {
+        const changes = req.body?.changes;
+        if (!Array.isArray(changes) || changes.length === 0) {
+            return res.status(400).json({ error: 'changes must be a non-empty array' });
         }
         try {
-            const backfilled = sourcePointsRepo.setOverride(sourceKey, chestName, pointValue);
-            (0, user_repo_js_1.logAction)(req.user.id, 'set_source_points', { sourceKey, chestName, pointValue, backfilled });
-            res.json({ ok: true, backfilled });
+            if (req.body?.dryRun)
+                return res.json(pointsBoard.previewPointChanges(changes));
+            const result = pointsBoard.applyPointChanges(changes);
+            (0, user_repo_js_1.logAction)(req.user.id, 'set_source_points', {
+                edits: result.edits.map((e) => ({ sourceKey: e.key, chestName: e.chestName, from: e.from, to: e.to })),
+                updated: result.updated,
+            });
+            res.json({ ok: true, ...result });
         }
         catch (err) {
+            if (err instanceof pointsBoard.PointsChangeError)
+                return res.status(400).json({ error: err.message });
             res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
         }
     });
-    // DELETE /api/admin/source-points?sourceKey=...&chestName=...
-    // Query params instead of path segments because chestName can be the
-    // empty string (wildcard) and URL-encoding an empty path segment is
-    // awkward. Global + superadmin-only.
-    router.delete('/admin/source-points', auth_js_1.requireSuperAdmin, (req, res) => {
-        const sourceKey = String(req.query.sourceKey ?? '').trim();
-        const chestName = String(req.query.chestName ?? '');
-        if (!sourceKey) {
-            return res.status(400).json({ error: 'sourceKey is required' });
-        }
-        try {
-            const backfilled = sourcePointsRepo.deleteOverride(sourceKey, chestName);
-            (0, user_repo_js_1.logAction)(req.user.id, 'delete_source_points', { sourceKey, chestName, backfilled });
-            res.json({ ok: true, backfilled });
-        }
-        catch (err) {
-            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-        }
-    });
-    // POST /api/admin/source-points/recalculate — global + superadmin-only.
-    // Recomputes point_value across every clan's chest_records.
+    // POST /api/admin/source-points/recalculate { dryRun? } — global + superadmin-only.
+    // Re-resolves point_value on every clan's chest_records. The dry run reports
+    // what is out of date without touching anything.
     router.post('/admin/source-points/recalculate', auth_js_1.requireSuperAdmin, (req, res) => {
         try {
+            const impact = pointsBoard.previewRecalculate();
+            if (req.body?.dryRun)
+                return res.json({ impact });
             const updated = sourcePointsRepo.recalculateAllPoints();
-            (0, user_repo_js_1.logAction)(req.user.id, 'recalculate_source_points', { updated });
-            res.json({ ok: true, updated });
+            (0, user_repo_js_1.logAction)(req.user.id, 'recalculate_source_points', { updated, delta: impact.delta });
+            res.json({ ok: true, updated, impact });
         }
         catch (err) {
             res.status(500).json({ error: String(err instanceof Error ? err.message : err) });

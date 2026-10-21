@@ -1,0 +1,53 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SOURCE_CATEGORIES = void 0;
+exports.sourceCategory = sourceCategory;
+/**
+ * Which family a chest source belongs to — the grouping shared by the
+ * leaderboard FAQ's points table (points-guide.ts) and the Chest Points admin
+ * board (points-board.ts), so the two never disagree about where a source
+ * lives.
+ *
+ * Keyed on the canonical source key from getSourceKey(). Keys are matched in
+ * their despaced form too, because PaddleOCR drops the spaces the slug-fallback
+ * keys are built from ("level16heroicmonster"). Anything unrecognised lands in
+ * "other": the failure mode of a new source is a row in the wrong box, never a
+ * missing one.
+ */
+const source_names_js_1 = require("../vision/source-names.js");
+/** Display order and titles. */
+exports.SOURCE_CATEGORIES = [
+    { key: 'crypts', title: 'Crypts' },
+    { key: 'citadels', title: 'Citadels' },
+    { key: 'heroic', title: 'Heroic Monsters' },
+    { key: 'squads', title: 'Epic Squads' },
+    { key: 'runic', title: 'Runic Raids' },
+    { key: 'vault', title: 'Vault of the Ancients' },
+    { key: 'events', title: 'Events' },
+    { key: 'tournaments', title: 'Tournaments' },
+    { key: 'shops', title: 'Shops' },
+    { key: 'other', title: 'Other' },
+];
+function sourceCategory(key) {
+    const canon = (0, source_names_js_1.canonicalSourceKey)(key);
+    if (/^(common|rare|epic) \d+$/.test(key))
+        return 'crypts';
+    if (/^(elven|cursed) citadel \d+$/.test(key))
+        return 'citadels';
+    if (/^level\d+heroicmonster$/.test(canon))
+        return 'heroic';
+    if (/^vault \d+$/.test(key))
+        return 'vault';
+    if (canon.includes('runic'))
+        return 'runic';
+    if (canon.includes('squad') || canon === 'shadowcity')
+        return 'squads';
+    if (canon.includes('tournament'))
+        return 'tournaments';
+    if (/shop|store|exchange/.test(canon))
+        return 'shops';
+    if (/event|omens|carrot|beastman|yokai|sakura/.test(canon))
+        return 'events';
+    return 'other';
+}
+//# sourceMappingURL=source-categories.js.map

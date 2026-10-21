@@ -9,6 +9,7 @@ exports.canonicalSourceKey = canonicalSourceKey;
 exports.sourceSpellingKey = sourceSpellingKey;
 exports.getDefaultPointsForKey = getDefaultPointsForKey;
 exports.getDefaultPointsFor = getDefaultPointsFor;
+exports.hasDefaultPointsFor = hasDefaultPointsFor;
 exports.isKnownSourceKey = isKnownSourceKey;
 exports.getPointsFromSource = getPointsFromSource;
 exports.isHardcodedSource = isHardcodedSource;
@@ -421,6 +422,20 @@ function getDefaultPointsFor(key, chestName) {
             return canonical;
     }
     return getDefaultPointsForKey(key);
+}
+/**
+ * True when the built-in tables say anything at all about this chest from this
+ * source — a per-chest seed or a source-wide one. Separates "scores 0 because
+ * it was set to 0" (the Basilisk Chest seed) from "scores 0 because nobody has
+ * valued it yet", which is the only one the admin board flags.
+ */
+function hasDefaultPointsFor(key, chestName) {
+    if (!key)
+        return false;
+    const canon = canonicalSourceKey(key);
+    if (chestName && SOURCE_CHEST_POINTS_CANONICAL.has(`${canon}\t${chestName}`))
+        return true;
+    return SOURCE_POINTS_CANONICAL.has(canon);
 }
 /**
  * True for keys produced by the structured pattern matchers in

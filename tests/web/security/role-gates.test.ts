@@ -257,9 +257,11 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'GET /members/:id/raw-ocr', method: 'get', path: '/api/members/__M1__/raw-ocr' },
       // Source point values are a global scoring table — reads are admin-tier
       // (see ADMIN_TIER below), but every write is superadmin-only.
-      { name: 'PUT /admin/source-points', method: 'put', path: '/api/admin/source-points', body: { sourceKey: 'arena', chestName: '', pointValue: 10 } },
-      { name: 'DELETE /admin/source-points', method: 'delete', path: '/api/admin/source-points?sourceKey=arena&chestName=' },
+      // The dry runs too: a preview reads every clan's record volumes.
+      { name: 'POST /admin/source-points/changes', method: 'post', path: '/api/admin/source-points/changes', body: { changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] } },
+      { name: 'POST /admin/source-points/changes (dry run)', method: 'post', path: '/api/admin/source-points/changes', body: { changes: [{ sourceKey: 'arena', chestName: '', points: 10 }], dryRun: true } },
       { name: 'POST /admin/source-points/recalculate', method: 'post', path: '/api/admin/source-points/recalculate', body: {} },
+      { name: 'POST /admin/source-points/recalculate (dry run)', method: 'post', path: '/api/admin/source-points/recalculate', body: { dryRun: true } },
       // Triumphal chest points: same global read-admin / write-superadmin split.
       { name: 'PUT /admin/triumphal-points', method: 'put', path: '/api/admin/triumphal-points', body: { chestName: 'Golden Chest', packagePoints: 50 } },
       { name: 'DELETE /admin/triumphal-points', method: 'delete', path: '/api/admin/triumphal-points?chestName=Golden%20Chest' },

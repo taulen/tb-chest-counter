@@ -23,6 +23,7 @@
 import { getDb } from './database.js';
 import { clanRewardChestIds } from './clan-reward-chests.js';
 import { getSourceKeySummary } from './repositories/source-points-repo.js';
+import { sourceCategory } from './source-categories.js';
 import { canonicalSourceKey, parseSourceLevelRange } from '../vision/source-names.js';
 import { foldDiacritics } from '../vision/ocr-normalize.js';
 
@@ -155,11 +156,11 @@ export function placeChest(key: string, source: string, chest: string): Placemen
     const first = /(\d+)/.exec(key);
     if (first) return { section: 'runic', ...rangeFromSource(source, Number(first[1])) };
   }
-  if (canon.includes('squad') || canon === 'shadowcity') return { section: 'squads' };
-  if (canon.includes('tournament')) return { section: 'tournaments' };
-  if (/shop|store|exchange/.test(canon)) return { section: 'shops' };
-  if (/event|omens|carrot|beastman|yokai|sakura/.test(canon)) return { section: 'events' };
-  return { section: 'other' };
+  // Every structured family is placed above, so only the named-list ones reach
+  // here — plus a runic key with no level to put on the ladder, which is still
+  // a squad.
+  const category = sourceCategory(key);
+  return { section: category === 'runic' ? 'squads' : category as ChestSectionKey };
 }
 
 /** Names of the clan-reward chests the leaderboard excludes, as stored. */

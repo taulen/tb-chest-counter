@@ -6,8 +6,8 @@ exports.getSourceKeySummary = getSourceKeySummary;
 exports.getAllOverrides = getAllOverrides;
 exports.loadOverrides = loadOverrides;
 exports.getPointsForSourceCached = getPointsForSourceCached;
-exports.setOverride = setOverride;
-exports.deleteOverride = deleteOverride;
+exports.resolvePointsForKey = resolvePointsForKey;
+exports.writeOverrides = writeOverrides;
 exports.recalculateAllPoints = recalculateAllPoints;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
@@ -223,6 +223,15 @@ function getPointsForSourceCached(overrides, source, chestName) {
     const key = (0, source_names_js_1.getSourceKey)(source);
     if (!key)
         return 0;
+    return resolvePointsForKey(overrides, key, chestName);
+}
+/**
+ * The lookup stack for an already-derived source key: exact override, then the
+ * source's wildcard override, then the seeded default. The one place the order
+ * is written down — scans, recalculation and the admin board's previews all
+ * resolve through it, so a preview can never disagree with what a save does.
+ */
+function resolvePointsForKey(overrides, key, chestName) {
     const exact = overrides.get(makeCacheKey(key, chestName));
     if (exact !== undefined)
         return exact;
@@ -232,85 +241,52 @@ function getPointsForSourceCached(overrides, source, chestName) {
     return (0, source_names_js_1.getDefaultPointsFor)(key, chestName);
 }
 /**
- * UPSERT an override row for (source_key, chest_name) and backfill all
- * historical chest_records rows whose (source, name) resolves to this
- * override. chest_name = '' means wildcard — it applies to every chest
- * under this source that doesn't have its own more-specific override.
- * Returns the number of chest records updated by the backfill.
+ * Apply a batch of override writes in one transaction. Each write first clears
+ * every row for the same (canonical source key, chest name) — a source OCR'd
+ * with and without spaces can hold one row per spelling, and the lookup map
+ * keys on the canonical form, so leaving a second spelling behind would let it
+ * win or lose at random. Records are NOT touched here; the caller recalculates
+ * the affected sources afterwards (see points-board.ts applyPointChanges).
  */
-function setOverride(sourceKey, chestName, pointValue) {
+function writeOverrides(writes) {
+    if (writes.length === 0)
+        return;
     const db = (0, database_js_1.getDb)();
     const now = new Date().toISOString();
-    const tx = db.transaction(() => {
-        db.prepare(`
-      INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(source_key, chest_name) DO UPDATE SET point_value = ?, updated_at = ?
-    `).run(sourceKey, chestName, pointValue, now, pointValue, now);
-    });
-    tx();
-    // The override is global, but chest_records are per-clan — backfill each
-    // clan's historical rows and notify only the clans that actually changed.
-    let updated = 0;
-    for (const clan of (0, clan_repo_js_1.listClans)()) {
-        const changed = backfillPointsForComposite(sourceKey, chestName, pointValue, clan.id);
-        updated += changed;
-        if (changed > 0)
-            (0, chest_summary_repo_js_1.notifyChestDataChanged)(clan.id);
-    }
-    const label = chestName === '' ? `${sourceKey} (wildcard)` : `${sourceKey} / ${chestName}`;
-    log.info(`Override set: ${label} = ${pointValue} (backfilled ${updated} rows across all clans)`);
+    const existing = db.prepare('SELECT id, source_key, chest_name FROM source_point_overrides').all();
+    const del = db.prepare('DELETE FROM source_point_overrides WHERE id = ?');
+    const ins = db.prepare('INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at) VALUES (?, ?, ?, ?)');
+    db.transaction(() => {
+        for (const w of writes) {
+            const canon = (0, source_names_js_1.canonicalSourceKey)(w.sourceKey);
+            for (const row of existing) {
+                if (row.chest_name === w.chestName && (0, source_names_js_1.canonicalSourceKey)(row.source_key) === canon)
+                    del.run(row.id);
+            }
+            if (w.points !== null)
+                ins.run(w.sourceKey, w.chestName, w.points, now);
+        }
+    })();
+    const set = writes.filter((w) => w.points !== null).length;
+    log.info(`Source points: wrote ${set} value(s), cleared ${writes.length - set}`);
     invalidateSourceKeySummary();
-    return updated;
-}
-/**
- * Remove an override row and backfill affected chest_records with the
- * correct fallback value (the wildcard override if one exists, else the
- * hardcoded default).
- */
-function deleteOverride(sourceKey, chestName) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('DELETE FROM source_point_overrides WHERE source_key = ? AND chest_name = ?').run(sourceKey, chestName);
-    const fallback = resolveFallbackValue(sourceKey, chestName);
-    let updated = 0;
-    for (const clan of (0, clan_repo_js_1.listClans)()) {
-        const changed = backfillPointsForComposite(sourceKey, chestName, fallback, clan.id);
-        updated += changed;
-        if (changed > 0)
-            (0, chest_summary_repo_js_1.notifyChestDataChanged)(clan.id);
-    }
-    const label = chestName === '' ? `${sourceKey} (wildcard)` : `${sourceKey} / ${chestName}`;
-    log.info(`Override removed: ${label} (reverted to ${fallback}, backfilled ${updated} rows across all clans)`);
-    invalidateSourceKeySummary();
-    return updated;
-}
-/**
- * Compute the value that applies to (source_key, chest_name) when no
- * name-specific override exists: the wildcard override if set, else the
- * hardcoded default. Used when deleting a row so the backfill uses the
- * value the live lookup path would produce.
- */
-function resolveFallbackValue(sourceKey, chestName) {
-    const db = (0, database_js_1.getDb)();
-    if (chestName !== '') {
-        const wildcard = db.prepare('SELECT point_value FROM source_point_overrides WHERE source_key = ? AND chest_name = \'\'').get(sourceKey);
-        if (wildcard)
-            return wildcard.point_value;
-    }
-    return (0, source_names_js_1.getDefaultPointsFor)(sourceKey, chestName);
 }
 /**
  * Recalculate chest_records.point_value across EVERY clan using the current
  * global override + default stack. The override map is global, so it's
  * loaded once and applied to each clan's rows in turn.
+ *
+ * `onlyCanonKeys` limits the pass to sources whose canonical key is in the
+ * set — what a save uses, so it rewrites exactly the sources it changed.
+ * Returns the number of rows whose value actually changed.
  */
-function recalculateAllPoints() {
+function recalculateAllPoints(onlyCanonKeys) {
     const overrideMap = loadOverrides();
     let totalUpdated = 0;
     let clanCount = 0;
     for (const clan of (0, clan_repo_js_1.listClans)()) {
         clanCount++;
-        totalUpdated += recalculatePointsForClan(clan.id, overrideMap);
+        totalUpdated += recalculatePointsForClan(clan.id, overrideMap, onlyCanonKeys);
     }
     log.info(`Recalculated point values: ${totalUpdated} rows updated across ${clanCount} clan(s)`);
     invalidateSourceKeySummary();
@@ -322,7 +298,7 @@ function recalculateAllPoints() {
  * its effective value applied in one UPDATE. Notifies the daily-summary
  * rollup when the clan's rows actually changed.
  */
-function recalculatePointsForClan(clanId, overrideMap) {
+function recalculatePointsForClan(clanId, overrideMap, onlyCanonKeys) {
     const db = (0, database_js_1.getDb)();
     const distinct = db.prepare(`
     SELECT DISTINCT chest_source, chest_name
@@ -334,26 +310,26 @@ function recalculatePointsForClan(clanId, overrideMap) {
         const key = (0, source_names_js_1.getSourceKey)(row.chest_source);
         if (!key)
             continue;
+        if (onlyCanonKeys && !onlyCanonKeys.has((0, source_names_js_1.canonicalSourceKey)(key)))
+            continue;
         const cacheKey = makeCacheKey(key, row.chest_name);
         const existing = groups.get(cacheKey);
         if (existing) {
             existing.sources.push(row.chest_source);
         }
         else {
-            groups.set(cacheKey, { chestName: row.chest_name, sources: [row.chest_source] });
+            groups.set(cacheKey, { sourceKey: key, chestName: row.chest_name, sources: [row.chest_source] });
         }
     }
     let totalUpdated = 0;
     const tx = db.transaction(() => {
-        for (const [cacheKey, group] of groups.entries()) {
-            const sourceKey = cacheKey.split('\t')[0];
-            const exact = overrideMap.get(cacheKey);
-            const wildcard = overrideMap.get(makeCacheKey(sourceKey, ''));
-            const value = exact ?? wildcard ?? (0, source_names_js_1.getDefaultPointsFor)(sourceKey, group.chestName);
+        for (const group of groups.values()) {
+            const value = resolvePointsForKey(overrideMap, group.sourceKey, group.chestName);
             // Resolve string source/name values to their FK ids and UPDATE on
             // those — the chest_source / chest_name columns no longer exist on
             // chest_records post-D3 (they live in the chest_sources / chests
-            // reference tables now).
+            // reference tables now). `point_value != ?` keeps the count honest:
+            // SQLite counts a row rewritten to the value it already held.
             const placeholders = group.sources.map(() => '?').join(', ');
             const result = db.prepare(`
         UPDATE chest_records
@@ -363,7 +339,8 @@ function recalculatePointsForClan(clanId, overrideMap) {
              SELECT id FROM chest_sources WHERE source IN (${placeholders})
            )
            AND chest_id = (SELECT id FROM chests WHERE name = ?)
-      `).run(value, clanId, ...group.sources, group.chestName);
+           AND point_value != ?
+      `).run(value, clanId, ...group.sources, group.chestName, value);
             totalUpdated += result.changes;
         }
     });
@@ -371,59 +348,5 @@ function recalculatePointsForClan(clanId, overrideMap) {
     if (totalUpdated > 0)
         (0, chest_summary_repo_js_1.notifyChestDataChanged)(clanId);
     return totalUpdated;
-}
-/**
- * Update chest_records.point_value for every row whose (chest_source,
- * chest_name) resolves to this (source_key, chest_name) override.
- *
- * Wildcard writes (chest_name = '') backfill every chest_records row
- * whose source resolves to this key AND which has no more-specific
- * override covering its chest_name — otherwise the wildcard would clobber
- * a name-specific value that should win.
- */
-function backfillPointsForComposite(sourceKey, chestName, newValue, clanId) {
-    const db = (0, database_js_1.getDb)();
-    // Read distinct chest_source strings via the view (chest_source is
-    // denormalized through chest_sources post-D3) so the JS-side
-    // getSourceKey() filter can still group sources that share a key.
-    const sources = db.prepare("SELECT DISTINCT chest_source FROM chest_records_v WHERE clan_id = ? AND chest_source != ''").all(clanId);
-    const matching = sources
-        .map((r) => r.chest_source)
-        .filter((s) => (0, source_names_js_1.getSourceKey)(s) === sourceKey);
-    if (matching.length === 0)
-        return 0;
-    const placeholders = matching.map(() => '?').join(', ');
-    // Reusable subquery — chest_records.chest_source_id IN (the FK ids of
-    // every chest_source string in `matching`). Built once and inlined
-    // into each UPDATE branch.
-    const sourceIdSubquery = `(SELECT id FROM chest_sources WHERE source IN (${placeholders}))`;
-    if (chestName !== '') {
-        const result = db.prepare(`
-      UPDATE chest_records SET point_value = ?
-       WHERE clan_id = ?
-         AND chest_source_id IN ${sourceIdSubquery}
-         AND chest_id = (SELECT id FROM chests WHERE name = ?)
-    `).run(newValue, clanId, ...matching, chestName);
-        return result.changes;
-    }
-    const specific = db.prepare("SELECT chest_name FROM source_point_overrides WHERE source_key = ? AND chest_name != ''").all(sourceKey);
-    if (specific.length === 0) {
-        const result = db.prepare(`
-      UPDATE chest_records SET point_value = ?
-       WHERE clan_id = ?
-         AND chest_source_id IN ${sourceIdSubquery}
-    `).run(newValue, clanId, ...matching);
-        return result.changes;
-    }
-    const namePlaceholders = specific.map(() => '?').join(', ');
-    const result = db.prepare(`
-    UPDATE chest_records SET point_value = ?
-       WHERE clan_id = ?
-         AND chest_source_id IN ${sourceIdSubquery}
-         AND chest_id NOT IN (
-           SELECT id FROM chests WHERE name IN (${namePlaceholders})
-         )
-  `).run(newValue, clanId, ...matching, ...specific.map((r) => r.chest_name));
-    return result.changes;
 }
 //# sourceMappingURL=source-points-repo.js.map

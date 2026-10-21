@@ -26,6 +26,7 @@ exports.buildPointsGuide = buildPointsGuide;
 const database_js_1 = require("./database.js");
 const clan_reward_chests_js_1 = require("./clan-reward-chests.js");
 const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
+const source_categories_js_1 = require("./source-categories.js");
 const source_names_js_1 = require("../vision/source-names.js");
 const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
 const MATRIX_ROWS = [
@@ -113,15 +114,11 @@ function placeChest(key, source, chest) {
         if (first)
             return { section: 'runic', ...rangeFromSource(source, Number(first[1])) };
     }
-    if (canon.includes('squad') || canon === 'shadowcity')
-        return { section: 'squads' };
-    if (canon.includes('tournament'))
-        return { section: 'tournaments' };
-    if (/shop|store|exchange/.test(canon))
-        return { section: 'shops' };
-    if (/event|omens|carrot|beastman|yokai|sakura/.test(canon))
-        return { section: 'events' };
-    return { section: 'other' };
+    // Every structured family is placed above, so only the named-list ones reach
+    // here — plus a runic key with no level to put on the ladder, which is still
+    // a squad.
+    const category = (0, source_categories_js_1.sourceCategory)(key);
+    return { section: category === 'runic' ? 'squads' : category };
 }
 /** Names of the clan-reward chests the leaderboard excludes, as stored. */
 function clanRewardChestNamesStored() {

@@ -146,12 +146,10 @@ import {
   doMergePlayer,
   doMergeChest,
   doMergeSource,
-  saveAllSourcePoints,
   saveAllTriumphalPoints,
   acknowledgeReviewQueue,
   reassignUnknownRow,
   reassignUnknownBulk,
-  recalculateSourcePoints,
   deleteRule,
   setChestType,
   saveMemberName,
@@ -655,11 +653,9 @@ if (contentEl) {
     if (action === 'delete-rule') return deleteRule(Number.parseInt(target.dataset.ruleId || '0', 10), loadPage);
     if (action === 'do-merge-chest') return doMergeChest(loadPage);
     if (action === 'do-merge-source') return doMergeSource(loadPage);
-    if (action === 'save-all-source-points') return saveAllSourcePoints(loadPage);
     if (action === 'save-all-triumphal-points') return saveAllTriumphalPoints(loadPage);
     if (action === 'save-schedule-correction') return saveScheduleCorrection(loadPage);
     if (action === 'delete-schedule-correction') return deleteScheduleCorrection(Number.parseInt(target.dataset.correctionId || '0', 10), loadPage);
-    if (action === 'recalculate-source-points') return recalculateSourcePoints(loadPage);
     if (action === 'acknowledge-review') return acknowledgeReviewQueue(target.dataset.reviewCategory || '', loadPage);
     if (action === 'reassign-unknown-row') return reassignUnknownRow(Number.parseInt(target.dataset.chestId || '0', 10), loadPage);
     if (action === 'reassign-unknown-bulk') return reassignUnknownBulk(Number.parseInt(target.dataset.sessionId || '0', 10), loadPage);
