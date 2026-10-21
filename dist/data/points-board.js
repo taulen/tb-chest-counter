@@ -14,15 +14,15 @@ exports.previewRecalculate = previewRecalculate;
  * chest they drop the same amount — a Level 25 epic crypt is 450 whichever of
  * its seventeen chests you get — so listing chests made a 369-row page whose
  * information was ~100 numbers. The few sources that genuinely pay chests
- * differently (Tartaros inside a common crypt, the three omen chests) show
+ * differently (the three omen chests, a citadel's cursed chest) show
  * their odd ones out as exceptions under the source line.
  *
  * What the board shows is the EFFECTIVE value, never the layer it came from.
  * The storage keeps its three layers (exact override → wildcard override →
  * seeded default, see resolvePointsForKey), but which layer holds a number is
  * an implementation detail an admin should not have to reason about — so a
- * save is expressed as a target state ("this source pays 60, except Tartaros at
- * 225") and planChanges works out the override rows that produce it.
+ * save is expressed as a target state ("this source pays 50, except the Epic
+ * Omen Chest at 150") and planChanges works out the override rows that produce it.
  *
  * Every write is previewed first: previewPointChanges / previewRecalculate
  * compute exactly which stored chest_records values would move, by how much,
@@ -34,7 +34,6 @@ const ttl_cache_js_1 = require("../utils/ttl-cache.js");
 const clan_repo_js_1 = require("./repositories/clan-repo.js");
 const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
 const source_names_js_1 = require("../vision/source-names.js");
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
 const source_categories_js_1 = require("./source-categories.js");
 /** Largest value a save accepts — the biggest real one is 10,000. */
 exports.MAX_POINTS = 1_000_000;
@@ -92,18 +91,15 @@ function titleCase(s) {
     return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 /**
- * The structured families get a name built from the key, because their most
- * common in-game string is misleading: "common 20" is mostly read as
- * "Tartaros Crypt level 20" yet pays the common-crypt ladder. Everything else
- * is shown as the game spells it.
+ * The structured families get a name built from the key, because the game's
+ * own strings for them are inconsistent ("Level 25 Crypt", "Lvl 25-29 Vault of
+ * the Ancients", "Level 45 Vault of the Ancients"). Everything else is shown as
+ * the game spells it.
  */
-function sourceLabel(key, category, sample, chestNames) {
-    let m = /^(common|rare|epic) (\d+)$/.exec(key);
-    if (m) {
-        const tartarosOnly = chestNames.length > 0
-            && chestNames.every((n) => (0, ocr_normalize_js_1.foldDiacritics)(n).toLowerCase().includes('tartaros'));
-        return `${tartarosOnly ? 'Tartaros' : titleCase(m[1])} Crypt · Level ${m[2]}`;
-    }
+function sourceLabel(key, category, sample) {
+    let m = /^(common|rare|epic|tartaros) (\d+)$/.exec(key);
+    if (m)
+        return `${titleCase(m[1])} Crypt · Level ${m[2]}`;
     m = /^(elven|cursed) citadel (\d+)$/.exec(key);
     if (m)
         return `${m[1] === 'cursed' ? 'Cursed Citadel' : 'Citadel'} · Level ${m[2]}`;
@@ -119,8 +115,8 @@ function sourceLabel(key, category, sample, chestNames) {
     return sample || titleCase(key);
 }
 /** Order within a category: crypt tier / citadel kind first, then the label. */
-function sortRank(key, label) {
-    if (label.startsWith('Tartaros'))
+function sortRank(key) {
+    if (/^tartaros \d+$/.test(key))
         return 3;
     if (/^rare \d+$/.test(key))
         return 1;
@@ -197,7 +193,7 @@ function buildBoard(groups, overrides) {
         }
         chests.sort((a, c) => collator.compare(a.name, c.name));
         const category = (0, source_categories_js_1.sourceCategory)(key);
-        const label = sourceLabel(key, category, sample, chests.map((c) => c.name));
+        const label = sourceLabel(key, category, sample);
         staleTotal += stale;
         sources.push({
             key,
@@ -209,7 +205,7 @@ function buildBoard(groups, overrides) {
             chests,
             unset: chests.some((c) => c.unset),
             staleRecords: stale,
-            rank: sortRank(key, label),
+            rank: sortRank(key),
         });
     }
     const order = new Map(source_categories_js_1.SOURCE_CATEGORIES.map((c, i) => [c.key, i]));

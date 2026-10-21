@@ -30,7 +30,7 @@ exports.SOURCE_CATEGORIES = [
 ];
 function sourceCategory(key) {
     const canon = (0, source_names_js_1.canonicalSourceKey)(key);
-    if (/^(common|rare|epic) \d+$/.test(key))
+    if (/^(common|rare|epic|tartaros) \d+$/.test(key))
         return 'crypts';
     if (/^(elven|cursed) citadel \d+$/.test(key))
         return 'citadels';

@@ -86,13 +86,9 @@ function rangeFromSource(source, fallback) {
 function placeChest(key, source, chest) {
     const canon = (0, source_names_js_1.canonicalSourceKey)(key);
     const foldedChest = (0, ocr_normalize_js_1.foldDiacritics)(chest).toLowerCase();
-    let m = /^(common|rare|epic) (\d+)$/.exec(key);
+    let m = /^(common|rare|epic|tartaros) (\d+)$/.exec(key);
     if (m) {
-        const level = Number(m[2]);
-        // Tartaros drops from a common-crypt key but pays its own ladder.
-        if (foldedChest.includes('tartaros'))
-            return { section: 'crypts', row: 'tartaros', level };
-        return { section: 'crypts', row: m[1], level };
+        return { section: 'crypts', row: m[1], level: Number(m[2]) };
     }
     m = /^(elven|cursed) citadel (\d+)$/.exec(key);
     if (m) {

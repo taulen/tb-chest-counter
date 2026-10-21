@@ -153,10 +153,18 @@ describe('space-insensitive source keys (PaddleOCR drops inter-word spaces)', ()
     });
 
     it('keeps two genuinely different sources apart even when they score the same', () => {
-      // Both derive getSourceKey "common 10" — same points, same admin bucket,
-      // different in-game source. Grouping rows on the derived key would fuse them.
-      expect(getSourceKey('Level 10 Crypt')).toBe(getSourceKey('Tartaros Crypt level 10'));
-      expect(sourceSpellingKey('Level 10 Crypt')).not.toBe(sourceSpellingKey('Tartaros Crypt level 10'));
+      // getSourceKey reduces a crypt to tier + level, so two differently named
+      // crypts of one level both derive "common 10". Grouping rows on the
+      // derived key would fuse them; the spelling key keeps them apart.
+      expect(getSourceKey('Level 10 Crypt')).toBe(getSourceKey('Level 10 Sand Crypt'));
+      expect(sourceSpellingKey('Level 10 Crypt')).not.toBe(sourceSpellingKey('Level 10 Sand Crypt'));
+    });
+
+    it('gives a Tartaros crypt its own key rather than the common one', () => {
+      // It used to fuse with the common crypt of its level; it drops only the
+      // Tartaros Chest and pays its own ladder (migration v77).
+      expect(getSourceKey('Tartaros Crypt level 10')).toBe('tartaros 10');
+      expect(getSourceKey('Level 10 Crypt')).toBe('common 10');
     });
 
     it('is stricter than canonicalSourceKey only where scoring does not care', () => {

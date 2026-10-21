@@ -39,9 +39,10 @@ const SOURCE_POINTS = {
     'common 5': 1, 'common 10': 5, 'common 15': 25, 'common 20': 80, 'common 25': 275,
     'rare 10': 8, 'rare 15': 40, 'rare 20': 140, 'rare 25': 360, 'rare 30': 600,
     'epic 10': 10, 'epic 15': 60, 'epic 20': 225, 'epic 25': 450, 'epic 30': 700, 'epic 35': 1000,
-    // 'common 30' / 'common 35' have no entry on purpose: the only chest that
-    // drops from them is the Tartaros Chest, which is scored per-name below at
-    // the EPIC ladder's 700/1000 rather than the common one.
+    // Tartaros crypts pay the EPIC ladder one level down. They used to share the
+    // common key (any crypt that isn't epic or rare) and were scored per-chest
+    // under it; migration v77 moved those overrides onto these keys.
+    'tartaros 10': 8, 'tartaros 15': 60, 'tartaros 20': 225, 'tartaros 25': 450, 'tartaros 30': 700, 'tartaros 35': 1000,
     'elven citadel 10': 4, 'elven citadel 15': 20, 'elven citadel 20': 60, 'elven citadel 25': 250, 'elven citadel 30': 500,
     // Cursed citadels are still on the pre-rescale values — no override was ever
     // set for them, so these two are the only crypt/citadel rows here that the
@@ -144,12 +145,6 @@ exports.SOURCE_CHEST_POINTS = {
         'Rare Chest of Wealth': 1,
         'Uncommon Chest of Wealth': 1,
     },
-    'common 10': { 'Tartaros Chest': 8 },
-    'common 15': { 'Tartaros Chest': 60 },
-    'common 20': { 'Tartaros Chest': 225 },
-    'common 25': { 'Tartaros Chest': 450 },
-    'common 30': { 'Tartaros Chest': 700 },
-    'common 35': { 'Tartaros Chest': 1000 },
     'dark omens event': { 'Arcane Chest': 500, 'Dark Omens chest': 1 },
     'epic ancient squad': {
         'Golden Guardian Ascendant Chest': 3,
@@ -292,6 +287,10 @@ function deriveSourceKey(source) {
         return `epic ${level}`;
     if (lower.includes('rare') && lower.includes('crypt'))
         return `rare ${level}`;
+    // A Tartaros crypt is its own source ("Tartaros Crypt level 20"), not a
+    // common one: it drops only the Tartaros Chest and pays its own ladder.
+    if (lower.includes('tartaros') && lower.includes('crypt'))
+        return `tartaros ${level}`;
     if (lower.includes('crypt'))
         return `common ${level}`;
     if (lower.includes('vault'))
@@ -368,9 +367,10 @@ function canonicalSourceKey(key) {
  * ("Lvl35-39"), where a word boundary never fires because "l" and "3" are both
  * word characters.
  *
- * NOT the same as `getSourceKey`, which is derived and lossier — "Level 10 Crypt"
- * and "Tartaros Crypt level 10" both derive "common 10" yet are two different
- * in-game sources. Grouping rows on that would fuse them.
+ * NOT the same as `getSourceKey`, which is derived and lossier — it reduces a
+ * crypt to tier + level, so any two crypt strings of one tier and level derive
+ * the same key ("common 10") whether or not the game treats them as one
+ * source. Grouping rows on that would fuse them.
  */
 function sourceSpellingKey(source) {
     return (0, ocr_normalize_js_1.foldDiacritics)(source)
@@ -448,7 +448,7 @@ function isKnownSourceKey(key) {
         return false;
     if (key === 'arena' || key === 'union reward' || key === 'jormungandr shop')
         return true;
-    if (/^(common|rare|epic|vault) \d+$/.test(key))
+    if (/^(common|rare|epic|tartaros|vault) \d+$/.test(key))
         return true;
     if (/^(elven citadel|cursed citadel) \d+$/.test(key))
         return true;

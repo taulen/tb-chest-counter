@@ -11,6 +11,7 @@ const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const logger_js_1 = require("../utils/logger.js");
 const chest_names_js_1 = require("../vision/chest-names.js");
+const source_names_js_1 = require("../vision/source-names.js");
 const config_integrity_js_1 = require("./config-integrity.js");
 const log = (0, logger_js_1.childLogger)('database');
 let db = null;
@@ -742,6 +743,27 @@ const MIGRATIONS = [
         UNIQUE (event_key, feed_start_at)
       );
     `,
+    },
+    {
+        // Tartaros crypts are their own source key now ("tartaros 20"), where they
+        // used to share the common one with every other non-epic, non-rare crypt.
+        // Their values lived as per-chest overrides under that common key
+        // ("common 20" / "Tartaros Chest"); each moves across as the new key's own
+        // value, so no chest scores differently and no stored record changes.
+        // Matched on the canonical key, so a spaceless "common20" row moves too.
+        version: 77,
+        run: (database) => {
+            const rows = database.prepare("SELECT id, source_key, point_value, updated_at FROM source_point_overrides WHERE chest_name = 'Tartaros Chest' ORDER BY id").all();
+            const insert = database.prepare("INSERT OR IGNORE INTO source_point_overrides (source_key, chest_name, point_value, updated_at) VALUES (?, '', ?, ?)");
+            const remove = database.prepare('DELETE FROM source_point_overrides WHERE id = ?');
+            for (const row of rows) {
+                const m = /^common(\d+)$/.exec((0, source_names_js_1.canonicalSourceKey)(row.source_key));
+                if (!m)
+                    continue;
+                insert.run(`tartaros ${m[1]}`, row.point_value, row.updated_at);
+                remove.run(row.id);
+            }
+        },
     },
 ];
 /**

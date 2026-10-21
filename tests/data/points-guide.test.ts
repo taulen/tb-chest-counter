@@ -90,7 +90,7 @@ describe('buildPointsGuide', () => {
     expect(byLabel).toEqual({
       'Common Crypt': [1, 5, null, null],
       'Rare Crypt': [null, 8, null, null],
-      // Same key as a common crypt, its own ladder.
+      // Its own source key and its own ladder.
       'Tartaros Crypt': [null, 8, null, null],
       'Elven Citadel': [null, null, 20, 60],
       // The source reads "Level 20 Citadel" for both; the chest tells them apart.

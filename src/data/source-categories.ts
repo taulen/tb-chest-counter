@@ -32,7 +32,7 @@ export const SOURCE_CATEGORIES: readonly { key: SourceCategory; title: string }[
 
 export function sourceCategory(key: string): SourceCategory {
   const canon = canonicalSourceKey(key);
-  if (/^(common|rare|epic) \d+$/.test(key)) return 'crypts';
+  if (/^(common|rare|epic|tartaros) \d+$/.test(key)) return 'crypts';
   if (/^(elven|cursed) citadel \d+$/.test(key)) return 'citadels';
   if (/^level\d+heroicmonster$/.test(canon)) return 'heroic';
   if (/^vault \d+$/.test(key)) return 'vault';

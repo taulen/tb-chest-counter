@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getDb } from '../../src/data/database.js';
+import { closeDb, getDb, initDatabase } from '../../src/data/database.js';
 import {
   applyPointChanges, getPointsBoard, PointsChangeError, previewPointChanges, previewRecalculate,
   type BoardSource,
@@ -17,12 +17,13 @@ import { makeTestDb } from '../helpers/test-db.js';
  */
 
 let cleanup: () => void;
+let dbPath = '';
 let memberId = 0;
 let sessionId = 0;
 let clock = Date.UTC(2026, 8, 1);
 
 beforeEach(() => {
-  ({ cleanup } = makeTestDb());
+  ({ cleanup, dbPath } = makeTestDb());
   const db = getDb();
   const now = new Date().toISOString();
   memberId = (db.prepare(
@@ -82,23 +83,38 @@ function source(key: string): BoardSource {
   return s;
 }
 
-/** Common 10 pays 5 (seeded), Tartaros from the same crypt pays 8 (seeded per chest). */
+/** Common 10 pays 5 (seeded) for every chest it drops. */
 function seedCrypt(): void {
   record('Level 10 Crypt', 'Barbarian Chest', 6, 5);
   record('Level 10 Crypt', 'Orc Chest', 4, 5);
-  record('Tartaros Crypt level 10', 'Tartaros Chest', 3, 8);
+}
+
+/** Summoning Dark Omens: each omen chest has its own seeded value (50/100/150). */
+function seedOmens(): void {
+  record('Summoning Dark Omens', 'Minor Omen Chest', 6, 50);
+  record('Summoning Dark Omens', 'Major Omen Chest', 3, 100);
+  record('Summoning Dark Omens', 'Epic Omen Chest', 1, 150);
 }
 
 describe('board', () => {
   it('one line per source, valued at its chests, exceptions listed', () => {
-    seedCrypt();
-    const s = source('common 10');
-    expect(s.label).toBe('Common Crypt · Level 10');
-    expect(s.category).toBe('crypts');
-    expect(s.points).toBe(5);
-    expect(s.records).toBe(13);
-    expect(s.chests.filter((c) => c.points !== s.points).map((c) => c.name)).toEqual(['Tartaros Chest']);
+    seedOmens();
+    const s = source('summoning dark omens');
+    expect(s.label).toBe('Summoning Dark Omens');
+    expect(s.category).toBe('events');
+    expect(s.points).toBe(50);
+    expect(s.records).toBe(10);
+    expect(s.chests.filter((c) => c.points !== s.points).map((c) => c.name)).toEqual(['Epic Omen Chest', 'Major Omen Chest']);
     expect(s.staleRecords).toBe(0);
+  });
+
+  it('a Tartaros crypt is its own source, not an exception of a common one', () => {
+    seedCrypt();
+    record('Tartaros Crypt level 10', 'Tartaros Chest', 3, 8);
+    const common = source('common 10');
+    expect(common.chests.map((c) => c.name)).toEqual(['Barbarian Chest', 'Orc Chest']);
+    const tartaros = source('tartaros 10');
+    expect(tartaros).toMatchObject({ label: 'Tartaros Crypt · Level 10', category: 'crypts', points: 8, staleRecords: 0 });
   });
 
   it('orders a ladder by level, not as strings', () => {
@@ -106,9 +122,11 @@ describe('board', () => {
     record('Level 25 Crypt', 'Barbarian Chest', 1, 275);
     record('Level 10 Crypt', 'Barbarian Chest', 1, 5);
     record('Level 10 epic Crypt', 'Barbarian Chest', 1, 10);
+    record('Tartaros Crypt level 15', 'Tartaros Chest', 1, 60);
     const crypts = getPointsBoard().sources.filter((s) => s.category === 'crypts').map((s) => s.label);
     expect(crypts).toEqual([
       'Common Crypt · Level 5', 'Common Crypt · Level 10', 'Common Crypt · Level 25', 'Epic Crypt · Level 10',
+      'Tartaros Crypt · Level 15',
     ]);
   });
 
@@ -139,30 +157,40 @@ describe('board', () => {
 
 describe('saving', () => {
   it('a source value moves its chests and keeps its exceptions', () => {
-    seedCrypt();
-    const preview = previewPointChanges([{ sourceKey: 'common 10', chestName: '', points: 6 }]);
+    seedOmens();
+    const change = [{ sourceKey: 'summoning dark omens', chestName: '', points: 60 }];
+    const preview = previewPointChanges(change);
     expect(preview.edits).toEqual([
-      { key: 'common 10', label: 'Common Crypt · Level 10', chestName: '', from: 5, to: 6 },
+      { key: 'summoning dark omens', label: 'Summoning Dark Omens', chestName: '', from: 50, to: 60 },
     ]);
-    expect(preview.impact.records).toBe(10);
-    expect(preview.impact.delta).toBe(10);
+    expect(preview.impact.records).toBe(6);
+    expect(preview.impact.delta).toBe(60);
     // The preview wrote nothing.
     expect(overrideRows()).toEqual([]);
-    expect(storedPoints('Level 10 Crypt', 'Barbarian Chest')).toEqual([5]);
+    expect(storedPoints('Summoning Dark Omens', 'Minor Omen Chest')).toEqual([50]);
 
-    const result = applyPointChanges([{ sourceKey: 'common 10', chestName: '', points: 6 }]);
+    const result = applyPointChanges(change);
     expect(result.updated).toBe(preview.impact.records);
-    expect(storedPoints('Level 10 Crypt', 'Barbarian Chest')).toEqual([6]);
-    // Tartaros was seeded per chest; the new wildcard outranks a seed, so it
-    // is pinned at its own value rather than swept along.
-    expect(storedPoints('Tartaros Crypt level 10', 'Tartaros Chest')).toEqual([8]);
+    expect(storedPoints('Summoning Dark Omens', 'Minor Omen Chest')).toEqual([60]);
+    // Major and Epic were seeded per chest; the new wildcard outranks a seed,
+    // so they are pinned at their own values rather than swept along.
+    expect(storedPoints('Summoning Dark Omens', 'Major Omen Chest')).toEqual([100]);
+    expect(storedPoints('Summoning Dark Omens', 'Epic Omen Chest')).toEqual([150]);
     expect(overrideRows()).toEqual([
-      { source_key: 'common 10', chest_name: '', point_value: 6 },
-      { source_key: 'common 10', chest_name: 'Tartaros Chest', point_value: 8 },
+      { source_key: 'summoning dark omens', chest_name: '', point_value: 60 },
+      { source_key: 'summoning dark omens', chest_name: 'Epic Omen Chest', point_value: 150 },
+      { source_key: 'summoning dark omens', chest_name: 'Major Omen Chest', point_value: 100 },
     ]);
-    const s = source('common 10');
-    expect(s.points).toBe(6);
-    expect(s.chests.find((c) => c.name === 'Tartaros Chest')?.points).toBe(8);
+    const s = source('summoning dark omens');
+    expect(s.points).toBe(60);
+    expect(s.chests.find((c) => c.name === 'Epic Omen Chest')?.points).toBe(150);
+  });
+
+  it('a saved value leaves nothing for Recalculate', () => {
+    seedCrypt();
+    applyPointChanges([{ sourceKey: 'common 10', chestName: '', points: 7 }]);
+    expect(previewRecalculate().records).toBe(0);
+    expect(getPointsBoard().staleRecords).toBe(0);
   });
 
   it('a chest value moves only that chest', () => {
@@ -230,5 +258,30 @@ describe('recalculate preview', () => {
     expect(previewRecalculate().records).toBe(0);
     // Already-correct rows are not counted as updated.
     expect(recalculateAllPoints()).toBe(0);
+  });
+});
+
+describe('migration v77: Tartaros crypts get their own source key', () => {
+  it('moves the per-chest Tartaros overrides onto the new keys and changes no value', () => {
+    record('Tartaros Crypt level 20', 'Tartaros Chest', 2, 225);
+    record('Level 20 Crypt', 'Barbarian Chest', 2, 80);
+    // The pre-split shape, including a spaceless key PaddleOCR produced.
+    override('common 20', 'Tartaros Chest', 225);
+    override('common25', 'Tartaros Chest', 450);
+    override('common 20', '', 80);
+
+    // Replay v77: the runner gates on MAX(version).
+    getDb().prepare('DELETE FROM schema_version WHERE version >= 77').run();
+    closeDb();
+    initDatabase(dbPath);
+    invalidateSourceKeySummary();
+
+    expect(overrideRows()).toEqual([
+      { source_key: 'common 20', chest_name: '', point_value: 80 },
+      { source_key: 'tartaros 20', chest_name: '', point_value: 225 },
+      { source_key: 'tartaros 25', chest_name: '', point_value: 450 },
+    ]);
+    expect(source('tartaros 20').points).toBe(225);
+    expect(previewRecalculate().records).toBe(0);
   });
 });

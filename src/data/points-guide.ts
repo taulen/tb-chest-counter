@@ -131,12 +131,9 @@ export function placeChest(key: string, source: string, chest: string): Placemen
   const canon = canonicalSourceKey(key);
   const foldedChest = foldDiacritics(chest).toLowerCase();
 
-  let m = /^(common|rare|epic) (\d+)$/.exec(key);
+  let m = /^(common|rare|epic|tartaros) (\d+)$/.exec(key);
   if (m) {
-    const level = Number(m[2]);
-    // Tartaros drops from a common-crypt key but pays its own ladder.
-    if (foldedChest.includes('tartaros')) return { section: 'crypts', row: 'tartaros', level };
-    return { section: 'crypts', row: m[1] as MatrixRowId, level };
+    return { section: 'crypts', row: m[1] as MatrixRowId, level: Number(m[2]) };
   }
   m = /^(elven|cursed) citadel (\d+)$/.exec(key);
   if (m) {
