@@ -209,7 +209,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       // added to the /clan payload has to be looked at and added here before it
       // can reach an anonymous visitor.
       expect(Object.keys(r.body).sort()).toEqual([
-        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardWeeklyGoalPoints',
+        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardWeeklyGoalPoints', 'weekStart',
       ]);
       const raw = JSON.stringify(r.body);
       expect(raw).not.toContain('aAaA11'); // the share key is not echoed

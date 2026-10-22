@@ -38,6 +38,7 @@ const clan_reward_chests_js_1 = require("../clan-reward-chests.js");
 const index_js_1 = require("../../config/index.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 const logger_js_1 = require("../../utils/logger.js");
+const game_day_js_1 = require("../../utils/game-day.js");
 const log = (0, logger_js_1.childLogger)('chest-summary');
 // Per-clan freshness counters. In-memory by design (see file header): reset on
 // boot so a redeploy always rebuilds, self-healing any missed notification.
@@ -386,12 +387,12 @@ function getMemberWindowComparison(clanId, prevFromDay, prevToDay, curFromDay, c
  * exactly the weeks a clan did best together. It would lie precisely when
  * someone was most likely to read it.
  *
- * `weeks` buckets on the game week (Sunday at the rollover), matching every
- * other weekly window on the site: SQLite's strftime('%w') gives the weekday of
- * the already-rollover-shifted game_day, so subtracting it lands on that week's
- * Sunday without re-deriving anything.
+ * `weeks` buckets on the clan's game week, matching every other weekly window
+ * on the site. game_day is already rollover-shifted, so the week's first day is
+ * a plain date offset: strftime('%w') back to Sunday, or the day count since a
+ * known Tinman day modulo the 6-day cycle for Tinman-to-Tinman clans.
  */
-function getConcentration(clanId, fromDay, toDay, weeks = 8) {
+function getConcentration(clanId, fromDay, toDay, weekStart = 'sunday', weeks = 8) {
     ensureFresh(clanId);
     const db = (0, database_js_1.getDb)();
     const windowed = !!(fromDay && toDay);
@@ -417,8 +418,12 @@ function getConcentration(clanId, fromDay, toDay, weeks = 8) {
     // Trend, always over recent game weeks regardless of the selected window —
     // a concentration figure for one week is a fact, and only the run of them
     // says whether the clan is becoming more or less dependent.
+    // Both are code constants, never input, so inlining them is safe.
+    const daysIntoWeek = weekStart === 'ancients'
+        ? `(((CAST(julianday(game_day) - julianday('${game_day_js_1.ANCIENTS_TINMAN_ANCHOR}') AS INTEGER)) % ${game_day_js_1.ANCIENTS_CYCLE_DAYS}) + ${game_day_js_1.ANCIENTS_CYCLE_DAYS}) % ${game_day_js_1.ANCIENTS_CYCLE_DAYS}`
+        : `CAST(strftime('%w', game_day) AS INTEGER)`;
     const weeklyRows = db.prepare(`
-    SELECT DATE(game_day, '-' || CAST(strftime('%w', game_day) AS INTEGER) || ' days') AS weekStart,
+    SELECT DATE(game_day, '-' || ${daysIntoWeek} || ' days') AS weekStart,
            member_id AS memberId,
            SUM(earned_points) AS points
     FROM chest_daily_summary

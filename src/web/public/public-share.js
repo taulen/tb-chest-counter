@@ -11,7 +11,7 @@
 
 import { esc } from './lib/ui.js';
 import { computeGameWindow } from './lib/period.js';
-import { setGameDayRolloverUtcHour } from './lib/state.js';
+import { setGameDayRolloverUtcHour, setWeekStart } from './lib/state.js';
 import {
   sortLeaderboardEntries,
   renderLeaderboardCardHtml,
@@ -351,6 +351,8 @@ function start() {
       // computeGameWindow / formatPeriodLabel pick it up automatically.
       setGameDayRolloverUtcHour(info.gameDayRolloverUtcHour);
     }
+    // Sunday or Tinman-to-Tinman weeks — same shared slot, same reason.
+    setWeekStart(info.weekStart);
     ctEnabled = !!info.ctEnabled;
     goalWeeklyPoints = Number.isFinite(info.leaderboardWeeklyGoalPoints)
       ? info.leaderboardWeeklyGoalPoints

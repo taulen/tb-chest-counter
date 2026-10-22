@@ -85,7 +85,7 @@ async function handleCommand(interaction, allowedChannelId, clanId) {
             // "weekly" — so the bot answered with a different board from the one
             // anybody comparing it against the website was looking at, and the
             // difference moved every hour.
-            const window = (0, game_day_js_1.gameWindow)(period, 0, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
+            const window = (0, game_day_js_1.gameWindow)(period, 0, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour, (0, clan_repo_js_1.getClanWeekStart)(clanId));
             const leaderboard = chestRepo.getLeaderboard(clanId, window?.from, window?.to, { limit: 25 });
             const message = (0, embeds_js_1.formatLeaderboardMessage)(leaderboard, period);
             await interaction.reply({ content: message });
@@ -118,7 +118,8 @@ async function handleCommand(interaction, allowedChannelId, clanId) {
             if (named)
                 (0, discord_link_repo_js_1.linkDiscordUser)(clanId, interaction.user.id, memberId);
             const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
-            const win = (0, game_day_js_1.gameWindow)(period, 0, rollover);
+            const weekStart = (0, clan_repo_js_1.getClanWeekStart)(clanId);
+            const win = (0, game_day_js_1.gameWindow)(period, 0, rollover, weekStart);
             const board = chestRepo.getLeaderboard(clanId, win?.from, win?.to, {
                 includeAllMembers: true,
             });
@@ -138,6 +139,7 @@ async function handleCommand(interaction, allowedChannelId, clanId) {
                     above: idx > 0 ? board[idx - 1] : null,
                     below: idx >= 0 && idx < board.length - 1 ? board[idx + 1] : null,
                     weeklyGoal,
+                    weekStart,
                 }),
                 flags: discord_js_1.MessageFlags.Ephemeral,
             });
@@ -151,10 +153,15 @@ async function handleCommand(interaction, allowedChannelId, clanId) {
         }
     }
 }
-/** Days the scaled goal is priced at, mirroring lib/leaderboard-render.js. */
-const GOAL_DAYS_BY_PERIOD = {
-    daily: 1, weekly: 7, monthly: 30, yearly: 365,
-};
+/**
+ * Days the scaled goal is priced at, mirroring goalDaysForPeriod in
+ * lib/leaderboard-render.js. A week is 7 days, or 6 Tinman to Tinman.
+ */
+function goalDaysForPeriod(period, weekStart) {
+    if (period === 'weekly')
+        return (0, game_day_js_1.weekLengthDays)(weekStart);
+    return { daily: 1, monthly: 30, yearly: 365 }[period] ?? 0;
+}
 /**
  * Autocomplete for /me's `player` option.
  *
@@ -202,9 +209,9 @@ function formatMeMessage(o) {
     }
     // All Time gets no goal: there is no period length to scale the target by,
     // so any number painted against it would be arbitrary.
-    const days = GOAL_DAYS_BY_PERIOD[o.period];
+    const days = goalDaysForPeriod(o.period, o.weekStart);
     if (o.weeklyGoal && days) {
-        const target = Math.round((o.weeklyGoal / 7) * days);
+        const target = Math.round((o.weeklyGoal / (0, game_day_js_1.weekLengthDays)(o.weekStart)) * days);
         const short = target - o.points;
         lines.push('');
         lines.push(short > 0

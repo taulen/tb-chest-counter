@@ -43,7 +43,7 @@ import {
   missingResourceHistoryTargets,
 } from '../../config/calibration.js';
 import { needsMemberCapture } from '../../browser/member-capture.js';
-import { listClans, getClanById } from '../../data/repositories/clan-repo.js';
+import { listClans, getClanById, getClanWeekStart } from '../../data/repositories/clan-repo.js';
 import * as resourceRepo from '../../data/repositories/resource-repo.js';
 import { updateEnvValue } from '../../config/persistent-env.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
@@ -654,8 +654,9 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     // hours. The rolling form snapped to nothing, so a member's "this week"
     // here and their row on the weekly leaderboard were different windows and,
     // for most of any given week, different numbers.
-    const thisWeekWindow = gameWeekWindow(0, loadConfig().gameDayRolloverUtcHour);
-    const lastWeekWindow = gameWeekWindow(1, loadConfig().gameDayRolloverUtcHour);
+    const weekStart = getClanWeekStart(clanId);
+    const thisWeekWindow = gameWeekWindow(0, loadConfig().gameDayRolloverUtcHour, weekStart);
+    const lastWeekWindow = gameWeekWindow(1, loadConfig().gameDayRolloverUtcHour, weekStart);
     const thisWeek = chestRepo.getMemberAggregateInRange(
       member.id, clanId, thisWeekWindow.from, thisWeekWindow.to,
     );
@@ -2277,7 +2278,7 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
           // contributor table, and merging two independent podiums on the
           // client leaves rows whose other figure is unknown.
           contributors: chestSummaryRepo.getWindowContributors(clanId, limit, f, t),
-          concentration: chestSummaryRepo.getConcentration(clanId, f, t),
+          concentration: chestSummaryRepo.getConcentration(clanId, f, t, getClanWeekStart(clanId)),
           activityClock: chestRepo.getActivityClock(clanId, ms?.from, ms?.to),
         };
       };

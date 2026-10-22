@@ -614,8 +614,9 @@ function createApiRouter(scanLoop) {
         // hours. The rolling form snapped to nothing, so a member's "this week"
         // here and their row on the weekly leaderboard were different windows and,
         // for most of any given week, different numbers.
-        const thisWeekWindow = (0, game_day_js_1.gameWeekWindow)(0, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
-        const lastWeekWindow = (0, game_day_js_1.gameWeekWindow)(1, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
+        const weekStart = (0, clan_repo_js_1.getClanWeekStart)(clanId);
+        const thisWeekWindow = (0, game_day_js_1.gameWeekWindow)(0, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour, weekStart);
+        const lastWeekWindow = (0, game_day_js_1.gameWeekWindow)(1, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour, weekStart);
         const thisWeek = chestRepo.getMemberAggregateInRange(member.id, clanId, thisWeekWindow.from, thisWeekWindow.to);
         const lastWeek = chestRepo.getMemberAggregateInRange(member.id, clanId, lastWeekWindow.from, lastWeekWindow.to);
         const progress = {
@@ -2093,7 +2094,7 @@ function createApiRouter(scanLoop) {
                     // contributor table, and merging two independent podiums on the
                     // client leaves rows whose other figure is unknown.
                     contributors: chestSummaryRepo.getWindowContributors(clanId, limit, f, t),
-                    concentration: chestSummaryRepo.getConcentration(clanId, f, t),
+                    concentration: chestSummaryRepo.getConcentration(clanId, f, t, (0, clan_repo_js_1.getClanWeekStart)(clanId)),
                     activityClock: chestRepo.getActivityClock(clanId, ms?.from, ms?.to),
                 };
             };

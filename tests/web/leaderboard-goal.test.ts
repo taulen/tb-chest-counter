@@ -54,6 +54,15 @@ describe('scaleGoalForPeriod', () => {
       expect(scaleGoalForPeriod(bad as never, 'weekly')).toBeNull();
     }
   });
+
+  it('prices a Tinman-to-Tinman week at 6 days', () => {
+    // Same weekly goal, shorter week: the daily rate is goal / 6, and every
+    // other timeframe scales from that rate.
+    expect(scaleGoalForPeriod(24_000, 'weekly', 'ancients')).toBe(24_000);
+    expect(scaleGoalForPeriod(24_000, 'daily', 'ancients')).toBe(4_000);
+    expect(scaleGoalForPeriod(24_000, 'monthly', 'ancients')).toBe(120_000);
+    expect(scaleGoalForPeriod(24_000, 'daily', 'sunday')).toBe(3_429);
+  });
 });
 
 describe('goalStatusClassFor', () => {

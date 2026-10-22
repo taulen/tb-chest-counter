@@ -14,11 +14,15 @@
  * gameDayKeyFor(): subtract the rollover hours, then read off the UTC date.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.ANCIENTS_CYCLE_DAYS = exports.ANCIENTS_TINMAN_ANCHOR = exports.WEEK_STARTS = void 0;
 exports.gameDateFor = gameDateFor;
 exports.currentGameDate = currentGameDate;
 exports.daysBetweenGameDates = daysBetweenGameDates;
+exports.isWeekStart = isWeekStart;
+exports.weekLengthDays = weekLengthDays;
 exports.gameWindow = gameWindow;
 exports.gameWeekWindow = gameWeekWindow;
+exports.isTinmanDay = isTinmanDay;
 /**
  * The game day (YYYY-MM-DD) that an epoch-ms instant falls in.
  *
@@ -48,11 +52,41 @@ function daysBetweenGameDates(from, to) {
         return null;
     return Math.round((b - a) / 86_400_000);
 }
+exports.WEEK_STARTS = ['sunday', 'ancients'];
+/**
+ * A known Tinman game day. Every Tinman day is this date plus a multiple of
+ * ANCIENTS_CYCLE_DAYS — read off the tbclanportal feed (Rise of the Ancients,
+ * 2026-10-23 17:00 UTC). event-calendar.ts re-checks the cadence against the
+ * feed on every fetch and warns if the game ever moves it. Mirrored in
+ * web/public/lib/period.js; tests/config/game-window-parity.test.ts asserts
+ * the two agree.
+ */
+exports.ANCIENTS_TINMAN_ANCHOR = '2026-10-23';
+exports.ANCIENTS_CYCLE_DAYS = 6;
+function isWeekStart(v) {
+    return typeof v === 'string' && exports.WEEK_STARTS.includes(v);
+}
+/** Length of one game week, in game days. */
+function weekLengthDays(weekStart) {
+    return weekStart === 'ancients' ? exports.ANCIENTS_CYCLE_DAYS : 7;
+}
+/**
+ * Days to step back from a game day (as a UTC-midnight Date in shifted time)
+ * to the first day of the week holding it.
+ */
+function daysIntoWeek(day, weekStart) {
+    if (weekStart === 'ancients') {
+        const since = Math.round((day.getTime() - Date.parse(`${exports.ANCIENTS_TINMAN_ANCHOR}T00:00:00Z`)) / 86_400_000);
+        return ((since % exports.ANCIENTS_CYCLE_DAYS) + exports.ANCIENTS_CYCLE_DAYS) % exports.ANCIENTS_CYCLE_DAYS;
+    }
+    return day.getUTCDay();
+}
 /**
  * The half-open [from, to) instants of a game-period slot, as ISO strings.
  *
  * `offset` 0 is the period in progress, 1 the one before it, and so on. Weeks
- * start on Sunday at the rollover hour. This mirrors computeGameWindow() in
+ * follow `weekStart` (Sunday at the rollover unless the clan counts Tinman to
+ * Tinman). This mirrors computeGameWindow() in
  * web/public/lib/period.js branch for branch, and
  * tests/config/game-window-parity.test.ts asserts the two agree so a change to
  * one that isn't made to the other fails the build.
@@ -66,7 +100,7 @@ function daysBetweenGameDates(from, to) {
  * Takes `rolloverUtcHour` rather than reading config, so it stays pure.
  * Returns null for 'all', which has no bounds.
  */
-function gameWindow(period, offset, rolloverUtcHour) {
+function gameWindow(period, offset, rolloverUtcHour, weekStart = 'sunday') {
     if (period === 'all')
         return null;
     const rolloverMs = rolloverUtcHour * 60 * 60 * 1000;
@@ -84,9 +118,10 @@ function gameWindow(period, offset, rolloverUtcHour) {
         return back(startMs, startMs + 24 * 60 * 60 * 1000);
     }
     if (period === 'weekly') {
-        shifted.setUTCDate(shifted.getUTCDate() - shifted.getUTCDay() - offset * 7);
+        const len = weekLengthDays(weekStart);
+        shifted.setUTCDate(shifted.getUTCDate() - daysIntoWeek(shifted, weekStart) - offset * len);
         const startMs = shifted.getTime();
-        return back(startMs, startMs + 7 * 24 * 60 * 60 * 1000);
+        return back(startMs, startMs + len * 24 * 60 * 60 * 1000);
     }
     if (period === 'monthly') {
         const year = shifted.getUTCFullYear();
@@ -103,7 +138,15 @@ function gameWindow(period, offset, rolloverUtcHour) {
  * A game WEEK slot. Thin wrapper over gameWindow for the callers that only ever
  * want weeks (the member profile's this-week-vs-last box).
  */
-function gameWeekWindow(offset, rolloverUtcHour) {
-    return gameWindow('weekly', offset, rolloverUtcHour);
+function gameWeekWindow(offset, rolloverUtcHour, weekStart = 'sunday') {
+    return gameWindow('weekly', offset, rolloverUtcHour, weekStart);
+}
+/**
+ * True when `gameDay` (YYYY-MM-DD) is a Tinman day on the ANCIENTS_TINMAN_ANCHOR
+ * cadence. event-calendar.ts uses it to notice the game moving Ancients.
+ */
+function isTinmanDay(gameDay) {
+    const d = daysBetweenGameDates(exports.ANCIENTS_TINMAN_ANCHOR, gameDay);
+    return d !== null && d % exports.ANCIENTS_CYCLE_DAYS === 0;
 }
 //# sourceMappingURL=game-day.js.map

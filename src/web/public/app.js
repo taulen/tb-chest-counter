@@ -19,6 +19,7 @@ import { api, apiPost, apiPut, apiDelete, UnauthenticatedError } from './lib/api
 import {
   getGameDayRolloverUtcHour,
   setCurrentUser,
+  setWeekStart,
   getCurrentPeriod,
   setCurrentPeriod,
   setCurrentPeriodOffset,
@@ -194,6 +195,8 @@ async function checkAuth() {
     // Stash the active clan name on currentUser so other UI surfaces
     // can render the clan label without re-fetching.
     currentUser.activeClan = data.activeClan ?? null;
+    // Before any page renders: every week window in lib/period.js reads it.
+    setWeekStart(data.activeClan?.weekStart);
 
     // Sync the inline data-theme bootstrap (cached from a prior visit,
     // possibly on this device) with the server's source of truth. If

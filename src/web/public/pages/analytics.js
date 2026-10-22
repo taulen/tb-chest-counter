@@ -40,7 +40,7 @@ import {
 } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
-  scaleGoalForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
+  scaleGoalForPeriod, goalDaysForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
 import { readToken } from '../lib/theme.js';
 
@@ -478,8 +478,6 @@ const PACE_MIN_ELAPSED = 0.25;
 // naming as a risk rather than a rounding difference.
 const PACE_SHORTFALL = 0.75;
 
-const GOAL_DAYS_BY_PERIOD = { daily: 1, weekly: 7, monthly: 30, yearly: 365 };
-
 /**
  * How far through the current period we are, 0..1, or null when the question
  * doesn't apply.
@@ -492,7 +490,7 @@ const GOAL_DAYS_BY_PERIOD = { daily: 1, weekly: 7, monthly: 30, yearly: 365 };
  */
 function paceElapsed() {
   if (period === 'all' || periodOffset !== 0) return null;
-  const days = GOAL_DAYS_BY_PERIOD[period];
+  const days = goalDaysForPeriod(period);
   if (!days) return null;
   const w = computeGameWindow(period, 0);
   if (!w) return null;
@@ -503,7 +501,7 @@ function paceElapsed() {
 }
 
 function formatRemaining(fraction) {
-  const days = GOAL_DAYS_BY_PERIOD[period] || 0;
+  const days = goalDaysForPeriod(period);
   const leftMs = Math.max(0, (1 - fraction) * days * 86_400_000);
   const d = Math.floor(leftMs / 86_400_000);
   const h = Math.floor((leftMs % 86_400_000) / 3_600_000);

@@ -16,6 +16,7 @@
 import { esc } from './ui.js';
 import { sortableThHtml } from './sort-headers.js';
 import { renderPeriodNav } from './period-nav.js';
+import { weekLengthDays } from './period.js';
 import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
 
 // Column-header hint for the two ranked metrics. The board leaves out
@@ -93,17 +94,28 @@ export function sortLeaderboardEntries(entries, key, dir) {
 // A clan stores ONE number — the weekly points target — and every other
 // timeframe is derived from it here, so the daily / weekly / monthly views can
 // never state goals that contradict each other. The scale is a flat daily rate
-// (goal / 7) multiplied by the length of the period, which is what makes
-// "am I on pace?" mean the same thing whichever tab you are looking at.
+// (goal / week length) multiplied by the length of the period, which is what
+// makes "am I on pace?" mean the same thing whichever tab you are looking at.
+// The week is 7 days, or 6 for a clan counting Tinman to Tinman — so the same
+// weekly goal is a bigger daily goal there.
 //
 // 'all' gets no goal at all: an all-time window has no length to scale by, so
 // any number we painted against it would be arbitrary.
 const GOAL_DAYS_PER_PERIOD = {
   daily: 1,
-  weekly: 7,
   monthly: 30,
   yearly: 365,
 };
+
+/**
+ * Days a goal for `period` is priced at, or 0 when the period has no length.
+ * Also the span the Analytics and Members pace bars measure against, so a
+ * period's finish line is the one its goal was priced for.
+ */
+export function goalDaysForPeriod(period, weekStartOverride) {
+  if (period === 'weekly') return weekLengthDays(weekStartOverride);
+  return GOAL_DAYS_PER_PERIOD[period] || 0;
+}
 
 /**
  * The points target for one member over `period`, given the clan's weekly goal.
@@ -111,11 +123,11 @@ const GOAL_DAYS_PER_PERIOD = {
  * Rounded to a whole point — a target of "3571.43" is noise on a scoreboard
  * that only ever shows integers.
  */
-export function scaleGoalForPeriod(weeklyGoalPoints, period) {
+export function scaleGoalForPeriod(weeklyGoalPoints, period, weekStartOverride) {
   if (!Number.isFinite(weeklyGoalPoints) || weeklyGoalPoints <= 0) return null;
-  const days = GOAL_DAYS_PER_PERIOD[period];
+  const days = goalDaysForPeriod(period, weekStartOverride);
   if (!days) return null;
-  return Math.round((weeklyGoalPoints / 7) * days);
+  return Math.round((weeklyGoalPoints / weekLengthDays(weekStartOverride)) * days);
 }
 
 // Green at the goal, amber from two-thirds of it, red below. Deliberately NOT

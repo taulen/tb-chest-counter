@@ -5,7 +5,7 @@
 // central dispatcher in app.js can keep its existing imports working.
 
 import { $, escapeHtml, formatRelativeTime, notify, confirmDialog, promptDialog, contentModal } from '../lib/ui.js';
-import { getCurrentUser } from '../lib/state.js';
+import { getCurrentUser, setWeekStart } from '../lib/state.js';
 // The leaderboard's own threshold function, not a copy of it: the preview here
 // and the hint above the board have to name the same integer, and an inlined
 // `weekly * 0.66` already got that wrong once (round vs ceil).
@@ -323,6 +323,26 @@ export async function renderClans(el, refreshClanIndicator) {
       } catch {
         notify('Save failed.', 'Member management');
       }
+    } else if (action === 'clan-week-start-save' && clanId) {
+      const weekStart = el.querySelector(`#clan-week-start-${clanId}`)?.value;
+      try {
+        const r = await fetch(`/api/clans/${clanId}/week-start`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ weekStart }),
+        });
+        const j = await r.json();
+        if (!r.ok) return notify(j.error || 'Save failed', 'Week');
+        // Week windows read the shape from lib/state.js on every render, so
+        // updating it here makes the next page visited use the new weeks
+        // without a reload — when this is the clan being viewed.
+        if (getCurrentUser()?.activeClan?.id === clanId) {
+          setWeekStart(weekStart);
+        }
+        notify('Week saved.', 'Week');
+      } catch {
+        notify('Save failed.', 'Week');
+      }
     } else if (action === 'clan-goal-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-goal-enabled-${clanId}`)?.checked;
       const raw = el.querySelector(`#clan-goal-points-${clanId}`).value.trim();
@@ -563,6 +583,8 @@ export async function renderClans(el, refreshClanIndicator) {
   for (const clan of clans) {
     const input = el.querySelector(`#clan-goal-points-${clan.id}`);
     if (input) input.addEventListener('input', () => updateGoalPreview(el, clan.id));
+    const week = el.querySelector(`#clan-week-start-${clan.id}`);
+    if (week) week.addEventListener('change', () => updateGoalPreview(el, clan.id));
     updateGoalPreview(el, clan.id);
   }
 }
@@ -570,8 +592,9 @@ export async function renderClans(el, refreshClanIndicator) {
 /**
  * Render the derived-goal line under the weekly-goal input.
  *
- * The per-period division is restated here (it's `weekly / 7 * days`, and the
- * page has no period state to feed scaleGoalForPeriod), but the amber cutoff
+ * The per-period division is restated here (it's `weekly / weekDays * days`,
+ * with weekDays 6 or 7 from the Week select, and the page has no period state
+ * to feed scaleGoalForPeriod), but the amber cutoff
  * comes from the leaderboard's own goalWarnThreshold — that one is NOT safe to
  * restate, because the naive `weekly * 0.66` this used to do disagreed with the
  * board by one point for about half of all goals.
@@ -585,8 +608,11 @@ function updateGoalPreview(el, clanId) {
     out.textContent = '';
     return;
   }
-  const per = (days) => Math.round((weekly / 7) * days).toLocaleString();
-  out.innerHTML = `Works out to <strong>${per(1)}</strong> / day, `
+  // The week shape as currently SELECTED, saved or not, so the preview answers
+  // "what would this goal mean" while the admin is still choosing.
+  const weekDays = el.querySelector(`#clan-week-start-${clanId}`)?.value === 'ancients' ? 6 : 7;
+  const per = (days) => Math.round((weekly / weekDays) * days).toLocaleString();
+  out.innerHTML = `Works out to <strong>${per(1)}</strong> / day (${weekDays}-day week), `
     + `<strong>${per(30)}</strong> / month, <strong>${per(365)}</strong> / year. `
     + `Amber starts at 66% of each (<strong>${goalWarnThreshold(weekly).toLocaleString()}</strong> for the week).`;
 }
@@ -1010,10 +1036,28 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
 
         <hr class="section-divider">
         <details class="clan-subsection">
+        <summary class="clan-subsection-summary"><h3>Week</h3></summary>
+        <div class="mt-12">
+        <p class="muted-copy mb-8">What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.</p>
+        <div class="inline-form-row">
+          <div><label for="clan-week-start-${clan.id}">Week runs</label>
+            <select id="clan-week-start-${clan.id}" class="input">
+              <option value="sunday" ${clan.weekStart !== 'ancients' ? 'selected' : ''}>Sunday to Sunday (7 days)</option>
+              <option value="ancients" ${clan.weekStart === 'ancients' ? 'selected' : ''}>Tinman to Tinman (6 days)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">Save</button>
+        </div>
+        <p class="muted-copy mt-8">Tinman to Tinman opens when Rise of the Ancients (Ancients day 2) begins at 17:00 UTC and runs until the next one begins, six days later.</p>
+        </div>
+        </details>
+
+        <hr class="section-divider">
+        <details class="clan-subsection">
         <summary class="clan-subsection-summary"><h3>Leaderboard goal</h3></summary>
         <div class="mt-12">
         <p class="muted-copy mb-8">Colours each member's Points cell on the Leaderboard against a target: <strong>green</strong> at the goal, <strong>amber</strong> from 66% of it, <strong>red</strong> below. Shows on this clan's Leaderboard tab and on its public share link.</p>
-        <p class="muted-copy mb-8">Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; 7 per day), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.</p>
+        <p class="muted-copy mb-8">Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.</p>
         <div class="inline-form-row">
           <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> Show goal colours on the leaderboard</label>
         </div>

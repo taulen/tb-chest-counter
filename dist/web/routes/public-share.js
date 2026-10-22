@@ -213,6 +213,9 @@ function createPublicShareApiRouter() {
             // authenticated app, which depends on the configured day-rollover
             // hour. No PII; same value is exposed by /api/stats.
             gameDayRolloverUtcHour: (0, index_js_1.loadConfig)().gameDayRolloverUtcHour,
+            // 'sunday' or 'ancients' (Tinman to Tinman) — how this clan cuts its
+            // week, so the share page's Weekly tab is the same window as the app's.
+            weekStart: clan.weekStart,
             // The clan's weekly points goal, or null when they haven't set one. Rides
             // on this call rather than getting an endpoint of its own because the page
             // already blocks on /clan before its first render — a separate fetch would

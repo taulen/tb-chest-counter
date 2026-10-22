@@ -298,7 +298,9 @@ function withCode(path) {
   // unavailable for any reason.
   function isCurrentGameWeek(windowStart) {
     try {
-      const cur = computeGameWindow('weekly', 0);
+      // ChestTracker's weeks are always Sunday-based, whatever week shape
+      // this clan uses on its own leaderboard.
+      const cur = computeGameWindow('weekly', 0, undefined, 'sunday');
       if (!cur) return false;
       return formatUtcDateKey(new Date(windowStart)) === formatUtcDateKey(new Date(cur.from));
     } catch {

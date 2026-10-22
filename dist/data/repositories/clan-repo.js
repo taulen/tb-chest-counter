@@ -13,6 +13,8 @@ exports.setClanActive = setClanActive;
 exports.setClanScanIntervalMinutes = setClanScanIntervalMinutes;
 exports.setClanInactivitySettings = setClanInactivitySettings;
 exports.setClanLeaderboardGoal = setClanLeaderboardGoal;
+exports.setClanWeekStart = setClanWeekStart;
+exports.getClanWeekStart = getClanWeekStart;
 exports.setClanDiscordSettings = setClanDiscordSettings;
 exports.setClanLastDigestStatus = setClanLastDigestStatus;
 exports.markClanNeedsReauth = markClanNeedsReauth;
@@ -28,6 +30,7 @@ exports.deleteClan = deleteClan;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const log_buffer_js_1 = require("../../utils/log-buffer.js");
+const game_day_js_1 = require("../../utils/game-day.js");
 const log = (0, logger_js_1.childLogger)('clan-repo');
 /**
  * URL-safe slug. Lowercase, runs of non-alphanumerics collapse to `-`,
@@ -79,6 +82,7 @@ function rowToClan(row) {
         inactivityDays: row.inactivity_days ?? null,
         leaderboardGoalEnabled: !!row.leaderboard_goal_enabled,
         leaderboardWeeklyGoalPoints: row.leaderboard_weekly_goal_points ?? null,
+        weekStart: (0, game_day_js_1.isWeekStart)(row.week_start) ? row.week_start : 'sunday',
         deletedAt: row.deleted_at || '',
     };
 }
@@ -201,6 +205,17 @@ function setClanInactivitySettings(id, settings) {
 function setClanLeaderboardGoal(id, settings) {
     const db = (0, database_js_1.getDb)();
     db.prepare('UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?').run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
+}
+/** Set how this clan cuts its week (Sunday, or Tinman to Tinman). */
+function setClanWeekStart(id, weekStart) {
+    (0, database_js_1.getDb)().prepare('UPDATE clans SET week_start = ? WHERE id = ?').run(weekStart, id);
+}
+/**
+ * A clan's week shape by id, 'sunday' for an unknown clan. For callers that
+ * hold only a clan id and need a week window (gameWindow's last argument).
+ */
+function getClanWeekStart(id) {
+    return getClanById(id)?.weekStart ?? 'sunday';
 }
 function setClanDiscordSettings(id, s) {
     const db = (0, database_js_1.getDb)();

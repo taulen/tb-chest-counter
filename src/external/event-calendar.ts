@@ -48,6 +48,9 @@
  */
 
 import { childLogger } from '../utils/logger.js';
+import { resolveEntries } from '../utils/log-buffer.js';
+import { gameDateFor, isTinmanDay } from '../utils/game-day.js';
+import { loadConfig } from '../config/index.js';
 import { EVENT_CATALOG, getEventDef } from '../config/event-catalog.js';
 import { getFirstCompletedAtOrAfter } from '../data/repositories/session-repo.js';
 import { getEventDataStart } from '../data/repositories/event-repo.js';
@@ -300,6 +303,7 @@ async function getFeed(): Promise<Feed> {
       cache = { feed, expires: Date.now() + TTL_MS };
       log.info(`Loaded ${feed.events.length} tracked calendar VEVENTs from ${FEED_URL}`);
       archiveFeed(feed);
+      checkTinmanCadence(feed);
       return feed;
     })
     .catch((err) => {
@@ -349,6 +353,37 @@ function archiveFeed(feed: Feed): void {
     syncArchivedRuns(feed.horizon, Date.now(), runs);
   } catch (err) {
     log.warn(`Event calendar archive failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+const TINMAN_CADENCE_KEY = 'event-calendar:tinman-cadence';
+
+/**
+ * Tinman-to-Tinman weeks are computed from a fixed anchor and a 6-day cadence
+ * (ANCIENTS_TINMAN_ANCHOR in utils/game-day.ts), not from this feed — they
+ * have to be pure arithmetic on both server and client. So if the game ever
+ * moves Ancients, those clans' weeks would silently straddle the event. Every
+ * fetch checks the last day of each Ancients run in the feed (Rise of the
+ * Ancients, the Tinman day) against the cadence and warns on a mismatch; the
+ * fix is moving the anchor constant in both places. Clears itself once the
+ * feed agrees again (e.g. after a corrected feed or a moved anchor).
+ */
+function checkTinmanCadence(feed: Feed): void {
+  const runs = fuse(feed.events.filter((e) => e.key === 'ancients'));
+  if (!runs.length) return;
+  const off = runs
+    .map((r) => gameDateFor(r.end - DAY_MS, loadConfig().gameDayRolloverUtcHour))
+    .filter((day) => !isTinmanDay(day));
+  if (off.length) {
+    log.warn(
+      { resolveKey: TINMAN_CADENCE_KEY },
+      `Ancients has moved off the Tinman-to-Tinman week cadence: ${off.length} of ${runs.length} `
+      + `runs in the calendar end on a day that isn't a Tinman day (first: ${off[0]}). Clans using `
+      + 'Tinman weeks are now cut at the wrong day — update ANCIENTS_TINMAN_ANCHOR in '
+      + 'utils/game-day.ts and lib/period.js.',
+    );
+  } else {
+    resolveEntries(TINMAN_CADENCE_KEY);
   }
 }
 

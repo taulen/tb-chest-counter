@@ -95,6 +95,7 @@ function createAuthRouter() {
                 id: activeClan.id,
                 name: activeClan.name,
                 slug: activeClan.slug,
+                weekStart: activeClan.weekStart,
             } : null,
         });
     });

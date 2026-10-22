@@ -16,7 +16,7 @@ import {
 } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
-  scaleGoalForPeriod, goalStatusClassFor,
+  scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor,
 } from '../lib/leaderboard-render.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
@@ -652,7 +652,6 @@ export function changeMemberResourcesPage(delta, memberId) {
   viewMember(memberId);
 }
 
-const MEMBER_GOAL_DAYS = { daily: 1, weekly: 7, monthly: 30, yearly: 365 };
 const MEMBER_PACE_MIN_ELAPSED = 0.25;
 
 /**
@@ -673,7 +672,7 @@ function memberPaceHtml(points) {
   const goal = scaleGoalForPeriod(memberWeeklyGoalPoints, currentMemberPeriod);
   if (!goal) return '';
   if (currentMemberPeriod === 'all' || currentMemberOffset !== 0) return '';
-  const days = MEMBER_GOAL_DAYS[currentMemberPeriod];
+  const days = goalDaysForPeriod(currentMemberPeriod);
   if (!days) return '';
   const w = computeGameWindow(currentMemberPeriod, 0);
   if (!w) return '';

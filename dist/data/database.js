@@ -765,6 +765,18 @@ const MIGRATIONS = [
             }
         },
     },
+    {
+        // How a clan cuts its week: 'sunday' (the only shape until now, so every
+        // existing clan keeps it) or 'ancients' — Tinman to Tinman, 6 days.
+        // Guarded so a test that rewinds schema_version past it can replay it.
+        version: 78,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(clans)').all();
+            if (cols.some((c) => c.name === 'week_start'))
+                return;
+            database.exec(`ALTER TABLE clans ADD COLUMN week_start TEXT NOT NULL DEFAULT 'sunday'`);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

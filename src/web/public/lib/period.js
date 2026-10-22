@@ -13,7 +13,7 @@
 // public-share page so all four stay aligned to the same game-week
 // definition. If you change the math, change it once here.
 
-import { getGameDayRolloverUtcHour } from './state.js';
+import { getGameDayRolloverUtcHour, getWeekStart } from './state.js';
 import { formatUtcDateKey } from './ui.js';
 
 // `rolloverHrOverride` is for the public-share page, which wires its
@@ -22,6 +22,32 @@ import { formatUtcDateKey } from './ui.js';
 // going through shared state if that's ever useful.
 function resolveRolloverHr(override) {
   return Number.isFinite(override) ? override : getGameDayRolloverUtcHour();
+}
+
+// ─── Week shape ───
+// A clan's week is either Sunday → Sunday (the default) or Tinman → Tinman:
+// 6 days opening when Rise of the Ancients (Ancients day 2) begins. Mirrors
+// src/utils/game-day.ts; tests/config/game-window-parity.test.ts asserts the
+// two agree, constants included.
+export const ANCIENTS_TINMAN_ANCHOR = '2026-10-23';
+export const ANCIENTS_CYCLE_DAYS = 6;
+
+function resolveWeekStart(override) {
+  return override === 'sunday' || override === 'ancients' ? override : getWeekStart();
+}
+
+/** Length of the viewed clan's game week, in game days. */
+export function weekLengthDays(weekStartOverride) {
+  return resolveWeekStart(weekStartOverride) === 'ancients' ? ANCIENTS_CYCLE_DAYS : 7;
+}
+
+// Days to step back from a shifted-UTC midnight to the first day of its week.
+function daysIntoWeek(day, weekStart) {
+  if (weekStart === 'ancients') {
+    const since = Math.round((day.getTime() - Date.parse(`${ANCIENTS_TINMAN_ANCHOR}T00:00:00Z`)) / 86_400_000);
+    return ((since % ANCIENTS_CYCLE_DAYS) + ANCIENTS_CYCLE_DAYS) % ANCIENTS_CYCLE_DAYS;
+  }
+  return day.getUTCDay();
 }
 
 /**
@@ -64,9 +90,10 @@ export function gameDaysUntil(ms, rolloverHrOverride) {
  * subtract rolloverHours from now to get the shifted-UTC coordinate,
  * snap + calendar-navigate in UTC, then shift back to real UTC bounds.
  */
-export function computeGameWindow(period, offset, rolloverHrOverride) {
+export function computeGameWindow(period, offset, rolloverHrOverride, weekStartOverride) {
   if (period === 'all') return null;
   const rolloverHr = resolveRolloverHr(rolloverHrOverride);
+  const weekStart = resolveWeekStart(weekStartOverride);
   const rolloverMs = rolloverHr * 60 * 60 * 1000;
   const shifted = new Date(Date.now() - rolloverMs);
   shifted.setUTCHours(0, 0, 0, 0);
@@ -82,13 +109,13 @@ export function computeGameWindow(period, offset, rolloverHrOverride) {
     return shiftBack(startMs, startMs + 24 * 60 * 60 * 1000);
   }
   if (period === 'weekly') {
-    const dow = shifted.getUTCDay();
-    // Game-week starts on Sunday at the rollover hour, matching the
-    // upstream chesttracker convention (see chesttracker-client.ts).
-    const daysBackToSunday = dow;
-    shifted.setUTCDate(shifted.getUTCDate() - daysBackToSunday - offset * 7);
+    // Game-week starts on Sunday at the rollover hour (the upstream
+    // chesttracker convention, see chesttracker-client.ts) unless the clan
+    // counts Tinman to Tinman.
+    const len = weekLengthDays(weekStart);
+    shifted.setUTCDate(shifted.getUTCDate() - daysIntoWeek(shifted, weekStart) - offset * len);
     const startMs = shifted.getTime();
-    return shiftBack(startMs, startMs + 7 * 24 * 60 * 60 * 1000);
+    return shiftBack(startMs, startMs + len * 24 * 60 * 60 * 1000);
   }
   if (period === 'monthly') {
     const year = shifted.getUTCFullYear();
@@ -113,10 +140,11 @@ export function computeGameWindow(period, offset, rolloverHrOverride) {
  * *game day* — getCurrentGameDayKey() already subtracts the rollover hour —
  * and does plain calendar-date math. Use it to filter date-only values like
  * resource transaction_date, which are already game-day dates. Returns null
- * for 'all'. Weeks start on Sunday, matching formatPeriodLabel/computeGameWindow.
+ * for 'all'. Weeks follow the clan's week shape, matching formatPeriodLabel/computeGameWindow.
  */
-export function computeGameWindowDates(period, offset, rolloverHrOverride) {
+export function computeGameWindowDates(period, offset, rolloverHrOverride, weekStartOverride) {
   if (period === 'all') return null;
+  const weekStart = resolveWeekStart(weekStartOverride);
   const today = new Date(getCurrentGameDayKey(rolloverHrOverride) + 'T00:00:00Z');
   const iso = (d) => d.toISOString().slice(0, 10);
   const addDays = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
@@ -126,8 +154,9 @@ export function computeGameWindowDates(period, offset, rolloverHrOverride) {
     return { from: iso(d), to: iso(d) };
   }
   if (period === 'weekly') {
-    const start = addDays(today, -today.getUTCDay() - offset * 7);
-    return { from: iso(start), to: iso(addDays(start, 6)) };
+    const len = weekLengthDays(weekStart);
+    const start = addDays(today, -daysIntoWeek(today, weekStart) - offset * len);
+    return { from: iso(start), to: iso(addDays(start, len - 1)) };
   }
   if (period === 'monthly') {
     const y = today.getUTCFullYear();
@@ -145,7 +174,7 @@ export function computeGameWindowDates(period, offset, rolloverHrOverride) {
  * Human-readable label for a (period, offset) slot. Used between the
  * navigation arrows on the leaderboard UI (both auth and public).
  */
-export function formatPeriodLabel(period, offset, rolloverHrOverride) {
+export function formatPeriodLabel(period, offset, rolloverHrOverride, weekStartOverride) {
   if (period === 'all') return 'All Time';
   const rolloverHr = resolveRolloverHr(rolloverHrOverride);
   const shifted = new Date(Date.now() - rolloverHr * 60 * 60 * 1000);
@@ -156,13 +185,13 @@ export function formatPeriodLabel(period, offset, rolloverHrOverride) {
     return formatUtcDateKey(shifted);
   }
   if (period === 'weekly') {
-    const dow = shifted.getUTCDay();
-    const daysBackToSunday = dow;
-    shifted.setUTCDate(shifted.getUTCDate() - daysBackToSunday - offset * 7);
-    const sunday = new Date(shifted);
-    const saturday = new Date(shifted);
-    saturday.setUTCDate(saturday.getUTCDate() + 6);
-    return `${formatUtcDateKey(sunday)} → ${formatUtcDateKey(saturday)}`;
+    const weekStart = resolveWeekStart(weekStartOverride);
+    const len = weekLengthDays(weekStart);
+    shifted.setUTCDate(shifted.getUTCDate() - daysIntoWeek(shifted, weekStart) - offset * len);
+    const first = new Date(shifted);
+    const last = new Date(shifted);
+    last.setUTCDate(last.getUTCDate() + len - 1);
+    return `${formatUtcDateKey(first)} → ${formatUtcDateKey(last)}`;
   }
   if (period === 'monthly') {
     const year = shifted.getUTCFullYear();
@@ -201,9 +230,8 @@ export function periodAnchorFromOffset(period, offset) {
     return { key: 'day', value: formatUtcDateKey(shifted) };
   }
   if (period === 'weekly') {
-    const dow = shifted.getUTCDay();
-    const daysBackToSunday = dow;
-    shifted.setUTCDate(shifted.getUTCDate() - daysBackToSunday - offset * 7);
+    const weekStart = getWeekStart();
+    shifted.setUTCDate(shifted.getUTCDate() - daysIntoWeek(shifted, weekStart) - offset * weekLengthDays(weekStart));
     return { key: 'week', value: formatUtcDateKey(shifted) };
   }
   if (period === 'monthly') {
@@ -246,11 +274,13 @@ export function periodOffsetFromAnchor(period, params) {
     if (!week || !/^\d{4}-\d{2}-\d{2}$/.test(week)) return 0;
     const [y, m, d] = week.split('-').map(Number);
     const target = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
-    const dow = shifted.getUTCDay();
-    const daysBackToSunday = dow;
-    shifted.setUTCDate(shifted.getUTCDate() - daysBackToSunday);
-    const thisSundayMs = shifted.getTime();
-    const diffWeeks = Math.round((thisSundayMs - target) / (7 * 24 * 60 * 60 * 1000));
+    // Rounded rather than exact, so a link minted under the other week shape
+    // (a Sunday anchor opened after the clan switched to Tinman weeks) still
+    // lands on the nearest week instead of failing.
+    const weekStart = getWeekStart();
+    shifted.setUTCDate(shifted.getUTCDate() - daysIntoWeek(shifted, weekStart));
+    const thisWeekStartMs = shifted.getTime();
+    const diffWeeks = Math.round((thisWeekStartMs - target) / (weekLengthDays(weekStart) * 24 * 60 * 60 * 1000));
     return Math.max(0, diffWeeks);
   }
   if (period === 'monthly') {

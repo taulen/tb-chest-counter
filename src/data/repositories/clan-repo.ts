@@ -1,6 +1,7 @@
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
 import { resolveEntries as resolveLogEntries } from '../../utils/log-buffer.js';
+import { isWeekStart, type WeekStart } from '../../utils/game-day.js';
 
 const log = childLogger('clan-repo');
 
@@ -107,6 +108,15 @@ export interface Clan {
 
   leaderboardGoalEnabled: boolean;
   leaderboardWeeklyGoalPoints: number | null;
+
+  /**
+   * How this clan cuts its week: 'sunday' (Sunday → Sunday at the rollover) or
+   * 'ancients' (Tinman to Tinman, 6 days). See WeekStart in utils/game-day.ts.
+   * Every "Weekly" window the clan sees follows it — leaderboard, dashboard,
+   * member profile, Discord bot — except the ChestTracker import, whose weeks
+   * are upstream's and always Sunday-based.
+   */
+  weekStart: WeekStart;
 }
 
 /**
@@ -160,6 +170,7 @@ function rowToClan(row: Record<string, unknown>): Clan {
     inactivityDays: (row.inactivity_days as number | null) ?? null,
     leaderboardGoalEnabled: !!(row.leaderboard_goal_enabled as number),
     leaderboardWeeklyGoalPoints: (row.leaderboard_weekly_goal_points as number | null) ?? null,
+    weekStart: isWeekStart(row.week_start) ? row.week_start : 'sunday',
     deletedAt: (row.deleted_at as string) || '',
   };
 }
@@ -325,6 +336,19 @@ export function setClanLeaderboardGoal(
   db.prepare(
     'UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?',
   ).run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
+}
+
+/** Set how this clan cuts its week (Sunday, or Tinman to Tinman). */
+export function setClanWeekStart(id: number, weekStart: WeekStart): void {
+  getDb().prepare('UPDATE clans SET week_start = ? WHERE id = ?').run(weekStart, id);
+}
+
+/**
+ * A clan's week shape by id, 'sunday' for an unknown clan. For callers that
+ * hold only a clan id and need a week window (gameWindow's last argument).
+ */
+export function getClanWeekStart(id: number): WeekStart {
+  return getClanById(id)?.weekStart ?? 'sunday';
 }
 
 export interface DiscordSettings {
