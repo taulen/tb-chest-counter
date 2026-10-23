@@ -6798,3 +6798,5 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tinman-assign { max-width: 260px; }
 .tinman-table .col-rank { width: 64px; }
 .tinman-table .col-member { width: 220px; }
+.tinman-review-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tinman-review-head .tinman-hint { margin: 6px 0 10px; }

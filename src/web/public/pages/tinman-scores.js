@@ -32,6 +32,12 @@ let uploadOpen = false;
 let uploadSummon = null;  // chosen summon in the upload form
 let uploadText = '';
 let lastResult = null;    // message after a save
+/** "Names to check" open state: null until the user toggles it (then it opens
+ *  by itself while anything is unmatched). Kept across saves, which repaint the card. */
+let reviewOpen = null;
+/** Member picks not saved yet, by pasted name ('' = not a clan member). A save
+ *  repaints every row, and without this it reset the other rows' dropdowns. */
+const pending = new Map();
 
 function isAdmin() {
   const role = getCurrentUser()?.role;
@@ -52,6 +58,8 @@ export async function mountTinmanScores(el, opts) {
     page = 1;
     uploadSummon = null;
     lastResult = null;
+    reviewOpen = null;
+    pending.clear();
   }
   if (requested === 'all') {
     el.innerHTML = cardHtml('<p class="muted-copy tinman-note">Tin Man scores are per run — pick a single run with the arrows above to see them.</p>', '');
@@ -288,22 +296,30 @@ function reviewHtml(admin) {
     `<option value="">— Not a clan member —</option>`,
     ...members.map((m) => `<option value="${m.id}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}</option>`),
   ].join('');
-  const rows = review.map((r) => `
+  const rows = review.map((r) => {
+    const picked = pending.has(r.rawName) ? pending.get(r.rawName) : String(r.memberId ?? '');
+    return `
     <tr>
       <td data-role="primary"><span class="mrow-name">${esc(r.rawName)}</span><span class="mrow-sub">${r.memberId ? 'matched by spelling' : r.matchKind === 'rejected' ? 'marked as not a member' : 'no match'}</span></td>
       <td class="num" data-role="metric" data-label="Points">${formatCompact(r.points)}</td>
       <td data-label="Member">
-        <select class="input tinman-assign" data-raw-name="${esc(r.rawName)}" aria-label="Member for ${esc(r.rawName)}">${options(r.memberId)}</select>
+        <select class="input tinman-assign" data-raw-name="${esc(r.rawName)}" aria-label="Member for ${esc(r.rawName)}">${options(picked === '' ? null : Number(picked))}</select>
       </td>
       <td data-label="">
         <button type="button" class="btn btn-sm" data-tinman="assign" data-raw-name="${esc(r.rawName)}">${r.memberId ? 'Confirm' : 'Save'}</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
+  const open = reviewOpen ?? unmatched > 0;
+  const changed = changedPicks().length;
   return `
-    <details class="card-collapsible tinman-review" data-section-key="tinman-review" ${unmatched ? 'open' : ''}>
+    <details class="card-collapsible tinman-review" data-section-key="tinman-review" ${open ? 'open' : ''}>
       <summary class="card-header"><h2>Names to check (${review.length})</h2><span class="card-header-hint">${unmatched} unmatched · ${review.length - unmatched} matched by spelling</span></summary>
       <div class="card-body">
-        <p class="muted-copy tinman-hint">Pick who each pasted name is. It applies to every summon of this run, and the spelling is remembered for future runs.</p>
+        <div class="tinman-review-head">
+          <p class="muted-copy tinman-hint">Pick who each pasted name is. It applies to every summon of this run, and the spelling is remembered for future runs.</p>
+          <button type="button" class="btn btn-sm btn-primary" data-tinman="assign-all" ${changed ? '' : 'disabled'}>${saveAllLabel(changed)}</button>
+        </div>
         <table class="table-responsive tinman-review-table">
           <colgroup><col class="col-member"><col class="col-num"><col class="col-assign"><col class="col-action"></colgroup>
           <thead><tr><th>Pasted name</th><th class="num">Points</th><th>Member</th><th></th></tr></thead>
@@ -311,6 +327,19 @@ function reviewHtml(admin) {
         </table>
       </div>
     </details>`;
+}
+
+const saveAllLabel = (n) => (n ? `Save all changes (${n})` : 'Save all changes');
+
+/** Picks that differ from what is saved: [{ rawName, memberId }]. */
+function changedPicks() {
+  const out = [];
+  for (const r of data?.review || []) {
+    if (!pending.has(r.rawName)) continue;
+    const v = pending.get(r.rawName);
+    if (v !== String(r.memberId ?? '')) out.push({ rawName: r.rawName, memberId: v === '' ? null : Number(v) });
+  }
+  return out;
 }
 
 // ─── Actions ─────────────────────────────────────────────────────
@@ -343,6 +372,19 @@ function wire() {
       if (btn) btn.textContent = `Save summon ${uploadSummon}`;
     });
   }
+  const review = el.querySelector('details.tinman-review');
+  if (review) review.addEventListener('toggle', () => { reviewOpen = review.open; });
+  el.querySelectorAll('select.tinman-assign').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      pending.set(sel.dataset.rawName, sel.value);
+      const n = changedPicks().length;
+      const all = el.querySelector('[data-tinman="assign-all"]');
+      if (all) {
+        all.disabled = n === 0;
+        all.textContent = saveAllLabel(n);
+      }
+    });
+  });
   el.querySelectorAll('[data-tinman]').forEach((btn) => {
     if (btn.tagName !== 'BUTTON') return;
     btn.addEventListener('click', () => onAction(btn));
@@ -361,6 +403,7 @@ async function onAction(btn) {
   if (action === 'save') return save(btn);
   if (action === 'delete') return removeSummon(Number(btn.dataset.summon));
   if (action === 'assign') return assign(btn);
+  if (action === 'assign-all') return assignAll(btn);
 }
 
 async function save(btn) {
@@ -419,24 +462,52 @@ async function removeSummon(summon) {
   paint();
 }
 
-async function assign(btn) {
-  const rawName = btn.dataset.rawName;
-  const select = [...mountEl.querySelectorAll('select.tinman-assign')].find((s) => s.dataset.rawName === rawName);
-  const memberId = select && select.value ? Number(select.value) : null;
-  btn.disabled = true;
+/** PUT one assignment; the error message, or null on success. */
+async function putAssign(rawName, memberId) {
   try {
     const res = await apiPut(`/tinman/${encodeURIComponent(data.date)}/assign`, { rawName, memberId });
-    if (res?.error) {
-      await notify(res.error, 'Could not assign');
-      btn.disabled = false;
-      return;
-    }
+    return res?.error ? `${rawName}: ${res.error}` : null;
   } catch (err) {
-    if (err?.name === 'UnauthenticatedError') return;
-    await notify(`Could not assign: ${err?.message || err}`, 'Could not assign');
+    if (err?.name === 'UnauthenticatedError') throw err;
+    return `${rawName}: ${err?.message || err}`;
+  }
+}
+
+async function assign(btn) {
+  const rawName = btn.dataset.rawName;
+  const selects = [...mountEl.querySelectorAll('select.tinman-assign')];
+  const at = selects.findIndex((s) => s.dataset.rawName === rawName);
+  const memberId = at >= 0 && selects[at].value ? Number(selects[at].value) : null;
+  const nextName = selects[at + 1]?.dataset.rawName ?? null;
+  btn.disabled = true;
+  const error = await putAssign(rawName, memberId);
+  if (error) {
+    await notify(error, 'Could not assign');
     btn.disabled = false;
     return;
   }
+  pending.delete(rawName);
+  reviewOpen = true;
   await load();
   paint();
+  // Carry on where you were: the next name's dropdown, if it is still listed.
+  const next = [...mountEl.querySelectorAll('select.tinman-assign')].find((s) => s.dataset.rawName === nextName);
+  (next || mountEl.querySelector('select.tinman-assign'))?.focus();
+}
+
+async function assignAll(btn) {
+  const picks = changedPicks();
+  if (!picks.length) return;
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const errors = [];
+  for (const p of picks) {
+    const error = await putAssign(p.rawName, p.memberId);
+    if (error) errors.push(error);
+    else pending.delete(p.rawName);
+  }
+  reviewOpen = true;
+  await load();
+  paint();
+  if (errors.length) await notify(errors.join('\n'), 'Some names were not saved');
 }
