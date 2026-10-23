@@ -2251,27 +2251,6 @@ function createApiRouter(scanLoop) {
         (0, user_repo_js_1.logAction)(req.user.id, 'merge_player', { from: fromName, to: toName, clanId: req.clanId ?? 1 });
         res.json({ ok: true, message: `Merged "${fromName}" → "${toName}"`, note });
     });
-    // --- Admin: Chest Type Overrides ---
-    // GET /api/admin/chest-types
-    router.get('/admin/chest-types', auth_js_1.requireAdmin, (req, res) => {
-        res.json(mergeRepo.getChestTypeOverrides(req.clanId ?? 1));
-    });
-    // POST /api/admin/chest-types { chestName, chestType }
-    router.post('/admin/chest-types', auth_js_1.requireAdmin, (req, res) => {
-        const { chestName, chestType } = req.body;
-        if (!chestName || !chestType) {
-            return res.status(400).json({ error: 'chestName, chestType required' });
-        }
-        mergeRepo.setChestTypeOverride(chestName, chestType, req.clanId ?? 1);
-        (0, user_repo_js_1.logAction)(req.user.id, 'set_chest_type', { chestName, chestType, clanId: req.clanId ?? 1 });
-        res.json({ ok: true });
-    });
-    // DELETE /api/admin/chest-types/:id
-    router.delete('/admin/chest-types/:id', auth_js_1.requireAdmin, (req, res) => {
-        (0, user_repo_js_1.logAction)(req.user.id, 'delete_chest_type_override', { id: String(req.params.id) });
-        mergeRepo.deleteChestTypeOverride((0, parse_int_js_1.parseBoundedInt)(req.params.id, 0, { min: 1 }), req.clanId ?? 1);
-        res.json({ ok: true });
-    });
     // GET /api/admin/unique-chests
     router.get('/admin/unique-chests', auth_js_1.requireAdmin, (req, res) => {
         const clanId = req.clanId ?? 1;
@@ -2279,7 +2258,6 @@ function createApiRouter(scanLoop) {
         const withTypes = distinct.map((d) => ({
             name: d.name,
             currentType: d.currentType || 'unknown',
-            override: mergeRepo.getChestTypeOverride(d.name, clanId),
             // Record count travels with the name so the merge dropdowns can show
             // how much data sits behind each one — a 3-record name next to a
             // 4,000-record one is the tell that the first is an OCR misread.

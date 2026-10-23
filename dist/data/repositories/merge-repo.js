@@ -8,11 +8,6 @@ exports.applyMergeRules = applyMergeRules;
 exports.loadMergeRules = loadMergeRules;
 exports.applyMergeRulesCached = applyMergeRulesCached;
 exports.loadPlayerNameCanonicaliser = loadPlayerNameCanonicaliser;
-exports.loadChestTypeOverrides = loadChestTypeOverrides;
-exports.setChestTypeOverride = setChestTypeOverride;
-exports.getChestTypeOverrides = getChestTypeOverrides;
-exports.getChestTypeOverride = getChestTypeOverride;
-exports.deleteChestTypeOverride = deleteChestTypeOverride;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
@@ -369,19 +364,13 @@ function addMergeRule(type, fromValue, toValue, clanId) {
                 if (!stillReferenced && fromRow.id !== toRow.id) {
                     db.prepare('DELETE FROM chests WHERE id = ?').run(fromRow.id);
                 }
-                // Carry the one name-keyed config table that is safe to move here.
-                // cleanupChestNames carries three, but this branch is different: it is
-                // clan-scoped, and it deliberately leaves triumphal records on the old
+                // No name-keyed config moves here, unlike cleanupChestNames: this branch
+                // is clan-scoped and deliberately leaves triumphal records on the old
                 // `chests` row (above). source_point_overrides and triumphal_chest_points
                 // are GLOBAL — no clan_id — and triumphal_chest_points is joined at read
                 // time on `chest_name = chests.name`, so moving a value off a name whose
                 // row is still alive and still carrying triumphal records would silently
-                // score every one of them 0, in every clan. chest_type_overrides is
-                // per-clan and keyed the same way, so it moves with the clan's merge.
-                if (fromRow.id !== toRow.id) {
-                    db.prepare('UPDATE OR IGNORE chest_type_overrides SET chest_name = ? WHERE clan_id = ? AND chest_name = ?').run(toValue, clanId, fromValue);
-                    db.prepare('DELETE FROM chest_type_overrides WHERE clan_id = ? AND chest_name = ?').run(clanId, fromValue);
-                }
+                // score every one of them 0, in every clan.
             }
         }
         else if (type === 'source') {
@@ -556,52 +545,5 @@ function applyRulesInMemory(value, rules) {
             return rule.to_value;
     }
     return value;
-}
-/**
- * Load all chest type overrides as a Map for use inside scan loops.
- */
-function loadChestTypeOverrides(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const rows = db.prepare('SELECT chest_name, chest_type FROM chest_type_overrides WHERE clan_id = ?').all(clanId);
-    const map = new Map();
-    for (const row of rows) {
-        map.set(row.chest_name, row.chest_type);
-    }
-    return map;
-}
-// --- Chest Type Overrides ---
-function setChestTypeOverride(chestName, chestType, clanId) {
-    const db = (0, database_js_1.getDb)();
-    const now = new Date().toISOString();
-    db.prepare(`
-    INSERT INTO chest_type_overrides (clan_id, chest_name, chest_type, created_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(clan_id, chest_name) DO UPDATE SET chest_type = ?, created_at = ?
-  `).run(clanId, chestName, chestType, now, chestType, now);
-    // Post-D4 chest_type lives on chests, not chest_records. A single
-    // UPDATE on the reference table flips every record's view-resolved
-    // rarity in one shot — no per-row backfill needed. The override
-    // table (chest_type_overrides) still keys on chest_name as the
-    // admin-facing identifier.
-    db.prepare('UPDATE chests SET chest_type = ? WHERE name = ?').run(chestType, chestName);
-}
-function getChestTypeOverrides(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const rows = db.prepare('SELECT * FROM chest_type_overrides WHERE clan_id = ? ORDER BY chest_name').all(clanId);
-    return rows.map((r) => ({
-        id: r.id,
-        chestName: r.chest_name,
-        chestType: r.chest_type,
-        createdAt: r.created_at,
-    }));
-}
-function getChestTypeOverride(chestName, clanId) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare('SELECT chest_type FROM chest_type_overrides WHERE clan_id = ? AND chest_name = ?').get(clanId, chestName);
-    return row?.chest_type ?? null;
-}
-function deleteChestTypeOverride(id, clanId) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('DELETE FROM chest_type_overrides WHERE id = ? AND clan_id = ?').run(id, clanId);
 }
 //# sourceMappingURL=merge-repo.js.map

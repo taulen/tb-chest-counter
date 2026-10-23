@@ -137,7 +137,7 @@ export function apiDelete(path) {
  *
  * Wrap a single API call:
  *
- *   if (!await mustOk(apiPost('/admin/chest-types', payload), 'Save failed')) return;
+ *   if (!await mustOk(apiPost('/admin/merge-rules', payload), 'Save failed')) return;
  *
  * Returns the resolved value on success, or `null` on failure (after
  * showing a toast). Callers that want the data should null-check.

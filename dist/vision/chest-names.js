@@ -12,8 +12,9 @@ const enums_js_1 = require("../models/enums.js");
 const ocr_normalize_js_1 = require("./ocr-normalize.js");
 /**
  * Canonical chest names from TBChestTracker + in-game observations.
- * Maps exact chest name → rarity type.
- * New chests can be added here or overridden via admin panel.
+ * Maps exact chest name → rarity type. This is the one place a chest's type
+ * is set: syncChestTypes (database.ts) applies it to stored chests on every
+ * boot. A crypt's own rarity still wins per record (getSourceRarity).
  */
 exports.KNOWN_CHESTS = {
     // Common crypt chests
@@ -36,11 +37,7 @@ exports.KNOWN_CHESTS = {
     'Uncommon Chest of Wealth': enums_js_1.ChestType.UNCOMMON,
     'Rare Chest of Wealth': enums_js_1.ChestType.RARE,
     'Epic Chest of Wealth': enums_js_1.ChestType.EPIC,
-    // Typed by the rarity in its own name, like the four above. The 29 rows
-    // already stored hold `common` (the type an unknown chest is created with)
-    // and will keep it — getOrCreateChestId sets chest_type on first sight only
-    // — so this is the type a FRESH install gives it, and the badge on existing
-    // rows is an admin chest-type override away if it ever matters.
+    // Typed by the rarity in its own name, like the four above.
     'Legendary Chest of Wealth': enums_js_1.ChestType.LEGENDARY,
     // Rare crypt chests
     'Rare Dragon Chest': enums_js_1.ChestType.RARE,
@@ -74,7 +71,7 @@ exports.KNOWN_CHESTS = {
     'Golden Chest': enums_js_1.ChestType.EPIC,
     'Precious Chest': enums_js_1.ChestType.LEGENDARY,
     'Magic Chest': enums_js_1.ChestType.LEGENDARY,
-    // Event / reward chests (seeded from catalog export; admin can override type)
+    // Event / reward chests (seeded from catalog export)
     "Ancients' Chest": enums_js_1.ChestType.COMMON,
     'Arachne Chest': enums_js_1.ChestType.COMMON,
     'Arcane Chest': enums_js_1.ChestType.COMMON,
@@ -100,9 +97,6 @@ exports.KNOWN_CHESTS = {
     // row back if the good name is in here. Legendary was missing since it shipped;
     // that left it (and the new Ascendant) parked in the Needs Review queue forever
     // while Epic was filtered out, which is the visible half of "not tracked the same".
-    // COMMON for all three: getOrCreateChestId never refreshes chest_type on an
-    // existing row, so the 382 Ascendant records already stored as common could never
-    // be reconciled to a different rarity declared here.
     'Golden Guardian Ascendant Chest': enums_js_1.ChestType.COMMON,
     'Golden Guardian Epic Chest': enums_js_1.ChestType.COMMON,
     'Golden Guardian Legendary Chest': enums_js_1.ChestType.COMMON,
@@ -117,8 +111,7 @@ exports.KNOWN_CHESTS = {
     // any row already stored the plain way on the next boot.
     'Jörmungandr\'s Chest': enums_js_1.ChestType.COMMON,
     // Second tier of the Ashen squad's reward, alongside Ascendant above —
-    // same pattern as the Golden Guardian tiers, and COMMON for the same reason
-    // (the 566 rows already stored carry it and can never be reconciled up).
+    // same pattern as the Golden Guardian tiers.
     'Legendary Ashen Chest': enums_js_1.ChestType.COMMON,
     'Lotus Chest': enums_js_1.ChestType.COMMON,
     'Major Omen Chest': enums_js_1.ChestType.UNCOMMON,

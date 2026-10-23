@@ -25,7 +25,6 @@ export function exportCatalog(clanId: number): object {
   const names = chestRepo.getDistinctChestNames(clanId);
   const sources = chestRepo.getDistinctChestSources(clanId);
   const mergeRules = mergeRepo.getMergeRules(clanId);
-  const chestTypeOverrides = mergeRepo.getChestTypeOverrides(clanId);
   const sourcePointOverrides = sourcePointsRepo.getAllOverrides();
 
   // Index overrides by sourceKey so we can fold name-specific rows into
@@ -188,7 +187,6 @@ export function exportCatalog(clanId: number): object {
       totalDistinctSources: sources.length,
       totalSourceKeys: sourceKeys.length,
       totalMergeRules: mergeRules.length,
-      totalChestTypeOverrides: chestTypeOverrides.length,
       totalSourcePointOverrides: sourcePointOverrides.length,
       totalUnparseableSources: unparseableSources.length,
     },
@@ -200,9 +198,6 @@ export function exportCatalog(clanId: number): object {
       .sort((a, b) =>
         a.type.localeCompare(b.type) || a.fromValue.localeCompare(b.fromValue),
       ),
-    chestTypeOverrides: chestTypeOverrides
-      .map((o) => ({ chestName: o.chestName, chestType: o.chestType }))
-      .sort((a, b) => a.chestName.localeCompare(b.chestName)),
     sourcePointOverrides: sourcePointOverrides
       .map((o) => ({ sourceKey: o.sourceKey, chestName: o.chestName, pointValue: o.pointValue }))
       .sort((a, b) =>

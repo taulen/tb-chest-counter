@@ -146,10 +146,9 @@ function rowToChest(row: Record<string, unknown>): ChestRecord {
  * Hot path during scans — gets called once per inserted chest.
  *
  * On the first time a chest is observed, `chest_type` is set from
- * `defaultType` (the OCR-detected rarity for that scan). Subsequent
- * observations leave `chest_type` alone — the admin's
- * `setChestType` override stays sticky and a single bad OCR rarity
- * read on a later scan can't quietly flip the canonical value.
+ * `defaultType` (the catalog type for that name). Subsequent observations
+ * leave it alone; a type declared later in KNOWN_CHESTS reaches the row
+ * through syncChestTypes at boot.
  */
 export function getOrCreateChestId(name: string, defaultType: string): number {
   const db = getDb();

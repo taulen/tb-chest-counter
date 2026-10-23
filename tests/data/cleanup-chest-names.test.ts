@@ -118,7 +118,7 @@ describe('cleanupChestNames (boot-time rename pass)', () => {
     expect(rule?.from_value).toBe('Jormungandrs Chest');
   });
 
-  it('carries the three name-keyed config tables across the rename', () => {
+  it('carries the name-keyed config tables across the rename', () => {
     const dbPath = freshPath();
     bootAndSeed(dbPath, (db) => {
       db.prepare(
@@ -128,17 +128,11 @@ describe('cleanupChestNames (boot-time rename pass)', () => {
         `INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at)
          VALUES ('jormungandr shop', ?, 50, ?)`,
       ).run("Jormungandr's Chest", NOW);
-      db.prepare(
-        `INSERT INTO chest_type_overrides (clan_id, chest_name, chest_type, created_at)
-         VALUES (1, ?, 'epic', ?)`,
-      ).run("Jormungandr's Chest", NOW);
     });
 
     initDatabase(dbPath);
     const db = getDb();
     expect((db.prepare('SELECT chest_name FROM source_point_overrides').get() as { chest_name: string }).chest_name)
-      .toBe("Jörmungandr's Chest");
-    expect((db.prepare('SELECT chest_name FROM chest_type_overrides').get() as { chest_name: string }).chest_name)
       .toBe("Jörmungandr's Chest");
   });
 });
@@ -162,5 +156,22 @@ describe('merge rule fuzzy matching folds accents', () => {
     expect(applyMergeRules('source', 'Jormungandr Shop', 1)).toBe('Jormungandr Store');
     // And the other direction.
     expect(applyMergeRules('source', 'Jörmungandr Shop', 1)).toBe('Jormungandr Store');
+  });
+});
+
+describe('syncChestTypes (boot-time type pass)', () => {
+  it('gives a stored chest the type the catalog declares, and leaves undeclared names alone', () => {
+    const dbPath = freshPath();
+    bootAndSeed(dbPath, (db) => {
+      // Stored as common on first sight, before the catalog said legendary.
+      db.prepare(`INSERT INTO chests (name, chest_type) VALUES ('Legendary Chest of Wealth', 'common')`).run();
+      db.prepare(`INSERT INTO chests (name, chest_type) VALUES ('Pumpkin Chest', 'rare')`).run();
+    });
+
+    initDatabase(dbPath);
+    const typeOf = (name: string): string =>
+      (getDb().prepare('SELECT chest_type FROM chests WHERE name = ?').get(name) as { chest_type: string }).chest_type;
+    expect(typeOf('Legendary Chest of Wealth')).toBe('legendary');
+    expect(typeOf('Pumpkin Chest')).toBe('rare');
   });
 });

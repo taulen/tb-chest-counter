@@ -283,55 +283,6 @@ export async function renderAdmin(el) {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header"><h2>Chest Type Classification</h2></div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">Override the automatic rarity classification for individual chest names. Grouped by current rarity so you can skim one tier at a time. Chests from a crypt always take the crypt's rarity (a Barbarian Chest from an epic crypt is epic), so a type set here applies to the chest's other sources.</p>
-        <details>
-          <summary class="collapse-toggle">Show chest types (${chestTypes.length})</summary>
-          ${(() => {
-            const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'arena', 'event', 'unknown'];
-            const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'arena', 'event'];
-            const groups = new Map();
-            for (const c of chestTypes) {
-              const rarity = c.override || c.currentType || 'unknown';
-              if (!groups.has(rarity)) groups.set(rarity, []);
-              groups.get(rarity).push(c);
-            }
-            const sortedRarities = rarityOrder.filter((r) => groups.has(r));
-            for (const r of groups.keys()) {
-              if (!rarityOrder.includes(r)) sortedRarities.push(r);
-            }
-            return sortedRarities.map((rarity) => {
-              const chests = groups.get(rarity).slice().sort((a, b) => a.name.localeCompare(b.name));
-              return `<details class="chest-types-group mt-12">
-                <summary class="collapse-toggle">
-                  <span class="chest-type ${esc(rarity)}">${esc(rarity)}</span>
-                  <span class="muted-copy">&nbsp;— ${chests.length} chest${chests.length === 1 ? '' : 's'}</span>
-                </summary>
-                <table class="table-responsive mt-8">
-                  <thead><tr><th>Chest Name</th><th>Current Type</th><th>Set Type</th></tr></thead>
-                  <tbody>
-                    ${chests.map((c) => `<tr>
-                      <td data-label="Chest" data-role="primary"><span class="mrow-name">${esc(c.name)}</span></td>
-                      <td data-label="Current" data-role="metric"><span class="chest-type ${c.override || c.currentType}">${c.override || c.currentType}</span></td>
-                      <td data-label="Set Type">
-                        <select class="input chest-type-select" data-chest-name="${esc(c.name)}">
-                          <option value="">--</option>
-                          ${rarityOptions.map((t) =>
-                            `<option value="${t}" ${c.override === t ? 'selected' : ''}>${t}</option>`).join('')}
-                        </select>
-                      </td>
-                    </tr>`).join('')}
-                  </tbody>
-                </table>
-              </details>`;
-            }).join('');
-          })()}
-        </details>
-      </div>
-    </div>
-
     <!-- Chest Points: self-contained, fills itself (pages/points-board.js). -->
     <div class="card pb-card" id="pointsBoard"></div>
 
@@ -677,11 +628,6 @@ export async function deleteRule(id, rerender) {
   if (!ok) return;
   if (!await mustOk(apiDelete(`/admin/merge-rules/${id}`), 'Delete rule failed')) return;
   if (typeof rerender === 'function') rerender('admin');
-}
-
-export async function setChestType(chestName, chestType) {
-  if (!chestType) return;
-  await mustOk(apiPost('/admin/chest-types', { chestName, chestType }), 'Save chest type failed');
 }
 
 export async function saveMemberName(id) {

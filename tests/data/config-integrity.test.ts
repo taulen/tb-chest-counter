@@ -220,16 +220,6 @@ describe('checkConfigIntegrity', () => {
     expect(kinds(db)).toContain('chests/duplicate-spelling');
   });
 
-  it('flags a rarity override for a chest that no longer exists', () => {
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare(
-      `INSERT INTO chest_type_overrides (clan_id, chest_name, chest_type, created_at)
-       VALUES (1, 'Ghost Chest', 'epic', ?)`,
-    ).run(NOW);
-    expect(kinds(db)).toContain('chest-types/orphan');
-  });
-
   it('stays quiet about seeded triumphal values until a triumphal chest is scanned', () => {
     // Migration v54 seeds triumphal_chest_points unconditionally, so on any DB
     // that has never received a bank chest, every one of them is an "orphan".

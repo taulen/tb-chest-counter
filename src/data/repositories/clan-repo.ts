@@ -698,7 +698,6 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM merge_rules WHERE clan_id = ?').run(id);
     // source_point_overrides is a GLOBAL scoring table (no clan_id) since
     // v43 — it is shared across clans and must survive a clan deletion.
-    db.prepare('DELETE FROM chest_type_overrides WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM review_acknowledgments WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM resource_upload_batches WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM resource_icon_templates WHERE clan_id = ?').run(id);

@@ -68,7 +68,6 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   ],
   clans: [
     'audit_log.clan_id',
-    'chest_type_overrides.clan_id',
     'discord_member_links.clan_id',
     'member_guards_reports.clan_id',
     'member_level_reports.clan_id',
@@ -231,10 +230,6 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
      VALUES (?, 'player', 'Zed', 'Zoe', ?)`,
-  ).run(clanId, now);
-  db.prepare(
-    `INSERT INTO chest_type_overrides (clan_id, chest_name, chest_type, created_at)
-     VALUES (?, 'Guard Chest', 'rare', ?)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO review_acknowledgments (clan_id, category, acknowledged_at)

@@ -906,6 +906,14 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // The per-clan rarity overrides went with the admin Chest Type card. Every
+        // one was already written through to chests.chest_type when it was set, so
+        // nothing they said is lost; a chest's type is now declared in KNOWN_CHESTS
+        // (syncChestTypes) or comes from its crypt (v83).
+        version: 84,
+        sql: 'DROP TABLE IF EXISTS chest_type_overrides;',
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted
@@ -989,7 +997,7 @@ function cleanupChestNames(database) {
         else {
             database.prepare('UPDATE chests SET name = ?, chest_type = ? WHERE id = ?').run(corrected, rarity, row.id);
         }
-        // Three tables keep the chest NAME as text rather than an id, so a rename here detaches
+        // Two tables keep the chest NAME as text rather than an id, so a rename here detaches
         // whatever an admin configured against the old spelling: the override survives but points
         // at a name no chest has, and shows up as a row with 0 chests. This is not hypothetical —
         // it is the same failure the accent fold produced on the source-key side, and this helper
@@ -998,11 +1006,11 @@ function cleanupChestNames(database) {
         // OR IGNORE first because each has a UNIQUE key on the name and a value may already exist
         // under the corrected spelling; that one is the admin's own and wins. Whatever cannot move
         // is then removed rather than left stranded.
-        for (const table of ['source_point_overrides', 'chest_type_overrides', 'triumphal_chest_points']) {
+        for (const table of ['source_point_overrides', 'triumphal_chest_points']) {
             database.prepare(`UPDATE OR IGNORE ${table} SET chest_name = ? WHERE chest_name = ?`).run(corrected, row.name);
             database.prepare(`DELETE FROM ${table} WHERE chest_name = ?`).run(row.name);
         }
-        // merge_rules is the fourth name-keyed table and the one nothing has ever
+        // merge_rules is the third name-keyed table and the one nothing has ever
         // carried. Only `to_value` moves: a chest rule is variant → canonical, so
         // `from_value` IS the bad spelling and must keep pointing at it — that is the
         // whole job of the rule. Repointing from_value too would collapse the rule
@@ -1015,6 +1023,21 @@ function cleanupChestNames(database) {
     }
     if (fixed > 0) {
         log.info(`Cleaned up ${fixed} chest name variations`);
+    }
+}
+/**
+ * Give every chest the type KNOWN_CHESTS declares for it. getOrCreateChestId
+ * sets a type on first sight only, so without this a type changed in the
+ * catalog never reached a chest already stored. Names the catalog doesn't
+ * declare keep the type they were first stored with.
+ */
+function syncChestTypes(database) {
+    const rows = database.prepare('SELECT id, name, chest_type FROM chests').all();
+    const update = database.prepare('UPDATE chests SET chest_type = ? WHERE id = ?');
+    for (const row of rows) {
+        const declared = (0, chest_names_js_1.isHardcodedChestName)(row.name) ? chest_names_js_1.KNOWN_CHESTS[row.name] : undefined;
+        if (declared && declared !== row.chest_type)
+            update.run(declared, row.id);
     }
 }
 /**
@@ -1050,6 +1073,7 @@ function initDatabase(dbPath) {
     runMigrations(db);
     ensureSeedClan(db);
     cleanupChestNames(db);
+    syncChestTypes(db);
     syncSourceRarities(db);
     // Right after the rename pass, so anything it just stranded is reported in the
     // same breath. Read-only and never throws — see config-integrity.ts.

@@ -652,7 +652,7 @@ export function restoreClanFromBackup(
         orIgnore: true,
       }));
 
-      for (const table of ['merge_rules', 'chest_type_overrides']) {
+      for (const table of ['merge_rules']) {
         record(table, copyTable(db, {
           table,
           where: `s.clan_id = ${sourceClanId}`,

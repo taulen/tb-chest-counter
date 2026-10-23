@@ -2445,31 +2445,6 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     res.json({ ok: true, message: `Merged "${fromName}" → "${toName}"`, note });
   });
 
-  // --- Admin: Chest Type Overrides ---
-
-  // GET /api/admin/chest-types
-  router.get('/admin/chest-types', requireAdmin, (req, res) => {
-    res.json(mergeRepo.getChestTypeOverrides(req.clanId ?? 1));
-  });
-
-  // POST /api/admin/chest-types { chestName, chestType }
-  router.post('/admin/chest-types', requireAdmin, (req, res) => {
-    const { chestName, chestType } = req.body;
-    if (!chestName || !chestType) {
-      return res.status(400).json({ error: 'chestName, chestType required' });
-    }
-    mergeRepo.setChestTypeOverride(chestName, chestType, req.clanId ?? 1);
-    logAction(req.user!.id, 'set_chest_type', { chestName, chestType, clanId: req.clanId ?? 1 });
-    res.json({ ok: true });
-  });
-
-  // DELETE /api/admin/chest-types/:id
-  router.delete('/admin/chest-types/:id', requireAdmin, (req, res) => {
-    logAction(req.user!.id, 'delete_chest_type_override', { id: String(req.params.id) });
-    mergeRepo.deleteChestTypeOverride(parseBoundedInt(req.params.id, 0, { min: 1 }), req.clanId ?? 1);
-    res.json({ ok: true });
-  });
-
   // GET /api/admin/unique-chests
   router.get('/admin/unique-chests', requireAdmin, (req, res) => {
     const clanId = req.clanId ?? 1;
@@ -2477,7 +2452,6 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     const withTypes = distinct.map((d) => ({
       name: d.name,
       currentType: d.currentType || 'unknown',
-      override: mergeRepo.getChestTypeOverride(d.name, clanId),
       // Record count travels with the name so the merge dropdowns can show
       // how much data sits behind each one — a 3-record name next to a
       // 4,000-record one is the tell that the first is an OCR misread.

@@ -153,7 +153,6 @@ import {
   reassignUnknownRow,
   reassignUnknownBulk,
   deleteRule,
-  setChestType,
   saveMemberName,
   deleteMemberById,
   restoreMemberById,
@@ -696,12 +695,6 @@ if (contentEl) {
   contentEl.addEventListener('change', (event) => {
     const select = event.target;
     if (!(select instanceof HTMLSelectElement)) return;
-
-    if (select.classList.contains('chest-type-select')) {
-      const chestName = select.dataset.chestName;
-      if (!chestName) return;
-      return setChestType(chestName, select.value);
-    }
 
     if (select.classList.contains('user-role-select')) {
       const userId = Number.parseInt(select.dataset.userId || '0', 10);

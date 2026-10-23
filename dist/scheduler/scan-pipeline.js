@@ -147,14 +147,12 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
     const chestMergeCache = (0, merge_repo_js_1.loadMergeRules)('chest', clanId);
     const sourceMergeCache = (0, merge_repo_js_1.loadMergeRules)('source', clanId);
     const sourcePointOverrides = (0, source_points_repo_js_1.loadOverrides)();
-    const chestTypeOverrides = (0, merge_repo_js_1.loadChestTypeOverrides)(clanId);
     // Chest names this clan has already stored in a prior scan. A new chest
-    // defaulting to COMMON with no override is by design — overriding is
-    // optional — so the "unrecognised chest" review warning must fire only
+    // defaulting to COMMON is by design, so the "unrecognised chest" review warning must fire only
     // the FIRST time a genuinely-new name appears, then stay quiet on every
     // subsequent scan. This mirrors how `knownMembers` gates the new-member
     // warning below; without it, every un-catalogued chest re-warns forever
-    // merely for lacking an override. The warning's real job is catching
+    // merely for being un-catalogued. The warning's real job is catching
     // brand-new types / OCR garbage on first sight, not nagging about
     // already-known chests.
     const knownChestNames = new Set(chestRepo.getDistinctChestNames(clanId).map((c) => c.name));
@@ -755,7 +753,9 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
                 else {
                     const cleanedChest = (0, chest_names_js_1.correctChestName)(card.chestName);
                     correctedChest = (0, merge_repo_js_1.applyMergeRulesCached)(chestMergeCache, cleanedChest);
-                    finalType = chestTypeOverrides.get(correctedChest) ?? card.chestType;
+                    // Typed by the merged name, so a merge rule onto a catalogued chest
+                    // takes that chest's type rather than the raw reading's.
+                    finalType = (0, chest_names_js_1.getChestRarity)(correctedChest);
                 }
                 // OCR occasionally reads the player-name region as pure junk and
                 // returns an empty string, or reads the game's "Inactive Player"
@@ -807,16 +807,14 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
                 }
                 // Detect a chest name appearing in this clan's catalog for the
                 // FIRST time — i.e. the final corrected+merged name doesn't resolve
-                // to a canonical chest, has no operator override, AND has never been
+                // to a canonical chest AND has never been
                 // stored for this clan before. Such a name is either a real new
                 // chest type or OCR garbage, so it's worth a one-time review. Names
                 // already seen in a prior scan are intentionally silent: defaulting
-                // them to COMMON and leaving them un-overridden is by design, not an
-                // error. Triumphal rows enforce a closed set upstream, so this check
+                // them to COMMON is by design, not an error. Triumphal rows enforce a closed set upstream, so this check
                 // doesn't apply to them.
                 if (target !== 'triumphal'
                     && !(0, chest_names_js_1.isKnownChestName)(correctedChest)
-                    && !chestTypeOverrides.has(correctedChest)
                     && !knownChestNames.has(correctedChest)) {
                     knownChestNames.add(correctedChest);
                     unknownChestNames++;

@@ -153,19 +153,6 @@ function checkConfigIntegrity(database) {
             });
         }
     }
-    // ── Per-clan rarity overrides ────────────────────────────────────────
-    const typeOverrides = database.prepare('SELECT clan_id, chest_name FROM chest_type_overrides').all();
-    for (const t of typeOverrides) {
-        if (chestNames.has(t.chest_name))
-            continue;
-        add({
-            kind: 'chest-types/orphan',
-            severity: 'warning',
-            subject: `clan ${t.clan_id}: ${t.chest_name}`,
-            detail: 'Rarity override for a chest name that no longer exists.',
-            fix: 'Re-apply it to the current chest name, or delete it.',
-        });
-    }
     // ── Merge rules ──────────────────────────────────────────────────────
     const rules = database.prepare("SELECT clan_id, type, from_value, to_value FROM merge_rules WHERE type IN ('chest','source')").all();
     for (const r of rules) {

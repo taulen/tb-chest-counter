@@ -351,11 +351,6 @@
   },
   {
     "type": "table",
-    "name": "chest_type_overrides",
-    "sql": "CREATE TABLE chest_type_overrides ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id) DEFAULT 1, chest_name TEXT NOT NULL, chest_type TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(clan_id, chest_name) )"
-  },
-  {
-    "type": "table",
     "name": "chests",
     "sql": "CREATE TABLE chests ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, chest_type TEXT NOT NULL DEFAULT 'unknown' )"
   },
