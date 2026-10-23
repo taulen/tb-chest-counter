@@ -176,7 +176,7 @@ function summonsStripHtml(admin) {
   const chips = summons.map((s) => `
     <span class="tinman-chip">
       <strong>Summon ${s.summon}</strong>
-      <span class="tinman-chip-meta">${s.rows} names${s.unmatched ? ` · <span class="tool-warn">${s.unmatched} unmatched</span>` : ''} · ${esc(s.uploadedBy || '—')} · ${esc(formatDate(s.uploadedAt))}</span>
+      <span class="tinman-chip-meta">${s.rows} names${s.unmatched ? ` · <span class="tool-warn">${s.unmatched} unmatched</span>` : ''}${s.missingRanks?.length ? ` · <span class="tool-warn" title="Ranks missing from the paste: ${esc(rankRanges(s.missingRanks))}">⚠ ${s.missingRanks.length} rank${s.missingRanks.length === 1 ? '' : 's'} missing</span>` : ''} · ${esc(s.uploadedBy || '—')} · ${esc(formatDate(s.uploadedAt))}</span>
       ${admin ? `<button type="button" class="tinman-chip-del" data-tinman="delete" data-summon="${s.summon}" aria-label="Delete summon ${s.summon} scores" title="Delete this upload">×</button>` : ''}
     </span>`).join('');
   return `<div class="tinman-chips">${chips}</div>`;
@@ -329,6 +329,18 @@ function reviewHtml(admin) {
     </details>`;
 }
 
+/** [13, 19, 30, 31, 37, 38, 39, 40] → "13, 19, 30–31, 37–40". */
+function rankRanges(ranks) {
+  const out = [];
+  for (let i = 0; i < ranks.length; i++) {
+    let j = i;
+    while (j + 1 < ranks.length && ranks[j + 1] === ranks[j] + 1) j++;
+    out.push(j > i ? `${ranks[i]}–${ranks[j]}` : String(ranks[i]));
+    i = j;
+  }
+  return out.join(', ');
+}
+
 const saveAllLabel = (n) => (n ? `Save all changes (${n})` : 'Save all changes');
 
 /** Picks that differ from what is saved: [{ rawName, memberId }]. */
@@ -433,8 +445,12 @@ async function save(btn) {
         r.unmatched ? `<span class="tool-warn">${r.unmatched} not matched — see Names to check</span>` : '',
       ].filter(Boolean);
       const skipped = r.skipped ? `<br><span class="muted-copy">${r.skipped} line${r.skipped === 1 ? '' : 's'} skipped: ${r.skippedSample.map((s) => `<code>${esc(s)}</code>`).join(' ')}</span>` : '';
+      const gaps = Array.isArray(r.missingRanks) ? r.missingRanks : [];
+      const gapWarn = gaps.length
+        ? `<br><span class="tool-warn">⚠ ${gaps.length} rank${gaps.length === 1 ? ' is' : 's are'} missing from the paste (${esc(rankRanges(gaps))}). The copy probably skipped ${gaps.length === 1 ? 'that row' : 'those rows'} — their points aren't in this summon. Paste the full list again to replace it.</span>`
+        : '';
       const warn = [res.warning, res.staleWarning].filter(Boolean).map((w) => `<br><span class="tool-warn">⚠ ${esc(w)}</span>`).join('');
-      lastResult = { error: false, html: `${parts.join(' · ')}${skipped}${warn}` };
+      lastResult = { error: false, html: `${parts.join(' · ')}${skipped}${gapWarn}${warn}` };
       uploadText = '';
       uploadSummon = null;
       await load();

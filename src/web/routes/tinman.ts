@@ -8,7 +8,7 @@
  */
 import { Router } from 'express';
 import * as tinmanRepo from '../../data/repositories/tinman-repo.js';
-import { parseTinmanStandings } from '../../data/tinman-parse.js';
+import { parseTinmanStandings, missingRanks } from '../../data/tinman-parse.js';
 import { logAction } from '../../data/repositories/user-repo.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { loadConfig } from '../../config/index.js';
@@ -89,7 +89,7 @@ export function createTinmanRouter(): Router {
     const ageDays = daysBetweenGameDates(date, today());
     res.json({
       ok: true,
-      result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5) },
+      result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5), missingRanks: missingRanks(parsed.rows) },
       warning: isTinmanDay(date) ? null : `${date} isn't a Tinman day on the usual 6-day cadence.`,
       staleWarning: ageDays !== null && ageDays > ANCIENTS_CYCLE_DAYS ? 'This run is more than a cycle old.' : null,
     });

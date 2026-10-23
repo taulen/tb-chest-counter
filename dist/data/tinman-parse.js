@@ -16,6 +16,7 @@
  * Pure — no database — so tests can run it on its own.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.missingRanks = missingRanks;
 exports.parseTinmanStandings = parseTinmanStandings;
 const MAX_RANK = 1000;
 const MAX_NAME_LENGTH = 80;
@@ -33,6 +34,30 @@ function toPoints(s) {
 }
 function cleanName(s) {
     return s.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LENGTH);
+}
+/**
+ * A stand-in for a name the source couldn't read — "*(Name not visible)*",
+ * "(unknown)", "???". Two of them are NOT the same player, so each is given a
+ * name of its own built from its rank; it then reaches the review list like
+ * any unmatched name, where an admin can say who it is.
+ */
+const PLACEHOLDER = /^[*_\s]*\(.*\)[*_\s]*$|not visible|unreadable|^\?+$|^unknown$/i;
+function realName(name, rank) {
+    return PLACEHOLDER.test(name) ? `(name not visible · rank ${rank})` : name;
+}
+/**
+ * Ranks absent between 1 and the highest one pasted. The in-game list is
+ * contiguous, so a gap means the copy skipped rows — worth saying out loud,
+ * because those players' points are simply missing from this summon.
+ */
+function missingRanks(rows) {
+    const seen = new Set(rows.map((r) => r.rank));
+    const max = Math.max(0, ...seen);
+    const out = [];
+    for (let r = 1; r <= max; r++)
+        if (!seen.has(r))
+            out.push(r);
+    return out;
 }
 function isHeaderOrRule(cells, line) {
     if (/^[\s|:+-]+$/.test(line))
@@ -100,6 +125,6 @@ function parseTinmanStandings(text) {
         }
         skipped.push(line);
     }
-    return { rows, skipped };
+    return { rows: rows.map((r) => ({ ...r, name: realName(r.name, r.rank) })), skipped };
 }
 //# sourceMappingURL=tinman-parse.js.map

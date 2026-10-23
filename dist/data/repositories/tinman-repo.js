@@ -42,6 +42,7 @@ const member_repo_js_1 = require("./member-repo.js");
 const merge_repo_js_1 = require("./merge-repo.js");
 const fuzzy_js_1 = require("../../utils/fuzzy.js");
 const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const tinman_parse_js_1 = require("../tinman-parse.js");
 exports.TINMAN_MAX_SUMMONS = 8;
 /** Normalised identity of a pasted name, for carrying decisions between uploads. */
 function nameKey(raw) {
@@ -268,7 +269,11 @@ function getTinmanStandings(clanId, date) {
     }));
     return {
         date,
-        summons: uploads.map(({ id: _id, ...u }) => ({ ...u, unmatched: u.unmatched ?? 0 })),
+        summons: uploads.map(({ id: _id, ...u }) => ({
+            ...u,
+            unmatched: u.unmatched ?? 0,
+            missingRanks: (0, tinman_parse_js_1.missingRanks)(scores.filter((s) => s.summon === u.summon).map((s) => ({ rank: s.rank, name: '', points: 0 }))),
+        })),
         players,
         review,
     };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTinmanStandings } from '../../src/data/tinman-parse.js';
+import { parseTinmanStandings, missingRanks } from '../../src/data/tinman-parse.js';
 
 // Lines from a real paste (2026-10-23), markdown table as copied.
 const MARKDOWN = `
@@ -44,6 +44,22 @@ describe('parseTinmanStandings', () => {
       { rank: 98, name: 'STRUGGLE 1', points: 0 },
       { rank: 3, name: 'taulen', points: 48_161_026 },
     ]);
+  });
+
+  it('keeps unreadable names apart instead of merging them into one player', () => {
+    // From the CWB paste (2026-10-23): two stand-ins on different ranks.
+    const { rows } = parseTinmanStandings('| 24 | rerw | 0 |\n| 25 | *(Name not visible)* | 0 |\n| 54 | *(Name not visible)* | 0 |');
+    expect(rows.map((r) => r.name)).toEqual([
+      'rerw',
+      '(name not visible · rank 25)',
+      '(name not visible · rank 54)',
+    ]);
+  });
+
+  it('finds the ranks a copy skipped', () => {
+    // The CWB paste jumped 12 → 14 and 18 → 20.
+    const { rows } = parseTinmanStandings('| 12 | Lil Chaos | 102,797 |\n| 14 | John Wick | 70,537 |\n| 18 | Isabeau dAnjou | 3,178 |\n| 20 | Sweet Cheeks | 0 |');
+    expect(missingRanks(rows)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 16, 17, 19]);
   });
 
   it('reports lines it could not read instead of dropping them silently', () => {

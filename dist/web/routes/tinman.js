@@ -122,7 +122,7 @@ function createTinmanRouter() {
         const ageDays = (0, game_day_js_1.daysBetweenGameDates)(date, today());
         res.json({
             ok: true,
-            result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5) },
+            result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5), missingRanks: (0, tinman_parse_js_1.missingRanks)(parsed.rows) },
             warning: (0, game_day_js_1.isTinmanDay)(date) ? null : `${date} isn't a Tinman day on the usual 6-day cadence.`,
             staleWarning: ageDays !== null && ageDays > game_day_js_1.ANCIENTS_CYCLE_DAYS ? 'This run is more than a cycle old.' : null,
         });

@@ -33,7 +33,7 @@ import { getAllMembers, addAlias, getMemberById } from './member-repo.js';
 import { loadPlayerNameCanonicaliser } from './merge-repo.js';
 import { exactMatchMember, fuzzyMatchMember } from '../../utils/fuzzy.js';
 import { despace } from '../../vision/ocr-normalize.js';
-import type { TinmanRow } from '../tinman-parse.js';
+import { missingRanks, type TinmanRow } from '../tinman-parse.js';
 import type { ClanMember } from '../../models/types.js';
 
 export const TINMAN_MAX_SUMMONS = 8;
@@ -244,6 +244,8 @@ export interface TinmanUploadInfo {
   uploadedBy: string;
   rows: number;
   unmatched: number;
+  /** Ranks absent between 1 and the highest pasted: rows the copy skipped. */
+  missingRanks: number[];
 }
 
 export interface TinmanPlayer {
@@ -346,7 +348,11 @@ export function getTinmanStandings(clanId: number, date: string): TinmanStanding
 
   return {
     date,
-    summons: uploads.map(({ id: _id, ...u }) => ({ ...u, unmatched: u.unmatched ?? 0 })),
+    summons: uploads.map(({ id: _id, ...u }) => ({
+      ...u,
+      unmatched: u.unmatched ?? 0,
+      missingRanks: missingRanks(scores.filter((s) => s.summon === u.summon).map((s) => ({ rank: s.rank, name: '', points: 0 }))),
+    })),
     players,
     review,
   };
