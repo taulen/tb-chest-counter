@@ -793,6 +793,17 @@ const MIGRATIONS: Migration[] = [
       database.exec(`ALTER TABLE clans ADD COLUMN week_start TEXT NOT NULL DEFAULT 'sunday'`);
     },
   },
+  {
+    // The Ancient planner's per-clan starting values, saved by an admin: JSON
+    // { settings, savedAt, savedBy } — see config/ancient-planner-defaults.ts.
+    // NULL = the clan never saved any, so the built-ins apply. Guarded for replay.
+    version: 79,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(clans)').all() as { name: string }[];
+      if (cols.some((c) => c.name === 'ancient_planner_defaults')) return;
+      database.exec('ALTER TABLE clans ADD COLUMN ancient_planner_defaults TEXT');
+    },
+  },
 ];
 
 /**

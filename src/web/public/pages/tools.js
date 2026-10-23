@@ -11,8 +11,8 @@
 // Inputs and results render separately: dragging a slider repaints only the
 // results, so the control under the pointer is never replaced mid-drag.
 
-import { api } from '../lib/api.js';
-import { esc } from '../lib/ui.js';
+import { api, apiPut } from '../lib/api.js';
+import { esc, notify } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
   TIERS,
@@ -58,55 +58,35 @@ const FIELDS = {
   margin: { label: 'Overshoot', min: 0, max: 100, unit: '%', hint: 'How far members typically beat a target. Each target is divided by 1 + this.' },
 };
 
-const DEFAULTS = { level: 1, tomeLevel: 1, missing: 0, trick: 0, margin: 15, unknownAs: null };
+/** What the page opens on comes from the server: the clan's saved default, or
+ *  the built-ins in src/config/ancient-planner-defaults.ts. This copy is only
+ *  for when that request fails. Moving a slider is never remembered — the next
+ *  visit opens on the clan default again, so nobody's stale tweak can pass for it. */
+const FALLBACK_DEFAULTS = {
+  source: 'built-in',
+  settings: { level: 1, tomeLevel: 26, missing: 5, trick: 0, margin: 15, unknownAs: 'g7', summons: 3 },
+  savedAt: null,
+  savedBy: null,
+};
 
 /** Module state for the mounted planner — rebuilt on every page render. */
 let st = null;
-
-function storageKey() {
-  const user = getCurrentUser();
-  const clanId = user?.activeClan?.id ?? user?.clanId ?? 'none';
-  return `tbcc.tools.ancient.${clanId}`;
-}
-
-function loadSettings() {
-  const s = { ...DEFAULTS };
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey()) || '{}');
-    for (const [k, f] of Object.entries(FIELDS)) {
-      const v = Number(saved[k]);
-      if (Number.isFinite(v)) s[k] = clamp(v, f.min, f.max);
-    }
-    if (typeof saved.unknownAs === 'string') s.unknownAs = saved.unknownAs;
-  } catch {
-    // localStorage can throw in private mode; defaults are fine.
-  }
-  return s;
-}
-
-function saveSettings() {
-  try {
-    localStorage.setItem(storageKey(), JSON.stringify(st.settings));
-  } catch {
-    // Not persisting is harmless.
-  }
-}
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, Math.round(v)));
 }
 
-/** Most common known level as a tier key ('g8'), or 'skip' with no evidence at all. */
-function defaultUnknownAs(roster) {
-  const tally = new Map();
-  for (const m of roster.members) {
-    if (m.guardsLevel) tally.set(m.guardsLevel, (tally.get(m.guardsLevel) ?? 0) + 1);
-  }
-  let best = null;
-  for (const [level, n] of tally) {
-    if (best === null || n > best[1] || (n === best[1] && level < best[0])) best = [level, n];
-  }
-  return best ? `g${best[0]}` : 'skip';
+function isAdmin() {
+  const role = getCurrentUser()?.role;
+  return role === 'admin' || role === 'superadmin';
+}
+
+/** Apply a defaults record to the state (settings, unknown handling, summons). */
+function applyDefaults(defaults) {
+  const { summons, ...settings } = defaults.settings;
+  st.settings = { ...settings };
+  st.picked = summons;
+  st.counts = rosterCounts(st.roster, st.settings.unknownAs);
 }
 
 function rosterCounts(roster, unknownAs) {
@@ -128,17 +108,17 @@ async function renderAncientPlanner(mount) {
     // Anything else: the calculator still works with hand-entered counts.
     roster = { source: 'none', members: [], maxMembers: 100, windowDays: 7, maxAgeDays: 2, mightGameDate: null };
   }
-  const settings = loadSettings();
-  const validUnknown = settings.unknownAs === 'skip' || TIERS.some((t) => t.key === settings.unknownAs);
-  if (!validUnknown) settings.unknownAs = defaultUnknownAs(roster);
 
   st = {
     roster,
-    settings,
-    counts: rosterCounts(roster, settings.unknownAs),
-    /** Summon count the user picked, or null to follow the best affordable one. */
+    /** The clan's saved default (or the built-ins) — what Reset returns to. */
+    defaults: roster.defaults ?? FALLBACK_DEFAULTS,
+    settings: null,
+    counts: null,
+    /** Summon count being planned. */
     picked: null,
   };
+  applyDefaults(st.defaults);
 
   mount.innerHTML = `
     <div class="ancient-planner">
@@ -260,8 +240,15 @@ function settingsCardHtml() {
   })).join('');
   return `
     <div class="card">
-      <div class="card-header"><h2>Settings</h2></div>
+      <div class="card-header">
+        <h2>Settings</h2>
+        <div class="tool-default-actions">
+          <button type="button" class="btn btn-sm" data-tool-action="reset-defaults">Reset to clan default</button>
+          ${isAdmin() ? '<button type="button" class="btn btn-sm btn-primary" data-tool-action="save-defaults">Save as clan default</button>' : ''}
+        </div>
+      </div>
       <div class="card-body-padded">
+        <p class="tool-default-status" data-readout="defaultsStatus" role="status">${defaultsStatusHtml()}</p>
         <div class="tool-slider-grid tool-slider-grid-wide">${rows}</div>
       </div>
     </div>`;
@@ -296,7 +283,6 @@ function onInput(e) {
     st.settings[key] = clamp(value, FIELDS[key].min, FIELDS[key].max);
     syncPair(t, `[data-setting="${key}"]`, st.settings[key]);
     setReadout(key, readoutFor(key));
-    saveSettings();
   } else {
     return;
   }
@@ -308,7 +294,6 @@ function onChange(e) {
   const t = e.target;
   if (t instanceof HTMLSelectElement && t.dataset.setting === 'unknownAs') {
     st.settings.unknownAs = t.value;
-    saveSettings();
     recountRoster(t.closest('.ancient-planner'));
     return;
   }
@@ -321,6 +306,14 @@ function onClick(e) {
   const action = e.target.closest('[data-tool-action]');
   if (action?.dataset.toolAction === 'reload-roster') {
     recountRoster(action.closest('.ancient-planner'));
+    return;
+  }
+  if (action?.dataset.toolAction === 'reset-defaults') {
+    resetToDefaults(action.closest('.ancient-planner'));
+    return;
+  }
+  if (action?.dataset.toolAction === 'save-defaults') {
+    saveDefaults(action);
     return;
   }
   const row = e.target.closest('[data-summons]');
@@ -365,16 +358,14 @@ function currentPlan() {
   });
 }
 
-/** The user's pick, else the most summons the pot affords (at least 1). */
-function selectedSummons(plan) {
-  if (st.picked) return st.picked;
-  const affordable = plan.options.filter((o) => o.attainable);
-  return affordable.length ? affordable[affordable.length - 1].summons : 1;
+/** The summon count being planned — the clan default until a row is picked. */
+function selectedSummons() {
+  return clamp(st.picked || 1, 1, MAX_SUMMONS);
 }
 
 function paintResults(root) {
   const plan = currentPlan();
-  const sel = selectedSummons(plan);
+  const sel = selectedSummons();
   const opt = plan.options[sel - 1];
   root.querySelector('.ancient-results').innerHTML = `
     ${heroHtml(plan, opt)}
@@ -382,6 +373,61 @@ function paintResults(root) {
       ${optionsCardHtml(plan, sel)}
       ${perMemberCardHtml(plan, opt)}
     </div>`;
+  setReadout('defaultsStatus', defaultsStatusHtml());
+}
+
+// ─── Clan defaults ────────────────────────────────────────────────
+
+/** The settings as they would be saved: sliders, unknown handling, summons. */
+function currentDefaultSettings() {
+  return { ...st.settings, summons: st.picked };
+}
+
+function differsFromDefaults() {
+  const now = currentDefaultSettings();
+  return Object.entries(st.defaults.settings).some(([k, v]) => now[k] !== v);
+}
+
+function defaultsStatusHtml() {
+  const d = st.defaults;
+  const base = d.source === 'clan'
+    ? `Clan default saved by <strong>${esc(d.savedBy || 'an admin')}</strong>${d.savedAt ? ` on ${esc(String(d.savedAt).slice(0, 10))}` : ''}.`
+    : `Built-in defaults${isAdmin() ? ' — save your own for the clan' : " — an admin can save the clan's own"}.`;
+  if (!differsFromDefaults()) return base;
+  const tag = isAdmin() ? 'Changed — not saved' : 'Changed from the clan default';
+  return `<span class="tool-changed">● ${tag}</span> ${base}`;
+}
+
+function resetToDefaults(root) {
+  applyDefaults(st.defaults);
+  for (const key of Object.keys(FIELDS)) {
+    for (const input of root.querySelectorAll(`[data-setting="${key}"]`)) input.value = String(st.settings[key]);
+    setReadout(key, readoutFor(key));
+  }
+  const unknown = root.querySelector('[data-setting="unknownAs"]');
+  if (unknown) unknown.value = st.settings.unknownAs;
+  recountRoster(root);
+}
+
+async function saveDefaults(button) {
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = 'Saving…';
+  try {
+    const res = await apiPut('/tools/ancient-defaults', { settings: currentDefaultSettings() });
+    if (res?.error) {
+      await notify(res.error, 'Could not save');
+      return;
+    }
+    st.defaults = res.defaults;
+    setReadout('defaultsStatus', defaultsStatusHtml());
+  } catch (err) {
+    if (err?.name === 'UnauthenticatedError') return;
+    await notify(`Could not save: ${err?.message || err}`, 'Could not save');
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
 }
 
 const fmtInt = (n) => Math.round(n).toLocaleString();

@@ -2,6 +2,7 @@ import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
 import { resolveEntries as resolveLogEntries } from '../../utils/log-buffer.js';
 import { isWeekStart, type WeekStart } from '../../utils/game-day.js';
+import { parseAncientSettings, type AncientPlannerSettings } from '../../config/ancient-planner-defaults.js';
 
 const log = childLogger('clan-repo');
 
@@ -349,6 +350,40 @@ export function setClanWeekStart(id: number, weekStart: WeekStart): void {
  */
 export function getClanWeekStart(id: number): WeekStart {
   return getClanById(id)?.weekStart ?? 'sunday';
+}
+
+/** An admin's saved Ancient planner starting values (v79). */
+export interface SavedAncientDefaults {
+  settings: AncientPlannerSettings;
+  savedAt: string;
+  savedBy: string;
+}
+
+/**
+ * The clan's saved Ancient planner defaults, or null when none were saved — or
+ * when what is stored no longer passes validation (a bound tightened since),
+ * in which case the built-ins apply rather than a half-valid plan.
+ */
+export function getClanAncientDefaults(id: number): SavedAncientDefaults | null {
+  const row = getDb().prepare('SELECT ancient_planner_defaults AS raw FROM clans WHERE id = ?')
+    .get(id) as { raw: string | null } | undefined;
+  if (!row?.raw) return null;
+  try {
+    const stored = JSON.parse(row.raw) as { settings?: unknown; savedAt?: unknown; savedBy?: unknown };
+    const parsed = parseAncientSettings(stored.settings);
+    if (!parsed.ok) return null;
+    return {
+      settings: parsed.settings,
+      savedAt: typeof stored.savedAt === 'string' ? stored.savedAt : '',
+      savedBy: typeof stored.savedBy === 'string' ? stored.savedBy : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function setClanAncientDefaults(id: number, value: SavedAncientDefaults): void {
+  getDb().prepare('UPDATE clans SET ancient_planner_defaults = ? WHERE id = ?').run(JSON.stringify(value), id);
 }
 
 export interface DiscordSettings {

@@ -15,6 +15,8 @@ exports.setClanInactivitySettings = setClanInactivitySettings;
 exports.setClanLeaderboardGoal = setClanLeaderboardGoal;
 exports.setClanWeekStart = setClanWeekStart;
 exports.getClanWeekStart = getClanWeekStart;
+exports.getClanAncientDefaults = getClanAncientDefaults;
+exports.setClanAncientDefaults = setClanAncientDefaults;
 exports.setClanDiscordSettings = setClanDiscordSettings;
 exports.setClanLastDigestStatus = setClanLastDigestStatus;
 exports.markClanNeedsReauth = markClanNeedsReauth;
@@ -31,6 +33,7 @@ const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const log_buffer_js_1 = require("../../utils/log-buffer.js");
 const game_day_js_1 = require("../../utils/game-day.js");
+const ancient_planner_defaults_js_1 = require("../../config/ancient-planner-defaults.js");
 const log = (0, logger_js_1.childLogger)('clan-repo');
 /**
  * URL-safe slug. Lowercase, runs of non-alphanumerics collapse to `-`,
@@ -216,6 +219,34 @@ function setClanWeekStart(id, weekStart) {
  */
 function getClanWeekStart(id) {
     return getClanById(id)?.weekStart ?? 'sunday';
+}
+/**
+ * The clan's saved Ancient planner defaults, or null when none were saved — or
+ * when what is stored no longer passes validation (a bound tightened since),
+ * in which case the built-ins apply rather than a half-valid plan.
+ */
+function getClanAncientDefaults(id) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT ancient_planner_defaults AS raw FROM clans WHERE id = ?')
+        .get(id);
+    if (!row?.raw)
+        return null;
+    try {
+        const stored = JSON.parse(row.raw);
+        const parsed = (0, ancient_planner_defaults_js_1.parseAncientSettings)(stored.settings);
+        if (!parsed.ok)
+            return null;
+        return {
+            settings: parsed.settings,
+            savedAt: typeof stored.savedAt === 'string' ? stored.savedAt : '',
+            savedBy: typeof stored.savedBy === 'string' ? stored.savedBy : '',
+        };
+    }
+    catch {
+        return null;
+    }
+}
+function setClanAncientDefaults(id, value) {
+    (0, database_js_1.getDb)().prepare('UPDATE clans SET ancient_planner_defaults = ? WHERE id = ?').run(JSON.stringify(value), id);
 }
 function setClanDiscordSettings(id, s) {
     const db = (0, database_js_1.getDb)();

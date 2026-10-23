@@ -20,4 +20,10 @@ The reference computes on the server and publishes no source. Its form is a plai
 
 ## Roster rules
 
-The roster prefers the newest might capture if it is at most 2 game days old, strongest first, capped at 100. Otherwise it uses active members seen in the last 7 days, most recent first, capped at 100. Members with no guards estimate are counted at the clan's most common level by default; the page lets the user change that or leave them out.
+The roster prefers the newest might capture if it is at most 2 game days old, strongest first, capped at 100. Otherwise it uses active members seen in the last 7 days, most recent first, capped at 100. Members with no guards estimate count at the clan default's "unknown as" tier (G7 built in); the page lets the user change that or leave them out.
+
+## Clan defaults
+
+The page opens on the clan's saved defaults: Tin Man level, Tome level, no-shows, vault trick, overshoot, unknown-as and summons. They are stored as JSON in `clans.ancient_planner_defaults` (v79). Until an admin saves them, the built-ins in [ancient-planner-defaults.ts](../src/config/ancient-planner-defaults.ts) apply: Tome 26 (+70%), 5% no-shows, unknowns as G7, 3 summons, 15% overshoot.
+
+Anyone can move the sliders, but nothing a member changes is remembered; the next visit opens on the clan default again. Admins and superadmins get **Save as clan default** (`PUT /api/tools/ancient-defaults`, `requireAdmin`, saved on the caller's active clan). The save is strict: an out-of-range field is refused, not clamped. Counts per tier are never part of the default, since they always come from the roster.
