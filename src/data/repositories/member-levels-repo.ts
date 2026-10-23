@@ -133,6 +133,11 @@ export interface MemberLatestLevels {
   lastReported: string;
 }
 
+/** One member's latest reported levels, or null when they never posted any. */
+export function getLatestLevelsForMember(clanId: number, memberId: number): MemberLatestLevels | null {
+  return getLatestLevels(clanId).find((r) => r.memberId === memberId) ?? null;
+}
+
 /** Each member's latest reported value per letter. Members never reported are absent. */
 export function getLatestLevels(clanId: number): MemberLatestLevels[] {
   const rows = getDb().prepare(`

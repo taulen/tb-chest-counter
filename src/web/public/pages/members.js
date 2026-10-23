@@ -385,6 +385,9 @@ function memberGuardsStatHtml(guards) {
 }
 
 function evidenceVerdict(row) {
+  if (row.superseded) {
+    return '<span class="guards-fit is-partial" title="A newer donation revealed the level, so this entry no longer counts">replaced</span>';
+  }
   if (row.kind === 'tractate' && row.belowLevel) {
     return '<span class="guards-fit is-partial" title="A lower tier than their level — they donated less than they could">below level</span>';
   }
@@ -438,8 +441,8 @@ function memberGuardsCardHtml(guards, memberId, isAdmin) {
   const adminHtml = isAdmin || reports.length > 0 ? `
     <details class="guards-details" data-section-key="member-guards-entries"${reports.length > 0 ? ' open' : ''}>
       <summary>Admin entries (${reports.length})</summary>
-      <p class="muted-copy">For a member who never donates, or one the donations get wrong. An entry pins the level on its date;
-        later donations can still carry the member higher.</p>
+      <p class="muted-copy">For a member who never donates, or one the donations get wrong. An entry pins the level on its date
+        until a newer donation reveals the level — then the donation wins. Later donations can always carry the member higher.</p>
       ${reports.length > 0 ? `<ul class="guards-report-list">${reportRows}</ul>` : ''}
       ${isAdmin ? `<form class="guards-report-form" id="guardsReportForm" data-member-id="${memberId}">
         <label>Level <select class="input" name="level">
@@ -459,10 +462,32 @@ function memberGuardsCardHtml(guards, memberId, isAdmin) {
       </div>
       <div class="card-body card-body-padded">
         ${headline}
+        ${reportedLevelsHtml(guards.reportedLevels)}
         ${evidenceHtml}
         ${adminHtml}
       </div>
     </div>`;
+}
+
+// What the member last posted in chat (Admin → Levels from chat). Minor detail,
+// so a single quiet line of small chips — each letter with its name on hover.
+const LEVEL_LABELS = [
+  ['g', 'G', 'Guardsmen'],
+  ['m', 'M', 'Monsters'],
+  ['s', 'S', 'Specialists'],
+  ['e', 'E', 'Engineering'],
+  ['c', 'C', 'Crypting'],
+  ['d', 'D', 'Dragon'],
+];
+
+function reportedLevelsHtml(r) {
+  if (!r || !r.levels) return '';
+  const chips = LEVEL_LABELS
+    .filter(([k]) => r.levels[k] != null)
+    .map(([k, short, name]) => `<span class="reported-level" title="${esc(`${name} ${r.levels[k]}${r.asOf?.[k] ? ` — posted ${r.asOf[k]}` : ''}`)}"><span class="reported-level-key">${short}</span>${r.levels[k]}</span>`)
+    .join('');
+  if (!chips) return '';
+  return `<p class="reported-levels"><span class="reported-levels-label">Posted in chat</span>${chips}<span class="muted-copy">${esc(formatGameDayShort(r.lastReported))}</span></p>`;
 }
 
 function memberGoldPassCardHtml(guards) {

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.previewLevelReports = previewLevelReports;
 exports.cleanLevels = cleanLevels;
 exports.importLevelReports = importLevelReports;
+exports.getLatestLevelsForMember = getLatestLevelsForMember;
 exports.getLatestLevels = getLatestLevels;
 /**
  * Player levels reported in the in-game chat — G (guardsmen), M, S, E, C and
@@ -88,6 +89,10 @@ function importLevelReports(input) {
         result.guardsReports++;
     }
     return result;
+}
+/** One member's latest reported levels, or null when they never posted any. */
+function getLatestLevelsForMember(clanId, memberId) {
+    return getLatestLevels(clanId).find((r) => r.memberId === memberId) ?? null;
 }
 /** Each member's latest reported value per letter. Members never reported are absent. */
 function getLatestLevels(clanId) {

@@ -49,6 +49,7 @@ const express_1 = require("express");
 const guardsRepo = __importStar(require("../../data/repositories/guards-repo.js"));
 const goldPassRepo = __importStar(require("../../data/repositories/gold-pass-repo.js"));
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
+const member_levels_repo_js_1 = require("../../data/repositories/member-levels-repo.js");
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const auth_js_1 = require("../middleware/auth.js");
 const index_js_1 = require("../../config/index.js");
@@ -153,6 +154,8 @@ function createGuardsRouter() {
             estimate,
             summary: estimate ? guardsRepo.summarizeEstimate(estimate, today) : null,
             reports: guardsRepo.listGuardsReports(memberId, clanId),
+            // What the member last posted in chat (Admin → Levels from chat), every letter.
+            reportedLevels: (0, member_levels_repo_js_1.getLatestLevelsForMember)(clanId, memberId),
             goldPass,
         });
     });

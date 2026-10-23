@@ -192,6 +192,24 @@ describe('estimateGuardsLevel', () => {
     expect(risen?.level).toBe(9);
   });
 
+  it('lets newer hard donation evidence replace an older admin entry', () => {
+    // Said G9 in chat; the G8 tractate tier a fortnight later is what the game recorded.
+    const e = estimateGuardsLevel([report('2026-09-01', 9), tr('2026-09-18', 58_000_000)]);
+    expect(e?.level).toBe(8);
+    expect(e?.evidence.find((r) => r.kind === 'report')).toMatchObject({ superseded: true, agrees: false });
+    // Essence only one level explains is hard too.
+    expect(estimateGuardsLevel([report('2026-09-01', 9), ess('2026-09-03', 343_200)])?.level).toBe(8);
+  });
+
+  it('keeps an admin entry when the newer donation is ambiguous, or older', () => {
+    // 1,001,000 fits G7 and G8 — it can't overrule a G9 entry.
+    const ambiguous = estimateGuardsLevel([report('2026-09-01', 9), ess('2026-09-03', 1_001_000)]);
+    expect(ambiguous?.level).toBe(9);
+    expect(ambiguous?.evidence.find((r) => r.kind === 'report')?.superseded).toBe(false);
+    // Hard evidence from BEFORE the entry doesn't replace it.
+    expect(estimateGuardsLevel([tr('2026-08-25', 58_000_000), report('2026-09-01', 9)])?.level).toBe(9);
+  });
+
   it('breaks a genuine tie with the clan prior, never by overstating', () => {
     // 308,000 fits G3 (80 units) and G7 (28 units) equally well.
     const flat = estimateGuardsLevel([ess('2026-07-18', 308_000)]);

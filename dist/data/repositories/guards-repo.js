@@ -167,7 +167,7 @@ function getClanGuardsOverview(clanId, today, recentDays = 30) {
             if (age !== null && age <= recentDays)
                 recentLevelUps.push({ ...up, memberId: m.id, name: m.name });
         }
-        const first = e.evidence[0];
+        const first = e.evidence.find((r) => !r.superseded);
         const firstAge = (0, game_day_js_1.daysBetweenGameDates)(e.firstSeen, today);
         if (first?.kind === 'report' && firstAge !== null && firstAge <= recentDays) {
             recentlyLearned.push({ memberId: m.id, name: m.name, level: e.level, date: e.firstSeen });

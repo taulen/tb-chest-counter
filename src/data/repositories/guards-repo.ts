@@ -223,7 +223,7 @@ export function getClanGuardsOverview(clanId: number, today: string, recentDays 
       const age = daysBetweenGameDates(up.by, today);
       if (age !== null && age <= recentDays) recentLevelUps.push({ ...up, memberId: m.id, name: m.name });
     }
-    const first = e.evidence[0];
+    const first = e.evidence.find((r) => !r.superseded);
     const firstAge = daysBetweenGameDates(e.firstSeen, today);
     if (first?.kind === 'report' && firstAge !== null && firstAge <= recentDays) {
       recentlyLearned.push({ memberId: m.id, name: m.name, level: e.level, date: e.firstSeen });

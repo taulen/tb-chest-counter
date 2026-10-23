@@ -29,9 +29,14 @@
  *  - Tractates: the tier's level fits exactly. A HIGHER level is plausible but
  *    unlikely (a member donating below their level — seen once: a G8 giving the
  *    G7 15M). A LOWER level is close to impossible.
- *  - Admin report: effectively a hard pin for its date. It is still only a pin
- *    on THAT date, so later donations can carry the member above it — a
- *    correction is a floor, not a ceiling.
+ *  - Admin report (by hand, or the chat levels import): effectively a hard pin
+ *    for its date — UNTIL newer hard evidence arrives. A tractate tier, or an
+ *    essence amount only one level explains, dated after the report SUPERSEDES
+ *    it: the report is left out of the estimate entirely (and shown as
+ *    replaced), because what the game itself recorded later beats what someone
+ *    said earlier. An ambiguous essence line (1,001,000 fits G7 and G8) is not
+ *    hard and replaces nothing. Until superseded, later donations can still
+ *    carry the member above the report — a correction is a floor, not a ceiling.
  *  - Each level gained costs a little, so the path doesn't climb on noise.
  *
  * Pure and dependency-free apart from the ladder, so the guard suite in
@@ -73,6 +78,8 @@ export interface GuardsEvidenceRow {
   belowLevel: boolean;
   /** Essence donated on the +20% G9 unit (see EssenceUnit.boosted). */
   boosted: boolean;
+  /** An admin report replaced by newer hard donation evidence — not counted. */
+  superseded: boolean;
 }
 
 export interface GuardsLevelUp {
@@ -155,6 +162,8 @@ interface PreparedObs {
   amount: number | null;
   levels: number[];
   boostedLevels: Set<number>;
+  /** Reveals exactly one level: a tractate tier, or essence only one unit divides. */
+  hard: boolean;
   score: (level: number) => number;
 }
 
@@ -178,6 +187,7 @@ function prepare(o: GuardsObservation): PreparedObs | null {
       amount,
       levels: [...best.keys()].sort((a, b) => a - b),
       boostedLevels: boosted,
+      hard: best.size === 1,
       score: (l) => best.get(l) ?? miss,
     };
   }
@@ -192,6 +202,7 @@ function prepare(o: GuardsObservation): PreparedObs | null {
       amount,
       levels: [tier],
       boostedLevels: new Set(),
+      hard: true,
       score: (l) => {
         if (l === tier) return 0;
         if (l < tier) return LOG_TRACTATE_OVER;
@@ -208,6 +219,7 @@ function prepare(o: GuardsObservation): PreparedObs | null {
     amount: null,
     levels: [level],
     boostedLevels: new Set(),
+    hard: false,
     score: (l) => (l === level ? 0 : LOG_REPORT_MISS),
   };
 }
@@ -248,9 +260,15 @@ export function estimateGuardsLevel(
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   if (prepared.length === 0) return null;
 
-  const dates = [...new Set(prepared.map((o) => o.date))];
+  // Newer hard evidence supersedes an older admin report (see the header).
+  let latestHard = '';
+  for (const o of prepared) if (o.hard && o.date > latestHard) latestHard = o.date;
+  const isSuperseded = (o: PreparedObs) => o.kind === 'report' && latestHard !== '' && o.date < latestHard;
+  const scored = prepared.filter((o) => !isSuperseded(o));
+
+  const dates = [...new Set(scored.map((o) => o.date))];
   const byDate = new Map<string, PreparedObs[]>();
-  for (const o of prepared) {
+  for (const o of scored) {
     const list = byDate.get(o.date);
     if (list) list.push(o);
     else byDate.set(o.date, [o]);
@@ -312,8 +330,16 @@ export function estimateGuardsLevel(
   }
 
   const levelOn = new Map(dates.map((d, i) => [d, path[i]]));
+  // A superseded report's date may hold nothing else: read the path's level at
+  // the nearest scored date before it (or the first one).
+  const levelAt = (date: string): number => {
+    if (levelOn.has(date)) return levelOn.get(date) as number;
+    let lvl = path[0];
+    for (let i = 0; i < dates.length && dates[i] <= date; i++) lvl = path[i];
+    return lvl;
+  };
   const evidence: GuardsEvidenceRow[] = prepared.map((o) => {
-    const est = levelOn.get(o.date) as number;
+    const est = levelAt(o.date);
     const tier = o.kind === 'tractate' ? o.levels[0] : null;
     return {
       kind: o.kind,
@@ -324,6 +350,7 @@ export function estimateGuardsLevel(
       agrees: o.levels.includes(est),
       belowLevel: tier !== null && est > tier,
       boosted: o.boostedLevels.has(est),
+      superseded: isSuperseded(o),
     };
   });
 

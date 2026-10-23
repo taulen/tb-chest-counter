@@ -6860,3 +6860,18 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .levels-tag.is-none { color: var(--text-muted); }
 .levels-table tr.levels-dupe td { background: var(--accent-red-bg); }
 .levels-save { margin-top: 12px; }
+
+/* Member profile: levels the member last posted in chat — a quiet chip row. */
+.reported-levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 12px; }
+.reported-levels-label { color: var(--text-muted); margin-right: 2px; }
+.reported-level {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1px 7px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.reported-level-key { font-weight: 700; color: var(--accent-gold); font-size: 11px; }

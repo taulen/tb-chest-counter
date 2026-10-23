@@ -13,6 +13,7 @@ import { Router } from 'express';
 import * as guardsRepo from '../../data/repositories/guards-repo.js';
 import * as goldPassRepo from '../../data/repositories/gold-pass-repo.js';
 import { getAllMembers, getMemberById } from '../../data/repositories/member-repo.js';
+import { getLatestLevelsForMember } from '../../data/repositories/member-levels-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { loadConfig } from '../../config/index.js';
@@ -130,6 +131,8 @@ export function createGuardsRouter(): Router {
       estimate,
       summary: estimate ? guardsRepo.summarizeEstimate(estimate, today) : null,
       reports: guardsRepo.listGuardsReports(memberId, clanId),
+      // What the member last posted in chat (Admin → Levels from chat), every letter.
+      reportedLevels: getLatestLevelsForMember(clanId, memberId),
       goldPass,
     });
   });

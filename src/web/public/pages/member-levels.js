@@ -11,12 +11,12 @@ import { esc, memberLink, notify } from '../lib/ui.js';
 
 const LETTERS = ['g', 'm', 's', 'e', 'c', 'd'];
 const LETTER_TITLE = {
-  g: 'G — guardsmen level',
-  m: 'M — as posted in chat',
-  s: 'S — as posted in chat',
-  e: 'E — as posted in chat',
-  c: 'C — as posted in chat',
-  d: 'D — dragon level',
+  g: 'G — Guardsmen level',
+  m: 'M — Monsters level',
+  s: 'S — Specialists level',
+  e: 'E — Engineering level',
+  c: 'C — Crypting level',
+  d: 'D — Dragon level',
 };
 
 let el = null;
