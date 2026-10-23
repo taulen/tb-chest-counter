@@ -33,7 +33,7 @@ import { getAllMembers, addAlias, getMemberById } from './member-repo.js';
 import { loadPlayerNameCanonicaliser } from './merge-repo.js';
 import { exactMatchMember, fuzzyMatchMember } from '../../utils/fuzzy.js';
 import { despace } from '../../vision/ocr-normalize.js';
-import { missingRanks, type TinmanRow } from '../tinman-parse.js';
+import { missingRanks, TARGET_TIERS, type TargetTier, type TinmanRow } from '../tinman-parse.js';
 import type { ClanMember } from '../../models/types.js';
 
 export const TINMAN_MAX_SUMMONS = 8;
@@ -364,4 +364,55 @@ export function listTinmanDates(clanId: number, limit = 30): string[] {
     SELECT DISTINCT tinman_date AS d FROM tinman_uploads WHERE clan_id = ? ORDER BY d DESC LIMIT ?
   `).all(clanId, limit) as Array<{ d: string }>;
   return rows.map((r) => r.d);
+}
+
+// ─── Targets ─────────────────────────────────────────────────────
+
+export interface TinmanTargets {
+  /** Points each, per tier key (t9, g9 … g1). */
+  tiers: Partial<Record<TargetTier, number>>;
+  kills: number | null;
+  savedBy: string;
+  savedAt: string;
+}
+
+/** The run's per-tier targets, or null when none were pasted. */
+export function getTinmanTargets(clanId: number, date: string): TinmanTargets | null {
+  const row = getDb().prepare(
+    'SELECT tiers, kills, saved_by AS savedBy, saved_at AS savedAt FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?',
+  ).get(clanId, date) as { tiers: string; kills: number | null; savedBy: string; savedAt: string } | undefined;
+  if (!row) return null;
+  let tiers: TinmanTargets['tiers'] = {};
+  try {
+    const parsed = JSON.parse(row.tiers) as Record<string, unknown>;
+    for (const t of TARGET_TIERS) {
+      const v = parsed[t];
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) tiers[t] = v;
+    }
+  } catch {
+    tiers = {};
+  }
+  return { tiers, kills: row.kills, savedBy: row.savedBy, savedAt: row.savedAt };
+}
+
+/** Store (or replace) the run's targets. */
+export function saveTinmanTargets(input: {
+  clanId: number;
+  date: string;
+  tiers: Partial<Record<TargetTier, number>>;
+  kills: number | null;
+  savedBy: string;
+}): void {
+  getDb().prepare(`
+    INSERT INTO tinman_targets (clan_id, tinman_date, tiers, kills, saved_by, saved_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (clan_id, tinman_date) DO UPDATE SET
+      tiers = excluded.tiers, kills = excluded.kills,
+      saved_by = excluded.saved_by, saved_at = excluded.saved_at
+  `).run(input.clanId, input.date, JSON.stringify(input.tiers), input.kills, input.savedBy, new Date().toISOString());
+}
+
+export function deleteTinmanTargets(clanId: number, date: string): boolean {
+  return getDb().prepare('DELETE FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?')
+    .run(clanId, date).changes > 0;
 }

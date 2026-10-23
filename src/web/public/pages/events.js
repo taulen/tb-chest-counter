@@ -814,11 +814,16 @@ function paint() {
         ${pagination}
       </div>
     </div>
-    ${nonParticipantsHtml}`;
+    ${nonParticipantsHtml}
+    ${currentEventKey === TINMAN_EVENT_KEY ? '<div class="tinman-below-mount"></div>' : ''}`;
 
   wire(el);
   if (currentEventKey === TINMAN_EVENT_KEY) {
-    mountTinmanScores(el.querySelector('.tinman-mount'), { date: tinmanDateForSelection(), members: activeMembers })
+    mountTinmanScores(el.querySelector('.tinman-mount'), {
+      date: tinmanDateForSelection(),
+      members: activeMembers,
+      belowEl: el.querySelector('.tinman-below-mount'),
+    })
       .catch(() => { /* the card reports its own load failure */ });
   }
 }

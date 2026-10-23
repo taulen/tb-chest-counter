@@ -7,6 +7,9 @@ exports.deleteTinmanSummon = deleteTinmanSummon;
 exports.assignTinmanName = assignTinmanName;
 exports.getTinmanStandings = getTinmanStandings;
 exports.listTinmanDates = listTinmanDates;
+exports.getTinmanTargets = getTinmanTargets;
+exports.saveTinmanTargets = saveTinmanTargets;
+exports.deleteTinmanTargets = deleteTinmanTargets;
 /**
  * Rise of the Ancients (Tinman) standings, pasted in after each summon.
  *
@@ -284,5 +287,38 @@ function listTinmanDates(clanId, limit = 30) {
     SELECT DISTINCT tinman_date AS d FROM tinman_uploads WHERE clan_id = ? ORDER BY d DESC LIMIT ?
   `).all(clanId, limit);
     return rows.map((r) => r.d);
+}
+/** The run's per-tier targets, or null when none were pasted. */
+function getTinmanTargets(clanId, date) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT tiers, kills, saved_by AS savedBy, saved_at AS savedAt FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?').get(clanId, date);
+    if (!row)
+        return null;
+    let tiers = {};
+    try {
+        const parsed = JSON.parse(row.tiers);
+        for (const t of tinman_parse_js_1.TARGET_TIERS) {
+            const v = parsed[t];
+            if (typeof v === 'number' && Number.isFinite(v) && v >= 0)
+                tiers[t] = v;
+        }
+    }
+    catch {
+        tiers = {};
+    }
+    return { tiers, kills: row.kills, savedBy: row.savedBy, savedAt: row.savedAt };
+}
+/** Store (or replace) the run's targets. */
+function saveTinmanTargets(input) {
+    (0, database_js_1.getDb)().prepare(`
+    INSERT INTO tinman_targets (clan_id, tinman_date, tiers, kills, saved_by, saved_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (clan_id, tinman_date) DO UPDATE SET
+      tiers = excluded.tiers, kills = excluded.kills,
+      saved_by = excluded.saved_by, saved_at = excluded.saved_at
+  `).run(input.clanId, input.date, JSON.stringify(input.tiers), input.kills, input.savedBy, new Date().toISOString());
+}
+function deleteTinmanTargets(clanId, date) {
+    return (0, database_js_1.getDb)().prepare('DELETE FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?')
+        .run(clanId, date).changes > 0;
 }
 //# sourceMappingURL=tinman-repo.js.map

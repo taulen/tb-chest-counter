@@ -78,6 +78,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'review_acknowledgments.clan_id',
     'share_links.clan_id',
     'tinman_scores.clan_id',
+    'tinman_targets.clan_id',
     'tinman_uploads.clan_id',
     'user_sessions.active_clan_id',
     'users.clan_id',
@@ -183,6 +184,10 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO tinman_scores (upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
      VALUES (?, ?, 1, 'Zoe', ?, 'exact', 100)`,
   ).run(tinmanUpload.id, clanId, member.id);
+  db.prepare(
+    `INSERT INTO tinman_targets (clan_id, tinman_date, tiers, kills, saved_by, saved_at)
+     VALUES (?, '2026-10-23', '{"g8":27200000}', 3, 'admin2', ?)`,
+  ).run(clanId, now);
 
   const typeId = (db.prepare('SELECT id FROM resource_types ORDER BY id LIMIT 1')
     .get() as { id: number }).id;

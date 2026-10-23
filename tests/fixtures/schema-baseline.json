@@ -491,6 +491,11 @@
   },
   {
     "type": "table",
+    "name": "tinman_targets",
+    "sql": "CREATE TABLE tinman_targets ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), tinman_date TEXT NOT NULL, tiers TEXT NOT NULL, kills INTEGER, saved_by TEXT NOT NULL DEFAULT '', saved_at TEXT NOT NULL, UNIQUE (clan_id, tinman_date) )"
+  },
+  {
+    "type": "table",
     "name": "tinman_uploads",
     "sql": "CREATE TABLE tinman_uploads ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), tinman_date TEXT NOT NULL, summon INTEGER NOT NULL CHECK (summon BETWEEN 1 AND 8), uploaded_by TEXT NOT NULL DEFAULT '', uploaded_at TEXT NOT NULL, UNIQUE (clan_id, tinman_date, summon) )"
   },

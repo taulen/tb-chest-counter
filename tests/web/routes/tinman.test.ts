@@ -101,6 +101,24 @@ describe('/api/tinman', () => {
     expect(get.body.review).toMatchObject([{ rawName: 'Stranger', matchKind: 'rejected' }]);
   });
 
+  it('stores per-tier targets for the run, admin-only, and returns them with guards levels', async () => {
+    const text = 'For 3 kills, already lowered for a 15% overshoot.\nG9 \t6 members \t61.3M \t368M \t19.2%\nG7 \t59 members \t10.9M \t643M \t33.5%';
+    expect((await send('put', `/api/tinman/${DATE}/targets`, 'user1', { text })).status).toBe(403);
+    const put = await send('put', `/api/tinman/${DATE}/targets`, 'admin1', { text });
+    expect(put.status).toBe(200);
+    expect(put.body.targets).toMatchObject({ tiers: { g9: 61_300_000, g7: 10_900_000 }, kills: 3, savedBy: 'a1' });
+
+    await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
+    const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
+    expect(get.body.targets.kills).toBe(3);
+    // No donation evidence in this test DB, so the level is unknown.
+    expect(get.body.players[0]).toMatchObject({ memberId: frost, guardsLevel: null });
+
+    expect((await send('put', `/api/tinman/${DATE}/targets`, 'admin1', { text: 'nothing here' })).status).toBe(400);
+    expect((await send('delete', `/api/tinman/${DATE}/targets`, 'admin1')).status).toBe(200);
+    expect((await send('get', `/api/tinman?date=${DATE}`, 'user1')).body.targets).toBeNull();
+  });
+
   it('deletes a summon', async () => {
     await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
     expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(200);

@@ -841,6 +841,25 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_tinman_scores_member ON tinman_scores(clan_id, member_id);
     `,
   },
+  {
+    // Per-tier point targets for one Rise of the Ancients run, pasted from the
+    // Ancient planner's "Points per member" table. One row per (clan, Tinman
+    // day); `tiers` is JSON { t9, g9 … g1 → points each }, `kills` the number
+    // of kills the targets were made for (null when the paste didn't say).
+    version: 81,
+    sql: `
+      CREATE TABLE IF NOT EXISTS tinman_targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        tinman_date TEXT NOT NULL,
+        tiers TEXT NOT NULL,
+        kills INTEGER,
+        saved_by TEXT NOT NULL DEFAULT '',
+        saved_at TEXT NOT NULL,
+        UNIQUE (clan_id, tinman_date)
+      );
+    `,
+  },
 ];
 
 /**

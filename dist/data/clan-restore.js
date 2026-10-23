@@ -463,6 +463,13 @@ function restoreClanFromBackup(sourcePath, sourceClanId, options = {}) {
                     member_id: `CASE WHEN s.member_id IS NULL THEN NULL ELSE s.member_id + ${offMember} END`,
                 },
             }));
+            record('tinman_targets', copyTable(db, {
+                table: 'tinman_targets',
+                where: `s.clan_id = ${sourceClanId}`,
+                drop: ['id'],
+                map: { clan_id: String(targetId) },
+                orIgnore: true,
+            }));
             record('chest_daily_summary', copyTable(db, {
                 table: 'chest_daily_summary',
                 where: `s.clan_id = ${sourceClanId}`,

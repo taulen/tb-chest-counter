@@ -17,6 +17,7 @@ import { esc, memberLink, notify, confirmDialog, formatDate } from '../lib/ui.js
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { getCurrentUser } from '../lib/state.js';
 import { formatCompact } from '../lib/ancient-planner.js';
+import { goalStatusClassFor, goalRowClassFor, goalCellContentHtml, goalCellTitle } from '../lib/leaderboard-render.js';
 
 const PAGE_SIZE = 25;
 
@@ -38,6 +39,15 @@ let reviewOpen = null;
 /** Member picks not saved yet, by pasted name ('' = not a clan member). A save
  *  repaints every row, and without this it reset the other rows' dropdowns. */
 const pending = new Map();
+let targetsOpen = false;  // admin: the targets paste panel
+let targetsText = '';
+let targetsResult = null;
+/** Second mount at the bottom of the page for "Below target", like "Did not participate". */
+let belowEl = null;
+let belowOpen = false;
+
+/** Guards levels can't be inferred for everyone; a member without one is held to G7. */
+const ASSUMED_TIER = 'g7';
 
 function isAdmin() {
   const role = getCurrentUser()?.role;
@@ -52,6 +62,7 @@ function isAdmin() {
 export async function mountTinmanScores(el, opts) {
   if (!el) return;
   mountEl = el;
+  belowEl = opts.belowEl || null;
   members = [...(opts.members || [])].sort((a, b) => a.name.localeCompare(b.name));
   if (opts.date !== requested) {
     requested = opts.date;
@@ -62,6 +73,7 @@ export async function mountTinmanScores(el, opts) {
     pending.clear();
   }
   if (requested === 'all') {
+    if (belowEl) belowEl.innerHTML = '';
     el.innerHTML = cardHtml('<p class="muted-copy tinman-note">Tin Man scores are per run — pick a single run with the arrows above to see them.</p>', '');
     return;
   }
@@ -133,6 +145,11 @@ function sortedPlayers(cols) {
     if (key === 'name') return p.name.toLowerCase();
     if (key === 'rank') return p._rank;
     if (key === 'played') return p.played;
+    if (key === 'tier') return Number(tierOf(p).key.slice(1)) - (tierOf(p).assumed ? 0.5 : 0);
+    if (key === 'pct') {
+      const e = expectedFor(p);
+      return e ? p.total / e : -1;
+    }
     if (key.startsWith('s:')) return p.perSummon[Number(key.slice(2))] ?? -1;
     return p.total;
   };
@@ -154,20 +171,144 @@ function paint() {
   }
   const admin = isAdmin();
   const actions = admin
-    ? `<button type="button" class="btn btn-sm ${uploadOpen ? 'active' : 'btn-primary'}" data-tinman="toggle-upload">${uploadOpen ? 'Close' : 'Add summon scores'}</button>`
+    ? `<div class="tinman-actions">
+        <button type="button" class="btn btn-sm ${targetsOpen ? 'active' : ''}" data-tinman="toggle-targets">${targetsOpen ? 'Close targets' : 'Targets'}</button>
+        <button type="button" class="btn btn-sm ${uploadOpen ? 'active' : 'btn-primary'}" data-tinman="toggle-upload">${uploadOpen ? 'Close' : 'Add summon scores'}</button>
+      </div>`
     : '';
 
   const cols = summonColumns();
   const body = `
     ${data.isTinmanDay === false ? `<p class="tinman-warn">⚠ ${esc(data.date)} isn't a Tinman day on the usual 6-day cadence.</p>` : ''}
+    ${targetsOpen && admin ? targetsPanelHtml() : ''}
     ${uploadOpen && admin ? uploadPanelHtml() : ''}
     ${summonsStripHtml(admin)}
+    ${targetsStripHtml(admin)}
     ${data.players.length ? tableHtml(cols) : `<p class="muted-copy tinman-note">${admin
       ? 'No scores for this run yet. After each summon, copy the in-game ranking and add it with <strong>Add summon scores</strong>.'
       : 'No scores for this run yet — an admin adds them after each summon.'}</p>`}
     ${reviewHtml(admin)}`;
   mountEl.innerHTML = cardHtml(body, actions);
   wire();
+  paintBelow();
+}
+
+// ─── Targets ─────────────────────────────────────────────────────
+
+function tierOf(p) {
+  return p.guardsLevel ? { key: `g${p.guardsLevel}`, assumed: false } : { key: ASSUMED_TIER, assumed: true };
+}
+
+/** Kills pasted so far over kills planned (1 when the targets don't say how many). */
+function paceFactor() {
+  const kills = data?.targets?.kills;
+  if (!kills) return 1;
+  const done = Math.max(0, ...(data?.summons || []).map((s) => s.summon));
+  return Math.min(1, done / kills);
+}
+
+/** What this player should have by now: their tier's target, scaled to the pace. */
+function expectedFor(p) {
+  const target = data?.targets?.tiers?.[tierOf(p).key];
+  if (!Number.isFinite(target) || target <= 0) return null;
+  return target * paceFactor();
+}
+
+function paceNote() {
+  const kills = data?.targets?.kills;
+  if (!kills) return 'Totals are held against the full target.';
+  const done = Math.min(kills, Math.max(0, ...(data?.summons || []).map((s) => s.summon)));
+  return done >= kills
+    ? `All ${kills} kills in — totals are held against the full target.`
+    : `${done} of ${kills} kills in — totals are held against ${done}/${kills} of the target so far.`;
+}
+
+function targetsStripHtml(admin) {
+  const t = data.targets;
+  if (!t) {
+    return admin
+      ? '<p class="muted-copy tinman-note tinman-targets-hint">No targets for this run yet — open <strong>Targets</strong> and paste the <em>Points per member</em> table from <a href="#tools/ancient">Tools → Ancient planner</a>.</p>'
+      : '';
+  }
+  const chips = ['t9', 'g9', 'g8', 'g7', 'g6', 'g5', 'g4', 'g3', 'g2', 'g1']
+    .filter((k) => Number.isFinite(t.tiers[k]))
+    .map((k) => `<span class="tinman-target"><span class="tool-tier-badge">${k.toUpperCase()}</span> ${formatCompact(t.tiers[k])}</span>`)
+    .join('');
+  return `
+    <div class="tinman-targets">
+      <span class="tinman-targets-label">Targets${t.kills ? ` · ${t.kills} kills` : ''}</span>
+      ${chips}
+      <span class="tinman-targets-note muted-copy">${esc(paceNote())} Unknown guards level counts as G7.</span>
+    </div>`;
+}
+
+function targetsPanelHtml() {
+  const res = targetsResult
+    ? `<div class="tinman-result ${targetsResult.error ? 'is-error' : ''}" role="status">${targetsResult.html}</div>`
+    : '';
+  return `
+    <div class="tinman-upload">
+      <label class="tinman-upload-row" for="tinmanTargets">Targets for this run</label>
+      <textarea id="tinmanTargets" class="input tinman-text" rows="7" spellcheck="false"
+        placeholder="Paste the Points per member table from Tools → Ancient planner, e.g.&#10;For 3 kills, already lowered for a 15% overshoot.&#10;G9 	6 members 	61.3M 	368M 	19.2%&#10;G8 	33 members 	27.2M 	898M 	46.9%">${esc(targetsText)}</textarea>
+      <p class="muted-copy tinman-hint">Points each per guards tier. Keep the “For 3 kills” line so a run in progress is judged against what is due so far. Saving again replaces the targets.</p>
+      <div class="tinman-upload-actions">
+        <button type="button" class="btn btn-primary" data-tinman="save-targets">Save targets</button>
+        ${data.targets ? '<button type="button" class="btn" data-tinman="delete-targets">Remove targets</button>' : ''}
+      </div>
+      ${res}
+    </div>`;
+}
+
+/** "Below target" at the bottom of the page — collapsed by default, like "Did not participate". */
+function paintBelow() {
+  if (!belowEl) return;
+  if (!data?.targets || !(data.players || []).length) {
+    belowEl.innerHTML = '';
+    return;
+  }
+  const below = data.players
+    .map((p) => ({ p, expected: expectedFor(p) }))
+    .filter(({ p, expected }) => expected !== null && p.total < expected)
+    .map((x) => ({ ...x, pct: x.p.total / x.expected }))
+    .sort((a, b) => a.pct - b.pct || a.p.name.localeCompare(b.p.name));
+  const rows = below.map(({ p, expected, pct }) => {
+    const tier = tierOf(p);
+    const name = p.memberId ? memberLink(p.memberId, p.name) : `<span class="tinman-raw">${esc(p.rawName)}</span>`;
+    return `<tr class="${goalRowClassFor(p.total, expected)}">
+      <td data-role="primary"><span class="mrow-name">${name}</span><span class="mrow-sub">${tierLabel(tier)} · ${Math.round(pct * 100)}% of target</span></td>
+      <td data-label="Tier" data-role="hidden">${tierBadgeHtml(tier)}</td>
+      <td class="num" data-label="Total">${formatCompact(p.total)}</td>
+      <td class="num" data-label="Target">${formatCompact(expected)}</td>
+      <td class="num" data-role="metric" data-label="Short by" title="${Math.round(expected - p.total).toLocaleString()}">${formatCompact(expected - p.total)}</td>
+      <td class="num" data-label="% of target" data-role="hidden">${Math.round(pct * 100)}%</td>
+    </tr>`;
+  }).join('');
+  const body = below.length
+    ? `<p class="muted-copy tinman-hint tinman-below-hint">${esc(paceNote())} Unknown guards level counts as G7.</p>
+       <table class="table-responsive tinman-below-table">
+         <colgroup><col class="col-member"><col class="col-tier"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"></colgroup>
+         <thead><tr><th>Player</th><th>Tier</th><th class="num">Total</th><th class="num">Target</th><th class="num">Short by</th><th class="num">% of target</th></tr></thead>
+         <tbody>${rows}</tbody>
+       </table>`
+    : '<p class="empty-state">Everyone is on target.</p>';
+  belowEl.innerHTML = `
+    <details class="card card-collapsible" data-section-key="tinman-below"${belowOpen ? ' open' : ''}>
+      <summary class="card-header"><h2>Below Tin Man target (${below.length})</h2></summary>
+      <div class="card-body">${body}</div>
+    </details>`;
+  const d = belowEl.querySelector('details');
+  if (d) d.addEventListener('toggle', () => { belowOpen = d.open; });
+}
+
+function tierLabel(tier) {
+  return tier.assumed ? 'G7 (assumed)' : tier.key.toUpperCase();
+}
+
+function tierBadgeHtml(tier) {
+  return tier.assumed
+    ? '<span class="tool-tier-badge is-assumed" title="Guards level unknown — assumed G7">G7?</span>'
+    : `<span class="tool-tier-badge">${tier.key.toUpperCase()}</span>`;
 }
 
 function summonsStripHtml(admin) {
@@ -249,11 +390,20 @@ function tableHtml(cols) {
       if (v === 0) return `<td class="num" data-label="S${c.summon}"><span class="events-zero" title="No points in this summon">—</span></td>`;
       return `<td class="num${v < 0 ? ' tool-short' : ''}" data-label="S${c.summon}" title="${v.toLocaleString()}">${formatCompact(v)}</td>`;
     }).join('');
-    return `<tr>
+    const tier = tierOf(p);
+    const expected = expectedFor(p);
+    const full = data.targets?.tiers?.[tier.key];
+    const totalTitle = expected !== null ? goalCellTitle(p.total, expected) : p.total.toLocaleString();
+    const targetCell = expected !== null
+      ? `<td class="num" data-label="Target" title="${esc(`${formatCompact(full)} for the run${paceFactor() < 1 ? ` · ${formatCompact(expected)} due so far` : ''}`)}">${formatCompact(expected)}</td>`
+      : '<td class="num" data-label="Target"><span class="events-zero">—</span></td>';
+    return `<tr class="${expected !== null ? goalRowClassFor(p.total, expected) : ''}">
       <td data-role="lead">${p._rank}</td>
-      <td data-role="primary"><span class="mrow-name">${nameHtml}${tag}</span><span class="mrow-sub">${p.played} of ${cols.filter((c) => c.uploaded).length} pasted summons</span></td>
+      <td data-role="primary"><span class="mrow-name">${nameHtml}${tag}</span><span class="mrow-sub">${tierLabel(tier)} · ${p.played} of ${cols.filter((c) => c.uploaded).length} pasted summons</span></td>
+      <td data-label="Tier">${tierBadgeHtml(tier)}</td>
       ${cells}
-      <td class="num" data-role="metric" data-label="Total" title="${p.total.toLocaleString()}"><strong>${formatCompact(p.total)}</strong></td>
+      <td class="num ${expected !== null ? goalStatusClassFor(p.total, expected) : ''}" data-role="metric" data-label="Total" title="${esc(totalTitle)}">${expected !== null ? goalCellContentHtml(p.total, expected, `<strong>${formatCompact(p.total)}</strong>`) : `<strong>${formatCompact(p.total)}</strong>`}</td>
+      ${targetCell}
       <td class="num" data-role="hidden">${p.played}</td>
     </tr>`;
   }).join('');
@@ -270,12 +420,14 @@ function tableHtml(cols) {
     <div class="card-body">
       <div class="events-scroll">
         <table class="table-responsive tinman-table">
-          <colgroup><col class="col-rank"><col class="col-member">${cols.map(() => '<col class="col-num">').join('')}<col class="col-num"><col class="col-played"></colgroup>
+          <colgroup><col class="col-rank"><col class="col-member"><col class="col-tier">${cols.map(() => '<col class="col-num">').join('')}<col class="col-num"><col class="col-num"><col class="col-played"></colgroup>
           <thead><tr>
             ${th('rank', 'Rank')}
             ${th('name', 'Player')}
+            ${th('tier', 'Tier', '', 'Estimated guards level — G7 assumed when unknown')}
             ${summonHeads}
             ${th('total', 'Total', 'num', 'Points over the whole run so far')}
+            ${th('pct', 'Target', 'num', 'What this tier should have by now — sorts by how far along each player is')}
             ${th('played', 'Played', 'num', 'Summons this player scored in')}
           </tr></thead>
           <tbody>${body}</tbody>
@@ -374,6 +526,8 @@ function wire() {
       paint();
     });
   });
+  const targetsArea = el.querySelector('#tinmanTargets');
+  if (targetsArea) targetsArea.addEventListener('input', () => { targetsText = targetsArea.value; });
   const text = el.querySelector('#tinmanText');
   if (text) text.addEventListener('input', () => { uploadText = text.value; });
   const select = el.querySelector('[data-tinman="summon"]');
@@ -405,6 +559,15 @@ function wire() {
 
 async function onAction(btn) {
   const action = btn.dataset.tinman;
+  if (action === 'toggle-targets') {
+    targetsOpen = !targetsOpen;
+    targetsResult = null;
+    paint();
+    if (targetsOpen) mountEl.querySelector('#tinmanTargets')?.focus();
+    return;
+  }
+  if (action === 'save-targets') return saveTargets(btn);
+  if (action === 'delete-targets') return removeTargets();
   if (action === 'toggle-upload') {
     uploadOpen = !uploadOpen;
     lastResult = null;
@@ -459,6 +622,52 @@ async function save(btn) {
     if (err?.name === 'UnauthenticatedError') return;
     lastResult = { error: true, html: esc(`Could not save: ${err?.message || err}`) };
   }
+  paint();
+}
+
+async function saveTargets(btn) {
+  const text = mountEl.querySelector('#tinmanTargets')?.value || '';
+  if (!text.trim()) {
+    targetsResult = { error: true, html: 'Paste the Points per member table first.' };
+    paint();
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const res = await apiPut(`/tinman/${encodeURIComponent(data.date)}/targets`, { text });
+    if (res?.error) {
+      targetsResult = { error: true, html: esc(res.error) };
+    } else {
+      const n = Object.keys(res.targets?.tiers || {}).length;
+      targetsResult = {
+        error: false,
+        html: `<strong>Targets saved</strong>: ${n} tier${n === 1 ? '' : 's'}${res.targets?.kills ? ` for ${res.targets.kills} kills` : ' — no “For N kills” line, so totals are held against the full target'}.`,
+      };
+      targetsText = '';
+      await load();
+    }
+  } catch (err) {
+    if (err?.name === 'UnauthenticatedError') return;
+    targetsResult = { error: true, html: esc(`Could not save: ${err?.message || err}`) };
+  }
+  paint();
+}
+
+async function removeTargets() {
+  const ok = await confirmDialog('Remove the targets for this run? The colours and the Below target list go with them.', {
+    title: 'Remove targets', confirmLabel: 'Remove', danger: true,
+  });
+  if (!ok) return;
+  try {
+    const res = await apiDelete(`/tinman/${encodeURIComponent(data.date)}/targets`);
+    if (res?.error) await notify(res.error, 'Could not remove');
+  } catch (err) {
+    if (err?.name === 'UnauthenticatedError') return;
+    await notify(`Could not remove: ${err?.message || err}`, 'Could not remove');
+  }
+  targetsResult = null;
+  await load();
   paint();
 }
 

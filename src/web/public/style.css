@@ -6800,3 +6800,44 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tinman-table .col-member { width: 220px; }
 .tinman-review-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .tinman-review-head .tinman-hint { margin: 6px 0 10px; }
+
+/* Tin Man targets: the strip under the summon chips, the Tier column, and the
+   same goal colours the Leaderboard uses (green at the target, amber from 66%,
+   red below) — tokens shared, so the two read alike on every theme. */
+.tinman-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tinman-targets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 20px 4px;
+  font-size: 12.5px;
+}
+.tinman-targets-label { font-weight: 700; color: var(--text-primary); }
+.tinman-target { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.tinman-targets-note { flex-basis: 100%; font-size: 12px; }
+.tinman-targets-hint { padding-top: 8px; padding-bottom: 0; }
+.tool-tier-badge.is-assumed {
+  background: transparent;
+  border: 1px dashed var(--accent-gold-border);
+  color: var(--text-secondary);
+}
+.tinman-table .col-tier, .tinman-below-table .col-tier { width: 64px; }
+.tinman-below-table { table-layout: fixed; }
+.tinman-below-table th.num, .tinman-below-table td.num { text-align: right; }
+.tinman-below-hint { padding: 12px 16px 0; margin: 0 0 8px; }
+
+.tinman-table tbody tr.goal-row-ok,
+.tinman-below-table tbody tr.goal-row-ok { background-image: linear-gradient(var(--goal-row-ok-bg), var(--goal-row-ok-bg)); }
+.tinman-table tbody tr.goal-row-warn,
+.tinman-below-table tbody tr.goal-row-warn { background-image: linear-gradient(var(--goal-row-warn-bg), var(--goal-row-warn-bg)); }
+.tinman-table tbody tr.goal-row-low,
+.tinman-below-table tbody tr.goal-row-low { background-image: linear-gradient(var(--goal-row-low-bg), var(--goal-row-low-bg)); }
+.tinman-table td.goal-cell-ok { background: var(--goal-cell-ok-bg) !important; color: var(--accent-green-soft-text); }
+.tinman-table td.goal-cell-warn { background: var(--goal-cell-warn-bg) !important; color: var(--accent-warn-text); }
+.tinman-table td.goal-cell-low { background: var(--goal-cell-low-bg) !important; color: var(--accent-red-soft-text); }
+@media (max-width: 640px) {
+  .tinman-table td[data-role="metric"].goal-cell-ok { color: var(--accent-green-soft-text); }
+  .tinman-table td[data-role="metric"].goal-cell-warn { color: var(--accent-warn-text); }
+  .tinman-table td[data-role="metric"].goal-cell-low { color: var(--accent-red-soft-text); }
+}

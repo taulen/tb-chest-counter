@@ -87,6 +87,10 @@ function seedEverything(clanId: number): void {
     `INSERT INTO tinman_scores (upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
      VALUES (?, ?, 1, 'Alice', ?, 'exact', 1000), (?, ?, 2, 'Stranger', NULL, 'unmatched', 5)`,
   ).run(tinmanUpload.id, clanId, seeded.members.alice, tinmanUpload.id, clanId);
+  db.prepare(
+    `INSERT INTO tinman_targets (clan_id, tinman_date, tiers, kills, saved_by, saved_at)
+     VALUES (?, '2026-10-23', '{"g8":27200000}', 3, 'owner', ?)`,
+  ).run(clanId, now);
 
   db.prepare(
     `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
@@ -194,6 +198,7 @@ const SCOPED_COUNTS: Record<string, (clanId: number) => string> = {
   member_guards_reports: (c) => `SELECT COUNT(*) n FROM member_guards_reports WHERE clan_id = ${c}`,
   tinman_uploads: (c) => `SELECT COUNT(*) n FROM tinman_uploads WHERE clan_id = ${c}`,
   tinman_scores: (c) => `SELECT COUNT(*) n FROM tinman_scores WHERE clan_id = ${c}`,
+  tinman_targets: (c) => `SELECT COUNT(*) n FROM tinman_targets WHERE clan_id = ${c}`,
   chest_daily_summary: (c) => `SELECT COUNT(*) n FROM chest_daily_summary WHERE clan_id = ${c}`,
   merge_rules: (c) => `SELECT COUNT(*) n FROM merge_rules WHERE clan_id = ${c}`,
   chest_type_overrides: (c) => `SELECT COUNT(*) n FROM chest_type_overrides WHERE clan_id = ${c}`,
