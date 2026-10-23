@@ -17,6 +17,7 @@ import {
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { mountPointsBoard } from './points-board.js';
+import { mountMemberLevels } from './member-levels.js';
 
 /**
  * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
@@ -86,6 +87,9 @@ export async function renderAdmin(el) {
     <!-- ═══════════════════════════════════════════════════ -->
     <h2 class="page-section-title">Member Data</h2>
     <p class="page-section-intro">Edit names, delete duplicates, and merge OCR misreads into the correct player.</p>
+
+    <!-- Levels from chat: self-contained, fills itself (pages/member-levels.js). -->
+    <div class="card" id="memberLevels"></div>
 
     <div class="card">
       <div class="card-header"><h2>Edit Members (${activeMembers.length})</h2></div>
@@ -339,6 +343,11 @@ export async function renderAdmin(el) {
   // usable while it does.
   const pointsBoardEl = el.querySelector('#pointsBoard');
   if (pointsBoardEl) mountPointsBoard(pointsBoardEl, { isSuperadmin }).catch((err) => {
+    if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
+  });
+
+  const memberLevelsEl = el.querySelector('#memberLevels');
+  if (memberLevelsEl) mountMemberLevels(memberLevelsEl).catch((err) => {
     if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
   });
 

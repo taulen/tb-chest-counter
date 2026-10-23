@@ -42,8 +42,7 @@ exports.deleteTinmanTargets = deleteTinmanTargets;
  */
 const database_js_1 = require("../database.js");
 const member_repo_js_1 = require("./member-repo.js");
-const merge_repo_js_1 = require("./merge-repo.js");
-const fuzzy_js_1 = require("../../utils/fuzzy.js");
+const name_resolver_js_1 = require("../name-resolver.js");
 const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
 const tinman_parse_js_1 = require("../tinman-parse.js");
 exports.TINMAN_MAX_SUMMONS = 8;
@@ -75,59 +74,10 @@ function priorDecisions(clanId, date, exceptSummon) {
     }
     return out;
 }
-/** Match every pasted row to a member, in the documented order. */
+/** Match every pasted row to a member — data/name-resolver.ts, with this run's own decisions first. */
 function matchTinmanRows(clanId, rows, prior = new Map()) {
-    const all = (0, member_repo_js_1.getAllMembers)(false, clanId);
-    const active = all.filter((m) => m.isActive);
-    const inactive = all.filter((m) => !m.isActive);
-    const canonicalise = (0, merge_repo_js_1.loadPlayerNameCanonicaliser)(clanId);
-    const out = rows.map(() => ({ member: null, kind: 'unmatched' }));
-    const claimed = new Set();
-    // Pass 0: an admin's own decision for this run.
-    rows.forEach((r, i) => {
-        const d = prior.get(nameKey(r.name));
-        if (!d)
-            return;
-        if (d.member && claimed.has(d.member.id))
-            return;
-        out[i] = d;
-        if (d.member)
-            claimed.add(d.member.id);
-    });
-    const undecided = (i) => out[i].kind === 'unmatched' && !prior.has(nameKey(rows[i].name));
-    // Pass 1: merge rules and exact matches, across both pools.
-    rows.forEach((r, i) => {
-        if (!undecided(i))
-            return;
-        const canonical = canonicalise(r.name);
-        const viaRule = canonical !== r.name;
-        const member = (0, fuzzy_js_1.exactMatchMember)(canonical, active) ?? (0, fuzzy_js_1.exactMatchMember)(canonical, inactive);
-        if (member && !claimed.has(member.id)) {
-            out[i] = { member, kind: 'exact' };
-            claimed.add(member.id);
-        }
-        else if (viaRule) {
-            // A rule fired but its destination isn't (or is no longer) a member — the
-            // rule is the admin's word, so don't let distance guess past it.
-            out[i] = { member: null, kind: 'unmatched' };
-        }
-    });
-    // Pass 2: distance, active members first, never onto a claimed member.
-    rows.forEach((r, i) => {
-        if (!undecided(i) || out[i].member)
-            return;
-        if (canonicalise(r.name) !== r.name)
-            return;
-        for (const pool of [active, inactive]) {
-            const member = (0, fuzzy_js_1.fuzzyMatchMember)(r.name, pool.filter((m) => !claimed.has(m.id)));
-            if (member) {
-                out[i] = { member, kind: 'fuzzy' };
-                claimed.add(member.id);
-                return;
-            }
-        }
-    });
-    return out;
+    const preset = rows.map((r) => prior.get(nameKey(r.name)));
+    return (0, name_resolver_js_1.resolveNamesToMembers)(clanId, rows.map((r) => r.name), preset);
 }
 /** Store one summon's standings, replacing any earlier upload of the same summon. */
 function saveTinmanSummon(input) {

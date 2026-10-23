@@ -21,6 +21,7 @@ import { createMightRouter } from './routes/might.js';
 import { createGuardsRouter } from './routes/guards.js';
 import { createToolsRouter } from './routes/tools.js';
 import { createTinmanRouter } from './routes/tinman.js';
+import { createMemberLevelsRouter } from './routes/member-levels.js';
 import { denyCaching, requireAdmin, requireAuth, requireClanContext, SESSION_COOKIE_NAME } from './middleware/auth.js';
 import { firstSuperadmin, logAction } from '../data/repositories/user-repo.js';
 import { childLogger } from '../utils/logger.js';
@@ -537,6 +538,10 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Rise of the Ancients standings pasted after each summon (Events → Ancients).
   // Reads for any member; uploads and name assignment are admin-only inside.
   app.use('/api/tinman', requireAuth, requireClanContext, createTinmanRouter());
+
+  // Player levels posted in chat (Admin → Levels from chat). Reads for any
+  // member; preview and import are admin-only inside.
+  app.use('/api/member-levels', requireAuth, requireClanContext, createMemberLevelsRouter());
 
   // The rest of assets/ (OCR models, reference crops) stays behind a session —
   // nothing a page loads lives there. resource-icons/ and calibration-examples/

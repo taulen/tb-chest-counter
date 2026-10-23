@@ -26,6 +26,7 @@ const might_js_1 = require("./routes/might.js");
 const guards_js_1 = require("./routes/guards.js");
 const tools_js_1 = require("./routes/tools.js");
 const tinman_js_1 = require("./routes/tinman.js");
+const member_levels_js_1 = require("./routes/member-levels.js");
 const auth_js_2 = require("./middleware/auth.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -488,6 +489,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // Rise of the Ancients standings pasted after each summon (Events → Ancients).
     // Reads for any member; uploads and name assignment are admin-only inside.
     app.use('/api/tinman', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tinman_js_1.createTinmanRouter)());
+    // Player levels posted in chat (Admin → Levels from chat). Reads for any
+    // member; preview and import are admin-only inside.
+    app.use('/api/member-levels', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, member_levels_js_1.createMemberLevelsRouter)());
     // The rest of assets/ (OCR models, reference crops) stays behind a session —
     // nothing a page loads lives there. resource-icons/ and calibration-examples/
     // are served publicly by the frontend asset router above.

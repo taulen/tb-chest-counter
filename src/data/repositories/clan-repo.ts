@@ -652,6 +652,7 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     ).run(id);
     // Cascades off members too, but also holds its own clans(id) FK.
     db.prepare('DELETE FROM member_guards_reports WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM member_level_reports WHERE clan_id = ?').run(id);
     // Tinman standings: scores before their uploads (the scores' FK), both
     // before members and clans.
     db.prepare('DELETE FROM tinman_scores WHERE clan_id = ?').run(id);

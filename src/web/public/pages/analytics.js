@@ -1039,6 +1039,22 @@ function clanMakeupCardHtml() {
       ${ups.length > MAKEUP_LEVEL_UPS_SHOWN ? `<p class="muted-copy">and ${(ups.length - MAKEUP_LEVEL_UPS_SHOWN).toLocaleString()} more</p>` : ''}
     </div>` : '';
 
+  // First-known levels from an admin's entry (by hand or the chat import). Not
+  // level-ups — nothing earlier was known — so they get their own list.
+  const learned = g.recentlyLearned || [];
+  const learnedHtml = learned.length > 0 ? `
+    <div class="makeup-ups">
+      <div class="label">Levels learned, last 30 days</div>
+      <ul class="makeup-ups-list">
+        ${learned.slice(0, MAKEUP_LEVEL_UPS_SHOWN).map((u) => `<li>
+          <span class="makeup-ups-name">${memberLink(u.memberId, u.name)}</span>
+          <span><strong>G${u.level}</strong></span>
+          <span class="muted-copy" title="Entered by an admin — no donation had revealed a level before">entered ${esc(u.date.replace(/-/g, '/'))}</span>
+        </li>`).join('')}
+      </ul>
+      ${learned.length > MAKEUP_LEVEL_UPS_SHOWN ? `<p class="muted-copy">and ${(learned.length - MAKEUP_LEVEL_UPS_SHOWN).toLocaleString()} more</p>` : ''}
+    </div>` : '';
+
   return `
     <div class="card">
       <div class="card-header">
@@ -1049,11 +1065,12 @@ function clanMakeupCardHtml() {
         <div class="makeup-grid">
           <div>
             <div class="type-breakdown-list">${levelRows || '<p class="muted-copy">No levels revealed yet.</p>'}</div>
-            <p class="muted-copy makeup-note">Guards levels are estimated from Omen Essence and Scientific Tractates donations${gaps ? ` — ${gaps}` : ''}.</p>
+            <p class="muted-copy makeup-note">Guards levels are estimated from Omen Essence and Scientific Tractates donations, plus levels admins enter${gaps ? ` — ${gaps}` : ''}.</p>
           </div>
           <div>
             ${passHtml}
             ${upsHtml}
+            ${learnedHtml}
           </div>
         </div>
       </div>

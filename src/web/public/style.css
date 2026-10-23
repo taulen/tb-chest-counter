@@ -6842,3 +6842,21 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .tinman-table td[data-role="metric"].goal-cell-low { color: var(--accent-red-soft-text); }
 }
 .tool-tier-toggle { margin: 12px 0 0; font-size: 12.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ─── Admin → Levels from chat (pages/member-levels.js) ─────────────── */
+.levels-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
+.levels-preview { margin-top: 14px; }
+.levels-summary { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); }
+.levels-summary strong { color: var(--text-primary); }
+.levels-table { table-layout: fixed; }
+.levels-table .col-lvl { width: 52px; }
+.levels-table .col-assign { width: 240px; }
+.levels-table .col-date { width: 110px; }
+.levels-table th.num, .levels-table td.num { text-align: right; }
+.levels-table .levels-pick { max-width: 230px; }
+.levels-tag { display: inline-block; width: 1.3em; text-align: center; font-weight: 700; }
+.levels-tag.is-ok { color: var(--accent-green); }
+.levels-tag.is-fuzzy { color: var(--accent-amber-text); }
+.levels-tag.is-none { color: var(--text-muted); }
+.levels-table tr.levels-dupe td { background: var(--accent-red-bg); }
+.levels-save { margin-top: 12px; }

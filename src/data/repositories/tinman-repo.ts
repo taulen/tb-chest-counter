@@ -29,9 +29,8 @@
  * says who it is.
  */
 import { getDb } from '../database.js';
-import { getAllMembers, addAlias, getMemberById } from './member-repo.js';
-import { loadPlayerNameCanonicaliser } from './merge-repo.js';
-import { exactMatchMember, fuzzyMatchMember } from '../../utils/fuzzy.js';
+import { addAlias, getMemberById } from './member-repo.js';
+import { resolveNamesToMembers } from '../name-resolver.js';
 import { despace } from '../../vision/ocr-normalize.js';
 import { missingRanks, TARGET_TIERS, type TargetTier, type TinmanRow } from '../tinman-parse.js';
 import type { ClanMember } from '../../models/types.js';
@@ -73,62 +72,14 @@ function priorDecisions(clanId: number, date: string, exceptSummon: number): Map
   return out;
 }
 
-/** Match every pasted row to a member, in the documented order. */
+/** Match every pasted row to a member — data/name-resolver.ts, with this run's own decisions first. */
 export function matchTinmanRows(
   clanId: number,
   rows: TinmanRow[],
   prior: Map<string, Resolved> = new Map(),
 ): Resolved[] {
-  const all = getAllMembers(false, clanId);
-  const active = all.filter((m) => m.isActive);
-  const inactive = all.filter((m) => !m.isActive);
-  const canonicalise = loadPlayerNameCanonicaliser(clanId);
-
-  const out: Resolved[] = rows.map(() => ({ member: null, kind: 'unmatched' as TinmanMatchKind }));
-  const claimed = new Set<number>();
-
-  // Pass 0: an admin's own decision for this run.
-  rows.forEach((r, i) => {
-    const d = prior.get(nameKey(r.name));
-    if (!d) return;
-    if (d.member && claimed.has(d.member.id)) return;
-    out[i] = d;
-    if (d.member) claimed.add(d.member.id);
-  });
-
-  const undecided = (i: number) => out[i].kind === 'unmatched' && !prior.has(nameKey(rows[i].name));
-
-  // Pass 1: merge rules and exact matches, across both pools.
-  rows.forEach((r, i) => {
-    if (!undecided(i)) return;
-    const canonical = canonicalise(r.name);
-    const viaRule = canonical !== r.name;
-    const member = exactMatchMember(canonical, active) ?? exactMatchMember(canonical, inactive);
-    if (member && !claimed.has(member.id)) {
-      out[i] = { member, kind: 'exact' };
-      claimed.add(member.id);
-    } else if (viaRule) {
-      // A rule fired but its destination isn't (or is no longer) a member — the
-      // rule is the admin's word, so don't let distance guess past it.
-      out[i] = { member: null, kind: 'unmatched' };
-    }
-  });
-
-  // Pass 2: distance, active members first, never onto a claimed member.
-  rows.forEach((r, i) => {
-    if (!undecided(i) || out[i].member) return;
-    if (canonicalise(r.name) !== r.name) return;
-    for (const pool of [active, inactive]) {
-      const member = fuzzyMatchMember(r.name, pool.filter((m) => !claimed.has(m.id)));
-      if (member) {
-        out[i] = { member, kind: 'fuzzy' };
-        claimed.add(member.id);
-        return;
-      }
-    }
-  });
-
-  return out;
+  const preset = rows.map((r) => prior.get(nameKey(r.name)));
+  return resolveNamesToMembers<TinmanMatchKind>(clanId, rows.map((r) => r.name), preset) as Resolved[];
 }
 
 export interface TinmanSaveResult {

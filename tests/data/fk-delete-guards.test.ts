@@ -46,6 +46,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     // Also ON DELETE CASCADE — and the player merge repoints it rather than
     // letting the cascade silently drop an admin's entries.
     'member_guards_reports.member_id',
+    // Also ON DELETE CASCADE — and the player merge repoints it.
+    'member_level_reports.member_id',
     'member_snapshots.member_id',
     'resource_transactions.member_id',
     // ON DELETE SET NULL (the row falls back to its pasted name) — and the
@@ -69,6 +71,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'chest_type_overrides.clan_id',
     'discord_member_links.clan_id',
     'member_guards_reports.clan_id',
+    'member_level_reports.clan_id',
     'members.clan_id',
     'merge_rules.clan_id',
     'resource_capture_cursor.clan_id',
@@ -174,6 +177,11 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO member_guards_reports (clan_id, member_id, level, observed_date, created_by, created_at)
      VALUES (?, ?, 8, '2026-07-20', 2, ?)`,
+  ).run(clanId, member.id, now);
+
+  db.prepare(
+    `INSERT INTO member_level_reports (clan_id, member_id, observed_date, g_level, m_level, created_by, created_at)
+     VALUES (?, ?, '2026-10-23', 8, 8, 'admin2', ?)`,
   ).run(clanId, member.id, now);
 
   const tinmanUpload = db.prepare(
@@ -381,6 +389,10 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
       `SELECT m.name AS name FROM member_guards_reports r JOIN members m ON m.id = r.member_id`,
     ).get() as { name: string } | undefined;
     expect(report?.name).toBe('Yara');
+    const levels = db.prepare(
+      `SELECT m.name AS name FROM member_level_reports r JOIN members m ON m.id = r.member_id`,
+    ).get() as { name: string } | undefined;
+    expect(levels?.name).toBe('Yara');
     // SET NULL would have let it "survive" as an unmatched name; it moved.
     const score = db.prepare(
       `SELECT m.name AS name FROM tinman_scores s JOIN members m ON m.id = s.member_id`,

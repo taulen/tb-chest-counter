@@ -96,6 +96,11 @@
   },
   {
     "type": "index",
+    "name": "idx_member_level_reports_member",
+    "sql": "CREATE INDEX idx_member_level_reports_member ON member_level_reports(clan_id, member_id, observed_date)"
+  },
+  {
+    "type": "index",
     "name": "idx_member_snapshots_clan",
     "sql": "CREATE INDEX idx_member_snapshots_clan ON member_snapshots(clan_id)"
   },
@@ -388,6 +393,11 @@
     "type": "table",
     "name": "member_guards_reports",
     "sql": "CREATE TABLE member_guards_reports ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 9), observed_date TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "member_level_reports",
+    "sql": "CREATE TABLE member_level_reports ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, observed_date TEXT NOT NULL, g_level INTEGER, m_level INTEGER, s_level INTEGER, e_level INTEGER, c_level INTEGER, d_level INTEGER, raw_text TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL )"
   },
   {
     "type": "table",

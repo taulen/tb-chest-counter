@@ -860,6 +860,34 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Levels players post in the in-game chat ("taulen: G8/M8/S7/E8/C35/D284"),
+    // imported by an admin (data/repositories/member-levels-repo.ts). One row
+    // per member per import, each letter as reported (NULL = not said). The
+    // G value is ALSO written as a member_guards_reports entry so the guards
+    // estimator weighs it; this table is the full record of what was said.
+    // member_id cascades on a member delete; a player MERGE repoints it.
+    version: 82,
+    sql: `
+      CREATE TABLE IF NOT EXISTS member_level_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        observed_date TEXT NOT NULL,
+        g_level INTEGER,
+        m_level INTEGER,
+        s_level INTEGER,
+        e_level INTEGER,
+        c_level INTEGER,
+        d_level INTEGER,
+        raw_text TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_member_level_reports_member
+        ON member_level_reports(clan_id, member_id, observed_date);
+    `,
+  },
 ];
 
 /**

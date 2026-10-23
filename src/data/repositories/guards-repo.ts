@@ -187,6 +187,13 @@ export interface ClanGuardsOverview {
   lowConfidence: number;
   /** Level-ups first seen within `recentDays`, newest first. */
   recentLevelUps: Array<GuardsLevelUp & { memberId: number; name: string }>;
+  /**
+   * Members whose level was first LEARNED within `recentDays` from an admin's
+   * entry (by hand, or the chat levels import) — newest first. Not a level-up:
+   * there was no earlier level to rise from, which is why these would
+   * otherwise never appear anywhere as news.
+   */
+  recentlyLearned: Array<{ memberId: number; name: string; level: number; date: string }>;
 }
 
 /** The clan's make-up for the Analytics overview — active members only. */
@@ -202,6 +209,7 @@ export function getClanGuardsOverview(clanId: number, today: string, recentDays 
   let stale = 0;
   let lowConfidence = 0;
   const recentLevelUps: ClanGuardsOverview['recentLevelUps'] = [];
+  const recentlyLearned: ClanGuardsOverview['recentlyLearned'] = [];
 
   for (const m of active) {
     const e = estimates.get(m.id);
@@ -215,7 +223,13 @@ export function getClanGuardsOverview(clanId: number, today: string, recentDays 
       const age = daysBetweenGameDates(up.by, today);
       if (age !== null && age <= recentDays) recentLevelUps.push({ ...up, memberId: m.id, name: m.name });
     }
+    const first = e.evidence[0];
+    const firstAge = daysBetweenGameDates(e.firstSeen, today);
+    if (first?.kind === 'report' && firstAge !== null && firstAge <= recentDays) {
+      recentlyLearned.push({ memberId: m.id, name: m.name, level: e.level, date: e.firstSeen });
+    }
   }
+  recentlyLearned.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.name.localeCompare(b.name)));
   recentLevelUps.sort((a, b) => (a.by < b.by ? 1 : a.by > b.by ? -1 : a.name.localeCompare(b.name)));
 
   const distribution = [...counts.entries()]
@@ -229,6 +243,7 @@ export function getClanGuardsOverview(clanId: number, today: string, recentDays 
     stale,
     lowConfidence,
     recentLevelUps,
+    recentlyLearned,
   };
 }
 

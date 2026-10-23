@@ -603,6 +603,13 @@ export function restoreClanFromBackup(
         },
       }));
 
+      record('member_level_reports', copyTable(db, {
+        table: 'member_level_reports',
+        where: `s.clan_id = ${sourceClanId}`,
+        drop: ['id'],
+        map: { clan_id: String(targetId), member_id: `s.member_id + ${offMember}` },
+      }));
+
       // Tinman standings: uploads keep their ids (offset) so the scores' upload_id
       // can follow them; an unmatched score has no member to offset.
       record('tinman_uploads', copyTable(db, {

@@ -309,6 +309,11 @@ export function addMergeRule(
           db.prepare(
             'UPDATE tinman_scores SET member_id = ? WHERE clan_id = ? AND member_id = ?',
           ).run(toMember.id, clanId, fromMember.id);
+          // Chat-reported levels cascade on delete, so they'd vanish with the
+          // source member; they belong to the merged player.
+          db.prepare(
+            'UPDATE member_level_reports SET member_id = ? WHERE clan_id = ? AND member_id = ?',
+          ).run(toMember.id, clanId, fromMember.id);
 
           db.prepare('DELETE FROM members WHERE id = ?').run(fromMember.id);
         } else {

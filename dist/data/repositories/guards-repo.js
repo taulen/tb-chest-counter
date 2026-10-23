@@ -150,6 +150,7 @@ function getClanGuardsOverview(clanId, today, recentDays = 30) {
     let stale = 0;
     let lowConfidence = 0;
     const recentLevelUps = [];
+    const recentlyLearned = [];
     for (const m of active) {
         const e = estimates.get(m.id);
         if (!e)
@@ -166,7 +167,13 @@ function getClanGuardsOverview(clanId, today, recentDays = 30) {
             if (age !== null && age <= recentDays)
                 recentLevelUps.push({ ...up, memberId: m.id, name: m.name });
         }
+        const first = e.evidence[0];
+        const firstAge = (0, game_day_js_1.daysBetweenGameDates)(e.firstSeen, today);
+        if (first?.kind === 'report' && firstAge !== null && firstAge <= recentDays) {
+            recentlyLearned.push({ memberId: m.id, name: m.name, level: e.level, date: e.firstSeen });
+        }
     }
+    recentlyLearned.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.name.localeCompare(b.name)));
     recentLevelUps.sort((a, b) => (a.by < b.by ? 1 : a.by > b.by ? -1 : a.name.localeCompare(b.name)));
     const distribution = [...counts.entries()]
         .sort((a, b) => b[0] - a[0])
@@ -178,6 +185,7 @@ function getClanGuardsOverview(clanId, today, recentDays = 30) {
         stale,
         lowConfidence,
         recentLevelUps,
+        recentlyLearned,
     };
 }
 // ─── Admin-entered levels ─────────────────────────────────────
