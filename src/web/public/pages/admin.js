@@ -286,7 +286,7 @@ export async function renderAdmin(el) {
     <div class="card">
       <div class="card-header"><h2>Chest Type Classification</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">Override the automatic rarity classification for individual chest names. Grouped by current rarity so you can skim one tier at a time.</p>
+        <p class="muted-copy mb-12">Override the automatic rarity classification for individual chest names. Grouped by current rarity so you can skim one tier at a time. Chests from a crypt always take the crypt's rarity (a Barbarian Chest from an epic crypt is epic), so a type set here applies to the chest's other sources.</p>
         <details>
           <summary class="collapse-toggle">Show chest types (${chestTypes.length})</summary>
           ${(() => {

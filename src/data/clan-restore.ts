@@ -61,7 +61,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import Database from 'better-sqlite3';
-import { getDb } from './database.js';
+import { getDb, syncSourceRarities } from './database.js';
 import { correctChestName, getChestRarity } from '../vision/chest-names.js';
 import { childLogger } from '../utils/logger.js';
 
@@ -440,6 +440,9 @@ export function restoreClanFromBackup(
             UNION SELECT chest_source_id FROM ${SRC}.triumphal_chest_records WHERE clan_id = @c AND chest_source_id IS NOT NULL
           )`,
       ).run({ c: sourceClanId }).changes);
+      // The copy above carries the source text only — a pre-v83 backup has no
+      // rarity to copy — so derive it for the rows just added.
+      syncSourceRarities(db);
 
       buildRefMap(
         db, 'source', 'chest_sources', 'm.source = s.source',

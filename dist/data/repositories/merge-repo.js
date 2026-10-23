@@ -16,6 +16,7 @@ exports.deleteChestTypeOverride = deleteChestTypeOverride;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const source_names_js_1 = require("../../vision/source-names.js");
 const chest_summary_repo_js_1 = require("./chest-summary-repo.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 /**
@@ -391,10 +392,10 @@ function addMergeRule(type, fromValue, toValue, clanId) {
             }
             else {
                 const toRow = db.prepare(`
-          INSERT INTO chest_sources (source) VALUES (?)
+          INSERT INTO chest_sources (source, rarity) VALUES (?, ?)
           ON CONFLICT(source) DO UPDATE SET source = excluded.source
           RETURNING id
-        `).get(toValue);
+        `).get(toValue, (0, source_names_js_1.getSourceRarity)(toValue));
                 const result = db.prepare('UPDATE chest_records SET chest_source_id = ? WHERE clan_id = ? AND chest_source_id = ?').run(toRow.id, clanId, fromRow.id);
                 log.debug(`Source merge: updated ${result.changes} chest records ("${fromValue}" → "${toValue}")`);
                 // Same reason as the chest-merge case: triumphal records also

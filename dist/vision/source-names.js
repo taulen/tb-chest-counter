@@ -11,6 +11,7 @@ exports.getDefaultPointsForKey = getDefaultPointsForKey;
 exports.getDefaultPointsFor = getDefaultPointsFor;
 exports.hasDefaultPointsFor = hasDefaultPointsFor;
 exports.isKnownSourceKey = isKnownSourceKey;
+exports.getSourceRarity = getSourceRarity;
 exports.getPointsFromSource = getPointsFromSource;
 exports.isHardcodedSource = isHardcodedSource;
 /**
@@ -453,6 +454,22 @@ function isKnownSourceKey(key) {
     if (/^(elven citadel|cursed citadel) \d+$/.test(key))
         return true;
     return false;
+}
+/**
+ * The rarity a SOURCE states for every chest it drops, or null when it states
+ * none. Only crypts qualify: the game prints the tier in the source itself
+ * ("Level 35 epic Crypt"; a plain "Level 25 Crypt" is the common tier), and
+ * one chest name can drop from several tiers — Barbarian Chest comes out of
+ * both common and epic crypts — so the name alone cannot say which it was.
+ *
+ * Stored on `chest_sources.rarity` and preferred over the chest's own type by
+ * chest_records_v, so a record's type is the crypt it came from. Tartaros
+ * crypts state no tier and stay null, as does everything that isn't a crypt
+ * ("Epic Ancient squad" names the squad, not the chest).
+ */
+function getSourceRarity(source) {
+    const m = /^(common|rare|epic) \d+$/.exec(getSourceKey(source) ?? '');
+    return m ? m[1] : null;
 }
 function getPointsFromSource(source) {
     return getDefaultPointsForKey(getSourceKey(source));

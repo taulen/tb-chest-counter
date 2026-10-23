@@ -321,6 +321,9 @@ function restoreClanFromBackup(sourcePath, sourceClanId, options = {}) {
             SELECT chest_source_id FROM ${SRC}.chest_records WHERE clan_id = @c AND chest_source_id IS NOT NULL
             UNION SELECT chest_source_id FROM ${SRC}.triumphal_chest_records WHERE clan_id = @c AND chest_source_id IS NOT NULL
           )`).run({ c: sourceClanId }).changes);
+            // The copy above carries the source text only — a pre-v83 backup has no
+            // rarity to copy — so derive it for the rows just added.
+            (0, database_js_1.syncSourceRarities)(db);
             buildRefMap(db, 'source', 'chest_sources', 'm.source = s.source', `SELECT chest_source_id FROM ${SRC}.chest_records WHERE clan_id = ${sourceClanId} AND chest_source_id IS NOT NULL
          UNION SELECT chest_source_id FROM ${SRC}.triumphal_chest_records WHERE clan_id = ${sourceClanId} AND chest_source_id IS NOT NULL`);
             const usedResourceTypes = `SELECT resource_type_id FROM ${SRC}.resource_transactions WHERE clan_id = ${sourceClanId} AND resource_type_id IS NOT NULL

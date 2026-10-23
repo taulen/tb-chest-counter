@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getDb } from '../../src/data/database.js';
+import { getDb, syncSourceRarities } from '../../src/data/database.js';
 import { getChestBreakdowns } from '../../src/data/repositories/chest-repo.js';
 import {
   getConcentration,
@@ -65,23 +65,25 @@ function seed(rows: SeedRow[]): void {
   for (const r of rows) {
     ins.run(session.id, memberId(r.member), chestId(r.chest, r.type), sourceId(r.source), r.pts, r.at);
   }
+  syncSourceRarities(db);
   notifyChestDataChanged(1);
 }
 
 interface TypeRow { chest_type: string; count: number; points: number }
 
-// The byType query getChestBreakdowns used to run. Kept here as the oracle so
-// the derived-from-byName version can never quietly drift from what it
-// replaced — the reason it was replaced is a query plan, not a result.
+// byType as a plain GROUP BY over chest_records_v, whose chest_type is the
+// definition of a record's type (crypt rarity first). Kept as the oracle so
+// the derived version can never quietly drift from it — the reason it is
+// derived is a query plan, not a result.
 function byTypeViaSql(fromMs?: number, toMs?: number): TypeRow[] {
   const windowed = fromMs !== undefined && toMs !== undefined;
-  const range = windowed ? ' AND cr.effective_at >= ? AND cr.effective_at < ?' : '';
+  const range = windowed ? ' AND effective_at >= ? AND effective_at < ?' : '';
   const params: unknown[] = windowed ? [1, fromMs, toMs] : [1];
   return getDb().prepare(`
-    SELECT ch.chest_type AS chest_type, COUNT(*) AS count, SUM(cr.point_value) AS points
-    FROM chest_records cr JOIN chests ch ON ch.id = cr.chest_id
-    WHERE cr.clan_id = ?${range}
-    GROUP BY ch.chest_type ORDER BY count DESC
+    SELECT chest_type, COUNT(*) AS count, SUM(point_value) AS points
+    FROM chest_records_v
+    WHERE clan_id = ?${range}
+    GROUP BY chest_type ORDER BY count DESC
   `).all(...params) as TypeRow[];
 }
 
@@ -125,6 +127,32 @@ describe('getChestBreakdowns: byType is derived, and equals the query it replace
       rows.reduce((a, r) => ({ count: a.count + r.count, points: a.points + r.points }),
         { count: 0, points: 0 });
     expect(sum(b.byType)).toEqual(sum(b.byName));
+  });
+});
+
+describe('a chest name that drops from crypts of two rarities', () => {
+  beforeEach(() => {
+    // Barbarian Chest is `common` by name but also drops from epic crypts.
+    seed([
+      { member: 1, chest: 'Barbarian Chest', type: 'common', source: 'Level 25 Crypt', pts: 275, at: BASE },
+      { member: 1, chest: 'Barbarian Chest', type: 'common', source: 'Level 25 Crypt', pts: 275, at: BASE + 1 },
+      { member: 2, chest: 'Barbarian Chest', type: 'common', source: 'Level 35 epic Crypt', pts: 1000, at: BASE + 2 },
+      { member: 2, chest: 'Barbarian Chest', type: 'common', source: 'Level 19 Heroic Monster', pts: 20, at: BASE + 3 },
+    ]);
+  });
+
+  it('types each record by its crypt, and by its name elsewhere', () => {
+    const rows = getDb().prepare(
+      'SELECT chest_source, chest_type FROM chest_records_v ORDER BY captured_at',
+    ).all() as { chest_source: string; chest_type: string }[];
+    expect(rows.map((r) => r.chest_type)).toEqual(['common', 'common', 'epic', 'common']);
+  });
+
+  it('splits byType by record and keeps byName to one row per name', () => {
+    const b = getChestBreakdowns(1);
+    expect(byRarity(b.byType)).toEqual(byRarity(byTypeViaSql()));
+    expect(b.byType.find((t) => t.chest_type === 'epic')).toEqual({ chest_type: 'epic', count: 1, points: 1000 });
+    expect(b.byName).toEqual([{ chest_name: 'Barbarian Chest', chest_type: 'common', count: 4, points: 1570 }]);
   });
 });
 

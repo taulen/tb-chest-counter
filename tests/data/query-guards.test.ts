@@ -138,6 +138,20 @@ describe('query plans: hot aggregates use covering indexes, not full scans', () 
     expect(p, p).not.toContain('SCAN cr');
   });
 
+  it('analytics (chest, source) grouping never full-scans, windowed or not', () => {
+    // getChestBreakdowns groups on both FKs so a record's type can come from its
+    // crypt (v83). Mirrors its inner query.
+    for (const range of ['', ' AND cr.effective_at>=? AND cr.effective_at<?']) {
+      const p = plan(
+        'SELECT cr.chest_id, cr.chest_source_id, COUNT(*), SUM(cr.point_value) FROM chest_records cr'
+          + ` WHERE cr.clan_id=?${range} GROUP BY cr.chest_id, cr.chest_source_id`,
+        ...(range ? [1, 0, 9e15] : [1]),
+      );
+      expect(p, p).toMatch(/SEARCH cr USING (COVERING )?INDEX/);
+      expect(p, p).not.toContain('SCAN cr');
+    }
+  });
+
   it('grouping a WINDOWED breakdown by chest_type would full-scan — why byType is derived', () => {
     // This is the plan getChestBreakdowns deliberately does NOT run. Grouping
     // on a column of the JOINED table (ch.chest_type) rather than on

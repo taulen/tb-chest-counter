@@ -67,10 +67,12 @@ function computeSourceKeySummary() {
     // global, so every admin sees the same authoritative source list.
     // chest_sources.source and chests.name are UNIQUE so grouping on
     // (chest_source_id, chest_id) is identical to grouping on
-    // (chest_source, chest_name, chest_type) — chest_type is 1:1 with the
-    // chest row, so dropping it from the GROUP BY changes nothing.
+    // (chest_source, chest_name, chest_type) — chest_type is a function of the
+    // (source, chest) pair (crypt rarity first, v83), so dropping it from the
+    // GROUP BY changes nothing.
     const rows = db.prepare(`
-    SELECT cs.source AS chest_source, ch.name AS chest_name, ch.chest_type, g.cnt
+    SELECT cs.source AS chest_source, ch.name AS chest_name,
+           COALESCE(cs.rarity, ch.chest_type) AS chest_type, g.cnt
     FROM (
       SELECT chest_source_id, chest_id, COUNT(*) AS cnt
       FROM chest_records

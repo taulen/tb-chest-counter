@@ -444,6 +444,23 @@ export function isKnownSourceKey(key: string): boolean {
   return false;
 }
 
+/**
+ * The rarity a SOURCE states for every chest it drops, or null when it states
+ * none. Only crypts qualify: the game prints the tier in the source itself
+ * ("Level 35 epic Crypt"; a plain "Level 25 Crypt" is the common tier), and
+ * one chest name can drop from several tiers — Barbarian Chest comes out of
+ * both common and epic crypts — so the name alone cannot say which it was.
+ *
+ * Stored on `chest_sources.rarity` and preferred over the chest's own type by
+ * chest_records_v, so a record's type is the crypt it came from. Tartaros
+ * crypts state no tier and stay null, as does everything that isn't a crypt
+ * ("Epic Ancient squad" names the squad, not the chest).
+ */
+export function getSourceRarity(source: string): 'common' | 'rare' | 'epic' | null {
+  const m = /^(common|rare|epic) \d+$/.exec(getSourceKey(source) ?? '');
+  return m ? (m[1] as 'common' | 'rare' | 'epic') : null;
+}
+
 export function getPointsFromSource(source: string): number {
   return getDefaultPointsForKey(getSourceKey(source));
 }

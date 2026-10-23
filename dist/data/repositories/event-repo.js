@@ -712,7 +712,7 @@ function getEventMemberDetail(eventKey, clanId, memberId, from, to) {
         params.push(isoToMs(to));
     }
     const rows = db
-        .prepare(`SELECT ch.name AS chestName, ch.chest_type AS chestType,
+        .prepare(`SELECT ch.name AS chestName, COALESCE(cs.rarity, ch.chest_type) AS chestType,
               COALESCE(cs.source, '') AS source,
               COUNT(*) AS chests, SUM(c.point_value) AS points, MAX(c.effective_at) AS lastSeen
        FROM chest_records c

@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { childLogger } from '../utils/logger.js';
 import { correctChestName, getChestRarity, TRIUMPHAL_PACKAGE_POINTS } from '../vision/chest-names.js';
-import { getSourceKey, sourceSpellingKey, canonicalSourceKey } from '../vision/source-names.js';
+import { getSourceKey, getSourceRarity, sourceSpellingKey, canonicalSourceKey } from '../vision/source-names.js';
 import { despace } from '../vision/ocr-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
 
@@ -888,6 +888,38 @@ const MIGRATIONS: Migration[] = [
         ON member_level_reports(clan_id, member_id, observed_date);
     `,
   },
+  {
+    // A record's type comes from its crypt when the crypt states one
+    // (getSourceRarity): chests.chest_type is one value per NAME, and Barbarian
+    // Chest drops from common and epic crypts alike, so every epic-crypt one
+    // read "common". NULL = the source states no rarity and the chest's own
+    // type applies. Filled by syncSourceRarities, which runs every boot.
+    // Guarded for replay; the view is dropped and rebuilt either way.
+    version: 83,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(chest_sources)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'rarity')) {
+        database.exec('ALTER TABLE chest_sources ADD COLUMN rarity TEXT');
+      }
+      database.exec(`
+        DROP VIEW IF EXISTS chest_records_v;
+        CREATE VIEW chest_records_v AS
+          SELECT
+            cr.id, cr.clan_id, cr.session_id,
+            m.name AS player_name,
+            cr.member_id,
+            ch.name AS chest_name, COALESCE(cs.rarity, ch.chest_type) AS chest_type,
+            COALESCE(cs.source, '') AS chest_source,
+            1 AS quantity,
+            cr.point_value, cr.captured_at, cr.effective_at, cr.confidence,
+            cr.debug_crop_path, cr.chest_id, cr.chest_source_id
+          FROM chest_records cr
+          JOIN members m ON m.id = cr.member_id
+          JOIN chests ch ON ch.id = cr.chest_id
+          LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id;
+      `);
+    },
+  },
 ];
 
 /**
@@ -1042,6 +1074,22 @@ function cleanupChestNames(database: Database.Database): void {
   }
 }
 
+/**
+ * Bring every `chest_sources.rarity` in line with getSourceRarity. The two
+ * single-row inserts set it themselves; this covers the rows that existed
+ * before v83, the bulk copy in clan-restore, and any later change to the rule.
+ * One row per distinct source string, so cheap enough to run every boot.
+ */
+export function syncSourceRarities(database: Database.Database): void {
+  const rows = database.prepare('SELECT id, source, rarity FROM chest_sources').all() as
+    { id: number; source: string; rarity: string | null }[];
+  const update = database.prepare('UPDATE chest_sources SET rarity = ? WHERE id = ?');
+  for (const row of rows) {
+    const rarity = getSourceRarity(row.source);
+    if (rarity !== row.rarity) update.run(rarity, row.id);
+  }
+}
+
 export function initDatabase(dbPath: string): Database.Database {
   if (db) return db;
 
@@ -1062,6 +1110,7 @@ export function initDatabase(dbPath: string): Database.Database {
   runMigrations(db);
   ensureSeedClan(db);
   cleanupChestNames(db);
+  syncSourceRarities(db);
   // Right after the rename pass, so anything it just stranded is reported in the
   // same breath. Read-only and never throws — see config-integrity.ts.
   reportConfigIntegrity(db);

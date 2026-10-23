@@ -8,6 +8,7 @@ import {
   parseSourceLevelRange,
   canonicalSourceKey,
   sourceSpellingKey,
+  getSourceRarity,
 } from '../../src/vision/source-names.js';
 
 /**
@@ -172,6 +173,24 @@ describe('space-insensitive source keys (PaddleOCR drops inter-word spaces)', ()
       // the Lvl/Level fold is the one thing this adds on top.
       expect(canonicalSourceKey('Lvl 35-39 Vault')).not.toBe(canonicalSourceKey('Level 35-39 Vault'));
       expect(sourceSpellingKey('Lvl 35-39 Vault')).toBe(sourceSpellingKey('Level 35-39 Vault'));
+    });
+  });
+
+
+  describe('getSourceRarity', () => {
+    it('reads the tier a crypt states, plain crypts being common', () => {
+      expect(getSourceRarity('Level 35 epic Crypt')).toBe('epic');
+      expect(getSourceRarity('Level 30 rare Crypt')).toBe('rare');
+      expect(getSourceRarity('Level 25 Crypt')).toBe('common');
+      expect(getSourceRarity('Level35epicCrypt')).toBe('epic');
+    });
+
+    it('is null where the source states no chest rarity', () => {
+      expect(getSourceRarity('Tartaros Crypt level 25')).toBeNull();
+      expect(getSourceRarity('Epic Ancient squad')).toBeNull();
+      expect(getSourceRarity('Level 25 Elven Citadel')).toBeNull();
+      expect(getSourceRarity('Level 19 Heroic Monster')).toBeNull();
+      expect(getSourceRarity('')).toBeNull();
     });
   });
 });

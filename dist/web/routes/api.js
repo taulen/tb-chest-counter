@@ -1953,45 +1953,9 @@ function createApiRouter(scanLoop) {
         const clanId = req.clanId ?? 1;
         // Cached per clan: three full-clan aggregates that a page-open fires
         // together. Collapses the burst from multiple viewers into one pass;
-        // dropped on scan completion. Each aggregate GROUPs BY the indexed FK
-        // (chest_id / chest_source_id), not the joined string, so the v41
-        // covering indexes (idx_cr_clan_chest_pts / idx_cr_clan_source_pts)
-        // satisfy the SUM index-only and only the ~75 group-keys hit the JOIN.
-        const result = (0, ttl_cache_js_1.cached)(`analyticsSummary:${clanId}`, chest_repo_js_1.ANALYTICS_CACHE_TTL_MS, () => {
-            const database = (0, database_js_1.getDb)();
-            const bySource = database.prepare(`
-        SELECT COALESCE(cs.source, '') AS chest_source,
-               COUNT(*) AS count,
-               SUM(cr.point_value) AS points
-        FROM chest_records cr
-        LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id
-        WHERE cr.clan_id = ?
-        GROUP BY cr.chest_source_id
-        ORDER BY count DESC
-      `).all(clanId);
-            const byType = database.prepare(`
-        SELECT ch.chest_type AS chest_type,
-               COUNT(*) AS count,
-               SUM(cr.point_value) AS points
-        FROM chest_records cr
-        JOIN chests ch ON ch.id = cr.chest_id
-        WHERE cr.clan_id = ?
-        GROUP BY ch.chest_type
-        ORDER BY count DESC
-      `).all(clanId);
-            const byName = database.prepare(`
-        SELECT ch.name AS chest_name,
-               ch.chest_type AS chest_type,
-               COUNT(*) AS count,
-               SUM(cr.point_value) AS points
-        FROM chest_records cr
-        JOIN chests ch ON ch.id = cr.chest_id
-        WHERE cr.clan_id = ?
-        GROUP BY cr.chest_id
-        ORDER BY count DESC
-      `).all(clanId);
-            return { bySource, byType, byName };
-        });
+        // dropped on scan completion. The all-time form of getChestBreakdowns, so
+        // a record's type resolves the same way here (crypt rarity first).
+        const result = (0, ttl_cache_js_1.cached)(`analyticsSummary:${clanId}`, chest_repo_js_1.ANALYTICS_CACHE_TTL_MS, () => chestRepo.getChestBreakdowns(clanId));
         res.json(result);
     });
     // GET /api/analytics/single-day-records - clan's top 3 best single days

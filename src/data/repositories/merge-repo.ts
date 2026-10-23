@@ -1,6 +1,7 @@
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
 import { transliterateCyrillicHomoglyphs, foldDiacritics, despace } from '../../vision/ocr-normalize.js';
+import { getSourceRarity } from '../../vision/source-names.js';
 import { notifyChestDataChanged } from './chest-summary-repo.js';
 import { invalidate } from '../../utils/ttl-cache.js';
 
@@ -468,10 +469,10 @@ export function addMergeRule(
         log.debug(`Source merge: source "${fromValue}" not in chest_sources — no rows to remap`);
       } else {
         const toRow = db.prepare(`
-          INSERT INTO chest_sources (source) VALUES (?)
+          INSERT INTO chest_sources (source, rarity) VALUES (?, ?)
           ON CONFLICT(source) DO UPDATE SET source = excluded.source
           RETURNING id
-        `).get(toValue) as { id: number };
+        `).get(toValue, getSourceRarity(toValue)) as { id: number };
 
         const result = db.prepare(
           'UPDATE chest_records SET chest_source_id = ? WHERE clan_id = ? AND chest_source_id = ?',

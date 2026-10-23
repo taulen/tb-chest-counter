@@ -347,7 +347,7 @@
   {
     "type": "table",
     "name": "chest_sources",
-    "sql": "CREATE TABLE chest_sources ( id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL UNIQUE )"
+    "sql": "CREATE TABLE chest_sources ( id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL UNIQUE , rarity TEXT)"
   },
   {
     "type": "table",
@@ -532,7 +532,7 @@
   {
     "type": "view",
     "name": "chest_records_v",
-    "sql": "CREATE VIEW chest_records_v AS SELECT cr.id, cr.clan_id, cr.session_id, m.name AS player_name, cr.member_id, ch.name AS chest_name, ch.chest_type, COALESCE(cs.source, '') AS chest_source, 1 AS quantity, cr.point_value, cr.captured_at, cr.effective_at, cr.confidence, cr.debug_crop_path, cr.chest_id, cr.chest_source_id FROM chest_records cr JOIN members m ON m.id = cr.member_id JOIN chests ch ON ch.id = cr.chest_id LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id"
+    "sql": "CREATE VIEW chest_records_v AS SELECT cr.id, cr.clan_id, cr.session_id, m.name AS player_name, cr.member_id, ch.name AS chest_name, COALESCE(cs.rarity, ch.chest_type) AS chest_type, COALESCE(cs.source, '') AS chest_source, 1 AS quantity, cr.point_value, cr.captured_at, cr.effective_at, cr.confidence, cr.debug_crop_path, cr.chest_id, cr.chest_source_id FROM chest_records cr JOIN members m ON m.id = cr.member_id JOIN chests ch ON ch.id = cr.chest_id LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id"
   },
   {
     "type": "view",

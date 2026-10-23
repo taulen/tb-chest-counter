@@ -4,7 +4,7 @@ import * as chestSummaryRepo from './chest-summary-repo.js';
 import { invalidateScanStats } from './session-repo.js';
 import { invalidateReviewQueueCount } from './review-queue-repo.js';
 import { invalidateSourceKeySummary } from './source-points-repo.js';
-import { sourceSpellingKey } from '../../vision/source-names.js';
+import { getSourceRarity, sourceSpellingKey } from '../../vision/source-names.js';
 import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import type { ChestRecord, MemberStats, LeaderboardEntry } from '../../models/types.js';
@@ -201,10 +201,10 @@ export function getOrCreateChestSourceId(source: string): number | null {
 
   // Genuinely new source type — insert it.
   const row = db.prepare(`
-    INSERT INTO chest_sources (source) VALUES (?)
+    INSERT INTO chest_sources (source, rarity) VALUES (?, ?)
     ON CONFLICT(source) DO UPDATE SET source = excluded.source
     RETURNING id
-  `).get(source) as { id: number };
+  `).get(source, getSourceRarity(source)) as { id: number };
   return row.id;
 }
 
@@ -1221,13 +1221,13 @@ export interface ChestBreakdowns {
  * Two things here are load-bearing and were measured with EXPLAIN QUERY PLAN
  * against a seeded 18k-row database, not assumed:
  *
- * 1. byType is DERIVED from byName rather than queried. Grouping by
+ * 1. byType is DERIVED rather than queried. Grouping by
  *    `ch.chest_type` reads a column on the joined table, so with an
  *    effective_at predicate SQLite gives up on chest_records' indexes entirely
  *    and does `SCAN cr` — a full pass over every row in the clan. Grouping by
- *    `cr.chest_id` keeps idx_cr_clan_chest_pts, and byName is already exactly
- *    that grouping with chest_type attached, so folding it up in JS costs one
- *    pass over ~75 rows and removes a query. It also makes the two physically
+ *    `cr.chest_id, cr.chest_source_id` stays on chest_records, and byName and
+ *    byType are both folds of that one grouping in JS — a pass over a few
+ *    hundred rows, one query fewer. It also makes the two physically
  *    incapable of disagreeing, which two independent GROUP BYs were not.
  *    (All-time byType did NOT have this problem — it plans as `SCAN ch` over
  *    the ~75 chests with a covering lookup per chest — but there is no reason
@@ -1261,35 +1261,58 @@ export function getChestBreakdowns(
     ORDER BY count DESC
   `).all(...params) as ChestBreakdowns['bySource'];
 
-  const byName = db.prepare(`
+  // Grouped by (chest, source), not chest alone: a record's type is its
+  // crypt's rarity when the source states one (chest_sources.rarity, v83), so
+  // one name can carry two types — Barbarian Chest from a common and from an
+  // epic crypt. The joins run on the grouped rows, never per record.
+  const groups = db.prepare(`
     SELECT ch.name AS chest_name,
-           ch.chest_type AS chest_type,
-           COUNT(*) AS count,
-           SUM(cr.point_value) AS points
-    FROM chest_records cr
-    JOIN chests ch ON ch.id = cr.chest_id
-    WHERE cr.clan_id = ?${range}
-    GROUP BY cr.chest_id
-    ORDER BY count DESC
+           COALESCE(cs.rarity, ch.chest_type) AS chest_type,
+           g.count, g.points
+    FROM (
+      SELECT cr.chest_id, cr.chest_source_id,
+             COUNT(*) AS count, SUM(cr.point_value) AS points
+      FROM chest_records cr
+      WHERE cr.clan_id = ?${range}
+      GROUP BY cr.chest_id, cr.chest_source_id
+    ) g
+    JOIN chests ch ON ch.id = g.chest_id
+    LEFT JOIN chest_sources cs ON cs.id = g.chest_source_id
   `).all(...params) as ChestBreakdowns['byName'];
 
-  // Fold byName up to rarity. See note 1 above for why this is not its own
-  // query. Map preserves first-seen order, and byName is already count-desc,
-  // so the busiest rarity leads without a second sort.
-  const typeTotals = new Map<string, { chest_type: string; count: number; points: number }>();
-  for (const row of byName) {
-    const key = row.chest_type ?? 'unknown';
-    const hit = typeTotals.get(key);
-    if (hit) {
-      hit.count += row.count;
-      hit.points += row.points;
-    } else {
-      typeTotals.set(key, { chest_type: key, count: row.count, points: row.points });
-    }
-  }
-  const byType = [...typeTotals.values()].sort((a, b) => b.count - a.count);
+  return { bySource, ...foldChestTypeGroups(groups) };
+}
 
-  return { bySource, byType, byName };
+/**
+ * Fold (chest, type) groups into one row per chest name and one per type. See
+ * note 1 above for why byType is derived rather than queried. A name that
+ * spans types is badged with the type most of its records carry.
+ */
+export function foldChestTypeGroups(
+  groups: ChestBreakdowns['byName'],
+): Pick<ChestBreakdowns, 'byName' | 'byType'> {
+  const names = new Map<string, ChestBreakdowns['byName'][number] & { typeCounts: Map<string, number> }>();
+  const types = new Map<string, ChestBreakdowns['byType'][number]>();
+  for (const g of groups) {
+    const type = g.chest_type ?? 'unknown';
+    const name = names.get(g.chest_name)
+      ?? { chest_name: g.chest_name, chest_type: type, count: 0, points: 0, typeCounts: new Map() };
+    name.count += g.count;
+    name.points += g.points;
+    name.typeCounts.set(type, (name.typeCounts.get(type) ?? 0) + g.count);
+    names.set(g.chest_name, name);
+    const t = types.get(type) ?? { chest_type: type, count: 0, points: 0 };
+    t.count += g.count;
+    t.points += g.points;
+    types.set(type, t);
+  }
+  const byName = [...names.values()].map(({ typeCounts, ...row }) => {
+    let best = -1;
+    for (const [type, n] of typeCounts) if (n > best) { best = n; row.chest_type = type; }
+    return row;
+  }).sort((a, b) => b.count - a.count);
+  const byType = [...types.values()].sort((a, b) => b.count - a.count);
+  return { byName, byType };
 }
 
 export interface ActivityClock {
