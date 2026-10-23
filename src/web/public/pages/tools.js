@@ -89,6 +89,19 @@ function applyDefaults(defaults) {
   st.counts = rosterCounts(st.roster, st.settings.unknownAs);
 }
 
+/**
+ * Tiers worth showing: T9 always (guards levels can't tell a T9 from a G9, so
+ * it is the one tier a leader fills by hand), plus every tier the counts
+ * actually hold. Everything with no roster to fill from, or on request.
+ *
+ * Computed when the counts are (re)built, NOT on every slider move, so a tier
+ * dragged down to 0 doesn't vanish from under the pointer.
+ */
+function computeShownTiers() {
+  if (st.showAllTiers || st.roster.members.length === 0) return new Set(TIERS.map((x) => x.key));
+  return new Set(TIERS.filter((x) => x.key === 't9' || (st.counts[x.key] || 0) > 0).map((x) => x.key));
+}
+
 function rosterCounts(roster, unknownAs) {
   const counts = Object.fromEntries(TIERS.map((t) => [t.key, 0]));
   for (const m of roster.members) {
@@ -117,14 +130,17 @@ async function renderAncientPlanner(mount) {
     counts: null,
     /** Summon count being planned. */
     picked: null,
+    showAllTiers: false,
+    shownTiers: null,
   };
   applyDefaults(st.defaults);
+  st.shownTiers = computeShownTiers();
 
   mount.innerHTML = `
     <div class="ancient-planner">
       <div class="ancient-results" aria-live="polite"></div>
       <div class="ancient-inputs">
-        ${rosterCardHtml()}
+        <div class="ancient-roster-slot">${rosterCardHtml()}</div>
         ${settingsCardHtml()}
       </div>
       ${howItWorksHtml()}
@@ -175,7 +191,8 @@ function rosterCardHtml() {
     .map(([v, l]) => `<option value="${v}" ${st.settings.unknownAs === v ? 'selected' : ''}>${esc(l)}</option>`)
     .join('');
 
-  const rows = TIERS.map((t) => sliderRow({
+  const hidden = TIERS.filter((x) => !st.shownTiers.has(x.key));
+  const rows = TIERS.filter((x) => st.shownTiers.has(x.key)).map((t) => sliderRow({
     id: `ancient-tier-${t.key}`,
     label: t.label,
     min: 0,
@@ -199,10 +216,28 @@ function rosterCardHtml() {
           </div>` : ''}
         <p class="muted-copy tool-tier-note">T9 = maxed on G, S, M and E. Guards levels can't tell a T9 from a G9, so move them across by hand.</p>
         <div class="tool-slider-grid">${rows}</div>
+        ${tierToggleHtml(hidden)}
         <p class="tool-total-line" data-readout="memberTotal">${memberTotalHtml()}</p>
         ${rosterListHtml()}
       </div>
     </div>`;
+}
+
+function tierToggleHtml(hidden) {
+  if (st.roster.members.length === 0) return '';
+  if (st.showAllTiers) {
+    return '<p class="tool-tier-toggle"><button type="button" class="btn btn-sm btn-ghost" data-tool-action="toggle-tiers">Show only the clan\'s tiers</button></p>';
+  }
+  if (!hidden.length) return '';
+  return `<p class="tool-tier-toggle muted-copy">${hidden.map((x) => x.label).join(', ')} hidden — nobody in the clan is at ${hidden.length === 1 ? 'that level' : 'those levels'}.
+    <button type="button" class="btn btn-sm btn-ghost" data-tool-action="toggle-tiers">Show all tiers</button></p>`;
+}
+
+/** Rebuild the roster card — after the shown tiers may have changed. */
+function rerenderRoster(root) {
+  st.shownTiers = computeShownTiers();
+  const slot = root.querySelector('.ancient-roster-slot');
+  if (slot) slot.innerHTML = rosterCardHtml();
 }
 
 function memberTotalHtml() {
@@ -308,6 +343,13 @@ function onClick(e) {
     recountRoster(action.closest('.ancient-planner'));
     return;
   }
+  if (action?.dataset.toolAction === 'toggle-tiers') {
+    st.showAllTiers = !st.showAllTiers;
+    const root = action.closest('.ancient-planner');
+    rerenderRoster(root);
+    paintResults(root);
+    return;
+  }
   if (action?.dataset.toolAction === 'reset-defaults') {
     resetToDefaults(action.closest('.ancient-planner'));
     return;
@@ -325,10 +367,7 @@ function onClick(e) {
 
 function recountRoster(root) {
   st.counts = rosterCounts(st.roster, st.settings.unknownAs);
-  for (const t of TIERS) {
-    for (const input of root.querySelectorAll(`[data-tier="${t.key}"]`)) input.value = String(st.counts[t.key]);
-  }
-  setReadout('memberTotal', memberTotalHtml());
+  rerenderRoster(root);
   paintResults(root);
 }
 
@@ -515,7 +554,7 @@ function optionsCardHtml(plan, sel) {
 function perMemberCardHtml(plan, opt) {
   const tierTotal = (t) => (opt.perMember[t.key] ?? 0) * (st.counts[t.key] || 0);
   const handedOut = TIERS.reduce((a, t) => a + tierTotal(t), 0);
-  const rows = TIERS.map((t) => {
+  const rows = TIERS.filter((x) => st.shownTiers.has(x.key)).map((t) => {
     const n = st.counts[t.key] || 0;
     const each = opt.perMember[t.key];
     const total = tierTotal(t);

@@ -6841,3 +6841,4 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .tinman-table td[data-role="metric"].goal-cell-warn { color: var(--accent-warn-text); }
   .tinman-table td[data-role="metric"].goal-cell-low { color: var(--accent-red-soft-text); }
 }
+.tool-tier-toggle { margin: 12px 0 0; font-size: 12.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
