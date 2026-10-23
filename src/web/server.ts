@@ -19,6 +19,7 @@ import { createFrontendAssetRouter } from './frontend-assets.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
 import { createGuardsRouter } from './routes/guards.js';
+import { createToolsRouter } from './routes/tools.js';
 import { denyCaching, requireAdmin, requireAuth, requireClanContext, SESSION_COOKIE_NAME } from './middleware/auth.js';
 import { firstSuperadmin, logAction } from '../data/repositories/user-repo.js';
 import { childLogger } from '../utils/logger.js';
@@ -527,6 +528,10 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // data, so the reads are visible to any clan member; the one write (an admin
   // entering a member's level) guards with requireAdmin inside the router.
   app.use('/api/guards', requireAuth, requireClanContext, createGuardsRouter());
+
+  // Tools page (calculators). Read-only and open to every role — the tools run
+  // in the browser, and this only supplies the caller's own clan roster.
+  app.use('/api/tools', requireAuth, requireClanContext, createToolsRouter());
 
   // The rest of assets/ (OCR models, reference crops) stays behind a session —
   // nothing a page loads lives there. resource-icons/ and calibration-examples/

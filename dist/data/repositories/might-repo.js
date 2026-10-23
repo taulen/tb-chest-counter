@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.saveSnapshots = saveSnapshots;
 exports.hasSnapshotForGameDate = hasSnapshotForGameDate;
 exports.getLastCaptureAt = getLastCaptureAt;
+exports.getLatestCaptureRoster = getLatestCaptureRoster;
 exports.getSnapshotDates = getSnapshotDates;
 exports.getMightWithDelta = getMightWithDelta;
 exports.getLatestMightByMember = getLatestMightByMember;
@@ -221,6 +222,27 @@ function getLastCaptureAt(clanId) {
      WHERE clan_id = ? AND game_date != ''
      ORDER BY game_date DESC, captured_at DESC LIMIT 1`).get(clanId);
     return row ?? null;
+}
+/**
+ * Who the newest might capture saw: one row per member snapshotted on the clan's
+ * latest capture day, strongest first, at most `limit`. Null when the clan has
+ * never been captured. The capture reads the in-game member list, so this is the
+ * roster as the game showed it that day — departures since then included.
+ */
+function getLatestCaptureRoster(clanId, limit) {
+    const last = getLastCaptureAt(clanId);
+    if (!last)
+        return null;
+    const db = (0, database_js_1.getDb)();
+    const members = db.prepare(`
+    SELECT m.id AS memberId, m.name AS name
+    FROM member_snapshots s
+    JOIN members m ON m.id = s.member_id AND m.clan_id = s.clan_id
+    WHERE s.clan_id = ? AND s.game_date = ?
+    ORDER BY s.power DESC, m.name ASC
+    LIMIT ?
+  `).all(clanId, last.gameDate, limit);
+    return { gameDate: last.gameDate, members };
 }
 /** Distinct game days this clan has data for, oldest first. */
 function getSnapshotDates(clanId) {

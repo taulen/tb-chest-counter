@@ -6532,3 +6532,182 @@ summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   transform: rotate(45deg);
 }
+
+/* ─── Tools: Ancient planner ─────────────────────────────────────────
+   Results on top (verdict, the three artifacts as the game shows them,
+   options + per-tier tables), inputs below as slider rows. */
+.ancient-planner { display: flex; flex-direction: column; }
+
+.ancient-hero-body {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 20px 24px;
+  background:
+    radial-gradient(520px 260px at 92% 40%, var(--accent-gold-bg-strong), transparent 70%),
+    var(--bg-card);
+}
+.ancient-hero-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.ancient-tinman {
+  width: 230px;
+  height: auto;
+  flex-shrink: 0;
+  filter: drop-shadow(0 10px 18px var(--ancient-tinman-shadow));
+}
+
+.ancient-verdict-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.ancient-verdict-tag.is-ok { color: var(--accent-green); background: var(--accent-green-bg); }
+.ancient-verdict-tag.is-short { color: var(--accent-red); background: var(--accent-red-bg-strong); }
+.ancient-verdict-title {
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  margin-top: 8px;
+  line-height: 1.1;
+}
+.ancient-verdict-sub { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+
+.ancient-artifacts { display: flex; gap: 22px; flex-wrap: wrap; }
+.ancient-artifact { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; }
+.ancient-medallion { position: relative; width: 100px; line-height: 0; }
+.ancient-medallion img { width: 100%; height: auto; }
+/* Sits exactly over the game's own badge in the cut-out (measured: 53.5%
+   across, ~89% down, ~12% of the width in radius). */
+.ancient-badge {
+  position: absolute;
+  left: 53.5%;
+  top: var(--badge-y, 88.7%);
+  width: 27%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--ancient-badge-bg);
+  border: 2px solid var(--ancient-badge-ring);
+  color: var(--ancient-badge-text);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.ancient-artifact-figurine .ancient-badge { --badge-y: 89.5%; }
+.ancient-artifact-tome .ancient-badge { --badge-y: 88.6%; }
+.ancient-artifact figcaption { display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1.25; }
+.ancient-artifact-name { font-size: 11px; color: var(--text-secondary); font-weight: 600; letter-spacing: 0.02em; }
+.ancient-artifact-value { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.ancient-hero.is-short .ancient-artifact-clock .ancient-medallion { opacity: 0.45; filter: grayscale(0.6); }
+
+.ancient-stats { margin-bottom: 0; }
+
+.ancient-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 0 20px;
+}
+.ancient-tables table { table-layout: fixed; min-width: 0; }
+.ancient-options-table .col-summons { width: 92px; }
+.ancient-options-table .col-time { width: 26%; }
+.ancient-options-table .col-after { width: 110px; }
+.ancient-tier-table .col-tier { width: 70px; }
+.ancient-tier-table .col-share { width: 80px; }
+.ancient-tables th.num, .ancient-tables td.num { text-align: right; }
+
+.ancient-option { cursor: pointer; }
+.ancient-option.is-selected { background: var(--accent-gold-active-bg); box-shadow: inset 3px 0 0 var(--accent-gold); }
+.ancient-option.is-unaffordable td:not(:first-child) { color: var(--text-muted); }
+.ancient-option .mrow-sub { display: none; }
+.ancient-pick {
+  min-width: 34px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ancient-pick[aria-pressed="true"] { background: var(--accent-gold); border-color: var(--accent-gold); color: var(--text-on-gold); }
+.tool-ok { color: var(--accent-green); }
+.tool-short { color: var(--accent-red); }
+.ancient-tier-table .mrow-sub { display: none; }
+.ancient-tier-table .is-empty-tier td { color: var(--text-muted); }
+.tool-tier-badge {
+  display: inline-block;
+  min-width: 34px;
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+}
+
+.ancient-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 0 20px;
+  align-items: start;
+}
+
+/* Slider rows: label + live readout over a range input and its number box. */
+.tool-slider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 22px; }
+.tool-slider-grid-wide { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.tool-slider-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tool-slider-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.tool-slider-readout { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tool-slider-readout strong { color: var(--accent-gold); }
+.tool-slider-controls { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.tool-slider { flex: 1; min-width: 0; accent-color: var(--accent-gold); height: 22px; cursor: pointer; }
+.tool-num { width: 68px; max-width: 68px; padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.tool-slider-hint { font-size: 12px; color: var(--text-muted); margin: 3px 0 0; }
+
+.tool-inline-field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; font-size: 13px; }
+.tool-select { max-width: 200px; }
+.tool-tier-note { font-size: 12px; margin-bottom: 14px; }
+.tool-total-line { margin: 16px 0 0; font-size: 13px; color: var(--text-secondary); }
+.tool-total-line strong { color: var(--text-primary); }
+.tool-warn { color: var(--accent-amber-text); font-weight: 600; }
+.tool-muted { color: var(--text-muted); }
+
+.tool-roster-list { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.tool-roster-list > summary.card-header { padding: 10px 14px; }
+.tool-roster-list > summary.card-header h2 { font-size: 13px; }
+.tool-roster-items {
+  list-style: none;
+  margin: 0;
+  padding: 10px 14px;
+  columns: 3 160px;
+  column-gap: 16px;
+  font-size: 12.5px;
+}
+.tool-roster-items li { break-inside: avoid; padding: 2px 0; }
+.tool-roster-level { display: inline-block; min-width: 24px; font-weight: 700; color: var(--accent-gold); font-variant-numeric: tabular-nums; }
+
+.tool-howto ul { margin: 0 0 12px; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; }
+.tool-howto a { color: var(--accent-gold); }
+
+@media (max-width: 900px) {
+  .ancient-tinman { width: 150px; }
+}
+@media (max-width: 640px) {
+  .ancient-hero-body { padding: 16px; }
+  .ancient-tinman { display: none; }
+  .ancient-verdict-title { font-size: 24px; }
+  .ancient-artifacts { gap: 8px; justify-content: space-between; }
+  .ancient-artifact { width: 30%; }
+  .ancient-medallion { width: 84px; }
+  .ancient-tables, .ancient-inputs { grid-template-columns: minmax(0, 1fr); }
+  .tool-slider-grid { grid-template-columns: minmax(0, 1fr); }
+  .ancient-option .mrow-sub, .ancient-tier-table .mrow-sub { display: block; }
+}

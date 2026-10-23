@@ -24,6 +24,7 @@ const frontend_assets_js_1 = require("./frontend-assets.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
 const guards_js_1 = require("./routes/guards.js");
+const tools_js_1 = require("./routes/tools.js");
 const auth_js_2 = require("./middleware/auth.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -480,6 +481,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // data, so the reads are visible to any clan member; the one write (an admin
     // entering a member's level) guards with requireAdmin inside the router.
     app.use('/api/guards', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, guards_js_1.createGuardsRouter)());
+    // Tools page (calculators). Read-only and open to every role — the tools run
+    // in the browser, and this only supplies the caller's own clan roster.
+    app.use('/api/tools', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tools_js_1.createToolsRouter)());
     // The rest of assets/ (OCR models, reference crops) stays behind a session —
     // nothing a page loads lives there. resource-icons/ and calibration-examples/
     // are served publicly by the frontend asset router above.

@@ -142,6 +142,7 @@ import {
 import { renderResourcesOverview } from './pages/resources-overview.js';
 import { renderResourcesTotals } from './pages/resources-totals.js';
 import { renderEvents } from './pages/events.js';
+import { renderTools } from './pages/tools.js';
 import {
   renderAdmin,
   doMergePlayer,
@@ -959,6 +960,11 @@ async function renderRoute(page, content) {
     await renderEvents(content, navigateTo, eventKey);
     return;
   }
+  // Tools: #tools = the first tool, #tools/<key> = a specific one.
+  if (page === 'tools' || page.startsWith('tools/')) {
+    await renderTools(content, page.startsWith('tools/') ? decodeURIComponent(page.slice('tools/'.length)) : '');
+    return;
+  }
 
   switch (page) {
     case 'dashboard': await renderDashboard(content, updateStatus); break;
@@ -1216,6 +1222,7 @@ function updateNavState() {
   else if (currentPage.startsWith('chest/')) navPage = 'analytics';
   else if (currentPage.startsWith('resources')) navPage = 'resources';
   else if (currentPage.startsWith('events')) navPage = 'events';
+  else if (currentPage.startsWith('tools')) navPage = 'tools';
   else if (currentPage.startsWith('system')) navPage = 'system';
   $$('nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage));
   updatePageHead(navPage);
@@ -1230,6 +1237,7 @@ const PAGE_SUBTITLES = {
   might: 'Power over time, member by member',
   resources: 'Clan Capital donations',
   events: 'Event runs and who took part',
+  tools: 'Calculators for planning events',
   triumphal: 'Bank gifts and triumphal packages',
   members: 'Everyone in the clan',
   sessions: 'Every scan the bot has run',

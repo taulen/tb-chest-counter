@@ -302,6 +302,14 @@
   --shadow-setup-card: 0 4px 24px rgba(0, 0, 0, 0.3);
   --shadow-crop-preview: 0 8px 24px rgba(0, 0, 0, 0.5);
   --transition: 0.2s ease;
+
+  /* Game-art level badge on the Ancient planner's artifact medallions. It is
+     painted over the game's own badge in the cut-out, so it copies the game's
+     colours and is the same on every theme. */
+  --ancient-badge-bg: #6b3520;
+  --ancient-badge-ring: #f3e2bd;
+  --ancient-badge-text: #f8edd3;
+  --ancient-tinman-shadow: rgba(0, 0, 0, 0.35);
 }
 
 /* ─── Light theme ─────────────────────────────────────────────── */

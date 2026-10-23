@@ -290,6 +290,30 @@ export function getLastCaptureAt(clanId: number): { capturedAt: string; gameDate
   return row ?? null;
 }
 
+/**
+ * Who the newest might capture saw: one row per member snapshotted on the clan's
+ * latest capture day, strongest first, at most `limit`. Null when the clan has
+ * never been captured. The capture reads the in-game member list, so this is the
+ * roster as the game showed it that day — departures since then included.
+ */
+export function getLatestCaptureRoster(
+  clanId: number,
+  limit: number,
+): { gameDate: string; members: Array<{ memberId: number; name: string }> } | null {
+  const last = getLastCaptureAt(clanId);
+  if (!last) return null;
+  const db = getDb();
+  const members = db.prepare(`
+    SELECT m.id AS memberId, m.name AS name
+    FROM member_snapshots s
+    JOIN members m ON m.id = s.member_id AND m.clan_id = s.clan_id
+    WHERE s.clan_id = ? AND s.game_date = ?
+    ORDER BY s.power DESC, m.name ASC
+    LIMIT ?
+  `).all(clanId, last.gameDate, limit) as Array<{ memberId: number; name: string }>;
+  return { gameDate: last.gameDate, members };
+}
+
 /** Distinct game days this clan has data for, oldest first. */
 export function getSnapshotDates(clanId: number): string[] {
   const db = getDb();

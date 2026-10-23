@@ -321,6 +321,25 @@ export function deactivateStaleMembers(
 }
 
 /**
+ * Active members last seen at or after `sinceIso` (any scan that read their
+ * name), most recently seen first, at most `limit`.
+ */
+export function getRecentlySeenMembers(
+  clanId: number,
+  sinceIso: string,
+  limit: number,
+): Array<{ memberId: number; name: string; lastSeen: string }> {
+  const db = getDb();
+  return db.prepare(`
+    SELECT id AS memberId, name, last_seen AS lastSeen
+    FROM members
+    WHERE clan_id = ? AND is_active = 1 AND last_seen >= ?
+    ORDER BY last_seen DESC, name ASC
+    LIMIT ?
+  `).all(clanId, sinceIso, limit) as Array<{ memberId: number; name: string; lastSeen: string }>;
+}
+
+/**
  * Legacy hard-delete. Kept only for callers that explicitly want to
  * destroy the row (no current callers as of the soft-delete refactor —
  * the public DELETE /api/members/:id route now goes through
