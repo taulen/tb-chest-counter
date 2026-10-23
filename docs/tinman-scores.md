@@ -10,7 +10,7 @@ Rise of the Ancients standings, pasted in by an admin after each summon. The car
 - **Storage** (v80): `tinman_uploads` holds one row per clan, day and summon, with the uploader stored as a username. `tinman_scores` keeps the pasted name next to the matched member. The `member_id` FK is SET NULL on delete, so the row falls back to its pasted name. A player merge repoints it, and clan delete and clan restore handle both tables.
 - **Targets** (v81, `tinman_targets`, one per clan and run): an admin pastes the Ancient planner's *Points per member* card. Its "points each" per tier and its "For N kills" line are kept.
   - Each player is held to their tier's target: their estimated guards level, or G7 when unknown, never T9.
-  - While the run is in progress the target is scaled to the kills pasted so far (summon 1 of 3 = a third of it).
+  - The target is always the whole run's, never split per summon: the clan judges the total, so mid-run everyone simply reads as not there yet. The kill count is kept for display only.
   - The goal colours (`goalStatusClassFor`: green at target, amber from 66%, red below) and their glyph + words are the Leaderboard's.
   - Players under target are listed in *Below Tin Man target* at the bottom of the page.
 - **Formats** the parser reads: markdown tables, tab-separated rows, and plain `rank name points` lines. Points can use any thousands separator. Lines it can't read are reported back, never dropped silently.

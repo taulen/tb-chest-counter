@@ -199,29 +199,17 @@ function tierOf(p) {
   return p.guardsLevel ? { key: `g${p.guardsLevel}`, assumed: false } : { key: ASSUMED_TIER, assumed: true };
 }
 
-/** Kills pasted so far over kills planned (1 when the targets don't say how many). */
-function paceFactor() {
-  const kills = data?.targets?.kills;
-  if (!kills) return 1;
-  const done = Math.max(0, ...(data?.summons || []).map((s) => s.summon));
-  return Math.min(1, done / kills);
-}
-
-/** What this player should have by now: their tier's target, scaled to the pace. */
+/**
+ * This player's target: their tier's points for the whole run. Never split
+ * per summon — the clan judges the run's total, so mid-run everyone simply
+ * reads as not there yet.
+ */
 function expectedFor(p) {
   const target = data?.targets?.tiers?.[tierOf(p).key];
-  if (!Number.isFinite(target) || target <= 0) return null;
-  return target * paceFactor();
+  return Number.isFinite(target) && target > 0 ? target : null;
 }
 
-function paceNote() {
-  const kills = data?.targets?.kills;
-  if (!kills) return 'Totals are held against the full target.';
-  const done = Math.min(kills, Math.max(0, ...(data?.summons || []).map((s) => s.summon)));
-  return done >= kills
-    ? `All ${kills} kills in — totals are held against the full target.`
-    : `${done} of ${kills} kills in — totals are held against ${done}/${kills} of the target so far.`;
-}
+const TARGET_NOTE = "Totals are held against each tier's target for the whole run.";
 
 function targetsStripHtml(admin) {
   const t = data.targets;
@@ -238,7 +226,7 @@ function targetsStripHtml(admin) {
     <div class="tinman-targets">
       <span class="tinman-targets-label">Targets${t.kills ? ` · ${t.kills} kills` : ''}</span>
       ${chips}
-      <span class="tinman-targets-note muted-copy">${esc(paceNote())} Unknown guards level counts as G7.</span>
+      <span class="tinman-targets-note muted-copy">${esc(TARGET_NOTE)} Unknown guards level counts as G7.</span>
     </div>`;
 }
 
@@ -251,7 +239,7 @@ function targetsPanelHtml() {
       <label class="tinman-upload-row" for="tinmanTargets">Targets for this run</label>
       <textarea id="tinmanTargets" class="input tinman-text" rows="7" spellcheck="false"
         placeholder="Paste the Points per member table from Tools → Ancient planner, e.g.&#10;For 3 kills, already lowered for a 15% overshoot.&#10;G9 	6 members 	61.3M 	368M 	19.2%&#10;G8 	33 members 	27.2M 	898M 	46.9%">${esc(targetsText)}</textarea>
-      <p class="muted-copy tinman-hint">Points each per guards tier. Keep the “For 3 kills” line so a run in progress is judged against what is due so far. Saving again replaces the targets.</p>
+      <p class="muted-copy tinman-hint">Points each per guards tier, for the whole run. Saving again replaces the targets.</p>
       <div class="tinman-upload-actions">
         <button type="button" class="btn btn-primary" data-tinman="save-targets">Save targets</button>
         ${data.targets ? '<button type="button" class="btn" data-tinman="delete-targets">Remove targets</button>' : ''}
@@ -285,7 +273,7 @@ function paintBelow() {
     </tr>`;
   }).join('');
   const body = below.length
-    ? `<p class="muted-copy tinman-hint tinman-below-hint">${esc(paceNote())} Unknown guards level counts as G7.</p>
+    ? `<p class="muted-copy tinman-hint tinman-below-hint">${esc(TARGET_NOTE)} Unknown guards level counts as G7.</p>
        <table class="table-responsive tinman-below-table">
          <colgroup><col class="col-member"><col class="col-tier"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"></colgroup>
          <thead><tr><th>Player</th><th>Tier</th><th class="num">Total</th><th class="num">Target</th><th class="num">Short by</th><th class="num">% of target</th></tr></thead>
@@ -395,7 +383,7 @@ function tableHtml(cols) {
     const full = data.targets?.tiers?.[tier.key];
     const totalTitle = expected !== null ? goalCellTitle(p.total, expected) : p.total.toLocaleString();
     const targetCell = expected !== null
-      ? `<td class="num" data-label="Target" title="${esc(`${formatCompact(full)} for the run${paceFactor() < 1 ? ` · ${formatCompact(expected)} due so far` : ''}`)}">${formatCompact(expected)}</td>`
+      ? `<td class="num" data-label="Target" title="${esc(`${Math.round(full).toLocaleString()} for the run`)}">${formatCompact(expected)}</td>`
       : '<td class="num" data-label="Target"><span class="events-zero">—</span></td>';
     return `<tr class="${expected !== null ? goalRowClassFor(p.total, expected) : ''}">
       <td data-role="lead">${p._rank}</td>
@@ -642,7 +630,7 @@ async function saveTargets(btn) {
       const n = Object.keys(res.targets?.tiers || {}).length;
       targetsResult = {
         error: false,
-        html: `<strong>Targets saved</strong>: ${n} tier${n === 1 ? '' : 's'}${res.targets?.kills ? ` for ${res.targets.kills} kills` : ' — no “For N kills” line, so totals are held against the full target'}.`,
+        html: `<strong>Targets saved</strong>: ${n} tier${n === 1 ? '' : 's'}${res.targets?.kills ? ` (planned for ${res.targets.kills} kills)` : ''}.`,
       };
       targetsText = '';
       await load();
