@@ -253,6 +253,10 @@ function addMergeRule(type, fromValue, toValue, clanId) {
                     // player's. The FK cascades, so skipping this would not fail — it
                     // would silently delete them with the source member below.
                     db.prepare('UPDATE member_guards_reports SET member_id = ? WHERE clan_id = ? AND member_id = ?').run(toMember.id, clanId, fromMember.id);
+                    // Pasted Tinman standings point at a member too; their FK is SET NULL,
+                    // so without this the merge would quietly turn them back into
+                    // unmatched names.
+                    db.prepare('UPDATE tinman_scores SET member_id = ? WHERE clan_id = ? AND member_id = ?').run(toMember.id, clanId, fromMember.id);
                     db.prepare('DELETE FROM members WHERE id = ?').run(fromMember.id);
                 }
                 else {

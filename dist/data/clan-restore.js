@@ -266,6 +266,7 @@ function restoreClanFromBackup(sourcePath, sourceClanId, options = {}) {
         const offSnapshot = maxId(db, 'snapshot');
         const offPlayerRef = maxId(db, 'ct_player_ref');
         const offShareLink = maxId(db, 'share_links');
+        const offTinmanUpload = maxId(db, 'tinman_uploads');
         const users = { restored: [], skipped: [], demoted: [] };
         const tables = {};
         const record = (table, n) => {
@@ -443,6 +444,23 @@ function restoreClanFromBackup(sourcePath, sourceClanId, options = {}) {
                     clan_id: String(targetId),
                     member_id: `s.member_id + ${offMember}`,
                     created_by: userExpr('created_by'),
+                },
+            }));
+            // Tinman standings: uploads keep their ids (offset) so the scores' upload_id
+            // can follow them; an unmatched score has no member to offset.
+            record('tinman_uploads', copyTable(db, {
+                table: 'tinman_uploads',
+                where: `s.clan_id = ${sourceClanId}`,
+                map: { id: `s.id + ${offTinmanUpload}`, clan_id: String(targetId) },
+            }));
+            record('tinman_scores', copyTable(db, {
+                table: 'tinman_scores',
+                where: `s.clan_id = ${sourceClanId}`,
+                drop: ['id'],
+                map: {
+                    clan_id: String(targetId),
+                    upload_id: `s.upload_id + ${offTinmanUpload}`,
+                    member_id: `CASE WHEN s.member_id IS NULL THEN NULL ELSE s.member_id + ${offMember} END`,
                 },
             }));
             record('chest_daily_summary', copyTable(db, {

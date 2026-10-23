@@ -78,6 +78,16 @@ function seedEverything(clanId: number): void {
      VALUES (?, ?, 8, '2026-09-01', 'told us in chat', ?)`,
   ).run(clanId, seeded.members.alice, now);
 
+  // Tinman standings: one matched score and one unmatched (no member to offset).
+  const tinmanUpload = db.prepare(
+    `INSERT INTO tinman_uploads (clan_id, tinman_date, summon, uploaded_by, uploaded_at)
+     VALUES (?, '2026-10-23', 1, 'owner', ?) RETURNING id`,
+  ).get(clanId, now) as { id: number };
+  db.prepare(
+    `INSERT INTO tinman_scores (upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
+     VALUES (?, ?, 1, 'Alice', ?, 'exact', 1000), (?, ?, 2, 'Stranger', NULL, 'unmatched', 5)`,
+  ).run(tinmanUpload.id, clanId, seeded.members.alice, tinmanUpload.id, clanId);
+
   db.prepare(
     `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
      VALUES (?, 'player', ?, 'Alice', ?)`,
@@ -182,6 +192,8 @@ const SCOPED_COUNTS: Record<string, (clanId: number) => string> = {
   triumphal_chest_records: (c) => `SELECT COUNT(*) n FROM triumphal_chest_records WHERE clan_id = ${c}`,
   member_snapshots: (c) => `SELECT COUNT(*) n FROM member_snapshots WHERE member_id IN (SELECT id FROM members WHERE clan_id = ${c})`,
   member_guards_reports: (c) => `SELECT COUNT(*) n FROM member_guards_reports WHERE clan_id = ${c}`,
+  tinman_uploads: (c) => `SELECT COUNT(*) n FROM tinman_uploads WHERE clan_id = ${c}`,
+  tinman_scores: (c) => `SELECT COUNT(*) n FROM tinman_scores WHERE clan_id = ${c}`,
   chest_daily_summary: (c) => `SELECT COUNT(*) n FROM chest_daily_summary WHERE clan_id = ${c}`,
   merge_rules: (c) => `SELECT COUNT(*) n FROM merge_rules WHERE clan_id = ${c}`,
   chest_type_overrides: (c) => `SELECT COUNT(*) n FROM chest_type_overrides WHERE clan_id = ${c}`,

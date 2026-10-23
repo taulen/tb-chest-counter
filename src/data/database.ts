@@ -804,6 +804,43 @@ const MIGRATIONS: Migration[] = [
       database.exec('ALTER TABLE clans ADD COLUMN ancient_planner_defaults TEXT');
     },
   },
+  {
+    // Rise of the Ancients standings, pasted in by an admin after each summon
+    // (see data/repositories/tinman-repo.ts). The in-game ranking is CUMULATIVE
+    // over the run, so each upload is a full snapshot and a summon's own points
+    // are the difference from the previous one.
+    //
+    // One upload per (clan, Tinman game day, summon); re-pasting a summon
+    // replaces it. Scores keep the name exactly as pasted next to the member it
+    // was matched to, so a wrong match is always visible and correctable.
+    // member_id is SET NULL on a member delete (the row falls back to its raw
+    // name); a player MERGE repoints it in merge-repo instead. The uploader is a
+    // stored username, not a users FK, so the record outlives the account.
+    version: 80,
+    sql: `
+      CREATE TABLE IF NOT EXISTS tinman_uploads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        tinman_date TEXT NOT NULL,
+        summon INTEGER NOT NULL CHECK (summon BETWEEN 1 AND 8),
+        uploaded_by TEXT NOT NULL DEFAULT '',
+        uploaded_at TEXT NOT NULL,
+        UNIQUE (clan_id, tinman_date, summon)
+      );
+      CREATE TABLE IF NOT EXISTS tinman_scores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        upload_id INTEGER NOT NULL REFERENCES tinman_uploads(id) ON DELETE CASCADE,
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        rank INTEGER NOT NULL,
+        raw_name TEXT NOT NULL,
+        member_id INTEGER REFERENCES members(id) ON DELETE SET NULL,
+        match_kind TEXT NOT NULL CHECK (match_kind IN ('exact', 'fuzzy', 'manual', 'unmatched', 'rejected')),
+        points INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_tinman_scores_upload ON tinman_scores(upload_id);
+      CREATE INDEX IF NOT EXISTS idx_tinman_scores_member ON tinman_scores(clan_id, member_id);
+    `,
+  },
 ];
 
 /**

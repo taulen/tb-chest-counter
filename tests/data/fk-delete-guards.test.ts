@@ -48,6 +48,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'member_guards_reports.member_id',
     'member_snapshots.member_id',
     'resource_transactions.member_id',
+    // ON DELETE SET NULL (the row falls back to its pasted name) — and the
+    // player merge repoints it rather than letting it go unmatched.
+    'tinman_scores.member_id',
     'triumphal_chest_records.member_id',
   ],
   users: [
@@ -74,6 +77,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'resource_upload_batches.clan_id',
     'review_acknowledgments.clan_id',
     'share_links.clan_id',
+    'tinman_scores.clan_id',
+    'tinman_uploads.clan_id',
     'user_sessions.active_clan_id',
     'users.clan_id',
   ],
@@ -169,6 +174,15 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO member_guards_reports (clan_id, member_id, level, observed_date, created_by, created_at)
      VALUES (?, ?, 8, '2026-07-20', 2, ?)`,
   ).run(clanId, member.id, now);
+
+  const tinmanUpload = db.prepare(
+    `INSERT INTO tinman_uploads (clan_id, tinman_date, summon, uploaded_by, uploaded_at)
+     VALUES (?, '2026-10-23', 1, 'admin2', ?) RETURNING id`,
+  ).get(clanId, now) as { id: number };
+  db.prepare(
+    `INSERT INTO tinman_scores (upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
+     VALUES (?, ?, 1, 'Zoe', ?, 'exact', 100)`,
+  ).run(tinmanUpload.id, clanId, member.id);
 
   const typeId = (db.prepare('SELECT id FROM resource_types ORDER BY id LIMIT 1')
     .get() as { id: number }).id;
@@ -362,6 +376,11 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
       `SELECT m.name AS name FROM member_guards_reports r JOIN members m ON m.id = r.member_id`,
     ).get() as { name: string } | undefined;
     expect(report?.name).toBe('Yara');
+    // SET NULL would have let it "survive" as an unmatched name; it moved.
+    const score = db.prepare(
+      `SELECT m.name AS name FROM tinman_scores s JOIN members m ON m.id = s.member_id`,
+    ).get() as { name: string } | undefined;
+    expect(score?.name).toBe('Yara');
   });
 
   it('a source merge leaves no record pointing at the deleted source row', () => {

@@ -37,6 +37,7 @@ import {
   formatResourceAmount, formatResourceCompact,
   isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
+import { mountTinmanScores } from './tinman-scores.js';
 
 const PAGE_SIZE = 25;
 const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
@@ -47,6 +48,10 @@ const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
 // resources.
 const ESSENCE_EVENT_KEY = 'dark-omens';
 const ESSENCE_SLUG = 'omen-essence';
+
+// Ancients also carries the pasted Rise of the Ancients standings (Tin Man
+// scores, pages/tinman-scores.js), filed under the run's Tinman day.
+const TINMAN_EVENT_KEY = 'ancients';
 
 let period = 'weekly';   // same game-week system as the rest of the site
 let periodOffset = 0;    // 0 = current period, 1 = previous, …
@@ -785,6 +790,7 @@ function paint() {
       </div>
       <div class="card-body">${statCards}</div>
     </div>
+    ${currentEventKey === TINMAN_EVENT_KEY ? '<div class="tinman-mount"></div>' : ''}
     ${eventSeriesCardHtml()}
     ${levelCardHtml}
     <div class="card">
@@ -811,6 +817,20 @@ function paint() {
     ${nonParticipantsHtml}`;
 
   wire(el);
+  if (currentEventKey === TINMAN_EVENT_KEY) {
+    mountTinmanScores(el.querySelector('.tinman-mount'), { date: tinmanDateForSelection(), members: activeMembers })
+      .catch(() => { /* the card reports its own load failure */ });
+  }
+}
+
+// Which run's Tin Man scores to show: the selected occurrence's Tinman day,
+// 'all' when the aggregate view is on (scores are per run), or null — the
+// newest run — when the calendar feed is down and there are no occurrences.
+function tinmanDateForSelection() {
+  if (!occurrences.length) return null;
+  if (occSel === 'all') return 'all';
+  const occ = occurrences[occSel] || occurrences[0];
+  return occ?.tinmanDate || null;
 }
 
 function wire(el) {

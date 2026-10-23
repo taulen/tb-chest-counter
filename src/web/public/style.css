@@ -6717,3 +6717,84 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tool-default-status { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 16px; }
 .tool-default-status strong { color: var(--text-primary); }
 .tool-changed { color: var(--accent-amber-text); font-weight: 600; margin-right: 4px; }
+
+/* ─── Events → Ancients: Tin Man scores ──────────────────────────────
+   Pasted Rise of the Ancients standings, one column per summon. */
+.tinman-note { padding: 16px 20px; margin: 0; }
+.tinman-warn { padding: 12px 20px 0; margin: 0; color: var(--accent-amber-text); font-size: 13px; }
+.tinman-hint { font-size: 12px; margin: 6px 0 10px; }
+
+.tinman-upload {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.tinman-upload-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.tinman-summon-select { max-width: 300px; }
+.tinman-text {
+  max-width: none;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.tinman-upload-actions { display: flex; gap: 8px; }
+.tinman-result { margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
+.tinman-result strong { color: var(--text-primary); }
+.tinman-result.is-error { color: var(--accent-red); }
+.tinman-result code { font-size: 11.5px; background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+
+.tinman-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px 4px; }
+.tinman-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  font-size: 12.5px;
+  background: var(--bg-surface);
+}
+.tinman-chip strong { color: var(--accent-gold); }
+.tinman-chip-meta { color: var(--text-muted); }
+.tinman-chip-del {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: 999px;
+}
+.tinman-chip-del:hover { color: var(--accent-red); background: var(--accent-red-bg); }
+
+.tinman-table { table-layout: fixed; }
+.tinman-table .col-played { width: 80px; }
+.tinman-table th.num, .tinman-table td.num { text-align: right; }
+.tinman-col-sub { display: block; font-size: 9.5px; font-weight: 500; letter-spacing: 0.02em; text-transform: none; color: var(--text-muted); }
+.tinman-missing-col { background: var(--subtle-bg); }
+.tinman-raw { color: var(--text-secondary); font-style: italic; }
+.tinman-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--accent-amber-text);
+  background: var(--accent-amber-bg);
+  vertical-align: 1px;
+}
+.tinman-tag-fuzzy { cursor: help; }
+
+.tinman-review { border-top: 1px solid var(--border); }
+.tinman-review > summary.card-header h2 { font-size: 14px; }
+.tinman-review .card-body { padding: 0 20px 16px; }
+.tinman-review-table { table-layout: fixed; min-width: 0; }
+.tinman-review-table .col-num { width: 90px; }
+.tinman-review-table .col-action { width: 100px; }
+.tinman-review-table th.num, .tinman-review-table td.num { text-align: right; }
+.tinman-assign { max-width: 260px; }
+.tinman-table .col-rank { width: 64px; }
+.tinman-table .col-member { width: 220px; }

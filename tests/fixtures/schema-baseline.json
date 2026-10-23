@@ -271,6 +271,16 @@
   },
   {
     "type": "index",
+    "name": "idx_tinman_scores_member",
+    "sql": "CREATE INDEX idx_tinman_scores_member ON tinman_scores(clan_id, member_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_tinman_scores_upload",
+    "sql": "CREATE INDEX idx_tinman_scores_upload ON tinman_scores(upload_id)"
+  },
+  {
+    "type": "index",
     "name": "idx_triumphal_chest_records_captured",
     "sql": "CREATE INDEX idx_triumphal_chest_records_captured ON triumphal_chest_records(captured_at)"
   },
@@ -473,6 +483,16 @@
     "type": "table",
     "name": "source_point_overrides",
     "sql": "CREATE TABLE source_point_overrides ( id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, chest_name TEXT NOT NULL DEFAULT '', point_value INTEGER NOT NULL, updated_at TEXT NOT NULL, UNIQUE(source_key, chest_name) )"
+  },
+  {
+    "type": "table",
+    "name": "tinman_scores",
+    "sql": "CREATE TABLE tinman_scores ( id INTEGER PRIMARY KEY AUTOINCREMENT, upload_id INTEGER NOT NULL REFERENCES tinman_uploads(id) ON DELETE CASCADE, clan_id INTEGER NOT NULL REFERENCES clans(id), rank INTEGER NOT NULL, raw_name TEXT NOT NULL, member_id INTEGER REFERENCES members(id) ON DELETE SET NULL, match_kind TEXT NOT NULL CHECK (match_kind IN ('exact', 'fuzzy', 'manual', 'unmatched', 'rejected')), points INTEGER NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "tinman_uploads",
+    "sql": "CREATE TABLE tinman_uploads ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), tinman_date TEXT NOT NULL, summon INTEGER NOT NULL CHECK (summon BETWEEN 1 AND 8), uploaded_by TEXT NOT NULL DEFAULT '', uploaded_at TEXT NOT NULL, UNIQUE (clan_id, tinman_date, summon) )"
   },
   {
     "type": "table",

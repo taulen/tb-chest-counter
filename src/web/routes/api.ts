@@ -920,6 +920,20 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     }
     try {
       const occurrences = await getEventOccurrences(key, req.clanId ?? 1);
+      // Ancients runs carry their Tinman day (the Rise of the Ancients game day,
+      // i.e. the run's last one) — the key the pasted Tinman standings are filed
+      // under (routes/tinman.ts).
+      if (key === 'ancients') {
+        const rollover = loadConfig().gameDayRolloverUtcHour;
+        res.json({
+          mode,
+          occurrences: occurrences.map((o) => ({
+            ...o,
+            tinmanDate: gameDateFor(Date.parse(o.resetAt) - 1, rollover),
+          })),
+        });
+        return;
+      }
       res.json({ mode, occurrences });
     } catch {
       res.json({ mode, occurrences: [], unavailable: true });

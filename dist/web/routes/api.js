@@ -846,6 +846,20 @@ function createApiRouter(scanLoop) {
         }
         try {
             const occurrences = await (0, event_calendar_js_1.getEventOccurrences)(key, req.clanId ?? 1);
+            // Ancients runs carry their Tinman day (the Rise of the Ancients game day,
+            // i.e. the run's last one) — the key the pasted Tinman standings are filed
+            // under (routes/tinman.ts).
+            if (key === 'ancients') {
+                const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
+                res.json({
+                    mode,
+                    occurrences: occurrences.map((o) => ({
+                        ...o,
+                        tinmanDate: (0, game_day_js_1.gameDateFor)(Date.parse(o.resetAt) - 1, rollover),
+                    })),
+                });
+                return;
+            }
             res.json({ mode, occurrences });
         }
         catch {
