@@ -868,7 +868,7 @@ async function sendDailyDigestForClan(clanId, windowRef) {
         const { loadConfig } = await import('../config/index.js');
         const config = loadConfig();
         const message = (0, embeds_js_1.formatDailyDigestMessage)(data, {
-            webExternalUrl: config.webExternalUrl || undefined,
+            webExternalUrl: (0, clan_repo_js_1.clanPublicUrl)((0, clan_repo_js_1.getClanById)(clanId), config.webExternalUrl) || undefined,
             gameDayDate: gameDayKey,
         });
         await channel.send({ content: message });

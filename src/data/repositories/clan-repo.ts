@@ -21,6 +21,10 @@ export interface Clan {
   isActive: boolean;
   createdAt: string;
   createdBy: number | null;
+  /** Origin this clan's members use (e.g. "https://sinful.day"), no trailing
+   *  slash. Empty = the global WEB_EXTERNAL_URL. Resolve with
+   *  `clanPublicUrl`, never read raw. */
+  publicUrl: string;
 
   // Discord per-clan
   discordEnabled: boolean;
@@ -143,6 +147,7 @@ function rowToClan(row: Record<string, unknown>): Clan {
     isActive: !!(row.is_active as number),
     createdAt: row.created_at as string,
     createdBy: (row.created_by as number | null) ?? null,
+    publicUrl: (row.public_url as string) || '',
     discordEnabled: !!(row.discord_enabled as number),
     discordToken: (row.discord_token as string) || '',
     discordChannelId: (row.discord_channel_id as string) || '',
@@ -305,6 +310,17 @@ export function setClanActive(id: number, active: boolean): void {
 export function setClanScanIntervalMinutes(id: number, minutes: number | null): void {
   const db = getDb();
   db.prepare('UPDATE clans SET scan_interval_minutes = ? WHERE id = ?').run(minutes, id);
+}
+
+/** `url` must already be normalised (normalizePublicUrl); '' clears it. */
+export function setClanPublicUrl(id: number, url: string): void {
+  getDb().prepare('UPDATE clans SET public_url = ? WHERE id = ?').run(url, id);
+}
+
+/** The base URL links for this clan should use: its own domain, else the
+ *  global WEB_EXTERNAL_URL. '' when neither is set (= emit no links). */
+export function clanPublicUrl(clan: Pick<Clan, 'publicUrl'> | null | undefined, globalUrl: string): string {
+  return (clan?.publicUrl || globalUrl || '').replace(/\/+$/, '');
 }
 
 /**

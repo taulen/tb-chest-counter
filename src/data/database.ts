@@ -928,6 +928,19 @@ const MIGRATIONS: Migration[] = [
     version: 84,
     sql: 'DROP TABLE IF EXISTS chest_type_overrides;',
   },
+  {
+    // The domain a clan's members reach the app on (SIK uses sinful.day, the
+    // rest chests.taul1.com). Links the app builds for a clan — the Discord
+    // digest, share-link URLs — use it; '' falls back to WEB_EXTERNAL_URL.
+    // Guarded for replay.
+    version: 85,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(clans)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'public_url')) {
+        database.exec("ALTER TABLE clans ADD COLUMN public_url TEXT NOT NULL DEFAULT ''");
+      }
+    },
+  },
 ];
 
 /**

@@ -11,6 +11,8 @@ exports.createClan = createClan;
 exports.renameClan = renameClan;
 exports.setClanActive = setClanActive;
 exports.setClanScanIntervalMinutes = setClanScanIntervalMinutes;
+exports.setClanPublicUrl = setClanPublicUrl;
+exports.clanPublicUrl = clanPublicUrl;
 exports.setClanInactivitySettings = setClanInactivitySettings;
 exports.setClanLeaderboardGoal = setClanLeaderboardGoal;
 exports.setClanWeekStart = setClanWeekStart;
@@ -57,6 +59,7 @@ function rowToClan(row) {
         isActive: !!row.is_active,
         createdAt: row.created_at,
         createdBy: row.created_by ?? null,
+        publicUrl: row.public_url || '',
         discordEnabled: !!row.discord_enabled,
         discordToken: row.discord_token || '',
         discordChannelId: row.discord_channel_id || '',
@@ -188,6 +191,15 @@ function setClanActive(id, active) {
 function setClanScanIntervalMinutes(id, minutes) {
     const db = (0, database_js_1.getDb)();
     db.prepare('UPDATE clans SET scan_interval_minutes = ? WHERE id = ?').run(minutes, id);
+}
+/** `url` must already be normalised (normalizePublicUrl); '' clears it. */
+function setClanPublicUrl(id, url) {
+    (0, database_js_1.getDb)().prepare('UPDATE clans SET public_url = ? WHERE id = ?').run(url, id);
+}
+/** The base URL links for this clan should use: its own domain, else the
+ *  global WEB_EXTERNAL_URL. '' when neither is set (= emit no links). */
+function clanPublicUrl(clan, globalUrl) {
+    return (clan?.publicUrl || globalUrl || '').replace(/\/+$/, '');
 }
 /**
  * Set a clan's member-inactivity-sweep settings. `enabled` is the on/off

@@ -6,6 +6,8 @@ import {
   renameClan,
   setClanActive,
   setClanScanIntervalMinutes,
+  setClanPublicUrl,
+  clanPublicUrl,
   softDeleteClan,
   restoreDeletedClan,
   listDeletedClans,
@@ -24,6 +26,7 @@ import {
 } from '../../../data/repositories/share-link-repo.js';
 import { loadConfig } from '../../../config/index.js';
 import { generateUniqueShareToken, validateVanityKey } from '../../../utils/share-token.js';
+import { normalizePublicUrl } from '../../../utils/public-url.js';
 import { createPreActionBackup } from '../../../utils/db-backup.js';
 import { requireAuth, requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { childLogger } from '../../../utils/logger.js';
@@ -61,18 +64,22 @@ export function createCrudRouter(onboardState: OnboardState): Router {
     }
     // Global fallback threshold for the member-inactivity sweep, so the
     // per-clan settings input can show it as its "blank = default" hint.
-    const defaultInactivityDays = loadConfig().memberInactivityDays;
+    // Same for the public URL a clan without its own domain links with.
+    const config = loadConfig();
+    const defaultInactivityDays = config.memberInactivityDays;
+    const defaultPublicUrl = clanPublicUrl(null, config.webExternalUrl);
     if (req.user.role === 'superadmin') {
       res.json({
         clans: listClans().map((c) => ({ ...publicClanWithCounts(c), shareLinks: listActiveShareLinks(c.id) })),
         activeClanId: req.clanId ?? null,
         defaultInactivityDays,
+        defaultPublicUrl,
       });
       return;
     }
     const own = req.user.clanId !== null ? getClanById(req.user.clanId) : null;
     if (!own) {
-      res.json({ clans: [], activeClanId: null, defaultInactivityDays });
+      res.json({ clans: [], activeClanId: null, defaultInactivityDays, defaultPublicUrl });
       return;
     }
     // Plain members can't manage public share links (create/disable is
@@ -83,7 +90,7 @@ export function createCrudRouter(onboardState: OnboardState): Router {
     if (req.user.role !== 'user') {
       shape.shareLinks = listActiveShareLinks(own.id);
     }
-    res.json({ clans: [shape], activeClanId: own.id, defaultInactivityDays });
+    res.json({ clans: [shape], activeClanId: own.id, defaultInactivityDays, defaultPublicUrl });
   });
 
   /**
@@ -183,6 +190,14 @@ export function createCrudRouter(onboardState: OnboardState): Router {
         return;
       }
       setClanScanIntervalMinutes(id, parsed);
+    }
+    if ('publicUrl' in (req.body ?? {})) {
+      const url = normalizePublicUrl(req.body.publicUrl);
+      if (url === null) {
+        res.status(400).json({ error: 'Public URL must be a web address like https://sinful.day, or blank' });
+        return;
+      }
+      setClanPublicUrl(id, url);
     }
     if ('isActive' in (req.body ?? {})) {
       setClanActive(id, !!req.body.isActive);

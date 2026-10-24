@@ -34,6 +34,14 @@ const CHART_ICON_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="no
 // page reload even though save() had already cleared the flag server-side.
 let activeRenderCtx = { el: null, refreshClanIndicator: null };
 
+// clanId → the origin links for that clan are built on. A clan can live on its
+// own domain (SIK on sinful.day), so a share link copied while browsing another
+// clan's domain must still carry the domain its members actually use.
+const clanOrigins = new Map();
+function clanOrigin(clanId) {
+  return clanOrigins.get(clanId) || window.location.origin;
+}
+
 /**
  * Adapter that dispatches the data-action="login-session-start" buttons
  * sitting on each clan card. The bridge renders as a centered modal over
@@ -84,6 +92,8 @@ export async function renderClans(el, refreshClanIndicator) {
   const defaultInactivityDays = Number.isFinite(clansData.defaultInactivityDays)
     ? clansData.defaultInactivityDays
     : null;
+  const defaultPublicUrl = typeof clansData.defaultPublicUrl === 'string' ? clansData.defaultPublicUrl : '';
+  for (const c of allClans) clanOrigins.set(c.id, c.publicUrl || defaultPublicUrl);
   const clans = isSuperAdmin
     ? allClans.filter((c) => c.id === activeClanId)
     : allClans;
@@ -129,7 +139,7 @@ export async function renderClans(el, refreshClanIndicator) {
     </div>
     ` : ''}
 
-    ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays)).join('')}
+    ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays, defaultPublicUrl)).join('')}
   `;
 
   // Wire up create + per-clan controls. These actions are clan-page-
@@ -183,6 +193,8 @@ export async function renderClans(el, refreshClanIndicator) {
           const v = intervalInput.value.trim();
           body.scanIntervalMinutes = v === '' ? null : Number(v);
         }
+        const publicUrlInput = el.querySelector(`#clan-public-url-${clanId}`);
+        if (publicUrlInput) body.publicUrl = publicUrlInput.value.trim();
         const r = await fetch(`/api/clans/${clanId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -858,7 +870,7 @@ async function loadDiscordDirectory(el, clanId, guildId) {
   }
 }
 
-function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays) {
+function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays, defaultPublicUrl) {
   const intervalVal = clan.scanIntervalMinutes ?? '';
   const intervalPlaceholder = Number.isFinite(defaultScanIntervalMinutes)
     ? `default: ${defaultScanIntervalMinutes}`
@@ -890,8 +902,13 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
             <label>Scan interval (minutes; blank = global)</label>
             <input id="clan-interval-${clan.id}" class="input" type="number" min="1" value="${intervalVal}" placeholder="${intervalPlaceholder}">
           </div>
+          <div class="form-row-grow">
+            <label>Public URL (blank = global)</label>
+            <input id="clan-public-url-${clan.id}" class="input" type="text" value="${escapeHtml(clan.publicUrl || '')}" placeholder="${escapeHtml(defaultPublicUrl ? `default: ${defaultPublicUrl}` : 'e.g. https://sinful.day')}" autocomplete="off" spellcheck="false">
+          </div>
           <button class="btn" data-action="clan-rename" data-clan-id="${clan.id}">Save</button>
         </div>
+        <p class="muted-copy hint-text mt-8">Public URL is the domain this clan's members use. The Discord digest link and the share-link URLs below are built on it.</p>
         <p class="warning-text hint-text mt-8">⚠ Leave the scan interval blank for normal operation — only override for testing.</p>
         ` : ''}
 
@@ -1136,7 +1153,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
  * visits" next to the link you pasted somewhere is the signal you wanted.
  */
 function shareLinkRowHtml(clanId, link) {
-  const url = window.location.origin + '/' + link.token;
+  const url = clanOrigin(clanId) + '/' + link.token;
   return `
     <div class="share-link-row">
       <div
@@ -1250,10 +1267,10 @@ function formatDuration(ms) {
   return `${h}h ${m % 60}m`;
 }
 
-function renderShareAnalytics(data, opts = {}) {
+function renderShareAnalytics(clanId, data, opts = {}) {
   const links = Array.isArray(data?.links) ? data.links : [];
   const revoked = Array.isArray(data?.recentRevoked) ? data.recentRevoked : [];
-  const origin = window.location.origin;
+  const origin = clanOrigin(clanId);
   const banner = opts.banner
     ? `<div class="sa-banner">${escapeHtml(opts.banner)}</div>`
     : '';
@@ -1345,7 +1362,7 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
   }
   const modal = contentModal({
     title: 'Public share links · analytics & history',
-    html: renderShareAnalytics(first.j),
+    html: renderShareAnalytics(clanId, first.j),
     wide: true,
   });
   if (!modal) return;
@@ -1377,7 +1394,7 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
         btn.disabled = false;
         return;
       }
-      const restoredUrl = !forget && j.token ? `${window.location.origin}/${j.token}` : '';
+      const restoredUrl = !forget && j.token ? `${clanOrigin(clanId)}/${j.token}` : '';
       notify(
         forget
           ? 'Link deleted — its key is free again.'
@@ -1392,7 +1409,7 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
       try {
         const fresh = await load();
         modal.setHtml(
-          renderShareAnalytics(fresh.j, {
+          renderShareAnalytics(clanId, fresh.j, {
             banner: forget
               ? '✓ Deleted — that key is available again.'
               : '✓ Restored — this link is live again.',

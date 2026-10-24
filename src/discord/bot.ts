@@ -7,6 +7,7 @@ import * as sessionRepo from '../data/repositories/session-repo.js';
 import {
   listClans,
   getClanById,
+  clanPublicUrl,
   setClanLastDigestStatus,
   type Clan,
 } from '../data/repositories/clan-repo.js';
@@ -944,7 +945,7 @@ async function sendDailyDigestForClan(clanId: number, windowRef?: Date): Promise
     const { loadConfig } = await import('../config/index.js');
     const config = loadConfig();
     const message = formatDailyDigestMessage(data, {
-      webExternalUrl: config.webExternalUrl || undefined,
+      webExternalUrl: clanPublicUrl(getClanById(clanId), config.webExternalUrl) || undefined,
       gameDayDate: gameDayKey,
     });
     await channel.send({ content: message });

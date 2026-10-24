@@ -111,7 +111,8 @@ export interface AppConfig {
   webPort: number;
   webEnabled: boolean;
   /** Public-facing URL of the dashboard (e.g. "https://chests.taul1.com").
-   *  Used in Discord embeds to link to the leaderboard. Empty = no links. */
+   *  Used in Discord embeds to link to the leaderboard. Empty = no links.
+   *  A clan on its own domain overrides it (clans.public_url). */
   webExternalUrl: string;
 
   /** Hour-of-day in UTC (0-23) when the in-game global day boundary
