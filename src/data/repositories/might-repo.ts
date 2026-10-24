@@ -19,6 +19,7 @@
  * table to allow NULL isn't worth it. Filter on `level > 0`.
  */
 import { getDb } from '../database.js';
+import { saneHeroLevel } from '../hero-level.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 
 /** Charts are read-mostly and the underlying data changes once a day. */
@@ -148,7 +149,12 @@ function longestNonDecreasingIndices(values: number[]): Set<number> {
  * evidence can overturn any earlier judgement, and the table keeps saying exactly
  * what the scanner saw.
  *
- * The rule is the physical invariant and nothing more. It does NOT cap how fast a
+ * Before the chain, each reading must pass saneHeroLevel (data/hero-level.ts): at
+ * most three digits, and not impossibly low for the might on the same row. The chain
+ * can't catch those in a short series — Nightfrog's 2-day [184, 38] is a tie that the
+ * newer reading wins.
+ *
+ * The chain is the physical invariant and nothing more. It does NOT cap how fast a
  * level may rise: that would be a guess, and monotonicity is a fact. So a single
  * implausible spike between two stable stretches is dropped (keeping the long chain
  * beats keeping the spike), while a genuine jump after a gap in coverage survives.
@@ -162,19 +168,24 @@ function trustedHeroLevels(clanId: number, memberIds?: number[]): Map<number, Ma
   // which readings are trustworthy is a property of the whole series, and judging a
   // 30-day view on its own would let the window boundary change the answer.
   const rows = db.prepare(`
-    SELECT member_id AS memberId, game_date AS gameDate, level
+    SELECT member_id AS memberId, game_date AS gameDate, level, power
     FROM member_snapshots
     WHERE clan_id = ? AND game_date != '' AND level > 0 ${filter}
     ORDER BY member_id ASC, game_date ASC
   `).all(clanId, ...(memberIds ?? [])) as Array<{
-    memberId: number; gameDate: string; level: number;
+    memberId: number; gameDate: string; level: number; power: number;
   }>;
 
   const byMember = new Map<number, Array<{ gameDate: string; level: number }>>();
   for (const r of rows) {
+    // Bounds first, chain second: a reading no player of this might can have is not
+    // evidence about the series, and in a two-day series it would win the chain.
+    const level = saneHeroLevel(r.level, r.power);
+    if (level === null) continue;
+    const entry = { gameDate: r.gameDate, level };
     const list = byMember.get(r.memberId);
-    if (list) list.push(r);
-    else byMember.set(r.memberId, [r]);
+    if (list) list.push(entry);
+    else byMember.set(r.memberId, [entry]);
   }
 
   const out = new Map<number, Map<string, number>>();

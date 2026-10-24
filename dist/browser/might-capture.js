@@ -20,6 +20,7 @@ const screenshotter_js_1 = require("./screenshotter.js");
 const player_names_js_1 = require("../vision/player-names.js");
 const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
 const logger_js_1 = require("../utils/logger.js");
+const hero_level_js_1 = require("../data/hero-level.js");
 const calibration_js_1 = require("../config/calibration.js");
 const viewport_js_1 = require("../config/viewport.js");
 const member_capture_js_1 = require("./member-capture.js");
@@ -942,11 +943,27 @@ async function captureMemberMight(page, opts = {}) {
         // Never an alert: pages disagreeing about a badge is the normal condition this
         // vote exists to settle, and it is only worth reading when a level looks wrong.
         log.debug(`Hero-level votes split for ${contested.length} member(s): `
-            + contested.slice(0, 10).map((v) => `${v.name} {${[...v.levelVotes].map(([lv, n]) => `${lv}×${n}`).join(' ')}} → ${resolveLevel(v.levelVotes)}`).join(', '));
+            + contested.slice(0, 10).map((v) => `${v.name} {${[...v.levelVotes].map(([lv, n]) => `${lv}×${n}`).join(' ')}} → ${resolveLevel(saneVotes(v.levelVotes, v.might))}`).join(', '));
     }
     result.rows = [...byKey.values()].map(({ name, might, levelVotes, cropPath }) => ({
-        name, might, level: resolveLevel(levelVotes), cropPath, anchorCy: 0, bandTop: 0, bandBottom: null,
+        name, might, level: resolveLevel(saneVotes(levelVotes, might)), cropPath,
+        anchorCy: 0, bandTop: 0, bandBottom: null,
     }));
     return result;
+}
+/**
+ * The level votes with every reading put through saneHeroLevel against the member's
+ * might: an ornament-inflated 1240 counts as a vote for 240, and a reading too low for
+ * the might counts for nothing. Done before the vote so a damaged page can neither win
+ * it nor, when it was the only page, be stored as the day's level.
+ */
+function saneVotes(votes, might) {
+    const out = new Map();
+    for (const [raw, count] of votes) {
+        const level = (0, hero_level_js_1.saneHeroLevel)(raw, might);
+        if (level !== null)
+            out.set(level, (out.get(level) ?? 0) + count);
+    }
+    return out;
 }
 //# sourceMappingURL=might-capture.js.map

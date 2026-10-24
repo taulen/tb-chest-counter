@@ -32,6 +32,7 @@ exports.getSeriesForMembers = getSeriesForMembers;
  * table to allow NULL isn't worth it. Filter on `level > 0`.
  */
 const database_js_1 = require("../database.js");
+const hero_level_js_1 = require("../hero-level.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 /** Charts are read-mostly and the underlying data changes once a day. */
 const CHART_CACHE_TTL_MS = 60_000;
@@ -99,7 +100,12 @@ function longestNonDecreasingIndices(values) {
  * evidence can overturn any earlier judgement, and the table keeps saying exactly
  * what the scanner saw.
  *
- * The rule is the physical invariant and nothing more. It does NOT cap how fast a
+ * Before the chain, each reading must pass saneHeroLevel (data/hero-level.ts): at
+ * most three digits, and not impossibly low for the might on the same row. The chain
+ * can't catch those in a short series — Nightfrog's 2-day [184, 38] is a tie that the
+ * newer reading wins.
+ *
+ * The chain is the physical invariant and nothing more. It does NOT cap how fast a
  * level may rise: that would be a guess, and monotonicity is a fact. So a single
  * implausible spike between two stable stretches is dropped (keeping the long chain
  * beats keeping the spike), while a genuine jump after a gap in coverage survives.
@@ -113,18 +119,24 @@ function trustedHeroLevels(clanId, memberIds) {
     // which readings are trustworthy is a property of the whole series, and judging a
     // 30-day view on its own would let the window boundary change the answer.
     const rows = db.prepare(`
-    SELECT member_id AS memberId, game_date AS gameDate, level
+    SELECT member_id AS memberId, game_date AS gameDate, level, power
     FROM member_snapshots
     WHERE clan_id = ? AND game_date != '' AND level > 0 ${filter}
     ORDER BY member_id ASC, game_date ASC
   `).all(clanId, ...(memberIds ?? []));
     const byMember = new Map();
     for (const r of rows) {
+        // Bounds first, chain second: a reading no player of this might can have is not
+        // evidence about the series, and in a two-day series it would win the chain.
+        const level = (0, hero_level_js_1.saneHeroLevel)(r.level, r.power);
+        if (level === null)
+            continue;
+        const entry = { gameDate: r.gameDate, level };
         const list = byMember.get(r.memberId);
         if (list)
-            list.push(r);
+            list.push(entry);
         else
-            byMember.set(r.memberId, [r]);
+            byMember.set(r.memberId, [entry]);
     }
     const out = new Map();
     for (const [memberId, series] of byMember) {

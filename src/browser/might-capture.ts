@@ -33,6 +33,7 @@ import { captureFullPage } from './screenshotter.js';
 import { cleanPlayerName } from '../vision/player-names.js';
 import { namesDifferByAltSuffix } from '../vision/ocr-normalize.js';
 import { childLogger } from '../utils/logger.js';
+import { saneHeroLevel } from '../data/hero-level.js';
 import { requireMemberListCrop } from '../config/calibration.js';
 import { DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT } from '../config/viewport.js';
 import {
@@ -1155,11 +1156,27 @@ export async function captureMemberMight(
       `Hero-level votes split for ${contested.length} member(s): `
       + contested.slice(0, 10).map((v) => `${v.name} {${
         [...v.levelVotes].map(([lv, n]) => `${lv}×${n}`).join(' ')
-      }} → ${resolveLevel(v.levelVotes)}`).join(', '),
+      }} → ${resolveLevel(saneVotes(v.levelVotes, v.might))}`).join(', '),
     );
   }
   result.rows = [...byKey.values()].map(({ name, might, levelVotes, cropPath }) => ({
-    name, might, level: resolveLevel(levelVotes), cropPath, anchorCy: 0, bandTop: 0, bandBottom: null,
+    name, might, level: resolveLevel(saneVotes(levelVotes, might)), cropPath,
+    anchorCy: 0, bandTop: 0, bandBottom: null,
   }));
   return result;
+}
+
+/**
+ * The level votes with every reading put through saneHeroLevel against the member's
+ * might: an ornament-inflated 1240 counts as a vote for 240, and a reading too low for
+ * the might counts for nothing. Done before the vote so a damaged page can neither win
+ * it nor, when it was the only page, be stored as the day's level.
+ */
+function saneVotes(votes: Map<number, number>, might: number): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const [raw, count] of votes) {
+    const level = saneHeroLevel(raw, might);
+    if (level !== null) out.set(level, (out.get(level) ?? 0) + count);
+  }
+  return out;
 }

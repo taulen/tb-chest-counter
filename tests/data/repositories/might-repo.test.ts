@@ -184,6 +184,26 @@ describe('saveSnapshots', () => {
     expect(mightRepo.getMemberHistory(dan, 1, 1).map((p) => p.heroLevel)).toEqual([null, 301]);
   });
 
+  it('bounds-checks readings a short series cannot outvote', () => {
+    // A new clan's members have two or three days of history, and the chain alone
+    // hands a tie to the newer reading. Both shapes seen on clan 3, Oct 23 2026:
+    // the ornament read as a leading digit (147 → 7147), and a level far too low
+    // for the might on the same row (184 → 38 at 214M).
+    const brooke = addMember(1, 'Brooke');
+    const frog = addMember(1, 'Nightfrog');
+    for (const [date, b, f] of [
+      ['2026-10-21', 145, 184], ['2026-10-22', 147, 184], ['2026-10-23', 7147, 38],
+    ] as Array<[string, number, number]>) {
+      mightRepo.saveSnapshots(1, date, `${date}T18:00:00.000Z`, [
+        { memberId: brooke, might: 141_000_000, level: b },
+        { memberId: frog, might: 214_000_000, level: f },
+      ]);
+    }
+    expect(mightRepo.getMemberHistory(brooke, 1).map((p) => p.heroLevel)).toEqual([145, 147, 147]);
+    expect(mightRepo.getLatestForMember(frog, 1)?.heroLevel).toBe(184);
+    expect(mightRepo.getMemberHistory(frog, 1).map((p) => p.heroLevel)).toEqual([184, 184, null]);
+  });
+
   it('writes nothing for an empty batch', () => {
     expect(mightRepo.saveSnapshots(1, '2026-07-30', '2026-07-30T18:00:00.000Z', [])).toBe(0);
     expect(mightRepo.hasSnapshotForGameDate(1, '2026-07-30')).toBe(false);
