@@ -295,17 +295,16 @@ function paintBelow() {
 }
 
 /**
- * The below-target list as a Markdown table, in the order shown. Rank is the
- * player's place in the run's ranking, so it reads the same as the table above.
+ * The below-target list as a compact pipe table, in the order shown. Kept
+ * short on purpose: in-game chat caps the length of a post, so numbers are
+ * compact (10M), an assumed tier is "G7?", and there is no separator row.
  */
 function belowMarkdown(below) {
-  const rank = new Map(data.players.map((p, i) => [p, i + 1]));
-  const n = (v) => Math.round(v).toLocaleString('en-US');
   const cell = (s) => String(s).replace(/\|/g, '\\|');
+  const tier = (t) => (t.assumed ? 'G7?' : t.key.toUpperCase());
   const lines = [
-    '| Rank | Name | Tier | Points | Target | Short by | % of target |',
-    '| :--- | :--- | :--- | ---: | ---: | ---: | ---: |',
-    ...below.map(({ p, expected, pct }) => `| ${rank.get(p)} | ${cell(p.memberId ? p.name : p.rawName)} | ${tierLabel(tierOf(p))} | ${n(p.total)} | ${n(expected)} | ${n(expected - p.total)} | ${Math.round(pct * 100)}% |`),
+    '| Name | Tier | Points | Target | % |',
+    ...below.map(({ p, expected, pct }) => `| ${cell(p.memberId ? p.name : p.rawName)} | ${tier(tierOf(p))} | ${formatCompact(p.total)} | ${formatCompact(expected)} | ${Math.round(pct * 100)}% |`),
   ];
   return lines.join('\n');
 }
