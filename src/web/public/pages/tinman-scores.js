@@ -273,7 +273,10 @@ function paintBelow() {
     </tr>`;
   }).join('');
   const body = below.length
-    ? `<p class="muted-copy tinman-hint tinman-below-hint">${esc(TARGET_NOTE)} Unknown guards level counts as G7.</p>
+    ? `<div class="tinman-below-head">
+         <p class="muted-copy tinman-hint">${esc(TARGET_NOTE)} Unknown guards level counts as G7.</p>
+         <button type="button" class="btn btn-sm" data-tinman-below="copy" title="Copy the list as a Markdown table, ready to paste">Copy as table</button>
+       </div>
        <table class="table-responsive tinman-below-table">
          <colgroup><col class="col-member"><col class="col-tier"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"></colgroup>
          <thead><tr><th>Player</th><th>Tier</th><th class="num">Total</th><th class="num">Target</th><th class="num">Short by</th><th class="num">% of target</th></tr></thead>
@@ -287,6 +290,42 @@ function paintBelow() {
     </details>`;
   const d = belowEl.querySelector('details');
   if (d) d.addEventListener('toggle', () => { belowOpen = d.open; });
+  const copyBtn = belowEl.querySelector('[data-tinman-below="copy"]');
+  if (copyBtn) copyBtn.addEventListener('click', () => copyBelow(copyBtn, below));
+}
+
+/**
+ * The below-target list as a Markdown table, in the order shown. Rank is the
+ * player's place in the run's ranking, so it reads the same as the table above.
+ */
+function belowMarkdown(below) {
+  const rank = new Map(data.players.map((p, i) => [p, i + 1]));
+  const n = (v) => Math.round(v).toLocaleString('en-US');
+  const cell = (s) => String(s).replace(/\|/g, '\\|');
+  const lines = [
+    '| Rank | Name | Tier | Points | Target | Short by | % of target |',
+    '| :--- | :--- | :--- | ---: | ---: | ---: | ---: |',
+    ...below.map(({ p, expected, pct }) => `| ${rank.get(p)} | ${cell(p.memberId ? p.name : p.rawName)} | ${tierLabel(tierOf(p))} | ${n(p.total)} | ${n(expected)} | ${n(expected - p.total)} | ${Math.round(pct * 100)}% |`),
+  ];
+  return lines.join('\n');
+}
+
+async function copyBelow(btn, below) {
+  const text = belowMarkdown(below);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Fallback for browsers/contexts without the clipboard API.
+    const tmp = document.createElement('textarea');
+    tmp.value = text;
+    document.body.appendChild(tmp);
+    tmp.select();
+    try { document.execCommand('copy'); } catch {}
+    tmp.remove();
+  }
+  btn.textContent = '✓ Copied';
+  clearTimeout(btn._copyTimer);
+  btn._copyTimer = setTimeout(() => { btn.textContent = 'Copy as table'; }, 1800);
 }
 
 function tierLabel(tier) {

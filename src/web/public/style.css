@@ -6825,7 +6825,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tinman-table .col-tier, .tinman-below-table .col-tier { width: 64px; }
 .tinman-below-table { table-layout: fixed; }
 .tinman-below-table th.num, .tinman-below-table td.num { text-align: right; }
-.tinman-below-hint { padding: 12px 16px 0; margin: 0 0 8px; }
+.tinman-below-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding: 12px 16px 0; margin: 0 0 8px; }
+.tinman-below-head .tinman-hint { margin: 0; }
 
 .tinman-table tbody tr.goal-row-ok,
 .tinman-below-table tbody tr.goal-row-ok { background-image: linear-gradient(var(--goal-row-ok-bg), var(--goal-row-ok-bg)); }
