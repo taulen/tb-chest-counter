@@ -437,8 +437,9 @@ export function addMergeRule(
 
         // No name-keyed config moves here, unlike cleanupChestNames: this branch
         // is clan-scoped and deliberately leaves triumphal records on the old
-        // `chests` row (above). source_point_overrides and triumphal_chest_points
-        // are GLOBAL — no clan_id — and triumphal_chest_points is joined at read
+        // `chests` row (above). triumphal_chest_points is GLOBAL — no clan_id —
+        // (source_point_overrides is per clan since v86, but is left for the same
+        // reason: the old name may still carry records) and it is joined at read
         // time on `chest_name = chests.name`, so moving a value off a name whose
         // row is still alive and still carrying triumphal records would silently
         // score every one of them 0, in every clan.

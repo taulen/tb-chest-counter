@@ -1,5 +1,6 @@
-// Chest Points — the global scoring table on the Admin page, one line per
-// chest SOURCE (see src/data/points-board.ts for why a source is the unit).
+// Chest Points — the active clan's scoring table on the Admin page, one line
+// per chest SOURCE (see src/data/points-board.ts for why a source is the unit).
+// Every clan has its own values; superadmins switch clan to edit another's.
 //
 // Self-contained: it fetches its own data and re-renders only itself, so a
 // save or a recalculate never reloads the page or loses the admin's place.
@@ -73,7 +74,16 @@ async function refresh() {
     root.querySelector('.pb-body').innerHTML = `<p class="muted-copy">Couldn't load chest points${board?.error ? `: ${esc(board.error)}` : ''}.</p>`;
     return;
   }
+  // Edits belong to the clan they were typed against; never carry them over.
+  if (state.board && state.board.clan?.id !== board.clan?.id) {
+    state.dirty.clear();
+    state.split.clear();
+    state.groupDirty.clear();
+    state.expanded.clear();
+  }
   state.board = board;
+  const title = root.querySelector('.pb-header h2');
+  if (title) title.innerHTML = `Chest Points <span class="muted-copy">· ${esc(board.clan?.name || '')}</span>`;
   // Drop edits for anything that no longer exists, or now already holds the
   // edited value (someone else saved the same thing).
   for (const [k, v] of state.dirty) {
@@ -165,7 +175,7 @@ function statusHtml() {
       : '<span>✓ all stored records match these values</span>',
   ];
   return `
-    <p class="muted-copy pb-intro">One <strong>global</strong> table: what each chest source is worth, for every clan. Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.${canEdit ? ' Saving a value also updates every chest already recorded from that source, so a save never needs a Recalculate.' : ' <strong>Read-only</strong> — only a superadmin can change values.'}</p>
+    <p class="muted-copy pb-intro">What each chest source is worth for <strong>${esc(b.clan?.name || 'this clan')}</strong> — every clan has its own values${canEdit ? '; switch clan to edit another clan\'s' : ''}. Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.${canEdit ? ' Saving a value also updates every chest this clan already recorded from that source, so a save never needs a Recalculate.' : ' <strong>Read-only</strong> — only a superadmin can change values.'}</p>
     <div class="pb-status">${parts.join('<span class="pb-dot" aria-hidden="true">·</span>')}</div>
   `;
 }
@@ -641,7 +651,9 @@ function impactHtml(impact, { edits = null, intro = '' } = {}) {
       </ul>
     </div>` : '';
 
-  const clans = impact.clans.length > 0 ? `
+  // A save only ever touches the board's own clan, so a one-line list would
+  // just repeat the totals above it.
+  const clans = impact.clans.length > 1 ? `
     <div class="pb-impact-section">
       <div class="pb-impact-heading">Per clan</div>
       <ul class="pb-impact-list">
@@ -724,7 +736,9 @@ function reviewAndSave() {
     if (error) return notify(error, 'Check the value');
     if (changes.length === 0) return notify('Nothing to save.', 'No changes');
 
-    const preview = await apiPost('/admin/source-points/changes', { changes, dryRun: true });
+    const clanId = state.board.clan.id;
+    const clanName = esc(state.board.clan.name);
+    const preview = await apiPost('/admin/source-points/changes', { clanId, changes, dryRun: true });
     if (preview?.error) return notify(preview.error, 'Preview failed');
     if (preview.edits.length === 0) {
       state.dirty.clear();
@@ -733,18 +747,18 @@ function reviewAndSave() {
       return notify('Those values are already in place — nothing to save.', 'No changes');
     }
     const ok = await confirmImpact({
-      title: `Save ${plural(preview.edits.length, 'change')}?`,
+      title: `Save ${plural(preview.edits.length, 'change')} for ${state.board.clan.name}?`,
       html: impactHtml(preview.impact, {
         edits: preview.edits,
         intro: preview.impact.records > 0
-          ? 'Saving updates these stored chest records right away, in every clan — there is nothing to Recalculate afterwards.'
-          : 'No stored chest record changes — this only affects chests scanned from now on.',
+          ? `Saving updates these stored chest records of <strong>${clanName}</strong> right away — there is nothing to Recalculate afterwards. Other clans keep their own values.`
+          : `No stored chest record changes — this only affects chests <strong>${clanName}</strong> scans from now on. Other clans keep their own values.`,
       }),
       confirmLabel: 'Save changes',
     });
     if (!ok) return;
 
-    const result = await apiPost('/admin/source-points/changes', { changes });
+    const result = await apiPost('/admin/source-points/changes', { clanId, changes });
     if (result?.error) return notify(result.error, 'Save failed');
     state.dirty.clear();
     state.split.clear();
@@ -767,7 +781,8 @@ function recalculate() {
     );
   }
   return withBusy(async () => {
-    const preview = await apiPost('/admin/source-points/recalculate', { dryRun: true });
+    const clanId = state.board.clan.id;
+    const preview = await apiPost('/admin/source-points/recalculate', { clanId, dryRun: true });
     if (preview?.error) return notify(preview.error, 'Recalculate failed');
     if (preview.impact.records === 0) {
       return notify('Every stored chest record already matches the current values — saves update records as they are made.', 'Nothing to recalculate');
@@ -775,12 +790,12 @@ function recalculate() {
     const ok = await confirmImpact({
       title: 'Recalculate chest points?',
       html: impactHtml(preview.impact, {
-        intro: 'These stored records no longer match the current values (usually chests scanned before a value was set). Recalculating brings them in line, in every clan.',
+        intro: `These stored records of <strong>${esc(state.board.clan.name)}</strong> no longer match its current values (usually chests scanned before a value was set). Recalculating brings them in line.`,
       }),
       confirmLabel: 'Recalculate',
     });
     if (!ok) return;
-    const result = await apiPost('/admin/source-points/recalculate', {});
+    const result = await apiPost('/admin/source-points/recalculate', { clanId });
     if (result?.error) return notify(result.error, 'Recalculate failed');
     await refresh();
     notify(`${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`, 'Recalculated');

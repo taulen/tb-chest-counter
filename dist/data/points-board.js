@@ -25,9 +25,12 @@ exports.previewRecalculate = previewRecalculate;
  * Omen Chest at 150") and planChanges works out the override rows that produce it.
  *
  * Every write is previewed first: previewPointChanges / previewRecalculate
- * compute exactly which stored chest_records values would move, by how much,
- * per clan, through the same resolver the write uses. Nothing is lost by a
- * wrong save, but a save nobody can check before making is how values drift.
+ * compute exactly which stored chest_records values would move, and by how
+ * much, through the same resolver the write uses. Nothing is lost by a wrong
+ * save, but a save nobody can check before making is how values drift.
+ *
+ * The board is one clan's: each clan has its own values (v86), so its sources,
+ * its record counts, its previews and its saves all stay inside that clan.
  */
 const database_js_1 = require("./database.js");
 const ttl_cache_js_1 = require("../utils/ttl-cache.js");
@@ -66,25 +69,22 @@ class PointsChangeError extends Error {
 exports.PointsChangeError = PointsChangeError;
 const IMPACT_LINE_LIMIT = 60;
 /**
- * chest_records grouped down to (clan, source, chest, stored value), for live
- * clans only — the same rows recalculateAllPoints walks, so a preview counts
- * exactly what a write would touch.
+ * One clan's chest_records grouped down to (source, chest, stored value) — the
+ * same rows recalculatePoints walks, so a preview counts exactly what a write
+ * would touch.
  */
-function loadRecordGroups() {
-    const clanIds = new Set((0, clan_repo_js_1.listClans)().map((c) => c.id));
+function loadRecordGroups(clanId) {
     const rows = (0, database_js_1.getDb)().prepare(`
     SELECT cr.clan_id, cs.source, ch.name AS chest_name, cr.point_value, COUNT(*) AS cnt
       FROM chest_records cr
       JOIN chest_sources cs ON cs.id = cr.chest_source_id
       JOIN chests ch ON ch.id = cr.chest_id
-     WHERE cs.source != ''
+     WHERE cr.clan_id = ? AND cs.source != ''
      GROUP BY cr.clan_id, cr.chest_source_id, cr.chest_id, cr.point_value
-  `).all();
+  `).all(clanId);
     const keyOf = new Map();
     const groups = [];
     for (const r of rows) {
-        if (!clanIds.has(r.clan_id))
-            continue;
         let key = keyOf.get(r.source);
         if (key === undefined) {
             key = (0, source_names_js_1.getSourceKey)(r.source);
@@ -164,8 +164,8 @@ function majorityPoints(chests) {
     }
     return best ? best[0] : 0;
 }
-function buildBoard(groups, overrides) {
-    const overridden = new Set((0, source_points_repo_js_1.getAllOverrides)().map((o) => (0, source_points_repo_js_1.makeCacheKey)(o.sourceKey, o.chestName)));
+function buildBoard(clanId, groups, overrides) {
+    const overridden = new Set((0, source_points_repo_js_1.getAllOverrides)(clanId).map((o) => (0, source_points_repo_js_1.makeCacheKey)(o.sourceKey, o.chestName)));
     // One bucket per CANONICAL key: a source read with and without spaces is
     // one source, scored by one set of overrides.
     const buckets = new Map();
@@ -245,15 +245,16 @@ function buildBoard(groups, overrides) {
             boardGroups.set(g.id, g);
     }
     return {
+        clan: { id: clanId, name: (0, clan_repo_js_1.getClanById)(clanId)?.name ?? `Clan #${clanId}` },
         categories,
         sources: sources.map(({ rank: _rank, ...s }) => s),
         groups: [...boardGroups.values()],
         staleRecords: staleTotal,
     };
 }
-/** The board as the admin page reads it. Cached; every write invalidates it. */
-function getPointsBoard() {
-    return (0, ttl_cache_js_1.cached)(BOARD_CACHE_KEY, BOARD_TTL_MS, () => buildBoard(loadRecordGroups(), (0, source_points_repo_js_1.loadOverrides)()));
+/** One clan's board as the admin page reads it. Cached; every write invalidates it. */
+function getPointsBoard(clanId) {
+    return (0, ttl_cache_js_1.cached)(`${BOARD_CACHE_KEY}:${clanId}`, BOARD_TTL_MS, () => buildBoard(clanId, loadRecordGroups(clanId), (0, source_points_repo_js_1.loadOverrides)(clanId)));
 }
 /**
  * What re-resolving every record under `overrides` would change: per clan, and
@@ -261,7 +262,7 @@ function getPointsBoard() {
  */
 function computeImpact(groups, overrides, board, onlyCanon) {
     const labels = new Map(board.sources.map((s) => [(0, source_names_js_1.canonicalSourceKey)(s.key), s]));
-    const clanNames = new Map((0, clan_repo_js_1.listClans)().map((c) => [c.id, c.name]));
+    const clanNames = new Map([[board.clan.id, board.clan.name]]);
     const clans = new Map();
     const lines = new Map();
     let records = 0;
@@ -415,33 +416,33 @@ function withWrites(overrides, writes) {
     }
     return next;
 }
-/** Dry run of a save: the edits it amounts to and what they do to stored records. */
-function previewPointChanges(changes) {
-    const groups = loadRecordGroups();
-    const overrides = (0, source_points_repo_js_1.loadOverrides)();
-    const board = buildBoard(groups, overrides);
+/** Dry run of a save: the edits it amounts to and what they do to the clan's stored records. */
+function previewPointChanges(clanId, changes) {
+    const groups = loadRecordGroups(clanId);
+    const overrides = (0, source_points_repo_js_1.loadOverrides)(clanId);
+    const board = buildBoard(clanId, groups, overrides);
     const plan = planChanges(board, overrides, changes);
     return { edits: plan.edits, impact: computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys) };
 }
 /**
- * Save: write the override rows, then recalculate every record of the sources
- * touched — which also settles any of their records that were already stale,
- * exactly as the preview reported.
+ * Save: write the clan's override rows, then recalculate every one of its
+ * records from the sources touched — which also settles any of them that were
+ * already stale, exactly as the preview reported.
  */
-function applyPointChanges(changes) {
-    const groups = loadRecordGroups();
-    const overrides = (0, source_points_repo_js_1.loadOverrides)();
-    const board = buildBoard(groups, overrides);
+function applyPointChanges(clanId, changes) {
+    const groups = loadRecordGroups(clanId);
+    const overrides = (0, source_points_repo_js_1.loadOverrides)(clanId);
+    const board = buildBoard(clanId, groups, overrides);
     const plan = planChanges(board, overrides, changes);
     const impact = computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys);
-    (0, source_points_repo_js_1.writeOverrides)(plan.writes);
-    const updated = plan.canonKeys.size > 0 ? (0, source_points_repo_js_1.recalculateAllPoints)(plan.canonKeys) : 0;
+    (0, source_points_repo_js_1.writeOverrides)(clanId, plan.writes);
+    const updated = plan.canonKeys.size > 0 ? (0, source_points_repo_js_1.recalculatePoints)(clanId, plan.canonKeys) : 0;
     return { edits: plan.edits, impact, updated };
 }
-/** Dry run of Recalculate: every record whose stored value is out of date. */
-function previewRecalculate() {
-    const groups = loadRecordGroups();
-    const overrides = (0, source_points_repo_js_1.loadOverrides)();
-    return computeImpact(groups, overrides, buildBoard(groups, overrides));
+/** Dry run of Recalculate: every record of the clan whose stored value is out of date. */
+function previewRecalculate(clanId) {
+    const groups = loadRecordGroups(clanId);
+    const overrides = (0, source_points_repo_js_1.loadOverrides)(clanId);
+    return computeImpact(groups, overrides, buildBoard(clanId, groups, overrides));
 }
 //# sourceMappingURL=points-board.js.map

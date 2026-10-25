@@ -113,7 +113,8 @@ function checkConfigIntegrity(database) {
         if (k)
             liveSourceKeys.add((0, source_names_js_1.canonicalSourceKey)(k));
     }
-    const overrides = database.prepare('SELECT source_key, chest_name FROM source_point_overrides').all();
+    // Per clan since v86; most clans hold the same rows, so report each once.
+    const overrides = database.prepare('SELECT DISTINCT source_key, chest_name FROM source_point_overrides').all();
     for (const o of overrides) {
         if (o.chest_name && !chestNames.has(o.chest_name)) {
             // Worse than a dead bucket: a chest_name nothing matches also drops out of

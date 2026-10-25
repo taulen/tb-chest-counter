@@ -129,8 +129,8 @@ describe('checkConfigIntegrity', () => {
     const db = freshDb();
     seedHealthy(db);
     db.prepare(
-      `INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at)
-       VALUES ('jormungandr shop', 'Jormungandr''s Chest', 50, ?)`,
+      `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+       VALUES (1, 'jormungandr shop', 'Jormungandr''s Chest', 50, ?)`,
     ).run(NOW);
 
     const f = checkConfigIntegrity(db).find((x) => x.kind === 'source-points/chest-name-orphan');
@@ -144,8 +144,8 @@ describe('checkConfigIntegrity', () => {
     const db = freshDb();
     seedHealthy(db);
     db.prepare(
-      `INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at)
-       VALUES ('rise of the anclents event', '', 25, ?)`,
+      `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+       VALUES (1, 'rise of the anclents event', '', 25, ?)`,
     ).run(NOW);
     expect(kinds(db)).toContain('source-points/source-key-dead');
   });

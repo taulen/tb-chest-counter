@@ -754,14 +754,23 @@ const MIGRATIONS = [
         // Matched on the canonical key, so a spaceless "common20" row moves too.
         version: 77,
         run: (database) => {
-            const rows = database.prepare("SELECT id, source_key, point_value, updated_at FROM source_point_overrides WHERE chest_name = 'Tartaros Chest' ORDER BY id").all();
-            const insert = database.prepare("INSERT OR IGNORE INTO source_point_overrides (source_key, chest_name, point_value, updated_at) VALUES (?, '', ?, ?)");
+            // v86 gave the table a clan_id; a replay after it must keep each row's.
+            const perClan = database.prepare('PRAGMA table_info(source_point_overrides)').all()
+                .some((c) => c.name === 'clan_id');
+            const rows = database.prepare(`SELECT id, ${perClan ? 'clan_id' : 'NULL AS clan_id'}, source_key, point_value, updated_at
+           FROM source_point_overrides WHERE chest_name = 'Tartaros Chest' ORDER BY id`).all();
+            const insert = perClan
+                ? database.prepare("INSERT OR IGNORE INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at) VALUES (?, ?, '', ?, ?)")
+                : database.prepare("INSERT OR IGNORE INTO source_point_overrides (source_key, chest_name, point_value, updated_at) VALUES (?, '', ?, ?)");
             const remove = database.prepare('DELETE FROM source_point_overrides WHERE id = ?');
             for (const row of rows) {
                 const m = /^common(\d+)$/.exec((0, source_names_js_1.canonicalSourceKey)(row.source_key));
                 if (!m)
                     continue;
-                insert.run(`tartaros ${m[1]}`, row.point_value, row.updated_at);
+                if (perClan)
+                    insert.run(row.clan_id, `tartaros ${m[1]}`, row.point_value, row.updated_at);
+                else
+                    insert.run(`tartaros ${m[1]}`, row.point_value, row.updated_at);
                 remove.run(row.id);
             }
         },
@@ -925,6 +934,37 @@ const MIGRATIONS = [
             if (!cols.some((c) => c.name === 'public_url')) {
                 database.exec("ALTER TABLE clans ADD COLUMN public_url TEXT NOT NULL DEFAULT ''");
             }
+        },
+    },
+    {
+        // Chest points are per clan again: v43 made them one global table, and
+        // clans need to score the same chest differently. Every clan — soft-deleted
+        // ones included, so a restore keeps its values — gets a copy of the global
+        // rows, so no clan scores anything differently on the day this lands and no
+        // stored record moves. From here each clan's rows are its own; a clan
+        // created later starts from the built-in defaults. Guarded for replay.
+        version: 86,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(source_point_overrides)').all();
+            if (cols.some((c) => c.name === 'clan_id'))
+                return;
+            database.exec(`
+        CREATE TABLE source_point_overrides_v86 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          source_key TEXT NOT NULL,
+          chest_name TEXT NOT NULL DEFAULT '',
+          point_value INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(clan_id, source_key, chest_name)
+        );
+        INSERT INTO source_point_overrides_v86 (clan_id, source_key, chest_name, point_value, updated_at)
+          SELECT c.id, o.source_key, o.chest_name, o.point_value, o.updated_at
+            FROM source_point_overrides o CROSS JOIN clans c
+           ORDER BY c.id, o.id;
+        DROP TABLE source_point_overrides;
+        ALTER TABLE source_point_overrides_v86 RENAME TO source_point_overrides;
+      `);
         },
     },
 ];

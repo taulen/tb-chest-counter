@@ -54,8 +54,10 @@
  *  - `user_sessions`. Login sessions are ephemeral and their tokens are unique;
  *    resurrecting months-old ones would hand out live credentials nobody asked
  *    for. Restored users sign in again with their existing passwords.
- *  - Global config (`source_point_overrides`, `triumphal_chest_points`,
- *    `ct_config`). Shared and current — the live values win.
+ *  - Global config (`triumphal_chest_points`, `ct_config`). Shared and
+ *    current — the live values win. (`source_point_overrides` is per clan
+ *    since v86 and IS restored; an older backup's global rows become the
+ *    restored clan's.)
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -499,6 +501,15 @@ function restoreClanFromBackup(sourcePath, sourceClanId, options = {}) {
                     orIgnore: true,
                 }));
             }
+            // Chest points are the clan's own since v86. A backup from before that
+            // holds one global table — the values this clan was scored with — so
+            // that table becomes the restored clan's.
+            const backupPointsPerClan = db.prepare(`PRAGMA ${SRC}.table_info(source_point_overrides)`)
+                .all().some((c) => c.name === 'clan_id');
+            record('source_point_overrides', db.prepare(`INSERT OR IGNORE INTO main.source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+         SELECT ${targetId}, s.source_key, s.chest_name, s.point_value, s.updated_at
+           FROM ${SRC}.source_point_overrides s
+          WHERE ${backupPointsPerClan ? `s.clan_id = ${sourceClanId}` : '1'}`).run().changes);
             record('review_acknowledgments', copyTable(db, {
                 table: 'review_acknowledgments',
                 where: `s.clan_id = ${sourceClanId}`,

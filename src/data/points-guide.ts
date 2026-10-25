@@ -15,9 +15,9 @@
  * that never drop anything) and listing those would advertise values no player
  * can earn.
  *
- * The scoring table is global, so this is too: every clan sees the same values.
- * Observation counts are used here to drop OCR strays and never leave the
- * server — a public share page must not reveal another clan's volumes.
+ * Each clan has its own scoring table (v86), so this is per clan too: the
+ * chests that clan has received, at the values that clan pays. Observation
+ * counts are used here to drop OCR strays and never leave the server.
  */
 
 import { getDb } from './database.js';
@@ -190,14 +190,14 @@ function mergeTiers(rows: { from: number; to: number; points: number }[]): Point
   return out;
 }
 
-export function buildPointsGuide(): PointsGuide {
+export function buildPointsGuide(clanId: number): PointsGuide {
   const notCounted = clanRewardChestNamesStored();
   const excluded = new Set(notCounted);
 
   interface Seen { key: string; source: string; chest: string; points: number; count: number; keyTotal: number }
   const seen: Seen[] = [];
   const chestTotals = new Map<string, number>();
-  for (const summary of getSourceKeySummary()) {
+  for (const summary of getSourceKeySummary(clanId)) {
     for (const row of summary.chestRows) {
       // The wildcard row is a rule, not a chest anyone received; count 0 is an
       // override for a chest this source has never actually dropped.

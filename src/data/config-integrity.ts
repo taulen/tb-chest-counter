@@ -132,8 +132,9 @@ export function checkConfigIntegrity(database: Database.Database): IntegrityFind
     const k = getSourceKey(s.source);
     if (k) liveSourceKeys.add(canonicalSourceKey(k));
   }
+  // Per clan since v86; most clans hold the same rows, so report each once.
   const overrides = database.prepare(
-    'SELECT source_key, chest_name FROM source_point_overrides',
+    'SELECT DISTINCT source_key, chest_name FROM source_point_overrides',
   ).all() as { source_key: string; chest_name: string }[];
   for (const o of overrides) {
     if (o.chest_name && !chestNames.has(o.chest_name)) {

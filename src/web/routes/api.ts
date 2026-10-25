@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { resolveAllowedCropPath } from '../../utils/crop-dirs.js';
@@ -2475,26 +2475,43 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
   });
 
   // GET /api/admin/source-points
-  // The Chest Points board: one line per chest source with the value it pays
-  // (see src/data/points-board.ts). The scoring table is global (same for
-  // every clan). Any admin may READ it; only superadmins may change it.
-  router.get('/admin/source-points', requireAdmin, (_req, res) => {
-    res.json(pointsBoard.getPointsBoard());
+  // The Chest Points board for the active clan: one line per chest source with
+  // the value it pays (see src/data/points-board.ts). Each clan has its own
+  // values (v86). Any admin may READ them; only superadmins may change them.
+  router.get('/admin/source-points', requireAdmin, (req, res) => {
+    res.json(pointsBoard.getPointsBoard(req.clanId ?? 1));
   });
 
-  // POST /api/admin/source-points/changes { changes: [{ sourceKey, chestName, points }], dryRun? }
+  /**
+   * The clan a points write is for. The page sends the clan its board showed;
+   * the active clan lives on the session, so another tab switching it must not
+   * redirect an edit made against the first clan's values onto the second's.
+   */
+  function pointsWriteClan(req: Request, res: Response): number | null {
+    const clanId = req.clanId ?? 1;
+    if (req.body?.clanId !== clanId) {
+      res.status(409).json({ error: 'The active clan changed since this board was loaded. Reload the page and make the change again.' });
+      return null;
+    }
+    return clanId;
+  }
+
+  // POST /api/admin/source-points/changes { clanId, changes: [{ sourceKey, chestName, points }], dryRun? }
   // chestName '' is the source's own value. With dryRun the save is only
   // planned — the response says what it would change and by how much, so the
-  // page can show it before anyone commits. Global + superadmin-only.
+  // page can show it before anyone commits. Active clan only; superadmin-only.
   router.post('/admin/source-points/changes', requireSuperAdmin, (req, res) => {
     const changes = req.body?.changes;
     if (!Array.isArray(changes) || changes.length === 0) {
       return res.status(400).json({ error: 'changes must be a non-empty array' });
     }
+    const clanId = pointsWriteClan(req, res);
+    if (clanId === null) return;
     try {
-      if (req.body?.dryRun) return res.json(pointsBoard.previewPointChanges(changes));
-      const result = pointsBoard.applyPointChanges(changes);
+      if (req.body?.dryRun) return res.json(pointsBoard.previewPointChanges(clanId, changes));
+      const result = pointsBoard.applyPointChanges(clanId, changes);
       logAction(req.user!.id, 'set_source_points', {
+        clanId,
         edits: result.edits.map((e) => ({ sourceKey: e.key, chestName: e.chestName, from: e.from, to: e.to })),
         updated: result.updated,
       });
@@ -2505,15 +2522,17 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     }
   });
 
-  // POST /api/admin/source-points/recalculate { dryRun? } — global + superadmin-only.
-  // Re-resolves point_value on every clan's chest_records. The dry run reports
+  // POST /api/admin/source-points/recalculate { clanId, dryRun? } — active clan, superadmin-only.
+  // Re-resolves point_value on the clan's chest_records. The dry run reports
   // what is out of date without touching anything.
   router.post('/admin/source-points/recalculate', requireSuperAdmin, (req, res) => {
+    const clanId = pointsWriteClan(req, res);
+    if (clanId === null) return;
     try {
-      const impact = pointsBoard.previewRecalculate();
+      const impact = pointsBoard.previewRecalculate(clanId);
       if (req.body?.dryRun) return res.json({ impact });
-      const updated = sourcePointsRepo.recalculateAllPoints();
-      logAction(req.user!.id, 'recalculate_source_points', { updated, delta: impact.delta });
+      const updated = sourcePointsRepo.recalculatePoints(clanId);
+      logAction(req.user!.id, 'recalculate_source_points', { clanId, updated, delta: impact.delta });
       res.json({ ok: true, updated, impact });
     } catch (err) {
       res.status(500).json({ error: String(err instanceof Error ? err.message : err) });

@@ -146,7 +146,7 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
     const playerMergeCache = (0, merge_repo_js_1.loadMergeRules)('player', clanId);
     const chestMergeCache = (0, merge_repo_js_1.loadMergeRules)('chest', clanId);
     const sourceMergeCache = (0, merge_repo_js_1.loadMergeRules)('source', clanId);
-    const sourcePointOverrides = (0, source_points_repo_js_1.loadOverrides)();
+    const sourcePointOverrides = (0, source_points_repo_js_1.loadOverrides)(clanId);
     // Chest names this clan has already stored in a prior scan. A new chest
     // defaulting to COMMON is by design, so the "unrecognised chest" review warning must fire only
     // the FIRST time a genuinely-new name appears, then stay quiet on every

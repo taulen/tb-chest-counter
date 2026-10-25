@@ -82,7 +82,7 @@ function seedRealisticMix(): void {
 describe('buildPointsGuide', () => {
   it('lays crypts and citadels out as a type × level matrix', () => {
     seedRealisticMix();
-    const crypts = section(buildPointsGuide().sections, 'crypts');
+    const crypts = section(buildPointsGuide(1).sections, 'crypts');
     expect(crypts?.kind).toBe('matrix');
     if (crypts?.kind !== 'matrix') return;
     expect(crypts.levels).toEqual([5, 10, 15, 20]);
@@ -100,7 +100,7 @@ describe('buildPointsGuide', () => {
 
   it('merges adjacent ladder levels that pay the same', () => {
     seedRealisticMix();
-    const { sections } = buildPointsGuide();
+    const { sections } = buildPointsGuide(1);
     expect(section(sections, 'heroic')).toMatchObject({
       kind: 'tiers',
       rows: [{ from: 16, to: 19, points: 20 }, { from: 20, to: 20, points: 60 }],
@@ -111,7 +111,7 @@ describe('buildPointsGuide', () => {
 
   it('files named chests by kind of source', () => {
     seedRealisticMix();
-    const { sections } = buildPointsGuide();
+    const { sections } = buildPointsGuide(1);
     const names = (key: string) => {
       const s = section(sections, key);
       return s?.kind === 'chests' ? s.rows.map((r) => `${r.chest}=${r.points}`) : [];
@@ -128,14 +128,14 @@ describe('buildPointsGuide', () => {
 
   it('drops OCR strays but keeps a rare chest that is all its source drops', () => {
     seedRealisticMix();
-    const raw = JSON.stringify(buildPointsGuide());
+    const raw = JSON.stringify(buildPointsGuide(1));
     expect(raw).not.toContain('Fire Chest');
     expect(raw).toContain('Sacred Rituals Chest');
   });
 
   it('leaves clan rewards out of the table and names them as not counted', () => {
     seedRealisticMix();
-    const guide = buildPointsGuide();
+    const guide = buildPointsGuide(1);
     expect(guide.notCounted).toEqual(['Olympus Elite Chest']);
     expect(JSON.stringify(guide.sections)).not.toContain('Olympus');
   });
@@ -143,17 +143,17 @@ describe('buildPointsGuide', () => {
   it('reads the value from the scoring table, so an override wins', () => {
     seedRealisticMix();
     getDb().prepare(
-      `INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at)
-       VALUES ('arena', 'Gladiator''s Chest', 3, ?)`,
+      `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+       VALUES (1, 'arena', 'Gladiator''s Chest', 3, ?)`,
     ).run(new Date().toISOString());
     invalidateSourceKeySummary();
-    const other = section(buildPointsGuide().sections, 'other');
+    const other = section(buildPointsGuide(1).sections, 'other');
     expect(other?.kind === 'chests' && other.rows[0].points).toBe(3);
   });
 
   it('exposes no observation counts', () => {
     seedRealisticMix();
-    for (const s of buildPointsGuide().sections) {
+    for (const s of buildPointsGuide(1).sections) {
       if (s.kind === 'chests') {
         for (const r of s.rows) expect(Object.keys(r).sort()).toEqual(['chest', 'points', 'source']);
       } else if (s.kind === 'tiers') {
@@ -163,7 +163,7 @@ describe('buildPointsGuide', () => {
   });
 
   it('is empty, not broken, before the first scan', () => {
-    expect(buildPointsGuide()).toEqual({ sections: [], notCounted: [] });
+    expect(buildPointsGuide(1)).toEqual({ sections: [], notCounted: [] });
   });
 });
 

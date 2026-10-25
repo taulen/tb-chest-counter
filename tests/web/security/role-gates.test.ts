@@ -255,13 +255,13 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'GET /clans/deleted', method: 'get', path: '/api/clans/deleted' },
       { name: 'POST /clans/:id/restore', method: 'post', path: '/api/clans/2/restore', body: {} },
       { name: 'GET /members/:id/raw-ocr', method: 'get', path: '/api/members/__M1__/raw-ocr' },
-      // Source point values are a global scoring table — reads are admin-tier
+      // Source point values (per clan since v86) — reads are admin-tier
       // (see ADMIN_TIER below), but every write is superadmin-only.
-      // The dry runs too: a preview reads every clan's record volumes.
-      { name: 'POST /admin/source-points/changes', method: 'post', path: '/api/admin/source-points/changes', body: { changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] } },
-      { name: 'POST /admin/source-points/changes (dry run)', method: 'post', path: '/api/admin/source-points/changes', body: { changes: [{ sourceKey: 'arena', chestName: '', points: 10 }], dryRun: true } },
-      { name: 'POST /admin/source-points/recalculate', method: 'post', path: '/api/admin/source-points/recalculate', body: {} },
-      { name: 'POST /admin/source-points/recalculate (dry run)', method: 'post', path: '/api/admin/source-points/recalculate', body: { dryRun: true } },
+      // The dry runs too: a preview reads the clan's record volumes.
+      { name: 'POST /admin/source-points/changes', method: 'post', path: '/api/admin/source-points/changes', body: { clanId: 1, changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] } },
+      { name: 'POST /admin/source-points/changes (dry run)', method: 'post', path: '/api/admin/source-points/changes', body: { clanId: 1, changes: [{ sourceKey: 'arena', chestName: '', points: 10 }], dryRun: true } },
+      { name: 'POST /admin/source-points/recalculate', method: 'post', path: '/api/admin/source-points/recalculate', body: { clanId: 1 } },
+      { name: 'POST /admin/source-points/recalculate (dry run)', method: 'post', path: '/api/admin/source-points/recalculate', body: { clanId: 1, dryRun: true } },
       // Triumphal chest points: same global read-admin / write-superadmin split.
       { name: 'PUT /admin/triumphal-points', method: 'put', path: '/api/admin/triumphal-points', body: { chestName: 'Golden Chest', packagePoints: 50 } },
       { name: 'DELETE /admin/triumphal-points', method: 'delete', path: '/api/admin/triumphal-points?chestName=Golden%20Chest' },
@@ -286,6 +286,18 @@ describe('role-gate enforcement (real auth + real routes)', () => {
         }
       });
     }
+
+    // Chest points are per clan: a write names the clan its board showed, and
+    // one that doesn't match the session's active clan is refused rather than
+    // landing on whichever clan another tab switched to.
+    it('source-points writes for a clan other than the active one → 409', async () => {
+      for (const path of ['/api/admin/source-points/changes', '/api/admin/source-points/recalculate']) {
+        const r = await send('post', path, 'super', { clanId: 999, changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] });
+        expectStatus(r.status, 409);
+        const missing = await send('post', path, 'super', { changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] });
+        expectStatus(missing.status, 409);
+      }
+    });
   });
 
   // ─── admin-or-superadmin endpoints ────────────────────────────

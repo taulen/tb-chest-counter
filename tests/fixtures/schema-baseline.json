@@ -487,7 +487,7 @@
   {
     "type": "table",
     "name": "source_point_overrides",
-    "sql": "CREATE TABLE source_point_overrides ( id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, chest_name TEXT NOT NULL DEFAULT '', point_value INTEGER NOT NULL, updated_at TEXT NOT NULL, UNIQUE(source_key, chest_name) )"
+    "sql": "CREATE TABLE source_point_overrides ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), source_key TEXT NOT NULL, chest_name TEXT NOT NULL DEFAULT '', point_value INTEGER NOT NULL, updated_at TEXT NOT NULL, UNIQUE(clan_id, source_key, chest_name) )"
   },
   {
     "type": "table",

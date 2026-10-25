@@ -18,16 +18,19 @@
  * Omen Chest at 150") and planChanges works out the override rows that produce it.
  *
  * Every write is previewed first: previewPointChanges / previewRecalculate
- * compute exactly which stored chest_records values would move, by how much,
- * per clan, through the same resolver the write uses. Nothing is lost by a
- * wrong save, but a save nobody can check before making is how values drift.
+ * compute exactly which stored chest_records values would move, and by how
+ * much, through the same resolver the write uses. Nothing is lost by a wrong
+ * save, but a save nobody can check before making is how values drift.
+ *
+ * The board is one clan's: each clan has its own values (v86), so its sources,
+ * its record counts, its previews and its saves all stay inside that clan.
  */
 import { getDb } from './database.js';
 import { cached } from '../utils/ttl-cache.js';
-import { listClans } from './repositories/clan-repo.js';
+import { getClanById } from './repositories/clan-repo.js';
 import {
   getAllOverrides, loadOverrides, makeCacheKey, resolvePointsForKey,
-  writeOverrides, recalculateAllPoints, type OverrideWrite,
+  writeOverrides, recalculatePoints, type OverrideWrite,
 } from './repositories/source-points-repo.js';
 import {
   canonicalSourceKey, getSourceKey, getDefaultPointsFor, hasDefaultPointsFor, parseSourceLevelRange,
@@ -84,6 +87,9 @@ export interface BoardGroup {
 }
 
 export interface PointsBoard {
+  /** The clan these values belong to. A save names it back, so an edit made on
+   *  one clan's board can never land on another's. */
+  clan: { id: number; name: string };
   categories: { key: SourceCategory; title: string; sources: number; unset: number }[];
   sources: BoardSource[];
   groups: BoardGroup[];
@@ -167,25 +173,23 @@ interface RecordGroup {
 }
 
 /**
- * chest_records grouped down to (clan, source, chest, stored value), for live
- * clans only — the same rows recalculateAllPoints walks, so a preview counts
- * exactly what a write would touch.
+ * One clan's chest_records grouped down to (source, chest, stored value) — the
+ * same rows recalculatePoints walks, so a preview counts exactly what a write
+ * would touch.
  */
-function loadRecordGroups(): RecordGroup[] {
-  const clanIds = new Set(listClans().map((c) => c.id));
+function loadRecordGroups(clanId: number): RecordGroup[] {
   const rows = getDb().prepare(`
     SELECT cr.clan_id, cs.source, ch.name AS chest_name, cr.point_value, COUNT(*) AS cnt
       FROM chest_records cr
       JOIN chest_sources cs ON cs.id = cr.chest_source_id
       JOIN chests ch ON ch.id = cr.chest_id
-     WHERE cs.source != ''
+     WHERE cr.clan_id = ? AND cs.source != ''
      GROUP BY cr.clan_id, cr.chest_source_id, cr.chest_id, cr.point_value
-  `).all() as { clan_id: number; source: string; chest_name: string; point_value: number; cnt: number }[];
+  `).all(clanId) as { clan_id: number; source: string; chest_name: string; point_value: number; cnt: number }[];
 
   const keyOf = new Map<string, string | null>();
   const groups: RecordGroup[] = [];
   for (const r of rows) {
-    if (!clanIds.has(r.clan_id)) continue;
     let key = keyOf.get(r.source);
     if (key === undefined) {
       key = getSourceKey(r.source);
@@ -264,8 +268,8 @@ function majorityPoints(chests: BoardChest[]): number {
   return best ? best[0] : 0;
 }
 
-function buildBoard(groups: RecordGroup[], overrides: Map<string, number>): PointsBoard {
-  const overridden = new Set(getAllOverrides().map((o) => makeCacheKey(o.sourceKey, o.chestName)));
+function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string, number>): PointsBoard {
+  const overridden = new Set(getAllOverrides(clanId).map((o) => makeCacheKey(o.sourceKey, o.chestName)));
 
   interface Bucket {
     keys: Map<string, number>;
@@ -357,6 +361,7 @@ function buildBoard(groups: RecordGroup[], overrides: Map<string, number>): Poin
   }
 
   return {
+    clan: { id: clanId, name: getClanById(clanId)?.name ?? `Clan #${clanId}` },
     categories,
     sources: sources.map(({ rank: _rank, ...s }) => s),
     groups: [...boardGroups.values()],
@@ -364,9 +369,10 @@ function buildBoard(groups: RecordGroup[], overrides: Map<string, number>): Poin
   };
 }
 
-/** The board as the admin page reads it. Cached; every write invalidates it. */
-export function getPointsBoard(): PointsBoard {
-  return cached(BOARD_CACHE_KEY, BOARD_TTL_MS, () => buildBoard(loadRecordGroups(), loadOverrides()));
+/** One clan's board as the admin page reads it. Cached; every write invalidates it. */
+export function getPointsBoard(clanId: number): PointsBoard {
+  return cached(`${BOARD_CACHE_KEY}:${clanId}`, BOARD_TTL_MS,
+    () => buildBoard(clanId, loadRecordGroups(clanId), loadOverrides(clanId)));
 }
 
 /**
@@ -380,7 +386,7 @@ function computeImpact(
   onlyCanon?: ReadonlySet<string>,
 ): PointsImpact {
   const labels = new Map(board.sources.map((s) => [canonicalSourceKey(s.key), s]));
-  const clanNames = new Map(listClans().map((c) => [c.id, c.name]));
+  const clanNames = new Map([[board.clan.id, board.clan.name]]);
   const clans = new Map<number, { records: number; delta: number }>();
   const lines = new Map<string, ImpactLine & { fromSet: Set<number>; chestRecords: Map<string, number> }>();
   let records = 0;
@@ -541,34 +547,34 @@ export interface ChangesPreview {
   impact: PointsImpact;
 }
 
-/** Dry run of a save: the edits it amounts to and what they do to stored records. */
-export function previewPointChanges(changes: PointChange[]): ChangesPreview {
-  const groups = loadRecordGroups();
-  const overrides = loadOverrides();
-  const board = buildBoard(groups, overrides);
+/** Dry run of a save: the edits it amounts to and what they do to the clan's stored records. */
+export function previewPointChanges(clanId: number, changes: PointChange[]): ChangesPreview {
+  const groups = loadRecordGroups(clanId);
+  const overrides = loadOverrides(clanId);
+  const board = buildBoard(clanId, groups, overrides);
   const plan = planChanges(board, overrides, changes);
   return { edits: plan.edits, impact: computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys) };
 }
 
 /**
- * Save: write the override rows, then recalculate every record of the sources
- * touched — which also settles any of their records that were already stale,
- * exactly as the preview reported.
+ * Save: write the clan's override rows, then recalculate every one of its
+ * records from the sources touched — which also settles any of them that were
+ * already stale, exactly as the preview reported.
  */
-export function applyPointChanges(changes: PointChange[]): ChangesPreview & { updated: number } {
-  const groups = loadRecordGroups();
-  const overrides = loadOverrides();
-  const board = buildBoard(groups, overrides);
+export function applyPointChanges(clanId: number, changes: PointChange[]): ChangesPreview & { updated: number } {
+  const groups = loadRecordGroups(clanId);
+  const overrides = loadOverrides(clanId);
+  const board = buildBoard(clanId, groups, overrides);
   const plan = planChanges(board, overrides, changes);
   const impact = computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys);
-  writeOverrides(plan.writes);
-  const updated = plan.canonKeys.size > 0 ? recalculateAllPoints(plan.canonKeys) : 0;
+  writeOverrides(clanId, plan.writes);
+  const updated = plan.canonKeys.size > 0 ? recalculatePoints(clanId, plan.canonKeys) : 0;
   return { edits: plan.edits, impact, updated };
 }
 
-/** Dry run of Recalculate: every record whose stored value is out of date. */
-export function previewRecalculate(): PointsImpact {
-  const groups = loadRecordGroups();
-  const overrides = loadOverrides();
-  return computeImpact(groups, overrides, buildBoard(groups, overrides));
+/** Dry run of Recalculate: every record of the clan whose stored value is out of date. */
+export function previewRecalculate(clanId: number): PointsImpact {
+  const groups = loadRecordGroups(clanId);
+  const overrides = loadOverrides(clanId);
+  return computeImpact(groups, overrides, buildBoard(clanId, groups, overrides));
 }

@@ -502,8 +502,8 @@ function deleteClan(id) {
         db.prepare('DELETE FROM scan_sessions WHERE clan_id = ?').run(id);
         // 3. Remaining clan-scoped tables.
         db.prepare('DELETE FROM merge_rules WHERE clan_id = ?').run(id);
-        // source_point_overrides is a GLOBAL scoring table (no clan_id) since
-        // v43 — it is shared across clans and must survive a clan deletion.
+        // Per-clan chest points (v86). triumphal_chest_points stays global.
+        db.prepare('DELETE FROM source_point_overrides WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM review_acknowledgments WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM resource_upload_batches WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM resource_icon_templates WHERE clan_id = ?').run(id);

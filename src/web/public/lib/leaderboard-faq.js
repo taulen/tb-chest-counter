@@ -89,7 +89,7 @@ function renderPointsTab(guide) {
   const notCounted = guide.notCounted?.length
     ? `<p class="faq-footnote">Not counted on the leaderboard: ${guide.notCounted.map(escapeHtml).join(', ')} — end-of-event clan rewards. See <em>How it works</em>.</p>`
     : '';
-  return `<p class="faq-lead">A chest's points depend on where it came from and its level. Every clan on this site uses the same values.</p>
+  return `<p class="faq-lead">A chest's points depend on where it came from and its level. Each clan on this site has its own values; these are this clan's.</p>
     ${wide}
     <div class="faq-points-grid">${rest}</div>
     ${notCounted}`;

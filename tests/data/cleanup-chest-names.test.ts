@@ -125,8 +125,8 @@ describe('cleanupChestNames (boot-time rename pass)', () => {
         `INSERT INTO chests (name, chest_type) VALUES (?, 'common')`,
       ).run("Jormungandr's Chest");
       db.prepare(
-        `INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at)
-         VALUES ('jormungandr shop', ?, 50, ?)`,
+        `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+         VALUES (1, 'jormungandr shop', ?, 50, ?)`,
       ).run("Jormungandr's Chest", NOW);
     });
 

@@ -3,23 +3,23 @@ import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import { getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, isKnownSourceKey, canonicalSourceKey } from '../../vision/source-names.js';
 import { notifyChestDataChanged } from './chest-summary-repo.js';
-import { listClans } from './clan-repo.js';
 
 const log = childLogger('source-points-repo');
 
-// Source point values are a single GLOBAL scoring table shared by every
-// clan (superadmin-managed). The overrides table has no clan_id; only the
-// chest_records backfill/recalculate is per-clan (looped over listClans()).
+// Source point values are PER CLAN (v86) and superadmin-managed: each clan has
+// its own override table, and a clan with no override for a chest scores the
+// built-in default. They were one global table from v43 to v85; v86 copied
+// that table to every clan, so the clans started out identical.
 const SOURCE_KEY_SUMMARY_CACHE_KEY = 'sourceKeySummary';
 
-// The source-points summary is an expensive aggregate read by a polled
-// admin endpoint (GET /api/admin/source-points). It only changes on point
-// overrides, recalculation, scan completion, or chest reassignment, so we
-// memoize it under a single global key and invalidate explicitly at those
-// sites (with a 5-min TTL backstop). See src/utils/ttl-cache.ts.
+// The source-points summary is an expensive aggregate read by the leaderboard
+// FAQ. It only changes on point overrides, recalculation, scan completion, or
+// chest reassignment, so it is memoized per clan under this prefix and
+// invalidated explicitly at those sites (with a 5-min TTL backstop). See
+// src/utils/ttl-cache.ts.
 const SOURCE_KEY_SUMMARY_TTL_MS = 300000;
 
-/** Drop the cached source-key summary so the next read recomputes fresh. */
+/** Drop every clan's cached source-key summary so the next read recomputes fresh. */
 export function invalidateSourceKeySummary(): void {
   invalidate(SOURCE_KEY_SUMMARY_CACHE_KEY);
 }
@@ -96,23 +96,22 @@ function sortChestRows(rows: SourceChestRowSummary[]): SourceChestRowSummary[] {
   });
 }
 
-export function getSourceKeySummary(): SourceKeySummary[] {
-  // Read-mostly aggregate behind a polled admin endpoint; memoize under a
-  // single global key. Invalidated on every mutation that changes the
-  // summary (overrides, recalculate, scan completion, reassignment) so
-  // admins never see stale counts. TTL is only a backstop.
-  return cached(SOURCE_KEY_SUMMARY_CACHE_KEY, SOURCE_KEY_SUMMARY_TTL_MS, () =>
-    computeSourceKeySummary(),
+export function getSourceKeySummary(clanId: number): SourceKeySummary[] {
+  // Read-mostly aggregate; memoize per clan. Invalidated on every mutation
+  // that changes the summary (overrides, recalculate, scan completion,
+  // reassignment) so nobody sees stale counts. TTL is only a backstop.
+  return cached(`${SOURCE_KEY_SUMMARY_CACHE_KEY}:${clanId}`, SOURCE_KEY_SUMMARY_TTL_MS, () =>
+    computeSourceKeySummary(clanId),
   );
 }
 
-function computeSourceKeySummary(): SourceKeySummary[] {
+function computeSourceKeySummary(clanId: number): SourceKeySummary[] {
   const db = getDb();
-  const overrides = getAllOverrides();
+  const overrides = getAllOverrides(clanId);
 
   // Group by the FK ids on the base table (index-friendly), then join for
-  // display columns. Aggregated across ALL clans — the scoring table is
-  // global, so every admin sees the same authoritative source list.
+  // display columns. This clan's records only — its values are its own, so
+  // the sources listed are the ones its members actually receive.
   // chest_sources.source and chests.name are UNIQUE so grouping on
   // (chest_source_id, chest_id) is identical to grouping on
   // (chest_source, chest_name, chest_type) — chest_type is a function of the
@@ -124,13 +123,13 @@ function computeSourceKeySummary(): SourceKeySummary[] {
     FROM (
       SELECT chest_source_id, chest_id, COUNT(*) AS cnt
       FROM chest_records
-      WHERE chest_source_id IS NOT NULL
+      WHERE clan_id = ? AND chest_source_id IS NOT NULL
       GROUP BY chest_source_id, chest_id
     ) g
     JOIN chest_sources cs ON cs.id = g.chest_source_id
     JOIN chests ch ON ch.id = g.chest_id
     WHERE cs.source != ''
-  `).all() as { chest_source: string; chest_name: string; chest_type: string; cnt: number }[];
+  `).all(clanId) as { chest_source: string; chest_name: string; chest_type: string; cnt: number }[];
 
   interface Bucket {
     sampleSource: string;
@@ -247,11 +246,11 @@ function computeSourceKeySummary(): SourceKeySummary[] {
   return summary;
 }
 
-export function getAllOverrides(): SourcePointOverride[] {
+export function getAllOverrides(clanId: number): SourcePointOverride[] {
   const db = getDb();
   const rows = db.prepare(
-    'SELECT id, source_key, chest_name, point_value, updated_at FROM source_point_overrides ORDER BY source_key, chest_name',
-  ).all() as {
+    'SELECT id, source_key, chest_name, point_value, updated_at FROM source_point_overrides WHERE clan_id = ? ORDER BY source_key, chest_name',
+  ).all(clanId) as {
     id: number;
     source_key: string;
     chest_name: string;
@@ -268,16 +267,15 @@ export function getAllOverrides(): SourcePointOverride[] {
 }
 
 /**
- * Load all overrides into an in-memory map keyed on makeCacheKey(source,
+ * Load one clan's overrides into an in-memory map keyed on makeCacheKey(source,
  * chest_name). Called once per scan and passed to getPointsForSourceCached()
- * in the hot loop. Overrides are global, so every clan's scan uses the same
- * map.
+ * in the hot loop.
  */
-export function loadOverrides(): Map<string, number> {
+export function loadOverrides(clanId: number): Map<string, number> {
   const db = getDb();
   const rows = db.prepare(
-    'SELECT source_key, chest_name, point_value FROM source_point_overrides',
-  ).all() as { source_key: string; chest_name: string; point_value: number }[];
+    'SELECT source_key, chest_name, point_value FROM source_point_overrides WHERE clan_id = ?',
+  ).all(clanId) as { source_key: string; chest_name: string; point_value: number }[];
   const map = new Map<string, number>();
   for (const row of rows) {
     map.set(makeCacheKey(row.source_key, row.chest_name), row.point_value);
@@ -329,23 +327,24 @@ export interface OverrideWrite {
 }
 
 /**
- * Apply a batch of override writes in one transaction. Each write first clears
- * every row for the same (canonical source key, chest name) — a source OCR'd
- * with and without spaces can hold one row per spelling, and the lookup map
- * keys on the canonical form, so leaving a second spelling behind would let it
- * win or lose at random. Records are NOT touched here; the caller recalculates
- * the affected sources afterwards (see points-board.ts applyPointChanges).
+ * Apply a batch of one clan's override writes in one transaction. Each write
+ * first clears every row for the same (canonical source key, chest name) — a
+ * source OCR'd with and without spaces can hold one row per spelling, and the
+ * lookup map keys on the canonical form, so leaving a second spelling behind
+ * would let it win or lose at random. Records are NOT touched here; the caller
+ * recalculates the affected sources afterwards (see points-board.ts
+ * applyPointChanges).
  */
-export function writeOverrides(writes: OverrideWrite[]): void {
+export function writeOverrides(clanId: number, writes: OverrideWrite[]): void {
   if (writes.length === 0) return;
   const db = getDb();
   const now = new Date().toISOString();
   const existing = db.prepare(
-    'SELECT id, source_key, chest_name FROM source_point_overrides',
-  ).all() as { id: number; source_key: string; chest_name: string }[];
+    'SELECT id, source_key, chest_name FROM source_point_overrides WHERE clan_id = ?',
+  ).all(clanId) as { id: number; source_key: string; chest_name: string }[];
   const del = db.prepare('DELETE FROM source_point_overrides WHERE id = ?');
   const ins = db.prepare(
-    'INSERT INTO source_point_overrides (source_key, chest_name, point_value, updated_at) VALUES (?, ?, ?, ?)',
+    'INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at) VALUES (?, ?, ?, ?, ?)',
   );
   db.transaction(() => {
     for (const w of writes) {
@@ -353,41 +352,35 @@ export function writeOverrides(writes: OverrideWrite[]): void {
       for (const row of existing) {
         if (row.chest_name === w.chestName && canonicalSourceKey(row.source_key) === canon) del.run(row.id);
       }
-      if (w.points !== null) ins.run(w.sourceKey, w.chestName, w.points, now);
+      if (w.points !== null) ins.run(clanId, w.sourceKey, w.chestName, w.points, now);
     }
   })();
   const set = writes.filter((w) => w.points !== null).length;
-  log.info(`Source points: wrote ${set} value(s), cleared ${writes.length - set}`);
+  log.info(`Source points (clan ${clanId}): wrote ${set} value(s), cleared ${writes.length - set}`);
   invalidateSourceKeySummary();
 }
 
 /**
- * Recalculate chest_records.point_value across EVERY clan using the current
- * global override + default stack. The override map is global, so it's
- * loaded once and applied to each clan's rows in turn.
+ * Recalculate one clan's chest_records.point_value from its current override +
+ * default stack. Another clan's records are never touched: its values are its
+ * own.
  *
  * `onlyCanonKeys` limits the pass to sources whose canonical key is in the
  * set — what a save uses, so it rewrites exactly the sources it changed.
  * Returns the number of rows whose value actually changed.
  */
-export function recalculateAllPoints(onlyCanonKeys?: ReadonlySet<string>): number {
-  const overrideMap = loadOverrides();
-  let totalUpdated = 0;
-  let clanCount = 0;
-  for (const clan of listClans()) {
-    clanCount++;
-    totalUpdated += recalculatePointsForClan(clan.id, overrideMap, onlyCanonKeys);
-  }
-  log.info(`Recalculated point values: ${totalUpdated} rows updated across ${clanCount} clan(s)`);
+export function recalculatePoints(clanId: number, onlyCanonKeys?: ReadonlySet<string>): number {
+  const updated = recalculatePointsForClan(clanId, loadOverrides(clanId), onlyCanonKeys);
+  log.info(`Recalculated point values for clan ${clanId}: ${updated} rows updated`);
   invalidateSourceKeySummary();
-  return totalUpdated;
+  return updated;
 }
 
 /**
- * Recalculate one clan's chest_records.point_value using the given global
- * override map. Groups by (source_key, chest_name) so every chest name gets
- * its effective value applied in one UPDATE. Notifies the daily-summary
- * rollup when the clan's rows actually changed.
+ * Recalculate one clan's chest_records.point_value using the given override
+ * map. Groups by (source_key, chest_name) so every chest name gets its
+ * effective value applied in one UPDATE. Notifies the daily-summary rollup
+ * when the clan's rows actually changed.
  */
 function recalculatePointsForClan(
   clanId: number,

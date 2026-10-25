@@ -79,6 +79,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'resource_upload_batches.clan_id',
     'review_acknowledgments.clan_id',
     'share_links.clan_id',
+    'source_point_overrides.clan_id',
     'tinman_scores.clan_id',
     'tinman_targets.clan_id',
     'tinman_uploads.clan_id',
@@ -234,6 +235,10 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO review_acknowledgments (clan_id, category, acknowledged_at)
      VALUES (?, 'member', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+     VALUES (?, 'arena', '', 10, ?)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO user_sessions (user_id, token, expires_at, created_at, active_clan_id)

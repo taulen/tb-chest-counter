@@ -41,8 +41,8 @@ export async function renderAdmin(el) {
     el.innerHTML = '<div class="empty-state"><p>Admin access required.</p></div>';
     return;
   }
-  // Chest Points and Triumphal Chest Points are global scoring tables shared
-  // by every clan. Any admin can view them, but only superadmins can edit.
+  // Chest Points are per clan (the active clan's board); Triumphal Chest Points
+  // are one global table. Any admin can view them, but only superadmins can edit.
   const isSuperadmin = currentUser?.role === 'superadmin';
   // Scanner / Discord / ChestTracker / scan-interval data lives on the
   // System and Clans tabs now — the Admin page only fetches what it

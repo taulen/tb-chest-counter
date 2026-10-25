@@ -25,7 +25,7 @@ export function exportCatalog(clanId: number): object {
   const names = chestRepo.getDistinctChestNames(clanId);
   const sources = chestRepo.getDistinctChestSources(clanId);
   const mergeRules = mergeRepo.getMergeRules(clanId);
-  const sourcePointOverrides = sourcePointsRepo.getAllOverrides();
+  const sourcePointOverrides = sourcePointsRepo.getAllOverrides(clanId);
 
   // Index overrides by sourceKey so we can fold name-specific rows into
   // the source buckets below. A source key may have a wildcard row and

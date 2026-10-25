@@ -110,14 +110,14 @@ function leaderboardFeatures(clan, clanId) {
 }
 /**
  * Everything the leaderboard FAQ modal needs from the server: the points-per-
- * chest table (global — the scoring table has no clan), who to contact (this
+ * chest table (this clan's — each clan has its own values), who to contact (this
  * clan's admins plus the site's superadmins), and which of the board's extras
  * to explain. Shared by /api/leaderboard/faq and the public
  * /api/public/:token/faq so the two modals can't disagree.
  */
 function buildLeaderboardFaq(clanId) {
     return {
-        pointsGuide: (0, points_guide_js_1.buildPointsGuide)(),
+        pointsGuide: (0, points_guide_js_1.buildPointsGuide)(clanId),
         contacts: (0, user_repo_js_1.listSiteContacts)(clanId),
         board: leaderboardFeatures((0, clan_repo_js_1.getClanById)(clanId), clanId),
     };
