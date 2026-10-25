@@ -46,6 +46,9 @@ window.addEventListener('beforeunload', (e) => {
 const fmt = (n) => Number(n || 0).toLocaleString();
 const signed = (n) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `−${fmt(-n)}` : '±0');
 const plural = (n, one, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
+// Sources only another clan has recorded are listed so they can be valued
+// ahead of the first chest; say so instead of "0 chests".
+const chestCount = (n) => (n > 0 ? plural(n, 'chest') : '<span class="muted-copy">none recorded yet</span>');
 const dirtyKey = (sourceKey, chestName) => `${sourceKey}\t${chestName}`;
 
 function storedCategory() {
@@ -304,7 +307,7 @@ function groupHtml(g) {
   // A search that found a member (not the tier itself) opens the tier.
   const open = state.expanded.has(GROUP_PREFIX + g.id) || (q !== '' && !g.label.toLowerCase().includes(q));
   const anyEdited = members.some((m) => [...state.dirty.keys()].some((k) => k.startsWith(`${m.key}\t`)));
-  const meta = [plural(members.length, 'level'), plural(records, 'chest')];
+  const meta = [plural(members.length, 'level'), chestCount(records)];
   if (differing.length > 0) {
     meta.push(`<span class="pb-meta-exc">${differing.map((m) => `Level ${esc(levelOf(m))} pays ${fmt(m.points)}`).join(', ')}</span>`);
   }
@@ -404,9 +407,9 @@ function sourceHtml(s) {
   const open = state.expanded.has(s.key) || foundByChest;
   const anyEdited = [...state.dirty.keys()].some((k) => k.startsWith(`${s.key}\t`));
   const meta = [
-    plural(s.records, 'chest'),
+    chestCount(s.records),
     s.chests.length > 1 ? plural(s.chests.length, 'kind') : esc(s.chests[0]?.name || ''),
-  ];
+  ].filter(Boolean);
   if (exceptions.length > 0) meta.push(`<span class="pb-meta-exc">${plural(exceptions.length, 'exception')}</span>`);
   if (s.staleRecords > 0) meta.push(`<span class="pb-flag">⟳ ${fmt(s.staleRecords)} out of date</span>`);
   const expandable = s.chests.length > 1 || exceptions.length > 0;
@@ -438,7 +441,7 @@ function detailHtml(s, exceptions, followers) {
         <div class="pb-name">
           <span class="pb-chest-name">${esc(c.name)}</span>
           ${c.unset ? '<span class="badge-warn">⚠ Needs a value</span>' : ''}
-          <span class="pb-meta">${plural(c.records, 'chest')}</span>
+          <span class="pb-meta">${chestCount(c.records)}</span>
         </div>
         <div class="pb-control">${valueControl(s.key, c.name, c.points, `${c.name} from ${s.label}`)}</div>
         ${canEdit ? `<button type="button" class="pb-reset" data-pb="follow" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="Pay the source's value instead" aria-label="${esc(c.name)}: pay the source's value instead">↺</button>` : '<span class="pb-expand-spacer"></span>'}

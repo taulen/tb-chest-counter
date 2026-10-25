@@ -46,7 +46,7 @@ function sourceCategory(key) {
         return 'tournaments';
     if (/shop|store|exchange/.test(canon))
         return 'shops';
-    if (/event|omens|carrot|beastman|yokai|sakura/.test(canon))
+    if (/event|omens|carrot|beastman|yokai|sakura|pumpkin/.test(canon))
         return 'events';
     return 'other';
 }

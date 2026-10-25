@@ -40,6 +40,6 @@ export function sourceCategory(key: string): SourceCategory {
   if (canon.includes('squad') || canon === 'shadowcity') return 'squads';
   if (canon.includes('tournament')) return 'tournaments';
   if (/shop|store|exchange/.test(canon)) return 'shops';
-  if (/event|omens|carrot|beastman|yokai|sakura/.test(canon)) return 'events';
+  if (/event|omens|carrot|beastman|yokai|sakura|pumpkin/.test(canon)) return 'events';
   return 'other';
 }

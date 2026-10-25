@@ -31,8 +31,9 @@ exports.previewRecalculate = previewRecalculate;
  * much, through the same resolver the write uses. Nothing is lost by a wrong
  * save, but a save nobody can check before making is how values drift.
  *
- * The board is one clan's: each clan has its own values (v86), so its sources,
- * its record counts, its previews and its saves all stay inside that clan.
+ * The board is one clan's: each clan has its own values (v86), so its record
+ * counts, its previews and its saves all stay inside that clan. The sources it
+ * lists are every clan's, so a value can be set before the first chest lands.
  */
 const database_js_1 = require("./database.js");
 const ttl_cache_js_1 = require("../utils/ttl-cache.js");
@@ -106,6 +107,51 @@ function loadRecordGroups(clanId) {
     }
     return groups;
 }
+/**
+ * Every source and chest the app knows of, as zero-count groups: whatever any
+ * live clan has recorded, plus the built-in default tables and every live
+ * clan's saved values. A clan can only score what it has seen, but it needs to
+ * value a source before its first chest arrives — a clan added mid-month would
+ * otherwise see no event, tournament or Tartaros row until that chest had
+ * already been scored. Counts, previews and saves stay the board clan's own.
+ *
+ * chestName '' = a source known with no chest name (a flat default, or a
+ * source-wide value): it gets a row, but no chest under it.
+ */
+function loadKnownGroups(clanId) {
+    const db = (0, database_js_1.getDb)();
+    const recorded = db.prepare(`
+    SELECT DISTINCT cs.source, ch.name AS chest_name
+      FROM chest_records cr
+      JOIN clans c ON c.id = cr.clan_id AND c.deleted_at = ''
+      JOIN chest_sources cs ON cs.id = cr.chest_source_id
+      JOIN chests ch ON ch.id = cr.chest_id
+     WHERE cs.source != ''
+  `).all();
+    const saved = db.prepare(`
+    SELECT DISTINCT o.source_key, o.chest_name
+      FROM source_point_overrides o
+      JOIN clans c ON c.id = o.clan_id AND c.deleted_at = ''
+  `).all();
+    const groups = [];
+    const add = (source, key, chestName) => {
+        groups.push({ clanId, source, key, canon: (0, source_names_js_1.canonicalSourceKey)(key), chestName, stored: 0, count: 0 });
+    };
+    for (const r of recorded) {
+        const key = (0, source_names_js_1.getSourceKey)(r.source);
+        if (key)
+            add(r.source, key, r.chest_name);
+    }
+    for (const key of source_names_js_1.SOURCE_POINT_KEYS)
+        add('', key, '');
+    for (const [key, chests] of Object.entries(source_names_js_1.SOURCE_CHEST_POINTS)) {
+        for (const name of Object.keys(chests))
+            add('', key, name);
+    }
+    for (const o of saved)
+        add('', o.source_key, o.chest_name);
+    return groups;
+}
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 function titleCase(s) {
     return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
@@ -129,10 +175,14 @@ function sourceLabel(key, category, sample) {
     }
     if (category === 'runic' || category === 'vault') {
         const name = category === 'runic' ? 'Raid Runic Squad' : 'Vault of the Ancients';
-        const range = (0, source_names_js_1.parseSourceLevelRange)(sample) ?? /(\d+)/.exec(key)?.[1];
+        // A key known only from the tables has no in-game text: "lvl 20 24 raid runic squad".
+        const fromKey = /(\d+)(?: (\d+))?/.exec(key);
+        const range = (0, source_names_js_1.parseSourceLevelRange)(sample)
+            ?? (fromKey ? (fromKey[2] ? `${fromKey[1]}-${fromKey[2]}` : fromKey[1]) : undefined);
         return range ? `${name} · Level ${range.replace('-', '–')}` : name;
     }
-    return sample || titleCase(key);
+    // Keys flatten an apostrophe to a space: "azada s shop" is Azada's Shop.
+    return sample || titleCase(key).replace(/ S\b/g, '\'s');
 }
 /** Order within a category: crypt tier / citadel kind first, then the label. */
 function sortRank(key) {
@@ -166,21 +216,31 @@ function majorityPoints(chests) {
     }
     return best ? best[0] : 0;
 }
+/** What a source pays: its chests' majority, or — known only by key (a default
+ *  or a saved value, no chest name yet) — its source-wide value. */
+function sourcePoints(chests, overrides, key) {
+    return chests.length > 0 ? majorityPoints(chests) : (0, source_points_repo_js_1.resolvePointsForKey)(overrides, key, '');
+}
 function buildBoard(clanId, groups, overrides) {
     const overridden = new Set((0, source_points_repo_js_1.getAllOverrides)(clanId).map((o) => (0, source_points_repo_js_1.makeCacheKey)(o.sourceKey, o.chestName)));
     // One bucket per CANONICAL key: a source read with and without spaces is
     // one source, scored by one set of overrides.
     const buckets = new Map();
-    for (const g of groups) {
+    for (const g of [...groups, ...loadKnownGroups(clanId)]) {
         let b = buckets.get(g.canon);
         if (!b) {
             b = { keys: new Map(), sources: new Map(), chests: new Map() };
             buckets.set(g.canon, b);
         }
         b.keys.set(g.key, (b.keys.get(g.key) ?? 0) + g.count);
-        b.sources.set(g.source, (b.sources.get(g.source) ?? 0) + g.count);
+        if (g.source)
+            b.sources.set(g.source, (b.sources.get(g.source) ?? 0) + g.count);
+        if (!g.chestName)
+            continue;
         const stored = b.chests.get(g.chestName) ?? new Map();
-        stored.set(g.stored, (stored.get(g.stored) ?? 0) + g.count);
+        // A chest only another clan has recorded: listed, with nothing stored.
+        if (g.count > 0)
+            stored.set(g.stored, (stored.get(g.stored) ?? 0) + g.count);
         b.chests.set(g.chestName, stored);
     }
     const mostCommon = (m) => [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? '';
@@ -214,16 +274,19 @@ function buildBoard(clanId, groups, overrides) {
         chests.sort((a, c) => collator.compare(a.name, c.name));
         const category = (0, source_categories_js_1.sourceCategory)(key);
         const label = sourceLabel(key, category, sample);
+        const points = sourcePoints(chests, overrides, key);
         staleTotal += stale;
         sources.push({
             key,
             label,
-            source: sample,
+            source: sample || label,
             category,
             records,
-            points: majorityPoints(chests),
+            points,
             chests,
-            unset: chests.some((c) => c.unset),
+            unset: chests.length > 0
+                ? chests.some((c) => c.unset)
+                : points === 0 && !wildcardSet && !(0, source_names_js_1.hasDefaultPointsFor)(key, ''),
             staleRecords: stale,
             group: sourceGroup(key, category)?.id ?? null,
             rank: sortRank(key),
@@ -450,7 +513,7 @@ function boardEdits(board, next) {
     const edits = [];
     for (const src of board.sources) {
         const after = src.chests.map((c) => ({ ...c, points: (0, source_points_repo_js_1.resolvePointsForKey)(next, src.key, c.name) }));
-        const to = majorityPoints(after);
+        const to = sourcePoints(after, next, src.key);
         if (to !== src.points)
             edits.push({ key: src.key, label: src.label, chestName: '', from: src.points, to });
         after.forEach((c, i) => {

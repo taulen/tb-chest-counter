@@ -131,9 +131,10 @@ describe('board', () => {
     expect(groupOf(36)).toBe('heroic-36-40');
     expect(groupOf(45)).toBe('heroic-41-45');
     expect(groupOf(46)).toBeNull();
+    // Every tier is listed — the default tables know all of 16–45 — in level order.
     expect(board.groups.map((g) => g.label)).toEqual([
-      'Heroic Monster · Level 16–19', 'Heroic Monster · Level 20–24', 'Heroic Monster · Level 30–35',
-      'Heroic Monster · Level 36–40', 'Heroic Monster · Level 41–45',
+      'Heroic Monster · Level 16–19', 'Heroic Monster · Level 20–24', 'Heroic Monster · Level 25–29',
+      'Heroic Monster · Level 30–35', 'Heroic Monster · Level 36–40', 'Heroic Monster · Level 41–45',
     ]);
     // Nothing else is grouped.
     seedCrypt();
@@ -146,7 +147,8 @@ describe('board', () => {
     record('Level 10 Crypt', 'Barbarian Chest', 1, 5);
     record('Level 10 epic Crypt', 'Barbarian Chest', 1, 10);
     record('Tartaros Crypt level 15', 'Tartaros Chest', 1, 60);
-    const crypts = getPointsBoard(1).sources.filter((s) => s.category === 'crypts').map((s) => s.label);
+    const crypts = getPointsBoard(1).sources
+      .filter((s) => s.category === 'crypts' && s.records > 0).map((s) => s.label);
     expect(crypts).toEqual([
       'Common Crypt · Level 5', 'Common Crypt · Level 10', 'Common Crypt · Level 25', 'Epic Crypt · Level 10',
       'Tartaros Crypt · Level 15',
@@ -156,7 +158,7 @@ describe('board', () => {
   it('a source OCR-read with and without spaces is one line', () => {
     record('Clan wealth', 'Rare Chest of Wealth', 2, 1);
     record('ClanWealth', 'Rare Chest of Wealth', 3, 1);
-    const wealth = getPointsBoard(1).sources.filter((s) => s.category === 'other');
+    const wealth = getPointsBoard(1).sources.filter((s) => s.category === 'other' && s.records > 0);
     expect(wealth).toHaveLength(1);
     expect(wealth[0].key).toBe('clan wealth');
     expect(wealth[0].records).toBe(5);
@@ -356,6 +358,42 @@ describe('per-clan values', () => {
     // Clan 2 is not "out of date" just because clan 1 now pays more.
     expect(previewRecalculate(2).records).toBe(0);
   });
+
+  it('lists sources only another clan has recorded, so they can be valued ahead', () => {
+    seedTwoClans();
+    seedOmens();
+    record('Level 10 Crypt', 'Barbarian Chest', 1, 5);
+    recordClan2('Level 10 Crypt', 'Barbarian Chest', 2, 5);
+
+    const omens = getPointsBoard(2).sources.find((s) => s.key === 'summoning dark omens');
+    expect(omens).toMatchObject({ records: 0, staleRecords: 0 });
+    expect(omens?.chests.map((c) => c.records)).toEqual([0, 0, 0]);
+    // Clan 2's own crypt counts only its own records.
+    expect(getPointsBoard(2).sources.find((s) => s.key === 'common 10')?.records).toBe(2);
+
+    const result = applyPointChanges(2, [{ sourceKey: 'summoning dark omens', chestName: '', points: 70 }]);
+    expect(result.updated).toBe(0);
+    expect(getPointsBoard(2).sources.find((s) => s.key === 'summoning dark omens')?.chests
+      .find((c) => c.name === 'Minor Omen Chest')?.points).toBe(70);
+    expect(storedPoints('Summoning Dark Omens', 'Minor Omen Chest')).toEqual([50]);
+  });
+
+  it('lists every source the default tables know, recorded by no clan yet', () => {
+    const board = getPointsBoard(1);
+    const find = (key: string) => board.sources.find((s) => s.key === key);
+    // Flat default only: no chest names, pays the source-wide value.
+    expect(find('cursed citadel 20')).toMatchObject({ label: 'Cursed Citadel · Level 20', records: 0, points: 20, chests: [], unset: false });
+    // Per-chest defaults: the chests are listed too.
+    expect(find('summoning dark omens')?.chests.map((c) => [c.name, c.points])).toEqual([
+      ['Epic Omen Chest', 150], ['Major Omen Chest', 100], ['Minor Omen Chest', 50],
+    ]);
+    expect(find('lvl 20 24 raid runic squad')?.label).toBe('Raid Runic Squad · Level 20–24');
+    expect(find('azada s shop')?.label).toBe('Azada\'s Shop');
+
+    const result = applyPointChanges(1, [{ sourceKey: 'cursed citadel 20', chestName: '', points: 90 }]);
+    expect(result.edits).toEqual([expect.objectContaining({ key: 'cursed citadel 20', from: 20, to: 90 })]);
+    expect(source('cursed citadel 20').points).toBe(90);
+  });
 });
 
 describe('copy values from another clan', () => {
@@ -371,7 +409,11 @@ describe('copy values from another clan', () => {
     const preview = previewCopyFrom(2, 1);
     expect(preview.from).toEqual({ id: 1, name: 'Clan #1' });
     expect(preview.values).toBe(2);
-    expect(preview.edits).toEqual([expect.objectContaining({ key: 'common 10', chestName: '', from: 60, to: 40 })]);
+    // Arena is on clan 2's board too (a default source), so its copied value shows.
+    expect(preview.edits).toEqual([
+      expect.objectContaining({ key: 'common 10', chestName: '', from: 60, to: 40 }),
+      expect.objectContaining({ key: 'arena', chestName: '', from: 1, to: 7 }),
+    ]);
     expect(preview.impact).toMatchObject({ records: 2, delta: -40 });
     expect(storedPointsIn(2)).toEqual([60]);
 
