@@ -10,7 +10,7 @@
 // anything is written.
 
 import { api, apiPost } from '../lib/api.js';
-import { esc, notify, contentModal } from '../lib/ui.js';
+import { esc, notify, contentModal, selectDialog } from '../lib/ui.js';
 
 const CATEGORY_STORE_KEY = 'pointsBoard.category';
 const NEEDS_VALUE = 'needs-value';
@@ -127,7 +127,10 @@ function shellHtml() {
   return `
     <div class="card-header pb-header">
       <h2>Chest Points</h2>
-      ${canEdit ? '<button class="btn btn-tight" type="button" data-pb="recalc">Recalculate</button>' : ''}
+      ${canEdit ? `<div class="pb-header-actions">
+        <button class="btn btn-tight" type="button" data-pb="copy" title="Make this clan pay exactly what another clan pays">Copy from clan…</button>
+        <button class="btn btn-tight" type="button" data-pb="recalc">Recalculate</button>
+      </div>` : ''}
     </div>
     <div class="card-body card-body-padded pb-body"><p class="is-loading">Loading chest points…</p></div>
   `;
@@ -583,6 +586,8 @@ function wire() {
       reviewAndSave();
     } else if (action === 'recalc') {
       recalculate();
+    } else if (action === 'copy') {
+      copyFromClan();
     }
   });
 }
@@ -721,12 +726,12 @@ function confirmImpact({ title, html, confirmLabel }) {
 async function withBusy(fn) {
   if (state.busy) return;
   state.busy = true;
-  root.querySelectorAll('[data-pb="review"], [data-pb="recalc"]').forEach((b) => { b.disabled = true; });
+  root.querySelectorAll('[data-pb="review"], [data-pb="recalc"], [data-pb="copy"]').forEach((b) => { b.disabled = true; });
   try {
     await fn();
   } finally {
     state.busy = false;
-    root?.querySelectorAll('[data-pb="review"], [data-pb="recalc"]').forEach((b) => { b.disabled = false; });
+    root?.querySelectorAll('[data-pb="review"], [data-pb="recalc"], [data-pb="copy"]').forEach((b) => { b.disabled = false; });
   }
 }
 
@@ -799,5 +804,57 @@ function recalculate() {
     if (result?.error) return notify(result.error, 'Recalculate failed');
     await refresh();
     notify(`${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`, 'Recalculated');
+  });
+}
+
+/**
+ * Make the board's clan pay exactly what another clan pays: every value is
+ * replaced by a copy of the other clan's, and this clan's records follow.
+ * The other clan is only read.
+ */
+function copyFromClan() {
+  if (state.dirty.size > 0) {
+    return notify(
+      `You have ${plural(state.dirty.size, 'unsaved change')}. Copying replaces every value, so save or discard them first.`,
+      'Save your changes first',
+    );
+  }
+  return withBusy(async () => {
+    const clan = state.board.clan;
+    const list = await api('/clans');
+    const others = (Array.isArray(list?.clans) ? list.clans : []).filter((c) => c.id !== clan.id);
+    if (others.length === 0) return notify('There is no other clan to copy values from.', 'Nothing to copy');
+    const picked = await selectDialog(
+      `Every chest point value of ${clan.name} is replaced by the other clan's. The other clan is not changed.`,
+      others.map((c) => ({ value: c.id, label: c.name })),
+      { title: `Copy values into ${clan.name}`, fieldLabel: 'Copy from', confirmLabel: 'Preview' },
+    );
+    if (picked === null || picked === undefined) return;
+    const fromClanId = Number(picked);
+
+    const preview = await apiPost('/admin/source-points/copy', { clanId: clan.id, fromClanId, dryRun: true });
+    if (preview?.error) return notify(preview.error, 'Preview failed');
+    const fromName = esc(preview.from.name);
+    const ok = await confirmImpact({
+      title: `Copy ${preview.from.name}'s values into ${clan.name}?`,
+      html: impactHtml(preview.impact, {
+        edits: preview.edits,
+        intro: `<strong>${esc(clan.name)}</strong> will pay exactly what <strong>${fromName}</strong> pays (${plural(preview.values, 'saved value')}; anything ${fromName} hasn't set uses the built-in default). `
+          + (preview.impact.records > 0
+            ? `These stored chest records of ${esc(clan.name)} are updated right away. ${fromName} is not changed.`
+            : `No stored chest record of ${esc(clan.name)} changes. ${fromName} is not changed.`),
+      }),
+      confirmLabel: 'Copy values',
+    });
+    if (!ok) return;
+
+    const result = await apiPost('/admin/source-points/copy', { clanId: clan.id, fromClanId });
+    if (result?.error) return notify(result.error, 'Copy failed');
+    state.split.clear();
+    await refresh();
+    notify(
+      `${plural(result.values, 'value')} copied from ${result.from.name} · ${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`,
+      'Chest points copied',
+    );
   });
 }

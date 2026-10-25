@@ -8,6 +8,7 @@ exports.loadOverrides = loadOverrides;
 exports.getPointsForSourceCached = getPointsForSourceCached;
 exports.resolvePointsForKey = resolvePointsForKey;
 exports.writeOverrides = writeOverrides;
+exports.copyOverrides = copyOverrides;
 exports.recalculatePoints = recalculatePoints;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
@@ -271,6 +272,27 @@ function writeOverrides(clanId, writes) {
     const set = writes.filter((w) => w.points !== null).length;
     log.info(`Source points (clan ${clanId}): wrote ${set} value(s), cleared ${writes.length - set}`);
     invalidateSourceKeySummary();
+}
+/**
+ * Replace every override of `toClanId` with a copy of `fromClanId`'s, in one
+ * transaction — "this clan pays exactly what that one does". A value the
+ * target set that the source doesn't have is removed, so it falls back to the
+ * built-in default just as it does in the source clan. Records are NOT touched
+ * here; the caller recalculates the target afterwards.
+ */
+function copyOverrides(fromClanId, toClanId) {
+    const db = (0, database_js_1.getDb)();
+    const now = new Date().toISOString();
+    let copied = 0;
+    let removed = 0;
+    db.transaction(() => {
+        removed = db.prepare('DELETE FROM source_point_overrides WHERE clan_id = ?').run(toClanId).changes;
+        copied = db.prepare(`INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+       SELECT ?, source_key, chest_name, point_value, ? FROM source_point_overrides WHERE clan_id = ?`).run(toClanId, now, fromClanId).changes;
+    })();
+    log.info(`Source points: copied ${copied} value(s) from clan ${fromClanId} to clan ${toClanId} (replacing ${removed})`);
+    invalidateSourceKeySummary();
+    return { copied, removed };
 }
 /**
  * Recalculate one clan's chest_records.point_value from its current override +

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { closeDb, getDb, initDatabase } from '../../src/data/database.js';
 import {
-  applyPointChanges, getPointsBoard, PointsChangeError, previewPointChanges, previewRecalculate,
+  applyCopyFrom, applyPointChanges, getPointsBoard, PointsChangeError, previewCopyFrom, previewPointChanges, previewRecalculate,
   type BoardSource,
 } from '../../src/data/points-board.js';
 import { invalidateSourceKeySummary } from '../../src/data/repositories/source-points-repo.js';
@@ -355,6 +355,44 @@ describe('per-clan values', () => {
     expect(getDb().prepare('SELECT DISTINCT clan_id FROM source_point_overrides').all()).toEqual([{ clan_id: 1 }]);
     // Clan 2 is not "out of date" just because clan 1 now pays more.
     expect(previewRecalculate(2).records).toBe(0);
+  });
+});
+
+describe('copy values from another clan', () => {
+  it('makes the clan an exact copy of the other, previews it, and leaves the other alone', () => {
+    seedTwoClans();
+    record('Level 10 Crypt', 'Barbarian Chest', 3, 5);
+    recordClan2('Level 10 Crypt', 'Barbarian Chest', 2, 5);
+    // Clan 1: a source value plus one of its own; clan 2: a different source value.
+    override('common 10', '', 40);
+    override('arena', '', 7);
+    applyPointChanges(2, [{ sourceKey: 'common 10', chestName: '', points: 60 }]);
+
+    const preview = previewCopyFrom(2, 1);
+    expect(preview.from).toEqual({ id: 1, name: 'Clan #1' });
+    expect(preview.values).toBe(2);
+    expect(preview.edits).toEqual([expect.objectContaining({ key: 'common 10', chestName: '', from: 60, to: 40 })]);
+    expect(preview.impact).toMatchObject({ records: 2, delta: -40 });
+    expect(storedPointsIn(2)).toEqual([60]);
+
+    const result = applyCopyFrom(2, 1);
+    expect(result.updated).toBe(2);
+    expect(storedPointsIn(2)).toEqual([40]);
+    const rows = (clanId: number) => getDb().prepare(
+      'SELECT source_key, chest_name, point_value FROM source_point_overrides WHERE clan_id = ? ORDER BY source_key',
+    ).all(clanId);
+    expect(rows(2)).toEqual(rows(1));
+    expect(rows(1)).toEqual([
+      { source_key: 'arena', chest_name: '', point_value: 7 },
+      { source_key: 'common 10', chest_name: '', point_value: 40 },
+    ]);
+    expect(previewRecalculate(2).records).toBe(0);
+  });
+
+  it('refuses copying a clan onto itself or from a clan that does not exist', () => {
+    seedTwoClans();
+    expect(() => previewCopyFrom(1, 1)).toThrow(PointsChangeError);
+    expect(() => applyCopyFrom(1, 99)).toThrow(PointsChangeError);
   });
 });
 

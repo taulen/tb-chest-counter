@@ -2539,6 +2539,26 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     }
   });
 
+  // POST /api/admin/source-points/copy { clanId, fromClanId, dryRun? } — active clan, superadmin-only.
+  // Replaces every chest point value of the active clan with a copy of
+  // fromClanId's and recalculates its records. fromClanId is only read.
+  router.post('/admin/source-points/copy', requireSuperAdmin, (req, res) => {
+    const clanId = pointsWriteClan(req, res);
+    if (clanId === null) return;
+    const fromClanId = req.body?.fromClanId;
+    try {
+      if (req.body?.dryRun) return res.json(pointsBoard.previewCopyFrom(clanId, fromClanId));
+      const result = pointsBoard.applyCopyFrom(clanId, fromClanId);
+      logAction(req.user!.id, 'copy_source_points', {
+        clanId, fromClanId, values: result.values, updated: result.updated, delta: result.impact.delta,
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      if (err instanceof pointsBoard.PointsChangeError) return res.status(400).json({ error: err.message });
+      res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+    }
+  });
+
   // ── Triumphal Chest Points ─────────────────────────────────────────
   // Global, superadmin-managed scoring for the Bank Gifts tab, mirroring
   // source-points: any admin may READ the list; only superadmins may

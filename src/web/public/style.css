@@ -6185,7 +6185,8 @@ button.pb-follower:hover { border-color: var(--accent-gold-border); background: 
 }
 .pb-savebar[hidden] { display: none; }
 .pb-savebar-text { font-size: 13px; font-weight: 600; color: var(--accent-gold); }
-.pb-savebar-actions { display: flex; gap: 8px; }
+.pb-savebar-actions, .pb-header-actions { display: flex; gap: 8px; }
+.pb-header-actions { flex-wrap: wrap; justify-content: flex-end; }
 
 /* Preview modal */
 .pb-impact-modal { max-width: 640px; }

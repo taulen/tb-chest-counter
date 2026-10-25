@@ -4,6 +4,8 @@ exports.PointsChangeError = exports.MAX_POINTS = void 0;
 exports.getPointsBoard = getPointsBoard;
 exports.previewPointChanges = previewPointChanges;
 exports.applyPointChanges = applyPointChanges;
+exports.previewCopyFrom = previewCopyFrom;
+exports.applyCopyFrom = applyCopyFrom;
 exports.previewRecalculate = previewRecalculate;
 /**
  * The Chest Points admin board: one line per chest SOURCE with the value it
@@ -438,6 +440,61 @@ function applyPointChanges(clanId, changes) {
     (0, source_points_repo_js_1.writeOverrides)(clanId, plan.writes);
     const updated = plan.canonKeys.size > 0 ? (0, source_points_repo_js_1.recalculatePoints)(clanId, plan.canonKeys) : 0;
     return { edits: plan.edits, impact, updated };
+}
+/**
+ * The board's lines that move when `next` replaces the clan's overrides: a
+ * source whose own value changes gets one line, and a chest only when it moves
+ * apart from its source — the same shape a hand-made save previews as.
+ */
+function boardEdits(board, next) {
+    const edits = [];
+    for (const src of board.sources) {
+        const after = src.chests.map((c) => ({ ...c, points: (0, source_points_repo_js_1.resolvePointsForKey)(next, src.key, c.name) }));
+        const to = majorityPoints(after);
+        if (to !== src.points)
+            edits.push({ key: src.key, label: src.label, chestName: '', from: src.points, to });
+        after.forEach((c, i) => {
+            const from = src.chests[i].points;
+            const swept = from === src.points && c.points === to;
+            if (c.points !== from && !swept) {
+                edits.push({ key: src.key, label: src.label, chestName: c.name, from, to: c.points });
+            }
+        });
+    }
+    return edits;
+}
+function copySource(clanId, fromClanId) {
+    if (!Number.isInteger(fromClanId) || fromClanId === clanId) {
+        throw new PointsChangeError('Pick a different clan to copy the values from');
+    }
+    const from = (0, clan_repo_js_1.getClanById)(fromClanId);
+    if (!from)
+        throw new PointsChangeError(`No clan #${fromClanId}`);
+    return { id: from.id, name: from.name };
+}
+/** Dry run of copying every value of `fromClanId` onto `clanId`. */
+function previewCopyFrom(clanId, fromClanId) {
+    const from = copySource(clanId, fromClanId);
+    const groups = loadRecordGroups(clanId);
+    const board = buildBoard(clanId, groups, (0, source_points_repo_js_1.loadOverrides)(clanId));
+    const next = (0, source_points_repo_js_1.loadOverrides)(fromClanId);
+    return {
+        from,
+        values: (0, source_points_repo_js_1.getAllOverrides)(fromClanId).length,
+        edits: boardEdits(board, next),
+        impact: computeImpact(groups, next, board),
+    };
+}
+/**
+ * Copy: the clan's values become an exact copy of `fromClanId`'s, then every
+ * one of its records is recalculated — which also settles any that were
+ * already stale, exactly as the preview reported. The source clan is untouched.
+ */
+function applyCopyFrom(clanId, fromClanId) {
+    const preview = previewCopyFrom(clanId, fromClanId);
+    (0, source_points_repo_js_1.copyOverrides)(fromClanId, clanId);
+    const updated = (0, source_points_repo_js_1.recalculatePoints)(clanId);
+    return { ...preview, updated };
 }
 /** Dry run of Recalculate: every record of the clan whose stored value is out of date. */
 function previewRecalculate(clanId) {

@@ -262,6 +262,8 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'POST /admin/source-points/changes (dry run)', method: 'post', path: '/api/admin/source-points/changes', body: { clanId: 1, changes: [{ sourceKey: 'arena', chestName: '', points: 10 }], dryRun: true } },
       { name: 'POST /admin/source-points/recalculate', method: 'post', path: '/api/admin/source-points/recalculate', body: { clanId: 1 } },
       { name: 'POST /admin/source-points/recalculate (dry run)', method: 'post', path: '/api/admin/source-points/recalculate', body: { clanId: 1, dryRun: true } },
+      { name: 'POST /admin/source-points/copy (dry run)', method: 'post', path: '/api/admin/source-points/copy', body: { clanId: 1, fromClanId: 2, dryRun: true } },
+      { name: 'POST /admin/source-points/copy', method: 'post', path: '/api/admin/source-points/copy', body: { clanId: 1, fromClanId: 2 } },
       // Triumphal chest points: same global read-admin / write-superadmin split.
       { name: 'PUT /admin/triumphal-points', method: 'put', path: '/api/admin/triumphal-points', body: { chestName: 'Golden Chest', packagePoints: 50 } },
       { name: 'DELETE /admin/triumphal-points', method: 'delete', path: '/api/admin/triumphal-points?chestName=Golden%20Chest' },
@@ -291,7 +293,7 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     // one that doesn't match the session's active clan is refused rather than
     // landing on whichever clan another tab switched to.
     it('source-points writes for a clan other than the active one → 409', async () => {
-      for (const path of ['/api/admin/source-points/changes', '/api/admin/source-points/recalculate']) {
+      for (const path of ['/api/admin/source-points/changes', '/api/admin/source-points/recalculate', '/api/admin/source-points/copy']) {
         const r = await send('post', path, 'super', { clanId: 999, changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] });
         expectStatus(r.status, 409);
         const missing = await send('post', path, 'super', { changes: [{ sourceKey: 'arena', chestName: '', points: 10 }] });

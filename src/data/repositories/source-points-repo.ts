@@ -361,6 +361,30 @@ export function writeOverrides(clanId: number, writes: OverrideWrite[]): void {
 }
 
 /**
+ * Replace every override of `toClanId` with a copy of `fromClanId`'s, in one
+ * transaction — "this clan pays exactly what that one does". A value the
+ * target set that the source doesn't have is removed, so it falls back to the
+ * built-in default just as it does in the source clan. Records are NOT touched
+ * here; the caller recalculates the target afterwards.
+ */
+export function copyOverrides(fromClanId: number, toClanId: number): { copied: number; removed: number } {
+  const db = getDb();
+  const now = new Date().toISOString();
+  let copied = 0;
+  let removed = 0;
+  db.transaction(() => {
+    removed = db.prepare('DELETE FROM source_point_overrides WHERE clan_id = ?').run(toClanId).changes;
+    copied = db.prepare(
+      `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+       SELECT ?, source_key, chest_name, point_value, ? FROM source_point_overrides WHERE clan_id = ?`,
+    ).run(toClanId, now, fromClanId).changes;
+  })();
+  log.info(`Source points: copied ${copied} value(s) from clan ${fromClanId} to clan ${toClanId} (replacing ${removed})`);
+  invalidateSourceKeySummary();
+  return { copied, removed };
+}
+
+/**
  * Recalculate one clan's chest_records.point_value from its current override +
  * default stack. Another clan's records are never touched: its values are its
  * own.
