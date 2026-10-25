@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysBetweenGameDates, gameDateFor } from '../../src/utils/game-day.js';
+import { closedWeekAt, daysBetweenGameDates, gameDateFor } from '../../src/utils/game-day.js';
 
 /**
  * The game day is what keys a might snapshot, so getting the boundary wrong
@@ -61,5 +61,44 @@ describe('daysBetweenGameDates', () => {
     expect(daysBetweenGameDates('', '2026-08-04')).toBeNull();
     expect(daysBetweenGameDates('2026-08-04', '')).toBeNull();
     expect(daysBetweenGameDates('not-a-date', '2026-08-04')).toBeNull();
+  });
+});
+
+/**
+ * The Discord weekly digest fires on the rollover this says ends a week, and
+ * reports the window it returns — so a Tinman clan must get its 6-day week on
+ * the Tinman day, and nothing on a Sunday.
+ */
+describe('closedWeekAt', () => {
+  const at = (iso: string, weekStart: 'sunday' | 'ancients') => closedWeekAt(Date.parse(iso), 17, weekStart);
+
+  it('ends a Sunday week at the Sunday rollover', () => {
+    expect(at('2026-10-25T17:00:00Z', 'sunday')).toEqual({
+      from: '2026-10-18T17:00:00.000Z',
+      to: '2026-10-25T17:00:00.000Z',
+      firstDay: '2026-10-18',
+      lastDay: '2026-10-24',
+    });
+  });
+
+  it('ends nothing at a mid-week rollover', () => {
+    expect(at('2026-10-24T17:00:00Z', 'sunday')).toBeNull();
+    expect(at('2026-10-25T17:00:00Z', 'ancients')).toBeNull();
+  });
+
+  it('ends a 6-day Tinman week at each Tinman rollover', () => {
+    expect(at('2026-10-23T17:00:00Z', 'ancients')).toEqual({
+      from: '2026-10-17T17:00:00.000Z',
+      to: '2026-10-23T17:00:00.000Z',
+      firstDay: '2026-10-17',
+      lastDay: '2026-10-22',
+    });
+    expect(at('2026-10-29T17:00:00Z', 'ancients')?.firstDay).toBe('2026-10-23');
+    expect(at('2026-10-29T17:00:00Z', 'ancients')?.lastDay).toBe('2026-10-28');
+  });
+
+  it('needs the exact rollover instant, not a moment either side', () => {
+    expect(at('2026-10-25T17:00:01Z', 'sunday')).toBeNull();
+    expect(at('2026-10-25T16:59:59Z', 'sunday')).toBeNull();
   });
 });

@@ -21,6 +21,7 @@ exports.getClanAncientDefaults = getClanAncientDefaults;
 exports.setClanAncientDefaults = setClanAncientDefaults;
 exports.setClanDiscordSettings = setClanDiscordSettings;
 exports.setClanLastDigestStatus = setClanLastDigestStatus;
+exports.setClanLastWeeklyDigestStatus = setClanLastWeeklyDigestStatus;
 exports.markClanNeedsReauth = markClanNeedsReauth;
 exports.clearClanNeedsReauth = clearClanNeedsReauth;
 exports.reauthWarningKey = reauthWarningKey;
@@ -69,6 +70,7 @@ function rowToClan(row) {
         discordDailyDigestEnabled: !!row.discord_daily_digest_enabled,
         discordDailyDigestShareUserId: row.discord_daily_digest_share_user_id || '',
         discordCommandsEnabled: !!row.discord_commands_enabled,
+        discordWeeklyDigestEnabled: !!row.discord_weekly_digest_enabled,
         ctShareCode: row.ct_share_code || '',
         ctPollIntervalHours: row.ct_poll_interval_hours ?? null,
         ctBackfillWeeks: row.ct_backfill_weeks ?? null,
@@ -76,6 +78,9 @@ function rowToClan(row) {
         lastDigestChannelError: row.last_digest_channel_error || '',
         lastDigestDmError: row.last_digest_dm_error || '',
         lastDigestGameDay: row.last_digest_game_day || '',
+        lastWeeklyDigestAt: row.last_weekly_digest_at || '',
+        lastWeeklyDigestWeek: row.last_weekly_digest_week || '',
+        lastWeeklyDigestError: row.last_weekly_digest_error || '',
         needsReauth: !!row.needs_reauth,
         reauthFailedAt: row.reauth_failed_at || '',
         resourcesEnabled: !!row.resources_enabled,
@@ -272,9 +277,10 @@ function setClanDiscordSettings(id, s) {
       discord_only_new_chests = ?,
       discord_daily_digest_enabled = ?,
       discord_daily_digest_share_user_id = ?,
-      discord_commands_enabled = ?
+      discord_commands_enabled = ?,
+      discord_weekly_digest_enabled = ?
     WHERE id = ?
-  `).run(s.enabled ? 1 : 0, s.token, s.channelId, s.guildId, s.scanReportsEnabled ? 1 : 0, s.onlyNewChests ? 1 : 0, s.dailyDigestEnabled ? 1 : 0, s.dailyDigestShareUserId, s.commandsEnabled ? 1 : 0, id);
+  `).run(s.enabled ? 1 : 0, s.token, s.channelId, s.guildId, s.scanReportsEnabled ? 1 : 0, s.onlyNewChests ? 1 : 0, s.dailyDigestEnabled ? 1 : 0, s.dailyDigestShareUserId, s.commandsEnabled ? 1 : 0, s.weeklyDigestEnabled ? 1 : 0, id);
 }
 /**
  * Persist the outcome of a scheduled daily-digest run. Called once
@@ -296,6 +302,20 @@ function setClanLastDigestStatus(id, status) {
       last_digest_dm_error = ?
     WHERE id = ?
   `).run(status.at, status.gameDay, status.channelError, status.dmError, id);
+}
+/**
+ * Persist the outcome of a weekly-digest run — the weekly twin of
+ * setClanLastDigestStatus. `week` is the reported week's first game day;
+ * `error` is '' on full delivery, else the channel and/or DM failure.
+ */
+function setClanLastWeeklyDigestStatus(id, status) {
+    (0, database_js_1.getDb)().prepare(`
+    UPDATE clans SET
+      last_weekly_digest_at = ?,
+      last_weekly_digest_week = ?,
+      last_weekly_digest_error = ?
+    WHERE id = ?
+  `).run(status.at, status.week, status.error, id);
 }
 /**
  * Atomically flip the needs-reauth flag on. Returns true the first

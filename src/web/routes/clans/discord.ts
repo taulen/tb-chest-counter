@@ -56,6 +56,7 @@ export function createDiscordRouter(): Router {
       dailyDigestEnabled: body.dailyDigestEnabled ?? existing.discordDailyDigestEnabled,
       dailyDigestShareUserId: digestShareUserId,
       commandsEnabled: body.commandsEnabled ?? existing.discordCommandsEnabled,
+      weeklyDigestEnabled: body.weeklyDigestEnabled ?? existing.discordWeeklyDigestEnabled,
     });
     logAction(req.user!.id, 'clan.discord.update', { clanId: id });
 

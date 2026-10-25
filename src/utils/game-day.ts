@@ -108,6 +108,9 @@ function daysIntoWeek(day: Date, weekStart: WeekStart): number {
  * the same command linked people to.
  *
  * Takes `rolloverUtcHour` rather than reading config, so it stays pure.
+ * `nowMs` is the instant "the period in progress" is measured from — the clock
+ * unless a caller is resolving a period relative to some other moment (the
+ * Discord weekly digest, which reports the week a given rollover closed).
  * Returns null for 'all', which has no bounds.
  */
 export function gameWindow(
@@ -115,12 +118,13 @@ export function gameWindow(
   offset: number,
   rolloverUtcHour: number,
   weekStart: WeekStart = 'sunday',
+  nowMs: number = Date.now(),
 ): { from: string; to: string } | null {
   if (period === 'all') return null;
   const rolloverMs = rolloverUtcHour * 60 * 60 * 1000;
   // Shift into "game time" so a plain UTC-midnight truncation lands on the
   // rollover, then shift back once the slot's edges are known.
-  const shifted = new Date(Date.now() - rolloverMs);
+  const shifted = new Date(nowMs - rolloverMs);
   shifted.setUTCHours(0, 0, 0, 0);
 
   const back = (startMs: number, endMs: number) => ({
@@ -161,6 +165,30 @@ export function gameWeekWindow(
   weekStart: WeekStart = 'sunday',
 ): { from: string; to: string } {
   return gameWindow('weekly', offset, rolloverUtcHour, weekStart) as { from: string; to: string };
+}
+
+/**
+ * The game week that ended at the rollover instant `rolloverMs`, or null when
+ * that rollover doesn't end one (it opens an ordinary day mid-week).
+ *
+ * A rollover ends a week exactly when the game day it opens is the first day
+ * of a week, which follows `weekStart`: every Sunday for 'sunday', every Tinman
+ * day for 'ancients'. `firstDay` / `lastDay` are the week's first and last game
+ * days (YYYY-MM-DD); `firstDay` is also what the site's `?week=` anchor uses.
+ */
+export function closedWeekAt(
+  rolloverMs: number,
+  rolloverUtcHour: number,
+  weekStart: WeekStart,
+): { from: string; to: string; firstDay: string; lastDay: string } | null {
+  const opening = gameWindow('weekly', 0, rolloverUtcHour, weekStart, rolloverMs);
+  if (!opening || Date.parse(opening.from) !== rolloverMs) return null;
+  const closed = gameWindow('weekly', 1, rolloverUtcHour, weekStart, rolloverMs)!;
+  return {
+    ...closed,
+    firstDay: gameDateFor(Date.parse(closed.from), rolloverUtcHour),
+    lastDay: gameDateFor(Date.parse(closed.to) - 1, rolloverUtcHour),
+  };
 }
 
 /**

@@ -3625,6 +3625,41 @@ details > table {
   padding-left: 0;
 }
 
+/* Digest DM recipients: one row per person — ID input, the name it resolves
+   to, Remove. The name column collapses under the input on a phone. */
+.digest-recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.digest-recipient-list:not(:empty) {
+  margin-bottom: 6px;
+}
+.digest-recipient-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.digest-recipient-input {
+  flex: 0 1 240px;
+  min-width: 0;
+}
+.digest-recipient-name {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.digest-recipient-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.digest-recipient-add .input {
+  margin-top: 0;
+}
+
 /* Form-row container for the share-url pill — keeps gap and centring
    consistent across the two sub-rows that wrap one. */
 .share-url-row {

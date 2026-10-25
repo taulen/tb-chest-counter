@@ -52,6 +52,7 @@ function createDiscordRouter() {
             dailyDigestEnabled: body.dailyDigestEnabled ?? existing.discordDailyDigestEnabled,
             dailyDigestShareUserId: digestShareUserId,
             commandsEnabled: body.commandsEnabled ?? existing.discordCommandsEnabled,
+            weeklyDigestEnabled: body.weeklyDigestEnabled ?? existing.discordWeeklyDigestEnabled,
         });
         (0, user_repo_js_1.logAction)(req.user.id, 'clan.discord.update', { clanId: id });
         // Reply now — settings are persisted. The Discord client lifecycle

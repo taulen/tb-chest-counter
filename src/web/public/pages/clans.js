@@ -216,7 +216,10 @@ export async function renderClans(el, refreshClanIndicator) {
         scanReportsEnabled: el.querySelector(`#clan-discord-reports-${clanId}`).checked,
         onlyNewChests: el.querySelector(`#clan-discord-onlynew-${clanId}`).checked,
         dailyDigestEnabled: el.querySelector(`#clan-discord-digest-${clanId}`).checked,
-        dailyDigestShareUserId: el.querySelector(`#clan-discord-digest-share-${clanId}`).value.trim(),
+        weeklyDigestEnabled: el.querySelector(`#clan-discord-weekly-${clanId}`).checked,
+        // One input per recipient on the page; the server still stores (and
+        // normalises) a comma-separated list.
+        dailyDigestShareUserId: readRecipientIds(el, clanId).join(', '),
         commandsEnabled: el.querySelector(`#clan-discord-cmds-${clanId}`).checked,
       };
       // Strip the token field if blank — keeps the existing token in the DB.
@@ -233,9 +236,8 @@ export async function renderClans(el, refreshClanIndicator) {
         // duplicates and non-IDs dropped). Write it back so a silently
         // discarded entry is visible instead of looking saved.
         if (typeof j.digestShareUserId === 'string') {
-          const field = el.querySelector(`#clan-discord-digest-share-${clanId}`);
           const submitted = body.dailyDigestShareUserId;
-          if (field) field.value = j.digestShareUserId;
+          setRecipientRows(el, clanId, j.digestShareUserId);
           if (submitted !== j.digestShareUserId) {
             notify(
               j.digestShareUserId
@@ -251,6 +253,10 @@ export async function renderClans(el, refreshClanIndicator) {
       } catch {
         notify('Discord save failed.', 'Discord');
       }
+    } else if (action === 'clan-discord-add-recipient-row' && clanId) {
+      addRecipientRow(el, clanId, '');
+    } else if (action === 'clan-discord-remove-recipient' && clanId) {
+      target.closest('.digest-recipient-row')?.remove();
     } else if (action === 'clan-discord-test' && clanId) {
       try {
         const r = await fetch(`/api/clans/${clanId}/discord/test`, { method: 'POST' });
@@ -564,15 +570,22 @@ export async function renderClans(el, refreshClanIndicator) {
       const picked = target.value;
       target.value = '';
       if (!picked) return;
-      const input = el.querySelector(`#clan-discord-digest-share-${clanId}`);
-      if (!input) return;
-      const ids = input.value.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean);
-      if (!ids.includes(picked)) ids.push(picked);
-      input.value = ids.join(', ');
-      updateRecipientNames(el, clanId);
+      if (readRecipientIds(el, clanId).includes(picked)) return;
+      addRecipientRow(el, clanId, picked);
     }
   };
   el.addEventListener('change', el._clanChangeHandler);
+
+  // Recipient rows come and go after render (Add / Remove), so their name
+  // lookup listens on `el` rather than on each input.
+  if (el._clanInputHandler) el.removeEventListener('input', el._clanInputHandler);
+  el._clanInputHandler = (ev) => {
+    const input = ev.target;
+    if (!(input instanceof HTMLInputElement) || !input.classList.contains('digest-recipient-input')) return;
+    const clanId = Number.parseInt(input.getAttribute('data-clan-id') || '', 10);
+    if (clanId) updateRecipientNames(el, clanId);
+  };
+  el.addEventListener('input', el._clanInputHandler);
 
   // Kick off a status poll for any clan currently mid-onboarding so the
   // status pill ("Capturing members…", "Running first scan…") refreshes
@@ -583,8 +596,6 @@ export async function renderClans(el, refreshClanIndicator) {
     // read of the clan's own bot and is cached server-side for a minute, so
     // the re-render after every mutation on this page costs nothing.
     if (clan.discordTokenSet) void loadDiscordDirectory(el, clan.id);
-    const shareInput = el.querySelector(`#clan-discord-digest-share-${clan.id}`);
-    if (shareInput) shareInput.addEventListener('input', () => updateRecipientNames(el, clan.id));
   }
 
   // Show what a weekly target works out to per day / month / year, live as
@@ -642,7 +653,12 @@ function updateGoalPreview(el, clanId) {
  * permission vs recipient blocking DMs).
  */
 function renderDigestStatus(clan) {
-  if (!clan.discordEnabled || !clan.discordDailyDigestEnabled) return '';
+  if (!clan.discordEnabled) return '';
+  return renderDailyDigestStatus(clan) + renderWeeklyDigestStatus(clan);
+}
+
+function renderDailyDigestStatus(clan) {
+  if (!clan.discordDailyDigestEnabled) return '';
   if (!clan.lastDigestAt) {
     return `<p class="muted-copy digest-status-line">Last digest: never run yet — sends after the first scan following the next rollover.</p>`;
   }
@@ -663,6 +679,28 @@ function renderDigestStatus(clan) {
     </p>
     <ul class="muted-copy digest-status-errors">
       ${parts.map((p) => `<li>${p}</li>`).join('')}
+    </ul>
+  `;
+}
+
+/** The weekly digest's line: same pills, one combined error string. */
+function renderWeeklyDigestStatus(clan) {
+  if (!clan.discordWeeklyDigestEnabled) return '';
+  const weekWord = clan.weekStart === 'ancients' ? 'Tinman week' : 'week';
+  if (!clan.lastWeeklyDigestAt) {
+    return `<p class="muted-copy digest-status-line">Last weekly digest: never run yet — sends after the first scan once the current ${weekWord} ends.</p>`;
+  }
+  const when = formatRelativeTime(clan.lastWeeklyDigestAt);
+  const label = clan.lastWeeklyDigestWeek ? ` (week of ${escapeHtml(clan.lastWeeklyDigestWeek)})` : '';
+  if (!clan.lastWeeklyDigestError) {
+    return `<p class="digest-status-line"><span class="chest-type uncommon">Last weekly digest: ✓ ${escapeHtml(when)}${label}</span></p>`;
+  }
+  return `
+    <p class="digest-status-line">
+      <span class="chest-type common">Last weekly digest: ⚠ ${escapeHtml(when)}${label}</span>
+    </p>
+    <ul class="muted-copy digest-status-errors">
+      ${clan.lastWeeklyDigestError.split(' · ').map((p) => `<li>${escapeHtml(p)}</li>`).join('')}
     </ul>
   `;
 }
@@ -759,11 +797,65 @@ function pickerLabel(kind, entry) {
   return entry.name;
 }
 
+// ─── Digest DM recipients: one input per person ───
+//
+// Stored server-side as one comma-separated string (normalised by
+// digest-recipients.ts); on the page each recipient is its own row with its
+// own resolved name and Remove button, so twenty IDs are no longer one
+// unreadable line to edit by cursor.
+
+function splitRecipientIds(raw) {
+  return String(raw || '')
+    .split(/[\s,;]+/)
+    .map((s) => s.replace(/^<@!?/, '').replace(/>$/, '').trim())
+    .filter(Boolean);
+}
+
+function renderRecipientRow(clanId, id) {
+  return `<div class="digest-recipient-row">
+    <input class="input digest-recipient-input" type="text" inputmode="numeric" data-clan-id="${clanId}"
+      value="${escapeHtml(id)}" placeholder="Discord user ID, e.g. 123456789012345678" aria-label="Discord user ID">
+    <span class="muted-copy hint-text digest-recipient-name"></span>
+    <button type="button" class="btn btn-sm btn-danger" data-action="clan-discord-remove-recipient" data-clan-id="${clanId}">Remove</button>
+  </div>`;
+}
+
+function renderRecipientRows(clanId, raw) {
+  return splitRecipientIds(raw).map((id) => renderRecipientRow(clanId, id)).join('');
+}
+
+/** Every non-blank recipient input, in order, mentions unwrapped. */
+function readRecipientIds(el, clanId) {
+  const inputs = el.querySelectorAll(`#clan-discord-recipients-${clanId} .digest-recipient-input`);
+  return splitRecipientIds(Array.from(inputs, (i) => i.value).join(','));
+}
+
+function setRecipientRows(el, clanId, raw) {
+  const list = el.querySelector(`#clan-discord-recipients-${clanId}`);
+  if (!list) return;
+  list.innerHTML = renderRecipientRows(clanId, raw);
+  updateRecipientNames(el, clanId);
+}
+
+/** Append a row (filling the first blank one instead, if there is one). */
+function addRecipientRow(el, clanId, id) {
+  const list = el.querySelector(`#clan-discord-recipients-${clanId}`);
+  if (!list) return;
+  const blank = id ? Array.from(list.querySelectorAll('.digest-recipient-input')).find((i) => !i.value.trim()) : null;
+  if (blank) {
+    blank.value = id;
+  } else {
+    list.insertAdjacentHTML('beforeend', renderRecipientRow(clanId, id));
+  }
+  updateRecipientNames(el, clanId);
+  if (!id) list.querySelector('.digest-recipient-row:last-child .digest-recipient-input')?.focus();
+}
+
 /**
- * The "add a DM recipient" dropdown. The stored value stays a comma-separated
- * ID list in the existing text field — picking a name appends to it — because
- * that field is also the escape hatch for someone who is in the server but
- * whom the member lookup can't see (no privileged intent).
+ * The "add a DM recipient" dropdown. Picking a name adds a recipient row
+ * holding that ID; the rows stay plain inputs because they are also the
+ * escape hatch for someone who is in the server but whom the member lookup
+ * can't see (no privileged intent).
  */
 function renderRecipientPicker(clanId, dir, manual) {
   if (manual || !dir) return '';
@@ -807,26 +899,26 @@ function syncDiscordPickers(el, clanId) {
 }
 
 /**
- * Resolve the comma-separated recipient IDs to names under the field. An ID
- * that resolves to nothing is called out rather than left looking configured —
- * a mistyped digit currently costs a silent daily DM.
+ * Resolve each recipient row's ID to a name beside it. An ID that resolves to
+ * nothing is called out rather than left looking configured — a mistyped
+ * digit otherwise costs a silent daily DM.
  */
 function updateRecipientNames(el, clanId) {
-  const out = el.querySelector(`#clan-discord-recipients-names-${clanId}`);
-  if (!out) return;
-  const raw = el.querySelector(`#clan-discord-digest-share-${clanId}`)?.value ?? '';
-  const ids = raw.split(/[\s,;]+/).map((s) => s.replace(/^<@!?/, '').replace(/>$/, '').trim()).filter(Boolean);
+  const rows = el.querySelectorAll(`#clan-discord-recipients-${clanId} .digest-recipient-row`);
   const dir = discordDirectories.get(clanId);
-  if (!ids.length || !dir || !dir.members?.length) {
-    out.textContent = '';
-    return;
+  const byId = dir?.members?.length ? new Map(dir.members.map((m) => [m.id, m.name])) : null;
+  for (const row of rows) {
+    const out = row.querySelector('.digest-recipient-name');
+    if (!out) continue;
+    const id = splitRecipientIds(row.querySelector('.digest-recipient-input')?.value)[0] || '';
+    if (!id || !byId) {
+      out.textContent = '';
+    } else if (byId.has(id)) {
+      out.textContent = byId.get(id);
+    } else {
+      out.innerHTML = '<span class="warning-text">not found in this server</span>';
+    }
   }
-  const byId = new Map(dir.members.map((m) => [m.id, m.name]));
-  out.innerHTML = 'Resolves to: ' + ids
-    .map((id) => (byId.has(id)
-      ? escapeHtml(byId.get(id))
-      : `<span class="warning-text">${escapeHtml(id)} (not found in this server)</span>`))
-    .join(', ');
 }
 
 /**
@@ -954,17 +1046,19 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-reports-${clan.id}" ${clan.discordScanReportsEnabled ? 'checked' : ''}> Post scan reports</label>
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-onlynew-${clan.id}" ${clan.discordOnlyNewChests ? 'checked' : ''}> Only when new chests</label>
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-digest-${clan.id}" ${clan.discordDailyDigestEnabled ? 'checked' : ''}> Daily digest</label>
+          <label class="checkbox-row" title="Posted after the rollover that ends the week set on the Week card below"><input type="checkbox" id="clan-discord-weekly-${clan.id}" ${clan.discordWeeklyDigestEnabled ? 'checked' : ''}> Weekly digest</label>
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-cmds-${clan.id}" ${clan.discordCommandsEnabled ? 'checked' : ''}> Slash commands</label>
         </div>
+        <p class="muted-copy mt-4 hint-text">The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>${clan.weekStart === 'ancients' ? 'Tinman to Tinman (6 days)' : 'Sunday to Sunday (7 days)'}</strong> — and goes out with the daily one, after the first scan once the week has ended.</p>
         <div class="inline-form-row mt-8">
           <div class="form-row-grow">
-            <label>Daily digest DM recipients (optional)</label>
-            <div id="clan-discord-member-field-${clan.id}">${renderRecipientPicker(clan.id, cachedChannels ? cachedDir : null, discordManualMode.has(clan.id))}</div>
-            <input id="clan-discord-digest-share-${clan.id}" class="input mt-4" type="text"
-              value="${escapeHtml(clan.discordDailyDigestShareUserId || '')}"
-              placeholder="e.g. 123456789012345678, 234567890123456789 — leave blank to disable">
-            <p class="muted-copy mt-4 hint-text" id="clan-discord-recipients-names-${clan.id}"></p>
-            <p class="muted-copy mt-4 hint-text">When set, the bot also DMs each of these users a plain-text version of the digest that pastes cleanly into in-game chat. Separate IDs with commas (up to 20). Each recipient must share a server with the bot and allow DMs from server members — one who doesn't still gets flagged, and everyone else's DM goes out.</p>
+            <label>Digest DM recipients (optional)</label>
+            <div id="clan-discord-recipients-${clan.id}" class="digest-recipient-list">${renderRecipientRows(clan.id, clan.discordDailyDigestShareUserId)}</div>
+            <div class="digest-recipient-add">
+              <button type="button" class="btn btn-sm" data-action="clan-discord-add-recipient-row" data-clan-id="${clan.id}">+ Add recipient by ID</button>
+              <div id="clan-discord-member-field-${clan.id}" class="form-row-grow">${renderRecipientPicker(clan.id, cachedChannels ? cachedDir : null, discordManualMode.has(clan.id))}</div>
+            </div>
+            <p class="muted-copy mt-4 hint-text">The bot DMs each of these users a plain-text version of every digest (daily and weekly) that pastes cleanly into in-game chat — up to 20 recipients, none means no DMs. Each must share a server with the bot and allow DMs from server members — one who doesn't still gets flagged, and everyone else's DM goes out.</p>
           </div>
         </div>
         <details class="mb-12 mt-8">
@@ -972,7 +1066,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <ol class="muted-copy help-list">
             <li>Normally you don't: pick them from the <strong>Add a recipient</strong> dropdown above, which lists the selected server's members. It needs <strong>Developer Portal → Bot → Privileged Gateway Intents → SERVER MEMBERS INTENT</strong> switched on; without it the dropdown says so and you can fall back to IDs.</li>
             <li>By hand: <strong>User Settings → Advanced → Developer Mode</strong> = ON, right-click the recipient's name → <strong>Copy User ID</strong>.</li>
-            <li>Paste the 17–19 digit ID into the field above and click <strong>Save Discord</strong>. For several recipients, separate the IDs with commas: <code>123…, 234…</code>.</li>
+            <li>Click <strong>+ Add recipient by ID</strong>, paste the 17–19 digit ID into the new row and click <strong>Save Discord</strong>. One row per recipient.</li>
             <li>Each recipient must share at least one server with this clan's bot, and have <strong>Privacy Settings → "Direct messages from server members"</strong> enabled for that server.</li>
             <li>Click <strong>Send test DM</strong> to confirm — they should each get a DM titled with <code>[TEST DM — current game day so far]</code>, and the toast names anyone it couldn't reach.</li>
           </ol>

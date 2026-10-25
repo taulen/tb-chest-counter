@@ -37,7 +37,9 @@ exports.formatScanReportMessage = formatScanReportMessage;
 exports.formatLeaderboardMessage = formatLeaderboardMessage;
 exports.createStatsEmbed = createStatsEmbed;
 exports.formatDailyDigestMessage = formatDailyDigestMessage;
+exports.formatWeeklyDigestMessage = formatWeeklyDigestMessage;
 exports.formatDailyDigestShareText = formatDailyDigestShareText;
+exports.formatWeeklyDigestShareText = formatWeeklyDigestShareText;
 const discord_js_1 = require("discord.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
 /**
@@ -229,17 +231,40 @@ function formatDailyDigestMessage(data, options = {}) {
     // points at exactly the day the digest covers; the fallback only matters
     // for callers that don't supply one.
     const gameDayDate = options.gameDayDate ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const lines = ['📅 **Daily Digest — Last 24 Hours**'];
-    // Deep-link to the daily leaderboard, wrapped in <> so Discord doesn't
+    return formatDigestMessage(data, {
+        title: '📅 **Daily Digest — Last 24 Hours**',
+        webExternalUrl: options.webExternalUrl,
+        anchor: `period=daily&day=${gameDayDate}`,
+        emptyText: '_Nothing collected in the past 24 hours._',
+    });
+}
+/**
+ * Weekly summary message: posted once the rollover that ends the clan's week
+ * has passed (a Sunday, or a Tinman day for Tinman-to-Tinman clans). Same
+ * layout as the daily digest over the closed week's window; the link opens
+ * the site's Weekly leaderboard on that same week.
+ */
+function formatWeeklyDigestMessage(data, options) {
+    const kind = options.tinman ? ' · Tinman to Tinman' : '';
+    return formatDigestMessage(data, {
+        title: `🗓️ **Weekly Digest — ${formatGameDayRange(options.firstDay, options.lastDay)}**${kind}`,
+        webExternalUrl: options.webExternalUrl,
+        anchor: `period=weekly&week=${options.firstDay}`,
+        emptyText: '_Nothing collected this week._',
+    });
+}
+function formatDigestMessage(data, options) {
+    const lines = [options.title];
+    // Deep-link to the matching leaderboard, wrapped in <> so Discord doesn't
     // expand it into a link-preview card below the message.
     if (options.webExternalUrl) {
         const base = options.webExternalUrl.replace(/\/+$/, '');
-        lines.push(`<${base}/#leaderboard?period=daily&day=${gameDayDate}>`);
+        lines.push(`<${base}/#leaderboard?${options.anchor}>`);
     }
     lines.push(`**${data.totalChests.toLocaleString()}** chests · **${data.totalPoints.toLocaleString()}** pts · ` +
         `**${data.activePlayers.toLocaleString()}** players · **${data.scanCount.toLocaleString()}** scans`);
     if (data.topContributors.length === 0) {
-        lines.push('_Nothing collected in the past 24 hours._');
+        lines.push(options.emptyText);
         return lines.join('\n');
     }
     // Same monospace table as the scan report — see renderLeaderboardTable.
@@ -285,13 +310,33 @@ function formatGameDayLabel(key) {
         timeZone: 'UTC',
     }).format(date);
 }
+/**
+ * "18–24 October", or "28 September – 3 October" across a month boundary.
+ * Both ends are game-day keys, the range inclusive.
+ */
+function formatGameDayRange(firstDay, lastDay) {
+    const first = formatGameDayLabel(firstDay);
+    const last = formatGameDayLabel(lastDay);
+    const [firstNum, ...firstMonth] = first.split(' ');
+    const [lastNum, ...lastMonth] = last.split(' ');
+    if (firstMonth.join(' ') === lastMonth.join(' '))
+        return `${firstNum}–${lastNum} ${lastMonth.join(' ')}`;
+    return `${first} – ${last}`;
+}
 function formatDailyDigestShareText(data, options = {}) {
     // Day + month label (e.g. "19 May") so the recipient can cross-
     // reference the DM with the site's daily leaderboard for the same
     // game day. Year intentionally omitted to keep the title compact.
     const dateLabel = options.gameDayDate ? ` — ${formatGameDayLabel(options.gameDayDate)}` : '';
+    return formatDigestShareText(data, `Daily Digest${dateLabel}`, 'No chests collected in the past 24 hours.');
+}
+/** Plain-text weekly digest for in-game chat — see formatDailyDigestShareText. */
+function formatWeeklyDigestShareText(data, options) {
+    return formatDigestShareText(data, `Weekly Digest — ${formatGameDayRange(options.firstDay, options.lastDay)}`, 'No chests collected this week.');
+}
+function formatDigestShareText(data, header, emptyText) {
     if (data.topContributors.length === 0) {
-        return `Daily Digest${dateLabel}\nNo chests collected in the past 24 hours.`;
+        return `${header}\n${emptyText}`;
     }
     // Trim to the top N before rendering. The in-game chat character
     // cap is shorter than Discord's, and a full digest gets truncated
@@ -299,7 +344,6 @@ function formatDailyDigestShareText(data, options = {}) {
     const contributors = data.topContributors.slice(0, SHARE_TEXT_TOP_N);
     // Two-line header: date on its own line, then the "Our top N crypters"
     // tagline. Mirrors the format the team has been pasting manually.
-    const header = `Daily Digest${dateLabel}`;
     const subheader = `Our top ${contributors.length} crypters`;
     const lines = [header, subheader];
     let totalLen = header.length + subheader.length + 2;

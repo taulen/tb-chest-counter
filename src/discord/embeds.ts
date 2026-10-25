@@ -234,13 +234,44 @@ export function formatDailyDigestMessage(
   const gameDayDate =
     options.gameDayDate ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const lines: string[] = ['📅 **Daily Digest — Last 24 Hours**'];
+  return formatDigestMessage(data, {
+    title: '📅 **Daily Digest — Last 24 Hours**',
+    webExternalUrl: options.webExternalUrl,
+    anchor: `period=daily&day=${gameDayDate}`,
+    emptyText: '_Nothing collected in the past 24 hours._',
+  });
+}
 
-  // Deep-link to the daily leaderboard, wrapped in <> so Discord doesn't
+/**
+ * Weekly summary message: posted once the rollover that ends the clan's week
+ * has passed (a Sunday, or a Tinman day for Tinman-to-Tinman clans). Same
+ * layout as the daily digest over the closed week's window; the link opens
+ * the site's Weekly leaderboard on that same week.
+ */
+export function formatWeeklyDigestMessage(
+  data: ReturnType<typeof chestRepo.getDailyDigestData>,
+  options: { webExternalUrl?: string; firstDay: string; lastDay: string; tinman: boolean },
+): string {
+  const kind = options.tinman ? ' · Tinman to Tinman' : '';
+  return formatDigestMessage(data, {
+    title: `🗓️ **Weekly Digest — ${formatGameDayRange(options.firstDay, options.lastDay)}**${kind}`,
+    webExternalUrl: options.webExternalUrl,
+    anchor: `period=weekly&week=${options.firstDay}`,
+    emptyText: '_Nothing collected this week._',
+  });
+}
+
+function formatDigestMessage(
+  data: ReturnType<typeof chestRepo.getDailyDigestData>,
+  options: { title: string; webExternalUrl?: string; anchor: string; emptyText: string },
+): string {
+  const lines: string[] = [options.title];
+
+  // Deep-link to the matching leaderboard, wrapped in <> so Discord doesn't
   // expand it into a link-preview card below the message.
   if (options.webExternalUrl) {
     const base = options.webExternalUrl.replace(/\/+$/, '');
-    lines.push(`<${base}/#leaderboard?period=daily&day=${gameDayDate}>`);
+    lines.push(`<${base}/#leaderboard?${options.anchor}>`);
   }
 
   lines.push(
@@ -249,7 +280,7 @@ export function formatDailyDigestMessage(
   );
 
   if (data.topContributors.length === 0) {
-    lines.push('_Nothing collected in the past 24 hours._');
+    lines.push(options.emptyText);
     return lines.join('\n');
   }
 
@@ -300,6 +331,19 @@ function formatGameDayLabel(key: string): string {
   }).format(date);
 }
 
+/**
+ * "18–24 October", or "28 September – 3 October" across a month boundary.
+ * Both ends are game-day keys, the range inclusive.
+ */
+function formatGameDayRange(firstDay: string, lastDay: string): string {
+  const first = formatGameDayLabel(firstDay);
+  const last = formatGameDayLabel(lastDay);
+  const [firstNum, ...firstMonth] = first.split(' ');
+  const [lastNum, ...lastMonth] = last.split(' ');
+  if (firstMonth.join(' ') === lastMonth.join(' ')) return `${firstNum}–${lastNum} ${lastMonth.join(' ')}`;
+  return `${first} – ${last}`;
+}
+
 export function formatDailyDigestShareText(
   data: ReturnType<typeof chestRepo.getDailyDigestData>,
   options: { gameDayDate?: string } = {},
@@ -308,9 +352,28 @@ export function formatDailyDigestShareText(
   // reference the DM with the site's daily leaderboard for the same
   // game day. Year intentionally omitted to keep the title compact.
   const dateLabel = options.gameDayDate ? ` — ${formatGameDayLabel(options.gameDayDate)}` : '';
+  return formatDigestShareText(data, `Daily Digest${dateLabel}`, 'No chests collected in the past 24 hours.');
+}
 
+/** Plain-text weekly digest for in-game chat — see formatDailyDigestShareText. */
+export function formatWeeklyDigestShareText(
+  data: ReturnType<typeof chestRepo.getDailyDigestData>,
+  options: { firstDay: string; lastDay: string },
+): string {
+  return formatDigestShareText(
+    data,
+    `Weekly Digest — ${formatGameDayRange(options.firstDay, options.lastDay)}`,
+    'No chests collected this week.',
+  );
+}
+
+function formatDigestShareText(
+  data: ReturnType<typeof chestRepo.getDailyDigestData>,
+  header: string,
+  emptyText: string,
+): string {
   if (data.topContributors.length === 0) {
-    return `Daily Digest${dateLabel}\nNo chests collected in the past 24 hours.`;
+    return `${header}\n${emptyText}`;
   }
 
   // Trim to the top N before rendering. The in-game chat character
@@ -320,7 +383,6 @@ export function formatDailyDigestShareText(
 
   // Two-line header: date on its own line, then the "Our top N crypters"
   // tagline. Mirrors the format the team has been pasting manually.
-  const header = `Daily Digest${dateLabel}`;
   const subheader = `Our top ${contributors.length} crypters`;
   const lines: string[] = [header, subheader];
   let totalLen = header.length + subheader.length + 2;

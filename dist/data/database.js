@@ -967,6 +967,25 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // The Discord weekly digest: posted after the rollover that ends the
+        // clan's week (Sunday, or Tinman to Tinman — whatever week_start says).
+        // Off for every existing clan. The last_weekly_* columns mirror the daily
+        // digest's last_digest_* ones: the week (its first game day) the last run
+        // reported, when, and a short error ('' = delivered). Guarded for replay.
+        version: 87,
+        run: (database) => {
+            const cols = new Set(database.prepare('PRAGMA table_info(clans)').all().map((c) => c.name));
+            const add = (name, ddl) => {
+                if (!cols.has(name))
+                    database.exec(`ALTER TABLE clans ADD COLUMN ${name} ${ddl}`);
+            };
+            add('discord_weekly_digest_enabled', 'INTEGER NOT NULL DEFAULT 0');
+            add('last_weekly_digest_at', "TEXT NOT NULL DEFAULT ''");
+            add('last_weekly_digest_week', "TEXT NOT NULL DEFAULT ''");
+            add('last_weekly_digest_error', "TEXT NOT NULL DEFAULT ''");
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

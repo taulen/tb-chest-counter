@@ -52,6 +52,7 @@ const digest_recipients_js_1 = require("./digest-recipients.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
 const sessionRepo = __importStar(require("../data/repositories/session-repo.js"));
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
+const game_day_js_1 = require("../utils/game-day.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('discord');
 const clients = new Map();
@@ -217,6 +218,7 @@ async function startBotForClan(clan, gameDayRolloverUtcHour) {
         onlyPostWithNewChests: clan.discordOnlyNewChests,
         commandsEnabled: clan.discordCommandsEnabled,
         digestEnabled: clan.discordDailyDigestEnabled,
+        weeklyDigestEnabled: clan.discordWeeklyDigestEnabled,
         digestShareUserIds: (0, digest_recipients_js_1.parseDigestRecipients)(clan.discordDailyDigestShareUserId),
         digestUtcHour: gameDayRolloverUtcHour,
         digestTimer: null,
@@ -356,6 +358,7 @@ async function reloadClanBot(clanId, gameDayRolloverUtcHour) {
         existing.onlyPostWithNewChests = clan.discordOnlyNewChests;
         existing.commandsEnabled = clan.discordCommandsEnabled;
         existing.digestEnabled = clan.discordDailyDigestEnabled;
+        existing.weeklyDigestEnabled = clan.discordWeeklyDigestEnabled;
         existing.digestShareUserIds = (0, digest_recipients_js_1.parseDigestRecipients)(clan.discordDailyDigestShareUserId);
         existing.digestUtcHour = gameDayRolloverUtcHour;
         // Commands may have been toggled or the guild changed; the digest
@@ -412,18 +415,20 @@ async function postScanReport(clanId, result) {
     }
 }
 /**
- * DM one digest body to every configured recipient.
+ * DM digest messages (one or more, sent in order) to every configured
+ * recipient.
  *
  * Sequential and individually caught on purpose: recipients share one
  * REST rate limit, and one person with DMs closed must not cost everyone
  * else their digest.
  */
-async function dmDigestToRecipients(shared, ctx, text) {
+async function dmDigestToRecipients(shared, ctx, texts) {
     const outcomes = [];
     for (const userId of ctx.digestShareUserIds) {
         try {
             const user = await shared.client.users.fetch(userId);
-            await user.send(text);
+            for (const text of texts)
+                await user.send(text);
             outcomes.push({ userId, label: user.tag || userId });
         }
         catch (err) {
@@ -454,8 +459,21 @@ async function sendClanDigestDmTest(clanId) {
     const now = new Date();
     const { fromIso, toIso, gameDayKey } = resolveCompletedGameDay(now, ctx.digestUtcHour);
     const data = chestRepo.getDailyDigestData(fromIso, toIso, clanId);
-    const text = `[Test DM]\n${(0, embeds_js_1.formatDailyDigestShareText)(data, { gameDayDate: gameDayKey })}`;
-    const outcomes = await dmDigestToRecipients(shared, ctx, text);
+    const texts = [`[Test DM]\n${(0, embeds_js_1.formatDailyDigestShareText)(data, { gameDayDate: gameDayKey })}`];
+    // With the weekly digest on, the test also sends the last completed week, so
+    // its layout can be checked without waiting for the week to end. A second
+    // message, not appended: each one alone can run close to the 2000-char cap.
+    if (ctx.weeklyDigestEnabled) {
+        const week = (0, game_day_js_1.gameWindow)('weekly', 1, ctx.digestUtcHour, (0, clan_repo_js_1.getClanWeekStart)(clanId), now.getTime());
+        if (week) {
+            const weekly = (0, embeds_js_1.formatWeeklyDigestShareText)(chestRepo.getDailyDigestData(week.from, week.to, clanId), {
+                firstDay: (0, game_day_js_1.gameDateFor)(Date.parse(week.from), ctx.digestUtcHour),
+                lastDay: (0, game_day_js_1.gameDateFor)(Date.parse(week.to) - 1, ctx.digestUtcHour),
+            });
+            texts.push(`[Test DM]\n${weekly}`);
+        }
+    }
+    const outcomes = await dmDigestToRecipients(shared, ctx, texts);
     const sent = outcomes.filter((o) => !o.error);
     const failed = outcomes.filter((o) => o.error);
     if (failed.length === 0) {
@@ -597,7 +615,9 @@ function scheduleNextDigest(clanId) {
         clearTimeout(ctx.digestTimer);
         ctx.digestTimer = null;
     }
-    if (!ctx.digestEnabled)
+    // The timer runs every rollover while either digest is on; whether this
+    // particular rollover owes the weekly one is decided when it fires.
+    if (!ctx.digestEnabled && !ctx.weeklyDigestEnabled)
         return;
     if (!Number.isFinite(ctx.digestUtcHour) || ctx.digestUtcHour < 0 || ctx.digestUtcHour > 23) {
         log.info(`Clan #${clanId}: digest UTC hour ${ctx.digestUtcHour} out of range — digest disabled`);
@@ -615,13 +635,28 @@ function scheduleNextDigest(clanId) {
         try {
             // The scheduled instant, not the clock: a timer firing a hair early
             // would otherwise resolve to the previous day's rollover.
-            await armDigest(clanId, target);
+            const kinds = digestKindsFor(ctx, target);
+            if (kinds.daily || kinds.weekly)
+                await armDigest(clanId, target, kinds);
         }
         catch (err) {
             log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
         }
         scheduleNextDigest(clanId);
     }, delayMs);
+}
+/**
+ * The digests a scheduled rollover owes this clan: the daily one whenever it
+ * is on, the weekly one only when the rollover ends the clan's week. The week
+ * shape is read fresh rather than cached on the context, so a change on the
+ * Week card takes effect from the next rollover without a bot reload.
+ */
+function digestKindsFor(ctx, rollover) {
+    return {
+        daily: ctx.digestEnabled,
+        weekly: ctx.weeklyDigestEnabled
+            && (0, game_day_js_1.closedWeekAt)(rollover.getTime(), ctx.digestUtcHour, (0, clan_repo_js_1.getClanWeekStart)(ctx.clanId)) !== null,
+    };
 }
 /**
  * How long a digest waits for its post-rollover scan before it goes out
@@ -648,8 +683,11 @@ async function digestFallbackMs() {
  *
  * If that scan already happened (a boot catch-up hours after the rollover),
  * this sends immediately.
+ *
+ * The weekly digest rides the same wait: the closing week's last chests are
+ * the same ones the daily digest is waiting on.
  */
-async function armDigest(clanId, rollover) {
+async function armDigest(clanId, rollover, kinds) {
     const ctx = clans.get(clanId);
     if (!ctx)
         return;
@@ -658,7 +696,7 @@ async function armDigest(clanId, rollover) {
         ctx.pendingDigest = null;
     }
     if (sessionRepo.hasCompletedScanStartedSince(clanId, rollover.toISOString())) {
-        await sendDailyDigestForClan(clanId, rollover);
+        await sendDigestsForRollover(clanId, rollover, kinds);
         return;
     }
     const fallbackMs = await digestFallbackMs();
@@ -667,13 +705,42 @@ async function armDigest(clanId, rollover) {
         if (!current?.pendingDigest || current.pendingDigest.rollover.getTime() !== rollover.getTime())
             return;
         current.pendingDigest = null;
-        log.warn(`Clan #${clanId}: no scan completed within ${Math.round(fallbackMs / 60_000)} min of rollover ${rollover.toISOString()} — sending the daily digest without it`);
-        sendDailyDigestForClan(clanId, rollover).catch((err) => {
-            log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
-        });
+        log.warn(`Clan #${clanId}: no scan completed within ${Math.round(fallbackMs / 60_000)} min of rollover ${rollover.toISOString()} — sending the ${describeKinds(kinds)} without it`);
+        void sendDigestsForRollover(clanId, rollover, kinds);
     }, fallbackMs);
-    ctx.pendingDigest = { rollover, fallbackTimer };
-    log.info(`Clan #${clanId}: rollover ${rollover.toISOString()} reached — daily digest will send after the next completed scan`);
+    ctx.pendingDigest = { rollover, kinds, fallbackTimer };
+    log.info(`Clan #${clanId}: rollover ${rollover.toISOString()} reached — ${describeKinds(kinds)} will send after the next completed scan`);
+}
+function describeKinds(kinds) {
+    if (kinds.daily && kinds.weekly)
+        return 'daily and weekly digests';
+    return kinds.weekly ? 'weekly digest' : 'daily digest';
+}
+/**
+ * Send what one rollover owes, daily first. Each is caught on its own so a
+ * failed daily digest never costs the clan its weekly one. A digest switched
+ * off while its rollover was pending is dropped here rather than sent.
+ */
+async function sendDigestsForRollover(clanId, rollover, kinds) {
+    const ctx = clans.get(clanId);
+    if (!ctx)
+        return;
+    if (kinds.daily && ctx.digestEnabled) {
+        try {
+            await sendDailyDigestForClan(clanId, rollover);
+        }
+        catch (err) {
+            log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
+        }
+    }
+    if (kinds.weekly && ctx.weeklyDigestEnabled) {
+        try {
+            await sendWeeklyDigestForClan(clanId, rollover);
+        }
+        catch (err) {
+            log.error(`Clan #${clanId}: weekly digest failed: ${String(err)}`);
+        }
+    }
 }
 /**
  * Called by the scan loop after every successful scan. Releases a digest
@@ -688,12 +755,7 @@ async function onClanScanCompleted(clanId) {
         return;
     clearTimeout(pending.fallbackTimer);
     ctx.pendingDigest = null;
-    try {
-        await sendDailyDigestForClan(clanId, pending.rollover);
-    }
-    catch (err) {
-        log.error(`Clan #${clanId}: daily digest failed: ${String(err)}`);
-    }
+    await sendDigestsForRollover(clanId, pending.rollover, pending.kinds);
 }
 /**
  * The most recent rollover instant at or before `now`. Mirror of the
@@ -726,7 +788,7 @@ async function catchUpMissedDigest(clanId) {
     // Digest turned off / not configured → nothing to catch up. Debug-only:
     // these are steady config states, not a decision worth an INFO line on
     // every boot of a clan that simply doesn't run digests.
-    if (!ctx || !ctx.digestEnabled) {
+    if (!ctx || (!ctx.digestEnabled && !ctx.weeklyDigestEnabled)) {
         log.debug(`Clan #${clanId}: digest catch-up skipped — digest not enabled`);
         return;
     }
@@ -740,7 +802,6 @@ async function catchUpMissedDigest(clanId) {
     }
     const now = new Date();
     const rollover = lastRolloverInstant(now, ctx.digestUtcHour);
-    const { gameDayKey } = resolveCompletedGameDay(rollover, ctx.digestUtcHour);
     // Re-read persisted state (ClanCtx doesn't carry the last-digest
     // record) so concurrent/repeat calls converge on the DB truth.
     const clan = (0, clan_repo_js_1.getClanById)(clanId);
@@ -748,22 +809,38 @@ async function catchUpMissedDigest(clanId) {
         log.warn(`Clan #${clanId}: digest catch-up skipped — clan row not found`);
         return;
     }
-    // From here on we log the decision at INFO: this runs once per clan per
-    // boot (not per cycle), so a single line is a useful paper trail of
-    // exactly why a catch-up did or didn't send — which is what an operator
-    // needs when a digest looks missing after a deploy.
+    const kinds = {
+        daily: ctx.digestEnabled && dailyDigestOwed(clan, rollover, ctx.digestUtcHour),
+        weekly: ctx.weeklyDigestEnabled && weeklyDigestOwed(clan, rollover, ctx.digestUtcHour),
+    };
+    // Sends now if a post-rollover scan already completed, otherwise waits
+    // for one like the scheduled digest does.
+    if (kinds.daily || kinds.weekly)
+        await armDigest(clanId, rollover, kinds);
+}
+/**
+ * Whether the daily digest for the game day `rollover` closed was missed.
+ *
+ * Logs the decision at INFO: this runs once per clan per boot (not per
+ * cycle), so a single line is a useful paper trail of exactly why a
+ * catch-up did or didn't send — which is what an operator needs when a
+ * digest looks missing after a deploy.
+ */
+function dailyDigestOwed(clan, rollover, rolloverHour) {
+    const clanId = clan.id;
+    const { gameDayKey } = resolveCompletedGameDay(rollover, rolloverHour);
     // Already reported this game day → nothing to catch up (the common
     // no-op on a routine redeploy where today's digest already went out,
     // or a second call within the same boot after we just sent it).
     if (clan.lastDigestGameDay === gameDayKey) {
         log.info(`Clan #${clanId}: digest catch-up not needed — game day ${gameDayKey} already sent (at ${clan.lastDigestAt || 'unknown'})`);
-        return;
+        return false;
     }
     // Never sent a digest at all → this clan has no missed run to replay;
     // the normal scheduler will handle its first one.
     if (!clan.lastDigestAt) {
         log.info(`Clan #${clanId}: digest catch-up not needed — no prior digest recorded; leaving the first run to the scheduler (would be game day ${gameDayKey})`);
-        return;
+        return false;
     }
     // The last real send already lands at/after the missed rollover, so
     // that rollover was covered (or a manual/scheduled run beat us to it).
@@ -771,13 +848,40 @@ async function catchUpMissedDigest(clanId) {
     // went out — from re-sending it before last_digest_game_day exists.
     if (new Date(clan.lastDigestAt).getTime() >= rollover.getTime()) {
         log.info(`Clan #${clanId}: digest catch-up not needed — last digest (${clan.lastDigestAt}) already covers rollover ${rollover.toISOString()}`);
-        return;
+        return false;
     }
     log.info(`Clan #${clanId}: daily digest for game day ${gameDayKey} (rollover ${rollover.toISOString()}) ` +
         `was missed while offline (last sent ${clan.lastDigestAt}) — catching up`);
-    // Sends now if a post-rollover scan already completed, otherwise waits
-    // for one like the scheduled digest does.
-    await armDigest(clanId, rollover);
+    return true;
+}
+/**
+ * Whether the weekly digest for the week `rollover` closed was missed. Same
+ * rules as dailyDigestOwed, and the same single-rollover reach: only a week
+ * that ended at the MOST RECENT rollover is caught up, so an outage spanning a
+ * week boundary by more than a day drops that week's digest rather than
+ * posting "last week" days into the next one.
+ */
+function weeklyDigestOwed(clan, rollover, rolloverHour) {
+    const clanId = clan.id;
+    const week = (0, game_day_js_1.closedWeekAt)(rollover.getTime(), rolloverHour, clan.weekStart);
+    // An ordinary mid-week rollover: steady state, not worth an INFO line.
+    if (!week)
+        return false;
+    if (clan.lastWeeklyDigestWeek === week.firstDay) {
+        log.info(`Clan #${clanId}: weekly digest catch-up not needed — week ${week.firstDay} already sent (at ${clan.lastWeeklyDigestAt || 'unknown'})`);
+        return false;
+    }
+    if (!clan.lastWeeklyDigestAt) {
+        log.info(`Clan #${clanId}: weekly digest catch-up not needed — no prior weekly digest recorded; leaving the first run to the scheduler (would be week ${week.firstDay})`);
+        return false;
+    }
+    if (new Date(clan.lastWeeklyDigestAt).getTime() >= rollover.getTime()) {
+        log.info(`Clan #${clanId}: weekly digest catch-up not needed — last weekly digest (${clan.lastWeeklyDigestAt}) already covers rollover ${rollover.toISOString()}`);
+        return false;
+    }
+    log.info(`Clan #${clanId}: weekly digest for week ${week.firstDay}–${week.lastDay} (rollover ${rollover.toISOString()}) ` +
+        `was missed while offline (last sent ${clan.lastWeeklyDigestAt}) — catching up`);
+    return true;
 }
 function shortenError(err, max = 200) {
     const msg = String(err instanceof Error ? err.message : err);
@@ -880,7 +984,7 @@ async function sendDailyDigestForClan(clanId, windowRef) {
     }
     if (ctx.digestShareUserIds.length > 0) {
         const text = (0, embeds_js_1.formatDailyDigestShareText)(data, { gameDayDate: gameDayKey });
-        const outcomes = await dmDigestToRecipients(shared, ctx, text);
+        const outcomes = await dmDigestToRecipients(shared, ctx, [text]);
         const sent = outcomes.filter((o) => !o.error);
         const failed = outcomes.filter((o) => o.error);
         if (sent.length > 0) {
@@ -905,6 +1009,77 @@ async function sendDailyDigestForClan(clanId, windowRef) {
         // Status persistence is best-effort; a DB hiccup here shouldn't
         // mask the digest having actually been delivered.
         log.warn(`Clan #${clanId}: failed to persist digest status: ${String(err)}`);
+    }
+}
+/**
+ * Post (and DM) the weekly digest for the week that ended at `rollover`.
+ *
+ * The week follows the clan's Week setting — Sunday to Sunday, or Tinman to
+ * Tinman (6 days) — read at send time. If the setting changed while this was
+ * pending so that `rollover` no longer ends a week, nothing is sent: a 6-day
+ * window posted under a Sunday clan's name would be a board nobody can find
+ * on the site.
+ */
+async function sendWeeklyDigestForClan(clanId, rollover) {
+    const ctx = clans.get(clanId);
+    if (!ctx)
+        return;
+    // Same pre-flight as the daily digest: not run-time failures, so no
+    // status is recorded over the previous one.
+    if (!ctx.channelId) {
+        log.info(`Clan #${clanId}: weekly digest fired but no channel ID — skipping`);
+        return;
+    }
+    const shared = clients.get(ctx.token);
+    if (!shared || !shared.ready) {
+        log.debug(`Clan #${clanId}: weekly digest fired but client not ready — skipping`);
+        return;
+    }
+    const weekStart = (0, clan_repo_js_1.getClanWeekStart)(clanId);
+    const week = (0, game_day_js_1.closedWeekAt)(rollover.getTime(), ctx.digestUtcHour, weekStart);
+    if (!week) {
+        log.info(`Clan #${clanId}: rollover ${rollover.toISOString()} no longer ends a ${weekStart} week — weekly digest skipped`);
+        return;
+    }
+    const now = new Date();
+    const data = chestRepo.getDailyDigestData(week.from, week.to, clanId);
+    log.info(`Clan #${clanId}: weekly digest for ${week.firstDay}–${week.lastDay} (window ${week.from} → ${week.to})`);
+    const errors = [];
+    try {
+        const channel = (await shared.client.channels.fetch(ctx.channelId));
+        if (!channel) {
+            throw new Error(`Channel ${ctx.channelId} not found — check the ID and that the bot has access.`);
+        }
+        const { loadConfig } = await import('../config/index.js');
+        const message = (0, embeds_js_1.formatWeeklyDigestMessage)(data, {
+            webExternalUrl: (0, clan_repo_js_1.clanPublicUrl)((0, clan_repo_js_1.getClanById)(clanId), loadConfig().webExternalUrl) || undefined,
+            firstDay: week.firstDay,
+            lastDay: week.lastDay,
+            tinman: weekStart === 'ancients',
+        });
+        await channel.send({ content: message });
+        log.info(`Clan #${clanId} weekly digest posted: ${data.totalChests} chests, ${data.totalPoints} pts, ${data.activePlayers} active players`);
+    }
+    catch (err) {
+        const msg = shortenError(err);
+        errors.push(`Channel post failed — ${msg}`);
+        log.error(`Clan #${clanId}: failed to post weekly digest: ${msg}`);
+    }
+    if (ctx.digestShareUserIds.length > 0) {
+        const text = (0, embeds_js_1.formatWeeklyDigestShareText)(data, { firstDay: week.firstDay, lastDay: week.lastDay });
+        const outcomes = await dmDigestToRecipients(shared, ctx, [text]);
+        const failed = outcomes.filter((o) => o.error);
+        if (failed.length > 0) {
+            const detail = shortenError(failed.map((o) => `${o.label}: ${o.error}`).join('; '), 400);
+            errors.push(`DM failed — ${detail}`);
+            log.warn(`Clan #${clanId}: failed to DM weekly digest to ${failed.length}/${outcomes.length} recipient(s) — ${detail}`);
+        }
+    }
+    try {
+        (0, clan_repo_js_1.setClanLastWeeklyDigestStatus)(clanId, { at: now.toISOString(), week: week.firstDay, error: errors.join(' · ') });
+    }
+    catch (err) {
+        log.warn(`Clan #${clanId}: failed to persist weekly digest status: ${String(err)}`);
     }
 }
 //# sourceMappingURL=bot.js.map

@@ -22,6 +22,7 @@ exports.isWeekStart = isWeekStart;
 exports.weekLengthDays = weekLengthDays;
 exports.gameWindow = gameWindow;
 exports.gameWeekWindow = gameWeekWindow;
+exports.closedWeekAt = closedWeekAt;
 exports.isTinmanDay = isTinmanDay;
 /**
  * The game day (YYYY-MM-DD) that an epoch-ms instant falls in.
@@ -98,15 +99,18 @@ function daysIntoWeek(day, weekStart) {
  * the same command linked people to.
  *
  * Takes `rolloverUtcHour` rather than reading config, so it stays pure.
+ * `nowMs` is the instant "the period in progress" is measured from — the clock
+ * unless a caller is resolving a period relative to some other moment (the
+ * Discord weekly digest, which reports the week a given rollover closed).
  * Returns null for 'all', which has no bounds.
  */
-function gameWindow(period, offset, rolloverUtcHour, weekStart = 'sunday') {
+function gameWindow(period, offset, rolloverUtcHour, weekStart = 'sunday', nowMs = Date.now()) {
     if (period === 'all')
         return null;
     const rolloverMs = rolloverUtcHour * 60 * 60 * 1000;
     // Shift into "game time" so a plain UTC-midnight truncation lands on the
     // rollover, then shift back once the slot's edges are known.
-    const shifted = new Date(Date.now() - rolloverMs);
+    const shifted = new Date(nowMs - rolloverMs);
     shifted.setUTCHours(0, 0, 0, 0);
     const back = (startMs, endMs) => ({
         from: new Date(startMs + rolloverMs).toISOString(),
@@ -140,6 +144,26 @@ function gameWindow(period, offset, rolloverUtcHour, weekStart = 'sunday') {
  */
 function gameWeekWindow(offset, rolloverUtcHour, weekStart = 'sunday') {
     return gameWindow('weekly', offset, rolloverUtcHour, weekStart);
+}
+/**
+ * The game week that ended at the rollover instant `rolloverMs`, or null when
+ * that rollover doesn't end one (it opens an ordinary day mid-week).
+ *
+ * A rollover ends a week exactly when the game day it opens is the first day
+ * of a week, which follows `weekStart`: every Sunday for 'sunday', every Tinman
+ * day for 'ancients'. `firstDay` / `lastDay` are the week's first and last game
+ * days (YYYY-MM-DD); `firstDay` is also what the site's `?week=` anchor uses.
+ */
+function closedWeekAt(rolloverMs, rolloverUtcHour, weekStart) {
+    const opening = gameWindow('weekly', 0, rolloverUtcHour, weekStart, rolloverMs);
+    if (!opening || Date.parse(opening.from) !== rolloverMs)
+        return null;
+    const closed = gameWindow('weekly', 1, rolloverUtcHour, weekStart, rolloverMs);
+    return {
+        ...closed,
+        firstDay: gameDateFor(Date.parse(closed.from), rolloverUtcHour),
+        lastDay: gameDateFor(Date.parse(closed.to) - 1, rolloverUtcHour),
+    };
 }
 /**
  * True when `gameDay` (YYYY-MM-DD) is a Tinman day on the ANCIENTS_TINMAN_ANCHOR

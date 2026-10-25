@@ -41,6 +41,11 @@ export interface Clan {
    */
   discordDailyDigestShareUserId: string;
   discordCommandsEnabled: boolean;
+  /**
+   * Post a weekly digest after the rollover that ends the clan's week (see
+   * weekStart). DMs go to the same recipients as the daily digest.
+   */
+  discordWeeklyDigestEnabled: boolean;
 
   // ChestTracker per-clan
   ctShareCode: string;
@@ -59,6 +64,12 @@ export interface Clan {
   // boot-time catch-up to tell whether the most recent elapsed rollover
   // was already digested.
   lastDigestGameDay: string;
+  // Same record for the weekly digest. lastWeeklyDigestWeek is the reported
+  // week's first game day (YYYY-MM-DD); lastWeeklyDigestError is '' when both
+  // the channel post and every DM went out.
+  lastWeeklyDigestAt: string;
+  lastWeeklyDigestWeek: string;
+  lastWeeklyDigestError: string;
 
   // Flagged true by the auth-check phase when the saved TB session
   // cannot load the game canvas (cookies expired or evicted). Cleared
@@ -157,6 +168,7 @@ function rowToClan(row: Record<string, unknown>): Clan {
     discordDailyDigestEnabled: !!(row.discord_daily_digest_enabled as number),
     discordDailyDigestShareUserId: (row.discord_daily_digest_share_user_id as string) || '',
     discordCommandsEnabled: !!(row.discord_commands_enabled as number),
+    discordWeeklyDigestEnabled: !!(row.discord_weekly_digest_enabled as number),
     ctShareCode: (row.ct_share_code as string) || '',
     ctPollIntervalHours: (row.ct_poll_interval_hours as number | null) ?? null,
     ctBackfillWeeks: (row.ct_backfill_weeks as number | null) ?? null,
@@ -164,6 +176,9 @@ function rowToClan(row: Record<string, unknown>): Clan {
     lastDigestChannelError: (row.last_digest_channel_error as string) || '',
     lastDigestDmError: (row.last_digest_dm_error as string) || '',
     lastDigestGameDay: (row.last_digest_game_day as string) || '',
+    lastWeeklyDigestAt: (row.last_weekly_digest_at as string) || '',
+    lastWeeklyDigestWeek: (row.last_weekly_digest_week as string) || '',
+    lastWeeklyDigestError: (row.last_weekly_digest_error as string) || '',
     needsReauth: !!(row.needs_reauth as number),
     reauthFailedAt: (row.reauth_failed_at as string) || '',
     resourcesEnabled: !!(row.resources_enabled as number),
@@ -413,6 +428,7 @@ export interface DiscordSettings {
   /** Comma-separated user IDs — see `Clan.discordDailyDigestShareUserId`. */
   dailyDigestShareUserId: string;
   commandsEnabled: boolean;
+  weeklyDigestEnabled: boolean;
 }
 
 export function setClanDiscordSettings(id: number, s: DiscordSettings): void {
@@ -427,7 +443,8 @@ export function setClanDiscordSettings(id: number, s: DiscordSettings): void {
       discord_only_new_chests = ?,
       discord_daily_digest_enabled = ?,
       discord_daily_digest_share_user_id = ?,
-      discord_commands_enabled = ?
+      discord_commands_enabled = ?,
+      discord_weekly_digest_enabled = ?
     WHERE id = ?
   `).run(
     s.enabled ? 1 : 0,
@@ -439,6 +456,7 @@ export function setClanDiscordSettings(id: number, s: DiscordSettings): void {
     s.dailyDigestEnabled ? 1 : 0,
     s.dailyDigestShareUserId,
     s.commandsEnabled ? 1 : 0,
+    s.weeklyDigestEnabled ? 1 : 0,
     id,
   );
 }
@@ -472,6 +490,24 @@ export function setClanLastDigestStatus(
       last_digest_dm_error = ?
     WHERE id = ?
   `).run(status.at, status.gameDay, status.channelError, status.dmError, id);
+}
+
+/**
+ * Persist the outcome of a weekly-digest run — the weekly twin of
+ * setClanLastDigestStatus. `week` is the reported week's first game day;
+ * `error` is '' on full delivery, else the channel and/or DM failure.
+ */
+export function setClanLastWeeklyDigestStatus(
+  id: number,
+  status: { at: string; week: string; error: string },
+): void {
+  getDb().prepare(`
+    UPDATE clans SET
+      last_weekly_digest_at = ?,
+      last_weekly_digest_week = ?,
+      last_weekly_digest_error = ?
+    WHERE id = ?
+  `).run(status.at, status.week, status.error, id);
 }
 
 /**
