@@ -37,10 +37,13 @@ node .claude/skills/local-ui-check/snap.cjs login ru phone --signed-out
 
 Page keys: `dashboard analytics leaderboard members member might events tools triumphal resources resadmin sessions external admin users clans system share login` (`member` and `share` come from the DB). Then **Read the PNGs** — the numbers find candidates, only the image tells you whether it's broken.
 
-`layout-check` prints, per page/viewport/language: JS errors, a wrong `<html lang>`, horizontal page overflow, elements spilling past the viewport, and text clipped in a box that English didn't clip. Shots and `results.json` go to `<run dir>/check/`; snaps to `<run dir>/snaps/`.
+`layout-check` prints, per page/viewport/language: JS errors, a wrong `<html lang>`, horizontal page overflow, elements spilling past the viewport (sideways-scrolling strips excepted), text clipped in a box, text overflowing its own box, and text cut by a clipping parent — the last three only where English doesn't do the same. Shots and `results.json` go to `<run dir>/check/`; snaps to `<run dir>/snaps/`.
+
+**The scanner chrome is faked.** Dashboard-only mode has no scanner, so its `/api/status` has no next scan, state `unknown` and a "calibrate" banner — and the sidebar's next-scan countdown, which prod shows on every page, never rendered. That's how the first translation pass shipped «Следующее сканирование через 1 ч 0…» cut off by the sidebar. Every context now answers `/api/status` like a running prod scanner (idle, next scan in ~1h 00m 59s, calibrated). Pass `realStatus: true` to `newContext` for the raw response.
 
 Reading the results:
 - **Intentional ellipsis is reported too**: compact-row sub-lines (`.mrow-sub`), clan-chip roles — judge from the shot.
+- **Sort-header buttons** overflowing by a few px (`Gardisten`, `Могущество`) eat cell padding and look fine; anything visibly cut (the Ancient planner's narrow first column) gets a shorter translation.
 - **Collapsed content** (closed `<details>`, a compact row's expand panel) is skipped by the check but opened by `snap.cjs` — snap it to see the expanded layout.
 - **Locked column widths** (`table-layout: fixed` + colgroup) are a design rule: fix an overflowing translation by shortening it in `lib/i18n/<lang>.js` or by widening that column, not by unlocking the table.
 

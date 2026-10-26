@@ -1087,9 +1087,17 @@ details.card-collapsible[open] > summary.card-header::after {
   padding: 6px 12px;
   gap: 12px;
 }
+/* Wide enough for a chest source ("Epische Gruft, Level 25", "Lvl 25-29
+   Vault of the Ancients") on two lines at most; at 84px they ran to four and
+   single long words ("ungewöhnlich") overflowed. The guards levels (G1–G9)
+   keep the narrow column. */
 .type-row--compact .type-row-name {
-  width: 84px;
+  width: 150px;
   flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.type-row--compact.type-guards .type-row-name {
+  width: 84px;
 }
 .type-row--compact .type-row-bar {
   flex: 1;
@@ -2885,6 +2893,10 @@ details > table {
     color: var(--accent-red-soft-text);
   }
 
+  /* A cycle's date range fills the row on a phone; "(now)" moves to the
+     sub-line instead of being the part the ellipsis eats. */
+  .gold-pass-table .gp-now-inline { display: none; }
+
   .table-responsive td[data-role="metric"]::after {
     content: attr(data-label);
     display: block;
@@ -3030,6 +3042,10 @@ details > table {
     scrollbar-width: none;
   }
   .period-selector::-webkit-scrollbar { display: none; }
+  /* The member page's tabs carry counts ("Coffres triomphaux (196)") and
+     run past the edge in a longer language; with the scrollbar hidden the
+     last tab read as cut off. Wrap them instead — there are at most three. */
+  #memberChestsTabs { flex-wrap: wrap; }
 
   .period-selector .btn {
     flex: 1 0 auto;
@@ -3109,6 +3125,9 @@ details > table {
   }
 
   .type-row--compact .type-row-name {
+    width: 110px;
+  }
+  .type-row--compact.type-guards .type-row-name {
     width: 72px;
   }
 
@@ -3532,7 +3551,7 @@ details > table {
 /* 290px: two 116px clan chips + the edit pencil on one line, inside the
    cell's 16px padding. */
 .users-table .col-user-clan { width: 290px; }
-.users-table .col-user-date { width: 160px; }
+.users-table .col-user-date { width: 145px; }
 
 /* Orphaned-user row: tint to flag the anomaly (account with no clan).
    The badge in the Clan column already says "⚠ No clan"; the tint
@@ -6660,6 +6679,15 @@ body {
   }
   .header-right > .status,
   .header-right > .next-scan { padding: 0 6px; }
+  /* The sidebar is ~220px wide, and "Prochain scan dans 1 h 00 min 00 s" is
+     not. The countdown wraps inside the pill rather than running off the
+     edge; the short translations keep it to one line in practice. */
+  .header-right > .next-scan {
+    padding: 4px 10px;
+    white-space: normal;
+    text-align: center;
+    border-radius: 10px;
+  }
   .clan-switcher,
   .clan-switcher select,
   .clan-indicator { width: 100%; }

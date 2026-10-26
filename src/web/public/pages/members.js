@@ -519,7 +519,7 @@ function memberGoldPassCardHtml(guards) {
   if (!cycles.some((c) => c.unionChests > 0 || c.passDonations > 0)) return '';
   const unionOnly = cycles.some((c) => c.basis === 'union-only');
   const rows = cycles.map((c) => `<tr>
-      <td data-label="${t('Cycle')}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(c.firstDay))} – ${esc(formatGameDayShort(c.lastDay))}${c.isCurrent ? ` <span class="muted-copy">${t('(now)')}</span>` : ''}</span></td>
+      <td data-label="${t('Cycle')}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(c.firstDay))} – ${esc(formatGameDayShort(c.lastDay))}${c.isCurrent ? ` <span class="muted-copy gp-now-inline">${t('(now)')}</span>` : ''}</span>${c.isCurrent ? `<span class="mrow-sub">${t('Current cycle')}</span>` : ''}</td>
       <td data-label="${t('Union Chests')}" class="num">${c.unionChests.toLocaleString()}</td>
       <td data-label="${t('250k lines')}" class="num">${c.basis === 'union-only' ? '—' : c.passDonations.toLocaleString()}</td>
       <td data-label="${t('Gold Pass')}" data-role="metric">${c.goldPass ? goldPassBadgeHtml(c.isCurrent ? 'current' : 'previous') : `<span class="muted-copy">${t('no')}</span>`}</td>

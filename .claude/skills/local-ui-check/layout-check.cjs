@@ -30,7 +30,32 @@ function measure() {
     if (invisible(el)) continue;
     const clips = cs.overflowX !== 'visible' || cs.textOverflow === 'ellipsis';
     if (clips && el.scrollWidth > el.clientWidth + 2 && !/^(TEXTAREA|INPUT|SELECT)$/.test(el.tagName)) out.clipped.push(describe(el));
-    if (r.right > vw + 2 && cs.position !== 'fixed') out.spill.push(describe(el));
+    // Text running out of its own (non-clipping) box: it spills over the
+    // border and whatever is next to it, and a clipping parent then cuts it.
+    // (Inline boxes report clientWidth 0 — skip them.)
+    if (!clips && cs.display !== 'inline' && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 2
+      && !/^(TEXTAREA|INPUT|SELECT|TABLE|TBODY|THEAD|TR)$/.test(el.tagName)) out.clipped.push(`${describe(el)} (text overflows its box)`);
+    // Past the viewport — unless it sits in a strip built to scroll sideways
+    // (.pb-chips, the phone period selector): that's reachable by design.
+    const inScroller = (() => {
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        const o = getComputedStyle(a).overflowX;
+        if (o === 'auto' || o === 'scroll') return true;
+      }
+      return false;
+    })();
+    if (r.right > vw + 2 && cs.position !== 'fixed' && !inScroller) out.spill.push(describe(el));
+    // Cut off by a clipping ancestor (the sidebar, a card): the box is still
+    // inside the viewport, so neither check above sees it — that is how the
+    // Russian next-scan pill slipped through the first pass.
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      const acs = getComputedStyle(a);
+      if (acs.overflowX === 'visible') continue;
+      if (acs.overflowX === 'auto' || acs.overflowX === 'scroll') break; // scrollable: reachable
+      const ar = a.getBoundingClientRect();
+      if (r.right > ar.right + 2 || r.left < ar.left - 2) out.clipped.push(`${describe(el)} (cut by ${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''})`);
+      break;
+    }
   }
   return out;
 }

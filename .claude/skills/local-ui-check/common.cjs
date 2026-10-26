@@ -66,17 +66,39 @@ async function launch() {
  * server-side language wins over localStorage (adoptAccountLanguage reloads to
  * it), so it is set first — otherwise switching language between runs loops.
  */
-async function newContext(browser, lang, vpName, { signedIn = true, theme = 'dark' } = {}) {
+async function newContext(browser, lang, vpName, { signedIn = true, theme = 'dark', realStatus = false } = {}) {
   const info = runInfo();
   const ctx = await browser.newContext({ viewport: VIEWPORTS[vpName], deviceScaleFactor: 1 });
   if (signedIn) {
     await ctx.addCookies([{ name: 'tb_session', value: info.token, url: BASE }]);
     await ctx.request.put(`${BASE}/api/auth/language`, { data: { language: lang } });
   }
+  if (!realStatus) await fakeScannerStatus(ctx);
   await ctx.addInitScript(([l, th]) => {
     try { localStorage.setItem('lang', l); localStorage.setItem('theme', th); } catch (_) { /* ignore */ }
   }, [lang, theme]);
   return ctx;
+}
+
+/**
+ * Dashboard-only mode has no scanner, so /api/status says state 'unknown',
+ * no next scan and "calibrate the scanner" — and the status chrome prod shows
+ * on every page (the next-scan countdown pill in the sidebar) never renders.
+ * That is exactly where the first i18n pass missed a Russian overflow. Answer
+ * like a running prod scanner instead: idle, next scan 1h 00m 59s out (the
+ * widest countdown it normally shows), calibrated.
+ */
+async function fakeScannerStatus(ctx) {
+  await ctx.route('**/api/status', async (route) => {
+    const res = await route.fetch();
+    let json;
+    try { json = await res.json(); } catch (_) { return route.fulfill({ response: res }); }
+    if (!json.state || json.state === 'unknown') json.state = 'idle';
+    if (!json.nextScanAt) json.nextScanAt = new Date(Date.now() + 3659e3).toISOString();
+    json.scanInProgress = false;
+    if (json.onboarding) json.onboarding = { ...json.onboarding, nextStep: 'ready' };
+    return route.fulfill({ response: res, json });
+  });
 }
 
 async function settle(page) {
