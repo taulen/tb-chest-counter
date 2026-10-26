@@ -63,6 +63,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'resource_upload_batches.uploaded_by',
     'share_links.created_by',
     'share_links.revoked_by',
+    'user_clan_access.user_id',
     'user_sessions.user_id',
     'users.created_by',
   ],
@@ -83,6 +84,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'tinman_scores.clan_id',
     'tinman_targets.clan_id',
     'tinman_uploads.clan_id',
+    'user_clan_access.clan_id',
     'user_sessions.active_clan_id',
     'users.clan_id',
   ],
@@ -244,6 +246,15 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO user_sessions (user_id, token, expires_at, created_at, active_clan_id)
      VALUES (2, 'guard-session', ?, ?, ?)`,
   ).run(now, now, clanId);
+  // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
+  // a clan-1 account (user 4) is a guest of the clan being deleted.
+  db.prepare(
+    `INSERT INTO users (id, username, password_hash, role, created_at, clan_id)
+     VALUES (4, 'guest-of-2', 'x', 'user', ?, 1)`,
+  ).run(now);
+  db.prepare(
+    `INSERT INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (2, 1, 'user', ?), (4, ?, 'admin', ?)`,
+  ).run(now, clanId, now);
 
   // ChestTracker ingest: clan-scoped, but only by convention — no FK to clans.
   const playerRef = db.prepare(
@@ -331,6 +342,9 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     const sess = db.prepare("SELECT active_clan_id FROM user_sessions WHERE token = 'guard-session'")
       .get() as { active_clan_id: number | null };
     expect(sess.active_clan_id).toBeNull();
+    // Guests of the deleted clan lose the grant, and only that grant.
+    expect(db.prepare('SELECT COUNT(*) c FROM user_clan_access WHERE clan_id = ?').get(clanId)).toEqual({ c: 0 });
+    expect(db.prepare('SELECT id FROM users WHERE id = 4').get()).toBeTruthy();
 
     // Nothing clan-scoped is left behind, FK or not. A survivor here is not
     // harmless: clans(id) is an AUTOINCREMENT the next clan can be handed, and

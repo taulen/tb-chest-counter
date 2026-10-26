@@ -5,6 +5,7 @@ import {
   type User,
 } from '../../data/repositories/user-repo.js';
 import { getClanById, listClans } from '../../data/repositories/clan-repo.js';
+import { runWithRequestClan } from '../../utils/request-context.js';
 
 // Extend Express Request to include user + active clan + token.
 declare global {
@@ -15,7 +16,9 @@ declare global {
        *  persist session-scoped state (e.g. the active clan switcher). */
       sessionToken?: string;
       /** The clan the request is currently scoped to. For non-superadmin
-       *  users this is always their own user.clanId. For superadmins it
+       *  users this is always their own user.clanId — the clan they have
+       *  switched into, already resolved and checked by validateSession
+       *  (an extra clan they were granted, else home). For superadmins it
        *  comes from the session's active_clan_id, falling back to the
        *  first clan in the system. Set by `attachClanContext` after
        *  `requireAuth` so clan-scoped routes can read req.clanId
@@ -76,7 +79,9 @@ function getToken(req: Request): string | null {
  *
  *   - Non-superadmin users are forced to their own user.clanId; ignore any
  *     ?clanId override (defense in depth — even a crafted query string
- *     can't escape their clan).
+ *     can't escape their clan). For an account with extra clans,
+ *     validateSession has already set user.clanId to the one it switched
+ *     into — but only after checking the grant, so this stays a pass-through.
  *   - Superadmins get the session's active_clan_id (set via
  *     POST /api/clans/:id/activate). If unset, fall back to the first
  *     clan in the table so a fresh login still has a sensible default.
@@ -167,7 +172,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   req.sessionToken = token;
   const clanId = resolveActiveClanId(result.user, result.activeClanId);
   if (clanId !== null) req.clanId = clanId;
-  next();
+  // Everything downstream runs knowing the request's clan, so the audit log
+  // can file an action under the clan it was taken in.
+  runWithRequestClan(clanId, next);
 }
 
 /**
@@ -350,6 +357,8 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
       req.sessionToken = token;
       const clanId = resolveActiveClanId(result.user, result.activeClanId);
       if (clanId !== null) req.clanId = clanId;
+      runWithRequestClan(clanId, next);
+      return;
     }
   }
   next();

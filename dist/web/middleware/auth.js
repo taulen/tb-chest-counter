@@ -13,6 +13,7 @@ exports.requireClanAdmin = requireClanAdmin;
 exports.optionalAuth = optionalAuth;
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
+const request_context_js_1 = require("../../utils/request-context.js");
 exports.SESSION_COOKIE_NAME = 'tb_session';
 /**
  * Cookie flags for the session cookie.
@@ -55,7 +56,9 @@ function getToken(req) {
  *
  *   - Non-superadmin users are forced to their own user.clanId; ignore any
  *     ?clanId override (defense in depth — even a crafted query string
- *     can't escape their clan).
+ *     can't escape their clan). For an account with extra clans,
+ *     validateSession has already set user.clanId to the one it switched
+ *     into — but only after checking the grant, so this stays a pass-through.
  *   - Superadmins get the session's active_clan_id (set via
  *     POST /api/clans/:id/activate). If unset, fall back to the first
  *     clan in the table so a fresh login still has a sensible default.
@@ -143,7 +146,9 @@ function requireAuth(req, res, next) {
     const clanId = resolveActiveClanId(result.user, result.activeClanId);
     if (clanId !== null)
         req.clanId = clanId;
-    next();
+    // Everything downstream runs knowing the request's clan, so the audit log
+    // can file an action under the clan it was taken in.
+    (0, request_context_js_1.runWithRequestClan)(clanId, next);
 }
 /**
  * Block requests from non-superadmin users whose account isn't attached
@@ -321,6 +326,8 @@ function optionalAuth(req, res, next) {
             const clanId = resolveActiveClanId(result.user, result.activeClanId);
             if (clanId !== null)
                 req.clanId = clanId;
+            (0, request_context_js_1.runWithRequestClan)(clanId, next);
+            return;
         }
     }
     next();

@@ -61,6 +61,9 @@ import {
   deleteUserById,
   changeRole,
   reassignUserClan,
+  editUserClans,
+  changeGuestClanRole,
+  removeGuestFromClan,
   changeAuditPage,
 } from './pages/users.js';
 import {
@@ -303,7 +306,9 @@ async function refreshClanIndicator() {
   const switcherSelect = $('#clanSwitcherSelect');
   if (!currentUser) return;
 
-  if (currentUser.role !== 'superadmin') {
+  // Superadmins switch between every clan; anyone else only when they were
+  // granted extra clans (multiClan), and then only between those.
+  if (currentUser.role !== 'superadmin' && !currentUser.multiClan) {
     // Read-only clan label.
     if (indicatorEl && indicatorNameEl) {
       const label = currentUser.activeClan?.name ?? '';
@@ -318,7 +323,8 @@ async function refreshClanIndicator() {
     return;
   }
 
-  // Superadmin: render the dropdown with every clan, mark the active one.
+  // Render the dropdown with every clan the caller may switch to, mark the
+  // active one.
   if (indicatorEl) indicatorEl.classList.add('is-hidden');
   if (!switcherEl || !switcherSelect) return;
   try {
@@ -666,6 +672,8 @@ if (contentEl) {
     if (action === 'create-user') return createNewUser(loadPage);
     if (action === 'delete-user') return deleteUserById(Number.parseInt(target.dataset.userId || '0', 10), loadPage, target.dataset.username);
     if (action === 'reassign-user-clan') return reassignUserClan(Number.parseInt(target.dataset.userId || '0', 10), target.dataset.username, loadPage);
+    if (action === 'edit-user-clans') return editUserClans(Number.parseInt(target.dataset.userId || '0', 10), loadPage);
+    if (action === 'remove-guest-clan') return removeGuestFromClan(Number.parseInt(target.dataset.userId || '0', 10), Number.parseInt(target.dataset.clanId || '0', 10), target.dataset.username, loadPage);
     if (action === 'import-db-backup') return runDbBackupImportFromFile(loadPage);
     if (action === 'restore-server-backup') return restoreServerBackup(target.dataset.fileName, loadPage);
     if (action === 'create-manual-backup') return createManualBackup(loadPage);
@@ -699,6 +707,9 @@ if (contentEl) {
     if (select.classList.contains('user-role-select')) {
       const userId = Number.parseInt(select.dataset.userId || '0', 10);
       if (!userId) return;
+      // A guest row's select sets the role IN THIS CLAN, not the account's.
+      const guestClanId = Number.parseInt(select.dataset.guestClanId || '0', 10);
+      if (guestClanId) return changeGuestClanRole(userId, guestClanId, select.value, loadPage);
       return changeRole(userId, select.value, loadPage);
     }
 

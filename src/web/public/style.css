@@ -3518,7 +3518,7 @@ details > table {
 }
 .users-table .col-user-name { width: auto; }
 .users-table .col-user-role { width: 140px; }
-.users-table .col-user-clan { width: 160px; }
+.users-table .col-user-clan { width: 200px; }
 .users-table .col-user-date { width: 160px; }
 
 /* Orphaned-user row: tint to flag the anomaly (account with no clan).
@@ -3552,6 +3552,62 @@ details > table {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Clan cell with extra lines: home clan, "+ other clans", the Clans button —
+   or a guest's badge and where they're from. Long lists ellipsize; the full
+   list is in the title. */
+.users-table .clan-cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.users-table .clan-cell-stack > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Account that belongs to another clan and was given access to this one. */
+.badge-guest {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--subtle-bg-strong);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Extra-clans editor (Users → Clans): one row per clan, name + role select. */
+.user-clans-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 16px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.user-clans-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.user-clans-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-clans-row select {
+  width: 140px;
+  flex: none;
 }
 
 /* Audit log: lock the columns that have a known shape (timestamp,

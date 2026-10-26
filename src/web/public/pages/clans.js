@@ -94,9 +94,9 @@ export async function renderClans(el, refreshClanIndicator) {
     : null;
   const defaultPublicUrl = typeof clansData.defaultPublicUrl === 'string' ? clansData.defaultPublicUrl : '';
   for (const c of allClans) clanOrigins.set(c.id, c.publicUrl || defaultPublicUrl);
-  const clans = isSuperAdmin
-    ? allClans.filter((c) => c.id === activeClanId)
-    : allClans;
+  // An admin with extra clans also gets one card — the active clan's, the
+  // only one their admin rights currently reach.
+  const clans = allClans.filter((c) => c.id === activeClanId);
 
   // Pull the global default scan interval so the per-clan input can
   // surface it as the placeholder. Superadmin-only — and the input

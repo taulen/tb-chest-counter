@@ -1,7 +1,14 @@
 import crypto from 'crypto';
 import { getDb } from '../database.js';
+import { currentRequestClanId } from '../../utils/request-context.js';
 
 export type UserRole = 'superadmin' | 'admin' | 'user';
+/** The role an account holds in an extra clan (user_clan_access, v88). */
+export type ClanRole = 'admin' | 'user';
+
+export function isClanRole(value: unknown): value is ClanRole {
+  return value === 'admin' || value === 'user';
+}
 // 'auto' follows the device (Light in light mode, OLED in dark) — see
 // resolveTheme in src/web/public/lib/theme.js. It is a PREFERENCE; the page
 // always paints one of the other three.
@@ -20,6 +27,11 @@ export interface User {
   /**
    * The clan this user is scoped to. NULL only for superadmins (cross-clan).
    * `admin` and `user` rows always carry a non-null clanId.
+   *
+   * On a user that came from validateSession (i.e. `req.user`), this and
+   * `role` are the ACTIVE clan and the role held there — which is the home
+   * clan unless the account has switched into an extra clan it was granted.
+   * Read the users row (getUserById) when you need the home clan.
    */
   clanId: number | null;
   createdBy: number | null;
@@ -190,24 +202,127 @@ export function getUserById(id: number): User | null {
   return row ? rowToUser(row) : null;
 }
 
+export interface ClanAccess {
+  clanId: number;
+  role: ClanRole;
+}
+
+export interface ListedUser extends User {
+  /** 'home' = the clan the account belongs to; 'guest' = an extra clan it was
+   *  granted, with `clanId`/`role` reporting that clan and the role there. */
+  membership: 'home' | 'guest';
+  /** Every extra clan the account holds. Superadmin listing only — a clan
+   *  admin is never told which OTHER clans one of their guests belongs to. */
+  clanAccess?: ClanAccess[];
+}
+
 /**
  * List users visible to the caller. Superadmins (viewerClanId=null) see
- * everyone; clan admins see only users in their own clan AND never see
+ * everyone, with each account's extra clans; clan admins see the users whose
+ * home is their clan plus the guests granted access to it, AND never see
  * superadmins (cross-clan accounts are an instance-level concern, not a
- * clan-admin one).
+ * clan-admin one). A guest is reported AS a member of the viewer's clan, with
+ * the role it holds there — never with its home clan.
  */
-export function getAllUsers(viewerClanId?: number | null): User[] {
+export function getAllUsers(viewerClanId?: number | null): ListedUser[] {
   const db = getDb();
   if (viewerClanId === undefined || viewerClanId === null) {
     const rows = db.prepare('SELECT * FROM users ORDER BY created_at').all() as Record<string, unknown>[];
-    return rows.map(rowToUser);
+    const access = db.prepare(
+      'SELECT user_id, clan_id, role FROM user_clan_access ORDER BY clan_id',
+    ).all() as { user_id: number; clan_id: number; role: ClanRole }[];
+    const byUser = new Map<number, ClanAccess[]>();
+    for (const a of access) {
+      const list = byUser.get(a.user_id) ?? [];
+      list.push({ clanId: a.clan_id, role: a.role });
+      byUser.set(a.user_id, list);
+    }
+    return rows.map((r) => {
+      const u = rowToUser(r);
+      return { ...u, membership: 'home' as const, clanAccess: byUser.get(u.id) ?? [] };
+    });
   }
-  const rows = db.prepare(
+  const home = db.prepare(
     `SELECT * FROM users
      WHERE clan_id = ? AND role != 'superadmin'
      ORDER BY created_at`,
   ).all(viewerClanId) as Record<string, unknown>[];
-  return rows.map(rowToUser);
+  const guests = db.prepare(
+    `SELECT u.*, a.role AS guest_role
+       FROM user_clan_access a JOIN users u ON u.id = a.user_id
+      WHERE a.clan_id = ? AND u.role != 'superadmin' AND u.clan_id IS NOT a.clan_id
+      ORDER BY u.created_at`,
+  ).all(viewerClanId) as Record<string, unknown>[];
+  return [
+    ...home.map((r) => ({ ...rowToUser(r), membership: 'home' as const })),
+    ...guests.map((r) => ({
+      ...rowToUser(r),
+      clanId: viewerClanId,
+      role: r.guest_role as ClanRole,
+      membership: 'guest' as const,
+    })),
+  ];
+}
+
+// --- Extra clan access (v88) ---
+//
+// An account's home clan is users.clan_id; user_clan_access lists the OTHER
+// clans it may switch into, each with its own role. Granting and replacing
+// is superadmin-only; a clan admin may change the role of, or remove, a guest
+// of their own clan. None of these ever touch a superadmin, who is cross-clan
+// already.
+
+/** Every extra clan the account holds, deleted clans included. */
+export function listClanAccess(userId: number): ClanAccess[] {
+  return (getDb().prepare(
+    'SELECT clan_id, role FROM user_clan_access WHERE user_id = ? ORDER BY clan_id',
+  ).all(userId) as { clan_id: number; role: ClanRole }[]).map((r) => ({ clanId: r.clan_id, role: r.role }));
+}
+
+export function getClanAccessRole(userId: number, clanId: number): ClanRole | null {
+  const row = getDb().prepare(
+    'SELECT role FROM user_clan_access WHERE user_id = ? AND clan_id = ?',
+  ).get(userId, clanId) as { role: ClanRole } | undefined;
+  return row?.role ?? null;
+}
+
+/**
+ * Replace the account's extra clans with `entries`. Rows for soft-deleted
+ * clans are left alone: the editor only ever shows live clans, and a restore
+ * should bring the access back with the clan. Callers validate the entries
+ * (live clans, not the home clan, no superadmin target).
+ */
+export function replaceClanAccess(userId: number, entries: ClanAccess[]): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const keep = new Set(entries.map((e) => e.clanId));
+  const tx = db.transaction(() => {
+    const live = db.prepare(
+      `SELECT a.clan_id FROM user_clan_access a JOIN clans c ON c.id = a.clan_id
+        WHERE a.user_id = ? AND c.deleted_at = ''`,
+    ).all(userId) as { clan_id: number }[];
+    const del = db.prepare('DELETE FROM user_clan_access WHERE user_id = ? AND clan_id = ?');
+    for (const r of live) if (!keep.has(r.clan_id)) del.run(userId, r.clan_id);
+    const upsert = db.prepare(
+      `INSERT INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, clan_id) DO UPDATE SET role = excluded.role`,
+    );
+    for (const e of entries) upsert.run(userId, e.clanId, e.role, now);
+  });
+  tx();
+}
+
+/** Change the role on an EXISTING grant. False when there is none. */
+export function setClanAccessRole(userId: number, clanId: number, role: ClanRole): boolean {
+  return getDb().prepare(
+    'UPDATE user_clan_access SET role = ? WHERE user_id = ? AND clan_id = ?',
+  ).run(role, userId, clanId).changes > 0;
+}
+
+export function removeClanAccess(userId: number, clanId: number): boolean {
+  return getDb().prepare(
+    'DELETE FROM user_clan_access WHERE user_id = ? AND clan_id = ?',
+  ).run(userId, clanId).changes > 0;
 }
 
 /** The oldest superadmin account, or null when there is none (or no database
@@ -241,14 +356,22 @@ export interface SiteContacts {
  * ever used belongs to someone who may not know it exists, and pointing a
  * visitor at them is a dead end. Most recently active first, so the person
  * likeliest to answer leads.
+ *
+ * A clan admin is anyone who holds admin IN THIS CLAN: a home admin, or a
+ * guest granted admin here. An account that is admin at home but a plain
+ * guest here is not one.
  */
 export function listSiteContacts(clanId: number): SiteContacts {
   const rows = getDb().prepare(
-    `SELECT username, role FROM users
-      WHERE ((role = 'admin' AND clan_id = ?) OR role = 'superadmin')
-        AND (last_login IS NOT NULL OR last_visited IS NOT NULL)
-      ORDER BY MAX(COALESCE(last_visited, ''), COALESCE(last_login, '')) DESC, id`,
-  ).all(clanId) as { username: string; role: UserRole }[];
+    `SELECT u.username, CASE WHEN u.role = 'superadmin' THEN 'superadmin' ELSE 'admin' END AS role
+       FROM users u
+      WHERE ((u.role = 'admin' AND u.clan_id = ?)
+             OR u.role = 'superadmin'
+             OR EXISTS (SELECT 1 FROM user_clan_access a
+                         WHERE a.user_id = u.id AND a.clan_id = ? AND a.role = 'admin'))
+        AND (u.last_login IS NOT NULL OR u.last_visited IS NOT NULL)
+      ORDER BY MAX(COALESCE(u.last_visited, ''), COALESCE(u.last_login, '')) DESC, u.id`,
+  ).all(clanId, clanId) as { username: string; role: UserRole }[];
   return {
     clanAdmins: rows.filter((r) => r.role === 'admin').map((r) => r.username),
     siteAdmins: rows.filter((r) => r.role === 'superadmin').map((r) => r.username),
@@ -279,6 +402,7 @@ export function deleteUser(id: number): boolean {
   // this unreachable for any admin who had ever performed a single action.
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(id);
+    db.prepare('DELETE FROM user_clan_access WHERE user_id = ?').run(id);
     db.prepare('UPDATE audit_log SET user_id = NULL WHERE user_id = ?').run(id);
     db.prepare('UPDATE resource_upload_batches SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
     db.prepare('UPDATE clans SET created_by = NULL WHERE created_by = ?').run(id);
@@ -300,11 +424,23 @@ export function updateRole(id: number, role: UserRole): void {
   // demoting to admin/user — must go through updateRoleAndClan() so the
   // new clan_id lands in the same statement; otherwise a crash between
   // role update and clan update would orphan the row.
+  // A superadmin is cross-clan, so any extra-clan grants go with the clan:
+  // left in place they would silently come back if the account were ever
+  // demoted again.
   if (role === 'superadmin') {
-    db.prepare('UPDATE users SET role = ?, clan_id = NULL WHERE id = ?').run(role, id);
+    db.transaction(() => {
+      db.prepare('UPDATE users SET role = ?, clan_id = NULL WHERE id = ?').run(role, id);
+      db.prepare('DELETE FROM user_clan_access WHERE user_id = ?').run(id);
+    })();
   } else {
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
   }
+}
+
+/** A home clan is never also an extra clan — drop the grant it replaces. */
+function dropAccessToHomeClan(id: number, clanId: number | null): void {
+  if (clanId === null) return;
+  getDb().prepare('DELETE FROM user_clan_access WHERE user_id = ? AND clan_id = ?').run(id, clanId);
 }
 
 /**
@@ -316,12 +452,18 @@ export function updateRole(id: number, role: UserRole): void {
  */
 export function updateRoleAndClan(id: number, role: UserRole, clanId: number): void {
   const db = getDb();
-  db.prepare('UPDATE users SET role = ?, clan_id = ? WHERE id = ?').run(role, clanId, id);
+  db.transaction(() => {
+    db.prepare('UPDATE users SET role = ?, clan_id = ? WHERE id = ?').run(role, clanId, id);
+    dropAccessToHomeClan(id, clanId);
+  })();
 }
 
 export function updateUserClan(id: number, clanId: number | null): void {
   const db = getDb();
-  db.prepare('UPDATE users SET clan_id = ? WHERE id = ?').run(clanId, id);
+  db.transaction(() => {
+    db.prepare('UPDATE users SET clan_id = ? WHERE id = ?').run(clanId, id);
+    dropAccessToHomeClan(id, clanId);
+  })();
 }
 
 export function changePassword(id: number, newPassword: string): void {
@@ -361,13 +503,37 @@ export function createSession(userId: number): string {
   return token;
 }
 
+/**
+ * Resolve a session token to the user it belongs to, SCOPED TO THE ACTIVE CLAN.
+ *
+ * For an account that has switched into an extra clan (user_clan_access) the
+ * returned user carries that clan as `clanId` and the role held there as
+ * `role`. This is the whole security model of multi-clan accounts: every
+ * existing gate compares `req.user.clanId` / `req.user.role`, so by answering
+ * with the active clan here, each of them already confines the account to the
+ * one clan it is looking at, with the rights it holds in that clan — an admin
+ * at home who is a plain user next door gets no admin rights next door, and no
+ * :clanId route reaches the clan it is NOT looking at.
+ *
+ * The grant is re-read on every request, so revoking it (or soft-deleting the
+ * clan) drops the account back to its home clan on its very next call. Any
+ * session pointer that isn't a live grant is ignored, never trusted.
+ * Superadmins are untouched; resolveActiveClanId handles them.
+ */
 export function validateSession(token: string): SessionValidation | null {
   const db = getDb();
   const now = new Date();
   const row = db.prepare(`
-    SELECT u.*, s.expires_at AS session_expires_at, s.active_clan_id AS session_active_clan_id
+    SELECT u.*, s.expires_at AS session_expires_at, s.active_clan_id AS session_active_clan_id,
+           ga.role AS guest_role
     FROM user_sessions s
     JOIN users u ON s.user_id = u.id
+    LEFT JOIN user_clan_access ga
+           ON ga.user_id = u.id
+          AND ga.clan_id = s.active_clan_id
+          AND u.role != 'superadmin'
+          AND ga.clan_id IS NOT u.clan_id
+          AND EXISTS (SELECT 1 FROM clans c WHERE c.id = ga.clan_id AND c.deleted_at = '')
     WHERE s.token = ? AND s.expires_at > ?
   `).get(token, now.toISOString()) as Record<string, unknown> | undefined;
 
@@ -394,11 +560,38 @@ export function validateSession(token: string): SessionValidation | null {
     row.last_visited = nowIso;
   }
 
-  return {
-    user: rowToUser(row),
-    extended,
-    activeClanId: (row.session_active_clan_id as number | null) ?? null,
-  };
+  const activeClanId = (row.session_active_clan_id as number | null) ?? null;
+  const stored = rowToUser(row);
+  const guestRole = row.guest_role as unknown;
+  const user = activeClanId !== null && stored.role !== 'superadmin' && isClanRole(guestRole)
+    ? { ...stored, clanId: activeClanId, role: guestRole }
+    : stored;
+
+  return { user, extended, activeClanId };
+}
+
+/**
+ * Every clan the account may switch into: its home clan first, then its
+ * extra clans, each with the role held there. Live clans only. Empty for a
+ * superadmin (they see every clan by other means).
+ */
+export function listSwitchableClans(userId: number): Array<ClanAccess & { home: boolean }> {
+  const db = getDb();
+  const u = db.prepare('SELECT role, clan_id FROM users WHERE id = ?').get(userId) as
+    { role: UserRole; clan_id: number | null } | undefined;
+  if (!u || u.role === 'superadmin') return [];
+  const out: Array<ClanAccess & { home: boolean }> = [];
+  if (u.clan_id !== null) {
+    const live = db.prepare("SELECT 1 FROM clans WHERE id = ? AND deleted_at = ''").get(u.clan_id);
+    if (live) out.push({ clanId: u.clan_id, role: u.role, home: true });
+  }
+  const extras = db.prepare(
+    `SELECT a.clan_id, a.role FROM user_clan_access a JOIN clans c ON c.id = a.clan_id
+      WHERE a.user_id = ? AND c.deleted_at = '' AND a.clan_id IS NOT ?
+      ORDER BY c.name COLLATE NOCASE, a.clan_id`,
+  ).all(userId, u.clan_id) as { clan_id: number; role: ClanRole }[];
+  for (const e of extras) out.push({ clanId: e.clan_id, role: e.role, home: false });
+  return out;
 }
 
 export function setSessionActiveClan(token: string, clanId: number | null): void {
@@ -418,12 +611,18 @@ export function cleanExpiredSessions(): void {
 
 // --- Audit Log ---
 
+/**
+ * Record an action by a signed-in user. The row is stamped with the clan the
+ * request was scoped to (see utils/request-context.ts), so an account that
+ * works in several clans files each action under the clan it acted in rather
+ * than under its home clan.
+ */
 export function logAction(userId: number, action: string, details?: object): void {
   const db = getDb();
   db.prepare(`
-    INSERT INTO audit_log (user_id, action, details, created_at)
-    VALUES (?, ?, ?, ?)
-  `).run(userId, action, details ? JSON.stringify(details) : null, new Date().toISOString());
+    INSERT INTO audit_log (user_id, clan_id, action, details, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(userId, currentRequestClanId(), action, details ? JSON.stringify(details) : null, new Date().toISOString());
 }
 
 /**
@@ -460,16 +659,16 @@ const CLAN_VISIBLE_GLOBAL_ACTIONS = [
  * Audit-log reader.
  *
  * - viewerClanId === null/undefined → superadmin view: every audit row.
- * - viewerClanId === number → clan-admin view: rows whose actor belongs to
- *   that clan (superadmin rows hidden), plus system rows (no actor) tagged
+ * - viewerClanId === number → clan-admin view: user rows filed under that
+ *   clan (superadmin rows hidden), plus system rows (no actor) tagged
  *   with that clan_id — so the daily inactivity sweep shows up for the clan
  *   it acted on.
  *
- * The user-action filter is applied via the actor's CURRENT clan_id, so if a
- * user was reassigned to a different clan their old audit entries follow
- * them into the new clan. This is acceptable; a clan admin viewing the log
- * gets a consistent picture of who they currently manage. System rows carry
- * their own clan_id and are unaffected by user reassignment.
+ * A user row names its clan in audit_log.clan_id — the clan the request was
+ * scoped to (logAction). That is what keeps a multi-clan account's work in
+ * clan B out of clan A's log. Rows written before that stamp existed carry
+ * NULL and fall back to the actor's CURRENT home clan, so a reassigned user's
+ * old entries follow them into the new clan, as they always did.
  *
  * System rows have no user, so the actor renders as "System".
  */
@@ -502,11 +701,11 @@ export function getAuditLog(limit: number = 100, viewerClanId?: number | null): 
     rows = db.prepare(`
       SELECT a.id, COALESCE(u.username, 'System') AS username, a.action, a.details, a.created_at
       FROM audit_log a LEFT JOIN users u ON a.user_id = u.id
-      WHERE (u.clan_id = ? AND u.role != 'superadmin')
+      WHERE (u.role != 'superadmin' AND (a.clan_id = ? OR (a.clan_id IS NULL AND u.clan_id = ?)))
          OR (a.user_id IS NULL AND a.clan_id = ?)
          OR a.action IN (${CLAN_VISIBLE_GLOBAL_ACTIONS.map(() => '?').join(', ')})
       ORDER BY a.created_at DESC LIMIT ?
-    `).all(viewerClanId, viewerClanId, ...CLAN_VISIBLE_GLOBAL_ACTIONS, limit) as Record<string, unknown>[];
+    `).all(viewerClanId, viewerClanId, viewerClanId, ...CLAN_VISIBLE_GLOBAL_ACTIONS, limit) as Record<string, unknown>[];
   }
 
   return rows.map((r) => ({

@@ -1000,6 +1000,26 @@ const MIGRATIONS: Migration[] = [
       add('last_weekly_digest_error', "TEXT NOT NULL DEFAULT ''");
     },
   },
+  {
+    // Extra clans an account can switch into, beyond its home clan
+    // (users.clan_id). Each row carries the account's role IN THAT CLAN, so
+    // an admin at home can be a plain user next door. Superadmin-granted;
+    // never holds a row for the home clan or for a superadmin. Scoping is
+    // resolved per request in validateSession — see user-repo.ts.
+    version: 88,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS user_clan_access (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, clan_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_clan_access_clan ON user_clan_access(clan_id);
+      `);
+    },
+  },
 ];
 
 /**

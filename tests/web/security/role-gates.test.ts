@@ -802,4 +802,139 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expect(r.status).not.toBe(403);
     });
   });
+
+  // ─── multi-clan accounts (user_clan_access, v88) ──────────────
+  //
+  // An account may be granted extra clans, each with its own role, and
+  // switch between them. The contract: while looking at a clan it has
+  // exactly the rights it holds THERE, reaches nothing in any other clan,
+  // and a revoked grant stops working on the very next request.
+
+  describe('multi-clan accounts', () => {
+    const grant = (persona: Persona, clans: Array<{ clanId: number; role: string }>) =>
+      send('put', `/api/auth/users/${ids[persona as Exclude<Persona, 'unauth'>].userId}/clans`, 'super', { clans });
+    const activate = (persona: Persona, clanId: number) =>
+      send('post', `/api/clans/${clanId}/activate`, persona, {});
+    const me = async (persona: Persona) => (await send('get', '/api/auth/me', persona)).body.user;
+
+    it('only a superadmin can grant extra clans', async () => {
+      for (const p of ['admin1', 'admin2', 'user1'] as Persona[]) {
+        const r = await send('put', `/api/auth/users/${ids.user1.userId}/clans`, p, { clans: [{ clanId: 2, role: 'admin' }] });
+        expectStatus(r.status, 403);
+      }
+      expectStatus((await grant('admin1', [{ clanId: 1, role: 'user' }])).status, 400); // home clan
+      expectStatus((await grant('super', [{ clanId: 2, role: 'user' }])).status, 400); // superadmin
+      expectStatus((await grant('admin1', [{ clanId: 2, role: 'owner' }])).status, 400);
+    });
+
+    it('cannot switch into a clan without a grant', async () => {
+      expectStatus((await activate('admin1', 2)).status, 403);
+      expectStatus((await send('get', `/api/members/${memberClan2Id}`, 'admin1')).status, 404);
+    });
+
+    it('a stale session pointer without a grant is ignored', async () => {
+      getDb().prepare('UPDATE user_sessions SET active_clan_id = 2 WHERE user_id = ?').run(ids.admin1.userId);
+      const u = await me('admin1');
+      expect(u.clanId).toBe(1);
+      expect(u.role).toBe('admin');
+      expectStatus((await send('get', `/api/members/${memberClan2Id}`, 'admin1')).status, 404);
+    });
+
+    it('a guest holds only its guest role, and only in the clan it is viewing', async () => {
+      expectStatus((await grant('admin1', [{ clanId: 2, role: 'user' }])).status, 200);
+      expectStatus((await activate('admin1', 2)).status, 200);
+
+      const u = await me('admin1');
+      expect(u).toMatchObject({ clanId: 2, role: 'user', multiClan: true });
+      expectStatus((await send('get', `/api/members/${memberClan2Id}`, 'admin1')).status, 200);
+      expectStatus((await send('get', `/api/members/${memberClan1Id}`, 'admin1')).status, 404);
+
+      // Admin at home, but not here — and home isn't reachable from here.
+      expectStatus((await send('get', '/api/auth/users', 'admin1')).status, 403);
+      expectStatus((await send('post', '/api/clans/2/share-links', 'admin1', {})).status, 403);
+      expectStatus((await send('post', '/api/clans/1/share-links', 'admin1', {})).status, 403);
+      expectStatus((await send('get', '/api/clans/1', 'admin1')).status, 403);
+
+      // The share keys of a clan you are only a member of stay hidden.
+      const list = (await send('get', '/api/clans', 'admin1')).body;
+      expect(list.activeClanId).toBe(2);
+      const byId = new Map(list.clans.map((c: { id: number }) => [c.id, c]));
+      expect(byId.get(1)).toHaveProperty('shareLinks');
+      expect(byId.get(2)).not.toHaveProperty('shareLinks');
+
+      // Back home: admin again.
+      expectStatus((await activate('admin1', 1)).status, 200);
+      expect(await me('admin1')).toMatchObject({ clanId: 1, role: 'admin' });
+    });
+
+    it('revoking a grant drops the account home on its next request', async () => {
+      await grant('admin1', [{ clanId: 2, role: 'admin' }]);
+      await activate('admin1', 2);
+      expect((await me('admin1')).clanId).toBe(2);
+
+      expectStatus((await grant('admin1', [])).status, 200);
+      expect(await me('admin1')).toMatchObject({ clanId: 1, role: 'admin', multiClan: false });
+      expectStatus((await send('get', `/api/members/${memberClan2Id}`, 'admin1')).status, 404);
+    });
+
+    it('soft-deleting the guest clan drops the account home', async () => {
+      await grant('user1', [{ clanId: 2, role: 'admin' }]);
+      await activate('user1', 2);
+      softDeleteClan(2);
+      expect(await me('user1')).toMatchObject({ clanId: 1, role: 'user' });
+    });
+
+    it('the guest clan\'s admins see the guest — and nothing about its home clan', async () => {
+      await grant('user1', [{ clanId: 2, role: 'user' }]);
+      const listed = (await send('get', '/api/auth/users', 'admin2')).body as Array<Record<string, unknown>>;
+      const guest = listed.find((u) => u.id === ids.user1.userId);
+      expect(guest).toMatchObject({ membership: 'guest', clanId: 2, role: 'user' });
+      expect(guest).not.toHaveProperty('clanAccess');
+      // Clan 1's admin still sees them as a plain home member.
+      const home = ((await send('get', '/api/auth/users', 'admin1')).body as Array<Record<string, unknown>>)
+        .find((u) => u.id === ids.user1.userId);
+      expect(home).toMatchObject({ membership: 'home', clanId: 1, role: 'user' });
+    });
+
+    it('a guest clan\'s admin manages the guest\'s access there, never the account', async () => {
+      await grant('user1', [{ clanId: 2, role: 'user' }]);
+      const uid = ids.user1.userId;
+      // Not theirs to delete or re-role at account level.
+      expectStatus((await send('delete', `/api/auth/users/${uid}`, 'admin2')).status, 403);
+      expectStatus((await send('put', `/api/auth/users/${uid}/role`, 'admin2', { role: 'admin' })).status, 403);
+      // Clan 1's admin can't touch the guest's access to clan 2.
+      expectStatus((await send('put', `/api/auth/users/${uid}/clans/2`, 'admin1', { role: 'admin' })).status, 403);
+      expectStatus((await send('delete', `/api/auth/users/${uid}/clans/2`, 'admin1')).status, 403);
+      // Clan 2's admin can.
+      expectStatus((await send('put', `/api/auth/users/${uid}/clans/2`, 'admin2', { role: 'admin' })).status, 200);
+      expect(userRepo.getClanAccessRole(uid, 2)).toBe('admin');
+      expectStatus((await send('delete', `/api/auth/users/${uid}/clans/2`, 'admin2')).status, 200);
+      expect(userRepo.getClanAccessRole(uid, 2)).toBeNull();
+      // Nothing to manage for someone who was never a guest.
+      expectStatus((await send('delete', `/api/auth/users/${ids.admin1.userId}/clans/2`, 'admin2')).status, 404);
+    });
+
+    it('audit entries are filed under the clan the action was taken in', async () => {
+      await grant('user1', [{ clanId: 2, role: 'admin' }]);
+      await activate('user1', 2);
+      const created = await send('post', '/api/auth/users', 'user1', { username: 'made-in-2', password: 'Test1234!aA', role: 'user' });
+      expectStatus(created.status, 200);
+      expect(created.body.clanId).toBe(2);
+
+      const sees = async (p: Persona) => ((await send('get', '/api/auth/audit-log', p)).body as Array<{ details: string | null }>)
+        .some((a) => (a.details ?? '').includes('made-in-2'));
+      expect(await sees('admin2')).toBe(true);
+      expect(await sees('admin1')).toBe(false);
+    });
+
+    it('promoting to superadmin or moving home clears overlapping grants', async () => {
+      await grant('user1', [{ clanId: 2, role: 'user' }]);
+      expectStatus((await send('put', `/api/auth/users/${ids.user1.userId}/clan`, 'super', { clanId: 2 })).status, 200);
+      expect(userRepo.listClanAccess(ids.user1.userId)).toEqual([]);
+
+      await grant('admin1', [{ clanId: 2, role: 'user' }]);
+      expectStatus((await send('put', `/api/auth/users/${ids.admin1.userId}/role`, 'super', { role: 'superadmin' })).status, 200);
+      expect(userRepo.listClanAccess(ids.admin1.userId)).toEqual([]);
+    });
+  });
 });

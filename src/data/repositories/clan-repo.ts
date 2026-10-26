@@ -761,6 +761,8 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
       'DELETE FROM share_link_daily WHERE link_id IN (SELECT id FROM share_links WHERE clan_id = ?)',
     ).run(id);
     db.prepare('DELETE FROM share_links WHERE clan_id = ?').run(id);
+    // Guests of the clan lose the grant; their home clans are untouched.
+    db.prepare('DELETE FROM user_clan_access WHERE clan_id = ?').run(id);
 
     // 4. Two nullable back-references. The audit trail is history and
     // survives the clan (v47 made clan_id nullable precisely so it could);

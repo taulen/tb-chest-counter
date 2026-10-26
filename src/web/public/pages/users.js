@@ -3,11 +3,14 @@
 // actions.
 
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
-import { $, esc, formatDate, formatRelativeTime, notify, confirmDialog, selectDialog } from '../lib/ui.js';
+import { $, esc, formatDate, formatRelativeTime, notify, confirmDialog, selectDialog, contentModal } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 
 const AUDIT_PAGE_SIZE = 25;
 let currentAuditPage = 1;
+// From the last render, for the extra-clans editor (superadmin only).
+let usersById = new Map();
+let clansForEditor = [];
 
 // ─── Audit helpers ────────────────────────────────────────────
 //
@@ -45,6 +48,9 @@ const AUDIT_ACTION_LABELS = {
   delete_user: 'Delete user',
   change_role: 'Change user role',
   change_user_clan: 'Reassign user to clan',
+  set_user_clans: 'Set extra clans',
+  change_clan_role: 'Change guest role',
+  remove_user_clan: 'Remove guest from clan',
   create_manual_backup: 'Create backup',
   delete_backup: 'Delete backup',
   restore_server_backup: 'Restore server backup',
@@ -308,6 +314,19 @@ function formatAuditDetails(action, d, ctx) {
       const to = d.to != null ? esc(clanLabel(d.to)) : '?';
       return `${quoted(d.username)} : ${from} → ${to}`;
     }
+    case 'set_user_clans': {
+      const list = Array.isArray(d.clans) ? d.clans : [];
+      const what = list.length
+        ? list.map((c) => `${esc(clanLabel(c.clanId))} (${esc(c.role)})`).join(', ')
+        : 'none';
+      return `${quoted(d.username)} : ${what}`;
+    }
+    case 'change_clan_role': {
+      return `${quoted(d.username)} : ${esc(d.from || '?')} → ${esc(d.to || '?')}${clanSuffix(d.clanId)}`;
+    }
+    case 'remove_user_clan': {
+      return `${quoted(d.username)}${clanSuffix(d.clanId)}`;
+    }
     case 'change_password': {
       return 'Password updated';
     }
@@ -392,13 +411,21 @@ export async function renderUsers(el) {
   // *always* included for superadmins so the operator can spot and fix
   // them no matter which clan is selected — otherwise the very bug we
   // patched (demotion without a clan) would hide its own victims.
+  //
+  // An account granted the active clan as an EXTRA clan shows up too, as a
+  // guest, with the role it holds here. (A clan admin's listing already comes
+  // back from the server in that shape, without the guest's home clan.)
   const activeClanId = currentUser.activeClan?.id ?? null;
   const users = isSuperAdmin && activeClanId !== null
-    ? allFetchedUsers.filter((u) =>
-        u.role === 'superadmin'
-        || u.clanId === activeClanId
-        || (u.role !== 'superadmin' && u.clanId === null))
+    ? allFetchedUsers.flatMap((u) => {
+        if (u.role === 'superadmin' || u.clanId === activeClanId || u.clanId === null) return [u];
+        const access = (u.clanAccess || []).find((a) => a.clanId === activeClanId);
+        return access
+          ? [{ ...u, membership: 'guest', homeClanId: u.clanId, clanId: activeClanId, role: access.role }]
+          : [];
+      })
     : allFetchedUsers;
+  usersById = new Map(allFetchedUsers.map((u) => [u.id, u]));
 
   const totalAudit = audit.length;
   const auditTotalPages = Math.max(1, Math.ceil(totalAudit / AUDIT_PAGE_SIZE));
@@ -433,6 +460,7 @@ export async function renderUsers(el) {
     if (id === null || id === undefined) return '—';
     return clanNameById.get(id) ?? `#${id}`;
   };
+  clansForEditor = allClans;
 
   // Role options visible in dropdowns. Clan admins can grant user/admin
   // within their clan; only superadmins can mint or demote superadmins.
@@ -486,8 +514,20 @@ export async function renderUsers(el) {
           <tbody>
             ${users.map((u) => {
               const isOrphan = u.role !== 'superadmin' && u.clanId === null;
+              const isGuest = u.membership === 'guest';
+              const isSelf = u.id === currentUser.id;
               let clanCell;
-              if (u.role === 'superadmin') {
+              if (isGuest) {
+                // Superadmins are told where the guest is from; a clan admin
+                // only that they are one.
+                const home = isSuperAdmin
+                  ? `<span class="muted-copy">from ${esc(clanLabel(u.homeClanId))}</span>`
+                  : '';
+                clanCell = `<span class="clan-cell-stack">
+                  <span class="badge-guest" title="Belongs to another clan and was given access to this one.">Guest</span>
+                  ${home}
+                </span>`;
+              } else if (u.role === 'superadmin') {
                 clanCell = '<span class="muted-copy">(cross-clan)</span>';
               } else if (isOrphan) {
                 const assignBtn = isSuperAdmin
@@ -497,17 +537,30 @@ export async function renderUsers(el) {
                   <span class="badge-warn" title="This user has no clan and is blocked from clan-scoped pages.">⚠ No clan</span>
                   ${assignBtn}
                 </span>`;
+              } else if (isSuperAdmin) {
+                // Home member: their clan, any extra clans, and the editor.
+                const extras = (u.clanAccess || []).map((a) => clanLabel(a.clanId));
+                clanCell = `<span class="clan-cell-stack">
+                  <span>${esc(clanLabel(u.clanId))}</span>
+                  ${extras.length ? `<span class="muted-copy" title="${esc(extras.join(', '))}">+ ${esc(extras.join(', '))}</span>` : ''}
+                  <button class="btn btn-tight" data-action="edit-user-clans" data-user-id="${u.id}">Clans</button>
+                </span>`;
               } else {
                 clanCell = esc(clanLabel(u.clanId));
               }
-              const actionButtons = u.id === currentUser.id
-                ? ''
-                : `<button class="btn btn-tight btn-danger" data-action="delete-user" data-user-id="${u.id}" data-username="${esc(u.username)}">Delete</button>`;
+              let actionButtons = '';
+              if (!isSelf && isGuest) {
+                actionButtons = `<button class="btn btn-tight btn-danger" data-action="remove-guest-clan" data-user-id="${u.id}" data-clan-id="${u.clanId}" data-username="${esc(u.username)}">Remove</button>`;
+              } else if (!isSelf) {
+                actionButtons = `<button class="btn btn-tight btn-danger" data-action="delete-user" data-user-id="${u.id}" data-username="${esc(u.username)}">Delete</button>`;
+              }
+              // A guest's role is the one held in THIS clan — user or admin.
+              const rowRoles = isGuest ? ['user', 'admin'] : roleOptions;
               return `<tr${isOrphan ? ' class="user-row-orphan"' : ''}>
-              <td data-label="Username" data-role="primary"><span class="mrow-name">${esc(u.username)}${u.id === currentUser.id ? ' <span class="muted-copy">(you)</span>' : ''}</span></td>
+              <td data-label="Username" data-role="primary"><span class="mrow-name">${esc(u.username)}${isSelf ? ' <span class="muted-copy">(you)</span>' : ''}</span></td>
               <td data-label="Role">
-                <select class="input user-role-select" data-user-id="${u.id}" data-current-role="${esc(u.role)}" ${u.id === currentUser.id ? 'disabled' : ''}>
-                  ${roleOptions.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+                <select class="input user-role-select" data-user-id="${u.id}" data-current-role="${esc(u.role)}"${isGuest ? ` data-guest-clan-id="${u.clanId}"` : ''} ${isSelf ? 'disabled' : ''}>
+                  ${rowRoles.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
                 </select>
               </td>
               <td data-label="Clan">${clanCell}</td>
@@ -686,6 +739,77 @@ export async function reassignUserClan(id, username, rerender) {
   if (clanId === null) return;
   if (!await mustOk(apiPut(`/auth/users/${id}/clan`, { clanId: Number(clanId) }), 'Assign clan failed')) return;
   if (rerender) rerender('users');
+}
+
+/**
+ * Superadmin editor for the clans an account can switch into besides its own,
+ * and its role in each. Lists every other live clan; "No access" drops it.
+ */
+export function editUserClans(id, rerender) {
+  const user = usersById.get(id);
+  if (!user) return;
+  const others = clansForEditor.filter((c) => c.id !== user.clanId);
+  if (others.length === 0) {
+    notify('There is no other clan to give access to.', 'Extra clans');
+    return;
+  }
+  const current = new Map((user.clanAccess || []).map((a) => [a.clanId, a.role]));
+  const option = (value, label, selected) =>
+    `<option value="${value}"${selected ? ' selected' : ''}>${label}</option>`;
+  const rows = others.map((c) => {
+    const role = current.get(c.id) ?? '';
+    return `<label class="user-clans-row">
+      <span>${esc(c.name)}</span>
+      <select class="input" data-clan-id="${c.id}">
+        ${option('', 'No access', role === '')}
+        ${option('user', 'User', role === 'user')}
+        ${option('admin', 'Admin', role === 'admin')}
+      </select>
+    </label>`;
+  }).join('');
+  const home = user.clanId !== null
+    ? `Their own clan, ${esc(clansForEditor.find((c) => c.id === user.clanId)?.name ?? `#${user.clanId}`)}, isn't listed.`
+    : '';
+  const modal = contentModal({
+    title: `Clans for ${user.username}`,
+    html: `
+      <p class="muted-copy">Clans ${esc(user.username)} can switch to from the header, and their role in each. ${home}</p>
+      <div class="user-clans-editor">${rows}</div>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-user-clans="cancel">Cancel</button>
+        <button class="btn btn-primary" type="button" data-user-clans="save">Save</button>
+      </div>`,
+  });
+  if (!modal) return;
+  modal.content.querySelector('[data-user-clans="cancel"]').addEventListener('click', () => modal.close());
+  modal.content.querySelector('[data-user-clans="save"]').addEventListener('click', async () => {
+    const clans = [...modal.content.querySelectorAll('select[data-clan-id]')]
+      .filter((s) => s.value)
+      .map((s) => ({ clanId: Number(s.dataset.clanId), role: s.value }));
+    if (!await mustOk(apiPut(`/auth/users/${id}/clans`, { clans }), 'Saving clans failed')) return;
+    modal.close();
+    rerender('users');
+  });
+}
+
+export async function changeGuestClanRole(id, clanId, role, rerender) {
+  const select = document.querySelector(`select.user-role-select[data-user-id="${id}"][data-guest-clan-id="${clanId}"]`);
+  const prevRole = select?.dataset.currentRole ?? null;
+  if (!await mustOk(apiPut(`/auth/users/${id}/clans/${clanId}`, { role }), 'Change role failed')) {
+    if (select && prevRole) select.value = prevRole;
+    return;
+  }
+  rerender('users');
+}
+
+export async function removeGuestFromClan(id, clanId, username, rerender) {
+  const ok = await confirmDialog(
+    `Remove "${username}" from this clan? Their account and their own clan are untouched; they just can no longer switch to this one.`,
+    { title: 'Remove from clan', confirmLabel: 'Remove', cancelLabel: 'Cancel', danger: true },
+  );
+  if (!ok) return;
+  if (!await mustOk(apiDelete(`/auth/users/${id}/clans/${clanId}`), 'Remove failed')) return;
+  rerender('users');
 }
 
 export function changeAuditPage(delta, rerender) {

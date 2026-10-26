@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import * as userRepo from '../../data/repositories/user-repo.js';
 import * as clanRepo from '../../data/repositories/clan-repo.js';
@@ -67,7 +67,16 @@ export function createAuthRouter(): Router {
     const u = req.user!;
     const activeClan = req.clanId !== undefined ? clanRepo.getClanById(req.clanId) : null;
     res.json({
-      user: { id: u.id, username: u.username, role: u.role, clanId: u.clanId, theme: u.theme },
+      // role/clanId are those of the ACTIVE clan (see validateSession).
+      // multiClan tells the header to offer the switcher to a non-superadmin.
+      user: {
+        id: u.id,
+        username: u.username,
+        role: u.role,
+        clanId: u.clanId,
+        theme: u.theme,
+        multiClan: u.role !== 'superadmin' && userRepo.listSwitchableClans(u.id).length > 1,
+      },
       activeClan: activeClan ? {
         id: activeClan.id,
         name: activeClan.name,
@@ -305,6 +314,102 @@ export function createAuthRouter(): Router {
       from: target.clanId,
       to: parsed,
     });
+    res.json({ ok: true });
+  });
+
+  // --- Extra clans (user_clan_access, v88) ---
+
+  // PUT /api/auth/users/:id/clans — replace the account's extra clans.
+  // Superadmin only: granting a clan means reaching across clans, which no
+  // clan admin can do (nor even see the account to do it to).
+  // Body: { clans: [{ clanId, role: 'admin' | 'user' }] }
+  router.put('/users/:id/clans', requireSuperAdmin, (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const target = userRepo.getUserById(id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role === 'superadmin') {
+      return res.status(400).json({ error: 'Superadmins already see every clan' });
+    }
+    const raw = req.body?.clans;
+    if (!Array.isArray(raw) || raw.length > 100) {
+      return res.status(400).json({ error: 'clans must be a list' });
+    }
+    const entries: userRepo.ClanAccess[] = [];
+    const seen = new Set<number>();
+    for (const item of raw) {
+      const clanId = Number.parseInt(String(item?.clanId ?? ''), 10);
+      if (!Number.isFinite(clanId) || seen.has(clanId)) {
+        return res.status(400).json({ error: 'Each clan must be listed once, by id' });
+      }
+      if (!userRepo.isClanRole(item?.role)) {
+        return res.status(400).json({ error: 'Role must be admin or user' });
+      }
+      if (clanId === target.clanId) {
+        return res.status(400).json({ error: 'That is already the user\'s own clan' });
+      }
+      if (!clanRepo.getClanById(clanId)) {
+        return res.status(404).json({ error: `Clan #${clanId} not found` });
+      }
+      seen.add(clanId);
+      entries.push({ clanId, role: item.role });
+    }
+    userRepo.replaceClanAccess(id, entries);
+    userRepo.logAction(req.user!.id, 'set_user_clans', { username: target.username, clans: entries });
+    res.json({ ok: true, clanAccess: userRepo.listClanAccess(id) });
+  });
+
+  /**
+   * Who may manage a guest's access to one clan: a superadmin, or an admin
+   * currently in that clan (req.user is scoped to the active clan, so this is
+   * "an admin OF that clan", never an admin of somewhere else). An admin can't
+   * edit their own grant — the same reason they can't change their own role.
+   */
+  const guestClanTarget = (req: Request, res: Response): { id: number; clanId: number; username: string } | null => {
+    const id = parseInt(String(req.params.id));
+    const clanId = parseInt(String(req.params.clanId));
+    if (!Number.isFinite(id) || !Number.isFinite(clanId)) {
+      res.status(400).json({ error: 'Invalid user or clan' });
+      return null;
+    }
+    if (req.user!.role !== 'superadmin') {
+      if (req.user!.clanId !== clanId) {
+        res.status(403).json({ error: 'You can only manage access to your own clan' });
+        return null;
+      }
+      if (id === req.user!.id) {
+        res.status(400).json({ error: 'You cannot change your own access' });
+        return null;
+      }
+    }
+    const target = userRepo.getUserById(id);
+    if (!target || target.role === 'superadmin' || userRepo.getClanAccessRole(id, clanId) === null) {
+      res.status(404).json({ error: 'That user has no extra access to this clan' });
+      return null;
+    }
+    return { id, clanId, username: target.username };
+  };
+
+  // PUT /api/auth/users/:id/clans/:clanId — change a guest's role in a clan.
+  router.put('/users/:id/clans/:clanId', requireAdmin, (req, res) => {
+    const role = req.body?.role;
+    if (!userRepo.isClanRole(role)) {
+      return res.status(400).json({ error: 'Role must be admin or user' });
+    }
+    const t = guestClanTarget(req, res);
+    if (!t) return;
+    const from = userRepo.getClanAccessRole(t.id, t.clanId);
+    userRepo.setClanAccessRole(t.id, t.clanId, role);
+    userRepo.logAction(req.user!.id, 'change_clan_role', { username: t.username, clanId: t.clanId, from, to: role });
+    res.json({ ok: true });
+  });
+
+  // DELETE /api/auth/users/:id/clans/:clanId — remove a guest from a clan.
+  // The account itself, and its home clan, are untouched.
+  router.delete('/users/:id/clans/:clanId', requireAdmin, (req, res) => {
+    const t = guestClanTarget(req, res);
+    if (!t) return;
+    userRepo.removeClanAccess(t.id, t.clanId);
+    userRepo.logAction(req.user!.id, 'remove_user_clan', { username: t.username, clanId: t.clanId });
     res.json({ ok: true });
   });
 

@@ -52,20 +52,28 @@ function createCrudRouter(onboardState) {
             });
             return;
         }
-        const own = req.user.clanId !== null ? (0, clan_repo_js_1.getClanById)(req.user.clanId) : null;
-        if (!own) {
-            res.json({ clans: [], activeClanId: null, defaultInactivityDays, defaultPublicUrl });
-            return;
+        // Everyone else: their home clan plus any extra clans they were granted
+        // (the header switcher lists these). Usually just the one.
+        const clans = [];
+        for (const access of (0, user_repo_js_1.listSwitchableClans)(req.user.id)) {
+            const clan = (0, clan_repo_js_1.getClanById)(access.clanId);
+            if (!clan)
+                continue;
+            // Plain members can't manage public share links (create/disable is
+            // admin-only), so don't hand them the live keys — each one grants
+            // anonymous read access they could leak outside the clan. Admins get
+            // them so the Clans settings page can render the list. Judged per clan:
+            // an admin at home may be a plain member of a clan they're a guest in.
+            const shape = (0, _shared_js_1.publicClanWithCounts)(clan);
+            if (access.role === 'admin') {
+                shape.shareLinks = (0, share_link_repo_js_1.listActiveShareLinks)(clan.id);
+            }
+            clans.push(shape);
         }
-        // Plain members can't manage public share links (create/disable is
-        // admin-only), so don't hand them the live keys — each one grants
-        // anonymous read access they could leak outside the clan. Admins and
-        // superadmins get them so the Clans settings page can render the list.
-        const shape = (0, _shared_js_1.publicClanWithCounts)(own);
-        if (req.user.role !== 'user') {
-            shape.shareLinks = (0, share_link_repo_js_1.listActiveShareLinks)(own.id);
-        }
-        res.json({ clans: [shape], activeClanId: own.id, defaultInactivityDays, defaultPublicUrl });
+        const activeClanId = req.clanId !== undefined && clans.some((c) => c.id === req.clanId)
+            ? req.clanId
+            : clans[0]?.id ?? null;
+        res.json({ clans, activeClanId, defaultInactivityDays, defaultPublicUrl });
     });
     /**
      * Clans that have been soft-deleted, with the row counts they still hold —
@@ -363,15 +371,22 @@ function createCrudRouter(onboardState) {
         res.json({ ok: true, clanId: id, name: target.name });
     });
     /**
-     * Switch which clan a superadmin is currently viewing. Persists to the
-     * session row so it survives page reloads. Non-superadmins are forced
-     * to their own clan and get a 403 here regardless of payload.
+     * Switch which clan the caller is currently viewing. Persists to the
+     * session row so it survives page reloads. A superadmin may pick any clan;
+     * anyone else only their home clan or an extra clan they were granted —
+     * and the session pointer is re-checked against the grant on every request
+     * (validateSession), so this route is a convenience, not the gate.
      */
-    router.post('/:clanId/activate', auth_js_1.requireSuperAdmin, (req, res) => {
+    router.post('/:clanId/activate', auth_js_1.requireAuth, (req, res) => {
         const id = req.parsedClanId;
         const target = (0, clan_repo_js_1.getClanById)(id);
         if (!target) {
             res.status(404).json({ error: 'Clan not found' });
+            return;
+        }
+        if (req.user.role !== 'superadmin'
+            && !(0, user_repo_js_1.listSwitchableClans)(req.user.id).some((c) => c.clanId === id)) {
+            res.status(403).json({ error: 'You do not have access to this clan' });
             return;
         }
         if (!req.sessionToken) {

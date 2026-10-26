@@ -311,6 +311,11 @@
   },
   {
     "type": "index",
+    "name": "idx_user_clan_access_clan",
+    "sql": "CREATE INDEX idx_user_clan_access_clan ON user_clan_access(clan_id)"
+  },
+  {
+    "type": "index",
     "name": "idx_user_sessions_token",
     "sql": "CREATE INDEX idx_user_sessions_token ON user_sessions(token)"
   },
@@ -513,6 +518,11 @@
     "type": "table",
     "name": "triumphal_chest_records",
     "sql": "CREATE TABLE triumphal_chest_records ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL DEFAULT 1, session_id INTEGER NOT NULL REFERENCES scan_sessions(id), member_id INTEGER NOT NULL REFERENCES members(id), chest_id INTEGER NOT NULL REFERENCES chests(id), chest_source_id INTEGER REFERENCES chest_sources(id), point_value INTEGER NOT NULL DEFAULT 0, captured_at INTEGER NOT NULL, confidence INTEGER NOT NULL DEFAULT 0, debug_crop_path TEXT , raw_player_ocr TEXT, earned_at INTEGER, effective_at GENERATED ALWAYS AS (COALESCE(earned_at, captured_at)) VIRTUAL)"
+  },
+  {
+    "type": "table",
+    "name": "user_clan_access",
+    "sql": "CREATE TABLE user_clan_access ( user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, clan_id INTEGER NOT NULL REFERENCES clans(id), role TEXT NOT NULL CHECK (role IN ('admin', 'user')), created_at TEXT NOT NULL, PRIMARY KEY (user_id, clan_id) )"
   },
   {
     "type": "table",
