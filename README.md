@@ -37,32 +37,53 @@ cloud AI — everything runs locally in one container.
 
 - **Automated scanning** — a headless **Chromium** (bundled via Playwright)
   logs into the game, opens the Gifts and Triumphal Gifts tabs, and captures
-  every gift on a timer (default every 120 minutes).
+  every gift on a timer (default every 120 minutes). Each click claims its
+  chest as it goes, so an interrupted scan keeps what it already opened.
 - **On-device OCR** — local, no external API:
   - **PaddleOCR** (PP-OCRv6 via ONNX Runtime).
   - **Non-Latin fallback** re-reads Cyrillic/Arabic player names with bundled
     PP-OCRv5 language models.
-- **Resource tracking** — record what members send by uploading screenshots of
-  the in-game resource-sending history; the same OCR pipeline reads each row.
-- **Multi-clan / multi-user** — one instance tracks many clans, each with its
-  own game login, roster, Discord bot, and scoring. App accounts come in three
-  roles: `superadmin` (cross-clan), `admin` (one clan), `user` (one clan,
-  read-only).
-- **Web dashboard** — leaderboard, analytics, member pages, events, resources,
-  scan history, and admin/clan/user management. Light / Dark / OLED themes.
-- **Public share links** — expose a read-only leaderboard at `/<token>` with no
-  login required.
-- **Discord bot** — per-clan `/leaderboard` and `/status` commands, automated
-  scan reports, and a scheduled daily digest.
+  - **Fuzzy name matching** against the captured roster absorbs the usual
+    one-character OCR slip without merging genuinely different players.
+- **Per-clan scoring** — every clan sets its own chest point values on the
+  Chest Points board, can copy another clan's values, and can value sources
+  that haven't dropped yet. Triumphal chests score separately, from their
+  package value.
+- **Resource tracking** — after a scan, the app reads the clan's in-game Clan
+  Capital history once a day and records what each member sent, insert-only and
+  safe to re-run. Admins can still upload screenshots of that history by hand.
+- **Inferred guards levels and Gold Pass** — guardsmen levels are worked out
+  from the exact amounts members donate, and Gold Pass holders from a Union
+  Chest plus its 250k tractate line. Neither is read off a screen or stored, so
+  a single bad read can't stick.
+- **Might tracking** — a daily snapshot of every member's might and hero level,
+  with per-member history and a clan-wide trend.
+- **Events** — per-event chest breakdowns, with timeframes taken from the
+  public **tbclanportal.com** event calendar (one event run = one selectable
+  window). Includes Tin Man / Rise of the Ancients standings pasted per summon,
+  per-tier targets and a "below target" list ready to paste into chat.
+- **Tools** — an Ancient planner prefilled from the clan roster, with per-clan
+  defaults saved by admins.
+- **Multi-clan, multi-user** — one instance tracks many clans, each with its
+  own game login, roster, Discord bot, scoring, week shape (Sunday-to-Sunday,
+  or Tin Man to Tin Man) and public URL. One account can belong to several
+  clans, with a separate role in each.
+- **Web dashboard** — sidebar layout, Light / Dark / OLED themes (or follow the
+  device), mobile-friendly tables, and the accessibility work described in
+  [ACCESSIBILITY.md](ACCESSIBILITY.md).
+- **Public share links** — any number of read-only leaderboard links per clan
+  at `/<key>`, each with its own visit counter and an optional vanity key; no
+  login required. A built-in FAQ explains the points and how to get access.
+- **Discord bot** — per-clan `/leaderboard`, `/me` and `/status` commands, scan
+  reports, and daily and weekly digests, optionally DM'd to chosen members as
+  text ready to paste into in-game chat.
 - **ChestTracker integration** — optionally ingest snapshots from
   chesttracker.com per clan.
-- **Event calendar** — the Events page reads the Total Battle event schedule
-  from the public **tbclanportal.com** iCal feed (`/calendar/feed.ics`) to drive
-  per-occurrence timeframes (one event run = one selectable window) and a "next
-  occurrence" tag per event. Read-only and cached; degrades to a fixed
-  Weekly/Monthly selector if the feed is unavailable.
-- **SQLite storage** — a single `better-sqlite3` database tracks members,
-  chests, sources, points, sessions, users, and clans.
+- **Safe to administer** — deleting a clan hides it rather than destroying it
+  (restorable from the System page), a single clan can be restored out of a
+  backup, and every admin action lands in an audit log.
+- **SQLite storage** — a single `better-sqlite3` database, migrated
+  automatically on boot, with daily gzip backups.
 
 ## How it works
 
@@ -72,11 +93,13 @@ Total Battle (Unity/WebGL canvas game)
         ▼
   Screenshot capture of the Gifts / Triumphal Gifts tabs
         ▼
-  OCR (PaddleOCR default, Tesseract fallback)  ──►  fuzzy-match names to the captured roster
+  OCR (PaddleOCR, non-Latin re-read)  ──►  fuzzy-match names to the captured roster
         ▼
-  Scoring (source + chest name → points)
+  Scoring (clan's points for source + chest name)
         ▼
   SQLite (better-sqlite3)
+        │   then, once a day and never failing the scan:
+        │   might snapshot  →  Clan Capital resource history
         ▼
   Web dashboard  +  Discord bot  +  public share links
 ```
@@ -92,7 +115,7 @@ stack-from-git.
 
 ```bash
 # 1. Compile TypeScript (the image runs pre-built dist/, which is committed)
-npx tsc
+npm run build
 
 # 2. Build and start
 docker compose up -d --build
@@ -107,8 +130,9 @@ Key deployment facts:
   [CLAUDE.md](CLAUDE.md) — the build strips non-Linux OCR binaries to save
   ~220 MB).
 - **`dist/` is committed and copied into the image — there is no build step in
-  the Dockerfile.** Always run `npx tsc` and commit `dist/` before deploying,
-  or the container runs stale code.
+  the Dockerfile.** Always run `npm run build` and commit `dist/` before
+  deploying, or the container runs stale code. CI fails any push whose
+  committed `dist/` doesn't match a fresh build.
 - **Volume:** `tb-chest-data` → `/app/data` holds everything persistent: the
   SQLite DB, screenshots, per-clan auth (`data/clans/<id>/`), runtime settings
   (`data/app.env`), and gzip backups.
@@ -301,17 +325,27 @@ container, and raising `MEMORY_LIMIT` cannot help.
 ## Multi-clan model
 
 - Each clan is a row in the `clans` table with its own storage dirs under
-  `data/clans/<id>/`, Discord settings, ChestTracker settings, public-share
-  token, optional per-clan scan interval, and active/needs-reauth status.
+  `data/clans/<id>/`, Discord settings, ChestTracker settings, share links,
+  chest point values, optional scan interval, week shape, public URL, and
+  active/needs-reauth status.
 - The game URL is **not** per-clan — all clans use the same
   `https://totalbattle.com`; you switch clans **inside the game canvas** during
   the login bridge. Isolation is at the cookie/profile layer only.
 - **Roles:** `superadmin` (no clan, sees/manages all clans and users), `admin`
-  (manages one clan's content, config, users, and scans), `user` (read-only
-  member of one clan).
+  (manages a clan's content, config, users, and scans), `user` (read-only
+  member of a clan).
+- **An account can belong to several clans.** It has a home clan, and a
+  superadmin can grant it others from **Users → Clans**, with a separate role
+  in each (admin in one, plain user in another). It then switches between them
+  from the header, like a superadmin does. While viewing a clan it has exactly
+  that clan's role and reaches nothing in any other; other clans' admins see it
+  as a guest and are never told where else it belongs. Details:
+  [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md).
 - Superadmins add clans (`Clans` tab) and switch the active clan from the
   header; per-clan config routes require clan **ownership + admin**, so a plain
   member can't change a Discord token or trigger scans.
+- **Deleting a clan is a soft delete.** The clan disappears everywhere but
+  every row stays, and the System page brings it back.
 
 ## Web dashboard
 
@@ -320,42 +354,52 @@ Pages are role-gated. Members see:
 - **Dashboard** — live scan status, next-scan countdown, headline stats, clan
   records.
 - **Analytics** — daily-activity charts, chest-type breakdown, top-contributor
-  podiums, source breakdown, and a drill-down "all chest types" table.
+  podiums, source breakdown, and a drill-down "all chest types" table, all for a
+  selectable timeframe.
 - **Leaderboard** — daily / weekly / monthly / yearly / all-time, with
-  period stepping, sorting, and pagination.
+  period stepping, sorting, pagination, and an FAQ of points per chest.
 - **Members** — sortable roster plus per-member detail (rank, week-over-week
-  progress, single-day records, full chest history).
-- **Events** — per-event chest breakdowns per player.
-- **Triumphal Chests** — separate leaderboard/history for triumphal chests
-  (tracked but **never scored**).
+  progress, single-day records, guards level, Gold Pass, full chest history).
+- **Events** — per-event chest breakdowns per player for each event run, plus
+  Tin Man / Ancients standings and targets.
+- **Triumphal Chests** — separate leaderboard/history for triumphal chests,
+  scored from their package value and kept **out of the main leaderboard**.
+- **Might** — every member's might and hero level, the clan's might over time,
+  and side-by-side member comparison.
 - **Resources** *(if enabled for the clan)* — per-resource totals and charts of
-  what members have sent. Unlike chests, resource data is entered **manually**:
-  on the admin sub-tab you upload screenshots of the in-game resource-sending
-  history, and the OCR pipeline extracts each row (member, resource, send/
-  receive, amount, date). Members see read-only Overview / Totals tabs.
+  what members have sent, filled by the daily Clan Capital history read. Admins
+  can also upload screenshots of that history, and the OCR pipeline extracts
+  each row (member, resource, send/receive, amount, date). Members see
+  read-only Overview / Totals tabs.
+- **Tools** — the Ancient planner.
 - **Scan History** — recent scan sessions and the chests each captured.
 - **ChestTracker** *(if enabled)* — chesttracker.com snapshots and deltas.
 
-Admins additionally get **Admin** (merge players/chests/sources, source-point
-overrides, review queue, OCR name reassignment, recalculate points), **Clans**,
-and **Users** (CRUD + audit log). Superadmins get **System** (scan interval,
-debug/raw-OCR toggles, calibration wizard, backup/restore, container restart,
-log viewer).
+Admins additionally get **Admin** (the Chest Points board, merge
+players/chests/sources, review queue, OCR name reassignment, player levels
+imported from chat), **Clans** (Discord, share links, login bridge, clan
+settings), and **Users** (accounts + audit log). Superadmins get **System**
+(scan interval, debug/raw-OCR toggles, calibration wizard, event schedule
+corrections, backup/restore including single-clan restore, deleted clans,
+container restart, log viewer).
 
 ## Discord bot
 
-Configured **per clan from the Clans page** (token, channel, guild, toggles) —
-not via environment variables. Clans sharing a token share one gateway
-connection.
+Configured **per clan from the Clans page** (token, then server, channel and
+DM recipients picked by name) — not via environment variables. Clans sharing a
+token share one gateway connection.
 
 - **`/leaderboard [period]`** — `daily | weekly | monthly | all` (default
   weekly).
+- **`/me [player] [period]`** — your own progress, answered privately.
 - **`/status`** — scanner status and totals.
 
 Commands are locked to the one configured channel. The bot also posts scan
-reports and a scheduled **daily digest** (with an optional DM of "top crypters"
-text formatted for pasting into in-game chat). Leaderboard tables are sent as
-plain-message **code blocks**, not embeds, because embeds are too narrow.
+reports, a **daily digest** after the first scan following the game-day reset,
+and an optional **weekly digest** at the end of the clan's week. Each digest
+can also be DM'd to up to 20 members as plain text ready to paste into in-game
+chat. Leaderboard tables are sent as plain-message **code blocks**, not embeds,
+because embeds are too narrow.
 
 ## Configuration
 
@@ -384,7 +428,7 @@ EVENT_CALENDAR_ICS_URL=https://tbclanportal.com/calendar/feed.ics
 ```
 
 Compose-level knobs: `HOST_WEB_PORT` (default `3010`), `NODE_MAX_OLD_SPACE_MB`
-(`4096`), `MEMORY_LIMIT` (`5g`), `CPU_RESERVATION` (`2`), plus `INSTANCE_NAME`
+(`1536`), `MEMORY_LIMIT` (`5g`), `CPU_RESERVATION` (`2`), plus `INSTANCE_NAME`
 (`tb-chest-counter`) and `DATA_VOLUME` (`tb-chest-data`) for running a second
 instance alongside the live one (see Deployment above).
 
@@ -394,13 +438,18 @@ instance alongside the live one (see Deployment above).
 
 ## Scoring & game day
 
-- **Points** come from a **global** scoring table (managed by superadmins,
-  shared across all clans). Each chest's value is looked up by
-  `(source, chest name)` with precedence: exact override → source wildcard →
-  built-in default. Editing an override backfills historical records.
+- **Points are per clan.** Each clan has its own scoring table on the Chest
+  Points board (edited by superadmins; a clan's values can be copied from
+  another clan). A chest's value is looked up by `(source, chest name)` with
+  precedence: exact override → source wildcard → built-in default. Editing a
+  value backfills that clan's historical records.
+- **Triumphal chests** are worth a third of their package value each (values
+  are global, superadmin-managed) and are kept out of the main leaderboard.
 - **Game-day rollover** is a fixed UTC hour (**default 17:00 UTC**, not
-  midnight). Daily/weekly/monthly periods and the Discord daily digest all snap
-  to this boundary so they match the game's day.
+  midnight; the game ignores daylight saving). Daily/weekly/monthly periods and
+  the Discord digests all snap to this boundary so they match the game's day.
+- **Weeks** follow each clan's week shape: Sunday to Sunday, or Tin Man to Tin
+  Man.
 
 ## Data tracked
 
@@ -416,9 +465,13 @@ npm install
 npm run dev        # tsx watch on src/index.ts
 npm run build      # tsc -> dist/  (commit dist/ before deploying)
 npm start          # run compiled dist/index.js
-npm run typecheck  # tsc --noEmit (app + tests)
+npm run typecheck  # tsc --noEmit (app + tests) — what CI runs
 npm run test:run   # vitest
 ```
+
+CI ([ci.yml](.github/workflows/ci.yml)) runs the typecheck, the full test
+suite, and a rebuild that must match the committed `dist/` on every push and
+pull request.
 
 - **Source:** `src/` (TypeScript). **Compiled output:** `dist/` (committed, run
   by Docker). **Frontend:** `src/web/public/` (vanilla HTML/CSS/JS, copied

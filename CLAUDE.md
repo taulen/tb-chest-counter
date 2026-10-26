@@ -30,7 +30,7 @@
 
 - Scan interval and other runtime settings persist to `data/app.env` (mounted volume), not `.env` (container-local).
 - On startup, any PENDING scan sessions from prior crashes are marked FAILED.
-- Chests are written to DB in real-time during scanning. If a scan fails, all chests from that session are rolled back (deleted).
+- Chests are written to DB in real-time during scanning, and each Open click claims its chest in-game for good. So a scan that fails or is aborted **keeps every chest it already saved**; the session is only rolled back when it has nothing on disk. Decide that from a DB row count (`persistedChestCount` in [scan-finalize.ts](src/scheduler/scan-finalize.ts)), never from `result.newChests`, which misses anything thrown mid-sweep.
 - A scan-in-progress guard prevents concurrent scans.
 - Two optional phases run AFTER the scan is finalised, in this order: the daily might snapshot, then the daily Clan Capital resource-history read. Both swallow every error by design — neither may ever surface as a scan failure. See [resource-capture-phase.ts](src/scheduler/resource-capture-phase.ts).
 
