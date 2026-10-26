@@ -35,6 +35,8 @@ export const SETUP_MODE_ASSETS = [
   'lib/login-bridge.js',
   'lib/wheel.js',
   'lib/theme.js',
+  // The tab icon setup.html links, like every other shell.
+  'favicon.svg',
 ] as const;
 
 /** The JS/CSS subset, i.e. everything served from the same PUBLIC_DIR root. */

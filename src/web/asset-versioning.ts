@@ -44,5 +44,8 @@
 export function versionHtmlAssets(html: string, buildVersion: string): string {
   return html
     .replace(/(href=")\/?([\w./-]+\.css)(")/g, `$1/v/${buildVersion}/$2$3`)
-    .replace(/(src=")\/?([\w./-]+\.js)(")/g, `$1/v/${buildVersion}/$2$3`);
+    .replace(/(src=")\/?([\w./-]+\.js)(")/g, `$1/v/${buildVersion}/$2$3`)
+    // The favicon: Cloudflare caches .svg by extension like any other asset.
+    // Scoped to rel="icon" so no other image href is pulled under /v/.
+    .replace(/(<link rel="icon"[^>]*href=")\/?([\w./-]+)(")/g, `$1/v/${buildVersion}/$2$3`);
 }

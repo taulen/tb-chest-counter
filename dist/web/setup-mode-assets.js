@@ -38,5 +38,7 @@ exports.SETUP_MODE_ASSETS = [
     'lib/login-bridge.js',
     'lib/wheel.js',
     'lib/theme.js',
+    // The tab icon setup.html links, like every other shell.
+    'favicon.svg',
 ];
 //# sourceMappingURL=setup-mode-assets.js.map
