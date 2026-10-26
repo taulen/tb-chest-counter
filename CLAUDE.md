@@ -43,6 +43,7 @@
 - Browsers (scanner, GPU, profile locks): [docs/browsers.md](docs/browsers.md); login bridge: [docs/login-bridge.md](docs/login-bridge.md)
 - Wedged-browser liveness bounds: [docs/wedged-browser-liveness.md](docs/wedged-browser-liveness.md)
 - Multi-clan accounts (per-clan roles, the switcher, guest visibility): [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md)
+- Running the dashboard locally + screenshots per language/viewport (ask first unless requested): [.claude/skills/local-ui-check/SKILL.md](.claude/skills/local-ui-check/SKILL.md)
 
 ## Logging
 
