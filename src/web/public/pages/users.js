@@ -473,23 +473,28 @@ export async function renderUsers(el) {
   };
 
   /**
-   * Superadmin Clan cell: one chip per clan the account is in — home first —
+   * Superadmin Clan cell: one fixed-width chip per clan the account is in,
    * each with the role it holds THERE, so "admin here, user there" reads at a
-   * glance. The chip of the clan picked in the header is outlined: that's the
-   * clan the Role column edits. The whole group opens the editor.
+   * glance. Always in the site's clan order — never home-first — so a clan
+   * sits in the same column on every row; the house icon marks the home clan.
+   * The chip of the clan picked in the header is outlined: that's the clan
+   * the Role column edits. The whole group opens the editor.
    */
+  const clanOrder = new Map(allClans.map((c, i) => [c.id, i]));
   const clanChips = (u) => {
     const homeClanId = u.membership === 'guest' ? u.homeClanId : u.clanId;
     const homeRole = u.membership === 'guest' ? u.homeRole : u.role;
     const all = [
       { clanId: homeClanId, role: homeRole, home: true },
       ...(u.clanAccess || []).map((a) => ({ ...a, home: false })),
-    ];
+    ].sort((a, b) => (clanOrder.get(a.clanId) ?? Infinity) - (clanOrder.get(b.clanId) ?? Infinity)
+      || a.clanId - b.clanId);
     const described = all.map((m) => `${clanLabel(m.clanId)}: ${m.role}${m.home ? ' (home clan)' : ''}`).join(', ');
     const chips = all.map((m) => {
       const cls = ['clan-chip', m.home ? 'is-home' : '', m.clanId === activeClanId ? 'is-current' : ''].filter(Boolean).join(' ');
       const title = `${clanLabel(m.clanId)}${m.home ? ' · home clan' : ''} · ${m.role}`;
-      return `<span class="${cls}" title="${esc(title)}">${m.home ? HOME_ICON : ''}<span class="clan-chip-name">${esc(clanShort(m.clanId))}</span><span class="clan-chip-role role-${esc(m.role)}">${esc(m.role)}</span></span>`;
+      // Every chip keeps the icon slot, so names line up whether or not it's home.
+      return `<span class="${cls}" title="${esc(title)}">${m.home ? HOME_ICON : '<span class="clan-chip-icon" aria-hidden="true"></span>'}<span class="clan-chip-name">${esc(clanShort(m.clanId))}</span><span class="clan-chip-role role-${esc(m.role)}">${esc(m.role)}</span></span>`;
     }).join('');
     return `<button type="button" class="clan-chips" data-action="edit-user-clans" data-user-id="${u.id}" aria-label="${esc(`Edit clans for ${u.username}. ${described}`)}" title="Edit clans">${chips}${EDIT_ICON}</button>`;
   };
