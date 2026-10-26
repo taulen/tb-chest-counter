@@ -322,7 +322,10 @@ function formatAuditDetails(action, d, ctx) {
       const what = list.length
         ? list.map((c) => `${esc(clanLabel(c.clanId))} (${esc(c.role)})`).join(', ')
         : 'none';
-      return `${quoted(d.username)} : ${what}`;
+      const moved = d.home
+        ? ` · home ${esc(clanLabel(d.home.from))} → ${esc(clanLabel(d.home.to))} (${esc(d.home.role)})`
+        : '';
+      return `${quoted(d.username)} : extra ${what}${moved}`;
     }
     case 'change_clan_role': {
       return `${quoted(d.username)} : ${esc(d.from || '?')} → ${esc(d.to || '?')}${clanSuffix(d.clanId)}`;
@@ -779,51 +782,79 @@ export async function reassignUserClan(id, username, rerender) {
 }
 
 /**
- * Superadmin editor for the clans an account can switch into besides its own,
- * and its role in each. Lists every other live clan; "No access" drops it.
+ * Superadmin editor for every clan an account is in: its role in each, and
+ * which one is home. Lists every live clan; "No access" drops one. Picking a
+ * different Home moves the account there in the same save — the old home
+ * stays as an extra clan with its role unless set to No access. The home row
+ * can't be No access: an account always has a home.
  */
 export function editUserClans(id, rerender) {
   const user = usersById.get(id);
   if (!user) return;
-  const others = clansForEditor.filter((c) => c.id !== user.clanId);
-  if (others.length === 0) {
-    notify('There is no other clan to give access to.', 'Extra clans');
+  if (clansForEditor.length === 0) {
+    notify('There are no clans to assign.', 'Clans');
     return;
   }
   const current = new Map((user.clanAccess || []).map((a) => [a.clanId, a.role]));
+  if (user.clanId !== null) current.set(user.clanId, user.role);
   const option = (value, label, selected) =>
     `<option value="${value}"${selected ? ' selected' : ''}>${label}</option>`;
-  const rows = others.map((c) => {
+  const rows = clansForEditor.map((c) => {
     const role = current.get(c.id) ?? '';
-    return `<label class="user-clans-row">
-      <span>${esc(c.name)}</span>
-      <select class="input" data-clan-id="${c.id}">
+    const isHome = c.id === user.clanId;
+    return `<div class="user-clans-row">
+      <input type="radio" name="userClansHome" value="${c.id}" ${isHome ? 'checked' : ''}
+        aria-label="${esc(`Make ${c.name} the home clan`)}">
+      <span class="user-clans-name">${esc(c.name)}</span>
+      <select class="input" data-clan-id="${c.id}" aria-label="${esc(`Role in ${c.name}`)}">
         ${option('', 'No access', role === '')}
         ${option('user', 'User', role === 'user')}
         ${option('admin', 'Admin', role === 'admin')}
       </select>
-    </label>`;
+    </div>`;
   }).join('');
-  const home = user.clanId !== null
-    ? `Their own clan, ${esc(clansForEditor.find((c) => c.id === user.clanId)?.name ?? `#${user.clanId}`)}, isn't listed.`
-    : '';
   const modal = contentModal({
     title: `Clans for ${user.username}`,
     html: `
-      <p class="muted-copy">Clans ${esc(user.username)} can switch to from the header, and their role in each. ${home}</p>
-      <div class="user-clans-editor">${rows}</div>
+      <p class="muted-copy">Clans ${esc(user.username)} can switch to from the header, and their role in each. <strong>Home</strong> is the clan the account belongs to — pick another to move it.</p>
+      <div class="user-clans-editor">
+        <div class="user-clans-row user-clans-head" aria-hidden="true"><span>Home</span><span class="user-clans-name">Clan</span><span>Role</span></div>
+        ${rows}
+      </div>
       <div class="modal-actions">
         <button class="btn" type="button" data-user-clans="cancel">Cancel</button>
         <button class="btn btn-primary" type="button" data-user-clans="save">Save</button>
       </div>`,
   });
   if (!modal) return;
-  modal.content.querySelector('[data-user-clans="cancel"]').addEventListener('click', () => modal.close());
-  modal.content.querySelector('[data-user-clans="save"]').addEventListener('click', async () => {
-    const clans = [...modal.content.querySelectorAll('select[data-clan-id]')]
-      .filter((s) => s.value)
+  const root = modal.content;
+  const selectFor = (clanId) => root.querySelector(`select[data-clan-id="${clanId}"]`);
+  const homeId = () => Number(root.querySelector('input[name="userClansHome"]:checked')?.value ?? NaN);
+
+  // The home row can't be No access. Moving home keeps the role the account
+  // already had in that clan, else the role it had at the old home.
+  let prevHome = homeId();
+  const syncHome = () => {
+    const next = homeId();
+    for (const s of root.querySelectorAll('select[data-clan-id]')) {
+      const isHome = Number(s.dataset.clanId) === next;
+      s.querySelector('option[value=""]').disabled = isHome;
+      if (isHome && !s.value) s.value = selectFor(prevHome)?.value || 'user';
+    }
+    prevHome = next;
+  };
+  for (const r of root.querySelectorAll('input[name="userClansHome"]')) r.addEventListener('change', syncHome);
+  syncHome();
+
+  root.querySelector('[data-user-clans="cancel"]').addEventListener('click', () => modal.close());
+  root.querySelector('[data-user-clans="save"]').addEventListener('click', async () => {
+    const home = homeId();
+    if (!Number.isFinite(home)) return notify('Pick a home clan.', 'Clans');
+    const clans = [...root.querySelectorAll('select[data-clan-id]')]
+      .filter((s) => s.value && Number(s.dataset.clanId) !== home)
       .map((s) => ({ clanId: Number(s.dataset.clanId), role: s.value }));
-    if (!await mustOk(apiPut(`/auth/users/${id}/clans`, { clans }), 'Saving clans failed')) return;
+    const body = { clans, home: { clanId: home, role: selectFor(home).value } };
+    if (!await mustOk(apiPut(`/auth/users/${id}/clans`, body), 'Saving clans failed')) return;
     modal.close();
     rerender('users');
   });

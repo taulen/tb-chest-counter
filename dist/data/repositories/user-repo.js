@@ -17,6 +17,7 @@ exports.getAllUsers = getAllUsers;
 exports.listClanAccess = listClanAccess;
 exports.getClanAccessRole = getClanAccessRole;
 exports.replaceClanAccess = replaceClanAccess;
+exports.setHomeAndClanAccess = setHomeAndClanAccess;
 exports.setClanAccessRole = setClanAccessRole;
 exports.removeClanAccess = removeClanAccess;
 exports.firstSuperadmin = firstSuperadmin;
@@ -241,6 +242,23 @@ function replaceClanAccess(userId, entries) {
             upsert.run(userId, e.clanId, e.role, now);
     });
     tx();
+}
+/**
+ * Move an account's home clan and set its extra clans in one write: the home
+ * (users.clan_id + users.role) and the grants change together, so there is no
+ * moment where the account holds its new home both ways or neither. The old
+ * home survives only if `extras` lists it. Refuses a superadmin (no change).
+ * Callers validate the clans exist and that `extras` excludes `home`.
+ */
+function setHomeAndClanAccess(userId, home, extras) {
+    const db = (0, database_js_1.getDb)();
+    db.transaction(() => {
+        const changed = db.prepare("UPDATE users SET clan_id = ?, role = ? WHERE id = ? AND role != 'superadmin'").run(home.clanId, home.role, userId).changes;
+        if (changed === 0)
+            return;
+        replaceClanAccess(userId, extras);
+        dropAccessToHomeClan(userId, home.clanId);
+    })();
 }
 /** Change the role on an EXISTING grant. False when there is none. */
 function setClanAccessRole(userId, clanId, role) {

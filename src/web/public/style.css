@@ -3670,21 +3670,33 @@ details > table {
   max-height: 50vh;
   overflow-y: auto;
 }
+/* Home radio | clan name | role select. */
 .user-clans-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 140px;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
-.user-clans-row > span {
+.user-clans-row input[type="radio"] {
+  justify-self: center;
+  margin: 0;
+  accent-color: var(--accent-gold);
+}
+.user-clans-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.user-clans-row select {
-  width: 140px;
-  flex: none;
+.user-clans-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.user-clans-head > span:first-child {
+  justify-self: center;
 }
 
 /* Audit log: lock the columns that have a known shape (timestamp,

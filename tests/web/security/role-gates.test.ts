@@ -927,6 +927,35 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expect(await sees('admin1')).toBe(false);
     });
 
+    it('a superadmin can move the home clan in the same save', async () => {
+      const uid = ids.user1.userId;
+      // Move home 1 → 2 as admin, keeping the old home as an extra.
+      const r = await send('put', `/api/auth/users/${uid}/clans`, 'super', {
+        home: { clanId: 2, role: 'admin' },
+        clans: [{ clanId: 1, role: 'user' }],
+      });
+      expectStatus(r.status, 200);
+      expect(userRepo.getUserById(uid)).toMatchObject({ clanId: 2, role: 'admin' });
+      expect(userRepo.listClanAccess(uid)).toEqual([{ clanId: 1, role: 'user' }]);
+      expect(await me('user1')).toMatchObject({ clanId: 2, role: 'admin', multiClan: true });
+
+      // Moving back and dropping the other clan leaves a single-clan account.
+      expectStatus((await send('put', `/api/auth/users/${uid}/clans`, 'super', {
+        home: { clanId: 1, role: 'user' }, clans: [],
+      })).status, 200);
+      expect(userRepo.getUserById(uid)).toMatchObject({ clanId: 1, role: 'user' });
+      expect(userRepo.listClanAccess(uid)).toEqual([]);
+
+      // The home can't also be listed as an extra, and a clan admin can't move anyone.
+      expectStatus((await send('put', `/api/auth/users/${uid}/clans`, 'super', {
+        home: { clanId: 2, role: 'user' }, clans: [{ clanId: 2, role: 'admin' }],
+      })).status, 400);
+      expectStatus((await send('put', `/api/auth/users/${uid}/clans`, 'admin1', {
+        home: { clanId: 2, role: 'admin' }, clans: [],
+      })).status, 403);
+      expect(userRepo.getUserById(uid)).toMatchObject({ clanId: 1, role: 'user' });
+    });
+
     it('promoting to superadmin or moving home clears overlapping grants', async () => {
       await grant('user1', [{ clanId: 2, role: 'user' }]);
       expectStatus((await send('put', `/api/auth/users/${ids.user1.userId}/clan`, 'super', { clanId: 2 })).status, 200);

@@ -319,10 +319,12 @@ export function createAuthRouter(): Router {
 
   // --- Extra clans (user_clan_access, v88) ---
 
-  // PUT /api/auth/users/:id/clans — replace the account's extra clans.
+  // PUT /api/auth/users/:id/clans — replace the account's extra clans, and
+  // optionally move its home clan in the same write.
   // Superadmin only: granting a clan means reaching across clans, which no
   // clan admin can do (nor even see the account to do it to).
-  // Body: { clans: [{ clanId, role: 'admin' | 'user' }] }
+  // Body: { clans: [{ clanId, role: 'admin' | 'user' }],
+  //         home?: { clanId, role: 'admin' | 'user' } }
   router.put('/users/:id/clans', requireSuperAdmin, (req, res) => {
     const id = parseInt(String(req.params.id));
     const target = userRepo.getUserById(id);
@@ -330,6 +332,18 @@ export function createAuthRouter(): Router {
     if (target.role === 'superadmin') {
       return res.status(400).json({ error: 'Superadmins already see every clan' });
     }
+    let home: userRepo.ClanAccess | null = null;
+    if (req.body?.home !== undefined && req.body?.home !== null) {
+      const homeClanId = Number.parseInt(String(req.body.home.clanId ?? ''), 10);
+      if (!Number.isFinite(homeClanId) || !clanRepo.getClanById(homeClanId)) {
+        return res.status(404).json({ error: 'Home clan not found' });
+      }
+      if (!userRepo.isClanRole(req.body.home.role)) {
+        return res.status(400).json({ error: 'Home role must be admin or user' });
+      }
+      home = { clanId: homeClanId, role: req.body.home.role };
+    }
+    const homeClanId = home ? home.clanId : target.clanId;
     const raw = req.body?.clans;
     if (!Array.isArray(raw) || raw.length > 100) {
       return res.status(400).json({ error: 'clans must be a list' });
@@ -344,7 +358,7 @@ export function createAuthRouter(): Router {
       if (!userRepo.isClanRole(item?.role)) {
         return res.status(400).json({ error: 'Role must be admin or user' });
       }
-      if (clanId === target.clanId) {
+      if (clanId === homeClanId) {
         return res.status(400).json({ error: 'That is already the user\'s own clan' });
       }
       if (!clanRepo.getClanById(clanId)) {
@@ -353,8 +367,17 @@ export function createAuthRouter(): Router {
       seen.add(clanId);
       entries.push({ clanId, role: item.role });
     }
-    userRepo.replaceClanAccess(id, entries);
-    userRepo.logAction(req.user!.id, 'set_user_clans', { username: target.username, clans: entries });
+    const moved = home !== null && (home.clanId !== target.clanId || home.role !== target.role);
+    if (home !== null && moved) {
+      userRepo.setHomeAndClanAccess(id, home, entries);
+    } else {
+      userRepo.replaceClanAccess(id, entries);
+    }
+    userRepo.logAction(req.user!.id, 'set_user_clans', {
+      username: target.username,
+      clans: entries,
+      ...(moved ? { home: { from: target.clanId, to: home!.clanId, fromRole: target.role, role: home!.role } } : {}),
+    });
     res.json({ ok: true, clanAccess: userRepo.listClanAccess(id) });
   });
 
