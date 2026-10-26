@@ -956,6 +956,44 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expect(userRepo.getUserById(uid)).toMatchObject({ clanId: 1, role: 'user' });
     });
 
+    it('no admin can move a home clan or grant a clan — not even one they administer', async () => {
+      const uid = ids.user1.userId; // home clan 1
+      // Make admin1 an admin of clan 2 as well, so "admin of the target clan"
+      // is covered too, not just "admin of some other clan".
+      await grant('admin1', [{ clanId: 2, role: 'admin' }]);
+
+      for (const viewing of [1, 2]) {
+        await activate('admin1', viewing);
+        // Moving home: both routes are superadmin-only.
+        expectStatus((await send('put', `/api/auth/users/${uid}/clan`, 'admin1', { clanId: 2 })).status, 403);
+        expectStatus((await send('put', `/api/auth/users/${uid}/clans`, 'admin1', {
+          home: { clanId: 2, role: 'admin' }, clans: [],
+        })).status, 403);
+        // Granting: the bulk route is superadmin-only, and the per-clan route
+        // only edits a grant that already exists — it never creates one.
+        expectStatus((await send('put', `/api/auth/users/${uid}/clans`, 'admin1', {
+          clans: [{ clanId: 2, role: 'user' }],
+        })).status, 403);
+        expect([403, 404]).toContain((await send('put', `/api/auth/users/${uid}/clans/2`, 'admin1', { role: 'user' })).status);
+        expect(userRepo.getUserById(uid)).toMatchObject({ clanId: 1, role: 'user' });
+        expect(userRepo.listClanAccess(uid)).toEqual([]);
+      }
+
+      // An admin of clan 2 (a guest admin, home clan 1) can't grant clan 1 —
+      // or their own home — to a clan-2 member either.
+      await activate('admin1', 2);
+      expect([403, 404]).toContain((await send('put', `/api/auth/users/${ids.admin2.userId}/clans/1`, 'admin1', { role: 'user' })).status);
+      expect(userRepo.listClanAccess(ids.admin2.userId)).toEqual([]);
+
+      // Creating a user never lands outside the admin's current clan,
+      // whatever clanId the body asks for.
+      const made = await send('post', '/api/auth/users', 'admin2', {
+        username: 'sneaky-into-1', password: 'Test1234!aA', role: 'admin', clanId: 1,
+      });
+      expectStatus(made.status, 200);
+      expect(made.body.clanId).toBe(2);
+    });
+
     it('promoting to superadmin or moving home clears overlapping grants', async () => {
       await grant('user1', [{ clanId: 2, role: 'user' }]);
       expectStatus((await send('put', `/api/auth/users/${ids.user1.userId}/clan`, 'super', { clanId: 2 })).status, 200);
