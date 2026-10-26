@@ -8,15 +8,16 @@
 
 import { api, apiPost } from '../lib/api.js';
 import { esc, memberLink, notify } from '../lib/ui.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 const LETTERS = ['g', 'm', 's', 'e', 'c', 'd'];
 const LETTER_TITLE = {
-  g: 'G — Guardsmen level',
-  m: 'M — Monsters level',
-  s: 'S — Specialists level',
-  e: 'E — Engineering level',
-  c: 'C — Crypting level',
-  d: 'D — Dragon level',
+  g: t('{letter} — {category} level', { letter: 'G', category: tGame('Guardsmen') }),
+  m: t('{letter} — {category} level', { letter: 'M', category: tGame('Monsters') }),
+  s: t('{letter} — {category} level', { letter: 'S', category: tGame('Specialists') }),
+  e: t('{letter} — {category} level', { letter: 'E', category: tGame('Engineering') }),
+  c: t('{letter} — {category} level', { letter: 'C', category: tGame('Crypting') }),
+  d: t('{letter} — {category} level', { letter: 'D', category: tGame('Dragon') }),
 };
 
 let el = null;
@@ -30,7 +31,7 @@ let message = null;   // { error, html }
 
 export async function mountMemberLevels(target) {
   el = target;
-  el.innerHTML = '<div class="card-body card-body-padded"><p class="muted-copy">Loading…</p></div>';
+  el.innerHTML = `<div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div>`;
   await reload();
 }
 
@@ -50,16 +51,16 @@ function paint() {
   if (!el) return;
   el.innerHTML = `
     <div class="card-header">
-      <h2>Levels from chat</h2>
-      <span class="card-header-hint">Paste what players post — G also feeds their guards level</span>
+      <h2>${t('Levels from chat')}</h2>
+      <span class="card-header-hint">${t('Paste what players post — G also feeds their guards level')}</span>
     </div>
     <div class="card-body card-body-padded">
-      <label class="visually-hidden" for="levelsText">Chat lines</label>
+      <label class="visually-hidden" for="levelsText">${t('Chat lines')}</label>
       <textarea id="levelsText" class="input tinman-text" rows="7" spellcheck="false"
-        placeholder="One player per line, as posted in chat, e.g.&#10;taulen: G8/M8/S7/E8/C35/D284&#10;Dark Knight: G7.M8.S7.E7.C30.D199">${esc(text)}</textarea>
+        placeholder="${t('One player per line, as posted in chat, e.g.')}&#10;taulen: G8/M8/S7/E8/C35/D284&#10;Dark Knight: G7.M8.S7.E7.C30.D199">${esc(text)}</textarea>
       <div class="levels-controls">
-        <button type="button" class="btn btn-primary" data-levels="preview">Check names</button>
-        <span class="muted-copy">Saved as reported today${today ? ` (${esc(today)})` : ''}.</span>
+        <button type="button" class="btn btn-primary" data-levels="preview">${t('Check names')}</button>
+        <span class="muted-copy">${today ? t('Saved as reported today ({date}).', { date: esc(today) }) : t('Saved as reported today.')}</span>
       </div>
       ${message ? `<div class="tinman-result ${message.error ? 'is-error' : ''}" role="status">${message.html}</div>` : ''}
       ${preview ? previewHtml() : ''}
@@ -79,7 +80,7 @@ function letterHeads() {
 function previewHtml() {
   const rows = preview.rows;
   const options = (selected) => [
-    `<option value="">— Skip —</option>`,
+    `<option value="">${t('— Skip —')}</option>`,
     ...members.map((m) => `<option value="${m.id}" ${String(m.id) === String(selected) ? 'selected' : ''}>${esc(m.name)}</option>`),
   ].join('');
   const picked = rows.map((_, i) => picks.get(i) ?? '');
@@ -87,13 +88,13 @@ function previewHtml() {
   const body = rows.map((r, i) => {
     const sel = picks.get(i) ?? '';
     const tag = r.matchKind === 'exact'
-      ? '<span class="levels-tag is-ok" title="Exact match">✓</span>'
+      ? `<span class="levels-tag is-ok" title="${t('Exact match')}">✓</span>`
       : r.matchKind === 'fuzzy'
-        ? `<span class="levels-tag is-fuzzy" title="Matched by spelling to ${esc(r.memberName || '')} — check it">≈</span>`
-        : '<span class="levels-tag is-none" title="No member matched — pick one or leave it skipped">?</span>';
+        ? `<span class="levels-tag is-fuzzy" title="${t('Matched by spelling to {name} — check it', { name: esc(r.memberName || '') })}">≈</span>`
+        : `<span class="levels-tag is-none" title="${t('No member matched — pick one or leave it skipped')}">?</span>`;
     return `<tr class="${dupes.has(sel) ? 'levels-dupe' : ''}">
       <td data-role="primary"><span class="mrow-name">${tag} ${esc(r.rawName)}</span><span class="mrow-sub" title="${esc(r.raw)}">${esc(r.raw.split('\n')[0])}</span></td>
-      <td data-label="Member"><select class="input levels-pick" data-row="${i}" aria-label="Member for ${esc(r.rawName)}">${options(sel)}</select></td>
+      <td data-label="${t('Member')}"><select class="input levels-pick" data-row="${i}" aria-label="${t('Member for {name}', { name: esc(r.rawName) })}">${options(sel)}</select></td>
       ${letterCells(r.levels)}
     </tr>`;
   }).join('');
@@ -101,22 +102,22 @@ function previewHtml() {
   const fuzzy = rows.filter((r) => r.matchKind === 'fuzzy').length;
   const none = rows.filter((r) => r.matchKind === 'unmatched').length;
   const skipped = preview.skipped?.length
-    ? `<p class="muted-copy tinman-hint">${preview.skipped.length} line${preview.skipped.length === 1 ? '' : 's'} not read: ${preview.skipped.slice(0, 5).map((s) => `<code>${esc(s)}</code>`).join(' ')}</p>`
+    ? `<p class="muted-copy tinman-hint">${tn(preview.skipped.length, '{n} line not read: {lines}', '{n} lines not read: {lines}', { n: preview.skipped.length, lines: preview.skipped.slice(0, 5).map((s) => `<code>${esc(s)}</code>`).join(' ') })}</p>`
     : '';
   return `
     <div class="levels-preview">
-      <p class="levels-summary"><strong>${rows.length} players read</strong> · ${matched} to save${fuzzy ? ` · <span class="tool-warn">${fuzzy} matched by spelling — check them</span>` : ''}${none ? ` · ${none} not matched (skipped unless you pick a member)` : ''}${dupes.size ? ' · <span class="tool-short">the same member is picked twice</span>' : ''}</p>
+      <p class="levels-summary"><strong>${tn(rows.length, '{n} players read', '{n} players read', { n: rows.length })}</strong> · ${tn(matched, '{n} to save', '{n} to save', { n: matched })}${fuzzy ? ` · <span class="tool-warn">${tn(fuzzy, '{n} matched by spelling — check them', '{n} matched by spelling — check them', { n: fuzzy })}</span>` : ''}${none ? ` · ${tn(none, '{n} not matched (skipped unless you pick a member)', '{n} not matched (skipped unless you pick a member)', { n: none })}` : ''}${dupes.size ? ` · <span class="tool-short">${t('the same member is picked twice')}</span>` : ''}</p>
       ${skipped}
       <div class="events-scroll">
         <table class="table-responsive levels-table">
           <colgroup><col class="col-member"><col class="col-assign">${LETTERS.map(() => '<col class="col-lvl">').join('')}</colgroup>
-          <thead><tr><th>Posted as</th><th>Member</th>${letterHeads()}</tr></thead>
+          <thead><tr><th>${t('Posted as')}</th><th>${t('Member')}</th>${letterHeads()}</tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
       <div class="tinman-upload-actions levels-save">
-        <button type="button" class="btn btn-primary" data-levels="save" ${matched && !dupes.size ? '' : 'disabled'}>Save ${matched} player${matched === 1 ? '' : 's'}</button>
-        <button type="button" class="btn" data-levels="cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-levels="save" ${matched && !dupes.size ? '' : 'disabled'}>${tn(matched, 'Save {n} player', 'Save {n} players', { n: matched })}</button>
+        <button type="button" class="btn" data-levels="cancel">${t('Cancel')}</button>
       </div>
     </div>`;
 }
@@ -128,21 +129,21 @@ function latestHtml() {
     const est = r.guardsEstimate;
     const gCell = g === undefined
       ? '<span class="events-zero">—</span>'
-      : `${g}${est !== null && est !== g ? ` <span class="muted-copy" title="Guards estimate from donations + entries">(est. ${est})</span>` : ''}`;
+      : `${g}${est !== null && est !== g ? ` <span class="muted-copy" title="${t('Guards estimate from donations + entries')}">${t('(est. {estimate})', { estimate: est })}</span>` : ''}`;
     return `<tr>
-      <td data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}${r.isActive ? '' : ' <span class="muted-copy">(left)</span>'}</span></td>
+      <td data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}${r.isActive ? '' : ` <span class="muted-copy">${t('(left)')}</span>`}</span></td>
       <td class="num" data-label="G">${gCell}</td>
-      ${LETTERS.slice(1).map((k) => `<td class="num" data-label="${k.toUpperCase()}" title="${r.asOf[k] ? `reported ${esc(r.asOf[k])}` : ''}">${r.levels[k] ?? '<span class="events-zero">—</span>'}</td>`).join('')}
-      <td class="history-date" data-label="Reported">${esc(r.lastReported)}</td>
+      ${LETTERS.slice(1).map((k) => `<td class="num" data-label="${k.toUpperCase()}" title="${r.asOf[k] ? t('reported {date}', { date: esc(r.asOf[k]) }) : ''}">${r.levels[k] ?? '<span class="events-zero">—</span>'}</td>`).join('')}
+      <td class="history-date" data-label="${t('Reported')}">${esc(r.lastReported)}</td>
     </tr>`;
   }).join('');
   return `
     <details class="card-collapsible tool-roster-list" data-section-key="admin-member-levels">
-      <summary class="card-header"><h2>Latest reported levels (${latest.length})</h2></summary>
+      <summary class="card-header"><h2>${t('Latest reported levels ({count})', { count: latest.length })}</h2></summary>
       <div class="events-scroll">
         <table class="table-responsive levels-table">
           <colgroup><col class="col-member">${LETTERS.map(() => '<col class="col-lvl">').join('')}<col class="col-date"></colgroup>
-          <thead><tr><th>Member</th>${letterHeads()}<th>Reported</th></tr></thead>
+          <thead><tr><th>${t('Member')}</th>${letterHeads()}<th>${t('Reported')}</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -175,7 +176,7 @@ function wire() {
 
 async function runPreview(btn) {
   if (!text.trim()) {
-    message = { error: true, html: 'Paste the chat lines first.' };
+    message = { error: true, html: t('Paste the chat lines first.') };
     paint();
     return;
   }
@@ -183,7 +184,7 @@ async function runPreview(btn) {
   try {
     const res = await apiPost('/member-levels/preview', { text });
     if (res?.error) {
-      const s = Array.isArray(res.skipped) && res.skipped.length ? ` Couldn't read: ${res.skipped.map((x) => `<code>${esc(x)}</code>`).join(' ')}` : '';
+      const s = Array.isArray(res.skipped) && res.skipped.length ? ` ${t("Couldn't read: {lines}", { lines: res.skipped.map((x) => `<code>${esc(x)}</code>`).join(' ') })}` : '';
       message = { error: true, html: `${esc(res.error)}${s}` };
       preview = null;
     } else {
@@ -193,7 +194,7 @@ async function runPreview(btn) {
     }
   } catch (err) {
     if (err?.name === 'UnauthenticatedError') return;
-    message = { error: true, html: esc(`Could not check: ${err?.message || err}`) };
+    message = { error: true, html: esc(t('Could not check: {error}', { error: err?.message || err })) };
   }
   paint();
 }
@@ -204,24 +205,24 @@ async function save(btn) {
     .filter((e) => e.memberId > 0);
   if (!entries.length) return;
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  btn.textContent = t('Saving…');
   try {
     const res = await apiPost('/member-levels/import', { entries });
     if (res?.error) {
-      await notify(res.error, 'Could not save');
+      await notify(res.error, t('Could not save'));
       btn.disabled = false;
       return;
     }
     const r = res.result;
     message = {
       error: false,
-      html: `<strong>Saved ${r.saved} player${r.saved === 1 ? '' : 's'}</strong> for ${esc(today)} · ${r.guardsReports} guards level${r.guardsReports === 1 ? '' : 's'} entered${r.rejected ? ` · ${r.rejected} skipped` : ''}.`,
+      html: `${tn(r.saved, '<strong>Saved {n} player</strong> for {date}', '<strong>Saved {n} players</strong> for {date}', { n: r.saved, date: esc(today) })} · ${tn(r.guardsReports, '{n} guards level entered', '{n} guards levels entered', { n: r.guardsReports })}${r.rejected ? ` · ${tn(r.rejected, '{n} skipped', '{n} skipped', { n: r.rejected })}` : ''}.`,
     };
     preview = null;
     text = '';
   } catch (err) {
     if (err?.name === 'UnauthenticatedError') return;
-    await notify(`Could not save: ${err?.message || err}`, 'Could not save');
+    await notify(t('Could not save: {error}', { error: err?.message || err }), t('Could not save'));
     btn.disabled = false;
     return;
   }

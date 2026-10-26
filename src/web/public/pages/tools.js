@@ -14,6 +14,7 @@
 import { api, apiPut } from '../lib/api.js';
 import { esc, notify } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 import {
   TIERS,
   ARTIFACT_LEVEL_COSTS,
@@ -26,21 +27,21 @@ import {
 } from '../lib/ancient-planner.js';
 
 const TOOLS = [
-  { key: 'ancient', name: 'Ancient planner' },
+  { key: 'ancient', name: t('Ancient planner') },
 ];
 
 /** Bare #tools → the first tool; an unknown key falls back the same way. */
 export async function renderTools(el, toolKey) {
-  const tool = TOOLS.find((t) => t.key === toolKey) ?? TOOLS[0];
+  const tool = TOOLS.find((x) => x.key === toolKey) ?? TOOLS[0];
   el.innerHTML = `${toolTabsHtml(tool.key)}<div class="tools-mount"></div>`;
   const mount = el.querySelector('.tools-mount');
   if (tool.key === 'ancient') await renderAncientPlanner(mount);
 }
 
 function toolTabsHtml(activeKey) {
-  return `<div class="resources-tabs" role="tablist">${TOOLS.map((t) => {
-    const active = t.key === activeKey;
-    return `<a class="resources-tab ${active ? 'is-active' : ''}" href="#tools/${t.key}" role="tab" aria-selected="${active}">${esc(t.name)}</a>`;
+  return `<div class="resources-tabs" role="tablist">${TOOLS.map((tool) => {
+    const active = tool.key === activeKey;
+    return `<a class="resources-tab ${active ? 'is-active' : ''}" href="#tools/${tool.key}" role="tab" aria-selected="${active}">${esc(tool.name)}</a>`;
   }).join('')}</div>`;
 }
 
@@ -51,11 +52,11 @@ const img = (name) => new URL(`../img/ancients/${name}.webp`, import.meta.url).h
 /** Slider + number-box settings. `tomeLevel` is the Tome of Knowledge level
  *  (1–28); the bonus % it carries is what the arithmetic uses. */
 const FIELDS = {
-  level: { label: 'Tin Man level', min: MIN_TINMAN_LEVEL, max: MAX_TINMAN_LEVEL, hint: 'Where the clan stands before the first summon.' },
-  tomeLevel: { label: 'Tome of Knowledge', min: 1, max: TOME_BONUS_PCT.length, hint: 'Bought first, with the Figurine. Raises the points needed per kill.' },
-  missing: { label: 'No-shows', min: 0, max: 100, unit: '%', hint: 'Share of the vault pot that never arrives.' },
-  trick: { label: 'Vault trick', min: 0, max: 100, unit: '%', hint: 'Members who place a vault one level above their cap (phone only).' },
-  margin: { label: 'Overshoot', min: 0, max: 100, unit: '%', hint: 'How far members typically beat a target. Each target is divided by 1 + this.' },
+  level: { label: t('{tinman} level', { tinman: tGame('Tin Man') }), min: MIN_TINMAN_LEVEL, max: MAX_TINMAN_LEVEL, hint: t('Where the clan stands before the first summon.') },
+  tomeLevel: { label: tGame('Tome of Knowledge'), min: 1, max: TOME_BONUS_PCT.length, hint: t('Bought first, with the Figurine. Raises the points needed per kill.') },
+  missing: { label: t('No-shows'), min: 0, max: 100, unit: '%', hint: t('Share of the vault pot that never arrives.') },
+  trick: { label: t('Vault trick'), min: 0, max: 100, unit: '%', hint: t('Members who place a vault one level above their cap (phone only).') },
+  margin: { label: t('Overshoot'), min: 0, max: 100, unit: '%', hint: t('How far members typically beat a target. Each target is divided by 1 + this.') },
 };
 
 /** What the page opens on comes from the server: the clan's saved default, or
@@ -174,47 +175,52 @@ function rosterSourceHtml() {
   const r = st.roster;
   const n = r.members.length;
   if (r.source === 'might') {
-    return `From the might scan of <strong>${esc(r.mightGameDate)}</strong> · ${n} member${n === 1 ? '' : 's'}.`;
+    return tn(n, 'From the might scan of <strong>{date}</strong> · {n} member.', 'From the might scan of <strong>{date}</strong> · {n} members.', { date: esc(r.mightGameDate) });
   }
   if (r.source === 'recent') {
     const why = r.mightGameDate
-      ? `The last might scan (${esc(r.mightGameDate)}) is more than ${r.maxAgeDays} days old`
-      : 'There is no might scan yet';
-    return `${why}, so this is everyone seen in the last ${r.windowDays} days · ${n} member${n === 1 ? '' : 's'} (max ${r.maxMembers}).`;
+      ? tn(r.maxAgeDays, 'The last might scan ({date}) is more than {n} day old', 'The last might scan ({date}) is more than {n} days old', { date: esc(r.mightGameDate) })
+      : t('There is no might scan yet');
+    return t('{why}, so this is everyone seen in the last {days} · {members} (max {max}).', {
+      why,
+      days: tn(r.windowDays, '{n} day', '{n} days'),
+      members: tn(n, '{n} member', '{n} members'),
+      max: r.maxMembers,
+    });
   }
-  return 'No roster to fill from — no might scan and nobody seen this week. Enter the counts by hand.';
+  return t('No roster to fill from — no might scan and nobody seen this week. Enter the counts by hand.');
 }
 
 function rosterCardHtml() {
   const unknown = st.roster.members.filter((m) => !m.guardsLevel).length;
-  const unknownOptions = [['skip', 'Leave them out'], ...TIERS.filter((t) => t.key !== 't9').map((t) => [t.key, `Count as ${t.label}`])]
+  const unknownOptions = [['skip', t('Leave them out')], ...TIERS.filter((tier) => tier.key !== 't9').map((tier) => [tier.key, t('Count as {tier}', { tier: tier.label })])]
     .map(([v, l]) => `<option value="${v}" ${st.settings.unknownAs === v ? 'selected' : ''}>${esc(l)}</option>`)
     .join('');
 
   const hidden = TIERS.filter((x) => !st.shownTiers.has(x.key));
-  const rows = TIERS.filter((x) => st.shownTiers.has(x.key)).map((t) => sliderRow({
-    id: `ancient-tier-${t.key}`,
-    label: t.label,
+  const rows = TIERS.filter((x) => st.shownTiers.has(x.key)).map((tier) => sliderRow({
+    id: `ancient-tier-${tier.key}`,
+    label: tier.label,
     min: 0,
     max: st.roster.maxMembers || 100,
-    value: st.counts[t.key],
-    attrs: { key: `tier-${t.key}`, html: `data-tier="${t.key}"` },
+    value: st.counts[tier.key],
+    attrs: { key: `tier-${tier.key}`, html: `data-tier="${tier.key}"` },
   })).join('');
 
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Members per tier</h2>
-        <button type="button" class="btn btn-sm" data-tool-action="reload-roster">Count the roster again</button>
+        <h2>${t('Members per tier')}</h2>
+        <button type="button" class="btn btn-sm" data-tool-action="reload-roster">${t('Count the roster again')}</button>
       </div>
       <div class="card-body-padded">
         <p class="muted-copy">${rosterSourceHtml()}</p>
         ${unknown > 0 ? `
           <div class="tool-inline-field">
-            <label for="ancient-unknown">${unknown} member${unknown === 1 ? ' has' : 's have'} no known guards level</label>
+            <label for="ancient-unknown">${tn(unknown, '{n} member has no known guards level', '{n} members have no known guards level')}</label>
             <select id="ancient-unknown" class="input tool-select" data-setting="unknownAs">${unknownOptions}</select>
           </div>` : ''}
-        <p class="muted-copy tool-tier-note">T9 = maxed on G, S, M and E. Guards levels can't tell a T9 from a G9, so move them across by hand.</p>
+        <p class="muted-copy tool-tier-note">${t('T9 = maxed on G, S, M and E. Guards levels can\'t tell a T9 from a G9, so move them across by hand.')}</p>
         <div class="tool-slider-grid">${rows}</div>
         ${tierToggleHtml(hidden)}
         <p class="tool-total-line" data-readout="memberTotal">${memberTotalHtml()}</p>
@@ -226,11 +232,11 @@ function rosterCardHtml() {
 function tierToggleHtml(hidden) {
   if (st.roster.members.length === 0) return '';
   if (st.showAllTiers) {
-    return '<p class="tool-tier-toggle"><button type="button" class="btn btn-sm btn-ghost" data-tool-action="toggle-tiers">Show only the clan\'s tiers</button></p>';
+    return `<p class="tool-tier-toggle"><button type="button" class="btn btn-sm btn-ghost" data-tool-action="toggle-tiers">${t('Show only the clan\'s tiers')}</button></p>`;
   }
   if (!hidden.length) return '';
-  return `<p class="tool-tier-toggle muted-copy">${hidden.map((x) => x.label).join(', ')} hidden — nobody in the clan is at ${hidden.length === 1 ? 'that level' : 'those levels'}.
-    <button type="button" class="btn btn-sm btn-ghost" data-tool-action="toggle-tiers">Show all tiers</button></p>`;
+  return `<p class="tool-tier-toggle muted-copy">${tn(hidden.length, '{tiers} hidden — nobody in the clan is at that level.', '{tiers} hidden — nobody in the clan is at those levels.', { tiers: hidden.map((x) => x.label).join(', ') })}
+    <button type="button" class="btn btn-sm btn-ghost" data-tool-action="toggle-tiers">${t('Show all tiers')}</button></p>`;
 }
 
 /** Rebuild the roster card — after the shown tiers may have changed. */
@@ -241,9 +247,9 @@ function rerenderRoster(root) {
 }
 
 function memberTotalHtml() {
-  const total = TIERS.reduce((a, t) => a + (st.counts[t.key] || 0), 0);
+  const total = TIERS.reduce((a, tier) => a + (st.counts[tier.key] || 0), 0);
   const over = total > (st.roster.maxMembers || 100);
-  return `<strong>${total}</strong> member${total === 1 ? '' : 's'} in the plan${over ? ` <span class="tool-warn">⚠ more than a clan can hold (${st.roster.maxMembers || 100})</span>` : ''}`;
+  return `${tn(total, '<strong>{n}</strong> member in the plan', '<strong>{n}</strong> members in the plan')}${over ? ` <span class="tool-warn">⚠ ${t('more than a clan can hold ({max})', { max: st.roster.maxMembers || 100 })}</span>` : ''}`;
 }
 
 function rosterListHtml() {
@@ -252,12 +258,12 @@ function rosterListHtml() {
   const sorted = [...members].sort((a, b) => (b.guardsLevel ?? 0) - (a.guardsLevel ?? 0) || a.name.localeCompare(b.name));
   const items = sorted.map((m) => {
     const lvl = m.guardsLevel ? `G${m.guardsLevel}` : '?';
-    const stale = m.guardsStale ? ' <span class="tool-muted" title="No new donation evidence for a while — the level may have risen">(old)</span>' : '';
+    const stale = m.guardsStale ? ` <span class="tool-muted" title="${t('No new donation evidence for a while — the level may have risen')}">${t('(old)')}</span>` : '';
     return `<li><span class="tool-roster-level">${lvl}</span> ${esc(m.name)}${stale}</li>`;
   }).join('');
   return `
     <details class="card-collapsible tool-roster-list" data-section-key="tools-ancient-roster">
-      <summary class="card-header"><h2>Who was counted</h2></summary>
+      <summary class="card-header"><h2>${t('Who was counted')}</h2></summary>
       <ul class="tool-roster-items">${items}</ul>
     </details>`;
 }
@@ -276,10 +282,10 @@ function settingsCardHtml() {
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Settings</h2>
+        <h2>${t('Settings')}</h2>
         <div class="tool-default-actions">
-          <button type="button" class="btn btn-sm" data-tool-action="reset-defaults">Reset to clan default</button>
-          ${isAdmin() ? '<button type="button" class="btn btn-sm btn-primary" data-tool-action="save-defaults">Save as clan default</button>' : ''}
+          <button type="button" class="btn btn-sm" data-tool-action="reset-defaults">${t('Reset to clan default')}</button>
+          ${isAdmin() ? `<button type="button" class="btn btn-sm btn-primary" data-tool-action="save-defaults">${t('Save as clan default')}</button>` : ''}
         </div>
       </div>
       <div class="card-body-padded">
@@ -292,7 +298,7 @@ function settingsCardHtml() {
 function readoutFor(key) {
   const v = st.settings[key];
   if (key === 'tomeLevel') {
-    return `Level ${v} · <strong>+${TOME_BONUS_PCT[v - 1]}%</strong> · ${formatCompact(ARTIFACT_LEVEL_COSTS[v - 1])} vault pts`;
+    return t('Level {level} · <strong>+{pct}%</strong> · {cost} vault pts', { level: v, pct: TOME_BONUS_PCT[v - 1], cost: formatCompact(ARTIFACT_LEVEL_COSTS[v - 1]) });
   }
   if (key === 'level') return `<strong>${v}</strong>`;
   return `<strong>${v}%</strong>`;
@@ -429,11 +435,17 @@ function differsFromDefaults() {
 
 function defaultsStatusHtml() {
   const d = st.defaults;
-  const base = d.source === 'clan'
-    ? `Clan default saved by <strong>${esc(d.savedBy || 'an admin')}</strong>${d.savedAt ? ` on ${esc(String(d.savedAt).slice(0, 10))}` : ''}.`
-    : `Built-in defaults${isAdmin() ? ' — save your own for the clan' : " — an admin can save the clan's own"}.`;
+  let base;
+  if (d.source === 'clan') {
+    const name = esc(d.savedBy || t('an admin'));
+    base = d.savedAt
+      ? t('Clan default saved by <strong>{name}</strong> on {date}.', { name, date: esc(String(d.savedAt).slice(0, 10)) })
+      : t('Clan default saved by <strong>{name}</strong>.', { name });
+  } else {
+    base = isAdmin() ? t('Built-in defaults — save your own for the clan.') : t("Built-in defaults — an admin can save the clan's own.");
+  }
   if (!differsFromDefaults()) return base;
-  const tag = isAdmin() ? 'Changed — not saved' : 'Changed from the clan default';
+  const tag = isAdmin() ? t('Changed — not saved') : t('Changed from the clan default');
   return `<span class="tool-changed">● ${tag}</span> ${base}`;
 }
 
@@ -451,18 +463,18 @@ function resetToDefaults(root) {
 async function saveDefaults(button) {
   button.disabled = true;
   const label = button.textContent;
-  button.textContent = 'Saving…';
+  button.textContent = t('Saving…');
   try {
     const res = await apiPut('/tools/ancient-defaults', { settings: currentDefaultSettings() });
     if (res?.error) {
-      await notify(res.error, 'Could not save');
+      await notify(res.error, t('Could not save'));
       return;
     }
     st.defaults = res.defaults;
     setReadout('defaultsStatus', defaultsStatusHtml());
   } catch (err) {
     if (err?.name === 'UnauthenticatedError') return;
-    await notify(`Could not save: ${err?.message || err}`, 'Could not save');
+    await notify(t('Could not save: {error}', { error: err?.message || err }), t('Could not save'));
   } finally {
     button.disabled = false;
     button.textContent = label;
@@ -470,7 +482,8 @@ async function saveDefaults(button) {
 }
 
 const fmtInt = (n) => Math.round(n).toLocaleString();
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const summonsText = (n) => tn(n, '{n} summon', '{n} summons', { n });
+const killsText = (n) => tn(n, '{n} kill', '{n} kills', { n });
 
 /** Intrinsic sizes of the cut-outs, so the box is right before the image loads. */
 const MEDALLION_SIZE = { tome: [210, 228], figurine: [210, 247], clock: [211, 230] };
@@ -486,7 +499,7 @@ function medallionHtml(name, title, level, caption) {
       <figcaption>
         <span class="ancient-artifact-name">${esc(title)}</span>
         <span class="ancient-artifact-value">${caption}</span>
-        <span class="visually-hidden">, level ${level ?? 'not affordable'}</span>
+        <span class="visually-hidden">, ${t('level {level}', { level: level ?? t('not affordable') })}</span>
       </figcaption>
     </figure>`;
 }
@@ -495,12 +508,12 @@ function heroHtml(plan, opt) {
   const ok = opt.attainable;
   const tomePct = TOME_BONUS_PCT[plan.tomeLevel - 1];
   const verdict = ok
-    ? `<span class="ancient-verdict-tag is-ok">✓ Affordable</span>
-       <div class="ancient-verdict-title">${plural(opt.summons, 'summon')} × ${opt.minutes} min</div>
-       <div class="ancient-verdict-sub">${fmtInt(opt.leftover)} vault points left over after the Clock</div>`
-    : `<span class="ancient-verdict-tag is-short">✕ Not affordable</span>
-       <div class="ancient-verdict-title">${plural(opt.summons, 'summon')}</div>
-       <div class="ancient-verdict-sub">${fmtInt(opt.short)} vault points short of the Figurine and Tome alone</div>`;
+    ? `<span class="ancient-verdict-tag is-ok">✓ ${t('Affordable')}</span>
+       <div class="ancient-verdict-title">${t('{summons} × {minutes} min', { summons: summonsText(opt.summons), minutes: opt.minutes })}</div>
+       <div class="ancient-verdict-sub">${tn(Math.round(opt.leftover), '{n} vault point left over after the Clock', '{n} vault points left over after the Clock', { n: fmtInt(opt.leftover) })}</div>`
+    : `<span class="ancient-verdict-tag is-short">✕ ${t('Not affordable')}</span>
+       <div class="ancient-verdict-title">${summonsText(opt.summons)}</div>
+       <div class="ancient-verdict-sub">${tn(Math.round(opt.short), '{n} vault point short of the Figurine and Tome alone', '{n} vault points short of the Figurine and Tome alone', { n: fmtInt(opt.short) })}</div>`;
 
   return `
     <div class="card ancient-hero ${ok ? 'is-ok' : 'is-short'}">
@@ -508,14 +521,14 @@ function heroHtml(plan, opt) {
         <div class="ancient-hero-main">
           <div class="ancient-verdict">${verdict}</div>
           <div class="ancient-artifacts">
-            ${medallionHtml('tome', 'Tome of Knowledge', plan.tomeLevel, `Bonus +${tomePct}%`)}
-            ${medallionHtml('figurine', 'Enchanted Figurine', opt.summons, `Summons ${opt.summons}`)}
-            ${medallionHtml('clock', 'Mysterious Clock', opt.clockLevel, ok ? `Time ${opt.minutes} min` : 'Time —')}
+            ${medallionHtml('tome', tGame('Tome of Knowledge'), plan.tomeLevel, t('Bonus +{pct}%', { pct: tomePct }))}
+            ${medallionHtml('figurine', tGame('Enchanted Figurine'), opt.summons, t('Summons {count}', { count: opt.summons }))}
+            ${medallionHtml('clock', tGame('Mysterious Clock'), opt.clockLevel, ok ? t('Time {minutes} min', { minutes: opt.minutes }) : t('Time —'))}
           </div>
           <div class="stats-grid ancient-stats">
-            <div class="stat-card"><div class="label">Vault pot</div><div class="value">${formatCompact(plan.pot)}</div><div class="sub">${fmtInt(plan.pot)} points</div></div>
-            <div class="stat-card stat-card-lead"><div class="label">Clan target</div><div class="value">${formatCompact(opt.requirement)}</div><div class="sub">${plural(opt.summons, 'kill')} incl. +${tomePct}% Tome</div></div>
-            <div class="stat-card"><div class="label">Tin Man</div><div class="value">${plan.level} → ${opt.endLevel}</div><div class="sub">level before → after</div></div>
+            <div class="stat-card"><div class="label">${t('Vault pot')}</div><div class="value">${formatCompact(plan.pot)}</div><div class="sub">${tn(plan.pot, '{n} point', '{n} points', { n: fmtInt(plan.pot) })}</div></div>
+            <div class="stat-card stat-card-lead"><div class="label">${t('Clan target')}</div><div class="value">${formatCompact(opt.requirement)}</div><div class="sub">${t('{kills} incl. +{pct}% Tome', { kills: killsText(opt.summons), pct: tomePct })}</div></div>
+            <div class="stat-card"><div class="label">${esc(tGame('Tin Man'))}</div><div class="value">${plan.level} → ${opt.endLevel}</div><div class="sub">${t('level before → after')}</div></div>
           </div>
         </div>
         <img class="ancient-tinman" src="${img('tinman')}" alt="" width="425" height="405" decoding="async">
@@ -524,27 +537,28 @@ function heroHtml(plan, opt) {
 }
 
 function optionsCardHtml(plan, sel) {
+  const tinManAfter = t('{tinman} after', { tinman: tGame('Tin Man') });
   const rows = plan.options.map((o) => {
     const isSel = o.summons === sel;
     const status = o.attainable
-      ? `<span class="tool-ok">${fmtInt(o.leftover)} left</span>`
-      : `<span class="tool-short">✕ ${formatCompact(o.short)} short</span>`;
+      ? `<span class="tool-ok">${t('{points} left', { points: fmtInt(o.leftover) })}</span>`
+      : `<span class="tool-short">✕ ${t('{points} short', { points: formatCompact(o.short) })}</span>`;
     return `
       <tr class="ancient-option ${isSel ? 'is-selected' : ''} ${o.attainable ? '' : 'is-unaffordable'}" data-summons="${o.summons}">
-        <td data-role="lead"><button type="button" class="ancient-pick" aria-pressed="${isSel}" aria-label="Plan ${plural(o.summons, 'summon')}">${o.summons}</button></td>
-        <td data-role="primary"><span class="mrow-name">${o.attainable ? `${o.minutes} min each` : 'Not affordable'}</span><span class="mrow-sub">${o.attainable ? `${fmtInt(o.leftover)} vault pts left` : `${fmtInt(o.short)} vault pts short`}</span></td>
+        <td data-role="lead"><button type="button" class="ancient-pick" aria-pressed="${isSel}" aria-label="${t('Plan {summons}', { summons: summonsText(o.summons) })}">${o.summons}</button></td>
+        <td data-role="primary"><span class="mrow-name">${o.attainable ? t('{minutes} min each', { minutes: o.minutes }) : t('Not affordable')}</span><span class="mrow-sub">${o.attainable ? t('{points} vault pts left', { points: fmtInt(o.leftover) }) : t('{points} vault pts short', { points: fmtInt(o.short) })}</span></td>
         <td data-role="hidden" class="num">${status}</td>
-        <td data-role="metric" data-label="Clan target" class="num" title="${fmtInt(o.requirement)}">${formatCompact(o.requirement)}</td>
-        <td class="num" data-label="Tin Man after">${o.endLevel}</td>
+        <td data-role="metric" data-label="${t('Clan target')}" class="num" title="${fmtInt(o.requirement)}">${formatCompact(o.requirement)}</td>
+        <td class="num" data-label="${esc(tinManAfter)}">${o.endLevel}</td>
       </tr>`;
   }).join('');
   return `
     <div class="card">
-      <div class="card-header"><h2>Summon options</h2><span class="card-header-hint">Pick a row to plan it</span></div>
+      <div class="card-header"><h2>${t('Summon options')}</h2><span class="card-header-hint">${t('Pick a row to plan it')}</span></div>
       <div class="card-body">
         <table class="table-responsive ancient-options-table">
           <colgroup><col class="col-summons"><col class="col-time"><col class="col-vault"><col class="col-target"><col class="col-after"></colgroup>
-          <thead><tr><th>Summons</th><th>Time</th><th class="num">Vault points</th><th class="num">Clan target</th><th class="num">Tin Man after</th></tr></thead>
+          <thead><tr><th>${t('Summons')}</th><th>${t('Time')}</th><th class="num">${t('Vault points')}</th><th class="num">${t('Clan target')}</th><th class="num">${esc(tinManAfter)}</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -552,33 +566,33 @@ function optionsCardHtml(plan, sel) {
 }
 
 function perMemberCardHtml(plan, opt) {
-  const tierTotal = (t) => (opt.perMember[t.key] ?? 0) * (st.counts[t.key] || 0);
-  const handedOut = TIERS.reduce((a, t) => a + tierTotal(t), 0);
-  const rows = TIERS.filter((x) => st.shownTiers.has(x.key)).map((t) => {
-    const n = st.counts[t.key] || 0;
-    const each = opt.perMember[t.key];
-    const total = tierTotal(t);
+  const tierTotal = (tier) => (opt.perMember[tier.key] ?? 0) * (st.counts[tier.key] || 0);
+  const handedOut = TIERS.reduce((a, tier) => a + tierTotal(tier), 0);
+  const rows = TIERS.filter((x) => st.shownTiers.has(x.key)).map((tier) => {
+    const n = st.counts[tier.key] || 0;
+    const each = opt.perMember[tier.key];
+    const total = tierTotal(tier);
     const share = handedOut > 0 ? `${((total / handedOut) * 100).toFixed(1)}%` : '—';
     return `
       <tr class="${n === 0 ? 'is-empty-tier' : ''}">
-        <td data-role="lead"><span class="tool-tier-badge">${t.label}</span></td>
-        <td data-role="primary"><span class="mrow-name">${plural(n, 'member')}</span><span class="mrow-sub">${share} of the target</span></td>
-        <td data-role="metric" data-label="Points each" class="num" title="${each === null ? '' : fmtInt(each)}"><strong>${formatCompact(each)}</strong></td>
-        <td class="num" data-label="Tier total">${n ? formatCompact(total) : '—'}</td>
+        <td data-role="lead"><span class="tool-tier-badge">${tier.label}</span></td>
+        <td data-role="primary"><span class="mrow-name">${tn(n, '{n} member', '{n} members', { n })}</span><span class="mrow-sub">${t('{share} of the target', { share })}</span></td>
+        <td data-role="metric" data-label="${t('Points each')}" class="num" title="${each === null ? '' : fmtInt(each)}"><strong>${formatCompact(each)}</strong></td>
+        <td class="num" data-label="${t('Tier total')}">${n ? formatCompact(total) : '—'}</td>
         <td data-role="hidden" class="num">${share}</td>
       </tr>`;
   }).join('');
   const empty = plan.weightTotal === 0
-    ? '<p class="card-note muted-copy">Add members to a tier to split the target.</p>'
-    : `<p class="card-note muted-copy">For ${plural(opt.summons, 'kill')}, already lowered for a ${st.settings.margin}% overshoot.</p>`;
+    ? `<p class="card-note muted-copy">${t('Add members to a tier to split the target.')}</p>`
+    : `<p class="card-note muted-copy">${t('For {kills}, already lowered for a {pct}% overshoot.', { kills: killsText(opt.summons), pct: st.settings.margin })}</p>`;
   return `
     <div class="card">
-      <div class="card-header"><h2>Points per member</h2><span class="card-header-hint">Rise of the Ancients</span></div>
+      <div class="card-header"><h2>${t('Points per member')}</h2><span class="card-header-hint">${esc(tGame('Rise of the Ancients'))}</span></div>
       ${empty}
       <div class="card-body">
         <table class="table-responsive ancient-tier-table">
           <colgroup><col class="col-tier"><col class="col-members"><col class="col-each"><col class="col-total"><col class="col-share"></colgroup>
-          <thead><tr><th>Tier</th><th>Members</th><th class="num">Points each</th><th class="num">Tier total</th><th class="num">Share</th></tr></thead>
+          <thead><tr><th>${t('Tier')}</th><th>${t('Members')}</th><th class="num">${t('Points each')}</th><th class="num">${t('Tier total')}</th><th class="num">${t('Share')}</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -588,16 +602,16 @@ function perMemberCardHtml(plan, opt) {
 function howItWorksHtml() {
   return `
     <details class="card card-collapsible" data-section-key="tools-ancient-howto">
-      <summary class="card-header"><h2>How this works</h2></summary>
+      <summary class="card-header"><h2>${t('How this works')}</h2></summary>
       <div class="card-body-padded tool-howto">
         <ul>
-          <li><strong>Vault pot.</strong> Each member raids one vault in Ancients' Treasure. Their guards level caps its size: G1 1,000 … G9 8,200 vault points.</li>
-          <li><strong>What it buys.</strong> The Figurine (summons) and the Tome you pick come first. The Clock gets the rest, up to 120 minutes.</li>
-          <li><strong>The target.</strong> Every summon is planned as a kill, one Tin Man level higher each time. The clan must score their combined HP plus the Tome bonus.</li>
-          <li><strong>The split.</strong> Each tier gets a fixed weight (G9 = 2.25× G8, and T9 = 1.75× G9). The ratios are a planning convention, not game data.</li>
-          <li><strong>Summons 7 and 8</strong> are only offered while a seasonal kingdom runs.</li>
+          <li>${t('<strong>Vault pot.</strong> Each member raids one vault in {event}. Their guards level caps its size: G1 1,000 … G9 8,200 vault points.', { event: esc(tGame('Ancients\' Treasure')) })}</li>
+          <li>${t('<strong>What it buys.</strong> The Figurine (summons) and the Tome you pick come first. The Clock gets the rest, up to 120 minutes.')}</li>
+          <li>${t('<strong>The target.</strong> Every summon is planned as a kill, one {tinman} level higher each time. The clan must score their combined HP plus the Tome bonus.', { tinman: esc(tGame('Tin Man')) })}</li>
+          <li>${t('<strong>The split.</strong> Each tier gets a fixed weight (G9 = 2.25× G8, and T9 = 1.75× G9). The ratios are a planning convention, not game data.')}</li>
+          <li>${t('<strong>Summons 7 and 8</strong> are only offered while a seasonal kingdom runs.')}</li>
         </ul>
-        <p class="muted-copy">Matches <a href="https://totalcalculator.org/summons.php" target="_blank" rel="noopener">totalcalculator.org's Ancient planner</a>, rebuilt from its outputs.</p>
+        <p class="muted-copy">${t('Matches {link}, rebuilt from its outputs.', { link: `<a href="https://totalcalculator.org/summons.php" target="_blank" rel="noopener">${t('totalcalculator.org\'s Ancient planner')}</a>` })}</p>
       </div>
     </details>`;
 }

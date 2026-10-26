@@ -5,7 +5,9 @@
 // NodeList for missing selectors; callers should null-check or use
 // optional chaining.
 
-export const $ = (sel) => document.querySelector(sel);
+import { t, tn, englishOf } from './i18n.js';
+
+export const $ =(sel) => document.querySelector(sel);
 export const $$ = (sel) => document.querySelectorAll(sel);
 
 /**
@@ -155,19 +157,19 @@ export function formatRelativeTime(iso) {
   const then = new Date(iso).getTime();
   if (!Number.isFinite(then)) return formatDate(iso);
   const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) return 'just now';
+  if (diffSec < 60) return t('just now');
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffMin < 60) return tn(diffMin, '{n} min ago', '{n} min ago');
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) return tn(diffHr, '{n}h ago', '{n}h ago');
   const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 7) return `${diffDay}d ago`;
+  if (diffDay < 7) return tn(diffDay, '{n}d ago', '{n}d ago');
   const diffWk = Math.floor(diffDay / 7);
-  if (diffWk < 5) return `${diffWk}w ago`;
+  if (diffWk < 5) return tn(diffWk, '{n}w ago', '{n}w ago');
   const diffMo = Math.floor(diffDay / 30);
-  if (diffMo < 12) return `${diffMo}mo ago`;
+  if (diffMo < 12) return tn(diffMo, '{n}mo ago', '{n}mo ago');
   const diffYr = Math.floor(diffDay / 365);
-  return `${diffYr}y ago`;
+  return tn(diffYr, '{n}y ago', '{n}y ago');
 }
 
 /**
@@ -184,9 +186,9 @@ export function formatDuration(startIso, endIso) {
   const hours = Math.floor(totalSec / 3600);
   const minutes = Math.floor((totalSec % 3600) / 60);
   const seconds = totalSec % 60;
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
+  if (hours > 0) return t('{hours}h {minutes}m {seconds}s', { hours, minutes, seconds });
+  if (minutes > 0) return t('{minutes}m {seconds}s', { minutes, seconds });
+  return t('{seconds}s', { seconds });
 }
 
 /**
@@ -196,9 +198,9 @@ export function formatDuration(startIso, endIso) {
  * they're easy to tell apart from real scans.
  */
 export function formatTriggerSource(source) {
-  if (source === 'manual') return '<span class="chest-type epic">Manual</span>';
-  if (source === 'import') return '<span class="chest-type unknown">Import</span>';
-  return '<span class="chest-type common">Scheduled</span>';
+  if (source === 'manual') return `<span class="chest-type epic">${t('Manual')}</span>`;
+  if (source === 'import') return `<span class="chest-type unknown">${t('Import')}</span>`;
+  return `<span class="chest-type common">${t('Scheduled')}</span>`;
 }
 
 /** Hash for a per-session detail page. */
@@ -363,7 +365,7 @@ export function holdDialogFocus(host, {
  * missing (shouldn't happen in production, but handy for setup-only
  * pages that don't include the root element).
  */
-export function openModal({ title, message, type = 'info', defaultValue = null, confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false }) {
+export function openModal({ title, message, type = 'info', defaultValue = null, confirmLabel = t('OK'), cancelLabel = t('Cancel'), danger = false }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modalRoot');
     if (!root) {
@@ -442,9 +444,9 @@ export function openModal({ title, message, type = 'info', defaultValue = null, 
  */
 function classifyToast(title) {
   if (!title) return 'info';
-  const t = String(title).toLowerCase();
-  if (/(fail|error|invalid|not allowed|cannot|incomplete|nothing|no member|no stage|partial)/.test(t)) return 'error';
-  if (/(saved|success|complete|started|deleted|calibrated|merge complete)/.test(t)) return 'success';
+  const text = String(englishOf(title)).toLowerCase();
+  if (/(fail|error|invalid|not allowed|cannot|incomplete|nothing|no member|no stage|partial)/.test(text)) return 'error';
+  if (/(saved|success|complete|started|deleted|calibrated|merge complete)/.test(text)) return 'success';
   return 'info';
 }
 
@@ -540,7 +542,7 @@ if (typeof document !== 'undefined') {
 // is where the crop is actually *read*: it magnifies past natural size, which a
 // hover panel anchored to a table row can never do.
 
-const CROP_UNAVAILABLE = 'Screenshot no longer available (aged out of retention).';
+const CROP_UNAVAILABLE = t('Screenshot no longer available (aged out of retention).');
 
 let cropPreviewEl = null;
 
@@ -553,7 +555,7 @@ export function showCropPreview(url, trigger, { wide = false } = {}) {
   // Assigned as a property, not interpolated into innerHTML, so a crafted URL
   // can't inject markup here.
   img.src = url;
-  img.alt = 'Screenshot of the row this entry came from';
+  img.alt = t('Screenshot of the row this entry came from');
   // Chest batch crops age out with screenshotRetentionDays while the DB row keeps
   // pointing at them, so a hover on an old entry can 404. Say so instead of showing
   // a broken-image icon.
@@ -624,16 +626,16 @@ export function openCropLightbox(url, { returnFocusTo = null } = {}) {
   overlay.className = 'crop-lightbox';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', 'Screenshot evidence');
+  overlay.setAttribute('aria-label', t('Screenshot evidence'));
   overlay.innerHTML = `
-    <div class="crop-lightbox-bar" role="toolbar" aria-label="Screenshot zoom">
+    <div class="crop-lightbox-bar" role="toolbar" aria-label="${t('Screenshot zoom')}">
       <span class="crop-lightbox-zoom" aria-live="polite">…</span>
-      <button class="btn btn-tight" data-zoom="out" title="Zoom out (−)" aria-label="Zoom out">−</button>
-      <button class="btn btn-tight" data-zoom="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
-      <button class="btn btn-tight" data-zoom="fit" title="Fit to screen (0)">Fit</button>
-      <button class="btn btn-tight" data-zoom="one" title="Actual pixel size (1)">1:1</button>
-      <a class="btn btn-tight crop-lightbox-raw" target="_blank" rel="noopener">Open original ↗</a>
-      <button class="btn btn-tight crop-lightbox-close" title="Close (Esc)" aria-label="Close">✕</button>
+      <button class="btn btn-tight" data-zoom="out" title="${t('Zoom out (−)')}" aria-label="${t('Zoom out')}">−</button>
+      <button class="btn btn-tight" data-zoom="in" title="${t('Zoom in (+)')}" aria-label="${t('Zoom in')}">+</button>
+      <button class="btn btn-tight" data-zoom="fit" title="${t('Fit to screen (0)')}">${t('Fit')}</button>
+      <button class="btn btn-tight" data-zoom="one" title="${t('Actual pixel size (1)')}">1:1</button>
+      <a class="btn btn-tight crop-lightbox-raw" target="_blank" rel="noopener">${t('Open original ↗')}</a>
+      <button class="btn btn-tight crop-lightbox-close" title="${t('Close (Esc)')}" aria-label="${t('Close')}">✕</button>
     </div>
     <div class="crop-lightbox-stage" tabindex="-1"></div>
   `;
@@ -643,7 +645,7 @@ export function openCropLightbox(url, { returnFocusTo = null } = {}) {
   overlay.querySelector('.crop-lightbox-raw').href = url;
 
   const img = document.createElement('img');
-  img.alt = 'Full-size screenshot of the row this entry came from';
+  img.alt = t('Full-size screenshot of the row this entry came from');
   img.draggable = false;
   stage.appendChild(img);
 
@@ -860,11 +862,11 @@ export function notify(message, title = '') {
   return Promise.resolve(true);
 }
 
-export function confirmDialog(message, { title = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false } = {}) {
+export function confirmDialog(message, { title = '', confirmLabel = t('Confirm'), cancelLabel = t('Cancel'), danger = false } = {}) {
   return openModal({ title, message, type: 'confirm', confirmLabel, cancelLabel, danger });
 }
 
-export function promptDialog(message, { title = '', defaultValue = '', confirmLabel = 'OK', cancelLabel = 'Cancel' } = {}) {
+export function promptDialog(message, { title = '', defaultValue = '', confirmLabel = t('OK'), cancelLabel = t('Cancel') } = {}) {
   return openModal({ title, message, type: 'prompt', defaultValue, confirmLabel, cancelLabel });
 }
 
@@ -883,8 +885,8 @@ export function selectDialog(message, options, {
   title = '',
   defaultValue = '',
   fieldLabel = '',
-  confirmLabel = 'OK',
-  cancelLabel = 'Cancel',
+  confirmLabel = t('OK'),
+  cancelLabel = t('Cancel'),
 } = {}) {
   return new Promise((resolve) => {
     const root = document.getElementById('modalRoot');
@@ -980,7 +982,7 @@ export function contentModal({ title = '', html = '', wide = false, className = 
     <div class="${esc(cardClass)}" role="dialog" aria-modal="true">
       <div class="modal-head">
         <div class="modal-title">${escapeHtml(title)}</div>
-        <button class="modal-close" type="button" aria-label="Close">&times;</button>
+        <button class="modal-close" type="button" aria-label="${t('Close')}">&times;</button>
       </div>
       <div class="modal-content"></div>
     </div>

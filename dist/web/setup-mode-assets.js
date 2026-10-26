@@ -38,6 +38,14 @@ exports.SETUP_MODE_ASSETS = [
     'lib/login-bridge.js',
     'lib/wheel.js',
     'lib/theme.js',
+    // Translations: ui.js imports i18n.js, which loads the visitor's dictionary
+    // with a dynamic import() (invisible to the import-graph test, so listed by
+    // hand — a missing one only falls back to English, it can't kill the page).
+    'lib/i18n.js',
+    'lib/i18n/es.js',
+    'lib/i18n/fr.js',
+    'lib/i18n/ru.js',
+    'lib/i18n/de.js',
     // The tab icon setup.html links, like every other shell.
     'favicon.svg',
 ];

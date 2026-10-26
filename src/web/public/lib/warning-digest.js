@@ -10,8 +10,11 @@
 // outcome is that the whole card gets dismissed unread, which costs more than
 // showing nothing would.
 //
-// No DOM and no imports, so it can be tested directly (same arrangement as
-// leaderboard-render.js). The rendering itself stays in pages/system.js.
+// No DOM and no imports beyond i18n.js, so it can be tested directly (same
+// arrangement as leaderboard-render.js). The rendering itself stays in
+// pages/system.js.
+
+import { t } from './i18n.js';
 
 // Longest a derived headline may run before it is cut on a word boundary.
 export const HEADLINE_MAX = 96;
@@ -44,7 +47,7 @@ const MIN_CUT = 50;
  */
 export function warningHeadline(msg) {
   const text = String(msg == null ? '' : msg).replace(/\s+/g, ' ').trim();
-  if (!text) return '(empty message)';
+  if (!text) return t('(empty message)');
 
   const dash = text.indexOf(' — ');
   if (dash > 0 && dash <= HEADLINE_MAX) return text.slice(0, dash);

@@ -8,6 +8,7 @@
 import { esc } from './ui.js';
 import { api } from './api.js';
 import { getCurrentUser } from './state.js';
+import { t, tGame } from './i18n.js';
 
 /**
  * Format a resource amount for display. Speedups are stored in hours and
@@ -18,9 +19,9 @@ export function formatResourceAmount(slug, amount) {
   if (slug === 'clan-speedup') {
     const d = Math.floor(n / 24);
     const h = n % 24;
-    if (d > 0 && h > 0) return `${d}d ${h}h`;
-    if (d > 0) return `${d}d`;
-    return `${h}h`;
+    if (d > 0 && h > 0) return t('{days}d {hours}h', { days: d, hours: h });
+    if (d > 0) return t('{days}d', { days: d });
+    return t('{hours}h', { hours: h });
   }
   return n.toLocaleString();
 }
@@ -44,7 +45,7 @@ export function formatResourceCompact(slug, amount) {
 
 /** Inline icon + name for a resource. `slug` may be null (Unknown). */
 export function resourceIconHtml(slug, name) {
-  const label = esc(name ?? 'Unknown');
+  const label = esc(name != null ? tGame(name) : t('Unknown'));
   if (!slug) return label;
   // The name lives in its own span so it can truncate with an ellipsis
   // inside the fixed-width Resource column (long event names like "Torch
@@ -75,16 +76,16 @@ export function resourceTabsHtml(active) {
   const user = getCurrentUser();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
   return `<div class="resources-tabs" role="tablist">
-    ${tab('overview', '#resources', 'Overview')}
-    ${tab('totals', '#resources/totals', 'Totals')}
-    ${isAdmin ? tab('admin', '#resources/admin', 'Admin') : ''}
+    ${tab('overview', '#resources', t('Overview'))}
+    ${tab('totals', '#resources/totals', t('Totals'))}
+    ${isAdmin ? tab('admin', '#resources/admin', t('Admin')) : ''}
   </div>`;
 }
 
 /** Sent/Took direction pill. `direction` is 1 (Sent) or -1 (Took). */
 export function directionPillHtml(direction) {
   const isSent = direction === 1;
-  return `<span class="resource-direction ${isSent ? 'resource-sent' : 'resource-took'}">${isSent ? 'Sent' : 'Took'}</span>`;
+  return `<span class="resource-direction ${isSent ? 'resource-sent' : 'resource-took'}">${isSent ? t('Sent') : t('Took')}</span>`;
 }
 
 /**

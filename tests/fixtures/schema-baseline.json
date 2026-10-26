@@ -532,7 +532,7 @@
   {
     "type": "table",
     "name": "users",
-    "sql": "CREATE TABLE users ( id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('superadmin', 'admin', 'user')), created_by INTEGER REFERENCES users(id), created_at TEXT NOT NULL, last_login TEXT, clan_id INTEGER REFERENCES clans(id) , last_visited TEXT, theme TEXT NOT NULL DEFAULT 'dark')"
+    "sql": "CREATE TABLE users ( id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('superadmin', 'admin', 'user')), created_by INTEGER REFERENCES users(id), created_at TEXT NOT NULL, last_login TEXT, clan_id INTEGER REFERENCES clans(id) , last_visited TEXT, theme TEXT NOT NULL DEFAULT 'dark', language TEXT NOT NULL DEFAULT '')"
   },
   {
     "type": "view",

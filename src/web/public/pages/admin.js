@@ -16,6 +16,7 @@ import {
   notify, confirmDialog, promptDialog,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 import { mountPointsBoard } from './points-board.js';
 import { mountMemberLevels } from './member-levels.js';
 
@@ -32,13 +33,13 @@ import { mountMemberLevels } from './member-levels.js';
  */
 function countedOption(value, count) {
   const n = Number(count) || 0;
-  return `<option value="${esc(value)}">${esc(value)} (${n.toLocaleString()} chest${n === 1 ? '' : 's'})</option>`;
+  return `<option value="${esc(value)}">${esc(value)} (${tn(n, '{n} chest', '{n} chests')})</option>`;
 }
 
 export async function renderAdmin(el) {
   const currentUser = getCurrentUser();
   if (currentUser?.role !== 'admin' && currentUser?.role !== 'superadmin') {
-    el.innerHTML = '<div class="empty-state"><p>Admin access required.</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${t('Admin access required.')}</p></div>`;
     return;
   }
   // Chest Points are per clan (the active clan's board); Triumphal Chest Points
@@ -85,43 +86,43 @@ export async function renderAdmin(el) {
     <!-- ═══════════════════════════════════════════════════ -->
     <!-- SECTION: Member Data                                  -->
     <!-- ═══════════════════════════════════════════════════ -->
-    <h2 class="page-section-title">Member Data</h2>
-    <p class="page-section-intro">Edit names, delete duplicates, and merge OCR misreads into the correct player.</p>
+    <h2 class="page-section-title">${t('Member Data')}</h2>
+    <p class="page-section-intro">${t('Edit names, delete duplicates, and merge OCR misreads into the correct player.')}</p>
 
     <!-- Levels from chat: self-contained, fills itself (pages/member-levels.js). -->
     <div class="card" id="memberLevels"></div>
 
     <div class="card">
-      <div class="card-header"><h2>Edit Members (${activeMembers.length})</h2></div>
+      <div class="card-header"><h2>${t('Edit Members ({count})', { count: activeMembers.length })}</h2></div>
       <div class="card-body card-body-padded">
         <details ${stats.totalSessions === 0 ? 'open' : ''}>
-          <summary class="collapse-toggle">Show member list</summary>
-          <p class="muted-copy mtb-12">Rename or remove members. Removing a player who has chest history keeps their existing records but excludes them from future scans — useful when a player leaves so a new player with a similar name can't accidentally be matched into their identity.</p>
+          <summary class="collapse-toggle">${t('Show member list')}</summary>
+          <p class="muted-copy mtb-12">${t('Rename or remove members. Removing a player who has chest history keeps their existing records but excludes them from future scans — useful when a player leaves so a new player with a similar name can\'t accidentally be matched into their identity.')}</p>
           <table class="table-responsive">
-            <thead><tr><th>Current Name</th><th class="col-edit">New Name</th><th class="col-actions"></th></tr></thead>
+            <thead><tr><th>${t('Current Name')}</th><th class="col-edit">${t('New Name')}</th><th class="col-actions"></th></tr></thead>
             <tbody>
               ${activeMembers.map((m) => `<tr id="member-row-${m.id}">
-                <td data-label="Current" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td>
-                <td data-label="New Name"><input type="text" class="input input-member" value="${esc(m.name)}" id="member-name-${m.id}"></td>
+                <td data-label="${t('Current')}" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td>
+                <td data-label="${t('New Name')}"><input type="text" class="input input-member" value="${esc(m.name)}" id="member-name-${m.id}"></td>
                 <td class="col-actions nowrap">
-                  <button class="btn btn-tight" data-action="save-member" data-member-id="${m.id}">Save</button>
-                  <button class="btn btn-tight btn-danger ml-4" data-action="delete-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">Remove</button>
+                  <button class="btn btn-tight" data-action="save-member" data-member-id="${m.id}">${t('Save')}</button>
+                  <button class="btn btn-tight btn-danger ml-4" data-action="delete-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">${t('Remove')}</button>
                 </td>
               </tr>`).join('')}
             </tbody>
           </table>
         </details>
         ${removedMembers.length > 0 ? `<details class="mt-12">
-          <summary class="collapse-toggle">Show removed members (${removedMembers.length})</summary>
-          <p class="muted-copy mtb-12">Players excluded from scan matching. Their chest history is intact. Restore one if it was removed by mistake or the player rejoined the clan.</p>
+          <summary class="collapse-toggle">${t('Show removed members ({count})', { count: removedMembers.length })}</summary>
+          <p class="muted-copy mtb-12">${t('Players excluded from scan matching. Their chest history is intact. Restore one if it was removed by mistake or the player rejoined the clan.')}</p>
           <table class="table-responsive">
-            <thead><tr><th>Name</th><th class="col-date">Last Seen</th><th class="col-actions"></th></tr></thead>
+            <thead><tr><th>${t('Name')}</th><th class="col-date">${t('Last Seen')}</th><th class="col-actions"></th></tr></thead>
             <tbody>
               ${removedMembers.map((m) => `<tr id="member-row-${m.id}">
-                <td data-label="Name" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td>
-                <td data-label="Last Seen" data-role="metric">${formatDate(m.lastSeen)}</td>
+                <td data-label="${t('Name')}" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td>
+                <td data-label="${t('Last Seen')}" data-role="metric">${formatDate(m.lastSeen)}</td>
                 <td class="col-actions nowrap">
-                  <button class="btn btn-tight btn-primary" data-action="restore-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">Restore</button>
+                  <button class="btn btn-tight btn-primary" data-action="restore-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">${t('Restore')}</button>
                 </td>
               </tr>`).join('')}
             </tbody>
@@ -131,33 +132,33 @@ export async function renderAdmin(el) {
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Merge Player Names</h2></div>
+      <div class="card-header"><h2>${t('Merge Player Names')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">Fix OCR name variations. Updates existing records and auto-corrects future scans.</p>
+        <p class="muted-copy mb-12">${t('Fix OCR name variations. Updates existing records and auto-corrects future scans.')}</p>
         <div class="inline-form-row">
           <div>
-            <label>OCR Misread</label>
+            <label>${t('OCR Misread')}</label>
             <select id="mergePlayerFrom" class="input">
-              <option value="">Select...</option>
+              <option value="">${t('Select...')}</option>
               ${activeMembers.map(memberOption).join('')}
             </select>
           </div>
           <span class="arrow-sep">→</span>
           <div>
-            <label>Correct Name</label>
+            <label>${t('Correct Name')}</label>
             <select id="mergePlayerTo" class="input">
-              <option value="">Select...</option>
+              <option value="">${t('Select...')}</option>
               ${activeMembers.map(memberOption).join('')}
             </select>
           </div>
-          <button class="btn btn-primary" data-action="do-merge-player">Merge</button>
+          <button class="btn btn-primary" data-action="do-merge-player">${t('Merge')}</button>
         </div>
         <div class="merge-custom-row mb-16">
-          <label for="mergePlayerToCustom">Or type a custom Correct Name (overrides the dropdown above)</label>
-          <input type="text" id="mergePlayerToCustom" class="input" placeholder="Custom name…">
+          <label for="mergePlayerToCustom">${t('Or type a custom Correct Name (overrides the dropdown above)')}</label>
+          <input type="text" id="mergePlayerToCustom" class="input" placeholder="${t('Custom name…')}">
         </div>
         ${playerRules.length > 0 ? `<details>
-          <summary class="collapse-toggle">${playerRules.length} active player merge rule${playerRules.length === 1 ? '' : 's'}</summary>
+          <summary class="collapse-toggle">${tn(playerRules.length, '{n} active player merge rule', '{n} active player merge rules', { n: playerRules.length })}</summary>
           <table class="table-responsive merge-rules-table">
             <colgroup>
               <col class="col-merge-from">
@@ -165,54 +166,54 @@ export async function renderAdmin(el) {
               <col class="col-merge-created">
               <col class="col-actions">
             </colgroup>
-            <thead><tr><th>From</th><th>To</th><th>Created</th><th></th></tr></thead>
+            <thead><tr><th>${t('From')}</th><th>${t('To')}</th><th>${t('Created')}</th><th></th></tr></thead>
             <tbody>
               ${playerRules.map((r) => `<tr>
-                <td data-label="From" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
-                <td data-label="To" data-role="hidden">${esc(r.toValue)}</td>
-                <td data-label="Created">${formatDate(r.createdAt)}</td>
-                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">Delete</button></td>
+                <td data-label="${t('From')}" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
+                <td data-label="${t('To')}" data-role="hidden">${esc(r.toValue)}</td>
+                <td data-label="${t('Created')}">${formatDate(r.createdAt)}</td>
+                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">${t('Delete')}</button></td>
               </tr>`).join('')}
             </tbody>
           </table>
-        </details>` : '<p class="muted-copy">No active player merge rules.</p>'}
+        </details>` : `<p class="muted-copy">${t('No active player merge rules.')}</p>`}
       </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════ -->
     <!-- SECTION: Chest Data                                   -->
     <!-- ═══════════════════════════════════════════════════ -->
-    <h2 class="page-section-title">Chest Data</h2>
-    <p class="page-section-intro">Fix OCR misreads in chest names and override automatic chest type classification.</p>
+    <h2 class="page-section-title">${t('Chest Data')}</h2>
+    <p class="page-section-intro">${t('Fix OCR misreads in chest names and override automatic chest type classification.')}</p>
 
     <div class="card">
-      <div class="card-header"><h2>Merge Chest Names</h2></div>
+      <div class="card-header"><h2>${t('Merge Chest Names')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">Map OCR misreads to the correct chest name. Applies to existing records and future scans.</p>
+        <p class="muted-copy mb-12">${t('Map OCR misreads to the correct chest name. Applies to existing records and future scans.')}</p>
         <div class="inline-form-row">
           <div>
-            <label>OCR Misread</label>
+            <label>${t('OCR Misread')}</label>
             <select id="mergeChestFrom" class="input">
-              <option value="">Select...</option>
+              <option value="">${t('Select...')}</option>
               ${chestTypes.map((c) => countedOption(c.name, c.count)).join('')}
             </select>
           </div>
           <span class="arrow-sep">→</span>
           <div>
-            <label>Correct Name</label>
+            <label>${t('Correct Name')}</label>
             <select id="mergeChestTo" class="input">
-              <option value="">Select...</option>
+              <option value="">${t('Select...')}</option>
               ${chestTypes.map((c) => countedOption(c.name, c.count)).join('')}
             </select>
           </div>
-          <button class="btn btn-primary" data-action="do-merge-chest">Merge</button>
+          <button class="btn btn-primary" data-action="do-merge-chest">${t('Merge')}</button>
         </div>
         <div class="merge-custom-row mb-16">
-          <label for="mergeChestToCustom">Or type a custom Correct Name (overrides the dropdown above)</label>
-          <input type="text" id="mergeChestToCustom" class="input" placeholder="Custom name…">
+          <label for="mergeChestToCustom">${t('Or type a custom Correct Name (overrides the dropdown above)')}</label>
+          <input type="text" id="mergeChestToCustom" class="input" placeholder="${t('Custom name…')}">
         </div>
         ${chestRules.length > 0 ? `<details>
-          <summary class="collapse-toggle">${chestRules.length} active chest merge rule${chestRules.length === 1 ? '' : 's'}</summary>
+          <summary class="collapse-toggle">${tn(chestRules.length, '{n} active chest merge rule', '{n} active chest merge rules', { n: chestRules.length })}</summary>
           <table class="table-responsive merge-rules-table">
             <colgroup>
               <col class="col-merge-from">
@@ -220,48 +221,48 @@ export async function renderAdmin(el) {
               <col class="col-merge-created">
               <col class="col-actions">
             </colgroup>
-            <thead><tr><th>From</th><th>To</th><th>Created</th><th></th></tr></thead>
+            <thead><tr><th>${t('From')}</th><th>${t('To')}</th><th>${t('Created')}</th><th></th></tr></thead>
             <tbody>
               ${chestRules.map((r) => `<tr>
-                <td data-label="From" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
-                <td data-label="To" data-role="hidden">${esc(r.toValue)}</td>
-                <td data-label="Created">${formatDate(r.createdAt)}</td>
-                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">Delete</button></td>
+                <td data-label="${t('From')}" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
+                <td data-label="${t('To')}" data-role="hidden">${esc(r.toValue)}</td>
+                <td data-label="${t('Created')}">${formatDate(r.createdAt)}</td>
+                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">${t('Delete')}</button></td>
               </tr>`).join('')}
             </tbody>
           </table>
-        </details>` : '<p class="muted-copy">No active chest merge rules.</p>'}
+        </details>` : `<p class="muted-copy">${t('No active chest merge rules.')}</p>`}
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Merge Chest Sources</h2></div>
+      <div class="card-header"><h2>${t('Merge Chest Sources')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">Map OCR misreads to the correct source string (e.g. "Level 5 Crypt." → "Level 5 Crypt"). Applies to existing records and future scans.</p>
+        <p class="muted-copy mb-12">${t('Map OCR misreads to the correct source string (e.g. "Level 5 Crypt." → "Level 5 Crypt"). Applies to existing records and future scans.')}</p>
         <div class="inline-form-row">
           <div>
-            <label>OCR Misread</label>
+            <label>${t('OCR Misread')}</label>
             <select id="mergeSourceFrom" class="input">
-              <option value="">Select...</option>
+              <option value="">${t('Select...')}</option>
               ${chestSources.map((s) => countedOption(s.source, s.count)).join('')}
             </select>
           </div>
           <span class="arrow-sep">→</span>
           <div>
-            <label>Correct Source</label>
+            <label>${t('Correct Source')}</label>
             <select id="mergeSourceTo" class="input">
-              <option value="">Select...</option>
+              <option value="">${t('Select...')}</option>
               ${chestSources.map((s) => countedOption(s.source, s.count)).join('')}
             </select>
           </div>
-          <button class="btn btn-primary" data-action="do-merge-source">Merge</button>
+          <button class="btn btn-primary" data-action="do-merge-source">${t('Merge')}</button>
         </div>
         <div class="merge-custom-row mb-16">
-          <label for="mergeSourceToCustom">Or type a custom Correct Source (overrides the dropdown above)</label>
-          <input type="text" id="mergeSourceToCustom" class="input" placeholder="Custom source…">
+          <label for="mergeSourceToCustom">${t('Or type a custom Correct Source (overrides the dropdown above)')}</label>
+          <input type="text" id="mergeSourceToCustom" class="input" placeholder="${t('Custom source…')}">
         </div>
         ${sourceRules.length > 0 ? `<details>
-          <summary class="collapse-toggle">${sourceRules.length} active source merge rule${sourceRules.length === 1 ? '' : 's'}</summary>
+          <summary class="collapse-toggle">${tn(sourceRules.length, '{n} active source merge rule', '{n} active source merge rules', { n: sourceRules.length })}</summary>
           <table class="table-responsive merge-rules-table">
             <colgroup>
               <col class="col-merge-from">
@@ -269,17 +270,17 @@ export async function renderAdmin(el) {
               <col class="col-merge-created">
               <col class="col-actions">
             </colgroup>
-            <thead><tr><th>From</th><th>To</th><th>Created</th><th></th></tr></thead>
+            <thead><tr><th>${t('From')}</th><th>${t('To')}</th><th>${t('Created')}</th><th></th></tr></thead>
             <tbody>
               ${sourceRules.map((r) => `<tr>
-                <td data-label="From" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
-                <td data-label="To" data-role="hidden">${esc(r.toValue)}</td>
-                <td data-label="Created">${formatDate(r.createdAt)}</td>
-                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">Delete</button></td>
+                <td data-label="${t('From')}" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
+                <td data-label="${t('To')}" data-role="hidden">${esc(r.toValue)}</td>
+                <td data-label="${t('Created')}">${formatDate(r.createdAt)}</td>
+                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">${t('Delete')}</button></td>
               </tr>`).join('')}
             </tbody>
           </table>
-        </details>` : '<p class="muted-copy">No active source merge rules.</p>'}
+        </details>` : `<p class="muted-copy">${t('No active source merge rules.')}</p>`}
       </div>
     </div>
 
@@ -320,46 +321,46 @@ export async function doMergePlayer(rerender) {
   // starting point for editing - the dropdown still wins if a real
   // member is chosen.
   const toName = $('#mergePlayerTo').value || ($('#mergePlayerToCustom')?.value || '').trim();
-  if (!fromName || !toName) return notify('Select both players', 'Cannot merge');
-  if (fromName === toName) return notify('Cannot merge a player with itself', 'Cannot merge');
+  if (!fromName || !toName) return notify(t('Select both players'), t('Cannot merge'));
+  if (fromName === toName) return notify(t('Cannot merge a player with itself'), t('Cannot merge'));
   const scrollY = window.scrollY;
   const result = await apiPost('/admin/merge-players', { fromName, toName });
-  if (result?.error) return notify(result.error, 'Merge failed');
+  if (result?.error) return notify(result.error, t('Merge failed'));
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
   // `note` is set when an existing rule already covered this spelling, so the rules
   // list won't have grown. Say so — silently not adding the row is what left admins
   // writing the same rule four times over.
   notify(
-    `Merged "${fromName}" into "${toName}".${result?.note ? ` ${result.note}` : ''}`,
-    'Merge complete',
+    `${t('Merged "{from}" into "{to}".', { from: fromName, to: toName })}${result?.note ? ` ${result.note}` : ''}`,
+    t('Merge complete'),
   );
 }
 
 export async function doMergeChest(rerender) {
   const from = $('#mergeChestFrom').value;
   const to = $('#mergeChestTo').value || ($('#mergeChestToCustom')?.value || '').trim();
-  if (!from || !to) return notify('Select both chest names', 'Cannot merge');
-  if (from === to) return notify('Cannot merge a chest with itself', 'Cannot merge');
+  if (!from || !to) return notify(t('Select both chest names'), t('Cannot merge'));
+  if (from === to) return notify(t('Cannot merge a chest with itself'), t('Cannot merge'));
   const scrollY = window.scrollY;
   const result = await apiPost('/admin/merge-rules', { type: 'chest', fromValue: from, toValue: to });
-  if (result?.error) return notify(result.error, 'Merge failed');
+  if (result?.error) return notify(result.error, t('Merge failed'));
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
-  notify(`Merged "${from}" into "${to}".`, 'Merge complete');
+  notify(t('Merged "{from}" into "{to}".', { from, to }), t('Merge complete'));
 }
 
 export async function doMergeSource(rerender) {
   const from = $('#mergeSourceFrom').value;
   const to = $('#mergeSourceTo').value || ($('#mergeSourceToCustom')?.value || '').trim();
-  if (!from || !to) return notify('Select both source values', 'Cannot merge');
-  if (from === to) return notify('Cannot merge a source with itself', 'Cannot merge');
+  if (!from || !to) return notify(t('Select both source values'), t('Cannot merge'));
+  if (from === to) return notify(t('Cannot merge a source with itself'), t('Cannot merge'));
   const scrollY = window.scrollY;
   const result = await apiPost('/admin/merge-rules', { type: 'source', fromValue: from, toValue: to });
-  if (result?.error) return notify(result.error, 'Merge failed');
+  if (result?.error) return notify(result.error, t('Merge failed'));
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
-  notify(`Merged "${from}" into "${to}".`, 'Merge complete');
+  notify(t('Merged "{from}" into "{to}".', { from, to }), t('Merge complete'));
 }
 
 // Triumphal Chest Points — global, superadmin-managed scoring for the
@@ -368,34 +369,34 @@ export async function doMergeSource(rerender) {
 // observed in scans but not yet valued (flagged `isNew`, sorted first).
 function renderTriumphalPointsSection(rows, isSuperadmin) {
   const list = rows || [];
-  const hasNew = list.some((t) => t.isNew);
+  const hasNew = list.some((row) => row.isNew);
   return `
     <div class="card">
-      <div class="card-header"><h2>Triumphal Chest Points</h2></div>
+      <div class="card-header"><h2>${t('Triumphal Chest Points')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">One <strong>global scoring table</strong> for the <strong>Bank Gifts</strong> tab, tracked separately from the main leaderboard. Each value is the <strong>package price</strong> (a full 3-of-a-kind set); a single chest is worth one third of it, rounded — so three of a kind sum back to exactly the package value. Rows tagged <span class="chest-type epic">New</span> have been seen in scans but have <strong>no value yet</strong> (they score 0) — set a value to score them. ${isSuperadmin ? 'Managed here by superadmins; values apply to every clan.' : '<strong>Read-only</strong> — only a superadmin can change these values.'}</p>
+        <p class="muted-copy mb-12">${t('One <strong>global scoring table</strong> for the <strong>Bank Gifts</strong> tab, tracked separately from the main leaderboard. Each value is the <strong>package price</strong> (a full 3-of-a-kind set); a single chest is worth one third of it, rounded — so three of a kind sum back to exactly the package value. Rows tagged {new} have been seen in scans but have <strong>no value yet</strong> (they score 0) — set a value to score them.', { new: `<span class="chest-type epic">${t('New')}</span>` })} ${isSuperadmin ? t('Managed here by superadmins; values apply to every clan.') : t('<strong>Read-only</strong> — only a superadmin can change these values.')}</p>
         ${list.length > 0 ? `
           <details${hasNew ? ' open' : ''}>
-            <summary class="collapse-toggle">Show triumphal chest values (${list.length})</summary>
+            <summary class="collapse-toggle">${t('Show triumphal chest values ({count})', { count: list.length })}</summary>
             <table class="table-responsive mt-12">
-              <thead><tr><th>Chest</th><th>Chests Seen</th><th>Per Chest</th><th>Package (3-of-a-kind)</th></tr></thead>
+              <thead><tr><th>${t('Chest')}</th><th>${t('Chests Seen')}</th><th>${t('Per Chest')}</th><th>${t('Package (3-of-a-kind)')}</th></tr></thead>
               <tbody>
-                ${list.map((t) => `<tr${t.isNew ? ' class="row-needs-attention"' : ''}>
-                  <td data-label="Chest" data-role="primary"><span class="mrow-name">${esc(t.chestName)}${t.isNew ? ' <span class="chest-type epic" title="Seen in scans but has no point value yet — it currently scores 0. Set a package value to score it.">New</span>' : ''}</span><span class="mrow-sub">${t.observedCount} seen</span></td>
-                  <td data-label="Chests Seen" data-role="hidden">${t.observedCount}</td>
-                  <td data-label="Per Chest" data-role="metric">${t.perChestPoints ?? '—'}</td>
-                  <td data-label="Package (3-of-a-kind)">
-                    <input type="number" class="input input-narrow triumphal-points-input" min="0" step="1" value="${t.packagePoints ?? ''}" placeholder="0" data-chest-name="${esc(t.chestName)}" data-original-package="${t.packagePoints ?? ''}"${isSuperadmin ? '' : ' disabled'}>
+                ${list.map((row) => `<tr${row.isNew ? ' class="row-needs-attention"' : ''}>
+                  <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${esc(tGame(row.chestName))}${row.isNew ? ` <span class="chest-type epic" title="${t('Seen in scans but has no point value yet — it currently scores 0. Set a package value to score it.')}">${t('New')}</span>` : ''}</span><span class="mrow-sub">${tn(row.observedCount, '{n} seen', '{n} seen', { n: row.observedCount })}</span></td>
+                  <td data-label="${t('Chests Seen')}" data-role="hidden">${row.observedCount}</td>
+                  <td data-label="${t('Per Chest')}" data-role="metric">${row.perChestPoints ?? '—'}</td>
+                  <td data-label="${t('Package (3-of-a-kind)')}">
+                    <input type="number" class="input input-narrow triumphal-points-input" min="0" step="1" value="${row.packagePoints ?? ''}" placeholder="0" data-chest-name="${esc(row.chestName)}" data-original-package="${row.packagePoints ?? ''}"${isSuperadmin ? '' : ' disabled'}>
                   </td>
                 </tr>`).join('')}
               </tbody>
             </table>
             ${isSuperadmin ? `<div class="inline-form-row mt-16">
-              <button class="btn btn-primary" data-action="save-all-triumphal-points">Save All Changes</button>
+              <button class="btn btn-primary" data-action="save-all-triumphal-points">${t('Save All Changes')}</button>
             </div>
-            <p class="muted-copy mt-8">Saves every chest whose package value changed. Clear an input to remove that chest's value — it reverts to "new" and scores 0 until set again. Points are presentation-only, so no historical backfill is needed.</p>` : ''}
+            <p class="muted-copy mt-8">${t('Saves every chest whose package value changed. Clear an input to remove that chest\'s value — it reverts to "new" and scores 0 until set again. Points are presentation-only, so no historical backfill is needed.')}</p>` : ''}
           </details>
-        ` : '<p class="muted-copy mt-12">No triumphal chest data yet.</p>'}
+        ` : `<p class="muted-copy mt-12">${t('No triumphal chest data yet.')}</p>`}
       </div>
     </div>
   `;
@@ -420,14 +421,14 @@ export async function saveAllTriumphalPoints(rerender) {
     } else {
       const packagePoints = Number.parseInt(current, 10);
       if (!Number.isFinite(packagePoints) || packagePoints < 0) {
-        return notify(`"${chestName}" must be a non-negative integer`, 'Save failed');
+        return notify(t('"{chest}" must be a non-negative integer', { chest: tGame(chestName) }), t('Save failed'));
       }
       toSet.push({ chestName, packagePoints });
     }
   }
 
   if (toSet.length === 0 && toDelete.length === 0) {
-    return notify('No changes to save.', 'Nothing to do');
+    return notify(t('No changes to save.'), t('Nothing to do'));
   }
 
   const scrollY = window.scrollY;
@@ -445,30 +446,30 @@ export async function saveAllTriumphalPoints(rerender) {
   window.scrollTo(0, scrollY);
 
   if (errors.length > 0) {
-    notify(`Some changes failed:\n${errors.join('\n')}`, 'Partial save');
+    notify(t('Some changes failed:\n{errors}', { errors: errors.join('\n') }), t('Partial save'));
   } else {
-    notify(`Saved ${toSet.length + toDelete.length} change${toSet.length + toDelete.length === 1 ? '' : 's'}.`, 'Saved');
+    notify(tn(toSet.length + toDelete.length, 'Saved {n} change.', 'Saved {n} changes.', { n: toSet.length + toDelete.length }), t('Saved'));
   }
 }
 
 function renderReviewQueueSection(queue) {
   if (!queue) return '';
   const groups = [
-    { key: 'chest_name', label: 'New Chest Names', entries: queue.chestNames?.entries || [], ack: queue.chestNames?.acknowledgedAt || null, valueHeader: 'Chest Name' },
-    { key: 'chest_source', label: 'New Chest Sources', entries: queue.chestSources?.entries || [], ack: queue.chestSources?.acknowledgedAt || null, valueHeader: 'Source' },
-    { key: 'member', label: 'New Members', entries: queue.members?.entries || [], ack: queue.members?.acknowledgedAt || null, valueHeader: 'Member' },
+    { key: 'chest_name', label: t('New Chest Names'), entries: queue.chestNames?.entries || [], ack: queue.chestNames?.acknowledgedAt || null, valueHeader: t('Chest Name') },
+    { key: 'chest_source', label: t('New Chest Sources'), entries: queue.chestSources?.entries || [], ack: queue.chestSources?.acknowledgedAt || null, valueHeader: t('Source') },
+    { key: 'member', label: t('New Members'), entries: queue.members?.entries || [], ack: queue.members?.acknowledgedAt || null, valueHeader: t('Member') },
     // Triumphal (Bank) chests with no configured value. No Acknowledge —
     // resolved by a superadmin assigning a package value in the Triumphal
     // Chest Points card below (which removes them from this list).
-    { key: 'triumphal', label: 'New Triumphal Chests', entries: queue.triumphalChests?.entries || [], ack: null, valueHeader: 'Chest Name', noAck: true },
+    { key: 'triumphal', label: t('New Triumphal Chests'), entries: queue.triumphalChests?.entries || [], ack: null, valueHeader: t('Chest Name'), noAck: true },
   ];
   const activeGroups = groups.filter((g) => g.entries.length > 0);
   const totalNew = activeGroups.reduce((sum, g) => sum + g.entries.length, 0);
   if (totalNew === 0) return '';
 
   return `
-    <h2 class="page-section-title">Review Queue <span class="chest-type epic">${totalNew} new</span></h2>
-    <p class="page-section-intro">Recently-discovered chest names, sources, and members. Skim for OCR misspellings or unknown source types that need a point value. Click <strong>Acknowledge</strong> once reviewed to clear the list.</p>
+    <h2 class="page-section-title">${t('Review Queue')} <span class="chest-type epic">${tn(totalNew, '{n} new', '{n} new', { n: totalNew })}</span></h2>
+    <p class="page-section-intro">${t('Recently-discovered chest names, sources, and members. Skim for OCR misspellings or unknown source types that need a point value. Click <strong>Acknowledge</strong> once reviewed to clear the list.')}</p>
     ${activeGroups.map((g) => `
       <div class="card">
         <div class="card-header">
@@ -476,30 +477,30 @@ function renderReviewQueueSection(queue) {
         </div>
         <div class="card-body card-body-padded">
           <details open>
-            <summary class="collapse-toggle">Show ${g.entries.length} new entr${g.entries.length === 1 ? 'y' : 'ies'}</summary>
+            <summary class="collapse-toggle">${tn(g.entries.length, 'Show {n} new entry', 'Show {n} new entries', { n: g.entries.length })}</summary>
             <table class="table-responsive mt-12">
               <thead><tr>
-                <th>${g.valueHeader}</th><th>First Seen</th><th>Chests</th>
-                ${g.key === 'member' ? '<th>Row</th>' : ''}
+                <th>${g.valueHeader}</th><th>${t('First Seen')}</th><th>${t('Chests')}</th>
+                ${g.key === 'member' ? `<th>${t('Row')}</th>` : ''}
               </tr></thead>
               <tbody>
                 ${g.entries.map((e) => `<tr>
                   <td data-label="${g.valueHeader}" data-role="primary"><span class="mrow-name">${esc(e.value)}</span></td>
-                  <td data-label="First Seen" class="muted-copy">${formatDate(e.firstSeen)}</td>
-                  <td data-label="Chests" data-role="metric">${e.count}</td>
-                  ${g.key === 'member' ? `<td data-label="Row">${e.hasCrop && e.memberId
-                    ? `<span class="unknown-crop-hover" data-crop-url="/api/admin/members/${e.memberId}/crop" data-crop-wide tabindex="0" role="button" title="Hover to preview the screenshot this member was first seen in — click to enlarge">🖼️</span>`
+                  <td data-label="${t('First Seen')}" class="muted-copy">${formatDate(e.firstSeen)}</td>
+                  <td data-label="${t('Chests')}" data-role="metric">${e.count}</td>
+                  ${g.key === 'member' ? `<td data-label="${t('Row')}">${e.hasCrop && e.memberId
+                    ? `<span class="unknown-crop-hover" data-crop-url="/api/admin/members/${e.memberId}/crop" data-crop-wide tabindex="0" role="button" title="${t('Hover to preview the screenshot this member was first seen in — click to enlarge')}">🖼️</span>`
                     : '<span class="muted-copy">—</span>'}</td>` : ''}
                 </tr>`).join('')}
               </tbody>
             </table>
           </details>
           ${g.noAck
-            ? '<p class="muted-copy mt-12">Assign each a package value under <strong>Triumphal Chest Points</strong> below — that scores them and clears them from this list.</p>'
+            ? `<p class="muted-copy mt-12">${t('Assign each a package value under <strong>Triumphal Chest Points</strong> below — that scores them and clears them from this list.')}</p>`
             : `<div class="inline-form-row mt-12">
-            <button class="btn" data-action="acknowledge-review" data-review-category="${g.key}">Acknowledge</button>
+            <button class="btn" data-action="acknowledge-review" data-review-category="${g.key}">${t('Acknowledge')}</button>
           </div>
-          <p class="muted-copy mt-8">${g.ack ? `Last acknowledged: ${formatDate(g.ack)}` : 'Never acknowledged — all entries are shown.'}</p>`}
+          <p class="muted-copy mt-8">${g.ack ? t('Last acknowledged: {date}', { date: formatDate(g.ack) }) : t('Never acknowledged — all entries are shown.')}</p>`}
         </div>
       </div>
     `).join('')}
@@ -508,7 +509,7 @@ function renderReviewQueueSection(queue) {
 
 export async function acknowledgeReviewQueue(category, rerender) {
   const result = await apiPost('/admin/review-queue/acknowledge', { category });
-  if (result?.error) return notify(result.error, 'Acknowledge failed');
+  if (result?.error) return notify(result.error, t('Acknowledge failed'));
   const scrollY = window.scrollY;
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
@@ -537,39 +538,39 @@ function renderUnknownChestsSection(chests, members, chestCounts) {
     return `
       <div class="card">
         <div class="card-header">
-          <h2>Session #${sid} <span class="chest-type epic">${rows.length} row${rows.length === 1 ? '' : 's'}</span></h2>
+          <h2>${t('Session #{id}', { id: sid })} <span class="chest-type epic">${tn(rows.length, '{n} row', '{n} rows', { n: rows.length })}</span></h2>
         </div>
         <div class="card-body card-body-padded">
-          <p class="muted-copy mb-12">Debug crops for this session were saved to <code>data/screenshots/ocr_missing_name/</code> — filenames contain <code>s${sid}</code>. Open them to see which player each row belongs to, then reassign below.</p>
+          <p class="muted-copy mb-12">${t('Debug crops for this session were saved to {dir} — filenames contain {file}. Open them to see which player each row belongs to, then reassign below.', { dir: '<code>data/screenshots/ocr_missing_name/</code>', file: `<code>s${sid}</code>` })}</p>
           <div class="inline-form-row mb-12">
             <div>
-              <label>Reassign ALL rows in this session to</label>
+              <label>${t('Reassign ALL rows in this session to')}</label>
               <select class="input" id="unknownBulkMember-${sid}">
-                <option value="">Select member...</option>
+                <option value="">${t('Select member...')}</option>
                 ${memberOptions}
               </select>
             </div>
-            <button class="btn" data-action="reassign-unknown-bulk" data-session-id="${sid}">Reassign All</button>
+            <button class="btn" data-action="reassign-unknown-bulk" data-session-id="${sid}">${t('Reassign All')}</button>
           </div>
           <table class="table-responsive">
-            <thead><tr><th>Received</th><th>Chest</th><th>Source</th><th>Pts</th><th>Crop</th><th class="col-edit">Reassign To</th><th class="col-actions"></th></tr></thead>
+            <thead><tr><th>${t('Received')}</th><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Pts')}</th><th>${t('Crop')}</th><th class="col-edit">${t('Reassign To')}</th><th class="col-actions"></th></tr></thead>
             <tbody>
               ${rows.map((r) => `<tr id="unknown-row-${r.id}">
-                <td data-label="Received" class="muted-copy">${formatDate(r.effectiveAt)}</td>
-                <td data-label="Chest" data-role="primary"><span class="mrow-name">${esc(r.chestName)}</span><span class="mrow-sub">${formatDate(r.effectiveAt)}</span></td>
-                <td data-label="Source" class="muted-copy">${esc(r.chestSource)}</td>
-                <td data-label="Pts" data-role="metric">${r.pointValue}</td>
-                <td data-label="Crop">${r.hasCrop
-                  ? `<span class="unknown-crop-hover" data-crop-url="/api/admin/unknown-chests/${r.id}/crop" tabindex="0" role="button" title="Hover to preview — click to open a zoomable full-size view">🖼️ view</span>`
+                <td data-label="${t('Received')}" class="muted-copy">${formatDate(r.effectiveAt)}</td>
+                <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${esc(tGame(r.chestName))}</span><span class="mrow-sub">${formatDate(r.effectiveAt)}</span></td>
+                <td data-label="${t('Source')}" class="muted-copy">${esc(tGame(r.chestSource))}</td>
+                <td data-label="${t('Pts')}" data-role="metric">${r.pointValue}</td>
+                <td data-label="${t('Crop')}">${r.hasCrop
+                  ? `<span class="unknown-crop-hover" data-crop-url="/api/admin/unknown-chests/${r.id}/crop" tabindex="0" role="button" title="${t('Hover to preview — click to open a zoomable full-size view')}">🖼️ ${t('view')}</span>`
                   : `<span class="muted-copy">—</span>`}</td>
-                <td data-label="Reassign To">
+                <td data-label="${t('Reassign To')}">
                   <select class="input" id="unknownMember-${r.id}">
-                    <option value="">Select member...</option>
+                    <option value="">${t('Select member...')}</option>
                     ${memberOptions}
                   </select>
                 </td>
                 <td class="col-actions nowrap">
-                  <button class="btn btn-tight" data-action="reassign-unknown-row" data-chest-id="${r.id}">Save</button>
+                  <button class="btn btn-tight" data-action="reassign-unknown-row" data-chest-id="${r.id}">${t('Save')}</button>
                 </td>
               </tr>`).join('')}
             </tbody>
@@ -580,8 +581,8 @@ function renderUnknownChestsSection(chests, members, chestCounts) {
   }).join('');
 
   return `
-    <h2 class="page-section-title">OCR Missing Player Name <span class="chest-type epic">${chests.length} row${chests.length === 1 ? '' : 's'}</span></h2>
-    <p class="page-section-intro">These rows were saved with an empty or <code>[Unknown]</code> player name because OCR couldn't read the name region. Reassign each row to the correct player — the row's <strong>Captured</strong> timestamp and the debug crop saved under <code>data/screenshots/ocr_missing_name/</code> for the matching session should tell you which player it belongs to.</p>
+    <h2 class="page-section-title">${t('OCR Missing Player Name')} <span class="chest-type epic">${tn(chests.length, '{n} row', '{n} rows', { n: chests.length })}</span></h2>
+    <p class="page-section-intro">${t('These rows were saved with an empty or {unknown} player name because OCR couldn\'t read the name region. Reassign each row to the correct player — the row\'s <strong>Captured</strong> timestamp and the debug crop saved under {dir} for the matching session should tell you which player it belongs to.', { unknown: '<code>[Unknown]</code>', dir: '<code>data/screenshots/ocr_missing_name/</code>' })}</p>
     ${sections}
   `;
 }
@@ -589,9 +590,9 @@ function renderUnknownChestsSection(chests, members, chestCounts) {
 export async function reassignUnknownRow(chestId, rerender) {
   const select = document.getElementById(`unknownMember-${chestId}`);
   const memberName = (select?.value || '').trim();
-  if (!memberName) return notify('Select a member from the dropdown first', 'No member selected');
+  if (!memberName) return notify(t('Select a member from the dropdown first'), t('No member selected'));
   const result = await apiPost('/admin/unknown-chests/reassign', { chestIds: [chestId], memberName });
-  if (result?.error) return notify(result.error, 'Reassign failed');
+  if (result?.error) return notify(result.error, t('Reassign failed'));
   const scrollY = window.scrollY;
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
@@ -600,21 +601,21 @@ export async function reassignUnknownRow(chestId, rerender) {
 export async function reassignUnknownBulk(sessionId, rerender) {
   const select = document.getElementById(`unknownBulkMember-${sessionId}`);
   const memberName = (select?.value || '').trim();
-  if (!memberName) return notify('Select a member from the dropdown first', 'No member selected');
+  if (!memberName) return notify(t('Select a member from the dropdown first'), t('No member selected'));
   // Scope to the card containing the clicked dropdown so we only grab
   // chest ids for this session, not every unknown row on the page.
   const card = select.closest('.card');
   const chestIds = [...(card?.querySelectorAll(`[data-action="reassign-unknown-row"]`) || [])]
     .map((btn) => Number.parseInt(btn.dataset.chestId || '0', 10))
     .filter((n) => n > 0);
-  if (chestIds.length === 0) return notify('No rows found to reassign', 'Nothing to do');
-  const ok = await confirmDialog(`Reassign all ${chestIds.length} row${chestIds.length === 1 ? '' : 's'} in session #${sessionId} to "${memberName}"?`, {
-    title: 'Confirm bulk reassign',
-    confirmLabel: 'Reassign',
+  if (chestIds.length === 0) return notify(t('No rows found to reassign'), t('Nothing to do'));
+  const ok = await confirmDialog(tn(chestIds.length, 'Reassign all {n} row in session #{session} to "{member}"?', 'Reassign all {n} rows in session #{session} to "{member}"?', { n: chestIds.length, session: sessionId, member: memberName }), {
+    title: t('Confirm bulk reassign'),
+    confirmLabel: t('Reassign'),
   });
   if (!ok) return;
   const result = await apiPost('/admin/unknown-chests/reassign', { chestIds, memberName });
-  if (result?.error) return notify(result.error, 'Reassign failed');
+  if (result?.error) return notify(result.error, t('Reassign failed'));
   const scrollY = window.scrollY;
   if (typeof rerender === 'function') await rerender('admin');
   window.scrollTo(0, scrollY);
@@ -622,18 +623,18 @@ export async function reassignUnknownBulk(sessionId, rerender) {
 
 export async function deleteRule(id, rerender) {
   const ok = await confirmDialog(
-    'Delete this merge rule? Existing records that were already rewritten by this rule are not reverted, but future scans will stop auto-applying it.',
-    { title: 'Delete merge rule', confirmLabel: 'Delete', cancelLabel: 'Cancel', danger: true },
+    t('Delete this merge rule? Existing records that were already rewritten by this rule are not reverted, but future scans will stop auto-applying it.'),
+    { title: t('Delete merge rule'), confirmLabel: t('Delete'), cancelLabel: t('Cancel'), danger: true },
   );
   if (!ok) return;
-  if (!await mustOk(apiDelete(`/admin/merge-rules/${id}`), 'Delete rule failed')) return;
+  if (!await mustOk(apiDelete(`/admin/merge-rules/${id}`), t('Delete rule failed'))) return;
   if (typeof rerender === 'function') rerender('admin');
 }
 
 export async function saveMemberName(id) {
   const input = $(`#member-name-${id}`);
   if (!input) return;
-  if (!await mustOk(apiPut(`/members/${id}`, { name: input.value }), 'Rename failed')) return;
+  if (!await mustOk(apiPut(`/members/${id}`, { name: input.value }), t('Rename failed'))) return;
   // Update the display name in the row without full reload
   const row = $(`#member-row-${id}`);
   if (row) {
@@ -648,13 +649,13 @@ export async function saveMemberName(id) {
 }
 
 export async function deleteMemberById(id, name, rerender) {
-  const label = name ? `"${name}"` : 'this member';
+  const label = name ? `"${name}"` : t('this member');
   const ok = await confirmDialog(
-    `Remove ${label}? Their chest history stays intact, but they'll be excluded from future scans so a new player with a similar name can't get matched into their identity. You can restore them later from "Show removed members".`,
-    { title: 'Remove member', confirmLabel: 'Remove', cancelLabel: 'Cancel', danger: true },
+    t('Remove {member}? Their chest history stays intact, but they\'ll be excluded from future scans so a new player with a similar name can\'t get matched into their identity. You can restore them later from "Show removed members".', { member: label }),
+    { title: t('Remove member'), confirmLabel: t('Remove'), cancelLabel: t('Cancel'), danger: true },
   );
   if (!ok) return;
-  if (!await mustOk(apiDelete(`/members/${id}`), 'Remove member failed')) return;
+  if (!await mustOk(apiDelete(`/members/${id}`), t('Remove member failed'))) return;
   // Rerender so the row moves into the "Show removed members"
   // collapsible (always soft-deleted now, so it's always recoverable).
   if (rerender) rerender('admin');
@@ -665,13 +666,13 @@ export async function deleteMemberById(id, name, rerender) {
 }
 
 export async function restoreMemberById(id, name, rerender) {
-  const label = name ? `"${name}"` : 'this member';
+  const label = name ? `"${name}"` : t('this member');
   const ok = await confirmDialog(
-    `Restore ${label}? They'll be eligible for matching in future scans again.`,
-    { title: 'Restore member', confirmLabel: 'Restore', cancelLabel: 'Cancel' },
+    t('Restore {member}? They\'ll be eligible for matching in future scans again.', { member: label }),
+    { title: t('Restore member'), confirmLabel: t('Restore'), cancelLabel: t('Cancel') },
   );
   if (!ok) return;
-  if (!await mustOk(apiPost(`/members/${id}/restore`, {}), 'Restore member failed')) return;
+  if (!await mustOk(apiPost(`/members/${id}/restore`, {}), t('Restore member failed'))) return;
   if (rerender) rerender('admin');
 }
 
@@ -679,14 +680,14 @@ export async function promptMergePlayerById(id, rerender) {
   const member = await api(`/members/${id}`);
   if (!member || member.error || !member.name) return;
 
-  const target = await promptDialog(`Merge "${member.name}" into which player name?`, {
-    title: 'Merge Player',
-    confirmLabel: 'Merge',
+  const target = await promptDialog(t('Merge "{name}" into which player name?', { name: member.name }), {
+    title: t('Merge Player'),
+    confirmLabel: t('Merge'),
   });
   if (!target || !target.trim()) return;
   if (!await mustOk(
     apiPost('/admin/merge-players', { fromName: member.name, toName: target.trim() }),
-    'Merge failed',
+    t('Merge failed'),
   )) return;
   if (typeof rerender === 'function') rerender('admin');
 }

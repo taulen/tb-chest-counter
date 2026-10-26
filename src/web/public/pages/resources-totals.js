@@ -10,6 +10,7 @@
 
 import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { computeGameWindowDates } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
@@ -20,6 +21,12 @@ import {
 
 const PAGE_SIZE = 25;
 const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
+const PERIOD_LABEL = {
+  weekly: t('Weekly'),
+  monthly: t('Monthly'),
+  yearly: t('Yearly'),
+  all: t('All'),
+};
 
 // Resources that aren't useful in the totals matrix (per clan request).
 const EXCLUDED_SLUGS = new Set([
@@ -46,7 +53,7 @@ export async function renderResourcesTotals(el, navigate) {
   }
 
   mountedEl = el;
-  el.innerHTML = `${resourceTabsHtml('totals')}<div class="empty-state"><p>Loading totals…</p></div>`;
+  el.innerHTML = `${resourceTabsHtml('totals')}<div class="empty-state"><p>${t('Loading totals…')}</p></div>`;
   await reload();
 }
 
@@ -73,7 +80,7 @@ async function reload() {
   const members = Array.isArray(membersRes) ? membersRes : [];
   const summary = Array.isArray(summaryRes?.rows) ? summaryRes.rows : [];
 
-  const columns = types.filter((t) => !EXCLUDED_SLUGS.has(t.slug));
+  const columns = types.filter((type) => !EXCLUDED_SLUGS.has(type.slug));
   const byMember = new Map();
   for (const m of members) byMember.set(m.id, { memberId: m.id, name: m.name, sent: new Map() });
   for (const r of summary) {
@@ -127,11 +134,11 @@ function paint() {
       key: `type-${c.id}`,
       sortState: sort,
       className: `rtype-th${active ? ' is-sorted' : ''}`,
-      title: c.name,
+      title: tGame(c.name),
       arrowHtml: '',
       labelHtml: `<span class="rtype-head">
         ${resourceIconOnly(c.slug)}
-        <span class="rtype-head-name">${esc(c.name)}</span>
+        <span class="rtype-head-name">${esc(tGame(c.name))}</span>
         <span class="rtype-head-arrow" aria-hidden="true">${arrowFor(`type-${c.id}`)}</span>
       </span>`,
     });
@@ -140,27 +147,27 @@ function paint() {
   const colGroup = `<colgroup><col class="col-player">${columns.map(() => '<col class="col-rtype">').join('')}</colgroup>`;
 
   const body = pageRows.length === 0
-    ? `<tr><td colspan="${columns.length + 1}" class="empty-state-cell">No members yet.</td></tr>`
+    ? `<tr><td colspan="${columns.length + 1}" class="empty-state-cell">${t('No members yet.')}</td></tr>`
     : pageRows.map((row) => `
         <tr>
-          <td data-label="Member" data-role="primary"><span class="mrow-name">${memberLink(row.memberId, row.name)}</span></td>
+          <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${memberLink(row.memberId, row.name)}</span></td>
           ${columns.map((c) => {
             const metricAttr = sort.key === `type-${c.id}` ? ' data-role="metric"' : '';
             const v = row.sent.get(c.id) || 0;
-            if (v <= 0) return `<td data-label="${esc(c.name)}" class="col-num"${metricAttr}><span class="resources-totals-zero">—</span></td>`;
-            return `<td data-label="${esc(c.name)}" class="col-num"${metricAttr} title="${esc(formatResourceAmount(c.slug, v))}">${esc(formatResourceCompact(c.slug, v))}</td>`;
+            if (v <= 0) return `<td data-label="${esc(tGame(c.name))}" class="col-num"${metricAttr}><span class="resources-totals-zero">—</span></td>`;
+            return `<td data-label="${esc(tGame(c.name))}" class="col-num"${metricAttr} title="${esc(formatResourceAmount(c.slug, v))}">${esc(formatResourceCompact(c.slug, v))}</td>`;
           }).join('')}
         </tr>`).join('');
 
   const pagination = total > PAGE_SIZE ? `
     <div class="pagination">
-      <button class="btn btn-tight" data-totals-page="prev" ${page <= 1 ? 'disabled' : ''}>← Prev</button>
-      <span class="pagination-info">Page ${page} of ${totalPages} · ${total} members</span>
-      <button class="btn btn-tight" data-totals-page="next" ${page >= totalPages ? 'disabled' : ''}>Next →</button>
+      <button class="btn btn-tight" data-totals-page="prev" ${page <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+      <span class="pagination-info">${t('Page {page} of {pages}', { page, pages: totalPages })} · ${tn(total, '{n} member', '{n} members', { n: total })}</span>
+      <button class="btn btn-tight" data-totals-page="next" ${page >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>` : '';
 
   const periodBtns = PERIODS.map((p) =>
-    `<button class="btn ${period === p ? 'active' : ''}" data-tperiod="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`
+    `<button class="btn ${period === p ? 'active' : ''}" data-tperiod="${p}">${PERIOD_LABEL[p]}</button>`
   ).join('');
   // Always render the nav (arrows disabled for All) with a fixed-width label
   // so the controls don't shift when switching timeframes.
@@ -177,8 +184,8 @@ function paint() {
     <div class="card">
       <div class="card-header resources-totals-header">
         <div class="resources-totals-title">
-          <h2>Donation totals by member</h2>
-          <span class="card-header-hint">Sent · each in its own unit</span>
+          <h2>${t('Donation totals by member')}</h2>
+          <span class="card-header-hint">${t('Sent · each in its own unit')}</span>
         </div>
         <div class="resources-totals-controls">
           <div class="period-selector">${periodBtns}</div>
@@ -190,7 +197,7 @@ function paint() {
           <table class="table-responsive resources-totals-table">
             ${colGroup}
             <thead><tr>
-              ${sortableThHtml({ key: 'member', labelHtml: 'Member', sortState: sort })}
+              ${sortableThHtml({ key: 'member', labelHtml: t('Member'), sortState: sort })}
               ${headCols}
             </tr></thead>
             <tbody>${body}</tbody>

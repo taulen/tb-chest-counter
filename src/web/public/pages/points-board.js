@@ -11,6 +11,7 @@
 
 import { api, apiPost } from '../lib/api.js';
 import { esc, notify, contentModal, selectDialog } from '../lib/ui.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 const CATEGORY_STORE_KEY = 'pointsBoard.category';
 const NEEDS_VALUE = 'needs-value';
@@ -45,10 +46,9 @@ window.addEventListener('beforeunload', (e) => {
 
 const fmt = (n) => Number(n || 0).toLocaleString();
 const signed = (n) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `−${fmt(-n)}` : '±0');
-const plural = (n, one, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
 // Sources only another clan has recorded are listed so they can be valued
 // ahead of the first chest; say so instead of "0 chests".
-const chestCount = (n) => (n > 0 ? plural(n, 'chest') : '<span class="muted-copy">none recorded yet</span>');
+const chestCount = (n) => (n > 0 ? tn(n, '{n} chest', '{n} chests', { n: fmt(n) }) : `<span class="muted-copy">${t('none recorded yet')}</span>`);
 const dirtyKey = (sourceKey, chestName) => `${sourceKey}\t${chestName}`;
 
 function storedCategory() {
@@ -74,7 +74,7 @@ async function refresh() {
   const board = await api('/admin/source-points');
   if (!root?.isConnected) return;
   if (!board || board.error || !Array.isArray(board.sources)) {
-    root.querySelector('.pb-body').innerHTML = `<p class="muted-copy">Couldn't load chest points${board?.error ? `: ${esc(board.error)}` : ''}.</p>`;
+    root.querySelector('.pb-body').innerHTML = `<p class="muted-copy">${board?.error ? t('Couldn\'t load chest points: {error}.', { error: esc(board.error) }) : t('Couldn\'t load chest points.')}</p>`;
     return;
   }
   // Edits belong to the clan they were typed against; never carry them over.
@@ -86,7 +86,7 @@ async function refresh() {
   }
   state.board = board;
   const title = root.querySelector('.pb-header h2');
-  if (title) title.innerHTML = `Chest Points <span class="muted-copy">· ${esc(board.clan?.name || '')}</span>`;
+  if (title) title.innerHTML = `${t('Chest Points')} <span class="muted-copy">· ${esc(board.clan?.name || '')}</span>`;
   // Drop edits for anything that no longer exists, or now already holds the
   // edited value (someone else saved the same thing).
   for (const [k, v] of state.dirty) {
@@ -129,13 +129,13 @@ function currentValue(sourceKey, chestName) {
 function shellHtml() {
   return `
     <div class="card-header pb-header">
-      <h2>Chest Points</h2>
+      <h2>${t('Chest Points')}</h2>
       ${canEdit ? `<div class="pb-header-actions">
-        <button class="btn btn-tight" type="button" data-pb="copy" title="Make this clan pay exactly what another clan pays">Copy from clan…</button>
-        <button class="btn btn-tight" type="button" data-pb="recalc">Recalculate</button>
+        <button class="btn btn-tight" type="button" data-pb="copy" title="${t('Make this clan pay exactly what another clan pays')}">${t('Copy from clan…')}</button>
+        <button class="btn btn-tight" type="button" data-pb="recalc">${t('Recalculate')}</button>
       </div>` : ''}
     </div>
-    <div class="card-body card-body-padded pb-body"><p class="is-loading">Loading chest points…</p></div>
+    <div class="card-body card-body-padded pb-body"><p class="is-loading">${t('Loading chest points…')}</p></div>
   `;
 }
 
@@ -147,10 +147,10 @@ function render() {
   const recalc = root.querySelector('[data-pb="recalc"]');
   if (recalc) {
     const stale = state.board.staleRecords;
-    recalc.textContent = stale > 0 ? `Recalculate ${fmt(stale)} out of date` : 'Recalculate';
+    recalc.textContent = stale > 0 ? tn(stale, 'Recalculate {n} out of date', 'Recalculate {n} out of date', { n: fmt(stale) }) : t('Recalculate');
     recalc.title = stale > 0
-      ? 'Bring stored chest records that no longer match their source value back in line'
-      : 'Every stored chest record already matches — nothing to recalculate';
+      ? t('Bring stored chest records that no longer match their source value back in line')
+      : t('Every stored chest record already matches — nothing to recalculate');
   }
   const body = root.querySelector('.pb-body');
   const focusKey = document.activeElement?.closest?.('.pb-board') ? document.activeElement.dataset.pbKey : null;
@@ -158,7 +158,7 @@ function render() {
     <div class="pb-board">
       ${statusHtml()}
       <div class="pb-toolbar">
-        <input type="search" class="input pb-search" placeholder="Search sources or chests…" aria-label="Search sources or chests" value="${esc(state.query)}" data-pb="search">
+        <input type="search" class="input pb-search" placeholder="${t('Search sources or chests…')}" aria-label="${t('Search sources or chests')}" value="${esc(state.query)}" data-pb="search">
       </div>
       ${chipsHtml()}
       <div class="pb-list" role="list">${listHtml()}</div>
@@ -172,16 +172,28 @@ function statusHtml() {
   const b = state.board;
   const unset = b.sources.filter((s) => s.unset).length;
   const parts = [
-    `<span>${plural(b.sources.length, 'source')}</span>`,
+    `<span>${tn(b.sources.length, '{n} source', '{n} sources', { n: fmt(b.sources.length) })}</span>`,
     unset > 0
-      ? `<span class="pb-flag">⚠ ${plural(unset, 'source')} with no value yet</span>`
-      : '<span>✓ every source has a value</span>',
+      ? `<span class="pb-flag">⚠ ${tn(unset, '{n} source with no value yet', '{n} sources with no value yet', { n: fmt(unset) })}</span>`
+      : `<span>✓ ${t('every source has a value')}</span>`,
     b.staleRecords > 0
-      ? `<span class="pb-flag">⟳ ${plural(b.staleRecords, 'record')} out of date${canEdit ? ' — Recalculate fixes it' : ''}</span>`
-      : '<span>✓ all stored records match these values</span>',
+      ? `<span class="pb-flag">⟳ ${canEdit
+        ? tn(b.staleRecords, '{n} record out of date — Recalculate fixes it', '{n} records out of date — Recalculate fixes it', { n: fmt(b.staleRecords) })
+        : tn(b.staleRecords, '{n} record out of date', '{n} records out of date', { n: fmt(b.staleRecords) })}</span>`
+      : `<span>✓ ${t('all stored records match these values')}</span>`,
   ];
+  const clan = esc(b.clan?.name || t('this clan'));
+  const intro = [
+    canEdit
+      ? t('What each chest source is worth for <strong>{clan}</strong> — every clan has its own values; switch clan to edit another clan\'s.', { clan })
+      : t('What each chest source is worth for <strong>{clan}</strong> — every clan has its own values.', { clan }),
+    t('Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.'),
+    canEdit
+      ? t('Saving a value also updates every chest this clan already recorded from that source, so a save never needs a Recalculate.')
+      : t('<strong>Read-only</strong> — only a superadmin can change values.'),
+  ].join(' ');
   return `
-    <p class="muted-copy pb-intro">What each chest source is worth for <strong>${esc(b.clan?.name || 'this clan')}</strong> — every clan has its own values${canEdit ? '; switch clan to edit another clan\'s' : ''}. Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.${canEdit ? ' Saving a value also updates every chest this clan already recorded from that source, so a save never needs a Recalculate.' : ' <strong>Read-only</strong> — only a superadmin can change values.'}</p>
+    <p class="muted-copy pb-intro">${intro}</p>
     <div class="pb-status">${parts.join('<span class="pb-dot" aria-hidden="true">·</span>')}</div>
   `;
 }
@@ -192,18 +204,18 @@ function chipsHtml() {
   // Counts are rows on screen, so a heroic tier counts once, not per level.
   const rows = (sources) => displayUnits(sources).length;
   const chips = [];
-  if (unset.length > 0) chips.push({ key: NEEDS_VALUE, title: '⚠ Needs a value', count: rows(unset), flag: true });
+  if (unset.length > 0) chips.push({ key: NEEDS_VALUE, title: `⚠ ${t('Needs a value')}`, count: rows(unset), flag: true });
   for (const c of b.categories) {
     chips.push({ key: c.key, title: c.title, count: rows(b.sources.filter((s) => s.category === c.key)), edited: editedIn(c.key) });
   }
-  chips.push({ key: ALL, title: 'All', count: rows(b.sources) });
+  chips.push({ key: ALL, title: t('All'), count: rows(b.sources) });
   const searching = state.query.trim() !== '';
   return `
-    <div class="pb-chips" role="group" aria-label="Source category">
+    <div class="pb-chips" role="group" aria-label="${t('Source category')}">
       ${chips.map((c) => {
         const active = !searching && state.category === c.key;
         return `<button type="button" class="pb-chip${active ? ' active' : ''}${c.flag ? ' pb-chip-flag' : ''}" data-pb="category" data-category="${c.key}" aria-pressed="${active}">
-          ${esc(c.title)} <span class="pb-chip-count">${fmt(c.count)}</span>${c.edited ? `<span class="pb-chip-edited" title="${plural(c.edited, 'unsaved edit')}">● ${fmt(c.edited)}</span>` : ''}
+          ${esc(c.title)} <span class="pb-chip-count">${fmt(c.count)}</span>${c.edited ? `<span class="pb-chip-edited" title="${tn(c.edited, '{n} unsaved edit', '{n} unsaved edits', { n: fmt(c.edited) })}">● ${fmt(c.edited)}</span>` : ''}
         </button>`;
       }).join('')}
     </div>
@@ -224,7 +236,8 @@ function visibleSources() {
   if (q) {
     return all.filter((s) => s.label.toLowerCase().includes(q)
       || s.source.toLowerCase().includes(q)
-      || s.chests.some((c) => c.name.toLowerCase().includes(q)));
+      || tGame(s.label).toLowerCase().includes(q)
+      || s.chests.some((c) => c.name.toLowerCase().includes(q) || tGame(c.name).toLowerCase().includes(q)));
   }
   if (state.category === ALL) return all;
   if (state.category === NEEDS_VALUE) return all.filter((s) => s.unset);
@@ -253,7 +266,7 @@ function displayUnits(sources) {
 function listHtml() {
   const units = displayUnits(visibleSources());
   if (units.length === 0) {
-    return `<p class="muted-copy pb-empty">${state.query.trim() ? `Nothing matches “${esc(state.query.trim())}”.` : 'Nothing here.'}</p>`;
+    return `<p class="muted-copy pb-empty">${state.query.trim() ? t('Nothing matches “{query}”.', { query: esc(state.query.trim()) }) : t('Nothing here.')}</p>`;
   }
   // Across categories (search, All) a heading per category keeps the list
   // scannable; inside one category it would only repeat the chip.
@@ -307,24 +320,24 @@ function groupHtml(g) {
   // A search that found a member (not the tier itself) opens the tier.
   const open = state.expanded.has(GROUP_PREFIX + g.id) || (q !== '' && !g.label.toLowerCase().includes(q));
   const anyEdited = members.some((m) => [...state.dirty.keys()].some((k) => k.startsWith(`${m.key}\t`)));
-  const meta = [plural(members.length, 'level'), chestCount(records)];
+  const meta = [tn(members.length, '{n} level', '{n} levels', { n: fmt(members.length) }), chestCount(records)];
   if (differing.length > 0) {
-    meta.push(`<span class="pb-meta-exc">${differing.map((m) => `Level ${esc(levelOf(m))} pays ${fmt(m.points)}`).join(', ')}</span>`);
+    meta.push(`<span class="pb-meta-exc">${differing.map((m) => t('Level {level} pays {points}', { level: esc(levelOf(m)), points: fmt(m.points) })).join(', ')}</span>`);
   }
   const stale = members.reduce((n, m) => n + m.staleRecords, 0);
-  if (stale > 0) meta.push(`<span class="pb-flag">⟳ ${fmt(stale)} out of date</span>`);
+  if (stale > 0) meta.push(`<span class="pb-flag">⟳ ${tn(stale, '{n} out of date', '{n} out of date', { n: fmt(stale) })}</span>`);
   const unset = members.some((m) => m.unset);
 
   return `
     <div class="pb-row pb-group-row${unset ? ' is-unset' : ''}${anyEdited ? ' has-edits' : ''}${open ? ' is-open' : ''}" role="listitem" data-group-id="${esc(g.id)}">
       <div class="pb-main">
         <div class="pb-name">
-          <span class="pb-label">${esc(g.label)}</span>
-          ${unset ? '<span class="badge-warn">⚠ Needs a value</span>' : ''}
+          <span class="pb-label">${esc(tGame(g.label))}</span>
+          ${unset ? `<span class="badge-warn">⚠ ${t('Needs a value')}</span>` : ''}
           <span class="pb-meta">${meta.join(' · ')}</span>
         </div>
         <div class="pb-control">${groupControl(g, base)}</div>
-        <button type="button" class="pb-expand" data-pb="expand" data-source-key="${esc(GROUP_PREFIX + g.id)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} levels for ${esc(g.label)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>
+        <button type="button" class="pb-expand" data-pb="expand" data-source-key="${esc(GROUP_PREFIX + g.id)}" aria-expanded="${open}" aria-label="${open ? t('Hide levels for {name}', { name: esc(tGame(g.label)) }) : t('Show levels for {name}', { name: esc(tGame(g.label)) })}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>
       </div>
       ${open ? `<div class="pb-members">${members.map(sourceHtml).join('')}</div>` : ''}
     </div>
@@ -339,10 +352,10 @@ function groupControl(g, base) {
     <label class="pb-value${edited ? ' is-edited' : ''}">
       <input type="number" class="input pb-input" min="0" step="1" inputmode="numeric"
         value="${esc(edited ? raw : String(base))}" data-pb="group-value" data-pb-key="${esc(GROUP_PREFIX + g.id)}"
-        data-group-id="${esc(g.id)}" aria-label="Points for every level of ${esc(g.label)}">
-      <span class="pb-unit" aria-hidden="true">pts</span>
+        data-group-id="${esc(g.id)}" aria-label="${t('Points for every level of {name}', { name: esc(tGame(g.label)) })}">
+      <span class="pb-unit" aria-hidden="true">${t('pts')}</span>
     </label>
-    ${edited ? `<span class="pb-was">not saved · was ${fmt(base)}</span>` : ''}
+    ${edited ? `<span class="pb-was">${t('not saved · was {points}', { points: fmt(base) })}</span>` : ''}
   `;
 }
 
@@ -371,7 +384,7 @@ function onGroupInput(input) {
     input.closest('.pb-value')?.classList.toggle('is-edited', !reset);
     const control = input.closest('.pb-control');
     control?.querySelector('.pb-was')?.remove();
-    if (!reset && control) control.insertAdjacentHTML('beforeend', `<span class="pb-was">not saved · was ${fmt(base)}</span>`);
+    if (!reset && control) control.insertAdjacentHTML('beforeend', `<span class="pb-was">${t('not saved · was {points}', { points: fmt(base) })}</span>`);
     // Redraw the open member rows so they show the values they now carry.
     for (const m of members) rerenderRow(m.key, { fallback: false });
   }
@@ -388,10 +401,10 @@ function valueControl(sourceKey, chestName, value, label) {
       <input type="number" class="input pb-input" min="0" step="1" inputmode="numeric"
         value="${esc(shown)}" data-pb="value" data-pb-key="${esc(k)}"
         data-source-key="${esc(sourceKey)}" data-chest-name="${esc(chestName)}"
-        aria-label="Points for ${esc(label)}">
-      <span class="pb-unit" aria-hidden="true">pts</span>
+        aria-label="${t('Points for {name}', { name: esc(label) })}">
+      <span class="pb-unit" aria-hidden="true">${t('pts')}</span>
     </label>
-    ${edited ? `<span class="pb-was">not saved · was ${fmt(value)}</span>` : ''}
+    ${edited ? `<span class="pb-was">${t('not saved · was {points}', { points: fmt(value) })}</span>` : ''}
   `;
 }
 
@@ -408,23 +421,23 @@ function sourceHtml(s) {
   const anyEdited = [...state.dirty.keys()].some((k) => k.startsWith(`${s.key}\t`));
   const meta = [
     chestCount(s.records),
-    s.chests.length > 1 ? plural(s.chests.length, 'kind') : esc(s.chests[0]?.name || ''),
+    s.chests.length > 1 ? tn(s.chests.length, '{n} kind', '{n} kinds', { n: fmt(s.chests.length) }) : esc(tGame(s.chests[0]?.name || '')),
   ].filter(Boolean);
-  if (exceptions.length > 0) meta.push(`<span class="pb-meta-exc">${plural(exceptions.length, 'exception')}</span>`);
-  if (s.staleRecords > 0) meta.push(`<span class="pb-flag">⟳ ${fmt(s.staleRecords)} out of date</span>`);
+  if (exceptions.length > 0) meta.push(`<span class="pb-meta-exc">${tn(exceptions.length, '{n} exception', '{n} exceptions', { n: fmt(exceptions.length) })}</span>`);
+  if (s.staleRecords > 0) meta.push(`<span class="pb-flag">⟳ ${tn(s.staleRecords, '{n} out of date', '{n} out of date', { n: fmt(s.staleRecords) })}</span>`);
   const expandable = s.chests.length > 1 || exceptions.length > 0;
 
   return `
     <div class="pb-row${s.unset ? ' is-unset' : ''}${anyEdited ? ' has-edits' : ''}${open ? ' is-open' : ''}" role="listitem">
       <div class="pb-main">
         <div class="pb-name">
-          <span class="pb-label" title="${esc(s.source)}">${esc(s.label)}</span>
-          ${s.unset ? '<span class="badge-warn">⚠ Needs a value</span>' : ''}
+          <span class="pb-label" title="${esc(tGame(s.source))}">${esc(tGame(s.label))}</span>
+          ${s.unset ? `<span class="badge-warn">⚠ ${t('Needs a value')}</span>` : ''}
           <span class="pb-meta">${meta.join(' · ')}</span>
         </div>
-        <div class="pb-control">${valueControl(s.key, '', s.points, s.label)}</div>
+        <div class="pb-control">${valueControl(s.key, '', s.points, tGame(s.label))}</div>
         ${expandable
-          ? `<button type="button" class="pb-expand" data-pb="expand" data-source-key="${esc(s.key)}" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} chests for ${esc(s.label)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`
+          ? `<button type="button" class="pb-expand" data-pb="expand" data-source-key="${esc(s.key)}" aria-expanded="${open}" aria-label="${open ? t('Hide chests for {name}', { name: esc(tGame(s.label)) }) : t('Show chests for {name}', { name: esc(tGame(s.label)) })}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>`
           : '<span class="pb-expand-spacer"></span>'}
       </div>
       ${expandable && open ? detailHtml(s, exceptions, followers) : ''}
@@ -439,28 +452,28 @@ function detailHtml(s, exceptions, followers) {
     .map((c) => `
       <div class="pb-exc">
         <div class="pb-name">
-          <span class="pb-chest-name">${esc(c.name)}</span>
-          ${c.unset ? '<span class="badge-warn">⚠ Needs a value</span>' : ''}
+          <span class="pb-chest-name">${esc(tGame(c.name))}</span>
+          ${c.unset ? `<span class="badge-warn">⚠ ${t('Needs a value')}</span>` : ''}
           <span class="pb-meta">${chestCount(c.records)}</span>
         </div>
-        <div class="pb-control">${valueControl(s.key, c.name, c.points, `${c.name} from ${s.label}`)}</div>
-        ${canEdit ? `<button type="button" class="pb-reset" data-pb="follow" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="Pay the source's value instead" aria-label="${esc(c.name)}: pay the source's value instead">↺</button>` : '<span class="pb-expand-spacer"></span>'}
+        <div class="pb-control">${valueControl(s.key, c.name, c.points, t('{chest} from {source}', { chest: tGame(c.name), source: tGame(s.label) }))}</div>
+        ${canEdit ? `<button type="button" class="pb-reset" data-pb="follow" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="${t('Pay the source\'s value instead')}" aria-label="${t('{chest}: pay the source\'s value instead', { chest: esc(tGame(c.name)) })}">↺</button>` : '<span class="pb-expand-spacer"></span>'}
       </div>`).join('');
 
   const chips = followers
     .slice()
     .sort((a, b) => b.records - a.records)
     .map((c) => canEdit
-      ? `<button type="button" class="pb-follower" data-pb="split" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="Give ${esc(c.name)} its own value">${esc(c.name)} <span class="pb-chip-count">${fmt(c.records)}</span></button>`
-      : `<span class="pb-follower">${esc(c.name)} <span class="pb-chip-count">${fmt(c.records)}</span></span>`)
+      ? `<button type="button" class="pb-follower" data-pb="split" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="${t('Give {chest} its own value', { chest: esc(tGame(c.name)) })}">${esc(tGame(c.name))} <span class="pb-chip-count">${fmt(c.records)}</span></button>`
+      : `<span class="pb-follower">${esc(tGame(c.name))} <span class="pb-chip-count">${fmt(c.records)}</span></span>`)
     .join('');
 
   return `
     <div class="pb-detail">
       ${followers.length > 0 ? `
-        <div class="pb-followers-label">Pays the source value (<span class="pb-source-echo">${fmt(state.dirty.get(dirtyKey(s.key, '')) ?? s.points)}</span>):${canEdit ? ' <span class="muted-copy">click a chest to give it its own value</span>' : ''}</div>
+        <div class="pb-followers-label">${t('Pays the source value ({value}):', { value: `<span class="pb-source-echo">${fmt(state.dirty.get(dirtyKey(s.key, '')) ?? s.points)}</span>` })}${canEdit ? ` <span class="muted-copy">${t('click a chest to give it its own value')}</span>` : ''}</div>
         <div class="pb-followers">${chips}</div>` : ''}
-      ${exceptions.length > 0 ? `<div class="pb-followers-label">Pays its own value:</div>${exRows}` : ''}
+      ${exceptions.length > 0 ? `<div class="pb-followers-label">${t('Pays its own value:')}</div>${exRows}` : ''}
     </div>
   `;
 }
@@ -469,10 +482,10 @@ function saveBarHtml() {
   const n = state.dirty.size;
   return `
     <div class="pb-savebar${n > 0 ? ' is-visible' : ''}" ${n > 0 ? '' : 'hidden'}>
-      <span class="pb-savebar-text">● ${plural(n, 'unsaved change')}</span>
+      <span class="pb-savebar-text">● ${tn(n, '{n} unsaved change', '{n} unsaved changes', { n: fmt(n) })}</span>
       <div class="pb-savebar-actions">
-        <button type="button" class="btn btn-tight" data-pb="discard">Discard</button>
-        <button type="button" class="btn btn-tight btn-primary" data-pb="review">Review &amp; save</button>
+        <button type="button" class="btn btn-tight" data-pb="discard">${t('Discard')}</button>
+        <button type="button" class="btn btn-tight btn-primary" data-pb="review">${esc(t('Review & save'))}</button>
       </div>
     </div>
   `;
@@ -492,7 +505,7 @@ function updateEditChrome(input) {
     control.appendChild(was);
   }
   if (was) {
-    if (edited) was.textContent = `not saved · was ${fmt(currentValue(input.dataset.sourceKey, input.dataset.chestName))}`;
+    if (edited) was.textContent = t('not saved · was {points}', { points: fmt(currentValue(input.dataset.sourceKey, input.dataset.chestName)) });
     else was.remove();
   }
   const row = input.closest('.pb-row');
@@ -638,7 +651,7 @@ function collectChanges() {
     const points = Number(raw);
     if (!Number.isInteger(points) || points < 0) {
       const src = findSource(sourceKey);
-      return { error: `${chestName || src?.label || sourceKey}: “${raw}” isn't a whole number of points.` };
+      return { error: t('{name}: “{value}” isn\'t a whole number of points.', { name: tGame(chestName || src?.label || sourceKey), value: raw }) };
     }
     changes.push({ sourceKey, chestName, points });
   }
@@ -650,10 +663,10 @@ function collectChanges() {
 function impactHtml(impact, { edits = null, intro = '' } = {}) {
   const editList = edits && edits.length > 0 ? `
     <div class="pb-impact-section">
-      <div class="pb-impact-heading">Changes</div>
+      <div class="pb-impact-heading">${t('Changes')}</div>
       <ul class="pb-impact-list">
         ${edits.map((e) => `<li>
-          <span class="pb-impact-name">${esc(e.label)}${e.chestName ? ` <span class="muted-copy">— ${esc(e.chestName)}</span>` : ' <span class="muted-copy">— source value</span>'}</span>
+          <span class="pb-impact-name">${esc(tGame(e.label))}${e.chestName ? ` <span class="muted-copy">— ${esc(tGame(e.chestName))}</span>` : ` <span class="muted-copy">— ${t('source value')}</span>`}</span>
           <span class="pb-impact-move">${fmt(e.from)} → <strong>${fmt(e.to)}</strong></span>
         </li>`).join('')}
       </ul>
@@ -663,32 +676,32 @@ function impactHtml(impact, { edits = null, intro = '' } = {}) {
   // just repeat the totals above it.
   const clans = impact.clans.length > 1 ? `
     <div class="pb-impact-section">
-      <div class="pb-impact-heading">Per clan</div>
+      <div class="pb-impact-heading">${t('Per clan')}</div>
       <ul class="pb-impact-list">
         ${impact.clans.map((c) => `<li>
           <span class="pb-impact-name">${esc(c.name)}</span>
-          <span class="pb-impact-move">${plural(c.records, 'record')} · <strong class="${c.delta < 0 ? 'is-error' : 'is-success'}">${signed(c.delta)} pts</strong></span>
+          <span class="pb-impact-move">${tn(c.records, '{n} record', '{n} records', { n: fmt(c.records) })} · <strong class="${c.delta < 0 ? 'is-error' : 'is-success'}">${t('{points} pts', { points: signed(c.delta) })}</strong></span>
         </li>`).join('')}
       </ul>
     </div>` : '';
 
   const lines = impact.lines.length > 0 ? `
     <details class="pb-impact-section">
-      <summary class="pb-impact-heading">Where the points move (${plural(impact.lines.length + impact.moreLines, 'line')})</summary>
+      <summary class="pb-impact-heading">${tn(impact.lines.length + impact.moreLines, 'Where the points move ({n} line)', 'Where the points move ({n} lines)', { n: fmt(impact.lines.length + impact.moreLines) })}</summary>
       <ul class="pb-impact-list">
         ${impact.lines.map((l) => `<li>
-          <span class="pb-impact-name">${esc(l.label)} <span class="muted-copy">— ${l.chests.length === 1 ? esc(l.chests[0]) : `${l.chests.length} chests`}</span></span>
-          <span class="pb-impact-move">${l.from.map(fmt).join(', ')} → ${fmt(l.to)} · ${plural(l.records, 'record')} · ${signed(l.delta)}</span>
+          <span class="pb-impact-name">${esc(tGame(l.label))} <span class="muted-copy">— ${l.chests.length === 1 ? esc(tGame(l.chests[0])) : tn(l.chests.length, '{n} chest', '{n} chests', { n: l.chests.length })}</span></span>
+          <span class="pb-impact-move">${l.from.map(fmt).join(', ')} → ${fmt(l.to)} · ${tn(l.records, '{n} record', '{n} records', { n: fmt(l.records) })} · ${signed(l.delta)}</span>
         </li>`).join('')}
-        ${impact.moreLines > 0 ? `<li class="muted-copy">…and ${plural(impact.moreLines, 'more line')}</li>` : ''}
+        ${impact.moreLines > 0 ? `<li class="muted-copy">${tn(impact.moreLines, '…and {n} more line', '…and {n} more lines', { n: fmt(impact.moreLines) })}</li>` : ''}
       </ul>
     </details>` : '';
 
   return `
     ${intro ? `<p class="pb-impact-intro">${intro}</p>` : ''}
     <div class="pb-tiles">
-      <div class="pb-tile"><div class="pb-tile-value">${fmt(impact.records)}</div><div class="pb-tile-label">chest records change</div></div>
-      <div class="pb-tile"><div class="pb-tile-value ${impact.delta < 0 ? 'is-error' : impact.delta > 0 ? 'is-success' : ''}">${signed(impact.delta)}</div><div class="pb-tile-label">points in total</div></div>
+      <div class="pb-tile"><div class="pb-tile-value">${fmt(impact.records)}</div><div class="pb-tile-label">${tn(impact.records, 'chest records change', 'chest records change')}</div></div>
+      <div class="pb-tile"><div class="pb-tile-value ${impact.delta < 0 ? 'is-error' : impact.delta > 0 ? 'is-success' : ''}">${signed(impact.delta)}</div><div class="pb-tile-label">${tn(Math.abs(impact.delta), 'points in total', 'points in total')}</div></div>
     </div>
     ${editList}
     ${clans}
@@ -705,7 +718,7 @@ function confirmImpact({ title, html, confirmLabel }) {
       className: 'pb-impact-modal',
       html: `${html}
         <div class="modal-actions">
-          <button type="button" class="btn" data-pb-modal="cancel">Cancel</button>
+          <button type="button" class="btn" data-pb-modal="cancel">${t('Cancel')}</button>
           <button type="button" class="btn btn-primary" data-pb-modal="confirm">${esc(confirmLabel)}</button>
         </div>`,
     });
@@ -741,40 +754,44 @@ async function withBusy(fn) {
 function reviewAndSave() {
   return withBusy(async () => {
     const { changes, error } = collectChanges();
-    if (error) return notify(error, 'Check the value');
-    if (changes.length === 0) return notify('Nothing to save.', 'No changes');
+    if (error) return notify(error, t('Check the value'));
+    if (changes.length === 0) return notify(t('Nothing to save.'), t('No changes'));
 
     const clanId = state.board.clan.id;
     const clanName = esc(state.board.clan.name);
     const preview = await apiPost('/admin/source-points/changes', { clanId, changes, dryRun: true });
-    if (preview?.error) return notify(preview.error, 'Preview failed');
+    if (preview?.error) return notify(preview.error, t('Preview failed'));
     if (preview.edits.length === 0) {
       state.dirty.clear();
       state.groupDirty.clear();
       render();
-      return notify('Those values are already in place — nothing to save.', 'No changes');
+      return notify(t('Those values are already in place — nothing to save.'), t('No changes'));
     }
     const ok = await confirmImpact({
-      title: `Save ${plural(preview.edits.length, 'change')} for ${state.board.clan.name}?`,
+      title: tn(preview.edits.length, 'Save {n} change for {clan}?', 'Save {n} changes for {clan}?', { n: fmt(preview.edits.length), clan: state.board.clan.name }),
       html: impactHtml(preview.impact, {
         edits: preview.edits,
         intro: preview.impact.records > 0
-          ? `Saving updates these stored chest records of <strong>${clanName}</strong> right away — there is nothing to Recalculate afterwards. Other clans keep their own values.`
-          : `No stored chest record changes — this only affects chests <strong>${clanName}</strong> scans from now on. Other clans keep their own values.`,
+          ? t('Saving updates these stored chest records of <strong>{clan}</strong> right away — there is nothing to Recalculate afterwards. Other clans keep their own values.', { clan: clanName })
+          : t('No stored chest record changes — this only affects chests <strong>{clan}</strong> scans from now on. Other clans keep their own values.', { clan: clanName }),
       }),
-      confirmLabel: 'Save changes',
+      confirmLabel: t('Save changes'),
     });
     if (!ok) return;
 
     const result = await apiPost('/admin/source-points/changes', { clanId, changes });
-    if (result?.error) return notify(result.error, 'Save failed');
+    if (result?.error) return notify(result.error, t('Save failed'));
     state.dirty.clear();
     state.split.clear();
     state.groupDirty.clear();
     await refresh();
     notify(
-      `${plural(result.edits.length, 'change')} saved · ${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`,
-      'Chest points saved',
+      t('{changes} saved · {records} updated · {points} pts', {
+        changes: tn(result.edits.length, '{n} change', '{n} changes', { n: fmt(result.edits.length) }),
+        records: tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) }),
+        points: signed(result.impact.delta),
+      }),
+      t('Chest points saved'),
     );
   });
 }
@@ -784,29 +801,32 @@ function recalculate() {
   // would report "nothing to do" and read as if the edits had been applied.
   if (state.dirty.size > 0) {
     return notify(
-      `You have ${plural(state.dirty.size, 'unsaved change')}. Recalculate only uses saved values — use Review & save first (saving updates the stored records itself).`,
-      'Save your changes first',
+      tn(state.dirty.size, 'You have {n} unsaved change. Recalculate only uses saved values — use Review & save first (saving updates the stored records itself).', 'You have {n} unsaved changes. Recalculate only uses saved values — use Review & save first (saving updates the stored records itself).', { n: fmt(state.dirty.size) }),
+      t('Save your changes first'),
     );
   }
   return withBusy(async () => {
     const clanId = state.board.clan.id;
     const preview = await apiPost('/admin/source-points/recalculate', { clanId, dryRun: true });
-    if (preview?.error) return notify(preview.error, 'Recalculate failed');
+    if (preview?.error) return notify(preview.error, t('Recalculate failed'));
     if (preview.impact.records === 0) {
-      return notify('Every stored chest record already matches the current values — saves update records as they are made.', 'Nothing to recalculate');
+      return notify(t('Every stored chest record already matches the current values — saves update records as they are made.'), t('Nothing to recalculate'));
     }
     const ok = await confirmImpact({
-      title: 'Recalculate chest points?',
+      title: t('Recalculate chest points?'),
       html: impactHtml(preview.impact, {
-        intro: `These stored records of <strong>${esc(state.board.clan.name)}</strong> no longer match its current values (usually chests scanned before a value was set). Recalculating brings them in line.`,
+        intro: t('These stored records of <strong>{clan}</strong> no longer match its current values (usually chests scanned before a value was set). Recalculating brings them in line.', { clan: esc(state.board.clan.name) }),
       }),
-      confirmLabel: 'Recalculate',
+      confirmLabel: t('Recalculate'),
     });
     if (!ok) return;
     const result = await apiPost('/admin/source-points/recalculate', { clanId });
-    if (result?.error) return notify(result.error, 'Recalculate failed');
+    if (result?.error) return notify(result.error, t('Recalculate failed'));
     await refresh();
-    notify(`${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`, 'Recalculated');
+    notify(t('{records} updated · {points} pts', {
+      records: tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) }),
+      points: signed(result.impact.delta),
+    }), t('Recalculated'));
   });
 }
 
@@ -818,46 +838,51 @@ function recalculate() {
 function copyFromClan() {
   if (state.dirty.size > 0) {
     return notify(
-      `You have ${plural(state.dirty.size, 'unsaved change')}. Copying replaces every value, so save or discard them first.`,
-      'Save your changes first',
+      tn(state.dirty.size, 'You have {n} unsaved change. Copying replaces every value, so save or discard them first.', 'You have {n} unsaved changes. Copying replaces every value, so save or discard them first.', { n: fmt(state.dirty.size) }),
+      t('Save your changes first'),
     );
   }
   return withBusy(async () => {
     const clan = state.board.clan;
     const list = await api('/clans');
     const others = (Array.isArray(list?.clans) ? list.clans : []).filter((c) => c.id !== clan.id);
-    if (others.length === 0) return notify('There is no other clan to copy values from.', 'Nothing to copy');
+    if (others.length === 0) return notify(t('There is no other clan to copy values from.'), t('Nothing to copy'));
     const picked = await selectDialog(
-      `Every chest point value of ${clan.name} is replaced by the other clan's. The other clan is not changed.`,
+      t('Every chest point value of {clan} is replaced by the other clan\'s. The other clan is not changed.', { clan: clan.name }),
       others.map((c) => ({ value: c.id, label: c.name })),
-      { title: `Copy values into ${clan.name}`, fieldLabel: 'Copy from', confirmLabel: 'Preview' },
+      { title: t('Copy values into {clan}', { clan: clan.name }), fieldLabel: t('Copy from'), confirmLabel: t('Preview') },
     );
     if (picked === null || picked === undefined) return;
     const fromClanId = Number(picked);
 
     const preview = await apiPost('/admin/source-points/copy', { clanId: clan.id, fromClanId, dryRun: true });
-    if (preview?.error) return notify(preview.error, 'Preview failed');
+    if (preview?.error) return notify(preview.error, t('Preview failed'));
     const fromName = esc(preview.from.name);
     const ok = await confirmImpact({
-      title: `Copy ${preview.from.name}'s values into ${clan.name}?`,
+      title: t('Copy {from}\'s values into {clan}?', { from: preview.from.name, clan: clan.name }),
       html: impactHtml(preview.impact, {
         edits: preview.edits,
-        intro: `<strong>${esc(clan.name)}</strong> will pay exactly what <strong>${fromName}</strong> pays (${plural(preview.values, 'saved value')}; anything ${fromName} hasn't set uses the built-in default). `
+        intro: `${tn(preview.values, '<strong>{clan}</strong> will pay exactly what <strong>{from}</strong> pays ({n} saved value; anything {from} hasn\'t set uses the built-in default).', '<strong>{clan}</strong> will pay exactly what <strong>{from}</strong> pays ({n} saved values; anything {from} hasn\'t set uses the built-in default).', { n: fmt(preview.values), clan: esc(clan.name), from: fromName })} `
           + (preview.impact.records > 0
-            ? `These stored chest records of ${esc(clan.name)} are updated right away. ${fromName} is not changed.`
-            : `No stored chest record of ${esc(clan.name)} changes. ${fromName} is not changed.`),
+            ? t('These stored chest records of {clan} are updated right away. {from} is not changed.', { clan: esc(clan.name), from: fromName })
+            : t('No stored chest record of {clan} changes. {from} is not changed.', { clan: esc(clan.name), from: fromName })),
       }),
-      confirmLabel: 'Copy values',
+      confirmLabel: t('Copy values'),
     });
     if (!ok) return;
 
     const result = await apiPost('/admin/source-points/copy', { clanId: clan.id, fromClanId });
-    if (result?.error) return notify(result.error, 'Copy failed');
+    if (result?.error) return notify(result.error, t('Copy failed'));
     state.split.clear();
     await refresh();
     notify(
-      `${plural(result.values, 'value')} copied from ${result.from.name} · ${plural(result.updated, 'record')} updated · ${signed(result.impact.delta)} pts`,
-      'Chest points copied',
+      t('{values} copied from {clan} · {records} updated · {points} pts', {
+        values: tn(result.values, '{n} value', '{n} values', { n: fmt(result.values) }),
+        clan: result.from.name,
+        records: tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) }),
+        points: signed(result.impact.delta),
+      }),
+      t('Chest points copied'),
     );
   });
 }

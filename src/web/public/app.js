@@ -29,6 +29,7 @@ import {
 } from './lib/state.js';
 import { computeGameWindow, getCurrentGameDayKey, periodOffsetFromAnchor } from './lib/period.js';
 import { applyTheme, bindThemeSwitcher } from './lib/theme.js';
+import { adoptAccountLanguage, bindLanguageSwitcher, t, tn } from './lib/i18n.js';
 import { initMobileRows } from './lib/mobile-rows.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
 // renderExternalAdminCardHtml + wireExternalAdminHandlers are
@@ -209,6 +210,10 @@ async function checkAuth() {
       applyTheme(currentUser.theme, { persist: true, syncServer: false });
     }
     bindThemeSwitcher();
+    // Same for the language — except a change needs a reload, which
+    // adoptAccountLanguage does itself (once; never when storage is blocked).
+    adoptAccountLanguage(currentUser.language);
+    bindLanguageSwitcher();
     // Mirror to lib/state.js so page modules that don't share app.js's
     // module scope (pages/*.js) can read the same value via
     // getCurrentUser() without taking a hard import dependency on app.js.
@@ -274,23 +279,23 @@ async function refreshBuildFooter() {
     const res = await fetch('/api/health', { cache: 'no-store' });
     if (!res.ok) {
       el.textContent = '—';
-      el.title = '/api/health failed';
+      el.title = t('/api/health failed');
       return;
     }
     const data = await res.json();
-    const fp = data.fingerprint || 'unknown';
+    const fp = data.fingerprint || t('unknown');
     const builtAt = data.builtAt || 'unknown';
     // Format the timestamp for the visible footer; full fingerprint +
     // formatted timestamp stay in the title for hover. Use the shared
     // formatDate so both surfaces match the YYYY/MM/DD HH:MM:SS format
     // the rest of the site uses (toLocaleString defaulted to a
     // US-style M/D/YYYY which clashed with every other timestamp).
-    const builtAtShort = builtAt === 'unknown' ? builtAt : formatDate(builtAt);
-    el.textContent = `build ${fp} · ${builtAtShort}`;
-    el.title = `fingerprint ${fp} · built ${builtAtShort}`;
+    const builtAtShort = builtAt === 'unknown' ? t('unknown') : formatDate(builtAt);
+    el.textContent = t('build {fingerprint} · {built}', { fingerprint: fp, built: builtAtShort });
+    el.title = t('fingerprint {fingerprint} · built {built}', { fingerprint: fp, built: builtAtShort });
   } catch {
     el.textContent = '—';
-    el.title = '/api/health unreachable';
+    el.title = t('/api/health unreachable');
   }
 }
 
@@ -841,7 +846,7 @@ window.addEventListener('unhandledrejection', (event) => {
     return;
   }
   const msg = err.message || String(err);
-  notify(msg, 'Unexpected error');
+  notify(msg, t('Unexpected error'));
   event.preventDefault();
   // eslint-disable-next-line no-console
   console.error('Unhandled promise rejection:', err);
@@ -1028,17 +1033,17 @@ function openChangePasswordModal() {
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
       <div class="modal-card" role="dialog" aria-modal="true">
-        <div class="modal-title">Change Password</div>
+        <div class="modal-title">${t('Change Password')}</div>
         <div class="modal-form">
-          <label class="modal-form-label" for="modalPwCurrent">Current Password</label>
+          <label class="modal-form-label" for="modalPwCurrent">${t('Current Password')}</label>
           <input type="password" class="input modal-input" id="modalPwCurrent" autocomplete="current-password">
-          <label class="modal-form-label" for="modalPwNew">New Password</label>
+          <label class="modal-form-label" for="modalPwNew">${t('New Password')}</label>
           <input type="password" class="input modal-input" id="modalPwNew" autocomplete="new-password">
-          <p class="modal-form-hint">Must be at least 10 characters with uppercase, lowercase, number, and symbol.</p>
+          <p class="modal-form-hint">${t('Must be at least 10 characters with uppercase, lowercase, number, and symbol.')}</p>
         </div>
         <div class="modal-actions">
-          <button class="btn modal-cancel">Cancel</button>
-          <button class="btn btn-primary modal-confirm">Change Password</button>
+          <button class="btn modal-cancel">${t('Cancel')}</button>
+          <button class="btn btn-primary modal-confirm">${t('Change Password')}</button>
         </div>
       </div>
     `;
@@ -1064,26 +1069,26 @@ function openChangePasswordModal() {
       const current = currentInput.value;
       const newPw = newInput.value;
       if (!current || !newPw) {
-        await notify('Fill in both fields', 'Change Password');
+        await notify(t('Fill in both fields'), t('Change Password'));
         currentInput.focus();
         return;
       }
       confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Changing...';
+      confirmBtn.textContent = t('Changing...');
       try {
         const res = await apiPut('/auth/password', { currentPassword: current, newPassword: newPw });
         if (res.error) {
           confirmBtn.disabled = false;
-          confirmBtn.textContent = 'Change Password';
-          await notify(res.error, 'Change Password');
+          confirmBtn.textContent = t('Change Password');
+          await notify(res.error, t('Change Password'));
           return;
         }
         cleanup(true);
-        await notify('Password changed successfully.', 'Success');
+        await notify(t('Password changed successfully.'), t('Success'));
       } catch (err) {
         confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Change Password';
-        await notify('Failed to change password: ' + String(err), 'Error');
+        confirmBtn.textContent = t('Change Password');
+        await notify(t('Failed to change password: {error}', { error: String(err) }), t('Error'));
       }
     };
 
@@ -1153,28 +1158,28 @@ async function triggerScan(scope) {
   if (!btn) return;
   const originalLabel = btn.textContent;
   btn.dataset.localBusy = '1';
-  btn.textContent = 'Starting scan...';
+  btn.textContent = t('Starting scan...');
   btn.disabled = true;
   try {
     const result = await apiPost('/scan', allClans ? { allClans: true } : {});
     if (result.alreadyRunning) {
-      await notify('A scan is already in progress. Please wait for it to finish.', 'Scan in progress');
+      await notify(t('A scan is already in progress. Please wait for it to finish.'), t('Scan in progress'));
       return;
     }
     if (result.error) {
-      await notify(result.error, 'Scan failed to start');
+      await notify(result.error, t('Scan failed to start'));
       return;
     }
     // Scan now runs in the background. The header status poll will show
     // "scanning · N chests" while it runs and clear when it finishes.
     notify(
       allClans
-        ? 'Scan started for all active clans. Watch the header for progress.'
-        : 'Scan started for the selected clan. Watch the header for progress.',
-      'Scan started',
+        ? t('Scan started for all active clans. Watch the header for progress.')
+        : t('Scan started for the selected clan. Watch the header for progress.'),
+      t('Scan started'),
     );
   } catch (err) {
-    await notify('Failed to start scan: ' + err.message, 'Error');
+    await notify(t('Failed to start scan: {error}', { error: err.message }), t('Error'));
   }
   finally {
     delete btn.dataset.localBusy;
@@ -1182,7 +1187,7 @@ async function triggerScan(scope) {
     // error before the scan even started), restore the original label
     // so the button doesn't get stuck on "Starting scan...". Status
     // polling overrides this when a scan actually begins.
-    if (btn.textContent === 'Starting scan...') {
+    if (btn.textContent === t('Starting scan...')) {
       btn.textContent = originalLabel;
       btn.disabled = false;
     }
@@ -1235,21 +1240,21 @@ function updateNavState() {
 // One line under each page's title. Kept to what the page is FOR — the page
 // itself carries the detail.
 const PAGE_SUBTITLES = {
-  dashboard: 'The clan at a glance',
-  analytics: 'Trends, breakdowns and who carries the clan',
-  leaderboard: 'Points and chests, ranked',
-  might: 'Power over time, member by member',
-  resources: 'Clan Capital donations',
-  events: 'Event runs and who took part',
-  tools: 'Calculators for planning events',
-  triumphal: 'Bank gifts and triumphal packages',
-  members: 'Everyone in the clan',
-  sessions: 'Every scan the bot has run',
-  external: 'Imported from ChestTracker',
-  admin: 'Corrections, review and scoring',
-  users: 'Accounts and roles',
-  clans: 'Clans, Discord and sharing',
-  system: 'Scanner, warnings and backups',
+  dashboard: t('The clan at a glance'),
+  analytics: t('Trends, breakdowns and who carries the clan'),
+  leaderboard: t('Points and chests, ranked'),
+  might: t('Power over time, member by member'),
+  resources: t('Clan Capital donations'),
+  events: t('Event runs and who took part'),
+  tools: t('Calculators for planning events'),
+  triumphal: t('Bank gifts and triumphal packages'),
+  members: t('Everyone in the clan'),
+  sessions: t('Every scan the bot has run'),
+  external: t('Imported from ChestTracker'),
+  admin: t('Corrections, review and scoring'),
+  users: t('Accounts and roles'),
+  clans: t('Clans, Discord and sharing'),
+  system: t('Scanner, warnings and backups'),
 };
 
 /** The page title is the active nav entry's own label, so the two never disagree. */
@@ -1342,6 +1347,19 @@ const STATUS_MAX_FAILURES = 3;
 const STATUS_POLL_TIMEOUT_MS = 4000;
 let statusFailures = 0;
 
+// The scanner's state names, as the header shows them.
+const STATUS_STATE_LABELS = {
+  idle: t('idle'),
+  checking_auth: t('checking_auth'),
+  navigating: t('navigating'),
+  scanning: t('scanning'),
+  processing: t('processing'),
+  exporting: t('exporting'),
+  error: t('error'),
+  cooldown: t('cooldown'),
+};
+const statusStateLabel = (state) => STATUS_STATE_LABELS[state] ?? state;
+
 async function updateStatus() {
   try {
     // AbortSignal.timeout is available in all browsers this app targets;
@@ -1366,13 +1384,13 @@ async function updateStatus() {
     if (isScanning && status.progressMessage) {
       text.textContent = status.progressMessage;
     } else if (isScanning && status.liveChestCount > 0) {
-      text.textContent = `${status.state} · ${status.liveChestCount} chests`;
+      text.textContent = tn(status.liveChestCount, '{state} · {n} chests', '{state} · {n} chests', { state: statusStateLabel(status.state), n: status.liveChestCount });
     } else if (status.lastScanError && (status.state === 'error' || status.state === 'cooldown' || status.state === 'idle')) {
       // Show the failure phase inline so the user knows WHERE it broke
       // without needing to open the details panel.
-      text.textContent = `${status.state} · ${status.lastScanError.phase}`;
+      text.textContent = `${statusStateLabel(status.state)} · ${status.lastScanError.phase}`;
     } else {
-      text.textContent = status.state;
+      text.textContent = statusStateLabel(status.state);
     }
     dot.className = 'dot';
     if (isScanning) dot.classList.add('scanning');
@@ -1385,7 +1403,7 @@ async function updateStatus() {
         errPanel.innerHTML = [
           `<div class="err-phase">${esc(status.lastScanError.phase)}</div>`,
           `<div>${esc(status.lastScanError.message)}</div>`,
-          `<div class="err-when">Failed ${esc(when)}</div>`,
+          `<div class="err-when">${t('Failed {when}', { when: esc(when) })}</div>`,
         ].join('');
       } else {
         errBtn.classList.add('is-hidden');
@@ -1411,10 +1429,10 @@ async function updateStatus() {
       if (btn.dataset.localBusy) return;
       if (status.scanInProgress) {
         btn.disabled = true;
-        btn.textContent = 'Scan in progress...';
+        btn.textContent = t('Scan in progress...');
       } else {
         btn.disabled = false;
-        btn.textContent = btn.dataset.scope === 'all' ? 'Scan All Clans' : 'Scan This Clan';
+        btn.textContent = btn.dataset.scope === 'all' ? t('Scan All Clans') : t('Scan This Clan');
       }
     });
   } catch (err) {
@@ -1425,7 +1443,7 @@ async function updateStatus() {
     // status in place so a one-off failed poll doesn't flap the header.
     statusFailures++;
     if (statusFailures >= STATUS_MAX_FAILURES) {
-      $('#statusText').textContent = 'Disconnected';
+      $('#statusText').textContent = t('Disconnected');
       $('#statusDot').className = 'dot error';
     }
   }
@@ -1458,16 +1476,16 @@ function renderOnboardingBanner(onboarding) {
     el.innerHTML = `
       <div class="onboarding-banner-icon">⚙</div>
       <div class="onboarding-banner-body">
-        <div class="onboarding-banner-title">Calibrate the scanner — step ${stageNumber} of ${total}</div>
+        <div class="onboarding-banner-title">${t('Calibrate the scanner — step {step} of {total}', { step: stageNumber, total })}</div>
         <div class="onboarding-banner-text">
-          Scans stay paused until the scanner knows where to click on your game UI.
-          ${done > 0 ? `${done} of ${total} stages done.` : 'Four short stages, once per install.'}
+          ${t('Scans stay paused until the scanner knows where to click on your game UI.')}
+          ${done > 0 ? tn(total, '{done} of {n} stages done.', '{done} of {n} stages done.', { done, n: total }) : t('Four short stages, once per install.')}
         </div>
-        <div class="onboarding-banner-progress" role="img" aria-label="${done} of ${total} stages complete">
+        <div class="onboarding-banner-progress" role="img" aria-label="${tn(total, '{done} of {n} stages complete', '{done} of {n} stages complete', { done, n: total })}">
           ${Array.from({ length: total }, (_, i) => `<span class="onboarding-pip${i < done ? ' is-done' : (i === done ? ' is-next' : '')}"></span>`).join('')}
         </div>
       </div>
-      <a class="btn btn-primary" href="#system/calibration">${done > 0 ? 'Continue calibration' : 'Start calibration'}</a>
+      <a class="btn btn-primary" href="#system/calibration">${done > 0 ? t('Continue calibration') : t('Start calibration')}</a>
     `;
     return;
   }
@@ -1476,12 +1494,12 @@ function renderOnboardingBanner(onboarding) {
     el.innerHTML = `
       <div class="onboarding-banner-icon">👥</div>
       <div class="onboarding-banner-body">
-        <div class="onboarding-banner-title">Capture the clan member list</div>
+        <div class="onboarding-banner-title">${t('Capture the clan member list')}</div>
         <div class="onboarding-banner-text">
-          Calibration is done. Now the scanner needs to learn who's in your clan before it can attribute chests to members.
+          ${t("Calibration is done. Now the scanner needs to learn who's in your clan before it can attribute chests to members.")}
         </div>
       </div>
-      <a class="btn btn-primary" href="#clans">Open Clans page</a>
+      <a class="btn btn-primary" href="#clans">${t('Open Clans page')}</a>
     `;
     return;
   }
@@ -1498,16 +1516,16 @@ function renderNextScanCountdown() {
   // showed a misleading "Next scan in 1h 53m" mid-scan. Show the scan state
   // instead until the cycle ends and the timer is reset.
   if (nextScanInProgress) {
-    el.textContent = 'Scanning…';
+    el.textContent = t('Scanning…');
     return;
   }
   if (!nextScanAtMs) {
-    el.textContent = nextScanClanInactive ? 'This clan is inactive — no scheduled scans' : '';
+    el.textContent = nextScanClanInactive ? t('This clan is inactive — no scheduled scans') : '';
     return;
   }
   const remainingMs = nextScanAtMs - Date.now();
   if (remainingMs <= 0) {
-    el.textContent = 'Next scan: now';
+    el.textContent = t('Next scan: now');
     return;
   }
   const totalSec = Math.floor(remainingMs / 1000);
@@ -1515,9 +1533,9 @@ function renderNextScanCountdown() {
   const minutes = Math.floor((totalSec % 3600) / 60);
   const seconds = totalSec % 60;
   const formatted = hours > 0
-    ? `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`
-    : `${minutes}m ${String(seconds).padStart(2, '0')}s`;
-  el.textContent = `Next scan in ${formatted}`;
+    ? t('{hours}h {minutes}m {seconds}s', { hours, minutes: String(minutes).padStart(2, '0'), seconds: String(seconds).padStart(2, '0') })
+    : t('{minutes}m {seconds}s', { minutes, seconds: String(seconds).padStart(2, '0') });
+  el.textContent = t('Next scan in {time}', { time: formatted });
 }
 
 // ─── Init ───

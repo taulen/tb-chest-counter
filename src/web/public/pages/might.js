@@ -24,6 +24,7 @@ import { $, esc, formatDate, formatDateShort, formatGameDayShort, memberLink } f
 import { readToken } from '../lib/theme.js';
 import { describeChart, clearChartTable } from '../lib/chart-a11y.js';
 import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 // Charts tracked individually so a redraw destroys only the one it replaces —
 // Chart.js snapshots colours at construction, so they're rebuilt (not restyled)
@@ -57,10 +58,10 @@ document.addEventListener('themechange', () => {
 // ─── Page state ───────────────────────────────────────────────
 
 const WINDOW_OPTIONS = [
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
-  { days: 180, label: '6 months' },
-  { days: 365, label: '1 year' },
+  { days: 30, label: t('30 days') },
+  { days: 90, label: t('90 days') },
+  { days: 180, label: t('6 months') },
+  { days: 365, label: t('1 year') },
 ];
 
 /**
@@ -74,10 +75,10 @@ const WINDOW_OPTIONS = [
  * actually acts on; the rest are there for the long view.
  */
 const MEMBER_WINDOW_OPTIONS = [
-  { days: 7, label: '7d' },
-  { days: 30, label: '30d' },
-  { days: 90, label: '90d' },
-  { days: 0, label: 'All' },
+  { days: 7, label: t('7d') },
+  { days: 30, label: t('30d') },
+  { days: 90, label: t('90d') },
+  { days: 0, label: t('All') },
 ];
 let memberWindowDays = 30;
 /** Set once the operator clicks a window themselves — see buildMemberMightCard. */
@@ -186,7 +187,7 @@ export async function renderMight(el) {
   // Destroy before the innerHTML swap: replacing the markup removes the
   // canvases out from under any live Chart instances.
   destroyAllCharts();
-  el.innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><p>Loading might data…</p></div></div></div>';
+  el.innerHTML = `<div class="card"><div class="card-body"><div class="empty-state"><p>${t('Loading might data…')}</p></div></div></div>`;
 
   const [overview, totals, events, guards] = await Promise.all([
     api(`/might/overview?deltaDays=${TABLE_DELTA_DAYS}`),
@@ -241,34 +242,29 @@ export async function renderMight(el) {
 function renderEmptyState(overview) {
   const reasons = [];
   if (overview?.enabled !== true) {
-    reasons.push('Might tracking is currently <strong>off</strong>. A superadmin can enable it on the System page.');
+    reasons.push(t('Might tracking is currently <strong>off</strong>. A superadmin can enable it on the System page.'));
   }
   if (overview?.calibrated !== true) {
-    reasons.push('The member-list crop is not calibrated. Run Admin → Scanner Mode → Calibrate, Stage 4.');
+    reasons.push(t('The member-list crop is not calibrated. Run Admin → Scanner Mode → Calibrate, Stage 4.'));
   } else if (overview?.cropIncludesMight !== true) {
     // The gate that applies to every instance calibrated before this feature:
     // the saved rectangle was drawn around the names only.
     reasons.push(
-      'The saved member-list rectangle predates might tracking, so capture is <strong>blocked</strong>. '
-      + 'Re-run Admin → Scanner Mode → Calibrate, <strong>Stage 4</strong>, and drag the rectangle '
-      + 'right so it includes the might number next to the shield icon. Capture starts on the next '
-      + 'scan cycle after you save the stage.',
+      t('The saved member-list rectangle predates might tracking, so capture is <strong>blocked</strong>. Re-run Admin → Scanner Mode → Calibrate, <strong>Stage 4</strong>, and drag the rectangle right so it includes the might number next to the shield icon. Capture starts on the next scan cycle after you save the stage.'),
     );
   }
   if (reasons.length === 0) {
     reasons.push(
-      'No snapshot has been recorded yet. The first one lands on the next scan cycle after the '
-      + `${overview?.rolloverUtcHour ?? 17}:00 UTC game-day rollover — check the scan log if it doesn't appear.`,
+      t('No snapshot has been recorded yet. The first one lands on the next scan cycle after the {hour}:00 UTC game-day rollover — check the scan log if it doesn\'t appear.', { hour: overview?.rolloverUtcHour ?? 17 }),
     );
     reasons.push(
-      'If the scan log says member rows were read but no power number was found, the Stage 4 rectangle '
-      + 'is still cutting off the might column — widen it further right and save the stage again.',
+      t('If the scan log says member rows were read but no power number was found, the Stage 4 rectangle is still cutting off the might column — widen it further right and save the stage again.'),
     );
   }
   return `<div class="card">
-    <div class="card-header"><h2>Member Might</h2></div>
+    <div class="card-header"><h2>${t('Member Might')}</h2></div>
     <div class="card-body card-body-padded">
-      <div class="empty-state"><p>No might history yet.</p></div>
+      <div class="empty-state"><p>${t('No might history yet.')}</p></div>
       <ul class="muted-copy">${reasons.map((r) => `<li>${r}</li>`).join('')}</ul>
     </div>
   </div>`;
@@ -289,19 +285,19 @@ function headerStatsHtml() {
 
   return `<div class="stats-grid">
     <div class="stat-card">
-      <div class="label">Clan Might</div>
+      <div class="label">${t('Clan Might')}</div>
       <div class="value">${newest ? formatMight(newest.totalMight) : '—'}</div>
-      <div class="sub">${newest ? `${newest.memberCount} member${newest.memberCount === 1 ? '' : 's'} counted` : ''}</div>
+      <div class="sub">${newest ? tn(newest.memberCount, '{n} member counted', '{n} members counted', { n: newest.memberCount }) : ''}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Change over window</div>
+      <div class="label">${t('Change over window')}</div>
       <div class="value ${d.cls}">${d.arrow} ${d.text}</div>
-      <div class="sub">${oldest && newest && totals.length > 1 ? `${esc(oldest.gameDate)} → ${esc(newest.gameDate)}` : 'Needs two or more days'}</div>
+      <div class="sub">${oldest && newest && totals.length > 1 ? `${esc(oldest.gameDate)} → ${esc(newest.gameDate)}` : t('Needs two or more days')}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Days Collected</div>
+      <div class="label">${t('Days Collected')}</div>
       <div class="value">${days.toLocaleString()}</div>
-      <div class="sub">one snapshot per game day</div>
+      <div class="sub">${t('one snapshot per game day')}</div>
     </div>
   </div>`;
 }
@@ -310,9 +306,9 @@ function renderHeaderCard() {
   const last = state.overview?.lastCapture;
   return `<div class="card">
     <div class="card-header">
-      <h2>Member Might</h2>
+      <h2>${t('Member Might')}</h2>
       <span class="card-header-hint">
-        ${last ? `Last read ${esc(formatDate(last.capturedAt))} · game day ${esc(last.gameDate)}` : 'Never captured'}
+        ${last ? t('Last read {date} · game day {day}', { date: esc(formatDate(last.capturedAt)), day: esc(last.gameDate) }) : t('Never captured')}
       </span>
     </div>
     <div class="card-body card-body-padded" id="mightHeaderStats">${headerStatsHtml()}</div>
@@ -328,7 +324,7 @@ function windowSelectorHtml() {
 function renderTotalsCard() {
   return `<div class="card">
     <div class="card-header leaderboard-header">
-      <h2>Clan Might Over Time</h2>
+      <h2>${t('Clan Might Over Time')}</h2>
       <div class="period-selector" id="mightWindow">${windowSelectorHtml()}</div>
     </div>
     <div class="card-body card-body-padded">
@@ -342,7 +338,7 @@ function chipsHtml() {
   const filter = memberFilter.trim().toLowerCase();
   const pickable = rankedRows()
     .filter((r) => !filter || (r.name || '').toLowerCase().includes(filter));
-  if (pickable.length === 0) return '<span class="muted-copy">No members match.</span>';
+  if (pickable.length === 0) return `<span class="muted-copy">${t('No members match.')}</span>`;
 
   return pickable.map((r) => {
     const idx = selectedIds.indexOf(r.memberId);
@@ -359,32 +355,30 @@ function chipsHtml() {
 
 function compareChartHtml() {
   return selectedIds.length === 0
-    ? '<div class="empty-state"><p>Select one or more members above.</p></div>'
+    ? `<div class="empty-state"><p>${t('Select one or more members above.')}</p></div>`
     : '<canvas id="mightCompareChart"></canvas>';
 }
 
 function renderCompareCard() {
   return `<div class="card">
     <div class="card-header leaderboard-header">
-      <h2>Compare Members</h2>
+      <h2>${t('Compare Members')}</h2>
       <div class="might-compare-controls">
         <label class="might-toggle-label"
-               title="Shade the days a clan-calendar event was running, behind the curves. Hover any point to see which.">
+               title="${t('Shade the days a clan-calendar event was running, behind the curves. Hover any point to see which.')}">
           <input type="checkbox" id="mightShowEvents" ${showEvents ? 'checked' : ''}>
-          Highlight event days
+          ${t('Highlight event days')}
         </label>
-        <button class="btn btn-tight" data-might-action="clear">Clear</button>
-        <button class="btn btn-tight" data-might-action="top">Top ${DEFAULT_SELECTION}</button>
+        <button class="btn btn-tight" data-might-action="clear">${t('Clear')}</button>
+        <button class="btn btn-tight" data-might-action="top">${t('Top {count}', { count: DEFAULT_SELECTION })}</button>
       </div>
     </div>
     <div class="card-body card-body-padded">
       <p class="muted-copy mb-12">
-        Pick any members to overlay their might curves. The gold bands are days a clan-calendar
-        event was running — hover any point to see which ones. A curve that steepens inside a
-        band tells you that event moved the needle.
+        ${t('Pick any members to overlay their might curves. The gold bands are days a clan-calendar event was running — hover any point to see which ones. A curve that steepens inside a band tells you that event moved the needle.')}
       </p>
       <input type="text" id="mightMemberFilter" class="input members-filter mb-12"
-             placeholder="Filter members…" value="${esc(memberFilter)}">
+             placeholder="${t('Filter members…')}" value="${esc(memberFilter)}">
       <div class="might-chips" id="mightChips">${chipsHtml()}</div>
       <div class="chart-container might-compare-chart" id="mightCompareHost">${compareChartHtml()}</div>
     </div>
@@ -407,8 +401,8 @@ function renderTableCard(rows, guardsByMember = new Map()) {
 
   return `<div class="card">
     <div class="card-header">
-      <h2>Might Ranking</h2>
-      <span class="card-header-hint">Change measured over ~${TABLE_DELTA_DAYS} days</span>
+      <h2>${t('Might Ranking')}</h2>
+      <span class="card-header-hint">${tn(TABLE_DELTA_DAYS, 'Change measured over ~{n} days', 'Change measured over ~{n} days', { n: TABLE_DELTA_DAYS })}</span>
     </div>
     <div class="card-body">
       <table class="table-responsive might-table"><colgroup>
@@ -420,30 +414,30 @@ function renderTableCard(rows, guardsByMember = new Map()) {
         ${showHero ? '<col class="col-metric">' : ''}
         <col class="col-date">
       </colgroup><thead><tr>
-        <th>Rank</th><th>Member</th><th class="num">Might</th><th class="num">Change</th>
-        ${showGuards ? '<th class="num" title="Guardsmen level, estimated from Omen Essence and Scientific Tractates donations">Guards</th>' : ''}
-        ${showHero ? '<th class="num">Hero Level</th>' : ''}
-        <th>Last Seen</th>
+        <th>${t('Rank')}</th><th>${t('Member')}</th><th class="num">${t('Might')}</th><th class="num">${t('Change')}</th>
+        ${showGuards ? `<th class="num" title="${t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })}">${t('Guards')}</th>` : ''}
+        ${showHero ? `<th class="num">${t('Hero Level')}</th>` : ''}
+        <th>${t('Last Seen')}</th>
       </tr></thead><tbody>
         ${ranked.map((r, i) => {
           const d = formatDelta(r.delta);
           const g = guardsByMember.get(r.memberId);
           return `<tr>
-            <td data-label="Rank" data-role="lead">${r.might === null ? '—' : i + 1}</td>
-            <td data-label="Member" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(r.memberId, r.name), g?.goldPass)}</span></td>
+            <td data-label="${t('Rank')}" data-role="lead">${r.might === null ? '—' : i + 1}</td>
+            <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(r.memberId, r.name), g?.goldPass)}</span></td>
             ${/* The reading's own game day qualifies the number, not the member, so
                   it rides on the Might cell instead of occupying a column — on a
                   daily sweep it's the same date for the whole roster, and the header
                   card already states it once. */''}
-            <td data-label="Might" data-role="metric" class="num"${r.gameDate ? ` title="Read on game day ${esc(r.gameDate)}"` : ''}>${formatMight(r.might)}</td>
+            <td data-label="${t('Might')}" data-role="metric" class="num"${r.gameDate ? ` title="${t('Read on game day {date}', { date: esc(r.gameDate) })}"` : ''}>${formatMight(r.might)}</td>
             ${/* Change, Hero Level and Last Seen stay unmarked so the mobile
                   compact-row engine reveals them in the expand panel. */''}
-            <td data-label="Change" class="num ${d.cls}">${d.arrow} ${d.text}</td>
-            ${showGuards ? `<td data-label="Guards" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
-            ${showHero ? `<td data-label="Hero Level" class="num">${r.heroLevel ? r.heroLevel.toLocaleString('en-US') : '—'}</td>` : ''}
+            <td data-label="${t('Change')}" class="num ${d.cls}">${d.arrow} ${d.text}</td>
+            ${showGuards ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
+            ${showHero ? `<td data-label="${t('Hero Level')}" class="num">${r.heroLevel ? r.heroLevel.toLocaleString('en-US') : '—'}</td>` : ''}
             ${/* Date only — the time never carried information here and it wrapped
                   the whole row onto two lines. */''}
-            <td data-label="Last Seen">${formatDateShort(r.lastSeen)}</td>
+            <td data-label="${t('Last Seen')}">${formatDateShort(r.lastSeen)}</td>
           </tr>`;
         }).join('')}
       </tbody></table>
@@ -453,7 +447,7 @@ function renderTableCard(rows, guardsByMember = new Map()) {
 
 // ─── Charts ───────────────────────────────────────────────────
 
-function baseLineOptions(t, yTitle) {
+function baseLineOptions(tok, yTitle) {
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -461,20 +455,20 @@ function baseLineOptions(t, yTitle) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: t.tooltipBg,
-        titleColor: t.tooltipText,
-        bodyColor: t.tooltipText,
-        borderColor: t.tooltipBorder,
+        backgroundColor: tok.tooltipBg,
+        titleColor: tok.tooltipText,
+        bodyColor: tok.tooltipText,
+        borderColor: tok.tooltipBorder,
         borderWidth: 1,
         callbacks: { label: (ctx) => `${ctx.dataset.label}: ${formatMight(ctx.parsed.y)}` },
       },
     },
     scales: {
-      x: { ticks: { color: t.tick, maxRotation: 0, autoSkipPadding: 16 }, grid: { color: t.grid } },
+      x: { ticks: { color: tok.tick, maxRotation: 0, autoSkipPadding: 16 }, grid: { color: tok.grid } },
       y: {
-        title: { display: !!yTitle, text: yTitle, color: t.tick },
-        ticks: { color: t.tick, callback: (v) => formatMightShort(v) },
-        grid: { color: t.grid },
+        title: { display: !!yTitle, text: yTitle, color: tok.tick },
+        ticks: { color: tok.tick, callback: (v) => formatMightShort(v) },
+        grid: { color: tok.grid },
       },
     },
   };
@@ -483,14 +477,14 @@ function baseLineOptions(t, yTitle) {
 function drawTotalsChart() {
   const canvas = $('#mightTotalsChart');
   if (!canvas || !state || state.totals.length === 0) return;
-  const t = chartTokens();
+  const tok = chartTokens();
   const labels = state.totals.map((d) => d.gameDate);
-  const opts = baseLineOptions(t, 'Total might');
+  const opts = baseLineOptions(tok, t('Total might'));
   // Headcount rides along in the tooltip: the same total means something very
   // different at 48 members than at 52.
   opts.plugins.tooltip.callbacks.afterBody = (items) => {
     const point = state.totals[items[0].dataIndex];
-    return point ? `${point.memberCount} member(s) counted` : '';
+    return point ? tn(point.memberCount, '{n} member(s) counted', '{n} member(s) counted', { n: point.memberCount }) : '';
   };
 
   destroyChart('totals');
@@ -499,10 +493,10 @@ function drawTotalsChart() {
     data: {
       labels,
       datasets: [{
-        label: 'Clan might',
+        label: t('Clan might'),
         data: state.totals.map((d) => d.totalMight),
-        borderColor: t.accentGold,
-        backgroundColor: t.accentGold,
+        borderColor: tok.accentGold,
+        backgroundColor: tok.accentGold,
         borderWidth: 2,
         pointRadius: labels.length > 60 ? 0 : 2,
         tension: 0.2,
@@ -511,7 +505,7 @@ function drawTotalsChart() {
     },
     options: opts,
   });
-  describeChart(charts.totals, { caption: 'Clan total might over time' });
+  describeChart(charts.totals, { caption: t('Clan total might over time') });
 }
 
 function drawCompareChart() {
@@ -526,7 +520,7 @@ function drawCompareChart() {
     return;
   }
 
-  const t = chartTokens();
+  const tok = chartTokens();
   // Union of every date any selected member has a reading for, so a member who
   // joined mid-window lines up correctly instead of being shifted left.
   const allDates = [...new Set(state.series.flatMap((s) => s.points.map((p) => p.gameDate)))].sort();
@@ -547,8 +541,8 @@ function drawCompareChart() {
     };
   });
 
-  const opts = baseLineOptions(t, 'Might');
-  opts.plugins.legend = { display: true, labels: { color: t.tick, usePointStyle: true, boxWidth: 8 } };
+  const opts = baseLineOptions(tok, t('Might'));
+  opts.plugins.legend = { display: true, labels: { color: tok.tick, usePointStyle: true, boxWidth: 8 } };
 
   const spans = showEvents ? eventBandSpans(allDates, state.events) : [];
   // Name the bands on hover. Shading alone told you *that* something ran, never
@@ -559,7 +553,7 @@ function drawCompareChart() {
     const lines = eventsAtIndex(spans, items[0]?.dataIndex);
     return lines.length === 0
       ? ''
-      : ['', lines.length === 1 ? 'Event this day:' : 'Events this day:', ...lines.map((l) => `  ${l}`)];
+      : ['', tn(lines.length, 'Event this day:', 'Events this day:'), ...lines.map((l) => `  ${l}`)];
   };
 
   charts.compare = new Chart(canvas, {
@@ -568,7 +562,7 @@ function drawCompareChart() {
     options: opts,
     plugins: spans.length > 0 ? [eventBandsPlugin(spans)] : [],
   });
-  describeChart(charts.compare, { caption: 'Might of the selected members over time' });
+  describeChart(charts.compare, { caption: t('Might of the selected members over time') });
 }
 
 /**
@@ -604,7 +598,7 @@ function eventBandSpans(dates, windows) {
       if (dates[i] <= toDay) i1 = i;
     }
     if (i0 < 0 || i1 < i0) continue;
-    spans.push({ name: w.name || 'Event', label: w.label || '', i0, i1 });
+    spans.push({ name: w.name ? tGame(w.name) : t('Event'), label: w.label || '', i0, i1 });
   }
   return spans;
 }
@@ -783,15 +777,15 @@ export async function buildMemberMightCard(memberId) {
   // stat card on the page while the 11px sub line carries full precision.
   const statsHtml = `
     <div class="stat-card">
-      <div class="label">Might</div>
+      <div class="label">${t('Might')}</div>
       <div class="value" title="${formatMight(current.might)}">${formatMightShort(current.might)}</div>
-      <div class="sub stat-sub-exact" title="${formatMight(current.might)}${current.gameDate ? ` · game day ${esc(current.gameDate)}` : ''}">${formatMight(current.might)}${current.gameDate ? ` · ${esc(formatGameDayShort(current.gameDate))}` : ''}</div>
+      <div class="sub stat-sub-exact" title="${current.gameDate ? t('{might} · game day {date}', { might: formatMight(current.might), date: esc(current.gameDate) }) : formatMight(current.might)}">${formatMight(current.might)}${current.gameDate ? ` · ${esc(formatGameDayShort(current.gameDate))}` : ''}</div>
     </div>
     ${current.heroLevel ? `
     <div class="stat-card">
-      <div class="label">Hero Level</div>
+      <div class="label">${t('Hero Level')}</div>
       <div class="value">${current.heroLevel.toLocaleString('en-US')}</div>
-      <div class="sub">from the member list</div>
+      <div class="sub">${t('from the member list')}</div>
     </div>` : ''}`;
   const statsOnly = { statsHtml, html: '', draw: () => {} };
 
@@ -866,8 +860,8 @@ function memberMightCardInner(points, current, days, emptyWindow) {
     ? `${changed > 0 ? '+' : '−'}${(Math.abs(changed) / oldest.might * 100).toFixed(1)}%`
     : null;
   const trendTitle = emptyWindow
-    ? 'No readings in this window'
-    : `${d.text} from ${oldest.gameDate} to ${newest.gameDate}`;
+    ? t('No readings in this window')
+    : t('{change} from {from} to {to}', { change: d.text, from: oldest.gameDate, to: newest.gameDate });
 
   // Span of what is actually drawn, not the window that was asked for. Might
   // tracking is young on most installs, so a 30-day window routinely holds four
@@ -876,8 +870,8 @@ function memberMightCardInner(points, current, days, emptyWindow) {
   const spanDays = emptyWindow ? 0
     : Math.round((Date.parse(`${newest.gameDate}T00:00:00Z`) - Date.parse(`${oldest.gameDate}T00:00:00Z`)) / 86_400_000);
   const spanLabel = emptyWindow
-    ? 'no readings in this window'
-    : `last ${spanDays} day${spanDays === 1 ? '' : 's'}`;
+    ? t('no readings in this window')
+    : tn(spanDays, 'last {n} day', 'last {n} days', { n: spanDays });
 
   const windowButtons = MEMBER_WINDOW_OPTIONS
     .map((o) => `<button class="btn btn-tight ${o.days === days ? 'active' : ''}" data-member-might-days="${o.days}">${o.label}</button>`)
@@ -885,20 +879,20 @@ function memberMightCardInner(points, current, days, emptyWindow) {
 
   return `
     <div class="card-header">
-      <h2>${hasHeroLevel(points) ? 'Might &amp; Hero Level' : 'Might'}</h2>
+      <h2>${hasHeroLevel(points) ? t('Might &amp; Hero Level') : t('Might')}</h2>
       <div class="might-trend">
         <span class="might-trend-pill ${d.cls}" title="${esc(trendTitle)}">
           <span class="might-trend-arrow">${d.arrow}</span>
           <span class="might-trend-amount">${d.text}</span>
           ${pct ? `<span class="might-trend-pct">${pct}</span>` : ''}
         </span>
-        <span class="card-header-hint">${formatMight(current.might)} now · ${esc(spanLabel)}</span>
+        <span class="card-header-hint">${t('{might} now · {span}', { might: formatMight(current.might), span: esc(spanLabel) })}</span>
         <div class="period-selector" id="memberMightWindow">${windowButtons}</div>
       </div>
     </div>
     <div class="card-body card-body-padded">
       ${emptyWindow
-        ? '<div class="empty-state"><p>No readings in this window. Pick a wider one.</p></div>'
+        ? `<div class="empty-state"><p>${t('No readings in this window. Pick a wider one.')}</p></div>`
         : `<div class="chart-container chart-container--compact${hasHeroLevel(points) ? ' chart-container--legend' : ''}"><canvas id="memberMightChart"></canvas></div>`}
     </div>`;
 }
@@ -926,15 +920,15 @@ function drawMemberMightChart(points) {
   const canvas = $('#memberMightChart');
   if (!canvas) return;
   memberChartPoints = points;
-  const t = chartTokens();
+  const tok = chartTokens();
   const withHero = hasHeroLevel(points);
-  const opts = baseLineOptions(t, '');
+  const opts = baseLineOptions(tok, '');
 
   const datasets = [{
-    label: withHero ? 'Might (left)' : 'Might',
+    label: withHero ? t('Might (left)') : t('Might'),
     data: points.map((p) => p.might),
-    borderColor: t.accentGold,
-    backgroundColor: t.accentGold,
+    borderColor: tok.accentGold,
+    backgroundColor: tok.accentGold,
     borderWidth: 2,
     pointRadius: points.length > 60 ? 0 : 2,
     tension: 0.2,
@@ -944,14 +938,14 @@ function drawMemberMightChart(points) {
 
   if (withHero) {
     datasets.push({
-      label: 'Hero level (right)',
+      label: t('Hero level (right)'),
       // Missing readings stay null and are spanned, not zeroed: the hero level
       // comes off the avatar in the member-list crop, so a day the OCR couldn't
       // read it is a gap in knowledge — plotting 0 would draw a cliff down to
       // level zero and back.
       data: points.map((p) => (p.heroLevel ?? null)),
-      borderColor: t.accentBlue,
-      backgroundColor: t.accentBlue,
+      borderColor: tok.accentBlue,
+      backgroundColor: tok.accentBlue,
       borderWidth: 2,
       borderDash: [4, 3],
       pointRadius: points.length > 60 ? 0 : 2,
@@ -968,7 +962,7 @@ function drawMemberMightChart(points) {
       display: true,
       position: 'top',
       align: 'end',
-      labels: { color: t.tick, boxWidth: 22, boxHeight: 2, font: { size: 11 } },
+      labels: { color: tok.tick, boxWidth: 22, boxHeight: 2, font: { size: 11 } },
     };
 
     opts.scales.y1 = {
@@ -976,7 +970,7 @@ function drawMemberMightChart(points) {
       // A hero level is a small integer, so the auto range routinely lands on
       // half-steps ("41.5"). Drop anything fractional rather than rounding, which
       // would print the same level on two adjacent ticks.
-      ticks: { color: t.tick, precision: 0, callback: (v) => (Number.isInteger(v) ? v : '') },
+      ticks: { color: tok.tick, precision: 0, callback: (v) => (Number.isInteger(v) ? v : '') },
       // Only the might axis draws gridlines. A second grid can never line up with
       // the first, so it reads as noise the chart didn't need.
       grid: { drawOnChartArea: false },
@@ -989,8 +983,8 @@ function drawMemberMightChart(points) {
     opts.plugins.tooltip.filter = (item) => item.parsed.y !== null && item.parsed.y !== undefined;
     opts.plugins.tooltip.callbacks.label = (ctx) => (
       ctx.dataset.yAxisID === 'y1'
-        ? `Hero level: ${ctx.parsed.y}`
-        : `Might: ${formatMight(ctx.parsed.y)}`
+        ? t('Hero level: {level}', { level: ctx.parsed.y })
+        : t('Might: {might}', { might: formatMight(ctx.parsed.y) })
     );
   }
 
@@ -1000,7 +994,7 @@ function drawMemberMightChart(points) {
     data: { labels: points.map((p) => p.gameDate), datasets },
     options: opts,
   });
-  describeChart(charts.member, { caption: "This member's might and hero level over time" });
+  describeChart(charts.member, { caption: t("This member's might and hero level over time") });
 }
 
 /** Swap the card's contents for another window. One fetch, one redraw — the

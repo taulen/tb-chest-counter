@@ -18,15 +18,16 @@ import { sortableThHtml } from './sort-headers.js';
 import { renderPeriodNav } from './period-nav.js';
 import { weekLengthDays } from './period.js';
 import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
+import { t, tn, tGame } from './i18n.js';
 
 // Column-header hint for the two ranked metrics. The board leaves out
 // end-of-event clan rewards — the placement prize the game drops on one
 // account for the whole clan (1006 chests at once, on the 2026-08-24 Olympus
 // close) — so a leader isn't ranked above the clan's actual best farmer for
 // receiving it. Clan totals elsewhere still include them.
-const EARNED_ONLY_HINT =
-  'Chests the member collected themselves. Excludes end-of-event clan rewards, '
-  + "which the game hands to one account for the whole clan's placement.";
+const EARNED_ONLY_HINT = t(
+  "Chests the member collected themselves. Excludes end-of-event clan rewards, which the game hands to one account for the whole clan's placement.",
+);
 
 /**
  * Stable sort by the selected key + direction. Ties always return 0
@@ -136,12 +137,23 @@ export function scaleGoalForPeriod(weeklyGoalPoints, period, weekStartOverride) 
 // while this one is the clan's own standard.
 const GOAL_WARN_RATIO = 0.66;
 
-/** How the goal line names the active timeframe. */
-const GOAL_PERIOD_NOUN = {
-  daily: 'Daily',
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
+/** The goal line for the active timeframe, e.g. "Daily goal: <strong>3,571</strong> points". */
+function goalLineHtml(period, goal) {
+  switch (period) {
+    case 'daily': return tn(goal, 'Daily goal: <strong>{n}</strong> point', 'Daily goal: <strong>{n}</strong> points');
+    case 'weekly': return tn(goal, 'Weekly goal: <strong>{n}</strong> point', 'Weekly goal: <strong>{n}</strong> points');
+    case 'monthly': return tn(goal, 'Monthly goal: <strong>{n}</strong> point', 'Monthly goal: <strong>{n}</strong> points');
+    case 'yearly': return tn(goal, 'Yearly goal: <strong>{n}</strong> point', 'Yearly goal: <strong>{n}</strong> points');
+    default: return tn(goal, 'Goal: <strong>{n}</strong> point', 'Goal: <strong>{n}</strong> points');
+  }
+}
+
+const PERIOD_LABELS = {
+  daily: t('Daily'),
+  weekly: t('Weekly'),
+  monthly: t('Monthly'),
+  yearly: t('Yearly'),
+  all: t('All'),
 };
 
 /**
@@ -193,9 +205,9 @@ export function goalRowClassFor(actualPoints, goalPoints) {
 // and red against green is the pair the most common colour blindness can't
 // tell apart — so every status also carries a glyph and its name.
 const GOAL_STATUS_TEXT = {
-  ok: { label: 'Goal reached', glyph: '✓' },
-  warn: { label: 'Close to goal', glyph: '◐' },
-  low: { label: 'Below goal', glyph: '↓' },
+  ok: { label: t('Goal reached'), spoken: t('goal reached'), glyph: '✓' },
+  warn: { label: t('Close to goal'), spoken: t('close to goal'), glyph: '◐' },
+  low: { label: t('Below goal'), spoken: t('below goal'), glyph: '↓' },
 };
 
 /** "Goal reached" / "Close to goal" / "Below goal" for a status, else ''. */
@@ -212,13 +224,15 @@ export function goalCellContentHtml(value, goalPoints, formatted = (value || 0).
   const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints)];
   if (!s) return formatted;
   return `<span class="goal-glyph" aria-hidden="true">${s.glyph}</span>${formatted}`
-    + `<span class="visually-hidden">, ${s.label.toLowerCase()}</span>`;
+    + `<span class="visually-hidden">, ${s.spoken}</span>`;
 }
 
 /** Tooltip for a goal-coloured cell, e.g. "Below goal — 4,210 of 7,143". */
 export function goalCellTitle(value, goalPoints) {
   const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints)];
-  return s ? `${s.label} — ${(value || 0).toLocaleString()} of ${Math.round(goalPoints).toLocaleString()}` : '';
+  return s
+    ? t('{status} — {value} of {goal}', { status: s.label, value: (value || 0).toLocaleString(), goal: Math.round(goalPoints).toLocaleString() })
+    : '';
 }
 
 /**
@@ -237,6 +251,13 @@ export function formatMightCompact(n) {
 }
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
+
+// Defaults for the card's labels. Kept out of the parameter list: a call in a
+// default value hides the parameters from tests/config/frontend-imports.test.ts.
+const DEFAULT_TITLE = t('Leaderboard');
+const DEFAULT_COUNT_LABEL = t('Chests');
+const DEFAULT_FAQ_LABEL = t('FAQ');
+const chestCountLabel = (n) => tn(n, '{n} chest', '{n} chests');
 
 /**
  * Render the full leaderboard card (header with period selector +
@@ -268,8 +289,10 @@ const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
  * explains the main board's points, not triumphal scoring).
  */
 export function renderLeaderboardCardHtml({
-  title = 'Leaderboard',
-  countLabel = 'Chests',
+  title = DEFAULT_TITLE,
+  countLabel = DEFAULT_COUNT_LABEL,
+  // The count under the name in a phone's compact row, e.g. "1,234 chests".
+  countSubLabel = chestCountLabel,
   pageEntries,
   totalEntries,
   currentPage,
@@ -291,7 +314,7 @@ export function renderLeaderboardCardHtml({
   exportHref = null,
   // FAQ button text, and whether it carries the "not opened yet" dot. The
   // public page uses both to steer first-time visitors to "how do I join".
-  faqLabel = 'FAQ',
+  faqLabel = DEFAULT_FAQ_LABEL,
   faqIsNew = false,
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
@@ -310,27 +333,27 @@ export function renderLeaderboardCardHtml({
 
   const paginationControls = totalEntries > pageSize
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="${actions.pagePrev}" ${currentPage <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${currentPage} of ${totalPages} · ${totalEntries} players</span>
-        <button class="btn btn-tight" data-action="${actions.pageNext}" ${currentPage >= totalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-action="${actions.pagePrev}" ${currentPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${t('Page {page} of {pages} · {players}', { page: currentPage, pages: totalPages, players: tn(totalEntries, '{n} player', '{n} players', { n: totalEntries }) })}</span>
+        <button class="btn btn-tight" data-action="${actions.pageNext}" ${currentPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
   const exportLink = exportHref
     ? `<a class="btn btn-tight leaderboard-export" href="${exportHref}" download
-         title="Download this timeframe as CSV">Export CSV</a>`
+         title="${t('Download this timeframe as CSV')}">${t('Export CSV')}</a>`
     : '';
 
   const faqButton = actions.openFaq
     ? `<button type="button" class="btn leaderboard-faq-btn${faqIsNew ? ' is-new' : ''}" data-action="${actions.openFaq}"
-         title="What each chest is worth, and how the board works">
+         title="${t('What each chest is worth, and how the board works')}">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
         ${esc(faqLabel)}
       </button>`
     : '';
 
   const periodSelector = PERIODS.map((p) =>
-    `<button class="btn ${period === p ? 'active' : ''}" data-action="${actions.setPeriod}" data-period="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</button>`,
+    `<button class="btn ${period === p ? 'active' : ''}" data-action="${actions.setPeriod}" data-period="${p}">${PERIOD_LABELS[p]}</button>`,
   ).join('');
 
   // Level and Might carry NO data-role on purpose: under 640px the compact-row
@@ -338,22 +361,22 @@ export function renderLeaderboardCardHtml({
   // two secondary numbers belong on a phone. Rank/Player/Points keep their
   // lead/primary/metric roles, so the collapsed row looks exactly as it did.
   const mightHeadHtml = showMight
-    ? `${th('level', 'Level', 'num', 'Hero level at the latest daily snapshot')}
-        ${th('might', 'Might', 'num', 'Might at the latest daily snapshot')}`
+    ? `${th('level', t('Level'), 'num', t('Hero level at the latest daily snapshot'))}
+        ${th('might', t('Might'), 'num', t('Might at the latest daily snapshot'))}`
     : '';
 
   const mightCellsHtml = (e) => showMight
-    ? `<td data-label="Level" class="num">${e.heroLevel == null ? '—' : e.heroLevel.toLocaleString()}</td>
-        <td data-label="Might" class="num"${e.might == null ? '' : ` title="${e.might.toLocaleString()}"`}>${formatMightCompact(e.might)}</td>`
+    ? `<td data-label="${t('Level')}" class="num">${e.heroLevel == null ? '—' : e.heroLevel.toLocaleString()}</td>
+        <td data-label="${t('Might')}" class="num"${e.might == null ? '' : ` title="${e.might.toLocaleString()}"`}>${formatMightCompact(e.might)}</td>`
     : '';
 
   // Unmarked for the same reason as Level/Might: on a phone it belongs in the
   // tap-to-expand panel, not in the collapsed row.
   const guardsHeadHtml = showGuards
-    ? th('guards', 'Guards', 'num', 'Guardsmen level, estimated from Omen Essence and Scientific Tractates donations — hover a value for how sure and how recent')
+    ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations — hover a value for how sure and how recent', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') }))
     : '';
   const guardsCellsHtml = (e) => showGuards
-    ? `<td data-label="Guards" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`
+    ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`
     : '';
 
   const tableHtml = pageEntries.length > 0
@@ -365,23 +388,23 @@ export function renderLeaderboardCardHtml({
         ${showGuards ? '<col class="col-num col-guards">' : ''}
         ${showMight ? '<col class="col-num col-level"><col class="col-num">' : ''}
       </colgroup><thead><tr>
-        ${th('rank', 'Rank')}
-        ${th('name', 'Player')}
+        ${th('rank', t('Rank'))}
+        ${th('name', t('Player'))}
         ${th('chests', esc(countLabel), 'num', EARNED_ONLY_HINT)}
-        ${th('points', 'Points', 'num', EARNED_ONLY_HINT)}
+        ${th('points', t('Points'), 'num', EARNED_ONLY_HINT)}
         ${guardsHeadHtml}
         ${mightHeadHtml}
       </tr></thead><tbody>
       ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal)}">
-        <td data-label="Rank" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
-        <td data-label="Player" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${e.totalChests.toLocaleString()} ${esc(countLabel.toLowerCase())}</span></td>
+        <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
+        <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${esc(countSubLabel(e.totalChests))}</span></td>
         <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
-        <td data-label="Points" class="num ${goalStatusClassFor(e.totalPoints, periodGoal)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal)}</td>
+        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal)}</td>
         ${guardsCellsHtml(e)}
         ${mightCellsHtml(e)}
       </tr>`).join('')}
     </tbody></table>`
-    : '<div class="empty-state"><p>No data.</p></div>';
+    : `<div class="empty-state"><p>${t('No data.')}</p></div>`;
 
   // Small line above the table naming the target this view is judged against.
   // It states which timeframe it is and, when the number was derived rather
@@ -390,8 +413,8 @@ export function renderLeaderboardCardHtml({
   const goalHintHtml = periodGoal !== null
     ? `<div class="leaderboard-goal-hint">
         <span class="goal-hint-swatch" aria-hidden="true"></span>
-        <span>${esc(GOAL_PERIOD_NOUN[period] || '')} goal: <strong>${periodGoal.toLocaleString()}</strong> points${period === 'weekly' ? '' : ` <span class="goal-hint-src">(from ${goalWeeklyPoints.toLocaleString()} / week)</span>`}</span>
-        <span class="goal-hint-src">✓ green at the goal · ◐ amber from ${goalWarnThreshold(periodGoal).toLocaleString()} · ↓ red below</span>
+        <span>${goalLineHtml(period, periodGoal)}${period === 'weekly' ? '' : ` <span class="goal-hint-src">${t('(from {weekly} / week)', { weekly: goalWeeklyPoints.toLocaleString() })}</span>`}</span>
+        <span class="goal-hint-src">${t('✓ green at the goal · ◐ amber from {threshold} · ↓ red below', { threshold: goalWarnThreshold(periodGoal).toLocaleString() })}</span>
       </div>`
     : '';
 

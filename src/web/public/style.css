@@ -2585,7 +2585,8 @@ details > table {
     word-break: break-word;
   }
 
-  .nav-mobile-theme {
+  .nav-mobile-theme,
+  .nav-mobile-lang {
     margin-bottom: 12px;
   }
 
@@ -2854,6 +2855,16 @@ details > table {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     align-self: center;
+  }
+  /* A text metric (an audit action, a status) can run far longer once
+     translated — "Enregistrer la session de connexion à distance" pushed past
+     the card and squeezed the name to nothing. Cap it below half the row (room
+     for a timestamp beside it) and let it wrap there; a number never gets near
+     the cap, so it stays on one line. */
+  .table-responsive td[data-role="metric"] {
+    max-width: 42vw;
+    white-space: normal;
+    text-wrap: balance;
   }
   /* Goal status has to be restated here, and with a third class in the
      selector. `.table-responsive td[data-role="metric"]` above and
@@ -3517,10 +3528,10 @@ details > table {
   table-layout: fixed;
 }
 .users-table .col-user-name { width: auto; }
-.users-table .col-user-role { width: 140px; }
-/* 270px: two 100px clan chips + the edit pencil on one line, inside the
+.users-table .col-user-role { width: 160px; }
+/* 290px: two 116px clan chips + the edit pencil on one line, inside the
    cell's 16px padding. */
-.users-table .col-user-clan { width: 270px; }
+.users-table .col-user-clan { width: 290px; }
 .users-table .col-user-date { width: 160px; }
 
 /* Orphaned-user row: tint to flag the anomaly (account with no clan).
@@ -3589,13 +3600,15 @@ details > table {
   outline-offset: 1px;
 }
 /* Fixed width, so the same clan lands in the same column on every row (the
-   chips are in site clan order). Two fit side by side in the 270px column. */
+   chips are in site clan order). Two fit side by side in the 290px column.
+   The clan tag keeps its width and the role gives way: "пользователь" or
+   "utilisateur" can't fit, and the chip's title spells it out. */
 .clan-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: none;
-  width: 100px;
+  width: 116px;
   box-sizing: border-box;
   padding: 2px 7px;
   border-radius: 999px;
@@ -3610,16 +3623,19 @@ details > table {
   background: var(--accent-gold-bg);
 }
 .clan-chip-name {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: none;
+  max-width: 48px;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-primary);
   font-weight: 600;
 }
 .clan-chip-role {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-muted);
 }
 .clan-chip-role.role-admin {

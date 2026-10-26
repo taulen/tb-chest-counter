@@ -18,6 +18,7 @@
 
 import { esc } from './ui.js';
 import { formatPeriodLabel } from './period.js';
+import { t } from './i18n.js';
 
 /**
  * @param {object} opts
@@ -37,6 +38,15 @@ import { formatPeriodLabel } from './period.js';
  * @param {string} [opts.allLabel]  Label shown on "all" when not hidden.
  * @returns {string} HTML
  */
+// Arrow tooltips per period, as whole phrases (a period key spliced into
+// "Previous {period}" read "Previous weekly", and won't inflect elsewhere).
+const STEP_TITLES = {
+  daily: [t('Previous day'), t('Next day')],
+  weekly: [t('Previous week'), t('Next week')],
+  monthly: [t('Previous month'), t('Next month')],
+  yearly: [t('Previous year'), t('Next year')],
+};
+
 export function renderPeriodNav({
   period,
   offset = 0,
@@ -45,8 +55,8 @@ export function renderPeriodNav({
   nextAttr = '',
   hideOnAll = false,
   navClass = '',
-  title = 'period',
-  allLabel = 'All time',
+  title = t('period'),
+  allLabel = t('All time'),
 }) {
   const isAll = period === 'all';
   if (isAll && hideOnAll) return '';
@@ -56,10 +66,12 @@ export function renderPeriodNav({
   // this is a rename nobody asked for otherwise.
   const label = isAll ? allLabel : formatPeriodLabel(period, offset, rolloverHr);
   const cls = navClass ? `period-nav ${navClass}` : 'period-nav';
+  const [prevTitle, nextTitle] = STEP_TITLES[period]
+    ?? [t('Previous {period}', { period: esc(title) }), t('Next {period}', { period: esc(title) })];
 
   return `<div class="${cls}">
-      <button class="btn btn-tight" ${prevAttr} ${isAll ? 'disabled' : ''} title="Previous ${esc(title)}">←</button>
+      <button class="btn btn-tight" ${prevAttr} ${isAll ? 'disabled' : ''} title="${prevTitle}">←</button>
       <span class="period-nav-label">${esc(label)}</span>
-      <button class="btn btn-tight" ${nextAttr} ${isAll || offset <= 0 ? 'disabled' : ''} title="Next ${esc(title)}">→</button>
+      <button class="btn btn-tight" ${nextAttr} ${isAll || offset <= 0 ? 'disabled' : ''} title="${nextTitle}">→</button>
     </div>`;
 }

@@ -94,6 +94,24 @@ describe('parseTierTargets', () => {
     });
   });
 
+  it('reads the table copied from a translated planner', () => {
+    const translated = (members: string, kills: string) => [
+      kills,
+      `G9 \t6 ${members} \t61.3M \t368M \t19.2%`,
+      `G8 \t1 ${members} \t27.2M \t27.2M \t46.9%`,
+    ].join('\n');
+    for (const [members, kills] of [
+      ['miembros', 'Para 3 muertes, ya reducido para un excedente del 15%.'],
+      ['membres', 'Pour 3 éliminations, déjà réduit pour un dépassement de 15 %.'],
+      ['участников', 'Для 3 убийств, уже уменьшено с учётом перевыполнения на 15%.'],
+      ['Mitglieder', 'Für 3 Kills, bereits um 15 % Überschuss verringert.'],
+    ]) {
+      expect(parseTierTargets(translated(members, kills)), members).toEqual({
+        tiers: { g9: 61.3e6, g8: 27.2e6 }, kills: 3, skipped: [],
+      });
+    }
+  });
+
   it('reads plain and markdown lines too', () => {
     expect(parseTierTargets('G9 61.3M\nG8 27,200,000\n| G7 | 59 members | 10.9M | 643M | 33.5% |').tiers)
       .toEqual({ g9: 61.3e6, g8: 27.2e6, g7: 10.9e6 });

@@ -591,6 +591,35 @@
   box-shadow: 0 0 0 1px var(--border-light);
 }
 
+/* ─── Language picker ───────────────────────────────────────────
+   A select on the same recessed track as the theme picker (five languages
+   don't fit a segmented row). Used by the user menu, the phone drawer and
+   the login card; the public share page reuses its header select style. */
+.lang-select {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* A saved non-English language hides the page until lib/i18n.js has
+   translated the shell (see the inline bootstrap in each HTML shell), so the
+   English markup never flashes first. The delayed reveal is the safety net: a
+   dictionary that never arrives can't leave the page blank. */
+html[data-i18n-pending] body {
+  visibility: hidden;
+  animation: i18n-reveal 0s linear 2.5s forwards;
+}
+@keyframes i18n-reveal {
+  to { visibility: visible; }
+}
+
 /* ─── Login bridge ──────────────────────────────────────────────
    Streams a remote Chromium frame into a <canvas>. Rendered by
    lib/login-bridge.js and used by both the Clans admin page and the

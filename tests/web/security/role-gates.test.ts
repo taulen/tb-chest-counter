@@ -803,6 +803,29 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     });
   });
 
+  // ─── UI language (v89) ────────────────────────────────────────
+  //
+  // Any signed-in account may set its own language and nobody else's; an
+  // account that never chose reports null, which tells the page to keep the
+  // browser's choice (English by default).
+
+  describe('UI language', () => {
+    it('starts unset, saves a valid choice for the caller only, rejects the rest', async () => {
+      const me = async (persona: Persona) => (await send('get', '/api/auth/me', persona)).body.user;
+      expect((await me('user1')).language).toBeNull();
+
+      expectStatus((await send('put', '/api/auth/language', 'user1', { language: 'ru' })).status, 200);
+      expect((await me('user1')).language).toBe('ru');
+      expect((await me('admin1')).language).toBeNull();
+
+      for (const language of ['xx', '', null, 'RU']) {
+        expectStatus((await send('put', '/api/auth/language', 'user1', { language })).status, 400);
+      }
+      expect((await me('user1')).language).toBe('ru');
+      expectStatus((await send('put', '/api/auth/language', 'unauth', { language: 'de' })).status, 401);
+    });
+  });
+
   // ─── multi-clan accounts (user_clan_access, v88) ──────────────
   //
   // An account may be granted extra clans, each with its own role, and

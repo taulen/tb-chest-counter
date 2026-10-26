@@ -8,6 +8,7 @@ import {
   formatResourceAmount, resourceIconHtml, directionPillHtml,
   resourceTabsHtml, isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 const PAGE_SIZE = 25;
 let currentPage = 1;
@@ -65,7 +66,7 @@ function renderThumbs() {
     thumbUrls.push(url);
     return `<div class="resource-thumb" title="${esc(f.name)}">
       <img src="${url}" alt="">
-      <button class="resource-thumb-remove" data-thumb-index="${i}" type="button" aria-label="Remove">×</button>
+      <button class="resource-thumb-remove" data-thumb-index="${i}" type="button" aria-label="${t('Remove')}">×</button>
     </div>`;
   }).join('');
 
@@ -78,7 +79,7 @@ function renderThumbs() {
   });
 
   const bytes = selectedFiles.reduce((s, f) => s + (f.size || 0), 0);
-  if (summary) summary.textContent = `${selectedFiles.length} screenshot${selectedFiles.length === 1 ? '' : 's'} · ${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (summary) summary.textContent = `${tn(selectedFiles.length, '{n} screenshot', '{n} screenshots')} · ${t('{size} MB', { size: (bytes / 1024 / 1024).toFixed(1) })}`;
   if (btn) btn.disabled = false;
 }
 
@@ -188,7 +189,7 @@ function setUploadProgress(resultEl, current, total) {
   if (!resultEl) return;
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
   resultEl.querySelector('.upload-progress-header').textContent =
-    `Processing ${current} / ${total}…`;
+    t('Processing {current} / {total}…', { current, total });
   const bar = resultEl.querySelector('.upload-progress-bar');
   if (bar) {
     bar.classList.remove('upload-progress-indeterminate');
@@ -202,7 +203,7 @@ export async function handleResourcesUpload(reload) {
   const btn = document.querySelector('[data-action="resources-upload"]');
 
   if (!selectedFiles.length) {
-    await notify('Please add one or more screenshots first.', 'Upload');
+    await notify(t('Please add one or more screenshots first.'), t('Upload'));
     return;
   }
 
@@ -212,16 +213,16 @@ export async function handleResourcesUpload(reload) {
   // calendar date, not the game day.
   const uploadDate = dateInput?.value || localDateKey();
   const total = files.length;
-  const label = total === 1 ? `1 screenshot` : `${total} screenshots`;
+  const label = tn(total, '{n} screenshot', '{n} screenshots');
   // Captured from the 'done' event so we can offer to resolve any
   // unmatched-resource ("unknown") rows immediately after the import.
   let batchId = null;
 
-  if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('Processing…'); }
   if (resultEl) {
     resultEl.className = 'resources-upload-result is-loading';
     resultEl.innerHTML = `
-      <div class="upload-progress-header">Processing 0 / ${total}…</div>
+      <div class="upload-progress-header">${t('Processing {current} / {total}…', { current: 0, total })}</div>
       <div class="upload-progress-bar-wrap"><div class="upload-progress-bar" style="width:0%"></div></div>
     `;
   }
@@ -269,7 +270,7 @@ export async function handleResourcesUpload(reload) {
       }
     }
 
-    if (!done_event) throw new Error('Server closed the stream without a result.');
+    if (!done_event) throw new Error(t('Server closed the stream without a result.'));
 
     batchId = done_event.batchId ?? null;
     const inserted = done_event.inserted ?? 0;
@@ -280,7 +281,16 @@ export async function handleResourcesUpload(reload) {
       : '';
     lastUploadSummary = {
       html: `
-        <strong>Done.</strong> ${label} processed — ${inserted} rows inserted${errCount ? `, ${errCount} error${errCount === 1 ? '' : 's'}` : ''}
+        <strong>${t('Done.')}</strong> ${errCount
+          ? t('{screenshots} processed — {rows}, {errors}', {
+            screenshots: label,
+            rows: tn(inserted, '{n} row inserted', '{n} rows inserted'),
+            errors: tn(errCount, '{n} error', '{n} errors'),
+          })
+          : t('{screenshots} processed — {rows}', {
+            screenshots: label,
+            rows: tn(inserted, '{n} row inserted', '{n} rows inserted'),
+          })}
         <div class="upload-progress-bar-wrap"><div class="upload-progress-bar" style="width:100%"></div></div>
         ${errDetail}
       `,
@@ -288,14 +298,14 @@ export async function handleResourcesUpload(reload) {
     };
   } catch (err) {
     lastUploadSummary = {
-      html: `<strong>Upload failed:</strong> ${esc(err.message)}`,
+      html: `<strong>${t('Upload failed:')}</strong> ${esc(err.message)}`,
       cls: 'resources-upload-result upload-mixed',
     };
   }
 
   selectedFiles = [];
   revokeThumbUrls();
-  if (btn) { btn.disabled = false; btn.textContent = 'Upload & Extract'; }
+  if (btn) { btn.disabled = false; btn.textContent = t('Upload & Extract'); }
   reload('resources/admin');
 
   // If the OCR couldn't match every icon, some rows landed as "unknown".
@@ -331,55 +341,48 @@ function buildCaptureCardHtml(status) {
   const autoOn = !!(status.calibrated && status.enabled && status.clanAutoCapture);
 
   const stateLine = !status.calibrated
-    ? `<p class="muted-copy mb-12"><strong>Not set up yet.</strong> Automated collection needs the
-         world-map chain calibrated. A superadmin finishes that under
-         <strong>System &rarr; Scanner Calibration</strong> (Stages 5 and 6, plus the MAP button in
-         Stage 1).</p>`
+    ? `<p class="muted-copy mb-12">${t('<strong>Not set up yet.</strong> Automated collection needs the world-map chain calibrated. A superadmin finishes that under <strong>System &rarr; Scanner Calibration</strong> (Stages 5 and 6, plus the MAP button in Stage 1).')}</p>`
     : !status.enabled
-      ? `<p class="muted-copy mb-12"><strong>Calibrated, but the daily run is off.</strong> A
-           superadmin enables it under <strong>System &rarr; Automated Resource Collection</strong>, and
-           can trigger a one-off read for this clan from <strong>Clans &rarr; Resource Tracking</strong>.</p>`
+      ? `<p class="muted-copy mb-12">${t('<strong>Calibrated, but the daily run is off.</strong> A superadmin enables it under <strong>System &rarr; Automated Resource Collection</strong>, and can trigger a one-off read for this clan from <strong>Clans &rarr; Resource Tracking</strong>.')}</p>`
       : status.clanAutoCapture
-        ? `<p class="muted-copy mb-12"><strong>On.</strong> This clan's capital history is read once per
-             game day, right after the might snapshot &mdash; no uploads needed.</p>`
-        : `<p class="muted-copy mb-12"><strong>On for the instance, but this clan is left out.</strong>
-             A clan admin ticks <em>Include in the daily automatic read</em> under
-             <strong>Clans &rarr; Resource Tracking</strong> to add it. Until then this clan's rows only
-             arrive from screenshots uploaded below.</p>`;
+        ? `<p class="muted-copy mb-12">${t("<strong>On.</strong> This clan's capital history is read once per game day, right after the might snapshot &mdash; no uploads needed.")}</p>`
+        : `<p class="muted-copy mb-12">${t("<strong>On for the instance, but this clan is left out.</strong> A clan admin ticks <em>Include in the daily automatic read</em> under <strong>Clans &rarr; Resource Tracking</strong> to add it. Until then this clan's rows only arrive from screenshots uploaded below.")}</p>`;
 
   const lastLine = status.lastCapture
-    ? `<p class="muted-copy mb-12">Last read: game day <strong>${esc(status.lastCapture.gameDate)}</strong>
-         at ${esc(formatDate(status.lastCapture.capturedAt))} &middot;
-         ${status.lastCapture.rowsInserted} row(s) recorded.
+    ? `<p class="muted-copy mb-12">${t('Last read: game day <strong>{day}</strong> at {time}', {
+         day: esc(status.lastCapture.gameDate),
+         time: esc(formatDate(status.lastCapture.capturedAt)),
+       })} &middot;
+         ${tn(status.lastCapture.rowsInserted, '{n} row recorded.', '{n} rows recorded.')}
          ${status.lastCapture.gameDate === status.currentGameDate
-           ? "Today's read is done."
+           ? t("Today's read is done.")
            // Only a run that is actually scheduled can be "pending" — saying it of a
            // clan that has been excluded promises something that will never happen.
-           : autoOn ? "Today's read is still pending." : ''}</p>`
-    : '<p class="muted-copy mb-12">Never read from the game yet.</p>';
+           : autoOn ? t("Today's read is still pending.") : ''}</p>`
+    : `<p class="muted-copy mb-12">${t('Never read from the game yet.')}</p>`;
 
   // Overlap is a data-correctness warning, not a status line: until an admin deletes
   // one side, those dates are counted twice in every total on this page.
   const overlapLine = status.overlaps?.length
     ? `<div class="resources-upload-result is-warning mb-12">
-         <strong>Double-counted dates.</strong> These dates have rows from BOTH an uploaded
-         screenshot and an automated read, so their totals are inflated until you delete one of the
-         two batches in Upload History:
-         ${esc(status.overlaps.map((ov) => `${ov.transactionDate} (${ov.uploadRows} uploaded + ${ov.scanRows} read)`).join(', '))}.
+         ${t('<strong>Double-counted dates.</strong> These dates have rows from BOTH an uploaded screenshot and an automated read, so their totals are inflated until you delete one of the two batches in Upload History: {dates}.', {
+           dates: esc(status.overlaps.map((ov) => t('{date} ({uploaded} uploaded + {read} read)', { date: ov.transactionDate, uploaded: ov.uploadRows, read: ov.scanRows })).join(', ')),
+         })}
        </div>`
     : '';
 
   const unresolvedLine = status.unresolvedCount > 0
     ? `<div class="inline-form-row mb-12">
-         <span class="muted-copy"><strong>${status.unresolvedCount}</strong> row(s) have no resource &mdash;
-           the icon couldn't be identified. Each kept a crop of the original row.</span>
-         <button class="btn" data-action="resources-resolve-unknowns">Resolve ${status.unresolvedCount} row(s)</button>
+         <span class="muted-copy">${tn(status.unresolvedCount,
+           "<strong>{n}</strong> row has no resource &mdash; the icon couldn't be identified. Each kept a crop of the original row.",
+           "<strong>{n}</strong> rows have no resource &mdash; the icon couldn't be identified. Each kept a crop of the original row.")}</span>
+         <button class="btn" data-action="resources-resolve-unknowns">${tn(status.unresolvedCount, 'Resolve {n} row', 'Resolve {n} rows')}</button>
        </div>`
-    : '<p class="muted-copy">No unresolved rows &mdash; every recorded row has a resource.</p>';
+    : `<p class="muted-copy">${t('No unresolved rows &mdash; every recorded row has a resource.')}</p>`;
 
   return `
     <details class="card card-collapsible" data-section-key="resources-automated" open>
-      <summary class="card-header"><h2>Automated Collection</h2></summary>
+      <summary class="card-header"><h2>${t('Automated Collection')}</h2></summary>
       <div class="card-body card-body-padded">
         ${stateLine}
         ${lastLine}
@@ -411,10 +414,10 @@ export async function handleResourcesResolveUnknowns(reload) {
     const res = await api(`/resources/transactions?${qs}`);
     rows = Array.isArray(res?.rows) ? res.rows : [];
   } catch (err) {
-    return notify(String(err), 'Could not load unresolved rows');
+    return notify(String(err), t('Could not load unresolved rows'));
   }
   if (rows.length === 0) {
-    return notify('Nothing left to resolve — every row has a resource.', 'All clear');
+    return notify(t('Nothing left to resolve — every row has a resource.'), t('All clear'));
   }
   if (!cachedTypes.length) {
     try {
@@ -467,35 +470,35 @@ function cropHoverHtml(tx) {
   if (!tx.hasCrop) return '<span class="muted-copy">—</span>';
   return `<span class="unknown-crop-hover" data-crop-url="/api/resources/transactions/${tx.id}/crop"`
     + ` data-crop-wide tabindex="0" role="button"`
-    + ` title="Hover to preview the screenshot row this came from — click to enlarge">🖼️</span>`;
+    + ` title="${t('Hover to preview the screenshot row this came from — click to enlarge')}">🖼️</span>`;
 }
 
 function unknownRowHtml(tx) {
   const typeOptions = [
-    `<option value="">— Unknown —</option>`,
-    ...cachedTypes.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`),
+    `<option value="">${t('— Unknown —')}</option>`,
+    ...cachedTypes.map((type) => `<option value="${type.id}">${esc(tGame(type.name))}</option>`),
   ].join('');
   return `
     <tr data-unknown-row="${tx.id}">
-      <td data-label="Row" class="col-crop">${cropHoverHtml(tx)}</td>
-      <td data-label="Member">${esc(tx.memberName ?? tx.rawPlayerName ?? '—')}</td>
-      <td data-label="Resource">
+      <td data-label="${t('Row')}" class="col-crop">${cropHoverHtml(tx)}</td>
+      <td data-label="${t('Member')}">${esc(tx.memberName ?? tx.rawPlayerName ?? '—')}</td>
+      <td data-label="${t('Resource')}">
         <select class="input input-tight" data-field="resource" autocomplete="off">${typeOptions}</select>
       </td>
-      <td data-label="Direction">
+      <td data-label="${t('Direction')}">
         <select class="input input-tight" data-field="direction">
-          <option value="1"  ${tx.direction === 1  ? 'selected' : ''}>Sent</option>
-          <option value="-1" ${tx.direction === -1 ? 'selected' : ''}>Took</option>
+          <option value="1"  ${tx.direction === 1  ? 'selected' : ''}>${t('Sent')}</option>
+          <option value="-1" ${tx.direction === -1 ? 'selected' : ''}>${t('Took')}</option>
         </select>
       </td>
-      <td data-label="Amount">
+      <td data-label="${t('Amount')}">
         <input type="number" class="input input-tight" data-field="amount" value="${esc(String(tx.amount))}" min="1" step="1">
       </td>
-      <td data-label="Date">
+      <td data-label="${t('Date')}">
         <input type="date" class="input input-tight" data-field="date" lang="sv" value="${esc(tx.transactionDate)}">
       </td>
       <td class="col-tx-actions">
-        <button class="btn btn-tight btn-primary" data-unknown-save="${tx.id}">Save</button>
+        <button class="btn btn-tight btn-primary" data-unknown-save="${tx.id}">${t('Save')}</button>
         <span class="unknown-row-status" aria-live="polite"></span>
       </td>
     </tr>`;
@@ -513,26 +516,24 @@ function openUnknownResourcesModal(rows, reload) {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal-card modal-card-wide unknown-modal" role="dialog" aria-modal="true">
-      <div class="modal-title">Resolve unknown resources</div>
+      <div class="modal-title">${t('Resolve unknown resources')}</div>
       <p class="modal-form-hint unknown-modal-hint">
-        The importer couldn't identify the resource for
-        <strong class="unknown-remaining">${rows.length}</strong>
-        row${rows.length === 1 ? '' : 's'}. Hover the 🖼️ in the Row column to preview the
-        screenshot row each one came from — or click it to open a zoomable full-size
-        view — then pick the correct resource and save. The other fields are
-        pre-filled from the screenshot and can be edited too.
+        ${tn(rows.length,
+          "The importer couldn't identify the resource for {n} row. Hover the 🖼️ in the Row column to preview the screenshot row each one came from — or click it to open a zoomable full-size view — then pick the correct resource and save. The other fields are pre-filled from the screenshot and can be edited too.",
+          "The importer couldn't identify the resource for {n} rows. Hover the 🖼️ in the Row column to preview the screenshot row each one came from — or click it to open a zoomable full-size view — then pick the correct resource and save. The other fields are pre-filled from the screenshot and can be edited too.",
+          { n: `<strong class="unknown-remaining">${rows.length}</strong>` })}
       </p>
       <div class="unknown-modal-scroll">
         <table class="unknown-modal-table">
           <thead><tr>
-            <th>Row</th><th>Member</th><th>Resource</th><th>Direction</th><th>Amount</th><th>Date</th><th></th>
+            <th>${t('Row')}</th><th>${t('Member')}</th><th>${t('Resource')}</th><th>${t('Direction')}</th><th>${t('Amount')}</th><th>${t('Date')}</th><th></th>
           </tr></thead>
           <tbody>${rows.map(unknownRowHtml).join('')}</tbody>
         </table>
       </div>
       <div class="modal-actions">
-        <button class="btn unknown-modal-close">Close</button>
-        <button class="btn btn-primary unknown-modal-save-all">Save all</button>
+        <button class="btn unknown-modal-close">${t('Close')}</button>
+        <button class="btn btn-primary unknown-modal-save-all">${t('Save all')}</button>
       </div>
     </div>
   `;
@@ -552,8 +553,8 @@ function openUnknownResourcesModal(rows, reload) {
   const refreshRemaining = () => {
     const n = remainingCount();
     if (remainingEl) remainingEl.textContent = String(n);
-    if (n === 0 && saveAllBtn) { saveAllBtn.disabled = true; saveAllBtn.textContent = 'All resolved'; }
-    if (closeBtn) closeBtn.textContent = n === 0 ? 'Done' : 'Close';
+    if (n === 0 && saveAllBtn) { saveAllBtn.disabled = true; saveAllBtn.textContent = t('All resolved'); }
+    if (closeBtn) closeBtn.textContent = n === 0 ? t('Done') : t('Close');
   };
 
   let closed = false;
@@ -587,7 +588,7 @@ function openUnknownResourcesModal(rows, reload) {
 
     if (!resourceVal) {
       if (requireResource) {
-        if (statusEl) { statusEl.textContent = 'Pick a resource'; statusEl.className = 'unknown-row-status is-error'; }
+        if (statusEl) { statusEl.textContent = t('Pick a resource'); statusEl.className = 'unknown-row-status is-error'; }
         return false;
       }
       return false; // Save-all: leave unresolved rows untouched.
@@ -599,11 +600,11 @@ function openUnknownResourcesModal(rows, reload) {
     const transactionDate = rowEl.querySelector('[data-field="date"]').value;
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      if (statusEl) { statusEl.textContent = 'Bad amount'; statusEl.className = 'unknown-row-status is-error'; }
+      if (statusEl) { statusEl.textContent = t('Bad amount'); statusEl.className = 'unknown-row-status is-error'; }
       return false;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
-      if (statusEl) { statusEl.textContent = 'Bad date'; statusEl.className = 'unknown-row-status is-error'; }
+      if (statusEl) { statusEl.textContent = t('Bad date'); statusEl.className = 'unknown-row-status is-error'; }
       return false;
     }
 
@@ -614,14 +615,14 @@ function openUnknownResourcesModal(rows, reload) {
         return false;
       }
     } catch (err) {
-      if (statusEl) { statusEl.textContent = err.message || 'Save failed'; statusEl.className = 'unknown-row-status is-error'; }
+      if (statusEl) { statusEl.textContent = err.message || t('Save failed'); statusEl.className = 'unknown-row-status is-error'; }
       return false;
     }
 
     dirty = true;
     rowEl.classList.add('is-resolved');
     rowEl.querySelectorAll('select, input, button').forEach((c) => { c.disabled = true; });
-    if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.className = 'unknown-row-status is-ok'; }
+    if (statusEl) { statusEl.textContent = t('✓ Saved'); statusEl.className = 'unknown-row-status is-ok'; }
     refreshRemaining();
     return true;
   };
@@ -646,9 +647,9 @@ function openUnknownResourcesModal(rows, reload) {
       const left = remainingCount();
       if (left > 0) {
         saveAllBtn.disabled = false;
-        notify(`Saved ${saved}. ${left} row${left === 1 ? '' : 's'} still need a resource picked.`, 'Resources');
+        notify(`${t('Saved {count}.', { count: saved })} ${tn(left, '{n} row still needs a resource picked.', '{n} rows still need a resource picked.')}`, t('Resources'));
       } else {
-        notify(`Saved ${saved} row${saved === 1 ? '' : 's'}.`, 'Saved');
+        notify(tn(saved, 'Saved {n} row.', 'Saved {n} rows.'), t('Saved'));
       }
     }
   });
@@ -658,13 +659,13 @@ function openUnknownResourcesModal(rows, reload) {
 
 export async function handleResourcesBatchDelete(batchId, reload) {
   if (!batchId) return;
-  const ok = await confirmDialog('Delete this upload batch and all its transactions?');
+  const ok = await confirmDialog(t('Delete this upload batch and all its transactions?'));
   if (!ok) return;
   try {
     await apiDelete(`/resources/batches/${batchId}`);
     reload('resources/admin');
   } catch (err) {
-    await notify('Delete failed: ' + err.message, 'Error');
+    await notify(t('Delete failed: {error}', { error: err.message }), t('Error'));
   }
 }
 
@@ -674,12 +675,12 @@ export function handleResourcesTxEdit(txId) {
   const row = document.querySelector(`tr[data-tx-row="${txId}"]`);
   if (!row) return;
   const d = row.dataset;
-  const selectedType = cachedTypes.find((t) => String(t.id) === d.txResourceId);
+  const selectedType = cachedTypes.find((type) => String(type.id) === d.txResourceId);
   const isSpeedup = selectedType?.slug === 'clan-speedup';
   const typeOptions = [
-    `<option value="">— Unknown —</option>`,
-    ...cachedTypes.map((t) =>
-      `<option value="${t.id}" ${String(t.id) === d.txResourceId ? 'selected' : ''}>${esc(t.name)}</option>`
+    `<option value="">${t('— Unknown —')}</option>`,
+    ...cachedTypes.map((type) =>
+      `<option value="${type.id}" ${String(type.id) === d.txResourceId ? 'selected' : ''}>${esc(tGame(type.name))}</option>`
     ),
   ].join('');
   const initDays  = isSpeedup ? Math.floor(Number(d.txAmount) / 24) : 0;
@@ -687,28 +688,28 @@ export function handleResourcesTxEdit(txId) {
   const amountCell = isSpeedup
     ? `<div class="speedup-amount-edit">
          <div class="speedup-amount-row">
-           <input type="number" class="input input-tight" id="txEditAmountD-${txId}" value="${initDays}" min="0" step="1"> d
+           <input type="number" class="input input-tight" id="txEditAmountD-${txId}" value="${initDays}" min="0" step="1"> ${t('d')}
          </div>
          <div class="speedup-amount-row">
-           <input type="number" class="input input-tight" id="txEditAmountH-${txId}" value="${initHours}" min="0" step="1"> h
+           <input type="number" class="input input-tight" id="txEditAmountH-${txId}" value="${initHours}" min="0" step="1"> ${t('h')}
          </div>
        </div>`
     : `<input type="number" class="input input-tight" id="txEditAmount-${txId}" value="${esc(d.txAmount)}" min="1" step="1">`;
 
   row.innerHTML = `
-    <td data-label="Member">${esc(d.txMemberName)}</td>
-    <td data-label="Resource"><select class="input input-tight" id="txEditResource-${txId}">${typeOptions}</select></td>
-    <td data-label="Direction">
+    <td data-label="${t('Member')}">${esc(d.txMemberName)}</td>
+    <td data-label="${t('Resource')}"><select class="input input-tight" id="txEditResource-${txId}">${typeOptions}</select></td>
+    <td data-label="${t('Direction')}">
       <select class="input input-tight" id="txEditDir-${txId}">
-        <option value="1"  ${d.txDirection === '1'  ? 'selected' : ''}>Sent</option>
-        <option value="-1" ${d.txDirection === '-1' ? 'selected' : ''}>Took</option>
+        <option value="1"  ${d.txDirection === '1'  ? 'selected' : ''}>${t('Sent')}</option>
+        <option value="-1" ${d.txDirection === '-1' ? 'selected' : ''}>${t('Took')}</option>
       </select>
     </td>
-    <td data-label="Amount">${amountCell}</td>
-    <td data-label="Date"><input type="date"   class="input input-tight" id="txEditDate-${txId}"   lang="sv" value="${esc(d.txDate)}"></td>
+    <td data-label="${t('Amount')}">${amountCell}</td>
+    <td data-label="${t('Date')}"><input type="date"   class="input input-tight" id="txEditDate-${txId}"   lang="sv" value="${esc(d.txDate)}"></td>
     <td data-label="" class="col-tx-actions">
-      <button class="btn btn-tight btn-primary" data-action="resources-tx-save" data-tx-id="${txId}">Save</button>
-      <button class="btn btn-tight"             data-action="resources-tx-cancel">Cancel</button>
+      <button class="btn btn-tight btn-primary" data-action="resources-tx-save" data-tx-id="${txId}">${t('Save')}</button>
+      <button class="btn btn-tight"             data-action="resources-tx-cancel">${t('Cancel')}</button>
     </td>
   `;
 }
@@ -738,23 +739,23 @@ export async function handleResourcesTxSave(txId, reload) {
   }
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    await notify('Amount must be positive.', 'Validation');
+    await notify(t('Amount must be positive.'), t('Validation'));
     return;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
-    await notify('Date is required.', 'Validation');
+    await notify(t('Date is required.'), t('Validation'));
     return;
   }
 
   try {
     const res = await apiPatch(`/resources/transactions/${txId}`, { resourceTypeId, direction, amount, transactionDate });
     if (res?.error) {
-      await notify('Save failed: ' + res.error, 'Error');
+      await notify(t('Save failed: {error}', { error: res.error }), t('Error'));
       return;
     }
     reload('resources/admin');
   } catch (err) {
-    await notify('Save failed: ' + err.message, 'Error');
+    await notify(t('Save failed: {error}', { error: err.message }), t('Error'));
   }
 }
 
@@ -767,7 +768,7 @@ export function handleResourcesTxCancel(reload) {
 export async function renderResourcesAdmin(el, navigate) {
   const user = getCurrentUser();
   if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-    el.innerHTML = '<div class="card"><div class="card-body"><p>Admin access required.</p></div></div>';
+    el.innerHTML = `<div class="card"><div class="card-body"><p>${t('Admin access required.')}</p></div></div>`;
     return;
   }
 
@@ -834,12 +835,12 @@ export async function renderResourcesAdmin(el, navigate) {
     `<option value="${m.id}" ${String(m.id) === filters.memberId ? 'selected' : ''}>${esc(m.name)}</option>`
   ).join('');
 
-  const typeOptions = allTypes.map((t) =>
-    `<option value="${t.id}" ${String(t.id) === filters.resourceTypeId ? 'selected' : ''}>${esc(t.name)}</option>`
+  const typeOptions = allTypes.map((type) =>
+    `<option value="${type.id}" ${String(type.id) === filters.resourceTypeId ? 'selected' : ''}>${esc(tGame(type.name))}</option>`
   ).join('');
 
   const txRows = transactions.length === 0
-    ? `<tr><td colspan="6" class="empty-state-cell">No transactions match the current filters.</td></tr>`
+    ? `<tr><td colspan="6" class="empty-state-cell">${t('No transactions match the current filters.')}</td></tr>`
     : transactions.map((tx) => `
         <tr data-tx-row="${tx.id}"
             data-tx-member-name="${esc(tx.memberName ?? tx.rawPlayerName ?? '')}"
@@ -847,44 +848,47 @@ export async function renderResourcesAdmin(el, navigate) {
             data-tx-direction="${tx.direction}"
             data-tx-amount="${tx.amount}"
             data-tx-date="${esc(tx.transactionDate)}">
-          <td data-label="Member" data-role="primary"><span class="mrow-name">${esc(tx.memberName ?? tx.rawPlayerName ?? '—')}</span></td>
-          <td data-label="Resource">${resourceIconHtml(tx.resourceTypeSlug, tx.resourceTypeName ?? 'Unknown')}${tx.hasCrop ? ` ${cropHoverHtml(tx)}` : ''}</td>
-          <td data-label="Direction">${directionPillHtml(tx.direction)}</td>
-          <td data-label="Amount" class="col-num" data-role="metric">${formatTxAmount(tx)}</td>
-          <td data-label="Date">${esc(formatGameDayShort(tx.transactionDate))}</td>
+          <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${esc(tx.memberName ?? tx.rawPlayerName ?? '—')}</span></td>
+          <td data-label="${t('Resource')}">${resourceIconHtml(tx.resourceTypeSlug, tx.resourceTypeName)}${tx.hasCrop ? ` ${cropHoverHtml(tx)}` : ''}</td>
+          <td data-label="${t('Direction')}">${directionPillHtml(tx.direction)}</td>
+          <td data-label="${t('Amount')}" class="col-num" data-role="metric">${formatTxAmount(tx)}</td>
+          <td data-label="${t('Date')}">${esc(formatGameDayShort(tx.transactionDate))}</td>
           <td class="col-tx-actions">
-            <button class="btn btn-tight" data-action="resources-tx-edit" data-tx-id="${tx.id}">Edit</button>
+            <button class="btn btn-tight" data-action="resources-tx-edit" data-tx-id="${tx.id}">${t('Edit')}</button>
           </td>
         </tr>`
     ).join('');
 
   const pagination = total > PAGE_SIZE ? `
     <div class="pagination">
-      <button class="btn btn-tight" data-action="resources-page-prev" ${currentPage <= 1 ? 'disabled' : ''}>← Prev</button>
-      <span class="pagination-info">Page ${currentPage} of ${totalPages} · ${total} rows</span>
-      <button class="btn btn-tight" data-action="resources-page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next →</button>
+      <button class="btn btn-tight" data-action="resources-page-prev" ${currentPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+      <span class="pagination-info">${t('Page {page} of {pages}', { page: currentPage, pages: totalPages })} · ${tn(total, '{n} row', '{n} rows', { n: total })}</span>
+      <button class="btn btn-tight" data-action="resources-page-next" ${currentPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>
   ` : '';
 
   const batchRows = batches.length === 0
-    ? `<tr><td colspan="7" class="empty-state-cell">No uploads yet.</td></tr>`
+    ? `<tr><td colspan="7" class="empty-state-cell">${t('No uploads yet.')}</td></tr>`
     : batches.map((b) => {
         // An automated batch is a scroll sweep, not a pile of files — so its
         // file_count is pages. Labelling both the same would misreport one of them.
         const isScan = b.source === 'scan';
-        const unit = isScan ? 'pages' : 'files';
+        const fileCount = b.fileCount ?? 1;
+        const countLabel = isScan
+          ? tn(fileCount, '{n} page', '{n} pages', { n: esc(String(fileCount)) })
+          : tn(fileCount, '{n} file', '{n} files', { n: esc(String(fileCount)) });
         return `
         <tr>
-          <td data-label="Imported" data-role="primary"><span class="mrow-name">${esc(formatDate(b.uploadedAt))}</span><span class="mrow-sub">${esc(String(b.fileCount ?? 1))} ${unit}</span></td>
-          <td data-label="Source">${isScan
-            ? '<span class="resource-direction resource-batch-auto" title="Read from the game by the automated capture">Automatic</span>'
-            : '<span class="resource-direction resource-batch-upload" title="Screenshots uploaded by an admin">Upload</span>'}</td>
-          <td data-label="Screenshot Date">${esc(formatGameDayShort(b.uploadDate))}</td>
-          <td data-label="${isScan ? 'Pages' : 'Files'}" class="col-num">${b.fileCount ?? 1}</td>
-          <td data-label="Rows"    class="col-num" data-role="metric">${b.rowCount}</td>
-          <td data-label="Errors"  class="col-num">${b.errorCount}</td>
+          <td data-label="${t('Imported')}" data-role="primary"><span class="mrow-name">${esc(formatDate(b.uploadedAt))}</span><span class="mrow-sub">${countLabel}</span></td>
+          <td data-label="${t('Source')}">${isScan
+            ? `<span class="resource-direction resource-batch-auto" title="${t('Read from the game by the automated capture')}">${t('Automatic')}</span>`
+            : `<span class="resource-direction resource-batch-upload" title="${t('Screenshots uploaded by an admin')}">${t('Upload')}</span>`}</td>
+          <td data-label="${t('Screenshot Date')}">${esc(formatGameDayShort(b.uploadDate))}</td>
+          <td data-label="${isScan ? t('Pages') : t('Files')}" class="col-num">${b.fileCount ?? 1}</td>
+          <td data-label="${t('Rows')}"    class="col-num" data-role="metric">${b.rowCount}</td>
+          <td data-label="${t('Errors')}"  class="col-num">${b.errorCount}</td>
           <td class="col-actions">
-            <button class="btn btn-tight btn-danger" data-action="resources-batch-delete" data-batch-id="${b.id}">Delete</button>
+            <button class="btn btn-tight btn-danger" data-action="resources-batch-delete" data-batch-id="${b.id}">${t('Delete')}</button>
           </td>
         </tr>`;
       }).join('');
@@ -911,51 +915,51 @@ export async function renderResourcesAdmin(el, navigate) {
     ${resourceTabsHtml('admin')}
     ${captureCardHtml}
     <details class="card card-collapsible" data-section-key="resources-upload" ${autoCollecting ? '' : 'open'}>
-      <summary class="card-header"><h2>Upload Screenshots${autoCollecting
-        ? ' <span class="muted-copy">· not needed while the daily read is on</span>'
+      <summary class="card-header"><h2>${t('Upload Screenshots')}${autoCollecting
+        ? ` <span class="muted-copy">${t('· not needed while the daily read is on')}</span>`
         : ''}</h2></summary>
       <div class="card-body card-body-padded">
-        <p class="muted-copy">Upload <strong>History</strong> screenshots from the game. Each screenshot can contain many players — every "sent / took resources" row is read and matched to its clan member automatically. Add as many screenshots as you like.</p>
-        <div class="resources-dropzone" id="resourcesDropzone" tabindex="0" role="button" aria-label="Add screenshots by dropping, pasting, or clicking to browse">
+        <p class="muted-copy">${t('Upload <strong>History</strong> screenshots from the game. Each screenshot can contain many players — every "sent / took resources" row is read and matched to its clan member automatically. Add as many screenshots as you like.')}</p>
+        <div class="resources-dropzone" id="resourcesDropzone" tabindex="0" role="button" aria-label="${t('Add screenshots by dropping, pasting, or clicking to browse')}">
           <input type="file" id="resourcesFileInput" accept="image/*" multiple class="is-hidden">
           <div class="resources-dropzone-inner">
             <div class="resources-dropzone-icon" aria-hidden="true">🖼️</div>
-            <div class="resources-dropzone-text"><strong>Drop screenshots here</strong>, paste from clipboard, or <span class="resources-dropzone-browse">browse</span></div>
-            <div class="resources-dropzone-hint">PNG or JPEG · multiple files · many players per screenshot</div>
+            <div class="resources-dropzone-text">${t('<strong>Drop screenshots here</strong>, paste from clipboard, or {browse}', { browse: `<span class="resources-dropzone-browse">${t('browse')}</span>` })}</div>
+            <div class="resources-dropzone-hint">${t('PNG or JPEG · multiple files · many players per screenshot')}</div>
           </div>
         </div>
         <div class="resources-thumbs" id="resourcesThumbs"></div>
         <div class="resources-upload-actions">
-          <label class="resources-upload-label" for="resourcesUploadDate">Screenshot date</label>
-          <input type="date" id="resourcesUploadDate" class="input" lang="sv" value="${uploadDateKey}" max="${uploadDateKey}" title="What &quot;Today&quot; meant in these screenshots — your own calendar date when you took them.">
+          <label class="resources-upload-label" for="resourcesUploadDate">${t('Screenshot date')}</label>
+          <input type="date" id="resourcesUploadDate" class="input" lang="sv" value="${uploadDateKey}" max="${uploadDateKey}" title="${esc(t('What "Today" meant in these screenshots — your own calendar date when you took them.'))}">
           <span class="resources-upload-summary" id="resourcesUploadSummary"></span>
-          <button class="btn btn-primary" data-action="resources-upload" disabled>Upload &amp; Extract</button>
+          <button class="btn btn-primary" data-action="resources-upload" disabled>${esc(t('Upload & Extract'))}</button>
         </div>
         <div id="resourcesUploadResult" class="resources-upload-result is-hidden"></div>
       </div>
     </details>
 
     <div class="card">
-      <div class="card-header"><h2>Resource History</h2></div>
+      <div class="card-header"><h2>${t('Resource History')}</h2></div>
       <div class="card-body">
         <div class="resources-filter-bar">
-          <select class="input resource-filter-select" data-filter-key="memberId" aria-label="Filter by member">
-            <option value="">All members</option>
+          <select class="input resource-filter-select" data-filter-key="memberId" aria-label="${t('Filter by member')}">
+            <option value="">${t('All members')}</option>
             ${memberOptions}
           </select>
-          <select class="input resource-filter-select" data-filter-key="resourceTypeId" aria-label="Filter by resource">
-            <option value="">All resources</option>
-            <option value="unknown" ${filters.resourceTypeId === 'unknown' ? 'selected' : ''}>— Unknown —</option>
+          <select class="input resource-filter-select" data-filter-key="resourceTypeId" aria-label="${t('Filter by resource')}">
+            <option value="">${t('All resources')}</option>
+            <option value="unknown" ${filters.resourceTypeId === 'unknown' ? 'selected' : ''}>${t('— Unknown —')}</option>
             ${typeOptions}
           </select>
-          <select class="input resource-filter-select" data-filter-key="direction" aria-label="Filter by direction">
-            <option value=""  ${filters.direction === ''   ? 'selected' : ''}>All directions</option>
-            <option value="1" ${filters.direction === '1'  ? 'selected' : ''}>Sent</option>
-            <option value="-1"${filters.direction === '-1' ? 'selected' : ''}>Took</option>
+          <select class="input resource-filter-select" data-filter-key="direction" aria-label="${t('Filter by direction')}">
+            <option value=""  ${filters.direction === ''   ? 'selected' : ''}>${t('All directions')}</option>
+            <option value="1" ${filters.direction === '1'  ? 'selected' : ''}>${t('Sent')}</option>
+            <option value="-1"${filters.direction === '-1' ? 'selected' : ''}>${t('Took')}</option>
           </select>
-          <input type="date" id="resourcesDateFrom" class="input" lang="sv" value="${esc(filters.from)}" aria-label="From date">
-          <input type="date" id="resourcesDateTo"   class="input" lang="sv" value="${esc(filters.to)}"   aria-label="To date">
-          <button class="btn" data-action="resources-apply-filters">Apply</button>
+          <input type="date" id="resourcesDateFrom" class="input" lang="sv" value="${esc(filters.from)}" aria-label="${t('From date')}">
+          <input type="date" id="resourcesDateTo"   class="input" lang="sv" value="${esc(filters.to)}"   aria-label="${t('To date')}">
+          <button class="btn" data-action="resources-apply-filters">${t('Apply')}</button>
         </div>
         <table class="table-responsive resources-table">
           <colgroup>
@@ -967,11 +971,11 @@ export async function renderResourcesAdmin(el, navigate) {
             <col class="col-tx-actions">
           </colgroup>
           <thead><tr>
-            ${th('member_name', 'Member')}
-            ${th('resource_type', 'Resource')}
-            ${th('direction', 'Direction')}
-            ${th('amount', 'Amount')}
-            ${th('transaction_date', 'Date')}
+            ${th('member_name', t('Member'))}
+            ${th('resource_type', t('Resource'))}
+            ${th('direction', t('Direction'))}
+            ${th('amount', t('Amount'))}
+            ${th('transaction_date', t('Date'))}
             <th></th>
           </tr></thead>
           <tbody>${txRows}</tbody>
@@ -981,7 +985,7 @@ export async function renderResourcesAdmin(el, navigate) {
     </div>
 
     <details class="card card-collapsible" data-section-key="resources-upload-history">
-      <summary class="card-header"><h2>Upload History</h2></summary>
+      <summary class="card-header"><h2>${t('Upload History')}</h2></summary>
       <div class="card-body">
         <table class="table-responsive resources-batches-table">
           <colgroup>
@@ -994,12 +998,12 @@ export async function renderResourcesAdmin(el, navigate) {
             <col class="col-actions-narrow">
           </colgroup>
           <thead><tr>
-            <th>Imported</th>
-            <th>Source</th>
-            <th>Screenshot Date</th>
-            <th class="col-num">Files</th>
-            <th class="col-num">Rows</th>
-            <th class="col-num">Errors</th>
+            <th>${t('Imported')}</th>
+            <th>${t('Source')}</th>
+            <th>${t('Screenshot Date')}</th>
+            <th class="col-num">${t('Files')}</th>
+            <th class="col-num">${t('Rows')}</th>
+            <th class="col-num">${t('Errors')}</th>
             <th></th>
           </tr></thead>
           <tbody>${batchRows}</tbody>

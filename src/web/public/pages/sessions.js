@@ -7,6 +7,25 @@ import {
   formatTriggerSource, sessionHash, chestHash, memberLink, notify, confirmDialog,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
+import { t, tn, tGame } from '../lib/i18n.js';
+
+const CHEST_TYPE_LABELS = {
+  common: t('common'),
+  uncommon: t('uncommon'),
+  rare: t('rare'),
+  epic: t('epic'),
+  legendary: t('legendary'),
+  arena: t('arena'),
+  event: t('event'),
+  unknown: t('unknown'),
+};
+
+const STATUS_LABELS = {
+  pending: t('pending'),
+  processing: t('processing'),
+  completed: t('completed'),
+  failed: t('failed'),
+};
 
 const PAGE_SIZE = 25;
 let currentPage = 1;
@@ -25,38 +44,38 @@ export async function renderSessions(el) {
 
   const paginationControls = totalSessions > PAGE_SIZE
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="sessions-page-prev" ${currentPage <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${currentPage} of ${totalPages} · ${totalSessions} scans</span>
-        <button class="btn btn-tight" data-action="sessions-page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-action="sessions-page-prev" ${currentPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${tn(totalSessions, 'Page {page} of {pages} · {n} scan', 'Page {page} of {pages} · {n} scans', { page: currentPage, pages: totalPages, n: totalSessions })}</span>
+        <button class="btn btn-tight" data-action="sessions-page-next" ${currentPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
-  el.innerHTML = `<div class="card"><div class="card-header"><h2>Scan History</h2></div><div class="card-body">
-    ${pageSessions.length > 0 ? `<table class="table-responsive"><thead><tr><th>Started</th><th>Duration</th><th>Trigger</th><th>Status</th><th>Chests</th><th>Triumphal</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead><tbody>
+  el.innerHTML = `<div class="card"><div class="card-header"><h2>${t('Scan History')}</h2></div><div class="card-body">
+    ${pageSessions.length > 0 ? `<table class="table-responsive"><thead><tr><th>${t('Started')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Status')}</th><th>${t('Chests')}</th><th>${t('Triumphal')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead><tbody>
       ${pageSessions.map((s) => {
         // Status tooltip carries everything we used to surface as columns:
         // the screenshot count, plus (for failed scans) the error phase
         // and message. Hover-only so the row stays compact.
-        const screenshotsLine = `Screenshots: ${s.screenshotsTaken}`;
+        const screenshotsLine = t('Screenshots: {count}', { count: s.screenshotsTaken });
         const failureLines = s.errorMessage
           ? (s.errorPhase ? `${s.errorPhase}\n\n${s.errorMessage}` : s.errorMessage)
           : '';
         const tipText = failureLines ? `${screenshotsLine}\n\n${failureLines}` : screenshotsLine;
         const statusTip = ` title="${esc(tipText)}"`;
         const failureBadge = s.errorMessage
-          ? ` <span class="failure-phase-badge"${statusTip}>${esc(s.errorPhase || 'see details')}</span>`
+          ? ` <span class="failure-phase-badge"${statusTip}>${esc(s.errorPhase || t('see details'))}</span>`
           : '';
         return `<tr>
-        <td data-label="Started" data-role="primary"><span class="mrow-name"><a class="member-link" href="${sessionHash(s.id)}">${formatDate(s.startedAt)}</a></span><span class="mrow-sub">${formatTriggerSource(s.triggerSource)} · ${formatDuration(s.startedAt, s.completedAt)}</span></td>
-        <td data-label="Duration">${formatDuration(s.startedAt, s.completedAt)}</td>
-        <td data-label="Trigger">${formatTriggerSource(s.triggerSource)}</td>
-        <td data-label="Status"><span class="chest-type ${s.status === 'completed' ? 'uncommon' : 'arena'}"${statusTip}>${s.status}</span>${failureBadge}</td>
-        <td data-label="Chests" data-role="metric">${s.chestsFound}</td>
-        <td data-label="Triumphal">${s.triumphalChestsFound ?? 0}</td>
-        ${isSuperAdmin ? `<td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-session" data-session-id="${s.id}" data-session-chests="${s.chestsFound}">Delete</button></td>` : ''}
+        <td data-label="${t('Started')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${sessionHash(s.id)}">${formatDate(s.startedAt)}</a></span><span class="mrow-sub">${formatTriggerSource(s.triggerSource)} · ${formatDuration(s.startedAt, s.completedAt)}</span></td>
+        <td data-label="${t('Duration')}">${formatDuration(s.startedAt, s.completedAt)}</td>
+        <td data-label="${t('Trigger')}">${formatTriggerSource(s.triggerSource)}</td>
+        <td data-label="${t('Status')}"><span class="chest-type ${s.status === 'completed' ? 'uncommon' : 'arena'}"${statusTip}>${STATUS_LABELS[s.status] ?? s.status}</span>${failureBadge}</td>
+        <td data-label="${t('Chests')}" data-role="metric">${s.chestsFound}</td>
+        <td data-label="${t('Triumphal')}">${s.triumphalChestsFound ?? 0}</td>
+        ${isSuperAdmin ? `<td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-session" data-session-id="${s.id}" data-session-chests="${s.chestsFound}">${t('Delete')}</button></td>` : ''}
       </tr>`;
       }).join('')}
-    </tbody></table>` : '<div class="empty-state"><p>No scans yet.</p></div>'}
+    </tbody></table>` : `<div class="empty-state"><p>${t('No scans yet.')}</p></div>`}
     ${paginationControls}
   </div></div>`;
 }
@@ -93,25 +112,25 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
   const triumphals = Array.isArray(triumphalChests) ? triumphalChests : [];
 
   const chestRows = chests.length > 0
-    ? `<table class="table-responsive"><thead><tr><th>Player</th><th>Chest</th><th>Type</th><th>Source</th><th>Points</th><th>Received</th></tr></thead><tbody>
+    ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Type')}</th><th>${t('Source')}</th><th>${t('Points')}</th><th>${t('Received')}</th></tr></thead><tbody>
         ${chests.map((c) => `<tr>
-          <td data-label="Player" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(c.chestName)}</span></td>
-          <td data-label="Chest"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(c.chestName)}</a></td>
-          <td data-label="Type"><span class="chest-type ${c.chestType}">${c.chestType}</span></td>
-          <td data-label="Source">${esc(c.chestSource)}</td>
-          <td data-label="Points" data-role="metric">${c.pointValue}</td>
-          <td data-label="Received">${formatDate(c.effectiveAt)}</td>
+          <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
+          <td data-label="${t('Chest')}"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a></td>
+          <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABELS[c.chestType] ?? c.chestType}</span></td>
+          <td data-label="${t('Source')}">${esc(tGame(c.chestSource))}</td>
+          <td data-label="${t('Points')}" data-role="metric">${c.pointValue}</td>
+          <td data-label="${t('Received')}">${formatDate(c.effectiveAt)}</td>
         </tr>`).join('')}
       </tbody></table>`
-    : '<div class="empty-state"><p>No chests recorded for this scan.</p></div>';
+    : `<div class="empty-state"><p>${t('No chests recorded for this scan.')}</p></div>`;
 
   const triumphalRows = triumphals.length > 0
-    ? `<table class="table-responsive"><thead><tr><th>Player</th><th>Chest</th><th>Source</th><th>Received</th></tr></thead><tbody>
+    ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Received')}</th></tr></thead><tbody>
         ${triumphals.map((c) => `<tr>
-          <td data-label="Player" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(c.chestName)}</span></td>
-          <td data-label="Chest">${esc(c.chestName)}</td>
-          <td data-label="Source">${esc(c.chestSource || '')}</td>
-          <td data-label="Received" data-role="metric">${formatDate(c.effectiveAt)}</td>
+          <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
+          <td data-label="${t('Chest')}">${esc(tGame(c.chestName))}</td>
+          <td data-label="${t('Source')}">${esc(tGame(c.chestSource || ''))}</td>
+          <td data-label="${t('Received')}" data-role="metric">${formatDate(c.effectiveAt)}</td>
         </tr>`).join('')}
       </tbody></table>`
     : '';
@@ -128,7 +147,7 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
   const sessionTs = Date.parse(session.completedAt || session.startedAt || '');
   const isRecentScan = Number.isFinite(sessionTs) && Date.now() - sessionTs < 2 * 24 * 3600 * 1000;
   const earnTimeNote = isRecentScan && chests.length >= 4 && withEarnTime === 0
-    ? `<p class="session-earntime-note">⏱ No receive-times captured — "Received" fell back to the scan time. If you want accurate times, check the Gifts <a href="#system">calibration</a> crop includes the "Time left" countdown.</p>`
+    ? `<p class="session-earntime-note">${t('⏱ No receive-times captured — "Received" fell back to the scan time. If you want accurate times, check the Gifts {calibration} crop includes the "Time left" countdown.', { calibration: `<a href="#system">${t('calibration')}</a>` })}</p>`
     : '';
 
   const hasTriumphals = triumphals.length > 0;
@@ -136,8 +155,8 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
     ? `<div class="card" id="sessionChestsCard">
         <div class="card-header leaderboard-header">
           <div class="period-selector" id="sessionTabs">
-            <button class="btn active" data-session-tab="chests">Chests (${chests.length})</button>
-            <button class="btn" data-session-tab="triumphals">Triumphal Chests (${triumphals.length})</button>
+            <button class="btn active" data-session-tab="chests">${t('Chests ({count})', { count: chests.length })}</button>
+            <button class="btn" data-session-tab="triumphals">${t('Triumphal Chests ({count})', { count: triumphals.length })}</button>
           </div>
         </div>
         <div class="card-body">
@@ -147,7 +166,7 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
         </div>
       </div>`
     : `<div class="card">
-        <div class="card-header"><h2>Chests Captured (${chests.length})</h2></div>
+        <div class="card-header"><h2>${t('Chests Captured ({count})', { count: chests.length })}</h2></div>
         <div class="card-body">
           ${earnTimeNote}
           ${chestRows}
@@ -156,7 +175,7 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
 
   const errorBanner = session.errorMessage
     ? `<div class="session-error-banner">
-         <div class="session-error-phase">${esc(session.errorPhase || 'Scan failed')}</div>
+         <div class="session-error-phase">${esc(session.errorPhase || t('Scan failed'))}</div>
          <pre class="session-error-message">${esc(session.errorMessage)}</pre>
        </div>`
     : '';
@@ -165,47 +184,47 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
     <div class="card">
       <div class="card-header member-detail-header">
         <div class="member-detail-title">
-          <h2>Scan #${session.id}</h2>
+          <h2>${t('Scan #{id}', { id: session.id })}</h2>
         </div>
         <div class="header-actions">
-          ${isSuperAdmin ? `<button class="btn btn-danger" data-action="delete-session" data-session-id="${session.id}" data-session-chests="${session.chestsFound}">Delete Scan</button>` : ''}
-          <button class="btn" data-action="member-back">← Back</button>
+          ${isSuperAdmin ? `<button class="btn btn-danger" data-action="delete-session" data-session-id="${session.id}" data-session-chests="${session.chestsFound}">${t('Delete Scan')}</button>` : ''}
+          <button class="btn" data-action="member-back">${t('← Back')}</button>
         </div>
       </div>
       <div class="card-body card-body-padded">
         ${errorBanner}
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="label">Status</div>
-            <div class="value"><span class="chest-type ${session.status === 'completed' ? 'uncommon' : 'arena'}">${esc(session.status)}</span></div>
+            <div class="label">${t('Status')}</div>
+            <div class="value"><span class="chest-type ${session.status === 'completed' ? 'uncommon' : 'arena'}">${esc(STATUS_LABELS[session.status] ?? session.status)}</span></div>
           </div>
           <div class="stat-card">
-            <div class="label">Chests Recorded</div>
+            <div class="label">${t('Chests Recorded')}</div>
             <div class="value">${(session.chestsFound ?? 0).toLocaleString()}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Total Points</div>
+            <div class="label">${t('Total Points')}</div>
             <div class="value">${totalPoints.toLocaleString()}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Errors</div>
+            <div class="label">${t('Errors')}</div>
             <div class="value">${session.errorsEncountered ?? 0}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Trigger</div>
+            <div class="label">${t('Trigger')}</div>
             <div class="value value-pill">${formatTriggerSource(session.triggerSource)}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Started</div>
+            <div class="label">${t('Started')}</div>
             <div class="value member-detail-date">${formatDateShort(session.startedAt)}</div>
             <div class="sub">${session.startedAt ? formatRelativeTime(session.startedAt) : ''}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Duration</div>
+            <div class="label">${t('Duration')}</div>
             <div class="value">${formatDuration(session.startedAt, session.completedAt)}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Screenshots</div>
+            <div class="label">${t('Screenshots')}</div>
             <div class="value">${session.screenshotsTaken ?? 0}</div>
           </div>
         </div>
@@ -239,18 +258,18 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
 export async function deleteScanSession(id, chestCount, navigate) {
   if (!Number.isFinite(id) || id <= 0) return;
   const confirmed = await confirmDialog(
-    `Delete this scan and its ${chestCount} chest record${chestCount === 1 ? '' : 's'}? This cannot be undone.`,
-    { title: 'Delete Scan', confirmLabel: 'Delete', danger: true },
+    tn(chestCount, 'Delete this scan and its {n} chest record? This cannot be undone.', 'Delete this scan and its {n} chest records? This cannot be undone.', { n: chestCount }),
+    { title: t('Delete Scan'), confirmLabel: t('Delete'), danger: true },
   );
   if (!confirmed) return;
   const result = await apiDelete(`/sessions/${id}`);
   if (result?.error) {
-    await notify(result.error, 'Delete failed');
+    await notify(result.error, t('Delete failed'));
     return;
   }
   await notify(
-    `Removed ${result.deletedChests ?? 0} chest record${result.deletedChests === 1 ? '' : 's'} and the scan from history.`,
-    'Scan deleted',
+    tn(result.deletedChests ?? 0, 'Removed {n} chest record and the scan from history.', 'Removed {n} chest records and the scan from history.', { n: result.deletedChests ?? 0 }),
+    t('Scan deleted'),
   );
   navigate('sessions');
 }

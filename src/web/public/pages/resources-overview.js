@@ -25,9 +25,10 @@ import {
   formatResourceAmount, resourceIconOnly, resourceTabsHtml,
   resourceSparklineSvg, isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
+import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 
 const DONORS_PAGE_SIZE = 25;
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_FMT = new Intl.DateTimeFormat(getLanguage(), { month: 'short', timeZone: 'UTC' });
 
 // Selection state — survives repaints (theme change, resource pick, etc.).
 const view = {
@@ -135,11 +136,11 @@ function bucketKey(dateIso, bucket) {
   return dateIso;
 }
 function bucketLabel(d, bucket) {
-  const m = MONTHS[d.getUTCMonth()];
+  const m = MONTH_FMT.format(d);
   const day = d.getUTCDate();
   const yy = String(d.getUTCFullYear()).slice(2);
-  if (bucket === 'month') return `${m} '${yy}`;
-  if (bucket === 'week') return `${m} ${day}`;
+  if (bucket === 'month') return t("{month} '{year}", { month: m, year: yy });
+  if (bucket === 'week') return t('{month} {day}', { month: m, day });
   return `${d.getUTCMonth() + 1}/${day}`;
 }
 
@@ -291,7 +292,7 @@ export async function renderResourcesOverview(el, navigate) {
   }
 
   mountedEl = el;
-  el.innerHTML = `${resourceTabsHtml('overview')}<div class="empty-state"><p>Loading resources…</p></div>`;
+  el.innerHTML = `${resourceTabsHtml('overview')}<div class="empty-state"><p>${t('Loading resources…')}</p></div>`;
 
   await fetchData();
   ensureSelection();
@@ -304,9 +305,9 @@ export async function renderResourcesOverview(el, navigate) {
 // most-active type, then the first type so the chart/leaderboard always has
 // a subject.
 function ensureSelection() {
-  const validIds = new Set(cache.types.map((t) => t.id));
+  const validIds = new Set(cache.types.map((type) => type.id));
   if (view.resourceTypeId != null && validIds.has(view.resourceTypeId)) return;
-  const silverId = cache.types.find((t) => t.slug === 'silver')?.id;
+  const silverId = cache.types.find((type) => type.slug === 'silver')?.id;
   view.resourceTypeId = silverId
     ?? mostActiveType(cache.summary, cache.daily, view.memberId)
     ?? (cache.types[0]?.id ?? null);
@@ -318,7 +319,7 @@ function paint() {
   if (!mountedEl) return;
   const el = mountedEl;
   const { types, members, summary } = cache;
-  const typeById = new Map(types.map((t) => [t.id, t]));
+  const typeById = new Map(types.map((type) => [type.id, type]));
   const scopedTotals = perTypeTotals(summary, view.memberId);
 
   // Show a card for every tracked resource type (0 included), so the grid
@@ -354,8 +355,9 @@ function filterBarHtml(members) {
     .map((m) => `<option value="${m.id}" ${String(m.id) === String(view.memberId) ? 'selected' : ''}>${esc(m.name)}</option>`)
     .join('');
   const periods = ['daily', 'weekly', 'monthly', 'all'];
+  const periodLabels = { daily: t('Daily'), weekly: t('Weekly'), monthly: t('Monthly'), all: t('All') };
   const periodBtns = periods.map((p) =>
-    `<button class="btn ${view.period === p ? 'active' : ''}" data-period="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`
+    `<button class="btn ${view.period === p ? 'active' : ''}" data-period="${p}">${periodLabels[p]}</button>`
   ).join('');
   const nav = renderPeriodNav({
     period: view.period,
@@ -367,8 +369,8 @@ function filterBarHtml(members) {
   return `
     <div class="card resources-controls">
       <div class="card-body resources-controls-body">
-        <select class="input resources-scope-select" id="rsvScope" aria-label="Scope">
-          <option value="">Whole clan</option>
+        <select class="input resources-scope-select" id="rsvScope" aria-label="${t('Scope')}">
+          <option value="">${t('Whole clan')}</option>
           ${memberOpts}
         </select>
         <div class="period-selector">${periodBtns}</div>
@@ -384,7 +386,7 @@ function kpiRowHtml(scopedTotals) {
 
   const donors = new Set(scopeSummary.filter((r) => r.sentAmount > 0).map((r) => r.memberId)).size;
   const clanDonors = new Set(cache.summary.filter((r) => r.sentAmount > 0).map((r) => r.memberId)).size;
-  const typeCount = [...scopedTotals.values()].filter((t) => t.sent > 0).length;
+  const typeCount = [...scopedTotals.values()].filter((tot) => tot.sent > 0).length;
 
   // Show the selected period's window (the normal week/month/year span),
   // not just the dates that happen to have data. 'all' has no window, so
@@ -392,20 +394,20 @@ function kpiRowHtml(scopedTotals) {
   const dates = cache.daily.map((d) => d.date).sort();
   const span = (view.from && view.to)
     ? `${view.from} → ${view.to}`
-    : (dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : 'All time');
+    : (dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : t('All time'));
 
   const tiles = view.memberId
     ? [
-        ['Donations logged', cache.donationCount.toLocaleString()],
-        ['Resources donated', String(typeCount)],
-        ['This member', donors > 0 ? 'Active donor' : 'No donations'],
-        ['Date span', span],
+        [t('Donations logged'), cache.donationCount.toLocaleString()],
+        [t('Resources donated'), String(typeCount)],
+        [t('This member'), donors > 0 ? t('Active donor') : t('No donations')],
+        [t('Date span'), span],
       ]
     : [
-        ['Donations logged', cache.donationCount.toLocaleString()],
-        ['Active donors', String(clanDonors)],
-        ['Resource types donated', String(typeCount)],
-        ['Date span', span],
+        [t('Donations logged'), cache.donationCount.toLocaleString()],
+        [t('Active donors'), String(clanDonors)],
+        [t('Resource types donated'), String(typeCount)],
+        [t('Date span'), span],
       ];
 
   return `<div class="stats-grid">
@@ -415,7 +417,9 @@ function kpiRowHtml(scopedTotals) {
 
 function resourceGridHtml(cardTypes) {
   if (cardTypes.length === 0) {
-    return `<div class="card"><div class="card-body"><div class="empty-state"><p>No donations recorded for this ${view.memberId ? 'member' : 'clan'} in the selected range yet.</p></div></div></div>`;
+    return `<div class="card"><div class="card-body"><div class="empty-state"><p>${view.memberId
+      ? t('No donations recorded for this member in the selected range yet.')
+      : t('No donations recorded for this clan in the selected range yet.')}</p></div></div></div>`;
   }
   const cards = cardTypes.map(({ id, tot, type }) => {
     const series = bucketSeries(dailyForType(cache.daily, id), 'week', view.from, view.to);
@@ -426,28 +430,28 @@ function resourceGridHtml(cardTypes) {
       <button class="resource-card ${isActive ? 'is-selected' : ''}" data-resource-id="${id}" type="button">
         <div class="resource-card-head">
           ${resourceIconOnly(type.slug)}
-          <span class="resource-card-name">${esc(type.name)}</span>
+          <span class="resource-card-name">${esc(tGame(type.name))}</span>
         </div>
         <div class="resource-card-amount">${esc(formatResourceAmount(type.slug, tot.sent))}</div>
         <div class="resource-card-sub">
-          <span>Took ${esc(formatResourceAmount(type.slug, tot.took))}</span>
-          <span>Net ${esc(formatResourceAmount(type.slug, tot.net))}</span>
+          <span>${t('Took {amount}', { amount: esc(formatResourceAmount(type.slug, tot.took)) })}</span>
+          <span>${t('Net {amount}', { amount: esc(formatResourceAmount(type.slug, tot.net)) })}</span>
         </div>
         ${spark}
-        <div class="resource-card-donor">${donor ? `Top: ${esc(donor.memberName)}` : (view.memberId ? ' ' : 'No donors')}</div>
+        <div class="resource-card-donor">${donor ? t('Top: {name}', { name: esc(donor.memberName) }) : (view.memberId ? ' ' : t('No donors'))}</div>
       </button>`;
   }).join('');
   return `
     <div class="card">
-      <div class="card-header"><h2>Donated by resource</h2><span class="card-header-hint">Each in its own unit · click to chart</span></div>
+      <div class="card-header"><h2>${t('Donated by resource')}</h2><span class="card-header-hint">${t('Each in its own unit · click to chart')}</span></div>
       <div class="card-body"><div class="resources-cards">${cards}</div></div>
     </div>`;
 }
 
 function mainChartHtml(typeById, buckets) {
   const type = view.resourceTypeId != null ? typeById.get(view.resourceTypeId) : null;
-  const title = type ? `${esc(type.name)} over time` : 'Over time';
-  const labels = { day: 'Day', week: 'Week', month: 'Month' };
+  const title = type ? t('{resource} over time', { resource: esc(tGame(type.name)) }) : t('Over time');
+  const labels = { day: t('Day'), week: t('Week'), month: t('Month') };
   const bucketBtn = (key) =>
     `<button class="btn btn-tight resources-bucket-btn ${view.bucket === key ? 'is-active' : ''}" data-bucket="${key}">${labels[key]}</button>`;
   // Only offer the granularity switch when more than one granularity gives a
@@ -480,31 +484,31 @@ function topDonorsHtml(typeById) {
   const pageRows = rows.slice(start, start + DONORS_PAGE_SIZE);
 
   const body = pageRows.length === 0
-    ? `<tr><td colspan="3" class="empty-state-cell">No donations for this resource in range.</td></tr>`
+    ? `<tr><td colspan="3" class="empty-state-cell">${t('No donations for this resource in range.')}</td></tr>`
     : pageRows.map((r, i) => {
         const rank = start + i + 1;
         const highlight = view.memberId && String(r.memberId) === String(view.memberId) ? ' class="is-me"' : '';
         return `<tr${highlight}>
-          <td data-label="Rank" data-role="lead"><span class="rank rank-${rank <= 3 ? rank : ''}">#${rank}</span></td>
-          <td data-label="Member" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.memberName)}</span></td>
-          <td data-label="Donated" class="col-num" data-role="metric">${esc(formatResourceAmount(type?.slug, r.sentAmount))}</td>
+          <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${rank <= 3 ? rank : ''}">#${rank}</span></td>
+          <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.memberName)}</span></td>
+          <td data-label="${t('Donated')}" class="col-num" data-role="metric">${esc(formatResourceAmount(type?.slug, r.sentAmount))}</td>
         </tr>`;
       }).join('');
 
   const pagination = total > DONORS_PAGE_SIZE ? `
     <div class="pagination">
-      <button class="btn btn-tight" data-donors-page="prev" ${view.donorsPage <= 1 ? 'disabled' : ''}>← Prev</button>
-      <span class="pagination-info">Page ${view.donorsPage} of ${totalPages} · ${total} donors</span>
-      <button class="btn btn-tight" data-donors-page="next" ${view.donorsPage >= totalPages ? 'disabled' : ''}>Next →</button>
+      <button class="btn btn-tight" data-donors-page="prev" ${view.donorsPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+      <span class="pagination-info">${t('Page {page} of {pages}', { page: view.donorsPage, pages: totalPages })} · ${tn(total, '{n} donor', '{n} donors', { n: total })}</span>
+      <button class="btn btn-tight" data-donors-page="next" ${view.donorsPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>` : '';
 
   return `
     <div class="card">
-      <div class="card-header"><h2>Top donors${type ? ` · ${esc(type.name)}` : ''}</h2></div>
+      <div class="card-header"><h2>${t('Top donors')}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2></div>
       <div class="card-body">
         <table class="table-responsive resources-donors-table">
           <colgroup><col class="col-rank"><col class="col-player"><col class="col-num"></colgroup>
-          <thead><tr><th>Rank</th><th>Member</th><th class="col-num">Donated</th></tr></thead>
+          <thead><tr><th>${t('Rank')}</th><th>${t('Member')}</th><th class="col-num">${t('Donated')}</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
         ${pagination}
@@ -534,26 +538,26 @@ function nonDonorsHtml(typeById) {
   const pageRows = nonDonors.slice(start, start + DONORS_PAGE_SIZE);
 
   const body = pageRows.length === 0
-    ? `<tr><td class="empty-state-cell">Everyone has donated ${esc(type.name)} in this period. 🎉</td></tr>`
-    : pageRows.map((m) => `<tr><td data-label="Member" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td></tr>`).join('');
+    ? `<tr><td class="empty-state-cell">${t('Everyone has donated {resource} in this period. 🎉', { resource: esc(tGame(type.name)) })}</td></tr>`
+    : pageRows.map((m) => `<tr><td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td></tr>`).join('');
 
   const pagination = total > DONORS_PAGE_SIZE ? `
     <div class="pagination">
-      <button class="btn btn-tight" data-nondonors-page="prev" ${view.nonDonorsPage <= 1 ? 'disabled' : ''}>← Prev</button>
-      <span class="pagination-info">Page ${view.nonDonorsPage} of ${totalPages} · ${total} members</span>
-      <button class="btn btn-tight" data-nondonors-page="next" ${view.nonDonorsPage >= totalPages ? 'disabled' : ''}>Next →</button>
+      <button class="btn btn-tight" data-nondonors-page="prev" ${view.nonDonorsPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+      <span class="pagination-info">${t('Page {page} of {pages}', { page: view.nonDonorsPage, pages: totalPages })} · ${tn(total, '{n} member', '{n} members', { n: total })}</span>
+      <button class="btn btn-tight" data-nondonors-page="next" ${view.nonDonorsPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>` : '';
 
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Haven't donated${type ? ` · ${esc(type.name)}` : ''}</h2>
-        <span class="card-header-hint">${total} member${total === 1 ? '' : 's'} · this period</span>
+        <h2>${t("Haven't donated")}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2>
+        <span class="card-header-hint">${tn(total, '{n} member', '{n} members', { n: total })} · ${t('this period')}</span>
       </div>
       <div class="card-body">
         <table class="table-responsive resources-nondonors-table">
           <colgroup><col class="col-player"></colgroup>
-          <thead><tr><th>Member</th></tr></thead>
+          <thead><tr><th>${t('Member')}</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
         ${pagination}
@@ -584,7 +588,7 @@ function drawMainChart(typeById) {
       labels: series.map((b) => b.label),
       datasets: [
         {
-          label: 'Sent (donated)',
+          label: t('Sent (donated)'),
           data: series.map((b) => b.sent),
           borderColor: green,
           backgroundColor: greenFill,
@@ -595,7 +599,7 @@ function drawMainChart(typeById) {
           pointHoverRadius: 5,
         },
         {
-          label: 'Took',
+          label: t('Took'),
           data: series.map((b) => b.took),
           borderColor: red,
           backgroundColor: 'transparent',
@@ -639,8 +643,8 @@ function drawMainChart(typeById) {
     },
   });
   describeChart(mainChart, {
-    caption: `${type?.name || 'Resource'} sent and taken over time`,
-    xLabel: 'Period',
+    caption: t('{resource} sent and taken over time', { resource: type?.name ? tGame(type.name) : t('Resource') }),
+    xLabel: t('Period'),
     format: fmt,
   });
 }

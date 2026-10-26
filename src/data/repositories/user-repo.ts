@@ -20,6 +20,16 @@ export function isValidTheme(value: unknown): value is UserTheme {
   return typeof value === 'string' && (ALLOWED_THEMES as readonly string[]).includes(value);
 }
 
+// UI languages (src/web/public/lib/i18n.js). English is the default; '' on the
+// row means the account never picked one.
+export type UserLanguage = 'en' | 'es' | 'fr' | 'ru' | 'de';
+
+export const ALLOWED_LANGUAGES: readonly UserLanguage[] = ['en', 'es', 'fr', 'ru', 'de'];
+
+export function isValidLanguage(value: unknown): value is UserLanguage {
+  return typeof value === 'string' && (ALLOWED_LANGUAGES as readonly string[]).includes(value);
+}
+
 export interface User {
   id: number;
   username: string;
@@ -39,6 +49,8 @@ export interface User {
   lastLogin: string | null;
   lastVisited: string | null;
   theme: UserTheme;
+  /** null = never chosen; the browser's choice (English by default) stands. */
+  language: UserLanguage | null;
 }
 
 export interface PasswordPolicyResult {
@@ -131,6 +143,7 @@ function rowToUser(row: Record<string, unknown>): User {
     lastLogin: (row.last_login as string) || null,
     lastVisited: (row.last_visited as string) || null,
     theme: isValidTheme(rawTheme) ? rawTheme : 'dark',
+    language: isValidLanguage(row.language) ? row.language : null,
   };
 }
 
@@ -170,12 +183,18 @@ export function createUser(
     // A new account follows its device until its owner picks a theme. The
     // column default stays 'dark' only for rows that predate 'auto'.
     theme: 'auto',
+    language: null,
   };
 }
 
 export function updateTheme(id: number, theme: UserTheme): void {
   const db = getDb();
   db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, id);
+}
+
+export function updateLanguage(id: number, language: UserLanguage): void {
+  const db = getDb();
+  db.prepare('UPDATE users SET language = ? WHERE id = ?').run(language, id);
 }
 
 export function authenticate(username: string, password: string): User | null {

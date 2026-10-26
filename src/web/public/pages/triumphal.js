@@ -11,6 +11,7 @@
 
 import { api } from '../lib/api.js';
 import { esc, formatDate, memberLink } from '../lib/ui.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 import { computeGameWindow, periodAnchorFromOffset } from '../lib/period.js';
 import { sortLeaderboardEntries, renderLeaderboardCardHtml } from '../lib/leaderboard-render.js';
 import {
@@ -76,14 +77,14 @@ export async function renderTriumphal(el) {
 
   const headerStats = `
     <div class="stats-grid">
-      <div class="stat-card"><div class="label">Total triumphal chests</div><div class="value">${(stats.totalChests ?? 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">Members with triumphals</div><div class="value">${(stats.uniqueMembers ?? 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">Total points</div><div class="value">${totalPoints.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Total triumphal chests')}</div><div class="value">${(stats.totalChests ?? 0).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Members with triumphals')}</div><div class="value">${(stats.uniqueMembers ?? 0).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Total points')}</div><div class="value">${totalPoints.toLocaleString()}</div></div>
     </div>`;
 
   const boardCardHtml = renderLeaderboardCardHtml({
-    title: 'Triumphal Chests',
-    countLabel: 'Chests',
+    title: t('Triumphal Chests'),
+    countLabel: t('Chests'),
     pageEntries,
     totalEntries,
     currentPage: currentBoardPage,
@@ -110,42 +111,42 @@ export async function renderTriumphal(el) {
 
   const recentPagination = recentTotal > PAGE_SIZE
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="triumphal-recent-page-prev" ${currentRecentPage <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${currentRecentPage} of ${recentTotalPages} · ${recentTotal} chests</span>
-        <button class="btn btn-tight" data-action="triumphal-recent-page-next" ${currentRecentPage >= recentTotalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-action="triumphal-recent-page-prev" ${currentRecentPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${t('Page {page} of {pages}', { page: currentRecentPage, pages: recentTotalPages })} · ${tn(recentTotal, '{n} chest', '{n} chests', { n: recentTotal })}</span>
+        <button class="btn btn-tight" data-action="triumphal-recent-page-next" ${currentRecentPage >= recentTotalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
   const recentBody = recentTotal === 0
-    ? '<p class="muted-copy">No triumphal chests in this period.</p>'
+    ? `<p class="muted-copy">${t('No triumphal chests in this period.')}</p>`
     : `<table class="table-responsive leaderboard-table"><colgroup>
         <col class="col-player">
         <col class="col-player">
         <col class="col-num">
         <col class="col-num">
       </colgroup><thead><tr>
-        <th>Player</th>
-        <th>Chest</th>
-        <th>Source</th>
-        <th>Received</th>
+        <th>${t('Player')}</th>
+        <th>${t('Chest')}</th>
+        <th>${t('Source')}</th>
+        <th>${t('Received')}</th>
       </tr></thead><tbody>
       ${recentPageRows.map((r) => `<tr>
-        <td data-label="Player" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.playerName)}</span><span class="mrow-sub">${esc(r.chestName)}</span></td>
-        <td data-label="Chest">${esc(r.chestName)}</td>
-        <td data-label="Source">${esc(r.chestSource || '')}</td>
-        <td data-label="Received" data-role="metric">${formatDate(r.effectiveAt)}</td>
+        <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.playerName)}</span><span class="mrow-sub">${esc(tGame(r.chestName))}</span></td>
+        <td data-label="${t('Chest')}">${esc(tGame(r.chestName))}</td>
+        <td data-label="${t('Source')}">${esc(tGame(r.chestSource || ''))}</td>
+        <td data-label="${t('Received')}" data-role="metric">${formatDate(r.effectiveAt)}</td>
       </tr>`).join('')}
     </tbody></table>${recentPagination}`;
 
   el.innerHTML = `
-    <div class="card"><div class="card-header"><h2>About triumphal chests</h2></div><div class="card-body card-body-padded">
-      <p class="muted-copy">Triumphal chests come from in-game package purchases. Each chest is worth one third of its package value, shown rounded to a whole number — Magic ≈83, Precious ≈33, Golden ≈17, Silver ≈7, Bronze ≈3, Wooden ≈2 — so a full set of three sums back to the package value (3 Golden = 50). These points are tracked separately from the main leaderboard.</p>
+    <div class="card"><div class="card-header"><h2>${t('About triumphal chests')}</h2></div><div class="card-body card-body-padded">
+      <p class="muted-copy">${t('Triumphal chests come from in-game package purchases. Each chest is worth one third of its package value, shown rounded to a whole number — Magic ≈83, Precious ≈33, Golden ≈17, Silver ≈7, Bronze ≈3, Wooden ≈2 — so a full set of three sums back to the package value (3 Golden = 50). These points are tracked separately from the main leaderboard.')}</p>
       ${headerStats}
     </div></div>
     ${boardCardHtml}
-    <div class="card"><div class="card-header"><h2>Recent chests</h2></div><div class="card-body card-body-padded">
+    <div class="card"><div class="card-header"><h2>${t('Recent chests')}</h2></div><div class="card-body card-body-padded">
       <details>
-        <summary class="collapse-toggle">Show recent chests${recentTotal > 0 ? ` (${recentTotal.toLocaleString()})` : ''}</summary>
+        <summary class="collapse-toggle">${t('Show recent chests')}${recentTotal > 0 ? ` (${recentTotal.toLocaleString()})` : ''}</summary>
         <div class="details-content">${recentBody}</div>
       </details>
     </div></div>

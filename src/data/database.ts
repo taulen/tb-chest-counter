@@ -1020,6 +1020,20 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // The account's UI language (lib/i18n.js), synced like the theme. '' =
+    // never chosen: the browser's own choice stands and is adopted on first
+    // sign-in. English is the default either way. Guarded for replay.
+    version: 89,
+    run: (database): void => {
+      const cols = new Set(
+        (database.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name),
+      );
+      if (!cols.has('language')) {
+        database.exec("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT ''");
+      }
+    },
+  },
 ];
 
 /**

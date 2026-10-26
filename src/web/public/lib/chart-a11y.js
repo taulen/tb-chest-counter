@@ -9,6 +9,7 @@
 // never disagree with the picture.
 
 import { esc } from './ui.js';
+import { t } from './i18n.js';
 
 const formatDefault = (v) => (typeof v === 'number' ? v.toLocaleString() : String(v));
 
@@ -26,7 +27,7 @@ export function chartTableModel(data) {
     return y === null || y === undefined || Number.isNaN(y) ? null : y;
   };
   return {
-    columns: datasets.map((d, i) => d.label || `Series ${i + 1}`),
+    columns: datasets.map((d, i) => d.label || t('Series {n}', { n: i + 1 })),
     rows: labels.map((label, i) => ({
       label: String(label),
       values: datasets.map((d) => valueAt(d, i)),
@@ -40,8 +41,8 @@ export function chartTableModel(data) {
  */
 export function chartSummary(model, { caption, format = formatDefault }) {
   const { rows, columns } = model;
-  if (rows.length === 0) return `${caption}: no data.`;
-  const range = rows.length === 1 ? rows[0].label : `${rows[0].label} to ${rows[rows.length - 1].label}`;
+  if (rows.length === 0) return t('{caption}: no data.', { caption });
+  const range = rows.length === 1 ? rows[0].label : t('{from} to {to}', { from: rows[0].label, to: rows[rows.length - 1].label });
   const latest = columns.slice(0, 3).map((name, c) => {
     for (let r = rows.length - 1; r >= 0; r--) {
       const v = rows[r].values[c];
@@ -49,7 +50,9 @@ export function chartSummary(model, { caption, format = formatDefault }) {
     }
     return null;
   }).filter(Boolean);
-  return `${caption}, ${range}.${latest.length ? ` Latest: ${latest.join('; ')}.` : ''}`;
+  return latest.length
+    ? t('{caption}, {range}. Latest: {latest}.', { caption, range, latest: latest.join('; ') })
+    : t('{caption}, {range}.', { caption, range });
 }
 
 /**
@@ -62,7 +65,7 @@ export function chartSummary(model, { caption, format = formatDefault }) {
  *  - xLabel   heading for the label column (default "Date")
  *  - format   value formatter for the table and summary
  */
-export function describeChart(chart, { caption, xLabel = 'Date', format = formatDefault }) {
+export function describeChart(chart, { caption, xLabel = t('Date'), format = formatDefault }) {
   const canvas = chart?.canvas;
   if (!canvas) return;
   const model = chartTableModel(chart.data);
@@ -81,7 +84,7 @@ export function describeChart(chart, { caption, xLabel = 'Date', format = format
     details.className = 'chart-data';
     host.after(details);
   }
-  details.innerHTML = `<summary>Show data as table</summary>
+  details.innerHTML = `<summary>${t('Show data as table')}</summary>
     <div class="chart-data-scroll">
       <table class="chart-data-table">
         <caption class="visually-hidden">${esc(caption)}</caption>

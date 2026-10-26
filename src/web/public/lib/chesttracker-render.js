@@ -14,6 +14,7 @@
 //    a getLatestPollAt() probe), so the caller wires them in.
 
 import { esc, formatDate } from './ui.js';
+import { t, tn, tGame } from './i18n.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -23,20 +24,20 @@ import { esc, formatDate } from './ui.js';
 // in context. Headers get a title attribute so hovering still shows
 // the full name. Any category not in the map falls back to title-case.
 const CATEGORY_SHORT = {
-  'common crypt': 'Common',
-  'rare crypt': 'Rare',
-  'epic crypt': 'Epic',
-  'elven citadel': 'Elven',
-  'cursed citadel': 'Cursed',
-  'heroic monster': 'Heroic',
-  'epic squad': 'Squad',
-  'union of triumph': 'Triumph',
-  'ragnarok shop': 'Ragnarok',
-  'hermes store': 'Hermes',
-  'tartaros crypt': 'Tartaros',
-  'dark omens': 'Omens',
-  'seasonal store': 'Season',
-  'tournament': 'Tourn.',
+  'common crypt': t('Common'),
+  'rare crypt': t('Rare'),
+  'epic crypt': t('Epic'),
+  'elven citadel': t('Elven'),
+  'cursed citadel': t('Cursed'),
+  'heroic monster': t('Heroic'),
+  'epic squad': t('Squad'),
+  'union of triumph': t('Triumph'),
+  'ragnarok shop': tGame('Ragnarok'),
+  'hermes store': tGame('Hermes'),
+  'tartaros crypt': tGame('Tartaros'),
+  'dark omens': t('Omens'),
+  'seasonal store': t('Season'),
+  'tournament': t('Tourn.'),
 };
 
 export function prettyCategory(key) {
@@ -44,7 +45,7 @@ export function prettyCategory(key) {
 }
 
 export function shortCategory(key) {
-  return CATEGORY_SHORT[key] || prettyCategory(key);
+  return CATEGORY_SHORT[key] || tGame(prettyCategory(key));
 }
 
 export function collectCategoryKeys(players) {
@@ -105,9 +106,9 @@ export function statusClassFor(actual, target) {
 // leaderboard's goal cells (goalCellContentHtml in leaderboard-render.js), but
 // this tab keeps chesttracker.com's own 50% amber threshold.
 const STATUS_TEXT = {
-  'ext-cell-ok': { glyph: '✓', label: 'target reached' },
-  'ext-cell-warn': { glyph: '◐', label: 'at least half the target' },
-  'ext-cell-low': { glyph: '↓', label: 'below half the target' },
+  'ext-cell-ok': { glyph: '✓', label: t('target reached') },
+  'ext-cell-warn': { glyph: '◐', label: t('at least half the target') },
+  'ext-cell-low': { glyph: '↓', label: t('below half the target') },
 };
 
 /** Glyph + value + spoken status for a target-coloured cell; just the value with no target. */
@@ -125,11 +126,11 @@ export function statusCellHtml(actual, target, formatted = String(actual)) {
 export function renderDelta(current, previous, opts = {}) {
   const showPct = opts.showPct !== false;
   if (previous == null) {
-    return '<span class="ext-meta-delta ext-meta-delta-none" title="No prior-week snapshot to compare against">—</span>';
+    return `<span class="ext-meta-delta ext-meta-delta-none" title="${t('No prior-week snapshot to compare against')}">—</span>`;
   }
   const diff = current - previous;
   if (diff === 0) {
-    return '<span class="ext-meta-delta ext-meta-delta-flat" title="No change vs last week">±0</span>';
+    return `<span class="ext-meta-delta ext-meta-delta-flat" title="${t('No change vs last week')}">±0</span>`;
   }
   const arrow = diff > 0 ? '▲' : '▼';
   const cls = diff > 0 ? 'ext-meta-delta-up' : 'ext-meta-delta-down';
@@ -137,7 +138,7 @@ export function renderDelta(current, previous, opts = {}) {
   const pct = showPct && previous !== 0
     ? ` ${diff > 0 ? '+' : ''}${Math.round((diff / previous) * 100)}%`
     : '';
-  const title = `${signed}${pct} vs last week (was ${previous.toLocaleString()})`;
+  const title = t('{change} vs last week (was {previous})', { change: `${signed}${pct}`, previous: previous.toLocaleString() });
   return `<span class="ext-meta-delta ${cls}" title="${title}">${arrow} ${signed}${pct}</span>`;
 }
 
@@ -149,19 +150,19 @@ export function formatTimeAgo(iso) {
   const then = new Date(iso).getTime();
   const diffSec = Math.floor((Date.now() - then) / 1000);
   if (!Number.isFinite(diffSec)) return '—';
-  if (diffSec < 30) return 'just now';
-  if (diffSec < 60) return '<1m ago';
+  if (diffSec < 30) return t('just now');
+  if (diffSec < 60) return t('<1m ago');
   const totalMin = Math.round(diffSec / 60);
-  if (totalMin < 60) return `${totalMin}m ago`;
+  if (totalMin < 60) return tn(totalMin, '{n}m ago', '{n}m ago');
   const totalHr = Math.floor(totalMin / 60);
   const remMin = totalMin - totalHr * 60;
   if (totalHr < 24) {
-    return remMin > 0 ? `${totalHr}h ${remMin}m ago` : `${totalHr}h ago`;
+    return remMin > 0 ? t('{h}h {m}m ago', { h: totalHr, m: remMin }) : tn(totalHr, '{n}h ago', '{n}h ago');
   }
   const totalDay = Math.floor(totalHr / 24);
   const remHr = totalHr - totalDay * 24;
   if (totalDay < 7) {
-    return remHr > 0 ? `${totalDay}d ${remHr}h ago` : `${totalDay}d ago`;
+    return remHr > 0 ? t('{d}d {h}h ago', { d: totalDay, h: remHr }) : tn(totalDay, '{n}d ago', '{n}d ago');
   }
   return formatDate(iso);
 }
@@ -177,27 +178,32 @@ export function formatTimeAgo(iso) {
 export function renderShareCodeSelect(codes, selected) {
   if (!Array.isArray(codes) || codes.length < 2) return '';
   const options = codes.map((c) => {
-    const weeks = c.weeks ? `${c.weeks} week${c.weeks === 1 ? '' : 's'}` : 'no data yet';
+    const weeks = c.weeks ? tn(c.weeks, '{n} week', '{n} weeks', { n: c.weeks }) : t('no data yet');
     const kingdom = c.kingdom != null ? ` · K${c.kingdom}` : '';
-    const tag = c.isCurrent ? ' — current' : ' — archived';
-    const label = `${c.shareCode}${tag} (${weeks}${kingdom})`;
+    const label = c.isCurrent
+      ? t('{code} — current ({weeks}{kingdom})', { code: c.shareCode, weeks, kingdom })
+      : t('{code} — archived ({weeks}{kingdom})', { code: c.shareCode, weeks, kingdom });
     const sel = c.shareCode === selected ? ' selected' : '';
     return `<option value="${esc(c.shareCode)}"${sel}>${esc(label)}</option>`;
   }).join('');
   return `<label class="ext-archive-picker">
-    <span class="ext-archive-picker-label">Tracker</span>
-    <select class="input ext-archive-select" data-action="ext-select-share-code" title="Switch between this clan's ChestTracker codes. Older codes are kept and stay browsable.">${options}</select>
+    <span class="ext-archive-picker-label">${t('Tracker')}</span>
+    <select class="input ext-archive-select" data-action="ext-select-share-code" title="${t('Switch between this clan\'s ChestTracker codes. Older codes are kept and stay browsable.')}">${options}</select>
   </label>`;
 }
 
 export function renderArchivedNotice(codeInfo) {
   if (!codeInfo) return '';
-  const range = codeInfo.firstWindow && codeInfo.lastWindow
-    ? ` covering ${formatDate(codeInfo.firstWindow)} → ${formatDate(codeInfo.lastWindow)}`
-    : '';
+  const viewing = codeInfo.firstWindow && codeInfo.lastWindow
+    ? t('Viewing an <strong>archived</strong> tracker (<code>{code}</code>) covering {from} → {to}.', {
+      code: esc(codeInfo.shareCode),
+      from: esc(formatDate(codeInfo.firstWindow)),
+      to: esc(formatDate(codeInfo.lastWindow)),
+    })
+    : t('Viewing an <strong>archived</strong> tracker (<code>{code}</code>).', { code: esc(codeInfo.shareCode) });
   return `<div class="ext-archive-notice">
-    Viewing an <strong>archived</strong> tracker (<code>${esc(codeInfo.shareCode)}</code>)${esc(range)}.
-    This clan now polls a different share code — switch back with the Tracker picker above.
+    ${viewing}
+    ${t('This clan now polls a different share code — switch back with the Tracker picker above.')}
   </div>`;
 }
 
@@ -241,7 +247,7 @@ export function renderSnapshotDetailCardHtml({
         ${archiveSelect}
       </div>
       ${archivedNotice}
-      <div class="empty-state"><p>No snapshot available yet.</p></div>
+      <div class="empty-state"><p>${t('No snapshot available yet.')}</p></div>
     </div></div>`;
   }
 
@@ -249,12 +255,12 @@ export function renderSnapshotDetailCardHtml({
   const categoryKeys = collectCategoryKeys(detail.players);
 
   const fixedHeaders = [
-    { label: 'Player', full: 'Player' },
-    { label: 'G', full: 'Guards level' },
-    { label: 'Points', full: 'Points' },
-    { label: 'Chests', full: 'Total chests' },
+    { label: t('Player'), full: t('Player') },
+    { label: t('G'), full: t('Guards level') },
+    { label: t('Points'), full: t('Points') },
+    { label: t('Chests'), full: t('Total chests') },
   ];
-  const categoryHeaders = categoryKeys.map((k) => ({ label: shortCategory(k), full: prettyCategory(k) }));
+  const categoryHeaders = categoryKeys.map((k) => ({ label: shortCategory(k), full: tGame(prettyCategory(k)) }));
   const headHtml = [...fixedHeaders, ...categoryHeaders]
     .map((h) => `<th title="${esc(h.full)}">${esc(h.label)}</th>`)
     .join('');
@@ -274,10 +280,10 @@ export function renderSnapshotDetailCardHtml({
     // is hidden on phones, which used to drop that status entirely.
     const chestsStatus = (v) => (targets ? statusCellHtml(v, targets.chests, String(v)) : String(v));
     const cells = [
-      `<td data-label="Player" data-role="primary"><span class="mrow-name">${esc(p.playerName)}</span><span class="mrow-sub">${chestsStatus(chests)} chests · ${ancients} ancients</span></td>`,
-      `<td data-label="G" data-role="lead">G${p.guardsLevel}</td>`,
-      `<td data-label="Points" class="${pointsCls}" data-role="metric">${targets ? statusCellHtml(points, targets.points, points.toLocaleString()) : points.toLocaleString()}</td>`,
-      `<td data-label="Chests" class="${chestsCls}" data-role="hidden">${chestsStatus(chests)}</td>`,
+      `<td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${esc(p.playerName)}</span><span class="mrow-sub">${tn(chests, '{n} chest', '{n} chests', { n: chestsStatus(chests) })} · ${tn(ancients, '{n} ancient', '{n} ancients', { n: ancients })}</span></td>`,
+      `<td data-label="${t('G')}" data-role="lead">${t('G{level}', { level: p.guardsLevel })}</td>`,
+      `<td data-label="${t('Points')}" class="${pointsCls}" data-role="metric">${targets ? statusCellHtml(points, targets.points, points.toLocaleString()) : points.toLocaleString()}</td>`,
+      `<td data-label="${t('Chests')}" class="${chestsCls}" data-role="hidden">${chestsStatus(chests)}</td>`,
       ...categoryKeys.map((k) => {
         const v = p.categories?.[k] || 0;
         const cls = k === 'ancients' ? ancientsCls : '';
@@ -290,11 +296,11 @@ export function renderSnapshotDetailCardHtml({
 
   const targetsValue = targets
     ? ([
-        targets.points != null ? `${targets.points.toLocaleString()} pts` : null,
-        targets.chests != null ? `${targets.chests} chests` : null,
-        targets.ancients != null ? `${targets.ancients} ancients` : null,
-      ].filter(Boolean).join(' · ') || 'none defined')
-    : 'Not available';
+        targets.points != null ? t('{n} pts', { n: targets.points.toLocaleString() }) : null,
+        targets.chests != null ? tn(targets.chests, '{n} chest', '{n} chests', { n: targets.chests }) : null,
+        targets.ancients != null ? tn(targets.ancients, '{n} ancient', '{n} ancients', { n: targets.ancients }) : null,
+      ].filter(Boolean).join(' · ') || t('none defined'))
+    : t('Not available');
 
   const ctLastScanned = detail.settings?.lastScannedAt || null;
   const prev = detail.previousWeek || null;
@@ -303,7 +309,7 @@ export function renderSnapshotDetailCardHtml({
   const pointsDelta = renderDelta(detail.totalPoints, prev ? prev.totalPoints : null);
 
   const lastCheckedTooltip = lastCheckedAt
-    ? `${formatDate(lastCheckedAt)} · includes 304 polls (no new data)`
+    ? t('{date} · includes 304 polls (no new data)', { date: formatDate(lastCheckedAt) })
     : '';
 
   return `<div class="card"><div class="card-body card-body-padded">
@@ -316,50 +322,50 @@ export function renderSnapshotDetailCardHtml({
       ${archivedNotice}
       <div class="ext-meta-strip">
         <div class="ext-meta-item">
-          <div class="ext-meta-label">We fetched</div>
+          <div class="ext-meta-label">${t('We fetched')}</div>
           <div class="ext-meta-value" title="${esc(fetchedAtTooltip || formatDate(detail.fetchedAt))}">${esc(formatTimeAgo(detail.fetchedAt))}</div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">Last checked</div>
+          <div class="ext-meta-label">${t('Last checked')}</div>
           <div class="ext-meta-value" title="${esc(lastCheckedTooltip)}">${lastCheckedAt ? esc(formatTimeAgo(lastCheckedAt)) : '—'}</div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">ChestTracker scanned</div>
+          <div class="ext-meta-label">${t('ChestTracker scanned')}</div>
           <div class="ext-meta-value" title="${ctLastScanned ? esc(formatDate(ctLastScanned)) : ''}">${ctLastScanned ? esc(formatTimeAgo(ctLastScanned)) : '—'}</div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">Week window</div>
+          <div class="ext-meta-label">${t('Week window')}</div>
           <div class="ext-meta-value">${formatDate(detail.windowStart)} → ${formatDate(detail.windowEnd)}</div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">Players</div>
+          <div class="ext-meta-label">${t('Players')}</div>
           <div class="ext-meta-value-row">
             <span class="ext-meta-value ext-meta-value-accent">${detail.playerCount}</span>
             ${playerDelta}
           </div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">Chests</div>
+          <div class="ext-meta-label">${t('Chests')}</div>
           <div class="ext-meta-value-row">
             <span class="ext-meta-value ext-meta-value-accent">${detail.totalChests.toLocaleString()}</span>
             ${chestsDelta}
           </div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">Points</div>
+          <div class="ext-meta-label">${t('Points')}</div>
           <div class="ext-meta-value-row">
             <span class="ext-meta-value ext-meta-value-accent">${detail.totalPoints.toLocaleString()}</span>
             ${pointsDelta}
           </div>
         </div>
         <div class="ext-meta-item">
-          <div class="ext-meta-label">Targets</div>
+          <div class="ext-meta-label">${t('Targets')}</div>
           <div class="ext-meta-value">${esc(targetsValue)}</div>
         </div>
       </div>
     </div>
     ${detail.players.length > 0
       ? `<table class="table-responsive ext-detail-table"><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`
-      : '<div class="empty-state"><p>Snapshot has no players.</p></div>'}
+      : `<div class="empty-state"><p>${t('Snapshot has no players.')}</p></div>`}
   </div></div>`;
 }

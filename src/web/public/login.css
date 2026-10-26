@@ -88,6 +88,15 @@ label {
   transform: scale(0.99);
 }
 
+.login-lang {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+.login-lang .lang-select {
+  width: auto;
+}
+
 .error {
   color: var(--accent-red);
   font-size: 13px;

@@ -99,7 +99,15 @@ function parseAmount(token: string): number | null {
  * The figure taken per tier is POINTS EACH — the first amount after the tier
  * once the member count and the share are set aside. Also reads plain
  * "G9 61.3M" lines and markdown rows.
+ *
+ * The planner is translated (lib/i18n.js), so the table can arrive as
+ * "G9 · 6 miembros · 61.3M" or "Für 3 Kills, …": the member count is any
+ * number followed by a word, and the kill count accepts the word each
+ * dictionary uses for '{n} kills' — keep KILL_WORDS in step with them.
  */
+const KILL_WORDS = 'kills?|muertes?|éliminations?|убийств[оа]?';
+const KILLS_RE = new RegExp(`(?<![\\p{L}\\d.,])(\\d+)\\s+(?:${KILL_WORDS})(?!\\p{L})`, 'iu');
+
 export function parseTierTargets(text: string): TierTargets {
   const tiers: TierTargets['tiers'] = {};
   const skipped: string[] = [];
@@ -108,7 +116,7 @@ export function parseTierTargets(text: string): TierTargets {
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = rawLine.replace(/\|/g, ' ').trim();
     if (!line) continue;
-    const k = /\bfor\s+(\d+)\s+kills?\b/i.exec(line);
+    const k = KILLS_RE.exec(line);
     if (k) {
       kills = Number(k[1]);
       continue;
@@ -116,7 +124,7 @@ export function parseTierTargets(text: string): TierTargets {
     const t = /^(T9|G[1-9])\b(.*)$/i.exec(line);
     if (!t) continue; // headers and prose
     const rest = t[2]
-      .replace(/\b\d+\s+members?\b/gi, ' ')
+      .replace(/(?<![\p{L}\d.,])\d+\s+\p{L}{2,}/u, ' ')
       .replace(/[\d.,]+\s*%/g, ' ');
     const amount = /(\d[\d,.]*(?:\s\d{3})*\s*[KMBT]?)(?![\w%])/i.exec(rest);
     const value = amount ? parseAmount(amount[1]) : null;

@@ -71,7 +71,7 @@ function createAuthRouter() {
         }
         const token = userRepo.createSession(user.id);
         res.cookie(auth_js_1.SESSION_COOKIE_NAME, token, (0, auth_js_1.sessionCookieOptions)(req));
-        res.json({ user: { id: user.id, username: user.username, role: user.role, clanId: user.clanId, theme: user.theme } });
+        res.json({ user: { id: user.id, username: user.username, role: user.role, clanId: user.clanId, theme: user.theme, language: user.language } });
     });
     // POST /api/auth/logout
     router.post('/logout', auth_js_1.requireAuth, (req, res) => {
@@ -98,6 +98,7 @@ function createAuthRouter() {
                 role: u.role,
                 clanId: u.clanId,
                 theme: u.theme,
+                language: u.language,
                 multiClan: u.role !== 'superadmin' && userRepo.listSwitchableClans(u.id).length > 1,
             },
             activeClan: activeClan ? {
@@ -119,6 +120,16 @@ function createAuthRouter() {
         }
         userRepo.updateTheme(req.user.id, theme);
         res.json({ ok: true, theme });
+    });
+    // PUT /api/auth/language - persist the user's UI language, the same way as
+    // the theme: localStorage first for this browser, this for every other one.
+    router.put('/language', auth_js_1.requireAuth, (req, res) => {
+        const { language } = req.body ?? {};
+        if (!userRepo.isValidLanguage(language)) {
+            return res.status(400).json({ error: 'Invalid language' });
+        }
+        userRepo.updateLanguage(req.user.id, language);
+        res.json({ ok: true, language });
     });
     // PUT /api/auth/password - change own password
     router.put('/password', auth_js_1.requireAuth, (req, res) => {

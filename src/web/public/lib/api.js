@@ -1,5 +1,6 @@
 import { setGameDayRolloverUtcHour, getPageLoadSignal } from './state.js';
 import { notify } from './ui.js';
+import { t } from './i18n.js';
 
 /**
  * Thrown when an /api/* call gets a 401. Page modules can catch this to
@@ -87,10 +88,9 @@ export async function api(path, opts) {
         await new Promise((resolve) => setTimeout(resolve, 400));
         continue;
       }
-      throw new Error(
-        `The server returned an empty response${lastEmptyStatus ? ` (HTTP ${lastEmptyStatus})` : ''}. `
-        + 'It may be busy finishing a scan — please try again in a moment.',
-      );
+      throw new Error(lastEmptyStatus
+        ? t('The server returned an empty response (HTTP {status}). It may be busy finishing a scan — please try again in a moment.', { status: lastEmptyStatus })
+        : t('The server returned an empty response. It may be busy finishing a scan — please try again in a moment.'));
     }
 
     let data;
@@ -99,7 +99,7 @@ export async function api(path, opts) {
     } catch {
       const snippet = raw.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
       const msg = snippet || `${res.status} ${res.statusText}`;
-      throw new Error(`Server returned non-JSON response (${res.status}): ${msg}`);
+      throw new Error(t('Server returned non-JSON response ({status}): {message}', { status: res.status, message: msg }));
     }
 
     if (data && typeof data === 'object' && Number.isFinite(data.gameDayRolloverUtcHour)) {
@@ -142,7 +142,7 @@ export function apiDelete(path) {
  * Returns the resolved value on success, or `null` on failure (after
  * showing a toast). Callers that want the data should null-check.
  */
-export async function mustOk(promise, title = 'Request failed') {
+export async function mustOk(promise, title = t('Request failed')) {
   try {
     const result = await promise;
     if (result && typeof result === 'object' && typeof result.error === 'string') {

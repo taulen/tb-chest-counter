@@ -25,6 +25,7 @@ import { initMobileRows } from './lib/mobile-rows.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
 import { openLeaderboardFaq } from './lib/leaderboard-faq.js';
 import { bindThemeSwitcher } from './lib/theme.js';
+import { bindLanguageSwitcher, t } from './lib/i18n.js';
 
 // Mirrors SHARE_TOKEN_REGEX on the server: a generated 6-char token OR an
 // admin-chosen vanity key (3-10 chars, a-z0-9). The server already refused to
@@ -37,10 +38,11 @@ const token = tokenMatch ? tokenMatch[1] : null;
 // The theme picker works even on a dead link. No server sync: there is no
 // session here to save the choice against, so it lives in this browser.
 bindThemeSwitcher(document, { syncServer: false });
+bindLanguageSwitcher(document, { syncServer: false });
 
 if (!token) {
   document.getElementById('content').innerHTML =
-    '<div class="empty-state"><p>Invalid share link.</p></div>';
+    `<div class="empty-state"><p>${t('Invalid share link.')}</p></div>`;
 } else {
   start();
 }
@@ -146,7 +148,7 @@ function start() {
   async function renderLeaderboard() {
     const seq = ++renderSeq;
     const el = document.getElementById('content');
-    el.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
     // The window this render fetches, kept so the label it paints is the one
     // its numbers belong to.
     const period = currentPeriod;
@@ -160,7 +162,7 @@ function start() {
       rows = await fetchJson(`${API}/leaderboard?${params.toString()}`);
     } catch {
       if (seq !== renderSeq) return;
-      el.innerHTML = '<div class="empty-state"><p>Failed to load leaderboard.</p></div>';
+      el.innerHTML = `<div class="empty-state"><p>${t('Failed to load leaderboard.')}</p></div>`;
       return;
     }
     if (seq !== renderSeq) return;
@@ -217,7 +219,7 @@ function start() {
   async function renderChestTracker() {
     const seq = ++renderSeq;
     const el = document.getElementById('content');
-    el.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
     let data;
     let codes = [];
     try {
@@ -234,15 +236,15 @@ function start() {
       ]);
     } catch {
       if (seq !== renderSeq) return;
-      el.innerHTML = '<div class="empty-state"><p>Failed to load ChestTracker data.</p></div>';
+      el.innerHTML = `<div class="empty-state"><p>${t('Failed to load ChestTracker data.')}</p></div>`;
       return;
     }
     if (seq !== renderSeq) return;
     const shareCode = data.shareCode || '';
     selectedShareCode = shareCode || null;
     const title = shareCode
-      ? `ChestTracker.com data (${esc(shareCode)})`
-      : 'ChestTracker.com data';
+      ? t('ChestTracker.com data ({code})', { code: esc(shareCode) })
+      : t('ChestTracker.com data');
     const codeInfo = codes.find((c) => c.shareCode === shareCode) || null;
     // Public page has no scheduler state, so fetchedAtTooltip is left
     // undefined — the shared renderer falls back to the formatted date.
@@ -295,12 +297,12 @@ function start() {
     initSortableHeaders(document.getElementById('content'));
 
     document.getElementById('content').addEventListener('click', (ev) => {
-      const t = ev.target.closest('[data-action]');
-      if (!t) return;
-      const action = t.dataset.action;
+      const target = ev.target.closest('[data-action]');
+      if (!target) return;
+      const action = target.dataset.action;
       if (action === ACTIONS.setPeriod) {
-        if (t.dataset.period !== currentPeriod) changedTimeframe = true;
-        currentPeriod = t.dataset.period;
+        if (target.dataset.period !== currentPeriod) changedTimeframe = true;
+        currentPeriod = target.dataset.period;
         currentPeriodOffset = 0;
         currentPage = 1;
         renderLeaderboard();
@@ -318,7 +320,7 @@ function start() {
         currentPage += 1;
         renderLeaderboard();
       } else if (action === ACTIONS.sort) {
-        const key = t.dataset.sortKey;
+        const key = target.dataset.sortKey;
         if (leaderboardSort.key === key) {
           leaderboardSort.dir = leaderboardSort.dir === 'asc' ? 'desc' : 'asc';
         } else {
@@ -339,12 +341,12 @@ function start() {
       info = await fetchJson(`${API}/clan`);
     } catch {
       document.getElementById('content').innerHTML =
-        '<div class="empty-state"><p>This share link is invalid or has been revoked.</p></div>';
+        `<div class="empty-state"><p>${t('This share link is invalid or has been revoked.')}</p></div>`;
       return;
     }
     clanName = info.clanName || '';
     document.getElementById('clanName').textContent = info.clanName || 'TB Chest Counter';
-    document.title = `${info.clanName || 'Clan'} · Leaderboard`;
+    document.title = t('{clan} · Leaderboard', { clan: info.clanName || t('Clan') });
     if (Number.isFinite(info.gameDayRolloverUtcHour)) {
       rolloverHr = info.gameDayRolloverUtcHour;
       // Push into the same shared state slot the auth app uses, so

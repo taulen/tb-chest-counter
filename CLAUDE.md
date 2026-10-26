@@ -24,6 +24,7 @@
 - **Env toggles only reach the container if listed in `docker-compose.yml`'s `environment:` list.**
 - **Do not add a timeout around OCR** — it can never fire. Why: [docs/wedged-browser-liveness.md](docs/wedged-browser-liveness.md).
 - **`req.user.clanId` / `req.user.role` are the ACTIVE clan's, not the account's home.** An account can hold extra clans with a role in each; `validateSession` scopes the user to the clan it is viewing, which is what keeps every gate clan-confined. Need the home clan? `getUserById`. Read [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md) before touching auth or user listings.
+- **UI text is translated (en/es/fr/ru/de).** Every user-visible string goes through `t()`/`tn()` from [lib/i18n.js](src/web/public/lib/i18n.js) with a string literal, and needs an entry in all four `lib/i18n/*.js` dictionaries — `npm run build` fails otherwise. Game names (chests, sources, events, resources) use `tGame()` at display points only, and its dictionary takes official in-game names only. Read [docs/i18n.md](docs/i18n.md).
 - **Schema changes: append a migration at version 73 or higher**, then `npm run build && node scripts/update-schema-baseline.mjs` and commit the fixture. See [docs/database-schema.md](docs/database-schema.md).
 
 ## Key Behaviors

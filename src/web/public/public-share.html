@@ -23,6 +23,21 @@
       document.documentElement.setAttribute('data-theme', t);
     })();
   </script>
+  <script>
+    // Language before first paint. A saved non-English choice hides the page
+    // until lib/i18n.js has translated it, so English never flashes first;
+    // anything else (nothing saved, storage blocked) is English — the default
+    // whatever the browser says. Kept identical across the HTML shells by
+    // tests/config/i18n-bootstrap.test.ts.
+    (function () {
+      var l = null;
+      try { l = localStorage.getItem('lang'); } catch (_) {}
+      if (l === 'es' || l === 'fr' || l === 'ru' || l === 'de') {
+        document.documentElement.setAttribute('lang', l);
+        document.documentElement.setAttribute('data-i18n-pending', '');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="/base.css">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/external.css">
@@ -41,23 +56,24 @@
       </svg>
       <h1 id="clanName">TB Chest Counter</h1>
     </div>
-    <!-- Kept in this browser only: a share link has no account to save it to. -->
+    <!-- Kept in this browser only: a share link has no account to save them to. -->
     <div class="public-share-theme">
-      <select class="input public-share-theme-select" data-theme-select aria-label="Theme">
-        <option value="auto">Auto</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
+      <select class="input public-share-theme-select" data-lang-select aria-label="Language" data-i18n-attr="aria-label"></select>
+      <select class="input public-share-theme-select" data-theme-select aria-label="Theme" data-i18n-attr="aria-label">
+        <option value="auto" data-i18n>Auto</option>
+        <option value="light" data-i18n>Light</option>
+        <option value="dark" data-i18n>Dark</option>
         <option value="oled">OLED</option>
       </select>
     </div>
   </div>
 
   <nav id="shareNav" class="public-share-nav">
-    <a href="#leaderboard" class="active" data-tab="leaderboard">Leaderboard</a>
+    <a href="#leaderboard" class="active" data-tab="leaderboard" data-i18n>Leaderboard</a>
     <a href="#chesttracker" data-tab="chesttracker" id="ctTab" class="is-hidden">ChestTracker</a>
     <a href="#faq" class="public-share-nav-faq" data-open-faq>
       <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
-      <span>FAQ<span class="nav-faq-extra">&nbsp;&amp; access</span></span>
+      <span><span data-i18n>FAQ</span> <span class="nav-faq-extra" data-i18n>&amp; access</span></span>
     </a>
   </nav>
 

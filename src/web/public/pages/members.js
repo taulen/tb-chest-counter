@@ -23,6 +23,7 @@ import {
   formatResourceAmount, resourceIconOnly, resourceIconHtml, resourceSparklineSvg,
   directionPillHtml, isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 // ─── Members list ─────────────────────────────────────────────
 
@@ -53,8 +54,20 @@ const MEMBER_PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
 let currentMemberPeriod = 'all';
 // Explicit, because the obvious trick (strip a trailing "ly") turns daily
 // into "dai". All Time is absent on purpose — the badge says just "Rank".
-const MEMBER_PERIOD_NOUN = {
-  daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year',
+const MEMBER_RANK_LABEL = {
+  daily: t('Rank · this day'), weekly: t('Rank · this week'),
+  monthly: t('Rank · this month'), yearly: t('Rank · this year'),
+};
+const MEMBER_PERIOD_LABEL = {
+  daily: t('Daily'), weekly: t('Weekly'), monthly: t('Monthly'), yearly: t('Yearly'), all: t('All'),
+};
+const CHEST_TYPE_LABEL = {
+  common: t('common'), uncommon: t('uncommon'), rare: t('rare'), epic: t('epic'),
+  legendary: t('legendary'), arena: t('arena'), event: t('event'), unknown: t('unknown'),
+};
+const CONFIDENCE_WORD = { high: t('high'), medium: t('medium'), low: t('low') };
+const CONFIDENCE_PHRASE = {
+  high: t('high confidence'), medium: t('medium confidence'), low: t('low confidence'),
 };
 let currentMemberOffset = 0;
 let memberWeeklyGoalPoints = null;
@@ -129,24 +142,24 @@ export function renderMembersTable(el) {
     sortableThHtml({ key, labelHtml, sortState: membersSort, action: 'sort-members', className, title });
 
   const countLabel = filterText
-    ? `${sortedMembers.length} of ${cachedMembers.length}`
+    ? t('{shown} of {total}', { shown: sortedMembers.length, total: cachedMembers.length })
     : `${cachedMembers.length}`;
 
   el.innerHTML = `<div class="card">
     <div class="card-header">
-      <h2>Clan Members (${countLabel})</h2>
+      <h2>${t('Clan Members ({count})', { count: countLabel })}</h2>
       <input
         type="text"
         id="membersFilter"
         class="input members-filter"
-        placeholder="Search by name..."
+        placeholder="${t('Search by name...')}"
         value="${esc(membersFilter)}">
     </div>
     <div class="card-body">
     ${cachedMembers.length === 0
-      ? '<div class="empty-state"><p>No members yet.</p></div>'
+      ? `<div class="empty-state"><p>${t('No members yet.')}</p></div>`
       : sortedMembers.length === 0
-        ? '<div class="empty-state"><p>No members match your search.</p></div>'
+        ? `<div class="empty-state"><p>${t('No members match your search.')}</p></div>`
         : `<table class="table-responsive members-table"><colgroup>
             <col class="col-member">
             ${showGuards ? '<col class="col-guards">' : ''}
@@ -155,33 +168,33 @@ export function renderMembersTable(el) {
             <col class="col-date">
             ${isAdmin ? '<col class="col-actions">' : ''}
           </colgroup><thead><tr>
-            ${th('name', 'Name')}
-            ${showGuards ? th('guards', 'Guards', 'num', 'Guardsmen level, estimated from Omen Essence and Scientific Tractates donations') : ''}
+            ${th('name', t('Name'))}
+            ${showGuards ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })) : ''}
             ${showMight ? `
-              ${th('might', 'Might', 'num')}
-              ${th('mightDelta', '7d', 'num', 'Change over the last ~7 days')}
+              ${th('might', t('Might'), 'num')}
+              ${th('mightDelta', t('7d'), 'num', t('Change over the last ~7 days'))}
             ` : ''}
-            ${th('firstSeen', 'First Seen')}
-            ${th('lastSeen', 'Last Seen')}
-            ${isAdmin ? '<th>Actions</th>' : ''}
+            ${th('firstSeen', t('First Seen'))}
+            ${th('lastSeen', t('Last Seen'))}
+            ${isAdmin ? `<th>${t('Actions')}</th>` : ''}
           </tr></thead><tbody>
             ${sortedMembers.map((m) => {
               const might = cachedMightByMember.get(m.id);
               const d = formatMightDelta(might?.delta);
               const g = cachedGuardsByMember.get(m.id);
               return `<tr>
-              <td data-label="Name" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(m.id, m.name), g?.goldPass)}</span></td>
-              ${showGuards ? `<td data-label="Guards" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
+              <td data-label="${t('Name')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(m.id, m.name), g?.goldPass)}</span></td>
+              ${showGuards ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
               ${showMight ? `
-                <td data-label="Might" data-role="metric" class="num">${might?.might != null ? Number(might.might).toLocaleString('en-US') : '—'}</td>
-                <td data-label="7d" class="num ${d.cls}">${d.arrow} ${d.text}</td>
+                <td data-label="${t('Might')}" data-role="metric" class="num">${might?.might != null ? Number(might.might).toLocaleString('en-US') : '—'}</td>
+                <td data-label="${t('7d')}" class="num ${d.cls}">${d.arrow} ${d.text}</td>
               ` : ''}
-              <td data-label="First Seen">${formatDate(m.firstSeen)}</td>
+              <td data-label="${t('First Seen')}">${formatDate(m.firstSeen)}</td>
               ${/* With might present it takes over as the headline metric, so Last
                     Seen drops into the expand panel. Left unmarked (not "hidden")
                     so it stays reachable — "hidden" means shown elsewhere. */''}
-              <td data-label="Last Seen"${showMight ? '' : ' data-role="metric"'}>${formatDate(m.lastSeen)}</td>
-              ${isAdmin ? `<td class="col-actions"><button class="btn btn-tight" data-action="prompt-merge-member" data-member-id="${m.id}">Merge</button></td>` : ''}
+              <td data-label="${t('Last Seen')}"${showMight ? '' : ' data-role="metric"'}>${formatDate(m.lastSeen)}</td>
+              ${isAdmin ? `<td class="col-actions"><button class="btn btn-tight" data-action="prompt-merge-member" data-member-id="${m.id}">${t('Merge')}</button></td>` : ''}
             </tr>`;
             }).join('')}
           </tbody></table>`}
@@ -361,9 +374,9 @@ async function loadAndRenderMemberDetail(data) {
 // ─── Guards level + Gold Pass on the profile ───
 
 const EVIDENCE_LABEL = {
-  essence: 'Omen Essence',
-  tractate: 'Scientific Tractates',
-  report: 'Admin entry',
+  essence: tGame('Omen Essence'),
+  tractate: tGame('Scientific Tractates'),
+  report: t('Admin entry'),
 };
 
 /** Headline stat: the estimated level, with the Gold Pass marker beside it. */
@@ -373,12 +386,15 @@ function memberGuardsStatHtml(guards) {
   const current = guards.goldPass?.[0];
   const previous = guards.goldPass?.[1];
   const pass = current?.goldPass ? 'current' : previous?.goldPass ? 'previous' : null;
+  const confidence = CONFIDENCE_WORD[s?.confidence] ?? s?.confidence;
   const sub = s
-    ? `as of ${formatGameDayShort(s.asOf)} · ${s.confidence}${s.stale ? ' · old' : ''}`
-    : 'not revealed yet';
+    ? (s.stale
+      ? t('as of {date} · {confidence} · old', { date: formatGameDayShort(s.asOf), confidence })
+      : t('as of {date} · {confidence}', { date: formatGameDayShort(s.asOf), confidence }))
+    : t('not revealed yet');
   return `
     <div class="stat-card">
-      <div class="label">Guards</div>
+      <div class="label">${t('Guards')}</div>
       <div class="value guards-stat-value">${guardsCellHtml(s)}${goldPassBadgeHtml(pass)}</div>
       <div class="sub" title="${esc(guardsTitle(s))}">${esc(sub)}</div>
     </div>`;
@@ -386,13 +402,13 @@ function memberGuardsStatHtml(guards) {
 
 function evidenceVerdict(row) {
   if (row.superseded) {
-    return '<span class="guards-fit is-partial" title="A newer donation revealed the level, so this entry no longer counts">replaced</span>';
+    return `<span class="guards-fit is-partial" title="${t('A newer donation revealed the level, so this entry no longer counts')}">${t('replaced')}</span>`;
   }
   if (row.kind === 'tractate' && row.belowLevel) {
-    return '<span class="guards-fit is-partial" title="A lower tier than their level — they donated less than they could">below level</span>';
+    return `<span class="guards-fit is-partial" title="${t('A lower tier than their level — they donated less than they could')}">${t('below level')}</span>`;
   }
-  if (row.agrees) return '<span class="guards-fit is-ok">fits</span>';
-  return '<span class="guards-fit is-miss" title="Fits no level on the path — most likely a misread, or another player\'s row filed under this one">ignored</span>';
+  if (row.agrees) return `<span class="guards-fit is-ok">${t('fits')}</span>`;
+  return `<span class="guards-fit is-miss" title="${t('Fits no level on the path — most likely a misread, or another player\'s row filed under this one')}">${t('ignored')}</span>`;
 }
 
 function memberGuardsCardHtml(guards, memberId, isAdmin) {
@@ -403,62 +419,66 @@ function memberGuardsCardHtml(guards, memberId, isAdmin) {
 
   let headline;
   if (!e) {
-    headline = `<p class="muted-copy">No donation yet that reveals this member's level. Omen Essence (Dark Omens)
-      and Scientific Tractates (Ragnarok) donations give it away — the next one will fill this in.</p>`;
+    headline = `<p class="muted-copy">${t('No donation yet that reveals this member\'s level. {essence} ({omens}) and {tractates} ({ragnarok}) donations give it away — the next one will fill this in.', {
+      essence: tGame('Omen Essence'), omens: tGame('Dark Omens'),
+      tractates: tGame('Scientific Tractates'), ragnarok: tGame('Ragnarok'),
+    })}</p>`;
   } else {
     const lastUp = e.levelUps.length > 0 ? e.levelUps[e.levelUps.length - 1] : null;
     const upLine = lastUp
-      ? `Reached G${lastUp.to} between ${esc(formatGameDayShort(lastUp.after))} and ${esc(formatGameDayShort(lastUp.by))} (was G${lastUp.from}).`
-      : `G${e.level} since the first donation on record, ${esc(formatGameDayShort(e.firstSeen))}.`;
+      ? t('Reached G{to} between {after} and {by} (was G{from}).', {
+        to: lastUp.to, after: esc(formatGameDayShort(lastUp.after)), by: esc(formatGameDayShort(lastUp.by)), from: lastUp.from,
+      })
+      : t('G{level} since the first donation on record, {date}.', { level: e.level, date: esc(formatGameDayShort(e.firstSeen)) });
+    const confidence = CONFIDENCE_PHRASE[e.confidence] ?? t('{confidence} confidence', { confidence: esc(e.confidence) });
     headline = `
       <p class="guards-headline">${guardsCellHtml(s)}
-        <span>as of ${esc(formatGameDayShort(e.asOf))} · ${esc(e.confidence)} confidence</span></p>
-      <p class="muted-copy">${upLine}${s?.stale ? ` No new donations for over ${guards.staleDays} days, so it may be higher by now.` : ''}</p>`;
+        <span>${t('as of {date} · {confidence}', { date: esc(formatGameDayShort(e.asOf)), confidence })}</span></p>
+      <p class="muted-copy">${upLine}${s?.stale ? ` ${tn(guards.staleDays, 'No new donations for over {n} days, so it may be higher by now.', 'No new donations for over {n} days, so it may be higher by now.', { n: guards.staleDays })}` : ''}</p>`;
   }
 
   const evidence = e ? [...e.evidence].reverse() : [];
   const evidenceHtml = evidence.length > 0 ? `
     <details class="guards-details" data-section-key="member-guards-evidence">
-      <summary>What it is based on (${evidence.length})</summary>
+      <summary>${t('What it is based on ({count})', { count: evidence.length })}</summary>
       <table class="table-responsive guards-evidence-table">
         <colgroup><col class="col-date"><col class="col-donation"><col class="col-reads"><col class="col-fit"></colgroup>
-        <thead><tr><th>Date</th><th>Donation</th><th>Reads as</th><th>Verdict</th></tr></thead><tbody>
+        <thead><tr><th>${t('Date')}</th><th>${t('Donation')}</th><th>${t('Reads as')}</th><th>${t('Verdict')}</th></tr></thead><tbody>
         ${evidence.map((r) => `<tr>
-          <td data-label="Date">${esc(formatGameDayShort(r.date))}</td>
-          <td data-label="Donation" data-role="primary"><span class="mrow-name">${esc(EVIDENCE_LABEL[r.kind] || r.kind)}${r.amount != null ? ` ${Number(r.amount).toLocaleString('en-US')}` : ''}</span><span class="mrow-sub">${esc(formatGameDayShort(r.date))}</span></td>
-          <td data-label="Reads as">${r.levels.map((l) => `G${l}`).join(' / ')}${r.boosted ? ' <span class="muted-copy" title="Donated on the G9 essence unit that is 20% above the usual one — cause unknown, counted as G9">(+20% rate)</span>' : ''}</td>
-          <td data-label="Verdict" data-role="metric">${evidenceVerdict(r)}</td>
+          <td data-label="${t('Date')}">${esc(formatGameDayShort(r.date))}</td>
+          <td data-label="${t('Donation')}" data-role="primary"><span class="mrow-name">${esc(EVIDENCE_LABEL[r.kind] || r.kind)}${r.amount != null ? ` ${Number(r.amount).toLocaleString('en-US')}` : ''}</span><span class="mrow-sub">${esc(formatGameDayShort(r.date))}</span></td>
+          <td data-label="${t('Reads as')}">${r.levels.map((l) => `G${l}`).join(' / ')}${r.boosted ? ` <span class="muted-copy" title="${t('Donated on the G9 essence unit that is 20% above the usual one — cause unknown, counted as G9')}">${t('(+20% rate)')}</span>` : ''}</td>
+          <td data-label="${t('Verdict')}" data-role="metric">${evidenceVerdict(r)}</td>
         </tr>`).join('')}
         </tbody></table>
     </details>` : '';
 
   const reportRows = reports.map((r) => `<li class="guards-report">
-      <span><strong>G${r.level}</strong> on ${esc(formatGameDayShort(r.observedDate))}${r.note ? ` — ${esc(r.note)}` : ''}
-        <span class="muted-copy">· ${esc(r.createdByName || 'deleted user')}</span></span>
-      ${isAdmin ? `<button class="btn btn-tight" data-guards-report-delete="${r.id}">Remove</button>` : ''}
+      <span>${t('<strong>G{level}</strong> on {date}', { level: r.level, date: esc(formatGameDayShort(r.observedDate)) })}${r.note ? ` — ${esc(r.note)}` : ''}
+        <span class="muted-copy">· ${esc(r.createdByName || t('deleted user'))}</span></span>
+      ${isAdmin ? `<button class="btn btn-tight" data-guards-report-delete="${r.id}">${t('Remove')}</button>` : ''}
     </li>`).join('');
 
   const adminHtml = isAdmin || reports.length > 0 ? `
     <details class="guards-details" data-section-key="member-guards-entries"${reports.length > 0 ? ' open' : ''}>
-      <summary>Admin entries (${reports.length})</summary>
-      <p class="muted-copy">For a member who never donates, or one the donations get wrong. An entry pins the level on its date
-        until a newer donation reveals the level — then the donation wins. Later donations can always carry the member higher.</p>
+      <summary>${t('Admin entries ({count})', { count: reports.length })}</summary>
+      <p class="muted-copy">${t('For a member who never donates, or one the donations get wrong. An entry pins the level on its date until a newer donation reveals the level — then the donation wins. Later donations can always carry the member higher.')}</p>
       ${reports.length > 0 ? `<ul class="guards-report-list">${reportRows}</ul>` : ''}
       ${isAdmin ? `<form class="guards-report-form" id="guardsReportForm" data-member-id="${memberId}">
-        <label>Level <select class="input" name="level">
+        <label>${t('Level')} <select class="input" name="level">
           ${[9, 8, 7, 6, 5, 4, 3, 2, 1].map((l) => `<option value="${l}"${s?.level === l ? ' selected' : ''}>G${l}</option>`).join('')}
         </select></label>
-        <label>On <input class="input" type="date" name="observedDate" lang="sv" value="${esc(guards.today || '')}" max="${esc(guards.today || '')}"></label>
-        <label class="guards-report-note">Note <input class="input" type="text" name="note" maxlength="200" placeholder="e.g. told us in clan chat"></label>
-        <button class="btn btn-primary btn-tight" type="submit">Save</button>
+        <label>${t('On')} <input class="input" type="date" name="observedDate" lang="sv" value="${esc(guards.today || '')}" max="${esc(guards.today || '')}"></label>
+        <label class="guards-report-note">${t('Note')} <input class="input" type="text" name="note" maxlength="200" placeholder="${t('e.g. told us in clan chat')}"></label>
+        <button class="btn btn-primary btn-tight" type="submit">${t('Save')}</button>
       </form>` : ''}
     </details>` : '';
 
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Guardsmen</h2>
-        <span class="card-header-hint">Estimated from donations — the game never shows it</span>
+        <h2>${t('Guardsmen')}</h2>
+        <span class="card-header-hint">${t('Estimated from donations — the game never shows it')}</span>
       </div>
       <div class="card-body card-body-padded">
         ${headline}
@@ -472,22 +492,24 @@ function memberGuardsCardHtml(guards, memberId, isAdmin) {
 // What the member last posted in chat (Admin → Levels from chat). Minor detail,
 // so a single quiet line of small chips — each letter with its name on hover.
 const LEVEL_LABELS = [
-  ['g', 'G', 'Guardsmen'],
-  ['m', 'M', 'Monsters'],
-  ['s', 'S', 'Specialists'],
-  ['e', 'E', 'Engineering'],
-  ['c', 'C', 'Crypting'],
-  ['d', 'D', 'Dragon'],
+  ['g', 'G', t('Guardsmen')],
+  ['m', 'M', t('Monsters')],
+  ['s', 'S', t('Specialists')],
+  ['e', 'E', t('Engineering')],
+  ['c', 'C', t('Crypting')],
+  ['d', 'D', t('Dragon')],
 ];
 
 function reportedLevelsHtml(r) {
   if (!r || !r.levels) return '';
   const chips = LEVEL_LABELS
     .filter(([k]) => r.levels[k] != null)
-    .map(([k, short, name]) => `<span class="reported-level" title="${esc(`${name} ${r.levels[k]}${r.asOf?.[k] ? ` — posted ${r.asOf[k]}` : ''}`)}"><span class="reported-level-key">${short}</span>${r.levels[k]}</span>`)
+    .map(([k, short, name]) => `<span class="reported-level" title="${esc(r.asOf?.[k]
+      ? t('{skill} {level} — posted {date}', { skill: name, level: r.levels[k], date: r.asOf[k] })
+      : `${name} ${r.levels[k]}`)}"><span class="reported-level-key">${short}</span>${r.levels[k]}</span>`)
     .join('');
   if (!chips) return '';
-  return `<p class="reported-levels"><span class="reported-levels-label">Posted in chat</span>${chips}<span class="muted-copy">${esc(formatGameDayShort(r.lastReported))}</span></p>`;
+  return `<p class="reported-levels"><span class="reported-levels-label">${t('Posted in chat')}</span>${chips}<span class="muted-copy">${esc(formatGameDayShort(r.lastReported))}</span></p>`;
 }
 
 function memberGoldPassCardHtml(guards) {
@@ -497,23 +519,22 @@ function memberGoldPassCardHtml(guards) {
   if (!cycles.some((c) => c.unionChests > 0 || c.passDonations > 0)) return '';
   const unionOnly = cycles.some((c) => c.basis === 'union-only');
   const rows = cycles.map((c) => `<tr>
-      <td data-label="Cycle" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(c.firstDay))} – ${esc(formatGameDayShort(c.lastDay))}${c.isCurrent ? ' <span class="muted-copy">(now)</span>' : ''}</span></td>
-      <td data-label="Union Chests" class="num">${c.unionChests.toLocaleString()}</td>
-      <td data-label="250k lines" class="num">${c.basis === 'union-only' ? '—' : c.passDonations.toLocaleString()}</td>
-      <td data-label="Gold Pass" data-role="metric">${c.goldPass ? goldPassBadgeHtml(c.isCurrent ? 'current' : 'previous') : '<span class="muted-copy">no</span>'}</td>
+      <td data-label="${t('Cycle')}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(c.firstDay))} – ${esc(formatGameDayShort(c.lastDay))}${c.isCurrent ? ` <span class="muted-copy">${t('(now)')}</span>` : ''}</span></td>
+      <td data-label="${t('Union Chests')}" class="num">${c.unionChests.toLocaleString()}</td>
+      <td data-label="${t('250k lines')}" class="num">${c.basis === 'union-only' ? '—' : c.passDonations.toLocaleString()}</td>
+      <td data-label="${t('Gold Pass')}" data-role="metric">${c.goldPass ? goldPassBadgeHtml(c.isCurrent ? 'current' : 'previous') : `<span class="muted-copy">${t('no')}</span>`}</td>
     </tr>`).join('');
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Gold Pass</h2>
-        <span class="card-header-hint">Per Triumphal cycle</span>
+        <h2>${t('Gold Pass')}</h2>
+        <span class="card-header-hint">${t('Per Triumphal cycle')}</span>
       </div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">A cycle counts when the member got Union Chests from the pass track
-          <em>and</em> the exact 250k Scientific Tractates each pass chest donates.${unionOnly ? ' This clan does not capture resources, so the Union Chests alone decide it.' : ''}</p>
+        <p class="muted-copy mb-12">${t('A cycle counts when the member got Union Chests from the pass track <em>and</em> the exact 250k {tractates} each pass chest donates.', { tractates: tGame('Scientific Tractates') })}${unionOnly ? ` ${t('This clan does not capture resources, so the Union Chests alone decide it.')}` : ''}</p>
         <table class="table-responsive gold-pass-table">
           <colgroup><col class="col-cycle"><col class="col-num"><col class="col-num"><col class="col-pass"></colgroup>
-          <thead><tr><th>Triumphal cycle</th><th class="num">Union Chests</th><th class="num">250k lines</th><th>Gold Pass</th></tr></thead>
+          <thead><tr><th>${t('Triumphal cycle')}</th><th class="num">${t('Union Chests')}</th><th class="num">${t('250k lines')}</th><th>${t('Gold Pass')}</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -529,15 +550,15 @@ function wireMemberGuards(memberId) {
       level: Number(fd.get('level')),
       observedDate: String(fd.get('observedDate') || ''),
       note: String(fd.get('note') || ''),
-    }), 'Could not save the level');
+    }), t('Could not save the level'));
     if (ok) await reloadMemberDetail();
   });
   document.querySelectorAll('[data-guards-report-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!await confirmDialog('Remove this entry? The level goes back to what the donations say.', {
-        title: 'Remove guards entry', confirmLabel: 'Remove', danger: true,
+      if (!await confirmDialog(t('Remove this entry? The level goes back to what the donations say.'), {
+        title: t('Remove guards entry'), confirmLabel: t('Remove'), danger: true,
       })) return;
-      const ok = await mustOk(apiDelete(`/guards/reports/${btn.dataset.guardsReportDelete}`), 'Could not remove the entry');
+      const ok = await mustOk(apiDelete(`/guards/reports/${btn.dataset.guardsReportDelete}`), t('Could not remove the entry'));
       if (ok) await reloadMemberDetail();
     });
   });
@@ -557,7 +578,7 @@ async function buildMemberResourcesCard(memberId, resourcesEnabled) {
     ]);
     const daily = Array.isArray(dailyRes?.rows) ? dailyRes.rows : [];
     const types = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
-    const typeById = new Map(types.map((t) => [t.id, t]));
+    const typeById = new Map(types.map((rt) => [rt.id, rt]));
 
     const byType = new Map();
     for (const d of daily) {
@@ -582,7 +603,7 @@ async function buildMemberResourcesCard(memberId, resourcesEnabled) {
       <div class="resource-member-card">
         <div class="resource-card-head">
           ${resourceIconOnly(r.type.slug)}
-          <span class="resource-card-name">${esc(r.type.name)}</span>
+          <span class="resource-card-name">${esc(tGame(r.type.name))}</span>
         </div>
         <div class="resource-card-amount">${esc(formatResourceAmount(r.type.slug, r.sent))}</div>
         ${resourceSparklineSvg(r.series)}
@@ -590,8 +611,8 @@ async function buildMemberResourcesCard(memberId, resourcesEnabled) {
     return `
       <div class="card">
         <div class="card-header">
-          <h2>Resources donated</h2>
-          <span class="card-header-hint">Each in its own unit · weekly trend</span>
+          <h2>${t('Resources donated')}</h2>
+          <span class="card-header-hint">${t('Each in its own unit · weekly trend')}</span>
         </div>
         <div class="card-body"><div class="resources-cards">${cards}</div></div>
       </div>`;
@@ -709,12 +730,12 @@ function memberPaceHtml(points) {
   const needed = Math.max(0, goal - points);
 
   const line = elapsed < MEMBER_PACE_MIN_ELAPSED
-    ? `${needed.toLocaleString()} points to go`
+    ? tn(needed, '{n} points to go', '{n} points to go')
     : (points >= goal
-      ? 'Goal met for this period.'
+      ? t('Goal met for this period.')
       : (points / elapsed >= goal
-        ? `On pace — ${needed.toLocaleString()} points to go.`
-        : `Behind pace — ${needed.toLocaleString()} points to go, and at this rate you finish around ${Math.round(points / elapsed).toLocaleString()}.`));
+        ? tn(needed, 'On pace — {n} points to go.', 'On pace — {n} points to go.')
+        : tn(needed, 'Behind pace — {n} points to go, and at this rate you finish around {finish}.', 'Behind pace — {n} points to go, and at this rate you finish around {finish}.', { finish: Math.round(points / elapsed).toLocaleString() })));
 
   return `
     <div class="member-pace">
@@ -725,7 +746,7 @@ function memberPaceHtml(points) {
       <div class="member-pace-track">
         <span class="member-pace-fill ${statusClass}" style="width: ${(progress * 100).toFixed(1)}%"></span>
         <span class="member-pace-tick" style="left: ${(elapsed * 100).toFixed(1)}%"
-          title="Where you would be if you were exactly on pace right now"></span>
+          title="${t('Where you would be if you were exactly on pace right now')}"></span>
       </div>
     </div>`;
 }
@@ -754,7 +775,7 @@ function memberSourceMixHtml(mix) {
   const rows = shown.map((r) => {
     const pct = Math.round((r.points / total) * 100);
     return `<div class="type-row type-row--compact type-unknown">
-      <span class="type-row-name"><span class="type-row-dot"></span>${esc(r.source)}</span>
+      <span class="type-row-name"><span class="type-row-dot"></span>${esc(tGame(r.source))}</span>
       <div class="type-row-bar"><span style="width: ${Math.max(1, pct)}%"></span></div>
       <span class="type-row-value">${r.points.toLocaleString()}</span>
       <span class="type-row-pct">${pct}%</span>
@@ -764,12 +785,12 @@ function memberSourceMixHtml(mix) {
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Where the points came from</h2>
-        <span class="card-header-hint">${total.toLocaleString()} pts in this timeframe</span>
+        <h2>${t('Where the points came from')}</h2>
+        <span class="card-header-hint">${t('{total} pts in this timeframe', { total: total.toLocaleString() })}</span>
       </div>
       <div class="card-body card-body-padded">
         ${rows}
-        ${restCount > 0 ? `<p class="muted-copy source-mix-rest">Plus ${restCount.toLocaleString()} smaller source${restCount === 1 ? '' : 's'} worth ${restPoints.toLocaleString()} pts between them.</p>` : ''}
+        ${restCount > 0 ? `<p class="muted-copy source-mix-rest">${tn(restCount, 'Plus {n} smaller source worth {points} pts between them.', 'Plus {n} smaller sources worth {points} pts between them.', { points: restPoints.toLocaleString() })}</p>` : ''}
       </div>
     </div>`;
 }
@@ -791,16 +812,20 @@ function memberRankGapHtml(neighbours) {
   const parts = [];
 
   if (neighbours.tiedWith > 0 && neighbours.points === 0) {
-    parts.push(`tied with ${neighbours.tiedWith.toLocaleString()} other${neighbours.tiedWith === 1 ? '' : 's'} on 0`);
+    parts.push(tn(neighbours.tiedWith, 'tied with {n} other on 0', 'tied with {n} others on 0'));
   } else if (neighbours.tiedWith > 0) {
-    parts.push(`tied with ${neighbours.tiedWith.toLocaleString()} other${neighbours.tiedWith === 1 ? '' : 's'}`);
+    parts.push(tn(neighbours.tiedWith, 'tied with {n} other', 'tied with {n} others'));
   }
   if (neighbours.above) {
-    parts.push(`${neighbours.above.gap.toLocaleString()} points behind #${neighbours.above.rank} ${esc(neighbours.above.name)}`);
+    parts.push(tn(neighbours.above.gap, '{n} points behind #{rank} {name}', '{n} points behind #{rank} {name}', {
+      rank: neighbours.above.rank, name: esc(neighbours.above.name),
+    }));
   }
   // Only worth saying when there is daylight; "0 ahead" is a tie, already said.
   if (neighbours.below && neighbours.below.gap > 0) {
-    parts.push(`${neighbours.below.gap.toLocaleString()} ahead of #${neighbours.below.rank} ${esc(neighbours.below.name)}`);
+    parts.push(t('{gap} ahead of #{rank} {name}', {
+      gap: neighbours.below.gap.toLocaleString(), rank: neighbours.below.rank, name: esc(neighbours.below.name),
+    }));
   }
   if (parts.length === 0) return '';
   return `<p class="muted-copy member-rank-gap">${parts.join(' · ')}</p>`;
@@ -903,10 +928,10 @@ function memberConsistencyHtml(data) {
       const change = Math.round(((recentMean - baseMedian) / baseMedian) * 100);
       if (Math.abs(change) >= 15) {
         verdict = change > 0
-          ? `<p class="consistency-verdict is-up">Your last ${CONSISTENCY_RECENT_DAYS} days are ${change}% above your own recent median day.</p>`
-          : `<p class="consistency-verdict is-down">Your last ${CONSISTENCY_RECENT_DAYS} days are ${Math.abs(change)}% below your own recent median day.</p>`;
+          ? `<p class="consistency-verdict is-up">${tn(CONSISTENCY_RECENT_DAYS, 'Your last {n} days are {pct}% above your own recent median day.', 'Your last {n} days are {pct}% above your own recent median day.', { n: CONSISTENCY_RECENT_DAYS, pct: change })}</p>`
+          : `<p class="consistency-verdict is-down">${tn(CONSISTENCY_RECENT_DAYS, 'Your last {n} days are {pct}% below your own recent median day.', 'Your last {n} days are {pct}% below your own recent median day.', { n: CONSISTENCY_RECENT_DAYS, pct: Math.abs(change) })}</p>`;
       } else {
-        verdict = `<p class="consistency-verdict">Your last ${CONSISTENCY_RECENT_DAYS} days are in line with your own recent median day.</p>`;
+        verdict = `<p class="consistency-verdict">${tn(CONSISTENCY_RECENT_DAYS, 'Your last {n} days are in line with your own recent median day.', 'Your last {n} days are in line with your own recent median day.', { n: CONSISTENCY_RECENT_DAYS })}</p>`;
       }
     }
   }
@@ -915,41 +940,40 @@ function memberConsistencyHtml(data) {
   const peakTrail = Math.max(1, ...trailing);
   const bars = series.map((d, i) => {
     const h = d.points > 0 ? Math.max(2, Math.round((d.points / peak) * 100)) : 0;
-    const t = Math.round((trailing[i] / peakTrail) * 100);
-    return `<span class="consistency-col" title="${d.day}: ${d.points.toLocaleString()} pts">
+    const meanPct = Math.round((trailing[i] / peakTrail) * 100);
+    return `<span class="consistency-col" title="${t('{day}: {points} pts', { day: d.day, points: d.points.toLocaleString() })}">
         <span class="consistency-bar" style="height: ${h}%"></span>
-        <span class="consistency-mean" style="bottom: ${t}%"></span>
+        <span class="consistency-mean" style="bottom: ${meanPct}%"></span>
       </span>`;
   }).join('');
 
   return `
     <div class="card">
       <div class="card-header">
-        <h2>Consistency</h2>
-        <span class="card-header-hint">Last ${series.length} game days, whatever the timeframe above</span>
+        <h2>${t('Consistency')}</h2>
+        <span class="card-header-hint">${tn(series.length, 'Last {n} game days, whatever the timeframe above', 'Last {n} game days, whatever the timeframe above', { n: series.length })}</span>
       </div>
       <div class="card-body card-body-padded">
         <div class="stats-grid consistency-stats">
           <div class="stat-card">
-            <div class="label">Days active</div>
-            <div class="value">${activeDays.toLocaleString()}<span class="stat-of"> of ${series.length}</span></div>
+            <div class="label">${t('Days active')}</div>
+            <div class="value">${activeDays.toLocaleString()}<span class="stat-of"> ${t('of {count}', { count: series.length })}</span></div>
           </div>
           <div class="stat-card">
-            <div class="label">Current streak</div>
+            <div class="label">${t('Current streak')}</div>
             <div class="value">${current.toLocaleString()}</div>
-            <div class="sub">longest ${longest.toLocaleString()}</div>
+            <div class="sub">${t('longest {count}', { count: longest.toLocaleString() })}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Best day</div>
+            <div class="label">${t('Best day')}</div>
             <div class="value">${best.points.toLocaleString()}</div>
             <div class="sub">${esc(best.day)}</div>
           </div>
         </div>
         ${verdict}
-        <div class="consistency-chart" role="img" aria-label="Points per day over the last ${series.length} game days">${bars}</div>
+        <div class="consistency-chart" role="img" aria-label="${tn(series.length, 'Points per day over the last {n} game days', 'Points per day over the last {n} game days', { n: series.length })}">${bars}</div>
         <p class="muted-copy consistency-note">
-          Bars are points per game day; the line is a ${CONSISTENCY_RECENT_DAYS}-day rolling average.
-          An empty day means no chests were collected — it does not mean the scanner was down.
+          ${t('Bars are points per game day; the line is a {days}-day rolling average. An empty day means no chests were collected — it does not mean the scanner was down.', { days: CONSISTENCY_RECENT_DAYS })}
         </p>
       </div>
     </div>`;
@@ -957,7 +981,7 @@ function memberConsistencyHtml(data) {
 
 function memberPeriodControlsHtml() {
   const buttons = MEMBER_PERIODS.map((p) =>
-    `<button class="btn ${currentMemberPeriod === p ? 'active' : ''}" data-mperiod="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`,
+    `<button class="btn ${currentMemberPeriod === p ? 'active' : ''}" data-mperiod="${p}">${MEMBER_PERIOD_LABEL[p]}</button>`,
   ).join('');
   return `
     <div class="member-period-controls">
@@ -1036,25 +1060,25 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
 
   const paginationControls = total > MEMBER_CHESTS_PAGE_SIZE
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="member-chests-page-prev" data-member-id="${data.id}" ${currentMemberChestsPage <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${currentMemberChestsPage} of ${totalPages} · ${total} chests</span>
-        <button class="btn btn-tight" data-action="member-chests-page-next" data-member-id="${data.id}" ${currentMemberChestsPage >= totalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-action="member-chests-page-prev" data-member-id="${data.id}" ${currentMemberChestsPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${tn(total, 'Page {page} of {pages} · {n} chests', 'Page {page} of {pages} · {n} chests', { page: currentMemberChestsPage, pages: totalPages, n: total })}</span>
+        <button class="btn btn-tight" data-action="member-chests-page-next" data-member-id="${data.id}" ${currentMemberChestsPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
   const triumphalPaginationControls = triumphalTotal > MEMBER_CHESTS_PAGE_SIZE
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="member-triumphals-page-prev" data-member-id="${data.id}" ${currentMemberTriumphalsPage <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${currentMemberTriumphalsPage} of ${triumphalTotalPages} · ${triumphalTotal} triumphal chests</span>
-        <button class="btn btn-tight" data-action="member-triumphals-page-next" data-member-id="${data.id}" ${currentMemberTriumphalsPage >= triumphalTotalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-action="member-triumphals-page-prev" data-member-id="${data.id}" ${currentMemberTriumphalsPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${tn(triumphalTotal, 'Page {page} of {pages} · {n} triumphal chests', 'Page {page} of {pages} · {n} triumphal chests', { page: currentMemberTriumphalsPage, pages: triumphalTotalPages, n: triumphalTotal })}</span>
+        <button class="btn btn-tight" data-action="member-triumphals-page-next" data-member-id="${data.id}" ${currentMemberTriumphalsPage >= triumphalTotalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
   const resourcePaginationControls = resourceTotal > MEMBER_CHESTS_PAGE_SIZE
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="member-resources-page-prev" data-member-id="${data.id}" ${currentMemberResourcesPage <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${currentMemberResourcesPage} of ${resourceTotalPages} · ${resourceTotal} rows</span>
-        <button class="btn btn-tight" data-action="member-resources-page-next" data-member-id="${data.id}" ${currentMemberResourcesPage >= resourceTotalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-action="member-resources-page-prev" data-member-id="${data.id}" ${currentMemberResourcesPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${tn(resourceTotal, 'Page {page} of {pages} · {n} rows', 'Page {page} of {pages} · {n} rows', { page: currentMemberResourcesPage, pages: resourceTotalPages, n: resourceTotal })}</span>
+        <button class="btn btn-tight" data-action="member-resources-page-next" data-member-id="${data.id}" ${currentMemberResourcesPage >= resourceTotalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
@@ -1067,7 +1091,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
     rankBadge = `<div class="member-rank-badge${isTop3 ? ' top-3 rank-' + rank : ''}">
       ${medal ? `<span class="member-rank-medal">${medal}</span>` : ''}
-      <span class="member-rank-label">Rank${MEMBER_PERIOD_NOUN[currentMemberPeriod] ? ` · this ${MEMBER_PERIOD_NOUN[currentMemberPeriod]}` : ''}</span>
+      <span class="member-rank-label">${MEMBER_RANK_LABEL[currentMemberPeriod] || t('Rank')}</span>
       <span class="member-rank-value">#${rank}${totalRanked ? ` / ${totalRanked}` : ''}</span>
     </div>`;
   }
@@ -1077,13 +1101,13 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   const singleDayBadges = data.singleDayBadges || {};
   const badgeMedals = ['🥇', '🥈', '🥉'];
   const recordBadgesHtml = [
-    singleDayBadges.bestChestDay ? `<span class="record-badge" title="Personal record and one of the clan's top 3 best single days for chests">
+    singleDayBadges.bestChestDay ? `<span class="record-badge" title="${t('Personal record and one of the clan\'s top 3 best single days for chests')}">
       <span class="record-badge-medal">${badgeMedals[singleDayBadges.bestChestDay.rank - 1]}</span>
-      #${singleDayBadges.bestChestDay.rank} best chest day — <strong>${singleDayBadges.bestChestDay.value.toLocaleString()}</strong> chests on ${esc(singleDayBadges.bestChestDay.date || '')}
+      ${tn(singleDayBadges.bestChestDay.value, '#{rank} best chest day — <strong>{n}</strong> chests on {date}', '#{rank} best chest day — <strong>{n}</strong> chests on {date}', { rank: singleDayBadges.bestChestDay.rank, date: esc(singleDayBadges.bestChestDay.date || '') })}
     </span>` : '',
-    singleDayBadges.bestPointDay ? `<span class="record-badge" title="Personal record and one of the clan's top 3 best single days for points">
+    singleDayBadges.bestPointDay ? `<span class="record-badge" title="${t('Personal record and one of the clan\'s top 3 best single days for points')}">
       <span class="record-badge-medal">${badgeMedals[singleDayBadges.bestPointDay.rank - 1]}</span>
-      #${singleDayBadges.bestPointDay.rank} best point day — <strong>${singleDayBadges.bestPointDay.value.toLocaleString()}</strong> pts on ${esc(singleDayBadges.bestPointDay.date || '')}
+      ${t('#{rank} best point day — <strong>{value}</strong> pts on {date}', { rank: singleDayBadges.bestPointDay.rank, value: singleDayBadges.bestPointDay.value.toLocaleString(), date: esc(singleDayBadges.bestPointDay.date || '') })}
     </span>` : '',
   ].filter(Boolean).join('');
 
@@ -1100,11 +1124,11 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   // the sub line carries the relative time plus when the player showed up.
   const seenSub = [
     data.lastSeen ? formatRelativeTime(data.lastSeen) : '—',
-    data.firstSeen ? `first ${formatDateShort(data.firstSeen)}` : '',
+    data.firstSeen ? t('first {date}', { date: formatDateShort(data.firstSeen) }) : '',
   ].filter(Boolean).join(' · ');
   const seenTitle = [
-    data.lastSeen ? `Last seen ${formatDate(data.lastSeen)}` : 'Never seen',
-    data.firstSeen ? `first seen ${formatDate(data.firstSeen)}` : '',
+    data.lastSeen ? t('Last seen {date}', { date: formatDate(data.lastSeen) }) : t('Never seen'),
+    data.firstSeen ? t('first seen {date}', { date: formatDate(data.firstSeen) }) : '',
   ].filter(Boolean).join(' · ');
 
   // Weekly progress
@@ -1129,13 +1153,13 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     ? typeBreakdown.map((entry) => {
         const pct = totalChests > 0 ? Math.round((entry.count / totalChests) * 100) : 0;
         return `<div class="type-row type-row--compact type-${entry.type}">
-          <span class="type-row-name"><span class="type-row-dot"></span>${entry.type}</span>
+          <span class="type-row-name"><span class="type-row-dot"></span>${CHEST_TYPE_LABEL[entry.type]}</span>
           <div class="type-row-bar"><span style="width: ${pct}%"></span></div>
           <span class="type-row-value">${entry.count}</span>
           <span class="type-row-pct">${pct}%</span>
         </div>`;
       }).join('')
-    : '<div class="empty-state"><p>No chests yet.</p></div>';
+    : `<div class="empty-state"><p>${t('No chests yet.')}</p></div>`;
 
   content.innerHTML = `
     <div class="card">
@@ -1144,7 +1168,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           <h2>${esc(data.name)}</h2>
           ${rankBadge}
         </div>
-        <button class="btn" data-action="member-back">← Back</button>
+        <button class="btn" data-action="member-back">${t('← Back')}</button>
       </div>
       <div class="card-body card-body-padded">
         ${memberPeriodControlsHtml()}
@@ -1153,15 +1177,15 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
         ${memberPaceHtml(data.neighbours ? data.neighbours.points : null)}
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="label">${currentMemberPeriod === 'all' ? 'Total Chests' : 'Chests'}</div>
+            <div class="label">${currentMemberPeriod === 'all' ? t('Total Chests') : t('Chests')}</div>
             <div class="value">${totalChests.toLocaleString()}</div>
           </div>
           <div class="stat-card">
-            <div class="label">${currentMemberPeriod === 'all' ? 'Total Points' : 'Points'}</div>
+            <div class="label">${currentMemberPeriod === 'all' ? t('Total Points') : t('Points')}</div>
             <div class="value">${totalPoints.toLocaleString()}</div>
           </div>
           <div class="stat-card">
-            <div class="label">Seen</div>
+            <div class="label">${t('Seen')}</div>
             <div class="value member-detail-date" title="${esc(seenTitle)}">${formatDateShort(data.lastSeen)}</div>
             <div class="sub stat-sub-tight" title="${esc(seenTitle)}">${esc(seenSub)}</div>
           </div>
@@ -1189,27 +1213,27 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     <div class="two-col-grid">
       <div class="card">
         <div class="card-header">
-          <h2>Weekly Progress</h2>
-          <span class="card-header-hint">This game week vs last, whatever the timeframe above</span>
+          <h2>${t('Weekly Progress')}</h2>
+          <span class="card-header-hint">${t('This game week vs last, whatever the timeframe above')}</span>
         </div>
         <div class="card-body card-body-padded">
           <div class="progress-grid">
             <div class="progress-card">
-              <div class="progress-label">Chests this week</div>
+              <div class="progress-label">${t('Chests this week')}</div>
               <div class="progress-value">${progress.thisWeek.chests.toLocaleString()}</div>
               <div class="progress-delta ${chestsDelta.cls}">
                 <span class="progress-arrow">${chestsArrow}</span>
                 ${chestsDelta.text}
-                <span class="progress-vs">vs ${progress.lastWeek.chests.toLocaleString()}</span>
+                <span class="progress-vs">${t('vs {count}', { count: progress.lastWeek.chests.toLocaleString() })}</span>
               </div>
             </div>
             <div class="progress-card">
-              <div class="progress-label">Points this week</div>
+              <div class="progress-label">${t('Points this week')}</div>
               <div class="progress-value">${progress.thisWeek.points.toLocaleString()}</div>
               <div class="progress-delta ${pointsDelta.cls}">
                 <span class="progress-arrow">${pointsArrow}</span>
                 ${pointsDelta.text}
-                <span class="progress-vs">vs ${progress.lastWeek.points.toLocaleString()}</span>
+                <span class="progress-vs">${t('vs {count}', { count: progress.lastWeek.points.toLocaleString() })}</span>
               </div>
             </div>
           </div>
@@ -1217,7 +1241,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       </div>
 
       <div class="card">
-        <div class="card-header"><h2>Chest Type Breakdown</h2></div>
+        <div class="card-header"><h2>${t('Chest Type Breakdown')}</h2></div>
         <div class="card-body card-body-padded">
           <div class="type-breakdown-list">
             ${breakdownHtml}
@@ -1240,16 +1264,16 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
               <col class="col-points">
               <col class="col-date">
             </colgroup>
-            <thead><tr><th>Chest</th><th>Type</th><th>Source</th><th class="num">Points</th><th>Received</th></tr></thead><tbody>
+            <thead><tr><th>${t('Chest')}</th><th>${t('Type')}</th><th>${t('Source')}</th><th class="num">${t('Points')}</th><th>${t('Received')}</th></tr></thead><tbody>
             ${chests.map((c) => `<tr>
-              <td data-label="Chest" data-role="primary"><span class="mrow-name"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(c.chestName)}</a></span><span class="mrow-sub">${formatDate(c.effectiveAt)}</span></td>
-              <td data-label="Type"><span class="chest-type ${c.chestType}">${c.chestType}</span></td>
-              <td data-label="Source">${esc(c.chestSource)}</td>
-              <td data-label="Points" class="num" data-role="metric">${c.pointValue}</td>
-              <td data-label="Received" data-role="hidden">${formatDate(c.effectiveAt)}</td>
+              <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a></span><span class="mrow-sub">${formatDate(c.effectiveAt)}</span></td>
+              <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABEL[c.chestType] ?? c.chestType}</span></td>
+              <td data-label="${t('Source')}">${esc(tGame(c.chestSource))}</td>
+              <td data-label="${t('Points')}" class="num" data-role="metric">${c.pointValue}</td>
+              <td data-label="${t('Received')}" data-role="hidden">${formatDate(c.effectiveAt)}</td>
             </tr>`).join('')}
           </tbody></table>${paginationControls}`
-        : '<div class="empty-state"><p>No chests.</p></div>';
+        : `<div class="empty-state"><p>${t('No chests.')}</p></div>`;
 
       const triumphalRows = triumphals.length > 0
         ? `<table class="table-responsive member-triumphals-table">
@@ -1258,14 +1282,14 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
               <col class="col-source">
               <col class="col-date">
             </colgroup>
-            <thead><tr><th>Chest</th><th>Source</th><th>Received</th></tr></thead><tbody>
+            <thead><tr><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Received')}</th></tr></thead><tbody>
             ${triumphals.map((c) => `<tr>
-              <td data-label="Chest" data-role="primary"><span class="mrow-name">${esc(c.chestName)}</span><span class="mrow-sub">${esc(c.chestSource)}</span></td>
-              <td data-label="Source" data-role="hidden">${esc(c.chestSource)}</td>
-              <td data-label="Received" data-role="metric">${formatDate(c.effectiveAt)}</td>
+              <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${esc(tGame(c.chestName))}</span><span class="mrow-sub">${esc(tGame(c.chestSource))}</span></td>
+              <td data-label="${t('Source')}" data-role="hidden">${esc(tGame(c.chestSource))}</td>
+              <td data-label="${t('Received')}" data-role="metric">${formatDate(c.effectiveAt)}</td>
             </tr>`).join('')}
           </tbody></table>${triumphalPaginationControls}`
-        : '<div class="empty-state"><p>No triumphal chests.</p></div>';
+        : `<div class="empty-state"><p>${t('No triumphal chests.')}</p></div>`;
 
       // Resource ledger — this member's rows from the Clan Capital history,
       // same columns as the Resources Admin table minus Member (implied) and
@@ -1279,15 +1303,15 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
               <col class="col-amount">
               <col class="col-date">
             </colgroup>
-            <thead><tr><th>Resource</th><th>Direction</th><th class="num">Amount</th><th>Date</th></tr></thead><tbody>
+            <thead><tr><th>${t('Resource')}</th><th>${t('Direction')}</th><th class="num">${t('Amount')}</th><th>${t('Date')}</th></tr></thead><tbody>
             ${resourceRows.map((tx) => `<tr>
-              <td data-label="Resource" data-role="primary"><span class="mrow-name">${resourceIconHtml(tx.resourceTypeSlug, tx.resourceTypeName ?? 'Unknown')}</span><span class="mrow-sub">${esc(formatGameDayShort(tx.transactionDate))}</span></td>
-              <td data-label="Direction">${directionPillHtml(tx.direction)}</td>
-              <td data-label="Amount" class="num" data-role="metric">${esc(formatResourceAmount(tx.resourceTypeSlug, tx.amount))}</td>
-              <td data-label="Date" data-role="hidden">${esc(formatGameDayShort(tx.transactionDate))}</td>
+              <td data-label="${t('Resource')}" data-role="primary"><span class="mrow-name">${resourceIconHtml(tx.resourceTypeSlug, tx.resourceTypeName)}</span><span class="mrow-sub">${esc(formatGameDayShort(tx.transactionDate))}</span></td>
+              <td data-label="${t('Direction')}">${directionPillHtml(tx.direction)}</td>
+              <td data-label="${t('Amount')}" class="num" data-role="metric">${esc(formatResourceAmount(tx.resourceTypeSlug, tx.amount))}</td>
+              <td data-label="${t('Date')}" data-role="hidden">${esc(formatGameDayShort(tx.transactionDate))}</td>
             </tr>`).join('')}
           </tbody></table>${resourcePaginationControls}`
-        : '<div class="empty-state"><p>No resources.</p></div>';
+        : `<div class="empty-state"><p>${t('No resources.')}</p></div>`;
 
       // When the member has neither triumphal nor resource rows, fall back to
       // the unadorned "Chest History" card so the page doesn't show a
@@ -1297,24 +1321,24 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       // currentMemberChestsTab.
       if (!hasTriumphals && !hasResources) {
         return `<div class="card">
-          <div class="card-header"><h2>Chest History</h2></div>
+          <div class="card-header"><h2>${t('Chest History')}</h2></div>
           <div class="card-body">${chestsRows}</div>
         </div>`;
       }
 
       const tabs = [
-        { key: 'chests', label: `Chests (${total})`, body: chestsRows },
-        ...(hasTriumphals ? [{ key: 'triumphals', label: `Triumphal Chests (${triumphalTotal})`, body: triumphalRows }] : []),
-        ...(hasResources ? [{ key: 'resources', label: `Resources (${resourceTotal})`, body: resourceTableRows }] : []),
+        { key: 'chests', label: t('Chests ({count})', { count: total }), body: chestsRows },
+        ...(hasTriumphals ? [{ key: 'triumphals', label: t('Triumphal Chests ({count})', { count: triumphalTotal }), body: triumphalRows }] : []),
+        ...(hasResources ? [{ key: 'resources', label: t('Resources ({count})', { count: resourceTotal }), body: resourceTableRows }] : []),
       ];
       return `<div class="card" id="memberChestsCard">
         <div class="card-header leaderboard-header">
           <div class="period-selector" id="memberChestsTabs">
-            ${tabs.map((t) => `<button class="btn ${currentMemberChestsTab === t.key ? 'active' : ''}" data-member-tab="${t.key}">${t.label}</button>`).join('')}
+            ${tabs.map((tab) => `<button class="btn ${currentMemberChestsTab === tab.key ? 'active' : ''}" data-member-tab="${tab.key}">${tab.label}</button>`).join('')}
           </div>
         </div>
         <div class="card-body">
-          ${tabs.map((t) => `<div data-member-panel="${t.key}" class="${currentMemberChestsTab === t.key ? '' : 'is-hidden'}">${t.body}</div>`).join('')}
+          ${tabs.map((tab) => `<div data-member-panel="${tab.key}" class="${currentMemberChestsTab === tab.key ? '' : 'is-hidden'}">${tab.body}</div>`).join('')}
         </div>
       </div>`;
     })()}
@@ -1327,25 +1351,30 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       const isChests = currentMemberChestsTab === 'chests';
       const activeOcr = isChests ? rawOcrChests : rawOcrTriumphals;
       if (activeOcr.length === 0) return '';
-      const sourceLabel = isChests ? 'gift chests' : 'triumphal chests';
+      const heading = isChests
+        ? t('Captured Raw OCR — gift chests ({count})', { count: activeOcr.length })
+        : t('Captured Raw OCR — triumphal chests ({count})', { count: activeOcr.length });
+      const intro = isChests
+        ? t('The literal OCR strings the scanner read on the gift chests that ended up attached to this member. Useful when a member is unexpectedly accumulating chests — if you see something nothing like the player\'s name, the matcher misfired. Capture is gated by the "Raw OCR Capture" toggle on the System page.')
+        : t('The literal OCR strings the scanner read on the triumphal chests that ended up attached to this member. Useful when a member is unexpectedly accumulating chests — if you see something nothing like the player\'s name, the matcher misfired. Capture is gated by the "Raw OCR Capture" toggle on the System page.');
       // data-section-key keeps the collapsible's open state stable
       // across renders even though the count + source label change
       // when the operator flips tabs (see feedback_collapsible_section_key).
       return `<details class="card card-collapsible" data-section-key="member-raw-ocr">
-        <summary class="card-header"><h2>Captured Raw OCR — ${sourceLabel} (${activeOcr.length})</h2></summary>
+        <summary class="card-header"><h2>${heading}</h2></summary>
         <div class="card-body">
-          <p class="muted-copy mb-12">The literal OCR strings the scanner read on the ${sourceLabel} that ended up attached to this member. Useful when a member is unexpectedly accumulating chests — if you see something nothing like the player's name, the matcher misfired. Capture is gated by the "Raw OCR Capture" toggle on the System page.</p>
+          <p class="muted-copy mb-12">${intro}</p>
           <table class="table-responsive member-ocr-table">
             <colgroup>
               <col class="col-ocr">
               <col class="col-session">
               <col class="col-date">
             </colgroup>
-            <thead><tr><th>Raw OCR</th><th>Session</th><th>Captured</th></tr></thead><tbody>
+            <thead><tr><th>${t('Raw OCR')}</th><th>${t('Session')}</th><th>${t('Captured')}</th></tr></thead><tbody>
             ${activeOcr.map((r) => `<tr>
-              <td data-label="Raw OCR" data-role="primary"><span class="mrow-name"><code>${esc(r.rawPlayerOcr)}</code></span></td>
-              <td data-label="Session">#${r.sessionId}</td>
-              <td data-label="Captured" data-role="metric">${formatDate(new Date(r.capturedAt).toISOString())}</td>
+              <td data-label="${t('Raw OCR')}" data-role="primary"><span class="mrow-name"><code>${esc(r.rawPlayerOcr)}</code></span></td>
+              <td data-label="${t('Session')}">#${r.sessionId}</td>
+              <td data-label="${t('Captured')}" data-role="metric">${formatDate(new Date(r.capturedAt).toISOString())}</td>
             </tr>`).join('')}
           </tbody></table>
         </div>

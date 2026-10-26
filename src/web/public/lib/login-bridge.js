@@ -7,6 +7,7 @@
 import { apiPost } from './api.js';
 import { normalizeWheelDelta } from './wheel.js';
 import { holdDialogFocus } from './ui.js';
+import { t, tGame } from './i18n.js';
 
 // ---------- Panel markup ----------
 //
@@ -27,20 +28,20 @@ export function loginBridgePanelHTML({ modal = false, bonusLinks = false } = {})
   const dialogAttrs = modal ? ' role="dialog" aria-modal="true" aria-labelledby="loginSessionTitle"' : '';
   const linksRow = bonusLinks ? `
           <div id="loginSessionLinks" class="login-session-links" role="group" aria-labelledby="loginSessionLinksLabel">
-            <span id="loginSessionLinksLabel" class="login-session-links-label">Bonus links</span>
+            <span id="loginSessionLinksLabel" class="login-session-links-label">${t('Bonus links')}</span>
             ${BONUS_PRESETS.map((p) => `<button type="button" class="btn btn-sm" data-present="${p.code}" title="${presentUrl(p.code)}">${p.label}</button>`).join('')}
             <form id="loginSessionLinkForm" class="login-session-linkform" novalidate>
-              <label class="visually-hidden" for="loginSessionLinkInput">Total Battle link</label>
+              <label class="visually-hidden" for="loginSessionLinkInput">${t('Total Battle link')}</label>
               <input id="loginSessionLinkInput" class="input" type="text" inputmode="url"
-                placeholder="Paste a totalbattle.com link…" autocomplete="off" spellcheck="false">
-              <button type="submit" class="btn btn-sm">Open</button>
+                placeholder="${t('Paste a totalbattle.com link…')}" autocomplete="off" spellcheck="false">
+              <button type="submit" class="btn btn-sm">${t('Open')}</button>
             </form>
           </div>` : '';
   return `
     <div id="loginSessionPanel" class="${panelClass}">
       <div class="login-session-card"${dialogAttrs}>
         <div class="login-session-card-header">
-          <h2 id="loginSessionTitle">Login session</h2>
+          <h2 id="loginSessionTitle">${t('Login session')}</h2>
           <div class="login-session-statusrow">
             <span id="loginSessionStatus" class="muted-copy"></span>
             <span class="muted-copy login-session-url" id="loginSessionUrl"></span>
@@ -50,18 +51,18 @@ export function loginBridgePanelHTML({ modal = false, bonusLinks = false } = {})
           <div id="loginSessionViewport" class="login-session-viewport">
             <div class="login-session-screen">
               <canvas id="loginSessionCanvas" class="login-session-canvas" width="1280" height="800" tabindex="0"
-                aria-label="Remote game browser. Keys typed here go to the game; Shift+Escape leaves it."></canvas>
-              <div id="loginSessionOverlay" class="login-session-overlay">Connecting...</div>
+                aria-label="${t('Remote game browser. Keys typed here go to the game; Shift+Escape leaves it.')}"></canvas>
+              <div id="loginSessionOverlay" class="login-session-overlay">${t('Connecting...')}</div>
             </div>
           </div>
           <div class="login-session-side">
             <div class="login-session-actions">
-              <button class="btn btn-primary" data-action="login-session-save">I'm logged in — save session</button>
-              <button class="btn" data-action="login-session-paste">Paste…</button>
-              <button class="btn" data-action="login-session-reload">Reload page</button>
-              <button class="btn" data-action="login-session-cancel">Cancel</button>
+              <button class="btn btn-primary" data-action="login-session-save">${t('I\'m logged in — save session')}</button>
+              <button class="btn" data-action="login-session-paste">${t('Paste…')}</button>
+              <button class="btn" data-action="login-session-reload">${t('Reload page')}</button>
+              <button class="btn" data-action="login-session-cancel">${t('Cancel')}</button>
             </div>${linksRow}
-            <p class="muted-copy login-session-hint">Click in the frame to type — every key goes to the game; <kbd>Shift</kbd>+<kbd>Esc</kbd> leaves it. Save once you are fully in-game.</p>
+            <p class="muted-copy login-session-hint">${t('Click in the frame to type — every key goes to the game; <kbd>Shift</kbd>+<kbd>Esc</kbd> leaves it. Save once you are fully in-game.')}</p>
           </div>
         </div>
       </div>
@@ -75,9 +76,9 @@ export function loginBridgePanelHTML({ modal = false, bonusLinks = false } = {})
 // opening them while signed in — i.e. in the bridge's browser, which holds the
 // shared account. Add a recurring one here.
 const BONUS_PRESETS = [
-  { code: 'dragonroulette100', label: 'Dragon Roulette coins' },
-  { code: 'luckyroulette100', label: 'Lucky Roulette coins' },
-  { code: 'ramsesroulette100', label: '100 Ramses Roulette coins' },
+  { code: 'dragonroulette100', label: t('{game} coins', { game: tGame('Dragon Roulette') }) },
+  { code: 'luckyroulette100', label: t('{game} coins', { game: tGame('Lucky Roulette') }) },
+  { code: 'ramsesroulette100', label: t('100 {game} coins', { game: tGame('Ramses Roulette') }) },
 ];
 
 function presentUrl(code) {
@@ -226,7 +227,7 @@ export async function startLoginSession(clanId, options = {}) {
   onSavedCallback = typeof options.onSaved === 'function' ? options.onSaved : null;
 
   if (loginSessionState) {
-    setLoginSessionStatus('Session already open.');
+    setLoginSessionStatus(t('Session already open.'));
     showLoginSessionPanel(true);
     return;
   }
@@ -237,8 +238,8 @@ export async function startLoginSession(clanId, options = {}) {
   // is used, which routinely takes 20-40 seconds. Without immediately-
   // visible status the user thinks the click did nothing.
   showLoginSessionPanel(true);
-  setLoginSessionOverlay('Launching browser…');
-  setLoginSessionStatus('Launching browser… this can take 30+ seconds on first run.');
+  setLoginSessionOverlay(t('Launching browser…'));
+  setLoginSessionStatus(t('Launching browser… this can take 30+ seconds on first run.'));
 
   try {
     const res = await apiPost('/admin/login-session/start', body);
@@ -247,8 +248,8 @@ export async function startLoginSession(clanId, options = {}) {
       setLoginSessionOverlay(res.error);
       return;
     }
-    setLoginSessionStatus('Connecting to remote browser…');
-    setLoginSessionOverlay('Connecting…');
+    setLoginSessionStatus(t('Connecting to remote browser…'));
+    setLoginSessionOverlay(t('Connecting…'));
     attachLoginSessionSocket(res.width || 1280, res.height || 800);
   } catch (err) {
     const msg = String(err);
@@ -358,7 +359,7 @@ function attachLoginSessionSocket(width, height) {
   };
 
   socket.onopen = () => {
-    setLoginSessionStatus('Live — interact below.');
+    setLoginSessionStatus(t('Live — interact below.'));
   };
   socket.onmessage = (ev) => {
     // Binary = screencast frame. Text = JSON control message.
@@ -384,29 +385,29 @@ function attachLoginSessionSocket(width, height) {
       // actually carries, so surface where it landed and why — a deliberately
       // frugal stream should be explained rather than mysterious.
       const quality = typeof msg.quality === 'string' ? msg.quality : '';
-      setLoginSessionStatus(quality ? `Live (${quality}) — interact below.` : 'Live — interact below.');
+      setLoginSessionStatus(quality ? t('Live ({quality}) — interact below.', { quality }) : t('Live — interact below.'));
     } else if (msg.kind === 'quality' && typeof msg.quality === 'string') {
       // Mid-session step up or down on the quality ladder.
-      setLoginSessionStatus(`Live (${msg.quality}) — interact below.`);
+      setLoginSessionStatus(t('Live ({quality}) — interact below.', { quality: msg.quality }));
     } else if (msg.kind === 'blocked') {
       // The game linked somewhere off totalbattle.com and the server refused
       // to follow. Without this the click just looks dead.
-      const host = typeof msg.host === 'string' && msg.host ? msg.host : 'another site';
-      setLoginSessionStatus(`🚫 Blocked a link to ${host} — only totalbattle.com opens here.`);
+      const host = typeof msg.host === 'string' && msg.host ? msg.host : t('another site');
+      setLoginSessionStatus(t('🚫 Blocked a link to {host} — only totalbattle.com opens here.', { host }));
     } else if (msg.kind === 'fatal') {
       // The remote browser died (crash, OOM, exit). Nothing we send can
       // land any more, so stop rather than stream input into a corpse.
-      const text = typeof msg.message === 'string' ? msg.message : 'The remote browser stopped.';
+      const text = typeof msg.message === 'string' ? msg.message : t('The remote browser stopped.');
       tearDownLoginSession('❌ ' + text, { keepPanel: true });
       setLoginSessionOverlay(text);
     }
   };
   socket.onerror = () => {
-    setLoginSessionOverlay('Connection error');
+    setLoginSessionOverlay(t('Connection error'));
   };
   socket.onclose = () => {
     if (loginSessionState && loginSessionState.socket === socket) {
-      tearDownLoginSession('Disconnected.');
+      tearDownLoginSession(t('Disconnected.'));
     }
   };
 
@@ -503,7 +504,7 @@ function attachLoginSessionSocket(width, height) {
     } catch {
       // Permission denied or unsupported — fall through to prompt
     }
-    const fallback = window.prompt('Paste text to send to the remote browser:');
+    const fallback = window.prompt(t('Paste text to send to the remote browser:'));
     if (fallback) sendPastedText(fallback);
     return false;
   };
@@ -564,11 +565,11 @@ function attachLoginSessionSocket(width, height) {
   // the game reloads on it and redeems the present for the signed-in account.
   const openGameLink = (url, what) => {
     if (socket.readyState !== 1) {
-      setLoginSessionStatus('❌ Not connected to the remote browser.');
+      setLoginSessionStatus(t('❌ Not connected to the remote browser.'));
       return false;
     }
     sendJSON({ kind: 'navigate', url });
-    setLoginSessionStatus(`Opening ${what}…`);
+    setLoginSessionStatus(t('Opening {what}…', { what }));
     return true;
   };
   const linksRow = document.getElementById('loginSessionLinks');
@@ -590,7 +591,7 @@ function attachLoginSessionSocket(width, height) {
       const url = totalBattleUrlOrNull(linkInput.value);
       if (!url) {
         linkInput.setAttribute('aria-invalid', 'true');
-        setLoginSessionStatus('❌ Only totalbattle.com links can be opened here.');
+        setLoginSessionStatus(t('❌ Only totalbattle.com links can be opened here.'));
         return;
       }
       if (openGameLink(url, url)) linkInput.value = '';
@@ -601,15 +602,15 @@ function attachLoginSessionSocket(width, height) {
 }
 
 export async function saveLoginSession() {
-  setLoginSessionStatus('Saving session…');
+  setLoginSessionStatus(t('Saving session…'));
   try {
     const res = await apiPost('/admin/login-session/save', {});
     if (res.error) {
       setLoginSessionStatus('❌ ' + res.error);
       return;
     }
-    tearDownLoginSession(res.message || 'Session saved.');
-    setLoginSessionStatus('✅ ' + (res.message || 'Session saved.'));
+    tearDownLoginSession(res.message || t('Session saved.'));
+    setLoginSessionStatus('✅ ' + (res.message || t('Session saved.')));
     if (onSavedCallback) {
       try { onSavedCallback(res); } catch {}
       onSavedCallback = null;
@@ -620,13 +621,13 @@ export async function saveLoginSession() {
 }
 
 export async function cancelLoginSession() {
-  setLoginSessionStatus('Closing…');
+  setLoginSessionStatus(t('Closing…'));
   try {
     await apiPost('/admin/login-session/cancel', {});
   } catch {
     // Best-effort
   }
-  tearDownLoginSession('Cancelled.');
+  tearDownLoginSession(t('Cancelled.'));
   onSavedCallback = null;
 }
 

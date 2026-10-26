@@ -8,11 +8,12 @@
 // off a guess would quietly mislead.
 
 import { esc, formatGameDayShort } from './ui.js';
+import { t, tGame } from './i18n.js';
 
 const CONFIDENCE_LABEL = {
-  high: 'high confidence',
-  medium: 'medium confidence',
-  low: 'low confidence — one ambiguous donation',
+  high: t('high confidence'),
+  medium: t('medium confidence'),
+  low: t('low confidence — one ambiguous donation'),
 };
 
 /**
@@ -21,15 +22,15 @@ const CONFIDENCE_LABEL = {
  */
 export function guardsTitle(g) {
   if (!g || g.level == null) {
-    return 'Guards level unknown — no Omen Essence or Scientific Tractates donation that reveals it yet';
+    return t('Guards level unknown — no {essence} or {tractates} donation that reveals it yet', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') });
   }
-  const source = g.reported ? 'Entered by an admin' : 'Estimated from Omen Essence and Scientific Tractates donations';
+  const source = g.reported ? t('Entered by an admin') : t('Estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') });
   const parts = [
-    `G${g.level} — ${source}`,
-    `as of ${formatGameDayShort(g.asOf)}`,
+    t('G{level} — {source}', { level: g.level, source }),
+    t('as of {date}', { date: formatGameDayShort(g.asOf) }),
     CONFIDENCE_LABEL[g.confidence] || '',
   ];
-  if (g.stale) parts.push('no new donations since, so it may be higher by now');
+  if (g.stale) parts.push(t('no new donations since, so it may be higher by now'));
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -44,7 +45,7 @@ export function guardsCellHtml(g) {
   const cls = ['guards-level'];
   if (g.confidence === 'low') cls.push('is-low');
   if (g.stale) cls.push('is-stale');
-  const text = `G${g.level}${g.confidence === 'low' ? '?' : ''}`;
+  const text = `${t('G{level}', { level: g.level })}${g.confidence === 'low' ? '?' : ''}`;
   return `<span class="${cls.join(' ')}" title="${esc(guardsTitle(g))}">${text}</span>`;
 }
 
@@ -61,8 +62,8 @@ export function guardsFromEntry(e) {
 }
 
 const GOLD_PASS_TITLE = {
-  current: 'Gold Pass this Triumphal cycle — Union Chests from the pass track plus the 250k Scientific Tractates each one donates',
-  previous: 'Had a Gold Pass last Triumphal cycle — not seen in this one yet',
+  current: t('Gold Pass this {event} cycle — {chests} from the pass track plus the 250k {tractates} each one donates', { event: tGame('Triumphal'), chests: tGame('Union Chests'), tractates: tGame('Scientific Tractates') }),
+  previous: t('Had a Gold Pass last {event} cycle — not seen in this one yet', { event: tGame('Triumphal') }),
 };
 
 /**
@@ -71,7 +72,7 @@ const GOLD_PASS_TITLE = {
  */
 export function goldPassBadgeHtml(status, title = null) {
   if (status !== 'current' && status !== 'previous') return '';
-  return `<span class="gold-pass-badge is-${status}" title="${esc(title || GOLD_PASS_TITLE[status])}">GP</span>`;
+  return `<span class="gold-pass-badge is-${status}" title="${esc(title || GOLD_PASS_TITLE[status])}">${t('GP')}</span>`;
 }
 
 /**

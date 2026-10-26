@@ -14,6 +14,7 @@ import {
   renderArchivedNotice,
 } from './lib/chesttracker-render.js';
 import { computeGameWindow } from './lib/period.js';
+import { t, tn } from './lib/i18n.js';
 
 let selectedSnapshotId = null;
 // Which of the clan's ChestTracker codes we're viewing. null = the live
@@ -34,7 +35,7 @@ function withCode(path) {
   const SNAPSHOT_LIST_LIMIT = 10;
 
   async function renderExternal(el, navigate) {
-    el.innerHTML = '<div class="empty-state"><p>Loading external data…</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${t('Loading external data…')}</p></div>`;
     try {
       const [status, snapshotsResp, weeksResp, codesResp] = await Promise.all([
         api(withCode('/external/status')),
@@ -94,8 +95,8 @@ function withCode(path) {
     } catch (err) {
       if (err?.name === 'UnauthenticatedError') throw err;
       el.innerHTML = `<div class="card"><div class="card-body card-body-padded">
-        <h2>External (ChestTracker.com)</h2>
-        <p class="error">Failed to load: ${esc(String(err?.message || err))}</p>
+        <h2>${t('External (ChestTracker.com)')}</h2>
+        <p class="error">${t('Failed to load: {error}', { error: esc(String(err?.message || err)) })}</p>
       </div></div>`;
     }
   }
@@ -118,10 +119,10 @@ function withCode(path) {
 
     const summaryLines = [];
     if (s.shareCode) {
-      summaryLines.push(`Share code: <code>${esc(s.shareCode)}</code>`);
-      summaryLines.push(`Every ${s.pollIntervalHours}h · Weekly window (Sun 17:00 UTC → Sun 17:00 UTC)`);
+      summaryLines.push(t('Share code: <code>{code}</code>', { code: esc(s.shareCode) }));
+      summaryLines.push(t('Every {hours}h · Weekly window (Sun 17:00 UTC → Sun 17:00 UTC)', { hours: s.pollIntervalHours }));
     } else {
-      summaryLines.push('<em>No share code configured yet — ask an admin to set one on the Admin tab.</em>');
+      summaryLines.push(`<em>${t('No share code configured yet — ask an admin to set one on the Admin tab.')}</em>`);
     }
 
     // Spell out the retained archives so it's obvious nothing was lost
@@ -129,37 +130,41 @@ function withCode(path) {
     const archived = (shareCodes || []).filter((c) => !c.isCurrent);
     if (archived.length) {
       const list = archived
-        .map((c) => `<code>${esc(c.shareCode)}</code> (${c.weeks} week${c.weeks === 1 ? '' : 's'}, ${c.snapshots} snapshots)`)
+        .map((c) => `<code>${esc(c.shareCode)}</code> (${tn(c.weeks, '{n} week', '{n} weeks', { n: c.weeks })}, ${tn(c.snapshots, '{n} snapshot', '{n} snapshots', { n: c.snapshots })})`)
         .join(', ');
-      summaryLines.push(`Archived tracker${archived.length === 1 ? '' : 's'}: ${list} — still browsable from the Tracker picker above.`);
+      summaryLines.push(tn(
+        archived.length,
+        'Archived tracker: {list} — still browsable from the Tracker picker above.',
+        'Archived trackers: {list} — still browsable from the Tracker picker above.',
+        { list },
+      ));
     }
 
     const dotClass = loop.running ? 'ok' : 'idle';
-    const stateText = loop.running ? 'Scheduled polling is active' : 'Scheduled polling is paused';
+    const stateText = loop.running ? t('Scheduled polling is active') : t('Scheduled polling is paused');
     const nextFetch = loop.nextFetchAt
-      ? `Next fetch: ${formatDate(loop.nextFetchAt)}`
+      ? t('Next fetch: {date}', { date: formatDate(loop.nextFetchAt) })
       : '';
     const lastChecked = loop.lastSuccessAt
-      ? `Last checked: ${formatDate(loop.lastSuccessAt)}`
+      ? t('Last checked: {date}', { date: formatDate(loop.lastSuccessAt) })
       : '';
     const latestData = status.latestSnapshot?.fetchedAt
-      ? `Latest data: ${formatDate(status.latestSnapshot.fetchedAt)}`
+      ? t('Latest data: {date}', { date: formatDate(status.latestSnapshot.fetchedAt) })
       : '';
 
     const errorLine = loop.lastError
-      ? `<div class="ext-error-line">Last error (${formatDate(loop.lastError.at)}): ${esc(loop.lastError.message)}</div>`
+      ? `<div class="ext-error-line">${t('Last error ({date}): {message}', { date: formatDate(loop.lastError.at), message: esc(loop.lastError.message) })}</div>`
       : '';
 
     return `<div class="card ext-collapsible-card">
       <details>
         <summary class="ext-collapsible-summary">
-          <span class="ext-collapsible-title">Ingest status</span>
-          <span class="ext-collapsible-meta">${s.shareCode ? `<code>${esc(s.shareCode)}</code> · ${loop.running ? 'active' : 'paused'}` : '<em>not configured</em>'}</span>
+          <span class="ext-collapsible-title">${t('Ingest status')}</span>
+          <span class="ext-collapsible-meta">${s.shareCode ? `<code>${esc(s.shareCode)}</code> · ${loop.running ? t('active') : t('paused')}` : `<em>${t('not configured')}</em>`}</span>
         </summary>
         <div class="ext-collapsible-body">
           <p class="ext-intro">
-            Snapshots ingested from <code>chesttracker.com</code>. Stored locally in a
-            separate DB so clan history survives even if the upstream site changes.
+            ${t('Snapshots ingested from <code>chesttracker.com</code>. Stored locally in a separate DB so clan history survives even if the upstream site changes.')}
           </p>
           <div class="ext-summary-lines">
             ${summaryLines.map((l) => `<div>${l}</div>`).join('')}
@@ -168,8 +173,8 @@ function withCode(path) {
             <span class="ext-status-dot ${dotClass}"></span>
             <span>${esc(stateText)}</span>
             ${nextFetch ? `<span class="ext-status-sep">·</span><span>${esc(nextFetch)}</span>` : ''}
-            ${lastChecked ? `<span class="ext-status-sep">·</span><span title="Includes 304 polls (no new data)">${esc(lastChecked)}</span>` : ''}
-            ${latestData ? `<span class="ext-status-sep">·</span><span title="When chesttracker last had new data for us">${esc(latestData)}</span>` : ''}
+            ${lastChecked ? `<span class="ext-status-sep">·</span><span title="${t('Includes 304 polls (no new data)')}">${esc(lastChecked)}</span>` : ''}
+            ${latestData ? `<span class="ext-status-sep">·</span><span title="${t('When chesttracker last had new data for us')}">${esc(latestData)}</span>` : ''}
           </div>
           ${errorLine}
         </div>
@@ -180,8 +185,8 @@ function withCode(path) {
   function renderCollapsibleSnapshotListCard(snapshots, totalSnapshots) {
     if (!snapshots.length) {
       return `<div class="card"><div class="card-body card-body-padded">
-        <h2 class="ext-subheader">Snapshots</h2>
-        <div class="empty-state"><p>No snapshots yet. An admin needs to configure a share code and enable polling.</p></div>
+        <h2 class="ext-subheader">${t('Snapshots')}</h2>
+        <div class="empty-state"><p>${t('No snapshots yet. An admin needs to configure a share code and enable polling.')}</p></div>
       </div></div>`;
     }
 
@@ -192,30 +197,30 @@ function withCode(path) {
       // column is data-role="hidden" and the summary line carries the
       // players/chests counts.
       return `<tr${active} data-action="ext-select-snapshot" data-id="${s.id}">
-        <td data-label="Fetched" data-role="primary"><span class="mrow-name">${formatDate(s.fetchedAt)}</span><span class="mrow-sub">${s.playerCount} players · ${s.totalChests} chests · ${s.durationDays}d</span></td>
-        <td data-label="CT scanned" data-role="hidden">${s.lastScannedAt ? formatDate(s.lastScannedAt) : '—'}</td>
-        <td data-label="Window" data-role="hidden">${formatDate(s.windowStart)} → ${formatDate(s.windowEnd)}</td>
-        <td data-label="Duration" data-role="hidden">${s.durationDays}d</td>
-        <td data-label="Trigger" data-role="hidden">${renderTriggerBadge(s.trigger)}</td>
-        <td data-label="Players" data-role="hidden">${s.playerCount}</td>
-        <td data-label="Chests" data-role="hidden">${s.totalChests}</td>
-        <td data-label="Points" data-role="metric">${s.totalPoints.toLocaleString()}</td>
+        <td data-label="${t('Fetched')}" data-role="primary"><span class="mrow-name">${formatDate(s.fetchedAt)}</span><span class="mrow-sub">${tn(s.playerCount, '{n} player', '{n} players', { n: s.playerCount })} · ${tn(s.totalChests, '{n} chest', '{n} chests', { n: s.totalChests })} · ${tn(s.durationDays, '{n}d', '{n}d', { n: s.durationDays })}</span></td>
+        <td data-label="${t('CT scanned')}" data-role="hidden">${s.lastScannedAt ? formatDate(s.lastScannedAt) : '—'}</td>
+        <td data-label="${t('Window')}" data-role="hidden">${formatDate(s.windowStart)} → ${formatDate(s.windowEnd)}</td>
+        <td data-label="${t('Duration')}" data-role="hidden">${tn(s.durationDays, '{n}d', '{n}d', { n: s.durationDays })}</td>
+        <td data-label="${t('Trigger')}" data-role="hidden">${renderTriggerBadge(s.trigger)}</td>
+        <td data-label="${t('Players')}" data-role="hidden">${s.playerCount}</td>
+        <td data-label="${t('Chests')}" data-role="hidden">${s.totalChests}</td>
+        <td data-label="${t('Points')}" data-role="metric">${s.totalPoints.toLocaleString()}</td>
       </tr>`;
     }).join('');
 
     const meta = totalSnapshots > snapshots.length
-      ? `Showing ${snapshots.length} of ${totalSnapshots} · click a row to load it above`
-      : 'Select any row to load it above';
+      ? t('Showing {shown} of {total} · click a row to load it above', { shown: snapshots.length, total: totalSnapshots })
+      : t('Select any row to load it above');
 
     return `<div class="card ext-collapsible-card">
       <details>
         <summary class="ext-collapsible-summary">
-          <span class="ext-collapsible-title">Snapshot history</span>
+          <span class="ext-collapsible-title">${t('Snapshot history')}</span>
           <span class="ext-collapsible-meta">${esc(meta)}</span>
         </summary>
         <div class="ext-collapsible-body">
           <table class="table-responsive ext-snapshots-table"><thead><tr>
-            <th>Fetched</th><th title="Upstream chesttracker scan time">CT scanned</th><th>Window</th><th>Duration</th><th>Trigger</th><th>Players</th><th>Chests</th><th>Points</th>
+            <th>${t('Fetched')}</th><th title="${t('Upstream chesttracker scan time')}">${t('CT scanned')}</th><th>${t('Window')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Players')}</th><th>${t('Chests')}</th><th>${t('Points')}</th>
           </tr></thead><tbody>${rows}</tbody></table>
         </div>
       </details>
@@ -224,7 +229,8 @@ function withCode(path) {
 
   function renderTriggerBadge(trigger) {
     const cls = trigger === 'manual' ? 'epic' : trigger === 'backfill' ? 'rare' : 'common';
-    return `<span class="chest-type ${cls}">${esc(trigger)}</span>`;
+    const TRIGGER_LABELS = { scheduled: t('scheduled'), manual: t('manual'), backfill: t('backfill') };
+    return `<span class="chest-type ${cls}">${esc(TRIGGER_LABELS[trigger] ?? trigger)}</span>`;
   }
 
   // Snapshot-detail card rendering lives in lib/chesttracker-render.js
@@ -237,8 +243,8 @@ function withCode(path) {
     const viewCode = status?.settings?.viewShareCode || detail?.shareCode || '';
     const isArchived = status?.settings?.viewIsArchived === true;
     const title = viewCode
-      ? `ChestTracker.com data (${esc(viewCode)})`
-      : 'ChestTracker.com data';
+      ? t('ChestTracker.com data ({code})', { code: esc(viewCode) })
+      : t('ChestTracker.com data');
     const codeInfo = (shareCodes || []).find((c) => c.shareCode === viewCode) || null;
     return renderSnapshotDetailCardHtml({
       detail,
@@ -278,15 +284,15 @@ function withCode(path) {
     const label = `${formatDateShort(detail.windowStart)} → ${formatDateShort(detail.windowEnd)}`;
     let tag = '';
     if (index === 0 && isCurrentGameWeek(detail.windowStart)) {
-      tag = '<span class="ext-week-nav-tag">current</span>';
+      tag = `<span class="ext-week-nav-tag">${t('current')}</span>`;
     } else if (weeks.length > 1) {
       tag = `<span class="ext-week-nav-tag">${index + 1} / ${weeks.length}</span>`;
     }
 
-    return `<div class="ext-week-nav period-nav" role="group" aria-label="Switch week">
-      <button class="btn btn-tight" data-action="ext-week-prev" data-target-id="${olderId ?? ''}" ${olderId == null ? 'disabled' : ''} title="Previous week">←</button>
+    return `<div class="ext-week-nav period-nav" role="group" aria-label="${t('Switch week')}">
+      <button class="btn btn-tight" data-action="ext-week-prev" data-target-id="${olderId ?? ''}" ${olderId == null ? 'disabled' : ''} title="${t('Previous week')}">←</button>
       <span class="period-nav-label">${label}${tag}</span>
-      <button class="btn btn-tight" data-action="ext-week-next" data-target-id="${newerId ?? ''}" ${newerId == null ? 'disabled' : ''} title="Next week">→</button>
+      <button class="btn btn-tight" data-action="ext-week-next" data-target-id="${newerId ?? ''}" ${newerId == null ? 'disabled' : ''} title="${t('Next week')}">→</button>
     </div>`;
   }
 
@@ -320,7 +326,7 @@ function withCode(path) {
     const nextAt = status?.loop?.nextFetchAt;
     if (running && nextAt) {
       const untilStr = formatTimeUntil(nextAt);
-      if (untilStr) parts.push(`Next fetch in ${untilStr}`);
+      if (untilStr) parts.push(t('Next fetch in {time}', { time: untilStr }));
     }
     return parts.join(' · ');
   }
@@ -334,17 +340,17 @@ function withCode(path) {
     const then = new Date(iso).getTime();
     const diffSec = Math.floor((then - Date.now()) / 1000);
     if (!Number.isFinite(diffSec)) return null;
-    if (diffSec <= 0) return 'any moment';
-    if (diffSec < 60) return '<1m';
+    if (diffSec <= 0) return t('any moment');
+    if (diffSec < 60) return t('<1m');
     const totalMin = Math.round(diffSec / 60);
-    if (totalMin < 60) return `${totalMin}m`;
+    if (totalMin < 60) return tn(totalMin, '{n}m', '{n}m');
     const totalHr = Math.floor(totalMin / 60);
     const remMin = totalMin - totalHr * 60;
     if (totalHr < 24) {
-      return remMin > 0 ? `${totalHr}h ${remMin}m` : `${totalHr}h`;
+      return remMin > 0 ? t('{h}h {m}m', { h: totalHr, m: remMin }) : tn(totalHr, '{n}h', '{n}h');
     }
     const totalDay = Math.floor(totalHr / 24);
-    return `${totalDay}d`;
+    return tn(totalDay, '{n}d', '{n}d');
   }
 
   function wireHandlers(el) {
@@ -410,70 +416,72 @@ function withCode(path) {
     const loop = status?.loop || { running: false, nextFetchAt: null, lastError: null };
 
     const statusBadge = s.enabled
-      ? '<span class="chest-type uncommon">Enabled</span>'
-      : '<span class="chest-type common">Disabled</span>';
+      ? `<span class="chest-type uncommon">${t('Enabled')}</span>`
+      : `<span class="chest-type common">${t('Disabled')}</span>`;
 
     const statusLine = loop.running
-      ? `Scheduled polling is <strong>active</strong>${loop.nextFetchAt ? ` · next fetch ${formatDate(loop.nextFetchAt)}` : ''}`
-      : 'Scheduled polling is <strong>paused</strong>';
+      ? (loop.nextFetchAt
+        ? t('Scheduled polling is <strong>active</strong> · next fetch {date}', { date: formatDate(loop.nextFetchAt) })
+        : t('Scheduled polling is <strong>active</strong>'))
+      : t('Scheduled polling is <strong>paused</strong>');
 
     const errorBlock = loop.lastError
-      ? `<div class="ext-error-line">Last error (${formatDate(loop.lastError.at)}): ${esc(loop.lastError.message)}</div>`
+      ? `<div class="ext-error-line">${t('Last error ({date}): {message}', { date: formatDate(loop.lastError.at), message: esc(loop.lastError.message) })}</div>`
       : '';
 
     return `<div class="card">
       <div class="card-header">
-        <h2>ChestTracker Integration</h2>
+        <h2>${t('ChestTracker Integration')}</h2>
         ${statusBadge}
       </div>
       <div class="card-body card-body-padded">
         <details>
-          <summary class="collapse-toggle">Show ChestTracker settings</summary>
-          <p class="muted-copy mb-12 mt-12">Pulls weekly chest-count snapshots from a public <code>chesttracker.com</code> share code and stores them locally. When disabled, the ChestTracker tab is hidden from the nav and no background polling happens. Changes apply live — no restart required.</p>
+          <summary class="collapse-toggle">${t('Show ChestTracker settings')}</summary>
+          <p class="muted-copy mb-12 mt-12">${t('Pulls weekly chest-count snapshots from a public <code>chesttracker.com</code> share code and stores them locally. When disabled, the ChestTracker tab is hidden from the nav and no background polling happens. Changes apply live — no restart required.')}</p>
 
           <details class="mb-12">
-            <summary class="collapse-toggle">How do I set this up?</summary>
+            <summary class="collapse-toggle">${t('How do I set this up?')}</summary>
             <ol class="muted-copy" style="padding-left: 20px; line-height: 1.6;">
-              <li>On <a href="https://chesttracker.com" target="_blank" rel="noopener">chesttracker.com</a>, open your clan's public counts page. The URL looks like <code>chesttracker.com/counts/XXXXX</code>.</li>
-              <li>Copy the <code>XXXXX</code> portion (4–32 letters/digits) and paste it into <strong>Share code</strong> below.</li>
-              <li>Tick <strong>Enable ChestTracker integration</strong>, click <strong>Save</strong>. On first enable the app backfills the last N weeks automatically.</li>
-              <li>Use <strong>Fetch current week</strong> to force an immediate update, or <strong>Fetch a past week…</strong> to pull a specific historical window.</li>
+              <li>${t('On {link}, open your clan\'s public counts page. The URL looks like <code>chesttracker.com/counts/XXXXX</code>.', { link: '<a href="https://chesttracker.com" target="_blank" rel="noopener">chesttracker.com</a>' })}</li>
+              <li>${t('Copy the <code>XXXXX</code> portion (4–32 letters/digits) and paste it into <strong>Share code</strong> below.')}</li>
+              <li>${t('Tick <strong>Enable ChestTracker integration</strong>, click <strong>Save</strong>. On first enable the app backfills the last N weeks automatically.')}</li>
+              <li>${t('Use <strong>Fetch current week</strong> to force an immediate update, or <strong>Fetch a past week…</strong> to pull a specific historical window.')}</li>
             </ol>
           </details>
 
           <div class="inline-form-row mb-8" style="align-items: center;">
             <label style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" id="ext-admin-enabled" ${s.enabled ? 'checked' : ''}>
-              <span>Enable ChestTracker integration</span>
+              <span>${t('Enable ChestTracker integration')}</span>
             </label>
           </div>
 
           <div class="mb-8">
-            <label>Share code</label>
-            <input type="text" id="ext-admin-share-code" class="input" value="${esc(s.shareCode || '')}" placeholder="e.g. XQOOZXYGBC" maxlength="32">
-            <p class="muted-copy mt-4">Changing this doesn't delete anything. The previous code's snapshots are <strong>archived</strong> against this clan and stay readable from the <em>Tracker</em> picker on the ChestTracker tab.</p>
+            <label>${t('Share code')}</label>
+            <input type="text" id="ext-admin-share-code" class="input" value="${esc(s.shareCode || '')}" placeholder="${t('e.g. XQOOZXYGBC')}" maxlength="32">
+            <p class="muted-copy mt-4">${t('Changing this doesn\'t delete anything. The previous code\'s snapshots are <strong>archived</strong> against this clan and stay readable from the <em>Tracker</em> picker on the ChestTracker tab.')}</p>
           </div>
           <div class="mb-8">
-            <label>Poll interval <span class="muted-copy">(hours, 0.25–24 — fractions OK)</span></label>
+            <label>${t('Poll interval')} <span class="muted-copy">${t('(hours, 0.25–24 — fractions OK)')}</span></label>
             <input type="number" id="ext-admin-poll-hours" class="input" min="0.0833" max="24" step="0.25" value="${s.pollIntervalHours ?? 3}" style="max-width: 140px;">
           </div>
           <div class="mb-12">
-            <label>Initial backfill <span class="muted-copy">(prior weeks, 0–52)</span></label>
+            <label>${t('Initial backfill')} <span class="muted-copy">${t('(prior weeks, 0–52)')}</span></label>
             <input type="number" id="ext-admin-backfill-weeks" class="input" min="0" max="52" value="${s.backfillWeeks ?? 4}" style="max-width: 140px;">
-            <p class="muted-copy mt-4">On first enable, the app fetches each of the past N weeks as a separate snapshot so you get real weekly-trend data from day one.</p>
+            <p class="muted-copy mt-4">${t('On first enable, the app fetches each of the past N weeks as a separate snapshot so you get real weekly-trend data from day one.')}</p>
           </div>
 
           <hr style="border:0; border-top:1px solid var(--border); margin: 16px 0 8px;">
-          <p class="muted-copy mb-8">The ingest window is always one game week (Sun 17:00 UTC → next Sun 17:00 UTC). Each scheduled poll refreshes the current week's snapshot until the Sunday rollover.</p>
+          <p class="muted-copy mb-8">${t('The ingest window is always one game week (Sun 17:00 UTC → next Sun 17:00 UTC). Each scheduled poll refreshes the current week\'s snapshot until the Sunday rollover.')}</p>
 
           <div class="inline-form-row">
-            <button class="btn btn-primary" id="ext-admin-save">Save</button>
-            <button class="btn" id="ext-admin-fetch-now" ${s.shareCode ? '' : 'disabled'}>Fetch current week</button>
-            <button class="btn" id="ext-admin-fetch-historical" ${s.shareCode ? '' : 'disabled'}>Fetch a past week…</button>
-            <button class="btn" id="ext-admin-backfill" ${s.shareCode ? '' : 'disabled'}>Backfill past weeks…</button>
-            <a class="btn" href="/api/external/poll-log.csv" download>Download poll log (CSV)</a>
+            <button class="btn btn-primary" id="ext-admin-save">${t('Save')}</button>
+            <button class="btn" id="ext-admin-fetch-now" ${s.shareCode ? '' : 'disabled'}>${t('Fetch current week')}</button>
+            <button class="btn" id="ext-admin-fetch-historical" ${s.shareCode ? '' : 'disabled'}>${t('Fetch a past week…')}</button>
+            <button class="btn" id="ext-admin-backfill" ${s.shareCode ? '' : 'disabled'}>${t('Backfill past weeks…')}</button>
+            <a class="btn" href="/api/external/poll-log.csv" download>${t('Download poll log (CSV)')}</a>
           </div>
-          <p class="muted-copy mt-8">The <strong>Initial backfill</strong> figure above only applies the first time a share code is enabled. To pull more history later, use <strong>Backfill past weeks…</strong> — it re-runs the same fetch for the last N weeks and is safe to repeat.</p>
+          <p class="muted-copy mt-8">${t('The <strong>Initial backfill</strong> figure above only applies the first time a share code is enabled. To pull more history later, use <strong>Backfill past weeks…</strong> — it re-runs the same fetch for the last N weeks and is safe to repeat.')}</p>
 
           <p id="ext-admin-status-line" class="muted-copy mt-8">${statusLine}</p>
           ${errorBlock}
@@ -496,7 +504,7 @@ function withCode(path) {
 
     saveBtn?.addEventListener('click', async () => {
       saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
+      saveBtn.textContent = t('Saving…');
       try {
         await apiPut('/external/config', {
           shareCode: shareInput.value.trim(),
@@ -504,7 +512,7 @@ function withCode(path) {
           backfillWeeks: Number(backInput.value),
           enabled: enabledInput.checked,
         });
-        if (statusLine) statusLine.textContent = 'Saved. Settings applied.';
+        if (statusLine) statusLine.textContent = t('Saved. Settings applied.');
         const fresh = await api('/external/status').catch(() => null);
         if (fresh) {
           fetchBtn.disabled = !fresh.settings.shareCode;
@@ -516,64 +524,67 @@ function withCode(path) {
         }
       } catch (err) {
         if (err?.name === 'UnauthenticatedError') throw err;
-        await notify(String(err?.message || err), 'Save failed');
+        await notify(String(err?.message || err), t('Save failed'));
       } finally {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Save';
+        saveBtn.textContent = t('Save');
       }
     });
 
     fetchBtn?.addEventListener('click', async () => {
       fetchBtn.disabled = true;
-      fetchBtn.textContent = 'Fetching…';
+      fetchBtn.textContent = t('Fetching…');
       try {
         const result = await apiPost('/external/fetch', {});
         if (result?.error) {
-          await notify(result.error, 'Fetch failed');
+          await notify(result.error, t('Fetch failed'));
         } else if (statusLine) {
           statusLine.textContent = result?.status === 'not_modified'
-            ? 'Up to date — chesttracker returned 304, no new snapshot.'
-            : `Inserted current-week snapshot with ${result.playerCount} players.`;
+            ? t('Up to date — chesttracker returned 304, no new snapshot.')
+            : tn(result.playerCount, 'Inserted current-week snapshot with {n} player.', 'Inserted current-week snapshot with {n} players.', { n: result.playerCount });
         }
       } catch (err) {
         if (err?.name === 'UnauthenticatedError') throw err;
-        await notify(String(err?.message || err), 'Fetch failed');
+        await notify(String(err?.message || err), t('Fetch failed'));
       } finally {
         fetchBtn.disabled = false;
-        fetchBtn.textContent = 'Fetch current week';
+        fetchBtn.textContent = t('Fetch current week');
       }
     });
 
     histBtn?.addEventListener('click', async () => {
       const weeksStr = await promptDialog(
-        'How many weeks ago? (1 = last week, 2 = two weeks ago, …). Must be ≥ 1.',
+        t('How many weeks ago? (1 = last week, 2 = two weeks ago, …). Must be ≥ 1.'),
         {
-          title: 'Fetch a past week',
+          title: t('Fetch a past week'),
           defaultValue: '1',
-          confirmLabel: 'Fetch',
+          confirmLabel: t('Fetch'),
         },
       );
       if (!weeksStr) return;
       const n = Number.parseInt(String(weeksStr), 10);
       if (!Number.isFinite(n) || n < 1 || n > 520) {
-        await notify('Enter a number between 1 and 520.', 'Invalid input');
+        await notify(t('Enter a number between 1 and 520.'), t('Invalid input'));
         return;
       }
       histBtn.disabled = true;
-      histBtn.textContent = 'Fetching…';
+      histBtn.textContent = t('Fetching…');
       try {
         const result = await apiPost('/external/fetch', { weeksAgo: n });
         if (result?.error) {
-          await notify(result.error, 'Fetch failed');
+          await notify(result.error, t('Fetch failed'));
         } else if (statusLine) {
-          statusLine.textContent = `Inserted snapshot for week ${n} ago (${result.playerCount} players).`;
+          statusLine.textContent = tn(n, 'Inserted snapshot for week {n} ago ({players}).', 'Inserted snapshot for week {n} ago ({players}).', {
+            n,
+            players: tn(result.playerCount, '{n} player', '{n} players', { n: result.playerCount }),
+          });
         }
       } catch (err) {
         if (err?.name === 'UnauthenticatedError') throw err;
-        await notify(String(err?.message || err), 'Fetch failed');
+        await notify(String(err?.message || err), t('Fetch failed'));
       } finally {
         histBtn.disabled = false;
-        histBtn.textContent = 'Fetch a past week…';
+        histBtn.textContent = t('Fetch a past week…');
       }
     });
 
@@ -582,28 +593,28 @@ function withCode(path) {
     // rather than awaiting the whole thing.
     backfillBtn?.addEventListener('click', async () => {
       const weeksStr = await promptDialog(
-        'How many past weeks should I fetch? (1–52). Weeks already stored are re-fetched harmlessly; weeks from before the tracker existed come back empty.',
-        { title: 'Backfill past weeks', defaultValue: '12', confirmLabel: 'Backfill' },
+        t('How many past weeks should I fetch? (1–52). Weeks already stored are re-fetched harmlessly; weeks from before the tracker existed come back empty.'),
+        { title: t('Backfill past weeks'), defaultValue: '12', confirmLabel: t('Backfill') },
       );
       if (!weeksStr) return;
       const n = Number.parseInt(String(weeksStr), 10);
       if (!Number.isFinite(n) || n < 1 || n > 52) {
-        await notify('Enter a number between 1 and 52.', 'Invalid input');
+        await notify(t('Enter a number between 1 and 52.'), t('Invalid input'));
         return;
       }
 
       backfillBtn.disabled = true;
-      backfillBtn.textContent = 'Starting…';
+      backfillBtn.textContent = t('Starting…');
       try {
         await apiPost('/external/backfill', { weeks: n });
-        backfillBtn.textContent = 'Backfilling…';
+        backfillBtn.textContent = t('Backfilling…');
         await pollBackfillProgress(statusLine);
       } catch (err) {
         if (err?.name === 'UnauthenticatedError') throw err;
-        await notify(String(err?.message || err), 'Backfill failed');
+        await notify(String(err?.message || err), t('Backfill failed'));
       } finally {
         backfillBtn.disabled = false;
-        backfillBtn.textContent = 'Backfill past weeks…';
+        backfillBtn.textContent = t('Backfill past weeks…');
       }
     });
   }
@@ -620,15 +631,15 @@ function withCode(path) {
       const bf = fresh?.loop?.backfill;
       if (!bf) return;
       if (bf.running) {
-        if (statusLine) statusLine.textContent = `Backfilling… week ${bf.done} of ${bf.total}`;
+        if (statusLine) statusLine.textContent = t('Backfilling… week {done} of {total}', { done: bf.done, total: bf.total });
         continue;
       }
       if (statusLine) {
-        const bits = [`${bf.done} week${bf.done === 1 ? '' : 's'} processed`];
-        if (bf.inserted) bits.push(`${bf.inserted} with data`);
-        if (bf.empty) bits.push(`${bf.empty} empty (before this tracker's history)`);
-        if (bf.failed) bits.push(`${bf.failed} failed`);
-        statusLine.textContent = `Backfill complete — ${bits.join(', ')}.`;
+        const bits = [tn(bf.done, '{n} week processed', '{n} weeks processed', { n: bf.done })];
+        if (bf.inserted) bits.push(t('{n} with data', { n: bf.inserted }));
+        if (bf.empty) bits.push(t('{n} empty (before this tracker\'s history)', { n: bf.empty }));
+        if (bf.failed) bits.push(t('{n} failed', { n: bf.failed }));
+        statusLine.textContent = t('Backfill complete — {summary}.', { summary: bits.join(', ') });
       }
       return;
     }

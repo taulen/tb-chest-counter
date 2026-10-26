@@ -3,14 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SESSION_TTL_MS = exports.ALLOWED_THEMES = void 0;
+exports.SESSION_TTL_MS = exports.ALLOWED_LANGUAGES = exports.ALLOWED_THEMES = void 0;
 exports.isClanRole = isClanRole;
 exports.isValidTheme = isValidTheme;
+exports.isValidLanguage = isValidLanguage;
 exports.normalizeUsername = normalizeUsername;
 exports.validateUsernamePolicy = validateUsernamePolicy;
 exports.validatePasswordPolicy = validatePasswordPolicy;
 exports.createUser = createUser;
 exports.updateTheme = updateTheme;
+exports.updateLanguage = updateLanguage;
 exports.authenticate = authenticate;
 exports.getUserById = getUserById;
 exports.getAllUsers = getAllUsers;
@@ -47,6 +49,10 @@ function isClanRole(value) {
 exports.ALLOWED_THEMES = ['auto', 'dark', 'light', 'oled'];
 function isValidTheme(value) {
     return typeof value === 'string' && exports.ALLOWED_THEMES.includes(value);
+}
+exports.ALLOWED_LANGUAGES = ['en', 'es', 'fr', 'ru', 'de'];
+function isValidLanguage(value) {
+    return typeof value === 'string' && exports.ALLOWED_LANGUAGES.includes(value);
 }
 function normalizeUsername(username) {
     return username.trim();
@@ -112,6 +118,7 @@ function rowToUser(row) {
         lastLogin: row.last_login || null,
         lastVisited: row.last_visited || null,
         theme: isValidTheme(rawTheme) ? rawTheme : 'dark',
+        language: isValidLanguage(row.language) ? row.language : null,
     };
 }
 function createUser(username, password, role = 'user', createdBy, clanId) {
@@ -141,11 +148,16 @@ function createUser(username, password, role = 'user', createdBy, clanId) {
         // A new account follows its device until its owner picks a theme. The
         // column default stays 'dark' only for rows that predate 'auto'.
         theme: 'auto',
+        language: null,
     };
 }
 function updateTheme(id, theme) {
     const db = (0, database_js_1.getDb)();
     db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, id);
+}
+function updateLanguage(id, language) {
+    const db = (0, database_js_1.getDb)();
+    db.prepare('UPDATE users SET language = ? WHERE id = ?').run(language, id);
 }
 function authenticate(username, password) {
     const db = (0, database_js_1.getDb)();

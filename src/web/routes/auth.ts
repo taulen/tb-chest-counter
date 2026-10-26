@@ -46,7 +46,7 @@ export function createAuthRouter(): Router {
 
     res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions(req));
 
-    res.json({ user: { id: user.id, username: user.username, role: user.role, clanId: user.clanId, theme: user.theme } });
+    res.json({ user: { id: user.id, username: user.username, role: user.role, clanId: user.clanId, theme: user.theme, language: user.language } });
   });
 
   // POST /api/auth/logout
@@ -75,6 +75,7 @@ export function createAuthRouter(): Router {
         role: u.role,
         clanId: u.clanId,
         theme: u.theme,
+        language: u.language,
         multiClan: u.role !== 'superadmin' && userRepo.listSwitchableClans(u.id).length > 1,
       },
       activeClan: activeClan ? {
@@ -97,6 +98,17 @@ export function createAuthRouter(): Router {
     }
     userRepo.updateTheme(req.user!.id, theme);
     res.json({ ok: true, theme });
+  });
+
+  // PUT /api/auth/language - persist the user's UI language, the same way as
+  // the theme: localStorage first for this browser, this for every other one.
+  router.put('/language', requireAuth, (req, res) => {
+    const { language } = req.body ?? {};
+    if (!userRepo.isValidLanguage(language)) {
+      return res.status(400).json({ error: 'Invalid language' });
+    }
+    userRepo.updateLanguage(req.user!.id, language);
+    res.json({ ok: true, language });
   });
 
   // PUT /api/auth/password - change own password

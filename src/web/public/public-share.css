@@ -12,17 +12,20 @@
   grid-column: 2;
   justify-self: center;
 }
-/* Phones: no room to centre beside the theme picker — name left, picker right. */
+/* Phones: no room beside a clan name for both pickers (language + theme) —
+   name on its own row, the pickers right-aligned on the row under it. */
 @media (max-width: 640px) {
-  .public-share-header { grid-template-columns: 1fr auto; }
-  .public-share-header .brand { grid-column: 1; justify-self: start; }
-  .public-share-theme { grid-column: 2; }
+  .public-share-header { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+  .public-share-header .brand { grid-column: 1; justify-self: start; min-width: 0; }
+  .public-share-theme { grid-column: 1; }
 }
 
 /* Theme picker in the header's right-hand column (the brand owns the centre). */
 .public-share-theme {
   grid-column: 3;
   justify-self: end;
+  display: flex;
+  gap: 6px;
 }
 .public-share-theme-select {
   width: auto;

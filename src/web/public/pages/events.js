@@ -38,6 +38,7 @@ import {
   isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
 import { mountTinmanScores } from './tinman-scores.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 const PAGE_SIZE = 25;
 const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
@@ -105,7 +106,7 @@ export async function renderEvents(el, navigate, eventKey) {
     if (!catalog) catalog = [];
   }
   if (!catalog.length) {
-    el.innerHTML = '<div class="card"><div class="card-body"><p>No events configured.</p></div></div>';
+    el.innerHTML = `<div class="card"><div class="card-body"><p>${t('No events configured.')}</p></div></div>`;
     return;
   }
 
@@ -119,7 +120,7 @@ export async function renderEvents(el, navigate, eventKey) {
 
   page = 1;
   sort = { key: 'points', dir: 'desc' };  // columns differ per event → fresh sort
-  el.innerHTML = `${eventTabsHtml(currentEventKey)}<div class="empty-state"><p>Loading…</p></div>`;
+  el.innerHTML = `${eventTabsHtml(currentEventKey)}<div class="empty-state"><p>${t('Loading…')}</p></div>`;
 
   // Load this event's occurrence windows. mode:'occurrences' (feed runs) or
   // 'cycle' (Triumphal's rolling 30 days) with a non-empty list → occurrence
@@ -184,7 +185,7 @@ function eventTabsHtml(activeKey) {
     .map((e) => {
       const href = `#events/${e.key}`;
       const active = e.key === activeKey ? 'is-active' : '';
-      return `<a class="resources-tab ${active}" href="${href}"><span class="event-tab-name">${esc(e.name)}</span>${eventScheduleTag(e)}</a>`;
+      return `<a class="resources-tab ${active}" href="${href}"><span class="event-tab-name">${esc(tGame(e.name))}</span>${eventScheduleTag(e)}</a>`;
     })
     .join('')}</div>`;
 }
@@ -195,8 +196,8 @@ function eventTabsHtml(activeKey) {
 // it gets the countdown to its next reset instead. Nothing for events with no
 // schedule at all (Citadels) or a down feed.
 function eventScheduleTag(e) {
-  if (e.endsAt) return `<span class="event-tab-next">Resets in ${esc(timeLeftUntil(e.endsAt))}</span>`;
-  if (e.live) return '<span class="event-tab-next is-live">Live now</span>';
+  if (e.endsAt) return `<span class="event-tab-next">${t('Resets in {time}', { time: esc(timeLeftUntil(e.endsAt)) })}</span>`;
+  if (e.live) return `<span class="event-tab-next is-live">${t('Live now')}</span>`;
   if (!e.nextFrom || !e.nextLabel) return '';
   return `<span class="event-tab-next">${esc(e.nextLabel)} · ${esc(relativeUntil(e.nextFrom))}</span>`;
 }
@@ -210,13 +211,13 @@ function relativeUntil(iso) {
   if (!Number.isFinite(startMs)) return '';
   const wallMs = startMs - Date.now();
   const HOUR = 60 * 60 * 1000;
-  if (wallMs <= 0) return 'now';
+  if (wallMs <= 0) return t('now');
   if (wallMs < 24 * HOUR) {
-    if (wallMs >= HOUR) return `in ${Math.floor(wallMs / HOUR)}h`;
+    if (wallMs >= HOUR) return tn(Math.floor(wallMs / HOUR), 'in {n}h', 'in {n}h');
     const mins = Math.floor(wallMs / (60 * 1000));
-    return mins < 1 ? 'now' : `in ${mins}m`;
+    return mins < 1 ? t('now') : tn(mins, 'in {n}m', 'in {n}m');
   }
-  return `in ${gameDaysUntil(startMs)}d`;
+  return tn(gameDaysUntil(startMs), 'in {n}d', 'in {n}d');
 }
 
 // Time left until a reset, two units, mirroring the in-game timer — which counts
@@ -227,10 +228,10 @@ function timeLeftUntil(iso) {
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
   const DAY = 24 * HOUR;
-  if (ms <= 0) return 'moments';
-  if (ms >= DAY) return `${Math.floor(ms / DAY)}d ${Math.floor((ms % DAY) / HOUR)}h`;
-  if (ms >= HOUR) return `${Math.floor(ms / HOUR)}h ${Math.floor((ms % HOUR) / MIN)}m`;
-  return `${Math.max(1, Math.floor(ms / MIN))}m`;
+  if (ms <= 0) return t('moments');
+  if (ms >= DAY) return t('{days}d {hours}h', { days: Math.floor(ms / DAY), hours: Math.floor((ms % DAY) / HOUR) });
+  if (ms >= HOUR) return t('{hours}h {minutes}m', { hours: Math.floor(ms / HOUR), minutes: Math.floor((ms % HOUR) / MIN) });
+  return t('{minutes}m', { minutes: Math.max(1, Math.floor(ms / MIN)) });
 }
 
 // Real-UTC ISO [from, to] window for the current selection (empty → all-time).
@@ -322,7 +323,7 @@ async function loadEssence(from, to) {
       api(`/resources/summary?${eqs}`),
     ]);
     const types = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
-    const essenceType = types.find((t) => t.slug === ESSENCE_SLUG);
+    const essenceType = types.find((type) => type.slug === ESSENCE_SLUG);
     if (!essenceType) return;  // clan/type not present → no column
     const summary = Array.isArray(summaryRes?.rows) ? summaryRes.rows : [];
     const map = new Map();
@@ -386,15 +387,19 @@ function columnBreakdownTip(column, row) {
   if (!parts || !parts.length) return '';
   const split = (row.breakdown && row.breakdown[column.key]) || {};
   return parts
-    .map((name) => `${name.replace(/\s*Chest$/i, '')}: ${(split[name] || 0).toLocaleString()}`)
+    .map((name) => {
+      const shown = tGame(name);
+      return `${shown === name ? name.replace(/\s*Chest$/i, '') : shown}: ${(split[name] || 0).toLocaleString()}`;
+    })
     .join(' · ');
 }
 
 // Fixed Weekly/Monthly/Yearly/All selector — the fallback for events with no
 // calendar schedule (Triumphal, Citadels) or when the feed is unavailable.
 function fixedControlsHtml() {
+  const periodLabels = { weekly: t('Weekly'), monthly: t('Monthly'), yearly: t('Yearly'), all: t('All') };
   const periodBtns = PERIODS.map(
-    (p) => `<button class="btn ${period === p ? 'active' : ''}" data-tperiod="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`,
+    (p) => `<button class="btn ${period === p ? 'active' : ''}" data-tperiod="${p}">${periodLabels[p]}</button>`,
   ).join('');
   return `
     <div class="period-selector">${periodBtns}</div>
@@ -414,24 +419,24 @@ function occurrenceControlsHtml() {
   const len = occurrences.length;
   const isAll = occSel === 'all';
   const occ = isAll ? null : (occurrences[occSel] || occurrences[0]);
-  const label = isAll ? 'All time' : (occ ? occ.label : '');
+  const label = isAll ? t('All time') : (occ ? occ.label : '');
   // "live" reads as part of the label ("Jul 26–30 · live") rather than as a
   // separate badge floating in the nav's fixed-width slot. Skipped in cycle mode:
   // the newest cycle is always the live one, so the flag carries no information —
   // the window's hover text gives the reset countdown instead.
   const isCurrent = !isAll && occ && occ.isCurrent;
   const live = isCurrent && occMode !== 'cycle'
-    ? '<span class="events-occ-live" title="Event in progress">· live</span>'
+    ? `<span class="events-occ-live" title="${t('Event in progress')}">${t('· live')}</span>`
     : '';
   // Runs older than the calendar feed's ~1-month reach have dates projected
   // from the event's cadence, not read from the feed. The totals are still the
   // clan's own chests — only the window's edges are inferred — so this is a
   // quiet footnote on the label, not a warning.
   const est = !isAll && occ && occ.estimated
-    ? '<span class="events-occ-est" title="Dates projected from this event\'s schedule — the calendar feed only carries about a month of history">· est.</span>'
+    ? `<span class="events-occ-est" title="${esc(t("Dates projected from this event's schedule — the calendar feed only carries about a month of history"))}">${t('· est.')}</span>`
     : '';
   const labelTitle = isCurrent && occMode === 'cycle' && occ.to
-    ? ` title="Current cycle — resets in ${esc(timeLeftUntil(occ.to))}"`
+    ? ` title="${t('Current cycle — resets in {time}', { time: esc(timeLeftUntil(occ.to)) })}"`
     : '';
   // In "All time" the arrows stay ENABLED and act as the way back into the
   // occurrence list (← → the oldest / newest run) — otherwise the only exit is
@@ -440,14 +445,23 @@ function occurrenceControlsHtml() {
   const nextDisabled = !isAll && occSel <= 0;
   // Cycle mode steps through 30-day cycles, not discrete runs — say so in the
   // arrow tooltips rather than calling them "occurrences".
-  const unit = occMode === 'cycle' ? 'cycle' : 'occurrence';
+  const isCycle = occMode === 'cycle';
+  const prevTitle = isAll
+    ? (isCycle ? t('Oldest cycle') : t('Oldest occurrence'))
+    : (isCycle ? t('Older cycle') : t('Older occurrence'));
+  const nextTitle = isAll
+    ? (isCycle ? t('Newest cycle') : t('Newest occurrence'))
+    : (isCycle ? t('Newer cycle') : t('Newer occurrence'));
+  const allTitle = isAll
+    ? (isCycle ? t('Showing all cycles — pick a single one with the arrows') : t('Showing all occurrences — pick a single one with the arrows'))
+    : (isCycle ? t('Aggregate across all cycles') : t('Aggregate across all occurrences'));
   return `
     <div class="period-nav events-nav">
-      <button class="btn btn-tight" data-occ-nav="prev" ${prevDisabled ? 'disabled' : ''} title="${isAll ? `Oldest ${unit}` : `Older ${unit}`}">←</button>
+      <button class="btn btn-tight" data-occ-nav="prev" ${prevDisabled ? 'disabled' : ''} title="${prevTitle}">←</button>
       <span class="period-nav-label"${labelTitle}>${esc(label)}${live}${est}</span>
-      <button class="btn btn-tight" data-occ-nav="next" ${nextDisabled ? 'disabled' : ''} title="${isAll ? `Newest ${unit}` : `Newer ${unit}`}">→</button>
+      <button class="btn btn-tight" data-occ-nav="next" ${nextDisabled ? 'disabled' : ''} title="${nextTitle}">→</button>
     </div>
-    <button class="btn ${isAll ? 'active' : ''}" data-occ-all title="${isAll ? `Showing all ${unit}s — pick a single one with the arrows` : `Aggregate across all ${unit}s`}">All time</button>`;
+    <button class="btn ${isAll ? 'active' : ''}" data-occ-all title="${allTitle}">${t('All time')}</button>`;
 }
 
 /**
@@ -463,6 +477,23 @@ function occurrenceControlsHtml() {
  * simply predate this clan's history, and a zero bar says the clan turned up
  * and scored nothing.
  */
+function seriesDeltaSentence(delta, inProgress) {
+  const pct = Math.abs(delta);
+  if (delta === 0) {
+    return inProgress
+      ? t('The latest run is level with the one before it, and is still in progress.')
+      : t('The latest run is level with the one before it.');
+  }
+  if (delta > 0) {
+    return inProgress
+      ? t('The latest run is {pct}% above the one before it, and is still in progress.', { pct })
+      : t('The latest run is {pct}% above the one before it.', { pct });
+  }
+  return inProgress
+    ? t('The latest run is {pct}% below the one before it, and is still in progress.', { pct })
+    : t('The latest run is {pct}% below the one before it.', { pct });
+}
+
 function eventSeriesCardHtml() {
   const runs = (eventSeries?.runs || []).filter(Boolean);
   // Two points is a line, not a trend; three is the least that shows a shape.
@@ -472,14 +503,19 @@ function eventSeriesCardHtml() {
   const bars = runs.map((r) => {
     // Runs older than the calendar feed's reach carry projected dates (see
     // `estimated`), so the hover text says so rather than presenting them as read.
-    const est = r.estimated ? ' (estimated dates)' : '';
+    const run = r.estimated ? t('{run} (estimated dates)', { run: esc(r.label) }) : esc(r.label);
     if (r.points === null) {
-      return `<span class="evseries-col" title="${esc(r.label)}${est}: no data">
+      return `<span class="evseries-col" title="${t('{run}: no data', { run })}">
           <span class="evseries-gap"></span>
         </span>`;
     }
     const h = Math.max(2, Math.round((r.points / peak) * 100));
-    return `<span class="evseries-col" title="${esc(r.label)}${est}: ${r.points.toLocaleString()} pts · ${(r.chests ?? 0).toLocaleString()} chests · ${(r.participants ?? 0).toLocaleString()} players">
+    return `<span class="evseries-col" title="${t('{run}: {points} · {chests} · {players}', {
+      run,
+      points: t('{n} pts', { n: r.points.toLocaleString() }),
+      chests: tn(r.chests ?? 0, '{n} chest', '{n} chests'),
+      players: tn(r.participants ?? 0, '{n} player', '{n} players'),
+    })}">
         <span class="evseries-bar${r.isCurrent ? ' is-current' : ''}" style="height: ${h}%"></span>
       </span>`;
   }).join('');
@@ -494,8 +530,8 @@ function eventSeriesCardHtml() {
   return `
     <div class="card mt-24">
       <div class="card-header">
-        <h2>Run over run</h2>
-        <span class="card-header-hint">Points per occurrence · newest on the right</span>
+        <h2>${t('Run over run')}</h2>
+        <span class="card-header-hint">${t('Points per occurrence · newest on the right')}</span>
       </div>
       <div class="card-body card-body-padded">
         <div class="evseries-chart">${bars}</div>
@@ -504,7 +540,7 @@ function eventSeriesCardHtml() {
           <span>${esc(runs[runs.length - 1]?.label || '')}</span>
         </div>
         ${delta !== null ? `<p class="muted-copy evseries-note">
-          The latest run is ${delta === 0 ? 'level with' : `${Math.abs(delta)}% ${delta > 0 ? 'above' : 'below'}`} the one before it${latest.isCurrent ? ', and is still in progress' : ''}.
+          ${seriesDeltaSentence(delta, latest.isCurrent)}
         </p>` : ''}
       </div>
     </div>`;
@@ -515,7 +551,7 @@ function paint() {
   const el = mountedEl;
 
   if (!cache) {
-    el.innerHTML = `${eventTabsHtml(currentEventKey)}<div class="card"><div class="card-body"><p>Failed to load event data.</p></div></div>`;
+    el.innerHTML = `${eventTabsHtml(currentEventKey)}<div class="card"><div class="card-body"><p>${t('Failed to load event data.')}</p></div></div>`;
     wireTabsOnly();
     return;
   }
@@ -542,7 +578,7 @@ function paint() {
     className: [className, sort.key === key ? 'is-sorted' : ''].filter(Boolean).join(' '),
   });
   const countableCols = matrixColumns.filter((c) => c.countInTotal !== false);
-  const totalTitle = `Sum of: ${countableCols.map((c) => c.label).join(', ') || '—'}`;
+  const totalTitle = t('Sum of: {columns}', { columns: countableCols.map((c) => tGame(c.label)).join(', ') || '—' });
 
   const all = sortedForDisplay(ranked, matrixColumns);
   const total = all.length;
@@ -569,7 +605,7 @@ function paint() {
   // Optional lead card, e.g. Ancients "Vaults Taken Down" — every leveled
   // (vault) chest is one vault kill, so sum the level-card chest counts.
   const vaultsCard = cache.levelSummaryLabel
-    ? `<div class="stat-card stat-card-lead"><div class="label">${esc(cache.levelSummaryLabel)}</div><div class="value">${(Array.isArray(cache.levelCard) ? cache.levelCard.reduce((s, l) => s + (l.chests || 0), 0) : 0).toLocaleString()}</div></div>`
+    ? `<div class="stat-card stat-card-lead"><div class="label">${esc(tGame(cache.levelSummaryLabel))}</div><div class="value">${(Array.isArray(cache.levelCard) ? cache.levelCard.reduce((s, l) => s + (l.chests || 0), 0) : 0).toLocaleString()}</div></div>`
     : '';
   // Info-card lead boxes for rarely-awarded chests (e.g. Dark Omens' leader
   // "Finish Reward"): show who received it in this timeframe, not a column.
@@ -579,14 +615,14 @@ function paint() {
       .map((p) => ({ name: p.memberName || '—', count: p.counts[ic.key] || 0 }))
       .sort((a, b) => b.count - a.count);
     const totalCount = recips.reduce((s, r) => s + r.count, 0);
-    const chestsLabel = `${totalCount.toLocaleString()} chest${totalCount === 1 ? '' : 's'}`;
+    const chestsLabel = tn(totalCount, '{n} chest', '{n} chests');
     let value;   // hero — the chest count is what matters
     let sub;     // secondary — who received them
     let cardTitle;
     if (!recips.length) {
       value = '—';
-      sub = 'Not awarded';
-      cardTitle = 'Not awarded in this timeframe';
+      sub = t('Not awarded');
+      cardTitle = t('Not awarded in this timeframe');
     } else if (recips.length === 1) {
       value = chestsLabel;
       sub = esc(recips[0].name);
@@ -597,7 +633,7 @@ function paint() {
       cardTitle = recips.map((r) => `${r.name}: ${r.count}`).join(' · ');
     }
     return `<div class="stat-card stat-card-lead" title="${esc(cardTitle)}">
-      <div class="label">🏆 ${esc(ic.label)}</div>
+      <div class="label">🏆 ${esc(tGame(ic.label))}</div>
       <div class="value">${value}</div>
       <div class="events-finish-sub">${sub}</div>
     </div>`;
@@ -609,16 +645,16 @@ function paint() {
   const configErrors = Array.isArray(cache.configErrors) ? cache.configErrors : [];
   const configWarnHtml = configErrors.length
     ? `<div class="events-config-warning">
-        <div class="events-config-warning-title">⚠ This event's chest list doesn't match the data</div>
+        <div class="events-config-warning-title">${t("⚠ This event's chest list doesn't match the data")}</div>
         <ul>${configErrors
           .map((e) => {
             if (e.kind === 'source') {
-              return `<li>Source filter <code>${esc(e.declared)}</code> matches no chest source, so the rule using it is switched off.</li>`;
+              return `<li>${t('Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.', { declared: esc(e.declared) })}</li>`;
             }
             if (e.resolvedTo) {
-              return `<li><code>${esc(e.declared)}</code> is a stale spelling of <strong>${esc(e.resolvedTo)}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.</li>`;
+              return `<li>${t('<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.', { declared: esc(e.declared), resolved: esc(e.resolvedTo) })}</li>`;
             }
-            return `<li><code>${esc(e.declared)}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.</li>`;
+            return `<li>${t('<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.', { declared: esc(e.declared) })}</li>`;
           })
           .join('')}</ul>
       </div>`
@@ -629,13 +665,13 @@ function paint() {
   const goldPassIds = new Set(Array.isArray(cache.goldPass?.memberIds) ? cache.goldPass.memberIds : []);
   const goldPassCard = cache.goldPass
     ? `<div class="stat-card" title="${esc(cache.goldPass.basis === 'union-only'
-      ? 'Members with Union Chests from the pass track. This clan does not capture resources, so the 250k donation each pass chest makes cannot be checked.'
-      : 'Members with Union Chests from the pass track AND the exact 250k Scientific Tractates each pass chest donates')}">
-        <div class="label">Gold Pass</div><div class="value">${goldPassIds.size.toLocaleString()}</div>
-        <div class="sub">of ${(cache.uniqueParticipants || 0).toLocaleString()} participants</div>
+      ? t('Members with Union Chests from the pass track. This clan does not capture resources, so the 250k donation each pass chest makes cannot be checked.')
+      : t('Members with Union Chests from the pass track AND the exact 250k {resource} each pass chest donates', { resource: tGame('Scientific Tractates') }))}">
+        <div class="label">${t('Gold Pass')}</div><div class="value">${goldPassIds.size.toLocaleString()}</div>
+        <div class="sub">${tn(cache.uniqueParticipants || 0, 'of {n} participant', 'of {n} participants')}</div>
       </div>`
     : '';
-  const goldPassTitle = 'Gold Pass in the cycle shown — Union Chests from the pass track plus the 250k Scientific Tractates each one donates';
+  const goldPassTitle = t('Gold Pass in the cycle shown — Union Chests from the pass track plus the 250k {resource} each one donates', { resource: tGame('Scientific Tractates') });
 
   const statCards = `
     ${configWarnHtml}
@@ -643,34 +679,34 @@ function paint() {
       ${finishCards}
       ${vaultsCard}
       ${goldPassCard}
-      <div class="stat-card"><div class="label">Total Chests</div><div class="value">${(cache.totalChests || 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">Participants</div><div class="value">${(cache.uniqueParticipants || 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">Total Points</div><div class="value">${(cache.totalPoints || 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">Avg / Participant</div><div class="value">${avgPer.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Total Chests')}</div><div class="value">${(cache.totalChests || 0).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Participants')}</div><div class="value">${(cache.uniqueParticipants || 0).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Total Points')}</div><div class="value">${(cache.totalPoints || 0).toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">${t('Avg / Participant')}</div><div class="value">${avgPer.toLocaleString()}</div></div>
     </div>`;
 
   // ── optional level-distribution card (vaults) ──
   let levelCardHtml = '';
   if (cache.showLevelCard && Array.isArray(cache.levelCard) && cache.levelCard.length) {
-    const levelHeader = cache.levelCardLabel || 'Vault';
+    const levelHeader = cache.levelCardLabel ? tGame(cache.levelCardLabel) : tGame('Vault');
     const rows = cache.levelCard
       .map(
         (r) => `<tr>
-          <td data-label="${esc(levelHeader)}" data-role="primary"><span class="mrow-name">${esc(r.label)}</span><span class="mrow-sub">${(r.participants || 0).toLocaleString()} players</span></td>
-          <td data-label="Players" class="col-num" data-role="hidden">${(r.participants || 0).toLocaleString()}</td>
-          <td data-label="Chests" class="col-num">${(r.chests || 0).toLocaleString()}</td>
-          <td data-label="Points" class="col-num" data-role="metric">${(r.points || 0).toLocaleString()}</td>
+          <td data-label="${esc(levelHeader)}" data-role="primary"><span class="mrow-name">${esc(tGame(r.label))}</span><span class="mrow-sub">${tn(r.participants || 0, '{n} player', '{n} players')}</span></td>
+          <td data-label="${t('Players')}" class="col-num" data-role="hidden">${(r.participants || 0).toLocaleString()}</td>
+          <td data-label="${t('Chests')}" class="col-num">${(r.chests || 0).toLocaleString()}</td>
+          <td data-label="${t('Points')}" class="col-num" data-role="metric">${(r.points || 0).toLocaleString()}</td>
         </tr>`,
       )
       .join('');
     levelCardHtml = `
       <div class="card">
-        <div class="card-header"><h2>By level</h2></div>
+        <div class="card-header"><h2>${t('By level')}</h2></div>
         <div class="card-body">
           <div class="events-scroll">
             <table class="table-responsive events-level-table">
               <colgroup><col class="col-level"><col class="col-num"><col class="col-num"><col class="col-num"></colgroup>
-              <thead><tr><th>${esc(levelHeader)}</th><th class="num">Players</th><th class="num">Chests</th><th class="num">Points</th></tr></thead>
+              <thead><tr><th>${esc(levelHeader)}</th><th class="num">${t('Players')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Points')}</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -688,27 +724,27 @@ function paint() {
 
   const unresolvedTitle = (c) =>
     c.unresolvedReason === 'source'
-      ? `${c.label}: its source filter matches nothing, so this column is a config error, not a result.`
-      : `${c.label}: no chest in the database matches this column's name, so its zeros are a config error, not a result.`;
+      ? t('{column}: its source filter matches nothing, so this column is a config error, not a result.', { column: tGame(c.label) })
+      : t("{column}: no chest in the database matches this column's name, so its zeros are a config error, not a result.", { column: tGame(c.label) });
 
   const headCols = matrixColumns
     .map((c) => {
       const key = `col:${c.key}`;
-      const title = c.unresolved ? unresolvedTitle(c) : c.label;
+      const title = c.unresolved ? unresolvedTitle(c) : tGame(c.label);
       const mark = c.unresolved ? '<span class="events-unresolved-mark">!</span>' : '';
-      return th(key, `${esc(c.label)}${mark}`, 'num', title);
+      return th(key, `${esc(tGame(c.label))}${mark}`, 'num', title);
     })
     .join('');
 
   // Informational Essence column header (Dark Omens only). Not a point column —
   // the title spells that out so nobody mistakes it for participation.
   const essenceHead = showEssence
-    ? th('essence', 'Essence', 'num', 'Omen Essence donated (from Resources) — informational, not counted in Points')
+    ? th('essence', t('Essence'), 'num', t('{resource} donated (from Resources) — informational, not counted in Points', { resource: tGame('Omen Essence') }))
     : '';
 
   const colspan = matrixColumns.length + 5 + (showEssence ? 1 : 0);
   const body = pageRows.length === 0
-    ? `<tr><td colspan="${colspan}" class="empty-state-cell">No participation in this timeframe.</td></tr>`
+    ? `<tr><td colspan="${colspan}" class="empty-state-cell">${t('No participation in this timeframe.')}</td></tr>`
     : pageRows
         .map((row) => {
           const cells = matrixColumns
@@ -723,7 +759,7 @@ function paint() {
                 const zero = c.unresolved
                   ? `<span class="events-unresolved" title="${esc(unresolvedTitle(c))}">?</span>`
                   : '<span class="events-zero">—</span>';
-                return `<td data-label="${esc(c.label)}" class="col-num">${zero}</td>`;
+                return `<td data-label="${esc(tGame(c.label))}" class="col-num">${zero}</td>`;
               }
               // Aggregated columns (e.g. Dark Omens' Minor/Major/Epic) carry a
               // per-chest split — surface it as a hover tooltip so the combined
@@ -732,33 +768,33 @@ function paint() {
               const cell = tip
                 ? `<span class="events-combined" title="${esc(tip)}">${v.toLocaleString()}</span>`
                 : v.toLocaleString();
-              return `<td data-label="${esc(c.label)}" class="col-num">${cell}</td>`;
+              return `<td data-label="${esc(tGame(c.label))}" class="col-num">${cell}</td>`;
             })
             .join('');
           let essenceCell = '';
           if (showEssence) {
             const ev = essenceByMember.get(row.memberId) || 0;
             essenceCell = ev <= 0
-              ? '<td data-label="Essence" class="col-num"><span class="events-zero">—</span></td>'
-              : `<td data-label="Essence" class="col-num" title="${esc(formatResourceAmount(ESSENCE_SLUG, ev))}">${esc(formatResourceCompact(ESSENCE_SLUG, ev))}</td>`;
+              ? `<td data-label="${t('Essence')}" class="col-num"><span class="events-zero">—</span></td>`
+              : `<td data-label="${t('Essence')}" class="col-num" title="${esc(formatResourceAmount(ESSENCE_SLUG, ev))}">${esc(formatResourceCompact(ESSENCE_SLUG, ev))}</td>`;
           }
           return `<tr class="events-row" data-member-id="${row.memberId ?? ''}" data-member-name="${esc(row.memberName)}">
             <td class="caret-col" data-role="hidden"><span class="caret">▸</span></td>
-            <td data-label="Rank" data-role="lead">${row._rank}</td>
-            <td data-label="Player" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(row.memberId, row.memberName), goldPassIds.has(row.memberId) ? 'current' : null, goldPassTitle)}</span><span class="mrow-sub">${(row._ctotal || 0).toLocaleString()} chests</span></td>
+            <td data-label="${t('Rank')}" data-role="lead">${row._rank}</td>
+            <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(row.memberId, row.memberName), goldPassIds.has(row.memberId) ? 'current' : null, goldPassTitle)}</span><span class="mrow-sub">${tn(row._ctotal || 0, '{n} chest', '{n} chests')}</span></td>
             ${cells}
             ${essenceCell}
-            <td data-label="Total" class="col-num" data-role="hidden">${(row._ctotal || 0).toLocaleString()}</td>
-            <td data-label="Points" class="col-num" data-role="metric">${(row.countablePoints || 0).toLocaleString()}</td>
+            <td data-label="${t('Total')}" class="col-num" data-role="hidden">${(row._ctotal || 0).toLocaleString()}</td>
+            <td data-label="${t('Points')}" class="col-num" data-role="metric">${(row.countablePoints || 0).toLocaleString()}</td>
           </tr>`;
         })
         .join('');
 
   const pagination = total > PAGE_SIZE
     ? `<div class="pagination">
-        <button class="btn btn-tight" data-events-page="prev" ${page <= 1 ? 'disabled' : ''}>← Prev</button>
-        <span class="pagination-info">Page ${page} of ${totalPages} · ${total} participants</span>
-        <button class="btn btn-tight" data-events-page="next" ${page >= totalPages ? 'disabled' : ''}>Next →</button>
+        <button class="btn btn-tight" data-events-page="prev" ${page <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${t('Page {page} of {pages}', { page, pages: totalPages })} · ${tn(total, '{n} participant', '{n} participants', { n: total })}</span>
+        <button class="btn btn-tight" data-events-page="next" ${page >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
 
@@ -769,12 +805,12 @@ function paint() {
     ? `<div class="events-np-list">${nonParticipants
         .map((m) => `<span class="events-np-item">${memberLink(m.id, m.name)}</span>`)
         .join('')}</div>`
-    : '<p class="empty-state">Every active member participated.</p>';
+    : `<p class="empty-state">${t('Every active member participated.')}</p>`;
   // Collapsed by default; data-section-key keeps its open state stable across
   // re-renders, and nonParticipantsOpen preserves it across in-place repaints.
   const nonParticipantsHtml = `
     <details class="card card-collapsible" data-section-key="events-nonparticipants"${nonParticipantsOpen ? ' open' : ''}>
-      <summary class="card-header"><h2>Did not participate (${nonParticipants.length})</h2></summary>
+      <summary class="card-header"><h2>${t('Did not participate ({count})', { count: nonParticipants.length })}</h2></summary>
       <div class="card-body">${npBody}</div>
     </details>`;
 
@@ -783,8 +819,8 @@ function paint() {
     <div class="card">
       <div class="card-header events-header">
         <div class="events-title">
-          <h2>${esc(cache.name)}</h2>
-          <span class="card-header-hint">${esc(cache.description || '')}</span>
+          <h2>${esc(tGame(cache.name))}</h2>
+          <span class="card-header-hint">${esc(tGame(cache.description) || '')}</span>
         </div>
         <div class="events-controls">${controlsHtml}</div>
       </div>
@@ -794,19 +830,19 @@ function paint() {
     ${eventSeriesCardHtml()}
     ${levelCardHtml}
     <div class="card">
-      <div class="card-header"><h2>Participants (${cache.uniqueParticipants || 0})</h2></div>
+      <div class="card-header"><h2>${t('Participants ({count})', { count: cache.uniqueParticipants || 0 })}</h2></div>
       <div class="card-body">
         <div class="events-scroll">
           <table class="table-responsive events-table">
             ${colGroup}
             <thead><tr>
               <th class="caret-col"></th>
-              ${th('rank', 'Rank')}
-              ${th('name', 'Player')}
+              ${th('rank', t('Rank'))}
+              ${th('name', t('Player'))}
               ${headCols}
               ${essenceHead}
-              ${th('total', 'Total', 'num', totalTitle)}
-              ${th('points', 'Points', 'num')}
+              ${th('total', t('Total'), 'num', totalTitle)}
+              ${th('points', t('Points'), 'num')}
             </tr></thead>
             <tbody>${body}</tbody>
           </table>
@@ -960,7 +996,7 @@ async function toggleParticipantRow(row) {
   const memberName = row.dataset.memberName || '';
   const detail = document.createElement('tr');
   detail.className = 'events-detail-row';
-  detail.innerHTML = `<td colspan="${row.cells.length}"><div class="events-detail-inner">Loading…</div></td>`;
+  detail.innerHTML = `<td colspan="${row.cells.length}"><div class="events-detail-inner">${t('Loading…')}</div></td>`;
   row.after(detail);
 
   const { from, to } = periodWindow();
@@ -978,22 +1014,22 @@ async function toggleParticipantRow(row) {
   if (!inner) return;
   const rows = resp && Array.isArray(resp.rows) ? resp.rows : [];
   if (!rows.length) {
-    inner.innerHTML = '<div class="empty-state"><p>No chests in this timeframe.</p></div>';
+    inner.innerHTML = `<div class="empty-state"><p>${t('No chests in this timeframe.')}</p></div>`;
     return;
   }
   const bodyHtml = rows
     .map((r) => `<tr>
-      <td>${esc(r.chestName)}</td>
-      <td>${esc(r.source || '—')}</td>
+      <td>${esc(tGame(r.chestName))}</td>
+      <td>${esc(r.source ? tGame(r.source) : '—')}</td>
       <td class="num">${(r.chests || 0).toLocaleString()}</td>
       <td class="num">${(r.points || 0).toLocaleString()}</td>
       <td class="history-date">${r.lastSeen ? formatDate(r.lastSeen) : '—'}</td>
     </tr>`)
     .join('');
   inner.innerHTML = `
-    <div class="chest-history-header">What ${esc(memberName)} collected</div>
+    <div class="chest-history-header">${t('What {name} collected', { name: esc(memberName) })}</div>
     <table class="chest-history-table">
-      <thead><tr><th>Chest</th><th>Source</th><th class="num">Count</th><th class="num">Points</th><th>Last received</th></tr></thead>
+      <thead><tr><th>${t('Chest')}</th><th>${t('Source')}</th><th class="num">${t('Count')}</th><th class="num">${t('Points')}</th><th>${t('Last received')}</th></tr></thead>
       <tbody>${bodyHtml}</tbody>
     </table>`;
 }

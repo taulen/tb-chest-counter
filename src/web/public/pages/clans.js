@@ -18,6 +18,7 @@ import {
   reloadLoginSession,
   pasteIntoLoginSession,
 } from '../lib/login-bridge.js';
+import { t, tn, tGame } from '../lib/i18n.js';
 
 export { saveLoginSession, cancelLoginSession, reloadLoginSession, pasteIntoLoginSession };
 
@@ -54,7 +55,7 @@ export function startLoginSession(clanId) {
     // and toast the server's readiness message, instead of leaving a stale
     // "Needs re-authentication" card until the operator reloads.
     onSaved: (res) => {
-      notify(res?.message || 'Login session saved.', 'Login');
+      notify(res?.message || t('Login session saved.'), t('Login'));
       const { el, refreshClanIndicator } = activeRenderCtx;
       if (el) {
         renderClans(el, refreshClanIndicator);
@@ -72,7 +73,7 @@ export async function renderClans(el, refreshClanIndicator) {
   activeRenderCtx = { el, refreshClanIndicator };
   const currentUser = getCurrentUser();
   if (currentUser?.role !== 'superadmin' && currentUser?.role !== 'admin') {
-    el.innerHTML = '<div class="empty-state"><p>Admin access required.</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${t('Admin access required.')}</p></div>`;
     return;
   }
   const isSuperAdmin = currentUser.role === 'superadmin';
@@ -80,7 +81,7 @@ export async function renderClans(el, refreshClanIndicator) {
   try {
     clansData = await fetch('/api/clans').then((r) => r.json());
   } catch {
-    el.innerHTML = '<div class="empty-state"><p>Failed to load clans.</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${t('Failed to load clans.')}</p></div>`;
     return;
   }
   const allClans = Array.isArray(clansData.clans) ? clansData.clans : [];
@@ -115,8 +116,8 @@ export async function renderClans(el, refreshClanIndicator) {
 
   el.innerHTML = `
     <p class="page-section-intro">${isSuperAdmin
-      ? "Each clan has its own member roster, chest data, browser session, Discord channel, and ChestTracker share code. The single-instance scanner cycles through every active clan in sequence on each scheduled interval."
-      : "Manage your clan's Discord and ChestTracker integrations, refresh the Total Battle login session, and run member capture or first-scan onboarding."}</p>
+      ? t("Each clan has its own member roster, chest data, browser session, Discord channel, and ChestTracker share code. The single-instance scanner cycles through every active clan in sequence on each scheduled interval.")
+      : t("Manage your clan's Discord and ChestTracker integrations, refresh the Total Battle login session, and run member capture or first-scan onboarding.")}</p>
 
     <!-- Login bridge panel — shared with the setup wizard via
          lib/login-bridge.js. Rendered as a centered modal over the page
@@ -128,13 +129,13 @@ export async function renderClans(el, refreshClanIndicator) {
 
     ${isSuperAdmin ? `
     <div class="card">
-      <div class="card-header"><h2>Add Clan</h2></div>
+      <div class="card-header"><h2>${t('Add Clan')}</h2></div>
       <div class="card-body card-body-padded">
         <div class="inline-form-row">
-          <div><label>Clan name</label><input id="newClanName" class="input" type="text" placeholder="e.g. Arcane Dawn"></div>
-          <button class="btn btn-primary" data-action="clan-create">Create</button>
+          <div><label>${t('Clan name')}</label><input id="newClanName" class="input" type="text" placeholder="${t('e.g. Arcane Dawn')}"></div>
+          <button class="btn btn-primary" data-action="clan-create">${t('Create')}</button>
         </div>
-        <p class="muted-copy mt-12">After creating, sign in to TB for the new clan via the in-app login bridge, then run member capture and the first scan from this page. Clan switching happens inside the game's canvas — every clan logs into the same TB domain.</p>
+        <p class="muted-copy mt-12">${t("After creating, sign in to TB for the new clan via the in-app login bridge, then run member capture and the first scan from this page. Clan switching happens inside the game's canvas — every clan logs into the same TB domain.")}</p>
       </div>
     </div>
     ` : ''}
@@ -170,7 +171,7 @@ export async function renderClans(el, refreshClanIndicator) {
     const clanId = clanIdAttr ? Number.parseInt(clanIdAttr, 10) : null;
     if (action === 'clan-create') {
       const name = $('#newClanName')?.value.trim();
-      if (!name) return notify('Clan name is required.', 'Create clan');
+      if (!name) return notify(t('Clan name is required.'), t('Create clan'));
       try {
         const r = await fetch('/api/clans', {
           method: 'POST',
@@ -178,10 +179,10 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify({ name }),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Create failed', 'Create clan');
+        if (!r.ok) return notify(j.error || t('Create failed'), t('Create clan'));
         renderClans(el, refreshClanIndicator);
       } catch {
-        notify('Create failed.', 'Create clan');
+        notify(t('Create failed.'), t('Create clan'));
       }
     } else if (action === 'clan-rename' && clanId) {
       const nameInput = el.querySelector(`#clan-name-${clanId}`);
@@ -201,11 +202,11 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify(body),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Save failed', 'Save clan');
+        if (!r.ok) return notify(j.error || t('Save failed'), t('Save clan'));
         renderClans(el, refreshClanIndicator);
         if (typeof refreshClanIndicator === 'function') await refreshClanIndicator();
       } catch {
-        notify('Save failed.', 'Save clan');
+        notify(t('Save failed.'), t('Save clan'));
       }
     } else if (action === 'clan-discord-save' && clanId) {
       const body = {
@@ -231,7 +232,7 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify(body),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Discord save failed', 'Discord');
+        if (!r.ok) return notify(j.error || t('Discord save failed'), t('Discord'));
         // The recipient list is normalised server-side (mentions unwrapped,
         // duplicates and non-IDs dropped). Write it back so a silently
         // discarded entry is visible instead of looking saved.
@@ -241,17 +242,17 @@ export async function renderClans(el, refreshClanIndicator) {
           if (submitted !== j.digestShareUserId) {
             notify(
               j.digestShareUserId
-                ? `Saved. DM recipients read as: ${j.digestShareUserId}`
-                : 'Saved, but no valid Discord user ID was found — DM recipients are now empty.',
-              'Discord',
+                ? t('Saved. DM recipients read as: {ids}', { ids: j.digestShareUserId })
+                : t('Saved, but no valid Discord user ID was found — DM recipients are now empty.'),
+              t('Discord'),
             );
             return;
           }
         }
-        if (j.warning) notify(j.warning, 'Discord');
-        else notify('Discord settings saved.', 'Discord');
+        if (j.warning) notify(j.warning, t('Discord'));
+        else notify(t('Discord settings saved.'), t('Discord'));
       } catch {
-        notify('Discord save failed.', 'Discord');
+        notify(t('Discord save failed.'), t('Discord'));
       }
     } else if (action === 'clan-discord-add-recipient-row' && clanId) {
       addRecipientRow(el, clanId, '');
@@ -261,19 +262,19 @@ export async function renderClans(el, refreshClanIndicator) {
       try {
         const r = await fetch(`/api/clans/${clanId}/discord/test`, { method: 'POST' });
         const j = await r.json();
-        notify(j.ok ? 'Test message sent.' : `Test failed: ${j.error || 'unknown'}`, 'Discord test');
+        notify(j.ok ? t('Test message sent.') : t('Test failed: {error}', { error: j.error || t('unknown') }), t('Discord test'));
       } catch {
-        notify('Test failed.', 'Discord test');
+        notify(t('Test failed.'), t('Discord test'));
       }
     } else if (action === 'clan-discord-digest-dm-test' && clanId) {
       try {
         const r = await fetch(`/api/clans/${clanId}/discord/digest-dm-test`, { method: 'POST' });
         const j = await r.json();
         notify(j.ok
-          ? (j.message || 'Digest DM sent.')
-          : `DM test failed: ${j.error || 'unknown'}`, 'Digest DM test');
+          ? (j.message || t('Digest DM sent.'))
+          : t('DM test failed: {error}', { error: j.error || t('unknown') }), t('Digest DM test'));
       } catch {
-        notify('DM test failed.', 'Digest DM test');
+        notify(t('DM test failed.'), t('Digest DM test'));
       }
     } else if (action === 'clan-ct-save' && clanId) {
       const body = {
@@ -288,10 +289,10 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify(body),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'ChestTracker save failed', 'ChestTracker');
-        notify('ChestTracker settings saved.', 'ChestTracker');
+        if (!r.ok) return notify(j.error || t('ChestTracker save failed'), t('ChestTracker'));
+        notify(t('ChestTracker settings saved.'), t('ChestTracker'));
       } catch {
-        notify('ChestTracker save failed.', 'ChestTracker');
+        notify(t('ChestTracker save failed.'), t('ChestTracker'));
       }
     } else if (action === 'clan-resources-collect' && clanId) {
       await runClanResourceCollect(clanId, {});
@@ -299,10 +300,8 @@ export async function renderClans(el, refreshClanIndicator) {
       await runClanResourceCollect(clanId, { dryRun: true });
     } else if (action === 'clan-resources-collect-full' && clanId) {
       const ok = await confirmDialog(
-        'This ignores the saved position and re-reads all 14 days. Rows already recorded will be '
-        + 'inserted again, which shows up as duplicates you clean up by deleting the extra batch in '
-        + 'Resources → Upload History. Use it after fixing a reading bug, not routinely.',
-        { title: 'Re-read all 14 days?', confirmLabel: 'Read everything', danger: true },
+        t('This ignores the saved position and re-reads all 14 days. Rows already recorded will be inserted again, which shows up as duplicates you clean up by deleting the extra batch in Resources → Upload History. Use it after fixing a reading bug, not routinely.'),
+        { title: t('Re-read all 14 days?'), confirmLabel: t('Read everything'), danger: true },
       );
       if (ok) await runClanResourceCollect(clanId, { fullBackfill: true });
     } else if (action === 'clan-resources-debug-shots' && clanId) {
@@ -317,13 +316,13 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify({ enabled, autoCapture }),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Save failed', 'Resource Tracking');
-        notify('Resource Tracking settings saved.', 'Resource Tracking');
+        if (!r.ok) return notify(j.error || t('Save failed'), t('Resource Tracking'));
+        notify(t('Resource Tracking settings saved.'), t('Resource Tracking'));
         if (typeof window.refreshResourcesNavVisibility === 'function') {
           window.refreshResourcesNavVisibility();
         }
       } catch {
-        notify('Save failed.', 'Resource Tracking');
+        notify(t('Save failed.'), t('Resource Tracking'));
       }
     } else if (action === 'clan-inactivity-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-inactivity-enabled-${clanId}`)?.checked;
@@ -336,10 +335,10 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify(body),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Save failed', 'Member management');
-        notify('Member management settings saved.', 'Member management');
+        if (!r.ok) return notify(j.error || t('Save failed'), t('Member management'));
+        notify(t('Member management settings saved.'), t('Member management'));
       } catch {
-        notify('Save failed.', 'Member management');
+        notify(t('Save failed.'), t('Member management'));
       }
     } else if (action === 'clan-week-start-save' && clanId) {
       const weekStart = el.querySelector(`#clan-week-start-${clanId}`)?.value;
@@ -350,16 +349,16 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify({ weekStart }),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Save failed', 'Week');
+        if (!r.ok) return notify(j.error || t('Save failed'), t('Week'));
         // Week windows read the shape from lib/state.js on every render, so
         // updating it here makes the next page visited use the new weeks
         // without a reload — when this is the clan being viewed.
         if (getCurrentUser()?.activeClan?.id === clanId) {
           setWeekStart(weekStart);
         }
-        notify('Week saved.', 'Week');
+        notify(t('Week saved.'), t('Week'));
       } catch {
-        notify('Save failed.', 'Week');
+        notify(t('Save failed.'), t('Week'));
       }
     } else if (action === 'clan-goal-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-goal-enabled-${clanId}`)?.checked;
@@ -372,11 +371,11 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify(body),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Save failed', 'Leaderboard goal');
-        notify('Leaderboard goal saved.', 'Leaderboard goal');
+        if (!r.ok) return notify(j.error || t('Save failed'), t('Leaderboard goal'));
+        notify(t('Leaderboard goal saved.'), t('Leaderboard goal'));
         updateGoalPreview(el, clanId);
       } catch {
-        notify('Save failed.', 'Leaderboard goal');
+        notify(t('Save failed.'), t('Leaderboard goal'));
       }
     } else if (action === 'clan-share-create' && clanId) {
       // A clan holds as many live links as it wants, so this only ever ADDS
@@ -398,18 +397,18 @@ export async function renderClans(el, refreshClanIndicator) {
         const j = await r.json();
         if (!r.ok) {
           target.disabled = false;
-          return notify(j.error || 'Failed to create share link', 'Share link');
+          return notify(j.error || t('Failed to create share link'), t('Share link'));
         }
         renderClans(el, refreshClanIndicator);
       } catch {
         target.disabled = false;
-        notify('Failed to create share link.', 'Share link');
+        notify(t('Failed to create share link.'), t('Share link'));
       }
     } else if (action === 'clan-share-rename' && clanId) {
       const linkId = Number.parseInt(target.getAttribute('data-link-id'), 10);
       if (!Number.isInteger(linkId)) return;
-      const name = await promptDialog('Name this link — for your own reference only; visitors never see it.', {
-        title: 'Name share link',
+      const name = await promptDialog(t('Name this link — for your own reference only; visitors never see it.'), {
+        title: t('Name share link'),
         defaultValue: target.getAttribute('data-label') || '',
       });
       if (name === null) return;
@@ -420,10 +419,10 @@ export async function renderClans(el, refreshClanIndicator) {
           body: JSON.stringify({ label: name }),
         });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Rename failed', 'Share link');
+        if (!r.ok) return notify(j.error || t('Rename failed'), t('Share link'));
         renderClans(el, refreshClanIndicator);
       } catch {
-        notify('Rename failed.', 'Share link');
+        notify(t('Rename failed.'), t('Share link'));
       }
     } else if (action === 'clan-share-disable' && clanId) {
       // Two-step confirm. The first click arms the button ("Click again to
@@ -437,17 +436,17 @@ export async function renderClans(el, refreshClanIndicator) {
       }
       disarmButton(target);
       const ok = await confirmDialog(
-        'Disable this share link? The URL stops working immediately and the clan’s other links are unaffected. It keeps its history and can be restored later from “Analytics & history”.',
-        { title: 'Disable share link', confirmLabel: 'Disable', danger: true },
+        t('Disable this share link? The URL stops working immediately and the clan’s other links are unaffected. It keeps its history and can be restored later from “Analytics & history”.'),
+        { title: t('Disable share link'), confirmLabel: t('Disable'), danger: true },
       );
       if (!ok) return;
       try {
         const r = await fetch(`/api/clans/${clanId}/share-links/${linkId}`, { method: 'DELETE' });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Failed to disable share link', 'Share link');
+        if (!r.ok) return notify(j.error || t('Failed to disable share link'), t('Share link'));
         renderClans(el, refreshClanIndicator);
       } catch {
-        notify('Failed to disable share link.', 'Share link');
+        notify(t('Failed to disable share link.'), t('Share link'));
       }
     } else if (action === 'clan-share-analytics' && clanId) {
       openShareAnalytics(clanId, el, refreshClanIndicator);
@@ -472,23 +471,20 @@ export async function renderClans(el, refreshClanIndicator) {
       // icon stay put while "Copied!" confirms the action.
       const hint = field.querySelector('.share-url-hint');
       field.classList.add('is-copied');
-      if (hint) hint.textContent = '✓ Copied!';
+      if (hint) hint.textContent = t('✓ Copied!');
       clearTimeout(field._copyTimer);
       field._copyTimer = setTimeout(() => {
         field.classList.remove('is-copied');
-        if (hint) hint.textContent = 'Click to copy';
+        if (hint) hint.textContent = t('Click to copy');
       }, 1400);
     } else if (action === 'clan-delete' && clanId) {
       const clanName = target.getAttribute('data-clan-name') || '';
       const ok = await confirmDialog(
-        `Delete clan "${clanName}"? It disappears from the clan picker, the scanner, Discord and its public `
-        + 'share link, and its members can no longer sign in to it.\n\n'
-        + 'Its data — members, scans, chests, resources, settings — is KEPT, and a superadmin can put the '
-        + 'clan back from System → Deleted Clans.',
+        t('Delete clan "{clan}"? It disappears from the clan picker, the scanner, Discord and its public share link, and its members can no longer sign in to it.\n\nIts data — members, scans, chests, resources, settings — is KEPT, and a superadmin can put the clan back from System → Deleted Clans.', { clan: clanName }),
         {
-          title: `Delete clan "${clanName}"`,
-          confirmLabel: 'Continue',
-          cancelLabel: 'Cancel',
+          title: t('Delete clan "{clan}"', { clan: clanName }),
+          confirmLabel: t('Continue'),
+          cancelLabel: t('Cancel'),
           danger: true,
         },
       );
@@ -499,24 +495,24 @@ export async function renderClans(el, refreshClanIndicator) {
       // notices, and that still shouldn't happen to the wrong clan by a
       // muscle-memory click.
       const typed = await promptDialog(
-        `To confirm, type the clan name exactly: ${clanName}`,
+        t('To confirm, type the clan name exactly: {clan}', { clan: clanName }),
         {
-          title: `Delete clan "${clanName}"`,
-          confirmLabel: 'Delete clan',
-          cancelLabel: 'Cancel',
+          title: t('Delete clan "{clan}"', { clan: clanName }),
+          confirmLabel: t('Delete clan'),
+          cancelLabel: t('Cancel'),
         },
       );
       if (typed === null) return;
       if (String(typed).trim() !== clanName) {
-        return notify('Name did not match — clan was not deleted.', 'Delete clan');
+        return notify(t('Name did not match — clan was not deleted.'), t('Delete clan'));
       }
       try {
         const r = await fetch(`/api/clans/${clanId}`, { method: 'DELETE' });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Delete failed', 'Delete clan');
+        if (!r.ok) return notify(j.error || t('Delete failed'), t('Delete clan'));
         renderClans(el, refreshClanIndicator);
       } catch {
-        notify('Delete failed.', 'Delete clan');
+        notify(t('Delete failed.'), t('Delete clan'));
       }
     } else if (action === 'clan-discord-directory-load' && clanId) {
       await loadDiscordDirectory(el, clanId, el.querySelector(`#clan-discord-guild-${clanId}`)?.value || undefined);
@@ -529,19 +525,19 @@ export async function renderClans(el, refreshClanIndicator) {
       try {
         const r = await fetch(`/api/clans/${clanId}/onboard/capture-members`, { method: 'POST' });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Capture failed', 'Capture members');
+        if (!r.ok) return notify(j.error || t('Capture failed'), t('Capture members'));
         pollClanOnboardStatus(clanId, el);
       } catch {
-        notify('Capture failed.', 'Capture members');
+        notify(t('Capture failed.'), t('Capture members'));
       }
     } else if (action === 'clan-onboard-firstscan' && clanId) {
       try {
         const r = await fetch(`/api/clans/${clanId}/onboard/first-scan`, { method: 'POST' });
         const j = await r.json();
-        if (!r.ok) return notify(j.error || 'Scan failed', 'First scan');
+        if (!r.ok) return notify(j.error || t('Scan failed'), t('First scan'));
         pollClanOnboardStatus(clanId, el);
       } catch {
-        notify('Scan failed.', 'First scan');
+        notify(t('Scan failed.'), t('First scan'));
       }
     }
   };
@@ -635,9 +631,13 @@ function updateGoalPreview(el, clanId) {
   // "what would this goal mean" while the admin is still choosing.
   const weekDays = el.querySelector(`#clan-week-start-${clanId}`)?.value === 'ancients' ? 6 : 7;
   const per = (days) => Math.round((weekly / weekDays) * days).toLocaleString();
-  out.innerHTML = `Works out to <strong>${per(1)}</strong> / day (${weekDays}-day week), `
-    + `<strong>${per(30)}</strong> / month, <strong>${per(365)}</strong> / year. `
-    + `Amber starts at 66% of each (<strong>${goalWarnThreshold(weekly).toLocaleString()}</strong> for the week).`;
+  out.innerHTML = t('Works out to <strong>{day}</strong> / day ({weekDays}-day week), <strong>{month}</strong> / month, <strong>{year}</strong> / year. Amber starts at 66% of each (<strong>{week}</strong> for the week).', {
+    day: per(1),
+    weekDays,
+    month: per(30),
+    year: per(365),
+    week: goalWarnThreshold(weekly).toLocaleString(),
+  });
 }
 
 /**
@@ -660,7 +660,7 @@ function renderDigestStatus(clan) {
 function renderDailyDigestStatus(clan) {
   if (!clan.discordDailyDigestEnabled) return '';
   if (!clan.lastDigestAt) {
-    return `<p class="muted-copy digest-status-line">Last digest: never run yet — sends after the first scan following the next rollover.</p>`;
+    return `<p class="muted-copy digest-status-line">${t('Last digest: never run yet — sends after the first scan following the next rollover.')}</p>`;
   }
   const when = formatRelativeTime(clan.lastDigestAt);
   const channelOk = !clan.lastDigestChannelError;
@@ -668,14 +668,14 @@ function renderDailyDigestStatus(clan) {
   const dmOk = !dmConfigured || !clan.lastDigestDmError;
   const allOk = channelOk && dmOk;
   if (allOk) {
-    return `<p class="digest-status-line"><span class="chest-type uncommon">Last digest: ✓ ${escapeHtml(when)}</span></p>`;
+    return `<p class="digest-status-line"><span class="chest-type uncommon">${t('Last digest: ✓ {when}', { when: escapeHtml(when) })}</span></p>`;
   }
   const parts = [];
-  if (!channelOk) parts.push(`Channel post failed — ${escapeHtml(clan.lastDigestChannelError)}`);
-  if (dmConfigured && !dmOk) parts.push(`DM failed — ${escapeHtml(clan.lastDigestDmError)}`);
+  if (!channelOk) parts.push(t('Channel post failed — {error}', { error: escapeHtml(clan.lastDigestChannelError) }));
+  if (dmConfigured && !dmOk) parts.push(t('DM failed — {error}', { error: escapeHtml(clan.lastDigestDmError) }));
   return `
     <p class="digest-status-line">
-      <span class="chest-type common">Last digest: ⚠ ${escapeHtml(when)}</span>
+      <span class="chest-type common">${t('Last digest: ⚠ {when}', { when: escapeHtml(when) })}</span>
     </p>
     <ul class="muted-copy digest-status-errors">
       ${parts.map((p) => `<li>${p}</li>`).join('')}
@@ -686,18 +686,20 @@ function renderDailyDigestStatus(clan) {
 /** The weekly digest's line: same pills, one combined error string. */
 function renderWeeklyDigestStatus(clan) {
   if (!clan.discordWeeklyDigestEnabled) return '';
-  const weekWord = clan.weekStart === 'ancients' ? 'Tinman week' : 'week';
   if (!clan.lastWeeklyDigestAt) {
-    return `<p class="muted-copy digest-status-line">Last weekly digest: never run yet — sends after the first scan once the current ${weekWord} ends.</p>`;
+    const never = clan.weekStart === 'ancients'
+      ? t('Last weekly digest: never run yet — sends after the first scan once the current Tinman week ends.')
+      : t('Last weekly digest: never run yet — sends after the first scan once the current week ends.');
+    return `<p class="muted-copy digest-status-line">${never}</p>`;
   }
   const when = formatRelativeTime(clan.lastWeeklyDigestAt);
-  const label = clan.lastWeeklyDigestWeek ? ` (week of ${escapeHtml(clan.lastWeeklyDigestWeek)})` : '';
+  const label = clan.lastWeeklyDigestWeek ? ` ${t('(week of {week})', { week: escapeHtml(clan.lastWeeklyDigestWeek) })}` : '';
   if (!clan.lastWeeklyDigestError) {
-    return `<p class="digest-status-line"><span class="chest-type uncommon">Last weekly digest: ✓ ${escapeHtml(when)}${label}</span></p>`;
+    return `<p class="digest-status-line"><span class="chest-type uncommon">${t('Last weekly digest: ✓ {when}', { when: escapeHtml(when) })}${label}</span></p>`;
   }
   return `
     <p class="digest-status-line">
-      <span class="chest-type common">Last weekly digest: ⚠ ${escapeHtml(when)}${label}</span>
+      <span class="chest-type common">${t('Last weekly digest: ⚠ {when}', { when: escapeHtml(when) })}${label}</span>
     </p>
     <ul class="muted-copy digest-status-errors">
       ${clan.lastWeeklyDigestError.split(' · ').map((p) => `<li>${escapeHtml(p)}</li>`).join('')}
@@ -714,24 +716,24 @@ function renderAuthBadge(clan) {
   if (clan.needsReauth) {
     const when = clan.reauthFailedAt ? formatRelativeTime(clan.reauthFailedAt) : '';
     const tip = when
-      ? `Last scan ${escapeHtml(when)} could not load the Total Battle canvas with the saved session. Click Refresh login.`
-      : 'The saved Total Battle session no longer loads the game canvas. Click Refresh login.';
-    return `<span class="chest-type common" title="${tip}">Needs re-authentication</span>`;
+      ? t('Last scan {when} could not load the Total Battle canvas with the saved session. Click Refresh login.', { when: escapeHtml(when) })
+      : t('The saved Total Battle session no longer loads the game canvas. Click Refresh login.');
+    return `<span class="chest-type common" title="${tip}">${t('Needs re-authentication')}</span>`;
   }
   if (clan.authenticated) {
-    return '<span class="chest-type uncommon" title="A storage-state file exists for this clan and the most recent scan was able to load the game.">Authenticated</span>';
+    return `<span class="chest-type uncommon" title="${t('A storage-state file exists for this clan and the most recent scan was able to load the game.')}">${t('Authenticated')}</span>`;
   }
-  return '<span class="chest-type common" title="No storage-state file on disk. The scanner will skip this clan until you log in.">Not authenticated</span>';
+  return `<span class="chest-type common" title="${t('No storage-state file on disk. The scanner will skip this clan until you log in.')}">${t('Not authenticated')}</span>`;
 }
 
 function renderAuthCopy(clan) {
   if (clan.needsReauth) {
-    return "The scanner could not load the Total Battle canvas with this clan's saved session on the last run — cookies have likely expired. Re-authenticate below to resume scans.";
+    return t("The scanner could not load the Total Battle canvas with this clan's saved session on the last run — cookies have likely expired. Re-authenticate below to resume scans.");
   }
   if (clan.authenticated) {
-    return 'A previous login was saved for this clan. If scans fail with auth errors, refresh the session below.';
+    return t('A previous login was saved for this clan. If scans fail with auth errors, refresh the session below.');
   }
-  return 'No login saved yet. Sign in below before activating this clan for scans.';
+  return t('No login saved yet. Sign in below before activating this clan for scans.');
 }
 
 // ─── Discord server / channel / member pickers ───
@@ -771,11 +773,11 @@ function renderDiscordPicker(clanId, kind, storedValue, entries, placeholder) {
     return `<input id="${id}" class="input" type="text" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}">`;
   }
   const known = entries.some((e) => e.id === value);
-  let options = `<option value=""${value ? '' : ' selected'}>— none —</option>`;
+  let options = `<option value=""${value ? '' : ' selected'}>${t('— none —')}</option>`;
   // A configured id the list doesn't contain still has to be selectable, or
   // opening the page would silently clear it on the next save.
   if (value && !known) {
-    options += `<option value="${escapeHtml(value)}" selected>${escapeHtml(value)} (not in this list)</option>`;
+    options += `<option value="${escapeHtml(value)}" selected>${t('{id} (not in this list)', { id: escapeHtml(value) })}</option>`;
   }
   const groups = new Map();
   for (const entry of entries) {
@@ -814,9 +816,9 @@ function splitRecipientIds(raw) {
 function renderRecipientRow(clanId, id) {
   return `<div class="digest-recipient-row">
     <input class="input digest-recipient-input" type="text" inputmode="numeric" data-clan-id="${clanId}"
-      value="${escapeHtml(id)}" placeholder="Discord user ID, e.g. 123456789012345678" aria-label="Discord user ID">
+      value="${escapeHtml(id)}" placeholder="${t('Discord user ID, e.g. 123456789012345678')}" aria-label="${t('Discord user ID')}">
     <span class="muted-copy hint-text digest-recipient-name"></span>
-    <button type="button" class="btn btn-sm btn-danger" data-action="clan-discord-remove-recipient" data-clan-id="${clanId}">Remove</button>
+    <button type="button" class="btn btn-sm btn-danger" data-action="clan-discord-remove-recipient" data-clan-id="${clanId}">${t('Remove')}</button>
   </div>`;
 }
 
@@ -867,7 +869,7 @@ function renderRecipientPicker(clanId, dir, manual) {
     .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}${m.username && m.username !== m.name ? ` (@${escapeHtml(m.username)})` : ''}</option>`)
     .join('');
   return `<select class="input mt-4" data-action="clan-discord-add-recipient" data-clan-id="${clanId}">`
-    + `<option value="">+ Add a recipient from ${escapeHtml(dir.guildName || 'the server')}…</option>${options}</select>`;
+    + `<option value="">${t('+ Add a recipient from {server}…', { server: escapeHtml(dir.guildName || t('the server')) })}</option>${options}</select>`;
 }
 
 /**
@@ -884,12 +886,12 @@ function syncDiscordPickers(el, clanId) {
   if (!guildField || !channelField) return;
   const guildValue = el.querySelector(`#clan-discord-guild-${clanId}`)?.value ?? '';
   const channelValue = el.querySelector(`#clan-discord-channel-${clanId}`)?.value ?? '';
-  guildField.innerHTML = renderDiscordPicker(clanId, 'guild', guildValue, dir?.guilds ?? null, 'Server ID');
+  guildField.innerHTML = renderDiscordPicker(clanId, 'guild', guildValue, dir?.guilds ?? null, t('Server ID'));
   // Channels belong to one server. If the loaded directory is for a different
   // server than the one now selected, offer no list rather than a list of
   // channels that cannot receive this clan's messages.
   const channels = dir && dir.guildId && dir.guildId === guildValue ? dir.channels : null;
-  channelField.innerHTML = renderDiscordPicker(clanId, 'channel', channelValue, channels, 'Channel ID');
+  channelField.innerHTML = renderDiscordPicker(clanId, 'channel', channelValue, channels, t('Channel ID'));
   const memberField = el.querySelector(`#clan-discord-member-field-${clanId}`);
   if (memberField) {
     const forThisGuild = dir && dir.guildId && dir.guildId === guildValue ? dir : null;
@@ -916,7 +918,7 @@ function updateRecipientNames(el, clanId) {
     } else if (byId.has(id)) {
       out.textContent = byId.get(id);
     } else {
-      out.innerHTML = '<span class="warning-text">not found in this server</span>';
+      out.innerHTML = `<span class="warning-text">${t('not found in this server')}</span>`;
     }
   }
 }
@@ -930,7 +932,7 @@ async function loadDiscordDirectory(el, clanId, guildId) {
   const status = el.querySelector(`#clan-discord-dir-status-${clanId}`);
   const setStatus = (text) => { if (status) status.textContent = text; };
   const token = el.querySelector(`#clan-discord-token-${clanId}`)?.value.trim() || '';
-  setStatus('Reading from Discord…');
+  setStatus(t('Reading from Discord…'));
   try {
     const r = await fetch(`/api/clans/${clanId}/discord/directory`, {
       method: 'POST',
@@ -939,7 +941,7 @@ async function loadDiscordDirectory(el, clanId, guildId) {
     });
     const j = await r.json();
     if (!r.ok) {
-      setStatus(j.error || 'Discord lookup failed.');
+      setStatus(j.error || t('Discord lookup failed.'));
       return;
     }
     const guildName = j.guilds?.find((g) => g.id === j.guildId)?.name || '';
@@ -947,33 +949,33 @@ async function loadDiscordDirectory(el, clanId, guildId) {
     // The server list is pinned for a clan admin (see the directory route).
     // Say so, or a one-entry dropdown reads as "the bot is only in one
     // server" and the next question is why the other one disappeared.
-    const pinned = j.scopedToGuildId ? ' Server locked to your clan — a superadmin can move it.' : '';
+    const pinned = j.scopedToGuildId ? ` ${t('Server locked to your clan — a superadmin can move it.')}` : '';
     if (!j.guilds?.length) {
-      setStatus('This bot has not been invited to any server yet — run the OAuth2 invite URL first.');
+      setStatus(t('This bot has not been invited to any server yet — run the OAuth2 invite URL first.'));
     } else if (!j.guildId) {
-      setStatus(`${j.guilds.length} server${j.guilds.length === 1 ? '' : 's'} — pick one to load its channels.`);
+      setStatus(tn(j.guilds.length, '{n} server — pick one to load its channels.', '{n} servers — pick one to load its channels.'));
     } else {
-      setStatus(`${j.channels.length} channel${j.channels.length === 1 ? '' : 's'} in ${guildName}`
-        + (j.membersUnavailable ? '' : `, ${j.members.length} member${j.members.length === 1 ? '' : 's'}`) + '.' + pinned);
+      setStatus(tn(j.channels.length, '{n} channel in {server}', '{n} channels in {server}', { server: guildName })
+        + (j.membersUnavailable ? '' : `, ${tn(j.members.length, '{n} member', '{n} members')}`) + '.' + pinned);
     }
     syncDiscordPickers(el, clanId);
   } catch {
-    setStatus('Discord lookup failed.');
+    setStatus(t('Discord lookup failed.'));
   }
 }
 
 function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays, defaultPublicUrl) {
   const intervalVal = clan.scanIntervalMinutes ?? '';
   const intervalPlaceholder = Number.isFinite(defaultScanIntervalMinutes)
-    ? `default: ${defaultScanIntervalMinutes}`
-    : 'blank = global default';
+    ? t('default: {value}', { value: defaultScanIntervalMinutes })
+    : t('blank = global default');
   const inactivityPlaceholder = Number.isFinite(defaultInactivityDays)
-    ? `blank = global default (${defaultInactivityDays})`
-    : 'blank = global default';
+    ? t('blank = global default ({days})', { days: defaultInactivityDays })
+    : t('blank = global default');
   // discordTokenSet: `true` when the server has a token on file. We
   // never round-trip the actual token to the browser; the input is
   // empty by default and only updates the stored token if non-empty.
-  const tokenPlaceholder = clan.discordTokenSet ? '••••••••• (leave blank to keep)' : 'Bot token';
+  const tokenPlaceholder = clan.discordTokenSet ? t('••••••••• (leave blank to keep)') : t('Bot token');
   // Names already read from Discord, so a re-render (every save, every
   // mutation on this page) redraws the dropdowns populated instead of
   // flashing back to bare ID boxes while the refetch is in flight.
@@ -989,92 +991,92 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
       <div class="card-body card-body-padded">
         ${isSuperAdmin ? `
         <div class="inline-form-row">
-          <div><label>Name</label><input id="clan-name-${clan.id}" class="input" type="text" value="${escapeHtml(clan.name)}"></div>
+          <div><label>${t('Name')}</label><input id="clan-name-${clan.id}" class="input" type="text" value="${escapeHtml(clan.name)}"></div>
           <div>
-            <label>Scan interval (minutes; blank = global)</label>
+            <label>${t('Scan interval (minutes; blank = global)')}</label>
             <input id="clan-interval-${clan.id}" class="input" type="number" min="1" value="${intervalVal}" placeholder="${intervalPlaceholder}">
           </div>
           <div class="form-row-grow">
-            <label>Public URL (blank = global)</label>
-            <input id="clan-public-url-${clan.id}" class="input" type="text" value="${escapeHtml(clan.publicUrl || '')}" placeholder="${escapeHtml(defaultPublicUrl ? `default: ${defaultPublicUrl}` : 'e.g. https://sinful.day')}" autocomplete="off" spellcheck="false">
+            <label>${t('Public URL (blank = global)')}</label>
+            <input id="clan-public-url-${clan.id}" class="input" type="text" value="${escapeHtml(clan.publicUrl || '')}" placeholder="${escapeHtml(defaultPublicUrl ? t('default: {value}', { value: defaultPublicUrl }) : t('e.g. https://sinful.day'))}" autocomplete="off" spellcheck="false">
           </div>
-          <button class="btn" data-action="clan-rename" data-clan-id="${clan.id}">Save</button>
+          <button class="btn" data-action="clan-rename" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
-        <p class="muted-copy hint-text mt-8">Public URL is the domain this clan's members use. The Discord digest link and the share-link URLs below are built on it.</p>
-        <p class="warning-text hint-text mt-8">⚠ Leave the scan interval blank for normal operation — only override for testing.</p>
+        <p class="muted-copy hint-text mt-8">${t("Public URL is the domain this clan's members use. The Discord digest link and the share-link URLs below are built on it.")}</p>
+        <p class="warning-text hint-text mt-8">⚠ ${t('Leave the scan interval blank for normal operation — only override for testing.')}</p>
         ` : ''}
 
         <hr class="section-divider">
-        <h3>Browser session ${renderAuthBadge(clan)}</h3>
-        <p class="muted-copy">${renderAuthCopy(clan)} The in-app browser opens in a large window over the page; sign in and click <em>Save session</em> when you're fully in-game.</p>
+        <h3>${t('Browser session')} ${renderAuthBadge(clan)}</h3>
+        <p class="muted-copy">${renderAuthCopy(clan)} ${t("The in-app browser opens in a large window over the page; sign in and click <em>Save session</em> when you're fully in-game.")}</p>
         <div class="actions">
-          <button class="btn btn-primary" data-action="login-session-start" data-clan-id="${clan.id}">${clan.authenticated ? 'Refresh login' : 'Log in to Total Battle'}</button>
+          <button class="btn btn-primary" data-action="login-session-start" data-clan-id="${clan.id}">${clan.authenticated ? t('Refresh login') : t('Log in to Total Battle')}</button>
         </div>
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>Discord</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('Discord')}</h3></summary>
         <div class="mt-12">
         <details class="mb-12">
-          <summary class="collapse-toggle">How do I set this up?</summary>
+          <summary class="collapse-toggle">${t('How do I set this up?')}</summary>
           <ol class="muted-copy help-list">
-            <li>Go to <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">discord.com/developers/applications</a> → <strong>New Application</strong>.</li>
-            <li>Left sidebar → <strong>Bot</strong> → <strong>Reset Token</strong> → copy it and paste into <em>Bot token</em> below.</li>
-            <li>Left sidebar → <strong>OAuth2 → URL Generator</strong>. Scopes: <code>bot</code> and <code>applications.commands</code>. Bot permissions: <code>Send Messages</code> and <code>Embed Links</code>. Open the generated URL, pick this clan's server, authorize.</li>
-            <li>Paste the token above and click <strong>Reload from Discord</strong> — the <em>Server</em> and <em>Channel</em> dropdowns fill in with the names the bot can actually see. Pick the server first; its channels load with it. (Nothing here needs Developer Mode or a copied ID; tick <em>Enter IDs manually</em> if you'd rather paste them.)</li>
-            <li>Tick <strong>Enabled</strong>, click <strong>Save Discord</strong>, then click <strong>Send test message</strong> to verify. With a Guild ID set, slash commands (<code>/leaderboard</code>, <code>/status</code>) appear in that server instantly. Each clan runs its own bot, so a fresh bot per clan keeps tokens / channels isolated.</li>
+            <li>${t('Go to {link} → <strong>New Application</strong>.', { link: '<a href="https://discord.com/developers/applications" target="_blank" rel="noopener">discord.com/developers/applications</a>' })}</li>
+            <li>${t('Left sidebar → <strong>Bot</strong> → <strong>Reset Token</strong> → copy it and paste into <em>Bot token</em> below.')}</li>
+            <li>${t("Left sidebar → <strong>OAuth2 → URL Generator</strong>. Scopes: <code>bot</code> and <code>applications.commands</code>. Bot permissions: <code>Send Messages</code> and <code>Embed Links</code>. Open the generated URL, pick this clan's server, authorize.")}</li>
+            <li>${t("Paste the token above and click <strong>Reload from Discord</strong> — the <em>Server</em> and <em>Channel</em> dropdowns fill in with the names the bot can actually see. Pick the server first; its channels load with it. (Nothing here needs Developer Mode or a copied ID; tick <em>Enter IDs manually</em> if you'd rather paste them.)")}</li>
+            <li>${t('Tick <strong>Enabled</strong>, click <strong>Save Discord</strong>, then click <strong>Send test message</strong> to verify. With a Guild ID set, slash commands (<code>/leaderboard</code>, <code>/status</code>) appear in that server instantly. Each clan runs its own bot, so a fresh bot per clan keeps tokens / channels isolated.')}</li>
           </ol>
         </details>
         <div class="inline-form-row">
-          <div><label class="checkbox-row"><input type="checkbox" id="clan-discord-enabled-${clan.id}" ${clan.discordEnabled ? 'checked' : ''}> Enabled</label></div>
-          <div><label>Bot token</label><input id="clan-discord-token-${clan.id}" class="input" type="password" placeholder="${tokenPlaceholder}"></div>
-          <div class="form-row-grow"><label>Server</label>
-            <div id="clan-discord-guild-field-${clan.id}">${renderDiscordPicker(clan.id, 'guild', clan.discordGuildId, cachedDir?.guilds ?? null, 'Server ID')}</div>
+          <div><label class="checkbox-row"><input type="checkbox" id="clan-discord-enabled-${clan.id}" ${clan.discordEnabled ? 'checked' : ''}> ${t('Enabled')}</label></div>
+          <div><label>${t('Bot token')}</label><input id="clan-discord-token-${clan.id}" class="input" type="password" placeholder="${tokenPlaceholder}"></div>
+          <div class="form-row-grow"><label>${t('Server')}</label>
+            <div id="clan-discord-guild-field-${clan.id}">${renderDiscordPicker(clan.id, 'guild', clan.discordGuildId, cachedDir?.guilds ?? null, t('Server ID'))}</div>
           </div>
-          <div class="form-row-grow"><label>Channel</label>
-            <div id="clan-discord-channel-field-${clan.id}">${renderDiscordPicker(clan.id, 'channel', clan.discordChannelId, cachedChannels, 'Channel ID')}</div>
+          <div class="form-row-grow"><label>${t('Channel')}</label>
+            <div id="clan-discord-channel-field-${clan.id}">${renderDiscordPicker(clan.id, 'channel', clan.discordChannelId, cachedChannels, t('Channel ID'))}</div>
           </div>
         </div>
         <div class="inline-form-row mt-8">
-          <button class="btn" data-action="clan-discord-directory-load" data-clan-id="${clan.id}">Reload from Discord</button>
-          <label class="checkbox-row" title="Fall back to pasting raw 18-digit IDs — for a bot that cannot list its own servers, or a channel Discord will not return">
-            <input type="checkbox" data-action="clan-discord-manual-toggle" data-clan-id="${clan.id}" ${discordManualMode.has(clan.id) ? 'checked' : ''}> Enter IDs manually
+          <button class="btn" data-action="clan-discord-directory-load" data-clan-id="${clan.id}">${t('Reload from Discord')}</button>
+          <label class="checkbox-row" title="${t('Fall back to pasting raw 18-digit IDs — for a bot that cannot list its own servers, or a channel Discord will not return')}">
+            <input type="checkbox" data-action="clan-discord-manual-toggle" data-clan-id="${clan.id}" ${discordManualMode.has(clan.id) ? 'checked' : ''}> ${t('Enter IDs manually')}
           </label>
           <span class="muted-copy hint-text" id="clan-discord-dir-status-${clan.id}"></span>
         </div>
         <div class="inline-form-row mt-8">
-          <label class="checkbox-row"><input type="checkbox" id="clan-discord-reports-${clan.id}" ${clan.discordScanReportsEnabled ? 'checked' : ''}> Post scan reports</label>
-          <label class="checkbox-row"><input type="checkbox" id="clan-discord-onlynew-${clan.id}" ${clan.discordOnlyNewChests ? 'checked' : ''}> Only when new chests</label>
-          <label class="checkbox-row"><input type="checkbox" id="clan-discord-digest-${clan.id}" ${clan.discordDailyDigestEnabled ? 'checked' : ''}> Daily digest</label>
-          <label class="checkbox-row" title="Posted after the rollover that ends the week set on the Week card below"><input type="checkbox" id="clan-discord-weekly-${clan.id}" ${clan.discordWeeklyDigestEnabled ? 'checked' : ''}> Weekly digest</label>
-          <label class="checkbox-row"><input type="checkbox" id="clan-discord-cmds-${clan.id}" ${clan.discordCommandsEnabled ? 'checked' : ''}> Slash commands</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-discord-reports-${clan.id}" ${clan.discordScanReportsEnabled ? 'checked' : ''}> ${t('Post scan reports')}</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-discord-onlynew-${clan.id}" ${clan.discordOnlyNewChests ? 'checked' : ''}> ${t('Only when new chests')}</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-discord-digest-${clan.id}" ${clan.discordDailyDigestEnabled ? 'checked' : ''}> ${t('Daily digest')}</label>
+          <label class="checkbox-row" title="${t('Posted after the rollover that ends the week set on the Week card below')}"><input type="checkbox" id="clan-discord-weekly-${clan.id}" ${clan.discordWeeklyDigestEnabled ? 'checked' : ''}> ${t('Weekly digest')}</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-discord-cmds-${clan.id}" ${clan.discordCommandsEnabled ? 'checked' : ''}> ${t('Slash commands')}</label>
         </div>
-        <p class="muted-copy mt-4 hint-text">The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>${clan.weekStart === 'ancients' ? 'Tinman to Tinman (6 days)' : 'Sunday to Sunday (7 days)'}</strong> — and goes out with the daily one, after the first scan once the week has ended.</p>
+        <p class="muted-copy mt-4 hint-text">${t("The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>{week}</strong> — and goes out with the daily one, after the first scan once the week has ended.", { week: clan.weekStart === 'ancients' ? t('Tinman to Tinman (6 days)') : t('Sunday to Sunday (7 days)') })}</p>
         <div class="inline-form-row mt-8">
           <div class="form-row-grow">
-            <label>Digest DM recipients (optional)</label>
+            <label>${t('Digest DM recipients (optional)')}</label>
             <div id="clan-discord-recipients-${clan.id}" class="digest-recipient-list">${renderRecipientRows(clan.id, clan.discordDailyDigestShareUserId)}</div>
             <div class="digest-recipient-add">
-              <button type="button" class="btn btn-sm" data-action="clan-discord-add-recipient-row" data-clan-id="${clan.id}">+ Add recipient by ID</button>
+              <button type="button" class="btn btn-sm" data-action="clan-discord-add-recipient-row" data-clan-id="${clan.id}">${t('+ Add recipient by ID')}</button>
               <div id="clan-discord-member-field-${clan.id}" class="form-row-grow">${renderRecipientPicker(clan.id, cachedChannels ? cachedDir : null, discordManualMode.has(clan.id))}</div>
             </div>
-            <p class="muted-copy mt-4 hint-text">The bot DMs each of these users a plain-text version of every digest (daily and weekly) that pastes cleanly into in-game chat — up to 20 recipients, none means no DMs. Each must share a server with the bot and allow DMs from server members — one who doesn't still gets flagged, and everyone else's DM goes out.</p>
+            <p class="muted-copy mt-4 hint-text">${t("The bot DMs each of these users a plain-text version of every digest (daily and weekly) that pastes cleanly into in-game chat — up to 20 recipients, none means no DMs. Each must share a server with the bot and allow DMs from server members — one who doesn't still gets flagged, and everyone else's DM goes out.")}</p>
           </div>
         </div>
         <details class="mb-12 mt-8">
-          <summary class="collapse-toggle">How do I find a Discord user ID?</summary>
+          <summary class="collapse-toggle">${t('How do I find a Discord user ID?')}</summary>
           <ol class="muted-copy help-list">
-            <li>Normally you don't: pick them from the <strong>Add a recipient</strong> dropdown above, which lists the selected server's members. It needs <strong>Developer Portal → Bot → Privileged Gateway Intents → SERVER MEMBERS INTENT</strong> switched on; without it the dropdown says so and you can fall back to IDs.</li>
-            <li>By hand: <strong>User Settings → Advanced → Developer Mode</strong> = ON, right-click the recipient's name → <strong>Copy User ID</strong>.</li>
-            <li>Click <strong>+ Add recipient by ID</strong>, paste the 17–19 digit ID into the new row and click <strong>Save Discord</strong>. One row per recipient.</li>
-            <li>Each recipient must share at least one server with this clan's bot, and have <strong>Privacy Settings → "Direct messages from server members"</strong> enabled for that server.</li>
-            <li>Click <strong>Send test DM</strong> to confirm — they should each get a DM titled with <code>[TEST DM — current game day so far]</code>, and the toast names anyone it couldn't reach.</li>
+            <li>${t("Normally you don't: pick them from the <strong>Add a recipient</strong> dropdown above, which lists the selected server's members. It needs <strong>Developer Portal → Bot → Privileged Gateway Intents → SERVER MEMBERS INTENT</strong> switched on; without it the dropdown says so and you can fall back to IDs.")}</li>
+            <li>${t("By hand: <strong>User Settings → Advanced → Developer Mode</strong> = ON, right-click the recipient's name → <strong>Copy User ID</strong>.")}</li>
+            <li>${t('Click <strong>+ Add recipient by ID</strong>, paste the 17–19 digit ID into the new row and click <strong>Save Discord</strong>. One row per recipient.')}</li>
+            <li>${t('Each recipient must share at least one server with this clan\'s bot, and have <strong>Privacy Settings → "Direct messages from server members"</strong> enabled for that server.')}</li>
+            <li>${t("Click <strong>Send test DM</strong> to confirm — they should each get a DM titled with <code>[TEST DM — current game day so far]</code>, and the toast names anyone it couldn't reach.")}</li>
           </ol>
         </details>
         <div class="actions">
-          <button class="btn btn-primary" data-action="clan-discord-save" data-clan-id="${clan.id}">Save Discord</button>
-          <button class="btn" data-action="clan-discord-test" data-clan-id="${clan.id}">Send test message</button>
-          <button class="btn" data-action="clan-discord-digest-dm-test" data-clan-id="${clan.id}" title="Save first, then send a DM with today's data so far to verify delivery">Send test DM</button>
+          <button class="btn btn-primary" data-action="clan-discord-save" data-clan-id="${clan.id}">${t('Save Discord')}</button>
+          <button class="btn" data-action="clan-discord-test" data-clan-id="${clan.id}">${t('Send test message')}</button>
+          <button class="btn" data-action="clan-discord-digest-dm-test" data-clan-id="${clan.id}" title="${t("Save first, then send a DM with today's data so far to verify delivery")}">${t('Send test DM')}</button>
         </div>
         ${renderDigestStatus(clan)}
         </div>
@@ -1082,49 +1084,49 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>ChestTracker</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('ChestTracker')}</h3></summary>
         <div class="mt-12">
         <div class="inline-form-row">
-          <div><label>Share code</label><input id="clan-ct-code-${clan.id}" class="input" type="text" value="${escapeHtml(clan.ctShareCode)}" placeholder="leave blank to disable"></div>
-          <div><label>Poll interval (h)</label><input id="clan-ct-interval-${clan.id}" class="input" type="number" min="0.083" step="0.083" value="${clan.ctPollIntervalHours ?? ''}" placeholder="3"></div>
-          <div><label>Backfill weeks</label><input id="clan-ct-backfill-${clan.id}" class="input" type="number" min="0" max="52" value="${clan.ctBackfillWeeks ?? ''}" placeholder="4"></div>
-          <button class="btn btn-primary" data-action="clan-ct-save" data-clan-id="${clan.id}">Save</button>
+          <div><label>${t('Share code')}</label><input id="clan-ct-code-${clan.id}" class="input" type="text" value="${escapeHtml(clan.ctShareCode)}" placeholder="${t('leave blank to disable')}"></div>
+          <div><label>${t('Poll interval (h)')}</label><input id="clan-ct-interval-${clan.id}" class="input" type="number" min="0.083" step="0.083" value="${clan.ctPollIntervalHours ?? ''}" placeholder="3"></div>
+          <div><label>${t('Backfill weeks')}</label><input id="clan-ct-backfill-${clan.id}" class="input" type="number" min="0" max="52" value="${clan.ctBackfillWeeks ?? ''}" placeholder="4"></div>
+          <button class="btn btn-primary" data-action="clan-ct-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         </div>
         </details>
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>Resource Tracking</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('Resource Tracking')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">Tracks what members send to and take from the Clan Capital. Turning this on adds the <strong>Resources</strong> tab to the navigation for this clan's admins.</p>
-        <p class="muted-copy mb-8">Contributions can arrive two ways, and both land in the same place. <strong>Automatically</strong> — the Clan Capital history is read straight off the game once per game day, needing nothing from anyone. Or <strong>by upload</strong> — an admin drops in history screenshots, each of which can list any number of players. Either way every row is matched to its clan member for you.</p>
+        <p class="muted-copy mb-8">${t("Tracks what members send to and take from the Clan Capital. Turning this on adds the <strong>Resources</strong> tab to the navigation for this clan's admins.")}</p>
+        <p class="muted-copy mb-8">${t('Contributions can arrive two ways, and both land in the same place. <strong>Automatically</strong> — the Clan Capital history is read straight off the game once per game day, needing nothing from anyone. Or <strong>by upload</strong> — an admin drops in history screenshots, each of which can list any number of players. Either way every row is matched to its clan member for you.')}</p>
         <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-resources-enabled-${clan.id}" ${clan.resourcesEnabled ? 'checked' : ''}> Track resources for this clan</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-resources-enabled-${clan.id}" ${clan.resourcesEnabled ? 'checked' : ''}> ${t('Track resources for this clan')}</label>
         </div>
         <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-resources-auto-${clan.id}" ${clan.resourceAutoCapture ? 'checked' : ''}> Include in the daily automatic read</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-resources-auto-${clan.id}" ${clan.resourceAutoCapture ? 'checked' : ''}> ${t('Include in the daily automatic read')}</label>
         </div>
-        <p class="muted-copy mt-4">Untick the second box to keep the tab and uploads for this clan while leaving it out of the nightly read — the one-off buttons below still work either way. The daily read also has to be switched on instance-wide under <strong>System &rarr; Automated Resource Collection</strong>.</p>
+        <p class="muted-copy mt-4">${t('Untick the second box to keep the tab and uploads for this clan while leaving it out of the nightly read — the one-off buttons below still work either way. The daily read also has to be switched on instance-wide under <strong>System &rarr; Automated Resource Collection</strong>.')}</p>
         <div class="actions mt-8">
-          <button class="btn btn-primary" data-action="clan-resources-save" data-clan-id="${clan.id}">Save</button>
+          <button class="btn btn-primary" data-action="clan-resources-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         ${clan.resourcesEnabled ? `
         <hr class="section-divider">
-        <p class="muted-copy mb-8"><strong>Read from the game now.</strong> These are one-off runs against <strong>this clan only</strong> — for proving the feature works before trusting the schedule, or pulling today's rows in early. They work whether or not the daily read is switched on.</p>
-        <p class="muted-copy mb-8"><strong>Collect now</strong> reads whatever is new since the last run — normally a few seconds. <strong>Diagnose</strong> reads the whole list and keeps a screenshot of every page but writes nothing, which is the safe way to check accuracy. <strong>Re-read all 14 days</strong> writes everything it finds, so rows already recorded get inserted a second time; only reach for it after fixing a reading problem.</p>
+        <p class="muted-copy mb-8">${t("<strong>Read from the game now.</strong> These are one-off runs against <strong>this clan only</strong> — for proving the feature works before trusting the schedule, or pulling today's rows in early. They work whether or not the daily read is switched on.")}</p>
+        <p class="muted-copy mb-8">${t('<strong>Collect now</strong> reads whatever is new since the last run — normally a few seconds. <strong>Diagnose</strong> reads the whole list and keeps a screenshot of every page but writes nothing, which is the safe way to check accuracy. <strong>Re-read all 14 days</strong> writes everything it finds, so rows already recorded get inserted a second time; only reach for it after fixing a reading problem.')}</p>
         <div class="inline-form-row mb-8" data-resource-capture-clan="${clan.id}">
-          <button class="btn" data-action="clan-resources-collect" data-clan-id="${clan.id}">Collect now</button>
+          <button class="btn" data-action="clan-resources-collect" data-clan-id="${clan.id}">${t('Collect now')}</button>
           <button class="btn" data-action="clan-resources-collect-dry" data-clan-id="${clan.id}"
-            title="Reads the whole list and keeps a screenshot of every page, but writes nothing to the database">Diagnose (write nothing)</button>
+            title="${t('Reads the whole list and keeps a screenshot of every page, but writes nothing to the database')}">${t('Diagnose (write nothing)')}</button>
           <button class="btn" data-action="clan-resources-collect-full" data-clan-id="${clan.id}"
-            title="Ignores the saved position and re-reads all 14 days — rows already recorded will be inserted again">Re-read all 14 days</button>
+            title="${t('Ignores the saved position and re-reads all 14 days — rows already recorded will be inserted again')}">${t('Re-read all 14 days')}</button>
         </div>
         <div id="clanResourceCollectStatus-${clan.id}" class="muted-copy mb-8"></div>
         <details class="clan-subsection" data-section-key="clan-resource-debug-${clan.id}">
-          <summary class="clan-subsection-summary"><h3>Debug screenshots</h3></summary>
+          <summary class="clan-subsection-summary"><h3>${t('Debug screenshots')}</h3></summary>
           <div class="mt-12" id="clanResourceDebugShots-${clan.id}">
-            <button class="btn" data-action="clan-resources-debug-shots" data-clan-id="${clan.id}">Load frames from the last run</button>
+            <button class="btn" data-action="clan-resources-debug-shots" data-clan-id="${clan.id}">${t('Load frames from the last run')}</button>
           </div>
         </details>` : ''}
         </div>
@@ -1132,49 +1134,49 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>Member management</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('Member management')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">When enabled, members not seen in a scan for the threshold below are automatically marked inactive. This is non-destructive — a member is restored automatically the next time a scan sees them. Leave the threshold blank to use the global default${Number.isFinite(defaultInactivityDays) ? ` of ${defaultInactivityDays} days` : ''}.</p>
+        <p class="muted-copy mb-8">${t('When enabled, members not seen in a scan for the threshold below are automatically marked inactive. This is non-destructive — a member is restored automatically the next time a scan sees them.')} ${Number.isFinite(defaultInactivityDays) ? tn(defaultInactivityDays, 'Leave the threshold blank to use the global default of {n} day.', 'Leave the threshold blank to use the global default of {n} days.') : t('Leave the threshold blank to use the global default.')}</p>
         <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-inactivity-enabled-${clan.id}" ${clan.inactivitySweepEnabled ? 'checked' : ''}> Auto-mark inactive members</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-inactivity-enabled-${clan.id}" ${clan.inactivitySweepEnabled ? 'checked' : ''}> ${t('Auto-mark inactive members')}</label>
         </div>
         <div class="inline-form-row mt-8">
-          <div><label>Inactivity threshold (days; blank = global)</label><input id="clan-inactivity-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.inactivityDays ?? ''}" placeholder="${inactivityPlaceholder}"></div>
-          <button class="btn btn-primary" data-action="clan-inactivity-save" data-clan-id="${clan.id}">Save</button>
+          <div><label>${t('Inactivity threshold (days; blank = global)')}</label><input id="clan-inactivity-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.inactivityDays ?? ''}" placeholder="${inactivityPlaceholder}"></div>
+          <button class="btn btn-primary" data-action="clan-inactivity-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         </div>
         </details>
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>Week</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('Week')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.</p>
+        <p class="muted-copy mb-8">${t("What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.")}</p>
         <div class="inline-form-row">
-          <div><label for="clan-week-start-${clan.id}">Week runs</label>
+          <div><label for="clan-week-start-${clan.id}">${t('Week runs')}</label>
             <select id="clan-week-start-${clan.id}" class="input">
-              <option value="sunday" ${clan.weekStart !== 'ancients' ? 'selected' : ''}>Sunday to Sunday (7 days)</option>
-              <option value="ancients" ${clan.weekStart === 'ancients' ? 'selected' : ''}>Tinman to Tinman (6 days)</option>
+              <option value="sunday" ${clan.weekStart !== 'ancients' ? 'selected' : ''}>${t('Sunday to Sunday (7 days)')}</option>
+              <option value="ancients" ${clan.weekStart === 'ancients' ? 'selected' : ''}>${t('Tinman to Tinman (6 days)')}</option>
             </select>
           </div>
-          <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">Save</button>
+          <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
-        <p class="muted-copy mt-8">Tinman to Tinman opens when Rise of the Ancients (Ancients day 2) begins at 17:00 UTC and runs until the next one begins, six days later.</p>
+        <p class="muted-copy mt-8">${t('Tinman to Tinman opens when {event} ({ancients} day 2) begins at 17:00 UTC and runs until the next one begins, six days later.', { event: tGame('Rise of the Ancients'), ancients: tGame('Ancients') })}</p>
         </div>
         </details>
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>Leaderboard goal</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('Leaderboard goal')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">Colours each member's Points cell on the Leaderboard against a target: <strong>green</strong> at the goal, <strong>amber</strong> from 66% of it, <strong>red</strong> below. Shows on this clan's Leaderboard tab and on its public share link.</p>
-        <p class="muted-copy mb-8">Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.</p>
+        <p class="muted-copy mb-8">${t("Colours each member's Points cell on the Leaderboard against a target: <strong>green</strong> at the goal, <strong>amber</strong> from 66% of it, <strong>red</strong> below. Shows on this clan's Leaderboard tab and on its public share link.")}</p>
+        <p class="muted-copy mb-8">${t("Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.")}</p>
         <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> Show goal colours on the leaderboard</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> ${t('Show goal colours on the leaderboard')}</label>
         </div>
         <div class="inline-form-row mt-8">
-          <div><label>Weekly points goal per member</label><input id="clan-goal-points-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.leaderboardWeeklyGoalPoints ?? ''}" placeholder="e.g. 25000"></div>
-          <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">Save</button>
+          <div><label>${t('Weekly points goal per member')}</label><input id="clan-goal-points-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.leaderboardWeeklyGoalPoints ?? ''}" placeholder="${t('e.g. 25000')}"></div>
+          <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         <p class="muted-copy mt-8" id="clan-goal-preview-${clan.id}"></p>
         </div>
@@ -1182,44 +1184,44 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
 
         <hr class="section-divider">
         <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>Public share link</h3></summary>
+        <summary class="clan-subsection-summary"><h3>${t('Public share link')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">Anyone with one of these URLs can view this clan's leaderboard${clan.ctShareCode ? ' and ChestTracker tab' : ''} — no login required. Each link counts its own visits, so give every place you post one its own link and Analytics will tell you which is actually being used. Disabling a link stops that URL immediately and leaves the others alone; you can restore it later from Analytics &amp; history.</p>
+        <p class="muted-copy mb-8">${clan.ctShareCode ? t("Anyone with one of these URLs can view this clan's leaderboard and ChestTracker tab — no login required.") : t("Anyone with one of these URLs can view this clan's leaderboard — no login required.")} ${t('Each link counts its own visits, so give every place you post one its own link and Analytics will tell you which is actually being used. Disabling a link stops that URL immediately and leaves the others alone; you can restore it later from Analytics &amp; history.')}</p>
         ${(clan.shareLinks || []).length ? `
         <div class="share-link-list">
           ${(clan.shareLinks || []).map((link) => shareLinkRowHtml(clan.id, link)).join('')}
         </div>
         ` : `
-        <p class="muted-copy share-link-empty">No share links yet.</p>
+        <p class="muted-copy share-link-empty">${t('No share links yet.')}</p>
         `}
         <div class="inline-form-row share-add-row mt-8">
           <div>
-            <label for="clan-share-key-${clan.id}">Custom key (optional)</label>
-            <input id="clan-share-key-${clan.id}" class="input" type="text" maxlength="10" placeholder="e.g. family" autocomplete="off" spellcheck="false">
+            <label for="clan-share-key-${clan.id}">${t('Custom key (optional)')}</label>
+            <input id="clan-share-key-${clan.id}" class="input" type="text" maxlength="10" placeholder="${t('e.g. family')}" autocomplete="off" spellcheck="false">
           </div>
           <div>
-            <label for="clan-share-label-${clan.id}">Name (optional)</label>
-            <input id="clan-share-label-${clan.id}" class="input" type="text" maxlength="60" placeholder="e.g. Discord" autocomplete="off">
+            <label for="clan-share-label-${clan.id}">${t('Name (optional)')}</label>
+            <input id="clan-share-label-${clan.id}" class="input" type="text" maxlength="60" placeholder="${t('e.g. Discord')}" autocomplete="off">
           </div>
-          <button class="btn btn-primary" data-action="clan-share-create" data-clan-id="${clan.id}">Add link</button>
+          <button class="btn btn-primary" data-action="clan-share-create" data-clan-id="${clan.id}">${t('Add link')}</button>
         </div>
-        <p class="muted-copy mt-8">Leave the key blank for a random one. A custom key is 3&ndash;10 characters, letters a&ndash;z and digits 0&ndash;9 only, and can't be changed once created &mdash; people already hold the URL.</p>
+        <p class="muted-copy mt-8">${t("Leave the key blank for a random one. A custom key is 3&ndash;10 characters, letters a&ndash;z and digits 0&ndash;9 only, and can't be changed once created &mdash; people already hold the URL.")}</p>
         <div class="share-secondary-actions">
-          <button class="btn btn-ghost btn-sm" data-action="clan-share-analytics" data-clan-id="${clan.id}">${CHART_ICON_SVG}<span>Analytics &amp; history</span></button>
+          <button class="btn btn-ghost btn-sm" data-action="clan-share-analytics" data-clan-id="${clan.id}">${CHART_ICON_SVG}<span>${t('Analytics &amp; history')}</span></button>
         </div>
         </div>
         </details>
 
         ${(clan.memberCount || 0) === 0 || (clan.scanCount || 0) === 0 ? `
         <hr class="section-divider">
-        <h3>Onboarding</h3>
-        <p class="muted-copy">Use these after signing in to TB for this clan via the admin "Browser Session" panel.</p>
+        <h3>${t('Onboarding')}</h3>
+        <p class="muted-copy">${t('Use these after signing in to TB for this clan via the admin "Browser Session" panel.')}</p>
         <div class="actions">
           ${(clan.memberCount || 0) === 0
-            ? `<button class="btn" data-action="clan-onboard-capture" data-clan-id="${clan.id}">Capture members</button>`
+            ? `<button class="btn" data-action="clan-onboard-capture" data-clan-id="${clan.id}">${t('Capture members')}</button>`
             : ''}
           ${(clan.scanCount || 0) === 0
-            ? `<button class="btn" data-action="clan-onboard-firstscan" data-clan-id="${clan.id}">Run first scan</button>`
+            ? `<button class="btn" data-action="clan-onboard-firstscan" data-clan-id="${clan.id}">${t('Run first scan')}</button>`
             : ''}
           <span id="clan-onboard-status-${clan.id}" class="muted-copy"></span>
         </div>
@@ -1228,7 +1230,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         ${isSuperAdmin ? `
         <hr class="section-divider">
         <div class="actions">
-          <button class="btn btn-danger" data-action="clan-delete" data-clan-id="${clan.id}" data-clan-name="${escapeHtml(clan.name)}">Delete clan</button>
+          <button class="btn btn-danger" data-action="clan-delete" data-clan-id="${clan.id}" data-clan-name="${escapeHtml(clan.name)}">${t('Delete clan')}</button>
         </div>
         ` : ''}
       </div>
@@ -1255,21 +1257,21 @@ function shareLinkRowHtml(clanId, link) {
         data-action="clan-share-copy"
         data-clan-id="${clanId}"
         data-share-url="${escapeHtml(url)}"
-        title="Click to copy"
+        title="${t('Click to copy')}"
         role="button"
         tabindex="0"
       >
         <span class="share-url-icon" aria-hidden="true">${COPY_ICON_SVG}</span>
         <span class="share-url-text">${escapeHtml(url)}</span>
-        <span class="share-url-hint" aria-hidden="true">Click to copy</span>
+        <span class="share-url-hint" aria-hidden="true">${t('Click to copy')}</span>
       </div>
       <div class="share-link-side">
-        <span class="share-link-name">${link.label ? escapeHtml(link.label) : '<span class="muted-copy">Unnamed</span>'}</span>
-        <span class="share-link-count muted-copy">${link.hitCount} visit${link.hitCount === 1 ? '' : 's'}</span>
+        <span class="share-link-name">${link.label ? escapeHtml(link.label) : `<span class="muted-copy">${t('Unnamed')}</span>`}</span>
+        <span class="share-link-count muted-copy">${tn(link.hitCount, '{n} visit', '{n} visits', { n: link.hitCount })}</span>
       </div>
       <div class="share-link-actions">
-        <button class="btn btn-sm" data-action="clan-share-rename" data-clan-id="${clanId}" data-link-id="${link.id}" data-label="${escapeHtml(link.label || '')}">Name</button>
-        <button class="btn btn-danger btn-sm" data-action="clan-share-disable" data-clan-id="${clanId}" data-link-id="${link.id}">Disable</button>
+        <button class="btn btn-sm" data-action="clan-share-rename" data-clan-id="${clanId}" data-link-id="${link.id}" data-label="${escapeHtml(link.label || '')}">${t('Name')}</button>
+        <button class="btn btn-danger btn-sm" data-action="clan-share-disable" data-clan-id="${clanId}" data-link-id="${link.id}">${t('Disable')}</button>
       </div>
     </div>`;
 }
@@ -1283,7 +1285,7 @@ function shareLinkRowHtml(clanId, link) {
 function armDisableButton(btn) {
   btn.dataset.armed = '1';
   if (!btn.dataset.label) btn.dataset.label = btn.textContent;
-  btn.textContent = 'Click again to confirm';
+  btn.textContent = t('Click again to confirm');
   btn.classList.add('btn-armed');
   clearTimeout(btn._armTimer);
   btn._armTimer = setTimeout(() => {
@@ -1335,14 +1337,14 @@ function buildSparkline(daily) {
       const pct = Math.round((d.views / max) * 100);
       const h = d.views > 0 ? Math.max(pct, 8) : 2;
       const cls = d.views > 0 ? 'sa-spark-bar has-views' : 'sa-spark-bar';
-      return `<div class="${cls}" style="height:${h}%" title="${escapeHtml(d.day)}: ${d.views} view${d.views === 1 ? '' : 's'}"></div>`;
+      return `<div class="${cls}" style="height:${h}%" title="${tn(d.views, '{day}: {n} view', '{day}: {n} views', { day: escapeHtml(d.day), n: d.views })}"></div>`;
     })
     .join('');
   return `
     <div class="sa-spark-wrap">
       <div class="sa-spark-head">
-        <span class="sa-spark-title">Visits · last 30 days</span>
-        <span class="sa-spark-total">${total} total</span>
+        <span class="sa-spark-title">${t('Visits · last 30 days')}</span>
+        <span class="sa-spark-total">${t('{total} total', { total })}</span>
       </div>
       <div class="sa-spark">${bars}</div>
     </div>`;
@@ -1350,15 +1352,15 @@ function buildSparkline(daily) {
 
 // Compact human duration for the average-visit stat.
 function formatDuration(ms) {
-  if (!Number.isFinite(ms) || ms <= 0) return '0s';
-  if (ms < 1000) return '<1s';
+  if (!Number.isFinite(ms) || ms <= 0) return t('{s}s', { s: 0 });
+  if (ms < 1000) return t('<1s');
   const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return t('{s}s', { s });
   const m = Math.floor(s / 60);
   const rem = s % 60;
-  if (m < 60) return rem ? `${m}m ${rem}s` : `${m}m`;
+  if (m < 60) return rem ? t('{m}m {s}s', { m, s: rem }) : t('{m}m', { m });
   const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+  return t('{h}h {m}m', { h, m: m % 60 });
 }
 
 function renderShareAnalytics(clanId, data, opts = {}) {
@@ -1382,28 +1384,28 @@ function renderShareAnalytics(clanId, data, opts = {}) {
         <div class="sa-head">
           <div class="sa-url" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
           ${link.label ? `<span class="sa-tag">${escapeHtml(link.label)}</span>` : ''}
-          ${link.isVanity ? '<span class="sa-tag sa-tag-muted">custom key</span>' : ''}
+          ${link.isVanity ? `<span class="sa-tag sa-tag-muted">${t('custom key')}</span>` : ''}
         </div>
         <div class="sa-stats">
-          ${saStat('Visits', String(link.hitCount), 'Total times this link was opened')}
-          ${saStat('Unique visitors', String(link.uniqueVisits), 'First-time viewers (best-effort, per browser)')}
-          ${saStat('Repeat views', String(link.returnVisits), 'Views from returning viewers')}
-          ${saStat('Avg. visit', avgVisit, 'Average time spent on the page')}
-          ${saStat('Timeframe switches', String(link.timeframeChanges), 'Visits where the viewer changed day/week/month')}
-          ${saStat('Last viewed', link.lastUsedAt ? formatRelativeTime(link.lastUsedAt) : 'never')}
-          ${saStat('Created', formatRelativeTime(link.createdAt))}
-          ${saStat('Data requests', String(link.apiHitCount), 'Background API calls the page made')}
+          ${saStat(t('Visits'), String(link.hitCount), t('Total times this link was opened'))}
+          ${saStat(t('Unique visitors'), String(link.uniqueVisits), t('First-time viewers (best-effort, per browser)'))}
+          ${saStat(t('Repeat views'), String(link.returnVisits), t('Views from returning viewers'))}
+          ${saStat(t('Avg. visit'), avgVisit, t('Average time spent on the page'))}
+          ${saStat(t('Timeframe switches'), String(link.timeframeChanges), t('Visits where the viewer changed day/week/month'))}
+          ${saStat(t('Last viewed'), link.lastUsedAt ? formatRelativeTime(link.lastUsedAt) : t('never'))}
+          ${saStat(t('Created'), formatRelativeTime(link.createdAt))}
+          ${saStat(t('Data requests'), String(link.apiHitCount), t('Background API calls the page made'))}
         </div>
         ${buildSparkline(link.daily)}
       </div>`;
       }).join('')
     : `
       <div class="sa-empty">
-        <p class="muted-copy">No active share links right now.${revoked.length ? ' Restore a recent one below, or add a fresh link from the settings panel.' : ' Add one from the settings panel to start sharing.'}</p>
+        <p class="muted-copy">${revoked.length ? t('No active share links right now. Restore a recent one below, or add a fresh link from the settings panel.') : t('No active share links right now. Add one from the settings panel to start sharing.')}</p>
       </div>`;
 
   const footnote = links.length
-    ? '<p class="muted-copy sa-footnote">Unique/repeat, average visit and timeframe switches are best-effort — they need JavaScript and a completed page view, so they under-count vs total Visits.</p>'
+    ? `<p class="muted-copy sa-footnote">${t('Unique/repeat, average visit and timeframe switches are best-effort — they need JavaScript and a completed page view, so they under-count vs total Visits.')}</p>`
     : '';
 
   const historyRows = revoked.length
@@ -1413,16 +1415,16 @@ function renderShareAnalytics(clanId, data, opts = {}) {
         <div class="sa-hist-row">
           <div class="sa-hist-main">
             <span class="sa-hist-token">${escapeHtml(r.isVanity ? r.token : maskShareToken(r.token))}</span>
-            <span class="sa-hist-meta">${r.label ? escapeHtml(r.label) + ' · ' : ''}${r.hitCount} visit${r.hitCount === 1 ? '' : 's'} · disabled ${escapeHtml(formatRelativeTime(r.revokedAt))}</span>
+            <span class="sa-hist-meta">${r.label ? escapeHtml(r.label) + ' · ' : ''}${tn(r.hitCount, '{n} visit', '{n} visits', { n: r.hitCount })} · ${t('disabled {when}', { when: escapeHtml(formatRelativeTime(r.revokedAt)) })}</span>
           </div>
           <div class="sa-hist-actions">
-            <button class="btn btn-sm" data-action="share-recover" data-link-id="${r.id}">Restore</button>
-            <button class="btn btn-danger btn-sm" data-action="share-forget" data-link-id="${r.id}">Delete</button>
+            <button class="btn btn-sm" data-action="share-recover" data-link-id="${r.id}">${t('Restore')}</button>
+            <button class="btn btn-danger btn-sm" data-action="share-forget" data-link-id="${r.id}">${t('Delete')}</button>
           </div>
         </div>`,
         )
         .join('')
-    : '<p class="muted-copy sa-hist-empty">No disabled links.</p>';
+    : `<p class="muted-copy sa-hist-empty">${t('No disabled links.')}</p>`;
 
   return `
     <div class="share-analytics">
@@ -1430,8 +1432,8 @@ function renderShareAnalytics(clanId, data, opts = {}) {
       ${activeHtml}
       ${footnote}
       <div class="sa-history">
-        <h4 class="sa-history-title">Disabled links</h4>
-        <p class="muted-copy sa-history-sub">Restore an accidentally disabled link — its old URL starts working again, alongside whatever links are already live. Deleting one discards its history and frees its key for reuse; until then the key stays claimed so an old URL can never be repointed at someone else.</p>
+        <h4 class="sa-history-title">${t('Disabled links')}</h4>
+        <p class="muted-copy sa-history-sub">${t('Restore an accidentally disabled link — its old URL starts working again, alongside whatever links are already live. Deleting one discards its history and frees its key for reuse; until then the key stays claimed so an old URL can never be repointed at someone else.')}</p>
         ${historyRows}
       </div>
     </div>`;
@@ -1450,12 +1452,12 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
   let first;
   try {
     first = await load();
-    if (!first.ok) return notify(first.j.error || 'Failed to load analytics', 'Share link');
+    if (!first.ok) return notify(first.j.error || t('Failed to load analytics'), t('Share link'));
   } catch {
-    return notify('Failed to load share link analytics.', 'Share link');
+    return notify(t('Failed to load share link analytics.'), t('Share link'));
   }
   const modal = contentModal({
-    title: 'Public share links · analytics & history',
+    title: t('Public share links · analytics & history'),
     html: renderShareAnalytics(clanId, first.j),
     wide: true,
   });
@@ -1470,8 +1472,8 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
 
     if (forget) {
       const ok = await confirmDialog(
-        'Delete this link permanently? Its visit history is discarded and its key becomes available again — including to another clan.',
-        { title: 'Delete share link', confirmLabel: 'Delete', danger: true },
+        t('Delete this link permanently? Its visit history is discarded and its key becomes available again — including to another clan.'),
+        { title: t('Delete share link'), confirmLabel: t('Delete'), danger: true },
       );
       if (!ok) return;
     }
@@ -1484,18 +1486,18 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
       const r = await fetch(url, { method: forget ? 'DELETE' : 'POST' });
       const j = await r.json();
       if (!r.ok) {
-        notify(j.error || (forget ? 'Delete failed' : 'Restore failed'), 'Share link');
+        notify(j.error || (forget ? t('Delete failed') : t('Restore failed')), t('Share link'));
         btn.disabled = false;
         return;
       }
       const restoredUrl = !forget && j.token ? `${clanOrigin(clanId)}/${j.token}` : '';
       notify(
         forget
-          ? 'Link deleted — its key is free again.'
+          ? t('Link deleted — its key is free again.')
           : restoredUrl
-            ? `Restored — ${restoredUrl} is live again.`
-            : 'Share link restored.',
-        'Share link',
+            ? t('Restored — {url} is live again.', { url: restoredUrl })
+            : t('Share link restored.'),
+        t('Share link'),
       );
       // Re-fetch so the modal shows the restored link among the active ones
       // (with a success banner) and the history reflects the change; also
@@ -1505,8 +1507,8 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
         modal.setHtml(
           renderShareAnalytics(clanId, fresh.j, {
             banner: forget
-              ? '✓ Deleted — that key is available again.'
-              : '✓ Restored — this link is live again.',
+              ? t('✓ Deleted — that key is available again.')
+              : t('✓ Restored — this link is live again.'),
           }),
         );
       } catch {
@@ -1514,7 +1516,7 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
       }
       renderClans(el, refreshClanIndicator);
     } catch {
-      notify(forget ? 'Delete failed.' : 'Restore failed.', 'Share link');
+      notify(forget ? t('Delete failed.') : t('Restore failed.'), t('Share link'));
       btn.disabled = false;
     }
   });
@@ -1537,7 +1539,7 @@ async function pollClanOnboardStatus(clanId, rootEl) {
         if (j.status === 'idle') {
           statusEl.textContent = '';
         } else if (j.status === 'failed') {
-          statusEl.textContent = `Failed: ${j.error || j.message}`;
+          statusEl.textContent = t('Failed: {error}', { error: j.error || j.message });
         } else {
           statusEl.textContent = j.message || j.status;
         }
@@ -1567,46 +1569,45 @@ async function pollClanOnboardStatus(clanId, rootEl) {
 /** Human-readable summary of a finished capture. */
 function describeClanCollect(o) {
   const parts = [];
-  if (o?.dryRun) parts.push('DIAGNOSTIC — nothing written');
-  else parts.push(o?.rowsInserted ? `${o.rowsInserted} new row(s) recorded` : 'no new rows');
-  if (o?.rowsSeen != null) parts.push(`${o.rowsSeen} read`);
-  if (o?.pagesScanned != null) parts.push(`${o.pagesScanned} page(s)`);
-  if (o?.oldestDateLabel) parts.push(`back to "${String(o.oldestDateLabel).toLowerCase()}"`);
+  if (o?.dryRun) parts.push(t('DIAGNOSTIC — nothing written'));
+  else parts.push(o?.rowsInserted ? tn(o.rowsInserted, '{n} new row(s) recorded', '{n} new row(s) recorded', { n: o.rowsInserted }) : t('no new rows'));
+  if (o?.rowsSeen != null) parts.push(tn(o.rowsSeen, '{n} read', '{n} read', { n: o.rowsSeen }));
+  if (o?.pagesScanned != null) parts.push(tn(o.pagesScanned, '{n} page(s)', '{n} page(s)', { n: o.pagesScanned }));
+  if (o?.oldestDateLabel) parts.push(t('back to "{date}"', { date: String(o.oldestDateLabel).toLowerCase() }));
   const STOP = {
-    cursor: 'stopped where the last run left off',
-    'date-floor': 'STOPPED EARLY — hit the date backstop without finding where the last run left off',
-    'end-of-list': 'read to the end of the list',
-    'no-new-rows': 'STOPPED EARLY — list scrolling but adding nothing',
-    blank: 'STOPPED EARLY — the rows never came back',
-    'page-limit': 'STOPPED EARLY — hit the page limit',
-    crashed: 'PARTIAL — the browser crashed mid-sweep; rows read so far were kept',
-    error: 'stopped on an error',
+    cursor: t('stopped where the last run left off'),
+    'date-floor': t('STOPPED EARLY — hit the date backstop without finding where the last run left off'),
+    'end-of-list': t('read to the end of the list'),
+    'no-new-rows': t('STOPPED EARLY — list scrolling but adding nothing'),
+    blank: t('STOPPED EARLY — the rows never came back'),
+    'page-limit': t('STOPPED EARLY — hit the page limit'),
+    crashed: t('PARTIAL — the browser crashed mid-sweep; rows read so far were kept'),
+    error: t('stopped on an error'),
   };
-  if (o?.stopReason) parts.push(STOP[o.stopReason] ?? `stopped: ${o.stopReason}`);
+  if (o?.stopReason) parts.push(STOP[o.stopReason] ?? t('stopped: {reason}', { reason: o.stopReason }));
   if (o?.unresolvedRows) {
     const pct = o.rowsSeen ? ` (${Math.round((o.unresolvedRows / o.rowsSeen) * 100)}%)` : '';
-    parts.push(`${o.unresolvedRows} unresolved${pct}`);
+    parts.push(`${tn(o.unresolvedRows, '{n} unresolved', '{n} unresolved', { n: o.unresolvedRows })}${pct}`);
   }
-  if (o?.created?.length) parts.push(`${o.created.length} new member(s)`);
-  if (o?.skipped) parts.push(`skipped: ${o.skipped}`);
+  if (o?.created?.length) parts.push(tn(o.created.length, '{n} new member(s)', '{n} new member(s)', { n: o.created.length }));
+  if (o?.skipped) parts.push(t('skipped: {reason}', { reason: o.skipped }));
   // Both of these are normal, not warnings — but a run that reports "no new rows"
   // while having read 600 needs to say where they went, or it reads as a failure.
   if (o?.deferredRows) {
-    parts.push(`${o.deferredRows} held back — today is still in progress in-game, so its lines `
-      + 'can still grow; the next run records that day complete');
+    parts.push(tn(o.deferredRows, '{n} held back — today is still in progress in-game, so its lines can still grow; the next run records that day complete', '{n} held back — today is still in progress in-game, so its lines can still grow; the next run records that day complete', { n: o.deferredRows }));
   }
   if (o?.withheldRows) {
     parts.push(o?.dryRun
-      ? `${o.withheldRows} already recorded`
-      : `${o.withheldRows} already recorded, not written again`);
+      ? tn(o.withheldRows, '{n} already recorded', '{n} already recorded', { n: o.withheldRows })
+      : tn(o.withheldRows, '{n} already recorded, not written again', '{n} already recorded, not written again', { n: o.withheldRows }));
   }
   // A dry run returns before the marker is ever saved, so it must not claim it moved.
   if (o?.anchorDate) {
-    parts.push(o?.dryRun ? `position would move to ${o.anchorDate}` : `position now at ${o.anchorDate}`);
+    parts.push(o?.dryRun ? t('position would move to {date}', { date: o.anchorDate }) : t('position now at {date}', { date: o.anchorDate }));
   }
-  if (o?.cursorLost) parts.push('previous position not re-found — rows may duplicate earlier ones');
+  if (o?.cursorLost) parts.push(t('previous position not re-found — rows may duplicate earlier ones'));
   let out = parts.join(' · ') + '.';
-  if (o?.debugDir) out += ` Frames: ${o.debugDir}`;
+  if (o?.debugDir) out += ` ${t('Frames: {dir}', { dir: o.debugDir })}`;
   return out;
 }
 
@@ -1623,7 +1624,7 @@ async function runClanResourceCollect(clanId, body) {
   const buttons = document.querySelectorAll(`[data-resource-capture-clan="${clanId}"] button`);
   buttons.forEach((b) => { b.disabled = true; });
   const say = (text) => { if (statusEl) statusEl.textContent = text; };
-  say('Starting: world map → clan capital → History…');
+  say(t('Starting: world map → clan capital → History…'));
 
   try {
     const started = await fetch(`/api/clans/${clanId}/resources/collect`, {
@@ -1640,20 +1641,20 @@ async function runClanResourceCollect(clanId, body) {
       try {
         res = await fetch(`/api/clans/${clanId}/resources/collect/status`).then((r) => r.json());
       } catch (err) {
-        say(`Lost contact while polling: ${String(err)}. The capture may still be running.`);
+        say(t('Lost contact while polling: {error}. The capture may still be running.', { error: String(err) }));
         return;
       }
       if (res?.status === 'running') {
         const secs = Math.round((res.elapsedMs ?? 0) / 1000);
-        say(res.progress ? `${res.progress} · ${secs}s` : `Reading the history… ${secs}s`);
+        say(res.progress ? `${res.progress} · ${t('{s}s', { s: secs })}` : t('Reading the history… {s}s', { s: secs }));
         continue;
       }
-      if (res?.status === 'error') { say(res.error || 'The collection failed.'); return; }
+      if (res?.status === 'error') { say(res.error || t('The collection failed.')); return; }
       if (res?.status === 'done') { say(describeClanCollect(res.outcome)); return; }
-      say('No capture is running for this clan.');
+      say(t('No capture is running for this clan.'));
       return;
     }
-    say('Stopped watching after 90 minutes — check the container logs.');
+    say(t('Stopped watching after 90 minutes — check the container logs.'));
   } finally {
     buttons.forEach((b) => { b.disabled = false; });
   }
@@ -1663,36 +1664,35 @@ async function runClanResourceCollect(clanId, body) {
 async function loadClanResourceDebugShots(clanId) {
   const host = document.getElementById(`clanResourceDebugShots-${clanId}`);
   if (!host) return;
-  host.innerHTML = '<p class="muted-copy">Loading…</p>';
+  host.innerHTML = `<p class="muted-copy">${t('Loading…')}</p>`;
   let data;
   try {
     data = await fetch(`/api/clans/${clanId}/resources/debug-shots`).then((r) => r.json());
   } catch (err) {
-    host.innerHTML = `<p class="muted-copy">Could not list frames: ${escapeHtml(String(err))}</p>`;
+    host.innerHTML = `<p class="muted-copy">${t('Could not list frames: {error}', { error: escapeHtml(String(err)) })}</p>`;
     return;
   }
   const shots = Array.isArray(data?.shots) ? data.shots : [];
   if (!data?.run || shots.length === 0) {
-    host.innerHTML = '<p class="muted-copy">No frames on disk. Run <em>Diagnose</em> — every scroll '
-      + 'page is saved, and they age out with the normal screenshot retention.</p>';
+    host.innerHTML = `<p class="muted-copy">${t('No frames on disk. Run <em>Diagnose</em> — every scroll page is saved, and they age out with the normal screenshot retention.')}</p>`;
     return;
   }
   const total = shots.reduce((n, sh) => n + (sh.bytes || 0), 0);
   host.innerHTML = `
-    <p class="muted-copy mb-8">${shots.length} frame(s) · ${(total / 1024 / 1024).toFixed(1)} MB
-      from <code>${escapeHtml(data.run)}</code>. Copy the run off the box with
-      <code>scp -r &lt;host&gt;:&lt;app-dir&gt;/${escapeHtml(data.scpPath ?? '')} .</code></p>
-    <p class="muted-copy mb-8"><code>pNNN-crop</code> is exactly what the reader saw for that page —
-      the frame to judge accuracy from. <code>pNNN-full</code> is the whole screen, for checking the
-      rectangle sits where it should. <code>blank-pNNN</code> is a page where the list went empty and
-      the sweep waited; <code>final-page</code> is where it stopped.</p>
+    <p class="muted-copy mb-8">${tn(shots.length, '{n} frame(s) · {size} MB from {run}. Copy the run off the box with {command}', '{n} frame(s) · {size} MB from {run}. Copy the run off the box with {command}', {
+      n: shots.length,
+      size: (total / 1024 / 1024).toFixed(1),
+      run: `<code>${escapeHtml(data.run)}</code>`,
+      command: `<code>scp -r &lt;host&gt;:&lt;app-dir&gt;/${escapeHtml(data.scpPath ?? '')} .</code>`,
+    })}</p>
+    <p class="muted-copy mb-8">${t('<code>pNNN-crop</code> is exactly what the reader saw for that page — the frame to judge accuracy from. <code>pNNN-full</code> is the whole screen, for checking the rectangle sits where it should. <code>blank-pNNN</code> is a page where the list went empty and the sweep waited; <code>final-page</code> is where it stopped.')}</p>
     <div class="resources-debug-grid">
       ${shots.map((sh) => {
         const url = `/api/clans/${clanId}/resources/debug-shots/${encodeURIComponent(data.run)}/${encodeURIComponent(sh.name)}`;
         const label = sh.name.replace(/_\d{4}-[\dT-]+Z?\.png$/, '').replace(/\.png$/, '');
         return `<figure class="resources-debug-shot">
           <a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(sh.name)}" loading="lazy"></a>
-          <figcaption>${escapeHtml(label)} <span class="muted-copy">${Math.round((sh.bytes || 0) / 1024)} KB</span></figcaption>
+          <figcaption>${escapeHtml(label)} <span class="muted-copy">${t('{size} KB', { size: Math.round((sh.bytes || 0) / 1024) })}</span></figcaption>
         </figure>`;
       }).join('')}
     </div>`;

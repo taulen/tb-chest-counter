@@ -15,6 +15,7 @@
 
 import { getGameDayRolloverUtcHour, getWeekStart } from './state.js';
 import { formatUtcDateKey } from './ui.js';
+import { t, getLanguage } from './i18n.js';
 
 // `rolloverHrOverride` is for the public-share page, which wires its
 // rollover hour through state.js the same way the auth app does — but
@@ -175,7 +176,7 @@ export function computeGameWindowDates(period, offset, rolloverHrOverride, weekS
  * navigation arrows on the leaderboard UI (both auth and public).
  */
 export function formatPeriodLabel(period, offset, rolloverHrOverride, weekStartOverride) {
-  if (period === 'all') return 'All Time';
+  if (period === 'all') return t('All Time');
   const rolloverHr = resolveRolloverHr(rolloverHrOverride);
   const shifted = new Date(Date.now() - rolloverHr * 60 * 60 * 1000);
   shifted.setUTCHours(0, 0, 0, 0);
@@ -197,7 +198,7 @@ export function formatPeriodLabel(period, offset, rolloverHrOverride, weekStartO
     const year = shifted.getUTCFullYear();
     const month = shifted.getUTCMonth() - offset;
     const d = new Date(Date.UTC(year, month, 1));
-    return d.toLocaleDateString([], { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    return d.toLocaleDateString(getLanguage(), { month: 'long', year: 'numeric', timeZone: 'UTC' });
   }
   if (period === 'yearly') {
     const year = shifted.getUTCFullYear() - offset;
