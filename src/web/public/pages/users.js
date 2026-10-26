@@ -12,6 +12,9 @@ let currentAuditPage = 1;
 let usersById = new Map();
 let clansForEditor = [];
 
+const HOME_ICON = '<svg class="clan-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>';
+const EDIT_ICON = '<svg class="clan-chips-edit" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
 // ─── Audit helpers ────────────────────────────────────────────
 //
 // The action_id → human-readable label map for audit-log entries.
@@ -421,7 +424,7 @@ export async function renderUsers(el) {
         if (u.role === 'superadmin' || u.clanId === activeClanId || u.clanId === null) return [u];
         const access = (u.clanAccess || []).find((a) => a.clanId === activeClanId);
         return access
-          ? [{ ...u, membership: 'guest', homeClanId: u.clanId, clanId: activeClanId, role: access.role }]
+          ? [{ ...u, membership: 'guest', homeClanId: u.clanId, homeRole: u.role, clanId: activeClanId, role: access.role }]
           : [];
       })
     : allFetchedUsers;
@@ -461,6 +464,35 @@ export async function renderUsers(el) {
     return clanNameById.get(id) ?? `#${id}`;
   };
   clansForEditor = allClans;
+  // "SIK - SINful Knights" → "SIK": the chips only have room for the tag.
+  // Names without one are used whole and ellipsize.
+  const clanShort = (id) => {
+    const name = clanLabel(id);
+    const cut = name.indexOf(' - ');
+    return cut > 0 ? name.slice(0, cut) : name;
+  };
+
+  /**
+   * Superadmin Clan cell: one chip per clan the account is in — home first —
+   * each with the role it holds THERE, so "admin here, user there" reads at a
+   * glance. The chip of the clan picked in the header is outlined: that's the
+   * clan the Role column edits. The whole group opens the editor.
+   */
+  const clanChips = (u) => {
+    const homeClanId = u.membership === 'guest' ? u.homeClanId : u.clanId;
+    const homeRole = u.membership === 'guest' ? u.homeRole : u.role;
+    const all = [
+      { clanId: homeClanId, role: homeRole, home: true },
+      ...(u.clanAccess || []).map((a) => ({ ...a, home: false })),
+    ];
+    const described = all.map((m) => `${clanLabel(m.clanId)}: ${m.role}${m.home ? ' (home clan)' : ''}`).join(', ');
+    const chips = all.map((m) => {
+      const cls = ['clan-chip', m.home ? 'is-home' : '', m.clanId === activeClanId ? 'is-current' : ''].filter(Boolean).join(' ');
+      const title = `${clanLabel(m.clanId)}${m.home ? ' · home clan' : ''} · ${m.role}`;
+      return `<span class="${cls}" title="${esc(title)}">${m.home ? HOME_ICON : ''}<span class="clan-chip-name">${esc(clanShort(m.clanId))}</span><span class="clan-chip-role role-${esc(m.role)}">${esc(m.role)}</span></span>`;
+    }).join('');
+    return `<button type="button" class="clan-chips" data-action="edit-user-clans" data-user-id="${u.id}" aria-label="${esc(`Edit clans for ${u.username}. ${described}`)}" title="Edit clans">${chips}${EDIT_ICON}</button>`;
+  };
 
   // Role options visible in dropdowns. Clan admins can grant user/admin
   // within their clan; only superadmins can mint or demote superadmins.
@@ -517,16 +549,12 @@ export async function renderUsers(el) {
               const isGuest = u.membership === 'guest';
               const isSelf = u.id === currentUser.id;
               let clanCell;
-              if (isGuest) {
-                // Superadmins are told where the guest is from; a clan admin
-                // only that they are one.
-                const home = isSuperAdmin
-                  ? `<span class="muted-copy">from ${esc(clanLabel(u.homeClanId))}</span>`
-                  : '';
-                clanCell = `<span class="clan-cell-stack">
-                  <span class="badge-guest" title="Belongs to another clan and was given access to this one.">Guest</span>
-                  ${home}
-                </span>`;
+              if (isGuest && isSuperAdmin) {
+                clanCell = clanChips(u);
+              } else if (isGuest) {
+                // A clan admin is told only that this is a guest — never
+                // which other clans the account belongs to.
+                clanCell = '<span class="badge-guest" title="Belongs to another clan and was given access to this one.">Guest</span>';
               } else if (u.role === 'superadmin') {
                 clanCell = '<span class="muted-copy">(cross-clan)</span>';
               } else if (isOrphan) {
@@ -538,13 +566,7 @@ export async function renderUsers(el) {
                   ${assignBtn}
                 </span>`;
               } else if (isSuperAdmin) {
-                // Home member: their clan, any extra clans, and the editor.
-                const extras = (u.clanAccess || []).map((a) => clanLabel(a.clanId));
-                clanCell = `<span class="clan-cell-stack">
-                  <span>${esc(clanLabel(u.clanId))}</span>
-                  ${extras.length ? `<span class="muted-copy" title="${esc(extras.join(', '))}">+ ${esc(extras.join(', '))}</span>` : ''}
-                  <button class="btn btn-tight" data-action="edit-user-clans" data-user-id="${u.id}">Clans</button>
-                </span>`;
+                clanCell = clanChips(u);
               } else {
                 clanCell = esc(clanLabel(u.clanId));
               }
@@ -640,8 +662,18 @@ export async function createNewUser(rerender) {
 
 export async function deleteUserById(id, rerender, username) {
   const label = username ? `"${username}"` : 'this user';
+  // Deleting the account takes every clan with it, not just the one in the
+  // header. Superadmins get the list; a clan admin is never shown another
+  // clan's name, so they get the general warning.
+  const user = usersById.get(id);
+  const clanNames = user && user.role !== 'superadmin' && Array.isArray(user.clanAccess) && user.clanAccess.length > 0
+    ? [user.clanId, ...user.clanAccess.map((a) => a.clanId)].map(clanNameFor)
+    : null;
+  const lost = clanNames
+    ? `They lose access to every clan they're in: ${clanNames.join(', ')}.`
+    : 'They lose access to the site entirely, in every clan they belong to.';
   const ok = await confirmDialog(
-    `Delete user ${label}? Their login is removed permanently and they will be signed out of any active session. This cannot be undone.`,
+    `Delete user ${label}? ${lost} Their login is removed permanently and they will be signed out of any active session. This cannot be undone.`,
     {
       title: 'Delete user',
       confirmLabel: 'Delete',
@@ -802,9 +834,24 @@ export async function changeGuestClanRole(id, clanId, role, rerender) {
   rerender('users');
 }
 
+/** Clan name from the last render's clan list, or "#id" when unknown. */
+function clanNameFor(id) {
+  if (id === null || id === undefined) return '—';
+  return clansForEditor.find((c) => c.id === id)?.name ?? `#${id}`;
+}
+
 export async function removeGuestFromClan(id, clanId, username, rerender) {
+  // Only this one clan goes. Superadmins see what the account keeps; a clan
+  // admin isn't told where else the guest belongs.
+  const user = usersById.get(id);
+  const kept = user && Array.isArray(user.clanAccess)
+    ? [user.clanId, ...user.clanAccess.map((a) => a.clanId).filter((c) => c !== clanId)].map(clanNameFor)
+    : null;
+  const keeps = kept
+    ? `They keep their account and access to ${kept.join(', ')}.`
+    : 'Their account is not deleted and keeps access to their own clan.';
   const ok = await confirmDialog(
-    `Remove "${username}" from this clan? Their account and their own clan are untouched; they just can no longer switch to this one.`,
+    `Remove "${username}" from ${clanNameFor(clanId)} only? ${keeps} They just can no longer switch to this clan.`,
     { title: 'Remove from clan', confirmLabel: 'Remove', cancelLabel: 'Cancel', danger: true },
   );
   if (!ok) return;

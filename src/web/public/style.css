@@ -3554,21 +3554,89 @@ details > table {
   flex-wrap: wrap;
 }
 
-/* Clan cell with extra lines: home clan, "+ other clans", the Clans button —
-   or a guest's badge and where they're from. Long lists ellipsize; the full
-   list is in the title. */
-.users-table .clan-cell-stack {
+/* "Remove" (guest rows) is wider than "Delete"; 80px pushed it past the edge
+   and gave the whole table a horizontal scrollbar. */
+.users-table .col-actions { width: 96px; }
+
+/* Superadmin Clan cell: one chip per clan the account is in, each carrying
+   the role held there. Home first (house icon); the clan picked in the header
+   is outlined in gold — that's the one the Role column edits. The whole group
+   is the button that opens the editor; the pencil only shows it's editable. */
+.users-table .clan-chips {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
-  min-width: 0;
-}
-.users-table .clan-cell-stack > span {
   max-width: 100%;
+  padding: 3px;
+  margin: -3px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.users-table .clan-chips:hover {
+  background: var(--hover-overlay);
+  border-color: var(--border);
+}
+.users-table .clan-chips:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.clan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--subtle-bg);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.clan-chip.is-current {
+  border-color: var(--accent-gold-border);
+  background: var(--accent-gold-bg);
+}
+.clan-chip-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.clan-chip-role {
+  flex: none;
+  color: var(--text-muted);
+}
+.clan-chip-role.role-admin {
+  color: var(--accent-gold);
+}
+.clan-chip-icon,
+.clan-chips-edit {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.clan-chip-icon {
+  color: var(--text-secondary);
+}
+.clan-chips-edit {
+  margin-left: 2px;
+  color: var(--text-muted);
+}
+.users-table .clan-chips:hover .clan-chips-edit {
+  color: var(--text-primary);
 }
 
 /* Account that belongs to another clan and was given access to this one. */
