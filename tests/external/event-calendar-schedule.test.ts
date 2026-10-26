@@ -22,6 +22,10 @@ vi.mock('../../src/data/repositories/event-schedule-repo.js', () => ({
   setCorrection: vi.fn(),
   syncArchivedRuns: vi.fn(),
 }));
+vi.mock('../../src/utils/log-buffer.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/log-buffer.js')>()),
+  resolveEntries: vi.fn(() => 0),
+}));
 
 const DAY = 24 * 60 * 60 * 1000;
 const at = (d: string) => Date.parse(`${d}T17:00:00.000Z`);
@@ -166,6 +170,32 @@ describe('the run archive', () => {
     // Fused runs, not per-day rows: one entry per Olympus run, five days long.
     expect(runs).toContainEqual({ eventKey: 'olympus', start: at('2026-10-06'), end: at('2026-10-11') });
     expect(runs).toContainEqual({ eventKey: 'dark-omens', start: at('2026-10-15'), end: at('2026-10-17') });
+  });
+});
+
+describe('the Tinman cadence check', () => {
+  // Tinman days fall on 2026-10-23 + 6k. An Ancients run is Treasure the day
+  // before, then Rise of the Ancients on the Tinman day itself.
+  const ancients = (treasureDay: string, withRise = true) => [
+    ...run("💎 Ancients' Treasure", treasureDay, 1),
+    ...(withRise ? run('🛕 Rise of the Ancients', new Date(at(treasureDay) + DAY).toISOString().slice(0, 10), 1) : []),
+  ];
+
+  async function cadenceClean(ics: string): Promise<boolean> {
+    const { cal } = await load({ now: '2026-10-26T08:00:00Z', ics });
+    await cal.getEventOccurrences('ancients');
+    const buffer = await import('../../src/utils/log-buffer.js');
+    return vi.mocked(buffer.resolveEntries).mock.calls.some(([k]) => k === 'event-calendar:tinman-cadence');
+  }
+
+  it('ignores a last run the feed cut off before its Tinman day', async () => {
+    // Feed fetched 2026-10-26: its window stopped after Treasure on 2027-01-26,
+    // so that run seemed to end a day early and the warning fired.
+    expect(await cadenceClean(feed(ancients('2026-10-22'), ancients('2026-10-28'), ancients('2026-11-03', false)))).toBe(true);
+  });
+
+  it('still catches a run that really moved', async () => {
+    expect(await cadenceClean(feed(ancients('2026-10-22'), ancients('2026-10-27'), ancients('2026-11-03', false)))).toBe(false);
   });
 });
 

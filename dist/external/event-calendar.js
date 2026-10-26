@@ -132,6 +132,7 @@ function parseVevents(text) {
     const lines = unfolded.split(/\r\n|\n|\r/);
     const out = [];
     let horizon = null;
+    let edge = null;
     // Every "(Day i/n)" row seen, for the missing-day audit below.
     const declared = [];
     let inEvent = false;
@@ -151,6 +152,8 @@ function parseVevents(text) {
                 const end = parseIcsUtc(dtend);
                 if (start !== null && (horizon === null || start < horizon))
                     horizon = start;
+                if (end !== null && (edge === null || end > edge))
+                    edge = end;
                 if (key && start !== null && end !== null && end > start) {
                     const span = declaredRunSpan(summary, start, end);
                     if (span.declared)
@@ -177,7 +180,7 @@ function parseVevents(text) {
             dtend = value;
     }
     warnOnMissingRunDays(declared);
-    return { events: out, horizon };
+    return { events: out, horizon, edge };
 }
 /**
  * The expansion above quietly covers for a feed that dropped days of a run, so
@@ -308,9 +311,14 @@ const TINMAN_CADENCE_KEY = 'event-calendar:tinman-cadence';
  * Ancients, the Tinman day) against the cadence and warns on a mismatch; the
  * fix is moving the anchor constant in both places. Clears itself once the
  * feed agrees again (e.g. after a corrected feed or a moved anchor).
+ *
+ * A run that reaches the feed's forward edge is skipped: the window often stops
+ * between its two days, so it "ends" on the Treasure day, a day before Tinman.
+ * That false alarm fired on 2026-10-26 for the 2027-01-26 run.
  */
 function checkTinmanCadence(feed) {
-    const runs = fuse(feed.events.filter((e) => e.key === 'ancients'));
+    const edge = feed.edge ?? Infinity;
+    const runs = fuse(feed.events.filter((e) => e.key === 'ancients')).filter((r) => r.end < edge);
     if (!runs.length)
         return;
     const off = runs

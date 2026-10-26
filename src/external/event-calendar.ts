@@ -191,6 +191,12 @@ interface Feed {
    * or after it, it means the run isn't (or is no longer) scheduled.
    */
   horizon: number | null;
+  /**
+   * Latest DTEND of ANY VEVENT — where the feed's forward window stops. A run
+   * ending here may be cut short: the feed lists Ancients' Treasure but not
+   * the Rise of the Ancients day that falls past its end.
+   */
+  edge: number | null;
 }
 
 function parseVevents(text: string): Feed {
@@ -199,6 +205,7 @@ function parseVevents(text: string): Feed {
   const lines = unfolded.split(/\r\n|\n|\r/);
   const out: VEvent[] = [];
   let horizon: number | null = null;
+  let edge: number | null = null;
   // Every "(Day i/n)" row seen, for the missing-day audit below.
   const declared: DeclaredDay[] = [];
   let inEvent = false;
@@ -217,6 +224,7 @@ function parseVevents(text: string): Feed {
         const start = parseIcsUtc(dtstart);
         const end = parseIcsUtc(dtend);
         if (start !== null && (horizon === null || start < horizon)) horizon = start;
+        if (end !== null && (edge === null || end > edge)) edge = end;
         if (key && start !== null && end !== null && end > start) {
           const span = declaredRunSpan(summary, start, end);
           if (span.declared) declared.push({ ...span.declared, key });
@@ -237,7 +245,7 @@ function parseVevents(text: string): Feed {
     else if (name === 'DTEND') dtend = value;
   }
   warnOnMissingRunDays(declared);
-  return { events: out, horizon };
+  return { events: out, horizon, edge };
 }
 
 /**
@@ -367,9 +375,14 @@ const TINMAN_CADENCE_KEY = 'event-calendar:tinman-cadence';
  * Ancients, the Tinman day) against the cadence and warns on a mismatch; the
  * fix is moving the anchor constant in both places. Clears itself once the
  * feed agrees again (e.g. after a corrected feed or a moved anchor).
+ *
+ * A run that reaches the feed's forward edge is skipped: the window often stops
+ * between its two days, so it "ends" on the Treasure day, a day before Tinman.
+ * That false alarm fired on 2026-10-26 for the 2027-01-26 run.
  */
 function checkTinmanCadence(feed: Feed): void {
-  const runs = fuse(feed.events.filter((e) => e.key === 'ancients'));
+  const edge = feed.edge ?? Infinity;
+  const runs = fuse(feed.events.filter((e) => e.key === 'ancients')).filter((r) => r.end < edge);
   if (!runs.length) return;
   const off = runs
     .map((r) => gameDateFor(r.end - DAY_MS, loadConfig().gameDayRolloverUtcHour))
