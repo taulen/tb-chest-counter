@@ -96,6 +96,7 @@ function configureClan1(guildId: string): void {
     scanReportsEnabled: true,
     onlyNewChests: false,
     dailyDigestEnabled: false,
+    weeklyDigestEnabled: false,
     dailyDigestShareUserId: '',
     commandsEnabled: false,
   });
