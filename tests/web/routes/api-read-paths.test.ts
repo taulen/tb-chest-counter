@@ -155,6 +155,20 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('records');
     });
+
+    it('GET /api/chests/by-source/:source/members', async () => {
+      const res = await request(app).get('/api/chests/by-source/level-25-crypt/members');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('source');
+      expect(res.body).toHaveProperty('members');
+    });
+
+    it('GET /api/chests/by-source/:source/history', async () => {
+      const res = await request(app)
+        .get(`/api/chests/by-source/level-25-crypt/history?memberId=${seed.members.alice}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('records');
+    });
   });
 
   describe('members', () => {

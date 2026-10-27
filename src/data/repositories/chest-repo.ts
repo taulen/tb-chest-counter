@@ -933,6 +933,207 @@ export function getChestHistoryForChestAndMember(
 }
 
 /**
+ * Resolve a source input (exact source string or its slug) to the canonical
+ * chest_sources.source, the source-side twin of `resolveChestName`. Only
+ * sources this clan has records for are candidates; on a slug collision the
+ * one with the most records wins. Unknown input comes back unchanged.
+ */
+export function resolveSourceName(input: string, clanId: number): string {
+  const trimmed = input.trim();
+  if (!trimmed) return trimmed;
+  const targetSlug = slugifyChestName(trimmed);
+  const rows = clanSourcesByCount(clanId);
+  if (rows.some((r) => r.source === trimmed)) return trimmed;
+  if (!targetSlug) return trimmed;
+  for (const row of rows) {
+    if (slugifyChestName(row.source) === targetSlug) return row.source;
+  }
+  return trimmed;
+}
+
+/** This clan's sources with record counts, most-recorded first. */
+function clanSourcesByCount(clanId: number): Array<{ id: number; source: string; cnt: number }> {
+  return getDb().prepare(`
+    SELECT cs.id, cs.source, g.cnt
+    FROM (
+      SELECT chest_source_id, COUNT(*) AS cnt
+      FROM chest_records
+      WHERE clan_id = ? AND chest_source_id IS NOT NULL
+      GROUP BY chest_source_id
+    ) g
+    JOIN chest_sources cs ON cs.id = g.chest_source_id
+    WHERE cs.source != ''
+    ORDER BY g.cnt DESC
+  `).all(clanId) as Array<{ id: number; source: string; cnt: number }>;
+}
+
+/**
+ * For a given chest source (e.g. "Level 25 Crypt"), the per-member tally of
+ * chests that came from it plus the headline stats — the same shape as
+ * `getMembersByChestName`, keyed on chest_source_id instead of chest_id.
+ */
+export function getMembersBySource(
+  source: string,
+  clanId: number,
+  from?: string,
+  to?: string,
+): {
+  source: string;
+  totalCount: number;
+  totalPoints: number;
+  uniqueCollectors: number;
+  avgPerCollector: number;
+  avgPointsPerChest: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  members: Array<{ memberId: number | null; memberName: string; count: number; points: number; lastSeen: string | null }>;
+} {
+  const db = getDb();
+  const sourceRow = db.prepare(
+    'SELECT id FROM chest_sources WHERE source = ?',
+  ).get(source) as { id: number } | undefined;
+
+  if (!sourceRow) {
+    return {
+      source,
+      totalCount: 0,
+      totalPoints: 0,
+      uniqueCollectors: 0,
+      avgPerCollector: 0,
+      avgPointsPerChest: 0,
+      firstSeen: null,
+      lastSeen: null,
+      members: [],
+    };
+  }
+
+  const conditions: string[] = ['c.clan_id = ?', 'c.chest_source_id = ?'];
+  const params: unknown[] = [clanId, sourceRow.id];
+  if (from) {
+    conditions.push('c.effective_at >= ?');
+    params.push(isoToMs(from));
+  }
+  if (to) {
+    conditions.push('c.effective_at < ?');
+    params.push(isoToMs(to));
+  }
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  const rawRows = db.prepare(`
+    SELECT
+      c.member_id AS memberId,
+      m.name AS memberName,
+      COUNT(*) AS count,
+      SUM(c.point_value) AS points,
+      MAX(c.effective_at) AS lastSeen
+    FROM chest_records c
+    JOIN members m ON m.id = c.member_id AND m.clan_id = c.clan_id
+    ${where}
+    GROUP BY c.member_id, m.name
+    ORDER BY points DESC, count DESC, LOWER(memberName) ASC
+  `).all(...params) as Array<{
+    memberId: number | null;
+    memberName: string;
+    count: number;
+    points: number;
+    lastSeen: number | null;
+  }>;
+  const rows = rawRows.map((r) => ({
+    memberId: r.memberId,
+    memberName: r.memberName,
+    count: r.count,
+    points: r.points,
+    lastSeen: aggMsToIso(r.lastSeen),
+  }));
+
+  const rawSeen = db.prepare(`
+    SELECT MIN(c.effective_at) as firstSeen, MAX(c.effective_at) as lastSeen
+    FROM chest_records c
+    ${where}
+  `).get(...params) as { firstSeen: number | null; lastSeen: number | null };
+
+  let totalCount = 0;
+  let totalPoints = 0;
+  for (const row of rows) {
+    totalCount += row.count;
+    totalPoints += row.points;
+  }
+  const uniqueCollectors = rows.length;
+  const avgPerCollector = uniqueCollectors > 0 ? totalCount / uniqueCollectors : 0;
+  const avgPointsPerChest = totalCount > 0 ? totalPoints / totalCount : 0;
+
+  return {
+    source,
+    totalCount,
+    totalPoints,
+    uniqueCollectors,
+    avgPerCollector: Math.round(avgPerCollector * 10) / 10,
+    avgPointsPerChest: Math.round(avgPointsPerChest * 10) / 10,
+    firstSeen: aggMsToIso(rawSeen?.firstSeen),
+    lastSeen: aggMsToIso(rawSeen?.lastSeen),
+    members: rows,
+  };
+}
+
+/**
+ * Per-member history for the source drill-down's expand row: every record
+ * from `source` for `memberId` (or, when null, unassigned rows matching
+ * `playerName`) within the period. Carries the chest name, since that is the
+ * column a source page doesn't already answer.
+ */
+export function getChestHistoryForSourceAndMember(
+  source: string,
+  memberId: number | null,
+  playerName: string | null,
+  clanId: number,
+  from?: string,
+  to?: string,
+): Array<{
+  id: number;
+  capturedAt: string;
+  effectiveAt: string;
+  chestName: string;
+  chestType: string;
+  quantity: number;
+  pointValue: number;
+}> {
+  const db = getDb();
+  const params: unknown[] = [source, clanId];
+  let query = `
+    SELECT id, captured_at, effective_at, chest_name, chest_type, quantity, point_value
+    FROM chest_records_v
+    WHERE chest_source = ? AND clan_id = ?
+  `;
+  if (memberId !== null) {
+    query += ' AND member_id = ?';
+    params.push(memberId);
+  } else {
+    query += ' AND member_id IS NULL AND player_name = ?';
+    params.push(playerName ?? '');
+  }
+  if (from) {
+    query += ' AND effective_at >= ?';
+    params.push(isoToMs(from));
+  }
+  if (to) {
+    query += ' AND effective_at < ?';
+    params.push(isoToMs(to));
+  }
+  query += ' ORDER BY captured_at DESC';
+
+  const rows = db.prepare(query).all(...params) as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    id: r.id as number,
+    capturedAt: msToIso(r.captured_at as number),
+    effectiveAt: msToIso((r.effective_at ?? r.captured_at) as number),
+    chestName: (r.chest_name as string) || '',
+    chestType: (r.chest_type as string) || '',
+    quantity: r.quantity as number,
+    pointValue: r.point_value as number,
+  }));
+}
+
+/**
  * Returns every chest record that needs manual player-name attribution:
  * rows where OCR failed to read the name, so the row was saved with an
  * empty/null player_name (legacy pre-fix data) or under the "[Unknown]"

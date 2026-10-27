@@ -526,6 +526,42 @@ function createApiRouter(scanLoop) {
         const records = chestRepo.getChestHistoryForChestAndMember(name, memberId, playerName, clanId, win?.from, win?.to);
         res.json({ period, records });
     });
+    // GET /api/chests/by-source/:source/members?period=daily|weekly|monthly|all
+    // The source drill-down reached from the Analytics Breakdown card's Source
+    // view: who got chests from this source. Same shape as by-name/members.
+    router.get('/chests/by-source/:source/members', (req, res) => {
+        const input = decodeURIComponent(String(req.params.source || '')).trim();
+        if (!input) {
+            return res.status(400).json({ error: 'Source is required' });
+        }
+        const clanId = req.clanId ?? 1;
+        const source = chestRepo.resolveSourceName(input, clanId);
+        const period = req.query.period || 'all';
+        const win = currentPeriodWindow(period, clanId);
+        const result = chestRepo.getMembersBySource(source, clanId, win?.from, win?.to);
+        res.json({ period, ...result });
+    });
+    // GET /api/chests/by-source/:source/history?memberId=&playerName=&period=
+    // Per-member records for the source-detail expand row.
+    router.get('/chests/by-source/:source/history', (req, res) => {
+        const input = decodeURIComponent(String(req.params.source || '')).trim();
+        if (!input) {
+            return res.status(400).json({ error: 'Source is required' });
+        }
+        const clanId = req.clanId ?? 1;
+        const source = chestRepo.resolveSourceName(input, clanId);
+        const memberIdRaw = req.query.memberId;
+        const memberId = memberIdRaw !== undefined && memberIdRaw !== '' && memberIdRaw !== 'null'
+            ? (0, parse_int_js_1.parseBoundedInt)(memberIdRaw, 0, { min: 1 })
+            : null;
+        const playerName = memberId === null
+            ? (req.query.playerName ? String(req.query.playerName) : '')
+            : null;
+        const period = req.query.period || 'all';
+        const win = currentPeriodWindow(period, clanId);
+        const records = chestRepo.getChestHistoryForSourceAndMember(source, memberId, playerName, clanId, win?.from, win?.to);
+        res.json({ period, records });
+    });
     // GET /api/members
     //
     // Defaults to active members only — soft-deleted (is_active = 0)

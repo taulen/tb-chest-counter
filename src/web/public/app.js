@@ -92,6 +92,7 @@ import { renderMight } from './pages/might.js';
 import {
   renderAnalytics,
   viewChestByName,
+  viewSourceByName,
   setChestDrillPeriod,
   setChestCollectorsSort,
   toggleChestCollectorRow,
@@ -947,6 +948,13 @@ async function renderRoute(page, content) {
       return;
     }
   }
+  if (page.startsWith('source/')) {
+    const source = decodeURIComponent(page.slice('source/'.length));
+    if (source) {
+      await viewSourceByName(source, navigateTo);
+      return;
+    }
+  }
   // Resources is a two-tab page: #resources = Overview (landing),
   // #resources/admin = the ledger + upload. Both bounce to the dashboard
   // when the active clan doesn't have resources enabled.
@@ -1228,7 +1236,7 @@ function updateNavState() {
   let navPage = currentPage;
   if (currentPage.startsWith('member/')) navPage = 'members';
   else if (currentPage.startsWith('session/')) navPage = 'sessions';
-  else if (currentPage.startsWith('chest/')) navPage = 'analytics';
+  else if (currentPage.startsWith('chest/') || currentPage.startsWith('source/')) navPage = 'analytics';
   else if (currentPage.startsWith('resources')) navPage = 'resources';
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('tools')) navPage = 'tools';

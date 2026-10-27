@@ -231,6 +231,12 @@ export function chestHash(chestName, period) {
   return buildHash(`chest/${slug}`, p ? { period: p } : {});
 }
 
+/** Hash for a per-source drill-down page; same slug + period rules as chestHash. */
+export function sourceHash(source, period) {
+  const p = period && period !== 'all' ? period : '';
+  return buildHash(`source/${slugifyChestName(source)}`, p ? { period: p } : {});
+}
+
 /** Format a JS Date as YYYY-MM-DD using its UTC components. Used as
  *  the canonical "game day key" — the leaderboard URL anchor, the
  *  analytics chart's x-axis labels, and the Clan Records best-day

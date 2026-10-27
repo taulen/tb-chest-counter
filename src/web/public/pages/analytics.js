@@ -31,7 +31,7 @@
 import { api } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatRelativeTime,
-  memberLink, chestHash, formatUtcDateKey, parseHashRoute, restoreDetailsState,
+  memberLink, chestHash, sourceHash, formatUtcDateKey, parseHashRoute, restoreDetailsState,
 } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { describeChart } from '../lib/chart-a11y.js';
@@ -390,7 +390,7 @@ function breakdownRows(current) {
       // Sources have no rarity, so they take the neutral dot rather than
       // borrowing a colour that would read as a chest tier.
       typeClass: 'unknown',
-      href: null,
+      href: r.chest_source ? sourceHash(r.chest_source, 'all') : null,
     }));
   }
   if (breakdownDim === 'chest') {
@@ -1548,13 +1548,30 @@ let chestCollectorsSort = { key: 'points', dir: 'desc' };
 let cachedChestDetail = null;
 let currentChestDrillPeriod = 'all';
 let currentChestDrillName = '';
+// The same page serves #chest/<name> and #source/<source>: both ask "who got
+// these", grouped on a different column.
+let currentDrillKind = 'chest';
 
-// ─── Chest Drill-Down ───
-// Clicking a chest row in the Analytics "All Chest Types" table opens a
-// dedicated page listing every member who has collected that chest along
-// with a per-member count + points tally and headline stats.
+const DRILL_KINDS = {
+  chest: { hash: chestHash, api: 'by-name', canonical: (d) => d.chestName },
+  source: { hash: sourceHash, api: 'by-source', canonical: (d) => d.source },
+};
 
-export async function viewChestByName(chestName, navigate) {
+// ─── Chest / Source Drill-Down ───
+// Clicking a chest or source row in the Analytics Breakdown card opens a
+// dedicated page listing every member who has collected it along with a
+// per-member count + points tally and headline stats.
+
+export function viewChestByName(chestName, navigate) {
+  return viewDrill('chest', chestName, navigate);
+}
+
+export function viewSourceByName(source, navigate) {
+  return viewDrill('source', source, navigate);
+}
+
+async function viewDrill(kind, name, navigate) {
+  const spec = DRILL_KINDS[kind];
   const route = parseHashRoute();
   const periodParam = route.params.get('period');
   if (periodParam && ['daily', 'weekly', 'monthly', 'all'].includes(periodParam)) {
@@ -1562,17 +1579,18 @@ export async function viewChestByName(chestName, navigate) {
   } else {
     currentChestDrillPeriod = 'all';
   }
-  currentChestDrillName = chestName;
+  currentDrillKind = kind;
+  currentChestDrillName = name;
 
-  const expectedHash = chestHash(chestName, currentChestDrillPeriod);
+  const expectedHash = spec.hash(name, currentChestDrillPeriod);
   if (window.location.hash !== expectedHash) {
     window.location.hash = expectedHash;
     return;
   }
 
-  const data = await api(`/chests/by-name/${encodeURIComponent(chestName)}/members?period=${currentChestDrillPeriod}`);
+  const data = await api(`/chests/${spec.api}/${encodeURIComponent(name)}/members?period=${currentChestDrillPeriod}`);
   if (!data || data.error) {
-    // The chest name doesn't resolve in the active clan (e.g. a superadmin
+    // The name doesn't resolve in the active clan (e.g. a superadmin
     // switched the active clan while sitting on #chest/<name> for a chest
     // that only the previous clan has). Bounce to the main overview rather
     // than dropping the user on analytics with a popup, matching the
@@ -1582,15 +1600,15 @@ export async function viewChestByName(chestName, navigate) {
   }
   // The URL may have been a slug; use the canonical name the server
   // resolved so future actions (period switch, row expansion) pass
-  // the exact chest_name to downstream endpoints.
-  if (data.chestName) currentChestDrillName = data.chestName;
+  // the exact name to downstream endpoints.
+  if (spec.canonical(data)) currentChestDrillName = spec.canonical(data);
   renderChestDetail(data);
 }
 
 export function setChestDrillPeriod(period, navigate) {
   currentChestDrillPeriod = period;
   if (typeof navigate === 'function') {
-    navigate(`chest/${encodeURIComponent(currentChestDrillName)}`,
+    navigate(`${currentDrillKind}/${encodeURIComponent(currentChestDrillName)}`,
       period === 'all' ? {} : { period });
   }
 }
@@ -1606,9 +1624,11 @@ function renderChestDetail(data) {
     `<button class="btn ${period === p ? 'active' : ''}" data-action="set-chest-drill-period" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
   ).join('');
 
+  // Sources carry no rarity of their own, so only the chest page gets a badge.
   const chestTypeBadge = data.chestType
     ? `<span class="chest-type ${data.chestType}">${esc(CHEST_TYPE_LABELS[data.chestType] ?? data.chestType)}</span>`
     : '';
+  const drillName = DRILL_KINDS[currentDrillKind].canonical(data) || currentChestDrillName;
 
   // Stamp every member with its canonical points-desc rank (1-indexed) so
   // the Rank column stays stable even when the user sorts the table by
@@ -1631,7 +1651,7 @@ function renderChestDetail(data) {
     key, labelHtml, sortState: chestCollectorsSort, action: 'sort-chest-collectors', className,
   });
 
-  const chestNameEnc = encodeURIComponent(data.chestName);
+  const drillNameEnc = encodeURIComponent(drillName);
   const tableBody = hasData
     ? displayMembers.map((m) => {
         const memberKey = m.memberId !== null && m.memberId !== undefined
@@ -1645,7 +1665,7 @@ function renderChestDetail(data) {
             data-member-key="${esc(memberKey)}"
             data-member-id="${m.memberId ?? ''}"
             data-member-name="${esc(m.memberName)}"
-            data-chest-name-enc="${chestNameEnc}">
+            data-drill-name-enc="${drillNameEnc}">
           <td class="chest-collector-caret" data-label="" data-role="hidden"><span class="caret">▸</span></td>
           <td data-label="${t('Rank')}" data-role="lead">${formatRank(m._rank)}</td>
           <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${memberLink(m.memberId, m.memberName)}</span><span class="mrow-sub">${tn(m.count || 0, '{n} chest', '{n} chests')}</span></td>
@@ -1660,7 +1680,7 @@ function renderChestDetail(data) {
     <div class="card">
       <div class="card-header member-detail-header">
         <div class="member-detail-title">
-          <h2>${esc(tGame(data.chestName))}</h2>
+          <h2>${esc(tGame(drillName))}</h2>
           ${chestTypeBadge}
         </div>
         <button class="btn" data-action="member-back">${t('← Back')}</button>
@@ -1774,8 +1794,9 @@ export async function toggleChestCollectorRow(row) {
   const memberKey = row.dataset.memberKey || '';
   const memberId = row.dataset.memberId || '';
   const memberName = row.dataset.memberName || '';
-  const chestNameEnc = row.dataset.chestNameEnc || '';
+  const drillNameEnc = row.dataset.drillNameEnc || '';
   const period = currentChestDrillPeriod || 'all';
+  const isSource = currentDrillKind === 'source';
 
   const existing = tbody.querySelector(`tr.chest-collector-details[data-member-key="${cssEscape(memberKey)}"]`);
   const caret = row.querySelector('.caret');
@@ -1809,7 +1830,7 @@ export async function toggleChestCollectorRow(row) {
   } else {
     params.set('playerName', memberName);
   }
-  const resp = await api(`/chests/by-name/${chestNameEnc}/history?${params.toString()}`);
+  const resp = await api(`/chests/${DRILL_KINDS[currentDrillKind].api}/${drillNameEnc}/history?${params.toString()}`);
   const inner = detailRow.querySelector('.chest-collector-details-inner');
   if (!inner) return;
   if (!resp || resp.error) {
@@ -1825,7 +1846,9 @@ export async function toggleChestCollectorRow(row) {
   const rowsHtml = records.map((r) => `<tr>
     <td class="history-date" title="${esc(formatDate(r.effectiveAt))}">${esc(formatDate(r.effectiveAt))}</td>
     <td><span class="chest-type ${esc(r.chestType)}">${esc(CHEST_TYPE_LABELS[r.chestType] ?? (r.chestType || '-'))}</span></td>
-    <td>${esc(tGame(r.chestSource) || '-')}</td>
+    <td>${isSource
+      ? (r.chestName ? `<a class="member-link" href="${chestHash(r.chestName, period)}">${esc(tGame(r.chestName))}</a>` : '-')
+      : esc(tGame(r.chestSource) || '-')}</td>
     <td class="num">${(r.quantity || 0).toLocaleString()}</td>
     <td class="num">${(r.pointValue || 0).toLocaleString()}</td>
   </tr>`).join('');
@@ -1833,7 +1856,7 @@ export async function toggleChestCollectorRow(row) {
   inner.innerHTML = `
     <div class="chest-history-header">${tn(records.length, '{n} record for {name}', '{n} records for {name}', { n: records.length, name: esc(memberName) })}</div>
     <table class="chest-history-table">
-      <thead><tr><th>${t('Received')}</th><th>${t('Level')}</th><th>${t('Source')}</th><th class="num">${t('Qty')}</th><th class="num">${t('Points')}</th></tr></thead>
+      <thead><tr><th>${t('Received')}</th><th>${t('Level')}</th><th>${isSource ? t('Chest') : t('Source')}</th><th class="num">${t('Qty')}</th><th class="num">${t('Points')}</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>`;
 }
