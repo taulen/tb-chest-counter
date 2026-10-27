@@ -4,7 +4,7 @@
 import { api, apiDelete } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatRelativeTime, formatDuration,
-  formatTriggerSource, sessionHash, chestHash, memberLink, notify, confirmDialog,
+  formatTriggerSource, sessionHash, chestHash, sourceLink, memberLink, notify, confirmDialog,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -117,7 +117,7 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
           <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
           <td data-label="${t('Chest')}"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a></td>
           <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABELS[c.chestType] ?? c.chestType}</span></td>
-          <td data-label="${t('Source')}">${esc(tGame(c.chestSource))}</td>
+          <td data-label="${t('Source')}">${sourceLink(c.chestSource)}</td>
           <td data-label="${t('Points')}" data-role="metric">${c.pointValue}</td>
           <td data-label="${t('Received')}">${formatDate(c.effectiveAt)}</td>
         </tr>`).join('')}

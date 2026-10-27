@@ -5,7 +5,7 @@
 import { api, apiPost, apiDelete, mustOk } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatGameDayShort, formatRelativeTime,
-  memberHash, memberLink, chestHash, parseHashRoute, confirmDialog,
+  memberHash, memberLink, chestHash, sourceLink, parseHashRoute, confirmDialog,
 } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import {
@@ -773,7 +773,7 @@ function memberSourceMixHtml(mix) {
   const rows = shown.map((r) => {
     const pct = Math.round((r.points / total) * 100);
     return `<div class="type-row type-row--compact type-unknown">
-      <span class="type-row-name"><span class="type-row-dot"></span>${esc(tGame(r.source))}</span>
+      <span class="type-row-name"><span class="type-row-dot"></span>${r.source === 'Unknown' ? esc(tGame(r.source)) : sourceLink(r.source)}</span>
       <div class="type-row-bar"><span style="width: ${Math.max(1, pct)}%"></span></div>
       <span class="type-row-value">${r.points.toLocaleString()}</span>
       <span class="type-row-pct">${pct}%</span>
@@ -1266,7 +1266,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
             ${chests.map((c) => `<tr>
               <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a></span><span class="mrow-sub">${formatDate(c.effectiveAt)}</span></td>
               <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABEL[c.chestType] ?? c.chestType}</span></td>
-              <td data-label="${t('Source')}">${esc(tGame(c.chestSource))}</td>
+              <td data-label="${t('Source')}">${sourceLink(c.chestSource)}</td>
               <td data-label="${t('Points')}" class="num" data-role="metric">${c.pointValue}</td>
               <td data-label="${t('Received')}" data-role="hidden">${formatDate(c.effectiveAt)}</td>
             </tr>`).join('')}

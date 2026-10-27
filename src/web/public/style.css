@@ -1262,6 +1262,13 @@ th.sortable:hover {
   color: var(--accent-gold);
 }
 
+/* A link on a secondary line (a chest's source under its name) keeps that
+   line's muted weight until hovered. */
+:is(.cell-stacked-sub, .mrow-sub) .member-link {
+  color: inherit;
+  font-weight: inherit;
+}
+
 /* ─── Ranks ─── */
 /* Medal colours for the podium only; everyone else is a plain number. */
 .rank {

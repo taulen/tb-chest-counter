@@ -4,7 +4,7 @@
 
 import { api } from '../lib/api.js';
 import {
-  esc, formatRelativeTime, memberLink, chestHash,
+  esc, formatRelativeTime, memberLink, chestHash, sourceLink,
 } from '../lib/ui.js';
 import { computeGameWindow } from '../lib/period.js';
 import { getCurrentUser } from '../lib/state.js';
@@ -97,7 +97,7 @@ export async function renderDashboard(el, refreshStatus) {
           ${recent.length > 0 ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Type')}</th></tr></thead><tbody>
             ${recent.map((c) => `<tr>
               <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
-              <td data-label="${t('Chest')}"><div class="cell-stacked"><a class="member-link cell-stacked-primary" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a><span class="cell-stacked-sub">${esc(tGame(c.chestSource))}</span></div></td>
+              <td data-label="${t('Chest')}"><div class="cell-stacked"><a class="member-link cell-stacked-primary" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a><span class="cell-stacked-sub">${sourceLink(c.chestSource)}</span></div></td>
               <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABELS[c.chestType] ?? c.chestType}</span></td>
             </tr>`).join('')}
           </tbody></table>` : `<div class="empty-state"><p>${t('No chests yet.')}</p></div>`}

@@ -28,7 +28,7 @@
 // pages/resources-totals.js.
 
 import { api } from '../lib/api.js';
-import { esc, memberLink, formatDate } from '../lib/ui.js';
+import { esc, memberLink, formatDate, chestHash, sourceLink } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { nameWithGoldPassHtml } from '../lib/guards-format.js';
 import { computeGameWindow, gameDaysUntil } from '../lib/period.js';
@@ -1019,8 +1019,8 @@ async function toggleParticipantRow(row) {
   }
   const bodyHtml = rows
     .map((r) => `<tr>
-      <td>${esc(tGame(r.chestName))}</td>
-      <td>${esc(r.source ? tGame(r.source) : '—')}</td>
+      <td><a class="member-link" href="${chestHash(r.chestName, 'all')}">${esc(tGame(r.chestName))}</a></td>
+      <td>${r.source ? sourceLink(r.source) : '—'}</td>
       <td class="num">${(r.chests || 0).toLocaleString()}</td>
       <td class="num">${(r.points || 0).toLocaleString()}</td>
       <td class="history-date">${r.lastSeen ? formatDate(r.lastSeen) : '—'}</td>

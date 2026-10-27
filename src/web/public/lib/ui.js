@@ -5,7 +5,7 @@
 // NodeList for missing selectors; callers should null-check or use
 // optional chaining.
 
-import { t, tn, englishOf } from './i18n.js';
+import { t, tn, tGame, englishOf } from './i18n.js';
 
 export const $ =(sel) => document.querySelector(sel);
 export const $$ = (sel) => document.querySelectorAll(sel);
@@ -235,6 +235,17 @@ export function chestHash(chestName, period) {
 export function sourceHash(source, period) {
   const p = period && period !== 'all' ? period : '';
   return buildHash(`source/${slugifyChestName(source)}`, p ? { period: p } : {});
+}
+
+/**
+ * A chest source as a link to its drill-down, or plain text when there is
+ * none to drill into. Only for regular chest records — triumphal chests live
+ * in their own table, which the source page doesn't count.
+ */
+export function sourceLink(source, { period = 'all', className = 'member-link' } = {}) {
+  const label = esc(tGame(source));
+  if (!source) return label;
+  return `<a class="${className}" href="${sourceHash(source, period)}">${label}</a>`;
 }
 
 /** Format a JS Date as YYYY-MM-DD using its UTC components. Used as

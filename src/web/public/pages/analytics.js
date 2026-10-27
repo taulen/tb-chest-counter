@@ -31,7 +31,7 @@
 import { api } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatRelativeTime,
-  memberLink, chestHash, sourceHash, formatUtcDateKey, parseHashRoute, restoreDetailsState,
+  memberLink, chestHash, sourceHash, sourceLink, formatUtcDateKey, parseHashRoute, restoreDetailsState,
 } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { describeChart } from '../lib/chart-a11y.js';
@@ -1848,7 +1848,7 @@ export async function toggleChestCollectorRow(row) {
     <td><span class="chest-type ${esc(r.chestType)}">${esc(CHEST_TYPE_LABELS[r.chestType] ?? (r.chestType || '-'))}</span></td>
     <td>${isSource
       ? (r.chestName ? `<a class="member-link" href="${chestHash(r.chestName, period)}">${esc(tGame(r.chestName))}</a>` : '-')
-      : esc(tGame(r.chestSource) || '-')}</td>
+      : (r.chestSource ? sourceLink(r.chestSource, { period }) : '-')}</td>
     <td class="num">${(r.quantity || 0).toLocaleString()}</td>
     <td class="num">${(r.pointValue || 0).toLocaleString()}</td>
   </tr>`).join('');
