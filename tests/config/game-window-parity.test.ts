@@ -22,7 +22,7 @@ import {
 } from '../../src/utils/game-day.js';
 // The frontend module is plain ESM with no DOM access at import time.
 import {
-  computeGameWindow, computeGameWindowDates, formatPeriodLabel,
+  computeGameWindow, computeGameWindowDates, formatPeriodLabel, gameWeekStartOf,
   ANCIENTS_TINMAN_ANCHOR as CLIENT_ANCHOR, ANCIENTS_CYCLE_DAYS as CLIENT_CYCLE,
 } from '../../src/web/public/lib/period.js';
 
@@ -92,6 +92,21 @@ describe('server game windows match the client', () => {
     expect(gameWindow('weekly', 0, 17)).toEqual({
       from: '2026-10-18T17:00:00.000Z', to: '2026-10-25T17:00:00.000Z',
     });
+  });
+
+  it('buckets a game day into the week the Weekly period puts it in', () => {
+    // Weekly bars on Resources and the member sparkline bucket date-only rows
+    // with gameWeekStartOf; a bar must cut exactly where the Weekly window does.
+    for (let day = 0; day < 14; day += 1) {
+      vi.useFakeTimers({ now: Date.parse('2026-10-20T18:00:00Z') + day * 86_400_000 });
+      for (const weekStart of WEEK_STARTS) {
+        const today = new Date(computeGameWindowDates('daily', 0, 17, weekStart)!.from + 'T00:00:00Z');
+        expect(
+          gameWeekStartOf(today, weekStart).toISOString().slice(0, 10),
+          `day ${day} ${weekStart}`,
+        ).toBe(computeGameWindowDates('weekly', 0, 17, weekStart)!.from);
+      }
+    }
   });
 
   it('returns null for all time on both sides', () => {

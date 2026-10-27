@@ -12,7 +12,7 @@ import {
   guardsCellHtml, guardsTitle, goldPassBadgeHtml, nameWithGoldPassHtml,
 } from '../lib/guards-format.js';
 import {
-  computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor,
+  computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor, gameWeekStartOf,
 } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
@@ -621,13 +621,11 @@ async function buildMemberResourcesCard(memberId, resourcesEnabled) {
   }
 }
 
-// Weekly Sent totals (Monday-anchored) for a compact sparkline.
+// Weekly Sent totals for a compact sparkline, bucketed on the clan's week.
 function weeklySent(rows) {
   const map = new Map();
   for (const r of rows) {
-    const d = new Date(r.date + 'T00:00:00Z');
-    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-    const key = d.toISOString().slice(0, 10);
+    const key = gameWeekStartOf(new Date(r.date + 'T00:00:00Z')).toISOString().slice(0, 10);
     map.set(key, (map.get(key) || 0) + r.sent);
   }
   return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map((e) => e[1]);

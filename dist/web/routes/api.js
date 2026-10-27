@@ -192,6 +192,16 @@ const CALIBRATION_FIELD_ENV = {
     resourceHistoryCropRightPct: 'RESOURCE_HISTORY_CROP_RIGHT_PCT',
     resourceHistoryCropBottomPct: 'RESOURCE_HISTORY_CROP_BOTTOM_PCT',
 };
+/**
+ * The game-period slot in progress for a `?period=` param — the same window the
+ * Leaderboard shows for it: 17:00-reset days, the clan's own week shape (Sunday
+ * or Tinman to Tinman), calendar months. Null for 'all' or anything unknown.
+ * These routes used to count back a rolling 24h / 7 days / 30 days from now,
+ * which was a different board from every other Weekly view.
+ */
+function currentPeriodWindow(period, clanId) {
+    return (0, game_day_js_1.gameWindow)(period, 0, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour, (0, clan_repo_js_1.getClanWeekStart)(clanId));
+}
 function createApiRouter(scanLoop) {
     const router = (0, express_1.Router)();
     // Note: all routes here already require auth (applied in server.ts)
@@ -487,20 +497,9 @@ function createApiRouter(scanLoop) {
         // like /#chest/rare-dragon-chest resolve without %20-encoded spaces.
         const clanId = req.clanId ?? 1;
         const name = chestRepo.resolveChestName(input, clanId);
-        // Same period semantics as /api/leaderboard so the UX is consistent.
         const period = req.query.period || 'all';
-        let from;
-        const now = new Date();
-        if (period === 'daily') {
-            from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-        }
-        else if (period === 'weekly') {
-            from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        }
-        else if (period === 'monthly') {
-            from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        }
-        const result = chestRepo.getMembersByChestName(name, clanId, from, undefined);
+        const win = currentPeriodWindow(period, clanId);
+        const result = chestRepo.getMembersByChestName(name, clanId, win?.from, win?.to);
         res.json({ period, ...result });
     });
     // GET /api/chests/by-name/:name/history?memberId=&playerName=&period=
@@ -523,18 +522,8 @@ function createApiRouter(scanLoop) {
             ? (req.query.playerName ? String(req.query.playerName) : '')
             : null;
         const period = req.query.period || 'all';
-        let from;
-        const now = new Date();
-        if (period === 'daily') {
-            from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-        }
-        else if (period === 'weekly') {
-            from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        }
-        else if (period === 'monthly') {
-            from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        }
-        const records = chestRepo.getChestHistoryForChestAndMember(name, memberId, playerName, clanId, from, undefined);
+        const win = currentPeriodWindow(period, clanId);
+        const records = chestRepo.getChestHistoryForChestAndMember(name, memberId, playerName, clanId, win?.from, win?.to);
         res.json({ period, records });
     });
     // GET /api/members

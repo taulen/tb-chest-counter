@@ -51,7 +51,7 @@ import { cached } from '../../utils/ttl-cache.js';
 import { ANALYTICS_CACHE_TTL_MS } from '../../data/repositories/chest-repo.js';
 import * as chestSummaryRepo from '../../data/repositories/chest-summary-repo.js';
 import {
-  gameDateFor, daysBetweenGameDates, gameWeekWindow, currentGameDate,
+  gameDateFor, daysBetweenGameDates, gameWeekWindow, gameWindow, currentGameDate,
 } from '../../utils/game-day.js';
 import { getScanCoverage } from '../../data/repositories/session-repo.js';
 import { createPreActionBackup, listBackups, resolveBackupPath } from '../../utils/db-backup.js';
@@ -208,6 +208,17 @@ const CALIBRATION_FIELD_ENV: Record<string, string> = {
   resourceHistoryCropRightPct: 'RESOURCE_HISTORY_CROP_RIGHT_PCT',
   resourceHistoryCropBottomPct: 'RESOURCE_HISTORY_CROP_BOTTOM_PCT',
 };
+
+/**
+ * The game-period slot in progress for a `?period=` param — the same window the
+ * Leaderboard shows for it: 17:00-reset days, the clan's own week shape (Sunday
+ * or Tinman to Tinman), calendar months. Null for 'all' or anything unknown.
+ * These routes used to count back a rolling 24h / 7 days / 30 days from now,
+ * which was a different board from every other Weekly view.
+ */
+function currentPeriodWindow(period: string, clanId: number): { from: string; to: string } | null {
+  return gameWindow(period, 0, loadConfig().gameDayRolloverUtcHour, getClanWeekStart(clanId));
+}
 
 export function createApiRouter(scanLoop?: ScanLoop): Router {
   const router = Router();
@@ -514,19 +525,10 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     const clanId = req.clanId ?? 1;
     const name = chestRepo.resolveChestName(input, clanId);
 
-    // Same period semantics as /api/leaderboard so the UX is consistent.
     const period = (req.query.period as string) || 'all';
-    let from: string | undefined;
-    const now = new Date();
-    if (period === 'daily') {
-      from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    } else if (period === 'weekly') {
-      from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    } else if (period === 'monthly') {
-      from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    }
+    const win = currentPeriodWindow(period, clanId);
 
-    const result = chestRepo.getMembersByChestName(name, clanId, from, undefined);
+    const result = chestRepo.getMembersByChestName(name, clanId, win?.from, win?.to);
     res.json({ period, ...result });
   });
 
@@ -551,23 +553,15 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       : null;
 
     const period = (req.query.period as string) || 'all';
-    let from: string | undefined;
-    const now = new Date();
-    if (period === 'daily') {
-      from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    } else if (period === 'weekly') {
-      from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    } else if (period === 'monthly') {
-      from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    }
+    const win = currentPeriodWindow(period, clanId);
 
     const records = chestRepo.getChestHistoryForChestAndMember(
       name,
       memberId,
       playerName,
       clanId,
-      from,
-      undefined,
+      win?.from,
+      win?.to,
     );
     res.json({ period, records });
   });

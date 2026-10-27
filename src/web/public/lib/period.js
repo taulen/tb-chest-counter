@@ -52,6 +52,17 @@ function daysIntoWeek(day, weekStart) {
 }
 
 /**
+ * First day of the clan week holding `day` (a UTC-midnight Date of a game
+ * day), as a new UTC-midnight Date. For bucketing date-only series by week, so
+ * a weekly bar cuts where the Weekly period does — never at a Monday.
+ */
+export function gameWeekStartOf(day, weekStartOverride) {
+  const start = new Date(day);
+  start.setUTCDate(start.getUTCDate() - daysIntoWeek(start, resolveWeekStart(weekStartOverride)));
+  return start;
+}
+
+/**
  * The game day (YYYY-MM-DD) an epoch-ms timestamp falls in: game day N runs
  * [N 17:00 UTC, N+1 17:00 UTC), so it's the shifted-UTC date at "ms -
  * rolloverHours". Use this instead of raw calendar/24h math so day counts snap

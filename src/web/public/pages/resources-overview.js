@@ -19,7 +19,7 @@ import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
 import { readToken } from '../lib/theme.js';
 import { describeChart } from '../lib/chart-a11y.js';
-import { computeGameWindowDates } from '../lib/period.js';
+import { computeGameWindowDates, gameWeekStartOf, weekLengthDays } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   formatResourceAmount, resourceIconOnly, resourceTabsHtml,
@@ -66,7 +66,6 @@ document.addEventListener('themechange', () => {
 function isoToUtc(s) { return new Date(s + 'T00:00:00Z'); }
 function utcToIso(d) { return d.toISOString().slice(0, 10); }
 function addDays(d, n) { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; }
-function mondayOf(d) { const wd = (d.getUTCDay() + 6) % 7; return addDays(d, -wd); }
 function monthStart(d) { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
 
 // Set the inclusive [from, to] game-day date window for the current period.
@@ -117,12 +116,14 @@ function bucketSeries(rows, bucket, fromIso, toIso) {
 }
 
 function bucketStart(d, bucket) {
-  if (bucket === 'week') return mondayOf(d);
+  // Weeks follow the clan's week shape (Sunday, or Tinman to Tinman), so the
+  // bars cut where the Weekly period does.
+  if (bucket === 'week') return gameWeekStartOf(d);
   if (bucket === 'month') return monthStart(d);
   return d;
 }
 function bucketNext(d, bucket) {
-  if (bucket === 'week') return addDays(d, 7);
+  if (bucket === 'week') return addDays(d, weekLengthDays());
   if (bucket === 'month') return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
   return addDays(d, 1);
 }
@@ -132,7 +133,7 @@ function bucketKeyFromDate(d, bucket) {
 }
 function bucketKey(dateIso, bucket) {
   if (bucket === 'month') return dateIso.slice(0, 7);
-  if (bucket === 'week') return utcToIso(mondayOf(isoToUtc(dateIso)));
+  if (bucket === 'week') return utcToIso(gameWeekStartOf(isoToUtc(dateIso)));
   return dateIso;
 }
 function bucketLabel(d, bucket) {
