@@ -7158,6 +7158,14 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .levels-tag.is-none { color: var(--text-muted); }
 .levels-table tr.levels-dupe td { background: var(--accent-red-bg); }
 .levels-save { margin-top: 12px; }
+/* Preview vs the member's latest report: changes read "old→new", the rest is muted. */
+.levels-diff .col-lvl { width: 76px; }
+.levels-diff td.levels-same { color: var(--text-muted); }
+.levels-diff td.levels-changed { white-space: nowrap; }
+.levels-diff td.levels-changed.is-up strong { color: var(--accent-green); }
+.levels-diff td.levels-changed.is-down strong { color: var(--accent-red); }
+.levels-diff .levels-was { color: var(--text-muted); font-size: 12px; margin-right: 2px; }
+.levels-diff td.levels-new { font-weight: 600; }
 
 /* Member profile: levels the member last posted in chat — a quiet chip row. */
 .reported-levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 12px; }

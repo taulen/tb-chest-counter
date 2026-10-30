@@ -73,6 +73,28 @@ function letterCells(levels) {
   return LETTERS.map((k) => `<td class="num" data-label="${k.toUpperCase()}">${levels?.[k] ?? '<span class="events-zero">—</span>'}</td>`).join('');
 }
 
+// Preview cells measured against the picked member's latest report: a changed
+// value shows "old → new" (green up, red down), an unchanged one is muted.
+function diffCells(levels, prev) {
+  return LETTERS.map((k) => {
+    const v = levels?.[k];
+    if (v === undefined || v === null) return `<td class="num" data-label="${k.toUpperCase()}"><span class="events-zero">—</span></td>`;
+    const old = prev?.levels?.[k];
+    const date = esc(prev?.asOf?.[k] || '');
+    if (old === undefined || old === null) {
+      return `<td class="num levels-new" data-label="${k.toUpperCase()}" title="${t('First report')}">${v}</td>`;
+    }
+    if (old === v) {
+      return `<td class="num levels-same" data-label="${k.toUpperCase()}" title="${t('Unchanged since {date}', { date })}">${v}</td>`;
+    }
+    return `<td class="num levels-changed ${v > old ? 'is-up' : 'is-down'}" data-label="${k.toUpperCase()}" title="${t('Was {old} (reported {date})', { old, date })}"><span class="levels-was">${old}→</span><strong>${v}</strong></td>`;
+  }).join('');
+}
+
+function countChanges(levels, prev) {
+  return LETTERS.filter((k) => levels?.[k] != null && prev?.levels?.[k] != null && prev.levels[k] !== levels[k]).length;
+}
+
 function letterHeads() {
   return LETTERS.map((k) => `<th class="num" title="${esc(LETTER_TITLE[k])}">${k.toUpperCase()}</th>`).join('');
 }
@@ -85,6 +107,8 @@ function previewHtml() {
   ].join('');
   const picked = rows.map((_, i) => picks.get(i) ?? '');
   const dupes = new Set(picked.filter((v, i) => v && picked.indexOf(v) !== i));
+  const latestById = new Map(latest.map((l) => [String(l.memberId), l]));
+  const changedPlayers = rows.filter((r, i) => picked[i] && countChanges(r.levels, latestById.get(picked[i]))).length;
   const body = rows.map((r, i) => {
     const sel = picks.get(i) ?? '';
     const tag = r.matchKind === 'exact'
@@ -95,7 +119,7 @@ function previewHtml() {
     return `<tr class="${dupes.has(sel) ? 'levels-dupe' : ''}">
       <td data-role="primary"><span class="mrow-name">${tag} ${esc(r.rawName)}</span><span class="mrow-sub" title="${esc(r.raw)}">${esc(r.raw.split('\n')[0])}</span></td>
       <td data-label="${t('Member')}"><select class="input levels-pick" data-row="${i}" aria-label="${t('Member for {name}', { name: esc(r.rawName) })}">${options(sel)}</select></td>
-      ${letterCells(r.levels)}
+      ${sel ? diffCells(r.levels, latestById.get(sel)) : letterCells(r.levels)}
     </tr>`;
   }).join('');
   const matched = picked.filter(Boolean).length;
@@ -106,10 +130,10 @@ function previewHtml() {
     : '';
   return `
     <div class="levels-preview">
-      <p class="levels-summary"><strong>${tn(rows.length, '{n} players read', '{n} players read', { n: rows.length })}</strong> · ${tn(matched, '{n} to save', '{n} to save', { n: matched })}${fuzzy ? ` · <span class="tool-warn">${tn(fuzzy, '{n} matched by spelling — check them', '{n} matched by spelling — check them', { n: fuzzy })}</span>` : ''}${none ? ` · ${tn(none, '{n} not matched (skipped unless you pick a member)', '{n} not matched (skipped unless you pick a member)', { n: none })}` : ''}${dupes.size ? ` · <span class="tool-short">${t('the same member is picked twice')}</span>` : ''}</p>
+      <p class="levels-summary"><strong>${tn(rows.length, '{n} players read', '{n} players read', { n: rows.length })}</strong> · ${tn(matched, '{n} to save', '{n} to save', { n: matched })}${changedPlayers ? ` · ${tn(changedPlayers, '{n} with changed levels', '{n} with changed levels', { n: changedPlayers })}` : ''}${fuzzy ? ` · <span class="tool-warn">${tn(fuzzy, '{n} matched by spelling — check them', '{n} matched by spelling — check them', { n: fuzzy })}</span>` : ''}${none ? ` · ${tn(none, '{n} not matched (skipped unless you pick a member)', '{n} not matched (skipped unless you pick a member)', { n: none })}` : ''}${dupes.size ? ` · <span class="tool-short">${t('the same member is picked twice')}</span>` : ''}</p>
       ${skipped}
       <div class="events-scroll">
-        <table class="table-responsive levels-table">
+        <table class="table-responsive levels-table levels-diff">
           <colgroup><col class="col-member"><col class="col-assign">${LETTERS.map(() => '<col class="col-lvl">').join('')}</colgroup>
           <thead><tr><th>${t('Posted as')}</th><th>${t('Member')}</th>${letterHeads()}</tr></thead>
           <tbody>${body}</tbody>
