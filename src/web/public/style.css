@@ -7159,16 +7159,22 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .levels-table tr.levels-dupe td { background: var(--accent-red-bg); }
 .levels-save { margin-top: 12px; }
 /* Preview vs the member's latest report: changes read "old→new", the rest is muted. */
-.levels-diff .col-lvl { width: 76px; }
+/* Old value stacked above the new one, so a cell is never wider than "500". */
+.levels-diff .col-lvl { width: 64px; }
+.levels-diff td.num { padding-left: 8px; }
 .levels-diff td.levels-same { color: var(--text-muted); }
-.levels-diff td.levels-changed { white-space: nowrap; }
+.levels-diff td.levels-changed strong { display: block; }
 .levels-diff td.levels-changed.is-up strong { color: var(--accent-green); }
 .levels-diff td.levels-changed.is-down strong { color: var(--accent-red); }
-.levels-diff .levels-was { color: var(--text-muted); font-size: 12px; margin-right: 2px; }
+.levels-diff .levels-was { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.2; white-space: nowrap; }
 .levels-diff td.levels-new { font-weight: 600; color: var(--accent-gold); }
 .levels-status { display: block; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
 .levels-status.is-changed { color: var(--accent-green); font-weight: 600; }
 .levels-status.is-new { color: var(--accent-gold); font-weight: 600; }
+.levels-sub.is-changed { color: var(--accent-green); }
+.levels-sub.is-new { color: var(--accent-gold); }
+/* Phone compact rows carry the status on their summary line already. */
+@media (max-width: 640px) { .levels-status { display: none; } }
 
 /* Member profile: levels the member last posted in chat — a quiet chip row. */
 .reported-levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 12px; }

@@ -95,12 +95,13 @@ function countChanges(levels, prev) {
   return LETTERS.filter((k) => levels?.[k] != null && prev?.levels?.[k] != null && prev.levels[k] !== levels[k]).length;
 }
 
-// One line under the member picker saying what saving this row changes.
+// What saving this row changes — under the member picker, and as the phone
+// compact row's summary line.
 function diffStatus(levels, prev) {
-  if (!prev) return `<span class="levels-status is-new">${t('First report')}</span>`;
+  if (!prev) return { cls: 'is-new', text: t('First report') };
   const n = countChanges(levels, prev);
-  if (n) return `<span class="levels-status is-changed">${tn(n, '{n} level changed', '{n} levels changed', { n })}</span>`;
-  return `<span class="levels-status">${t('No change since {date}', { date: esc(prev.lastReported || '') })}</span>`;
+  if (n) return { cls: 'is-changed', text: tn(n, '{n} level changed', '{n} levels changed', { n }) };
+  return { cls: '', text: t('No change since {date}', { date: esc(prev.lastReported || '') }) };
 }
 
 function letterHeads() {
@@ -120,14 +121,15 @@ function previewHtml() {
   const firstReports = picked.filter((v) => v && !latestById.has(v)).length;
   const body = rows.map((r, i) => {
     const sel = picks.get(i) ?? '';
+    const status = sel ? diffStatus(r.levels, latestById.get(sel)) : null;
     const tag = r.matchKind === 'exact'
       ? `<span class="levels-tag is-ok" title="${t('Exact match')}">✓</span>`
       : r.matchKind === 'fuzzy'
         ? `<span class="levels-tag is-fuzzy" title="${t('Matched by spelling to {name} — check it', { name: esc(r.memberName || '') })}">≈</span>`
         : `<span class="levels-tag is-none" title="${t('No member matched — pick one or leave it skipped')}">?</span>`;
     return `<tr class="${dupes.has(sel) ? 'levels-dupe' : ''}">
-      <td data-role="primary"><span class="mrow-name">${tag} ${esc(r.rawName)}</span><span class="mrow-sub" title="${esc(r.raw)}">${esc(r.raw.split('\n')[0])}</span></td>
-      <td data-label="${t('Member')}"><select class="input levels-pick" data-row="${i}" aria-label="${t('Member for {name}', { name: esc(r.rawName) })}">${options(sel)}</select>${sel ? diffStatus(r.levels, latestById.get(sel)) : ''}</td>
+      <td data-role="primary"><span class="mrow-name">${tag} ${esc(r.rawName)}</span><span class="mrow-sub levels-sub ${status?.cls || ''}" title="${esc(r.raw)}">${status ? status.text : esc(r.raw.split('\n')[0])}</span></td>
+      <td data-label="${t('Member')}"><select class="input levels-pick" data-row="${i}" aria-label="${t('Member for {name}', { name: esc(r.rawName) })}">${options(sel)}</select>${status ? `<span class="levels-status ${status.cls}">${status.text}</span>` : ''}</td>
       ${sel ? diffCells(r.levels, latestById.get(sel)) : letterCells(r.levels)}
     </tr>`;
   }).join('');
