@@ -7,6 +7,7 @@ import * as chestRepo from '../../data/repositories/chest-repo.js';
 import * as triumphalChestRepo from '../../data/repositories/triumphal-chest-repo.js';
 import * as eventRepo from '../../data/repositories/event-repo.js';
 import { goldPassForWindow } from '../../data/repositories/gold-pass-repo.js';
+import { getMemberEventsOverview } from '../../data/member-events.js';
 import { getEventCatalogSummary, getEventDef } from '../../config/event-catalog.js';
 import {
   getEventOccurrences,
@@ -786,6 +787,18 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     const chests = chestRepo.getChestsByMember(memberId, clanId, from, to, limit, offset);
     const total = chestRepo.countChestsByMember(memberId, clanId, from, to);
     res.json({ chests, total, limit, offset });
+  });
+
+  // GET /api/members/:id/events — the profile's Events card: Tin Man standings
+  // and each event's recent runs with this member's points and clan rank.
+  // See data/member-events.ts. Same cross-clan guard as /chests.
+  router.get('/members/:id/events', async (req, res) => {
+    const memberId = parseBoundedInt(req.params.id, 0, { min: 1 });
+    const clanId = req.clanId ?? 1;
+    if (!memberId || !memberRepo.getMemberById(memberId, clanId)) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    res.json(await getMemberEventsOverview(clanId, memberId, loadConfig().gameDayRolloverUtcHour));
   });
 
   // GET /api/members/:id/triumphal-chests?limit=&offset=&from=&to=

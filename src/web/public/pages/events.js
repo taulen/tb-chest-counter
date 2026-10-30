@@ -28,10 +28,12 @@
 // pages/resources-totals.js.
 
 import { api } from '../lib/api.js';
-import { esc, memberLink, formatDate, chestHash, sourceLink } from '../lib/ui.js';
+import { esc, memberLink, formatDate, chestHash, sourceLink, parseHashRoute } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { nameWithGoldPassHtml } from '../lib/guards-format.js';
-import { computeGameWindow, gameDaysUntil } from '../lib/period.js';
+import {
+  computeGameWindow, gameDaysUntil, gameDayKeyFor, periodOffsetFromAnchor,
+} from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   formatResourceAmount, formatResourceCompact,
@@ -139,9 +141,29 @@ export async function renderEvents(el, navigate, eventKey) {
   } catch {
     occurrences = [];
   }
+  applyRunFromHash();
 
   await reload();
   startScheduleRefresh();
+}
+
+// A link from a member profile (#events/<key>?run=YYYY-MM-DD) opens on the run
+// holding that game day: the occurrence or cycle when the event has them, else
+// the game week. The parameter is then dropped from the address — the arrows
+// move off that run without touching the hash, and a reload shouldn't snap
+// back to it.
+function applyRunFromHash() {
+  const run = parseHashRoute().params.get('run');
+  if (!run || !/^\d{4}-\d{2}-\d{2}$/.test(run)) return;
+  if (occurrences.length) {
+    const i = occurrences.findIndex((o) => gameDayKeyFor(Date.parse(o.from)) <= run
+      && run <= gameDayKeyFor(Date.parse(o.resetAt || o.to) - 1));
+    if (i >= 0) occSel = i;
+  } else {
+    period = 'weekly';
+    periodOffset = periodOffsetFromAnchor('weekly', new URLSearchParams({ week: run }));
+  }
+  window.history.replaceState(null, '', `#events/${encodeURIComponent(currentEventKey)}`);
 }
 
 // Keep the tab schedule tags live: every minute re-pull the (feed-cached, cheap)

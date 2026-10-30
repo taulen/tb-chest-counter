@@ -1751,6 +1751,71 @@ th.sortable:hover {
 .member-resources-table .col-amount { width: 115px; }
 .member-resources-table .col-date { width: 140px; }
 
+/* Tin Man scores + Event runs on the profile. Five short columns each; the
+   identity column takes the slack. */
+.member-tinman-table,
+.member-events-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.member-tinman-table .col-run { width: auto; }
+.member-tinman-table .col-points { width: 120px; }
+.member-tinman-table .col-rank { width: 110px; }
+.member-tinman-table .col-summons { width: 110px; }
+.member-tinman-table .col-target { width: 140px; }
+.member-events-table .col-event { width: auto; }
+.member-events-table .col-run { width: 190px; }
+.member-events-table .col-points { width: 110px; }
+.member-events-table .col-rank { width: 110px; }
+.member-events-table .col-trend { width: 150px; }
+.member-tinman-table th.num,
+.member-tinman-table td.num,
+.member-events-table th.num,
+.member-events-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.member-tinman-table td[data-role="primary"],
+.member-events-table td[data-role="primary"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "/ 94" after a rank, "96%" after a target: context, not the number. */
+.member-events-of {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+/* The member's points over an event's last few runs, scaled to their own best.
+   Each bar opens that run on the Events page. */
+.member-events-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 26px;
+  max-width: 130px;
+}
+.member-events-spark-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.member-events-spark-bar {
+  width: 100%;
+  background: var(--chart-bar-source);
+  border-radius: 2px 2px 0 0;
+}
+.member-events-spark-col:hover .member-events-spark-bar { background: var(--accent-gold); opacity: 0.7; }
+.member-events-spark-bar.is-current { background: var(--accent-gold); }
+.member-events-spark-gap {
+  width: 100%;
+  height: 100%;
+  border-bottom: 2px dotted var(--border);
+}
+.member-events-idle { margin: 12px 16px 14px; }
+
 .member-ocr-table .col-ocr { width: auto; }
 .member-ocr-table .col-session { width: 90px; }
 .member-ocr-table .col-date { width: 180px; }

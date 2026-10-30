@@ -60,6 +60,8 @@ function notifyChestDataChanged(clanId) {
     // Prefix match: one entry per (window, compare, limit) the page has asked
     // for, so this clears every window at once rather than the current one only.
     (0, ttl_cache_js_1.invalidate)(`analyticsWindow:${clanId}:`);
+    // Per-run event rankings behind the profile's Events card (data/member-events.ts).
+    (0, ttl_cache_js_1.invalidate)(`memberEvents:${clanId}:`);
 }
 /**
  * Rebuild the clan's rollup rows from raw chest_records if stale. Cheap when

@@ -79,6 +79,8 @@ export function notifyChestDataChanged(clanId: number): void {
   // Prefix match: one entry per (window, compare, limit) the page has asked
   // for, so this clears every window at once rather than the current one only.
   invalidate(`analyticsWindow:${clanId}:`);
+  // Per-run event rankings behind the profile's Events card (data/member-events.ts).
+  invalidate(`memberEvents:${clanId}:`);
 }
 
 /**

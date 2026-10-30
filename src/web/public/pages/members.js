@@ -13,11 +13,13 @@ import {
 } from '../lib/guards-format.js';
 import {
   computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor, gameWeekStartOf,
+  getCurrentGameDayKey,
 } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
-  scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor,
+  scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
+import { formatCompact } from '../lib/ancient-planner.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
   formatResourceAmount, resourceIconOnly, resourceIconHtml, resourceSparklineSvg,
@@ -77,6 +79,13 @@ let memberWeeklyGoalPoints = null;
 // redrawn against the fresh DOM. `draw` destroys the previous chart itself, so
 // calling it on every render is safe.
 let currentMemberMightDraw = () => {};
+// The Tin Man + Event runs cards for the member on screen, and whose they are.
+// They don't follow the profile's timeframe, so a timeframe change or a page
+// flip reuses them for a few minutes instead of refetching.
+const MEMBER_EVENTS_REUSE_MS = 5 * 60 * 1000;
+let memberEventsHtml = '';
+let memberEventsFor = null;
+let memberEventsAt = 0;
 
 export async function renderMembers(el) {
   cachedMembers = await api('/members');
@@ -340,6 +349,18 @@ export async function viewMember(id, navigate) {
 }
 
 async function loadAndRenderMemberDetail(data) {
+  // The event overview is the slowest read on the profile (every event's recent
+  // runs, ~1 s when the server cache is cold), so it never holds the page up:
+  // it starts first and fills its slot whenever it lands.
+  const eventsPending = memberEventsFor === data.id && Date.now() - memberEventsAt < MEMBER_EVENTS_REUSE_MS
+    ? null
+    : api(`/members/${data.id}/events`).catch(() => null);
+  if (eventsPending) {
+    // Keep showing this member's previous cards until the fresh ones land.
+    if (memberEventsFor !== data.id) memberEventsHtml = '';
+    memberEventsFor = data.id;
+    memberEventsAt = Date.now();
+  }
   // Fetch both chest types + both raw-ocr sources up front so the tab
   // switcher is instant (no per-click round-trip). Bandwidth is fine —
   // a single page of each is ≤ 25 rows + at most 100 raw-OCR strings.
@@ -369,6 +390,166 @@ async function loadAndRenderMemberDetail(data) {
     resourceCardHtml, mightCard?.html ?? '', mightCard?.statsHtml ?? '', resourcePage,
     guards && !guards.error ? guards : null,
   );
+  if (!eventsPending) return;
+  const overview = await eventsPending;
+  // Someone may have moved on to another profile while this was in flight.
+  if (memberEventsFor !== data.id) return;
+  // Failed, or aborted by navigating away: nothing to reuse, so the next
+  // visit asks again.
+  if (!overview || overview.error) memberEventsFor = null;
+  memberEventsHtml = memberTinmanCardHtml(overview?.tinman) + memberEventRunsCardHtml(overview?.events);
+  const slot = document.getElementById('memberEventsSlot');
+  if (slot) slot.innerHTML = memberEventsHtml;
+}
+
+// ─── Events on the profile ───
+// The member's line from Events → Ancients' Tin Man standings, and from every
+// event's recent runs. Each run links to the Events page opened on that run
+// (`?run=` takes any game day inside it), where the full table is.
+
+/** Hash for an Events tab, optionally opened on the run holding `runDay`. */
+function eventRunHash(key, runDay) {
+  return `#events/${encodeURIComponent(key)}${runDay ? `?run=${runDay}` : ''}`;
+}
+
+const LIVE_MARK = `<span class="events-occ-live">${t('· live')}</span>`;
+
+function memberRankHtml(rank, of) {
+  return rank === null
+    ? '<span class="muted-copy">—</span>'
+    : `#${rank}<span class="member-events-of"> / ${of}</span>`;
+}
+
+function memberTinmanCardHtml(tinman) {
+  const runs = tinman?.runs || [];
+  if (!runs.length || !runs.some((r) => r.rank !== null)) return '';
+  const today = getCurrentGameDayKey();
+  const tier = tinman.tier.toUpperCase();
+  const played = runs.filter((r) => r.rank !== null);
+  const best = Math.min(...played.map((r) => r.rank));
+  const rows = runs.map((r) => {
+    const live = r.date >= today ? ` ${LIVE_MARK}` : '';
+    const runLink = `<a class="member-link" href="${eventRunHash('ancients', r.date)}">${esc(formatGameDayShort(r.date))}</a>`;
+    if (r.rank === null) {
+      return `<tr>
+        <td data-label="${t('Run')}" data-role="primary"><span class="mrow-name">${runLink}${live}</span><span class="mrow-sub">${t('Not on the ranking')}</span></td>
+        <td data-label="${t('Points')}" class="num" data-role="metric"><span class="muted-copy">—</span></td>
+        <td data-label="${t('Rank')}" class="num" data-role="hidden"><span class="muted-copy">—</span></td>
+        <td data-label="${t('Summons')}" class="num">${t('{played} of {summons}', { played: 0, summons: r.summons })}</td>
+        <td data-label="${t('Target')}" class="num">${r.target !== null ? formatCompact(r.target) : '—'}</td>
+      </tr>`;
+    }
+    const goal = r.target !== null && r.target > 0 ? r.target : null;
+    const title = goal !== null ? goalCellTitle(r.points, goal) : r.points.toLocaleString();
+    const points = goal !== null
+      ? goalCellContentHtml(r.points, goal, formatCompact(r.points))
+      : formatCompact(r.points);
+    return `<tr>
+      <td data-label="${t('Run')}" data-role="primary"><span class="mrow-name">${runLink}${live}</span><span class="mrow-sub">${t('#{rank} of {n}', { rank: r.rank, n: r.players })}</span></td>
+      <td data-label="${t('Points')}" class="num ${goal !== null ? goalStatusClassFor(r.points, goal) : ''}" data-role="metric" title="${esc(title)}">${points}</td>
+      <td data-label="${t('Rank')}" class="num" data-role="hidden">${memberRankHtml(r.rank, r.players)}</td>
+      <td data-label="${t('Summons')}" class="num">${t('{played} of {summons}', { played: r.played, summons: r.summons })}</td>
+      <td data-label="${t('Target')}" class="num">${goal !== null ? `${formatCompact(goal)} <span class="member-events-of">${Math.round((r.points / goal) * 100)}%</span>` : '—'}</td>
+    </tr>`;
+  }).join('');
+  const tierNote = tinman.tierAssumed
+    ? t('Targets for {tier} (guards level unknown)', { tier })
+    : t('Targets for {tier}', { tier });
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div class="events-title">
+          <h2>${t('{tinman} scores', { tinman: esc(tGame('Tin Man')) })}</h2>
+          <span class="card-header-hint">${tn(played.length, 'On the ranking in {n} of the last {runs} runs', 'On the ranking in {n} of the last {runs} runs', { runs: runs.length })} · ${t('best #{rank}', { rank: best })} · ${esc(tierNote)}</span>
+        </div>
+        <a class="btn btn-tight" href="${eventRunHash('ancients')}">${t('All standings →')}</a>
+      </div>
+      <div class="card-body">
+        <table class="table-responsive member-tinman-table">
+          <colgroup>
+            <col class="col-run">
+            <col class="col-points">
+            <col class="col-rank">
+            <col class="col-summons">
+            <col class="col-target">
+          </colgroup>
+          <thead><tr><th>${t('Run')}</th><th class="num">${t('Points')}</th><th class="num">${t('Rank')}</th><th class="num">${t('Summons')}</th><th class="num">${t('Target')}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/** "Oct 19–23" for an occurrence; a plain game week reads "Week of 2026/10/18". */
+function eventRunLabel(run) {
+  return run.label ? esc(run.label) : t('Week of {date}', { date: esc(formatGameDayShort(run.runDay)) });
+}
+
+/**
+ * The member's points over the event's recent runs, oldest on the left, scaled
+ * to their own best. A run they had no chest in is a gap, not a zero bar — same
+ * rule as the Events page's run-over-run chart.
+ */
+function eventRunsSparkHtml(event) {
+  const runs = [...event.runs].reverse();
+  const peak = Math.max(1, ...runs.map((r) => r.points));
+  return `<span class="member-events-spark">${runs.map((r) => {
+    const tip = r.rank === null
+      ? t('{run}: no chests', { run: eventRunLabel(r) })
+      : t('{run}: {points} pts · #{rank} of {n}', {
+        run: eventRunLabel(r), points: r.points.toLocaleString(), rank: r.rank, n: r.participants,
+      });
+    const mark = r.rank === null
+      ? '<span class="member-events-spark-gap"></span>'
+      : `<span class="member-events-spark-bar${r.isCurrent ? ' is-current' : ''}" style="height: ${Math.max(8, Math.round((r.points / peak) * 100))}%"></span>`;
+    return `<a class="member-events-spark-col" href="${eventRunHash(event.key, r.runDay)}" title="${tip}" aria-label="${tip}">${mark}</a>`;
+  }).join('')}</span>`;
+}
+
+function memberEventRunsCardHtml(events) {
+  const list = events || [];
+  const active = list.filter((e) => e.runs.some((r) => r.rank !== null));
+  if (!active.length) return '';
+  const idle = list.filter((e) => !active.includes(e));
+  const rows = active.map((e) => {
+    const latest = e.runs[0];
+    const live = latest.isCurrent && e.mode !== 'cycle' ? ` ${LIVE_MARK}` : '';
+    const runLink = `<a class="member-link" href="${eventRunHash(e.key, latest.runDay)}">${eventRunLabel(latest)}</a>`;
+    const played = e.runs.filter((r) => r.rank !== null).length;
+    return `<tr>
+      <td data-label="${t('Event')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${eventRunHash(e.key)}">${esc(tGame(e.name))}</a></span><span class="mrow-sub">${eventRunLabel(latest)}</span></td>
+      <td data-label="${t('Latest run')}" data-role="hidden">${runLink}${live}</td>
+      <td data-label="${t('Points')}" class="num" data-role="metric">${latest.rank !== null ? latest.points.toLocaleString() : '<span class="muted-copy">—</span>'}</td>
+      <td data-label="${t('Rank')}" class="num">${memberRankHtml(latest.rank, latest.participants)}</td>
+      <td data-label="${t('Recent runs')}" title="${tn(played, 'Chests in {n} of the last {runs} runs', 'Chests in {n} of the last {runs} runs', { runs: e.runs.length })}">${eventRunsSparkHtml(e)}</td>
+    </tr>`;
+  }).join('');
+  const idleHtml = idle.length
+    ? `<p class="muted-copy member-events-idle">${t('No chests in the recent runs of {events}.', {
+      events: idle.map((e) => `<a href="${eventRunHash(e.key)}">${esc(tGame(e.name))}</a>`).join(', '),
+    })}</p>`
+    : '';
+  return `
+    <div class="card">
+      <div class="card-header">
+        <h2>${t('Event runs')}</h2>
+        <span class="card-header-hint">${t('Latest run, ranked in the clan · bars are the last few runs')}</span>
+      </div>
+      <div class="card-body">
+        <table class="table-responsive member-events-table">
+          <colgroup>
+            <col class="col-event">
+            <col class="col-run">
+            <col class="col-points">
+            <col class="col-rank">
+            <col class="col-trend">
+          </colgroup>
+          <thead><tr><th>${t('Event')}</th><th>${t('Latest run')}</th><th class="num">${t('Points')}</th><th class="num">${t('Rank')}</th><th>${t('Recent runs')}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${idleHtml}
+      </div>
+    </div>`;
 }
 
 // ─── Guards level + Gold Pass on the profile ───
@@ -1203,6 +1384,8 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       ${memberGuardsCardHtml(guards, data.id, isAdmin)}
       ${memberGoldPassCardHtml(guards)}
     </div>` : ''}
+
+    <div id="memberEventsSlot">${memberEventsHtml}</div>
 
     ${memberConsistencyHtml(data)}
 
