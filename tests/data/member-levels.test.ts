@@ -51,6 +51,12 @@ describe('parseLevelReports', () => {
     expect(by('Creams Mystery Pie')).toEqual({ g: 7, m: 7, s: 6, e: 6, c: 30, d: 209 });
     expect(parseLevelReports(CHAT).players).toHaveLength(15);
   });
+
+  it('drops the clan tag a line copied from the in-game chat starts with', () => {
+    const { players } = parseLevelReports('[SIK] Patdaddy: G7/S7/M7/E6/C30/D246\n[12:04] [K34] Dark Knight: G7\nPatdaddy: D250');
+    expect(players.map((p) => p.name)).toEqual(['Patdaddy', 'Dark Knight']);
+    expect(players[0].levels).toEqual({ g: 7, s: 7, m: 7, e: 6, c: 30, d: 250 });
+  });
 });
 
 describe('member levels import', () => {

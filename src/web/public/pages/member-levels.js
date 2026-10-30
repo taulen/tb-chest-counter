@@ -95,6 +95,14 @@ function countChanges(levels, prev) {
   return LETTERS.filter((k) => levels?.[k] != null && prev?.levels?.[k] != null && prev.levels[k] !== levels[k]).length;
 }
 
+// One line under the member picker saying what saving this row changes.
+function diffStatus(levels, prev) {
+  if (!prev) return `<span class="levels-status is-new">${t('First report')}</span>`;
+  const n = countChanges(levels, prev);
+  if (n) return `<span class="levels-status is-changed">${tn(n, '{n} level changed', '{n} levels changed', { n })}</span>`;
+  return `<span class="levels-status">${t('No change since {date}', { date: esc(prev.lastReported || '') })}</span>`;
+}
+
 function letterHeads() {
   return LETTERS.map((k) => `<th class="num" title="${esc(LETTER_TITLE[k])}">${k.toUpperCase()}</th>`).join('');
 }
@@ -109,6 +117,7 @@ function previewHtml() {
   const dupes = new Set(picked.filter((v, i) => v && picked.indexOf(v) !== i));
   const latestById = new Map(latest.map((l) => [String(l.memberId), l]));
   const changedPlayers = rows.filter((r, i) => picked[i] && countChanges(r.levels, latestById.get(picked[i]))).length;
+  const firstReports = picked.filter((v) => v && !latestById.has(v)).length;
   const body = rows.map((r, i) => {
     const sel = picks.get(i) ?? '';
     const tag = r.matchKind === 'exact'
@@ -118,7 +127,7 @@ function previewHtml() {
         : `<span class="levels-tag is-none" title="${t('No member matched — pick one or leave it skipped')}">?</span>`;
     return `<tr class="${dupes.has(sel) ? 'levels-dupe' : ''}">
       <td data-role="primary"><span class="mrow-name">${tag} ${esc(r.rawName)}</span><span class="mrow-sub" title="${esc(r.raw)}">${esc(r.raw.split('\n')[0])}</span></td>
-      <td data-label="${t('Member')}"><select class="input levels-pick" data-row="${i}" aria-label="${t('Member for {name}', { name: esc(r.rawName) })}">${options(sel)}</select></td>
+      <td data-label="${t('Member')}"><select class="input levels-pick" data-row="${i}" aria-label="${t('Member for {name}', { name: esc(r.rawName) })}">${options(sel)}</select>${sel ? diffStatus(r.levels, latestById.get(sel)) : ''}</td>
       ${sel ? diffCells(r.levels, latestById.get(sel)) : letterCells(r.levels)}
     </tr>`;
   }).join('');
@@ -130,7 +139,7 @@ function previewHtml() {
     : '';
   return `
     <div class="levels-preview">
-      <p class="levels-summary"><strong>${tn(rows.length, '{n} players read', '{n} players read', { n: rows.length })}</strong> · ${tn(matched, '{n} to save', '{n} to save', { n: matched })}${changedPlayers ? ` · ${tn(changedPlayers, '{n} with changed levels', '{n} with changed levels', { n: changedPlayers })}` : ''}${fuzzy ? ` · <span class="tool-warn">${tn(fuzzy, '{n} matched by spelling — check them', '{n} matched by spelling — check them', { n: fuzzy })}</span>` : ''}${none ? ` · ${tn(none, '{n} not matched (skipped unless you pick a member)', '{n} not matched (skipped unless you pick a member)', { n: none })}` : ''}${dupes.size ? ` · <span class="tool-short">${t('the same member is picked twice')}</span>` : ''}</p>
+      <p class="levels-summary"><strong>${tn(rows.length, '{n} players read', '{n} players read', { n: rows.length })}</strong> · ${tn(matched, '{n} to save', '{n} to save', { n: matched })}${changedPlayers ? ` · ${tn(changedPlayers, '{n} with changed levels', '{n} with changed levels', { n: changedPlayers })}` : ''}${firstReports ? ` · ${tn(firstReports, '{n} first report', '{n} first reports', { n: firstReports })}` : ''}${fuzzy ? ` · <span class="tool-warn">${tn(fuzzy, '{n} matched by spelling — check them', '{n} matched by spelling — check them', { n: fuzzy })}</span>` : ''}${none ? ` · ${tn(none, '{n} not matched (skipped unless you pick a member)', '{n} not matched (skipped unless you pick a member)', { n: none })}` : ''}${dupes.size ? ` · <span class="tool-short">${t('the same member is picked twice')}</span>` : ''}</p>
       ${skipped}
       <div class="events-scroll">
         <table class="table-responsive levels-table levels-diff">

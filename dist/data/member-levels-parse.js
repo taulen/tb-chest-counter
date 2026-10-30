@@ -12,7 +12,7 @@ exports.parseLevelReports = parseLevelReports;
  *     IamNotHades: g8/m7/s7/e7/dragon 250/c25
  *
  * The name is everything before the first ":" (after an optional chat
- * timestamp). After it, each letter G M S E C D — or the word "dragon" —
+ * timestamp and the "[SIK]" clan tag a line copied from the game carries). After it, each letter G M S E C D — or the word "dragon" —
  * followed by a number is one level; separators, case and stray marks
  * ("C30*", "S8(only 1 unlocked)") don't matter. The LAST value of a letter on a
  * line wins ("D234, D 246*" → 246), and a player posting twice is merged
@@ -28,6 +28,8 @@ exports.LEVEL_KEYS = ['g', 'm', 's', 'e', 'c', 'd'];
 /** Highest believable value per letter; anything above is a misread. */
 exports.LEVEL_MAX = { g: 10, m: 10, s: 10, e: 10, c: 60, d: 500 };
 const TIMESTAMP = /^\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*/;
+/** The clan tag a line copied from the in-game chat starts with: "[SIK] Patdaddy: …". */
+const CLAN_TAG = /^\[[^\]\s:][^\]:]{0,11}\]\s*/;
 const TOKEN = /(dragon|[gmsecd])\s*[:=.]?\s*(\d{1,3})(?!\d)/gi;
 function parseLevelReports(text) {
     const byKey = new Map();
@@ -36,7 +38,7 @@ function parseLevelReports(text) {
         const line = rawLine.trim();
         if (!line)
             continue;
-        const body = line.replace(TIMESTAMP, '');
+        const body = line.replace(TIMESTAMP, '').replace(CLAN_TAG, '');
         const colon = body.indexOf(':');
         if (colon <= 0) {
             skipped.push(line);

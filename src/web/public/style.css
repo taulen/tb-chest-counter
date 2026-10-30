@@ -7165,7 +7165,10 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .levels-diff td.levels-changed.is-up strong { color: var(--accent-green); }
 .levels-diff td.levels-changed.is-down strong { color: var(--accent-red); }
 .levels-diff .levels-was { color: var(--text-muted); font-size: 12px; margin-right: 2px; }
-.levels-diff td.levels-new { font-weight: 600; }
+.levels-diff td.levels-new { font-weight: 600; color: var(--accent-gold); }
+.levels-status { display: block; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
+.levels-status.is-changed { color: var(--accent-green); font-weight: 600; }
+.levels-status.is-new { color: var(--accent-gold); font-weight: 600; }
 
 /* Member profile: levels the member last posted in chat — a quiet chip row. */
 .reported-levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 12px; }
