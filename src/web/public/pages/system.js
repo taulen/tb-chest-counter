@@ -2416,6 +2416,32 @@ async function readImportFile(file) {
   return { content: await file.text() };
 }
 
+/**
+ * Send a DB backup in raw slices, then ask the server to restore it. One
+ * request per slice keeps every body far below Cloudflare's 100MB cap, which
+ * a whole backup passed in Oct 2026 (see src/web/backup-upload.ts). The
+ * upload fills the bar to 90%; the restore itself is the last stretch.
+ * Resolves to the final response body; failures come back as `{ error }`.
+ */
+async function uploadDbBackup(file) {
+  const start = await apiPost('/import/backup-db/start', { fileName: file.name });
+  if (start.error) return start;
+
+  const { uploadId, chunkBytes } = start;
+  for (let index = 0, offset = 0; offset < file.size; index++, offset += chunkBytes) {
+    const result = await api(`/import/backup-db/${encodeURIComponent(uploadId)}/${index}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file.slice(offset, offset + chunkBytes),
+    });
+    if (result.error) return result;
+    setTransferStatus(t('Uploading backup...'), (Math.min(offset + chunkBytes, file.size) / file.size) * 90);
+  }
+
+  setTransferStatus(t('Restoring database...'), 95);
+  return apiPost('/import/backup-db', { uploadId });
+}
+
 export async function runDbBackupImportFromFile(rerender) {
   const input = $('#importDbBackupFile');
   const file = input?.files?.[0];
@@ -2437,19 +2463,10 @@ export async function runDbBackupImportFromFile(rerender) {
   if (!confirmed) return;
 
   setTransferActionsDisabled(true);
-  setTransferStatus(t('Reading backup file...'), 15);
+  setTransferStatus(t('Uploading backup...'), 0);
 
   try {
-    const buffer = await file.arrayBuffer();
-    setTransferStatus(t('Encoding backup for upload...'), 35);
-
-    const contentBase64 = arrayBufferToBase64(buffer);
-    setTransferStatus(t('Uploading backup and restoring database...'), 75);
-
-    const result = await apiPost('/import/backup-db', {
-      fileName: file.name,
-      contentBase64,
-    });
+    const result = await uploadDbBackup(file);
 
     if (result.error) {
       setTransferStatus(result.error, 100, 'error');

@@ -277,18 +277,15 @@ function startWebServer(port, scanLoop, options = {}) {
     }));
     // Body limits, scoped.
     //
-    // The global limit was 100MB so that a database restore could be posted as
-    // base64 — which meant every other endpoint, authenticated or not, would also
-    // buffer 100MB of JSON before any handler saw it. Only these two routes carry
-    // a database, so only these two get the room; everything else gets 1MB, which
-    // is generous for the largest ordinary payload here (a list of overrides).
+    // Everything gets 1MB, which is generous for the largest ordinary payload
+    // here (a list of overrides). Database restores need no exception: they
+    // upload raw application/octet-stream slices (backup-upload.ts), which the
+    // JSON parser never reads, and stream them to disk themselves.
     //
-    // Registered BEFORE the global parser deliberately: body-parser marks a
-    // request as parsed and later parsers skip it, so the first matching limit is
-    // the one that applies.
-    const restoreBodyLimit = express_1.default.json({ limit: '110mb' });
-    app.use('/api/import/backup-db', restoreBodyLimit);
-    app.use('/api/setup/restore-backup', restoreBodyLimit);
+    // Any exception is registered BEFORE the global parser deliberately:
+    // body-parser marks a request as parsed and later parsers skip it, so the
+    // first matching limit is the one that applies.
+    //
     // Resource screenshots arrive as an array of base64 images, each allowed up
     // to ~27MB encoded (see MAX_UPLOAD_BASE64_BYTES) and several per upload. The
     // route enforces the per-image size itself; this only has to be roomy enough

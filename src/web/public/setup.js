@@ -149,19 +149,45 @@ function buildPayload() {
   };
 }
 
-/**
- * Base64 the picked file in chunks. A whole-buffer
- * String.fromCharCode(...bytes) blows the argument limit somewhere around a
- * megabyte, and a backup is three orders of magnitude past that.
- */
-async function fileToBase64(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const CHUNK = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+/** Parse a response body, turning a non-JSON one (a proxy error page) into `{ error }`. */
+async function readJson(res) {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { error: `Server returned ${res.status} ${res.statusText}`.trim() };
   }
-  return btoa(binary);
+}
+
+/**
+ * Send the picked backup in raw slices, then ask the server to restore it.
+ * One request per slice keeps every body far below Cloudflare's 100MB cap,
+ * which a whole backup passed in Oct 2026 (see src/web/backup-upload.ts).
+ * Resolves to the final response body; any failure comes back as `{ error }`.
+ */
+async function uploadRestoreBackup(file, onProgress) {
+  const post = (url, body) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(readJson);
+
+  const start = await post('/api/setup/restore-backup/start', { fileName: file.name });
+  if (start.error) return start;
+
+  const { uploadId, chunkBytes } = start;
+  for (let index = 0, offset = 0; offset < file.size; index++, offset += chunkBytes) {
+    const res = await fetch(`/api/setup/restore-backup/${encodeURIComponent(uploadId)}/${index}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file.slice(offset, offset + chunkBytes),
+    });
+    const data = await readJson(res);
+    if (!res.ok || data.error) return { error: data.error || 'Upload failed.' };
+    onProgress(Math.min(offset + chunkBytes, file.size) / file.size);
+  }
+
+  return post('/api/setup/restore-backup', { uploadId });
 }
 
 function setRestoreBusy(busy, label) {
@@ -187,18 +213,13 @@ async function submitRestore(event) {
     return;
   }
 
-  setRestoreBusy(true, 'Reading file…');
+  setRestoreBusy(true, 'Uploading…');
   try {
-    const contentBase64 = await fileToBase64(file);
-    setRestoreBusy(true, 'Restoring…');
-    const res = await fetch('/api/setup/restore-backup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName: file.name, contentBase64 }),
+    const data = await uploadRestoreBackup(file, (fraction) => {
+      setRestoreBusy(true, `Uploading… ${Math.round(fraction * 100)}%`);
     });
-    const data = await res.json();
-    if (!res.ok) {
-      showMessage(data.error || 'Restore failed.', 'error');
+    if (data.error) {
+      showMessage(data.error, 'error');
       setRestoreBusy(false);
       return;
     }

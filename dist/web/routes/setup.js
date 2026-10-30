@@ -10,13 +10,13 @@ const express_1 = require("express");
 const fs_1 = __importDefault(require("fs"));
 const os_1 = __importDefault(require("os"));
 const path_1 = __importDefault(require("path"));
-const zlib_1 = __importDefault(require("zlib"));
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const setup_wizard_js_1 = require("../../setup-wizard.js");
 const index_js_1 = require("../../config/index.js");
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const parse_int_js_1 = require("../../utils/parse-int.js");
 const auth_js_1 = require("../middleware/auth.js");
+const backup_upload_js_1 = require("../backup-upload.js");
 let setupCompletedInProcess = false;
 let authSavedInProcess = false;
 let _setupDoneResolve = null;
@@ -122,8 +122,16 @@ function createSetupRouter() {
             return res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
         }
     });
+    // Restore uploads stage in their own folder under the OS temp dir, not under
+    // data/: on a first run the data volume may not exist yet, and the uploader
+    // sweeps stale `restore-*` entries of whatever folder it is given.
+    const setupUploadDir = path_1.default.join(os_1.default.tmpdir(), 'tb-setup-restore');
+    const SETUP_UPLOAD_OWNER = 'setup';
+    const setupClosed = () => !(0, setup_wizard_js_1.needsSetup)() || setupCompletedInProcess;
     /**
-     * POST /restore-backup { fileName, contentBase64 }
+     * POST /restore-backup/start { fileName }  → { uploadId, chunkBytes }
+     * PUT  /restore-backup/:uploadId/:index     raw bytes, in order
+     * POST /restore-backup { uploadId }
      *
      * The other way to finish setup: adopt an existing deployment's database
      * instead of creating a superadmin. Every account, clan, chest record and
@@ -137,57 +145,51 @@ function createSetupRouter() {
      * accounts arrive from the backup, so the operator signs in at /login with
      * the credentials they already had.
      *
+     * The file arrives in raw slices, through the same uploader as the in-app
+     * restore (see backup-upload.ts), so a backup this flow accepts is one the
+     * running app's restore accepts too — otherwise an operator could seed an
+     * install they can never re-restore.
+     *
      * Validation order matters. Everything that can reject the upload happens
      * against a temp file, before anything touches the destination — a restore
      * that fails must leave a first-run install still able to run setup.
      */
-    router.post('/restore-backup', (req, res) => {
-        if (!(0, setup_wizard_js_1.needsSetup)() || setupCompletedInProcess) {
+    router.post('/restore-backup/start', (req, res) => {
+        if (setupClosed())
             return res.status(409).json({ error: 'Setup is already complete.' });
-        }
-        let tempPath = '';
         try {
-            const body = (req.body ?? {});
-            const fileName = String(body.fileName ?? '').trim();
-            const contentBase64 = String(body.contentBase64 ?? '').trim();
-            if (!fileName)
-                return res.status(400).json({ error: 'fileName is required' });
-            if (!contentBase64)
-                return res.status(400).json({ error: 'contentBase64 is required' });
-            const lowerName = fileName.toLowerCase();
-            if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
-                return res.status(400).json({ error: 'Backup file must be a .db or .db.gz file' });
-            }
-            // Same size ceilings as /api/import/backup-db, deliberately: a backup
-            // this flow accepts must be one the running app's restore would accept
-            // too, or an operator could seed an install they can never re-restore.
-            let buffer = Buffer.from(contentBase64, 'base64');
-            if (buffer.length < 16) {
-                return res.status(400).json({ error: 'Backup file is too small or invalid' });
-            }
-            if (buffer.length > 100 * 1024 * 1024) {
-                return res.status(400).json({ error: 'Backup file too large (max 100MB)' });
-            }
-            if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
-                try {
-                    buffer = zlib_1.default.gunzipSync(buffer);
-                }
-                catch (gzErr) {
-                    return res.status(400).json({ error: `Failed to decompress gzip backup: ${String(gzErr)}` });
-                }
-                if (buffer.length > 200 * 1024 * 1024) {
-                    return res.status(400).json({ error: 'Decompressed backup too large (max 200MB)' });
-                }
-            }
-            if (!buffer.subarray(0, 16).toString('utf8').startsWith('SQLite format 3')) {
-                return res.status(400).json({ error: 'File does not appear to be a valid SQLite backup' });
-            }
-            // Staged in the OS temp dir, not under data/: on a first run the data
-            // volume may not exist yet, and this file is worthless the moment the
-            // copy below succeeds.
-            const tempDir = fs_1.default.mkdtempSync(path_1.default.join(os_1.default.tmpdir(), 'tb-setup-restore-'));
-            tempPath = path_1.default.join(tempDir, 'restore.db');
-            fs_1.default.writeFileSync(tempPath, buffer);
+            return res.json((0, backup_upload_js_1.startBackupUpload)(String(req.body?.fileName ?? ''), SETUP_UPLOAD_OWNER, setupUploadDir));
+        }
+        catch (err) {
+            return (0, backup_upload_js_1.sendBackupUploadError)(res, err);
+        }
+    });
+    router.put('/restore-backup/:uploadId/:index', async (req, res) => {
+        if (setupClosed())
+            return res.status(409).json({ error: 'Setup is already complete.' });
+        try {
+            const bytes = await (0, backup_upload_js_1.appendBackupChunk)(String(req.params.uploadId), SETUP_UPLOAD_OWNER, Number(req.params.index), req);
+            return res.json({ ok: true, bytes });
+        }
+        catch (err) {
+            return (0, backup_upload_js_1.sendBackupUploadError)(res, err);
+        }
+    });
+    router.post('/restore-backup', async (req, res) => {
+        if (setupClosed())
+            return res.status(409).json({ error: 'Setup is already complete.' });
+        let staged;
+        try {
+            staged = await (0, backup_upload_js_1.finishBackupUpload)(String(req.body?.uploadId ?? ''), SETUP_UPLOAD_OWNER);
+        }
+        catch (err) {
+            return (0, backup_upload_js_1.sendBackupUploadError)(res, err);
+        }
+        try {
+            // The upload is async; another request may have finished setup meanwhile.
+            if (setupClosed())
+                return res.status(409).json({ error: 'Setup is already complete.' });
+            const tempPath = staged.dbPath;
             // Read the accounts BEFORE adopting the file. A backup with no
             // superadmin produces an install nobody can administer, and by then the
             // setup window has closed — the operator would have to delete the volume
@@ -232,8 +234,8 @@ function createSetupRouter() {
             _setupDoneReject = null;
             return res.json({
                 ok: true,
-                restoredFrom: fileName,
-                bytes: buffer.length,
+                restoredFrom: staged.fileName,
+                bytes: staged.bytes,
                 users: result.users,
                 superadmins: result.superadmins,
             });
@@ -242,12 +244,10 @@ function createSetupRouter() {
             return res.status(400).json({ error: `Restore failed: ${String(err instanceof Error ? err.message : err)}` });
         }
         finally {
-            if (tempPath && fs_1.default.existsSync(tempPath)) {
-                try {
-                    fs_1.default.rmSync(path_1.default.dirname(tempPath), { recursive: true, force: true });
-                }
-                catch { /* temp dir cleanup is best effort */ }
+            try {
+                staged.cleanup();
             }
+            catch { /* temp dir cleanup is best effort */ }
         }
     });
     router.get('/auth-status', (_req, res) => {

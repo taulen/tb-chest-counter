@@ -77,6 +77,7 @@ const chestSummaryRepo = __importStar(require("../../data/repositories/chest-sum
 const game_day_js_1 = require("../../utils/game-day.js");
 const session_repo_js_1 = require("../../data/repositories/session-repo.js");
 const db_backup_js_1 = require("../../utils/db-backup.js");
+const backup_upload_js_1 = require("../backup-upload.js");
 const clan_restore_js_1 = require("../../data/clan-restore.js");
 const log_buffer_js_1 = require("../../utils/log-buffer.js");
 const leaderboard_handler_js_1 = require("./leaderboard-handler.js");
@@ -90,15 +91,6 @@ function createPreImportBackup() {
     const backupPath = path_1.default.join(backupDir, backupFilename);
     fs_1.default.copyFileSync(dbPath, backupPath);
     return backupFilename;
-}
-function parseDbBackupPayload(body) {
-    const fileName = String(body?.fileName ?? '').trim();
-    const contentBase64 = String(body?.contentBase64 ?? '').trim();
-    if (!fileName)
-        throw new Error('fileName is required');
-    if (!contentBase64)
-        throw new Error('contentBase64 is required');
-    return { fileName, contentBase64 };
 }
 let calibrationJob = null;
 const VALID_STAGES = new Set([
@@ -1693,54 +1685,56 @@ function createApiRouter(scanLoop) {
         });
         fileStream.pipe(gzipStream).pipe(res);
     });
-    // POST /api/import/backup-db { fileName, contentBase64 } - restore full sqlite backup (superadmin only)
-    router.post('/import/backup-db', auth_js_1.requireSuperAdmin, (req, res) => {
-        let tempPath = '';
-        const dbPath = path_1.default.resolve(process.env.DB_PATH || './data/tb-chests.db');
+    // Restore a full sqlite backup uploaded from the browser (superadmin only).
+    // The file arrives in raw slices (see backup-upload.ts for why):
+    //   POST /api/import/backup-db/start { fileName }     → { uploadId, chunkBytes }
+    //   PUT  /api/import/backup-db/:uploadId/:index       raw bytes, in order
+    //   POST /api/import/backup-db { uploadId }           validate + swap
+    const restoreUploadDir = path_1.default.resolve('data', 'backups', 'uploads');
+    const restoreUploadOwner = (req) => `user:${req.user.id}`;
+    const scannerBlocksRestore = () => {
+        if (!scanLoop)
+            return null; // dashboard-only mode: always safe
+        const state = scanLoop.getState();
+        if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING || state === enums_js_1.AppState.NAVIGATING || state === enums_js_1.AppState.CHECKING_AUTH) {
+            return `Cannot restore backup while scanner is active (${state}).`;
+        }
+        return null;
+    };
+    router.post('/import/backup-db/start', auth_js_1.requireSuperAdmin, (req, res) => {
+        const blocked = scannerBlocksRestore();
+        if (blocked)
+            return res.status(409).json({ error: blocked });
         try {
-            if (!scanLoop) {
-                // In dashboard-only mode this is always safe. Keep check here for clarity.
-            }
-            else {
-                const state = scanLoop.getState();
-                if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING || state === enums_js_1.AppState.NAVIGATING || state === enums_js_1.AppState.CHECKING_AUTH) {
-                    return res.status(409).json({ error: `Cannot restore backup while scanner is active (${state}).` });
-                }
-            }
-            const { fileName, contentBase64 } = parseDbBackupPayload(req.body);
-            const lowerName = fileName.toLowerCase();
-            if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
-                return res.status(400).json({ error: 'Backup file must be a .db or .db.gz file' });
-            }
-            let buffer = Buffer.from(contentBase64, 'base64');
-            if (buffer.length < 16) {
-                return res.status(400).json({ error: 'Backup file is too small or invalid' });
-            }
-            if (buffer.length > 100 * 1024 * 1024) {
-                return res.status(400).json({ error: 'Backup file too large (max 100MB)' });
-            }
-            // Auto-detect gzip and decompress. gzip files always start with 0x1f 0x8b.
-            if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
-                try {
-                    buffer = zlib_1.default.gunzipSync(buffer);
-                }
-                catch (gzErr) {
-                    return res.status(400).json({ error: `Failed to decompress gzip backup: ${String(gzErr)}` });
-                }
-                if (buffer.length > 200 * 1024 * 1024) {
-                    return res.status(400).json({ error: 'Decompressed backup too large (max 200MB)' });
-                }
-            }
-            const sqliteHeader = buffer.subarray(0, 16).toString('utf8');
-            if (!sqliteHeader.startsWith('SQLite format 3')) {
-                return res.status(400).json({ error: 'File does not appear to be a valid SQLite backup' });
-            }
-            const tempDir = path_1.default.resolve('data', 'backups', 'uploads');
-            fs_1.default.mkdirSync(tempDir, { recursive: true });
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            tempPath = path_1.default.join(tempDir, `restore-${timestamp}-${path_1.default.basename(fileName)}`);
-            fs_1.default.writeFileSync(tempPath, buffer);
-            const validationDb = new better_sqlite3_1.default(tempPath, { readonly: true, fileMustExist: true });
+            return res.json((0, backup_upload_js_1.startBackupUpload)(String(req.body?.fileName ?? ''), restoreUploadOwner(req), restoreUploadDir));
+        }
+        catch (err) {
+            return (0, backup_upload_js_1.sendBackupUploadError)(res, err);
+        }
+    });
+    router.put('/import/backup-db/:uploadId/:index', auth_js_1.requireSuperAdmin, async (req, res) => {
+        try {
+            const bytes = await (0, backup_upload_js_1.appendBackupChunk)(String(req.params.uploadId), restoreUploadOwner(req), Number(req.params.index), req);
+            return res.json({ ok: true, bytes });
+        }
+        catch (err) {
+            return (0, backup_upload_js_1.sendBackupUploadError)(res, err);
+        }
+    });
+    router.post('/import/backup-db', auth_js_1.requireSuperAdmin, async (req, res) => {
+        const dbPath = path_1.default.resolve(process.env.DB_PATH || './data/tb-chests.db');
+        let staged;
+        try {
+            staged = await (0, backup_upload_js_1.finishBackupUpload)(String(req.body?.uploadId ?? ''), restoreUploadOwner(req));
+        }
+        catch (err) {
+            return (0, backup_upload_js_1.sendBackupUploadError)(res, err);
+        }
+        try {
+            const blocked = scannerBlocksRestore();
+            if (blocked)
+                return res.status(409).json({ error: blocked });
+            const validationDb = new better_sqlite3_1.default(staged.dbPath, { readonly: true, fileMustExist: true });
             try {
                 validationDb.prepare('PRAGMA schema_version').get();
             }
@@ -1750,17 +1744,17 @@ function createApiRouter(scanLoop) {
             const preRestoreBackup = createPreImportBackup();
             (0, database_js_1.getDb)().pragma('wal_checkpoint(TRUNCATE)');
             (0, database_js_1.closeDb)();
-            fs_1.default.copyFileSync(tempPath, dbPath);
+            fs_1.default.copyFileSync(staged.dbPath, dbPath);
             (0, database_js_1.initDatabase)(dbPath);
             (0, user_repo_js_1.logAction)(req.user.id, 'import_backup_db', {
-                fileName,
-                bytes: buffer.length,
+                fileName: staged.fileName,
+                bytes: staged.bytes,
                 preRestoreBackup,
             });
             return res.json({
                 ok: true,
-                restoredFrom: fileName,
-                bytes: buffer.length,
+                restoredFrom: staged.fileName,
+                bytes: staged.bytes,
                 preRestoreBackup,
             });
         }
@@ -1774,9 +1768,7 @@ function createApiRouter(scanLoop) {
             return res.status(400).json({ error: `DB backup restore failed: ${String(err)}` });
         }
         finally {
-            if (tempPath && fs_1.default.existsSync(tempPath)) {
-                fs_1.default.unlinkSync(tempPath);
-            }
+            staged.cleanup();
         }
     });
     // GET /api/admin/backups - list server-side DB backup files (superadmin)

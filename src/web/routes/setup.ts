@@ -2,7 +2,6 @@ import { Router } from 'express';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import zlib from 'zlib';
 import Database from 'better-sqlite3';
 import {
   applyRestoredDatabase,
@@ -14,6 +13,13 @@ import { resetConfig } from '../../config/index.js';
 import { createSession } from '../../data/repositories/user-repo.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
 import { SESSION_COOKIE_NAME, sessionCookieOptions } from '../middleware/auth.js';
+import {
+  appendBackupChunk,
+  finishBackupUpload,
+  sendBackupUploadError,
+  startBackupUpload,
+  type StagedBackup,
+} from '../backup-upload.js';
 
 type SetupBody = {
   adminUsername?: unknown;
@@ -142,8 +148,17 @@ export function createSetupRouter(): Router {
     }
   });
 
+  // Restore uploads stage in their own folder under the OS temp dir, not under
+  // data/: on a first run the data volume may not exist yet, and the uploader
+  // sweeps stale `restore-*` entries of whatever folder it is given.
+  const setupUploadDir = path.join(os.tmpdir(), 'tb-setup-restore');
+  const SETUP_UPLOAD_OWNER = 'setup';
+  const setupClosed = () => !needsSetup() || setupCompletedInProcess;
+
   /**
-   * POST /restore-backup { fileName, contentBase64 }
+   * POST /restore-backup/start { fileName }  → { uploadId, chunkBytes }
+   * PUT  /restore-backup/:uploadId/:index     raw bytes, in order
+   * POST /restore-backup { uploadId }
    *
    * The other way to finish setup: adopt an existing deployment's database
    * instead of creating a superadmin. Every account, clan, chest record and
@@ -157,58 +172,54 @@ export function createSetupRouter(): Router {
    * accounts arrive from the backup, so the operator signs in at /login with
    * the credentials they already had.
    *
+   * The file arrives in raw slices, through the same uploader as the in-app
+   * restore (see backup-upload.ts), so a backup this flow accepts is one the
+   * running app's restore accepts too — otherwise an operator could seed an
+   * install they can never re-restore.
+   *
    * Validation order matters. Everything that can reject the upload happens
    * against a temp file, before anything touches the destination — a restore
    * that fails must leave a first-run install still able to run setup.
    */
-  router.post('/restore-backup', (req, res) => {
-    if (!needsSetup() || setupCompletedInProcess) {
-      return res.status(409).json({ error: 'Setup is already complete.' });
+
+  router.post('/restore-backup/start', (req, res) => {
+    if (setupClosed()) return res.status(409).json({ error: 'Setup is already complete.' });
+    try {
+      return res.json(startBackupUpload(String(req.body?.fileName ?? ''), SETUP_UPLOAD_OWNER, setupUploadDir));
+    } catch (err) {
+      return sendBackupUploadError(res, err);
+    }
+  });
+
+  router.put('/restore-backup/:uploadId/:index', async (req, res) => {
+    if (setupClosed()) return res.status(409).json({ error: 'Setup is already complete.' });
+    try {
+      const bytes = await appendBackupChunk(
+        String(req.params.uploadId),
+        SETUP_UPLOAD_OWNER,
+        Number(req.params.index),
+        req,
+      );
+      return res.json({ ok: true, bytes });
+    } catch (err) {
+      return sendBackupUploadError(res, err);
+    }
+  });
+
+  router.post('/restore-backup', async (req, res) => {
+    if (setupClosed()) return res.status(409).json({ error: 'Setup is already complete.' });
+
+    let staged: StagedBackup;
+    try {
+      staged = await finishBackupUpload(String(req.body?.uploadId ?? ''), SETUP_UPLOAD_OWNER);
+    } catch (err) {
+      return sendBackupUploadError(res, err);
     }
 
-    let tempPath = '';
     try {
-      const body = (req.body ?? {}) as { fileName?: unknown; contentBase64?: unknown };
-      const fileName = String(body.fileName ?? '').trim();
-      const contentBase64 = String(body.contentBase64 ?? '').trim();
-      if (!fileName) return res.status(400).json({ error: 'fileName is required' });
-      if (!contentBase64) return res.status(400).json({ error: 'contentBase64 is required' });
-
-      const lowerName = fileName.toLowerCase();
-      if (!lowerName.endsWith('.db') && !lowerName.endsWith('.db.gz') && !lowerName.endsWith('.gz')) {
-        return res.status(400).json({ error: 'Backup file must be a .db or .db.gz file' });
-      }
-
-      // Same size ceilings as /api/import/backup-db, deliberately: a backup
-      // this flow accepts must be one the running app's restore would accept
-      // too, or an operator could seed an install they can never re-restore.
-      let buffer = Buffer.from(contentBase64, 'base64');
-      if (buffer.length < 16) {
-        return res.status(400).json({ error: 'Backup file is too small or invalid' });
-      }
-      if (buffer.length > 100 * 1024 * 1024) {
-        return res.status(400).json({ error: 'Backup file too large (max 100MB)' });
-      }
-      if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
-        try {
-          buffer = zlib.gunzipSync(buffer);
-        } catch (gzErr) {
-          return res.status(400).json({ error: `Failed to decompress gzip backup: ${String(gzErr)}` });
-        }
-        if (buffer.length > 200 * 1024 * 1024) {
-          return res.status(400).json({ error: 'Decompressed backup too large (max 200MB)' });
-        }
-      }
-      if (!buffer.subarray(0, 16).toString('utf8').startsWith('SQLite format 3')) {
-        return res.status(400).json({ error: 'File does not appear to be a valid SQLite backup' });
-      }
-
-      // Staged in the OS temp dir, not under data/: on a first run the data
-      // volume may not exist yet, and this file is worthless the moment the
-      // copy below succeeds.
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-setup-restore-'));
-      tempPath = path.join(tempDir, 'restore.db');
-      fs.writeFileSync(tempPath, buffer);
+      // The upload is async; another request may have finished setup meanwhile.
+      if (setupClosed()) return res.status(409).json({ error: 'Setup is already complete.' });
+      const tempPath = staged.dbPath;
 
       // Read the accounts BEFORE adopting the file. A backup with no
       // superadmin produces an install nobody can administer, and by then the
@@ -257,19 +268,17 @@ export function createSetupRouter(): Router {
 
       return res.json({
         ok: true,
-        restoredFrom: fileName,
-        bytes: buffer.length,
+        restoredFrom: staged.fileName,
+        bytes: staged.bytes,
         users: result.users,
         superadmins: result.superadmins,
       });
     } catch (err) {
       return res.status(400).json({ error: `Restore failed: ${String(err instanceof Error ? err.message : err)}` });
     } finally {
-      if (tempPath && fs.existsSync(tempPath)) {
-        try {
-          fs.rmSync(path.dirname(tempPath), { recursive: true, force: true });
-        } catch { /* temp dir cleanup is best effort */ }
-      }
+      try {
+        staged.cleanup();
+      } catch { /* temp dir cleanup is best effort */ }
     }
   });
 
