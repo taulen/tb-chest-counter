@@ -2964,6 +2964,23 @@ details > table {
   .leaderboard-table td[data-role="metric"].goal-cell-low {
     color: var(--accent-red-soft-text);
   }
+  /* The status tint as a chip, not a slab: the compact row zeroes cell
+     padding, so the fill hugged the digits with square corners. Padding gives
+     it room, the radius echoes the rank badge on the other side of the row,
+     and a hairline ring in the status colour (currentColor, so it follows
+     every theme) gives the translucent fill an edge. The label underneath
+     takes the status colour too, so the chip reads as one piece. */
+  .leaderboard-table td[data-role="metric"][class*="goal-cell-"],
+  .tinman-table td[data-role="metric"][class*="goal-cell-"] {
+    padding: 5px 10px 4px;
+    border-radius: 10px;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 24%, transparent);
+  }
+  .leaderboard-table td[data-role="metric"][class*="goal-cell-"]::after,
+  .tinman-table td[data-role="metric"][class*="goal-cell-"]::after {
+    color: inherit;
+    opacity: 0.75;
+  }
 
   /* A cycle's date range fills the row on a phone; "(now)" moves to the
      sub-line instead of being the part the ellipsis eats. */
