@@ -243,14 +243,19 @@ describe('leaderboardCopyText', () => {
 
   it('lists every player with rank, chests, points and goal status, aligned', () => {
     const lines = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000 }).split('\n');
-    expect(lines[0]).toMatch(/^Leaderboard · Weekly · \d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2}$/);
+    expect(lines[0]).toMatch(/^Leaderboard · Weekly · \d{4}-\d{2}-\d{2} - \d{4}-\d{2}-\d{2}$/);
     expect(lines[1]).toBe(`Weekly goal: ${n(25_000)} points`);
     expect(lines.slice(3)).toEqual([
       'Rank  Player  Chests  Points  Status',
-      `#1    Alice    ${n(1200)}  ${n(30000)}  ✓ Goal reached`,
+      `#1    Alice    ${n(1200)}  ${n(30000)}  ● Goal reached`,
       `#2    Bob         80  ${n(18000)}  ◐ Close to goal`,
-      '#3    Cara         5     900  ↓ Below goal',
+      '#3    Cara         5     900  ○ Below goal',
     ]);
+  });
+
+  it('uses only marks the in-game chat font can draw (no ✓ or ↓)', () => {
+    const text = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000 });
+    expect(text).not.toMatch(/[✓↓→]/);
   });
 
   it('leaves out level, might and guards', () => {

@@ -446,6 +446,11 @@ export function renderLeaderboardCardHtml({
 
 // ─── Copy data ────────────────────────────────────────────────
 
+// Status marks for the copied text, NOT the page's ✓ ◐ ↓: the in-game chat font
+// draws ◐ but shows ✓ and ↓ as empty boxes (seen 2026-10-31). Full / half /
+// empty circles all come from the block ◐ lives in, and still read in order.
+const COPY_STATUS_GLYPH = { ok: '●', warn: '◐', low: '○' };
+
 /** Code points, not UTF-16 units, so a name with an emoji pads like any other. */
 const textWidth = (s) => [...s].length;
 
@@ -467,17 +472,17 @@ export function leaderboardCopyText({
   countLabel = DEFAULT_COUNT_LABEL,
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
-  const when = period === 'all'
-    ? formatPeriodLabel(period, offset, rolloverHr)
-    : `${PERIOD_LABELS[period]} · ${formatPeriodLabel(period, offset, rolloverHr)}`;
+  // The week's "a → b" range: → is an arrow like ↓, which the chat font lacks.
+  const range = formatPeriodLabel(period, offset, rolloverHr).replace(' → ', ' - ');
+  const when = period === 'all' ? range : `${PERIOD_LABELS[period]} · ${range}`;
 
   const header = [t('Rank'), t('Player'), countLabel, t('Points')];
   if (periodGoal !== null) header.push(t('Status'));
   const rows = entries.map((e) => {
     const row = [`#${e.rank}`, e.memberName || '', e.totalChests.toLocaleString(), (e.totalPoints || 0).toLocaleString()];
     if (periodGoal !== null) {
-      const s = GOAL_STATUS_TEXT[goalStatusFor(e.totalPoints, periodGoal)];
-      row.push(`${s.glyph} ${s.label}`);
+      const status = goalStatusFor(e.totalPoints, periodGoal);
+      row.push(`${COPY_STATUS_GLYPH[status]} ${GOAL_STATUS_TEXT[status].label}`);
     }
     return row;
   });
