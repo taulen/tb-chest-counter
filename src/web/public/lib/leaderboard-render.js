@@ -451,16 +451,16 @@ export function renderLeaderboardCardHtml({
 // empty circles all come from the block ◐ lives in, and still read in order.
 const COPY_STATUS_GLYPH = { ok: '●', warn: '◐', low: '○' };
 
-/** Code points, not UTF-16 units, so a name with an emoji pads like any other. */
-const textWidth = (s) => [...s].length;
-
 /**
  * The board as plain text for the "Copy data" button: a title line naming the
  * timeframe, the goal line when there is one, then every player (not just the
  * page on screen) in the order shown — Rank, Player, Chests, Points and, with a
- * goal, the same status the row is coloured with. Columns are space-padded so
- * it reads in a code block or a text file; Level, Might and Guards are left out
- * on purpose.
+ * goal, the same status the row is coloured with. Level, Might and Guards are
+ * left out on purpose.
+ *
+ * Fields are joined with " - ", not padded into columns: the in-game chat is
+ * where this gets pasted, its font is proportional so padding never lined up,
+ * and every pad space counted against the post's length cap.
  */
 export function leaderboardCopyText({
   entries,
@@ -487,19 +487,12 @@ export function leaderboardCopyText({
     return row;
   });
 
-  // Chests and Points are right-aligned so the digits line up; the last column
-  // is not padded at all, so no line ends in trailing spaces.
-  const rightAligned = new Set([2, 3]);
-  const widths = header.map((h, i) => Math.max(textWidth(h), ...rows.map((r) => textWidth(r[i]))));
-  const line = (cells) => cells.map((c, i) => {
-    if (i === cells.length - 1 && !rightAligned.has(i)) return c;
-    const pad = ' '.repeat(widths[i] - textWidth(c));
-    return rightAligned.has(i) ? pad + c : c + pad;
-  }).join('  ');
+  // "#1 Name" reads as one field; the separator starts after it.
+  const line = ([rank, name, ...rest]) => [`${rank} ${name}`, ...rest].join(' - ');
 
   const out = [`${title} · ${when}`];
   if (periodGoal !== null) out.push(goalLineHtml(period, periodGoal).replace(/<[^>]+>/g, ''));
-  out.push('', line(header), ...rows.map(line));
+  out.push(line(header), ...rows.map(line));
   return out.join('\n');
 }
 

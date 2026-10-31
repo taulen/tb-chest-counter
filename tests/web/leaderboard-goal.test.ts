@@ -241,15 +241,15 @@ describe('leaderboardCopyText', () => {
   // separator is the machine's ("1,200" or "1 200") — same width either way.
   const n = (x: number) => x.toLocaleString();
 
-  it('lists every player with rank, chests, points and goal status, aligned', () => {
+  it('lists every player with rank, chests, points and goal status, no padding', () => {
     const lines = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000 }).split('\n');
     expect(lines[0]).toMatch(/^Leaderboard · Weekly · \d{4}-\d{2}-\d{2} - \d{4}-\d{2}-\d{2}$/);
     expect(lines[1]).toBe(`Weekly goal: ${n(25_000)} points`);
-    expect(lines.slice(3)).toEqual([
-      'Rank  Player  Chests  Points  Status',
-      `#1    Alice    ${n(1200)}  ${n(30000)}  ● Goal reached`,
-      `#2    Bob         80  ${n(18000)}  ◐ Close to goal`,
-      '#3    Cara         5     900  ○ Below goal',
+    expect(lines.slice(2)).toEqual([
+      'Rank Player - Chests - Points - Status',
+      `#1 Alice - ${n(1200)} - ${n(30000)} - ● Goal reached`,
+      `#2 Bob - 80 - ${n(18000)} - ◐ Close to goal`,
+      '#3 Cara - 5 - 900 - ○ Below goal',
     ]);
   });
 
@@ -267,7 +267,7 @@ describe('leaderboardCopyText', () => {
   it('drops the goal line and status column when there is no goal', () => {
     const lines = leaderboardCopyText({ entries, period: 'all', offset: 0, rolloverHr: 17, goalWeeklyPoints: null }).split('\n');
     expect(lines[0]).toBe('Leaderboard · All Time');
-    expect(lines[2]).toBe('Rank  Player  Chests  Points');
-    expect(lines[3]).toBe(`#1    Alice    ${n(1200)}  ${n(30000)}`);
+    expect(lines[1]).toBe('Rank Player - Chests - Points');
+    expect(lines[2]).toBe(`#1 Alice - ${n(1200)} - ${n(30000)}`);
   });
 });
