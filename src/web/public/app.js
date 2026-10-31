@@ -75,6 +75,7 @@ import {
   changePeriodOffset,
   navigateToLeaderboard,
   openLeaderboardFaqModal,
+  copyLeaderboardToClipboard,
 } from './pages/leaderboard.js';
 import { renderDashboard } from './pages/dashboard.js';
 import {
@@ -596,6 +597,7 @@ if (contentEl) {
     if (action === 'leaderboard-page-next') return changeLeaderboardPage(1, loadPage);
     if (action === 'sort-leaderboard') return setLeaderboardSort(target.dataset.sortKey, loadPage);
     if (action === 'open-leaderboard-faq') return openLeaderboardFaqModal();
+    if (action === 'leaderboard-copy-data') return copyLeaderboardToClipboard(target);
     if (action === 'sort-triumphal') return setTriumphalSort(target.dataset.sortKey, loadPage);
     if (action === 'triumphal-page-prev') return changeTriumphalPage(-1, loadPage);
     if (action === 'triumphal-page-next') return changeTriumphalPage(1, loadPage);

@@ -4,6 +4,7 @@ import {
   goalRowClassFor,
   goalStatusClassFor,
   goalWarnThreshold,
+  leaderboardCopyText,
   scaleGoalForPeriod,
   sortLeaderboardEntries,
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -227,5 +228,41 @@ describe('formatMightCompact', () => {
     expect(formatMightCompact(1_240_000)).toBe('1.2M');
     expect(formatMightCompact(12_400_000)).toBe('12M');
     expect(formatMightCompact(1_240_000_000)).toBe('1.2B');
+  });
+});
+
+describe('leaderboardCopyText', () => {
+  const entries = [
+    { rank: 1, memberName: 'Alice', totalChests: 1200, totalPoints: 30000, might: 5e8, heroLevel: 90, guardsLevel: 7 },
+    { rank: 2, memberName: 'Bob', totalChests: 80, totalPoints: 18000, might: null, heroLevel: null, guardsLevel: null },
+    { rank: 3, memberName: 'Cara', totalChests: 5, totalPoints: 900, might: null, heroLevel: null, guardsLevel: null },
+  ];
+  // Numbers go through toLocaleString like the page's, so the grouping
+  // separator is the machine's ("1,200" or "1 200") — same width either way.
+  const n = (x: number) => x.toLocaleString();
+
+  it('lists every player with rank, chests, points and goal status, aligned', () => {
+    const lines = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000 }).split('\n');
+    expect(lines[0]).toMatch(/^Leaderboard · Weekly · \d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2}$/);
+    expect(lines[1]).toBe(`Weekly goal: ${n(25_000)} points`);
+    expect(lines.slice(3)).toEqual([
+      'Rank  Player  Chests  Points  Status',
+      `#1    Alice    ${n(1200)}  ${n(30000)}  ✓ Goal reached`,
+      `#2    Bob         80  ${n(18000)}  ◐ Close to goal`,
+      '#3    Cara         5     900  ↓ Below goal',
+    ]);
+  });
+
+  it('leaves out level, might and guards', () => {
+    const text = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000 });
+    expect(text).not.toMatch(/Might|Level|Guards/);
+    expect(text).not.toContain(n(5e8));
+  });
+
+  it('drops the goal line and status column when there is no goal', () => {
+    const lines = leaderboardCopyText({ entries, period: 'all', offset: 0, rolloverHr: 17, goalWeeklyPoints: null }).split('\n');
+    expect(lines[0]).toBe('Leaderboard · All Time');
+    expect(lines[2]).toBe('Rank  Player  Chests  Points');
+    expect(lines[3]).toBe(`#1    Alice    ${n(1200)}  ${n(30000)}`);
   });
 });

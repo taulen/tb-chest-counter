@@ -15,6 +15,7 @@ import { setGameDayRolloverUtcHour, setWeekStart } from './lib/state.js';
 import {
   sortLeaderboardEntries,
   renderLeaderboardCardHtml,
+  copyLeaderboardData,
 } from './lib/leaderboard-render.js';
 import {
   renderSnapshotDetailCardHtml,
@@ -137,7 +138,10 @@ function start() {
     pageNext: 'page-next',
     sort: 'sort',
     openFaq: 'open-faq',
+    copyData: 'copy-data',
   };
+  // What the last leaderboard render showed, for the Copy data button.
+  let lastCopy = null;
 
   async function fetchJson(url) {
     const r = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
@@ -176,6 +180,7 @@ function start() {
     if (currentPage < 1) currentPage = 1;
     const startIdx = (currentPage - 1) * PAGE_SIZE;
     const pageEntries = sorted.slice(startIdx, startIdx + PAGE_SIZE);
+    lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints };
 
     el.innerHTML = renderLeaderboardCardHtml({
       pageEntries,
@@ -331,6 +336,8 @@ function start() {
         renderLeaderboard();
       } else if (action === ACTIONS.openFaq) {
         openFaq();
+      } else if (action === ACTIONS.copyData) {
+        if (lastCopy) copyLeaderboardData(target, lastCopy);
       }
     });
   }

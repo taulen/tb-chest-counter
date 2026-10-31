@@ -13,7 +13,7 @@ import { memberLink, formatUtcDateKey } from '../lib/ui.js';
 import {
   computeGameWindow, formatPeriodLabel, periodAnchorFromOffset, periodOffsetFromAnchor,
 } from '../lib/period.js';
-import { sortLeaderboardEntries, renderLeaderboardCardHtml } from '../lib/leaderboard-render.js';
+import { sortLeaderboardEntries, renderLeaderboardCardHtml, copyLeaderboardData } from '../lib/leaderboard-render.js';
 import { openLeaderboardFaq } from '../lib/leaderboard-faq.js';
 import {
   getGameDayRolloverUtcHour,
@@ -35,7 +35,12 @@ const ACTIONS = {
   pageNext: 'leaderboard-page-next',
   sort: 'sort-leaderboard',
   openFaq: 'open-leaderboard-faq',
+  copyData: 'leaderboard-copy-data',
 };
+
+// What the last render showed, for the Copy data button: the whole sorted
+// roster, not just the page on screen.
+let lastCopy = null;
 
 export async function renderLeaderboard(el) {
   // The goal is a separate call because /leaderboard answers with a bare
@@ -71,6 +76,14 @@ export async function renderLeaderboard(el) {
   // "this week" meant. An anchor rather than a fetch: the browser handles the
   // download, and Content-Disposition names the file.
   const exportHref = `/api${buildLeaderboardQuery()}&format=csv`;
+
+  lastCopy = {
+    entries: sorted,
+    period: getCurrentPeriod(),
+    offset: getCurrentPeriodOffset(),
+    rolloverHr: getGameDayRolloverUtcHour(),
+    goalWeeklyPoints: goal?.weeklyPoints ?? null,
+  };
 
   el.innerHTML = renderLeaderboardCardHtml({
     pageEntries,
@@ -122,6 +135,10 @@ export function openLeaderboardFaqModal() {
     mode: 'member',
     rolloverHr: getGameDayRolloverUtcHour(),
   });
+}
+
+export function copyLeaderboardToClipboard(btn) {
+  if (lastCopy) return copyLeaderboardData(btn, lastCopy);
 }
 
 export function setLeaderboardSort(key, rerender) {

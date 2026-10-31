@@ -5643,8 +5643,9 @@ details > table {
 
 .source-mix-rest { margin: 10px 0 0; font-size: 12px; }
 
-/* Export link sits with the timeframe controls it exports. */
+/* Export link and Copy data sit together with the timeframe controls they export. */
 .leaderboard-export { white-space: nowrap; }
+.leaderboard-data-actions { display: flex; gap: 8px; }
 
 /* ─── Capture health (System) ─────────────────────────────────────────── */
 .scanhealth-chart {

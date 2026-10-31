@@ -13,10 +13,10 @@
 // page (no router, no shared state machine) can use it as easily as the
 // auth page.
 
-import { esc } from './ui.js';
+import { esc, copyTextToClipboard } from './ui.js';
 import { sortableThHtml } from './sort-headers.js';
 import { renderPeriodNav } from './period-nav.js';
-import { weekLengthDays } from './period.js';
+import { formatPeriodLabel, weekLengthDays } from './period.js';
 import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
 import { t, tn, tGame } from './i18n.js';
 
@@ -307,6 +307,8 @@ export function renderLeaderboardCardHtml({
   showMight = false,
   showGuards = false,
   goalWeeklyPoints = null,
+  // `actions.copyData`, when set, adds a "Copy data" button beside the export
+  // link; the caller owns the click and hands it to copyLeaderboardData().
   // Optional: when present, a download link for the window on screen. The
   // public share page does not pass one — that endpoint answers to an
   // unauthenticated token, and a whole-roster download is a different thing
@@ -342,6 +344,13 @@ export function renderLeaderboardCardHtml({
   const exportLink = exportHref
     ? `<a class="btn btn-tight leaderboard-export" href="${exportHref}" download
          title="${t('Download this timeframe as CSV')}">${t('Export CSV')}</a>`
+    : '';
+  const copyButton = actions.copyData && totalEntries > 0
+    ? `<button type="button" class="btn btn-tight leaderboard-export" data-action="${actions.copyData}"
+         title="${t('Copy every player in this timeframe as text')}">${t('Copy data')}</button>`
+    : '';
+  const dataActions = exportLink || copyButton
+    ? `<div class="leaderboard-data-actions">${exportLink}${copyButton}</div>`
     : '';
 
   const faqButton = actions.openFaq
@@ -424,7 +433,7 @@ export function renderLeaderboardCardHtml({
       <div class="leaderboard-controls">
         <div class="period-selector">${periodSelector}</div>
         ${periodNavRow}
-        ${exportLink}
+        ${dataActions}
       </div>
     </div>
     <div class="card-body">
@@ -433,4 +442,67 @@ export function renderLeaderboardCardHtml({
       ${paginationControls}
     </div>
   </div>`;
+}
+
+// ─── Copy data ────────────────────────────────────────────────
+
+/** Code points, not UTF-16 units, so a name with an emoji pads like any other. */
+const textWidth = (s) => [...s].length;
+
+/**
+ * The board as plain text for the "Copy data" button: a title line naming the
+ * timeframe, the goal line when there is one, then every player (not just the
+ * page on screen) in the order shown — Rank, Player, Chests, Points and, with a
+ * goal, the same status the row is coloured with. Columns are space-padded so
+ * it reads in a code block or a text file; Level, Might and Guards are left out
+ * on purpose.
+ */
+export function leaderboardCopyText({
+  entries,
+  period,
+  offset,
+  rolloverHr,
+  goalWeeklyPoints,
+  title = DEFAULT_TITLE,
+  countLabel = DEFAULT_COUNT_LABEL,
+}) {
+  const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
+  const when = period === 'all'
+    ? formatPeriodLabel(period, offset, rolloverHr)
+    : `${PERIOD_LABELS[period]} · ${formatPeriodLabel(period, offset, rolloverHr)}`;
+
+  const header = [t('Rank'), t('Player'), countLabel, t('Points')];
+  if (periodGoal !== null) header.push(t('Status'));
+  const rows = entries.map((e) => {
+    const row = [`#${e.rank}`, e.memberName || '', e.totalChests.toLocaleString(), (e.totalPoints || 0).toLocaleString()];
+    if (periodGoal !== null) {
+      const s = GOAL_STATUS_TEXT[goalStatusFor(e.totalPoints, periodGoal)];
+      row.push(`${s.glyph} ${s.label}`);
+    }
+    return row;
+  });
+
+  // Chests and Points are right-aligned so the digits line up; the last column
+  // is not padded at all, so no line ends in trailing spaces.
+  const rightAligned = new Set([2, 3]);
+  const widths = header.map((h, i) => Math.max(textWidth(h), ...rows.map((r) => textWidth(r[i]))));
+  const line = (cells) => cells.map((c, i) => {
+    if (i === cells.length - 1 && !rightAligned.has(i)) return c;
+    const pad = ' '.repeat(widths[i] - textWidth(c));
+    return rightAligned.has(i) ? pad + c : c + pad;
+  }).join('  ');
+
+  const out = [`${title} · ${when}`];
+  if (periodGoal !== null) out.push(goalLineHtml(period, periodGoal).replace(/<[^>]+>/g, ''));
+  out.push('', line(header), ...rows.map(line));
+  return out.join('\n');
+}
+
+/** Copy the board to the clipboard and confirm on the button for a moment. */
+export async function copyLeaderboardData(btn, opts) {
+  await copyTextToClipboard(leaderboardCopyText(opts));
+  if (!btn) return;
+  btn.textContent = `✓ ${t('Copied')}`;
+  clearTimeout(btn._copyTimer);
+  btn._copyTimer = setTimeout(() => { btn.textContent = t('Copy data'); }, 1800);
 }

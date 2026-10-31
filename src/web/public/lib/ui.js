@@ -26,6 +26,24 @@ export function escapeHtml(str) {
 }
 
 /**
+ * Put text on the clipboard. Falls back to execCommand where the clipboard API
+ * is missing — it only exists in secure contexts, and a plain-HTTP LAN deploy
+ * isn't one.
+ */
+export async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const tmp = document.createElement('textarea');
+    tmp.value = text;
+    document.body.appendChild(tmp);
+    tmp.select();
+    try { document.execCommand('copy'); } catch {}
+    tmp.remove();
+  }
+}
+
+/**
  * HTML-escape a value for interpolation into attribute values.
  * Escapes the same set as escapeHtml plus `"` and `'`, so a string
  * containing a quote can't close an attribute context early. Used in
