@@ -25,6 +25,7 @@ import { readToken } from '../lib/theme.js';
 import { describeChart, clearChartTable } from '../lib/chart-a11y.js';
 import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
@@ -423,14 +424,55 @@ function renderCompareCard() {
   </div>`;
 }
 
+/** Ranking table sort. Rank is the might rank whatever the sort, so sorting by
+ *  Change still shows each member's standing rather than renumbering 1..n. */
+let tableSort = { key: 'might', dir: 'desc' };
+
+/** Sort value per column; null sorts last in both directions — "no reading"
+ *  isn't the same as zero. */
+function tableSortValue(r, key, guardsByMember) {
+  switch (key) {
+    case 'name': return (r.name || '').toLowerCase();
+    case 'might':
+    case 'rank': return r.might;
+    case 'delta': return r.delta;
+    case 'guards': return guardsByMember.get(r.memberId)?.guards?.level ?? null;
+    case 'hero': return r.heroLevel || null;
+    case 'lastSeen': return r.lastSeen ? Date.parse(r.lastSeen) : null;
+    default: return null;
+  }
+}
+
+function setTableSort(key) {
+  tableSort = tableSort.key === key
+    ? { key, dir: tableSort.dir === 'asc' ? 'desc' : 'asc' }
+    // Rank's natural order is 1 first, which is might descending.
+    : { key, dir: key === 'name' || key === 'rank' ? 'asc' : 'desc' };
+  const table = $('#mightTableHost');
+  if (table) table.innerHTML = renderTableCard(state.overview?.rows ?? [], state.guardsByMember);
+}
+
 function renderTableCard(rows, guardsByMember = new Map()) {
   const showGuards = [...guardsByMember.values()].some((g) => g.guards);
-  const ranked = [...rows].sort((a, b) => {
+  const byMight = [...rows].sort((a, b) => {
     if (a.might === null && b.might === null) return (a.name || '').localeCompare(b.name || '');
     if (a.might === null) return 1;
     if (b.might === null) return -1;
     return b.might - a.might;
   });
+  const rankOf = new Map(byMight.map((r, i) => [r.memberId, r.might === null ? null : i + 1]));
+  // Rank ascending is might descending, so it flips the sign.
+  const mul = (tableSort.dir === 'desc' ? -1 : 1) * (tableSort.key === 'rank' ? -1 : 1);
+  const ranked = [...byMight].sort((a, b) => {
+    const va = tableSortValue(a, tableSort.key, guardsByMember);
+    const vb = tableSortValue(b, tableSort.key, guardsByMember);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    return va < vb ? -mul : va > vb ? mul : 0;
+  });
+  const th = (key, label, className = '', title = '') =>
+    sortableThHtml({ key, labelHtml: label, sortState: tableSort, className, title });
 
   // Hero level needs the calibrated crop to reach the avatars, which most instances
   // don't do — so the column only appears once something has actually been read,
@@ -452,16 +494,16 @@ function renderTableCard(rows, guardsByMember = new Map()) {
         ${showHero ? '<col class="col-metric">' : ''}
         <col class="col-date">
       </colgroup><thead><tr>
-        <th>${t('Rank')}</th><th>${t('Member')}</th><th class="num">${t('Might')}</th><th class="num">${t('Change')}</th>
-        ${showGuards ? `<th class="num" title="${t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })}">${t('Guards')}</th>` : ''}
-        ${showHero ? `<th class="num">${t('Hero Level')}</th>` : ''}
-        <th>${t('Last Seen')}</th>
+        ${th('rank', t('Rank'))}${th('name', t('Member'))}${th('might', t('Might'), 'num')}${th('delta', t('Change'), 'num')}
+        ${showGuards ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })) : ''}
+        ${showHero ? th('hero', t('Hero Level'), 'num') : ''}
+        ${th('lastSeen', t('Last Seen'))}
       </tr></thead><tbody>
-        ${ranked.map((r, i) => {
+        ${ranked.map((r) => {
           const d = formatDelta(r.delta);
           const g = guardsByMember.get(r.memberId);
           return `<tr>
-            <td data-label="${t('Rank')}" data-role="lead">${r.might === null ? '—' : i + 1}</td>
+            <td data-label="${t('Rank')}" data-role="lead">${rankOf.get(r.memberId) ?? '—'}</td>
             <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(r.memberId, r.name), g?.goldPass)}</span></td>
             ${/* The reading's own game day qualifies the number, not the member, so
                   it rides on the Might cell instead of occupying a column — on a
@@ -748,6 +790,9 @@ function wireControls(el) {
     el.addEventListener('click', (ev) => {
       const windowPick = ev.target.closest('button[data-might-window]')?.dataset.mightWindow;
       if (windowPick) return void changeWindow(windowPick);
+
+      const sortKey = ev.target.closest('.might-table th[data-sort-key]')?.dataset.sortKey;
+      if (sortKey) return void setTableSort(sortKey);
 
       const chip = ev.target.closest('button[data-might-toggle]');
       if (chip) {
