@@ -273,9 +273,18 @@ function getSnapshotDates(clanId) {
  * all are omitted — the caller left-joins them back in as "no data yet" so a
  * freshly-onboarded clan doesn't show a column of zeroes that look like real
  * readings.
+ *
+ * A member with no reading that old is measured from their FIRST reading
+ * instead, the way the might charts draw from what exists: the window comes
+ * from a timeframe selector, and a 1-year window on a few months of tracking
+ * would otherwise blank every row. `baselineDate` says which day was used.
+ *
+ * `sinceDay` replaces the rolling cutoff with a fixed one: the baseline is the
+ * last reading BEFORE that game day. It is how the clan week is measured — the
+ * week starts on the clan's own day, so "7 days back" would straddle two weeks.
  */
-function getMightWithDelta(clanId, deltaDays = 7) {
-    return (0, ttl_cache_js_1.cached)(`might:${clanId}:delta:${deltaDays}`, CHART_CACHE_TTL_MS, () => {
+function getMightWithDelta(clanId, deltaDays = 7, { sinceDay = null } = {}) {
+    return (0, ttl_cache_js_1.cached)(`might:${clanId}:delta:${deltaDays}:${sinceDay ?? ''}`, CHART_CACHE_TTL_MS, () => {
         const db = (0, database_js_1.getDb)();
         const rows = db.prepare(`
       WITH ranked AS (
@@ -292,26 +301,42 @@ function getMightWithDelta(clanId, deltaDays = 7) {
         l.game_date         AS gameDate,
         (SELECT s.power FROM member_snapshots s
            WHERE s.member_id = m.id AND s.clan_id = ? AND s.game_date != ''
-             AND s.game_date <= date(l.game_date, ?)
+             AND s.game_date <= COALESCE(date(?, '-1 day'), date(l.game_date, ?))
            ORDER BY s.game_date DESC LIMIT 1) AS baselineMight,
         (SELECT s.game_date FROM member_snapshots s
            WHERE s.member_id = m.id AND s.clan_id = ? AND s.game_date != ''
-             AND s.game_date <= date(l.game_date, ?)
-           ORDER BY s.game_date DESC LIMIT 1) AS baselineDate
+             AND s.game_date <= COALESCE(date(?, '-1 day'), date(l.game_date, ?))
+           ORDER BY s.game_date DESC LIMIT 1) AS baselineDate,
+        (SELECT s.power FROM member_snapshots s
+           WHERE s.member_id = m.id AND s.clan_id = ? AND s.game_date != ''
+           ORDER BY s.game_date ASC LIMIT 1) AS firstMight,
+        (SELECT s.game_date FROM member_snapshots s
+           WHERE s.member_id = m.id AND s.clan_id = ? AND s.game_date != ''
+           ORDER BY s.game_date ASC LIMIT 1) AS firstDate
       FROM members m
       JOIN latest l ON l.member_id = m.id
       WHERE m.clan_id = ? AND m.is_active = 1
       ORDER BY l.power DESC
-    `).all(clanId, clanId, `-${deltaDays} days`, clanId, `-${deltaDays} days`, clanId);
+    `).all(clanId, clanId, sinceDay, `-${deltaDays} days`, clanId, sinceDay, `-${deltaDays} days`, clanId, clanId, clanId);
         // The member's newest reading the invariant supports, which is NOT necessarily
         // the one on `gameDate`: if today's badge read low, today is the reading the
         // series rejects, and yesterday's is the level this player actually holds.
         const trusted = trustedHeroLevels(clanId);
-        return rows.map((r) => ({
-            ...r,
-            heroLevel: latestTrusted(trusted.get(r.memberId)),
-            delta: r.baselineMight === null ? null : r.might - r.baselineMight,
-        }));
+        return rows.map(({ firstMight, firstDate, ...r }) => {
+            // A single reading is no change at all.
+            const fallback = r.baselineMight === null && firstDate !== null && firstDate < r.gameDate;
+            const baselineMight = fallback ? firstMight : r.baselineMight;
+            const baselineDate = fallback ? firstDate : r.baselineDate;
+            return {
+                ...r,
+                baselineMight,
+                baselineDate,
+                heroLevel: latestTrusted(trusted.get(r.memberId)),
+                // Baseline on the latest reading's own day: nothing read since `sinceDay`
+                // yet, so there is no change to show — not a change of zero.
+                delta: baselineMight === null || baselineDate === r.gameDate ? null : r.might - baselineMight,
+            };
+        });
     });
 }
 /**

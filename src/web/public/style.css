@@ -1703,19 +1703,33 @@ th.sortable:hover {
   max-width: 240px;
   margin-left: auto;
 }
+/* Members header: title left, the might timeframe and the search together on
+   the right. */
+.members-header .period-selector { margin-left: auto; }
+.members-header .period-selector + .members-filter { margin-left: 0; }
 
 /* Lock the members table so sorting/filtering doesn't reflow columns. */
 .members-table {
   table-layout: fixed;
 }
 .members-table .col-member { width: auto; }
-.members-table .col-date { width: 180px; }
-.members-table .col-metric { width: 130px; }
+/* Date only (`YYYY/MM/DD`, the full stamp is the cell's title). */
+.members-table .col-date { width: 140px; }
+/* Wide enough for "▲ +120,816,449" on one line — at 130px the 7d change
+   wrapped its arrow onto a line of its own and made every growing row taller
+   than its neighbours. */
+.members-table .col-metric { width: 150px; }
+/* The Merge button plus the cell padding; 80px let it spill past the card. */
+.members-table .col-actions { width: 100px; }
 .members-table th.num,
 .members-table td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.members-table td.num,
+.members-table td[data-label] { white-space: nowrap; }
+.members-table th.col-actions,
+.members-table td.col-actions { text-align: right; }
 
 /* Member-detail history tabs (Chests / Triumphal Chests / Resources) plus the
    Captured Raw OCR list under them. Locked for the same reason as the roster
@@ -1840,7 +1854,9 @@ th.sortable:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.members-table td[data-label="Name"] {
+/* By role, not label: data-label is translated, so `[data-label="Name"]`
+   only ever matched in English. */
+.members-table td[data-role="primary"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3637,9 +3653,10 @@ details > table {
 }
 .users-table .col-user-name { width: auto; }
 .users-table .col-user-role { width: 160px; }
-/* 290px: two 116px clan chips + the edit pencil on one line, inside the
-   cell's 16px padding. */
-.users-table .col-user-clan { width: 290px; }
+/* 300px: two 116px clan chips + the edit pencil on one line, inside the
+   cell's 16px padding and the button's own 3px + border (262px of content;
+   290px left 258 and pushed the pencil onto a line of its own). */
+.users-table .col-user-clan { width: 300px; }
 .users-table .col-user-date { width: 145px; }
 
 /* Orphaned-user row: tint to flag the anomaly (account with no clan).
@@ -3685,7 +3702,6 @@ details > table {
    is the button that opens the editor; the pencil only shows it's editable. */
 .users-table .clan-chips {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   max-width: 100%;
@@ -3698,6 +3714,14 @@ details > table {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+/* Only the chips wrap (an account in three clans); the pencil stays on the
+   first line beside them, whatever the column width. */
+.users-table .clan-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
 }
 .users-table .clan-chips:hover {
   background: var(--hover-overlay);
@@ -5133,14 +5157,42 @@ details > table {
    and each chip carries its own series colour so the legend and the picker
    agree without the user matching names twice. */
 .might-chips {
+  margin-bottom: 14px;
+}
+.might-picked,
+.might-pool {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 14px;
-  /* Roughly six rows of chips before scrolling, so a 60-member roster can
-     never push the chart itself off-screen. */
-  max-height: 200px;
-  overflow-y: auto;
+}
+.might-picked {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+/* Three rows of chips, then a fade into "Show all" — opened in place, never a
+   scrollbox of its own. syncPoolToggle reads the height from the variable. */
+.might-pool {
+  --might-pool-collapsed: 90px;
+  max-height: var(--might-pool-collapsed);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+/* Nothing hidden (the toggle stayed hidden): no fade over the last row. */
+.might-pool:has(+ .might-pool-toggle[hidden]),
+.might-pool.is-open {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.might-pool-toggle {
+  margin-top: 8px;
+}
+.might-chip-x {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .might-chip {
@@ -5194,13 +5246,13 @@ details > table {
 .might-table .col-metric { width: 150px; }
 .might-table .col-date { width: 110px; }
 /* Date-only, and it must never wrap the row onto a second line. */
-.might-table td[data-label="Last Seen"] { white-space: nowrap; }
+.might-table td:last-child { white-space: nowrap; }
 .might-table th.num,
 .might-table td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.might-table td[data-label="Member"] {
+.might-table td[data-role="primary"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5272,7 +5324,6 @@ details > table {
   .chart-container--compact { height: 200px; }
   .chart-container--legend { height: 228px; }
   .might-compare-chart { height: 320px; }
-  .might-chips { max-height: 150px; }
   .might-table { min-width: 0; }
 }
 

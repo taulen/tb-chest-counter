@@ -25,6 +25,9 @@ import { readToken } from '../lib/theme.js';
 import { describeChart, clearChartTable } from '../lib/chart-a11y.js';
 import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import {
+  mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
+} from '../lib/might-window.js';
 
 // Charts tracked individually so a redraw destroys only the one it replaces —
 // Chart.js snapshots colours at construction, so they're rebuilt (not restyled)
@@ -57,13 +60,6 @@ document.addEventListener('themechange', () => {
 
 // ─── Page state ───────────────────────────────────────────────
 
-const WINDOW_OPTIONS = [
-  { days: 30, label: t('30 days') },
-  { days: 90, label: t('90 days') },
-  { days: 180, label: t('6 months') },
-  { days: 365, label: t('1 year') },
-];
-
 /**
  * Windows for the member-page chart, which shares a header line with the trend
  * pill and so needs shorter labels than the clan charts above. `0` is the
@@ -84,18 +80,20 @@ let memberWindowDays = 30;
 /** Set once the operator clicks a window themselves — see buildMemberMightCard. */
 let memberWindowExplicit = false;
 
-/** Ranking-table delta window. Fixed rather than tied to the chart timeframe:
- *  it matches the Members page's 7d column, and decoupling means changing the
- *  chart window doesn't have to refetch (or rebuild) the table. */
-const TABLE_DELTA_DAYS = 7;
-
 /** Members pre-selected on first open. */
 const DEFAULT_SELECTION = 5;
 
-let windowDays = 90;
+/** The page's one timeframe — the selector in the top card drives every card:
+ *  the stats, both charts, the event bands and the ranking's Change column.
+ *  Shared with the Members page through lib/might-window.js. */
+let windowId = getMightWindow();
+/** Rolling span the charts draw for the selected window. */
+const windowDays = () => mightWindowParams(windowId).days;
 let selectedIds = [];
 let showEvents = true;
 let memberFilter = '';
+/** The unselected-members strip opened past its first few rows. */
+let poolExpanded = false;
 
 /** Fetched data + the host element, so surgical updates can find their targets. */
 let state = null;
@@ -129,8 +127,12 @@ function chartTokens() {
  */
 const SERIES_HUES = [42, 205, 145, 320, 265, 15, 175, 95, 240, 350, 60, 285];
 function seriesColor(i, alpha = 1) {
-  const hue = SERIES_HUES[i % SERIES_HUES.length];
-  return `hsla(${hue}, 70%, 65%, ${alpha})`;
+  if (i < SERIES_HUES.length) return `hsla(${SERIES_HUES[i]}, 70%, 65%, ${alpha})`;
+  // Past the hand-picked twelve: golden-angle hues, alternating lighter and
+  // darker, so line 13 never reuses line 1's colour. Fewer of these are
+  // pairwise distinct, but the chip beside each name still says which is which.
+  const hue = Math.round((SERIES_HUES[0] + i * 137.508) % 360);
+  return `hsla(${hue}, 70%, ${i % 2 === 0 ? 55 : 75}%, ${alpha})`;
 }
 
 function formatMight(n) {
@@ -171,27 +173,32 @@ function rankedRows() {
 
 function fetchCompare() {
   if (selectedIds.length === 0) return Promise.resolve({ series: [] });
-  return api(`/might/compare?memberIds=${selectedIds.join(',')}&days=${windowDays}`)
+  return api(`/might/compare?memberIds=${selectedIds.join(',')}&days=${windowDays()}`)
     .catch(() => ({ series: [] }));
+}
+
+function fetchOverview() {
+  return api(`/might/overview?${mightDeltaQuery(windowId)}`);
 }
 
 function fetchEvents() {
   if (!showEvents) return Promise.resolve({ windows: [] });
-  return api(`/might/events?days=${windowDays}`).catch(() => ({ windows: [] }));
+  return api(`/might/events?days=${windowDays()}`).catch(() => ({ windows: [] }));
 }
 
 // ─── Full render (navigation only) ────────────────────────────
 
 export async function renderMight(el) {
   hostEl = el;
+  windowId = getMightWindow();
   // Destroy before the innerHTML swap: replacing the markup removes the
   // canvases out from under any live Chart instances.
   destroyAllCharts();
   el.innerHTML = `<div class="card"><div class="card-body"><div class="empty-state"><p>${t('Loading might data…')}</p></div></div></div>`;
 
   const [overview, totals, events, guards] = await Promise.all([
-    api(`/might/overview?deltaDays=${TABLE_DELTA_DAYS}`),
-    api(`/might/totals?days=${windowDays}`),
+    fetchOverview(),
+    api(`/might/totals?days=${windowDays()}`),
     fetchEvents(),
     // Inferred, optional: a failure only leaves the Guards column out.
     api('/guards/overview').catch(() => null),
@@ -202,6 +209,7 @@ export async function renderMight(el) {
 
   state = {
     overview,
+    guardsByMember,
     totals: Array.isArray(totals?.totals) ? totals.totals : [],
     events: Array.isArray(events?.windows) ? events.windows : [],
     series: [],
@@ -231,9 +239,10 @@ export async function renderMight(el) {
     ${renderHeaderCard()}
     ${renderTotalsCard()}
     ${renderCompareCard()}
-    ${renderTableCard(rows, guardsByMember)}
+    <div id="mightTableHost">${renderTableCard(rows, guardsByMember)}</div>
   `;
 
+  syncPoolToggle();
   drawTotalsChart();
   drawCompareChart();
   wireControls(el);
@@ -304,28 +313,30 @@ function headerStatsHtml() {
 
 function renderHeaderCard() {
   const last = state.overview?.lastCapture;
+  // The page's timeframe lives here, at the top, because it drives every card
+  // below — it used to sit on the totals chart and looked like that chart's alone.
   return `<div class="card">
-    <div class="card-header">
-      <h2>${t('Member Might')}</h2>
-      <span class="card-header-hint">
-        ${last ? t('Last read {date} · game day {day}', { date: esc(formatDate(last.capturedAt)), day: esc(last.gameDate) }) : t('Never captured')}
-      </span>
+    <div class="card-header leaderboard-header">
+      <div class="events-title">
+        <h2>${t('Member Might')}</h2>
+        <span class="card-header-hint">
+          ${last ? t('Last read {date} · game day {day}', { date: esc(formatDate(last.capturedAt)), day: esc(last.gameDate) }) : t('Never captured')}
+        </span>
+      </div>
+      <div class="period-selector" id="mightWindow">${windowSelectorHtml()}</div>
     </div>
     <div class="card-body card-body-padded" id="mightHeaderStats">${headerStatsHtml()}</div>
   </div>`;
 }
 
 function windowSelectorHtml() {
-  return WINDOW_OPTIONS
-    .map((o) => `<button class="btn ${o.days === windowDays ? 'active' : ''}" data-might-days="${o.days}">${o.label}</button>`)
-    .join('');
+  return mightWindowButtonsHtml(windowId, (o) => `data-might-window="${o.id}"`);
 }
 
 function renderTotalsCard() {
   return `<div class="card">
-    <div class="card-header leaderboard-header">
+    <div class="card-header">
       <h2>${t('Clan Might Over Time')}</h2>
-      <div class="period-selector" id="mightWindow">${windowSelectorHtml()}</div>
     </div>
     <div class="card-body card-body-padded">
       <div class="chart-container"><canvas id="mightTotalsChart"></canvas></div>
@@ -333,24 +344,51 @@ function renderTotalsCard() {
   </div>`;
 }
 
-/** Chip list only — rewritten in place on filter/selection changes. */
+/**
+ * Picker body — rewritten in place on filter/selection changes.
+ *
+ * The selected members sit on their own row, in selection order (the order
+ * that fixes each line's colour), so they stay visible however long the
+ * roster is. The rest is a strip a few rows tall that "Show all" opens in
+ * place. It used to be one 200px box with its own scrollbar, which cut a row
+ * of chips in half and scrolled the selection out of sight.
+ */
 function chipsHtml() {
   const filter = memberFilter.trim().toLowerCase();
-  const pickable = rankedRows()
-    .filter((r) => !filter || (r.name || '').toLowerCase().includes(filter));
-  if (pickable.length === 0) return `<span class="muted-copy">${t('No members match.')}</span>`;
+  const ranked = rankedRows();
+  const byId = new Map(ranked.map((r) => [r.memberId, r]));
+  const picked = selectedIds
+    .map((id, idx) => ({ r: byId.get(id), idx }))
+    .filter((p) => p.r);
+  const pool = ranked.filter((r) => !selectedIds.includes(r.memberId)
+    && (!filter || (r.name || '').toLowerCase().includes(filter)));
 
-  return pickable.map((r) => {
-    const idx = selectedIds.indexOf(r.memberId);
-    const on = idx >= 0;
-    // Inline colour ties the chip to its line so the legend and the picker
-    // agree without the user matching names twice.
-    const style = on
-      ? ` style="border-color:${seriesColor(idx)};box-shadow:inset 3px 0 0 ${seriesColor(idx)}"`
-      : '';
-    return `<button class="btn btn-tight might-chip${on ? ' active' : ''}"
-      data-might-toggle="${r.memberId}"${style}>${esc(r.name)}</button>`;
-  }).join('');
+  // Inline colour ties the chip to its line so the legend and the picker
+  // agree without the user matching names twice.
+  const pickedHtml = picked.length === 0 ? '' : `<div class="might-picked">${picked.map(({ r, idx }) => `
+    <button class="btn btn-tight might-chip active" aria-pressed="true" data-might-toggle="${r.memberId}"
+      style="border-color:${seriesColor(idx)};box-shadow:inset 3px 0 0 ${seriesColor(idx)}">${esc(r.name)}<span class="might-chip-x" aria-hidden="true">×</span></button>`).join('')}</div>`;
+
+  let poolHtml = '';
+  if (pool.length > 0) {
+    // A filter narrows the list to a handful, so it always shows in full.
+    const open = poolExpanded || filter !== '';
+    poolHtml = `<div class="might-pool${open ? ' is-open' : ''}" id="mightPool">${pool.map((r) => `
+      <button class="btn btn-tight might-chip" aria-pressed="false" data-might-toggle="${r.memberId}">${esc(r.name)}</button>`).join('')}</div>
+      ${filter ? '' : `<button class="btn btn-tight might-pool-toggle" data-might-action="pool" hidden>${poolExpanded ? t('Show fewer') : t('Show all {count}', { count: pool.length })}</button>`}`;
+  } else if (filter) {
+    poolHtml = `<span class="muted-copy">${t('No members match.')}</span>`;
+  }
+  return pickedHtml + poolHtml;
+}
+
+/** Show the toggle only when the collapsed strip actually hides chips. */
+function syncPoolToggle() {
+  const pool = $('#mightPool');
+  const toggle = $('.might-pool-toggle');
+  if (!pool || !toggle) return;
+  const collapsed = Number.parseFloat(getComputedStyle(pool).getPropertyValue('--might-pool-collapsed')) || 0;
+  toggle.hidden = pool.scrollHeight <= collapsed + 1;
 }
 
 function compareChartHtml() {
@@ -402,7 +440,7 @@ function renderTableCard(rows, guardsByMember = new Map()) {
   return `<div class="card">
     <div class="card-header">
       <h2>${t('Might Ranking')}</h2>
-      <span class="card-header-hint">${tn(TABLE_DELTA_DAYS, 'Change measured over ~{n} days', 'Change measured over ~{n} days', { n: TABLE_DELTA_DAYS })}</span>
+      <span class="card-header-hint">${tn(windowDays(), 'Change measured over ~{n} days', 'Change measured over ~{n} days', { n: windowDays() })}</span>
     </div>
     <div class="card-body">
       <table class="table-responsive might-table"><colgroup>
@@ -432,7 +470,7 @@ function renderTableCard(rows, guardsByMember = new Map()) {
             <td data-label="${t('Might')}" data-role="metric" class="num"${r.gameDate ? ` title="${t('Read on game day {date}', { date: esc(r.gameDate) })}"` : ''}>${formatMight(r.might)}</td>
             ${/* Change, Hero Level and Last Seen stay unmarked so the mobile
                   compact-row engine reveals them in the expand panel. */''}
-            <td data-label="${t('Change')}" class="num ${d.cls}">${d.arrow} ${d.text}</td>
+            <td data-label="${t('Change')}" class="num ${d.cls}" title="${esc(mightDeltaTitle(r))}">${d.arrow} ${d.text}</td>
             ${showGuards ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
             ${showHero ? `<td data-label="${t('Hero Level')}" class="num">${r.heroLevel ? r.heroLevel.toLocaleString('en-US') : '—'}</td>` : ''}
             ${/* Date only — the time never carried information here and it wrapped
@@ -658,6 +696,7 @@ function eventBandsPlugin(spans) {
 function repaintChips() {
   const host = $('#mightChips');
   if (host) host.innerHTML = chipsHtml();
+  syncPoolToggle();
 }
 
 /** Selection changed: refetch just the series, redraw just that chart. */
@@ -668,26 +707,33 @@ async function refreshCompare() {
   drawCompareChart();
 }
 
-/** Timeframe changed: totals + events + series are all window-scoped. The
- *  ranking table is not (it uses a fixed delta), so it stays untouched. */
-async function changeWindow(days) {
-  if (days === windowDays) return;
-  windowDays = days;
+/** Timeframe changed: everything on the page is window-scoped — totals,
+ *  events, series and the ranking's Change column — so all of it refetches. */
+async function changeWindow(id) {
+  if (id === windowId) return;
+  windowId = id;
+  setMightWindow(id);
 
   const selector = $('#mightWindow');
   if (selector) selector.innerHTML = windowSelectorHtml();
 
-  const [totals, events, compare] = await Promise.all([
-    api(`/might/totals?days=${windowDays}`).catch(() => ({ totals: [] })),
+  const [totals, events, compare, overview] = await Promise.all([
+    api(`/might/totals?days=${windowDays()}`).catch(() => ({ totals: [] })),
     fetchEvents(),
     fetchCompare(),
+    fetchOverview().catch(() => null),
   ]);
+  // Another click landed while these were in flight; its own fetch will paint.
+  if (id !== windowId) return;
   state.totals = Array.isArray(totals?.totals) ? totals.totals : [];
   state.events = Array.isArray(events?.windows) ? events.windows : [];
   state.series = Array.isArray(compare?.series) ? compare.series : [];
+  if (overview && Array.isArray(overview.rows)) state.overview = overview;
 
   const stats = $('#mightHeaderStats');
   if (stats) stats.innerHTML = headerStatsHtml();
+  const table = $('#mightTableHost');
+  if (table) table.innerHTML = renderTableCard(state.overview?.rows ?? [], state.guardsByMember);
   drawTotalsChart();
   drawCompareChart();
 }
@@ -700,8 +746,8 @@ function wireControls(el) {
     el.dataset.mightWired = '1';
 
     el.addEventListener('click', (ev) => {
-      const days = ev.target.closest('button[data-might-days]')?.dataset.mightDays;
-      if (days) return void changeWindow(Number.parseInt(days, 10));
+      const windowPick = ev.target.closest('button[data-might-window]')?.dataset.mightWindow;
+      if (windowPick) return void changeWindow(windowPick);
 
       const chip = ev.target.closest('button[data-might-toggle]');
       if (chip) {
@@ -721,6 +767,10 @@ function wireControls(el) {
       if (action === 'top') {
         selectedIds = rankedRows().slice(0, DEFAULT_SELECTION).map((r) => r.memberId);
         return void refreshCompare();
+      }
+      if (action === 'pool') {
+        poolExpanded = !poolExpanded;
+        return void repaintChips();
       }
     });
 

@@ -26,6 +26,9 @@ import {
   directionPillHtml, isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import {
+  mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
+} from '../lib/might-window.js';
 
 // ─── Members list ─────────────────────────────────────────────
 
@@ -116,7 +119,7 @@ async function fetchGuardsMap() {
  */
 async function fetchMightMap() {
   try {
-    const res = await api('/might/overview?deltaDays=7');
+    const res = await api(`/might/overview?${mightDeltaQuery()}`);
     const rows = Array.isArray(res?.rows) ? res.rows : [];
     const withData = rows.filter((r) => r.might !== null);
     if (withData.length === 0) return new Map();
@@ -154,9 +157,13 @@ export function renderMembersTable(el) {
     ? t('{shown} of {total}', { shown: sortedMembers.length, total: cachedMembers.length })
     : `${cachedMembers.length}`;
 
+  const mightWindow = getMightWindow();
+  const mightDays = mightWindowParams(mightWindow).days;
+
   el.innerHTML = `<div class="card">
-    <div class="card-header">
+    <div class="card-header members-header">
       <h2>${t('Clan Members ({count})', { count: countLabel })}</h2>
+      ${showMight ? `<div class="period-selector" id="membersMightWindow">${mightWindowButtonsHtml(mightWindow, (o) => `data-action="members-might-window" data-window="${o.id}"`)}</div>` : ''}
       <input
         type="text"
         id="membersFilter"
@@ -181,11 +188,11 @@ export function renderMembersTable(el) {
             ${showGuards ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })) : ''}
             ${showMight ? `
               ${th('might', t('Might'), 'num')}
-              ${th('mightDelta', t('7d'), 'num', t('Change over the last ~7 days'))}
+              ${th('mightDelta', t('Change'), 'num', tn(mightDays, 'Change measured over ~{n} days', 'Change measured over ~{n} days', { n: mightDays }))}
             ` : ''}
             ${th('firstSeen', t('First Seen'))}
             ${th('lastSeen', t('Last Seen'))}
-            ${isAdmin ? `<th>${t('Actions')}</th>` : ''}
+            ${isAdmin ? `<th class="col-actions">${t('Actions')}</th>` : ''}
           </tr></thead><tbody>
             ${sortedMembers.map((m) => {
               const might = cachedMightByMember.get(m.id);
@@ -196,13 +203,15 @@ export function renderMembersTable(el) {
               ${showGuards ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
               ${showMight ? `
                 <td data-label="${t('Might')}" data-role="metric" class="num">${might?.might != null ? Number(might.might).toLocaleString('en-US') : '—'}</td>
-                <td data-label="${t('7d')}" class="num ${d.cls}">${d.arrow} ${d.text}</td>
+                <td data-label="${t('Change')}" class="num ${d.cls}" title="${esc(mightDeltaTitle(might))}">${d.arrow ? `<span class="progress-arrow">${d.arrow}</span> ` : ''}${d.text}</td>
               ` : ''}
-              <td data-label="${t('First Seen')}">${formatDate(m.firstSeen)}</td>
+              ${/* Date only, the full stamp on hover — the time wrapped nothing but
+                    took 70px a column, the same call the Might ranking made. */''}
+              <td data-label="${t('First Seen')}" title="${formatDate(m.firstSeen)}">${formatDateShort(m.firstSeen)}</td>
               ${/* With might present it takes over as the headline metric, so Last
                     Seen drops into the expand panel. Left unmarked (not "hidden")
                     so it stays reachable — "hidden" means shown elsewhere. */''}
-              <td data-label="${t('Last Seen')}"${showMight ? '' : ' data-role="metric"'}>${formatDate(m.lastSeen)}</td>
+              <td data-label="${t('Last Seen')}" title="${formatDate(m.lastSeen)}"${showMight ? '' : ' data-role="metric"'}>${formatDateShort(m.lastSeen)}</td>
               ${isAdmin ? `<td class="col-actions"><button class="btn btn-tight" data-action="prompt-merge-member" data-member-id="${m.id}">${t('Merge')}</button></td>` : ''}
             </tr>`;
             }).join('')}
@@ -267,6 +276,16 @@ export function setMembersSort(key, rerender) {
   } else {
     rerender('members');
   }
+}
+
+/** Timeframe picked: refetch only the might map (the roster doesn't change). */
+export async function setMembersMightWindow(id) {
+  if (id === getMightWindow()) return;
+  setMightWindow(id);
+  cachedMightByMember = await fetchMightMap();
+  // A later click already won; its own fetch repaints.
+  if (id !== getMightWindow()) return;
+  if (cachedMembers.length > 0) renderMembersTable($('#content'));
 }
 
 /** Update the in-memory filter text and re-render the table without

@@ -621,6 +621,7 @@ export const ui = {
   "Nothing matches that filter.": "Ничего не подходит под фильтр.",
   "No chests in this timeframe.": "Нет сундуков за этот период.",
   "Show all {count}": "Показать все {count}",
+  "Show fewer": "Показать меньше",
   "Show top 15": "Показать топ-15",
   "Breakdown": "Разбивка",
   "Break down by": "Разбить по",
@@ -1159,7 +1160,6 @@ export const ui = {
   "No members match your search.": "Никто не подходит под поиск.",
   "Guardsmen level, estimated from {essence} and {tractates} donations": "Уровень гвардейцев, оценённый по пожертвованиям {essence} и {tractates}",
   "7d": "7 д",
-  "Change over the last ~7 days": "Изменение примерно за 7 дней",
   "Actions": "Действия",
   "Run": "Проведение",
   "Not on the ranking": "Нет в рейтинге",
@@ -1297,6 +1297,7 @@ export const ui = {
   "Session": "Сеанс",
   "Captured": "Записано",
   // pages/might.js
+  "This week": "Эта неделя",
   "30 days": "30 дней",
   "90 days": "90 дней",
   "6 months": "6 месяцев",

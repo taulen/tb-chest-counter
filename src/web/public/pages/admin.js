@@ -13,7 +13,7 @@
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
 import {
   $, esc, formatDate, memberLink, memberHash,
-  notify, confirmDialog, promptDialog,
+  notify, confirmDialog, contentModal,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -147,16 +147,12 @@ export async function renderAdmin(el) {
           <div>
             <label>${t('Correct Name')}</label>
             <select id="mergePlayerTo" class="input">
-              <option value="">${t('Select...')}</option>
-              ${activeMembers.map(memberOption).join('')}
+              ${playerMergeOptionsHtml(activeMembers, chestCounts)}
             </select>
           </div>
           <button class="btn btn-primary" data-action="do-merge-player">${t('Merge')}</button>
         </div>
-        <div class="merge-custom-row mb-16">
-          <label for="mergePlayerToCustom">${t('Or type a custom Correct Name (overrides the dropdown above)')}</label>
-          <input type="text" id="mergePlayerToCustom" class="input" placeholder="${t('Custom name…')}">
-        </div>
+        ${playerMergeCustomHtml('mergePlayerToCustom', { className: 'mb-16' })}
         ${playerRules.length > 0 ? `<details>
           <summary class="collapse-toggle">${tn(playerRules.length, '{n} active player merge rule', '{n} active player merge rules', { n: playerRules.length })}</summary>
           <table class="table-responsive merge-rules-table">
@@ -313,27 +309,65 @@ export async function renderAdmin(el) {
 // callback the dispatcher injects so this module never has to import
 // loadPage from app.js (would be a circular dep).
 
-export async function doMergePlayer(rerender) {
-  const fromName = $('#mergePlayerFrom').value;
-  // Dropdown selection takes priority; custom input is the fallback
-  // when no dropdown value is picked. The custom input is auto-filled
-  // with the misread when picking a "From" value, so it's there as a
-  // starting point for editing - the dropdown still wins if a real
-  // member is chosen.
-  const toName = $('#mergePlayerTo').value || ($('#mergePlayerToCustom')?.value || '').trim();
-  if (!fromName || !toName) return notify(t('Select both players'), t('Cannot merge'));
-  if (fromName === toName) return notify(t('Cannot merge a player with itself'), t('Cannot merge'));
-  const scrollY = window.scrollY;
+// ─── Player merge: one form, two hosts ───
+// The Merge Player Names card here and the Merge dialog on the Members page
+// render the same pieces and submit through submitPlayerMerge, so a change
+// below lands on both.
+
+/** Dropdown options for a merge target: every active member with their chest count. */
+function playerMergeOptionsHtml(members, counts, exclude = null) {
+  return `<option value="">${t('Select...')}</option>${members
+    .filter((m) => m.name !== exclude)
+    .map((m) => countedOption(m.name, counts[m.id]))
+    .join('')}`;
+}
+
+function playerMergeCustomHtml(id, { className = '', inputClass = 'input', value = '' } = {}) {
+  return `<div class="merge-custom-row ${className}">
+    <label for="${id}">${t('Or type a custom Correct Name (overrides the dropdown above)')}</label>
+    <input type="text" id="${id}" class="${inputClass}" placeholder="${t('Custom name…')}" value="${esc(value)}">
+  </div>`;
+}
+
+/**
+ * Picking a player copies the name into the text field, so the field always
+ * shows the name that will be used and typing over it is the override its
+ * label promises. The dropdown used to win silently over anything typed.
+ */
+export function syncPlayerMergeCustom(select, custom) {
+  if (select?.value && custom) custom.value = select.value;
+}
+
+function playerMergeTarget(select, custom) {
+  return (custom?.value || '').trim() || select?.value || '';
+}
+
+/** Validate, merge, run `afterMerge` (the rerender), then report. True on success. */
+async function submitPlayerMerge(fromName, toName, afterMerge) {
+  if (!fromName || !toName) { notify(t('Select both players'), t('Cannot merge')); return false; }
+  if (fromName === toName) { notify(t('Cannot merge a player with itself'), t('Cannot merge')); return false; }
   const result = await apiPost('/admin/merge-players', { fromName, toName });
-  if (result?.error) return notify(result.error, t('Merge failed'));
-  if (typeof rerender === 'function') await rerender('admin');
-  window.scrollTo(0, scrollY);
+  if (result?.error) { notify(result.error, t('Merge failed')); return false; }
+  await afterMerge?.();
   // `note` is set when an existing rule already covered this spelling, so the rules
   // list won't have grown. Say so — silently not adding the row is what left admins
   // writing the same rule four times over.
   notify(
     `${t('Merged "{from}" into "{to}".', { from: fromName, to: toName })}${result?.note ? ` ${result.note}` : ''}`,
     t('Merge complete'),
+  );
+  return true;
+}
+
+export async function doMergePlayer(rerender) {
+  const scrollY = window.scrollY;
+  await submitPlayerMerge(
+    $('#mergePlayerFrom').value,
+    playerMergeTarget($('#mergePlayerTo'), $('#mergePlayerToCustom')),
+    async () => {
+      if (typeof rerender === 'function') await rerender('admin');
+      window.scrollTo(0, scrollY);
+    },
   );
 }
 
@@ -676,18 +710,50 @@ export async function restoreMemberById(id, name, rerender) {
   if (rerender) rerender('admin');
 }
 
+/**
+ * The Members page's Merge button: the Merge Player Names form in a dialog,
+ * with the misread fixed to the row it was opened from. Like the card, the
+ * text field starts on the misread so a casing fix is an edit, not a retype.
+ */
 export async function promptMergePlayerById(id, rerender) {
-  const member = await api(`/members/${id}`);
-  if (!member || member.error || !member.name) return;
+  const [members, counts] = await Promise.all([api('/members'), api('/admin/member-chest-counts')]);
+  if (!Array.isArray(members)) return;
+  const member = members.find((m) => m.id === id);
+  if (!member?.name) return;
+  const sorted = [...members].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
 
-  const target = await promptDialog(t('Merge "{name}" into which player name?', { name: member.name }), {
+  const modal = contentModal({
     title: t('Merge Player'),
-    confirmLabel: t('Merge'),
+    html: `
+      <p class="modal-body">${t('Merge "{name}" into which player name?', { name: esc(member.name) })}</p>
+      <div class="modal-form">
+        <label class="modal-form-label" for="mergeDialogTo">${t('Correct Name')}</label>
+        <select id="mergeDialogTo" class="input modal-input">
+          ${playerMergeOptionsHtml(sorted, counts && !counts.error ? counts : {}, member.name)}
+        </select>
+        ${playerMergeCustomHtml('mergeDialogToCustom', { inputClass: 'input modal-input', value: member.name })}
+        <p class="modal-form-hint">${t('Fix OCR name variations. Updates existing records and auto-corrects future scans.')}</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-merge-dialog="cancel">${t('Cancel')}</button>
+        <button class="btn btn-primary" type="button" data-merge-dialog="merge">${t('Merge')}</button>
+      </div>`,
   });
-  if (!target || !target.trim()) return;
-  if (!await mustOk(
-    apiPost('/admin/merge-players', { fromName: member.name, toName: target.trim() }),
-    t('Merge failed'),
-  )) return;
-  if (typeof rerender === 'function') rerender('admin');
+  if (!modal) return;
+  const root = modal.content;
+  const select = root.querySelector('#mergeDialogTo');
+  const custom = root.querySelector('#mergeDialogToCustom');
+  const merge = async () => {
+    const ok = await submitPlayerMerge(member.name, playerMergeTarget(select, custom), async () => {
+      modal.close();
+      if (typeof rerender === 'function') await rerender('members');
+    });
+    if (!ok) custom.focus();
+  };
+  select.addEventListener('change', () => syncPlayerMergeCustom(select, custom));
+  custom.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); merge(); }
+  });
+  root.querySelector('[data-merge-dialog="cancel"]').addEventListener('click', () => modal.close());
+  root.querySelector('[data-merge-dialog="merge"]').addEventListener('click', merge);
 }

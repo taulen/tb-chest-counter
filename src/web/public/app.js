@@ -83,6 +83,7 @@ import {
   renderMembersTable,
   setMembersSort,
   setMembersFilter,
+  setMembersMightWindow,
   viewMember,
   viewMemberByName,
   changeMemberChestsPage,
@@ -152,6 +153,7 @@ import { renderTools } from './pages/tools.js';
 import {
   renderAdmin,
   doMergePlayer,
+  syncPlayerMergeCustom,
   doMergeChest,
   doMergeSource,
   saveAllTriumphalPoints,
@@ -634,6 +636,7 @@ if (contentEl) {
       return;
     }
     if (action === 'sort-members') return setMembersSort(target.dataset.sortKey, loadPage);
+    if (action === 'members-might-window') return setMembersMightWindow(target.dataset.window);
     if (action === 'save-scan-interval') return saveScanIntervalSetting(loadPage);
     if (action === 'login-session-start') {
       // Per-clan login: a button on each clan's card carries
@@ -724,10 +727,14 @@ if (contentEl) {
     // When picking an OCR misread on any of the merge forms, prefill
     // the "or type custom" field with the same value so the user only
     // needs to edit the casing/typo instead of retyping it.
-    if (select.id === 'mergePlayerFrom') {
+    // For players the text field is also what gets merged (see
+    // syncPlayerMergeCustom), so a misread must not overwrite a Correct
+    // Name already picked.
+    if (select.id === 'mergePlayerFrom' && !$('#mergePlayerTo')?.value) {
       const customInput = $('#mergePlayerToCustom');
       if (customInput) customInput.value = select.value;
     }
+    if (select.id === 'mergePlayerTo') syncPlayerMergeCustom(select, $('#mergePlayerToCustom'));
     if (select.id === 'mergeChestFrom') {
       const customInput = $('#mergeChestToCustom');
       if (customInput) customInput.value = select.value;

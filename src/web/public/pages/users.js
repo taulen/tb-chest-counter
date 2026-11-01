@@ -554,7 +554,7 @@ export async function renderUsers(el) {
       // Every chip keeps the icon slot, so names line up whether or not it's home.
       return `<span class="${cls}" title="${esc(title)}">${m.home ? HOME_ICON : '<span class="clan-chip-icon" aria-hidden="true"></span>'}<span class="clan-chip-name">${esc(clanShort(m.clanId))}</span><span class="clan-chip-role role-${esc(m.role)}">${esc(roleLabel(m.role))}</span></span>`;
     }).join('');
-    return `<button type="button" class="clan-chips" data-action="edit-user-clans" data-user-id="${u.id}" aria-label="${esc(t('Edit clans for {user}. {clans}', { user: u.username, clans: described }))}" title="${t('Edit clans')}">${chips}${EDIT_ICON}</button>`;
+    return `<button type="button" class="clan-chips" data-action="edit-user-clans" data-user-id="${u.id}" aria-label="${esc(t('Edit clans for {user}. {clans}', { user: u.username, clans: described }))}" title="${t('Edit clans')}"><span class="clan-chips-list">${chips}</span>${EDIT_ICON}</button>`;
   };
 
   // Role options visible in dropdowns. Clan admins can grant user/admin

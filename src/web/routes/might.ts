@@ -36,9 +36,11 @@ const log = childLogger('might-route');
  *  scan of the whole table via a huge date arithmetic window. */
 const MAX_DAYS = 400;
 const DEFAULT_DAYS = 90;
-/** Series the comparison chart will return at once — beyond this the lines stop
- *  being distinguishable anyway, and it bounds the SQL IN list. */
-const MAX_COMPARE_MEMBERS = 12;
+/** Bounds the SQL IN list against a crafted request, nothing more. It was 12,
+ *  "beyond which the lines stop being distinguishable" — but the picker let
+ *  you select more, and everyone past the twelfth was dropped without a word.
+ *  How many lines is too many is the reader's call; a whole roster is ~110. */
+const MAX_COMPARE_MEMBERS = 250;
 
 function clampDays(raw: unknown, fallback = DEFAULT_DAYS): number {
   const n = Number.parseInt(String(raw ?? ''), 10);
@@ -63,7 +65,11 @@ export function createMightRouter(scanLoop?: ScanLoop): Router {
     const deltaDays = clampDays(req.query.deltaDays, 7);
     const cfg = loadConfig();
 
-    const withMight = mightRepo.getMightWithDelta(clanId, deltaDays);
+    // The clan week (Might / Members "This week"): measured from the last reading
+    // before the week's first game day rather than a rolling N days back.
+    const sinceRaw = String(req.query.sinceDay ?? '');
+    const sinceDay = /^\d{4}-\d{2}-\d{2}$/.test(sinceRaw) ? sinceRaw : null;
+    const withMight = mightRepo.getMightWithDelta(clanId, deltaDays, { sinceDay });
     const byId = new Map(withMight.map((r) => [r.memberId, r]));
 
     const rows = getAllMembers(true, clanId).map((m) => {

@@ -621,6 +621,7 @@ export const ui = {
   "Nothing matches that filter.": "Nada coincide con ese filtro.",
   "No chests in this timeframe.": "No hay cofres en este periodo.",
   "Show all {count}": "Mostrar los {count}",
+  "Show fewer": "Mostrar menos",
   "Show top 15": "Mostrar top 15",
   "Breakdown": "Desglose",
   "Break down by": "Desglosar por",
@@ -1159,7 +1160,6 @@ export const ui = {
   "No members match your search.": "Ningún miembro coincide con tu búsqueda.",
   "Guardsmen level, estimated from {essence} and {tractates} donations": "Nivel de Guardias, estimado a partir de donaciones de {essence} y {tractates}",
   "7d": "7d",
-  "Change over the last ~7 days": "Cambio en los últimos ~7 días",
   "Actions": "Acciones",
   "Run": "Edición",
   "Not on the ranking": "No figura en la clasificación",
@@ -1297,6 +1297,7 @@ export const ui = {
   "Session": "Sesión",
   "Captured": "Capturado",
   // pages/might.js
+  "This week": "Esta semana",
   "30 days": "30 días",
   "90 days": "90 días",
   "6 months": "6 meses",

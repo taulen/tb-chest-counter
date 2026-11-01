@@ -249,6 +249,34 @@ describe('getMightWithDelta', () => {
     expect(row.baselineMight).toBeNull();
   });
 
+  it('measures from the first reading when none is old enough for the window', () => {
+    const alice = addMember(1, 'Alice');
+    mightRepo.saveSnapshots(1, '2026-07-20', '2026-07-20T18:00:00.000Z', [{ memberId: alice, might: 90_000_000 }]);
+    mightRepo.saveSnapshots(1, '2026-07-25', '2026-07-25T18:00:00.000Z', [{ memberId: alice, might: 94_000_000 }]);
+    mightRepo.saveSnapshots(1, '2026-07-30', '2026-07-30T18:00:00.000Z', [{ memberId: alice, might: 99_000_000 }]);
+
+    // A year on ten days of tracking: the whole history, not a blank.
+    const [row] = mightRepo.getMightWithDelta(1, 365);
+    expect(row.baselineDate).toBe('2026-07-20');
+    expect(row.delta).toBe(9_000_000);
+    // A reading old enough still wins over the first one.
+    expect(mightRepo.getMightWithDelta(1, 5)[0].baselineDate).toBe('2026-07-25');
+  });
+
+  it('sinceDay: measures from the last reading before that game day', () => {
+    const alice = addMember(1, 'Alice');
+    mightRepo.saveSnapshots(1, '2026-07-24', '2026-07-24T18:00:00.000Z', [{ memberId: alice, might: 80_000_000 }]);
+    mightRepo.saveSnapshots(1, '2026-07-25', '2026-07-25T18:00:00.000Z', [{ memberId: alice, might: 85_000_000 }]);
+    mightRepo.saveSnapshots(1, '2026-07-28', '2026-07-28T18:00:00.000Z', [{ memberId: alice, might: 99_000_000 }]);
+
+    // Week starting the 26th: baseline is the 25th, the week's last reading before it.
+    const [row] = mightRepo.getMightWithDelta(1, 3, { sinceDay: '2026-07-26' });
+    expect(row.baselineDate).toBe('2026-07-25');
+    expect(row.delta).toBe(14_000_000);
+    // No reading since the week began: no change to show, not ±0.
+    expect(mightRepo.getMightWithDelta(1, 1, { sinceDay: '2026-07-29' })[0].delta).toBeNull();
+  });
+
   it('omits members that have no snapshot, and never leaks another clan', () => {
     const alice = addMember(1, 'Alice');
     addMember(1, 'NoData');
