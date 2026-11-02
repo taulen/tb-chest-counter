@@ -47,6 +47,7 @@ describe('/api/tinman', () => {
     app = express();
     app.use(express.json());
     app.use('/api/tinman', requireAuth, requireClanContext, createTinmanRouter());
+    app.use('/api/event-scores/olympus', requireAuth, requireClanContext, createTinmanRouter('olympus'));
   });
 
   afterEach(() => {
@@ -124,5 +125,28 @@ describe('/api/tinman', () => {
     expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(200);
     const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
     expect(get.body.summons).toEqual([]);
+  });
+
+  describe('Olympus (per day)', () => {
+    const OLY = '2026-10-21';
+
+    it('takes days 1–5 only, files them apart from Ancients, and has no targets', async () => {
+      const put = await send('put', `/api/event-scores/olympus/${OLY}/summons/5`, 'admin1', { text: PASTE });
+      expect(put.status).toBe(200);
+      expect(put.body.warning).toBeNull();
+      expect((await send('put', `/api/event-scores/olympus/${OLY}/summons/6`, 'admin1', { text: PASTE })).status).toBe(400);
+      expect((await send('put', `/api/event-scores/olympus/${OLY}/summons/1`, 'user1', { text: PASTE })).status).toBe(403);
+      expect((await send('put', `/api/event-scores/olympus/${OLY}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
+
+      const get = await send('get', `/api/event-scores/olympus?date=${OLY}`, 'user1');
+      expect(get.body).toMatchObject({ maxSummons: 5, targets: null, isTinmanDay: null, dates: [OLY] });
+      expect(get.body.summons).toMatchObject([{ summon: 5, rows: 2 }]);
+      expect((await send('get', `/api/tinman?date=${OLY}`, 'user1')).body.summons).toEqual([]);
+    });
+
+    it('defaults to the newest pasted run', async () => {
+      await send('put', `/api/event-scores/olympus/${OLY}/summons/1`, 'admin1', { text: PASTE });
+      expect((await send('get', '/api/event-scores/olympus', 'user1')).body.date).toBe(OLY);
+    });
   });
 });

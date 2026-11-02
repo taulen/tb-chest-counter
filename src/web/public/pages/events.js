@@ -52,9 +52,10 @@ const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
 const ESSENCE_EVENT_KEY = 'dark-omens';
 const ESSENCE_SLUG = 'omen-essence';
 
-// Ancients also carries the pasted Rise of the Ancients standings (Tin Man
-// scores, pages/tinman-scores.js), filed under the run's Tinman day.
-const TINMAN_EVENT_KEY = 'ancients';
+// Events that carry pasted standings (pages/tinman-scores.js): Ancients, the
+// Rise of the Ancients ranking per summon (Tin Man scores), and Olympus, its
+// ranking per day. Each run's are filed under its occurrence's scoresDate.
+const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus']);
 
 let period = 'weekly';   // same game-week system as the rest of the site
 let periodOffset = 0;    // 0 = current period, 1 = previous, …
@@ -848,7 +849,7 @@ function paint() {
       </div>
       <div class="card-body">${statCards}</div>
     </div>
-    ${currentEventKey === TINMAN_EVENT_KEY ? '<div class="tinman-mount"></div>' : ''}
+    ${SCORES_EVENT_KEYS.has(currentEventKey) ? '<div class="tinman-mount"></div>' : ''}
     ${eventSeriesCardHtml()}
     ${levelCardHtml}
     <div class="card">
@@ -873,12 +874,13 @@ function paint() {
       </div>
     </div>
     ${nonParticipantsHtml}
-    ${currentEventKey === TINMAN_EVENT_KEY ? '<div class="tinman-below-mount"></div>' : ''}`;
+    ${SCORES_EVENT_KEYS.has(currentEventKey) ? '<div class="tinman-below-mount"></div>' : ''}`;
 
   wire(el);
-  if (currentEventKey === TINMAN_EVENT_KEY) {
+  if (SCORES_EVENT_KEYS.has(currentEventKey)) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
-      date: tinmanDateForSelection(),
+      event: currentEventKey,
+      date: scoresDateForSelection(),
       members: activeMembers,
       belowEl: el.querySelector('.tinman-below-mount'),
     })
@@ -886,14 +888,14 @@ function paint() {
   }
 }
 
-// Which run's Tin Man scores to show: the selected occurrence's Tinman day,
+// Which run's pasted scores to show: the selected occurrence's scoresDate,
 // 'all' when the aggregate view is on (scores are per run), or null — the
 // newest run — when the calendar feed is down and there are no occurrences.
-function tinmanDateForSelection() {
+function scoresDateForSelection() {
   if (!occurrences.length) return null;
   if (occSel === 'all') return 'all';
   const occ = occurrences[occSel] || occurrences[0];
-  return occ?.tinmanDate || null;
+  return occ?.scoresDate || null;
 }
 
 function wire(el) {

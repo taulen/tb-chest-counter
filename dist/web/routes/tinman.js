@@ -38,9 +38,14 @@ exports.createTinmanRouter = createTinmanRouter;
  * Rise of the Ancients (Tinman) standings, pasted in after each summon — shown
  * on Events → Ancients. See data/repositories/tinman-repo.ts.
  *
- * Mounted at /api/tinman behind requireAuth + requireClanContext. Reading is
- * open to every member; uploading, deleting and settling who a name is are
- * admin-only, and every query is scoped to the caller's active clan.
+ * The same router serves Trials of Olympus (Events → Olympus), pasted per day:
+ * a "summon" in the paths below is then the run's day, 1–5. Olympus has no
+ * targets and no Tinman cadence, so those parts are Ancients-only.
+ *
+ * Mounted at /api/tinman (Ancients) and /api/event-scores/olympus behind
+ * requireAuth + requireClanContext. Reading is open to every member;
+ * uploading, deleting and settling who a name is are admin-only, and every
+ * query is scoped to the caller's active clan.
  */
 const express_1 = require("express");
 const tinmanRepo = __importStar(require("../../data/repositories/tinman-repo.js"));
@@ -61,10 +66,10 @@ function validDate(raw, today) {
         return null;
     return raw;
 }
-/** 1–8 exactly, or null. Strict on purpose: clamping would file a "summon 9" paste under 8. */
-function parseSummon(raw) {
+/** 1–max exactly, or null. Strict on purpose: clamping would file a "summon 9" paste under 8. */
+function parseSummon(raw, max) {
     const n = Number(raw);
-    return Number.isInteger(n) && n >= 1 && n <= tinmanRepo.TINMAN_MAX_SUMMONS ? n : null;
+    return Number.isInteger(n) && n >= 1 && n <= max ? n : null;
 }
 /** The newest Tinman day at or before today on the cadence — the default run. */
 function latestTinmanDay(today) {
@@ -75,41 +80,50 @@ function latestTinmanDay(today) {
     }
     return today;
 }
-function createTinmanRouter() {
+function createTinmanRouter(eventKey = 'ancients') {
     const router = (0, express_1.Router)();
     const today = () => (0, game_day_js_1.currentGameDate)((0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
-    /** Standings for one run (`?date=` the Tinman game day; default: the newest). */
+    const ancients = eventKey === 'ancients';
+    const maxRounds = tinmanRepo.SCORE_EVENTS[eventKey].maxRounds;
+    const round = ancients ? 'summon' : 'day';
+    const action = (name) => (ancients ? `tinman_${name}` : `${eventKey}_${name}`);
+    /**
+     * Standings for one run (`?date=` its day; default: the newest). Olympus has
+     * no cadence to fall back on, so its default is the newest pasted run.
+     */
     router.get('/', (req, res) => {
         const clanId = req.clanId;
         const t = today();
-        const date = req.query.date === undefined ? latestTinmanDay(t) : validDate(req.query.date, t);
+        const date = req.query.date !== undefined
+            ? validDate(req.query.date, t)
+            : ancients ? latestTinmanDay(t) : tinmanRepo.listTinmanDates(clanId, 1, eventKey)[0] ?? t;
         if (!date) {
             res.status(400).json({ error: 'date must be a past or current game day, YYYY-MM-DD' });
             return;
         }
         // Each matched player's estimated guards level, so the page can hold their
         // total against their tier's target. Null = unknown (the page assumes G7).
-        const standings = tinmanRepo.getTinmanStandings(clanId, date);
-        const guards = (0, guards_repo_js_1.getGuardsSummaries)(clanId, t);
+        const standings = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
+        const guards = ancients ? (0, guards_repo_js_1.getGuardsSummaries)(clanId, t) : null;
         res.json({
             ...standings,
             players: standings.players.map((p) => ({
                 ...p,
-                guardsLevel: p.memberId ? guards.get(p.memberId)?.level ?? null : null,
+                guardsLevel: p.memberId ? guards?.get(p.memberId)?.level ?? null : null,
             })),
-            targets: tinmanRepo.getTinmanTargets(clanId, date),
-            isTinmanDay: (0, game_day_js_1.isTinmanDay)(date),
-            dates: tinmanRepo.listTinmanDates(clanId),
-            maxSummons: tinmanRepo.TINMAN_MAX_SUMMONS,
+            targets: ancients ? tinmanRepo.getTinmanTargets(clanId, date) : null,
+            isTinmanDay: ancients ? (0, game_day_js_1.isTinmanDay)(date) : null,
+            dates: tinmanRepo.listTinmanDates(clanId, 30, eventKey),
+            maxSummons: maxRounds,
         });
     });
     /** Paste one summon's cumulative ranking. Re-sending a summon replaces it. */
     router.put('/:date/summons/:summon', auth_js_1.requireAdmin, (req, res) => {
         const clanId = req.clanId;
         const date = validDate(req.params.date, today());
-        const summon = parseSummon(req.params.summon);
+        const summon = parseSummon(req.params.summon, maxRounds);
         if (!date || !summon) {
-            res.status(400).json({ error: `Need a game day and a summon from 1 to ${tinmanRepo.TINMAN_MAX_SUMMONS}.` });
+            res.status(400).json({ error: `Need a game day and a ${round} from 1 to ${maxRounds}.` });
             return;
         }
         const text = typeof req.body?.text === 'string' ? req.body.text : '';
@@ -126,62 +140,64 @@ function createTinmanRouter() {
             return;
         }
         const result = tinmanRepo.saveTinmanSummon({
-            clanId, date, summon, rows: parsed.rows, uploadedBy: req.user.username,
+            clanId, date, summon, rows: parsed.rows, uploadedBy: req.user.username, eventKey,
         });
-        (0, user_repo_js_1.logAction)(req.user.id, 'tinman_upload', { clanId, date, summon, ...result });
+        (0, user_repo_js_1.logAction)(req.user.id, action('upload'), { clanId, date, summon, ...result });
         const ageDays = (0, game_day_js_1.daysBetweenGameDates)(date, today());
         res.json({
             ok: true,
             result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5), missingRanks: (0, tinman_parse_js_1.missingRanks)(parsed.rows) },
-            warning: (0, game_day_js_1.isTinmanDay)(date) ? null : `${date} isn't a Tinman day on the usual 6-day cadence.`,
-            staleWarning: ageDays !== null && ageDays > game_day_js_1.ANCIENTS_CYCLE_DAYS ? 'This run is more than a cycle old.' : null,
+            warning: !ancients || (0, game_day_js_1.isTinmanDay)(date) ? null : `${date} isn't a Tinman day on the usual 6-day cadence.`,
+            staleWarning: ancients && ageDays !== null && ageDays > game_day_js_1.ANCIENTS_CYCLE_DAYS ? 'This run is more than a cycle old.' : null,
         });
     });
     router.delete('/:date/summons/:summon', auth_js_1.requireAdmin, (req, res) => {
         const clanId = req.clanId;
         const date = validDate(req.params.date, today());
-        const summon = parseSummon(req.params.summon);
-        if (!date || !summon || !tinmanRepo.deleteTinmanSummon(clanId, date, summon)) {
-            res.status(404).json({ error: 'No upload for that summon.' });
+        const summon = parseSummon(req.params.summon, maxRounds);
+        if (!date || !summon || !tinmanRepo.deleteTinmanSummon(clanId, date, summon, eventKey)) {
+            res.status(404).json({ error: `No upload for that ${round}.` });
             return;
         }
-        (0, user_repo_js_1.logAction)(req.user.id, 'tinman_delete', { clanId, date, summon });
+        (0, user_repo_js_1.logAction)(req.user.id, action('delete'), { clanId, date, summon });
         res.json({ ok: true });
     });
     /**
      * The run's per-tier targets, pasted from the Ancient planner's "Points per
-     * member" table. Re-sending replaces them.
+     * member" table. Re-sending replaces them. Ancients only.
      */
-    router.put('/:date/targets', auth_js_1.requireAdmin, (req, res) => {
-        const clanId = req.clanId;
-        const date = validDate(req.params.date, today());
-        const text = typeof req.body?.text === 'string' ? req.body.text : '';
-        if (!date || !text.trim() || text.length > MAX_TEXT_LENGTH) {
-            res.status(400).json({ error: 'Paste the Points per member table first.' });
-            return;
-        }
-        const parsed = (0, tinman_parse_js_1.parseTierTargets)(text);
-        if (Object.keys(parsed.tiers).length === 0) {
-            res.status(400).json({
-                error: 'No tier targets found. Expected lines like "G9  6 members  61.3M  368M  19.2%".',
-                skipped: parsed.skipped.slice(0, 5),
-            });
-            return;
-        }
-        tinmanRepo.saveTinmanTargets({ clanId, date, tiers: parsed.tiers, kills: parsed.kills, savedBy: req.user.username });
-        (0, user_repo_js_1.logAction)(req.user.id, 'tinman_targets', { clanId, date, kills: parsed.kills, tiers: parsed.tiers });
-        res.json({ ok: true, targets: tinmanRepo.getTinmanTargets(clanId, date), skipped: parsed.skipped });
-    });
-    router.delete('/:date/targets', auth_js_1.requireAdmin, (req, res) => {
-        const clanId = req.clanId;
-        const date = validDate(req.params.date, today());
-        if (!date || !tinmanRepo.deleteTinmanTargets(clanId, date)) {
-            res.status(404).json({ error: 'No targets for that run.' });
-            return;
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, 'tinman_targets_delete', { clanId, date });
-        res.json({ ok: true });
-    });
+    if (ancients)
+        router.put('/:date/targets', auth_js_1.requireAdmin, (req, res) => {
+            const clanId = req.clanId;
+            const date = validDate(req.params.date, today());
+            const text = typeof req.body?.text === 'string' ? req.body.text : '';
+            if (!date || !text.trim() || text.length > MAX_TEXT_LENGTH) {
+                res.status(400).json({ error: 'Paste the Points per member table first.' });
+                return;
+            }
+            const parsed = (0, tinman_parse_js_1.parseTierTargets)(text);
+            if (Object.keys(parsed.tiers).length === 0) {
+                res.status(400).json({
+                    error: 'No tier targets found. Expected lines like "G9  6 members  61.3M  368M  19.2%".',
+                    skipped: parsed.skipped.slice(0, 5),
+                });
+                return;
+            }
+            tinmanRepo.saveTinmanTargets({ clanId, date, tiers: parsed.tiers, kills: parsed.kills, savedBy: req.user.username });
+            (0, user_repo_js_1.logAction)(req.user.id, 'tinman_targets', { clanId, date, kills: parsed.kills, tiers: parsed.tiers });
+            res.json({ ok: true, targets: tinmanRepo.getTinmanTargets(clanId, date), skipped: parsed.skipped });
+        });
+    if (ancients)
+        router.delete('/:date/targets', auth_js_1.requireAdmin, (req, res) => {
+            const clanId = req.clanId;
+            const date = validDate(req.params.date, today());
+            if (!date || !tinmanRepo.deleteTinmanTargets(clanId, date)) {
+                res.status(404).json({ error: 'No targets for that run.' });
+                return;
+            }
+            (0, user_repo_js_1.logAction)(req.user.id, 'tinman_targets_delete', { clanId, date });
+            res.json({ ok: true });
+        });
     /** Settle who a pasted name is, for the whole run: { rawName, memberId | null }. */
     router.put('/:date/assign', auth_js_1.requireAdmin, (req, res) => {
         const clanId = req.clanId;
@@ -193,7 +209,7 @@ function createTinmanRouter() {
             res.status(400).json({ error: 'Need a run date, the pasted name, and a member id (or null).' });
             return;
         }
-        const changed = tinmanRepo.assignTinmanName(clanId, date, rawName, memberId);
+        const changed = tinmanRepo.assignTinmanName(clanId, date, rawName, memberId, eventKey);
         if (changed === -1) {
             res.status(404).json({ error: 'Member not found' });
             return;
@@ -202,7 +218,7 @@ function createTinmanRouter() {
             res.status(404).json({ error: 'That name is not in this run.' });
             return;
         }
-        (0, user_repo_js_1.logAction)(req.user.id, 'tinman_assign', { clanId, date, rawName, memberId });
+        (0, user_repo_js_1.logAction)(req.user.id, action('assign'), { clanId, date, rawName, memberId });
         res.json({ ok: true, changed });
     });
     return router;

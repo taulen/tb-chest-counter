@@ -14,3 +14,13 @@ Rise of the Ancients standings, pasted in by an admin after each summon. The car
   - The goal colours (`goalStatusClassFor`: green at target, amber from 66%, red below) and their glyph + words are the Leaderboard's.
   - Players under target are listed in *Below Tin Man target* at the bottom of the page.
 - **Formats** the parser reads: markdown tables, tab-separated rows, and plain `rank name points` lines. Points can use any thousands separator. Lines it can't read are reported back, never dropped silently.
+
+## Olympus scores (Events → Olympus)
+
+Trials of Olympus uses the same card, storage and matching, per **day** (1–5) instead of per summon. What differs lives in `EVENTS` in [tinman-scores.js](../src/web/public/pages/tinman-scores.js) and the `eventKey` the router is built with.
+
+- **v90 added `tinman_uploads.event_key`** (`ancients` for every older row), and the one-upload rule is per clan, event, run day and round. Every repo function takes the event key and defaults to `ancients`, so callers that only mean Ancients (the player profile) are unchanged. In the tables, `tinman_date` is the run's key and `summon` is its round, whatever the event.
+- **Runs are keyed by their FIRST game day.** `/api/events/olympus/occurrences` carries it as `scoresDate`; Ancients carries `scoresDate` too, equal to its `tinmanDate`. The last day can't be used: it is in the future for most of a live run, and the route refuses future days.
+- **API:** `/api/event-scores/olympus`, the same paths as `/api/tinman` (a "summon" in the path is the day). There are no targets, no guards tiers, and no cadence warning. With no `?date=`, it shows the newest pasted run.
+- **Assumed cumulative**, like Ancients: each paste is the ranking as it stands after that day. If the in-game ranking ever turns out to reset per day, the per-day columns would read as negative steps.
+- Audit actions: `olympus_upload`, `olympus_delete`, `olympus_assign`.

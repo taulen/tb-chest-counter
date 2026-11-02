@@ -1018,6 +1018,59 @@ const MIGRATIONS = [
             }
         },
     },
+    {
+        // Pasted event standings beyond Rise of the Ancients: Trials of Olympus is
+        // filed per day the way Ancients is per summon (tinman-repo.ts). Uploads
+        // gain an event_key ('ancients' for every existing row) and the one-upload
+        // rule becomes per (clan, event, run day, round), so an Olympus run that
+        // starts on a Tinman day can't collide with that Tinman run.
+        //
+        // SQLite can't alter a UNIQUE constraint, so both tables are rebuilt with
+        // their ids. Scores go first: dropping tinman_uploads while the old
+        // tinman_scores still referenced it would CASCADE-delete every score. The
+        // rename then repoints tinman_scores_v90's FK at the new tinman_uploads.
+        // Guarded for replay.
+        version: 90,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(tinman_uploads)').all();
+            if (cols.some((c) => c.name === 'event_key'))
+                return;
+            database.transaction(() => {
+                database.exec(`
+          CREATE TABLE tinman_uploads_v90 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clan_id INTEGER NOT NULL REFERENCES clans(id),
+            event_key TEXT NOT NULL DEFAULT 'ancients',
+            tinman_date TEXT NOT NULL,
+            summon INTEGER NOT NULL CHECK (summon BETWEEN 1 AND 8),
+            uploaded_by TEXT NOT NULL DEFAULT '',
+            uploaded_at TEXT NOT NULL,
+            UNIQUE (clan_id, event_key, tinman_date, summon)
+          );
+          CREATE TABLE tinman_scores_v90 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            upload_id INTEGER NOT NULL REFERENCES tinman_uploads_v90(id) ON DELETE CASCADE,
+            clan_id INTEGER NOT NULL REFERENCES clans(id),
+            rank INTEGER NOT NULL,
+            raw_name TEXT NOT NULL,
+            member_id INTEGER REFERENCES members(id) ON DELETE SET NULL,
+            match_kind TEXT NOT NULL CHECK (match_kind IN ('exact', 'fuzzy', 'manual', 'unmatched', 'rejected')),
+            points INTEGER NOT NULL
+          );
+          INSERT INTO tinman_uploads_v90 (id, clan_id, event_key, tinman_date, summon, uploaded_by, uploaded_at)
+            SELECT id, clan_id, 'ancients', tinman_date, summon, uploaded_by, uploaded_at FROM tinman_uploads;
+          INSERT INTO tinman_scores_v90 (id, upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
+            SELECT id, upload_id, clan_id, rank, raw_name, member_id, match_kind, points FROM tinman_scores;
+          DROP TABLE tinman_scores;
+          DROP TABLE tinman_uploads;
+          ALTER TABLE tinman_uploads_v90 RENAME TO tinman_uploads;
+          ALTER TABLE tinman_scores_v90 RENAME TO tinman_scores;
+          CREATE INDEX IF NOT EXISTS idx_tinman_scores_upload ON tinman_scores(upload_id);
+          CREATE INDEX IF NOT EXISTS idx_tinman_scores_member ON tinman_scores(clan_id, member_id);
+        `);
+            })();
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

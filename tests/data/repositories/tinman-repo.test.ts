@@ -124,4 +124,20 @@ describe('tinman standings', () => {
     expect(tinman.listTinmanDates(1)).toEqual([DATE]);
     expect(tinman.listTinmanDates(2)).toEqual([]);
   });
+
+  it('keeps Olympus days apart from an Ancients run on the same day', () => {
+    addMember(1, 'Ace');
+    save(1, rows(['Ace', 5]));
+    tinman.saveTinmanSummon({ clanId: 1, date: DATE, summon: 1, rows: rows(['Ace', 900], ['Nobody', 3]), uploadedBy: 'taulen', eventKey: 'olympus' });
+    tinman.assignTinmanName(1, DATE, 'Nobody', null, 'olympus');
+
+    expect(tinman.getTinmanStandings(1, DATE).players).toMatchObject([{ name: 'Ace', total: 5 }]);
+    const olympus = tinman.getTinmanStandings(1, DATE, 'olympus');
+    expect(olympus.players.map((p) => [p.rawName, p.total, p.matchKind])).toEqual([['Ace', 900, 'exact'], ['Nobody', 3, 'rejected']]);
+    expect(tinman.listTinmanDates(1, 30, 'olympus')).toEqual([DATE]);
+
+    expect(tinman.deleteTinmanSummon(1, DATE, 1, 'olympus')).toBe(true);
+    expect(tinman.getTinmanStandings(1, DATE).summons).toHaveLength(1);
+    expect(tinman.listTinmanDates(1, 30, 'olympus')).toEqual([]);
+  });
 });

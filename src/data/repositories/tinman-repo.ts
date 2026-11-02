@@ -37,6 +37,19 @@ import type { ClanMember } from '../../models/types.js';
 
 export const TINMAN_MAX_SUMMONS = 8;
 
+/**
+ * Events whose clan ranking is pasted in round by round. Ancients is the
+ * original (per summon, with targets); Trials of Olympus files the same kind
+ * of cumulative ranking per day of its five. A run is keyed by `tinman_date`
+ * whatever the event: the Tinman day for Ancients, the run's first game day for
+ * Olympus. `summon` is the round — the day, for Olympus.
+ */
+export const SCORE_EVENTS = {
+  ancients: { maxRounds: TINMAN_MAX_SUMMONS },
+  olympus: { maxRounds: 5 },
+} as const;
+export type ScoreEventKey = keyof typeof SCORE_EVENTS;
+
 export type TinmanMatchKind = 'exact' | 'fuzzy' | 'manual' | 'unmatched' | 'rejected';
 
 interface Resolved {
@@ -53,14 +66,14 @@ function nameKey(raw: string): string {
  * Decisions an admin already made for this run, by pasted name: a manual
  * assignment, or a rejected fuzzy match. Taken from the run's other summons.
  */
-function priorDecisions(clanId: number, date: string, exceptSummon: number): Map<string, Resolved> {
+function priorDecisions(clanId: number, eventKey: ScoreEventKey, date: string, exceptSummon: number): Map<string, Resolved> {
   const rows = getDb().prepare(`
     SELECT s.raw_name AS rawName, s.member_id AS memberId, s.match_kind AS kind
     FROM tinman_scores s JOIN tinman_uploads u ON u.id = s.upload_id
-    WHERE u.clan_id = ? AND u.tinman_date = ? AND u.summon != ?
+    WHERE u.clan_id = ? AND u.event_key = ? AND u.tinman_date = ? AND u.summon != ?
       AND s.match_kind IN ('manual', 'rejected')
     ORDER BY u.summon DESC
-  `).all(clanId, date, exceptSummon) as Array<{ rawName: string; memberId: number | null; kind: TinmanMatchKind }>;
+  `).all(clanId, eventKey, date, exceptSummon) as Array<{ rawName: string; memberId: number | null; kind: TinmanMatchKind }>;
   const out = new Map<string, Resolved>();
   for (const r of rows) {
     const key = nameKey(r.rawName);
@@ -97,23 +110,25 @@ export function saveTinmanSummon(input: {
   summon: number;
   rows: TinmanRow[];
   uploadedBy: string;
+  eventKey?: ScoreEventKey;
 }): TinmanSaveResult {
   const { clanId, date, summon, rows } = input;
+  const eventKey = input.eventKey ?? 'ancients';
   const db = getDb();
-  const resolved = matchTinmanRows(clanId, rows, priorDecisions(clanId, date, summon));
+  const resolved = matchTinmanRows(clanId, rows, priorDecisions(clanId, eventKey, date, summon));
 
   const tx = db.transaction(() => {
     const old = db.prepare(
-      'SELECT id FROM tinman_uploads WHERE clan_id = ? AND tinman_date = ? AND summon = ?',
-    ).get(clanId, date, summon) as { id: number } | undefined;
+      'SELECT id FROM tinman_uploads WHERE clan_id = ? AND event_key = ? AND tinman_date = ? AND summon = ?',
+    ).get(clanId, eventKey, date, summon) as { id: number } | undefined;
     if (old) {
       db.prepare('DELETE FROM tinman_scores WHERE upload_id = ?').run(old.id);
       db.prepare('DELETE FROM tinman_uploads WHERE id = ?').run(old.id);
     }
     const upload = db.prepare(`
-      INSERT INTO tinman_uploads (clan_id, tinman_date, summon, uploaded_by, uploaded_at)
-      VALUES (?, ?, ?, ?, ?) RETURNING id
-    `).get(clanId, date, summon, input.uploadedBy, new Date().toISOString()) as { id: number };
+      INSERT INTO tinman_uploads (clan_id, event_key, tinman_date, summon, uploaded_by, uploaded_at)
+      VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+    `).get(clanId, eventKey, date, summon, input.uploadedBy, new Date().toISOString()) as { id: number };
     const insert = db.prepare(`
       INSERT INTO tinman_scores (upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -135,11 +150,13 @@ export function saveTinmanSummon(input: {
 }
 
 /** Remove one summon's upload. False when there was none. */
-export function deleteTinmanSummon(clanId: number, date: string, summon: number): boolean {
+export function deleteTinmanSummon(
+  clanId: number, date: string, summon: number, eventKey: ScoreEventKey = 'ancients',
+): boolean {
   const db = getDb();
   const row = db.prepare(
-    'SELECT id FROM tinman_uploads WHERE clan_id = ? AND tinman_date = ? AND summon = ?',
-  ).get(clanId, date, summon) as { id: number } | undefined;
+    'SELECT id FROM tinman_uploads WHERE clan_id = ? AND event_key = ? AND tinman_date = ? AND summon = ?',
+  ).get(clanId, eventKey, date, summon) as { id: number } | undefined;
   if (!row) return false;
   db.transaction(() => {
     db.prepare('DELETE FROM tinman_scores WHERE upload_id = ?').run(row.id);
@@ -154,15 +171,17 @@ export function deleteTinmanSummon(clanId: number, date: string, summon: number)
  * exactly from now on); null marks it as nobody in the clan. Returns the
  * number of rows changed — 0 when the name isn't in this run.
  */
-export function assignTinmanName(clanId: number, date: string, rawName: string, memberId: number | null): number {
+export function assignTinmanName(
+  clanId: number, date: string, rawName: string, memberId: number | null, eventKey: ScoreEventKey = 'ancients',
+): number {
   const db = getDb();
   const member = memberId === null ? null : getMemberById(memberId, clanId);
   if (memberId !== null && !member) return -1;
 
   const ids = db.prepare(`
     SELECT s.id AS id, s.raw_name AS rawName FROM tinman_scores s JOIN tinman_uploads u ON u.id = s.upload_id
-    WHERE u.clan_id = ? AND u.tinman_date = ?
-  `).all(clanId, date) as Array<{ id: number; rawName: string }>;
+    WHERE u.clan_id = ? AND u.event_key = ? AND u.tinman_date = ?
+  `).all(clanId, eventKey, date) as Array<{ id: number; rawName: string }>;
   const key = nameKey(rawName);
   const targets = ids.filter((r) => nameKey(r.rawName) === key).map((r) => r.id);
   if (targets.length === 0) return 0;
@@ -176,8 +195,8 @@ export function assignTinmanName(clanId: number, date: string, rawName: string, 
       db.prepare(`
         UPDATE tinman_scores SET member_id = NULL, match_kind = 'unmatched'
         WHERE member_id = ? AND match_kind != 'manual'
-          AND upload_id IN (SELECT id FROM tinman_uploads WHERE clan_id = ? AND tinman_date = ?)
-      `).run(member.id, clanId, date);
+          AND upload_id IN (SELECT id FROM tinman_uploads WHERE clan_id = ? AND event_key = ? AND tinman_date = ?)
+      `).run(member.id, clanId, eventKey, date);
     }
   })();
 
@@ -233,16 +252,16 @@ export interface TinmanStandings {
   review: TinmanReviewItem[];
 }
 
-export function getTinmanStandings(clanId: number, date: string): TinmanStandings {
+export function getTinmanStandings(clanId: number, date: string, eventKey: ScoreEventKey = 'ancients'): TinmanStandings {
   const db = getDb();
   const uploads = db.prepare(`
     SELECT u.id, u.summon, u.uploaded_at AS uploadedAt, u.uploaded_by AS uploadedBy,
            COUNT(s.id) AS rows,
            SUM(CASE WHEN s.member_id IS NULL THEN 1 ELSE 0 END) AS unmatched
     FROM tinman_uploads u LEFT JOIN tinman_scores s ON s.upload_id = u.id
-    WHERE u.clan_id = ? AND u.tinman_date = ?
+    WHERE u.clan_id = ? AND u.event_key = ? AND u.tinman_date = ?
     GROUP BY u.id ORDER BY u.summon ASC
-  `).all(clanId, date) as Array<TinmanUploadInfo & { id: number }>;
+  `).all(clanId, eventKey, date) as Array<TinmanUploadInfo & { id: number }>;
 
   const scores = db.prepare(`
     SELECT u.summon AS summon, s.rank, s.raw_name AS rawName, s.member_id AS memberId,
@@ -250,9 +269,9 @@ export function getTinmanStandings(clanId: number, date: string): TinmanStanding
     FROM tinman_scores s
     JOIN tinman_uploads u ON u.id = s.upload_id
     LEFT JOIN members m ON m.id = s.member_id
-    WHERE u.clan_id = ? AND u.tinman_date = ?
+    WHERE u.clan_id = ? AND u.event_key = ? AND u.tinman_date = ?
     ORDER BY u.summon ASC, s.rank ASC
-  `).all(clanId, date) as Array<{
+  `).all(clanId, eventKey, date) as Array<{
     summon: number; rank: number; rawName: string; memberId: number | null;
     matchKind: TinmanMatchKind; points: number; memberName: string | null;
   }>;
@@ -309,11 +328,11 @@ export function getTinmanStandings(clanId: number, date: string): TinmanStanding
   };
 }
 
-/** Tinman days this clan has standings for, newest first. */
-export function listTinmanDates(clanId: number, limit = 30): string[] {
+/** Run days this clan has standings for (Tinman days, for Ancients), newest first. */
+export function listTinmanDates(clanId: number, limit = 30, eventKey: ScoreEventKey = 'ancients'): string[] {
   const rows = getDb().prepare(`
-    SELECT DISTINCT tinman_date AS d FROM tinman_uploads WHERE clan_id = ? ORDER BY d DESC LIMIT ?
-  `).all(clanId, limit) as Array<{ d: string }>;
+    SELECT DISTINCT tinman_date AS d FROM tinman_uploads WHERE clan_id = ? AND event_key = ? ORDER BY d DESC LIMIT ?
+  `).all(clanId, eventKey, limit) as Array<{ d: string }>;
   return rows.map((r) => r.d);
 }
 

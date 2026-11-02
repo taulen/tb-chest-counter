@@ -15,6 +15,8 @@ const PAGES = {
   members: '/#members',
   might: '/#might',
   events: '/#events',
+  ancients: '/#events/ancients',
+  olympus: '/#events/olympus',
   tools: '/#tools',
   triumphal: '/#triumphal',
   resources: '/#resources',

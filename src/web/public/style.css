@@ -7157,7 +7157,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-size: 12.5px;
   background: var(--bg-surface);
 }
-.tinman-chip strong { color: var(--accent-gold); }
+.tinman-chip strong { color: var(--accent-gold); white-space: nowrap; }
 .tinman-chip-meta { color: var(--text-muted); }
 .tinman-chip-del {
   border: 0;

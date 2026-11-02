@@ -535,6 +535,8 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Rise of the Ancients standings pasted after each summon (Events → Ancients).
   // Reads for any member; uploads and name assignment are admin-only inside.
   app.use('/api/tinman', requireAuth, requireClanContext, createTinmanRouter());
+  // The same, per day, for Trials of Olympus (Events → Olympus).
+  app.use('/api/event-scores/olympus', requireAuth, requireClanContext, createTinmanRouter('olympus'));
 
   // Player levels posted in chat (Admin → Levels from chat). Reads for any
   // member; preview and import are admin-only inside.

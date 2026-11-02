@@ -1,4 +1,6 @@
-// Tin Man scores — Events → Ancients.
+// Tin Man scores — Events → Ancients. Also Olympus scores — Events → Olympus,
+// the same thing per day of the run instead of per summon, without targets
+// (EVENTS below holds what differs).
 //
 // Rise of the Ancients standings, pasted in by an admin after each summon. The
 // in-game ranking is cumulative across the run, so every paste is a full
@@ -22,6 +24,81 @@ import { goalStatusClassFor, goalRowClassFor, goalCellContentHtml, goalCellTitle
 
 const PAGE_SIZE = 25;
 
+/**
+ * What differs per event: where its API lives, whether it has targets, and
+ * every sentence that names its round — a summon for Ancients, a day for
+ * Olympus. Whole sentences, so each language can order them its own way.
+ */
+const EVENTS = {
+  ancients: {
+    api: '/tinman',
+    hasTargets: true,
+    title: () => t('{tinman} scores', { tinman: esc(tGame('Tin Man')) }),
+    eventName: () => esc(tGame('Rise of the Ancients')),
+    perRound: () => t('points per summon'),
+    allNote: () => t('{tinman} scores are per run — pick a single run with the arrows above to see them.', { tinman: esc(tGame('Tin Man')) }),
+    loadError: () => t('Could not load the {tinman} scores.', { tinman: esc(tGame('Tin Man')) }),
+    emptyAdmin: () => t('No scores for this run yet. After each summon, copy the in-game ranking and add it with <strong>Add summon scores</strong>.'),
+    emptyMember: () => t('No scores for this run yet — an admin adds them after each summon.'),
+    addButton: () => t('Add summon scores'),
+    round: (n) => t('Summon {summon}', { summon: n }),
+    short: (n) => t('S{summon}', { summon: n }),
+    deleteAria: (n) => t('Delete summon {summon} scores', { summon: n }),
+    replaceOption: (n) => t('Summon {summon} — replaces the current upload', { summon: n }),
+    placeholder: () => t('Paste the whole clan ranking as it stands after this summon, e.g.'),
+    pasteHint: () => t('The in-game ranking keeps growing through the run — paste it as it stands. Missed a summon? Just paste the next one: those points land there.'),
+    save: (n) => t('Save summon {summon}', { summon: n }),
+    notPasted: (n) => t('Summon {summon} was not pasted — its points are in the next pasted summon', { summon: n }),
+    since: (n) => t('Points scored since summon {summon} — includes the summon(s) not pasted', { summon: n }),
+    scoredIn: (n) => t('Points scored in summon {summon}', { summon: n }),
+    notInRanking: () => t('Not in this summon\'s ranking'),
+    noPoints: () => t('No points in this summon'),
+    played: (played, n) => tn(n, '{played} of {n} pasted summon', '{played} of {n} pasted summons', { n, played }),
+    playedTitle: () => t('Summons this player scored in'),
+    reviewHint: () => t('Pick who each pasted name is. It applies to every summon of this run, and the spelling is remembered for future runs.'),
+    replaced: (n, names) => t('<strong>Summon {summon} replaced</strong>: {names} read', { summon: n, names }),
+    saved: (n, names) => t('<strong>Summon {summon} saved</strong>: {names} read', { summon: n, names }),
+    gapWarn: (count, ranks) => tn(count, '{n} rank is missing from the paste ({ranks}). The copy probably skipped that row — their points aren\'t in this summon. Paste the full list again to replace it.', '{n} ranks are missing from the paste ({ranks}). The copy probably skipped those rows — their points aren\'t in this summon. Paste the full list again to replace it.', { n: count, ranks }),
+    deleteConfirm: (n) => t('Delete the pasted scores for summon {summon}? Its points move to the next pasted summon.', { summon: n }),
+    deleteTitle: () => t('Delete summon scores'),
+  },
+  olympus: {
+    api: '/event-scores/olympus',
+    hasTargets: false,
+    title: () => t('{olympus} scores', { olympus: esc(tGame('Olympus')) }),
+    eventName: () => esc(tGame('Trials of Olympus')),
+    perRound: () => t('points per day'),
+    allNote: () => t('{olympus} scores are per run — pick a single run with the arrows above to see them.', { olympus: esc(tGame('Olympus')) }),
+    loadError: () => t('Could not load the {olympus} scores.', { olympus: esc(tGame('Olympus')) }),
+    emptyAdmin: () => t('No scores for this run yet. After each day, copy the in-game ranking and add it with <strong>Add day scores</strong>.'),
+    emptyMember: () => t('No scores for this run yet — an admin adds them after each day.'),
+    addButton: () => t('Add day scores'),
+    round: (n) => t('Day {day}', { day: n }),
+    short: (n) => t('D{day}', { day: n }),
+    deleteAria: (n) => t('Delete day {day} scores', { day: n }),
+    replaceOption: (n) => t('Day {day} — replaces the current upload', { day: n }),
+    placeholder: () => t('Paste the whole clan ranking as it stands after this day, e.g.'),
+    pasteHint: () => t('The in-game ranking keeps growing through the run — paste it as it stands. Missed a day? Just paste the next one: those points land there.'),
+    save: (n) => t('Save day {day}', { day: n }),
+    notPasted: (n) => t('Day {day} was not pasted — its points are in the next pasted day', { day: n }),
+    since: (n) => t('Points scored since day {day} — includes the day(s) not pasted', { day: n }),
+    scoredIn: (n) => t('Points scored on day {day}', { day: n }),
+    notInRanking: () => t('Not in this day\'s ranking'),
+    noPoints: () => t('No points on this day'),
+    played: (played, n) => tn(n, '{played} of {n} pasted day', '{played} of {n} pasted days', { n, played }),
+    playedTitle: () => t('Days this player scored in'),
+    reviewHint: () => t('Pick who each pasted name is. It applies to every day of this run, and the spelling is remembered for future runs.'),
+    replaced: (n, names) => t('<strong>Day {day} replaced</strong>: {names} read', { day: n, names }),
+    saved: (n, names) => t('<strong>Day {day} saved</strong>: {names} read', { day: n, names }),
+    gapWarn: (count, ranks) => tn(count, '{n} rank is missing from the paste ({ranks}). The copy probably skipped that row — their points aren\'t in this day\'s scores. Paste the full list again to replace it.', '{n} ranks are missing from the paste ({ranks}). The copy probably skipped those rows — their points aren\'t in this day\'s scores. Paste the full list again to replace it.', { n: count, ranks }),
+    deleteConfirm: (n) => t('Delete the pasted scores for day {day}? Its points move to the next pasted day.', { day: n }),
+    deleteTitle: () => t('Delete day scores'),
+  },
+};
+
+/** The event shown: 'ancients' | 'olympus'. */
+let eventKey = null;
+let L = EVENTS.ancients;
 let mountEl = null;
 let members = [];
 /** Requested run: a Tinman date, null for "the newest", or 'all' (no single run). */
@@ -58,13 +135,29 @@ function isAdmin() {
 /**
  * Render the card into `el` for one run.
  * @param {HTMLElement} el
- * @param {{ date: string | null | 'all', members: Array<{ id: number, name: string }> }} opts
+ * @param {{ event?: 'ancients' | 'olympus', date: string | null | 'all', members: Array<{ id: number, name: string }> }} opts
  */
 export async function mountTinmanScores(el, opts) {
   if (!el) return;
   mountEl = el;
   belowEl = opts.belowEl || null;
   members = [...(opts.members || [])].sort((a, b) => a.name.localeCompare(b.name));
+  const event = EVENTS[opts.event] ? opts.event : 'ancients';
+  if (event !== eventKey) {
+    // Another event's card: nothing of the last one carries over.
+    eventKey = event;
+    L = EVENTS[event];
+    data = null;
+    loadedFor = undefined;
+    requested = undefined;
+    sort = { key: 'total', dir: 'desc' };
+    uploadOpen = false;
+    uploadText = '';
+    targetsOpen = false;
+    targetsText = '';
+    targetsResult = null;
+    belowOpen = false;
+  }
   if (opts.date !== requested) {
     requested = opts.date;
     page = 1;
@@ -75,7 +168,7 @@ export async function mountTinmanScores(el, opts) {
   }
   if (requested === 'all') {
     if (belowEl) belowEl.innerHTML = '';
-    el.innerHTML = cardHtml(`<p class="muted-copy tinman-note">${t('{tinman} scores are per run — pick a single run with the arrows above to see them.', { tinman: esc(tGame('Tin Man')) })}</p>`, '');
+    el.innerHTML = cardHtml(`<p class="muted-copy tinman-note">${L.allNote()}</p>`, '');
     return;
   }
   if (loadedFor !== requested || !data) {
@@ -87,10 +180,11 @@ export async function mountTinmanScores(el, opts) {
 
 async function load() {
   const want = requested;
+  const wantEvent = eventKey;
   try {
     const qs = want ? `?date=${encodeURIComponent(want)}` : '';
-    const res = await api(`/tinman${qs}`);
-    if (want !== requested) return; // superseded by another run
+    const res = await api(`${L.api}${qs}`);
+    if (want !== requested || wantEvent !== eventKey) return; // superseded by another run
     data = res?.error ? null : res;
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
@@ -105,8 +199,8 @@ function cardHtml(body, actions) {
     <div class="card tinman-card">
       <div class="card-header">
         <div class="events-title">
-          <h2>${t('{tinman} scores', { tinman: esc(tGame('Tin Man')) })}</h2>
-          <span class="card-header-hint">${esc(tGame('Rise of the Ancients'))}${date ? ` · ${esc(date)}` : ''} · ${t('points per summon')}</span>
+          <h2>${L.title()}</h2>
+          <span class="card-header-hint">${L.eventName()}${date ? ` · ${esc(date)}` : ''} · ${L.perRound()}</span>
         </div>
         ${actions}
       </div>
@@ -167,27 +261,25 @@ function sortedPlayers(cols) {
 function paint() {
   if (!mountEl) return;
   if (!data) {
-    mountEl.innerHTML = cardHtml(`<p class="muted-copy tinman-note">${t('Could not load the {tinman} scores.', { tinman: esc(tGame('Tin Man')) })}</p>`, '');
+    mountEl.innerHTML = cardHtml(`<p class="muted-copy tinman-note">${L.loadError()}</p>`, '');
     return;
   }
   const admin = isAdmin();
   const actions = admin
     ? `<div class="tinman-actions">
-        <button type="button" class="btn btn-sm ${targetsOpen ? 'active' : ''}" data-tinman="toggle-targets">${targetsOpen ? t('Close targets') : t('Targets')}</button>
-        <button type="button" class="btn btn-sm ${uploadOpen ? 'active' : 'btn-primary'}" data-tinman="toggle-upload">${uploadOpen ? t('Close') : t('Add summon scores')}</button>
+        ${L.hasTargets ? `<button type="button" class="btn btn-sm ${targetsOpen ? 'active' : ''}" data-tinman="toggle-targets">${targetsOpen ? t('Close targets') : t('Targets')}</button>` : ''}
+        <button type="button" class="btn btn-sm ${uploadOpen ? 'active' : 'btn-primary'}" data-tinman="toggle-upload">${uploadOpen ? t('Close') : L.addButton()}</button>
       </div>`
     : '';
 
   const cols = summonColumns();
   const body = `
     ${data.isTinmanDay === false ? `<p class="tinman-warn">⚠ ${t('{date} isn\'t a Tinman day on the usual 6-day cadence.', { date: esc(data.date) })}</p>` : ''}
-    ${targetsOpen && admin ? targetsPanelHtml() : ''}
+    ${targetsOpen && admin && L.hasTargets ? targetsPanelHtml() : ''}
     ${uploadOpen && admin ? uploadPanelHtml() : ''}
     ${summonsStripHtml(admin)}
-    ${targetsStripHtml(admin)}
-    ${data.players.length ? tableHtml(cols) : `<p class="muted-copy tinman-note">${admin
-      ? t('No scores for this run yet. After each summon, copy the in-game ranking and add it with <strong>Add summon scores</strong>.')
-      : t('No scores for this run yet — an admin adds them after each summon.')}</p>`}
+    ${L.hasTargets ? targetsStripHtml(admin) : ''}
+    ${data.players.length ? tableHtml(cols) : `<p class="muted-copy tinman-note">${admin ? L.emptyAdmin() : L.emptyMember()}</p>`}
     ${reviewHtml(admin)}`;
   mountEl.innerHTML = cardHtml(body, actions);
   wire();
@@ -343,9 +435,9 @@ function summonsStripHtml(admin) {
   if (!summons.length) return '';
   const chips = summons.map((s) => `
     <span class="tinman-chip">
-      <strong>${t('Summon {summon}', { summon: s.summon })}</strong>
+      <strong>${L.round(s.summon)}</strong>
       <span class="tinman-chip-meta">${tn(s.rows, '{n} name', '{n} names', { n: s.rows })}${s.unmatched ? ` · <span class="tool-warn">${tn(s.unmatched, '{n} unmatched', '{n} unmatched', { n: s.unmatched })}</span>` : ''}${s.missingRanks?.length ? ` · <span class="tool-warn" title="${t('Ranks missing from the paste: {ranks}', { ranks: esc(rankRanges(s.missingRanks)) })}">⚠ ${tn(s.missingRanks.length, '{n} rank missing', '{n} ranks missing', { n: s.missingRanks.length })}</span>` : ''} · ${esc(s.uploadedBy || '—')} · ${esc(formatDate(s.uploadedAt))}</span>
-      ${admin ? `<button type="button" class="tinman-chip-del" data-tinman="delete" data-summon="${s.summon}" aria-label="${t('Delete summon {summon} scores', { summon: s.summon })}" title="${t('Delete this upload')}">×</button>` : ''}
+      ${admin ? `<button type="button" class="tinman-chip-del" data-tinman="delete" data-summon="${s.summon}" aria-label="${L.deleteAria(s.summon)}" title="${t('Delete this upload')}">×</button>` : ''}
     </span>`).join('');
   return `<div class="tinman-chips">${chips}</div>`;
 }
@@ -357,7 +449,7 @@ function uploadPanelHtml() {
   const chosen = uploadSummon ?? next;
   const options = [];
   for (let n = 1; n <= max; n++) {
-    options.push(`<option value="${n}" ${n === chosen ? 'selected' : ''}>${uploaded.has(n) ? t('Summon {summon} — replaces the current upload', { summon: n }) : t('Summon {summon}', { summon: n })}</option>`);
+    options.push(`<option value="${n}" ${n === chosen ? 'selected' : ''}>${uploaded.has(n) ? L.replaceOption(n) : L.round(n)}</option>`);
   }
   const res = lastResult
     ? `<div class="tinman-result ${lastResult.error ? 'is-error' : ''}" role="status">${lastResult.html}</div>`
@@ -370,10 +462,10 @@ function uploadPanelHtml() {
       </div>
       <label class="visually-hidden" for="tinmanText">${t('Pasted ranking')}</label>
       <textarea id="tinmanText" class="input tinman-text" rows="8" spellcheck="false"
-        placeholder="${t('Paste the whole clan ranking as it stands after this summon, e.g.')}&#10;| 1 | Fiin SK 2 | 63,965,364 |&#10;| 2 | Frostbite | 59,878,655 |">${esc(uploadText)}</textarea>
-      <p class="muted-copy tinman-hint">${t('The in-game ranking keeps growing through the run — paste it as it stands. Missed a summon? Just paste the next one: those points land there.')}</p>
+        placeholder="${L.placeholder()}&#10;| 1 | Fiin SK 2 | 63,965,364 |&#10;| 2 | Frostbite | 59,878,655 |">${esc(uploadText)}</textarea>
+      <p class="muted-copy tinman-hint">${L.pasteHint()}</p>
       <div class="tinman-upload-actions">
-        <button type="button" class="btn btn-primary" data-tinman="save">${t('Save summon {summon}', { summon: chosen })}</button>
+        <button type="button" class="btn btn-primary" data-tinman="save">${L.save(chosen)}</button>
       </div>
       ${res}
     </div>`;
@@ -390,15 +482,15 @@ function tableHtml(cols) {
     key, labelHtml, sortState: sort, title,
     className: [className, sort.key === key ? 'is-sorted' : ''].filter(Boolean).join(' '),
   });
-  const sLabel = (n) => t('S{summon}', { summon: n });
+  const sLabel = L.short;
   const summonHeads = cols.map((c) => {
     if (!c.uploaded) {
-      return `<th class="num tinman-missing-col" title="${t('Summon {summon} was not pasted — its points are in the next pasted summon', { summon: c.summon })}">${sLabel(c.summon)}<span class="tinman-col-sub">${t('not uploaded')}</span></th>`;
+      return `<th class="num tinman-missing-col" title="${L.notPasted(c.summon)}">${sLabel(c.summon)}<span class="tinman-col-sub">${t('not uploaded')}</span></th>`;
     }
     const covers = c.covers.length ? `<span class="tinman-col-sub">${t('incl. {summons}', { summons: c.covers.map(sLabel).join(', ') })}</span>` : '';
     const title = c.covers.length
-      ? t('Points scored since summon {summon} — includes the summon(s) not pasted', { summon: c.covers[0] - 1 || t('the start') })
-      : t('Points scored in summon {summon}', { summon: c.summon });
+      ? L.since(c.covers[0] - 1 || t('the start'))
+      : L.scoredIn(c.summon);
     return th(`s:${c.summon}`, `${sLabel(c.summon)}${covers}`, 'num', title);
   }).join('');
 
@@ -414,8 +506,8 @@ function tableHtml(cols) {
     const cells = cols.map((c) => {
       if (!c.uploaded) return `<td class="num tinman-missing-col" data-label="${sLabel(c.summon)}"><span class="events-zero">·</span></td>`;
       const v = p.perSummon[c.summon];
-      if (v === undefined) return `<td class="num" data-label="${sLabel(c.summon)}"><span class="events-zero" title="${t('Not in this summon\'s ranking')}">–</span></td>`;
-      if (v === 0) return `<td class="num" data-label="${sLabel(c.summon)}"><span class="events-zero" title="${t('No points in this summon')}">—</span></td>`;
+      if (v === undefined) return `<td class="num" data-label="${sLabel(c.summon)}"><span class="events-zero" title="${L.notInRanking()}">–</span></td>`;
+      if (v === 0) return `<td class="num" data-label="${sLabel(c.summon)}"><span class="events-zero" title="${L.noPoints()}">—</span></td>`;
       return `<td class="num${v < 0 ? ' tool-short' : ''}" data-label="${sLabel(c.summon)}" title="${v.toLocaleString()}">${formatCompact(v)}</td>`;
     }).join('');
     const tier = tierOf(p);
@@ -426,13 +518,14 @@ function tableHtml(cols) {
       ? `<td class="num" data-label="${t('Target')}" title="${esc(t('{points} for the run', { points: Math.round(full).toLocaleString() }))}">${formatCompact(expected)}</td>`
       : `<td class="num" data-label="${t('Target')}"><span class="events-zero">—</span></td>`;
     const pastedCount = cols.filter((c) => c.uploaded).length;
+    const playedText = L.played(p.played, pastedCount);
     return `<tr class="${expected !== null ? goalRowClassFor(p.total, expected) : ''}">
       <td data-role="lead">${p._rank}</td>
-      <td data-role="primary"><span class="mrow-name">${nameHtml}${tag}</span><span class="mrow-sub">${tierLabel(tier)} · ${tn(pastedCount, '{played} of {n} pasted summon', '{played} of {n} pasted summons', { n: pastedCount, played: p.played })}</span></td>
-      <td data-label="${t('Tier')}">${tierBadgeHtml(tier)}</td>
+      <td data-role="primary"><span class="mrow-name">${nameHtml}${tag}</span><span class="mrow-sub">${L.hasTargets ? `${tierLabel(tier)} · ${playedText}` : playedText}</span></td>
+      ${L.hasTargets ? `<td data-label="${t('Tier')}">${tierBadgeHtml(tier)}</td>` : ''}
       ${cells}
       <td class="num ${expected !== null ? goalStatusClassFor(p.total, expected) : ''}" data-role="metric" data-label="${t('Total')}" title="${esc(totalTitle)}">${expected !== null ? goalCellContentHtml(p.total, expected, `<strong>${formatCompact(p.total)}</strong>`) : `<strong>${formatCompact(p.total)}</strong>`}</td>
-      ${targetCell}
+      ${L.hasTargets ? targetCell : ''}
       <td class="num" data-role="hidden">${p.played}</td>
     </tr>`;
   }).join('');
@@ -449,15 +542,15 @@ function tableHtml(cols) {
     <div class="card-body">
       <div class="events-scroll">
         <table class="table-responsive tinman-table">
-          <colgroup><col class="col-rank"><col class="col-member"><col class="col-tier">${cols.map(() => '<col class="col-num">').join('')}<col class="col-num"><col class="col-num"><col class="col-played"></colgroup>
+          <colgroup><col class="col-rank"><col class="col-member">${L.hasTargets ? '<col class="col-tier">' : ''}${cols.map(() => '<col class="col-num">').join('')}<col class="col-num">${L.hasTargets ? '<col class="col-num">' : ''}<col class="col-played"></colgroup>
           <thead><tr>
             ${th('rank', t('Rank'))}
             ${th('name', t('Player'))}
-            ${th('tier', t('Tier'), '', t('Estimated guards level — G7 assumed when unknown'))}
+            ${L.hasTargets ? th('tier', t('Tier'), '', t('Estimated guards level — G7 assumed when unknown')) : ''}
             ${summonHeads}
             ${th('total', t('Total'), 'num', t('Points over the whole run so far'))}
-            ${th('pct', t('Target'), 'num', t('What this tier should have by now — sorts by how far along each player is'))}
-            ${th('played', t('Played'), 'num', t('Summons this player scored in'))}
+            ${L.hasTargets ? th('pct', t('Target'), 'num', t('What this tier should have by now — sorts by how far along each player is')) : ''}
+            ${th('played', t('Played'), 'num', L.playedTitle())}
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -498,7 +591,7 @@ function reviewHtml(admin) {
       <summary class="card-header"><h2>${t('Names to check ({count})', { count: review.length })}</h2><span class="card-header-hint">${tn(unmatched, '{n} unmatched', '{n} unmatched', { n: unmatched })} · ${tn(review.length - unmatched, '{n} matched by spelling', '{n} matched by spelling', { n: review.length - unmatched })}</span></summary>
       <div class="card-body">
         <div class="tinman-review-head">
-          <p class="muted-copy tinman-hint">${t('Pick who each pasted name is. It applies to every summon of this run, and the spelling is remembered for future runs.')}</p>
+          <p class="muted-copy tinman-hint">${L.reviewHint()}</p>
           <button type="button" class="btn btn-sm btn-primary" data-tinman="assign-all" ${changed ? '' : 'disabled'}>${saveAllLabel(changed)}</button>
         </div>
         <table class="table-responsive tinman-review-table">
@@ -564,7 +657,7 @@ function wire() {
     select.addEventListener('change', () => {
       uploadSummon = Number(select.value);
       const btn = el.querySelector('[data-tinman="save"]');
-      if (btn) btn.textContent = t('Save summon {summon}', { summon: uploadSummon });
+      if (btn) btn.textContent = L.save(uploadSummon);
     });
   }
   const review = el.querySelector('details.tinman-review');
@@ -622,7 +715,7 @@ async function save(btn) {
   btn.disabled = true;
   btn.textContent = t('Saving…');
   try {
-    const res = await apiPut(`/tinman/${encodeURIComponent(data.date)}/summons/${summon}`, { text });
+    const res = await apiPut(`${L.api}/${encodeURIComponent(data.date)}/summons/${summon}`, { text });
     if (res?.error) {
       const sample = Array.isArray(res.skipped) && res.skipped.length
         ? `<br><span class="muted-copy">${t('Couldn\'t read: {lines}', { lines: res.skipped.map((s) => `<code>${esc(s)}</code>`).join(' ') })}</span>`
@@ -632,9 +725,7 @@ async function save(btn) {
       const r = res.result;
       const names = tn(r.rows, '{n} name', '{n} names', { n: r.rows });
       const parts = [
-        r.replaced
-          ? t('<strong>Summon {summon} replaced</strong>: {names} read', { summon, names })
-          : t('<strong>Summon {summon} saved</strong>: {names} read', { summon, names }),
+        r.replaced ? L.replaced(summon, names) : L.saved(summon, names),
         tn(r.matched - r.fuzzy, '{n} matched exactly', '{n} matched exactly', { n: r.matched - r.fuzzy }),
         r.fuzzy ? tn(r.fuzzy, '{n} matched by spelling', '{n} matched by spelling', { n: r.fuzzy }) : '',
         r.unmatched ? `<span class="tool-warn">${tn(r.unmatched, '{n} not matched — see Names to check', '{n} not matched — see Names to check', { n: r.unmatched })}</span>` : '',
@@ -642,7 +733,7 @@ async function save(btn) {
       const skipped = r.skipped ? `<br><span class="muted-copy">${tn(r.skipped, '{n} line skipped: {lines}', '{n} lines skipped: {lines}', { n: r.skipped, lines: r.skippedSample.map((s) => `<code>${esc(s)}</code>`).join(' ') })}</span>` : '';
       const gaps = Array.isArray(r.missingRanks) ? r.missingRanks : [];
       const gapWarn = gaps.length
-        ? `<br><span class="tool-warn">⚠ ${tn(gaps.length, '{n} rank is missing from the paste ({ranks}). The copy probably skipped that row — their points aren\'t in this summon. Paste the full list again to replace it.', '{n} ranks are missing from the paste ({ranks}). The copy probably skipped those rows — their points aren\'t in this summon. Paste the full list again to replace it.', { n: gaps.length, ranks: esc(rankRanges(gaps)) })}</span>`
+        ? `<br><span class="tool-warn">⚠ ${L.gapWarn(gaps.length, esc(rankRanges(gaps)))}</span>`
         : '';
       const warn = [res.warning, res.staleWarning].filter(Boolean).map((w) => `<br><span class="tool-warn">⚠ ${esc(w)}</span>`).join('');
       lastResult = { error: false, html: `${parts.join(' · ')}${skipped}${gapWarn}${warn}` };
@@ -667,7 +758,7 @@ async function saveTargets(btn) {
   btn.disabled = true;
   btn.textContent = t('Saving…');
   try {
-    const res = await apiPut(`/tinman/${encodeURIComponent(data.date)}/targets`, { text });
+    const res = await apiPut(`${L.api}/${encodeURIComponent(data.date)}/targets`, { text });
     if (res?.error) {
       targetsResult = { error: true, html: esc(res.error) };
     } else {
@@ -695,7 +786,7 @@ async function removeTargets() {
   });
   if (!ok) return;
   try {
-    const res = await apiDelete(`/tinman/${encodeURIComponent(data.date)}/targets`);
+    const res = await apiDelete(`${L.api}/${encodeURIComponent(data.date)}/targets`);
     if (res?.error) await notify(res.error, t('Could not remove'));
   } catch (err) {
     if (err?.name === 'UnauthenticatedError') return;
@@ -707,12 +798,12 @@ async function removeTargets() {
 }
 
 async function removeSummon(summon) {
-  const ok = await confirmDialog(t('Delete the pasted scores for summon {summon}? Its points move to the next pasted summon.', { summon }), {
-    title: t('Delete summon scores'), confirmLabel: t('Delete'), danger: true,
+  const ok = await confirmDialog(L.deleteConfirm(summon), {
+    title: L.deleteTitle(), confirmLabel: t('Delete'), danger: true,
   });
   if (!ok) return;
   try {
-    const res = await apiDelete(`/tinman/${encodeURIComponent(data.date)}/summons/${summon}`);
+    const res = await apiDelete(`${L.api}/${encodeURIComponent(data.date)}/summons/${summon}`);
     if (res?.error) await notify(res.error, t('Could not delete'));
   } catch (err) {
     if (err?.name === 'UnauthenticatedError') return;
@@ -725,7 +816,7 @@ async function removeSummon(summon) {
 /** PUT one assignment; the error message, or null on success. */
 async function putAssign(rawName, memberId) {
   try {
-    const res = await apiPut(`/tinman/${encodeURIComponent(data.date)}/assign`, { rawName, memberId });
+    const res = await apiPut(`${L.api}/${encodeURIComponent(data.date)}/assign`, { rawName, memberId });
     return res?.error ? `${rawName}: ${res.error}` : null;
   } catch (err) {
     if (err?.name === 'UnauthenticatedError') throw err;
