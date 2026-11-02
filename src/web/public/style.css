@@ -5152,60 +5152,95 @@ details > table {
   height: 248px;
 }
 
-/* Member picker for the comparison chart. A wrapping chip row rather than a
-   multi-select: the selected set has to stay visible while reading the chart,
-   and each chip carries its own series colour so the legend and the picker
-   agree without the user matching names twice. */
-.might-chips {
-  margin-bottom: 14px;
+/* Compare Members: chart left, the ranked member checklist right — the list
+   stays beside the curves it controls. Stacks below the chart on narrow
+   screens. */
+.might-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 16px;
 }
-.might-picked,
-.might-pool {
+.might-compare-plot {
+  min-width: 0;
+}
+.might-picker {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  /* Same height as the chart, so the two read as one panel. */
+  height: 420px;
 }
-.might-picked {
-  padding-bottom: 10px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+.might-picker .input {
+  max-width: none;
 }
-/* Three rows of chips, then a fade into "Show all" — opened in place, never a
-   scrollbox of its own. syncPoolToggle reads the height from the variable. */
-.might-pool {
-  --might-pool-collapsed: 90px;
-  max-height: var(--might-pool-collapsed);
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
-  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+.might-pick-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
-/* Nothing hidden (the toggle stayed hidden): no fade over the last row. */
-.might-pool:has(+ .might-pool-toggle[hidden]),
-.might-pool.is-open {
-  max-height: none;
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-.might-pool-toggle {
-  margin-top: 8px;
-}
-.might-chip-x {
-  margin-left: 6px;
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.might-chip {
-  border: 1px solid var(--border-light);
-  background: var(--bg-elevated);
+/* One member per line, in ranking order whatever is ticked. A ticked row
+   takes its line's colour (--series, set inline) on the edge stripe and the
+   checkbox, which is what ties the list to the chart. */
+.might-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
   color: var(--text-secondary);
+  cursor: pointer;
 }
-
-.might-chip.active {
+.might-pick-row:hover {
+  background: var(--bg-card-hover);
+}
+.might-pick-row.is-on {
   color: var(--text-primary);
   background: var(--bg-card-hover);
-  border-color: var(--border-strong);
+  box-shadow: inset 3px 0 0 var(--series);
+}
+.might-pick-row input {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--series, var(--accent-gold));
+}
+.might-pick-rank {
+  flex: none;
+  min-width: 2.2em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.might-pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.might-pick-row.is-on .might-pick-name {
   font-weight: 600;
+}
+.might-pick-value {
+  flex: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.might-pick-empty {
+  padding: 8px;
+}
+@media (max-width: 900px) {
+  .might-compare { grid-template-columns: minmax(0, 1fr); }
+  .might-picker { height: 300px; }
 }
 
 .might-compare-controls {

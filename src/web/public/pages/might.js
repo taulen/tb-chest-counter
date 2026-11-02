@@ -13,9 +13,10 @@
 // Data comes from /api/might, which is fed by the daily OCR snapshot of the
 // in-game member list. Nothing here touches ChestTracker data.
 //
-// INTERACTION RULE: nothing on this page re-renders the whole page. Toggling a
-// member refetches one endpoint and redraws one canvas; changing the timeframe
-// redraws two; filtering the member list touches no network at all. The first
+// INTERACTION RULE: nothing on this page re-renders the whole page. Ticking a
+// member fetches that one member's series and redraws one canvas (unticking
+// fetches nothing); changing the timeframe redraws two; filtering the member
+// list touches no network at all. The first
 // version rebuilt every card on every click, which threw away scroll position
 // and flashed the page — full re-render happens only on genuine navigation.
 
@@ -91,10 +92,15 @@ let windowId = getMightWindow();
 /** Rolling span the charts draw for the selected window. */
 const windowDays = () => mightWindowParams(windowId).days;
 let selectedIds = [];
+/** memberId → colour slot, held for as long as the member stays ticked. A
+ *  line's colour used to be its index in the selection, so unticking one
+ *  member repainted every line after it. New picks take the lowest free slot. */
+const colorSlots = new Map();
+/** Fetched series for the current window, by memberId. Unticking keeps the
+ *  entry, so ticking the same member again costs no request. */
+let seriesCache = { days: 0, byId: new Map() };
 let showEvents = true;
 let memberFilter = '';
-/** The unselected-members strip opened past its first few rows. */
-let poolExpanded = false;
 
 /** Fetched data + the host element, so surgical updates can find their targets. */
 let state = null;
@@ -131,7 +137,7 @@ function seriesColor(i, alpha = 1) {
   if (i < SERIES_HUES.length) return `hsla(${SERIES_HUES[i]}, 70%, 65%, ${alpha})`;
   // Past the hand-picked twelve: golden-angle hues, alternating lighter and
   // darker, so line 13 never reuses line 1's colour. Fewer of these are
-  // pairwise distinct, but the chip beside each name still says which is which.
+  // pairwise distinct, but the ticked row in the list still says which is which.
   const hue = Math.round((SERIES_HUES[0] + i * 137.508) % 360);
   return `hsla(${hue}, 70%, ${i % 2 === 0 ? 55 : 75}%, ${alpha})`;
 }
@@ -172,10 +178,57 @@ function rankedRows() {
 
 // ─── Fetching ─────────────────────────────────────────────────
 
-function fetchCompare() {
-  if (selectedIds.length === 0) return Promise.resolve({ series: [] });
-  return api(`/might/compare?memberIds=${selectedIds.join(',')}&days=${windowDays()}`)
+/** Replace the selection wholesale (first open, Top N, Clear): slots restart
+ *  from the first colour in the given order. */
+function setSelection(ids) {
+  selectedIds = [...ids];
+  colorSlots.clear();
+  selectedIds.forEach((id, i) => colorSlots.set(id, i));
+}
+
+function toggleSelected(id) {
+  if (selectedIds.includes(id)) {
+    selectedIds = selectedIds.filter((x) => x !== id);
+    colorSlots.delete(id);
+    return;
+  }
+  const used = new Set(colorSlots.values());
+  let slot = 0;
+  while (used.has(slot)) slot++;
+  colorSlots.set(id, slot);
+  selectedIds = [...selectedIds, id];
+}
+
+const memberColor = (id) => seriesColor(colorSlots.get(id) ?? 0);
+
+/**
+ * Fetch the series of every selected member not cached yet — on a toggle,
+ * that's just the member ticked. Resolves false when the window changed while
+ * the request was out: that response belongs to the old window and is dropped.
+ */
+async function loadMissingSeries() {
+  const days = windowDays();
+  if (seriesCache.days !== days) seriesCache = { days, byId: new Map() };
+  const cache = seriesCache;
+  const missing = selectedIds.filter((id) => !cache.byId.has(id));
+  if (missing.length === 0) return true;
+  const res = await api(`/might/compare?memberIds=${missing.join(',')}&days=${days}`)
     .catch(() => ({ series: [] }));
+  if (cache !== seriesCache) return false;
+  for (const s of Array.isArray(res?.series) ? res.series : []) cache.byId.set(s.memberId, s);
+  // A member with no readings in the window comes back absent; remember that
+  // too, or every redraw would ask again.
+  for (const id of missing) if (!cache.byId.has(id)) cache.byId.set(id, null);
+  return true;
+}
+
+/** Selected members' series in ranking order — the legend reads like the list. */
+function selectedSeries() {
+  const selected = new Set(selectedIds);
+  return rankedRows()
+    .filter((r) => selected.has(r.memberId))
+    .map((r) => seriesCache.byId.get(r.memberId))
+    .filter((s) => s && s.points.length > 0);
 }
 
 function fetchOverview() {
@@ -213,28 +266,28 @@ export async function renderMight(el) {
     guardsByMember,
     totals: Array.isArray(totals?.totals) ? totals.totals : [],
     events: Array.isArray(events?.windows) ? events.windows : [],
-    series: [],
   };
 
   const rows = Array.isArray(overview?.rows) ? overview.rows : [];
   const ranked = rankedRows();
 
+  // Drop ids that no longer resolve (member removed, clan switched).
+  const valid = new Set(rows.map((r) => r.memberId));
+  for (const id of selectedIds) if (!valid.has(id)) toggleSelected(id);
   // Default to the strongest few so the chart says something on first open.
   // Only when nothing is selected, so it never fights the user's own picks.
   if (selectedIds.length === 0 && ranked.length > 0) {
-    selectedIds = ranked.slice(0, DEFAULT_SELECTION).map((r) => r.memberId);
+    setSelection(ranked.slice(0, DEFAULT_SELECTION).map((r) => r.memberId));
   }
-  // Drop ids that no longer resolve (member removed, clan switched).
-  const valid = new Set(rows.map((r) => r.memberId));
-  selectedIds = selectedIds.filter((id) => valid.has(id));
 
   if (ranked.length === 0) {
     el.innerHTML = renderEmptyState(overview);
     return;
   }
 
-  const compare = await fetchCompare();
-  state.series = Array.isArray(compare?.series) ? compare.series : [];
+  // A fresh visit refetches: readings may have landed since the cache filled.
+  seriesCache = { days: 0, byId: new Map() };
+  await loadMissingSeries();
 
   el.innerHTML = `
     ${renderHeaderCard()}
@@ -243,7 +296,6 @@ export async function renderMight(el) {
     <div id="mightTableHost">${renderTableCard(rows, guardsByMember)}</div>
   `;
 
-  syncPoolToggle();
   drawTotalsChart();
   drawCompareChart();
   wireControls(el);
@@ -346,55 +398,41 @@ function renderTotalsCard() {
 }
 
 /**
- * Picker body — rewritten in place on filter/selection changes.
+ * The member picker: the ranking as a checklist beside the chart, one member
+ * per line, scrolling on its own.
  *
- * The selected members sit on their own row, in selection order (the order
- * that fixes each line's colour), so they stay visible however long the
- * roster is. The rest is a strip a few rows tall that "Show all" opens in
- * place. It used to be one 200px box with its own scrollbar, which cut a row
- * of chips in half and scrolled the selection out of sight.
+ * Every member keeps its place whatever is ticked — the list never reorders
+ * on a click, so the eye doesn't have to find a name again. A ticked row
+ * carries its line's colour, which is what ties the list to the chart.
+ *
+ * It replaces a wrapping cloud of name chips: unordered to the eye, a few
+ * rows of it cut off behind "Show all", and the ticked names lifted out into
+ * a row of their own, so a name jumped away the moment it was clicked.
  */
-function chipsHtml() {
-  const filter = memberFilter.trim().toLowerCase();
-  const ranked = rankedRows();
-  const byId = new Map(ranked.map((r) => [r.memberId, r]));
-  const picked = selectedIds
-    .map((id, idx) => ({ r: byId.get(id), idx }))
-    .filter((p) => p.r);
-  const pool = ranked.filter((r) => !selectedIds.includes(r.memberId)
-    && (!filter || (r.name || '').toLowerCase().includes(filter)));
-
-  // Inline colour ties the chip to its line so the legend and the picker
-  // agree without the user matching names twice.
-  const pickedHtml = picked.length === 0 ? '' : `<div class="might-picked">${picked.map(({ r, idx }) => `
-    <button class="btn btn-tight might-chip active" aria-pressed="true" data-might-toggle="${r.memberId}"
-      style="border-color:${seriesColor(idx)};box-shadow:inset 3px 0 0 ${seriesColor(idx)}">${esc(r.name)}<span class="might-chip-x" aria-hidden="true">×</span></button>`).join('')}</div>`;
-
-  let poolHtml = '';
-  if (pool.length > 0) {
-    // A filter narrows the list to a handful, so it always shows in full.
-    const open = poolExpanded || filter !== '';
-    poolHtml = `<div class="might-pool${open ? ' is-open' : ''}" id="mightPool">${pool.map((r) => `
-      <button class="btn btn-tight might-chip" aria-pressed="false" data-might-toggle="${r.memberId}">${esc(r.name)}</button>`).join('')}</div>
-      ${filter ? '' : `<button class="btn btn-tight might-pool-toggle" data-might-action="pool" hidden>${poolExpanded ? t('Show fewer') : t('Show all {count}', { count: pool.length })}</button>`}`;
-  } else if (filter) {
-    poolHtml = `<span class="muted-copy">${t('No members match.')}</span>`;
-  }
-  return pickedHtml + poolHtml;
+function pickRowHtml(r, rank) {
+  const on = selectedIds.includes(r.memberId);
+  const style = on ? ` style="--series:${memberColor(r.memberId)}"` : '';
+  return `<li><label class="might-pick-row${on ? ' is-on' : ''}"${style}>
+    <input type="checkbox" data-might-toggle="${r.memberId}"${on ? ' checked' : ''}>
+    <span class="might-pick-rank">${rank}</span>
+    <span class="might-pick-name">${esc(r.name)}</span>
+    <span class="might-pick-value">${formatMightShort(r.might)}</span>
+  </label></li>`;
 }
 
-/** Show the toggle only when the collapsed strip actually hides chips. */
-function syncPoolToggle() {
-  const pool = $('#mightPool');
-  const toggle = $('.might-pool-toggle');
-  if (!pool || !toggle) return;
-  const collapsed = Number.parseFloat(getComputedStyle(pool).getPropertyValue('--might-pool-collapsed')) || 0;
-  toggle.hidden = pool.scrollHeight <= collapsed + 1;
+function pickListHtml() {
+  const filter = memberFilter.trim().toLowerCase();
+  const rows = rankedRows()
+    .map((r, i) => ({ r, rank: i + 1 }))
+    .filter(({ r }) => !filter || (r.name || '').toLowerCase().includes(filter));
+  return rows.length === 0
+    ? `<li class="might-pick-empty muted-copy">${t('No members match.')}</li>`
+    : rows.map(({ r, rank }) => pickRowHtml(r, rank)).join('');
 }
 
 function compareChartHtml() {
   return selectedIds.length === 0
-    ? `<div class="empty-state"><p>${t('Select one or more members above.')}</p></div>`
+    ? `<div class="empty-state"><p>${t('Tick members in the list to compare them.')}</p></div>`
     : '<canvas id="mightCompareChart"></canvas>';
 }
 
@@ -416,10 +454,18 @@ function renderCompareCard() {
       <p class="muted-copy mb-12">
         ${t('Pick any members to overlay their might curves. The gold bands are days a clan-calendar event was running — hover any point to see which ones. A curve that steepens inside a band tells you that event moved the needle.')}
       </p>
-      <input type="text" id="mightMemberFilter" class="input members-filter mb-12"
-             placeholder="${t('Filter members…')}" value="${esc(memberFilter)}">
-      <div class="might-chips" id="mightChips">${chipsHtml()}</div>
-      <div class="chart-container might-compare-chart" id="mightCompareHost">${compareChartHtml()}</div>
+      <div class="might-compare">
+        ${/* Its own cell: describeChart puts the "Show data as table" fold right
+              after the chart container, which would otherwise take the list's column. */''}
+        <div class="might-compare-plot">
+          <div class="chart-container might-compare-chart" id="mightCompareHost">${compareChartHtml()}</div>
+        </div>
+        <div class="might-picker">
+          <input type="search" id="mightMemberFilter" class="input"
+                 placeholder="${t('Filter members…')}" aria-label="${t('Filter members…')}" value="${esc(memberFilter)}">
+          <ul class="might-pick-list" id="mightPickList" aria-label="${t('Members')}">${pickListHtml()}</ul>
+        </div>
+      </div>
     </div>
   </div>`;
 }
@@ -595,7 +641,8 @@ function drawCompareChart() {
   // Swap between canvas and empty state in place rather than re-rendering the card.
   host.innerHTML = compareChartHtml();
   const canvas = $('#mightCompareChart');
-  if (!canvas || state.series.length === 0) {
+  const series = selectedSeries();
+  if (!canvas || series.length === 0) {
     clearChartTable(host);
     return;
   }
@@ -603,16 +650,17 @@ function drawCompareChart() {
   const tok = chartTokens();
   // Union of every date any selected member has a reading for, so a member who
   // joined mid-window lines up correctly instead of being shifted left.
-  const allDates = [...new Set(state.series.flatMap((s) => s.points.map((p) => p.gameDate)))].sort();
-  const datasets = state.series.map((s, i) => {
+  const allDates = [...new Set(series.flatMap((s) => s.points.map((p) => p.gameDate)))].sort();
+  const datasets = series.map((s) => {
     const byDate = new Map(s.points.map((p) => [p.gameDate, p.might]));
     return {
       label: s.name,
+      memberId: s.memberId,
       // null (not 0) for a missing day — spanGaps joins across it rather than
       // drawing a cliff down to zero that never happened.
       data: allDates.map((d) => (byDate.has(d) ? byDate.get(d) : null)),
-      borderColor: seriesColor(i),
-      backgroundColor: seriesColor(i),
+      borderColor: memberColor(s.memberId),
+      backgroundColor: memberColor(s.memberId),
       borderWidth: 2,
       pointRadius: allDates.length > 60 ? 0 : 2,
       tension: 0.2,
@@ -622,7 +670,21 @@ function drawCompareChart() {
   });
 
   const opts = baseLineOptions(tok, t('Might'));
-  opts.plugins.legend = { display: true, labels: { color: tok.tick, usePointStyle: true, boxWidth: 8 } };
+  // A legend click unticks the member. Chart.js's own click only hides the
+  // line, leaving it ticked in the list but missing from the chart.
+  opts.plugins.legend = {
+    display: true,
+    labels: { color: tok.tick, usePointStyle: true, boxWidth: 8 },
+    onClick: (_ev, item, legend) => {
+      const id = legend.chart.data.datasets[item.datasetIndex]?.memberId;
+      if (id === undefined) return;
+      toggleSelected(id);
+      syncPickRow(id);
+      drawCompareChart();
+    },
+    onHover: (ev) => { ev.native.target.style.cursor = 'pointer'; },
+    onLeave: (ev) => { ev.native.target.style.cursor = ''; },
+  };
 
   const spans = showEvents ? eventBandSpans(allDates, state.events) : [];
   // Name the bands on hover. Shading alone told you *that* something ran, never
@@ -735,18 +797,33 @@ function eventBandsPlugin(spans) {
 
 // ─── Surgical updates ─────────────────────────────────────────
 
-function repaintChips() {
-  const host = $('#mightChips');
-  if (host) host.innerHTML = chipsHtml();
-  syncPoolToggle();
+/** Rewrite the list, keeping its scroll position — Clear and Top N mustn't
+ *  throw the reader back to the top. A filter change resets it on purpose. */
+function repaintPickList({ keepScroll = true } = {}) {
+  const list = $('#mightPickList');
+  if (!list) return;
+  const top = list.scrollTop;
+  list.innerHTML = pickListHtml();
+  list.scrollTop = keepScroll ? top : 0;
 }
 
-/** Selection changed: refetch just the series, redraw just that chart. */
+/** Restyle the one row a toggle touched, in place; its neighbours keep their
+ *  colours, so nothing else in the list needs touching. */
+function syncPickRow(id) {
+  const input = $(`#mightPickList input[data-might-toggle="${id}"]`);
+  const row = input?.closest('.might-pick-row');
+  if (!row) return;
+  const on = selectedIds.includes(id);
+  input.checked = on;
+  row.classList.toggle('is-on', on);
+  if (on) row.style.setProperty('--series', memberColor(id));
+  else row.style.removeProperty('--series');
+}
+
+/** Selection changed: fetch whatever isn't cached, redraw just that chart.
+ *  Unticking needs no request, so the line goes at once. */
 async function refreshCompare() {
-  repaintChips();
-  const compare = await fetchCompare();
-  state.series = Array.isArray(compare?.series) ? compare.series : [];
-  drawCompareChart();
+  if (await loadMissingSeries()) drawCompareChart();
 }
 
 /** Timeframe changed: everything on the page is window-scoped — totals,
@@ -759,23 +836,23 @@ async function changeWindow(id) {
   const selector = $('#mightWindow');
   if (selector) selector.innerHTML = windowSelectorHtml();
 
-  const [totals, events, compare, overview] = await Promise.all([
+  const [totals, events, seriesCurrent, overview] = await Promise.all([
     api(`/might/totals?days=${windowDays()}`).catch(() => ({ totals: [] })),
     fetchEvents(),
-    fetchCompare(),
+    loadMissingSeries(),
     fetchOverview().catch(() => null),
   ]);
   // Another click landed while these were in flight; its own fetch will paint.
-  if (id !== windowId) return;
+  if (id !== windowId || !seriesCurrent) return;
   state.totals = Array.isArray(totals?.totals) ? totals.totals : [];
   state.events = Array.isArray(events?.windows) ? events.windows : [];
-  state.series = Array.isArray(compare?.series) ? compare.series : [];
   if (overview && Array.isArray(overview.rows)) state.overview = overview;
 
   const stats = $('#mightHeaderStats');
   if (stats) stats.innerHTML = headerStatsHtml();
   const table = $('#mightTableHost');
   if (table) table.innerHTML = renderTableCard(state.overview?.rows ?? [], state.guardsByMember);
+  repaintPickList();
   drawTotalsChart();
   drawCompareChart();
 }
@@ -783,7 +860,7 @@ async function changeWindow(id) {
 function wireControls(el) {
   // Delegated to the page container, which SURVIVES an innerHTML swap — so it
   // must be attached exactly once or every render would stack another listener
-  // and one chip click would fire repeatedly.
+  // and one checkbox click would fire repeatedly.
   if (el.dataset.mightWired !== '1') {
     el.dataset.mightWired = '1';
 
@@ -794,32 +871,24 @@ function wireControls(el) {
       const sortKey = ev.target.closest('.might-table th[data-sort-key]')?.dataset.sortKey;
       if (sortKey) return void setTableSort(sortKey);
 
-      const chip = ev.target.closest('button[data-might-toggle]');
-      if (chip) {
-        const id = Number.parseInt(chip.dataset.mightToggle, 10);
-        if (!Number.isFinite(id)) return;
-        selectedIds = selectedIds.includes(id)
-          ? selectedIds.filter((x) => x !== id)
-          : [...selectedIds, id];
-        return void refreshCompare();
-      }
-
       const action = ev.target.closest('button[data-might-action]')?.dataset.mightAction;
-      if (action === 'clear') {
-        selectedIds = [];
+      if (action === 'clear' || action === 'top') {
+        setSelection(action === 'top' ? rankedRows().slice(0, DEFAULT_SELECTION).map((r) => r.memberId) : []);
+        repaintPickList();
         return void refreshCompare();
-      }
-      if (action === 'top') {
-        selectedIds = rankedRows().slice(0, DEFAULT_SELECTION).map((r) => r.memberId);
-        return void refreshCompare();
-      }
-      if (action === 'pool') {
-        poolExpanded = !poolExpanded;
-        return void repaintChips();
       }
     });
 
     el.addEventListener('change', (ev) => {
+      const toggle = ev.target.closest('input[data-might-toggle]');
+      if (toggle) {
+        const id = Number.parseInt(toggle.dataset.mightToggle, 10);
+        if (!Number.isFinite(id)) return;
+        toggleSelected(id);
+        syncPickRow(id);
+        return void refreshCompare();
+      }
+
       if (ev.target.id !== 'mightShowEvents') return;
       showEvents = ev.target.checked === true;
       // Bands need the windows; fetch them the first time they're switched on.
@@ -836,8 +905,8 @@ function wireControls(el) {
     el.addEventListener('input', (ev) => {
       if (ev.target.id !== 'mightMemberFilter') return;
       memberFilter = ev.target.value;
-      // Chips only — no network, and the input keeps focus.
-      repaintChips();
+      // The list only — no network, and the input keeps focus.
+      repaintPickList({ keepScroll: false });
     });
   }
 }
