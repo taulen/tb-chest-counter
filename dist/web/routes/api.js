@@ -57,6 +57,7 @@ const sourcePointsRepo = __importStar(require("../../data/repositories/source-po
 const pointsBoard = __importStar(require("../../data/points-board.js"));
 const triumphalPointsRepo = __importStar(require("../../data/repositories/triumphal-points-repo.js"));
 const reviewQueueRepo = __importStar(require("../../data/repositories/review-queue-repo.js"));
+const renameSuggestionsRepo = __importStar(require("../../data/repositories/rename-suggestions-repo.js"));
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const auth_js_1 = require("../middleware/auth.js");
 const login_bridge_js_1 = require("../login-bridge.js");
@@ -2518,6 +2519,32 @@ function createApiRouter(scanLoop) {
             res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
         }
     });
+    // POST /api/admin/rename-suggestions/dismiss { fromMemberId, toMemberId }
+    // "Not the same player" on a Likely Renames suggestion. Merging one goes
+    // through /admin/merge-players like any other merge.
+    router.post('/admin/rename-suggestions/dismiss', auth_js_1.requireAdmin, (req, res) => {
+        const clanId = req.clanId ?? 1;
+        const fromMemberId = Number(req.body?.fromMemberId);
+        const toMemberId = Number(req.body?.toMemberId);
+        if (!Number.isInteger(fromMemberId) || !Number.isInteger(toMemberId) || fromMemberId === toMemberId) {
+            return res.status(400).json({ error: 'fromMemberId and toMemberId required' });
+        }
+        // Both must be this clan's: the ids come from the page, the clan from the session.
+        const from = memberRepo.getMemberById(fromMemberId, clanId);
+        const to = memberRepo.getMemberById(toMemberId, clanId);
+        if (!from || !to) {
+            return res.status(404).json({ error: 'member not found in this clan' });
+        }
+        try {
+            renameSuggestionsRepo.dismissRenameSuggestion(clanId, fromMemberId, toMemberId);
+            reviewQueueRepo.invalidateReviewQueueCount(clanId);
+            (0, user_repo_js_1.logAction)(req.user.id, 'dismiss_rename_suggestion', { clanId, from: from.name, to: to.name });
+            res.json({ ok: true });
+        }
+        catch (err) {
+            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+        }
+    });
     // GET /api/admin/unknown-chests — rows where OCR failed to read the
     // player name. See chestRepo.getUnknownChests for the predicate.
     // Also self-heals any stale "Manual review needed" banners on sessions
@@ -2634,7 +2661,8 @@ function createApiRouter(scanLoop) {
             // entry/row arrays. Both are memoized per clan; the badge tolerates
             // short staleness and is invalidated on every relevant mutation.
             const counts = reviewQueueRepo.getReviewQueueCount(clanId);
-            const reviewQueueCount = counts.chestNames + counts.chestSources + counts.members + counts.triumphalChests;
+            const reviewQueueCount = counts.chestNames + counts.chestSources + counts.members
+                + counts.triumphalChests + counts.renames;
             const unknownChestsCount = chestRepo.countUnknownChests(clanId);
             // Resource rows the reader couldn't identify a resource for. Only relevant
             // when the clan actually tracks resources, and the count is served from the

@@ -1096,6 +1096,22 @@ const MIGRATIONS: Migration[] = [
       database.transaction(() => repairAldrin(database))();
     },
   },
+  {
+    // Likely-rename merge suggestions an admin marked "not the same player"
+    // (rename-suggestions-repo.ts). Member ids carry no FK on purpose: a row only
+    // hides a suggestion, so one outliving its member is inert, and an FK would
+    // make every member delete path account for it. deleteClan clears the clan's.
+    version: 92,
+    sql: `
+      CREATE TABLE IF NOT EXISTS rename_suggestion_dismissals (
+        clan_id INTEGER NOT NULL,
+        from_member_id INTEGER NOT NULL,
+        to_member_id INTEGER NOT NULL,
+        dismissed_at TEXT NOT NULL,
+        PRIMARY KEY (clan_id, from_member_id, to_member_id)
+      );
+    `,
+  },
 ];
 
 /**

@@ -713,6 +713,9 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     // chest_daily_summary is a derived rollup with no FK, but leaving its
     // rows behind would resurrect the dead clan's numbers if the id is reused.
     db.prepare('DELETE FROM chest_daily_summary WHERE clan_id = ?').run(id);
+    // Same: no FK (see migration v92), keyed by member ids a reused clan id would
+    // hand to unrelated players.
+    db.prepare('DELETE FROM rename_suggestion_dismissals WHERE clan_id = ?').run(id);
 
     // The ChestTracker ingest tables carry a clan_id with NO foreign key to
     // clans(id) — they predate multi-clan and the column was bolted on with a

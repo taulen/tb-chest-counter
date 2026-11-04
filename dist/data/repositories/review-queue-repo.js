@@ -9,6 +9,7 @@ const logger_js_1 = require("../../utils/logger.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 const chest_names_js_1 = require("../../vision/chest-names.js");
 const source_names_js_1 = require("../../vision/source-names.js");
+const rename_suggestions_repo_js_1 = require("./rename-suggestions-repo.js");
 const log = (0, logger_js_1.childLogger)('review-queue-repo');
 // The nav-status review badge only needs the three counts, not the full
 // entry lists. It is polled on every navigation, so we memoize the
@@ -141,6 +142,7 @@ function getReviewQueue(clanId) {
         chestSources: { acknowledgedAt: chestSourceAck, entries: filteredChestSourceEntries },
         members: { acknowledgedAt: memberAck, entries: mapMembers(memberRows) },
         triumphalChests: { entries: mapMs(triumphalRows) },
+        renames: { entries: (0, rename_suggestions_repo_js_1.getRenameSuggestions)(clanId) },
     };
 }
 /**
@@ -215,6 +217,7 @@ function computeReviewQueueCount(clanId) {
         chestSources,
         members: memberCountRow.cnt,
         triumphalChests: triumphalCountRow.cnt,
+        renames: (0, rename_suggestions_repo_js_1.getRenameSuggestions)(clanId).length,
     };
 }
 function acknowledge(category, clanId) {

@@ -3,6 +3,7 @@ import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import { isHardcodedChestName } from '../../vision/chest-names.js';
 import { isHardcodedSource } from '../../vision/source-names.js';
+import { getRenameSuggestions, type RenameSuggestion } from './rename-suggestions-repo.js';
 
 const log = childLogger('review-queue-repo');
 
@@ -43,6 +44,10 @@ export interface ReviewQueue {
   // "resolved" by a superadmin assigning the chest a value on the
   // Triumphal Chest Points page (which removes it from this list).
   triumphalChests: { entries: ReviewEntry[] };
+  // Likely in-game renames (rename-suggestions-repo.ts). No acknowledgment
+  // either: each pair is resolved by merging it or marking it "not the same
+  // player", and either one removes it from the list.
+  renames: { entries: RenameSuggestion[] };
 }
 
 function getAck(category: ReviewCategory, clanId: number): string | null {
@@ -203,6 +208,7 @@ export function getReviewQueue(clanId: number): ReviewQueue {
     chestSources: { acknowledgedAt: chestSourceAck, entries: filteredChestSourceEntries },
     members: { acknowledgedAt: memberAck, entries: mapMembers(memberRows) },
     triumphalChests: { entries: mapMs(triumphalRows) },
+    renames: { entries: getRenameSuggestions(clanId) },
   };
 }
 
@@ -211,6 +217,7 @@ export interface ReviewQueueCount {
   chestSources: number;
   members: number;
   triumphalChests: number;
+  renames: number;
 }
 
 /**
@@ -304,6 +311,7 @@ function computeReviewQueueCount(clanId: number): ReviewQueueCount {
     chestSources,
     members: memberCountRow.cnt,
     triumphalChests: triumphalCountRow.cnt,
+    renames: getRenameSuggestions(clanId).length,
   };
 }
 

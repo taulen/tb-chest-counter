@@ -158,6 +158,8 @@ import {
   doMergeSource,
   saveAllTriumphalPoints,
   acknowledgeReviewQueue,
+  mergeRenameSuggestion,
+  dismissRenameSuggestion,
   reassignUnknownRow,
   reassignUnknownBulk,
   deleteRule,
@@ -677,6 +679,8 @@ if (contentEl) {
     if (action === 'save-schedule-correction') return saveScheduleCorrection(loadPage);
     if (action === 'delete-schedule-correction') return deleteScheduleCorrection(Number.parseInt(target.dataset.correctionId || '0', 10), loadPage);
     if (action === 'acknowledge-review') return acknowledgeReviewQueue(target.dataset.reviewCategory || '', loadPage);
+    if (action === 'merge-rename') return mergeRenameSuggestion(target.dataset.fromName || '', target.dataset.toName || '', Number.parseInt(target.dataset.fromChests || '0', 10), loadPage);
+    if (action === 'dismiss-rename') return dismissRenameSuggestion(Number.parseInt(target.dataset.fromId || '0', 10), Number.parseInt(target.dataset.toId || '0', 10), loadPage);
     if (action === 'reassign-unknown-row') return reassignUnknownRow(Number.parseInt(target.dataset.chestId || '0', 10), loadPage);
     if (action === 'reassign-unknown-bulk') return reassignUnknownBulk(Number.parseInt(target.dataset.sessionId || '0', 10), loadPage);
     if (action === 'change-password') return openChangePasswordModal();

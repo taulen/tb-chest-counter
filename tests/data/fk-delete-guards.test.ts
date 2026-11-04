@@ -177,6 +177,10 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     'INSERT INTO chest_daily_summary (clan_id, member_id, game_day, chests, points) VALUES (?, ?, ?, 1, 5)',
   ).run(clanId, member.id, '2026-07-20');
   db.prepare(
+    `INSERT INTO rename_suggestion_dismissals (clan_id, from_member_id, to_member_id, dismissed_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(clanId, member.id, member.id + 1000, now);
+  db.prepare(
     `INSERT INTO member_guards_reports (clan_id, member_id, level, observed_date, created_by, created_at)
      VALUES (?, ?, 8, '2026-07-20', 2, ?)`,
   ).run(clanId, member.id, now);
@@ -351,6 +355,7 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     // orphaned rows would then read as that clan's history.
     const residue: Record<string, string> = {
       chest_daily_summary: 'SELECT COUNT(*) c FROM chest_daily_summary WHERE clan_id = ?',
+      rename_suggestion_dismissals: 'SELECT COUNT(*) c FROM rename_suggestion_dismissals WHERE clan_id = ?',
       ct_player_ref: 'SELECT COUNT(*) c FROM ct_player_ref WHERE clan_id = ?',
       snapshot: 'SELECT COUNT(*) c FROM snapshot WHERE clan_id = ?',
       player_snapshot: 'SELECT COUNT(*) c FROM player_snapshot WHERE clan_id = ?',

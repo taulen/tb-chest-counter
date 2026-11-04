@@ -431,6 +431,11 @@
   },
   {
     "type": "table",
+    "name": "rename_suggestion_dismissals",
+    "sql": "CREATE TABLE rename_suggestion_dismissals ( clan_id INTEGER NOT NULL, from_member_id INTEGER NOT NULL, to_member_id INTEGER NOT NULL, dismissed_at TEXT NOT NULL, PRIMARY KEY (clan_id, from_member_id, to_member_id) )"
+  },
+  {
+    "type": "table",
     "name": "resource_capture_cursor",
     "sql": "CREATE TABLE resource_capture_cursor ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), -- JSON array of row fingerprints, newest first, starting at the newest row -- the game had FINISHED writing. Not the top of the list: those rows are -- still being merged into and move. See buildCursorFingerprints in -- browser/resource-sweep-rules.ts. top_rows TEXT NOT NULL, -- Game day the capture last RAN on. Purely the once-a-day gate, and it -- advances even on a run that could not move the marker. game_date TEXT NOT NULL, captured_at TEXT NOT NULL, -- transaction_date of the row top_rows starts at — i.e. how old the MARKER -- is, which is not the same as how long ago the phase ran. The date backstop -- is sized from this, so that a run of unusable reads widens the next sweep -- to reach a marker that is getting older instead of stopping short of it. newest_date TEXT NOT NULL DEFAULT '', rows_inserted INTEGER NOT NULL DEFAULT 0 )"
   },
