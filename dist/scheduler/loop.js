@@ -40,6 +40,7 @@ const clan_paths_js_1 = require("../config/clan-paths.js");
 const enums_js_1 = require("../models/enums.js");
 const state_machine_js_1 = require("./state-machine.js");
 const navigator_js_1 = require("../browser/navigator.js");
+const game_client_js_1 = require("../browser/game-client.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
 const sessionRepo = __importStar(require("../data/repositories/session-repo.js"));
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
@@ -1344,7 +1345,10 @@ class ScanLoop {
             await new Promise((r) => setTimeout(r, 1000));
             const onGifts = await (0, navigator_js_1.ensureOnGiftsTab)(page, this.vision, 'gifts', { cardCropPcts: this.getCardCropPcts() });
             if (!onGifts) {
-                const navErr = new Error('Could not verify Gifts tab after 3 attempts');
+                // Name the one cause the screenshots cannot show: the account
+                // running Total Battle's other client, laid out differently from
+                // the one every click was calibrated on. See game-client.ts.
+                const navErr = new Error((0, game_client_js_1.describeNavFailure)(await (0, game_client_js_1.detectGameClient)(page)));
                 this.recordScanError(navErr);
                 sessionRepo.updateSession(scanSession.id, this.clanId, {
                     status: enums_js_1.ScanStatus.FAILED,
