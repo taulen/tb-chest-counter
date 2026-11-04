@@ -14,6 +14,7 @@ const logger_js_1 = require("../utils/logger.js");
 const chest_names_js_1 = require("../vision/chest-names.js");
 const source_names_js_1 = require("../vision/source-names.js");
 const config_integrity_js_1 = require("./config-integrity.js");
+const repair_aldrin_2026_11_js_1 = require("./repair-aldrin-2026-11.js");
 const log = (0, logger_js_1.childLogger)('database');
 let db = null;
 /**
@@ -1069,6 +1070,15 @@ const MIGRATIONS = [
           CREATE INDEX IF NOT EXISTS idx_tinman_scores_member ON tinman_scores(clan_id, member_id);
         `);
             })();
+        },
+    },
+    {
+        // Data only: clan #3's Cauldron → Aldrin rename, whose Nov 3 chests the gift
+        // scan filed under "Ilrin". See repair-aldrin-2026-11.ts. Guarded on member
+        // id + name + clan, so a no-op anywhere else and safe to replay.
+        version: 91,
+        run: (database) => {
+            database.transaction(() => (0, repair_aldrin_2026_11_js_1.repairAldrin)(database))();
         },
     },
 ];

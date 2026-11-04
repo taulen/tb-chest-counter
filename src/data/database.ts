@@ -6,6 +6,7 @@ import { correctChestName, getChestRarity, isHardcodedChestName, KNOWN_CHESTS, T
 import { getSourceKey, getSourceRarity, sourceSpellingKey, canonicalSourceKey } from '../vision/source-names.js';
 import { despace } from '../vision/ocr-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
+import { repairAldrin } from './repair-aldrin-2026-11.js';
 
 const log = childLogger('database');
 
@@ -1084,6 +1085,15 @@ const MIGRATIONS: Migration[] = [
           CREATE INDEX IF NOT EXISTS idx_tinman_scores_member ON tinman_scores(clan_id, member_id);
         `);
       })();
+    },
+  },
+  {
+    // Data only: clan #3's Cauldron → Aldrin rename, whose Nov 3 chests the gift
+    // scan filed under "Ilrin". See repair-aldrin-2026-11.ts. Guarded on member
+    // id + name + clan, so a no-op anywhere else and safe to replay.
+    version: 91,
+    run: (database): void => {
+      database.transaction(() => repairAldrin(database))();
     },
   },
 ];
