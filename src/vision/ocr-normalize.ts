@@ -224,6 +224,43 @@ export function namesDifferByAltSuffix(a: string, b: string): boolean {
     && ALT_SUFFIX.test(longer.slice(shorter.length));
 }
 
+/**
+ * True when two readings differ only by characters this OCR confuses.
+ *
+ * Distinguishes the two reasons two readings can resolve to the same member:
+ *
+ *   same player, read twice   "mikl" / "mikI"   — capital-I for lowercase-l
+ *   two different players     "Bain" / "Fain"   — B and F look nothing alike
+ *
+ * Both are one edit apart, so distance can't tell them apart, and the caller's
+ * decision hinges on it: a different player must become a new member (or their
+ * reading is lost), while the same player read twice must NOT (or every capture
+ * mints a duplicate). Production produced exactly that — "mikI" was created as a
+ * member alongside "mikl".
+ *
+ * Collapses the confusable classes onto one representative each. Deliberately
+ * separate from ocrNormalize below, which maps 1→l but has no i↔l rule and is
+ * shared with chest-name matching — this needs the letter pair and nothing else
+ * needs it.
+ */
+export function sameOcrSkeleton(a: string, b: string): boolean {
+  // The skeleton throws digits away, which is right for the ones that are letter
+  // lookalikes and wrong for the rest: it collapsed "FELI" and "FELI 2" onto "fell"
+  // and reported one player read twice, so the second member was dropped from every
+  // capture. Identity digits are settled first, on the unskeletonised names.
+  if (namesDifferByAltSuffix(a, b)) return false;
+  const skeleton = (s: string): string => s
+    .toLowerCase()
+    .replace(/[il1|!]/g, 'l')  // capital-I, lowercase-l, one, pipe, bang
+    .replace(/[o0]/g, 'o')
+    .replace(/[s5]/g, 's')
+    .replace(/[b8]/g, 'b')
+    .replace(/[g9]/g, 'g')
+    .replace(/[^a-z]/g, '');
+  const sa = skeleton(a);
+  return sa.length > 0 && sa === skeleton(b);
+}
+
 export function ocrNormalize(s: string): string {
   return foldDiacritics(transliterateCyrillicHomoglyphs(s))
     .toLowerCase()

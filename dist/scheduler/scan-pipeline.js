@@ -616,6 +616,24 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
     // normal-tab unknown-chest counters above.
     const newTriumphalNamesSeen = new Set();
     const newTriumphalSamples = [];
+    // Names this sweep read the same way at least REPEATED_READING_MIN times — real
+    // names, not OCR damage, so matchKnownPlayer won't stretch them 2 edits onto a
+    // neighbour (see MatchKnownPlayerOptions.repeatedReadings: clan #3's renamed
+    // "Aldrin" was filed under "Ilrin" for four scans). Tallied over the probe
+    // results, which is every crop but the rare probe failure. Counted once per card
+    // per key, so the two OCR passes agreeing on a name don't double it.
+    const readingCounts = new Map();
+    for (const probe of probeResults) {
+        for (const card of probe ?? []) {
+            const keys = new Set([card.playerName, card.playerNameEnglish ?? '']
+                .map((n) => (0, player_names_js_1.playerReadingKey)((0, player_names_js_1.cleanPlayerName)(n)))
+                .filter(Boolean));
+            for (const k of keys)
+                readingCounts.set(k, (readingCounts.get(k) ?? 0) + 1);
+        }
+    }
+    const repeatedReadings = new Set([...readingCounts].filter(([, n]) => n >= player_names_js_1.REPEATED_READING_MIN).map(([k]) => k));
+    const matchOptions = { repeatedReadings };
     for (let i = 0; i < crops.length; i++) {
         reportProgress('scan', `Processing… ${i + 1}/${crops.length} crops (${chestsInserted} chests, ${reOcrCount} re-OCRs)`);
         // Every crop in this list represents chests ALREADY CLAIMED in-game by the
@@ -701,16 +719,16 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
                 let matchedPlayer;
                 if (!cleanedPlayerEng || (0, player_names_js_1.isLikelyNonLatinName)(cleanedPlayerMulti)) {
                     cleanedPlayer = cleanedPlayerMulti;
-                    matchedPlayer = (0, player_names_js_1.matchKnownPlayer)(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
+                    matchedPlayer = (0, player_names_js_1.matchKnownPlayer)(cleanedPlayerMulti, knownMembers, inactiveMemberNames, matchOptions);
                 }
                 else {
-                    const matchedEng = (0, player_names_js_1.matchKnownPlayer)(cleanedPlayerEng, knownMembers, inactiveMemberNames);
+                    const matchedEng = (0, player_names_js_1.matchKnownPlayer)(cleanedPlayerEng, knownMembers, inactiveMemberNames, matchOptions);
                     if (matchedEng !== cleanedPlayerEng) {
                         cleanedPlayer = cleanedPlayerEng;
                         matchedPlayer = matchedEng;
                     }
                     else {
-                        const matchedMulti = (0, player_names_js_1.matchKnownPlayer)(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
+                        const matchedMulti = (0, player_names_js_1.matchKnownPlayer)(cleanedPlayerMulti, knownMembers, inactiveMemberNames, matchOptions);
                         if (matchedMulti !== cleanedPlayerMulti) {
                             cleanedPlayer = cleanedPlayerMulti;
                             matchedPlayer = matchedMulti;

@@ -3,6 +3,7 @@ import {
   cleanPlayerName,
   matchKnownPlayer,
   isLikelyNonLatinName,
+  playerReadingKey,
 } from '../../src/vision/player-names.js';
 
 /**
@@ -177,6 +178,48 @@ describe('matchKnownPlayer', () => {
 
     it('returns the input when no non-Latin member is close enough', () => {
       expect(matchKnownPlayer('أوزيريس', ['Alice', 'Bob'])).toBe('أوزيريس');
+    });
+  });
+
+  // Clan #3, Nov 2026: "Cauldron" renamed to "Aldrin", 2 edits from member "Ilrin".
+  // Every clean "From: Aldrin" read was filed under Ilrin until a member row existed.
+  describe('repeated readings', () => {
+    const repeated = (...names: string[]) => ({ repeatedReadings: new Set(names.map(playerReadingKey)) });
+
+    it('still stretches a one-off reading 2 edits (the budget is unchanged)', () => {
+      expect(matchKnownPlayer('Aldrin', ['Ilrin', 'Vaelin'])).toBe('Ilrin');
+    });
+
+    it('refuses a 2-edit match for a name the sweep read repeatedly', () => {
+      expect(matchKnownPlayer('Aldrin', ['Ilrin', 'Vaelin'], [], repeated('Aldrin'))).toBe('Aldrin');
+    });
+
+    it('keys repeated readings on the despaced form', () => {
+      expect(matchKnownPlayer('Al drin', ['Ilrin'], [], repeated('Aldrin'))).toBe('Al drin');
+    });
+
+    it('keeps 1-edit matches for repeated readings — that is where homoglyph damage lives', () => {
+      expect(matchKnownPlayer('LizDidntDolt', ['LizDidntDoIt'], [], repeated('LizDidntDolt'))).toBe('LizDidntDoIt');
+      expect(matchKnownPlayer('PropofolDok', ['PropofolDoc'], [], repeated('PropofolDok'))).toBe('PropofolDoc');
+    });
+
+    it('keeps a 2-edit match when only OCR-confusable characters differ', () => {
+      // I↔l twice: 2 edits apart, same skeleton.
+      expect(matchKnownPlayer('Ilikelt', ['llikeIt'], [], repeated('Ilikelt'))).toBe('llikeIt');
+    });
+
+    it('still lets an exact match win for a repeated reading', () => {
+      expect(matchKnownPlayer('Aldrin', ['Ilrin', 'Aldrin'], [], repeated('Aldrin'))).toBe('Aldrin');
+    });
+
+    it('leaves cross-script names alone — their transliteration damage repeats exactly', () => {
+      // Live: the English pass reads this member as "ka Chaosraven" card after card.
+      expect(matchKnownPlayer('ka Chaosraven', ['Микам Chaosraven'], [], repeated('ka Chaosraven')))
+        .toBe('Микам Chaosraven');
+    });
+
+    it('leaves the non-Latin distance tier alone', () => {
+      expect(matchKnownPlayer('Микамор', ['Микалон'], [], repeated('Микамор'))).toBe('Микалон');
     });
   });
 });

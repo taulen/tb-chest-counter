@@ -31,7 +31,7 @@ import { mouseMove, mouseWheel } from './input.js';
 import { MEMBER_LIST_MAX_PAGES, MEMBER_LIST_DRY_PAGES_TO_STOP } from './member-list-sweep.js';
 import { captureFullPage } from './screenshotter.js';
 import { cleanPlayerName } from '../vision/player-names.js';
-import { namesDifferByAltSuffix } from '../vision/ocr-normalize.js';
+import { namesDifferByAltSuffix, sameOcrSkeleton } from '../vision/ocr-normalize.js';
 import { childLogger } from '../utils/logger.js';
 import { saneHeroLevel } from '../data/hero-level.js';
 import { requireMemberListCrop } from '../config/calibration.js';
@@ -566,42 +566,10 @@ export async function fillLevelsFromAvatarStrip(
   }
 }
 
-/**
- * True when two readings differ only by characters this OCR confuses.
- *
- * Distinguishes the two reasons two readings can resolve to the same member:
- *
- *   same player, read twice   "mikl" / "mikI"   — capital-I for lowercase-l
- *   two different players     "Bain" / "Fain"   — B and F look nothing alike
- *
- * Both are one edit apart, so distance can't tell them apart, and the caller's
- * decision hinges on it: a different player must become a new member (or their
- * reading is lost), while the same player read twice must NOT (or every capture
- * mints a duplicate). Production produced exactly that — "mikI" was created as a
- * member alongside "mikl".
- *
- * Collapses the confusable classes onto one representative each. Deliberately
- * separate from vision/ocr-normalize's ocrNormalize, which maps 1→l but has no
- * i↔l rule and is shared with chest-name matching — this needs the letter pair and
- * nothing else needs it.
- */
-export function sameOcrSkeleton(a: string, b: string): boolean {
-  // The skeleton throws digits away, which is right for the ones that are letter
-  // lookalikes and wrong for the rest: it collapsed "FELI" and "FELI 2" onto "fell"
-  // and reported one player read twice, so the second member was dropped from every
-  // capture. Identity digits are settled first, on the unskeletonised names.
-  if (namesDifferByAltSuffix(a, b)) return false;
-  const skeleton = (s: string): string => s
-    .toLowerCase()
-    .replace(/[il1|!]/g, 'l')  // capital-I, lowercase-l, one, pipe, bang
-    .replace(/[o0]/g, 'o')
-    .replace(/[s5]/g, 's')
-    .replace(/[b8]/g, 'b')
-    .replace(/[g9]/g, 'g')
-    .replace(/[^a-z]/g, '');
-  const sa = skeleton(a);
-  return sa.length > 0 && sa === skeleton(b);
-}
+// Lives in vision/ocr-normalize now — the gift scan's matcher needs it too (see
+// matchKnownPlayer's repeated-reading guard). Re-exported so this module's callers
+// and tests keep importing it from here.
+export { sameOcrSkeleton };
 
 /** Same key member capture dedupes on, so scroll overlap collapses identically. */
 function normalizeKey(name: string): string {

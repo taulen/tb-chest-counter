@@ -3,11 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.sameOcrSkeleton = void 0;
 exports.parseMight = parseMight;
 exports.pairNamesWithMight = pairNamesWithMight;
 exports.ownerForBadge = ownerForBadge;
 exports.fillLevelsFromAvatarStrip = fillLevelsFromAvatarStrip;
-exports.sameOcrSkeleton = sameOcrSkeleton;
 exports.betterLevel = betterLevel;
 exports.resolveLevel = resolveLevel;
 exports.nameMatchCandidates = nameMatchCandidates;
@@ -19,6 +19,7 @@ const member_list_sweep_js_1 = require("./member-list-sweep.js");
 const screenshotter_js_1 = require("./screenshotter.js");
 const player_names_js_1 = require("../vision/player-names.js");
 const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+Object.defineProperty(exports, "sameOcrSkeleton", { enumerable: true, get: function () { return ocr_normalize_js_1.sameOcrSkeleton; } });
 const logger_js_1 = require("../utils/logger.js");
 const hero_level_js_1 = require("../data/hero-level.js");
 const calibration_js_1 = require("../config/calibration.js");
@@ -425,43 +426,6 @@ async function fillLevelsFromAvatarStrip(pageCrop, canonH, pairs, allAnchorYs) {
         log.debug(`Avatar-strip level re-read failed: ${String(err)}`);
         return 0;
     }
-}
-/**
- * True when two readings differ only by characters this OCR confuses.
- *
- * Distinguishes the two reasons two readings can resolve to the same member:
- *
- *   same player, read twice   "mikl" / "mikI"   — capital-I for lowercase-l
- *   two different players     "Bain" / "Fain"   — B and F look nothing alike
- *
- * Both are one edit apart, so distance can't tell them apart, and the caller's
- * decision hinges on it: a different player must become a new member (or their
- * reading is lost), while the same player read twice must NOT (or every capture
- * mints a duplicate). Production produced exactly that — "mikI" was created as a
- * member alongside "mikl".
- *
- * Collapses the confusable classes onto one representative each. Deliberately
- * separate from vision/ocr-normalize's ocrNormalize, which maps 1→l but has no
- * i↔l rule and is shared with chest-name matching — this needs the letter pair and
- * nothing else needs it.
- */
-function sameOcrSkeleton(a, b) {
-    // The skeleton throws digits away, which is right for the ones that are letter
-    // lookalikes and wrong for the rest: it collapsed "FELI" and "FELI 2" onto "fell"
-    // and reported one player read twice, so the second member was dropped from every
-    // capture. Identity digits are settled first, on the unskeletonised names.
-    if ((0, ocr_normalize_js_1.namesDifferByAltSuffix)(a, b))
-        return false;
-    const skeleton = (s) => s
-        .toLowerCase()
-        .replace(/[il1|!]/g, 'l') // capital-I, lowercase-l, one, pipe, bang
-        .replace(/[o0]/g, 'o')
-        .replace(/[s5]/g, 's')
-        .replace(/[b8]/g, 'b')
-        .replace(/[g9]/g, 'g')
-        .replace(/[^a-z]/g, '');
-    const sa = skeleton(a);
-    return sa.length > 0 && sa === skeleton(b);
 }
 /** Same key member capture dedupes on, so scroll overlap collapses identically. */
 function normalizeKey(name) {

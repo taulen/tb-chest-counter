@@ -34,7 +34,9 @@ import * as clanRepo from '../data/repositories/clan-repo.js';
 import { applyMergeRulesCached, loadMergeRules } from '../data/repositories/merge-repo.js';
 import { loadOverrides as loadSourcePointOverrides, getPointsForSourceCached } from '../data/repositories/source-points-repo.js';
 import { correctChestName, correctTriumphalChestName, getChestRarity, isKnownChestName } from '../vision/chest-names.js';
-import { cleanPlayerName, matchKnownPlayer, isLikelyNonLatinName } from '../vision/player-names.js';
+import {
+  cleanPlayerName, matchKnownPlayer, isLikelyNonLatinName, playerReadingKey, REPEATED_READING_MIN,
+} from '../vision/player-names.js';
 import { cleanSource } from '../vision/source-names.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
@@ -664,6 +666,27 @@ export async function scanCardsPipelined(
   // normal-tab unknown-chest counters above.
   const newTriumphalNamesSeen = new Set<string>();
   const newTriumphalSamples: string[] = [];
+  // Names this sweep read the same way at least REPEATED_READING_MIN times — real
+  // names, not OCR damage, so matchKnownPlayer won't stretch them 2 edits onto a
+  // neighbour (see MatchKnownPlayerOptions.repeatedReadings: clan #3's renamed
+  // "Aldrin" was filed under "Ilrin" for four scans). Tallied over the probe
+  // results, which is every crop but the rare probe failure. Counted once per card
+  // per key, so the two OCR passes agreeing on a name don't double it.
+  const readingCounts = new Map<string, number>();
+  for (const probe of probeResults) {
+    for (const card of probe ?? []) {
+      const keys = new Set(
+        [card.playerName, card.playerNameEnglish ?? '']
+          .map((n) => playerReadingKey(cleanPlayerName(n)))
+          .filter(Boolean),
+      );
+      for (const k of keys) readingCounts.set(k, (readingCounts.get(k) ?? 0) + 1);
+    }
+  }
+  const repeatedReadings = new Set(
+    [...readingCounts].filter(([, n]) => n >= REPEATED_READING_MIN).map(([k]) => k),
+  );
+  const matchOptions = { repeatedReadings };
   for (let i = 0; i < crops.length; i++) {
     reportProgress('scan', `Processing… ${i + 1}/${crops.length} crops (${chestsInserted} chests, ${reOcrCount} re-OCRs)`);
 
@@ -752,14 +775,14 @@ export async function scanCardsPipelined(
         let matchedPlayer: string;
         if (!cleanedPlayerEng || isLikelyNonLatinName(cleanedPlayerMulti)) {
           cleanedPlayer = cleanedPlayerMulti;
-          matchedPlayer = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
+          matchedPlayer = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames, matchOptions);
         } else {
-          const matchedEng = matchKnownPlayer(cleanedPlayerEng, knownMembers, inactiveMemberNames);
+          const matchedEng = matchKnownPlayer(cleanedPlayerEng, knownMembers, inactiveMemberNames, matchOptions);
           if (matchedEng !== cleanedPlayerEng) {
             cleanedPlayer = cleanedPlayerEng;
             matchedPlayer = matchedEng;
           } else {
-            const matchedMulti = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames);
+            const matchedMulti = matchKnownPlayer(cleanedPlayerMulti, knownMembers, inactiveMemberNames, matchOptions);
             if (matchedMulti !== cleanedPlayerMulti) {
               cleanedPlayer = cleanedPlayerMulti;
               matchedPlayer = matchedMulti;

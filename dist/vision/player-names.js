@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.REPEATED_READING_MIN = void 0;
+exports.playerReadingKey = playerReadingKey;
 exports.cleanPlayerName = cleanPlayerName;
 exports.isLikelyNonLatinName = isLikelyNonLatinName;
 exports.matchKnownPlayer = matchKnownPlayer;
@@ -8,6 +10,27 @@ exports.matchKnownPlayer = matchKnownPlayer;
  * list. Shared normalizers and edit distance live in ocr-normalize.ts.
  */
 const ocr_normalize_js_1 = require("./ocr-normalize.js");
+/**
+ * How many identical readings of one name in a single sweep prove it is a real
+ * name rather than OCR damage. See {@link MatchKnownPlayerOptions.repeatedReadings}.
+ */
+exports.REPEATED_READING_MIN = 3;
+/**
+ * The key a reading is counted under for {@link MatchKnownPlayerOptions.repeatedReadings}:
+ * the despaced form for Latin names, the Unicode-aware form for the non-Latin ones
+ * despace flattens to nothing. Same keys matchKnownPlayer compares on.
+ */
+function playerReadingKey(name) {
+    return (0, ocr_normalize_js_1.despace)(name) || (0, ocr_normalize_js_1.normalizeNonLatin)(name);
+}
+/** True when a name has a letter outside the Latin script (Cyrillic, Greek, …). */
+function hasNonLatinLetters(s) {
+    for (const ch of s) {
+        if (/\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch))
+            return true;
+    }
+    return false;
+}
 /**
  * Clean up an OCR player name: strip trailing periods, quotes, pipe
  * chars, and any "Time left" text that leaked through.
@@ -93,9 +116,15 @@ function isLikelyNonLatinName(s) {
  * original protection (a new name still can't fuzzy-match a departed member) while
  * making it impossible for a neighbour to steal a name its owner spells exactly.
  */
-function matchKnownPlayer(ocrName, knownNames, exactOnlyNames = []) {
+function matchKnownPlayer(ocrName, knownNames, exactOnlyNames = [], options = {}) {
     if (!ocrName || (knownNames.length === 0 && exactOnlyNames.length === 0))
         return ocrName;
+    // See MatchKnownPlayerOptions.repeatedReadings. Only consulted in the distance
+    // tiers: the exact tiers below can't be wrong in this way.
+    const isRepeated = options.repeatedReadings?.has(playerReadingKey(ocrName)) ?? false;
+    const refuseTopOfBudget = (dist, allowedDist, name) => isRepeated && dist === allowedDist && allowedDist >= 2
+        && !hasNonLatinLetters(ocrName) && !hasNonLatinLetters(name)
+        && !(0, ocr_normalize_js_1.sameOcrSkeleton)(ocrName, name);
     /** Every name allowed to win an exact match, owner-of-the-name first. */
     const exactCandidates = exactOnlyNames.length > 0
         ? [...knownNames, ...exactOnlyNames]
@@ -198,7 +227,7 @@ function matchKnownPlayer(ocrName, knownNames, exactOnlyNames = []) {
             const maxLen = Math.max(normInput.length, normKnown.length);
             const allowedDist = maxLen >= 6 ? 2 : 1;
             const dist = (0, ocr_normalize_js_1.levenshtein)(normInput, normKnown);
-            if (dist <= allowedDist && dist < bestLevDist) {
+            if (dist <= allowedDist && dist < bestLevDist && !refuseTopOfBudget(dist, allowedDist, name)) {
                 bestLevDist = dist;
                 bestLevMatch = name;
             }

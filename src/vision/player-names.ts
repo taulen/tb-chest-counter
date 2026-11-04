@@ -3,8 +3,62 @@
  * list. Shared normalizers and edit distance live in ocr-normalize.ts.
  */
 import {
-  ocrNormalize, normalizeNonLatin, levenshtein, despace, namesDifferByAltSuffix,
+  ocrNormalize, normalizeNonLatin, levenshtein, despace, namesDifferByAltSuffix, sameOcrSkeleton,
 } from './ocr-normalize.js';
+
+/**
+ * How many identical readings of one name in a single sweep prove it is a real
+ * name rather than OCR damage. See {@link MatchKnownPlayerOptions.repeatedReadings}.
+ */
+export const REPEATED_READING_MIN = 3;
+
+/**
+ * The key a reading is counted under for {@link MatchKnownPlayerOptions.repeatedReadings}:
+ * the despaced form for Latin names, the Unicode-aware form for the non-Latin ones
+ * despace flattens to nothing. Same keys matchKnownPlayer compares on.
+ */
+export function playerReadingKey(name: string): string {
+  return despace(name) || normalizeNonLatin(name);
+}
+
+export interface MatchKnownPlayerOptions {
+  /**
+   * {@link playerReadingKey}s of the names this sweep read at least
+   * {@link REPEATED_READING_MIN} times, character for character. Such a reading may
+   * not reach a member at the TOP of the edit budget (2 edits) unless the two differ
+   * only by OCR-confusable characters.
+   *
+   * Why: the 2-edit budget is headroom, not observed damage — the only OCR name
+   * error ever measured is a single homoglyph substitution. OCR damage is also
+   * noisy: it doesn't come out the same way card after card. So a name read the
+   * same way over and over, 2 edits from a member, is a different player whose
+   * member row doesn't exist yet. Observed Nov 2026: clan #3's "Cauldron" renamed
+   * to "Aldrin", which sits 2 edits from member "Ilrin". Until the might capture
+   * created the Aldrin row, every one of ~130 clean "From: Aldrin" reads across four
+   * scans was filed under Ilrin, and Aldrin's leaderboard showed nothing.
+   *
+   * Refusing the match lets the reading fall through to upsertMember as a new
+   * member, which lands in the New Members review queue with its crop. That is the
+   * deliberate direction (see namesDifferByAltSuffix): a wrong new member is
+   * visible and merged in one click, a silent absorption is not visible at all.
+   *
+   * Left alone: distance-1 matches (that is where real homoglyph damage lives), and
+   * any pair where either name carries a non-Latin letter. There the "damage is
+   * noisy" premise is false — the English pass transliterates a Cyrillic prefix the
+   * SAME wrong way every card: "Микам Chaosraven" reads "ka Chaosraven" over and
+   * over, 2 edits from its despaced key. Replaying two days of live reads through
+   * this guard, that was the only reading it changed besides the one it exists for.
+   */
+  repeatedReadings?: ReadonlySet<string>;
+}
+
+/** True when a name has a letter outside the Latin script (Cyrillic, Greek, …). */
+function hasNonLatinLetters(s: string): boolean {
+  for (const ch of s) {
+    if (/\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch)) return true;
+  }
+  return false;
+}
 
 /**
  * Clean up an OCR player name: strip trailing periods, quotes, pipe
@@ -95,8 +149,17 @@ export function matchKnownPlayer(
   ocrName: string,
   knownNames: string[],
   exactOnlyNames: string[] = [],
+  options: MatchKnownPlayerOptions = {},
 ): string {
   if (!ocrName || (knownNames.length === 0 && exactOnlyNames.length === 0)) return ocrName;
+
+  // See MatchKnownPlayerOptions.repeatedReadings. Only consulted in the distance
+  // tiers: the exact tiers below can't be wrong in this way.
+  const isRepeated = options.repeatedReadings?.has(playerReadingKey(ocrName)) ?? false;
+  const refuseTopOfBudget = (dist: number, allowedDist: number, name: string): boolean =>
+    isRepeated && dist === allowedDist && allowedDist >= 2
+    && !hasNonLatinLetters(ocrName) && !hasNonLatinLetters(name)
+    && !sameOcrSkeleton(ocrName, name);
 
   /** Every name allowed to win an exact match, owner-of-the-name first. */
   const exactCandidates = exactOnlyNames.length > 0
@@ -203,7 +266,7 @@ export function matchKnownPlayer(
       const maxLen = Math.max(normInput.length, normKnown.length);
       const allowedDist = maxLen >= 6 ? 2 : 1;
       const dist = levenshtein(normInput, normKnown);
-      if (dist <= allowedDist && dist < bestLevDist) {
+      if (dist <= allowedDist && dist < bestLevDist && !refuseTopOfBudget(dist, allowedDist, name)) {
         bestLevDist = dist;
         bestLevMatch = name;
       }

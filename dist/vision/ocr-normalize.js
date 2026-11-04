@@ -11,6 +11,7 @@ exports.foldDiacritics = foldDiacritics;
 exports.despace = despace;
 exports.despaceKeepingCase = despaceKeepingCase;
 exports.namesDifferByAltSuffix = namesDifferByAltSuffix;
+exports.sameOcrSkeleton = sameOcrSkeleton;
 exports.ocrNormalize = ocrNormalize;
 exports.normalizeNonLatin = normalizeNonLatin;
 exports.levenshtein = levenshtein;
@@ -224,6 +225,43 @@ function namesDifferByAltSuffix(a, b) {
     return shorter.length >= 3
         && longer.startsWith(shorter)
         && ALT_SUFFIX.test(longer.slice(shorter.length));
+}
+/**
+ * True when two readings differ only by characters this OCR confuses.
+ *
+ * Distinguishes the two reasons two readings can resolve to the same member:
+ *
+ *   same player, read twice   "mikl" / "mikI"   — capital-I for lowercase-l
+ *   two different players     "Bain" / "Fain"   — B and F look nothing alike
+ *
+ * Both are one edit apart, so distance can't tell them apart, and the caller's
+ * decision hinges on it: a different player must become a new member (or their
+ * reading is lost), while the same player read twice must NOT (or every capture
+ * mints a duplicate). Production produced exactly that — "mikI" was created as a
+ * member alongside "mikl".
+ *
+ * Collapses the confusable classes onto one representative each. Deliberately
+ * separate from ocrNormalize below, which maps 1→l but has no i↔l rule and is
+ * shared with chest-name matching — this needs the letter pair and nothing else
+ * needs it.
+ */
+function sameOcrSkeleton(a, b) {
+    // The skeleton throws digits away, which is right for the ones that are letter
+    // lookalikes and wrong for the rest: it collapsed "FELI" and "FELI 2" onto "fell"
+    // and reported one player read twice, so the second member was dropped from every
+    // capture. Identity digits are settled first, on the unskeletonised names.
+    if (namesDifferByAltSuffix(a, b))
+        return false;
+    const skeleton = (s) => s
+        .toLowerCase()
+        .replace(/[il1|!]/g, 'l') // capital-I, lowercase-l, one, pipe, bang
+        .replace(/[o0]/g, 'o')
+        .replace(/[s5]/g, 's')
+        .replace(/[b8]/g, 'b')
+        .replace(/[g9]/g, 'g')
+        .replace(/[^a-z]/g, '');
+    const sa = skeleton(a);
+    return sa.length > 0 && sa === skeleton(b);
 }
 function ocrNormalize(s) {
     return foldDiacritics(transliterateCyrillicHomoglyphs(s))
