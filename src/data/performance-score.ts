@@ -16,11 +16,18 @@ export interface PerformanceUnit {
   ratio: number;
   /** Goal reached, target reached, or (events) took part. */
   hit: boolean;
+  /**
+   * What the unit counts toward a hit share (goalHits): 1 for a hit, partial
+   * for a near miss. Absent = 1 for a hit, 0 otherwise.
+   */
+  credit?: number;
 }
 
 export interface SignalSummary {
   units: number;
   hits: number;
+  /** Units that missed but earned partial credit (near misses). */
+  near: number;
   /** Mean of the unit ratios (goalHits: the hit share). Null with no units. */
   value: number | null;
   /** Has enough units (config.minUnits) to count toward the score. */
@@ -46,18 +53,20 @@ export function median(values: number[]): number | null {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+const creditOf = (u: PerformanceUnit) => u.credit ?? (u.hit ? 1 : 0);
+
 function summarize(units: PerformanceUnit[], value: (u: PerformanceUnit[]) => number, minUnits: number): SignalSummary {
-  const hits = units.filter((u) => u.hit).length;
   return {
     units: units.length,
-    hits,
+    hits: units.filter((u) => u.hit).length,
+    near: units.filter((u) => !u.hit && creditOf(u) > 0).length,
     value: units.length ? value(units) : null,
     counted: units.length >= minUnits && units.length > 0,
   };
 }
 
 const meanRatio = (units: PerformanceUnit[]) => units.reduce((s, u) => s + u.ratio, 0) / units.length;
-const hitShare = (units: PerformanceUnit[]) => units.filter((u) => u.hit).length / units.length;
+const hitShare = (units: PerformanceUnit[]) => units.reduce((s, u) => s + creditOf(u), 0) / units.length;
 
 /**
  * Every signal for one member from their units. Weeks feed two signals: how

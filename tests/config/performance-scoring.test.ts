@@ -48,6 +48,14 @@ describe('performance scoring config', () => {
     expect(C.overThreshold).toBeLessThanOrEqual(C.ratioCap);
   });
 
+  it('gives a near miss less than a hit, and only for a real near miss', () => {
+    if (C.goalNearMiss === null) return;
+    expect(C.goalNearMiss.from).toBeGreaterThan(0);
+    expect(C.goalNearMiss.from).toBeLessThan(1);
+    expect(C.goalNearMiss.credit).toBeGreaterThan(0);
+    expect(C.goalNearMiss.credit).toBeLessThan(1);
+  });
+
   it('has distinct timeframes, a default among them, and sane coverage', () => {
     const keys = C.timeframes.map((t) => t.key);
     expect(new Set(keys).size).toBe(keys.length);

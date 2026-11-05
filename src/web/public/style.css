@@ -7329,6 +7329,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .perf-table .col-member { width: auto; }
 .perf-table .col-score { width: 104px; }
 .perf-table .col-signal { width: 124px; }
+/* Hits, near misses (◐) and the average: "11/25 ◐12 87%" on All time. */
+.perf-table .col-goal { width: 150px; }
 .perf-table .col-guards { width: 84px; }
 .perf-table .col-date { width: 120px; }
 .perf-table th.num, .perf-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -7338,6 +7340,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .perf-table tbody tr.perf-row.is-under { background-image: linear-gradient(var(--goal-row-low-bg), var(--goal-row-low-bg)); }
 .perf-cell { white-space: nowrap; }
 .perf-cell-sub { margin-left: 2px; font-size: 12px; color: var(--text-secondary); }
+.perf-cell-near { font-size: 12px; color: var(--accent-gold); }
 /* Below the signal's minimum: shown, but not part of the score yet. */
 .perf-cell.is-thin { color: var(--text-secondary); font-style: italic; }
 

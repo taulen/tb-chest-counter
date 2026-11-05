@@ -114,7 +114,7 @@ export interface PerformanceReport {
   };
   /** Finished runs counted per event, in config order. */
   events: Array<{ key: string; name: string; runs: number }>;
-  scoring: Pick<PerformanceConfig, 'weights' | 'minUnits' | 'ratioCap' | 'overThreshold' | 'underThreshold' | 'assumedGuardsLevel'>;
+  scoring: Pick<PerformanceConfig, 'weights' | 'minUnits' | 'ratioCap' | 'overThreshold' | 'underThreshold' | 'assumedGuardsLevel' | 'goalNearMiss'>;
   members: PerformanceMemberRow[];
   tooNew: PerformanceTooNewRow[];
 }
@@ -218,7 +218,13 @@ function weekUnits(
       const goal = input.weeklyGoal! * (config.weeklyGoalScaleByGuards[level] ?? 1);
       if (!(goal > 0)) return;
       const actual = points.get(m.id)?.[i] ?? 0;
-      units.push({ ratio: unitRatio(actual, goal, config.ratioCap), hit: actual >= goal });
+      const hit = actual >= goal;
+      const near = !hit && !!config.goalNearMiss && actual >= goal * config.goalNearMiss.from;
+      units.push({
+        ratio: unitRatio(actual, goal, config.ratioCap),
+        hit,
+        credit: hit ? 1 : near ? config.goalNearMiss!.credit : 0,
+      });
     });
     out.set(m.id, units);
   }
@@ -355,6 +361,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
       overThreshold: config.overThreshold,
       underThreshold: config.underThreshold,
       assumedGuardsLevel: config.assumedGuardsLevel,
+      goalNearMiss: config.goalNearMiss,
     },
     members: [],
     tooNew: [],

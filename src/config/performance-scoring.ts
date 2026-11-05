@@ -48,7 +48,8 @@ export interface PerformanceConfig {
    * clan with no weekly goal (or no Tin Man pastes) is scored on the rest.
    *
    *  - goalHits:   share of closed weeks the member reached the weekly points
-   *                goal (the Leaderboard's goal) — the consistency signal.
+   *                goal (the Leaderboard's goal) — the consistency signal. A
+   *                near miss earns partial credit (goalNearMiss).
    *  - goalPoints: their weekly points as a share of that goal, capped.
    *  - tinman:     Tin Man points per finished run against their guards tier's
    *                target (the Ancient planner targets pasted on Events → Ancients).
@@ -58,6 +59,14 @@ export interface PerformanceConfig {
   weights: Record<PerformanceSignal, number>;
   /** Fewest units a signal needs before it counts toward the score. */
   minUnits: Record<PerformanceSignal, number>;
+  /**
+   * Partial credit toward `goalHits` for a week that misses the goal but gets
+   * close: from `from` of the goal it counts as `credit` of a hit. 0.66 is the
+   * Leaderboard's amber "close to goal" band (GOAL_WARN_RATIO in
+   * lib/leaderboard-render.js), so a week members saw as amber counts as half.
+   * Null = met or not met only.
+   */
+  goalNearMiss: { from: number; credit: number } | null;
   /** A unit ratio is capped here before averaging (2 = at most 200% per unit). */
   ratioCap: number;
   /** Score at or above this → Overachiever. */
@@ -112,6 +121,7 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
     tinman: 1,
     events: 2,
   },
+  goalNearMiss: { from: 0.66, credit: 0.5 },
   ratioCap: 2,
   overThreshold: 1.2,
   underThreshold: 0.7,

@@ -14,7 +14,7 @@ Per-clan settings are planned but not built. `resolvePerformanceConfig(clanId)` 
 
 - **Units.** A unit is a closed clan week (which follows the clan's week start), a finished Tin Man run or a finished event run. A unit is in a timeframe when it **ended** inside it. It counts for a member only if they were in the clan for **all** of it, so a mid-week joiner is never held to that week and no pro-rating is needed.
 - **Signals.** Each unit is a ratio against its expectation, capped:
-  - `goalHits`: the share of weeks at or above the Leaderboard's weekly goal (`resolveWeeklyGoalPoints`). This is the "crypt goal".
+  - `goalHits`: the share of weeks at or above the Leaderboard's weekly goal (`resolveWeeklyGoalPoints`). This is the "crypt goal". A week that misses but reaches `goalNearMiss.from` (66%, the Leaderboard's amber band) earns `goalNearMiss.credit` (half) of a hit, shown as ◐ in the table.
   - `goalPoints`: weekly points as a share of the weekly goal.
   - `tinman`: the run total against the guards-tier target, using the member's level on the run's day from the estimate's level-ups. An unknown level counts as G7. A run with no targets pasted is measured against the median player.
   - `events`: points in each run against that run's median participant. Sitting a run out counts as 0.

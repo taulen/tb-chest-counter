@@ -31,17 +31,18 @@ function median(values) {
     const mid = Math.floor(s.length / 2);
     return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
+const creditOf = (u) => u.credit ?? (u.hit ? 1 : 0);
 function summarize(units, value, minUnits) {
-    const hits = units.filter((u) => u.hit).length;
     return {
         units: units.length,
-        hits,
+        hits: units.filter((u) => u.hit).length,
+        near: units.filter((u) => !u.hit && creditOf(u) > 0).length,
         value: units.length ? value(units) : null,
         counted: units.length >= minUnits && units.length > 0,
     };
 }
 const meanRatio = (units) => units.reduce((s, u) => s + u.ratio, 0) / units.length;
-const hitShare = (units) => units.filter((u) => u.hit).length / units.length;
+const hitShare = (units) => units.reduce((s, u) => s + creditOf(u), 0) / units.length;
 /**
  * Every signal for one member from their units. Weeks feed two signals: how
  * often the goal was reached (goalHits) and by how much (goalPoints).

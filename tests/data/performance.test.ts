@@ -83,6 +83,18 @@ describe('performance report', () => {
     expect(l.status).toBe('under');
   });
 
+  it('counts a week close to the goal as half a hit', async () => {
+    const close = member('Close', '2026-09-01T18:00:00Z');
+    chest(close, '2026-09-02', 1);
+    // 95%, 95%, 50% (too far off), 100% of the 12,000 goal.
+    [11_400, 11_400, 6_000, 12_000].forEach((pts, i) => chest(close, WEEK_MONDAYS[i], pts));
+
+    const r = await report();
+    const g = r.members.find((m) => m.memberId === close)!.signals.goalHits;
+    expect(g).toMatchObject({ units: 4, hits: 1, near: 2 });
+    expect(g.value).toBeCloseTo((0.5 + 0.5 + 0 + 1) / 4);
+  });
+
   it('dates tenure from the earliest evidence, so a renamed player keeps their history', async () => {
     member('Anchor', '2026-09-01T18:00:00Z');
     // The surviving row of a rename: first_seen is the NEW nick's day, but the

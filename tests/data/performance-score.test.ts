@@ -51,6 +51,14 @@ describe('summarizeSignals + compositeScore', () => {
     expect(s.tinman).toMatchObject({ units: 0, value: null, counted: false });
   });
 
+  it('gives a near miss its partial credit toward the hit share', () => {
+    const near = (ratio: number): PerformanceUnit => ({ ratio, hit: false, credit: 0.5 });
+    const s = summarizeSignals({ weeks: [u(1), near(0.95), near(0.7), u(0.3, false)], tinman: [], events: [] }, config);
+    // (1 + 0.5 + 0.5 + 0) / 4
+    expect(s.goalHits).toMatchObject({ units: 4, hits: 1, near: 2, value: 0.5 });
+    expect(s.goalPoints.value).toBeCloseTo((1 + 0.95 + 0.7 + 0.3) / 4);
+  });
+
   it('re-normalises the weights over the signals a member has', () => {
     const s = summarizeSignals({ weeks: [u(1), u(1)], tinman: [], events: [] }, config);
     // Only the two weekly signals count: (0.3 × 1 + 0.2 × 1) / 0.5.

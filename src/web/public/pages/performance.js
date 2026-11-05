@@ -287,8 +287,17 @@ function goalCellHtml(m, r) {
   const p = m.signals.goalPoints;
   if (!r.weeklyGoal) return `<span class="perf-dim" title="${esc(t('No weekly points goal is set'))}">—</span>`;
   if (!h.units) return `<span class="perf-dim" title="${esc(t('No whole week in the clan in this timeframe'))}">—</span>`;
-  const title = tn(h.units, 'Reached the weekly goal in {hits} of {n} week; {pct} of the goal on average', 'Reached the weekly goal in {hits} of {n} weeks; {pct} of the goal on average', { hits: h.hits, n: h.units, pct: pct(p.value) }) + thinNote(h);
-  return `<span class="perf-cell${h.counted ? '' : ' is-thin'}" title="${esc(title)}">${h.hits}/${h.units} <span class="perf-cell-sub">${pct(p.value)}</span></span>`;
+  let title = tn(h.units, 'Reached the weekly goal in {hits} of {n} week; {pct} of the goal on average', 'Reached the weekly goal in {hits} of {n} weeks; {pct} of the goal on average', { hits: h.hits, n: h.units, pct: pct(p.value) });
+  if (h.near) {
+    title += ` · ${tn(h.near, '{n} more week came close to it and counts as part of a hit', '{n} more weeks came close to it and count as part of a hit', { n: h.near })}`;
+  }
+  title += thinNote(h);
+  // Near misses ride beside the hits with the Leaderboard's "close to goal"
+  // glyph, so "0/4" never hides four weeks at 95%.
+  const near = h.near
+    ? ` <span class="perf-cell-near"><span aria-hidden="true">◐</span><span class="visually-hidden">${t('close to goal')}:</span> ${h.near}</span>`
+    : '';
+  return `<span class="perf-cell${h.counted ? '' : ' is-thin'}" title="${esc(title)}">${h.hits}/${h.units}${near} <span class="perf-cell-sub">${pct(p.value)}</span></span>`;
 }
 
 function tinmanCellHtml(m) {
@@ -393,7 +402,7 @@ function tableCardHtml(r) {
     <div class="card-body">
       <table class="table-responsive perf-table"><colgroup>
         <col class="col-rank"><col class="col-member"><col class="col-score">
-        <col class="col-signal"><col class="col-signal"><col class="col-signal">
+        <col class="col-goal"><col class="col-signal"><col class="col-signal">
         <col class="col-guards"><col class="col-date">
       </colgroup><thead><tr>
         ${th('rank', t('Rank'))}${th('name', t('Member'))}${th('score', t('Score'), 'num')}
@@ -421,7 +430,8 @@ function howCardHtml(r) {
     <summary class="card-header"><h2>${t('How the score works')}</h2></summary>
     <div class="card-body card-body-padded perf-how">
       <ul>
-        ${item('goalHits', t('the share of closed weeks at or above the weekly points goal ({goal} points, the Leaderboard goal).', { goal }))}
+        ${item('goalHits', t('the share of closed weeks at or above the weekly points goal ({goal} points, the Leaderboard goal).', { goal })
+          + (s.goalNearMiss ? ` ${t('A week that misses it but reaches {near} of it (◐, close to goal) counts as {credit} of a hit.', { near: pct(s.goalNearMiss.from), credit: pct(s.goalNearMiss.credit) })}` : ''))}
         ${item('goalPoints', t('points each week as a share of that goal.'))}
         ${item('tinman', t('points in each finished {tinman} run against the target for their guards level, from the targets pasted on Events → Ancients. A run with no targets is measured against the median player.', { tinman: esc(tGame('Tin Man')) }))}
         ${item('events', t('points in each finished run of {events} against the median participant. A run sat out counts as 0.', { events }))}

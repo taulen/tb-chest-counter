@@ -153,7 +153,13 @@ function weekUnits(input, config, weeks, members, guards) {
             if (!(goal > 0))
                 return;
             const actual = points.get(m.id)?.[i] ?? 0;
-            units.push({ ratio: (0, performance_score_js_1.unitRatio)(actual, goal, config.ratioCap), hit: actual >= goal });
+            const hit = actual >= goal;
+            const near = !hit && !!config.goalNearMiss && actual >= goal * config.goalNearMiss.from;
+            units.push({
+                ratio: (0, performance_score_js_1.unitRatio)(actual, goal, config.ratioCap),
+                hit,
+                credit: hit ? 1 : near ? config.goalNearMiss.credit : 0,
+            });
         });
         out.set(m.id, units);
     }
@@ -270,6 +276,7 @@ async function buildReport(input, nowMs) {
             overThreshold: config.overThreshold,
             underThreshold: config.underThreshold,
             assumedGuardsLevel: config.assumedGuardsLevel,
+            goalNearMiss: config.goalNearMiss,
         },
         members: [],
         tooNew: [],
