@@ -543,10 +543,13 @@ function memberEventRunsCardHtml(events) {
       <td data-label="${t('Recent runs')}" title="${tn(played, 'Chests in {n} of the last {runs} runs', 'Chests in {n} of the last {runs} runs', { runs: e.runs.length })}">${eventRunsSparkHtml(e)}</td>
     </tr>`;
   }).join('');
+  // A label and a row of quiet chips. This was a sentence of bare links, which
+  // got the browser's default blue underline and read as a broken paragraph
+  // once the catalog grew past a few events.
   const idleHtml = idle.length
-    ? `<p class="muted-copy member-events-idle">${t('No chests in the recent runs of {events}.', {
-      events: idle.map((e) => `<a href="${eventRunHash(e.key)}">${esc(tGame(e.name))}</a>`).join(', '),
-    })}</p>`
+    ? `<div class="member-events-idle"><span class="member-events-idle-label">${t('No chests in recent runs')}</span>${
+      idle.map((e) => `<a class="member-events-idle-chip" href="${eventRunHash(e.key)}">${esc(tGame(e.name))}</a>`).join('')
+    }</div>`
     : '';
   return `
     <div class="card">

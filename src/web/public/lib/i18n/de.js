@@ -1196,7 +1196,7 @@ export const ui = {
   "Latest run": "Letzter Durchlauf",
   "Recent runs": "Letzte Durchläufe",
   "Chests in {n} of the last {runs} runs": { one: "Truhen in {n} der letzten {runs} Durchläufe", other: "Truhen in {n} der letzten {runs} Durchläufe" },
-  "No chests in the recent runs of {events}.": "Keine Truhen in den letzten Durchläufen von {events}.",
+  "No chests in recent runs": "Keine Truhen in den letzten Durchläufen",
   "Event runs": "Event-Durchläufe",
   "Latest run, ranked in the clan · bars are the last few runs": "Letzter Durchlauf, Rang im Clan · Balken zeigen die letzten Durchläufe",
   "Admin entry": "Admin-Eintrag",

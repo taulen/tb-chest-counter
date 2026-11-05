@@ -1196,7 +1196,7 @@ export const ui = {
   "Latest run": "Последнее проведение",
   "Recent runs": "Недавние проведения",
   "Chests in {n} of the last {runs} runs": { one: "Сундуки в {n} из последних {runs} проведений", few: "Сундуки в {n} из последних {runs} проведений", many: "Сундуки в {n} из последних {runs} проведений" },
-  "No chests in the recent runs of {events}.": "Нет сундуков в недавних проведениях: {events}.",
+  "No chests in recent runs": "Нет сундуков в недавних проведениях",
   "Event runs": "Проведения событий",
   "Latest run, ranked in the clan · bars are the last few runs": "Последнее проведение, место в клане · столбики — последние проведения",
   "Admin entry": "Запись админа",

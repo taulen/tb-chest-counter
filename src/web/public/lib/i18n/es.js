@@ -1196,7 +1196,7 @@ export const ui = {
   "Latest run": "Última edición",
   "Recent runs": "Ediciones recientes",
   "Chests in {n} of the last {runs} runs": { one: "Cofres en {n} de las últimas {runs} ediciones", other: "Cofres en {n} de las últimas {runs} ediciones" },
-  "No chests in the recent runs of {events}.": "Sin cofres en las ediciones recientes de {events}.",
+  "No chests in recent runs": "Sin cofres en las ediciones recientes",
   "Event runs": "Ediciones de eventos",
   "Latest run, ranked in the clan · bars are the last few runs": "Última edición, puesto en el clan · las barras son las últimas ediciones",
   "Admin entry": "Entrada de admin",

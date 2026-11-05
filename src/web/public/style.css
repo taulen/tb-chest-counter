@@ -1828,7 +1828,27 @@ th.sortable:hover {
   height: 100%;
   border-bottom: 2px dotted var(--border);
 }
-.member-events-idle { margin: 12px 16px 14px; }
+.member-events-idle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 16px 14px;
+  font-size: 12.5px;
+}
+.member-events-idle-label { color: var(--text-secondary); margin-right: 4px; }
+.member-events-idle-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--transition), border-color var(--transition);
+}
+.member-events-idle-chip:hover,
+.member-events-idle-chip:focus-visible { color: var(--text-primary); border-color: var(--accent-gold-border); }
 
 .member-ocr-table .col-ocr { width: auto; }
 .member-ocr-table .col-session { width: 90px; }
