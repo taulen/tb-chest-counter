@@ -221,7 +221,9 @@ function eventTabsHtml(activeKey) {
 function eventScheduleTag(e) {
   if (e.endsAt) return `<span class="event-tab-next">${t('Resets in {time}', { time: esc(timeLeftUntil(e.endsAt)) })}</span>`;
   if (e.live) return `<span class="event-tab-next is-live">${t('Live now')}</span>`;
-  if (!e.nextFrom || !e.nextLabel) return '';
+  // No schedule (Citadels, Heroics) still gets the line, empty: a tab without
+  // it centred its one line and sat its name lower than every neighbour's.
+  if (!e.nextFrom || !e.nextLabel) return '<span class="event-tab-next" aria-hidden="true">&nbsp;</span>';
   return `<span class="event-tab-next">${esc(e.nextLabel)} · ${esc(relativeUntil(e.nextFrom))}</span>`;
 }
 

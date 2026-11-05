@@ -4723,8 +4723,11 @@ details > table {
 
 /* Events sub-tabs carry a small "next occurrence" schedule line, so each tab
    is a two-line stack (name + muted schedule). Scoped to .events-tabs so the
-   Resources sub-tabs stay single-line. Wraps on narrow screens. */
-.events-tabs { flex-wrap: wrap; }
+   Resources sub-tabs stay single-line. Wraps on narrow screens, and every row
+   is centred: twelve events don't fit one row, and a left-aligned second row
+   left a ragged gap on the right. Full-width flex (not inline-flex) so a set
+   that does fit one row is centred too. Phones get the grid further down. */
+.events-tabs { display: flex; flex-wrap: wrap; justify-content: center; }
 .events-tabs .resources-tab {
   display: inline-flex;
   flex-direction: column;
@@ -5018,7 +5021,10 @@ details > table {
   }
   .events-tabs .resources-tab {
     align-items: center;
-    justify-content: center;
+    /* Top, not centre: a row's cards stretch to its tallest, and a name that
+       wraps (de "Streben nach Erfahrung") pushed its centred neighbour's name
+       down. Anchored to the top, every name in a row starts level. */
+    justify-content: flex-start;
     text-align: center;
     padding: 10px 8px;
     min-height: 52px;
