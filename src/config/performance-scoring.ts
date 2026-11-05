@@ -99,7 +99,8 @@ export interface PerformanceConfig {
   /**
    * Events (EVENT_CATALOG keys) whose runs count toward `events`. Left out on
    * purpose: Triumphal (purchases, not play), Citadels and Heroics (always on,
-   * already inside the weekly points).
+   * already inside the weekly points), and Runics (dropped 2026-11-05 at the
+   * clan's request).
    */
   participationEvents: string[];
   /** Guards level assumed when a member's is unknown — the Tin Man table's G7. */
@@ -151,7 +152,10 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
     { key: 'all', days: null, minCoverage: 0, minUnits: { tinman: 8 } },
   ],
   defaultTimeframe: 'month',
-  participationEvents: ['ancients', 'ragnarok', 'olympus', 'dark-omens', 'runics'],
+  participationEvents: [
+    'ancients', 'ragnarok', 'olympus', 'dark-omens',
+    'doomsday', 'arachnes-swarm', 'hell-forge', 'sands-of-eternity',
+  ],
   assumedGuardsLevel: 7,
   tinmanMedianFallback: false,
   weeklyGoalScaleByGuards: {},

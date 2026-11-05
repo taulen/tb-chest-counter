@@ -48,6 +48,8 @@ function seedHealthy(db: Database): { chestId: number; sourceId: number } {
     'Briareus Chest', 'Minor Omen Chest', 'Major Omen Chest', 'Epic Omen Chest',
     'Arcane Chest', 'Spoils of Dread Chest', 'Dark Omens chest', 'Dark Omens ranking chest',
     'Union Chest', 'Elven Citadel Chest', 'Cursed Citadel Chest', 'Runic Chest',
+    'Epic Monster Chest', 'Arachne Chest', "Hell's Blacksmith's chest",
+    'Ascendant Ashen Chest', 'Legendary Ashen Chest',
   ];
   for (const n of names) {
     db.prepare('INSERT OR IGNORE INTO chests (name, chest_type) VALUES (?, ?)').run(n, 'common');
@@ -60,6 +62,8 @@ function seedHealthy(db: Database): { chestId: number; sourceId: number } {
   // keeping its rule alive — the lowercase "heroic" is the game's own casing.
   db.prepare('INSERT INTO chest_sources (source) VALUES (?)').run('Lvl 35-39 Vault of the Ancients');
   db.prepare('INSERT INTO chest_sources (source) VALUES (?)').run('Level 16 heroic Monster');
+  // Doomsday's generic "Epic Monster Chest" is pinned to this squad.
+  db.prepare('INSERT INTO chest_sources (source) VALUES (?)').run('Epic Undead squad');
   db.prepare('INSERT INTO chest_sources (source) VALUES (?)').run('Jörmungandr Shop');
   const sourceId = (db.prepare('SELECT id FROM chest_sources WHERE source = ?')
     .get('Jörmungandr Shop') as { id: number }).id;

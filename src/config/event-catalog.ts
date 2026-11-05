@@ -168,6 +168,13 @@ export interface EventDefinition {
    * they keep the fixed Weekly/Monthly selector.
    */
   calendarNames?: string[];
+  /**
+   * The event has no real schedule: only the runs the feed lists exist, and
+   * nothing is reconstructed before them. Without it, two equal gaps in the
+   * feed would "prove" a cadence, and backfilledGroups (event-calendar.ts)
+   * would invent empty runs on it back to the event's first chest.
+   */
+  irregular?: boolean;
   rules: EventMatchRule[];
 }
 
@@ -379,6 +386,67 @@ export const EVENT_CATALOG: EventDefinition[] = [
     // occurrence to select and no "By level" card on top of the buckets.
     showLevelCard: false,
     rules: [{ sourceContains: 'heroic monster', label: 'Heroic' }],
+  },
+  // ── One- and two-day epic-squad events ─────────────────────────────────
+  // Each has a chest that only its epic squads drop, identified from the
+  // production data against the feed's run dates (2026-11-05): every record of
+  // the chest falls on the event's game days, on the event's own cadence.
+  {
+    key: 'doomsday',
+    name: 'Doomsday',
+    order: 9,
+    description: 'Doomsday — Epic Monster Chests from Epic Undead squads.',
+    columnMode: 'chest',
+    showLevelCard: false,
+    // One day, every 6 days (feed: 2026-10-08, 10-14, … 11-01).
+    calendarNames: ['Doomsday'],
+    rules: [
+      // "Epic Monster Chest" is a generic name, so the rule is pinned to the
+      // squad that drops it on Doomsday. Every Epic Undead squad record in the
+      // data sits on the 6-day Doomsday cadence (2026-09-02 … 11-01).
+      { chestName: 'Epic Monster Chest', sourceContains: 'epic undead squad', label: 'Epic Undead' },
+    ],
+  },
+  {
+    key: 'arachnes-swarm',
+    name: "Arachne's Swarm",
+    order: 10,
+    description: "Arachne's Swarm — Arachne Chests from its Epic squads.",
+    columnMode: 'chest',
+    showLevelCard: false,
+    // One day, every 6 days, the day after Doomsday.
+    calendarNames: ["Arachne's Swarm"],
+    rules: [{ chestName: 'Arachne Chest', label: 'Arachne' }],
+  },
+  {
+    key: 'hell-forge',
+    name: 'Hell Forge',
+    order: 11,
+    description: "Hell Forge — Hell's Blacksmith's chests from Epic Inferno squads.",
+    columnMode: 'chest',
+    showLevelCard: false,
+    // Two days ("Day 1/2", "Day 2/2"), every 24 days. The Epic Inferno squad
+    // also drops Fire Hydra Chests, but those come on other days too, so only
+    // the Blacksmith's chest marks the event.
+    calendarNames: ['Hell Forge'],
+    rules: [{ chestName: "Hell's Blacksmith's chest", label: "Hell's Blacksmith" }],
+  },
+  {
+    key: 'sands-of-eternity',
+    name: 'Sands of Eternity',
+    order: 12,
+    description: 'Sands of Eternity — Ascendant and Legendary Ashen Chests from Epic Ashen squads.',
+    columnMode: 'chest',
+    showLevelCard: false,
+    // One day, on no real schedule. In the feed since 2026-11-03 (then 11-09);
+    // the Epic Ashen Squad ran on irregular days before that (2026-04-30,
+    // 05-12, 08-13, 08-17, 08-29, 09-05), which the feed never listed.
+    calendarNames: ['Sands of Eternity'],
+    irregular: true,
+    rules: [
+      { chestName: 'Ascendant Ashen Chest', label: 'Ascendant Ashen' },
+      { chestName: 'Legendary Ashen Chest', label: 'Legendary Ashen' },
+    ],
   },
 ];
 

@@ -449,6 +449,9 @@ function backfilledGroups(groups, eventKey, clanId) {
     const feed = groups.map((g) => ({ start: g.start, end: g.end, estimated: false }));
     if (clanId == null || !groups.length)
         return feed;
+    // No schedule to project: a cadence "proven" by two equal gaps would be luck.
+    if ((0, event_catalog_js_1.getEventDef)(eventKey)?.irregular)
+        return feed;
     const period = inferPeriodMs(groups);
     if (period == null)
         return feed;

@@ -55,6 +55,11 @@ const ICS = [
   V('do1', '👹 Dark Omens', '20260620T170000Z', '20260621T170000Z'),
   V('do2', '👹 Dark Omens', '20260626T170000Z', '20260627T170000Z'),
   V('do3', '👹 Dark Omens', '20260711T170000Z', '20260712T170000Z'),
+  // Sands of Eternity, flagged `irregular` in the catalog: three runs 6 days
+  // apart would prove a period for any other event.
+  V('se1', '🏜️ Sands of Eternity', '20260705T170000Z', '20260706T170000Z'),
+  V('se2', '🏜️ Sands of Eternity', '20260711T170000Z', '20260712T170000Z'),
+  V('se3', '🏜️ Sands of Eternity', '20260717T170000Z', '20260718T170000Z'),
   'END:VCALENDAR',
 ].join('\r\n');
 
@@ -119,6 +124,19 @@ describe('getEventOccurrences — runs older than the feed window', () => {
       '2026-07-11T17:00:00.000Z',
       '2026-06-26T17:00:00.000Z',
       '2026-06-20T17:00:00.000Z',
+    ]);
+    expect(occ.every((o) => !o.estimated)).toBe(true);
+  });
+
+  it('reconstructs nothing for an event the catalog marks irregular', async () => {
+    // Equal gaps there are luck, not a schedule: projecting them back would
+    // invent empty runs every 6 days to the event's first chest.
+    vi.mocked(getEventDataStart).mockReturnValue('2026-01-01T00:00:00.000Z');
+    const occ = await getEventOccurrences('sands-of-eternity', 1);
+    expect(occ.map((o) => o.from)).toEqual([
+      '2026-07-17T17:00:00.000Z',
+      '2026-07-11T17:00:00.000Z',
+      '2026-07-05T17:00:00.000Z',
     ]);
     expect(occ.every((o) => !o.estimated)).toBe(true);
   });

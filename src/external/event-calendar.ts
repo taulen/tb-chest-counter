@@ -531,6 +531,8 @@ function backfilledGroups(
 ): Span[] {
   const feed: Span[] = groups.map((g) => ({ start: g.start, end: g.end, estimated: false }));
   if (clanId == null || !groups.length) return feed;
+  // No schedule to project: a cadence "proven" by two equal gaps would be luck.
+  if (getEventDef(eventKey)?.irregular) return feed;
   const period = inferPeriodMs(groups);
   if (period == null) return feed;
   const floorMs = dataFloorMs(eventKey, clanId);

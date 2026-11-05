@@ -2477,6 +2477,19 @@ export const ui = {
   "Runic": "Runic",
   "Heroics": "Heldenhafte Monster",
   "Heroic Monster kills, grouped by monster level tier (16-45).": "Kills heldenhafter Monster, gruppiert nach Monster-Level-Stufe (16-45).",
+  "Doomsday": "Doomsday",
+  "Doomsday — Epic Monster Chests from Epic Undead squads.": "Doomsday — Epic Monster Chests aus Epic-Undead-Trupps.",
+  "Epic Undead": "Epic Undead",
+  "Arachne's Swarm": "Arachne's Swarm",
+  "Arachne's Swarm — Arachne Chests from its Epic squads.": "Arachne's Swarm — Arachne Chests aus seinen epischen Trupps.",
+  "Arachne": "Arachne",
+  "Hell Forge": "Hell Forge",
+  "Hell Forge — Hell's Blacksmith's chests from Epic Inferno squads.": "Hell Forge — Hell's Blacksmith's chests aus Epic-Inferno-Trupps.",
+  "Hell's Blacksmith": "Hell's Blacksmith",
+  "Sands of Eternity": "Sands of Eternity",
+  "Sands of Eternity — Ascendant and Legendary Ashen Chests from Epic Ashen squads.": "Sands of Eternity — Ascendant und Legendary Ashen Chests aus Epic-Ashen-Trupps.",
+  "Ascendant Ashen": "Ascendant Ashen",
+  "Legendary Ashen": "Legendary Ashen",
 };
 
 export const game = {

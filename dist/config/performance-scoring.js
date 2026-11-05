@@ -60,7 +60,10 @@ exports.DEFAULT_PERFORMANCE_CONFIG = {
         { key: 'all', days: null, minCoverage: 0, minUnits: { tinman: 8 } },
     ],
     defaultTimeframe: 'month',
-    participationEvents: ['ancients', 'ragnarok', 'olympus', 'dark-omens', 'runics'],
+    participationEvents: [
+        'ancients', 'ragnarok', 'olympus', 'dark-omens',
+        'doomsday', 'arachnes-swarm', 'hell-forge', 'sands-of-eternity',
+    ],
     assumedGuardsLevel: 7,
     tinmanMedianFallback: false,
     weeklyGoalScaleByGuards: {},
