@@ -145,7 +145,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'triumphal',
         name: 'Triumphal',
-        order: 5,
+        order: 12,
         description: 'Union Chest — Gold Pass rewards and store purchases, in rolling 30-day cycles.',
         columnMode: 'chest',
         showLevelCard: false,
@@ -178,7 +178,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'runics',
         name: 'Runics',
-        order: 11,
+        order: 9,
         description: 'Runic Chests gathered by members raiding runic squads, broken down by level.',
         // One chest ("Runic Chest") that drops at several raid tiers. Level mode
         // gives each tier its own per-player column (Lvl 20-24/25-29/…), and the
@@ -197,7 +197,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'heroics',
         name: 'Heroics',
-        order: 12,
+        order: 11,
         description: 'Heroic Monster kills, grouped by monster level tier (16-45).',
         // Matched on the SOURCE only, with no chest name at all — and that is the
         // whole point of the rule. The game drops five different chests off heroic
@@ -242,7 +242,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'doomsday',
         name: 'Doomsday',
-        order: 6,
+        order: 5,
         description: 'Doomsday — Epic Monster Chests from Epic Undead squads.',
         columnMode: 'chest',
         showLevelCard: false,
@@ -258,7 +258,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'arachnes-swarm',
         name: "Arachne's Swarm",
-        order: 7,
+        order: 6,
         description: "Arachne's Swarm — Arachne Chests from its Epic squads.",
         columnMode: 'chest',
         showLevelCard: false,
@@ -269,7 +269,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'hell-forge',
         name: 'Hell Forge',
-        order: 8,
+        order: 7,
         description: "Hell Forge — Hell's Blacksmith's chests from Epic Inferno squads.",
         columnMode: 'chest',
         showLevelCard: false,
@@ -282,7 +282,7 @@ exports.EVENT_CATALOG = [
     {
         key: 'sands-of-eternity',
         name: 'Sands of Eternity',
-        order: 9,
+        order: 8,
         description: 'Sands of Eternity — Ascendant and Legendary Ashen Chests from Epic Ashen squads.',
         columnMode: 'chest',
         showLevelCard: false,
