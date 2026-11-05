@@ -40,7 +40,7 @@ exports.DEFAULT_PERFORMANCE_CONFIG = {
     minUnits: {
         goalHits: 2,
         goalPoints: 2,
-        tinman: 1,
+        tinman: 2,
         events: 2,
     },
     goalNearMiss: { from: 0.66, credit: 0.5 },
@@ -50,16 +50,19 @@ exports.DEFAULT_PERFORMANCE_CONFIG = {
     minPresentDays: 21,
     minPresentDaysMaxShare: 0.75,
     timeframes: [
-        { key: 'month', days: 30, minCoverage: 0.75 },
-        { key: 'quarter', days: 91, minCoverage: 0.75 },
-        { key: 'half', days: 182, minCoverage: 0.75 },
-        { key: 'year', days: 365, minCoverage: 0.75 },
-        { key: 'all', days: null, minCoverage: 0 },
+        // Tin Man runs with targets: Ancients runs every 6 days (~5 a month), and
+        // the minimum stays well under that so a few unpasted runs don't knock
+        // Tin Man out of a long timeframe.
+        { key: 'month', days: 30, minCoverage: 0.75, minUnits: { tinman: 2 } },
+        { key: 'quarter', days: 91, minCoverage: 0.75, minUnits: { tinman: 4 } },
+        { key: 'half', days: 182, minCoverage: 0.75, minUnits: { tinman: 6 } },
+        { key: 'year', days: 365, minCoverage: 0.75, minUnits: { tinman: 8 } },
+        { key: 'all', days: null, minCoverage: 0, minUnits: { tinman: 8 } },
     ],
     defaultTimeframe: 'month',
     participationEvents: ['ancients', 'ragnarok', 'olympus', 'dark-omens', 'runics'],
     assumedGuardsLevel: 7,
-    tinmanMedianFallback: true,
+    tinmanMedianFallback: false,
     weeklyGoalScaleByGuards: {},
 };
 /**

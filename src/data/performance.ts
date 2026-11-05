@@ -114,7 +114,9 @@ export interface PerformanceReport {
   };
   /** Finished runs counted per event, in config order. */
   events: Array<{ key: string; name: string; runs: number }>;
-  scoring: Pick<PerformanceConfig, 'weights' | 'minUnits' | 'ratioCap' | 'overThreshold' | 'underThreshold' | 'assumedGuardsLevel' | 'goalNearMiss'>;
+  /** As used for THIS timeframe: `minUnits` already carries its overrides. */
+  scoring: Pick<PerformanceConfig, 'weights' | 'minUnits' | 'ratioCap' | 'overThreshold' | 'underThreshold'
+    | 'assumedGuardsLevel' | 'goalNearMiss' | 'tinmanMedianFallback'>;
   members: PerformanceMemberRow[];
   tooNew: PerformanceTooNewRow[];
 }
@@ -335,9 +337,11 @@ async function eventUnits(
 }
 
 async function buildReport(input: PerformanceInput, nowMs: number): Promise<PerformanceReport> {
-  const config = resolvePerformanceConfig(input.clanId);
-  const tf = config.timeframes.find((t) => t.key === input.timeframe)
-    ?? config.timeframes.find((t) => t.key === config.defaultTimeframe)!;
+  const clanConfig = resolvePerformanceConfig(input.clanId);
+  const tf = clanConfig.timeframes.find((t) => t.key === input.timeframe)
+    ?? clanConfig.timeframes.find((t) => t.key === clanConfig.defaultTimeframe)!;
+  // The timeframe's own minimums win: a year needs more Tin Man runs than a month.
+  const config: PerformanceConfig = { ...clanConfig, minUnits: { ...clanConfig.minUnits, ...tf.minUnits } };
   const today = gameDateFor(nowMs, input.rolloverUtcHour);
   const dataStart = getClanDataStartDay(input.clanId);
 
@@ -362,6 +366,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
       underThreshold: config.underThreshold,
       assumedGuardsLevel: config.assumedGuardsLevel,
       goalNearMiss: config.goalNearMiss,
+      tinmanMedianFallback: config.tinmanMedianFallback,
     },
     members: [],
     tooNew: [],

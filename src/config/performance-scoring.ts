@@ -39,6 +39,12 @@ export interface PerformanceTimeframe {
    * 12-month view of a clan tracked for 6 months doesn't exclude everyone.
    */
   minCoverage: number;
+  /**
+   * Per-signal minimums for this timeframe, over the config-wide `minUnits`. A
+   * longer window should see more of a signal before judging on it: 2 Tin Man
+   * runs say something about a month, not about a year (~60 runs).
+   */
+  minUnits?: Partial<Record<PerformanceSignal, number>>;
 }
 
 export interface PerformanceConfig {
@@ -57,7 +63,10 @@ export interface PerformanceConfig {
    *                participant in that run; a run sat out counts as 0.
    */
   weights: Record<PerformanceSignal, number>;
-  /** Fewest units a signal needs before it counts toward the score. */
+  /**
+   * Fewest units a signal needs before it counts toward the score. A timeframe
+   * can raise (or lower) these with its own `minUnits`.
+   */
   minUnits: Record<PerformanceSignal, number>;
   /**
    * Partial credit toward `goalHits` for a week that misses the goal but gets
@@ -98,6 +107,10 @@ export interface PerformanceConfig {
   /**
    * A Tin Man run with no targets pasted is measured against the median
    * scoring player instead, rather than dropped. False drops it.
+   *
+   * Off since 2026-11-05: Tin Man points are so skewed that the median is far
+   * below what the clans' targets ask (CWB: median ~200k against a 1.11M G7
+   * target), so a run without targets put a third of the clan at the 200% cap.
    */
   tinmanMedianFallback: boolean;
   /**
@@ -118,7 +131,7 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
   minUnits: {
     goalHits: 2,
     goalPoints: 2,
-    tinman: 1,
+    tinman: 2,
     events: 2,
   },
   goalNearMiss: { from: 0.66, credit: 0.5 },
@@ -128,16 +141,19 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
   minPresentDays: 21,
   minPresentDaysMaxShare: 0.75,
   timeframes: [
-    { key: 'month', days: 30, minCoverage: 0.75 },
-    { key: 'quarter', days: 91, minCoverage: 0.75 },
-    { key: 'half', days: 182, minCoverage: 0.75 },
-    { key: 'year', days: 365, minCoverage: 0.75 },
-    { key: 'all', days: null, minCoverage: 0 },
+    // Tin Man runs with targets: Ancients runs every 6 days (~5 a month), and
+    // the minimum stays well under that so a few unpasted runs don't knock
+    // Tin Man out of a long timeframe.
+    { key: 'month', days: 30, minCoverage: 0.75, minUnits: { tinman: 2 } },
+    { key: 'quarter', days: 91, minCoverage: 0.75, minUnits: { tinman: 4 } },
+    { key: 'half', days: 182, minCoverage: 0.75, minUnits: { tinman: 6 } },
+    { key: 'year', days: 365, minCoverage: 0.75, minUnits: { tinman: 8 } },
+    { key: 'all', days: null, minCoverage: 0, minUnits: { tinman: 8 } },
   ],
   defaultTimeframe: 'month',
   participationEvents: ['ancients', 'ragnarok', 'olympus', 'dark-omens', 'runics'],
   assumedGuardsLevel: 7,
-  tinmanMedianFallback: true,
+  tinmanMedianFallback: false,
   weeklyGoalScaleByGuards: {},
 };
 

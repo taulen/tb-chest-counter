@@ -251,9 +251,11 @@ async function eventUnits(input, config, today, windowFrom, dataStart, members) 
     return { units, perEvent };
 }
 async function buildReport(input, nowMs) {
-    const config = (0, performance_scoring_js_1.resolvePerformanceConfig)(input.clanId);
-    const tf = config.timeframes.find((t) => t.key === input.timeframe)
-        ?? config.timeframes.find((t) => t.key === config.defaultTimeframe);
+    const clanConfig = (0, performance_scoring_js_1.resolvePerformanceConfig)(input.clanId);
+    const tf = clanConfig.timeframes.find((t) => t.key === input.timeframe)
+        ?? clanConfig.timeframes.find((t) => t.key === clanConfig.defaultTimeframe);
+    // The timeframe's own minimums win: a year needs more Tin Man runs than a month.
+    const config = { ...clanConfig, minUnits: { ...clanConfig.minUnits, ...tf.minUnits } };
     const today = (0, game_day_js_1.gameDateFor)(nowMs, input.rolloverUtcHour);
     const dataStart = (0, chest_summary_repo_js_1.getClanDataStartDay)(input.clanId);
     const base = {
@@ -277,6 +279,7 @@ async function buildReport(input, nowMs) {
             underThreshold: config.underThreshold,
             assumedGuardsLevel: config.assumedGuardsLevel,
             goalNearMiss: config.goalNearMiss,
+            tinmanMedianFallback: config.tinmanMedianFallback,
         },
         members: [],
         tooNew: [],

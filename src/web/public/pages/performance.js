@@ -433,7 +433,13 @@ function howCardHtml(r) {
         ${item('goalHits', t('the share of closed weeks at or above the weekly points goal ({goal} points, the Leaderboard goal).', { goal })
           + (s.goalNearMiss ? ` ${t('A week that misses it but reaches {near} of it (◐, close to goal) counts as {credit} of a hit.', { near: pct(s.goalNearMiss.from), credit: pct(s.goalNearMiss.credit) })}` : ''))}
         ${item('goalPoints', t('points each week as a share of that goal.'))}
-        ${item('tinman', t('points in each finished {tinman} run against the target for their guards level, from the targets pasted on Events → Ancients. A run with no targets is measured against the median player.', { tinman: esc(tGame('Tin Man')) }))}
+        ${item('tinman', [
+          t('points in each finished {tinman} run against the target for their guards level, from the targets pasted on Events → Ancients.', { tinman: esc(tGame('Tin Man')) }),
+          s.tinmanMedianFallback
+            ? t('A run with no targets is measured against the median player.')
+            : t('A run with no targets pasted doesn’t count.'),
+          tn(s.minUnits.tinman, 'It counts toward the score once there is {n} run with targets in this timeframe.', 'It counts toward the score once there are {n} runs with targets in this timeframe.', { n: s.minUnits.tinman }),
+        ].join(' '))}
         ${item('events', t('points in each finished run of {events} against the median participant. A run sat out counts as 0.', { events }))}
       </ul>
       <p>${t('A week or run only counts if the member was in the clan for all of it, and one counts for at most {cap}, so a single huge week can’t hide empty ones.', { cap: pct(s.ratioCap) })}</p>

@@ -16,9 +16,9 @@ Per-clan settings are planned but not built. `resolvePerformanceConfig(clanId)` 
 - **Signals.** Each unit is a ratio against its expectation, capped:
   - `goalHits`: the share of weeks at or above the Leaderboard's weekly goal (`resolveWeeklyGoalPoints`). This is the "crypt goal". A week that misses but reaches `goalNearMiss.from` (66%, the Leaderboard's amber band) earns `goalNearMiss.credit` (half) of a hit, shown as ◐ in the table.
   - `goalPoints`: weekly points as a share of the weekly goal.
-  - `tinman`: the run total against the guards-tier target, using the member's level on the run's day from the estimate's level-ups. An unknown level counts as G7. A run with no targets pasted is measured against the median player.
+  - `tinman`: the run total against the guards-tier target, using the member's level on the run's day from the estimate's level-ups. An unknown level counts as G7. A run with no targets pasted doesn't count (`tinmanMedianFallback: false`). The median player is far below the clans' targets, about 200k against CWB's 1.11M G7 target, so measuring against it put a third of the clan at the 200% cap.
   - `events`: points in each run against that run's median participant. Sitting a run out counts as 0.
-- **Score.** The score is the weighted mean of the signals that have at least `minUnits`, with the weights re-normalised over those. If the clan has no goal or no Tin Man pastes, the score is built from the other signals.
+- **Score.** The score is the weighted mean of the signals that have at least `minUnits`, with the weights re-normalised over those. A timeframe can override `minUnits` per signal. Tin Man needs 2 runs with targets in a month, 4 in 3 months, 6 in 6 months and 8 in 12 months or all time. If the clan has no goal or no Tin Man pastes, the score is built from the other signals.
 
 ## Tenure
 

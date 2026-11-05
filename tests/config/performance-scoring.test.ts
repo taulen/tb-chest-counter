@@ -68,6 +68,10 @@ describe('performance scoring config', () => {
       }
       expect(t.minCoverage, t.key).toBeGreaterThanOrEqual(0);
       expect(t.minCoverage, t.key).toBeLessThanOrEqual(1);
+      for (const [signal, n] of Object.entries(t.minUnits ?? {})) {
+        expect(PERFORMANCE_SIGNALS as readonly string[], `${t.key}.minUnits`).toContain(signal);
+        expect(Number.isInteger(n) && n >= 1, `${t.key}.minUnits.${signal}`).toBe(true);
+      }
     }
     expect(C.minPresentDays).toBeGreaterThanOrEqual(0);
     expect(C.minPresentDaysMaxShare).toBeGreaterThan(0);

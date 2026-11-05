@@ -147,12 +147,32 @@ describe('performance report', () => {
        VALUES (?, '2026-10-29', '{"g7":4000,"g8":8000}', 'admin', '2026-10-29T20:00:00Z')`,
     ).run(CLAN);
 
+    // A run with no targets pasted doesn't count (no median fallback).
+    const untargeted = (db.prepare(
+      `INSERT INTO tinman_uploads (clan_id, event_key, tinman_date, summon, uploaded_by, uploaded_at)
+       VALUES (?, 'ancients', '2026-10-23', 1, 'admin', '2026-10-23T20:00:00Z') RETURNING id`,
+    ).get(CLAN) as { id: number }).id;
+    score.run(untargeted, CLAN, 1, 'Steady', steady, 9_000);
+
     const r = await report();
     expect(r.units).toMatchObject({ tinmanRuns: 1, tinmanRunsWithTargets: 1 });
     const by = (id: number) => r.members.find((m) => m.memberId === id)!.signals.tinman;
     expect(by(steady)).toMatchObject({ units: 1, hits: 1, value: 1.25 });
     expect(by(slacker).value).toBeCloseTo(0.025);
     expect(by(absent)).toMatchObject({ units: 1, hits: 0, value: 0 });
+    // One run is shown but doesn't count yet: a month needs two.
+    expect(r.scoring.minUnits.tinman).toBe(2);
+    expect(by(steady).counted).toBe(false);
+  });
+
+  it('asks a longer timeframe for more Tin Man runs', async () => {
+    member('Steady', '2026-09-01T18:00:00Z');
+    const quarter = await report('quarter');
+    const all = await report('all');
+    expect(quarter.scoring.minUnits.tinman).toBeGreaterThan(2);
+    expect(all.scoring.minUnits.tinman).toBeGreaterThanOrEqual(quarter.scoring.minUnits.tinman);
+    // The other signals keep the config-wide minimums.
+    expect(quarter.scoring.minUnits.goalHits).toBe(2);
   });
 });
 
