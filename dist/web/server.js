@@ -27,6 +27,7 @@ const guards_js_1 = require("./routes/guards.js");
 const tools_js_1 = require("./routes/tools.js");
 const tinman_js_1 = require("./routes/tinman.js");
 const member_levels_js_1 = require("./routes/member-levels.js");
+const performance_js_1 = require("./routes/performance.js");
 const auth_js_2 = require("./middleware/auth.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -491,6 +492,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // Player levels posted in chat (Admin → Levels from chat). Reads for any
     // member; preview and import are admin-only inside.
     app.use('/api/member-levels', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, member_levels_js_1.createMemberLevelsRouter)());
+    // Performance page: over- and underachievers. Admins only, enforced inside
+    // with requireAdmin (the active clan's role).
+    app.use('/api/performance', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, performance_js_1.createPerformanceRouter)());
     // The rest of assets/ (OCR models, reference crops) stays behind a session —
     // nothing a page loads lives there. resource-icons/ and calibration-examples/
     // are served publicly by the frontend asset router above.

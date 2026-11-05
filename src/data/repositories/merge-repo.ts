@@ -309,6 +309,15 @@ export function addMergeRule(
             'UPDATE member_level_reports SET member_id = ? WHERE clan_id = ? AND member_id = ?',
           ).run(toMember.id, clanId, fromMember.id);
 
+          // One player, so their time in the clan starts at the EARLIER of the
+          // two rows. A rename usually merges the old nick into the new one,
+          // whose own first_seen is the day the new name first showed up — keep
+          // it and the player reads as a newcomer (Performance page tenure).
+          db.prepare(`
+            UPDATE members SET first_seen = MIN(first_seen, (SELECT first_seen FROM members WHERE id = ?))
+            WHERE id = ?
+          `).run(fromMember.id, toMember.id);
+
           db.prepare('DELETE FROM members WHERE id = ?').run(fromMember.id);
         } else {
           // Destination doesn't exist yet — just rename the source.

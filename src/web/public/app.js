@@ -91,6 +91,7 @@ import {
   changeMemberResourcesPage,
 } from './pages/members.js';
 import { renderMight } from './pages/might.js';
+import { renderPerformance } from './pages/performance.js';
 import {
   renderAnalytics,
   viewChestByName,
@@ -236,10 +237,12 @@ async function checkAuth() {
     const navUsersEl = $('#navUsers');
     const navClansEl = $('#navClans');
     const navSystemEl = $('#navSystem');
+    const navPerformanceEl = $('#navPerformance');
     if (navAdminEl) navAdminEl.classList.add('is-hidden');
     if (navUsersEl) navUsersEl.classList.add('is-hidden');
     if (navClansEl) navClansEl.classList.add('is-hidden');
     if (navSystemEl) navSystemEl.classList.add('is-hidden');
+    if (navPerformanceEl) navPerformanceEl.classList.add('is-hidden');
 
     // Show/hide nav based on role.
     // - Admin tab: clan admin + superadmin (per-clan content management).
@@ -247,7 +250,9 @@ async function checkAuth() {
     // - Users tab: clan admin (own clan only, no superadmins shown) +
     //   superadmin (everyone).
     // - System tab: superadmin only (instance-wide settings).
+    // - Performance: clan admin + superadmin (it names underachievers).
     if (currentUser.role === 'admin' || currentUser.role === 'superadmin') {
+      if (navPerformanceEl) navPerformanceEl.classList.remove('is-hidden');
       if (navAdminEl) navAdminEl.classList.remove('is-hidden');
       if (navClansEl) navClansEl.classList.remove('is-hidden');
       if (navUsersEl) navUsersEl.classList.remove('is-hidden');
@@ -1003,6 +1008,7 @@ async function renderRoute(page, content) {
     case 'triumphal': await renderTriumphal(content); break;
     case 'members': await renderMembers(content); break;
     case 'might': await renderMight(content); break;
+    case 'performance': await renderPerformance(content); break;
     case 'sessions': await renderSessions(content); break;
     case 'external':
       await renderExternal(content, navigateTo);
@@ -1264,6 +1270,7 @@ const PAGE_SUBTITLES = {
   dashboard: t('The clan at a glance'),
   analytics: t('Trends, breakdowns and who carries the clan'),
   leaderboard: t('Points and chests, ranked'),
+  performance: t('Who beats their goals, and who falls short'),
   might: t('Power over time, member by member'),
   resources: t('Clan Capital donations'),
   events: t('Event runs and who took part'),

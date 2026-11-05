@@ -31,6 +31,9 @@ exports.getWindowDailySeries = getWindowDailySeries;
 exports.getMemberWindowComparison = getMemberWindowComparison;
 exports.getConcentration = getConcentration;
 exports.getMemberDailySeries = getMemberDailySeries;
+exports.getClanDataStartDay = getClanDataStartDay;
+exports.getMemberFirstChestDays = getMemberFirstChestDays;
+exports.getClanDailyEarnedPoints = getClanDailyEarnedPoints;
 exports.resetSummaryStateForTests = resetSummaryStateForTests;
 exports.verifyClanSummary = verifyClanSummary;
 const database_js_1 = require("../database.js");
@@ -62,6 +65,8 @@ function notifyChestDataChanged(clanId) {
     (0, ttl_cache_js_1.invalidate)(`analyticsWindow:${clanId}:`);
     // Per-run event rankings behind the profile's Events card (data/member-events.ts).
     (0, ttl_cache_js_1.invalidate)(`memberEvents:${clanId}:`);
+    // The Performance page's report, per timeframe (data/performance.ts).
+    (0, ttl_cache_js_1.invalidate)(`performance:${clanId}:`);
 }
 /**
  * Rebuild the clan's rollup rows from raw chest_records if stale. Cheap when
@@ -477,6 +482,34 @@ function getMemberDailySeries(clanId, memberId, fromDay, toDay) {
     WHERE clan_id = ? AND member_id = ? AND game_day >= ? AND game_day <= ?
     ORDER BY game_day
   `).all(clanId, memberId, fromDay, toDay);
+}
+/** The clan's first game day with any chest, or null for a clan with none. */
+function getClanDataStartDay(clanId) {
+    ensureFresh(clanId);
+    const row = (0, database_js_1.getDb)().prepare('SELECT MIN(game_day) AS d FROM chest_daily_summary WHERE clan_id = ?').get(clanId);
+    return row?.d ?? null;
+}
+/**
+ * memberId → the first game day they have a chest on. A player merge repoints
+ * the merged-away spelling's chests, so this reaches back past a rename where
+ * `members.first_seen` (the surviving row's own) does not.
+ */
+function getMemberFirstChestDays(clanId) {
+    ensureFresh(clanId);
+    const rows = (0, database_js_1.getDb)().prepare('SELECT member_id AS memberId, MIN(game_day) AS d FROM chest_daily_summary WHERE clan_id = ? GROUP BY member_id').all(clanId);
+    return new Map(rows.map((r) => [r.memberId, r.d]));
+}
+/**
+ * Every member's earned points per game day in [fromDay, toDay] — clan rewards
+ * left out, as on the Leaderboard. Days with no chests have no row.
+ */
+function getClanDailyEarnedPoints(clanId, fromDay, toDay) {
+    ensureFresh(clanId);
+    return (0, database_js_1.getDb)().prepare(`
+    SELECT member_id AS memberId, game_day AS day, earned_points AS points
+    FROM chest_daily_summary
+    WHERE clan_id = ? AND game_day >= ? AND game_day <= ?
+  `).all(clanId, fromDay, toDay);
 }
 /**
  * Test-only: clear the in-memory freshness counters so a fresh test database

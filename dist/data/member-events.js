@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.rankedRun = rankedRun;
 exports.getMemberEventsOverview = getMemberEventsOverview;
 /**
  * One member's event record, for the Events card on their profile: their
@@ -66,6 +67,10 @@ const ASSUMED_TIER = 'g7';
 const RUN_CACHE_TTL_MS = 10 * 60 * 1000;
 /** Dropped by notifyChestDataChanged (chest-summary-repo.ts) under this same literal. */
 const MEMBER_EVENTS_CACHE_PREFIX = 'memberEvents:';
+/**
+ * One event run ranked the Events page's way, cached per clan and run. Also
+ * read by the Performance page (data/performance.ts), so both share the cache.
+ */
 function rankedRun(key, clanId, from, to) {
     return (0, ttl_cache_js_1.cached)(`${MEMBER_EVENTS_CACHE_PREFIX}${clanId}:${key}:${from}:${to}`, RUN_CACHE_TTL_MS, () => {
         const players = [...(eventRepo.getEventBreakdown(key, clanId, from, to)?.players ?? [])];

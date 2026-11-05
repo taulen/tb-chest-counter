@@ -34,6 +34,7 @@ import { resolveNamesToMembers } from '../name-resolver.js';
 import { despace } from '../../vision/ocr-normalize.js';
 import { missingRanks, TARGET_TIERS, type TargetTier, type TinmanRow } from '../tinman-parse.js';
 import type { ClanMember } from '../../models/types.js';
+import { invalidate } from '../../utils/ttl-cache.js';
 
 export const TINMAN_MAX_SUMMONS = 8;
 
@@ -51,6 +52,14 @@ export const SCORE_EVENTS = {
 export type ScoreEventKey = keyof typeof SCORE_EVENTS;
 
 export type TinmanMatchKind = 'exact' | 'fuzzy' | 'manual' | 'unmatched' | 'rejected';
+
+/**
+ * Every write here changes the Performance page's Tin Man signal; its cached
+ * report (data/performance.ts) is keyed under this same literal.
+ */
+function dropPerformanceCache(clanId: number): void {
+  invalidate(`performance:${clanId}:`);
+}
 
 interface Resolved {
   member: ClanMember | null;
@@ -139,6 +148,7 @@ export function saveTinmanSummon(input: {
     return Boolean(old);
   });
   const replaced = tx() as boolean;
+  dropPerformanceCache(clanId);
 
   return {
     rows: rows.length,
@@ -162,6 +172,7 @@ export function deleteTinmanSummon(
     db.prepare('DELETE FROM tinman_scores WHERE upload_id = ?').run(row.id);
     db.prepare('DELETE FROM tinman_uploads WHERE id = ?').run(row.id);
   })();
+  dropPerformanceCache(clanId);
   return true;
 }
 
@@ -199,6 +210,7 @@ export function assignTinmanName(
       `).run(member.id, clanId, eventKey, date);
     }
   })();
+  dropPerformanceCache(clanId);
 
   if (member && nameKey(member.name) !== key && !member.aliases.some((a) => nameKey(a) === key)) {
     addAlias(member.id, rawName.trim(), clanId);
@@ -380,9 +392,12 @@ export function saveTinmanTargets(input: {
       tiers = excluded.tiers, kills = excluded.kills,
       saved_by = excluded.saved_by, saved_at = excluded.saved_at
   `).run(input.clanId, input.date, JSON.stringify(input.tiers), input.kills, input.savedBy, new Date().toISOString());
+  dropPerformanceCache(input.clanId);
 }
 
 export function deleteTinmanTargets(clanId: number, date: string): boolean {
-  return getDb().prepare('DELETE FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?')
+  const removed = getDb().prepare('DELETE FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?')
     .run(clanId, date).changes > 0;
+  dropPerformanceCache(clanId);
+  return removed;
 }

@@ -81,12 +81,16 @@ export interface MemberEventsOverview {
   events: MemberEventSummary[];
 }
 
-interface RankedRun {
+export interface RankedRun {
   byMember: Map<number, { rank: number; points: number; chests: number }>;
   participants: number;
 }
 
-function rankedRun(key: string, clanId: number, from: string, to: string): RankedRun {
+/**
+ * One event run ranked the Events page's way, cached per clan and run. Also
+ * read by the Performance page (data/performance.ts), so both share the cache.
+ */
+export function rankedRun(key: string, clanId: number, from: string, to: string): RankedRun {
   return cached(`${MEMBER_EVENTS_CACHE_PREFIX}${clanId}:${key}:${from}:${to}`, RUN_CACHE_TTL_MS, () => {
     const players = [...(eventRepo.getEventBreakdown(key, clanId, from, to)?.players ?? [])];
     players.sort((a, b) =>

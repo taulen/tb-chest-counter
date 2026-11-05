@@ -38,6 +38,8 @@ const CACHE_PREFIX = 'guards:';
 /** Drop the cached estimates — one clan, or every clan. */
 function invalidateGuardsCache(clanId) {
     (0, ttl_cache_js_1.invalidate)(clanId === undefined ? CACHE_PREFIX : `${CACHE_PREFIX}${clanId}:`);
+    // The Performance page sets Tin Man targets by guards level (data/performance.ts).
+    (0, ttl_cache_js_1.invalidate)(clanId === undefined ? 'performance:' : `performance:${clanId}:`);
 }
 // One warning per missing slug per process: a renamed resource type would
 // otherwise turn every member's level into a quiet "unknown".

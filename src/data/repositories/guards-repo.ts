@@ -43,6 +43,8 @@ const CACHE_PREFIX = 'guards:';
 /** Drop the cached estimates — one clan, or every clan. */
 export function invalidateGuardsCache(clanId?: number): void {
   invalidate(clanId === undefined ? CACHE_PREFIX : `${CACHE_PREFIX}${clanId}:`);
+  // The Performance page sets Tin Man targets by guards level (data/performance.ts).
+  invalidate(clanId === undefined ? 'performance:' : `performance:${clanId}:`);
 }
 
 export interface GuardsReport {

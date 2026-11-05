@@ -45,6 +45,7 @@ const member_repo_js_1 = require("./member-repo.js");
 const name_resolver_js_1 = require("../name-resolver.js");
 const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
 const tinman_parse_js_1 = require("../tinman-parse.js");
+const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 exports.TINMAN_MAX_SUMMONS = 8;
 /**
  * Events whose clan ranking is pasted in round by round. Ancients is the
@@ -57,6 +58,13 @@ exports.SCORE_EVENTS = {
     ancients: { maxRounds: exports.TINMAN_MAX_SUMMONS },
     olympus: { maxRounds: 5 },
 };
+/**
+ * Every write here changes the Performance page's Tin Man signal; its cached
+ * report (data/performance.ts) is keyed under this same literal.
+ */
+function dropPerformanceCache(clanId) {
+    (0, ttl_cache_js_1.invalidate)(`performance:${clanId}:`);
+}
 /** Normalised identity of a pasted name, for carrying decisions between uploads. */
 function nameKey(raw) {
     return (0, ocr_normalize_js_1.despace)(raw) || raw.trim().toLowerCase();
@@ -116,6 +124,7 @@ function saveTinmanSummon(input) {
         return Boolean(old);
     });
     const replaced = tx();
+    dropPerformanceCache(clanId);
     return {
         rows: rows.length,
         matched: resolved.filter((r) => r.member).length,
@@ -134,6 +143,7 @@ function deleteTinmanSummon(clanId, date, summon, eventKey = 'ancients') {
         db.prepare('DELETE FROM tinman_scores WHERE upload_id = ?').run(row.id);
         db.prepare('DELETE FROM tinman_uploads WHERE id = ?').run(row.id);
     })();
+    dropPerformanceCache(clanId);
     return true;
 }
 /**
@@ -169,6 +179,7 @@ function assignTinmanName(clanId, date, rawName, memberId, eventKey = 'ancients'
       `).run(member.id, clanId, eventKey, date);
         }
     })();
+    dropPerformanceCache(clanId);
     if (member && nameKey(member.name) !== key && !member.aliases.some((a) => nameKey(a) === key)) {
         (0, member_repo_js_1.addAlias)(member.id, rawName.trim(), clanId);
     }
@@ -278,9 +289,12 @@ function saveTinmanTargets(input) {
       tiers = excluded.tiers, kills = excluded.kills,
       saved_by = excluded.saved_by, saved_at = excluded.saved_at
   `).run(input.clanId, input.date, JSON.stringify(input.tiers), input.kills, input.savedBy, new Date().toISOString());
+    dropPerformanceCache(input.clanId);
 }
 function deleteTinmanTargets(clanId, date) {
-    return (0, database_js_1.getDb)().prepare('DELETE FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?')
+    const removed = (0, database_js_1.getDb)().prepare('DELETE FROM tinman_targets WHERE clan_id = ? AND tinman_date = ?')
         .run(clanId, date).changes > 0;
+    dropPerformanceCache(clanId);
+    return removed;
 }
 //# sourceMappingURL=tinman-repo.js.map

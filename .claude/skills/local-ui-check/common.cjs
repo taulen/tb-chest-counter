@@ -12,6 +12,7 @@ const PAGES = {
   dashboard: '/#dashboard',
   analytics: '/#analytics',
   leaderboard: '/#leaderboard',
+  performance: '/#performance',
   members: '/#members',
   might: '/#might',
   events: '/#events',

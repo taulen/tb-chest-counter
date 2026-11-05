@@ -81,6 +81,8 @@ export function notifyChestDataChanged(clanId: number): void {
   invalidate(`analyticsWindow:${clanId}:`);
   // Per-run event rankings behind the profile's Events card (data/member-events.ts).
   invalidate(`memberEvents:${clanId}:`);
+  // The Performance page's report, per timeframe (data/performance.ts).
+  invalidate(`performance:${clanId}:`);
 }
 
 /**
@@ -600,6 +602,45 @@ export function getMemberDailySeries(
     WHERE clan_id = ? AND member_id = ? AND game_day >= ? AND game_day <= ?
     ORDER BY game_day
   `).all(clanId, memberId, fromDay, toDay) as Array<{ day: string; chests: number; points: number }>;
+}
+
+/** The clan's first game day with any chest, or null for a clan with none. */
+export function getClanDataStartDay(clanId: number): string | null {
+  ensureFresh(clanId);
+  const row = getDb().prepare(
+    'SELECT MIN(game_day) AS d FROM chest_daily_summary WHERE clan_id = ?',
+  ).get(clanId) as { d: string | null } | undefined;
+  return row?.d ?? null;
+}
+
+/**
+ * memberId → the first game day they have a chest on. A player merge repoints
+ * the merged-away spelling's chests, so this reaches back past a rename where
+ * `members.first_seen` (the surviving row's own) does not.
+ */
+export function getMemberFirstChestDays(clanId: number): Map<number, string> {
+  ensureFresh(clanId);
+  const rows = getDb().prepare(
+    'SELECT member_id AS memberId, MIN(game_day) AS d FROM chest_daily_summary WHERE clan_id = ? GROUP BY member_id',
+  ).all(clanId) as Array<{ memberId: number; d: string }>;
+  return new Map(rows.map((r) => [r.memberId, r.d]));
+}
+
+/**
+ * Every member's earned points per game day in [fromDay, toDay] — clan rewards
+ * left out, as on the Leaderboard. Days with no chests have no row.
+ */
+export function getClanDailyEarnedPoints(
+  clanId: number,
+  fromDay: string,
+  toDay: string,
+): Array<{ memberId: number; day: string; points: number }> {
+  ensureFresh(clanId);
+  return getDb().prepare(`
+    SELECT member_id AS memberId, game_day AS day, earned_points AS points
+    FROM chest_daily_summary
+    WHERE clan_id = ? AND game_day >= ? AND game_day <= ?
+  `).all(clanId, fromDay, toDay) as Array<{ memberId: number; day: string; points: number }>;
 }
 
 /**
