@@ -47,6 +47,12 @@
   box-sizing: border-box;
 }
 
+/* Keep the scrollbar's room even when a page is too short to scroll: otherwise
+   the whole layout shifts sideways each time content grows past the window or
+   shrinks back (Tools → Citadel switching levels, tabs, filters). Overlay
+   scrollbars (phones, macOS) take no room and are unaffected. */
+html { scrollbar-gutter: stable; }
+
 /* ─── Reduced motion ──────────────────────────────────────────────
    One switch for the whole site rather than a rule per animation: a new
    pulse or slide added later is covered without anyone remembering to. The

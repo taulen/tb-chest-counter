@@ -163,6 +163,60 @@ describe('/api/tools/citadel-presets', () => {
     expect((await send('get', '/api/tools/citadel-presets', 'user1')).body.presets).toEqual([]);
   });
 
+  it('refuses names with control or invisible characters, and bodies of the wrong shape', async () => {
+    const bad: object[] = [
+      { name: 'Army\u0000', data: ARMY },
+      { name: 'Main‮gnp.exe', data: ARMY }, // right-to-left override
+      { name: 'Ma​in', data: ARMY }, // zero-width space: looks like "Main"
+      { name: 123, data: ARMY },
+      { name: ['Main'], data: ARMY },
+      { name: 'Main', data: 'elven-20' },
+      { name: 'Main', data: { ...ARMY, rows: 'wyvern' } },
+      { name: 'Main', data: { ...ARMY, rows: [{ troopId: { $gt: '' }, count: 1, strengthPct: 0, healthPct: 0 }] } },
+      [],
+    ];
+    for (const body of bad) {
+      const r = await send('put', '/api/tools/citadel-presets', 'user1', body);
+      expect(r.status, JSON.stringify(body).slice(0, 80)).toBe(400);
+    }
+    expect((await send('get', '/api/tools/citadel-presets', 'user1')).body.presets).toEqual([]);
+  });
+
+  it('stores SQL- and HTML-looking names as plain text, harmlessly', async () => {
+    const names = [`x'); DROP TABLE citadel_presets; --`, `" OR 1=1 --`, '<img src=x onerror=alert(1)>', 'Élite 🐉 ⚔️'];
+    const other = await send('put', '/api/tools/citadel-presets', 'user1b', { name: 'Theirs', data: ARMY });
+    for (const name of names) {
+      const r = await send('put', '/api/tools/citadel-presets', 'user1', { name, data: ARMY });
+      expect(r.status, name).toBe(200);
+      expect(r.body.preset.name).toBe(name);
+    }
+    const list = (await send('get', '/api/tools/citadel-presets', 'user1')).body.presets.map((p: { name: string }) => p.name);
+    expect([...list].sort()).toEqual([...names].sort());
+    // The table and the other account's army are untouched.
+    expect((await send('get', '/api/tools/citadel-presets', 'user1b')).body.presets.map((p: { name: string }) => p.name)).toEqual(['Theirs']);
+    // A delete id that isn't a plain number matches nothing.
+    for (const id of ['1 OR 1=1', `${other.body.preset.id};`, '0x1', '-1']) {
+      expect((await send('delete', `/api/tools/citadel-presets/${encodeURIComponent(id)}`, 'user1')).status, id).toBe(404);
+    }
+    expect((await send('get', '/api/tools/citadel-presets', 'user1b')).body.presets).toHaveLength(1);
+  });
+
+  it('keeps troop levels per account, and refuses anything but 1-9 or null', async () => {
+    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body).toEqual({ levels: { g: null, s: null, m: null, e: null } });
+    const put = await send('put', '/api/tools/citadel-levels', 'user1', { g: 8, s: 8, m: 8, e: 7 });
+    expect(put.status).toBe(200);
+    expect(put.body.levels).toEqual({ g: 8, s: 8, m: 8, e: 7 });
+    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body.levels).toEqual({ g: 8, s: 8, m: 8, e: 7 });
+    // Another account sees its own (none).
+    expect((await send('get', '/api/tools/citadel-levels', 'user1b')).body.levels).toEqual({ g: null, s: null, m: null, e: null });
+    // Clearing one back to "any".
+    expect((await send('put', '/api/tools/citadel-levels', 'user1', { g: 9, s: null, m: 8, e: 7 })).body.levels).toEqual({ g: 9, s: null, m: 8, e: 7 });
+    for (const body of [{ g: 10 }, { g: 0 }, { s: 7.5 }, { m: '8' }, { e: '1; DROP TABLE citadel_levels' }]) {
+      expect((await send('put', '/api/tools/citadel-levels', 'user1', body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body.levels).toEqual({ g: 9, s: null, m: 8, e: 7 });
+  });
+
   it('caps an account at 50 presets but still lets one be overwritten', async () => {
     for (let i = 0; i < 50; i++) {
       expect((await send('put', '/api/tools/citadel-presets', 'user1', { name: `P${i}`, data: ARMY })).status).toBe(200);

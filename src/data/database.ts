@@ -1175,6 +1175,22 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Tools → Citadel: the troop tiers each account has unlocked (Guardsmen,
+    // Specialists, Monsters, Engineers; NULL = any). Per user, kept until they
+    // change it; the troop picker only offers troops at or below these.
+    version: 96,
+    sql: `
+      CREATE TABLE IF NOT EXISTS citadel_levels (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        g INTEGER CHECK (g BETWEEN 1 AND 9),
+        s INTEGER CHECK (s BETWEEN 1 AND 9),
+        m INTEGER CHECK (m BETWEEN 1 AND 9),
+        e INTEGER CHECK (e BETWEEN 1 AND 9),
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 /**

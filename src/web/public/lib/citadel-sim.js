@@ -23,7 +23,7 @@
 //    deal ×20 against fortifications. A stack's health is a pool: units alive =
 //    ceil(pool ÷ unit health), and a damaged stack strikes with those units.
 //    Wounds stay through the whole battle, for every troop kind.
-//  - LUCK (double damage, blocking, striking two squads) is not simulated; the
+//  - LUCK (double damage, striking two squads) is not simulated; the
 //    tests replay it through `luck` to match the reports exactly.
 //
 // Plain ESM, no DOM access — imported by pages/citadel-tool.js and the tests.
@@ -73,6 +73,88 @@ export const TROOPS = [
   troop('catapult-3', 'Catapult III', 'siege', 810, 4860, ['engineer', 'human', 'siege'], { fortification: 146 }, SIEGE),
 ];
 export const TROOP_GROUPS = ['guardsmen', 'specialists', 'monsters', 'mercenaries', 'siege'];
+
+/**
+ * Troops that read the same strength and health bonus off their cards: the
+ * same captain, artifact and research lines apply to every tier. These are
+ * game01master's groups (its getBonusGroup, which links the strength fields);
+ * the page links strength AND health within a family. A troop in no family
+ * shares with nothing.
+ */
+export const BONUS_FAMILIES = {
+  corax: ['corax-1', 'corax-2'],
+  phoenix: ['fire-phoenix-1', 'fire-phoenix-2'],
+  vulture: ['vulture-5', 'vulture-6', 'vulture-7'],
+  'royal-lion': ['royal-lion-1', 'royal-lion-2', 'jago'],
+  griffin: ['griffin-5', 'griffin-6', 'griffin-7', 'warregal'],
+  'melee-guardsmen': ['punisher-1', 'heavy-halberdier-6', 'heavy-halberdier-7', 'spearmen-5'],
+  'melee-specialists': ['duelist-1', 'heavy-knight-6', 'heavy-knight-7', 'swordsmen-5'],
+};
+/**
+ * The order the game lists troops when a march is set up (game01master's
+ * RESULT_ORDER): the march list follows it, so a player goes straight down
+ * the screen typing counts instead of hunting for each troop. One fix from the
+ * game itself (Nov 2026 march screen): Jago comes before Warregal —
+ * game01master has them the other way round.
+ */
+export const MARCH_ORDER = [
+  'wyvern', 'jago', 'warregal', 'ariel', 'epic-monster-hunter', 'fire-phoenix-2',
+  'fire-phoenix-1', 'manticore', 'corax-2', 'royal-lion-2', 'corax-1',
+  'royal-lion-1', 'griffin-7', 'josephine-2', 'griffin-6', 'josephine-1',
+  'griffin-5', 'siege-ballistae-7', 'siege-ballistae-6', 'punisher-1',
+  'duelist-1', 'catapult-5', 'vulture-7', 'heavy-halberdier-7',
+  'heavy-knight-7', 'catapult-4', 'vulture-6', 'heavy-halberdier-6',
+  'heavy-knight-6', 'catapult-3', 'spearmen-5', 'swordsmen-5', 'vulture-5',
+];
+
+/** Rows with troops to send, sorted as the march screen lists them. */
+export function marchList(rows) {
+  const at = (id) => {
+    const k = MARCH_ORDER.indexOf(id);
+    return k === -1 ? MARCH_ORDER.length : k;
+  };
+  return rows.filter((r) => r.count > 0).sort((a, b) => at(a.troopId) - at(b.troopId));
+}
+
+/**
+ * The level that unlocks each troop: [kind, tier], kind g/s/m/e (Guardsmen,
+ * Specialists, Monsters, Engineers — the levels players quote as "8/8/8/7").
+ * The roman numeral is the tier up to VII; the newer names start again at
+ * I = tier 8. Strength ×1.8 per tier holds straight across that seam (Heavy
+ * Halberdier VII 1,700 → Punisher I 3,060; Battle Griffin VII 34,000 → Corax I
+ * 61,200 → Corax II 110,200; Ballistae VII 8,500 → Josephine I 15,310), and
+ * game01master calls the Phoenixes M8/M9; the Fearsome Manticore is M5 (from
+ * the user, Nov 2026). Mercenaries aren't unlocked by level and are always offered.
+ */
+export const TROOP_TIERS = {
+  'spearmen-5': ['g', 5], 'heavy-halberdier-6': ['g', 6], 'heavy-halberdier-7': ['g', 7], 'punisher-1': ['g', 8],
+  'griffin-5': ['g', 5], 'griffin-6': ['g', 6], 'griffin-7': ['g', 7], 'corax-1': ['g', 8], 'corax-2': ['g', 9],
+  'swordsmen-5': ['s', 5], 'heavy-knight-6': ['s', 6], 'heavy-knight-7': ['s', 7], 'duelist-1': ['s', 8],
+  'vulture-5': ['s', 5], 'vulture-6': ['s', 6], 'vulture-7': ['s', 7], 'royal-lion-1': ['s', 8], 'royal-lion-2': ['s', 9],
+  'manticore': ['m', 5], 'fire-phoenix-1': ['m', 8], 'fire-phoenix-2': ['m', 9],
+  'catapult-3': ['e', 3], 'catapult-4': ['e', 4], 'catapult-5': ['e', 5],
+  'siege-ballistae-6': ['e', 6], 'siege-ballistae-7': ['e', 7], 'josephine-1': ['e', 8], 'josephine-2': ['e', 9],
+};
+
+/** [kind, tier] for a troop, or null when no level gates it. */
+export function troopTier(troopId) {
+  return TROOP_TIERS[troopId] ?? null;
+}
+
+/** Whether levels { g, s, m, e } (null = any) unlock this troop. */
+export function troopUnlocked(troopId, levels) {
+  const tier = TROOP_TIERS[troopId];
+  if (!tier || !levels) return true;
+  const cap = levels[tier[0]];
+  return cap === null || cap === undefined || tier[1] <= cap;
+}
+
+const FAMILY_OF = new Map(Object.entries(BONUS_FAMILIES).flatMap(([fam, ids]) => ids.map((id) => [id, fam])));
+
+/** The bonus family of a troop, or null when it shares its bonuses with none. */
+export function bonusFamily(troopId) {
+  return FAMILY_OF.get(troopId) ?? null;
+}
 
 /** Citadel defenders, from their in-game cards (all checked). */
 function unit(id, name, str, hp, tags, vs) {
@@ -327,13 +409,27 @@ export function simulateBoth(params) {
 /** Automatic counts must still win with every bonus this much lower. */
 export const SAFETY = 0.03;
 
-/** What a lost troop is worth when comparing setups: its base health, so one
+/** Monsters and mercenaries are never traded for cheaper losses: a setup that
+ *  loses even one of them ranks below every setup that loses only guardsmen,
+ *  specialists or siege engines, however many. The first striker is there to
+ *  absorb the losses; these are not. */
+export const PROTECTED_GROUPS = new Set(['monsters', 'mercenaries']);
+
+/** Expected losses of a setup (the mean of both coin flips), split into the
+ *  protected kinds and the rest. Each lost troop is worth its base health, so one
  *  Wyvern (2.07M) weighs about eleven Corax I (183.6k) and losing cheap low-tier
- *  units is cheap. Ties go to the smaller army (less strength sent). */
+ *  units is cheap. */
 function lossValue(both) {
-  let v = 0;
-  for (const res of [both.you, both.citadel]) for (const s of res.army) v += s.lost * troopById(s.troopId).hp;
-  return v / 2;
+  let rest = 0;
+  let prot = 0;
+  for (const res of [both.you, both.citadel]) {
+    for (const s of res.army) {
+      const def = troopById(s.troopId);
+      if (PROTECTED_GROUPS.has(def.group)) prot += s.lost * def.hp;
+      else rest += s.lost * def.hp;
+    }
+  }
+  return { prot: prot / 2, rest: rest / 2 };
 }
 
 /**
@@ -379,11 +475,18 @@ export function optimizeCounts({ citadelId, army, budget = 2500, starts = [] }) 
     const won = both.you.won && both.citadel.won && weak.you.won && weak.citadel.won;
     const left = [both.you, both.citadel, weak.you, weak.citadel].reduce((a, res) => a + res.defenders.reduce((x, d) => x + d.alive, 0), 0);
     const power = counts.reduce((a, n, i) => a + n * defs[i].str * (1 + (Number(rows[i].strengthPct) || 0) / 100), 0);
-    return { counts: [...counts], both, won, loss: won ? (lossValue(both) + lossValue(weak)) / 2 : Infinity, left, power };
+    const l = lossValue(both);
+    const w = lossValue(weak);
+    const prot = won ? (l.prot + w.prot) / 2 : Infinity;
+    const loss = won ? (l.rest + w.rest) / 2 : Infinity;
+    return { counts: [...counts], both, won, prot, loss, left, power };
   };
+  // Win first; then the fewest monster/mercenary losses; then the fewest other
+  // losses; then the smaller army (less strength sent).
   const better = (a, b) => {
     if (a.won !== b.won) return a.won;
     if (!a.won) return a.left < b.left || (a.left === b.left && a.power < b.power);
+    if (Math.abs(a.prot - b.prot) > 1e-6) return a.prot < b.prot;
     if (Math.abs(a.loss - b.loss) > 1e-6) return a.loss < b.loss;
     return a.power < b.power - 1e-6;
   };

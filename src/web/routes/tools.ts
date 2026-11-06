@@ -14,9 +14,12 @@ import { getAncientRoster } from '../../data/ancient-roster.js';
 import { getClanAncientDefaults, setClanAncientDefaults } from '../../data/repositories/clan-repo.js';
 import {
   deleteCitadelPreset,
+  getCitadelLevels,
   listCitadelPresets,
   MAX_PRESETS_PER_USER,
+  parseCitadelLevels,
   parseCitadelPreset,
+  saveCitadelLevels,
   saveCitadelPreset,
 } from '../../data/repositories/citadel-preset-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
@@ -89,6 +92,20 @@ export function createToolsRouter(): Router {
       return;
     }
     res.json({ ok: true, presets: listCitadelPresets(req.user!.id) });
+  });
+
+  /** The caller's unlocked troop tiers (per account; null = any). */
+  router.get('/citadel-levels', (req, res) => {
+    res.json({ levels: getCitadelLevels(req.user!.id) });
+  });
+
+  router.put('/citadel-levels', (req, res) => {
+    const parsed = parseCitadelLevels(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.errors.join('; ') });
+      return;
+    }
+    res.json({ ok: true, levels: saveCitadelLevels(req.user!.id, parsed.value) });
   });
 
   return router;

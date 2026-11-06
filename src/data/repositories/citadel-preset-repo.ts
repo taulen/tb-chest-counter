@@ -33,6 +33,15 @@ export interface CitadelPreset {
 type Parsed<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/**
+ * Characters a name may not hold: control characters, and the invisible ones
+ * that make two names look identical or flip how the text around them reads
+ * (zero-width space, direction marks, bidi overrides and isolates, word joiners,
+ * BOM). ZWJ/ZWNJ stay allowed — emoji and some scripts need them. Names are
+ * always stored and sent as data (bound parameters; escaped where shown); this
+ * only keeps what a player sees honest.
+ */
+const UNSAFE_NAME_RE = /[\p{Cc}​‎‏‪-‮⁠-⁤⁦-⁩﻿]/u;
 const CITADEL_RE = /^(elven|cursed)-\d{1,2}$/;
 
 function pct(value: unknown, field: string, errors: string[]): number {
@@ -50,6 +59,7 @@ export function parseCitadelPreset(body: unknown): Parsed<{ name: string; data: 
   const b = (body ?? {}) as Record<string, unknown>;
   const name = typeof b.name === 'string' ? b.name.trim().replace(/\s+/g, ' ') : '';
   if (!name || name.length > MAX_NAME) errors.push(`name must be 1-${MAX_NAME} characters`);
+  else if (UNSAFE_NAME_RE.test(name)) errors.push('name holds control or invisible characters');
   const d = (b.data ?? {}) as Record<string, unknown>;
   const citadelId = typeof d.citadelId === 'string' ? d.citadelId : '';
   if (!CITADEL_RE.test(citadelId)) errors.push('data.citadelId is not a citadel');
@@ -108,6 +118,46 @@ export function saveCitadelPreset(userId: number, name: string, data: CitadelPre
     ).get(userId, name, JSON.stringify(data), now) as { id: number; name: string; data: string; updated_at: string };
     return toPreset(row);
   })();
+}
+
+// ─── Troop levels (migration v96): one row per account ───
+
+/** Unlocked tier per troop kind: Guardsmen, Specialists, Monsters, Engineers. Null = any. */
+export interface CitadelLevels {
+  g: number | null;
+  s: number | null;
+  m: number | null;
+  e: number | null;
+}
+const LEVEL_KEYS = ['g', 's', 'm', 'e'] as const;
+const NO_LEVELS: CitadelLevels = { g: null, s: null, m: null, e: null };
+
+/** Validate { g, s, m, e }: each a whole number 1-9, or null for "any". Refuses, never clamps. */
+export function parseCitadelLevels(body: unknown): Parsed<CitadelLevels> {
+  const errors: string[] = [];
+  const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+  const out: CitadelLevels = { ...NO_LEVELS };
+  for (const k of LEVEL_KEYS) {
+    const v = b[k];
+    if (v === null || v === undefined) continue;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 9) errors.push(`${k} must be a whole number 1-9, or null`);
+    else out[k] = v;
+  }
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, value: out };
+}
+
+export function getCitadelLevels(userId: number): CitadelLevels {
+  const row = getDb().prepare('SELECT g, s, m, e FROM citadel_levels WHERE user_id = ?').get(userId) as CitadelLevels | undefined;
+  return row ? { g: row.g, s: row.s, m: row.m, e: row.e } : { ...NO_LEVELS };
+}
+
+export function saveCitadelLevels(userId: number, levels: CitadelLevels): CitadelLevels {
+  getDb().prepare(
+    `INSERT INTO citadel_levels (user_id, g, s, m, e, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET g = excluded.g, s = excluded.s, m = excluded.m, e = excluded.e, updated_at = excluded.updated_at`,
+  ).run(userId, levels.g, levels.s, levels.m, levels.e, new Date().toISOString());
+  return getCitadelLevels(userId);
 }
 
 /** Delete one of the account's own presets. False when it isn't theirs or doesn't exist. */

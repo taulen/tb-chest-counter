@@ -23,6 +23,12 @@ import {
   TROOPS,
   CITADELS,
   DEFENDERS,
+  MARCH_ORDER,
+  marchList,
+  BONUS_FAMILIES,
+  bonusFamily,
+  troopTier,
+  troopUnlocked,
 } from '../../src/web/public/lib/citadel-sim.js';
 
 type Row = { troopId: string; count: number; strengthPct: number; healthPct: number };
@@ -248,6 +254,28 @@ describe('automatic counts (the simulator searches them)', () => {
     expect(weak.you.won && weak.citadel.won).toBe(true);
   });
 
+  it('never trades a monster for cheaper losses: the first striker absorbs them instead', () => {
+    // The user's Cursed 25 setup (Nov 2026). Weighing every loss by base health
+    // alone gave 498/5/6/0/9 and lost a Fire Phoenix I when the citadel struck
+    // first, because nine Battle Griffins + one Phoenix "cost" less than more Corax.
+    const army = [
+      row('siege-ballistae-7', 0, 2000, 2000),
+      row('corax-1', 0, 3000, 3000),
+      row('fire-phoenix-1', 0, 3000, 3000),
+      { ...row('royal-lion-1', 0, 3000, 0), healthPct: null as unknown as number },
+      row('griffin-7', 0, 3000, 2000),
+    ];
+    const r = optimizeCounts({ citadelId: 'cursed-25', army, starts: [[498, 5, 6, 0, 9]] });
+    expect(r.ok).toBe(true);
+    const protectedLost = (res: { army: { troopId: string; lost: number }[] }) =>
+      res.army.filter((s) => /^(fire-phoenix|wyvern)/.test(s.troopId)).reduce((a, s) => a + s.lost, 0);
+    expect(protectedLost(r.both.you) + protectedLost(r.both.citadel)).toBe(0);
+    // The Phoenix still fights (it isn't simply dropped) and the losses fall on Corax I.
+    expect(r.counts[2]).toBeGreaterThan(0);
+    const losers = new Set([...r.both.you.army, ...r.both.citadel.army].filter((s) => s.lost > 0).map((s) => s.troopId));
+    expect([...losers]).toEqual(['corax-1']);
+  });
+
   it('says so when no count of these troops can win', () => {
     // A troop at -100% strength deals no damage at all; any real troop wins in large enough numbers.
     const r = optimizeCounts({ citadelId: 'elven-30', army: [row('vulture-5', 0, -100, 0)] });
@@ -297,6 +325,39 @@ describe('citadel simulator edge cases', () => {
     const both = simulateBoth({ citadelId: 'elven-30', army: GM_ARMY_E30 });
     expect(both.you.army[0].lost).toBe(132);
     expect(both.citadel.army[0].lost).toBe(211);
+  });
+
+  it('the march order lists every troop exactly once, and the march list follows it', () => {
+    expect([...MARCH_ORDER].sort()).toEqual(TROOPS.map((x) => x.id).sort());
+    const list = marchList([
+      row('siege-ballistae-7', 779, 0, 0), row('corax-1', 621, 0, 0), row('royal-lion-1', 0, 0, 0), row('fire-phoenix-1', 26, 0, 0), row('wyvern', 3, 0, 0),
+    ]);
+    expect(list.map((r: { troopId: string }) => r.troopId)).toEqual(['wyvern', 'fire-phoenix-1', 'corax-1', 'siege-ballistae-7']);
+  });
+
+  it('troop levels gate every non-mercenary troop, and only those', () => {
+    for (const x of TROOPS) {
+      const tier = troopTier(x.id);
+      if (x.group === 'mercenaries') expect(tier, x.id).toBeNull();
+      else expect(tier, x.id).not.toBeNull();
+    }
+    const levels = { g: 8, s: 8, m: 8, e: 7 };
+    expect(troopUnlocked('corax-1', levels)).toBe(true);
+    expect(troopUnlocked('corax-2', levels)).toBe(false);
+    expect(troopUnlocked('fire-phoenix-2', levels)).toBe(false);
+    expect(troopUnlocked('josephine-1', levels)).toBe(false);
+    expect(troopUnlocked('siege-ballistae-7', levels)).toBe(true);
+    expect(troopUnlocked('wyvern', levels)).toBe(true);
+    expect(troopUnlocked('corax-2', { g: null, s: null, m: null, e: null })).toBe(true);
+  });
+
+  it('bonus families only name real troops, each in one family', () => {
+    const ids = Object.values(BONUS_FAMILIES).flat();
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(TROOPS.some((x) => x.id === id), id).toBe(true);
+    expect(bonusFamily('corax-1')).toBe(bonusFamily('corax-2'));
+    expect(bonusFamily('corax-1')).not.toBe(bonusFamily('griffin-7'));
+    expect(bonusFamily('wyvern')).toBeNull();
   });
 
   it('every citadel unit and troop is well-formed', () => {

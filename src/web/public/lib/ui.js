@@ -993,6 +993,60 @@ export function selectDialog(message, options, {
 }
 
 /**
+ * Modal with several answers, one button each, plus Cancel. Resolves to the
+ * chosen answer's `value`, or null on Cancel / Escape / backdrop. The LAST
+ * choice is the primary button (rightmost). Used where a yes/no would hide a real third
+ * option (Citadel: replace a saved army, or keep both as "Name (2)").
+ *
+ * @param {string} message
+ * @param {{ value: string, label: string, danger?: boolean }[]} choices
+ */
+export function choiceDialog(message, choices, { title = '', cancelLabel = t('Cancel') } = {}) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('modalRoot');
+    if (!root || !Array.isArray(choices) || choices.length === 0) return resolve(null);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const buttons = choices.map((c, i) => {
+      const kind = c.danger ? 'btn-danger-solid' : i === choices.length - 1 ? 'btn-primary' : '';
+      return `<button class="btn ${kind} modal-choice" data-choice="${i}">${escapeHtml(c.label)}</button>`;
+    }).join('');
+    overlay.innerHTML = `
+      <div class="modal-card" role="dialog" aria-modal="true">
+        ${title ? `<div class="modal-title">${escapeHtml(title)}</div>` : ''}
+        ${message ? `<div class="modal-body">${escapeHtml(message)}</div>` : ''}
+        <div class="modal-actions modal-actions-wrap">
+          <button class="btn modal-cancel">${escapeHtml(cancelLabel)}</button>
+          ${buttons}
+        </div>
+      </div>
+    `;
+
+    root.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+
+    const card = overlay.querySelector('.modal-card');
+    let release = () => {};
+    const cleanup = (result) => {
+      overlay.classList.remove('visible');
+      setTimeout(() => overlay.remove(), 180);
+      release();
+      resolve(result);
+    };
+    overlay.querySelectorAll('.modal-choice').forEach((btn) => {
+      btn.addEventListener('click', () => cleanup(choices[Number(btn.dataset.choice)].value));
+    });
+    overlay.querySelector('.modal-cancel').addEventListener('click', () => cleanup(null));
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(null);
+    });
+    // Opens on Cancel: none of the answers is a safe reflexive Enter.
+    release = holdDialogFocus(overlay, { card, initial: overlay.querySelector('.modal-cancel'), onEscape: () => cleanup(null) });
+  });
+}
+
+/**
  * Rich-content modal for read-mostly panels (e.g. the share-link analytics
  * + recovery view). Unlike openModal/confirmDialog, this renders *trusted*
  * caller-built HTML — the caller is responsible for escaping any dynamic

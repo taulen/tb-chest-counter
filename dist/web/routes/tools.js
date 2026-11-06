@@ -80,6 +80,18 @@ function createToolsRouter() {
         }
         res.json({ ok: true, presets: (0, citadel_preset_repo_js_1.listCitadelPresets)(req.user.id) });
     });
+    /** The caller's unlocked troop tiers (per account; null = any). */
+    router.get('/citadel-levels', (req, res) => {
+        res.json({ levels: (0, citadel_preset_repo_js_1.getCitadelLevels)(req.user.id) });
+    });
+    router.put('/citadel-levels', (req, res) => {
+        const parsed = (0, citadel_preset_repo_js_1.parseCitadelLevels)(req.body);
+        if (!parsed.ok) {
+            res.status(400).json({ error: parsed.errors.join('; ') });
+            return;
+        }
+        res.json({ ok: true, levels: (0, citadel_preset_repo_js_1.saveCitadelLevels)(req.user.id, parsed.value) });
+    });
     return router;
 }
 //# sourceMappingURL=tools.js.map

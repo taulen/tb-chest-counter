@@ -4,6 +4,9 @@ exports.MAX_PRESET_ROWS = exports.MAX_PRESETS_PER_USER = void 0;
 exports.parseCitadelPreset = parseCitadelPreset;
 exports.listCitadelPresets = listCitadelPresets;
 exports.saveCitadelPreset = saveCitadelPreset;
+exports.parseCitadelLevels = parseCitadelLevels;
+exports.getCitadelLevels = getCitadelLevels;
+exports.saveCitadelLevels = saveCitadelLevels;
 exports.deleteCitadelPreset = deleteCitadelPreset;
 /**
  * Saved armies for Tools → Citadel, one set per account (migration v95).
@@ -19,6 +22,15 @@ exports.MAX_PRESETS_PER_USER = 50;
 exports.MAX_PRESET_ROWS = 30;
 const MAX_NAME = 40;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/**
+ * Characters a name may not hold: control characters, and the invisible ones
+ * that make two names look identical or flip how the text around them reads
+ * (zero-width space, direction marks, bidi overrides and isolates, word joiners,
+ * BOM). ZWJ/ZWNJ stay allowed — emoji and some scripts need them. Names are
+ * always stored and sent as data (bound parameters; escaped where shown); this
+ * only keeps what a player sees honest.
+ */
+const UNSAFE_NAME_RE = /[\p{Cc}​‎‏‪-‮⁠-⁤⁦-⁩﻿]/u;
 const CITADEL_RE = /^(elven|cursed)-\d{1,2}$/;
 function pct(value, field, errors) {
     const n = typeof value === 'number' ? value : Number(value);
@@ -35,6 +47,8 @@ function parseCitadelPreset(body) {
     const name = typeof b.name === 'string' ? b.name.trim().replace(/\s+/g, ' ') : '';
     if (!name || name.length > MAX_NAME)
         errors.push(`name must be 1-${MAX_NAME} characters`);
+    else if (UNSAFE_NAME_RE.test(name))
+        errors.push('name holds control or invisible characters');
     const d = (b.data ?? {});
     const citadelId = typeof d.citadelId === 'string' ? d.citadelId : '';
     if (!CITADEL_RE.test(citadelId))
@@ -94,6 +108,35 @@ function saveCitadelPreset(userId, name, data) {
        RETURNING id, name, data, updated_at`).get(userId, name, JSON.stringify(data), now);
         return toPreset(row);
     })();
+}
+const LEVEL_KEYS = ['g', 's', 'm', 'e'];
+const NO_LEVELS = { g: null, s: null, m: null, e: null };
+/** Validate { g, s, m, e }: each a whole number 1-9, or null for "any". Refuses, never clamps. */
+function parseCitadelLevels(body) {
+    const errors = [];
+    const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {});
+    const out = { ...NO_LEVELS };
+    for (const k of LEVEL_KEYS) {
+        const v = b[k];
+        if (v === null || v === undefined)
+            continue;
+        if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 9)
+            errors.push(`${k} must be a whole number 1-9, or null`);
+        else
+            out[k] = v;
+    }
+    if (errors.length)
+        return { ok: false, errors };
+    return { ok: true, value: out };
+}
+function getCitadelLevels(userId) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT g, s, m, e FROM citadel_levels WHERE user_id = ?').get(userId);
+    return row ? { g: row.g, s: row.s, m: row.m, e: row.e } : { ...NO_LEVELS };
+}
+function saveCitadelLevels(userId, levels) {
+    (0, database_js_1.getDb)().prepare(`INSERT INTO citadel_levels (user_id, g, s, m, e, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET g = excluded.g, s = excluded.s, m = excluded.m, e = excluded.e, updated_at = excluded.updated_at`).run(userId, levels.g, levels.s, levels.m, levels.e, new Date().toISOString());
+    return getCitadelLevels(userId);
 }
 /** Delete one of the account's own presets. False when it isn't theirs or doesn't exist. */
 function deleteCitadelPreset(userId, id) {
