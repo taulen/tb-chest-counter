@@ -11,7 +11,7 @@ import {
 import {
   parseLeaderboardQuery,
   queryLeaderboard,
-  resolveWeeklyGoalPoints,
+  resolveWeeklyGoal,
   buildLeaderboardFaq,
 } from './leaderboard-handler.js';
 import {
@@ -227,6 +227,7 @@ export function createPublicShareApiRouter(): Router {
       res.status(404).json({ error: 'Not found' });
       return;
     }
+    const goal = resolveWeeklyGoal(clan);
     res.json({
       clanName: clan.name,
       ctEnabled: !!clan.ctShareCode,
@@ -243,7 +244,9 @@ export function createPublicShareApiRouter(): Router {
       // make the goal line pop in a beat after the table. Same resolver the
       // authenticated /api/leaderboard/goal uses, so a goal that is off or
       // unconfigured reads as null on both surfaces.
-      leaderboardWeeklyGoalPoints: resolveWeeklyGoalPoints(clan),
+      leaderboardWeeklyGoalPoints: goal.weeklyPoints,
+      // Every earlier goal, so last week is coloured by last week's goal.
+      leaderboardGoalHistory: goal.history,
     });
   });
 

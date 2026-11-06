@@ -208,8 +208,10 @@ describe('public share surface (anonymous, token-gated)', () => {
       // Exact key set, not a subset: this assertion is the allow-list. A field
       // added to the /clan payload has to be looked at and added here before it
       // can reach an anonymous visitor.
+      // leaderboardGoalHistory: { from, weeklyPoints } steps only — numbers the
+      // board already shows week by week; no set-at time and no who.
       expect(Object.keys(r.body).sort()).toEqual([
-        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardWeeklyGoalPoints', 'weekStart',
+        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardGoalHistory', 'leaderboardWeeklyGoalPoints', 'weekStart',
       ]);
       const raw = JSON.stringify(r.body);
       expect(raw).not.toContain('aAaA11'); // the share key is not echoed

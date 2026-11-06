@@ -45,7 +45,11 @@ function createCrudRouter(onboardState) {
         const defaultPublicUrl = (0, clan_repo_js_1.clanPublicUrl)(null, config.webExternalUrl);
         if (req.user.role === 'superadmin') {
             res.json({
-                clans: (0, clan_repo_js_1.listClans)().map((c) => ({ ...(0, _shared_js_1.publicClanWithCounts)(c), shareLinks: (0, share_link_repo_js_1.listActiveShareLinks)(c.id) })),
+                clans: (0, clan_repo_js_1.listClans)().map((c) => ({
+                    ...(0, _shared_js_1.publicClanWithCounts)(c),
+                    shareLinks: (0, share_link_repo_js_1.listActiveShareLinks)(c.id),
+                    goalHistory: (0, clan_repo_js_1.listGoalHistory)(c.id),
+                })),
                 activeClanId: req.clanId ?? null,
                 defaultInactivityDays,
                 defaultPublicUrl,
@@ -67,6 +71,8 @@ function createCrudRouter(onboardState) {
             const shape = (0, _shared_js_1.publicClanWithCounts)(clan);
             if (access.role === 'admin') {
                 shape.shareLinks = (0, share_link_repo_js_1.listActiveShareLinks)(clan.id);
+                // The Leaderboard goal settings list the goal's earlier values.
+                shape.goalHistory = (0, clan_repo_js_1.listGoalHistory)(clan.id);
             }
             clans.push(shape);
         }

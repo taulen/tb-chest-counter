@@ -44,6 +44,7 @@
 - Wedged-browser liveness bounds: [docs/wedged-browser-liveness.md](docs/wedged-browser-liveness.md)
 - Multi-clan accounts (per-clan roles, the switcher, guest visibility): [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md)
 - Performance page scoring (weights, thresholds, tenure; retune in one config file): [docs/performance-page.md](docs/performance-page.md)
+- Weekly points goal is historical (v93 `clan_goal_history`); anything judging a PAST window goes through `weeklyGoalForWindow` / `resolveWeeklyGoalForWindow`, never today's number: [docs/performance-page.md#weekly-goal-history](docs/performance-page.md#weekly-goal-history)
 - Running the dashboard locally + screenshots per language/viewport (ask first unless requested): [.claude/skills/local-ui-check/SKILL.md](.claude/skills/local-ui-check/SKILL.md)
 
 ## Logging

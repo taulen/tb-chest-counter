@@ -790,7 +790,9 @@ function createApiRouter(scanLoop) {
     // switched-off goal reads as null on either surface.
     router.get('/leaderboard/goal', (req, res) => {
         const clan = (0, clan_repo_js_1.getClanById)(req.clanId ?? 1);
-        res.json({ weeklyPoints: (0, leaderboard_handler_js_1.resolveWeeklyGoalPoints)(clan) });
+        // `history` carries every earlier goal, so a past week on the board is
+        // coloured against the goal it was played under (lib/weekly-goal.js).
+        res.json((0, leaderboard_handler_js_1.resolveWeeklyGoal)(clan));
     });
     // GET /api/leaderboard/faq — the FAQ modal's points-per-chest table and the
     // clan's contacts. Twin of the public /api/public/:token/faq; both go through

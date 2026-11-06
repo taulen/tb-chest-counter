@@ -7,6 +7,8 @@ import { getSourceKey, getSourceRarity, sourceSpellingKey, canonicalSourceKey } 
 import { despace } from '../vision/ocr-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
 import { repairAldrin } from './repair-aldrin-2026-11.js';
+import { backfillGoalHistory } from './goal-history.js';
+import { DEFAULT_CONFIG } from '../config/defaults.js';
 
 const log = childLogger('database');
 
@@ -1111,6 +1113,31 @@ const MIGRATIONS: Migration[] = [
         PRIMARY KEY (clan_id, from_member_id, to_member_id)
       );
     `,
+  },
+  {
+    // The weekly points goal over time. clans.leaderboard_weekly_goal_points is
+    // one number, so raising the goal re-judged every finished week against the
+    // new figure. Each row is "from the week starting effective_from, the goal
+    // is weekly_points" (utils/weekly-goal.ts, data/goal-history.ts), filled
+    // from the audit log's record of every goal save. Backfilled only into an
+    // empty table, so a replay leaves later saves alone. deleteClan clears it.
+    version: 93,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS clan_goal_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          effective_from TEXT NOT NULL,
+          weekly_points INTEGER,
+          set_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, effective_from)
+        );
+      `);
+      const filled = database.prepare('SELECT COUNT(*) AS c FROM clan_goal_history').get() as { c: number };
+      if (filled.c > 0) return;
+      database.transaction(() => backfillGoalHistory(
+        database, DEFAULT_CONFIG.gameDayRolloverUtcHour, Date.now(),
+      ))();
+    },
   },
 ];
 

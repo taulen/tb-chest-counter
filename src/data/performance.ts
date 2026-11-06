@@ -44,6 +44,8 @@ import { rankedRun } from './member-events.js';
 import { getEventOccurrences } from '../external/event-calendar.js';
 import { daysBetweenGameDates, gameDateFor, gameWindow, type WeekStart } from '../utils/game-day.js';
 import { cached, invalidate } from '../utils/ttl-cache.js';
+import { weeklyGoalForDays, type WeeklyGoalStep } from '../utils/weekly-goal.js';
+import { readGoalHistory } from './goal-history.js';
 import type { GuardsEstimate } from './guards-estimator.js';
 import type { TargetTier } from './tinman-parse.js';
 import {
@@ -105,6 +107,12 @@ export interface PerformanceReport {
   /** Days in the clan a member needs to be shown. */
   requiredDays: number;
   weeklyGoal: number | null;
+  /**
+   * The weekly goal across the window, one step per value, the first clamped
+   * to windowFrom. Each closed week is judged by the step it falls in, so more
+   * than one step means the goal changed inside this timeframe.
+   */
+  goalSteps: WeeklyGoalStep[];
   weekStart: WeekStart;
   units: {
     weeks: number;
@@ -188,10 +196,34 @@ function closedWeeks(input: PerformanceInput, nowMs: number, windowFrom: string,
   return weeks;
 }
 
+/**
+ * The goal each closed week was played under. Raising the goal from 30,000 to
+ * 35,000 must not turn a week cleared at 32,000 into a miss, so every week is
+ * judged by the clan's goal history (utils/weekly-goal.ts), never today's number.
+ */
+function goalsForWeeks(input: PerformanceInput, weeks: WeekUnit[]): Array<number | null> {
+  if (!input.weeklyGoal || weeks.length === 0) return weeks.map(() => null);
+  const history = readGoalHistory(getDb(), input.clanId);
+  return weeks.map((w) => weeklyGoalForDays(input.weeklyGoal, history, w.firstDay, w.lastDay));
+}
+
+/** The judged weeks' goals as steps, oldest first: one entry per change. */
+function goalStepsOf(weeks: WeekUnit[], weekGoals: Array<number | null>): WeeklyGoalStep[] {
+  const steps: WeeklyGoalStep[] = [];
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    const last = steps[steps.length - 1];
+    if (last && last.weeklyPoints === weekGoals[i]) continue;
+    steps.push({ from: weeks[i].firstDay, weeklyPoints: weekGoals[i] });
+  }
+  return steps;
+}
+
 function weekUnits(
   input: PerformanceInput,
   config: PerformanceConfig,
   weeks: WeekUnit[],
+  /** Per week, the goal it was played under (see goalsForWeeks). */
+  weekGoals: Array<number | null>,
   members: MemberBase[],
   guards: Map<number, GuardsEstimate>,
 ): Map<number, PerformanceUnit[]> {
@@ -216,8 +248,10 @@ function weekUnits(
     const units: PerformanceUnit[] = [];
     weeks.forEach((w, i) => {
       if (m.tenureStart > w.firstDay) return;
+      const weekGoal = weekGoals[i];
+      if (!weekGoal) return;
       const level = levelOn(guards.get(m.id), w.firstDay) ?? config.assumedGuardsLevel;
-      const goal = input.weeklyGoal! * (config.weeklyGoalScaleByGuards[level] ?? 1);
+      const goal = weekGoal * (config.weeklyGoalScaleByGuards[level] ?? 1);
       if (!(goal > 0)) return;
       const actual = points.get(m.id)?.[i] ?? 0;
       const hit = actual >= goal;
@@ -355,6 +389,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
     windowDays: 0,
     requiredDays: 0,
     weeklyGoal: input.weeklyGoal,
+    goalSteps: [],
     weekStart: input.weekStart,
     units: { weeks: 0, tinmanRuns: 0, tinmanRunsWithTargets: 0, eventRuns: 0 },
     events: [],
@@ -390,7 +425,8 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
 
   const guards = getGuardsEstimates(input.clanId);
   const weeks = input.weeklyGoal ? closedWeeks(input, nowMs, windowFrom, dataStart) : [];
-  const weekly = weekUnits(input, config, weeks, eligible, guards);
+  const weekGoals = goalsForWeeks(input, weeks);
+  const weekly = weekUnits(input, config, weeks, weekGoals, eligible, guards);
   const tinman = tinmanUnits(input.clanId, config, today, windowFrom, eligible, guards);
   const events = await eventUnits(input, config, today, windowFrom, dataStart, eligible);
 
@@ -422,6 +458,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
     windowTo: addDays(today, -1),
     windowDays,
     requiredDays,
+    goalSteps: goalStepsOf(weeks, weekGoals),
     units: {
       weeks: weeks.length,
       tinmanRuns: tinman.runs,

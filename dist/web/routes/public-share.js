@@ -206,6 +206,7 @@ function createPublicShareApiRouter() {
             res.status(404).json({ error: 'Not found' });
             return;
         }
+        const goal = (0, leaderboard_handler_js_1.resolveWeeklyGoal)(clan);
         res.json({
             clanName: clan.name,
             ctEnabled: !!clan.ctShareCode,
@@ -222,7 +223,9 @@ function createPublicShareApiRouter() {
             // make the goal line pop in a beat after the table. Same resolver the
             // authenticated /api/leaderboard/goal uses, so a goal that is off or
             // unconfigured reads as null on both surfaces.
-            leaderboardWeeklyGoalPoints: (0, leaderboard_handler_js_1.resolveWeeklyGoalPoints)(clan),
+            leaderboardWeeklyGoalPoints: goal.weeklyPoints,
+            // Every earlier goal, so last week is coloured by last week's goal.
+            leaderboardGoalHistory: goal.history,
         });
     });
     // GET /:token/leaderboard — same query model as the authenticated

@@ -374,6 +374,8 @@ export async function renderClans(el, refreshClanIndicator) {
         if (!r.ok) return notify(j.error || t('Save failed'), t('Leaderboard goal'));
         notify(t('Leaderboard goal saved.'), t('Leaderboard goal'));
         updateGoalPreview(el, clanId);
+        const historyHost = el.querySelector(`#clan-goal-history-${clanId}`);
+        if (historyHost) historyHost.innerHTML = goalHistoryHtml(j.history);
       } catch {
         notify(t('Save failed.'), t('Leaderboard goal'));
       }
@@ -606,6 +608,30 @@ export async function renderClans(el, refreshClanIndicator) {
     if (week) week.addEventListener('change', () => updateGoalPreview(el, clan.id));
     updateGoalPreview(el, clan.id);
   }
+}
+
+/**
+ * The goal's earlier values, newest first, so an admin can see what each past
+ * week was judged against. Nothing for a clan whose goal has never changed —
+ * one step is just the number in the field above. The oldest step also covers
+ * every week before it (lib/weekly-goal.js), so it reads "before" the next one.
+ */
+function goalHistoryHtml(history) {
+  const steps = Array.isArray(history) ? history : [];
+  if (steps.length < 2) return '';
+  const value = (s) => (Number.isFinite(s.weeklyPoints) && s.weeklyPoints > 0
+    ? `<strong>${s.weeklyPoints.toLocaleString()}</strong>`
+    : `<span class="goal-history-none">${t('No goal')}</span>`);
+  const rows = steps.map((s, i) => `<li>
+      <span class="goal-history-when">${i === 0
+        ? t('Before the week of {date}', { date: escapeHtml(steps[1].from) })
+        : t('From the week of {date}', { date: escapeHtml(s.from) })}</span>
+      <span class="goal-history-value">${value(s)}</span>
+    </li>`).reverse().join('');
+  return `<div class="goal-history">
+    <div class="goal-history-title">${t('Goal history')}</div>
+    <ul class="goal-history-list">${rows}</ul>
+  </div>`;
 }
 
 /**
@@ -1179,6 +1205,8 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         <p class="muted-copy mt-8" id="clan-goal-preview-${clan.id}"></p>
+        <p class="muted-copy mt-8">${t('A new goal counts from the start of the week it is saved in. Finished weeks keep the goal they were played under.')}</p>
+        <div id="clan-goal-history-${clan.id}">${goalHistoryHtml(clan.goalHistory)}</div>
         </div>
         </details>
 

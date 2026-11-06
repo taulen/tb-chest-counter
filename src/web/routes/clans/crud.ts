@@ -12,6 +12,7 @@ import {
   restoreDeletedClan,
   listDeletedClans,
   getClanByIdIncludingDeleted,
+  listGoalHistory,
 } from '../../../data/repositories/clan-repo.js';
 import { setSessionActiveClan, logAction, listSwitchableClans } from '../../../data/repositories/user-repo.js';
 import {
@@ -70,7 +71,11 @@ export function createCrudRouter(onboardState: OnboardState): Router {
     const defaultPublicUrl = clanPublicUrl(null, config.webExternalUrl);
     if (req.user.role === 'superadmin') {
       res.json({
-        clans: listClans().map((c) => ({ ...publicClanWithCounts(c), shareLinks: listActiveShareLinks(c.id) })),
+        clans: listClans().map((c) => ({
+          ...publicClanWithCounts(c),
+          shareLinks: listActiveShareLinks(c.id),
+          goalHistory: listGoalHistory(c.id),
+        })),
         activeClanId: req.clanId ?? null,
         defaultInactivityDays,
         defaultPublicUrl,
@@ -91,6 +96,8 @@ export function createCrudRouter(onboardState: OnboardState): Router {
       const shape: Record<string, unknown> = publicClanWithCounts(clan);
       if (access.role === 'admin') {
         shape.shareLinks = listActiveShareLinks(clan.id);
+        // The Leaderboard goal settings list the goal's earlier values.
+        shape.goalHistory = listGoalHistory(clan.id);
       }
       clans.push(shape);
     }

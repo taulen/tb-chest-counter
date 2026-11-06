@@ -7,7 +7,7 @@ import { loadConfig } from '../config/index.js';
 import * as memberRepo from '../data/repositories/member-repo.js';
 import { getClanById, getClanWeekStart } from '../data/repositories/clan-repo.js';
 import { getLinkedMemberId, linkDiscordUser } from '../data/repositories/discord-link-repo.js';
-import { resolveWeeklyGoalPoints } from '../web/routes/leaderboard-handler.js';
+import { resolveWeeklyGoalForWindow } from '../web/routes/leaderboard-handler.js';
 
 export const commands = [
   new SlashCommandBuilder()
@@ -122,7 +122,9 @@ export async function handleCommand(
       const name = me?.memberName ?? memberRepo.getMemberById(memberId, clanId)?.name ?? 'You';
 
       const clan = getClanById(clanId);
-      const weeklyGoal = resolveWeeklyGoalPoints(clan);
+      // The goal for THIS window: a month that straddles a raise is priced at
+      // the blend of its weeks' goals, as the site prices it.
+      const weeklyGoal = resolveWeeklyGoalForWindow(clan, period, 0, rollover);
       await interaction.reply({
         content: formatMeMessage({
           name,

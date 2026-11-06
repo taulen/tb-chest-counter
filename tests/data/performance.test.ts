@@ -10,6 +10,7 @@ vi.mock('../../src/external/event-calendar.js', async (importOriginal) => ({
 import { getDb } from '../../src/data/database.js';
 import { getPerformanceReport } from '../../src/data/performance.js';
 import { addMergeRule } from '../../src/data/repositories/merge-repo.js';
+import { writeGoalStep } from '../../src/data/goal-history.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
 const CLAN = 1;
@@ -173,6 +174,24 @@ describe('performance report', () => {
     expect(all.scoring.minUnits.tinman).toBeGreaterThanOrEqual(quarter.scoring.minUnits.tinman);
     // The other signals keep the config-wide minimums.
     expect(quarter.scoring.minUnits.goalHits).toBe(2);
+  });
+
+  it('judges each week by the goal it was played under, not today’s', async () => {
+    // 10,000 until the clan raised it to 12,000 for the week of Oct 18.
+    writeGoalStep(getDb(), CLAN, '2026-09-27', 10_000, '2026-09-27T18:00:00Z');
+    writeGoalStep(getDb(), CLAN, '2026-10-18', 12_000, '2026-10-18T18:00:00Z');
+    const steady = member('Steady', '2026-09-01T18:00:00Z');
+    chest(steady, '2026-09-02', 1);
+    // 10,500 every week: cleared the old goal, short of the new one (88%, a near miss).
+    for (const day of WEEK_MONDAYS) chest(steady, day, 10_500);
+
+    const r = await report();
+    const g = r.members.find((m) => m.memberId === steady)!.signals.goalHits;
+    expect(g).toMatchObject({ units: 4, hits: 2, near: 2 });
+    expect(r.goalSteps).toEqual([
+      { from: '2026-10-04', weeklyPoints: 10_000 },
+      { from: '2026-10-18', weeklyPoints: 12_000 },
+    ]);
   });
 });
 

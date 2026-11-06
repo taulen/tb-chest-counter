@@ -69,6 +69,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   ],
   clans: [
     'audit_log.clan_id',
+    'clan_goal_history.clan_id',
     'discord_member_links.clan_id',
     'member_guards_reports.clan_id',
     'member_level_reports.clan_id',

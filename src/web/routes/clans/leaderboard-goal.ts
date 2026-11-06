@@ -1,8 +1,12 @@
 import type { Router } from 'express';
 import {
   getClanById,
+  listGoalHistory,
   setClanLeaderboardGoal,
 } from '../../../data/repositories/clan-repo.js';
+import { weekFirstDay } from '../../../data/goal-history.js';
+import { loadConfig } from '../../../config/index.js';
+import { invalidate } from '../../../utils/ttl-cache.js';
 import { logAction } from '../../../data/repositories/user-repo.js';
 import { requireClanAdmin } from '../../middleware/auth.js';
 import { createClanSubRouter } from './_shared.js';
@@ -30,7 +34,8 @@ export function createLeaderboardGoalRouter(): Router {
    */
   router.put('/:clanId/leaderboard-goal', requireClanAdmin, (req, res) => {
     const id = req.parsedClanId!;
-    if (!getClanById(id)) {
+    const clan = getClanById(id);
+    if (!clan) {
       res.status(404).json({ error: 'Clan not found' });
       return;
     }
@@ -47,9 +52,15 @@ export function createLeaderboardGoalRouter(): Router {
       return;
     }
 
-    setClanLeaderboardGoal(id, { enabled, weeklyPoints });
+    // The new number covers the week in progress and every week after it;
+    // finished weeks keep the goal they were played under (clan_goal_history).
+    const rollover = loadConfig().gameDayRolloverUtcHour;
+    const effectiveFrom = weekFirstDay(Date.now(), rollover, clan.weekStart);
+    setClanLeaderboardGoal(id, { enabled, weeklyPoints }, effectiveFrom);
+    // The Performance page judges every closed week against this history.
+    invalidate(`performance:${id}:`);
     logAction(req.user!.id, 'clan.leaderboard_goal.update', { clanId: id, enabled, weeklyPoints });
-    res.json({ ok: true, enabled, weeklyPoints });
+    res.json({ ok: true, enabled, weeklyPoints, effectiveFrom, history: listGoalHistory(id) });
   });
 
   return router;

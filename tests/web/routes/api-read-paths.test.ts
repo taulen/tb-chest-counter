@@ -205,7 +205,7 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
     it('GET /api/leaderboard/goal — null when the clan has no goal set', async () => {
       const res = await request(app).get('/api/leaderboard/goal');
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ weeklyPoints: null });
+      expect(res.body).toEqual({ weeklyPoints: null, history: [] });
     });
   });
 

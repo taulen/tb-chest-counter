@@ -288,6 +288,18 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
       expect(clan.leaderboardWeeklyGoalPoints).toBe(25_000);
     });
 
+    it('records each new number from the week in progress, for past weeks to keep theirs', async () => {
+      const first = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 25_000 });
+      expect(first.body.history).toEqual([
+        expect.objectContaining({ from: first.body.effectiveFrom, weeklyPoints: 25_000 }),
+      ]);
+      // A raise in the same week replaces that week's step rather than adding one.
+      const raised = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 30_000 });
+      expect(raised.body.history).toEqual([
+        expect.objectContaining({ from: raised.body.effectiveFrom, weeklyPoints: 30_000 }),
+      ]);
+    });
+
     it('keeps the target when the colouring is switched off', async () => {
       await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 25_000 });
       await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: false, weeklyPoints: 25_000 });

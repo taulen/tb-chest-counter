@@ -11,10 +11,11 @@ import { getGuardsSummaries } from '../../data/repositories/guards-repo.js';
 import { getGoldPassStatuses } from '../../data/repositories/gold-pass-repo.js';
 import { listSiteContacts, type SiteContacts } from '../../data/repositories/user-repo.js';
 import { buildPointsGuide, type PointsGuide } from '../../data/points-guide.js';
-import { getClanById, type Clan } from '../../data/repositories/clan-repo.js';
+import { getClanById, listGoalHistory, type Clan } from '../../data/repositories/clan-repo.js';
 import type { LeaderboardEntry } from '../../models/types.js';
 import { loadConfig } from '../../config/index.js';
-import { currentGameDate } from '../../utils/game-day.js';
+import { currentGameDate, gameDateFor, gameWindow } from '../../utils/game-day.js';
+import { weeklyGoalForDays, type WeeklyGoalStep } from '../../utils/weekly-goal.js';
 
 function isValidIso(s: string | undefined): s is string {
   return !!s && !Number.isNaN(new Date(s).getTime());
@@ -166,4 +167,41 @@ export function resolveWeeklyGoalPoints(clan: Pick<Clan, 'leaderboardGoalEnabled
   if (!clan || !clan.leaderboardGoalEnabled) return null;
   const n = clan.leaderboardWeeklyGoalPoints;
   return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * The clan's goal as the pages need it to colour a PAST window: today's number
+ * plus every step it has taken (utils/weekly-goal.ts), so last week is judged by
+ * last week's goal. `history` is empty when there is no goal at all. Served by
+ * /api/leaderboard/goal and folded into the share page's /clan response.
+ */
+export function resolveWeeklyGoal(clan: Clan | null | undefined): { weeklyPoints: number | null; history: WeeklyGoalStep[] } {
+  const weeklyPoints = resolveWeeklyGoalPoints(clan);
+  if (!clan || weeklyPoints === null) return { weeklyPoints, history: [] };
+  return {
+    weeklyPoints,
+    history: listGoalHistory(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints })),
+  };
+}
+
+/**
+ * The WEEKLY goal to judge one (period, offset) window by on the server, the
+ * twin of weeklyGoalForWindow() in lib/weekly-goal.js. Null for no goal; the
+ * current number for 'all', which has no length to price a goal for anyway.
+ */
+export function resolveWeeklyGoalForWindow(
+  clan: Clan | null | undefined,
+  period: string,
+  offset: number,
+  rolloverUtcHour: number,
+): number | null {
+  const { weeklyPoints, history } = resolveWeeklyGoal(clan);
+  const win = gameWindow(period, offset, rolloverUtcHour, clan?.weekStart ?? 'sunday');
+  if (weeklyPoints === null || !win) return weeklyPoints;
+  return weeklyGoalForDays(
+    weeklyPoints,
+    history,
+    gameDateFor(Date.parse(win.from), rolloverUtcHour),
+    gameDateFor(Date.parse(win.to) - 1, rolloverUtcHour),
+  );
 }

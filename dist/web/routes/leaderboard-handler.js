@@ -9,6 +9,8 @@ exports.parseLeaderboardQuery = parseLeaderboardQuery;
 exports.queryLeaderboard = queryLeaderboard;
 exports.buildLeaderboardFaq = buildLeaderboardFaq;
 exports.resolveWeeklyGoalPoints = resolveWeeklyGoalPoints;
+exports.resolveWeeklyGoal = resolveWeeklyGoal;
+exports.resolveWeeklyGoalForWindow = resolveWeeklyGoalForWindow;
 const chest_repo_js_1 = require("../../data/repositories/chest-repo.js");
 const might_repo_js_1 = require("../../data/repositories/might-repo.js");
 const guards_repo_js_1 = require("../../data/repositories/guards-repo.js");
@@ -18,6 +20,7 @@ const points_guide_js_1 = require("../../data/points-guide.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const index_js_1 = require("../../config/index.js");
 const game_day_js_1 = require("../../utils/game-day.js");
+const weekly_goal_js_1 = require("../../utils/weekly-goal.js");
 function isValidIso(s) {
     return !!s && !Number.isNaN(new Date(s).getTime());
 }
@@ -141,5 +144,32 @@ function resolveWeeklyGoalPoints(clan) {
         return null;
     const n = clan.leaderboardWeeklyGoalPoints;
     return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null;
+}
+/**
+ * The clan's goal as the pages need it to colour a PAST window: today's number
+ * plus every step it has taken (utils/weekly-goal.ts), so last week is judged by
+ * last week's goal. `history` is empty when there is no goal at all. Served by
+ * /api/leaderboard/goal and folded into the share page's /clan response.
+ */
+function resolveWeeklyGoal(clan) {
+    const weeklyPoints = resolveWeeklyGoalPoints(clan);
+    if (!clan || weeklyPoints === null)
+        return { weeklyPoints, history: [] };
+    return {
+        weeklyPoints,
+        history: (0, clan_repo_js_1.listGoalHistory)(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints })),
+    };
+}
+/**
+ * The WEEKLY goal to judge one (period, offset) window by on the server, the
+ * twin of weeklyGoalForWindow() in lib/weekly-goal.js. Null for no goal; the
+ * current number for 'all', which has no length to price a goal for anyway.
+ */
+function resolveWeeklyGoalForWindow(clan, period, offset, rolloverUtcHour) {
+    const { weeklyPoints, history } = resolveWeeklyGoal(clan);
+    const win = (0, game_day_js_1.gameWindow)(period, offset, rolloverUtcHour, clan?.weekStart ?? 'sunday');
+    if (weeklyPoints === null || !win)
+        return weeklyPoints;
+    return (0, weekly_goal_js_1.weeklyGoalForDays)(weeklyPoints, history, (0, game_day_js_1.gameDateFor)(Date.parse(win.from), rolloverUtcHour), (0, game_day_js_1.gameDateFor)(Date.parse(win.to) - 1, rolloverUtcHour));
 }
 //# sourceMappingURL=leaderboard-handler.js.map

@@ -14,11 +14,30 @@ Per-clan settings are planned but not built. `resolvePerformanceConfig(clanId)` 
 
 - **Units.** A unit is a closed clan week (which follows the clan's week start), a finished Tin Man run or a finished event run. A unit is in a timeframe when it **ended** inside it. It counts for a member only if they were in the clan for **all** of it, so a mid-week joiner is never held to that week and no pro-rating is needed.
 - **Signals.** Each unit is a ratio against its expectation, capped:
-  - `goalHits`: the share of weeks at or above the Leaderboard's weekly goal (`resolveWeeklyGoalPoints`). This is the "crypt goal". A week that misses but reaches `goalNearMiss.from` (66%, the Leaderboard's amber band) earns `goalNearMiss.credit` (half) of a hit, shown as ◐ in the table.
+  - `goalHits`: the share of weeks at or above the Leaderboard's weekly goal **that applied that week**. This is the "crypt goal". The goal's history comes from `clan_goal_history` (v93); see [Weekly goal history](#weekly-goal-history). A week that misses but reaches `goalNearMiss.from` (66%, the Leaderboard's amber band) earns `goalNearMiss.credit` (half) of a hit, shown as ◐ in the table.
   - `goalPoints`: weekly points as a share of the weekly goal.
   - `tinman`: the run total against the guards-tier target, using the member's level on the run's day from the estimate's level-ups. An unknown level counts as G7. A run with no targets pasted doesn't count (`tinmanMedianFallback: false`). The median player is far below the clans' targets, about 200k against CWB's 1.11M G7 target, so measuring against it put a third of the clan at the 200% cap.
   - `events`: points in each run against that run's median participant. Sitting a run out counts as 0. Counted: Ancients, Ragnarok, Olympus, Dark Omens, Doomsday, Arachne's Swarm, Hell Forge and Sands of Eternity. Runics is left out at the clan's request. Sands of Eternity is `irregular` in the catalog, so only the runs the feed lists count and none are reconstructed.
 - **Score.** The score is the weighted mean of the signals that have at least `minUnits`, with the weights re-normalised over those. A timeframe can override `minUnits` per signal. Tin Man needs 2 runs with targets in a month, 4 in 3 months, 6 in 6 months and 8 in 12 months or all time. If the clan has no goal or no Tin Man pastes, the score is built from the other signals.
+
+## Weekly goal history
+
+The clan's goal is raised now and then, for example from 30,000 to 35,000. Before v93 the clan held a single number, so a raise re-judged every finished week against the new figure. Now every save (Clans → Leaderboard goal) writes a step to `clan_goal_history`: "from the week starting `effective_from`, the goal is N".
+
+- **A change covers the whole week it is saved in** and every week after it. Finished weeks keep their goal. That week is the one the Leaderboard was already colouring with the new goal.
+- **A second save in the same week replaces the first.** A step that repeats the previous one is dropped, so toggling the colours off and on leaves nothing behind.
+- **Weeks before the first step use the first step's value.**
+- **Day, month and year windows** are priced at the day-weighted mean of the steps they span. A month with two weeks at 30,000 and two at 35,000 counts as 32,500 a week.
+- **The `enabled` flag is not historical.** With the colours off, there is no goal anywhere, past weeks included, exactly as before.
+
+The lookup rules are in [utils/weekly-goal.ts](../src/utils/weekly-goal.ts). The browser copy is [lib/weekly-goal.js](../src/web/public/lib/weekly-goal.js), and `tests/config/weekly-goal-parity.test.ts` holds the two together. Writes are in [data/goal-history.ts](../src/data/goal-history.ts).
+
+The following pages read the history:
+- Leaderboard, share page, Analytics and the profile, through `/api/leaderboard/goal` and the share page's `/clan`, which carry `history`.
+- Performance.
+- Discord `/me`.
+
+The v93 migration rebuilt the past from the audit log's `clan.leaderboard_goal.update` entries. It reads the clan from the entry's details, not from `audit_log.clan_id`, because that column is the clan the admin was viewing.
 
 ## Tenure
 

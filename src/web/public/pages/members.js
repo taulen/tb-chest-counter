@@ -19,6 +19,7 @@ import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
+import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { formatCompact } from '../lib/ancient-planner.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
@@ -75,7 +76,8 @@ const CONFIDENCE_PHRASE = {
   high: t('high confidence'), medium: t('medium confidence'), low: t('low confidence'),
 };
 let currentMemberOffset = 0;
-let memberWeeklyGoalPoints = null;
+// The clan's goal and its earlier values (/leaderboard/goal), or null.
+let memberGoalInfo = null;
 // The mounted might chart's draw callback for the member currently on screen.
 // Held here (rather than only in the loader) because a tab flip re-renders the
 // whole detail view — including the might card — and Chart.js needs the canvas
@@ -351,7 +353,7 @@ export async function viewMember(id, navigate) {
     api(`/members/${id}${memberWindowQuery()}`),
     api('/leaderboard/goal').catch(() => null),
   ]);
-  memberWeeklyGoalPoints = Number.isFinite(goal?.weeklyPoints) ? goal.weeklyPoints : null;
+  memberGoalInfo = goal && !goal.error ? goal : null;
   // The member belongs to a different clan (or doesn't exist): the API
   // answers 404 with { error }. This happens to a superadmin who switches
   // the active clan while sitting on #member/<id> for the previous clan —
@@ -916,7 +918,9 @@ const MEMBER_PACE_MIN_ELAPSED = 0.25;
 function memberPaceHtml(points) {
   // Ranked points, not profile holdings — see the call site.
   if (points === null || points === undefined) return '';
-  const goal = scaleGoalForPeriod(memberWeeklyGoalPoints, currentMemberPeriod);
+  const goal = scaleGoalForPeriod(
+    weeklyGoalForWindow(memberGoalInfo, currentMemberPeriod, currentMemberOffset), currentMemberPeriod,
+  );
   if (!goal) return '';
   if (currentMemberPeriod === 'all' || currentMemberOffset !== 0) return '';
   const days = goalDaysForPeriod(currentMemberPeriod);

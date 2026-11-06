@@ -69,7 +69,7 @@ import { getEntries as getLogEntries, latestEntryAt as latestLogEntryAt } from '
 import {
   parseLeaderboardQuery,
   queryLeaderboard,
-  resolveWeeklyGoalPoints,
+  resolveWeeklyGoal,
   buildLeaderboardFaq,
 } from './leaderboard-handler.js';
 
@@ -880,7 +880,9 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
   // switched-off goal reads as null on either surface.
   router.get('/leaderboard/goal', (req, res) => {
     const clan = getClanById(req.clanId ?? 1);
-    res.json({ weeklyPoints: resolveWeeklyGoalPoints(clan) });
+    // `history` carries every earlier goal, so a past week on the board is
+    // coloured against the goal it was played under (lib/weekly-goal.js).
+    res.json(resolveWeeklyGoal(clan));
   });
 
   // GET /api/leaderboard/faq — the FAQ modal's points-per-chest table and the

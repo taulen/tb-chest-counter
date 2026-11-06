@@ -419,6 +419,20 @@ function tableCardHtml(r) {
 
 // ─── How it works / too new ───────────────────────────────────
 
+/**
+ * When the goal changed inside the timeframe, say which weeks were judged by
+ * which number: "35,000 now" alone would make a member who cleared 30,000 in an
+ * earlier week look like they missed it.
+ */
+function goalStepsHtml(r) {
+  const steps = (r.goalSteps || []).filter((s) => Number.isFinite(s.weeklyPoints));
+  if (steps.length < 2) return '';
+  const list = steps
+    .map((s) => t('{points} from the week of {date}', { points: s.weeklyPoints.toLocaleString(), date: esc(s.from) }))
+    .join(', ');
+  return ` ${t('The goal changed in this timeframe: {steps}.', { steps: list })}`;
+}
+
 function howCardHtml(r) {
   const s = r.scoring;
   const total = Object.values(s.weights).reduce((a, b) => a + b, 0) || 1;
@@ -430,7 +444,8 @@ function howCardHtml(r) {
     <summary class="card-header"><h2>${t('How the score works')}</h2></summary>
     <div class="card-body card-body-padded perf-how">
       <ul>
-        ${item('goalHits', t('the share of closed weeks at or above the weekly points goal ({goal} points, the Leaderboard goal).', { goal })
+        ${item('goalHits', t('the share of closed weeks at or above the weekly points goal that applied that week (the Leaderboard goal, now {goal} points).', { goal })
+          + goalStepsHtml(r)
           + (s.goalNearMiss ? ` ${t('A week that misses it but reaches {near} of it (◐, close to goal) counts as {credit} of a hit.', { near: pct(s.goalNearMiss.from), credit: pct(s.goalNearMiss.credit) })}` : ''))}
         ${item('goalPoints', t('points each week as a share of that goal.'))}
         ${item('tinman', [

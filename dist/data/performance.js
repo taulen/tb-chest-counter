@@ -72,6 +72,8 @@ const member_events_js_1 = require("./member-events.js");
 const event_calendar_js_1 = require("../external/event-calendar.js");
 const game_day_js_1 = require("../utils/game-day.js");
 const ttl_cache_js_1 = require("../utils/ttl-cache.js");
+const weekly_goal_js_1 = require("../utils/weekly-goal.js");
+const goal_history_js_1 = require("./goal-history.js");
 const performance_score_js_1 = require("./performance-score.js");
 /**
  * Dropped under this same literal by notifyChestDataChanged (chest-summary-repo),
@@ -123,7 +125,31 @@ function closedWeeks(input, nowMs, windowFrom, dataStart) {
     }
     return weeks;
 }
-function weekUnits(input, config, weeks, members, guards) {
+/**
+ * The goal each closed week was played under. Raising the goal from 30,000 to
+ * 35,000 must not turn a week cleared at 32,000 into a miss, so every week is
+ * judged by the clan's goal history (utils/weekly-goal.ts), never today's number.
+ */
+function goalsForWeeks(input, weeks) {
+    if (!input.weeklyGoal || weeks.length === 0)
+        return weeks.map(() => null);
+    const history = (0, goal_history_js_1.readGoalHistory)((0, database_js_1.getDb)(), input.clanId);
+    return weeks.map((w) => (0, weekly_goal_js_1.weeklyGoalForDays)(input.weeklyGoal, history, w.firstDay, w.lastDay));
+}
+/** The judged weeks' goals as steps, oldest first: one entry per change. */
+function goalStepsOf(weeks, weekGoals) {
+    const steps = [];
+    for (let i = weeks.length - 1; i >= 0; i--) {
+        const last = steps[steps.length - 1];
+        if (last && last.weeklyPoints === weekGoals[i])
+            continue;
+        steps.push({ from: weeks[i].firstDay, weeklyPoints: weekGoals[i] });
+    }
+    return steps;
+}
+function weekUnits(input, config, weeks, 
+/** Per week, the goal it was played under (see goalsForWeeks). */
+weekGoals, members, guards) {
     const out = new Map();
     if (!input.weeklyGoal || weeks.length === 0)
         return out;
@@ -148,8 +174,11 @@ function weekUnits(input, config, weeks, members, guards) {
         weeks.forEach((w, i) => {
             if (m.tenureStart > w.firstDay)
                 return;
+            const weekGoal = weekGoals[i];
+            if (!weekGoal)
+                return;
             const level = levelOn(guards.get(m.id), w.firstDay) ?? config.assumedGuardsLevel;
-            const goal = input.weeklyGoal * (config.weeklyGoalScaleByGuards[level] ?? 1);
+            const goal = weekGoal * (config.weeklyGoalScaleByGuards[level] ?? 1);
             if (!(goal > 0))
                 return;
             const actual = points.get(m.id)?.[i] ?? 0;
@@ -268,6 +297,7 @@ async function buildReport(input, nowMs) {
         windowDays: 0,
         requiredDays: 0,
         weeklyGoal: input.weeklyGoal,
+        goalSteps: [],
         weekStart: input.weekStart,
         units: { weeks: 0, tinmanRuns: 0, tinmanRunsWithTargets: 0, eventRuns: 0 },
         events: [],
@@ -303,7 +333,8 @@ async function buildReport(input, nowMs) {
     }
     const guards = (0, guards_repo_js_1.getGuardsEstimates)(input.clanId);
     const weeks = input.weeklyGoal ? closedWeeks(input, nowMs, windowFrom, dataStart) : [];
-    const weekly = weekUnits(input, config, weeks, eligible, guards);
+    const weekGoals = goalsForWeeks(input, weeks);
+    const weekly = weekUnits(input, config, weeks, weekGoals, eligible, guards);
     const tinman = tinmanUnits(input.clanId, config, today, windowFrom, eligible, guards);
     const events = await eventUnits(input, config, today, windowFrom, dataStart, eligible);
     const members = eligible.map((m) => {
@@ -333,6 +364,7 @@ async function buildReport(input, nowMs) {
         windowTo: addDays(today, -1),
         windowDays,
         requiredDays,
+        goalSteps: goalStepsOf(weeks, weekGoals),
         units: {
             weeks: weeks.length,
             tinmanRuns: tinman.runs,

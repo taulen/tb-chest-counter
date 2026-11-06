@@ -42,6 +42,7 @@ import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   scaleGoalForPeriod, goalDaysForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
+import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { readToken } from '../lib/theme.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 
@@ -105,7 +106,9 @@ let activityMetric = 'chests';   // which series the Clan Activity bars show
 let breakdownDim = 'type';       // Breakdown card: type | source | chest
 let breakdownShowAll = false;
 let breakdownFilter = '';
-let weeklyGoalPoints = null;  // clan's per-member weekly points target, or null
+// The clan's per-member weekly points target and its earlier values
+// (/leaderboard/goal), or null. Read through windowWeeklyGoal().
+let goalInfo = null;
 let contributorsSustainedOnly = false;
 
 // "Sustained" means turning up on most days. That is the whole definition.
@@ -192,7 +195,7 @@ export async function renderAnalytics(el) {
     // optional — the card is simply absent if this fails.
     api('/guards/overview').catch(() => null),
   ]);
-  weeklyGoalPoints = Number.isFinite(goal?.weeklyPoints) ? goal.weeklyPoints : null;
+  goalInfo = goal && !goal.error ? goal : null;
 
   staticData = { stats, mightTotals, guards: guards && !guards.error ? guards : null };
   await reload();
@@ -540,8 +543,16 @@ function formatRemaining(fraction) {
  * version would be permanently green and would teach people the colour is
  * decoration.
  */
+/**
+ * The per-member target for the window on screen, priced by the goal that
+ * window was played under — a past week keeps its own goal after a raise.
+ */
+function windowGoal() {
+  return scaleGoalForPeriod(weeklyGoalForWindow(goalInfo, period, periodOffset), period);
+}
+
 function paceBandHtml(current) {
-  const periodGoal = scaleGoalForPeriod(weeklyGoalPoints, period);
+  const periodGoal = windowGoal();
   if (!periodGoal) return '';
   const elapsed = paceElapsed();
   if (elapsed === null || elapsed < PACE_MIN_ELAPSED) return '';
@@ -608,7 +619,7 @@ function paceBandHtml(current) {
 function contributorsCardHtml(current) {
   const all = current.contributors || [];
   const windowDays = current.windowDays ?? windowData?.windowDays ?? null;
-  const periodGoal = scaleGoalForPeriod(weeklyGoalPoints, period);
+  const periodGoal = windowGoal();
   const warnAt = goalWarnThreshold(periodGoal);
 
   // "Sustained" is turning up often AND not depending on one big day. Both

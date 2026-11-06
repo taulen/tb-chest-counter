@@ -15,6 +15,7 @@ exports.setClanPublicUrl = setClanPublicUrl;
 exports.clanPublicUrl = clanPublicUrl;
 exports.setClanInactivitySettings = setClanInactivitySettings;
 exports.setClanLeaderboardGoal = setClanLeaderboardGoal;
+exports.listGoalHistory = listGoalHistory;
 exports.setClanWeekStart = setClanWeekStart;
 exports.getClanWeekStart = getClanWeekStart;
 exports.getClanAncientDefaults = getClanAncientDefaults;
@@ -37,6 +38,7 @@ const logger_js_1 = require("../../utils/logger.js");
 const log_buffer_js_1 = require("../../utils/log-buffer.js");
 const game_day_js_1 = require("../../utils/game-day.js");
 const ancient_planner_defaults_js_1 = require("../../config/ancient-planner-defaults.js");
+const goal_history_js_1 = require("../goal-history.js");
 const log = (0, logger_js_1.childLogger)('clan-repo');
 /**
  * URL-safe slug. Lowercase, runs of non-alphanumerics collapse to `-`,
@@ -222,9 +224,22 @@ function setClanInactivitySettings(id, settings) {
  * require retyping the target, and resolveLeaderboardGoal() is what decides
  * that the combination means "no goal".
  */
-function setClanLeaderboardGoal(id, settings) {
+function setClanLeaderboardGoal(id, settings, 
+/**
+ * First game day of the week in progress: the new number applies to this
+ * whole week and every one after it, while finished weeks keep the goal they
+ * were played under (clan_goal_history, utils/weekly-goal.ts).
+ */
+effectiveFrom) {
     const db = (0, database_js_1.getDb)();
-    db.prepare('UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?').run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
+    db.transaction(() => {
+        db.prepare('UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?').run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
+        (0, goal_history_js_1.writeGoalStep)(db, id, effectiveFrom, settings.weeklyPoints, new Date().toISOString());
+    })();
+}
+/** The clan's weekly goal over time, oldest step first. */
+function listGoalHistory(id) {
+    return (0, goal_history_js_1.readGoalHistory)((0, database_js_1.getDb)(), id);
 }
 /** Set how this clan cuts its week (Sunday, or Tinman to Tinman). */
 function setClanWeekStart(id, weekStart) {
@@ -500,6 +515,7 @@ function deleteClan(id) {
         // Same: no FK (see migration v92), keyed by member ids a reused clan id would
         // hand to unrelated players.
         db.prepare('DELETE FROM rename_suggestion_dismissals WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ?').run(id);
         // The ChestTracker ingest tables carry a clan_id with NO foreign key to
         // clans(id) — they predate multi-clan and the column was bolted on with a
         // DEFAULT rather than a reference. So nothing here fails if they are

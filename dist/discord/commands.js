@@ -127,7 +127,9 @@ async function handleCommand(interaction, allowedChannelId, clanId) {
             const me = idx >= 0 ? board[idx] : null;
             const name = me?.memberName ?? memberRepo.getMemberById(memberId, clanId)?.name ?? 'You';
             const clan = (0, clan_repo_js_1.getClanById)(clanId);
-            const weeklyGoal = (0, leaderboard_handler_js_1.resolveWeeklyGoalPoints)(clan);
+            // The goal for THIS window: a month that straddles a raise is priced at
+            // the blend of its weeks' goals, as the site prices it.
+            const weeklyGoal = (0, leaderboard_handler_js_1.resolveWeeklyGoalForWindow)(clan, period, 0, rollover);
             await interaction.reply({
                 content: formatMeMessage({
                     name,

@@ -4048,6 +4048,33 @@ details > table {
   color: var(--accent-green);
 }
 
+/* ─── Leaderboard goal history (Clans → Leaderboard goal) ───
+   What each past week was judged against, newest first: a narrow two-column
+   list so the number lines up under the input it came from. */
+.goal-history { margin-top: 12px; max-width: 380px; }
+.goal-history-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.goal-history-list { list-style: none; margin: 0; padding: 0; }
+.goal-history-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.goal-history-list li:last-child { border-bottom: 0; }
+.goal-history-when { color: var(--text-secondary); }
+.goal-history-value { font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; }
+.goal-history-none { color: var(--text-muted); }
+
 /* ─── Multiple share links per clan ───
    One row per live link: the copy pill, then its name + visit count, then the
    per-link actions. Wraps to a stacked block on narrow screens rather than

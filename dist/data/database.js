@@ -15,6 +15,8 @@ const chest_names_js_1 = require("../vision/chest-names.js");
 const source_names_js_1 = require("../vision/source-names.js");
 const config_integrity_js_1 = require("./config-integrity.js");
 const repair_aldrin_2026_11_js_1 = require("./repair-aldrin-2026-11.js");
+const goal_history_js_1 = require("./goal-history.js");
+const defaults_js_1 = require("../config/defaults.js");
 const log = (0, logger_js_1.childLogger)('database');
 let db = null;
 /**
@@ -1096,6 +1098,30 @@ const MIGRATIONS = [
         PRIMARY KEY (clan_id, from_member_id, to_member_id)
       );
     `,
+    },
+    {
+        // The weekly points goal over time. clans.leaderboard_weekly_goal_points is
+        // one number, so raising the goal re-judged every finished week against the
+        // new figure. Each row is "from the week starting effective_from, the goal
+        // is weekly_points" (utils/weekly-goal.ts, data/goal-history.ts), filled
+        // from the audit log's record of every goal save. Backfilled only into an
+        // empty table, so a replay leaves later saves alone. deleteClan clears it.
+        version: 93,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS clan_goal_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          effective_from TEXT NOT NULL,
+          weekly_points INTEGER,
+          set_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, effective_from)
+        );
+      `);
+            const filled = database.prepare('SELECT COUNT(*) AS c FROM clan_goal_history').get();
+            if (filled.c > 0)
+                return;
+            database.transaction(() => (0, goal_history_js_1.backfillGoalHistory)(database, defaults_js_1.DEFAULT_CONFIG.gameDayRolloverUtcHour, Date.now()))();
+        },
     },
 ];
 /**

@@ -2,6 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createLeaderboardGoalRouter = createLeaderboardGoalRouter;
 const clan_repo_js_1 = require("../../../data/repositories/clan-repo.js");
+const goal_history_js_1 = require("../../../data/goal-history.js");
+const index_js_1 = require("../../../config/index.js");
+const ttl_cache_js_1 = require("../../../utils/ttl-cache.js");
 const user_repo_js_1 = require("../../../data/repositories/user-repo.js");
 const auth_js_1 = require("../../middleware/auth.js");
 const _shared_js_1 = require("./_shared.js");
@@ -26,7 +29,8 @@ function createLeaderboardGoalRouter() {
      */
     router.put('/:clanId/leaderboard-goal', auth_js_1.requireClanAdmin, (req, res) => {
         const id = req.parsedClanId;
-        if (!(0, clan_repo_js_1.getClanById)(id)) {
+        const clan = (0, clan_repo_js_1.getClanById)(id);
+        if (!clan) {
             res.status(404).json({ error: 'Clan not found' });
             return;
         }
@@ -40,9 +44,15 @@ function createLeaderboardGoalRouter() {
             });
             return;
         }
-        (0, clan_repo_js_1.setClanLeaderboardGoal)(id, { enabled, weeklyPoints });
+        // The new number covers the week in progress and every week after it;
+        // finished weeks keep the goal they were played under (clan_goal_history).
+        const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
+        const effectiveFrom = (0, goal_history_js_1.weekFirstDay)(Date.now(), rollover, clan.weekStart);
+        (0, clan_repo_js_1.setClanLeaderboardGoal)(id, { enabled, weeklyPoints }, effectiveFrom);
+        // The Performance page judges every closed week against this history.
+        (0, ttl_cache_js_1.invalidate)(`performance:${id}:`);
         (0, user_repo_js_1.logAction)(req.user.id, 'clan.leaderboard_goal.update', { clanId: id, enabled, weeklyPoints });
-        res.json({ ok: true, enabled, weeklyPoints });
+        res.json({ ok: true, enabled, weeklyPoints, effectiveFrom, history: (0, clan_repo_js_1.listGoalHistory)(id) });
     });
     return router;
 }

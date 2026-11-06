@@ -11,6 +11,7 @@
 
 import { esc } from './lib/ui.js';
 import { computeGameWindow } from './lib/period.js';
+import { weeklyGoalForWindow } from './lib/weekly-goal.js';
 import { setGameDayRolloverUtcHour, setWeekStart } from './lib/state.js';
 import {
   sortLeaderboardEntries,
@@ -53,9 +54,10 @@ function start() {
   const PAGE_SIZE = 25;
 
   let ctEnabled = false;
-  // The clan's weekly points goal, from /clan. null when they haven't set one,
+  // The clan's weekly points goal and its earlier values, from /clan, in the
+  // /api/leaderboard/goal shape. weeklyPoints null when they haven't set one,
   // in which case the board renders exactly as it did before the feature.
-  let goalWeeklyPoints = null;
+  let goalInfo = null;
   let clanName = '';
   let rolloverHr = 17;
   // Bumped by every render of #content. A render that awaited its fetch and
@@ -180,6 +182,8 @@ function start() {
     if (currentPage < 1) currentPage = 1;
     const startIdx = (currentPage - 1) * PAGE_SIZE;
     const pageEntries = sorted.slice(startIdx, startIdx + PAGE_SIZE);
+    // The goal this window was played under, not necessarily today's.
+    const goalWeeklyPoints = weeklyGoalForWindow(goalInfo, period, offset);
     lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints };
 
     el.innerHTML = renderLeaderboardCardHtml({
@@ -363,9 +367,10 @@ function start() {
     // Sunday or Tinman-to-Tinman weeks — same shared slot, same reason.
     setWeekStart(info.weekStart);
     ctEnabled = !!info.ctEnabled;
-    goalWeeklyPoints = Number.isFinite(info.leaderboardWeeklyGoalPoints)
-      ? info.leaderboardWeeklyGoalPoints
-      : null;
+    goalInfo = {
+      weeklyPoints: Number.isFinite(info.leaderboardWeeklyGoalPoints) ? info.leaderboardWeeklyGoalPoints : null,
+      history: Array.isArray(info.leaderboardGoalHistory) ? info.leaderboardGoalHistory : [],
+    };
     if (ctEnabled) {
       document.getElementById('ctTab').classList.remove('is-hidden');
     }

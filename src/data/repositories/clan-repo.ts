@@ -3,6 +3,7 @@ import { childLogger } from '../../utils/logger.js';
 import { resolveEntries as resolveLogEntries } from '../../utils/log-buffer.js';
 import { isWeekStart, type WeekStart } from '../../utils/game-day.js';
 import { parseAncientSettings, type AncientPlannerSettings } from '../../config/ancient-planner-defaults.js';
+import { readGoalHistory, writeGoalStep, type GoalHistoryRow } from '../goal-history.js';
 
 const log = childLogger('clan-repo');
 
@@ -363,11 +364,25 @@ export function setClanInactivitySettings(
 export function setClanLeaderboardGoal(
   id: number,
   settings: { enabled: boolean; weeklyPoints: number | null },
+  /**
+   * First game day of the week in progress: the new number applies to this
+   * whole week and every one after it, while finished weeks keep the goal they
+   * were played under (clan_goal_history, utils/weekly-goal.ts).
+   */
+  effectiveFrom: string,
 ): void {
   const db = getDb();
-  db.prepare(
-    'UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?',
-  ).run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
+  db.transaction(() => {
+    db.prepare(
+      'UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?',
+    ).run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
+    writeGoalStep(db, id, effectiveFrom, settings.weeklyPoints, new Date().toISOString());
+  })();
+}
+
+/** The clan's weekly goal over time, oldest step first. */
+export function listGoalHistory(id: number): GoalHistoryRow[] {
+  return readGoalHistory(getDb(), id);
 }
 
 /** Set how this clan cuts its week (Sunday, or Tinman to Tinman). */
@@ -716,6 +731,7 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     // Same: no FK (see migration v92), keyed by member ids a reused clan id would
     // hand to unrelated players.
     db.prepare('DELETE FROM rename_suggestion_dismissals WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ?').run(id);
 
     // The ChestTracker ingest tables carry a clan_id with NO foreign key to
     // clans(id) — they predate multi-clan and the column was bolted on with a
