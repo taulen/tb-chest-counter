@@ -188,18 +188,46 @@ export async function mountTinmanScores(el, opts) {
   paint();
 }
 
+/** One run's standings; null when the read failed. */
+async function fetchRun(event, date) {
+  try {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+    const res = await api(`${EVENTS[event].api}${qs}`);
+    return res?.error ? null : res;
+  } catch (err) {
+    if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
+    return null;
+  }
+}
+
+/** A read started by prefetchTinmanScores, handed to the next load() of that run. */
+let prefetched = null; // { event, date, promise }
+
+/**
+ * Whether a run has any pasted scores, read before the card is mounted so the
+ * Events page can open on the right tab. True / false, or null when it can't
+ * tell (the read failed). 'all' is never a single run, so it has none. The
+ * response is kept for the mount that follows, which then doesn't fetch again.
+ */
+export async function prefetchTinmanScores(event, date) {
+  const ev = EVENTS[event] ? event : 'ancients';
+  if (date === 'all') return false;
+  const hasRounds = (res) => (res ? (res.summons || []).length > 0 : null);
+  // The card already holds this run (the mount won't refetch it either).
+  if (ev === eventKey && loadedFor === date && data) return hasRounds(data);
+  const mine = { event: ev, date, promise: fetchRun(ev, date) };
+  prefetched = mine;
+  return hasRounds(await mine.promise);
+}
+
 async function load() {
   const want = requested;
   const wantEvent = eventKey;
-  try {
-    const qs = want ? `?date=${encodeURIComponent(want)}` : '';
-    const res = await api(`${L.api}${qs}`);
-    if (want !== requested || wantEvent !== eventKey) return; // superseded by another run
-    data = res?.error ? null : res;
-  } catch (err) {
-    if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
-    data = null;
-  }
+  const early = prefetched && prefetched.event === wantEvent && prefetched.date === want ? prefetched.promise : null;
+  prefetched = null; // used once: a later load (after a save) must read fresh
+  const res = await (early || fetchRun(wantEvent, want));
+  if (want !== requested || wantEvent !== eventKey) return; // superseded by another run
+  data = res;
   loadedFor = want;
 }
 

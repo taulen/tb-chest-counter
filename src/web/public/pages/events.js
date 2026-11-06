@@ -39,7 +39,7 @@ import {
   formatResourceAmount, formatResourceCompact,
   isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
-import { mountTinmanScores } from './tinman-scores.js';
+import { mountTinmanScores, prefetchTinmanScores } from './tinman-scores.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
@@ -58,10 +58,15 @@ const ESSENCE_SLUG = 'omen-essence';
 // Ragnarok, their ranking per day. Each run's are filed under its
 // occurrence's scoresDate.
 const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok']);
-// On those, the page is two view tabs; which one is open carries across runs,
-// repaints and events.
+// On those, the page is two view tabs. Which one opens is decided per run, in
+// reload(): Scores, unless the run has none pasted yet (or All time is on),
+// then Participants. A tab the user picks wins from then on — Participants
+// stays put while they step through runs, and Scores stays open on an empty
+// run (an admin about to paste day 1) — except that a Scores pick still falls
+// back to Participants on the next run that has no scores.
 const VIEW_GROUP = 'events-view';
-let eventsView = 'scores';   // 'scores' | 'participants'
+let eventsViewPick = 'scores';  // 'scores' | 'participants' — the last tab clicked
+let eventsView = 'scores';      // the tab shown for the current run
 
 let period = 'weekly';   // same game-week system as the rest of the site
 let periodOffset = 0;    // 0 = current period, 1 = previous, …
@@ -283,6 +288,11 @@ async function reload() {
   const qs = new URLSearchParams();
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
+  // Whether this run has pasted scores picks the tab it opens on. Read
+  // alongside the breakdown; the scores card reuses the response.
+  const scoresPending = SCORES_EVENT_KEYS.has(currentEventKey)
+    ? prefetchTinmanScores(currentEventKey, scoresDateForSelection()).catch(() => null)
+    : Promise.resolve(null);
   try {
     const [breakdown, membersRes] = await Promise.all([
       api(`/events/${encodeURIComponent(currentEventKey)}?${qs}`),
@@ -293,6 +303,9 @@ async function reload() {
   } catch {
     cache = null;
   }
+  // null (couldn't tell) keeps the pick: the card shows its own load error.
+  const hasScores = await scoresPending;
+  eventsView = eventsViewPick === 'scores' && hasScores === false ? 'participants' : eventsViewPick;
   await loadFinishReward(from, to);
   await loadEssence(from, to);
   // Run-over-run history. Independent of the selected occurrence — it is
@@ -899,7 +912,7 @@ function paint() {
     ${viewsHtml}`;
 
   wire(el);
-  wireViewTabs(el, VIEW_GROUP, (key) => { eventsView = key; });
+  wireViewTabs(el, VIEW_GROUP, (key) => { eventsView = key; eventsViewPick = key; });
   if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
       event: currentEventKey,
