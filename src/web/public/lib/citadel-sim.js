@@ -77,15 +77,17 @@ export const TROOP_GROUPS = ['guardsmen', 'specialists', 'monsters', 'mercenarie
 /**
  * Troops that read the same strength and health bonus off their cards: the
  * same captain, artifact and research lines apply to every tier. These are
- * game01master's groups (its getBonusGroup, which links the strength fields);
- * the page links strength AND health within a family. A troop in no family
- * shares with nothing.
+ * game01master's groups (its getBonusGroup, which links the strength fields),
+ * with one change: Fire Phoenix and Royal Lion share a family. game01master
+ * keeps them apart, but the user's cards read the same strength AND health
+ * for Phoenix I and Royal Lion I twice (Nov 2026). The page links strength and
+ * health within a family only while the boxes agree, so a pair that does differ
+ * just stops following once typed apart. A troop in no family shares with nothing.
  */
 export const BONUS_FAMILIES = {
   corax: ['corax-1', 'corax-2'],
-  phoenix: ['fire-phoenix-1', 'fire-phoenix-2'],
+  'phoenix-lion': ['fire-phoenix-1', 'fire-phoenix-2', 'royal-lion-1', 'royal-lion-2', 'jago'],
   vulture: ['vulture-5', 'vulture-6', 'vulture-7'],
-  'royal-lion': ['royal-lion-1', 'royal-lion-2', 'jago'],
   griffin: ['griffin-5', 'griffin-6', 'griffin-7', 'warregal'],
   'melee-guardsmen': ['punisher-1', 'heavy-halberdier-6', 'heavy-halberdier-7', 'spearmen-5'],
   'melee-specialists': ['duelist-1', 'heavy-knight-6', 'heavy-knight-7', 'swordsmen-5'],

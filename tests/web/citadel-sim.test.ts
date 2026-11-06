@@ -357,6 +357,8 @@ describe('citadel simulator edge cases', () => {
     for (const id of ids) expect(TROOPS.some((x) => x.id === id), id).toBe(true);
     expect(bonusFamily('corax-1')).toBe(bonusFamily('corax-2'));
     expect(bonusFamily('corax-1')).not.toBe(bonusFamily('griffin-7'));
+    // The user's cards: Phoenix I and Royal Lion I read the same bonuses.
+    expect(bonusFamily('fire-phoenix-1')).toBe(bonusFamily('royal-lion-1'));
     expect(bonusFamily('wyvern')).toBeNull();
   });
 

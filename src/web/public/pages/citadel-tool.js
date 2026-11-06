@@ -107,6 +107,15 @@ function normalizeRows(rows) {
 /** First row index that may move: a pinned siege row stays on top. */
 const firstMovable = () => (cs.rows.length && isSiege(cs.rows[0].troopId) ? 1 : 0);
 
+/** The bonus boxes the player typed in themselves this visit, per row. A
+ *  family link never writes into those (see onInput). */
+const handTyped = new WeakMap();
+function typedByHand(row) {
+  let set = handTyped.get(row);
+  if (!set) handTyped.set(row, (set = new Set()));
+  return set;
+}
+
 /** Other rows whose troop reads the same bonuses (BONUS_FAMILIES), by index. */
 function familyPeers(i, rows = cs.rows) {
   const fam = bonusFamily(rows[i]?.troopId);
@@ -123,6 +132,28 @@ function familyBonuses(troopId, rows, skip = -1) {
 }
 
 const num = (v) => (Number.isFinite(v) ? v : null);
+
+/**
+ * A bonus as typed: "3658,5", "3658.5", "+3 658,5 %" or "3.658,5" all read
+ * 3658.5. The LAST "." or "," is the decimal point; any before it are
+ * thousands separators. Spaces and "%" are ignored. Null when it isn't a number.
+ */
+export function parseBonus(raw) {
+  let s = String(raw ?? '').replace(/[\s  %]/g, '');
+  if (!s) return null;
+  const sep = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  if (sep >= 0) s = `${s.slice(0, sep).replace(/[.,]/g, '')}.${s.slice(sep + 1)}`;
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
+  const v = Number(s);
+  return Number.isFinite(v) ? v : null;
+}
+
+/** A stored bonus for its text box, with the separator the player uses. */
+function fmtBonus(v) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '';
+  const s = String(v);
+  return cs?.decimalComma ? s.replace('.', ',') : s;
+}
 
 function loadDraft() {
   try {
@@ -141,6 +172,7 @@ function loadDraft() {
       countMode: ['auto', 'gm', 'manual'].includes(d.countMode) ? d.countMode : 'auto',
       bonusesAt: typeof d.bonusesAt === 'string' ? d.bonusesAt : null,
       bonusesFrom: typeof d.bonusesFrom === 'string' ? d.bonusesFrom : null,
+      decimalComma: d.decimalComma === true,
     };
   } catch {
     return null;
@@ -150,7 +182,7 @@ function loadDraft() {
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      citadelId: cs.citadelId, rows: cs.rows, countMode: cs.countMode, bonusesAt: cs.bonusesAt, bonusesFrom: cs.bonusesFrom,
+      citadelId: cs.citadelId, rows: cs.rows, countMode: cs.countMode, bonusesAt: cs.bonusesAt, bonusesFrom: cs.bonusesFrom, decimalComma: cs.decimalComma,
     }));
   } catch { /* private mode — the draft just isn't kept */ }
 }
@@ -164,6 +196,8 @@ export async function renderCitadelTool(mount) {
     countMode: draft?.countMode ?? 'auto',
     bonusesAt: draft?.bonusesAt ?? null,
     bonusesFrom: draft?.bonusesFrom ?? null,
+    /** Show bonuses with "," — set by what the player last typed. */
+    decimalComma: draft?.decimalComma ?? false,
     presets: [],
     presetsError: false,
     /** Unlocked troop tiers, per account (server); null = any. */
@@ -339,8 +373,12 @@ function refresh(root) {
   cs.rows.forEach((r, i) => {
     const count = root.querySelector(`[data-row="${i}"][data-field="count"]`);
     if (count && count !== focused) count.value = a.autoRow[i] && (a.pending || a.strengthMissing.length) ? '' : String(r.count);
-    root.querySelector(`[data-row="${i}"][data-field="strengthPct"]`)?.classList.toggle('is-missing', a.strengthMissing.includes(i));
+    const strength = root.querySelector(`[data-row="${i}"][data-field="strengthPct"]`);
+    strength?.classList.toggle('is-missing', a.strengthMissing.includes(i));
     const health = root.querySelector(`[data-row="${i}"][data-field="healthPct"]`);
+    // Boxes not being typed in show the stored value, with the player's separator.
+    if (strength && strength !== focused) strength.value = fmtBonus(r.strengthPct);
+    if (health && health !== focused) health.value = fmtBonus(r.healthPct);
     if (health) {
       health.classList.toggle('is-missing', a.healthNeeded.has(i));
       health.placeholder = healthPlaceholder(i, a);
@@ -482,11 +520,14 @@ function rowHtml(r, i, role, a) {
   const [roleShort, roleLong] = role ? ROLE_LABELS[role] : ['', ''];
   const isAuto = a.autoRow[i];
   const countUnknown = isAuto && (a.pending || a.strengthMissing.length > 0 || r.strengthPct === null);
+  // Bonuses are text boxes, not type="number": a number box hands back '' for
+  // "12,5" in most browsers, and players type whichever separator they use.
   const field = (key, value, label, step, { cls = '', placeholder = '', readonly = false, title = '' } = {}) => `
     <label class="citadel-field" data-label="${esc(label)}">
       <span class="visually-hidden">${esc(t('{troop}: {field}', { troop: name, field: label }))}</span>
-      <input type="number" class="input citadel-num ${cls}" data-row="${i}" data-field="${key}" step="${step}" ${key === 'count' ? 'min="0"' : 'min="-100"'}
-        inputmode="decimal" value="${value ?? ''}" placeholder="${esc(placeholder)}" ${readonly ? 'readonly tabindex="-1"' : ''} ${title ? `title="${esc(title)}"` : ''}>
+      <input ${key === 'count' ? `type="number" step="${step}" min="0" inputmode="numeric"` : 'type="text" inputmode="decimal" autocomplete="off" spellcheck="false"'}
+        class="input citadel-num ${cls}" data-row="${i}" data-field="${key}"
+        value="${key === 'count' ? (value ?? '') : esc(fmtBonus(value))}" placeholder="${esc(placeholder)}" ${readonly ? 'readonly tabindex="-1"' : ''} ${title ? `title="${esc(title)}"` : ''}>
     </label>`;
   return `
     <div class="citadel-row" role="listitem" data-row="${i}">
@@ -527,8 +568,9 @@ function troopNote(i, a) {
     notes.push(t('needs {kind} {n}', { kind: levelKindLabel(kind), n: tier }));
   }
   if (a.autoRow[i] && !a.pending && !a.strengthMissing.length && r.strengthPct !== null && r.count === 0) notes.push(t('none needed'));
-  const peers = familyPeers(i);
-  if (peers.length) notes.push(t('bonuses shared with {troops}', { troops: peers.map((k) => troopName(cs.rows[k].troopId)).join(', ') }));
+  // Only the family rows that still agree with this one are linked to it.
+  const linked = familyPeers(i).filter((k) => cs.rows[k].strengthPct === r.strengthPct && cs.rows[k].healthPct === r.healthPct);
+  if (linked.length) notes.push(t('bonuses shared with {troops}', { troops: linked.map((k) => troopName(cs.rows[k].troopId)).join(', ') }));
   return esc(notes.join(' · '));
 }
 
@@ -730,15 +772,25 @@ function onInput(e) {
     row.count = raw === '' || !Number.isFinite(n) || n < 0 ? 0 : Math.min(n, 100_000_000);
   } else {
     const field = el.dataset.field;
-    const v = Number(raw.replace(',', '.'));
-    row[field] = raw === '' || !Number.isFinite(v) ? null : Math.min(Math.max(v, -100), 1_000_000);
-    // The same bonus goes to every troop of its family (Corax I and II…), as
-    // in game01master; the other rows' boxes show it straight away.
+    // Show numbers back with the separator the player types.
+    if (/,/.test(raw)) cs.decimalComma = true;
+    else if (/\./.test(raw)) cs.decimalComma = false;
+    const v = parseBonus(raw);
+    const before = row[field];
+    row[field] = v === null ? null : Math.min(Math.max(v, -100), 1_000_000);
+    // The same bonus goes to the rest of its family (Corax I and II…), as in
+    // game01master — but only to boxes that agreed (or were empty) and that
+    // the player hasn't typed in themselves. So a troop given its own number
+    // stays put, now and after a reload (it no longer agrees).
+    typedByHand(row).add(field);
     const root = el.closest('.citadel-tool');
     for (const k of familyPeers(Number(el.dataset.row))) {
-      cs.rows[k][field] = row[field];
+      const peer = cs.rows[k];
+      if (typedByHand(peer).has(field)) continue;
+      if (peer[field] !== null && peer[field] !== before) continue;
+      peer[field] = row[field];
       const peerInput = root?.querySelector(`[data-row="${k}"][data-field="${field}"]`);
-      if (peerInput) peerInput.value = row[field] ?? '';
+      if (peerInput) peerInput.value = fmtBonus(row[field]);
     }
     cs.bonusesAt = new Date().toISOString();
     cs.bonusesFrom = null;
@@ -766,7 +818,7 @@ function onChange(e) {
   if (el instanceof HTMLInputElement && el.dataset.field && !el.readOnly) {
     // Settle what onInput left: show the stored value back.
     const row = cs.rows[Number(el.dataset.row)];
-    if (row) el.value = row[el.dataset.field] ?? '';
+    if (row) el.value = el.dataset.field === 'count' ? String(row.count ?? '') : fmtBonus(row[el.dataset.field]);
   }
 }
 
@@ -919,6 +971,15 @@ function openPicker(root, trigger, target) {
       placeholder="${esc(t('Find a troop…'))}" aria-label="${esc(t('Find a troop'))}" aria-controls="citadel-pop-list">
     <div class="citadel-pop-list" id="citadel-pop-list" role="listbox" aria-label="${esc(t('Troops'))}"></div>`;
   document.body.appendChild(pop);
+  // The wheel over the picker never scrolls the page (which would close it):
+  // the list scrolls while it can, and at either end the wheel stops there.
+  const list = pop.querySelector('.citadel-pop-list');
+  pop.addEventListener('wheel', (ev) => {
+    const down = ev.deltaY > 0;
+    const listCanScroll = list.contains(ev.target)
+      && (down ? list.scrollTop + list.clientHeight < list.scrollHeight - 1 : list.scrollTop > 0);
+    if (!listCanScroll) ev.preventDefault();
+  }, { passive: false });
   picker = { root, pop, trigger, target, items: [], active: 0 };
   trigger.setAttribute('aria-expanded', 'true');
   renderPickerList('');
