@@ -30,6 +30,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
+import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 
 // ─── Members list ─────────────────────────────────────────────
 
@@ -52,6 +53,11 @@ let currentMemberId = null;
 // stays on the user's current tab. Resets to 'chests' when the operator
 // opens a different member.
 let currentMemberChestsTab = 'chests';
+// Open view tab of the profile — 'overview' | 'events' | 'might' | 'history'.
+// Unlike the chest tab it carries over to the next member opened: someone
+// going through players' event runs stays on Events.
+const MEMBER_VIEW_GROUP = 'member-view';
+let currentMemberView = 'overview';
 // Timeframe for the member profile. Page-local, like Analytics and Events —
 // lib/state.js's currentPeriod belongs to the Leaderboard and Triumphal pages.
 // All Time is the default so a profile opened from a link reads the same as
@@ -417,8 +423,12 @@ async function loadAndRenderMemberDetail(data) {
   if (memberEventsFor !== data.id) return;
   // Failed, or aborted by navigating away: nothing to reuse, so the next
   // visit asks again.
-  if (!overview || overview.error) memberEventsFor = null;
-  memberEventsHtml = memberTinmanCardHtml(overview?.tinman) + memberEventRunsCardHtml(overview?.events);
+  const failed = !overview || overview.error;
+  if (failed) memberEventsFor = null;
+  memberEventsHtml = failed
+    ? memberEventsNoteHtml(t('Could not load this player\'s events.'))
+    : (memberTinmanCardHtml(overview.tinman) + memberEventRunsCardHtml(overview.events))
+      || memberEventsNoteHtml(t('No recent event runs for this player.'));
   const slot = document.getElementById('memberEventsSlot');
   if (slot) slot.innerHTML = memberEventsHtml;
 }
@@ -1366,7 +1376,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       }).join('')
     : `<div class="empty-state"><p>${t('No chests yet.')}</p></div>`;
 
-  content.innerHTML = `
+  const headerHtml = `
     <div class="card">
       <div class="card-header member-detail-header">
         <div class="member-detail-title">
@@ -1400,19 +1410,23 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           ${memberGuardsStatHtml(guards)}
         </div>
       </div>
-    </div>
+    </div>`;
 
+  // Might & guards: the might chart, then the donations the guards level is
+  // inferred from, then the level and Gold Pass themselves.
+  const mightPanelHtml = `
     ${mightCardHtml}
-
     ${resourceCardHtml}
-
     ${guards ? `<div class="two-col-grid guards-cards">
       ${memberGuardsCardHtml(guards, data.id, isAdmin)}
       ${memberGoldPassCardHtml(guards)}
-    </div>` : ''}
+    </div>` : ''}`;
 
-    <div id="memberEventsSlot">${memberEventsHtml}</div>
+  // Filled in place when the (slow) event overview lands — see
+  // loadAndRenderMemberDetail.
+  const eventsPanelHtml = `<div id="memberEventsSlot">${memberEventsHtml || memberEventsNoteHtml(t('Loading…'))}</div>`;
 
+  const overviewPanelHtml = `
     ${memberConsistencyHtml(data)}
 
     ${memberSourceMixHtml(data.sourceMix)}
@@ -1455,9 +1469,9 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           </div>
         </div>
       </div>
-    </div>
+    </div>`;
 
-    ${(() => {
+  const historyCardHtml = (() => {
       // All three tab tables are width-locked (table-layout: fixed +
       // colgroup, per the leaderboard/members pattern): paging swaps the
       // whole tbody, so without it every page recomputed its columns from
@@ -1548,9 +1562,9 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           ${tabs.map((tab) => `<div data-member-panel="${tab.key}" class="${currentMemberChestsTab === tab.key ? '' : 'is-hidden'}">${tab.body}</div>`).join('')}
         </div>
       </div>`;
-    })()}
-    </div>
-    ${(() => {
+    })();
+
+  const rawOcrHtml = (() => {
       // Only the two chest tabs have raw player OCR behind them — the
       // resource ledger is imported by a different pipeline, whose
       // unresolved rows are inspected via crops on the Resources page.
@@ -1586,7 +1600,33 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           </tbody></table>
         </div>
       </details>`;
-    })()}`;
+    })();
+
+  // The profile is four view tabs under the header (lib/view-tabs.js), so no
+  // section has to be scrolled past to reach another. Might & guards only
+  // exists when one of its cards does; the open tab carries across members.
+  const views = [
+    { key: 'overview', label: t('Overview'), html: overviewPanelHtml },
+    { key: 'events', label: t('Events'), html: eventsPanelHtml },
+    ...(mightPanelHtml.trim() ? [{ key: 'might', label: t('Might & guards'), html: mightPanelHtml }] : []),
+    { key: 'history', label: t('History'), html: `${historyCardHtml}${rawOcrHtml}` },
+  ];
+  const view = views.some((v) => v.key === currentMemberView) ? currentMemberView : 'overview';
+  content.innerHTML = `
+    ${headerHtml}
+    ${viewTabsHtml(MEMBER_VIEW_GROUP, views, view)}
+    ${views.map((v) => viewPanelHtml(MEMBER_VIEW_GROUP, v.key, view, v.html)).join('')}`;
+  // The might chart is sized from its box, which a hidden panel doesn't have,
+  // so it is drawn the first time its tab is open. Once per render: draw()
+  // also wires the card's window buttons, and a second call would stack them.
+  let mightDrawn = view === 'might';
+  wireViewTabs(content, MEMBER_VIEW_GROUP, (key) => {
+    currentMemberView = key;
+    if (key === 'might' && !mightDrawn) {
+      mightDrawn = true;
+      currentMemberMightDraw();
+    }
+  });
 
   // Wire up the tab switcher — mirrors the pattern in sessions.js.
   // Flipping tabs is purely client-side toggling: both datasets are
@@ -1615,6 +1655,12 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   wireMemberGuards(data.id);
 
   // Chart.js needs a live canvas, so this runs after the HTML is mounted — on
-  // the first render and again after every tab flip's re-render.
-  currentMemberMightDraw();
+  // the first render and again after every tab flip's re-render. Only when
+  // its tab is the open one; otherwise opening that tab draws it.
+  if (view === 'might') currentMemberMightDraw();
+}
+
+/** A one-line card for the Events tab while it loads, or when it has nothing. */
+function memberEventsNoteHtml(text) {
+  return `<div class="card"><div class="card-body card-body-padded"><div class="empty-state"><p>${text}</p></div></div></div>`;
 }

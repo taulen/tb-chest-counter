@@ -40,6 +40,7 @@ import {
   isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
 import { mountTinmanScores } from './tinman-scores.js';
+import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
 const PAGE_SIZE = 25;
@@ -57,6 +58,10 @@ const ESSENCE_SLUG = 'omen-essence';
 // Ragnarok, their ranking per day. Each run's are filed under its
 // occurrence's scoresDate.
 const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok']);
+// On those, the page is two view tabs; which one is open carries across runs,
+// repaints and events.
+const VIEW_GROUP = 'events-view';
+let eventsView = 'scores';   // 'scores' | 'participants'
 
 let period = 'weekly';   // same game-week system as the rest of the site
 let periodOffset = 0;    // 0 = current period, 1 = previous, …
@@ -840,19 +845,7 @@ function paint() {
       <div class="card-body">${npBody}</div>
     </details>`;
 
-  el.innerHTML = `
-    ${eventTabsHtml(currentEventKey)}
-    <div class="card">
-      <div class="card-header events-header">
-        <div class="events-title">
-          <h2>${esc(tGame(cache.name))}</h2>
-          <span class="card-header-hint">${esc(tGame(cache.description) || '')}</span>
-        </div>
-        <div class="events-controls">${controlsHtml}</div>
-      </div>
-      <div class="card-body">${statCards}</div>
-    </div>
-    ${SCORES_EVENT_KEYS.has(currentEventKey) ? '<div class="tinman-mount"></div>' : ''}
+  const participantsHtml = `
     ${eventSeriesCardHtml()}
     ${levelCardHtml}
     <div class="card">
@@ -876,11 +869,38 @@ function paint() {
         ${pagination}
       </div>
     </div>
-    ${nonParticipantsHtml}
-    ${SCORES_EVENT_KEYS.has(currentEventKey) ? '<div class="tinman-below-mount"></div>' : ''}`;
+    ${nonParticipantsHtml}`;
+
+  // Events with pasted scores split the page: Scores (the card plus Ancients'
+  // "Below target") and Participants (everything chest-based) under one shared
+  // header, so neither has to be scrolled past to reach the other.
+  const hasScores = SCORES_EVENT_KEYS.has(currentEventKey);
+  const viewsHtml = hasScores
+    ? `${viewTabsHtml(VIEW_GROUP, [
+        { key: 'scores', label: t('Scores') },
+        { key: 'participants', label: t('Participants ({count})', { count: cache.uniqueParticipants || 0 }) },
+      ], eventsView)}
+      ${viewPanelHtml(VIEW_GROUP, 'scores', eventsView, '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>')}
+      ${viewPanelHtml(VIEW_GROUP, 'participants', eventsView, participantsHtml)}`
+    : participantsHtml;
+
+  el.innerHTML = `
+    ${eventTabsHtml(currentEventKey)}
+    <div class="card">
+      <div class="card-header events-header">
+        <div class="events-title">
+          <h2>${esc(tGame(cache.name))}</h2>
+          <span class="card-header-hint">${esc(tGame(cache.description) || '')}</span>
+        </div>
+        <div class="events-controls">${controlsHtml}</div>
+      </div>
+      <div class="card-body">${statCards}</div>
+    </div>
+    ${viewsHtml}`;
 
   wire(el);
-  if (SCORES_EVENT_KEYS.has(currentEventKey)) {
+  wireViewTabs(el, VIEW_GROUP, (key) => { eventsView = key; });
+  if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
       event: currentEventKey,
       date: scoresDateForSelection(),

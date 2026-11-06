@@ -4794,6 +4794,32 @@ details > table {
 }
 .events-tabs .event-tab-next.is-live { color: var(--accent-green-soft-text); }
 
+/* In-page view tabs (lib/view-tabs.js): Events → Scores / Participants and the
+   member profile's sections. The sub-tab bars' segmented look, on real
+   <button>s. Phones get an equal-width row further down. */
+.view-tabs .resources-tab {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.view-tabs .resources-tab.is-active { background: var(--accent-gold-bg-strong); }
+@media (max-width: 640px) {
+  .view-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    width: 100%;
+  }
+  .view-tabs .resources-tab {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+    padding: 6px 6px;
+  }
+}
+
 /* ─── Resources: overview controls (scope + range + bucket) ──────────── */
 .resources-controls { margin-bottom: 16px; }
 .resources-controls-body {
