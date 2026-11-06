@@ -57,6 +57,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   ],
   users: [
     'audit_log.user_id',
+    // ON DELETE CASCADE, and deleteUser clears it explicitly too: a player's
+    // own saved armies have no value once the account is gone.
+    'citadel_presets.user_id',
     'clans.created_by',
     'event_schedule_corrections.created_by',
     'member_guards_reports.created_by',
@@ -260,6 +263,9 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (2, 1, 'user', ?), (4, ?, 'admin', ?)`,
   ).run(now, clanId, now);
+  db.prepare(
+    `INSERT INTO citadel_presets (user_id, name, data, updated_at) VALUES (2, 'Elven 25', '{"citadelId":"elven-25","rows":[]}', ?)`,
+  ).run(now);
 
   // ChestTracker ingest: clan-scoped, but only by convention — no FK to clans.
   const playerRef = db.prepare(
@@ -391,6 +397,8 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     expect(txCount.c).toBe(1);
     // Accounts this user created outlive them.
     expect(db.prepare('SELECT id FROM users WHERE id = 3').get()).toBeTruthy();
+    // Their own saved citadel armies don't.
+    expect(db.prepare('SELECT COUNT(*) c FROM citadel_presets WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
   });
 
   it('a player merge survives a member referenced from every child table', () => {

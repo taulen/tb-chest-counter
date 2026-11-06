@@ -361,6 +361,11 @@
   },
   {
     "type": "table",
+    "name": "citadel_presets",
+    "sql": "CREATE TABLE citadel_presets ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (user_id, name) )"
+  },
+  {
+    "type": "table",
     "name": "clan_goal_history",
     "sql": "CREATE TABLE clan_goal_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), effective_from TEXT NOT NULL, weekly_points INTEGER, set_at TEXT NOT NULL, -- v94's column, here too: the backfill below writes through -- writeGoalStep, which sets it. v94 skips it when present. amber_pct INTEGER, PRIMARY KEY (clan_id, effective_from) )"
   },

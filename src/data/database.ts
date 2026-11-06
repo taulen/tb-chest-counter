@@ -1159,6 +1159,22 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // Tools → Citadel: each account's saved armies (citadel-preset-repo.ts).
+    // Per user, not per clan — an army is one player's troops and bonuses.
+    // `data` is the validated JSON the page sends. deleteUser clears them.
+    version: 95,
+    sql: `
+      CREATE TABLE IF NOT EXISTS citadel_presets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (user_id, name)
+      );
+    `,
+  },
 ];
 
 /**

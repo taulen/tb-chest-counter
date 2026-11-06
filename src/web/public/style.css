@@ -7241,6 +7241,186 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tool-default-status strong { color: var(--text-primary); }
 .tool-changed { color: var(--accent-amber-text); font-weight: 600; margin-right: 4px; }
 
+/* ─── Tools → Citadel ────────────────────────────────────────────────
+   Army editor + simulated fight. Compact on purpose: one row per troop, the
+   two coin-flip outcomes side by side, the strike list folded away. */
+.citadel-tool { display: flex; flex-direction: column; }
+.citadel-top { padding: 14px 18px; }
+.citadel-top-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; }
+.citadel-picker { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.citadel-kind { display: inline-flex; align-items: center; gap: 4px; }
+.citadel-kind-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted); margin-right: 4px;
+}
+.citadel-level {
+  min-width: 38px; height: 30px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--subtle-bg); color: var(--text-secondary);
+  font: inherit; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.citadel-level:hover { color: var(--text-primary); }
+.citadel-level.is-active { background: var(--accent-gold); border-color: var(--accent-gold); color: var(--text-on-gold); }
+.citadel-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.citadel-preset-select { max-width: 280px; padding: 5px 8px; }
+.citadel-inside { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin: 10px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+.citadel-inside-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.citadel-defender strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.citadel-note { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 12px; }
+.citadel-note-when { color: var(--text-muted); }
+.citadel-army .card-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+
+/* Numbered steps: 1 pick, 2 fill in, 3 read. */
+.citadel-step { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.citadel-top > .citadel-step { margin-bottom: 10px; }
+.citadel-step-num {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent-gold); color: var(--text-on-gold); font-size: 12px; font-weight: 800;
+}
+.citadel-step-hint { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.citadel-result-title { margin: 4px 0 12px; }
+
+.citadel-rows { display: grid; }
+/* Fixed widths, the button column included: every row is its own grid, and an
+   `auto` column would size differently in the header than under it. */
+.citadel-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 96px 112px 112px 86px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.citadel-rows.has-roles .citadel-row { grid-template-columns: 50px minmax(150px, 1fr) 96px 112px 112px 86px; }
+.citadel-row-head {
+  padding: 0 0 6px;
+  align-items: end;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.citadel-row-head small { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+/* Header and value centred over each number box, so a label can't drift off
+   its column however long its sub-label runs. */
+.citadel-row-head span:nth-child(n+2):not(.citadel-head-troop) { text-align: center; }
+.citadel-troop { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.citadel-icon { width: 36px; height: 36px; border-radius: 6px; flex-shrink: 0; }
+.citadel-troop-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citadel-field { display: block; min-width: 0; }
+.citadel-num { width: 100%; padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; }
+.citadel-num.is-missing { border-color: var(--accent-amber); background: var(--accent-amber-bg); }
+/* Worked-out counts read as results, not as boxes to fill in. */
+.citadel-num.is-auto { border-color: transparent; background: var(--subtle-bg); color: var(--accent-gold); font-weight: 700; cursor: default; }
+.citadel-num.is-auto:focus { outline: none; box-shadow: none; }
+.citadel-count-mode { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--subtle-bg); }
+.citadel-count-mode-label { padding: 0 8px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.citadel-seg {
+  padding: 4px 10px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+.citadel-seg:hover { color: var(--text-primary); }
+.citadel-seg.is-active { background: var(--accent-gold); color: var(--text-on-gold); }
+.citadel-count-note { margin-top: -6px; }
+.citadel-waiting.is-bad { border-left-color: var(--accent-red); }
+.citadel-num::placeholder { color: var(--text-muted); font-size: 12px; }
+.citadel-role { font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-gold); }
+.citadel-role.is-extra { color: var(--text-muted); }
+.citadel-row-actions { display: flex; gap: 2px; }
+.citadel-icon-btn {
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text-secondary);
+  font: inherit; font-size: 13px; line-height: 1; cursor: pointer;
+}
+.citadel-icon-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--subtle-bg); }
+.citadel-icon-btn.is-remove:hover { color: var(--accent-red); }
+.citadel-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.citadel-add { margin-top: 10px; }
+.citadel-add-select { max-width: 280px; padding: 5px 8px; }
+.citadel-empty { margin: 4px 0 0; }
+
+.citadel-outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.citadel-outcome { padding: 14px 16px; }
+.citadel-outcome-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.citadel-outcome-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.citadel-tag { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.citadel-tag.is-win { color: var(--accent-green); background: var(--accent-green-bg); }
+.citadel-tag.is-loss { color: var(--accent-red); background: var(--accent-red-bg-strong); }
+.citadel-headline { margin: 8px 0 6px; font-size: 22px; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.citadel-headline.is-clean { color: var(--accent-green); }
+.citadel-losses { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.citadel-losses li { display: flex; align-items: center; gap: 8px; }
+.citadel-icon-sm { width: 22px; height: 22px; border-radius: 4px; }
+.citadel-loss-name { color: var(--text-primary); }
+.citadel-loss-num { font-weight: 700; color: var(--accent-red); font-variant-numeric: tabular-nums; }
+.citadel-loss-of { color: var(--text-muted); font-size: 12px; }
+.citadel-why { margin: 8px 0 0; font-size: 12.5px; color: var(--accent-red-soft-text); }
+.citadel-meta { margin: 8px 0 0; font-size: 12px; }
+.citadel-avg { margin: -6px 0 18px; font-size: 12.5px; }
+.citadel-waiting { padding: 14px 16px; font-size: 13px; border-left: 3px solid var(--accent-amber); }
+.citadel-waiting p { margin: 0 0 4px; }
+
+/* Strike list: read like the game's battle report, one hit per line. */
+.citadel-log-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+.citadel-log-switch { display: flex; gap: 6px; }
+.citadel-log-legend { flex: 1 1 320px; margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.citadel-log-cols,
+.citadel-log-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 96px 110px;
+  align-items: center;
+  gap: 8px;
+}
+.citadel-log-cols {
+  padding: 0 10px 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
+}
+.citadel-log-cols span:nth-child(n+4) { text-align: right; }
+.citadel-log-list, .citadel-log-lines { list-style: none; margin: 0; padding: 0; }
+.citadel-log-list { max-height: 520px; overflow-y: auto; font-size: 13px; }
+.citadel-log-group + .citadel-log-group { margin-top: 12px; }
+.citadel-log-head {
+  padding: 6px 10px; border-radius: 6px; background: var(--subtle-bg);
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary);
+}
+.citadel-log-item { padding: 5px 10px; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
+.citadel-log-item.is-citadel { border-left-color: var(--accent-red); background: var(--accent-red-bg); }
+.citadel-log-actor, .citadel-log-target { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.citadel-log-actor span, .citadel-log-target span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citadel-log-actor { font-weight: 600; color: var(--text-primary); }
+.citadel-log-target { color: var(--text-secondary); }
+.citadel-log-arrow { color: var(--text-muted); text-align: center; }
+.citadel-log-dmg { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.citadel-log-tag { display: block; font-size: 10px; font-weight: 600; color: var(--accent-amber-text); white-space: nowrap; }
+.citadel-log-result { text-align: right; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+.citadel-log-result.is-loss { color: var(--accent-red); font-weight: 700; }
+.citadel-log-result.is-free { color: var(--accent-green); }
+.citadel-log-result.is-kill { color: var(--accent-gold); font-weight: 700; }
+
+@media (max-width: 640px) {
+  .citadel-top { padding: 12px 14px; }
+  .citadel-presets { width: 100%; }
+  .citadel-preset-select { flex: 1 1 auto; max-width: none; }
+  /* One troop per two lines: role, icon, name and buttons, then the three
+     numbers. The troop's 50% basis leaves no room for a field on line one. */
+  .citadel-rows .citadel-row,
+  .citadel-rows.has-roles .citadel-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 0; }
+  .citadel-rows .citadel-row.citadel-row-head { display: none; }
+  .citadel-role { flex: 0 0 auto; min-width: 30px; }
+  .citadel-troop { flex: 1 1 50%; }
+  .citadel-row-actions { flex: 0 0 auto; order: 0; }
+  .citadel-field { flex: 1 1 28%; order: 1; }
+  .citadel-field::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: 10.5px; color: var(--text-muted); }
+  .citadel-outcomes { grid-template-columns: minmax(0, 1fr); }
+  .citadel-add-select { max-width: none; width: 100%; }
+  /* Strike list: who → whom on the first line, damage and result under it. */
+  .citadel-log-cols { display: none; }
+  .citadel-log-item { grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); row-gap: 2px; padding: 6px 8px; }
+  .citadel-log-dmg { grid-column: 1 / 3; text-align: left; font-size: 12px; }
+  .citadel-log-tag { display: inline; margin-left: 6px; }
+  .citadel-log-result { grid-column: 3; }
+}
+
 /* ─── Events → Ancients: Tin Man scores ──────────────────────────────
    Pasted Rise of the Ancients standings, one column per summon. */
 .tinman-note { padding: 16px 20px; margin: 0; }

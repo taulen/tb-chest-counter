@@ -25,9 +25,11 @@ import {
   planAncients,
   formatCompact,
 } from '../lib/ancient-planner.js';
+import { renderCitadelTool } from './citadel-tool.js';
 
 const TOOLS = [
   { key: 'ancient', name: t('Ancient planner') },
+  { key: 'citadel', name: t('Citadel') },
 ];
 
 /** Bare #tools → the first tool; an unknown key falls back the same way. */
@@ -36,6 +38,7 @@ export async function renderTools(el, toolKey) {
   el.innerHTML = `${toolTabsHtml(tool.key)}<div class="tools-mount"></div>`;
   const mount = el.querySelector('.tools-mount');
   if (tool.key === 'ancient') await renderAncientPlanner(mount);
+  else if (tool.key === 'citadel') await renderCitadelTool(mount);
 }
 
 function toolTabsHtml(activeKey) {
