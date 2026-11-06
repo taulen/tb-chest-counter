@@ -42,7 +42,7 @@ import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   scaleGoalForPeriod, goalDaysForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
-import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
+import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
 import { readToken } from '../lib/theme.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 
@@ -551,6 +551,11 @@ function windowGoal() {
   return scaleGoalForPeriod(weeklyGoalForWindow(goalInfo, period, periodOffset), period);
 }
 
+/** Where amber starts for the window on screen: the clan's own percent then. */
+function windowAmberRatio() {
+  return amberRatioForWindow(goalInfo, period, periodOffset);
+}
+
 function paceBandHtml(current) {
   const periodGoal = windowGoal();
   if (!periodGoal) return '';
@@ -620,7 +625,8 @@ function contributorsCardHtml(current) {
   const all = current.contributors || [];
   const windowDays = current.windowDays ?? windowData?.windowDays ?? null;
   const periodGoal = windowGoal();
-  const warnAt = goalWarnThreshold(periodGoal);
+  const amber = windowAmberRatio();
+  const warnAt = goalWarnThreshold(periodGoal, amber);
 
   // "Sustained" is turning up often AND not depending on one big day. Both
   // halves are needed: five sessions can still be one real evening and four
@@ -651,14 +657,14 @@ function contributorsCardHtml(current) {
   const body = rows.length > 0
     ? rows.map((e, i) => {
         const rank = contributorsSustainedOnly ? all.indexOf(e) + 1 : i + 1;
-        const goalClass = goalStatusClassFor(e.points, periodGoal);
+        const goalClass = goalStatusClassFor(e.points, periodGoal, amber);
         const bestShare = e.points > 0 ? Math.round((e.bestDayPoints / e.points) * 100) : 0;
         return `<tr>
           <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${rank}">#${rank}</span></td>
           <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(e.memberId, e.name)}</span><span class="mrow-sub">${tn(e.chests, '{n} chest', '{n} chests')}</span></td>
           <td data-label="${t('Days')}" class="num" data-role="hidden">${e.activeDays.toLocaleString()}${windowDays ? ` <span class="of-days">/ ${windowDays}</span>` : ''}</td>
           <td data-label="${t('Best day')}" class="num" data-role="hidden" title="${tn(e.bestDayPoints, '{n} points on their best single day', '{n} points on their best single day')}">${bestShare}%</td>
-          <td data-label="${t('Points')}" class="num ${goalClass}" data-role="metric"${periodGoal ? ` title="${esc(goalCellTitle(e.points, periodGoal))}"` : ''}>${goalCellContentHtml(e.points, periodGoal)}</td>
+          <td data-label="${t('Points')}" class="num ${goalClass}" data-role="metric"${periodGoal ? ` title="${esc(goalCellTitle(e.points, periodGoal, amber))}"` : ''}>${goalCellContentHtml(e.points, periodGoal, undefined, amber)}</td>
         </tr>`;
       }).join('')
     : `<tr><td colspan="5"><div class="empty-state"><p>${contributorsSustainedOnly

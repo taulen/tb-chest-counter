@@ -208,10 +208,12 @@ describe('public share surface (anonymous, token-gated)', () => {
       // Exact key set, not a subset: this assertion is the allow-list. A field
       // added to the /clan payload has to be looked at and added here before it
       // can reach an anonymous visitor.
-      // leaderboardGoalHistory: { from, weeklyPoints } steps only — numbers the
-      // board already shows week by week; no set-at time and no who.
+      // leaderboardGoalHistory: { from, weeklyPoints, amberPct } steps only —
+      // numbers the board already shows week by week; no set-at time and no who.
+      // leaderboardGoalAmberPct: the amber percent the board's caption states.
       expect(Object.keys(r.body).sort()).toEqual([
-        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardGoalHistory', 'leaderboardWeeklyGoalPoints', 'weekStart',
+        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardGoalAmberPct', 'leaderboardGoalHistory',
+        'leaderboardWeeklyGoalPoints', 'weekStart',
       ]);
       const raw = JSON.stringify(r.body);
       expect(raw).not.toContain('aAaA11'); // the share key is not echoed
@@ -242,7 +244,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       // Exact key sets — the allow-list for what an anonymous visitor gets.
       expect(Object.keys(r.body).sort()).toEqual(['board', 'contacts', 'pointsGuide']);
       expect(Object.keys(r.body.contacts).sort()).toEqual(['clanAdmins', 'siteAdmins']);
-      expect(Object.keys(r.body.board).sort()).toEqual(['goalWeeklyPoints', 'goldPass', 'guards', 'might']);
+      expect(Object.keys(r.body.board).sort()).toEqual(['goalAmberPct', 'goalWeeklyPoints', 'goldPass', 'guards', 'might']);
       // Most recently active first.
       expect(r.body.contacts.clanAdmins).toEqual(['adminnew', 'adminold']);
       expect(r.body.contacts.siteAdmins).toEqual(['boss']);
@@ -263,7 +265,7 @@ describe('public share surface (anonymous, token-gated)', () => {
     // the token clan's data. (Separate cases: the might lookup is cached.)
     it('explains no board extras the clan has no data for', async () => {
       const r = await request(app).get('/api/public/aAaA11/faq');
-      expect(r.body.board).toEqual({ goalWeeklyPoints: null, guards: false, might: false, goldPass: false });
+      expect(r.body.board).toEqual({ goalWeeklyPoints: null, goalAmberPct: 66, guards: false, might: false, goldPass: false });
     });
 
     it('explains Might once the clan has a might snapshot', async () => {

@@ -19,24 +19,66 @@
  * tests/config/weekly-goal-parity.test.ts runs both on the same cases.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.DEFAULT_GOAL_AMBER_PCT = void 0;
+exports.amberPctOrDefault = amberPctOrDefault;
 exports.weeklyGoalOn = weeklyGoalOn;
+exports.amberPctOn = amberPctOn;
+exports.amberRatioForDays = amberRatioForDays;
 exports.meanWeeklyGoal = meanWeeklyGoal;
 exports.weeklyGoalForDays = weeklyGoalForDays;
+/**
+ * Amber's threshold for a clan that never set one: two-thirds of the goal.
+ * Mirrored in lib/weekly-goal.js (the parity test checks the two agree).
+ */
+exports.DEFAULT_GOAL_AMBER_PCT = 66;
 const DAY_MS = 86_400_000;
 function usable(n) {
     return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null;
 }
-/** The weekly goal in force on a game day, or null when there was none. */
-function weeklyGoalOn(history, day) {
+/** A stored amber percent, or the default when it is unset or out of range. */
+function amberPctOrDefault(pct) {
+    return typeof pct === 'number' && Number.isFinite(pct) && pct > 0 && pct < 100 ? pct : exports.DEFAULT_GOAL_AMBER_PCT;
+}
+/** The step in force on a game day; the first step before it begins. */
+function stepOn(history, day) {
     if (history.length === 0)
         return null;
-    let goal = history[0].weeklyPoints;
+    let found = history[0];
     for (const step of history) {
         if (step.from > day)
             break;
-        goal = step.weeklyPoints;
+        found = step;
     }
-    return usable(goal);
+    return found;
+}
+/** The weekly goal in force on a game day, or null when there was none. */
+function weeklyGoalOn(history, day) {
+    return usable(stepOn(history, day)?.weeklyPoints);
+}
+/** The amber percent in force on a game day. */
+function amberPctOn(history, day) {
+    return amberPctOrDefault(stepOn(history, day)?.amberPct);
+}
+/**
+ * The amber threshold, as a ratio of the goal, for [fromDay, toDay]: the
+ * day-weighted mean of the percents in force on its days that had a goal,
+ * like meanWeeklyGoal. `currentPct` stands in when there is no history.
+ */
+function amberRatioForDays(currentPct, history, fromDay, toDay) {
+    const start = Date.parse(`${fromDay}T00:00:00Z`);
+    const end = Date.parse(`${toDay}T00:00:00Z`);
+    if (history.length === 0 || Number.isNaN(start) || Number.isNaN(end))
+        return amberPctOrDefault(currentPct) / 100;
+    let sum = 0;
+    let days = 0;
+    for (let ms = start; ms <= end; ms += DAY_MS) {
+        const day = new Date(ms).toISOString().slice(0, 10);
+        if (weeklyGoalOn(history, day) === null)
+            continue;
+        sum += amberPctOn(history, day);
+        days += 1;
+    }
+    return (days ? sum / days : amberPctOrDefault(currentPct)) / 100;
 }
 /**
  * The mean weekly goal across the game days [fromDay, toDay], rounded, or null

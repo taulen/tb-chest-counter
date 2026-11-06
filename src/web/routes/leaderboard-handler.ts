@@ -15,7 +15,7 @@ import { getClanById, listGoalHistory, type Clan } from '../../data/repositories
 import type { LeaderboardEntry } from '../../models/types.js';
 import { loadConfig } from '../../config/index.js';
 import { currentGameDate, gameDateFor, gameWindow } from '../../utils/game-day.js';
-import { weeklyGoalForDays, type WeeklyGoalStep } from '../../utils/weekly-goal.js';
+import { amberPctOrDefault, weeklyGoalForDays, type WeeklyGoalStep } from '../../utils/weekly-goal.js';
 
 function isValidIso(s: string | undefined): s is string {
   return !!s && !Number.isNaN(new Date(s).getTime());
@@ -100,6 +100,8 @@ export function queryLeaderboard(
  */
 export interface LeaderboardFeatures {
   goalWeeklyPoints: number | null;
+  /** Where amber starts, in percent of the goal, for the FAQ's colour answer. */
+  goalAmberPct: number;
   guards: boolean;
   might: boolean;
   goldPass: boolean;
@@ -127,6 +129,7 @@ function leaderboardFeatures(clan: Clan | null, clanId: number): LeaderboardFeat
   const rows = queryLeaderboard(clanId, { from: undefined, to: undefined, includeAllMembers: true });
   return {
     goalWeeklyPoints: resolveWeeklyGoalPoints(clan),
+    goalAmberPct: amberPctOrDefault(clan?.leaderboardGoalAmberPct),
     // Same predicates the two pages use to decide their columns.
     guards: rows.some((e) => e.guardsLevel != null),
     might: rows.some((e) => e.might != null || e.heroLevel != null),
@@ -175,12 +178,19 @@ export function resolveWeeklyGoalPoints(clan: Pick<Clan, 'leaderboardGoalEnabled
  * last week's goal. `history` is empty when there is no goal at all. Served by
  * /api/leaderboard/goal and folded into the share page's /clan response.
  */
-export function resolveWeeklyGoal(clan: Clan | null | undefined): { weeklyPoints: number | null; history: WeeklyGoalStep[] } {
+export function resolveWeeklyGoal(clan: Clan | null | undefined): {
+  weeklyPoints: number | null;
+  /** Where amber starts, in percent of the goal (the clan's, or the default 66). */
+  amberPct: number;
+  history: WeeklyGoalStep[];
+} {
   const weeklyPoints = resolveWeeklyGoalPoints(clan);
-  if (!clan || weeklyPoints === null) return { weeklyPoints, history: [] };
+  const amberPct = amberPctOrDefault(clan?.leaderboardGoalAmberPct);
+  if (!clan || weeklyPoints === null) return { weeklyPoints, amberPct, history: [] };
   return {
     weeklyPoints,
-    history: listGoalHistory(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints })),
+    amberPct,
+    history: listGoalHistory(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints, amberPct: s.amberPct ?? null })),
   };
 }
 

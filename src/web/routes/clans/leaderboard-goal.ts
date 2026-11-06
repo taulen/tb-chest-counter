@@ -52,15 +52,27 @@ export function createLeaderboardGoalRouter(): Router {
       return;
     }
 
-    // The new number covers the week in progress and every week after it;
+    // Where amber starts, in whole percent of the goal. Blank is the default
+    // (66%); a request without the field keeps whatever the clan has, so a
+    // caller that only knows about the goal can't reset it by accident.
+    const rawAmber = req.body?.amberPct;
+    const amberPct = rawAmber === undefined
+      ? clan.leaderboardGoalAmberPct
+      : rawAmber === null || rawAmber === '' ? null : Number(rawAmber);
+    if (amberPct !== null && (!Number.isInteger(amberPct) || amberPct < 1 || amberPct > 99)) {
+      res.status(400).json({ error: 'amberPct must be blank or a whole number between 1 and 99' });
+      return;
+    }
+
+    // The new numbers cover the week in progress and every week after it;
     // finished weeks keep the goal they were played under (clan_goal_history).
     const rollover = loadConfig().gameDayRolloverUtcHour;
     const effectiveFrom = weekFirstDay(Date.now(), rollover, clan.weekStart);
-    setClanLeaderboardGoal(id, { enabled, weeklyPoints }, effectiveFrom);
+    setClanLeaderboardGoal(id, { enabled, weeklyPoints, amberPct }, effectiveFrom);
     // The Performance page judges every closed week against this history.
     invalidate(`performance:${id}:`);
-    logAction(req.user!.id, 'clan.leaderboard_goal.update', { clanId: id, enabled, weeklyPoints });
-    res.json({ ok: true, enabled, weeklyPoints, effectiveFrom, history: listGoalHistory(id) });
+    logAction(req.user!.id, 'clan.leaderboard_goal.update', { clanId: id, enabled, weeklyPoints, amberPct });
+    res.json({ ok: true, enabled, weeklyPoints, amberPct, effectiveFrom, history: listGoalHistory(id) });
   });
 
   return router;

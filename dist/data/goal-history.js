@@ -13,7 +13,7 @@ function weekFirstDay(ms, rolloverUtcHour, weekStart) {
 /** A clan's goal steps, oldest first. */
 function readGoalHistory(db, clanId) {
     return db.prepare(`
-    SELECT effective_from AS "from", weekly_points AS weeklyPoints, set_at AS setAt
+    SELECT effective_from AS "from", weekly_points AS weeklyPoints, amber_pct AS amberPct, set_at AS setAt
     FROM clan_goal_history WHERE clan_id = ? ORDER BY effective_from
   `).all(clanId);
 }
@@ -26,11 +26,14 @@ function readGoalHistory(db, clanId) {
  * before it is removed, so turning the colours off and on again, or setting a
  * goal back to what it was, leaves no noise behind.
  */
-function writeGoalStep(db, clanId, effectiveFrom, weeklyPoints, setAt) {
+function writeGoalStep(db, clanId, effectiveFrom, weeklyPoints, setAt, 
+/** Where amber starts, in percent of the goal; null = the default 66%. */
+amberPct = null) {
     db.prepare(`
-    INSERT INTO clan_goal_history (clan_id, effective_from, weekly_points, set_at) VALUES (?, ?, ?, ?)
-    ON CONFLICT (clan_id, effective_from) DO UPDATE SET weekly_points = excluded.weekly_points, set_at = excluded.set_at
-  `).run(clanId, effectiveFrom, weeklyPoints, setAt);
+    INSERT INTO clan_goal_history (clan_id, effective_from, weekly_points, amber_pct, set_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (clan_id, effective_from) DO UPDATE SET
+      weekly_points = excluded.weekly_points, amber_pct = excluded.amber_pct, set_at = excluded.set_at
+  `).run(clanId, effectiveFrom, weeklyPoints, amberPct, setAt);
     db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ? AND effective_from > ?').run(clanId, effectiveFrom);
     collapseRepeats(db, clanId);
 }
@@ -38,10 +41,13 @@ function collapseRepeats(db, clanId) {
     const remove = db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ? AND effective_from = ?');
     let previous;
     for (const step of readGoalHistory(db, clanId)) {
-        if (previous !== undefined && step.weeklyPoints === previous)
+        const same = previous !== undefined
+            && step.weeklyPoints === previous.weeklyPoints
+            && (step.amberPct ?? null) === (previous.amberPct ?? null);
+        if (same)
             remove.run(clanId, step.from);
         else
-            previous = step.weeklyPoints;
+            previous = step;
     }
 }
 /**

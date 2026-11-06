@@ -11,7 +11,7 @@
 
 import { esc } from './lib/ui.js';
 import { computeGameWindow } from './lib/period.js';
-import { weeklyGoalForWindow } from './lib/weekly-goal.js';
+import { weeklyGoalForWindow, amberRatioForWindow } from './lib/weekly-goal.js';
 import { setGameDayRolloverUtcHour, setWeekStart } from './lib/state.js';
 import {
   sortLeaderboardEntries,
@@ -184,7 +184,8 @@ function start() {
     const pageEntries = sorted.slice(startIdx, startIdx + PAGE_SIZE);
     // The goal this window was played under, not necessarily today's.
     const goalWeeklyPoints = weeklyGoalForWindow(goalInfo, period, offset);
-    lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints };
+    const goalWarnRatio = amberRatioForWindow(goalInfo, period, offset);
+    lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints, goalWarnRatio };
 
     el.innerHTML = renderLeaderboardCardHtml({
       pageEntries,
@@ -206,6 +207,7 @@ function start() {
       showMight,
       showGuards,
       goalWeeklyPoints,
+      goalWarnRatio,
     });
   }
 
@@ -369,6 +371,7 @@ function start() {
     ctEnabled = !!info.ctEnabled;
     goalInfo = {
       weeklyPoints: Number.isFinite(info.leaderboardWeeklyGoalPoints) ? info.leaderboardWeeklyGoalPoints : null,
+      amberPct: Number.isFinite(info.leaderboardGoalAmberPct) ? info.leaderboardGoalAmberPct : null,
       history: Array.isArray(info.leaderboardGoalHistory) ? info.leaderboardGoalHistory : [],
     };
     if (ctEnabled) {

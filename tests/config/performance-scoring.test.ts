@@ -48,10 +48,9 @@ describe('performance scoring config', () => {
     expect(C.overThreshold).toBeLessThanOrEqual(C.ratioCap);
   });
 
-  it('gives a near miss less than a hit, and only for a real near miss', () => {
+  it('gives a near miss less than a hit', () => {
+    // Where a near miss starts is the clan's amber setting, not config.
     if (C.goalNearMiss === null) return;
-    expect(C.goalNearMiss.from).toBeGreaterThan(0);
-    expect(C.goalNearMiss.from).toBeLessThan(1);
     expect(C.goalNearMiss.credit).toBeGreaterThan(0);
     expect(C.goalNearMiss.credit).toBeLessThan(1);
   });

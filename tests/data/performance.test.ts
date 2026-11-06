@@ -189,9 +189,24 @@ describe('performance report', () => {
     const g = r.members.find((m) => m.memberId === steady)!.signals.goalHits;
     expect(g).toMatchObject({ units: 4, hits: 2, near: 2 });
     expect(r.goalSteps).toEqual([
-      { from: '2026-10-04', weeklyPoints: 10_000 },
-      { from: '2026-10-18', weeklyPoints: 12_000 },
+      { from: '2026-10-04', weeklyPoints: 10_000, amberPct: 66 },
+      { from: '2026-10-18', weeklyPoints: 12_000, amberPct: 66 },
     ]);
+  });
+
+  it('counts a near miss from the clan’s own amber percent, as it stood that week', async () => {
+    // Amber from 90% for the first two weeks, then back to the default 66%.
+    writeGoalStep(getDb(), CLAN, '2026-09-27', 12_000, '2026-09-27T18:00:00Z', 90);
+    writeGoalStep(getDb(), CLAN, '2026-10-18', 12_000, '2026-10-18T18:00:00Z', null);
+    const steady = member('Steady', '2026-09-01T18:00:00Z');
+    chest(steady, '2026-09-02', 1);
+    // 80% of the goal every week: red under a 90% amber band, amber under 66%.
+    for (const day of WEEK_MONDAYS) chest(steady, day, 9_600);
+
+    const r = await report();
+    const g = r.members.find((m) => m.memberId === steady)!.signals.goalHits;
+    expect(g).toMatchObject({ units: 4, hits: 0, near: 2 });
+    expect(r.goalSteps.map((s) => s.amberPct)).toEqual([90, 66]);
   });
 });
 

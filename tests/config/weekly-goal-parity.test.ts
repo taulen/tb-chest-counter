@@ -16,9 +16,9 @@ import * as client from '../../src/web/public/lib/weekly-goal.js';
 
 const HISTORY: server.WeeklyGoalStep[] = [
   { from: '2026-08-16', weeklyPoints: 25_000 },
-  { from: '2026-09-13', weeklyPoints: 30_000 },
+  { from: '2026-09-13', weeklyPoints: 30_000, amberPct: 80 },
   { from: '2026-10-04', weeklyPoints: null },
-  { from: '2026-10-11', weeklyPoints: 35_000 },
+  { from: '2026-10-11', weeklyPoints: 35_000, amberPct: null },
 ];
 
 const DAYS = ['2026-01-01', '2026-08-15', '2026-08-16', '2026-09-12', '2026-09-13', '2026-10-04', '2026-10-10', '2026-10-11', '2027-01-01'];
@@ -47,6 +47,23 @@ describe('weekly goal history: server and client agree', () => {
       }
     }
   });
+
+  it('on where amber starts, by default and by the clan’s own percent', () => {
+    expect(client.DEFAULT_GOAL_AMBER_PCT).toBe(server.DEFAULT_GOAL_AMBER_PCT);
+    for (const day of DAYS) {
+      expect(client.amberPctOn(HISTORY, day), day).toBe(server.amberPctOn(HISTORY, day));
+    }
+    for (const [from, to] of RANGES) {
+      for (const current of [null, 75]) {
+        expect(client.amberRatioForDays(current, HISTORY, from, to), `${from}..${to}`)
+          .toBe(server.amberRatioForDays(current, HISTORY, from, to));
+      }
+      expect(client.amberRatioForDays(75, [], from, to)).toBe(server.amberRatioForDays(75, [], from, to));
+    }
+    for (const pct of [null, undefined, 0, 50, 99, 100, 150, Number.NaN]) {
+      expect(client.amberPctOrDefault(pct)).toBe(server.amberPctOrDefault(pct));
+    }
+  });
 });
 
 describe('weekly goal history', () => {
@@ -68,6 +85,16 @@ describe('weekly goal history', () => {
     // Sep 1–12 at 25,000 (12 days), Sep 13–30 at 30,000 (18 days).
     expect(server.meanWeeklyGoal(HISTORY, '2026-09-01', '2026-09-30'))
       .toBe(Math.round((12 * 25_000 + 18 * 30_000) / 30));
+  });
+
+  it('keeps a finished week on the amber percent it was played under', () => {
+    expect(server.amberPctOn(HISTORY, '2026-09-12')).toBe(66); // never set: the default
+    expect(server.amberPctOn(HISTORY, '2026-09-13')).toBe(80);
+    expect(server.amberPctOn(HISTORY, '2026-10-12')).toBe(66); // cleared back to the default
+    // Sep 13–19, all at 80%.
+    expect(server.amberRatioForDays(null, HISTORY, '2026-09-13', '2026-09-19')).toBeCloseTo(0.8);
+    // No history: the clan's current percent.
+    expect(server.amberRatioForDays(75, [], '2026-09-13', '2026-09-19')).toBeCloseTo(0.75);
   });
 
   it('is off entirely when the clan has no goal now, and is today’s number without history', () => {

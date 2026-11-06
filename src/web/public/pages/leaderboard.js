@@ -15,7 +15,7 @@ import {
 } from '../lib/period.js';
 import { sortLeaderboardEntries, renderLeaderboardCardHtml, copyLeaderboardData } from '../lib/leaderboard-render.js';
 import { openLeaderboardFaq } from '../lib/leaderboard-faq.js';
-import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
+import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
 import {
   getGameDayRolloverUtcHour,
   getCurrentPeriod,
@@ -81,6 +81,7 @@ export async function renderLeaderboard(el) {
   // The goal THIS window was played under: last week keeps last week's goal
   // after the clan raises it.
   const goalWeeklyPoints = weeklyGoalForWindow(goal, getCurrentPeriod(), getCurrentPeriodOffset());
+  const goalWarnRatio = amberRatioForWindow(goal, getCurrentPeriod(), getCurrentPeriodOffset());
 
   lastCopy = {
     entries: sorted,
@@ -88,6 +89,7 @@ export async function renderLeaderboard(el) {
     offset: getCurrentPeriodOffset(),
     rolloverHr: getGameDayRolloverUtcHour(),
     goalWeeklyPoints,
+    goalWarnRatio,
   };
 
   el.innerHTML = renderLeaderboardCardHtml({
@@ -106,6 +108,7 @@ export async function renderLeaderboard(el) {
     showMight,
     showGuards,
     goalWeeklyPoints,
+    goalWarnRatio,
   });
 }
 

@@ -17,6 +17,7 @@ import { esc, copyTextToClipboard } from './ui.js';
 import { sortableThHtml } from './sort-headers.js';
 import { renderPeriodNav } from './period-nav.js';
 import { formatPeriodLabel, weekLengthDays } from './period.js';
+import { DEFAULT_GOAL_AMBER_PCT } from './weekly-goal.js';
 import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
 import { t, tn, tGame } from './i18n.js';
 
@@ -134,8 +135,11 @@ export function scaleGoalForPeriod(weeklyGoalPoints, period, weekStartOverride) 
 // Green at the goal, amber from two-thirds of it, red below. Deliberately NOT
 // the 50% threshold statusClassFor() uses for the ChestTracker tab — that one
 // mirrors chesttracker.com's own colouring and has to keep matching their SPA,
-// while this one is the clan's own standard.
-const GOAL_WARN_RATIO = 0.66;
+// while this one is the clan's own standard. A clan can set its own amber
+// percent (Clans → Leaderboard goal): pages pass it as `ratio` below, read with
+// amberRatioForWindow() so a past week keeps the threshold it had. This is the
+// default, and what every other goal-coloured table (Tin Man targets) uses.
+const GOAL_WARN_RATIO = DEFAULT_GOAL_AMBER_PCT / 100;
 
 /** The goal line for the active timeframe, e.g. "Daily goal: <strong>3,571</strong> points". */
 function goalLineHtml(period, goal) {
@@ -167,27 +171,28 @@ const PERIOD_LABELS = {
  * row directly beneath it. Exported so the Clans-tab preview quotes the same
  * function rather than re-deriving it.
  */
-export function goalWarnThreshold(goalPoints) {
+export function goalWarnThreshold(goalPoints, ratio = GOAL_WARN_RATIO) {
   if (!Number.isFinite(goalPoints) || goalPoints <= 0) return null;
-  return Math.ceil(goalPoints * GOAL_WARN_RATIO);
+  return Math.ceil(goalPoints * ratio);
 }
 
 /**
  * Which of the three status buckets a member's points fall in, or '' when the
  * clan has no goal — so an unconfigured leaderboard carries no status marker
  * at all for the stylesheet to key on, rather than a class that paints nothing.
+ * `ratio` is where amber starts (the clan's own percent / 100).
  */
-function goalStatusFor(actualPoints, goalPoints) {
+function goalStatusFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATIO) {
   if (!Number.isFinite(goalPoints) || goalPoints <= 0) return '';
   const pct = (actualPoints || 0) / goalPoints;
   if (pct >= 1) return 'ok';
-  if (pct >= GOAL_WARN_RATIO) return 'warn';
+  if (pct >= ratio) return 'warn';
   return 'low';
 }
 
 /** Status class for the Points cell (the stronger tint + matched text colour). */
-export function goalStatusClassFor(actualPoints, goalPoints) {
-  const status = goalStatusFor(actualPoints, goalPoints);
+export function goalStatusClassFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATIO) {
+  const status = goalStatusFor(actualPoints, goalPoints, ratio);
   return status ? `goal-cell-${status}` : '';
 }
 
@@ -196,8 +201,8 @@ export function goalStatusClassFor(actualPoints, goalPoints) {
  * so rank and player name carry the signal too, not just the one number that
  * produced it.
  */
-export function goalRowClassFor(actualPoints, goalPoints) {
-  const status = goalStatusFor(actualPoints, goalPoints);
+export function goalRowClassFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATIO) {
+  const status = goalStatusFor(actualPoints, goalPoints, ratio);
   return status ? `goal-row-${status}` : '';
 }
 
@@ -220,16 +225,16 @@ export function goalStatusLabel(status) {
  * width, so right-aligned numbers stay aligned), the number, then the status in
  * words for screen readers. With no goal it is just the number.
  */
-export function goalCellContentHtml(value, goalPoints, formatted = (value || 0).toLocaleString()) {
-  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints)];
+export function goalCellContentHtml(value, goalPoints, formatted = (value || 0).toLocaleString(), ratio = GOAL_WARN_RATIO) {
+  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints, ratio)];
   if (!s) return formatted;
   return `<span class="goal-glyph" aria-hidden="true">${s.glyph}</span>${formatted}`
     + `<span class="visually-hidden">, ${s.spoken}</span>`;
 }
 
 /** Tooltip for a goal-coloured cell, e.g. "Below goal — 4,210 of 7,143". */
-export function goalCellTitle(value, goalPoints) {
-  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints)];
+export function goalCellTitle(value, goalPoints, ratio = GOAL_WARN_RATIO) {
+  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints, ratio)];
   return s
     ? t('{status} — {value} of {goal}', { status: s.label, value: (value || 0).toLocaleString(), goal: Math.round(goalPoints).toLocaleString() })
     : '';
@@ -307,6 +312,9 @@ export function renderLeaderboardCardHtml({
   showMight = false,
   showGuards = false,
   goalWeeklyPoints = null,
+  // Where amber starts, as a ratio of the goal: the clan's own percent for the
+  // window on screen (amberRatioForWindow in lib/weekly-goal.js).
+  goalWarnRatio = GOAL_WARN_RATIO,
   // `actions.copyData`, when set, adds a "Copy data" button beside the export
   // link; the caller owns the click and hands it to copyLeaderboardData().
   // Optional: when present, a download link for the window on screen. The
@@ -404,11 +412,11 @@ export function renderLeaderboardCardHtml({
         ${guardsHeadHtml}
         ${mightHeadHtml}
       </tr></thead><tbody>
-      ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal)}">
+      ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal, goalWarnRatio)}">
         <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
         <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${esc(countSubLabel(e.totalChests))}</span></td>
         <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
-        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal)}</td>
+        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal, goalWarnRatio)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal, goalWarnRatio))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal, undefined, goalWarnRatio)}</td>
         ${guardsCellsHtml(e)}
         ${mightCellsHtml(e)}
       </tr>`).join('')}
@@ -423,7 +431,7 @@ export function renderLeaderboardCardHtml({
     ? `<div class="leaderboard-goal-hint">
         <span class="goal-hint-swatch" aria-hidden="true"></span>
         <span>${goalLineHtml(period, periodGoal)}${period === 'weekly' ? '' : ` <span class="goal-hint-src">${t('(from {weekly} / week)', { weekly: goalWeeklyPoints.toLocaleString() })}</span>`}</span>
-        <span class="goal-hint-src">${t('✓ green at the goal · ◐ amber from {threshold} · ↓ red below', { threshold: goalWarnThreshold(periodGoal).toLocaleString() })}</span>
+        <span class="goal-hint-src">${t('✓ green at the goal · ◐ amber from {threshold} · ↓ red below', { threshold: goalWarnThreshold(periodGoal, goalWarnRatio).toLocaleString() })}</span>
       </div>`
     : '';
 
@@ -468,6 +476,7 @@ export function leaderboardCopyText({
   offset,
   rolloverHr,
   goalWeeklyPoints,
+  goalWarnRatio = GOAL_WARN_RATIO,
   title = DEFAULT_TITLE,
   countLabel = DEFAULT_COUNT_LABEL,
 }) {
@@ -481,7 +490,7 @@ export function leaderboardCopyText({
   const rows = entries.map((e) => {
     const row = [`#${e.rank}`, e.memberName || '', e.totalChests.toLocaleString(), (e.totalPoints || 0).toLocaleString()];
     if (periodGoal !== null) {
-      const status = goalStatusFor(e.totalPoints, periodGoal);
+      const status = goalStatusFor(e.totalPoints, periodGoal, goalWarnRatio);
       row.push(`${COPY_STATUS_GLYPH[status]} ${GOAL_STATUS_TEXT[status].label}`);
     }
     return row;

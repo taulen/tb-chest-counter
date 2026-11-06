@@ -125,30 +125,30 @@ function closedWeeks(input, nowMs, windowFrom, dataStart) {
     }
     return weeks;
 }
-/**
- * The goal each closed week was played under. Raising the goal from 30,000 to
- * 35,000 must not turn a week cleared at 32,000 into a miss, so every week is
- * judged by the clan's goal history (utils/weekly-goal.ts), never today's number.
- */
 function goalsForWeeks(input, weeks) {
+    const amber = (0, weekly_goal_js_1.amberPctOrDefault)(input.goalAmberPct) / 100;
     if (!input.weeklyGoal || weeks.length === 0)
-        return weeks.map(() => null);
+        return weeks.map(() => ({ goal: null, amber }));
     const history = (0, goal_history_js_1.readGoalHistory)((0, database_js_1.getDb)(), input.clanId);
-    return weeks.map((w) => (0, weekly_goal_js_1.weeklyGoalForDays)(input.weeklyGoal, history, w.firstDay, w.lastDay));
+    return weeks.map((w) => ({
+        goal: (0, weekly_goal_js_1.weeklyGoalForDays)(input.weeklyGoal, history, w.firstDay, w.lastDay),
+        amber: (0, weekly_goal_js_1.amberRatioForDays)(input.goalAmberPct, history, w.firstDay, w.lastDay),
+    }));
 }
 /** The judged weeks' goals as steps, oldest first: one entry per change. */
 function goalStepsOf(weeks, weekGoals) {
     const steps = [];
     for (let i = weeks.length - 1; i >= 0; i--) {
         const last = steps[steps.length - 1];
-        if (last && last.weeklyPoints === weekGoals[i])
+        const amberPct = Math.round(weekGoals[i].amber * 100);
+        if (last && last.weeklyPoints === weekGoals[i].goal && last.amberPct === amberPct)
             continue;
-        steps.push({ from: weeks[i].firstDay, weeklyPoints: weekGoals[i] });
+        steps.push({ from: weeks[i].firstDay, weeklyPoints: weekGoals[i].goal, amberPct });
     }
     return steps;
 }
 function weekUnits(input, config, weeks, 
-/** Per week, the goal it was played under (see goalsForWeeks). */
+/** Per week, the goal and amber band it was played under (see goalsForWeeks). */
 weekGoals, members, guards) {
     const out = new Map();
     if (!input.weeklyGoal || weeks.length === 0)
@@ -174,7 +174,7 @@ weekGoals, members, guards) {
         weeks.forEach((w, i) => {
             if (m.tenureStart > w.firstDay)
                 return;
-            const weekGoal = weekGoals[i];
+            const { goal: weekGoal, amber } = weekGoals[i];
             if (!weekGoal)
                 return;
             const level = levelOn(guards.get(m.id), w.firstDay) ?? config.assumedGuardsLevel;
@@ -183,7 +183,7 @@ weekGoals, members, guards) {
                 return;
             const actual = points.get(m.id)?.[i] ?? 0;
             const hit = actual >= goal;
-            const near = !hit && !!config.goalNearMiss && actual >= goal * config.goalNearMiss.from;
+            const near = !hit && !!config.goalNearMiss && actual >= goal * amber;
             units.push({
                 ratio: (0, performance_score_js_1.unitRatio)(actual, goal, config.ratioCap),
                 hit,
@@ -298,6 +298,7 @@ async function buildReport(input, nowMs) {
         requiredDays: 0,
         weeklyGoal: input.weeklyGoal,
         goalSteps: [],
+        goalAmberPct: (0, weekly_goal_js_1.amberPctOrDefault)(input.goalAmberPct),
         weekStart: input.weekStart,
         units: { weeks: 0, tinmanRuns: 0, tinmanRunsWithTargets: 0, eventRuns: 0 },
         events: [],
@@ -383,7 +384,7 @@ async function buildReport(input, nowMs) {
 function getPerformanceReport(input) {
     const nowMs = input.nowMs ?? Date.now();
     const today = (0, game_day_js_1.gameDateFor)(nowMs, input.rolloverUtcHour);
-    const key = `${CACHE_PREFIX}${input.clanId}:${input.timeframe}:${today}:${input.weeklyGoal ?? 0}:${input.weekStart}`;
+    const key = `${CACHE_PREFIX}${input.clanId}:${input.timeframe}:${today}:${input.weeklyGoal ?? 0}:${input.goalAmberPct ?? 0}:${input.weekStart}`;
     if (input.nowMs !== undefined)
         return buildReport(input, nowMs);
     const pending = (0, ttl_cache_js_1.cached)(key, CACHE_TTL_MS, () => buildReport(input, nowMs));

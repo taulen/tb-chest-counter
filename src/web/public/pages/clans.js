@@ -10,6 +10,7 @@ import { getCurrentUser, setWeekStart } from '../lib/state.js';
 // and the hint above the board have to name the same integer, and an inlined
 // `weekly * 0.66` already got that wrong once (round vs ceil).
 import { goalWarnThreshold } from '../lib/leaderboard-render.js';
+import { amberPctOrDefault, DEFAULT_GOAL_AMBER_PCT } from '../lib/weekly-goal.js';
 import {
   loginBridgePanelHTML,
   startLoginSession as _startLoginSession,
@@ -363,7 +364,12 @@ export async function renderClans(el, refreshClanIndicator) {
     } else if (action === 'clan-goal-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-goal-enabled-${clanId}`)?.checked;
       const raw = el.querySelector(`#clan-goal-points-${clanId}`).value.trim();
-      const body = { enabled, weeklyPoints: raw === '' ? null : Number(raw) };
+      const rawAmber = el.querySelector(`#clan-goal-amber-${clanId}`)?.value.trim() ?? '';
+      const body = {
+        enabled,
+        weeklyPoints: raw === '' ? null : Number(raw),
+        amberPct: rawAmber === '' ? null : Number(rawAmber),
+      };
       try {
         const r = await fetch(`/api/clans/${clanId}/leaderboard-goal`, {
           method: 'PUT',
@@ -604,6 +610,8 @@ export async function renderClans(el, refreshClanIndicator) {
   for (const clan of clans) {
     const input = el.querySelector(`#clan-goal-points-${clan.id}`);
     if (input) input.addEventListener('input', () => updateGoalPreview(el, clan.id));
+    const amber = el.querySelector(`#clan-goal-amber-${clan.id}`);
+    if (amber) amber.addEventListener('input', () => updateGoalPreview(el, clan.id));
     const week = el.querySelector(`#clan-week-start-${clan.id}`);
     if (week) week.addEventListener('change', () => updateGoalPreview(el, clan.id));
     updateGoalPreview(el, clan.id);
@@ -619,8 +627,10 @@ export async function renderClans(el, refreshClanIndicator) {
 function goalHistoryHtml(history) {
   const steps = Array.isArray(history) ? history : [];
   if (steps.length < 2) return '';
+  // The amber percent rides beside each goal: it is part of the step, and a
+  // change to it alone is a step of its own.
   const value = (s) => (Number.isFinite(s.weeklyPoints) && s.weeklyPoints > 0
-    ? `<strong>${s.weeklyPoints.toLocaleString()}</strong>`
+    ? `<strong>${s.weeklyPoints.toLocaleString()}</strong> <span class="goal-history-amber" title="${escapeHtml(t('Amber from'))}"><span aria-hidden="true">◐</span><span class="visually-hidden">${t('Amber from')}</span> ${amberPctOrDefault(s.amberPct)}%</span>`
     : `<span class="goal-history-none">${t('No goal')}</span>`);
   const rows = steps.map((s, i) => `<li>
       <span class="goal-history-when">${i === 0
@@ -657,12 +667,16 @@ function updateGoalPreview(el, clanId) {
   // "what would this goal mean" while the admin is still choosing.
   const weekDays = el.querySelector(`#clan-week-start-${clanId}`)?.value === 'ancients' ? 6 : 7;
   const per = (days) => Math.round((weekly / weekDays) * days).toLocaleString();
-  out.innerHTML = t('Works out to <strong>{day}</strong> / day ({weekDays}-day week), <strong>{month}</strong> / month, <strong>{year}</strong> / year. Amber starts at 66% of each (<strong>{week}</strong> for the week).', {
+  // The amber field as typed; blank or out of range previews the default.
+  const rawAmber = el.querySelector(`#clan-goal-amber-${clanId}`)?.value.trim() ?? '';
+  const pct = amberPctOrDefault(rawAmber === '' ? null : Number(rawAmber));
+  out.innerHTML = t('Works out to <strong>{day}</strong> / day ({weekDays}-day week), <strong>{month}</strong> / month, <strong>{year}</strong> / year. Amber starts at {pct}% of each (<strong>{week}</strong> for the week).', {
     day: per(1),
     weekDays,
     month: per(30),
     year: per(365),
-    week: goalWarnThreshold(weekly).toLocaleString(),
+    pct,
+    week: goalWarnThreshold(weekly, pct / 100).toLocaleString(),
   });
 }
 
@@ -1195,13 +1209,14 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         <details class="clan-subsection">
         <summary class="clan-subsection-summary"><h3>${t('Leaderboard goal')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">${t("Colours each member's Points cell on the Leaderboard against a target: <strong>green</strong> at the goal, <strong>amber</strong> from 66% of it, <strong>red</strong> below. Shows on this clan's Leaderboard tab and on its public share link.")}</p>
+        <p class="muted-copy mb-8">${t("Colours each member's Points cell on the Leaderboard against a target: <strong>green</strong> at the goal, <strong>amber</strong> from the percent of it set below ({pct}% if left blank), <strong>red</strong> below that. Shows on this clan's Leaderboard tab and on its public share link.", { pct: DEFAULT_GOAL_AMBER_PCT })}</p>
         <p class="muted-copy mb-8">${t("Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.")}</p>
         <div class="inline-form-row">
           <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> ${t('Show goal colours on the leaderboard')}</label>
         </div>
         <div class="inline-form-row mt-8">
           <div><label>${t('Weekly points goal per member')}</label><input id="clan-goal-points-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.leaderboardWeeklyGoalPoints ?? ''}" placeholder="${t('e.g. 25000')}"></div>
+          <div><label for="clan-goal-amber-${clan.id}">${t('Amber from (% of goal)')}</label><input id="clan-goal-amber-${clan.id}" class="input goal-amber-input" type="number" min="1" max="99" step="1" value="${clan.leaderboardGoalAmberPct ?? ''}" placeholder="${DEFAULT_GOAL_AMBER_PCT}"></div>
           <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         <p class="muted-copy mt-8" id="clan-goal-preview-${clan.id}"></p>

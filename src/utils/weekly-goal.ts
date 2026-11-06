@@ -22,7 +22,19 @@ export interface WeeklyGoalStep {
   /** First game day (YYYY-MM-DD) the value applies to. */
   from: string;
   weeklyPoints: number | null;
+  /**
+   * Amber ("close to goal") starts at this percent of the goal; null is
+   * DEFAULT_GOAL_AMBER_PCT. Part of the step for the same reason the goal is:
+   * moving amber from 66% to 80% must not repaint finished weeks.
+   */
+  amberPct?: number | null;
 }
+
+/**
+ * Amber's threshold for a clan that never set one: two-thirds of the goal.
+ * Mirrored in lib/weekly-goal.js (the parity test checks the two agree).
+ */
+export const DEFAULT_GOAL_AMBER_PCT = 66;
 
 const DAY_MS = 86_400_000;
 
@@ -30,15 +42,55 @@ function usable(n: number | null | undefined): number | null {
   return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** The weekly goal in force on a game day, or null when there was none. */
-export function weeklyGoalOn(history: readonly WeeklyGoalStep[], day: string): number | null {
+/** A stored amber percent, or the default when it is unset or out of range. */
+export function amberPctOrDefault(pct: number | null | undefined): number {
+  return typeof pct === 'number' && Number.isFinite(pct) && pct > 0 && pct < 100 ? pct : DEFAULT_GOAL_AMBER_PCT;
+}
+
+/** The step in force on a game day; the first step before it begins. */
+function stepOn(history: readonly WeeklyGoalStep[], day: string): WeeklyGoalStep | null {
   if (history.length === 0) return null;
-  let goal = history[0].weeklyPoints;
+  let found = history[0];
   for (const step of history) {
     if (step.from > day) break;
-    goal = step.weeklyPoints;
+    found = step;
   }
-  return usable(goal);
+  return found;
+}
+
+/** The weekly goal in force on a game day, or null when there was none. */
+export function weeklyGoalOn(history: readonly WeeklyGoalStep[], day: string): number | null {
+  return usable(stepOn(history, day)?.weeklyPoints);
+}
+
+/** The amber percent in force on a game day. */
+export function amberPctOn(history: readonly WeeklyGoalStep[], day: string): number {
+  return amberPctOrDefault(stepOn(history, day)?.amberPct);
+}
+
+/**
+ * The amber threshold, as a ratio of the goal, for [fromDay, toDay]: the
+ * day-weighted mean of the percents in force on its days that had a goal,
+ * like meanWeeklyGoal. `currentPct` stands in when there is no history.
+ */
+export function amberRatioForDays(
+  currentPct: number | null | undefined,
+  history: readonly WeeklyGoalStep[],
+  fromDay: string,
+  toDay: string,
+): number {
+  const start = Date.parse(`${fromDay}T00:00:00Z`);
+  const end = Date.parse(`${toDay}T00:00:00Z`);
+  if (history.length === 0 || Number.isNaN(start) || Number.isNaN(end)) return amberPctOrDefault(currentPct) / 100;
+  let sum = 0;
+  let days = 0;
+  for (let ms = start; ms <= end; ms += DAY_MS) {
+    const day = new Date(ms).toISOString().slice(0, 10);
+    if (weeklyGoalOn(history, day) === null) continue;
+    sum += amberPctOn(history, day);
+    days += 1;
+  }
+  return (days ? sum / days : amberPctOrDefault(currentPct)) / 100;
 }
 
 /**

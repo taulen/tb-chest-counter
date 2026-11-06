@@ -53,6 +53,16 @@ describe('writeGoalStep', () => {
     writeGoalStep(getDb(), 1, '2026-10-18', 30_000, 'e');
     expect(steps()).toEqual([{ from: '2026-10-04', weeklyPoints: 30_000 }]);
   });
+
+  it('records a change to the amber percent alone as a step of its own', () => {
+    writeGoalStep(getDb(), 1, '2026-10-04', 30_000, 'a');
+    writeGoalStep(getDb(), 1, '2026-10-11', 30_000, 'b', 80);
+    writeGoalStep(getDb(), 1, '2026-10-18', 30_000, 'c', 80);
+    expect(readGoalHistory(getDb(), 1).map(({ from, amberPct }) => ({ from, amberPct }))).toEqual([
+      { from: '2026-10-04', amberPct: null },
+      { from: '2026-10-11', amberPct: 80 },
+    ]);
+  });
 });
 
 describe('backfillGoalHistory (migration v93)', () => {

@@ -13,6 +13,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { getCurrentUser } from '../lib/state.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
+import { DEFAULT_GOAL_AMBER_PCT } from '../lib/weekly-goal.js';
 
 const PAGE_SIZE = 25;
 /** Members named in each of the two spotlight cards; the table has the rest. */
@@ -427,8 +428,12 @@ function tableCardHtml(r) {
 function goalStepsHtml(r) {
   const steps = (r.goalSteps || []).filter((s) => Number.isFinite(s.weeklyPoints));
   if (steps.length < 2) return '';
+  // Name the amber band only when it moved too; otherwise it is noise.
+  const amberMoved = steps.some((s) => s.amberPct !== steps[0].amberPct);
   const list = steps
-    .map((s) => t('{points} from the week of {date}', { points: s.weeklyPoints.toLocaleString(), date: esc(s.from) }))
+    .map((s) => (amberMoved
+      ? t('{points} (amber from {pct}%) from the week of {date}', { points: s.weeklyPoints.toLocaleString(), pct: s.amberPct, date: esc(s.from) })
+      : t('{points} from the week of {date}', { points: s.weeklyPoints.toLocaleString(), date: esc(s.from) })))
     .join(', ');
   return ` ${t('The goal changed in this timeframe: {steps}.', { steps: list })}`;
 }
@@ -446,7 +451,7 @@ function howCardHtml(r) {
       <ul>
         ${item('goalHits', t('the share of closed weeks at or above the weekly points goal that applied that week (the Leaderboard goal, now {goal} points).', { goal })
           + goalStepsHtml(r)
-          + (s.goalNearMiss ? ` ${t('A week that misses it but reaches {near} of it (◐, close to goal) counts as {credit} of a hit.', { near: pct(s.goalNearMiss.from), credit: pct(s.goalNearMiss.credit) })}` : ''))}
+          + (s.goalNearMiss ? ` ${t('A week that misses it but reaches {near} of it (◐, close to goal) counts as {credit} of a hit.', { near: pct((r.goalAmberPct ?? DEFAULT_GOAL_AMBER_PCT) / 100), credit: pct(s.goalNearMiss.credit) })}` : ''))}
         ${item('goalPoints', t('points each week as a share of that goal.'))}
         ${item('tinman', [
           t('points in each finished {tinman} run against the target for their guards level, from the targets pasted on Events → Ancients.', { tinman: esc(tGame('Tin Man')) }),

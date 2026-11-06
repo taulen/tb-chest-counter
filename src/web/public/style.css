@@ -4074,6 +4074,9 @@ details > table {
 .goal-history-when { color: var(--text-secondary); }
 .goal-history-value { font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; }
 .goal-history-none { color: var(--text-muted); }
+.goal-history-amber { margin-left: 8px; color: var(--text-secondary); font-weight: 400; }
+/* A two-digit percent: no need for the goal field's width. */
+.goal-amber-input { max-width: 120px; }
 
 /* ─── Multiple share links per clan ───
    One row per live link: the copy pill, then its name + visit count, then the

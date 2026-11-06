@@ -43,7 +43,7 @@ exports.DEFAULT_PERFORMANCE_CONFIG = {
         tinman: 2,
         events: 2,
     },
-    goalNearMiss: { from: 0.66, credit: 0.5 },
+    goalNearMiss: { credit: 0.5 },
     ratioCap: 2,
     overThreshold: 1.2,
     underThreshold: 0.7,

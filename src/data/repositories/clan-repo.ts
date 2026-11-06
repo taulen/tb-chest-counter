@@ -125,6 +125,12 @@ export interface Clan {
 
   leaderboardGoalEnabled: boolean;
   leaderboardWeeklyGoalPoints: number | null;
+  /**
+   * Amber ("close to goal") starts at this percent of the goal (v94); null
+   * means the default 66%. Recorded on each goal step as well, so changing it
+   * never repaints finished weeks.
+   */
+  leaderboardGoalAmberPct: number | null;
 
   /**
    * How this clan cuts its week: 'sunday' (Sunday → Sunday at the rollover) or
@@ -192,6 +198,7 @@ function rowToClan(row: Record<string, unknown>): Clan {
     inactivityDays: (row.inactivity_days as number | null) ?? null,
     leaderboardGoalEnabled: !!(row.leaderboard_goal_enabled as number),
     leaderboardWeeklyGoalPoints: (row.leaderboard_weekly_goal_points as number | null) ?? null,
+    leaderboardGoalAmberPct: (row.leaderboard_goal_amber_pct as number | null | undefined) ?? null,
     weekStart: isWeekStart(row.week_start) ? row.week_start : 'sunday',
     deletedAt: (row.deleted_at as string) || '',
   };
@@ -363,7 +370,7 @@ export function setClanInactivitySettings(
  */
 export function setClanLeaderboardGoal(
   id: number,
-  settings: { enabled: boolean; weeklyPoints: number | null },
+  settings: { enabled: boolean; weeklyPoints: number | null; amberPct?: number | null },
   /**
    * First game day of the week in progress: the new number applies to this
    * whole week and every one after it, while finished weeks keep the goal they
@@ -373,10 +380,11 @@ export function setClanLeaderboardGoal(
 ): void {
   const db = getDb();
   db.transaction(() => {
+    const amberPct = settings.amberPct ?? null;
     db.prepare(
-      'UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?',
-    ).run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
-    writeGoalStep(db, id, effectiveFrom, settings.weeklyPoints, new Date().toISOString());
+      'UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ?, leaderboard_goal_amber_pct = ? WHERE id = ?',
+    ).run(settings.enabled ? 1 : 0, settings.weeklyPoints, amberPct, id);
+    writeGoalStep(db, id, effectiveFrom, settings.weeklyPoints, new Date().toISOString(), amberPct);
   })();
 }
 

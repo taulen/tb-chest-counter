@@ -224,6 +224,8 @@ function createPublicShareApiRouter() {
             // authenticated /api/leaderboard/goal uses, so a goal that is off or
             // unconfigured reads as null on both surfaces.
             leaderboardWeeklyGoalPoints: goal.weeklyPoints,
+            // Where amber starts, in percent of the goal (the clan's, or 66).
+            leaderboardGoalAmberPct: goal.amberPct,
             // Every earlier goal, so last week is coloured by last week's goal.
             leaderboardGoalHistory: goal.history,
         });

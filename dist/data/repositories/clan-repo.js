@@ -95,6 +95,7 @@ function rowToClan(row) {
         inactivityDays: row.inactivity_days ?? null,
         leaderboardGoalEnabled: !!row.leaderboard_goal_enabled,
         leaderboardWeeklyGoalPoints: row.leaderboard_weekly_goal_points ?? null,
+        leaderboardGoalAmberPct: row.leaderboard_goal_amber_pct ?? null,
         weekStart: (0, game_day_js_1.isWeekStart)(row.week_start) ? row.week_start : 'sunday',
         deletedAt: row.deleted_at || '',
     };
@@ -233,8 +234,9 @@ function setClanLeaderboardGoal(id, settings,
 effectiveFrom) {
     const db = (0, database_js_1.getDb)();
     db.transaction(() => {
-        db.prepare('UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ? WHERE id = ?').run(settings.enabled ? 1 : 0, settings.weeklyPoints, id);
-        (0, goal_history_js_1.writeGoalStep)(db, id, effectiveFrom, settings.weeklyPoints, new Date().toISOString());
+        const amberPct = settings.amberPct ?? null;
+        db.prepare('UPDATE clans SET leaderboard_goal_enabled = ?, leaderboard_weekly_goal_points = ?, leaderboard_goal_amber_pct = ? WHERE id = ?').run(settings.enabled ? 1 : 0, settings.weeklyPoints, amberPct, id);
+        (0, goal_history_js_1.writeGoalStep)(db, id, effectiveFrom, settings.weeklyPoints, new Date().toISOString(), amberPct);
     })();
 }
 /** The clan's weekly goal over time, oldest step first. */

@@ -131,7 +131,7 @@ function rolloverLabel(hr) {
 }
 
 function renderHowTab({ mode, rolloverHr, board, notCounted }) {
-  const { goalWeeklyPoints = null, guards = false, might = false, goldPass = false } = board || {};
+  const { goalWeeklyPoints = null, goalAmberPct = GOAL_WARN_PCT, guards = false, might = false, goldPass = false } = board || {};
   const items = [];
 
   items.push(qa(t('How are points counted?'), `<p>${t("When a member opens a crypt, defeats a monster or earns an event chest, the game posts a gift in the clan's Gifts tab saying who earned it and where it came from. The clan's scanner collects those gifts and credits each one to that member, worth the points shown on the <em>Chest points</em> tab.")}</p>`));
@@ -156,7 +156,7 @@ function renderHowTab({ mode, rolloverHr, board, notCounted }) {
       goalWeeklyPoints,
       "The clan's goal is <strong>{n}</strong> point a week, scaled to the timeframe you're viewing. ✓ Green: goal reached. ◐ Amber: at least {pct}% of it. ↓ Red: below that. The symbol in front of each member's points says the same as the colour.",
       "The clan's goal is <strong>{n}</strong> points a week, scaled to the timeframe you're viewing. ✓ Green: goal reached. ◐ Amber: at least {pct}% of it. ↓ Red: below that. The symbol in front of each member's points says the same as the colour.",
-      { n: fmt(goalWeeklyPoints), pct: GOAL_WARN_PCT },
+      { n: fmt(goalWeeklyPoints), pct: goalAmberPct },
     )}</p>`));
   }
   if (guards) {

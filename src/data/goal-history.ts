@@ -24,7 +24,7 @@ export interface GoalHistoryRow extends WeeklyGoalStep {
 /** A clan's goal steps, oldest first. */
 export function readGoalHistory(db: Database.Database, clanId: number): GoalHistoryRow[] {
   return db.prepare(`
-    SELECT effective_from AS "from", weekly_points AS weeklyPoints, set_at AS setAt
+    SELECT effective_from AS "from", weekly_points AS weeklyPoints, amber_pct AS amberPct, set_at AS setAt
     FROM clan_goal_history WHERE clan_id = ? ORDER BY effective_from
   `).all(clanId) as GoalHistoryRow[];
 }
@@ -44,21 +44,27 @@ export function writeGoalStep(
   effectiveFrom: string,
   weeklyPoints: number | null,
   setAt: string,
+  /** Where amber starts, in percent of the goal; null = the default 66%. */
+  amberPct: number | null = null,
 ): void {
   db.prepare(`
-    INSERT INTO clan_goal_history (clan_id, effective_from, weekly_points, set_at) VALUES (?, ?, ?, ?)
-    ON CONFLICT (clan_id, effective_from) DO UPDATE SET weekly_points = excluded.weekly_points, set_at = excluded.set_at
-  `).run(clanId, effectiveFrom, weeklyPoints, setAt);
+    INSERT INTO clan_goal_history (clan_id, effective_from, weekly_points, amber_pct, set_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (clan_id, effective_from) DO UPDATE SET
+      weekly_points = excluded.weekly_points, amber_pct = excluded.amber_pct, set_at = excluded.set_at
+  `).run(clanId, effectiveFrom, weeklyPoints, amberPct, setAt);
   db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ? AND effective_from > ?').run(clanId, effectiveFrom);
   collapseRepeats(db, clanId);
 }
 
 function collapseRepeats(db: Database.Database, clanId: number): void {
   const remove = db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ? AND effective_from = ?');
-  let previous: number | null | undefined;
+  let previous: GoalHistoryRow | undefined;
   for (const step of readGoalHistory(db, clanId)) {
-    if (previous !== undefined && step.weeklyPoints === previous) remove.run(clanId, step.from);
-    else previous = step.weeklyPoints;
+    const same = previous !== undefined
+      && step.weeklyPoints === previous.weeklyPoints
+      && (step.amberPct ?? null) === (previous.amberPct ?? null);
+    if (same) remove.run(clanId, step.from);
+    else previous = step;
   }
 }
 

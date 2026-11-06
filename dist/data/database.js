@@ -1114,6 +1114,9 @@ const MIGRATIONS = [
           effective_from TEXT NOT NULL,
           weekly_points INTEGER,
           set_at TEXT NOT NULL,
+          -- v94's column, here too: the backfill below writes through
+          -- writeGoalStep, which sets it. v94 skips it when present.
+          amber_pct INTEGER,
           PRIMARY KEY (clan_id, effective_from)
         );
       `);
@@ -1121,6 +1124,22 @@ const MIGRATIONS = [
             if (filled.c > 0)
                 return;
             database.transaction(() => (0, goal_history_js_1.backfillGoalHistory)(database, defaults_js_1.DEFAULT_CONFIG.gameDayRolloverUtcHour, Date.now()))();
+        },
+    },
+    {
+        // The clan's own amber threshold: amber ("close to goal") starts at this
+        // percent of the weekly goal; NULL keeps the 66% every clan had until now,
+        // so no backfill. Stored on each goal step too, so moving it never repaints
+        // finished weeks (utils/weekly-goal.ts). PRAGMA-guarded for replay.
+        version: 94,
+        run: (database) => {
+            const has = (table, column) => database.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+            if (!has('clans', 'leaderboard_goal_amber_pct')) {
+                database.exec('ALTER TABLE clans ADD COLUMN leaderboard_goal_amber_pct INTEGER');
+            }
+            if (!has('clan_goal_history', 'amber_pct')) {
+                database.exec('ALTER TABLE clan_goal_history ADD COLUMN amber_pct INTEGER');
+            }
         },
     },
 ];

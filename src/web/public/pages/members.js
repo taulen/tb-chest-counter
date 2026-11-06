@@ -19,7 +19,7 @@ import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
-import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
+import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
 import { formatCompact } from '../lib/ancient-planner.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
@@ -931,7 +931,7 @@ function memberPaceHtml(points) {
   const elapsed = Math.min(1, Math.max(0,
     (Date.now() - Date.parse(w.from)) / (days * 86_400_000)));
   const progress = Math.min(1, goal > 0 ? points / goal : 0);
-  const statusClass = goalStatusClassFor(points, goal);
+  const statusClass = goalStatusClassFor(points, goal, amberRatioForWindow(memberGoalInfo, currentMemberPeriod, currentMemberOffset));
   const needed = Math.max(0, goal - points);
 
   const line = elapsed < MEMBER_PACE_MIN_ELAPSED

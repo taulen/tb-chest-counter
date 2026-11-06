@@ -70,12 +70,13 @@ export interface PerformanceConfig {
   minUnits: Record<PerformanceSignal, number>;
   /**
    * Partial credit toward `goalHits` for a week that misses the goal but gets
-   * close: from `from` of the goal it counts as `credit` of a hit. 0.66 is the
-   * Leaderboard's amber "close to goal" band (GOAL_WARN_RATIO in
-   * lib/leaderboard-render.js), so a week members saw as amber counts as half.
+   * close: a week in the Leaderboard's amber "close to goal" band counts as
+   * `credit` of a hit. Where amber starts is the clan's own setting (Clans →
+   * Leaderboard goal, 66% unless changed), taken as it stood that week, so a
+   * week members saw as amber is the week that earns the credit.
    * Null = met or not met only.
    */
-  goalNearMiss: { from: number; credit: number } | null;
+  goalNearMiss: { credit: number } | null;
   /** A unit ratio is capped here before averaging (2 = at most 200% per unit). */
   ratioCap: number;
   /** Score at or above this → Overachiever. */
@@ -135,7 +136,7 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
     tinman: 2,
     events: 2,
   },
-  goalNearMiss: { from: 0.66, credit: 0.5 },
+  goalNearMiss: { credit: 0.5 },
   ratioCap: 2,
   overThreshold: 1.2,
   underThreshold: 0.7,
