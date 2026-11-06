@@ -881,14 +881,14 @@ function createApiRouter(scanLoop) {
             // Runs with pasted standings carry the day those are filed under
             // (routes/tinman.ts) as scoresDate. Ancients: its Tinman day (the Rise of
             // the Ancients game day, i.e. the run's last one), also kept as
-            // tinmanDate. Olympus: its first game day — the last would lie in the
-            // future for most of a live run, and a paste can't be filed there.
-            if (key === 'ancients' || key === 'olympus') {
+            // tinmanDate. Olympus and Ragnarok: the first game day — the last would
+            // lie in the future for most of a live run, and a paste can't be filed there.
+            if (key === 'ancients' || key === 'olympus' || key === 'ragnarok') {
                 const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
                 res.json({
                     mode,
                     occurrences: occurrences.map((o) => {
-                        if (key === 'olympus')
+                        if (key !== 'ancients')
                             return { ...o, scoresDate: (0, game_day_js_1.gameDateFor)(Date.parse(o.from), rollover) };
                         const tinmanDate = (0, game_day_js_1.gameDateFor)(Date.parse(o.resetAt) - 1, rollover);
                         return { ...o, tinmanDate, scoresDate: tinmanDate };

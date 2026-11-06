@@ -18,6 +18,7 @@ const PAGES = {
   events: '/#events',
   ancients: '/#events/ancients',
   olympus: '/#events/olympus',
+  ragnarok: '/#events/ragnarok',
   doomsday: '/#events/doomsday',
   hellforge: '/#events/hell-forge',
   tools: '/#tools',

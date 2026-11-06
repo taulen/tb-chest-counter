@@ -48,6 +48,7 @@ describe('/api/tinman', () => {
     app.use(express.json());
     app.use('/api/tinman', requireAuth, requireClanContext, createTinmanRouter());
     app.use('/api/event-scores/olympus', requireAuth, requireClanContext, createTinmanRouter('olympus'));
+    app.use('/api/event-scores/ragnarok', requireAuth, requireClanContext, createTinmanRouter('ragnarok'));
   });
 
   afterEach(() => {
@@ -147,6 +148,28 @@ describe('/api/tinman', () => {
     it('defaults to the newest pasted run', async () => {
       await send('put', `/api/event-scores/olympus/${OLY}/summons/1`, 'admin1', { text: PASTE });
       expect((await send('get', '/api/event-scores/olympus', 'user1')).body.date).toBe(OLY);
+    });
+  });
+
+  describe('Ragnarok (per day)', () => {
+    const RAG = '2026-10-21';
+
+    it('takes days 1–2 only, files them apart from Olympus on the same day, and has no targets', async () => {
+      const put = await send('put', `/api/event-scores/ragnarok/${RAG}/summons/2`, 'admin1', { text: PASTE });
+      expect(put.status).toBe(200);
+      expect(put.body.warning).toBeNull();
+      expect((await send('put', `/api/event-scores/ragnarok/${RAG}/summons/3`, 'admin1', { text: PASTE })).status).toBe(400);
+      expect((await send('put', `/api/event-scores/ragnarok/${RAG}/summons/1`, 'user1', { text: PASTE })).status).toBe(403);
+      expect((await send('put', `/api/event-scores/ragnarok/${RAG}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
+
+      const get = await send('get', `/api/event-scores/ragnarok?date=${RAG}`, 'user1');
+      expect(get.body).toMatchObject({ maxSummons: 2, targets: null, isTinmanDay: null, dates: [RAG] });
+      expect(get.body.summons).toMatchObject([{ summon: 2, rows: 2 }]);
+      expect((await send('get', `/api/event-scores/olympus?date=${RAG}`, 'user1')).body.summons).toEqual([]);
+
+      expect((await send('delete', `/api/event-scores/ragnarok/${RAG}/summons/2`, 'admin1')).status).toBe(200);
+      const actions = getDb().prepare("SELECT action FROM audit_log WHERE action LIKE 'ragnarok_%' ORDER BY id").all();
+      expect(actions).toEqual([{ action: 'ragnarok_upload' }, { action: 'ragnarok_delete' }]);
     });
   });
 });

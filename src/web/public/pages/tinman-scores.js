@@ -1,4 +1,4 @@
-// Tin Man scores — Events → Ancients. Also Olympus scores — Events → Olympus,
+// Tin Man scores — Events → Ancients. Also Olympus and Ragnarok scores (their tabs),
 // the same thing per day of the run instead of per summon, without targets
 // (EVENTS below holds what differs).
 //
@@ -62,14 +62,24 @@ const EVENTS = {
     deleteConfirm: (n) => t('Delete the pasted scores for summon {summon}? Its points move to the next pasted summon.', { summon: n }),
     deleteTitle: () => t('Delete summon scores'),
   },
-  olympus: {
-    api: '/event-scores/olympus',
+  olympus: dayEvent('olympus', () => tGame('Olympus'), () => tGame('Trials of Olympus')),
+  ragnarok: dayEvent('ragnarok', () => tGame('Ragnarok'), () => tGame('Ragnarok')),
+};
+
+/**
+ * An event pasted per day with no targets (Olympus, Ragnarok). Only its name
+ * and API differ; every sentence is shared. `name` is the short tab name,
+ * `fullName` the in-game event name for the header hint.
+ */
+function dayEvent(key, name, fullName) {
+  return {
+    api: `/event-scores/${key}`,
     hasTargets: false,
-    title: () => t('{olympus} scores', { olympus: esc(tGame('Olympus')) }),
-    eventName: () => esc(tGame('Trials of Olympus')),
+    title: () => t('{event} scores', { event: esc(name()) }),
+    eventName: () => esc(fullName()),
     perRound: () => t('points per day'),
-    allNote: () => t('{olympus} scores are per run — pick a single run with the arrows above to see them.', { olympus: esc(tGame('Olympus')) }),
-    loadError: () => t('Could not load the {olympus} scores.', { olympus: esc(tGame('Olympus')) }),
+    allNote: () => t('{event} scores are per run — pick a single run with the arrows above to see them.', { event: esc(name()) }),
+    loadError: () => t('Could not load the {event} scores.', { event: esc(name()) }),
     emptyAdmin: () => t('No scores for this run yet. After each day, copy the in-game ranking and add it with <strong>Add day scores</strong>.'),
     emptyMember: () => t('No scores for this run yet — an admin adds them after each day.'),
     addButton: () => t('Add day scores'),
@@ -93,10 +103,10 @@ const EVENTS = {
     gapWarn: (count, ranks) => tn(count, '{n} rank is missing from the paste ({ranks}). The copy probably skipped that row — their points aren\'t in this day\'s scores. Paste the full list again to replace it.', '{n} ranks are missing from the paste ({ranks}). The copy probably skipped those rows — their points aren\'t in this day\'s scores. Paste the full list again to replace it.', { n: count, ranks }),
     deleteConfirm: (n) => t('Delete the pasted scores for day {day}? Its points move to the next pasted day.', { day: n }),
     deleteTitle: () => t('Delete day scores'),
-  },
-};
+  };
+}
 
-/** The event shown: 'ancients' | 'olympus'. */
+/** The event shown: 'ancients' | 'olympus' | 'ragnarok'. */
 let eventKey = null;
 let L = EVENTS.ancients;
 let mountEl = null;
@@ -135,7 +145,7 @@ function isAdmin() {
 /**
  * Render the card into `el` for one run.
  * @param {HTMLElement} el
- * @param {{ event?: 'ancients' | 'olympus', date: string | null | 'all', members: Array<{ id: number, name: string }> }} opts
+ * @param {{ event?: 'ancients' | 'olympus' | 'ragnarok', date: string | null | 'all', members: Array<{ id: number, name: string }> }} opts
  */
 export async function mountTinmanScores(el, opts) {
   if (!el) return;

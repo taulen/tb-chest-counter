@@ -38,11 +38,12 @@ exports.createTinmanRouter = createTinmanRouter;
  * Rise of the Ancients (Tinman) standings, pasted in after each summon — shown
  * on Events → Ancients. See data/repositories/tinman-repo.ts.
  *
- * The same router serves Trials of Olympus (Events → Olympus), pasted per day:
- * a "summon" in the paths below is then the run's day, 1–5. Olympus has no
- * targets and no Tinman cadence, so those parts are Ancients-only.
+ * The same router serves Trials of Olympus and Ragnarok (Events → Olympus /
+ * Ragnarok), pasted per day: a "summon" in the paths below is then the run's
+ * day (1–5 for Olympus, 1–2 for Ragnarok). Neither has targets or a Tinman
+ * cadence, so those parts are Ancients-only.
  *
- * Mounted at /api/tinman (Ancients) and /api/event-scores/olympus behind
+ * Mounted at /api/tinman (Ancients) and /api/event-scores/<event> behind
  * requireAuth + requireClanContext. Reading is open to every member;
  * uploading, deleting and settling who a name is are admin-only, and every
  * query is scoped to the caller's active clan.
@@ -88,8 +89,9 @@ function createTinmanRouter(eventKey = 'ancients') {
     const round = ancients ? 'summon' : 'day';
     const action = (name) => (ancients ? `tinman_${name}` : `${eventKey}_${name}`);
     /**
-     * Standings for one run (`?date=` its day; default: the newest). Olympus has
-     * no cadence to fall back on, so its default is the newest pasted run.
+     * Standings for one run (`?date=` its day; default: the newest). The per-day
+     * events have no cadence to fall back on, so their default is the newest
+     * pasted run.
      */
     router.get('/', (req, res) => {
         const clanId = req.clanId;

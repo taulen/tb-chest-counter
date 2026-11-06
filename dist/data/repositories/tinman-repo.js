@@ -49,14 +49,16 @@ const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 exports.TINMAN_MAX_SUMMONS = 8;
 /**
  * Events whose clan ranking is pasted in round by round. Ancients is the
- * original (per summon, with targets); Trials of Olympus files the same kind
- * of cumulative ranking per day of its five. A run is keyed by `tinman_date`
- * whatever the event: the Tinman day for Ancients, the run's first game day for
- * Olympus. `summon` is the round — the day, for Olympus.
+ * original (per summon, with targets); Trials of Olympus (five days) and
+ * Ragnarok (two) file the same kind of cumulative ranking per day. A run is
+ * keyed by `tinman_date` whatever the event: the Tinman day for Ancients, the
+ * run's first game day for the per-day events. `summon` is the round — the
+ * day, for those.
  */
 exports.SCORE_EVENTS = {
     ancients: { maxRounds: exports.TINMAN_MAX_SUMMONS },
     olympus: { maxRounds: 5 },
+    ragnarok: { maxRounds: 2 },
 };
 /**
  * Every write here changes the Performance page's Tin Man signal; its cached

@@ -487,8 +487,10 @@ function startWebServer(port, scanLoop, options = {}) {
     // Rise of the Ancients standings pasted after each summon (Events → Ancients).
     // Reads for any member; uploads and name assignment are admin-only inside.
     app.use('/api/tinman', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tinman_js_1.createTinmanRouter)());
-    // The same, per day, for Trials of Olympus (Events → Olympus).
-    app.use('/api/event-scores/olympus', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tinman_js_1.createTinmanRouter)('olympus'));
+    // The same, per day, for Trials of Olympus and Ragnarok (Events → Olympus / Ragnarok).
+    for (const key of ['olympus', 'ragnarok']) {
+        app.use(`/api/event-scores/${key}`, auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tinman_js_1.createTinmanRouter)(key));
+    }
     // Player levels posted in chat (Admin → Levels from chat). Reads for any
     // member; preview and import are admin-only inside.
     app.use('/api/member-levels', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, member_levels_js_1.createMemberLevelsRouter)());

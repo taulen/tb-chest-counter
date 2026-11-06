@@ -53,9 +53,10 @@ const ESSENCE_EVENT_KEY = 'dark-omens';
 const ESSENCE_SLUG = 'omen-essence';
 
 // Events that carry pasted standings (pages/tinman-scores.js): Ancients, the
-// Rise of the Ancients ranking per summon (Tin Man scores), and Olympus, its
-// ranking per day. Each run's are filed under its occurrence's scoresDate.
-const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus']);
+// Rise of the Ancients ranking per summon (Tin Man scores), and Olympus and
+// Ragnarok, their ranking per day. Each run's are filed under its
+// occurrence's scoresDate.
+const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok']);
 
 let period = 'weekly';   // same game-week system as the rest of the site
 let periodOffset = 0;    // 0 = current period, 1 = previous, …
