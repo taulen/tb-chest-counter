@@ -74,6 +74,12 @@
         <button id="statusErrorBtn" class="status-error-btn is-hidden" type="button" aria-label="Show last scan error details" data-i18n data-i18n-attr="aria-label">Details</button>
       </div>
       <div class="next-scan" id="nextScan"></div>
+      <!-- Superadmin-only manual scans, next to the scan status they start.
+           Phones get the same pair in the slide-out menu (nav-mobile-scan). -->
+      <div class="scan-controls is-hidden" data-scan-controls>
+        <button class="btn btn-sm btn-primary" type="button" data-action="trigger-scan" data-scope="clan" data-i18n>Scan This Clan</button>
+        <button class="btn btn-sm" type="button" data-action="trigger-scan" data-scope="all" data-i18n>Scan All Clans</button>
+      </div>
       <div id="statusErrorDetails" class="status-error-details is-hidden" role="status"></div>
       <!-- Multi-clan: read-only label for clan-scoped users; superadmins
            get a dropdown to switch which clan they're viewing. -->
@@ -159,6 +165,10 @@
     </div>
     <!-- Mobile-only account section at the bottom of the slide-out menu -->
     <div class="nav-mobile-account">
+      <div class="scan-controls nav-mobile-scan is-hidden" data-scan-controls>
+        <button class="btn btn-sm btn-primary" type="button" data-action="trigger-scan" data-scope="clan" data-i18n>Scan This Clan</button>
+        <button class="btn btn-sm" type="button" data-action="trigger-scan" data-scope="all" data-i18n>Scan All Clans</button>
+      </div>
       <div class="nav-mobile-account-label" data-i18n>Account</div>
       <div class="nav-mobile-account-name" id="navMobileUserName"></div>
       <!-- The user menu (and its theme picker) is hidden on phones, which left

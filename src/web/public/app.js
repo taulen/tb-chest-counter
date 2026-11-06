@@ -261,6 +261,12 @@ async function checkAuth() {
       if (navSystemEl) navSystemEl.classList.remove('is-hidden');
     }
 
+    // Manual scans live in the shell next to the scan status (sidebar foot,
+    // or the phone menu), superadmin only.
+    for (const el of document.querySelectorAll('[data-scan-controls]')) {
+      el.classList.toggle('is-hidden', currentUser.role !== 'superadmin');
+    }
+
     // Multi-clan: superadmins get a clan-picker dropdown in the header;
     // everyone else sees a read-only clan label so they always know
     // which clan's data they're looking at.
@@ -579,6 +585,15 @@ if (navBarEl) {
   });
 }
 
+// Manual scan buttons sit in the shell (sidebar foot + phone menu), outside
+// #content, so they get their own listener.
+for (const el of document.querySelectorAll('[data-scan-controls]')) {
+  el.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-action="trigger-scan"]');
+    if (btn) triggerScan(btn.dataset.scope, btn);
+  });
+}
+
 const contentEl = $('#content');
 if (contentEl) {
   // Mobile compact-row expand/collapse (delegated; survives re-renders).
@@ -591,7 +606,6 @@ if (contentEl) {
 
     const action = target.dataset.action;
 
-    if (action === 'trigger-scan') return triggerScan(target.dataset.scope);
     if (action === 'set-period') return setPeriod(target.dataset.period, navigateTo);
     if (action === 'set-chest-drill-period') return setChestDrillPeriod(target.dataset.period, navigateTo);
     if (action === 'toggle-chest-collector') {
@@ -1002,7 +1016,7 @@ async function renderRoute(page, content) {
   }
 
   switch (page) {
-    case 'dashboard': await renderDashboard(content, updateStatus); break;
+    case 'dashboard': await renderDashboard(content); break;
     case 'analytics': await renderAnalytics(content); break;
     case 'leaderboard': await renderLeaderboard(content); break;
     case 'triumphal': await renderTriumphal(content); break;
@@ -1176,12 +1190,11 @@ function onDocumentClickForUserMenu(e) {
 
 // changeRole + deleteUserById moved to ./pages/users.js — imported above.
 
-async function triggerScan(scope) {
+async function triggerScan(scope, btn) {
   // `scope` is 'clan' (default; superadmin's selected clan) or 'all'
   // (iterate every active clan). The clicked button gets the busy
-  // state; status polling later disables both via [data-action=trigger-scan].
+  // state; status polling later disables every copy via [data-action=trigger-scan].
   const allClans = scope === 'all';
-  const btn = document.querySelector(`[data-action="trigger-scan"][data-scope="${allClans ? 'all' : 'clan'}"]`);
   if (!btn) return;
   const originalLabel = btn.textContent;
   btn.dataset.localBusy = '1';
@@ -1449,9 +1462,9 @@ async function updateStatus() {
 
     renderOnboardingBanner(status.onboarding);
 
-    // Disable both manual scan buttons (Scan This Clan / Scan All Clans)
-    // while a scan is running. The buttons live in the dashboard header
-    // and only render for superadmins.
+    // Disable the manual scan buttons (Scan This Clan / Scan All Clans)
+    // while a scan is running. They live in the shell next to this status
+    // (sidebar foot, and again in the phone menu), superadmin only.
     const scanBtns = document.querySelectorAll('[data-action="trigger-scan"]');
     scanBtns.forEach((btn) => {
       if (btn.dataset.localBusy) return;

@@ -291,6 +291,17 @@ td, th, .stat-card .value, .num {
   display: none;
 }
 
+/* Manual scans (superadmin), beside the scan status they start. */
+.scan-controls { display: flex; gap: 6px; }
+.scan-controls .btn { white-space: nowrap; justify-content: center; }
+.nav-mobile-scan { display: none; }
+/* Tablet top bar: no room beside the status, countdown and clan picker, so the
+   pair takes its own right-aligned row under them. */
+@media (min-width: 641px) and (max-width: 1099px) {
+  .header-right { flex-wrap: wrap; row-gap: 6px; }
+  .header-right > .scan-controls { order: 10; flex-basis: 100%; justify-content: flex-end; }
+}
+
 .header .status .dot {
   display: inline-block;
   width: 8px;
@@ -2669,6 +2680,16 @@ details > table {
   .next-scan {
     display: none;
   }
+
+  /* The scan buttons move into the slide-out menu with the account actions. */
+  .header-right > .scan-controls { display: none; }
+  .nav-mobile-scan {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .nav-mobile-scan .btn { width: 100%; padding: 10px 14px; font-size: 14px; }
 
   /* Hide the desktop user menu on mobile - account actions move
      into the slide-out hamburger nav instead */
@@ -6839,12 +6860,27 @@ body {
     color: var(--text-muted);
   }
   .nav-icon { display: block; }
+  /* Compact rows: with the Manage group and the account section a superadmin's
+     menu ran well past one phone screen at the old 46px rows. 32px still
+     clears the 24px target-size minimum. */
+  .topbar nav { padding-top: 4px; }
   .topbar nav a {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 24px;
+    gap: 11px;
+    padding: 5px 20px;
+    font-size: 14px;
   }
+  .nav-group-label { padding: 8px 20px 2px; font-size: 10.5px; }
+  .nav-mobile-account { padding: 10px 20px 12px; }
+  .nav-mobile-scan { gap: 6px; margin-bottom: 10px; }
+  .nav-mobile-scan .btn { padding: 6px 12px; font-size: 13px; }
+  /* "ACCOUNT  taulen" on one line. */
+  .nav-mobile-account-label { display: inline-block; margin: 0 8px 8px 0; }
+  .nav-mobile-account-name { display: inline-block; font-size: 13.5px; margin-bottom: 8px; }
+  .nav-mobile-theme,
+  .nav-mobile-lang { margin-bottom: 8px; }
+  .nav-mobile-account-btn { padding: 7px 12px; font-size: 13.5px; margin-bottom: 6px; }
   .page-head { padding-top: 18px; }
   .page-title { font-size: 24px; }
 }
@@ -6937,6 +6973,10 @@ body {
   }
   .header-right > .status,
   .header-right > .next-scan { padding: 0 6px; }
+  /* Stacked full-width under the countdown: the sidebar is too narrow for the
+     pair side by side in German or Russian. */
+  .header-right > .scan-controls { flex-direction: column; padding: 0 6px; }
+  .header-right > .scan-controls .btn { width: 100%; }
   /* The sidebar is ~220px wide, and "Prochain scan dans 1 h 00 min 00 s" is
      not. The countdown wraps inside the pill rather than running off the
      edge; the short translations keep it to one line in practice. */

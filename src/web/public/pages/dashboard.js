@@ -7,7 +7,6 @@ import {
   esc, formatRelativeTime, memberLink, chestHash, sourceLink,
 } from '../lib/ui.js';
 import { computeGameWindow } from '../lib/period.js';
-import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
 const CHEST_TYPE_LABELS = {
@@ -21,7 +20,7 @@ const CHEST_TYPE_LABELS = {
   unknown: t('unknown'),
 };
 
-export async function renderDashboard(el, refreshStatus) {
+export async function renderDashboard(el) {
   // Fetch stats first so the cached gameDayRolloverUtcHour from /stats
   // is populated before we compute the weekly window — otherwise we'd
   // use the 17-default on the very first render and potentially fetch
@@ -40,25 +39,8 @@ export async function renderDashboard(el, refreshStatus) {
     api(weeklyQuery),
     api('/analytics/single-day-records'),
   ]);
-  const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
-  // Superadmins get two buttons: scan only the clan currently selected
-  // in the dropdown (the common case), or kick off a full rotation
-  // across every active clan. Regular admins don't see manual-scan
-  // controls at all today; that's unchanged.
-  const actionButtons = isSuperAdmin
-    ? [
-        `<button class="btn btn-primary" data-action="trigger-scan" data-scope="clan">${t('Scan This Clan')}</button>`,
-        `<button class="btn" data-action="trigger-scan" data-scope="all">${t('Scan All Clans')}</button>`,
-      ].join(' ')
-    : '';
-
-  // Refresh status so the manual scan button is immediately disabled
-  // if a scan is running. The caller passes this in so we don't
-  // import from app.js (would be circular).
-  if (typeof refreshStatus === 'function') {
-    setTimeout(refreshStatus, 0);
-  }
-
+  // The manual scan buttons used to sit at the foot of this page; they live
+  // in the shell next to the scan status now (index.html, app.js).
   const lastScanValue = stats.lastScanChests !== null ? stats.lastScanChests.toLocaleString() : '-';
   const lastScanSub = stats.lastScanCompletedAt
     ? formatRelativeTime(stats.lastScanCompletedAt)
@@ -104,8 +86,7 @@ export async function renderDashboard(el, refreshStatus) {
         </div>
       </div>
     </div>
-    ${renderClanRecordsCard(records)}
-    ${actionButtons ? `<div class="actions">${actionButtons}</div>` : ''}`;
+    ${renderClanRecordsCard(records)}`;
 }
 
 /**
