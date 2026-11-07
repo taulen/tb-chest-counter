@@ -34,7 +34,8 @@
 // cost, march speed, carrying capacity) sits partly OFF the path: training
 // cost leads to march speed, which leads to the next troops, and carrying
 // capacity branches off as a dead end. Two maxed is what continuing costs —
-// the sheet's own "2×10" — so a merged row there totals PATH_PICKS of them.
+// the sheet's own "2×10" — so a trio's row says that only PATH_PICKS of its
+// total are needed (pathSkipsSome).
 //
 // Plain ESM, no DOM: tests/web/research-costs.test.ts imports it directly.
 
@@ -624,7 +625,8 @@ export function curveTotal(key) {
 /**
  * A section's rows with everything that costs the same merged into one group,
  * cheapest level 1 first — which is also the order the tree unlocks them in.
- * Names keep the sheet's order inside a group.
+ * Names keep the sheet's order inside a group. `total` is ONE of them: a
+ * research maxed, or the unlock price — rowTotal() is the whole row.
  *
  * @returns {{ curve: string|null, unlock: number|null, names: string[], first: number, total: number }[]}
  */
@@ -667,14 +669,17 @@ export function tierTotal(tier) {
 /** Researches of a stage a troop tree needs maxed to reach the next troops. */
 export const PATH_PICKS = 2;
 
+/** A merged row's total: every research in it maxed, or every unlock bought. */
+export function rowTotal(group) {
+  return group.total * group.names.length;
+}
+
 /**
- * How many of a merged row's researches its total counts: in a troop tree the
- * two the path needs (or the one, alone), elsewhere one — there every research
- * is its own choice, so the row's price is per research.
+ * True when a merged row holds more researches than continuing needs — a
+ * troop-tree trio, where the path takes two and carrying capacity is a dead end.
  */
-export function pathPicks(tree, group) {
-  if (group.curve === null || !tree.unlockPath) return 1;
-  return Math.min(group.names.length, PATH_PICKS);
+export function pathSkipsSome(tree, group) {
+  return Boolean(tree.unlockPath) && group.curve !== null && group.names.length > PATH_PICKS;
 }
 
 /** Blueprints per upgrade level, and their Gold: 10 per blueprint at every level. */

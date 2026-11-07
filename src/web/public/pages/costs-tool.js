@@ -12,7 +12,7 @@
 import { esc } from '../lib/ui.js';
 import { t, tGame } from '../lib/i18n.js';
 import { formatCompact } from '../lib/ancient-planner.js';
-import { CURVES, TREES, mergeRows, pathPicks, GUARDSMEN_TIERS, tierTotal, curveTotal, BLUEPRINTS } from '../lib/research-costs.js';
+import { CURVES, TREES, mergeRows, rowTotal, pathSkipsSome, PATH_PICKS, GUARDSMEN_TIERS, tierTotal, curveTotal, BLUEPRINTS } from '../lib/research-costs.js';
 
 /** The tree last looked at — a per-browser convenience only. */
 const TREE_KEY = 'tbcc.costs.tree.v1';
@@ -196,19 +196,25 @@ function namesHtml(names, words) {
   }).join('<span class="costs-sep" aria-hidden="true"> · </span>');
 }
 
+/** "Only 2 of these are needed to unlock the next troops: 83.1T." — or null. */
+function onlyTwoText(group, tree) {
+  if (!pathSkipsSome(tree, group)) return null;
+  return t('Only {n} of these are needed to unlock the next troops: {amount}.', { n: PATH_PICKS, amount: formatCompact(group.total * PATH_PICKS) });
+}
+
 /**
- * The Total cell. In a troop tree a merged row costs what continuing takes —
- * two of its researches maxed, not one — so it shows that sum with "41.6T
- * each" under it (on a phone, as the caption under the number).
+ * The Total cell: the whole row — every research in it maxed — with "41.6T
+ * each" under it when it holds more than one (on a phone, as the caption under
+ * the number). A troop-tree trio's hover says only two are needed.
  */
 function totalCellHtml(group, tree) {
-  const picks = pathPicks(tree, group);
-  const sum = group.total * picks;
-  if (picks === 1) {
+  const sum = rowTotal(group);
+  if (group.names.length === 1) {
     return `<td data-role="metric" data-label="${t('Total')}" class="num costs-total ${mag(sum)}" title="${exact(sum)}">${formatCompact(sum)}</td>`;
   }
   const each = t('{amount} each', { amount: formatCompact(group.total) });
-  return `<td data-role="metric" data-label="${each}" class="num costs-total ${mag(sum)}" title="${t('Two of these maxed is enough to unlock the next troops.')}">${formatCompact(sum)}<span class="costs-total-each">${each}</span></td>`;
+  const onlyTwo = onlyTwoText(group, tree);
+  return `<td data-role="metric" data-label="${each}" class="num costs-total ${mag(sum)}${onlyTwo ? ' has-note' : ''}" title="${onlyTwo ?? exact(sum)}">${formatCompact(sum)}<span class="costs-total-each">${each}</span></td>`;
 }
 
 function groupRowHtml(group, words, tree) {
@@ -226,13 +232,15 @@ function groupRowHtml(group, words, tree) {
 
   const levels = CURVES[group.curve];
   const cells = levels.map((v) => `<td data-role="hidden" class="num ${mag(v)}" title="${exact(v)}">${formatCompact(v)}</td>`).join('');
-  // Phone only: the 10 levels as one 5×2 grid in the expand panel.
+  // Phone only: the 10 levels as one 5×2 grid in the expand panel, and the
+  // "only 2 needed" a desktop gets on hover (a phone can't hover).
   const ladder = levels.map((v, i) => `<span class="costs-ladder-item"><span class="costs-ladder-lv">${i + 1}</span><span class="${mag(v)}">${formatCompact(v)}</span></span>`).join('');
+  const onlyTwo = onlyTwoText(group, tree);
   return `
     <tr>
       <td data-role="primary"><span class="costs-names">${names}</span><span class="mrow-sub costs-range">${formatCompact(levels[0])} → ${formatCompact(levels[9])}</span></td>
       ${cells}
       ${total}
-      <td class="costs-ladder" data-label=""><span class="costs-ladder-grid">${ladder}</span></td>
+      <td class="costs-ladder" data-label=""><span class="costs-ladder-grid">${ladder}</span>${onlyTwo ? `<span class="costs-ladder-note">${onlyTwo}</span>` : ''}</td>
     </tr>`;
 }

@@ -7693,8 +7693,11 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .costs-sep { color: var(--text-muted); }
 .costs-table mark { background: var(--accent-gold-bg-strong); color: inherit; border-radius: 3px; padding: 0 1px; }
 .costs-table td.costs-total { font-size: 13px; font-weight: 700; }
-/* "4.15T each": a troop-tree row totals the two researches the path needs. */
+/* "41.6T each" under a merged row's total; dotted where the hover says only
+   two of a troop-tree trio are needed to continue. */
 .costs-total-each { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; line-height: 1.25; color: var(--text-muted); white-space: normal; }
+.costs-table td.has-note { cursor: help; }
+.costs-table td.has-note .costs-total-each { text-decoration: underline dotted; text-underline-offset: 2px; }
 .costs-table tr.costs-unlock > td { background: var(--subtle-bg); }
 .costs-tag {
   display: inline-block; margin-right: 2px; padding: 1px 6px; border-radius: 999px;
@@ -7725,7 +7728,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .costs-names { font-size: 13px; }
   .costs-table tr.costs-unlock { background: var(--subtle-bg); }
   .costs-table tr.costs-unlock > td { background: transparent; }
-  .costs-ladder-grid { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px 6px; }
+  .costs-table tr.is-open td.costs-ladder { flex-wrap: wrap; }
+  .costs-ladder-grid { flex: 1 1 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px 6px; }
+  .costs-ladder-note { flex: 1 1 100%; font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
   .costs-ladder-item { display: flex; flex-direction: column; min-width: 0; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .costs-ladder-lv { font-size: 10px; font-weight: 600; color: var(--text-muted); }
 }

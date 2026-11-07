@@ -1207,8 +1207,8 @@ export const ui = {
   "No research matches “{query}”.": "Нет исследований по запросу «{query}».",
   "Research": "Исследование",
   "Total": "Итого",
+  "Only {n} of these are needed to unlock the next troops: {amount}.": "Для открытия следующих войск нужны только {n} из них: {amount}.",
   "{amount} each": "по {amount}",
-  "Two of these maxed is enough to unlock the next troops.": "Чтобы открыть следующие войска, достаточно прокачать до максимума два из этих исследований.",
   "Unlock": "Открытие",
   // pages/dashboard.js
   "Total Chests": "Всего сундуков",

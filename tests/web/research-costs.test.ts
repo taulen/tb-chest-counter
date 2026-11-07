@@ -10,7 +10,9 @@ import {
   CURVES,
   TREES,
   mergeRows,
-  pathPicks,
+  rowTotal,
+  pathSkipsSome,
+  PATH_PICKS,
   curveTotal,
   GUARDSMEN_TIERS,
   tierTotal,
@@ -89,26 +91,30 @@ describe('research costs data', () => {
   });
 });
 
-describe('pathPicks', () => {
+describe('row totals and the unlock path', () => {
   const tree = (key: string) => TREES.find((x) => x.key === key)!;
   const groupOf = (key: string, section: string, name: string) =>
     mergeRows(tree(key).sections.find((s) => s.name === section)!.rows).find((g) => g.names.includes(name))!;
 
-  it('totals two of a troop-tree trio: the path skips carrying capacity', () => {
+  it('totals every research in a row, and says only two of a troop-tree trio are needed', () => {
+    const vii = groupOf('guardsmen', 'Guardsmen II', "Guardsmen's Training Cost VII");
+    expect(vii.names).toHaveLength(3);
+    expect(rowTotal(vii) / 1e12).toBeCloseTo(124.707, 3); // 3 × 41.569T
+    expect(pathSkipsSome(tree('guardsmen'), vii)).toBe(true);
+    expect((vii.total * PATH_PICKS) / 1e12).toBeCloseTo(83.138, 3);
+    // The tier overview's "2×" is the same two (G8 on the VI curve).
     const vi = groupOf('guardsmen', 'Guardsmen II', "Guardsmen's Training Cost VI");
-    expect(vi.names).toHaveLength(3);
-    expect(pathPicks(tree('guardsmen'), vi)).toBe(2);
-    // Matches the tier overview's "2×" for the same curve (G8).
-    expect(vi.total * 2 + 900e9).toBe(tierTotal(GUARDSMEN_TIERS.find((x) => x.tier === 'G8')!));
-    expect(pathPicks(tree('monsters'), groupOf('monsters', 'Monsters I', "Monsters' Cost IV"))).toBe(2);
+    expect(vi.total * PATH_PICKS + 900e9).toBe(tierTotal(GUARDSMEN_TIERS.find((x) => x.tier === 'G8')!));
+    expect(pathSkipsSome(tree('monsters'), groupOf('monsters', 'Monsters I', "Monsters' Cost IV"))).toBe(true);
   });
 
-  it('counts one research alone, an unlock, and every row outside the troop trees once', () => {
-    const alone = mergeRows([["Guardsmen's March Speed VI", 's7g']])[0];
-    expect(pathPicks(tree('guardsmen'), alone)).toBe(1);
-    expect(pathPicks(tree('guardsmen'), groupOf('guardsmen', 'Guardsmen II', 'Purifier I'))).toBe(1);
-    expect(pathPicks(tree('army'), groupOf('army', 'Army Modernization', "Scouts' Strength II"))).toBe(1);
-    expect(pathPicks(tree('economy'), groupOf('economy', 'Economy', 'Silver Production III'))).toBe(1);
+  it('has nothing to skip in a pair, an unlock, or a tree that is not a troop line', () => {
+    expect(pathSkipsSome(tree('guardsmen'), groupOf('guardsmen', 'Guardsmen I', "Guardsmen's Training Cost II"))).toBe(false);
+    const units = groupOf('guardsmen', 'Guardsmen II', 'Purifier I');
+    expect(pathSkipsSome(tree('guardsmen'), units)).toBe(false);
+    expect(rowTotal(units)).toBe(4 * 900e9);
+    expect(pathSkipsSome(tree('army'), groupOf('army', 'Army Modernization', "Scouts' Strength II"))).toBe(false);
+    expect(pathSkipsSome(tree('economy'), groupOf('economy', 'Economy', 'Silver Production III'))).toBe(false);
   });
 });
 
