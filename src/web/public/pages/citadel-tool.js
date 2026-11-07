@@ -36,6 +36,7 @@ import {
   marchList,
   troopTier,
   troopUnlocked,
+  troopInWindow,
 } from '../lib/citadel-sim.js';
 
 /** The count search runs this long after the last keystroke. */
@@ -252,7 +253,7 @@ function levelsHtml() {
   }).join('');
   return `<div class="citadel-levels" role="group" aria-label="${esc(t('Your troop levels'))}">
       <span class="citadel-inside-label">${t('Your levels')}</span>${selects}
-      <span class="citadel-levels-hint muted-copy">${t('Only troops you have unlocked are offered. Saved to your account.')}</span>
+      <span class="citadel-levels-hint muted-copy">${t('The troop list offers your level and the three below it. Saved to your account.')}</span>
     </div>`;
 }
 
@@ -267,13 +268,21 @@ async function saveLevels() {
   }
 }
 
+/** "G5", "M8"… after a troop in the picker: monsters have no numeral in their names. */
+function levelTag(troopId) {
+  const tier = troopTier(troopId);
+  if (!tier) return '';
+  const [kind, n] = tier;
+  return `<span class="citadel-pop-level" title="${esc(`${levelKindLabel(kind)} ${n}`)}">${kind.toUpperCase()}${n}</span>`;
+}
+
 /** A recommended setup can be used only if every troop in it (siege aside, which steps down) is unlocked. */
 function recommendedFits(rec) {
   return rec.rows.every(([id]) => isSiege(id) || troopUnlocked(id, cs.levels));
 }
 
 /** The best siege engine the levels allow, no better than `wanted`. */
-const SIEGE_LADDER = ['josephine-2', 'josephine-1', 'siege-ballistae-7', 'siege-ballistae-6', 'catapult-5', 'catapult-4', 'catapult-3'];
+const SIEGE_LADDER = ['josephine-2', 'josephine-1', 'siege-ballistae-7', 'siege-ballistae-6', 'catapult-5', 'catapult-4', 'catapult-3', 'catapult-2', 'catapult-1'];
 function siegeWithin(wanted) {
   const from = Math.max(0, SIEGE_LADDER.indexOf(wanted));
   return SIEGE_LADDER.slice(from).find((id) => troopUnlocked(id, cs.levels)) ?? wanted;
@@ -1029,13 +1038,13 @@ function renderPickerList(filter) {
   const html = TROOP_GROUPS.map((g) => {
     const opts = TROOPS.filter((x) => x.group === g && (x.id === current || !taken.has(x.id))
       && !(siegeElsewhere && x.siegeEngine)
-      && (x.id === current || troopUnlocked(x.id, cs.levels))
+      && (x.id === current || troopInWindow(x.id, cs.levels))
       && (!q || tGame(x.name).toLowerCase().includes(q) || x.name.toLowerCase().includes(q)));
     if (!opts.length) return '';
     return `<div class="citadel-pop-group" role="presentation">${esc(GROUP_LABELS[g])}</div>${opts.map((x) => {
       items.push(x.id);
       return `<div class="citadel-pop-opt ${x.id === current ? 'is-current' : ''}" role="option" id="citadel-opt-${x.id}" data-troop="${x.id}" aria-selected="false">
-        <img src="${icon(x.id)}" alt="" width="28" height="28" decoding="async"><span>${esc(tGame(x.name))}</span>${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
+        <img src="${icon(x.id)}" alt="" width="28" height="28" decoding="async"><span>${esc(tGame(x.name))}</span>${levelTag(x.id)}${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
     }).join('')}`;
   }).join('');
   picker.items = items;

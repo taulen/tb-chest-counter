@@ -29,6 +29,7 @@ import {
   bonusFamily,
   troopTier,
   troopUnlocked,
+  troopInWindow,
 } from '../../src/web/public/lib/citadel-sim.js';
 
 type Row = { troopId: string; count: number; strengthPct: number; healthPct: number };
@@ -327,12 +328,45 @@ describe('citadel simulator edge cases', () => {
     expect(both.citadel.army[0].lost).toBe(211);
   });
 
-  it('the march order lists every troop exactly once, and the march list follows it', () => {
-    expect([...MARCH_ORDER].sort()).toEqual(TROOPS.map((x) => x.id).sort());
+  it('the march list reproduces the game order it knows, and places every other troop by strength', () => {
+    for (const id of MARCH_ORDER) expect(TROOPS.some((x) => x.id === id), id).toBe(true);
+    const every = marchList(TROOPS.map((x) => row(x.id, 1, 0, 0))).map((r: { troopId: string }) => r.troopId);
+    expect(every).toHaveLength(TROOPS.length);
+    // The 33 checked in game keep exactly their order among everything else.
+    expect(every.filter((id: string) => MARCH_ORDER.includes(id))).toEqual(MARCH_ORDER);
     const list = marchList([
       row('siege-ballistae-7', 779, 0, 0), row('corax-1', 621, 0, 0), row('royal-lion-1', 0, 0, 0), row('fire-phoenix-1', 26, 0, 0), row('wyvern', 3, 0, 0),
+      row('archer-3', 50, 0, 0), row('battle-boar', 2, 0, 0),
     ]);
-    expect(list.map((r: { troopId: string }) => r.troopId)).toEqual(['wyvern', 'fire-phoenix-1', 'corax-1', 'siege-ballistae-7']);
+    expect(list.map((r: { troopId: string }) => r.troopId)).toEqual(['wyvern', 'fire-phoenix-1', 'battle-boar', 'corax-1', 'siege-ballistae-7', 'archer-3']);
+  });
+
+  it('has every tier I-IX the wiki lists, with sound data', () => {
+    const byGroup = (g: string) => TROOPS.filter((x) => x.group === g);
+    expect(byGroup('guardsmen')).toHaveLength(32);
+    expect(byGroup('specialists')).toHaveLength(24); // scouts (Spy, Swift Jaeger, Panoptic) left out
+    expect(byGroup('monsters')).toHaveLength(28);
+    expect(byGroup('siege')).toHaveLength(9);
+    for (const x of TROOPS) {
+      if (x.group === 'mercenaries') continue;
+      expect(x.tier >= 1 && x.tier <= 9, x.id).toBe(true);
+      // Health is 3x strength, siege 6x (game card) — or within 0.2% of it for game01master's rounded four.
+      const want = x.siegeEngine ? 6 : 3;
+      expect(Math.abs(x.hp / (x.str * want) - 1) < 0.002, x.id).toBe(true);
+      for (const k of Object.keys(x.vs)) expect(['mounted', 'ranged', 'melee', 'flying', 'fortification', 'siege', 'beast', 'human', 'elemental', 'dragon', 'giant'], `${x.id} vs ${k}`).toContain(k);
+    }
+  });
+
+  it('the picker window is your level and the three below it', () => {
+    const levels = { g: 8, s: null, m: 5, e: 2 };
+    expect(troopInWindow('punisher-1', levels)).toBe(true); // G8
+    expect(troopInWindow('spearmen-5', levels)).toBe(true); // G5
+    expect(troopInWindow('spearmen-4', levels)).toBe(false); // G4: too low
+    expect(troopInWindow('corax-2', levels)).toBe(false); // G9: locked
+    expect(troopInWindow('swordsmen-1', levels)).toBe(true); // S any
+    expect(troopInWindow('battle-boar', levels)).toBe(true); // M3
+    expect(troopInWindow('catapult-1', levels)).toBe(true); // E1
+    expect(troopInWindow('wyvern', levels)).toBe(true);
   });
 
   it('troop levels gate every non-mercenary troop, and only those', () => {

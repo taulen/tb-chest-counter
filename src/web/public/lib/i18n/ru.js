@@ -781,7 +781,7 @@ export const ui = {
   "any": "любой",
   "Your troop levels": "Ваши уровни отрядов",
   "Your levels": "Ваши уровни",
-  "Only troops you have unlocked are offered. Saved to your account.": "Предлагаются только открытые вами отряды. Сохраняется в вашем аккаунте.",
+  "The troop list offers your level and the three below it. Saved to your account.": "В списке отрядов — ваш уровень и три уровня ниже. Сохраняется в вашем аккаунте.",
   "Could not save: {error}": "Не удалось сохранить: {error}",
   "Could not save": "Не удалось сохранить",
   "needed": "нужно",

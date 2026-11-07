@@ -1,4 +1,11 @@
-Troop icons in this folder come from game01master's Citadel Calculator
+Troop artwork belongs to Scorewarrior, the makers of Total Battle.
+
+The 33 troops game01master's calculator covers use its icons. The other 65
+(every other tier I-IX guardsman, specialist, monster and engineer) were
+cropped to 96px webp from the troop cards on totalbattlewiki.com, an unofficial
+player wiki, which also supplied their strength, health and features.
+
+game01master's icons come from its Citadel Calculator
 (https://github.com/game01master/tb-citadel-calculator), converted to 96px webp.
 Tools → Citadel also uses its troop-sizing method for Elven 25 and 30.
 Used here non-commercially, with credit, under its licence:

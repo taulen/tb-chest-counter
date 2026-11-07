@@ -7373,6 +7373,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .citadel-pop-opt.is-active { background: var(--accent-gold-bg); }
 .citadel-pop-opt.is-current { font-weight: 700; }
 .citadel-pop-check { margin-left: auto; color: var(--accent-gold); }
+.citadel-pop-level { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.citadel-pop-level + .citadel-pop-check { margin-left: 0; }
 .citadel-pop-empty { margin: 8px; font-size: 13px; color: var(--text-muted); }
 @media (max-width: 640px) {
   .citadel-pop { left: 8px !important; right: 8px !important; bottom: 8px !important; top: auto !important; width: auto !important; max-height: 70vh !important; }

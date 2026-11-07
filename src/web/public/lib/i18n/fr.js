@@ -781,7 +781,7 @@ export const ui = {
   "any": "tous",
   "Your troop levels": "Vos niveaux de troupes",
   "Your levels": "Vos niveaux",
-  "Only troops you have unlocked are offered. Saved to your account.": "Seules les troupes que vous avez débloquées sont proposées. Enregistré sur votre compte.",
+  "The troop list offers your level and the three below it. Saved to your account.": "La liste des troupes propose votre niveau et les trois en dessous. Enregistré sur votre compte.",
   "Could not save: {error}": "Enregistrement impossible : {error}",
   "Could not save": "Enregistrement impossible",
   "needed": "requise",
