@@ -339,6 +339,9 @@ describe('citadel simulator edge cases', () => {
       row('archer-3', 50, 0, 0), row('battle-boar', 2, 0, 0),
     ]);
     expect(list.map((r: { troopId: string }) => r.troopId)).toEqual(['wyvern', 'fire-phoenix-1', 'battle-boar', 'corax-1', 'siege-ballistae-7', 'archer-3']);
+    // Same strength: the game lists Royal Lion I first (Nov 2026 march screen).
+    const tied = marchList([row('corax-1', 475, 0, 0), row('royal-lion-1', 465, 0, 0), row('griffin-7', 851, 0, 0)]);
+    expect(tied.map((r: { troopId: string }) => r.troopId)).toEqual(['royal-lion-1', 'corax-1', 'griffin-7']);
   });
 
   it('has every tier I-IX the wiki lists, with sound data', () => {

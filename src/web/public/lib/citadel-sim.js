@@ -232,14 +232,16 @@ export const BONUS_FAMILIES = {
 /**
  * The order the game lists troops when a march is set up (game01master's
  * RESULT_ORDER): the march list follows it, so a player goes straight down
- * the screen typing counts instead of hunting for each troop. One fix from the
- * game itself (Nov 2026 march screen): Jago comes before Warregal —
- * game01master has them the other way round.
+ * the screen typing counts instead of hunting for each troop. Fixes from the
+ * game itself (Nov 2026 march screens), where game01master has the pair the
+ * other way round: Jago comes before Warregal, and Royal Lion I before Corax I.
+ * The two have the same strength at tier II as well, so Royal Lion II goes
+ * before Corax II by the same rule (not yet seen in game).
  */
 export const MARCH_ORDER = [
   'wyvern', 'jago', 'warregal', 'ariel', 'epic-monster-hunter', 'fire-phoenix-2',
-  'fire-phoenix-1', 'manticore', 'corax-2', 'royal-lion-2', 'corax-1',
-  'royal-lion-1', 'griffin-7', 'josephine-2', 'griffin-6', 'josephine-1',
+  'fire-phoenix-1', 'manticore', 'royal-lion-2', 'corax-2', 'royal-lion-1',
+  'corax-1', 'griffin-7', 'josephine-2', 'griffin-6', 'josephine-1',
   'griffin-5', 'siege-ballistae-7', 'siege-ballistae-6', 'punisher-1',
   'duelist-1', 'catapult-5', 'vulture-7', 'heavy-halberdier-7',
   'heavy-knight-7', 'catapult-4', 'vulture-6', 'heavy-halberdier-6',
