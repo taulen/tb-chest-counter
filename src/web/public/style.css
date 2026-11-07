@@ -7526,6 +7526,17 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .stacks-rows .citadel-row { grid-template-columns: minmax(150px, 1fr) 112px 112px 30px; }
 .stacks-rows .citadel-row.is-base .citadel-troop-note { color: var(--accent-gold); font-weight: 600; }
 .stacks-na { text-align: center; color: var(--text-muted); }
+/* The troop list under a heading per kind, like the troop picker. */
+.stacks-group-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 0 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.stacks-group-count {
+  min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--subtle-bg);
+  font-size: 10.5px; letter-spacing: 0; text-align: center; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
 .stacks-intro { margin-top: 12px; }
 .stacks-tool .citadel-army .card-header { row-gap: 8px; }
 /* The saved-army controls keep select + buttons on one line beside the title. */

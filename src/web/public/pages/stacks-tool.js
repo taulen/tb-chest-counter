@@ -22,13 +22,13 @@ import {
   MONSTER_MODES,
 } from '../lib/stack-calc.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
-import { parseBonus, nextFreeName, LEVEL_KINDS, levelTag } from './citadel-tool.js';
+import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
+import { parseBonus, nextFreeName } from './citadel-tool.js';
 
 const DRAFT_KEY = 'tbcc.stacks.draft.v1';
 
 const icon = (troopId) => new URL(`../img/troops/${troopId}.webp`, import.meta.url).href;
 const troopName = (id) => tGame(troopById(id)?.name ?? id);
-const levelKindLabel = (k) => LEVEL_KINDS.find(([x]) => x === k)?.[1] ?? k;
 
 const GROUP_LABELS = {
   guardsmen: t('Guardsmen'),
@@ -137,7 +137,7 @@ export async function renderStacksTool(mount) {
     presetsError: false,
     selectedPreset: '',
     /** Unlocked troop tiers, per account (shared with Citadel); null = any. */
-    levels: { g: null, s: null, m: null, e: null },
+    levels: { ...NO_LEVELS },
   };
   mount.innerHTML = `
     <div class="citadel-tool stacks-tool">
@@ -250,22 +250,22 @@ function presetsHtml() {
     </div>`;
 }
 
-function levelsHtml() {
-  const selects = LEVEL_KINDS.map(([k, label]) => {
-    const v = ss.levels[k];
-    const opts = [`<option value="" ${v === null ? 'selected' : ''}>${esc(t('any'))}</option>`]
-      .concat([9, 8, 7, 6, 5, 4, 3, 2, 1].map((n) => `<option value="${n}" ${v === n ? 'selected' : ''}>${n}</option>`)).join('');
-    return `<label class="citadel-level-field"><span>${esc(label)}</span>
-      <select class="input citadel-level-select" data-stk="level" data-kind="${k}">${opts}</select></label>`;
+/** The rows under a heading per kind, in the troop picker's order. A row keeps
+ *  its index in ss.rows, so every data-row still points at the right troop. */
+function groupedRowsHtml(plan) {
+  return TROOP_GROUPS.map((g) => {
+    const items = ss.rows.map((r, i) => [r, i]).filter(([r]) => troopById(r.troopId)?.group === g);
+    if (!items.length) return '';
+    return `
+      <div class="stacks-group" role="group" aria-labelledby="stacks-group-${g}">
+        <div class="stacks-group-head" id="stacks-group-${g}">${esc(GROUP_LABELS[g])}<span class="stacks-group-count">${items.length}</span></div>
+        <div role="list">${items.map(([r, i]) => rowHtml(r, i, plan)).join('')}</div>
+      </div>`;
   }).join('');
-  return `<div class="citadel-levels" role="group" aria-label="${esc(t('Your troop levels'))}">
-      <span class="citadel-inside-label">${t('Your levels')}</span>${selects}
-      <span class="citadel-levels-hint muted-copy">${t('Shared with the Citadel tab. The troop list offers your level and the three below it.')}</span>
-    </div>`;
 }
 
 function armyCardHtml(plan) {
-  const rows = ss.rows.map((r, i) => rowHtml(r, i, plan)).join('');
+  const rows = groupedRowsHtml(plan);
   return `
     <div class="card citadel-army">
       <div class="card-header">
@@ -273,11 +273,11 @@ function armyCardHtml(plan) {
         ${presetsHtml()}
       </div>
       <div class="card-body-padded">
-        ${levelsHtml()}
+        ${levelsHtml(ss.levels)}
         ${ss.presetsError ? `<p class="citadel-note tool-warn">${t('Your saved armies could not be loaded.')}</p>` : ''}
         <p class="citadel-note stacks-intro">${t('The strongest guardsman or specialist you add is the base stack; every other stack is sized from it. Health bonuses are optional: type them from each troop\'s card for exact counts.')}</p>
         ${ss.rows.length ? `
-          <div class="citadel-rows stacks-rows" role="list">
+          <div class="citadel-rows stacks-rows">
             <div class="citadel-row citadel-row-head" aria-hidden="true">
               <span class="citadel-head-troop">${t('Troop')}</span>
               <span>${t('Count')}<small>${t('worked out')}</small></span>
@@ -431,7 +431,7 @@ function sizeCardHtml(plan, fitted) {
             <label class="stacks-check"><input type="checkbox" data-setting="specialistsFirst" ${s.specialistsFirst ? 'checked' : ''}>
               <span>${t('Specialists fall before the guardsmen of their tier')}</span></label>
             <label class="stacks-check"><input type="checkbox" data-setting="epicHunterLast" ${s.epicHunterLast ? 'checked' : ''}>
-              <span>${t('Count the {hunter}\'s epic bonus: its stack is kept smallest and falls last', { hunter: esc(tGame('Epic Monster Hunter')) })}</span></label>
+              <span>${t('Count each {hunter}\'s epic bonus: hunters get the smallest stacks and fall last', { hunter: esc(tGame('Epic Monster Hunter')) })}</span></label>
             <p class="muted-copy stacks-reset"><button type="button" class="btn btn-sm btn-ghost" data-stk-action="reset-advanced">${t('Back to the defaults')}</button></p>
           </div>
         </details>
@@ -607,12 +607,10 @@ function onInput(e) {
 function onChange(e) {
   const el = e.target;
   const root = el.closest('.stacks-tool');
-  if (el instanceof HTMLSelectElement && el.dataset.stk === 'level') {
-    const n = Number(el.value);
-    if (el.dataset.kind in ss.levels) ss.levels[el.dataset.kind] = Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
+  if (el instanceof HTMLSelectElement && applyLevelChange(ss.levels, el)) {
     paintAll(root);
-    root.querySelector(`[data-stk="level"][data-kind="${el.dataset.kind}"]`)?.focus();
-    saveLevels();
+    root.querySelector(`[data-level-kind="${el.dataset.levelKind}"]`)?.focus();
+    saveLevels(ss.levels).then((saved) => { if (saved && ss) ss.levels = saved; });
     return;
   }
   if (el instanceof HTMLSelectElement && el.dataset.stk === 'preset') {
@@ -690,16 +688,6 @@ function applyPreset(id) {
   if (!p) return;
   ss.rows = cleanRows(p.data?.rows);
   ss.settings = cleanSettings(p.data?.settings);
-}
-
-async function saveLevels() {
-  try {
-    const res = await apiPut('/tools/citadel-levels', ss.levels);
-    if (res?.levels) ss.levels = res.levels;
-  } catch (err) {
-    if (err?.name === 'UnauthenticatedError') return;
-    await notify(t('Could not save: {error}', { error: err?.message || err }), t('Could not save'));
-  }
 }
 
 // ─── Troop picker ────────────────────────────────────────────────

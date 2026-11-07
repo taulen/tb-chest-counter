@@ -201,20 +201,23 @@ describe('/api/tools/citadel-presets', () => {
     expect((await send('get', '/api/tools/citadel-presets', 'user1b')).body.presets).toHaveLength(1);
   });
 
-  it('keeps troop levels per account, and refuses anything but 1-9 or null', async () => {
-    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body).toEqual({ levels: { g: null, s: null, m: null, e: null } });
-    const put = await send('put', '/api/tools/citadel-levels', 'user1', { g: 8, s: 8, m: 8, e: 7 });
+  it('keeps troop levels and the picker window per account, and refuses anything but 1-9 or null', async () => {
+    const none = { g: null, s: null, m: null, e: null, span: null };
+    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body).toEqual({ levels: none });
+    const put = await send('put', '/api/tools/citadel-levels', 'user1', { g: 8, s: 7, m: 8, e: 7, span: 2 });
     expect(put.status).toBe(200);
-    expect(put.body.levels).toEqual({ g: 8, s: 8, m: 8, e: 7 });
-    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body.levels).toEqual({ g: 8, s: 8, m: 8, e: 7 });
+    expect(put.body.levels).toEqual({ g: 8, s: 7, m: 8, e: 7, span: 2 });
+    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body.levels).toEqual({ g: 8, s: 7, m: 8, e: 7, span: 2 });
     // Another account sees its own (none).
-    expect((await send('get', '/api/tools/citadel-levels', 'user1b')).body.levels).toEqual({ g: null, s: null, m: null, e: null });
-    // Clearing one back to "any".
-    expect((await send('put', '/api/tools/citadel-levels', 'user1', { g: 9, s: null, m: 8, e: 7 })).body.levels).toEqual({ g: 9, s: null, m: 8, e: 7 });
-    for (const body of [{ g: 10 }, { g: 0 }, { s: 7.5 }, { m: '8' }, { e: '1; DROP TABLE citadel_levels' }]) {
+    expect((await send('get', '/api/tools/citadel-levels', 'user1b')).body.levels).toEqual(none);
+    // Clearing one back to "any", and the window back to the default.
+    expect((await send('put', '/api/tools/citadel-levels', 'user1', { g: 9, s: null, m: 8, e: 7, span: null })).body.levels).toEqual({ g: 9, s: null, m: 8, e: 7, span: null });
+    // "All levels" is 9.
+    expect((await send('put', '/api/tools/citadel-levels', 'user1', { g: 9, s: null, m: 8, e: 7, span: 9 })).body.levels.span).toBe(9);
+    for (const body of [{ g: 10 }, { g: 0 }, { s: 7.5 }, { m: '8' }, { e: '1; DROP TABLE citadel_levels' }, { span: 0 }, { span: 10 }, { span: '2' }]) {
       expect((await send('put', '/api/tools/citadel-levels', 'user1', body)).status, JSON.stringify(body)).toBe(400);
     }
-    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body.levels).toEqual({ g: 9, s: null, m: 8, e: 7 });
+    expect((await send('get', '/api/tools/citadel-levels', 'user1')).body.levels).toEqual({ g: 9, s: null, m: 8, e: 7, span: 9 });
   });
 
   it('caps an account at 50 presets but still lets one be overwritten', async () => {

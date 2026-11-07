@@ -39,6 +39,7 @@ import {
   troopInWindow,
 } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
+import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 
 /** The count search runs this long after the last keystroke. */
 const SEARCH_DELAY_MS = 350;
@@ -203,7 +204,7 @@ export async function renderCitadelTool(mount) {
     presets: [],
     presetsError: false,
     /** Unlocked troop tiers, per account (server); null = any. */
-    levels: { g: null, s: null, m: null, e: null },
+    levels: { ...NO_LEVELS },
     selectedPreset: '',
     logOpener: 'citadel',
     /** Last count search: { key, ok, counts } — see scheduleSearch(). */
@@ -232,49 +233,6 @@ export async function renderCitadelTool(mount) {
   else cs.presetsError = true;
   if (levels.status === 'fulfilled' && levels.value?.levels) cs.levels = { ...cs.levels, ...levels.value.levels };
   paintAll(root);
-}
-
-// ─── Your troop levels (per account) ─────────────────────────────
-
-export const LEVEL_KINDS = [
-  ['g', t('Guardsmen')],
-  ['s', t('Specialists')],
-  ['m', t('Monsters')],
-  ['e', t('Engineers')],
-];
-const levelKindLabel = (k) => LEVEL_KINDS.find(([x]) => x === k)?.[1] ?? k;
-
-function levelsHtml() {
-  const selects = LEVEL_KINDS.map(([k, label]) => {
-    const v = cs.levels[k];
-    const opts = [`<option value="" ${v === null ? 'selected' : ''}>${esc(t('any'))}</option>`]
-      .concat([9, 8, 7, 6, 5, 4, 3, 2, 1].map((n) => `<option value="${n}" ${v === n ? 'selected' : ''}>${n}</option>`)).join('');
-    return `<label class="citadel-level-field"><span>${esc(label)}</span>
-      <select class="input citadel-level-select" data-cit="level" data-kind="${k}">${opts}</select></label>`;
-  }).join('');
-  return `<div class="citadel-levels" role="group" aria-label="${esc(t('Your troop levels'))}">
-      <span class="citadel-inside-label">${t('Your levels')}</span>${selects}
-      <span class="citadel-levels-hint muted-copy">${t('The troop list offers your level and the three below it. Saved to your account.')}</span>
-    </div>`;
-}
-
-/** Save the levels to the account; the page already shows them. */
-async function saveLevels() {
-  try {
-    const res = await apiPut('/tools/citadel-levels', cs.levels);
-    if (res?.levels) cs.levels = res.levels;
-  } catch (err) {
-    if (err?.name === 'UnauthenticatedError') return;
-    await notify(t('Could not save: {error}', { error: err?.message || err }), t('Could not save'));
-  }
-}
-
-/** "G5", "M8"… after a troop in the picker: monsters have no numeral in their names. */
-export function levelTag(troopId) {
-  const tier = troopTier(troopId);
-  if (!tier) return '';
-  const [kind, n] = tier;
-  return `<span class="citadel-pop-level" title="${esc(`${levelKindLabel(kind)} ${n}`)}">${kind.toUpperCase()}${n}</span>`;
 }
 
 /** A recommended setup can be used only if every troop in it (siege aside, which steps down) is unlocked. */
@@ -450,7 +408,7 @@ function topCardHtml() {
         </div>
       </div>
       <p class="citadel-inside"><span class="citadel-inside-label">${t('Inside')}</span>${inside}</p>
-      ${levelsHtml()}
+      ${levelsHtml(cs.levels)}
       ${cs.presetsError ? `<p class="citadel-note tool-warn">${t('Your saved armies could not be loaded.')}</p>` : ''}
     </div>`;
 }
@@ -814,12 +772,10 @@ function onInput(e) {
 function onChange(e) {
   const el = e.target;
   const root = el.closest('.citadel-tool');
-  if (el instanceof HTMLSelectElement && el.dataset.cit === 'level') {
-    const n = Number(el.value);
-    if (el.dataset.kind in cs.levels) cs.levels[el.dataset.kind] = Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
+  if (el instanceof HTMLSelectElement && applyLevelChange(cs.levels, el)) {
     paintAll(root);
-    root.querySelector(`[data-cit="level"][data-kind="${el.dataset.kind}"]`)?.focus();
-    saveLevels();
+    root.querySelector(`[data-level-kind="${el.dataset.levelKind}"]`)?.focus();
+    saveLevels(cs.levels).then((saved) => { if (saved && cs) cs.levels = saved; });
     return;
   }
   if (el instanceof HTMLSelectElement && el.dataset.cit === 'preset') {

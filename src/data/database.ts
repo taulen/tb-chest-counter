@@ -1208,6 +1208,18 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // "Your levels": how many top levels the troop picker shows, counted down
+    // from the account's highest level (1-4, or 9 = all). NULL keeps the
+    // default of 4, so no backfill. PRAGMA-guarded for replay.
+    version: 98,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(citadel_levels)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'span')) {
+        database.exec('ALTER TABLE citadel_levels ADD COLUMN span INTEGER CHECK (span BETWEEN 1 AND 9)');
+      }
+    },
+  },
 ];
 
 /**

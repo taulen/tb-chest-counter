@@ -117,9 +117,9 @@ function saveCitadelPreset(userId, name, data) {
         return toPreset(row);
     })();
 }
-const LEVEL_KEYS = ['g', 's', 'm', 'e'];
-const NO_LEVELS = { g: null, s: null, m: null, e: null };
-/** Validate { g, s, m, e }: each a whole number 1-9, or null for "any". Refuses, never clamps. */
+const LEVEL_KEYS = ['g', 's', 'm', 'e', 'span'];
+const NO_LEVELS = { g: null, s: null, m: null, e: null, span: null };
+/** Validate { g, s, m, e, span }: each a whole number 1-9, or null. Refuses, never clamps. */
 function parseCitadelLevels(body) {
     const errors = [];
     const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {});
@@ -138,12 +138,13 @@ function parseCitadelLevels(body) {
     return { ok: true, value: out };
 }
 function getCitadelLevels(userId) {
-    const row = (0, database_js_1.getDb)().prepare('SELECT g, s, m, e FROM citadel_levels WHERE user_id = ?').get(userId);
-    return row ? { g: row.g, s: row.s, m: row.m, e: row.e } : { ...NO_LEVELS };
+    const row = (0, database_js_1.getDb)().prepare('SELECT g, s, m, e, span FROM citadel_levels WHERE user_id = ?').get(userId);
+    return row ? { g: row.g, s: row.s, m: row.m, e: row.e, span: row.span } : { ...NO_LEVELS };
 }
 function saveCitadelLevels(userId, levels) {
-    (0, database_js_1.getDb)().prepare(`INSERT INTO citadel_levels (user_id, g, s, m, e, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (user_id) DO UPDATE SET g = excluded.g, s = excluded.s, m = excluded.m, e = excluded.e, updated_at = excluded.updated_at`).run(userId, levels.g, levels.s, levels.m, levels.e, new Date().toISOString());
+    (0, database_js_1.getDb)().prepare(`INSERT INTO citadel_levels (user_id, g, s, m, e, span, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET g = excluded.g, s = excluded.s, m = excluded.m, e = excluded.e,
+       span = excluded.span, updated_at = excluded.updated_at`).run(userId, levels.g, levels.s, levels.m, levels.e, levels.span, new Date().toISOString());
     return getCitadelLevels(userId);
 }
 /** Delete one of the account's own presets. False when it isn't theirs or doesn't exist. */

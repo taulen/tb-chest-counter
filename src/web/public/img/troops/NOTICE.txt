@@ -3,7 +3,9 @@ Troop artwork belongs to Scorewarrior, the makers of Total Battle.
 The 33 troops game01master's calculator covers use its icons. The other 65
 (every other tier I-IX guardsman, specialist, monster and engineer) were
 cropped to 96px webp from the troop cards on totalbattlewiki.com, an unofficial
-player wiki, which also supplied their strength, health and features.
+player wiki, which also supplied their strength, health and features. So were
+the 45 mercenaries added in Nov 2026 (totalbattlewiki.com/troops/mercenaries/).
+Epic Monster Hunter V-VII reuse the Superior Epic Monster Hunter's icon.
 
 game01master's icons come from its Citadel Calculator
 (https://github.com/game01master/tb-citadel-calculator), converted to 96px webp.

@@ -127,19 +127,26 @@ export function saveCitadelPreset(userId: number, name: string, data: CitadelPre
   })();
 }
 
-// ─── Troop levels (migration v96): one row per account ───
+// ─── Troop levels (migrations v96, v98): one row per account ───
+// Shared by Tools → Citadel and → Stacks.
 
-/** Unlocked tier per troop kind: Guardsmen, Specialists, Monsters, Engineers. Null = any. */
+/**
+ * Unlocked tier per troop kind: Guardsmen, Specialists, Monsters, Engineers
+ * (null = any), and `span`: how many top levels the troop picker shows,
+ * counted down from the highest of them (1-9, 9 = all; null = the page's
+ * default). The window rule is troopInWindow in web/public/lib/citadel-sim.js.
+ */
 export interface CitadelLevels {
   g: number | null;
   s: number | null;
   m: number | null;
   e: number | null;
+  span: number | null;
 }
-const LEVEL_KEYS = ['g', 's', 'm', 'e'] as const;
-const NO_LEVELS: CitadelLevels = { g: null, s: null, m: null, e: null };
+const LEVEL_KEYS = ['g', 's', 'm', 'e', 'span'] as const;
+const NO_LEVELS: CitadelLevels = { g: null, s: null, m: null, e: null, span: null };
 
-/** Validate { g, s, m, e }: each a whole number 1-9, or null for "any". Refuses, never clamps. */
+/** Validate { g, s, m, e, span }: each a whole number 1-9, or null. Refuses, never clamps. */
 export function parseCitadelLevels(body: unknown): Parsed<CitadelLevels> {
   const errors: string[] = [];
   const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
@@ -155,15 +162,16 @@ export function parseCitadelLevels(body: unknown): Parsed<CitadelLevels> {
 }
 
 export function getCitadelLevels(userId: number): CitadelLevels {
-  const row = getDb().prepare('SELECT g, s, m, e FROM citadel_levels WHERE user_id = ?').get(userId) as CitadelLevels | undefined;
-  return row ? { g: row.g, s: row.s, m: row.m, e: row.e } : { ...NO_LEVELS };
+  const row = getDb().prepare('SELECT g, s, m, e, span FROM citadel_levels WHERE user_id = ?').get(userId) as CitadelLevels | undefined;
+  return row ? { g: row.g, s: row.s, m: row.m, e: row.e, span: row.span } : { ...NO_LEVELS };
 }
 
 export function saveCitadelLevels(userId: number, levels: CitadelLevels): CitadelLevels {
   getDb().prepare(
-    `INSERT INTO citadel_levels (user_id, g, s, m, e, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (user_id) DO UPDATE SET g = excluded.g, s = excluded.s, m = excluded.m, e = excluded.e, updated_at = excluded.updated_at`,
-  ).run(userId, levels.g, levels.s, levels.m, levels.e, new Date().toISOString());
+    `INSERT INTO citadel_levels (user_id, g, s, m, e, span, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET g = excluded.g, s = excluded.s, m = excluded.m, e = excluded.e,
+       span = excluded.span, updated_at = excluded.updated_at`,
+  ).run(userId, levels.g, levels.s, levels.m, levels.e, levels.span, new Date().toISOString());
   return getCitadelLevels(userId);
 }
 

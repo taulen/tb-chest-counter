@@ -124,12 +124,71 @@ export const TROOPS = [
   troop('emerald-dragon', 'Emerald Dragon', 'monsters', 3, 4500, 13500, ['dragon', 'flying', 'monster'], { giant: 72, mounted: 185 }),
   troop('battle-boar', 'Battle Boar', 'monsters', 3, 3900, 11700, ['beast', 'monster', 'mounted'], { ranged: 113, mounted: 144 }),
   troop('water-elemental', 'Water Elemental', 'monsters', 3, 1900, 5700, ['elemental', 'monster', 'ranged'], { melee: 113, flying: 144 }),
-  // Mercenaries: bought, not unlocked by level.
-  troop('wyvern', 'Wyvern', 'mercenaries', null, 690000, 2070000, ['cursed', 'flying', 'mercenary'], { melee: 75 }),
-  troop('jago', 'Jago', 'mercenaries', null, 220000, 660000, ['beast', 'flying', 'mercenary', 'specialist'], { fortification: 525, mounted: 1000 }),
-  troop('warregal', 'Warregal', 'mercenaries', null, 220000, 660000, ['beast', 'flying', 'guardsman', 'mercenary'], { fortification: 1051, mounted: 1999 }),
-  troop('ariel', 'Ariel', 'mercenaries', null, 55000, 330000, ['human', 'mercenary', 'siege'], { fortification: 1667 }, SIEGE),
-  troop('epic-monster-hunter', 'Epic Monster Hunter', 'mercenaries', null, 25000, 75000, ['guardsman', 'mercenary'], {}),
+  // Mercenaries: bought, not unlocked by level. Every fighting mercenary on
+  // totalbattlewiki.com/troops/mercenaries/ (Nov 2026; the scouts Grace and
+  // Pathfinder are left out: they don't fight), by tier and strength. The first
+  // five were checked against game cards before the rest were added. Epic
+  // Monster Hunter V-VII come from Kaiculator's unit table (the wiki has only the
+  // Superior one). mercTier is the tier the merc exchange lists them under;
+  // authority, revivalGold and epicPct (vs epic monsters) are used by Tools →
+  // Stacks (stack-calc.js), not by the citadel fight.
+  // Tier IX
+  troop('wyvern', 'Wyvern', 'mercenaries', null, 690000, 2070000, ['cursed', 'flying', 'mercenary'], { melee: 75 }, { mercTier: 9, authority: 63, revivalGold: 500 }),
+  troop('warden', 'Warden', 'mercenaries', null, 470000, 1410000, ['elves', 'mercenary', 'mounted'], { ranged: 70 }, { mercTier: 9, authority: 43, revivalGold: 340 }),
+  troop('eternal-cannoneer', 'Eternal Cannoneer', 'mercenaries', null, 440000, 1320000, ['mercenary', 'ranged', 'undead'], { flying: 65 }, { mercTier: 9, authority: 40, revivalGold: 320 }),
+  troop('demonic-salamander', 'Demonic Salamander', 'mercenaries', null, 410000, 1230000, ['demon', 'melee', 'mercenary'], { mounted: 65 }, { mercTier: 9, authority: 38, revivalGold: 300 }),
+  troop('jago', 'Jago', 'mercenaries', null, 220000, 660000, ['beast', 'flying', 'mercenary', 'specialist'], { fortification: 525, mounted: 1000 }, { mercTier: 9, authority: 20, revivalGold: 160 }),
+  troop('warregal', 'Warregal', 'mercenaries', null, 220000, 660000, ['beast', 'flying', 'guardsman', 'mercenary'], { fortification: 1051, mounted: 1999 }, { mercTier: 9, authority: 20, revivalGold: 160 }),
+  troop('ariel', 'Ariel', 'mercenaries', null, 55000, 330000, ['human', 'mercenary', 'siege'], { fortification: 1667 }, { ...SIEGE, mercTier: 9, authority: 10, revivalGold: 80 }),
+  troop('epic-monster-hunter', 'Superior Epic Monster Hunter', 'mercenaries', null, 25000, 75000, ['guardsman', 'mercenary'], {}, { mercTier: 9, authority: 1, revivalGold: 8, epicPct: 1000 }),
+  troop('galloper', 'Galloper', 'mercenaries', null, 22000, 66000, ['human', 'mercenary', 'mounted', 'specialist'], { ranged: 833, siege: 692 }, { mercTier: 9, authority: 2, revivalGold: 16 }),
+  troop('quicksand', 'Quicksand', 'mercenaries', null, 22000, 66000, ['guardsman', 'human', 'mercenary', 'mounted'], { ranged: 1667, siege: 1384 }, { mercTier: 9, authority: 2, revivalGold: 16 }),
+  troop('highlander', 'Highlander', 'mercenaries', null, 11000, 33000, ['guardsman', 'human', 'mercenary', 'ranged'], { flying: 1717, melee: 1333 }, { mercTier: 9, authority: 1, revivalGold: 8 }),
+  troop('pounder', 'Pounder', 'mercenaries', null, 11000, 33000, ['human', 'mercenary', 'ranged', 'specialist'], { flying: 859, melee: 667 }, { mercTier: 9, authority: 1, revivalGold: 8 }),
+  troop('scarface', 'Scarface', 'mercenaries', null, 11000, 33000, ['human', 'melee', 'mercenary', 'specialist'], { beast: 1025, mounted: 500 }, { mercTier: 9, authority: 1, revivalGold: 8 }),
+  troop('slavic-warrior', 'Slavic warrior', 'mercenaries', null, 11000, 33000, ['guardsman', 'human', 'melee', 'mercenary'], { beast: 2050, mounted: 1000 }, { mercTier: 9, authority: 1, revivalGold: 8 }),
+  // Tier VII
+  troop('fire-lord', 'Fire Lord', 'mercenaries', null, 560000, 1680000, ['demon', 'elemental', 'mercenary', 'ranged'], { dragon: 45, melee: 80 }, { mercTier: 7, authority: 164, revivalGold: 1310 }),
+  troop('sandworm', 'Sandworm', 'mercenaries', null, 430000, 1290000, ['barbarian', 'elemental', 'melee', 'mercenary'], { dragon: 50, mounted: 75 }, { mercTier: 7, authority: 128, revivalGold: 1020 }),
+  troop('cursed-dragon', 'Cursed Dragon', 'mercenaries', null, 320000, 960000, ['cursed', 'dragon', 'flying', 'mercenary'], { giant: 50, mounted: 50 }, { mercTier: 7, authority: 93, revivalGold: 740 }),
+  troop('life-dragon', 'Life Dragon', 'mercenaries', null, 240000, 720000, ['dragon', 'elves', 'flying', 'mercenary'], { giant: 50, mounted: 60 }, { mercTier: 7, authority: 70, revivalGold: 560 }),
+  troop('overlord', 'Overlord', 'mercenaries', null, 200000, 600000, ['giant', 'mercenary', 'ranged', 'undead'], { beast: 50, melee: 60 }, { mercTier: 7, authority: 60, revivalGold: 480 }),
+  troop('golden-dragon', 'Golden Dragon', 'mercenaries', null, 170000, 510000, ['dragon', 'flying', 'mercenary'], { giant: 365, mounted: 934 }, { mercTier: 7, authority: 50, revivalGold: 400 }),
+  troop('lightning-lord', 'Lightning Lord', 'mercenaries', null, 153000, 460000, ['giant', 'mercenary', 'ranged'], { beast: 729, melee: 570 }, { mercTier: 7, authority: 45, revivalGold: 360 }),
+  troop('sea-lord', 'Sea Lord', 'mercenaries', null, 140000, 420000, ['elemental', 'mercenary', 'mounted'], { dragon: 547, ranged: 752 }, { mercTier: 7, authority: 40, revivalGold: 320 }),
+  troop('jungle-king', 'Jungle King', 'mercenaries', null, 110000, 330000, ['beast', 'melee', 'mercenary'], { elemental: 911, mounted: 387 }, { mercTier: 7, authority: 33, revivalGold: 264 }),
+  troop('palintone', 'Palintone', 'mercenaries', null, 17000, 102000, ['human', 'mercenary', 'siege'], { fortification: 740 }, { ...SIEGE, mercTier: 7, authority: 10, revivalGold: 80 }),
+  troop('epic-monster-hunter-7', 'Epic Monster Hunter VII', 'mercenaries', null, 3740, 11220, ['guardsman', 'mercenary'], {}, { mercTier: 7, authority: 1, revivalGold: 8, epicPct: 934 }),
+  // Tier VI
+  troop('archdemon', 'Archdemon', 'mercenaries', null, 180000, 540000, ['demon', 'giant', 'melee', 'mercenary'], { beast: 40, mounted: 60 }, { mercTier: 6, authority: 95, revivalGold: 760 }),
+  troop('abomination', 'Abomination', 'mercenaries', null, 130000, 390000, ['barbarian', 'beast', 'melee', 'mercenary'], { elemental: 50, ranged: 60 }, { mercTier: 6, authority: 68, revivalGold: 540 }),
+  troop('cursed-dendroid', 'Cursed Dendroid', 'mercenaries', null, 110000, 330000, ['cursed', 'elemental', 'melee', 'mercenary'], { dragon: 50, ranged: 65 }, { mercTier: 6, authority: 57, revivalGold: 450 }),
+  troop('shedu', 'Shedu', 'mercenaries', null, 75600, 226800, ['beast', 'flying', 'mercenary', 'specialist'], { fortification: 156, human: 105, mounted: 296 }, { mercTier: 6, authority: 40, revivalGold: 320 }),
+  troop('sphynx', 'Sphynx', 'mercenaries', null, 75600, 226800, ['beast', 'flying', 'guardsman', 'mercenary'], { fortification: 311, mounted: 592 }, { mercTier: 6, authority: 40, revivalGold: 320 }),
+  troop('ent', 'Ent', 'mercenaries', null, 73000, 219000, ['elemental', 'elves', 'melee', 'mercenary'], { dragon: 45, ranged: 55 }, { mercTier: 6, authority: 39, revivalGold: 310 }),
+  troop('bone-golem', 'Bone Golem', 'mercenaries', null, 70000, 210000, ['melee', 'mercenary', 'undead'], { dragon: 40 }, { mercTier: 6, authority: 37, revivalGold: 300 }),
+  troop('death-chariot', 'Death Chariot', 'mercenaries', null, 57000, 171000, ['mercenary', 'mounted', 'undead'], { ranged: 60 }, { mercTier: 6, authority: 30, revivalGold: 240 }),
+  troop('trebuchet', 'Trebuchet', 'mercenaries', null, 9500, 57000, ['human', 'mercenary', 'siege'], { fortification: 494 }, { ...SIEGE, mercTier: 6, authority: 10, revivalGold: 80 }),
+  troop('chariot', 'Chariot', 'mercenaries', null, 3800, 11400, ['guardsman', 'human', 'mercenary', 'mounted'], { ranged: 493, siege: 410 }, { mercTier: 6, authority: 2, revivalGold: 16 }),
+  troop('rhino-rider', 'Rhino Rider', 'mercenaries', null, 3780, 11340, ['human', 'mercenary', 'mounted', 'specialist'], { human: 105, ranged: 247, siege: 205 }, { mercTier: 6, authority: 2, revivalGold: 16 }),
+  troop('arbalester', 'Arbalester', 'mercenaries', null, 1900, 5700, ['guardsman', 'human', 'mercenary', 'ranged'], { flying: 509, melee: 394 }, { mercTier: 6, authority: 1, revivalGold: 8 }),
+  troop('knight', 'Knight', 'mercenaries', null, 1900, 5700, ['human', 'melee', 'mercenary', 'specialist'], { beast: 304, human: 105, mounted: 148 }, { mercTier: 6, authority: 1, revivalGold: 8 }),
+  troop('legionary', 'Legionary', 'mercenaries', null, 1900, 5700, ['guardsman', 'human', 'melee', 'mercenary'], { beast: 608, mounted: 295 }, { mercTier: 6, authority: 1, revivalGold: 8 }),
+  troop('trailseeker', 'Trailseeker', 'mercenaries', null, 1890, 5670, ['human', 'mercenary', 'ranged', 'specialist'], { flying: 254, human: 105, melee: 198 }, { mercTier: 6, authority: 1, revivalGold: 8 }),
+  troop('epic-monster-hunter-6', 'Epic Monster Hunter VI', 'mercenaries', null, 2030, 6090, ['guardsman', 'mercenary'], {}, { mercTier: 6, authority: 1, revivalGold: 8, epicPct: 609 }),
+  // Tier V
+  troop('fireworm-rider', 'Fireworm Rider', 'mercenaries', null, 50000, 150000, ['demon', 'mercenary', 'mounted'], { ranged: 55 }, { mercTier: 5, authority: 48, revivalGold: 380 }),
+  troop('cyclops', 'Cyclops', 'mercenaries', null, 45000, 135000, ['barbarian', 'giant', 'mercenary', 'ranged'], { beast: 40, fortification: 100, melee: 45 }, { mercTier: 5, authority: 43, revivalGold: 340 }),
+  troop('ifrit', 'Ifrit', 'mercenaries', null, 44000, 132000, ['demon', 'elemental', 'flying', 'mercenary'], { dragon: 40, melee: 70 }, { mercTier: 5, authority: 42, revivalGold: 330 }),
+  troop('scorpion-rider', 'Scorpion Rider', 'mercenaries', null, 37000, 111000, ['barbarian', 'mercenary', 'mounted'], { ranged: 40 }, { mercTier: 5, authority: 36, revivalGold: 280 }),
+  troop('giant-zombie', 'Giant Zombie', 'mercenaries', null, 33000, 99000, ['cursed', 'giant', 'melee', 'mercenary'], { beast: 45, mounted: 70 }, { mercTier: 5, authority: 32, revivalGold: 250 }),
+  troop('bull-rider', 'Bull Rider', 'mercenaries', null, 29000, 87000, ['cursed', 'mercenary', 'mounted'], { ranged: 55 }, { mercTier: 5, authority: 28, revivalGold: 220 }),
+  troop('unicorn-rider', 'Unicorn Rider', 'mercenaries', null, 27000, 81000, ['elves', 'mercenary', 'mounted'], { ranged: 65 }, { mercTier: 5, authority: 26, revivalGold: 200 }),
+  troop('bear', 'Bear', 'mercenaries', null, 22000, 66000, ['beast', 'elves', 'melee', 'mercenary'], { elemental: 50, mounted: 70 }, { mercTier: 5, authority: 21, revivalGold: 160 }),
+  troop('gargoyle', 'Gargoyle', 'mercenaries', null, 19000, 57000, ['beast', 'flying', 'mercenary', 'undead'], { elemental: 45, mounted: 70 }, { mercTier: 5, authority: 19, revivalGold: 150 }),
+  troop('scorpion', 'Scorpion', 'mercenaries', null, 5250, 32000, ['human', 'mercenary', 'siege'], { fortification: 329 }, { ...SIEGE, mercTier: 5, authority: 10, revivalGold: 80 }),
+  troop('swift-marksman', 'Swift Marksman', 'mercenaries', null, 1050, 3150, ['guardsman', 'human', 'mercenary', 'ranged'], { flying: 339, melee: 263 }, { mercTier: 5, authority: 1, revivalGold: 8 }),
+  troop('epic-monster-hunter-5', 'Epic Monster Hunter V', 'mercenaries', null, 1050, 3150, ['guardsman', 'mercenary'], {}, { mercTier: 5, authority: 1, revivalGold: 8, epicPct: 373 }),
   // Siege health is the game card's 6× strength (Siege Ballistae VII = 51,000);
   // totalbattlewiki.com shows 3×. Josephine I, Ballistae VI and Catapults IV/V
   // keep game01master's rounded card values (the Catapult V battle replay uses 15,800).
@@ -236,17 +295,28 @@ export function troopUnlocked(troopId, levels) {
   return cap === null || cap === undefined || tier[1] <= cap;
 }
 
-/** How many tiers below your level the troop picker still offers (8 → 5-8). */
-export const LEVEL_WINDOW = 3;
+/** How many top levels the troop picker shows when the account hasn't chosen (levels.span null). */
+export const DEFAULT_LEVEL_SPAN = 4;
+/** levels.span for "all levels": 9 tiers reach down to tier 1. */
+export const ALL_LEVELS_SPAN = 9;
 
-/** Whether the picker offers this troop at these levels: your level and the
- *  LEVEL_WINDOW tiers below it. Mercenaries and "any" levels show everything. */
+/**
+ * Whether the picker offers this troop at these levels ({ g, s, m, e, span }).
+ * The window is the top `span` levels counted down from the account's HIGHEST
+ * level, and each kind shows only what it has unlocked inside it (the user's
+ * rule): at G8 / M8 / S7 with span 2 the band is tiers 8-7, so guardsmen and
+ * monsters show 8 and 7, specialists only 7. Mercenaries and a kind left at
+ * "any" show everything.
+ */
 export function troopInWindow(troopId, levels) {
   const tier = TROOP_TIERS[troopId];
   if (!tier || !levels) return true;
   const cap = levels[tier[0]];
   if (cap === null || cap === undefined) return true;
-  return tier[1] <= cap && tier[1] >= cap - LEVEL_WINDOW;
+  if (tier[1] > cap) return false;
+  const top = Math.max(...['g', 's', 'm', 'e'].map((k) => levels[k]).filter(Number.isInteger));
+  const span = Number.isInteger(levels.span) && levels.span > 0 ? levels.span : DEFAULT_LEVEL_SPAN;
+  return tier[1] > top - span;
 }
 
 const FAMILY_OF = new Map(Object.entries(BONUS_FAMILIES).flatMap(([fam, ids]) => ids.map((id) => [id, fam])));

@@ -357,16 +357,33 @@ describe('citadel simulator edge cases', () => {
     }
   });
 
-  it('the picker window is your level and the three below it', () => {
-    const levels = { g: 8, s: null, m: 5, e: 2 };
+  it('the picker window is the top levels counted down from your highest', () => {
+    // The user's example: G8, M8, S7, top 2 levels -> guardsmen and monsters 8 and 7, specialists only 7.
+    const levels = { g: 8, s: 7, m: 8, e: 7, span: 2 };
     expect(troopInWindow('punisher-1', levels)).toBe(true); // G8
-    expect(troopInWindow('spearmen-5', levels)).toBe(true); // G5
-    expect(troopInWindow('spearmen-4', levels)).toBe(false); // G4: too low
-    expect(troopInWindow('corax-2', levels)).toBe(false); // G9: locked
-    expect(troopInWindow('swordsmen-1', levels)).toBe(true); // S any
-    expect(troopInWindow('battle-boar', levels)).toBe(true); // M3
-    expect(troopInWindow('catapult-1', levels)).toBe(true); // E1
+    expect(troopInWindow('heavy-halberdier-7', levels)).toBe(true); // G7
+    expect(troopInWindow('heavy-halberdier-6', levels)).toBe(false); // G6: below the band
+    expect(troopInWindow('fire-phoenix-1', levels)).toBe(true); // M8
+    expect(troopInWindow('black-dragon', levels)).toBe(true); // M7
+    expect(troopInWindow('ruby-golem', levels)).toBe(false); // M6
+    expect(troopInWindow('heavy-knight-7', levels)).toBe(true); // S7
+    expect(troopInWindow('heavy-knight-6', levels)).toBe(false); // S6: inside S's own 2, but below the band
+    expect(troopInWindow('duelist-1', levels)).toBe(false); // S8: locked
+    expect(troopInWindow('siege-ballistae-7', levels)).toBe(true); // E7
     expect(troopInWindow('wyvern', levels)).toBe(true);
+    // Top level only, and all levels.
+    expect(troopInWindow('heavy-knight-7', { ...levels, span: 1 })).toBe(false);
+    expect(troopInWindow('corax-1', { ...levels, span: 1 })).toBe(true);
+    expect(troopInWindow('spearmen-1', { ...levels, span: 9 })).toBe(true);
+    // No choice yet: 4 levels (8 down to 5); a kind left at "any" shows everything.
+    const loose = { g: 8, s: null, m: 5, e: 2, span: null };
+    expect(troopInWindow('spearmen-5', loose)).toBe(true); // G5
+    expect(troopInWindow('spearmen-4', loose)).toBe(false); // G4: too low
+    expect(troopInWindow('corax-2', loose)).toBe(false); // G9: locked
+    expect(troopInWindow('swordsmen-1', loose)).toBe(true); // S any
+    expect(troopInWindow('flaming-centaur', loose)).toBe(true); // M5
+    expect(troopInWindow('ice-phoenix', loose)).toBe(false); // M4: below 8's band
+    expect(troopInWindow('catapult-1', loose)).toBe(false); // E1: below the band
   });
 
   it('troop levels gate every non-mercenary troop, and only those', () => {

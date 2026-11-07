@@ -70,14 +70,6 @@ const MONSTER_DOMINANCE = {
   'ice-phoenix': 15, 'many-armed-giant': 11, 'gorgon-medusa': 10, 'magic-dragon': 13,
   'water-elemental': 3, 'battle-boar': 6, 'emerald-dragon': 7, 'stone-gargoyle': 8,
 };
-/** Mercenaries: authority and revival gold per unit. All are tier 9 in Kaiculator. */
-const MERCENARIES = {
-  wyvern: { authority: 63, revivalGold: 500 },
-  jago: { authority: 20, revivalGold: 160 },
-  warregal: { authority: 20, revivalGold: 160 },
-  ariel: { authority: 10, revivalGold: 80 },
-  'epic-monster-hunter': { authority: 1, revivalGold: 8, epicStrengthPct: 1000 },
-};
 /** Flying guardsmen and specialists that take 20 leadership (Vultures take 1). */
 const HEAVY_FLYERS = new Set(['griffin-5', 'griffin-6', 'griffin-7', 'corax-1', 'corax-2', 'royal-lion-1', 'royal-lion-2']);
 
@@ -98,9 +90,17 @@ export function stackUnit(troopId) {
     const dominance = MONSTER_DOMINANCE[def.id];
     return dominance ? { ...base, kind: 'monster', dominance, revivalGold: 16 * dominance } : null;
   }
-  const merc = MERCENARIES[def.id];
-  if (!merc) return null;
-  return { ...base, kind: def.siegeEngine ? 'siege' : 'mercenary', tier: 9, authority: merc.authority, revivalGold: merc.revivalGold, epicStrengthPct: merc.epicStrengthPct ?? 0 };
+  // Mercenaries carry their exchange tier, authority, revival gold and epic
+  // bonus in TROOPS (citadel-sim.js).
+  if (def.group !== 'mercenaries' || !def.mercTier || !def.authority) return null;
+  return {
+    ...base,
+    kind: def.siegeEngine ? 'siege' : 'mercenary',
+    tier: def.mercTier,
+    authority: def.authority,
+    revivalGold: def.revivalGold,
+    epicStrengthPct: def.epicPct ?? 0,
+  };
 }
 
 /** Every troop the calculator can size, in TROOPS order (the picker's list). */
