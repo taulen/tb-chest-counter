@@ -46,6 +46,7 @@
 - Performance page scoring (weights, thresholds, tenure; retune in one config file): [docs/performance-page.md](docs/performance-page.md)
 - Citadel simulator (battle rules measured from real reports, troop/defender data, game01master sizing, per-account saved armies): [docs/citadel-simulator.md](docs/citadel-simulator.md)
 - Stack calculator (Tools → Stacks: Kaiculator's sizing ported and pinned count-for-count by 17 probed armies, deliberate differences, how to re-probe, where the 53 mercenaries come from): [docs/stack-calculator.md](docs/stack-calculator.md)
+- Rewards tool (Tools → Rewards: clan Dragon Coins/fragments split by Olympus points, Dark Omens Essence or Spoils of Dread damage; exclusions; why fragments may differ from totalcalculator by 1): [docs/rewards-tool.md](docs/rewards-tool.md)
 - Weekly points goal is historical (v93 `clan_goal_history`); anything judging a PAST window goes through `weeklyGoalForWindow` / `resolveWeeklyGoalForWindow`, never today's number: [docs/performance-page.md#weekly-goal-history](docs/performance-page.md#weekly-goal-history)
 - Running the dashboard locally + screenshots per language/viewport (ask first unless requested): [.claude/skills/local-ui-check/SKILL.md](.claude/skills/local-ui-check/SKILL.md)
 

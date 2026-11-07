@@ -7623,13 +7623,15 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .stacks-table td[data-role="lead"] { background: transparent; padding: 0; }
 }
 
-/* Tools' sub-tabs: four don't fit a phone in es/ru as one inline strip, so
-   they become equal cells across the width, labels wrapping inside. */
+/* Tools' sub-tabs: five don't fit a phone as one strip (a single long word —
+   "Recompensas", "Belohnungen" — can't wrap in a fifth of the width), so they
+   wrap three to a row, the last row's cells stretching to fill it. */
 @media (max-width: 640px) {
-  .tools-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; }
+  .tools-tabs { display: flex; flex-wrap: wrap; width: 100%; }
   .tools-tabs .resources-tab {
+    flex: 1 1 calc(33.333% - 4px); min-width: 0;
     display: flex; align-items: center; justify-content: center;
-    padding: 6px 4px; font-size: 12.5px; line-height: 1.2; text-align: center;
+    padding: 7px 4px; font-size: 12.5px; line-height: 1.2; text-align: center;
   }
 }
 
@@ -7733,6 +7735,82 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .costs-ladder-note { flex: 1 1 100%; font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
   .costs-ladder-item { display: flex; flex-direction: column; min-width: 0; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .costs-ladder-lv { font-size: 10px; font-weight: 600; color: var(--text-muted); }
+}
+
+/* ─── Tools → Rewards ────────────────────────────────────────────────
+   Pick the run (event chips, run, basis, day) and type the pots side by
+   side; the distribution table below. Chips reuse the Points board's
+   .pb-chips; tags reuse the Tin Man card's .tinman-tag. */
+.rewards-setup {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  gap: 0 20px;
+  align-items: start;
+}
+.rewards-chips { margin-bottom: 10px; }
+.rewards-field { margin: 2px 0 0; }
+.rewards-field-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.rewards-inline { margin-bottom: 10px; }
+.rewards-inline > label { min-width: 88px; font-weight: 600; color: var(--text-primary); }
+.rewards-inline .tool-select { max-width: 240px; }
+.rewards-status { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; }
+
+.rewards-pots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.rewards-pot { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.rewards-pot-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.rewards-pot-input {
+  width: 100%;
+  max-width: none;
+  font-size: 17px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rewards-results-header { flex-wrap: wrap; row-gap: 8px; }
+.rewards-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.rewards-summary { padding-bottom: 12px; }
+.rewards-summary .tool-total-line { margin: 0; }
+.rewards-note { margin: 6px 0 0; font-size: 12.5px; }
+.rewards-search { max-width: 320px; margin-top: 12px; }
+.rewards-empty { padding: 16px 20px; margin: 0; }
+
+.rewards-table { table-layout: fixed; width: 100%; }
+.rewards-table .col-take { width: 48px; }
+.rewards-table .col-rank { width: 76px; }
+.rewards-table .col-score { width: 100px; }
+.rewards-table .col-share { width: 84px; }
+.rewards-table .col-amount { width: 136px; }
+.rewards-table th, .rewards-table td { padding-left: 8px; padding-right: 8px; }
+.rewards-table th:first-child, .rewards-table td:first-child { padding-left: 16px; }
+.rewards-table th:last-child, .rewards-table td:last-child { padding-right: 20px; }
+/* Headers wrap ("Monedas de / dragón") rather than clip; the cells never do. */
+.rewards-table th { white-space: normal; line-height: 1.3; vertical-align: bottom; }
+.rewards-table th.num, .rewards-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rewards-table td.num { white-space: nowrap; }
+.rewards-table td.rewards-take { text-align: center; }
+.rewards-check { width: 16px; height: 16px; margin: 0; accent-color: var(--accent-gold); cursor: pointer; vertical-align: middle; }
+.rewards-table td.rewards-amount { font-weight: 700; color: var(--text-primary); }
+.rewards-table td[data-role="primary"] .mrow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Left out: kept in place (rank stays), but greyed and paying nothing. */
+.rewards-table tr.is-excluded td { color: var(--text-muted); }
+.rewards-table tr.is-excluded td.rewards-amount { font-weight: 500; }
+.rewards-table tr.is-excluded .member-link { color: var(--text-muted); }
+
+@media (max-width: 640px) {
+  .rewards-inline > label { min-width: 0; }
+  .rewards-inline .tool-select { max-width: none; flex: 1 1 160px; }
+  .rewards-actions { margin-left: 0; }
+  .rewards-search { max-width: none; }
+  .rewards-pot-input { font-size: 16px; }
+  .rewards-table td.rewards-take { padding: 0; background: transparent; }
+  /* Score and Share sit before Dragon Coins on desktop, so an opened row would
+     drop the coins below them: keep the row's head on its first line. */
+  .rewards-table td[data-role="lead"],
+  .rewards-table td[data-role="primary"],
+  .rewards-table td[data-role="metric"] { grid-row: 1; }
+  .rewards-check { width: 20px; height: 20px; }
+  .rewards-table tr.is-excluded { opacity: 0.7; }
 }
 
 /* ─── Events → Ancients: Tin Man scores ──────────────────────────────

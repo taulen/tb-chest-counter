@@ -28,12 +28,14 @@ import {
 import { renderCitadelTool } from './citadel-tool.js';
 import { renderStacksTool } from './stacks-tool.js';
 import { renderCostsTool } from './costs-tool.js';
+import { renderRewardsTool } from './rewards-tool.js';
 
 const TOOLS = [
   { key: 'ancient', name: t('Ancient planner') },
   { key: 'citadel', name: t('Citadel') },
   { key: 'stacks', name: t('Stacks') },
   { key: 'costs', name: t('Costs') },
+  { key: 'rewards', name: t('Rewards') },
 ];
 
 /** Bare #tools → the first tool; an unknown key falls back the same way. */
@@ -45,6 +47,7 @@ export async function renderTools(el, toolKey) {
   else if (tool.key === 'citadel') await renderCitadelTool(mount);
   else if (tool.key === 'stacks') await renderStacksTool(mount);
   else if (tool.key === 'costs') renderCostsTool(mount);
+  else if (tool.key === 'rewards') await renderRewardsTool(mount);
 }
 
 function toolTabsHtml(activeKey) {

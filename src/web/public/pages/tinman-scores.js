@@ -64,17 +64,30 @@ const EVENTS = {
   },
   olympus: dayEvent('olympus', () => tGame('Olympus'), () => tGame('Trials of Olympus')),
   ragnarok: dayEvent('ragnarok', () => tGame('Ragnarok'), () => tGame('Ragnarok')),
+  // Dark Omens' pasted ranking is the Spoils of Dread damage one; its Omen
+  // Essence measure is the Essence column under Participants (resource tracking).
+  'dark-omens': dayEvent('dark-omens', () => tGame('Spoils of Dread'), () => tGame('Dark Omens'), {
+    title: () => t('{event} damage', { event: esc(tGame('Spoils of Dread')) }),
+  }),
 };
 
 /**
- * An event pasted per day with no targets (Olympus, Ragnarok). Only its name
- * and API differ; every sentence is shared. `name` is the short tab name,
- * `fullName` the in-game event name for the header hint.
+ * An event pasted per day with no targets (Olympus, Ragnarok, Dark Omens). Only
+ * its name and API differ; every sentence is shared. `name` is the short name,
+ * `fullName` the in-game event name for the header hint; `overrides` replaces
+ * any sentence that event words its own way.
  */
-function dayEvent(key, name, fullName) {
+function dayEvent(key, name, fullName, overrides = {}) {
   return {
     api: `/event-scores/${key}`,
     hasTargets: false,
+    ...dayEventSentences(name, fullName),
+    ...overrides,
+  };
+}
+
+function dayEventSentences(name, fullName) {
+  return {
     title: () => t('{event} scores', { event: esc(name()) }),
     eventName: () => esc(fullName()),
     perRound: () => t('points per day'),
@@ -106,7 +119,7 @@ function dayEvent(key, name, fullName) {
   };
 }
 
-/** The event shown: 'ancients' | 'olympus' | 'ragnarok'. */
+/** The event shown: 'ancients' | 'olympus' | 'ragnarok' | 'dark-omens'. */
 let eventKey = null;
 let L = EVENTS.ancients;
 let mountEl = null;
@@ -145,7 +158,7 @@ function isAdmin() {
 /**
  * Render the card into `el` for one run.
  * @param {HTMLElement} el
- * @param {{ event?: 'ancients' | 'olympus' | 'ragnarok', date: string | null | 'all', members: Array<{ id: number, name: string }> }} opts
+ * @param {{ event?: 'ancients' | 'olympus' | 'ragnarok' | 'dark-omens', date: string | null | 'all', members: Array<{ id: number, name: string }> }} opts
  */
 export async function mountTinmanScores(el, opts) {
   if (!el) return;

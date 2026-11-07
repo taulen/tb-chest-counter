@@ -487,8 +487,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // Rise of the Ancients standings pasted after each summon (Events → Ancients).
     // Reads for any member; uploads and name assignment are admin-only inside.
     app.use('/api/tinman', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tinman_js_1.createTinmanRouter)());
-    // The same, per day, for Trials of Olympus and Ragnarok (Events → Olympus / Ragnarok).
-    for (const key of ['olympus', 'ragnarok']) {
+    // The same, per day, for Trials of Olympus, Ragnarok and Dark Omens' Spoils of
+    // Dread damage ranking (Events → Olympus / Ragnarok / Dark Omens).
+    for (const key of ['olympus', 'ragnarok', 'dark-omens']) {
         app.use(`/api/event-scores/${key}`, auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, tinman_js_1.createTinmanRouter)(key));
     }
     // Player levels posted in chat (Admin → Levels from chat). Reads for any

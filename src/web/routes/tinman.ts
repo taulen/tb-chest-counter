@@ -2,10 +2,11 @@
  * Rise of the Ancients (Tinman) standings, pasted in after each summon — shown
  * on Events → Ancients. See data/repositories/tinman-repo.ts.
  *
- * The same router serves Trials of Olympus and Ragnarok (Events → Olympus /
- * Ragnarok), pasted per day: a "summon" in the paths below is then the run's
- * day (1–5 for Olympus, 1–2 for Ragnarok). Neither has targets or a Tinman
- * cadence, so those parts are Ancients-only.
+ * The same router serves Trials of Olympus, Ragnarok and Dark Omens' Spoils of
+ * Dread damage ranking (Events → Olympus / Ragnarok / Dark Omens), pasted per
+ * day: a "summon" in the paths below is then the run's day (1–5 for Olympus,
+ * 1–2 for the other two). None has targets or a Tinman cadence, so those parts
+ * are Ancients-only.
  *
  * Mounted at /api/tinman (Ancients) and /api/event-scores/<event> behind
  * requireAuth + requireClanContext. Reading is open to every member;

@@ -49,6 +49,7 @@ describe('/api/tinman', () => {
     app.use('/api/tinman', requireAuth, requireClanContext, createTinmanRouter());
     app.use('/api/event-scores/olympus', requireAuth, requireClanContext, createTinmanRouter('olympus'));
     app.use('/api/event-scores/ragnarok', requireAuth, requireClanContext, createTinmanRouter('ragnarok'));
+    app.use('/api/event-scores/dark-omens', requireAuth, requireClanContext, createTinmanRouter('dark-omens'));
   });
 
   afterEach(() => {
@@ -170,6 +171,31 @@ describe('/api/tinman', () => {
       expect((await send('delete', `/api/event-scores/ragnarok/${RAG}/summons/2`, 'admin1')).status).toBe(200);
       const actions = getDb().prepare("SELECT action FROM audit_log WHERE action LIKE 'ragnarok_%' ORDER BY id").all();
       expect(actions).toEqual([{ action: 'ragnarok_upload' }, { action: 'ragnarok_delete' }]);
+    });
+  });
+
+  describe('Dark Omens — Spoils of Dread damage (per day)', () => {
+    const OMENS = '2026-10-15';
+
+    it('takes days 1–2 only, files them apart from Ragnarok on the same day, and has no targets', async () => {
+      await send('put', `/api/event-scores/ragnarok/${OMENS}/summons/1`, 'admin1', { text: PASTE });
+      const put = await send('put', `/api/event-scores/dark-omens/${OMENS}/summons/1`, 'admin1', { text: PASTE });
+      expect(put.status).toBe(200);
+      expect(put.body.result).toMatchObject({ rows: 2, matched: 1, unmatched: 1 });
+      expect((await send('put', `/api/event-scores/dark-omens/${OMENS}/summons/3`, 'admin1', { text: PASTE })).status).toBe(400);
+      expect((await send('put', `/api/event-scores/dark-omens/${OMENS}/summons/2`, 'user1', { text: PASTE })).status).toBe(403);
+      expect((await send('put', `/api/event-scores/dark-omens/${OMENS}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
+
+      const get = await send('get', `/api/event-scores/dark-omens?date=${OMENS}`, 'user1');
+      expect(get.body).toMatchObject({ maxSummons: 2, targets: null, dates: [OMENS] });
+      expect(get.body.players.map((p: { name: string; total: number }) => [p.name, p.total]))
+        .toEqual([['Frostbite', 59_878_655], ['Stranger', 10]]);
+
+      // Deleting the Dark Omens day leaves the Ragnarok run on that date alone.
+      expect((await send('delete', `/api/event-scores/dark-omens/${OMENS}/summons/1`, 'admin1')).status).toBe(200);
+      expect((await send('get', `/api/event-scores/ragnarok?date=${OMENS}`, 'user1')).body.summons).toMatchObject([{ summon: 1 }]);
+      const actions = getDb().prepare("SELECT action FROM audit_log WHERE action LIKE 'dark-omens_%' ORDER BY id").all();
+      expect(actions).toEqual([{ action: 'dark-omens_upload' }, { action: 'dark-omens_delete' }]);
     });
   });
 });

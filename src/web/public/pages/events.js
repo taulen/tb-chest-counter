@@ -54,10 +54,10 @@ const ESSENCE_EVENT_KEY = 'dark-omens';
 const ESSENCE_SLUG = 'omen-essence';
 
 // Events that carry pasted standings (pages/tinman-scores.js): Ancients, the
-// Rise of the Ancients ranking per summon (Tin Man scores), and Olympus and
-// Ragnarok, their ranking per day. Each run's are filed under its
-// occurrence's scoresDate.
-const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok']);
+// Rise of the Ancients ranking per summon (Tin Man scores), and Olympus,
+// Ragnarok and Dark Omens (its Spoils of Dread damage ranking), their ranking
+// per day. Each run's are filed under its occurrence's scoresDate.
+const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok', 'dark-omens']);
 // On those, the page is two view tabs. Which one opens is decided per run, in
 // reload(): Scores, unless the run has none pasted yet (or All time is on),
 // then Participants. A tab the user picks wins from then on — Participants
@@ -890,7 +890,9 @@ function paint() {
   const hasScores = SCORES_EVENT_KEYS.has(currentEventKey);
   const viewsHtml = hasScores
     ? `${viewTabsHtml(VIEW_GROUP, [
-        { key: 'scores', label: t('Scores') },
+        // Dark Omens' pasted ranking is Spoils of Dread damage, beside the
+        // Essence column under Participants — "Scores" would say neither.
+        { key: 'scores', label: currentEventKey === 'dark-omens' ? t('Damage') : t('Scores') },
         { key: 'participants', label: t('Participants ({count})', { count: cache.uniqueParticipants || 0 }) },
       ], eventsView)}
       ${viewPanelHtml(VIEW_GROUP, 'scores', eventsView, '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>')}

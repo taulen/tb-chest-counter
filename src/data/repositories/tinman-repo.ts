@@ -40,16 +40,19 @@ export const TINMAN_MAX_SUMMONS = 8;
 
 /**
  * Events whose clan ranking is pasted in round by round. Ancients is the
- * original (per summon, with targets); Trials of Olympus (five days) and
- * Ragnarok (two) file the same kind of cumulative ranking per day. A run is
- * keyed by `tinman_date` whatever the event: the Tinman day for Ancients, the
- * run's first game day for the per-day events. `summon` is the round — the
- * day, for those.
+ * original (per summon, with targets); Trials of Olympus (five days),
+ * Ragnarok (two) and Dark Omens (two) file the same kind of cumulative ranking
+ * per day. Dark Omens' is the Spoils of Dread damage ranking — the event's
+ * other measure, Omen Essence donated, comes from resource tracking instead. A
+ * run is keyed by `tinman_date` whatever the event: the Tinman day for
+ * Ancients, the run's first game day for the per-day events. `summon` is the
+ * round — the day, for those.
  */
 export const SCORE_EVENTS = {
   ancients: { maxRounds: TINMAN_MAX_SUMMONS },
   olympus: { maxRounds: 5 },
   ragnarok: { maxRounds: 2 },
+  'dark-omens': { maxRounds: 2 },
 } as const;
 export type ScoreEventKey = keyof typeof SCORE_EVENTS;
 

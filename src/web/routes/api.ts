@@ -981,9 +981,10 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       // Runs with pasted standings carry the day those are filed under
       // (routes/tinman.ts) as scoresDate. Ancients: its Tinman day (the Rise of
       // the Ancients game day, i.e. the run's last one), also kept as
-      // tinmanDate. Olympus and Ragnarok: the first game day — the last would
-      // lie in the future for most of a live run, and a paste can't be filed there.
-      if (key === 'ancients' || key === 'olympus' || key === 'ragnarok') {
+      // tinmanDate. Olympus, Ragnarok and Dark Omens: the first game day — the
+      // last would lie in the future for most of a live run, and a paste can't
+      // be filed there.
+      if (key === 'ancients' || key === 'olympus' || key === 'ragnarok' || key === 'dark-omens') {
         const rollover = loadConfig().gameDayRolloverUtcHour;
         res.json({
           mode,
