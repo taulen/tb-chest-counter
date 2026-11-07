@@ -30,6 +30,12 @@
 // Curve keys: s = the standard ladder; p = the cheaper one Specialists, Army
 // Modernization and Monsters Boost run on; m = the two Monsters-only steps.
 //
+// `unlockPath` marks the troop trees, where a stage's usual trio (training
+// cost, march speed, carrying capacity) sits partly OFF the path: training
+// cost leads to march speed, which leads to the next troops, and carrying
+// capacity branches off as a dead end. Two maxed is what continuing costs —
+// the sheet's own "2×10" — so a merged row there totals PATH_PICKS of them.
+//
 // Plain ESM, no DOM: tests/web/research-costs.test.ts imports it directly.
 
 export const CURVES = {
@@ -59,6 +65,7 @@ export const TREES = [
   {
     key: 'guardsmen',
     name: 'Guardsmen',
+    unlockPath: true,
     sections: [
       {
         name: 'Guardsmen I',
@@ -132,6 +139,7 @@ export const TREES = [
   {
     key: 'specialists',
     name: 'Specialists',
+    unlockPath: true,
     sections: [
       {
         name: 'Specialists I',
@@ -204,6 +212,7 @@ export const TREES = [
   {
     key: 'engineers',
     name: 'Engineer Corps',
+    unlockPath: true,
     sections: [
       {
         name: 'Engineer Corps I',
@@ -260,6 +269,7 @@ export const TREES = [
   {
     key: 'monsters',
     name: 'Monsters',
+    unlockPath: true,
     sections: [
       {
         name: 'Monsters I',
@@ -639,7 +649,7 @@ export function mergeRows(rows) {
 
 /**
  * The sheet's Guardsmen tier overview: a tier costs its unit unlock plus two
- * maxed 10-level researches from the stage before ("2×10"). Computed from the
+ * maxed 10-level researches from the stage before ("2×10", PATH_PICKS). Computed from the
  * curves, so G8 reads 9.21T where the sheet doubled a rounded 4.2T into 9.3T.
  */
 export const GUARDSMEN_TIERS = [
@@ -651,7 +661,20 @@ export const GUARDSMEN_TIERS = [
 ];
 
 export function tierTotal(tier) {
-  return tier.unlock + 2 * curveTotal(tier.research);
+  return tier.unlock + PATH_PICKS * curveTotal(tier.research);
+}
+
+/** Researches of a stage a troop tree needs maxed to reach the next troops. */
+export const PATH_PICKS = 2;
+
+/**
+ * How many of a merged row's researches its total counts: in a troop tree the
+ * two the path needs (or the one, alone), elsewhere one — there every research
+ * is its own choice, so the row's price is per research.
+ */
+export function pathPicks(tree, group) {
+  if (group.curve === null || !tree.unlockPath) return 1;
+  return Math.min(group.names.length, PATH_PICKS);
 }
 
 /** Blueprints per upgrade level, and their Gold: 10 per blueprint at every level. */

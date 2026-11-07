@@ -10,6 +10,7 @@ import {
   CURVES,
   TREES,
   mergeRows,
+  pathPicks,
   curveTotal,
   GUARDSMEN_TIERS,
   tierTotal,
@@ -85,6 +86,29 @@ describe('research costs data', () => {
   it('prices blueprints at 10 Gold each', () => {
     expect(BLUEPRINTS.map((b) => b.level)).toEqual([10, 15, 20, 25, 30, 35, 40, 45]);
     for (const b of BLUEPRINTS) expect(b.gold).toBe(b.blueprints * 10);
+  });
+});
+
+describe('pathPicks', () => {
+  const tree = (key: string) => TREES.find((x) => x.key === key)!;
+  const groupOf = (key: string, section: string, name: string) =>
+    mergeRows(tree(key).sections.find((s) => s.name === section)!.rows).find((g) => g.names.includes(name))!;
+
+  it('totals two of a troop-tree trio: the path skips carrying capacity', () => {
+    const vi = groupOf('guardsmen', 'Guardsmen II', "Guardsmen's Training Cost VI");
+    expect(vi.names).toHaveLength(3);
+    expect(pathPicks(tree('guardsmen'), vi)).toBe(2);
+    // Matches the tier overview's "2×" for the same curve (G8).
+    expect(vi.total * 2 + 900e9).toBe(tierTotal(GUARDSMEN_TIERS.find((x) => x.tier === 'G8')!));
+    expect(pathPicks(tree('monsters'), groupOf('monsters', 'Monsters I', "Monsters' Cost IV"))).toBe(2);
+  });
+
+  it('counts one research alone, an unlock, and every row outside the troop trees once', () => {
+    const alone = mergeRows([["Guardsmen's March Speed VI", 's7g']])[0];
+    expect(pathPicks(tree('guardsmen'), alone)).toBe(1);
+    expect(pathPicks(tree('guardsmen'), groupOf('guardsmen', 'Guardsmen II', 'Purifier I'))).toBe(1);
+    expect(pathPicks(tree('army'), groupOf('army', 'Army Modernization', "Scouts' Strength II"))).toBe(1);
+    expect(pathPicks(tree('economy'), groupOf('economy', 'Economy', 'Silver Production III'))).toBe(1);
   });
 });
 

@@ -12,7 +12,7 @@
 import { esc } from '../lib/ui.js';
 import { t, tGame } from '../lib/i18n.js';
 import { formatCompact } from '../lib/ancient-planner.js';
-import { CURVES, TREES, mergeRows, GUARDSMEN_TIERS, tierTotal, curveTotal, BLUEPRINTS } from '../lib/research-costs.js';
+import { CURVES, TREES, mergeRows, pathPicks, GUARDSMEN_TIERS, tierTotal, curveTotal, BLUEPRINTS } from '../lib/research-costs.js';
 
 /** The tree last looked at — a per-browser convenience only. */
 const TREE_KEY = 'tbcc.costs.tree.v1';
@@ -157,7 +157,7 @@ function tableHtml() {
       if (words.length || tree.sections.length > 1) {
         body.push(`<tr class="costs-section"><th colspan="12" scope="colgroup">${esc(tGame(section.name))}</th></tr>`);
       }
-      for (const group of mergeRows(rows)) body.push(groupRowHtml(group, words));
+      for (const group of mergeRows(rows)) body.push(groupRowHtml(group, words, tree));
     }
   }
   if (!body.length) {
@@ -196,9 +196,24 @@ function namesHtml(names, words) {
   }).join('<span class="costs-sep" aria-hidden="true"> · </span>');
 }
 
-function groupRowHtml(group, words) {
+/**
+ * The Total cell. In a troop tree a merged row costs what continuing takes —
+ * two of its researches maxed, not one — so it shows that sum with "2 × each"
+ * under it (on a phone, as the caption under the number).
+ */
+function totalCellHtml(group, tree) {
+  const picks = pathPicks(tree, group);
+  const sum = group.total * picks;
+  if (picks === 1) {
+    return `<td data-role="metric" data-label="${t('Total')}" class="num costs-total ${mag(sum)}" title="${exact(sum)}">${formatCompact(sum)}</td>`;
+  }
+  const each = `${picks} × ${formatCompact(group.total)}`;
+  return `<td data-role="metric" data-label="${each}" class="num costs-total ${mag(sum)}" title="${t('Two of these maxed is enough to unlock the next troops.')}">${formatCompact(sum)}<span class="costs-total-each">${each}</span></td>`;
+}
+
+function groupRowHtml(group, words, tree) {
   const names = namesHtml(group.names, words);
-  const total = `<td data-role="metric" data-label="${t('Total')}" class="num costs-total ${mag(group.total)}" title="${exact(group.total)}">${formatCompact(group.total)}</td>`;
+  const total = totalCellHtml(group, tree);
 
   if (group.unlock !== null) {
     return `

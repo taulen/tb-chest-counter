@@ -7693,6 +7693,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .costs-sep { color: var(--text-muted); }
 .costs-table mark { background: var(--accent-gold-bg-strong); color: inherit; border-radius: 3px; padding: 0 1px; }
 .costs-table td.costs-total { font-size: 13px; font-weight: 700; }
+/* "2 × 4.15T": a troop-tree row totals the two researches the path needs. */
+.costs-total-each { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; color: var(--text-muted); }
 .costs-table tr.costs-unlock > td { background: var(--subtle-bg); }
 .costs-tag {
   display: inline-block; margin-right: 2px; padding: 1px 6px; border-radius: 999px;
@@ -7719,6 +7721,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .costs-table tr.costs-section { display: block; background: transparent; border: 0; padding: 10px 2px 0; }
   .costs-table tr.costs-section > th { display: block; padding: 0 0 2px; border: 0; }
   .costs-table td[data-role="primary"] { font-size: 13px; font-weight: 600; }
+  .costs-total-each { display: none; } /* the metric's caption says it */
   .costs-names { font-size: 13px; }
   .costs-table tr.costs-unlock { background: var(--subtle-bg); }
   .costs-table tr.costs-unlock > td { background: transparent; }
