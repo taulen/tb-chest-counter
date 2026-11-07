@@ -154,7 +154,7 @@ describe('/api/tools/citadel-presets', () => {
       { name: 'X', data: { ...ARMY, rows: [{ troopId: 'Wyvern!', count: 1, strengthPct: 0, healthPct: 0 }] } },
       { name: 'X', data: { ...ARMY, rows: [{ troopId: 'wyvern', count: 1.5, strengthPct: 0, healthPct: 0 }] } },
       { name: 'X', data: { ...ARMY, rows: [{ troopId: 'wyvern', count: 1, strengthPct: 'lots', healthPct: 0 }] } },
-      { name: 'X', data: { ...ARMY, rows: Array.from({ length: 31 }, () => ARMY.rows[0]) } },
+      { name: 'X', data: { ...ARMY, rows: Array.from({ length: 201 }, () => ARMY.rows[0]) } },
     ];
     for (const body of bad) {
       const r = await send('put', '/api/tools/citadel-presets', 'user1', body);
@@ -277,6 +277,13 @@ describe('/api/tools/stack-presets', () => {
     expect(own.body.presets).toEqual([]);
   });
 
+  it('saves a big army: more than 30 troops (it used to refuse at 30)', async () => {
+    const rows = Array.from({ length: 60 }, (_, i) => ({ troopId: `troop-${i}`, healthPct: i }));
+    const r = await send('put', '/api/tools/stack-presets', 'user1', { name: 'Everything', data: { ...DATA, rows } });
+    expect(r.status).toBe(200);
+    expect(r.body.preset.data.rows).toHaveLength(60);
+  });
+
   it('refuses malformed armies and settings rather than storing or clamping them', async () => {
     const bad: object[] = [
       { name: '', data: DATA },
@@ -284,7 +291,7 @@ describe('/api/tools/stack-presets', () => {
       { name: 'X', data: { ...DATA, rows: 'corax-1' } },
       { name: 'X', data: { ...DATA, rows: [{ troopId: 'Corax!', healthPct: 0 }] } },
       { name: 'X', data: { ...DATA, rows: [{ troopId: 'corax-1', healthPct: 'lots' }] } },
-      { name: 'X', data: { ...DATA, rows: Array.from({ length: 31 }, () => DATA.rows[0]) } },
+      { name: 'X', data: { ...DATA, rows: Array.from({ length: 201 }, () => DATA.rows[0]) } },
       { name: 'X', data: { rows: DATA.rows } },
       { name: 'X', data: { ...DATA, settings: { ...SETTINGS, baseMode: 'auto' } } },
       { name: 'X', data: { ...DATA, settings: { ...SETTINGS, baseCount: 0 } } },

@@ -21,7 +21,8 @@ exports.deleteCitadelPreset = deleteCitadelPreset;
  */
 const database_js_1 = require("../database.js");
 exports.MAX_PRESETS_PER_USER = 50;
-exports.MAX_PRESET_ROWS = 30;
+/** Rows per saved army: above the whole troop list (146), so any army the pages allow fits. */
+exports.MAX_PRESET_ROWS = 200;
 exports.PRESET_NAME_MAX = 40;
 exports.PRESET_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /**
