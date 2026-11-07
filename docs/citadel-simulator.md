@@ -46,4 +46,4 @@ On the user's Elven 30 army (Corax I, Phoenix I, Royal Lion I, Ballistae VII) it
 ## Open
 
 - Whether a second squad hit can also double has not been needed yet.
-- Cursed citadels have no game01master template and no battle report yet. Their unit data is checked, the fight model is assumed to be the same.
+- Cursed citadels have no game01master template, and none of their reports is pinned yet. The user played several random Cursed 25 armies against the page (Nov 7 2026) and the losses matched every time, so the fight model holds there too. A test needs a report's strike list plus the troop-card bonuses.
