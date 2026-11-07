@@ -1207,6 +1207,7 @@ export const ui = {
   "No research matches “{query}”.": "Keine Forschung passt zu „{query}“.",
   "Research": "Forschung",
   "Total": "Gesamt",
+  "{amount} each": "je {amount}",
   "Two of these maxed is enough to unlock the next troops.": "Zwei davon voll ausgebaut reichen, um die nächsten Truppen freizuschalten.",
   "Unlock": "Freischaltung",
   // pages/dashboard.js

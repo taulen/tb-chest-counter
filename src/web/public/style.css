@@ -7680,7 +7680,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 .costs-table { table-layout: fixed; width: 100%; min-width: 780px; }
 .costs-table .col-lv { width: 56px; }
-.costs-table .col-total { width: 74px; }
+.costs-table .col-total { width: 84px; }
 .costs-table th, .costs-table td { padding: 6px 6px; }
 .costs-table th:first-child, .costs-table td:first-child { padding-left: 16px; }
 .costs-table th:last-child, .costs-table td.costs-total { padding-right: 16px; }
@@ -7693,8 +7693,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .costs-sep { color: var(--text-muted); }
 .costs-table mark { background: var(--accent-gold-bg-strong); color: inherit; border-radius: 3px; padding: 0 1px; }
 .costs-table td.costs-total { font-size: 13px; font-weight: 700; }
-/* "2 × 4.15T": a troop-tree row totals the two researches the path needs. */
-.costs-total-each { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; color: var(--text-muted); }
+/* "4.15T each": a troop-tree row totals the two researches the path needs. */
+.costs-total-each { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; line-height: 1.25; color: var(--text-muted); white-space: normal; }
 .costs-table tr.costs-unlock > td { background: var(--subtle-bg); }
 .costs-tag {
   display: inline-block; margin-right: 2px; padding: 1px 6px; border-radius: 999px;

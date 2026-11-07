@@ -198,8 +198,8 @@ function namesHtml(names, words) {
 
 /**
  * The Total cell. In a troop tree a merged row costs what continuing takes —
- * two of its researches maxed, not one — so it shows that sum with "2 × each"
- * under it (on a phone, as the caption under the number).
+ * two of its researches maxed, not one — so it shows that sum with "41.6T
+ * each" under it (on a phone, as the caption under the number).
  */
 function totalCellHtml(group, tree) {
   const picks = pathPicks(tree, group);
@@ -207,7 +207,7 @@ function totalCellHtml(group, tree) {
   if (picks === 1) {
     return `<td data-role="metric" data-label="${t('Total')}" class="num costs-total ${mag(sum)}" title="${exact(sum)}">${formatCompact(sum)}</td>`;
   }
-  const each = `${picks} × ${formatCompact(group.total)}`;
+  const each = t('{amount} each', { amount: formatCompact(group.total) });
   return `<td data-role="metric" data-label="${each}" class="num costs-total ${mag(sum)}" title="${t('Two of these maxed is enough to unlock the next troops.')}">${formatCompact(sum)}<span class="costs-total-each">${each}</span></td>`;
 }
 
