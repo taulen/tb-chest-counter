@@ -78,6 +78,29 @@ const FIGHTS: Fight[] = [
     lost: { 'corax-1': 114 },
   },
   {
+    // The user's simulator-sized army (Nov 7 2026). The simulator said 65 Corax I lost
+    // if you open, 140 if the citadel does; the game gave exactly 65 and 140. Luck made
+    // the Phoenix's hit double, finishing the Bear, so the fight ended in one round.
+    name: 'Elven 30, mixed army with Vultures and Battle Griffins, you open (the Phoenix doubles on the Bear)',
+    citadelId: 'elven-30',
+    opener: 'you',
+    army: [
+      row('siege-ballistae-7', 789, 2277, 1616.8),
+      row('corax-1', 601, 5226.5, 3936.8),
+      row('fire-phoenix-1', 26, 3736.5, 2794.8),
+      row('royal-lion-1', 98, 3736.5, 2794.8),
+      row('griffin-7', 199, 5326.5, 4036.8),
+      row('vulture-7', 5812, 3636.5, 2694.8),
+      row('griffin-6', 358, 5326.5, 4036.8),
+      row('vulture-6', 10510, 3636.5, 2694.8),
+    ],
+    luck: { 4: { double: true } },
+    strikes: [4_050_000_000, 1_656_000_000, 313_900_000, 792_000_000, 172_200_000, 382_200_000, 369_143_781, 369_110_530,
+      367_156_990, 203_445_689, 149_443_010],
+    complete: true,
+    lost: { 'corax-1': 65 },
+  },
+  {
     name: 'Elven 10, one of each, citadel opens',
     citadelId: 'elven-10',
     opener: 'citadel',
@@ -196,6 +219,14 @@ describe('citadel simulator replays real battle reports', () => {
       expect(lost).toEqual(f.lost);
     });
   }
+
+  it('the same mixed Elven 30 army loses exactly the 140 Corax I the game took when the citadel opened', () => {
+    // Only the report's result was captured for this attack, not its strike list.
+    const army = FIGHTS.find((f) => f.name.startsWith('Elven 30, mixed army'))!.army;
+    const r = simulate({ citadelId: 'elven-30', army, opener: 'citadel' });
+    expect(r.won).toBe(true);
+    expect(Object.fromEntries(r.army.filter((a) => a.lost > 0).map((a) => [a.troopId, a.lost]))).toEqual({ 'corax-1': 140 });
+  });
 
   it('the first Catapult V dies exactly where the report shows it', () => {
     const r = simulate({ citadelId: 'elven-10', army: [row('catapult-5', 12, 2252.1, 1462.3)], opener: 'you' });
