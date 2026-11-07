@@ -26,10 +26,12 @@ import {
   formatCompact,
 } from '../lib/ancient-planner.js';
 import { renderCitadelTool } from './citadel-tool.js';
+import { renderStacksTool } from './stacks-tool.js';
 
 const TOOLS = [
   { key: 'ancient', name: t('Ancient planner') },
   { key: 'citadel', name: t('Citadel') },
+  { key: 'stacks', name: t('Stacks') },
 ];
 
 /** Bare #tools → the first tool; an unknown key falls back the same way. */
@@ -39,6 +41,7 @@ export async function renderTools(el, toolKey) {
   const mount = el.querySelector('.tools-mount');
   if (tool.key === 'ancient') await renderAncientPlanner(mount);
   else if (tool.key === 'citadel') await renderCitadelTool(mount);
+  else if (tool.key === 'stacks') await renderStacksTool(mount);
 }
 
 function toolTabsHtml(activeKey) {

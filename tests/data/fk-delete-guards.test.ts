@@ -58,8 +58,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   users: [
     'audit_log.user_id',
     // ON DELETE CASCADE, and deleteUser clears both explicitly too: a player's
-    // troop levels and saved armies on the Citadel tool have no value once the
-    // account is gone.
+    // troop levels and saved armies on the Citadel and Stacks tools have no
+    // value once the account is gone.
     'citadel_levels.user_id',
     'citadel_presets.user_id',
     'clans.created_by',
@@ -68,6 +68,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'resource_upload_batches.uploaded_by',
     'share_links.created_by',
     'share_links.revoked_by',
+    'stack_presets.user_id',
     'user_clan_access.user_id',
     'user_sessions.user_id',
     'users.created_by',
@@ -269,6 +270,9 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO citadel_presets (user_id, name, data, updated_at) VALUES (2, 'Elven 25', '{"citadelId":"elven-25","rows":[]}', ?)`,
   ).run(now);
   db.prepare(`INSERT INTO citadel_levels (user_id, g, s, m, e, updated_at) VALUES (2, 8, 8, 8, 7, ?)`).run(now);
+  db.prepare(
+    `INSERT INTO stack_presets (user_id, name, data, updated_at) VALUES (2, 'Epic run', '{"rows":[],"settings":{}}', ?)`,
+  ).run(now);
 
   // ChestTracker ingest: clan-scoped, but only by convention — no FK to clans.
   const playerRef = db.prepare(
@@ -403,6 +407,7 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     // Their own saved citadel armies don't.
     expect(db.prepare('SELECT COUNT(*) c FROM citadel_presets WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
     expect(db.prepare('SELECT COUNT(*) c FROM citadel_levels WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
+    expect(db.prepare('SELECT COUNT(*) c FROM stack_presets WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
   });
 
   it('a player merge survives a member referenced from every child table', () => {

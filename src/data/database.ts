@@ -1191,6 +1191,23 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Tools → Stacks: each account's saved armies for the stack calculator
+    // (stack-preset-repo.ts) — troops, health bonuses and the sizing settings.
+    // Same shape as citadel_presets, kept apart so the two lists never mix.
+    // deleteUser clears them.
+    version: 97,
+    sql: `
+      CREATE TABLE IF NOT EXISTS stack_presets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (user_id, name)
+      );
+    `,
+  },
 ];
 
 /**

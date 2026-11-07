@@ -38,6 +38,7 @@ import {
   troopUnlocked,
   troopInWindow,
 } from '../lib/citadel-sim.js';
+import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
 
 /** The count search runs this long after the last keystroke. */
 const SEARCH_DELAY_MS = 350;
@@ -189,7 +190,7 @@ function saveDraft() {
 }
 
 export async function renderCitadelTool(mount) {
-  closePicker();
+  closeTroopPicker();
   const draft = loadDraft();
   cs = {
     citadelId: draft?.citadelId ?? 'elven-20',
@@ -235,7 +236,7 @@ export async function renderCitadelTool(mount) {
 
 // ─── Your troop levels (per account) ─────────────────────────────
 
-const LEVEL_KINDS = [
+export const LEVEL_KINDS = [
   ['g', t('Guardsmen')],
   ['s', t('Specialists')],
   ['m', t('Monsters')],
@@ -269,7 +270,7 @@ async function saveLevels() {
 }
 
 /** "G5", "M8"… after a troop in the picker: monsters have no numeral in their names. */
-function levelTag(troopId) {
+export function levelTag(troopId) {
   const tier = troopTier(troopId);
   if (!tier) return '';
   const [kind, n] = tier;
@@ -940,159 +941,31 @@ function openMarchList(root) {
   });
 }
 
-// ─── Troop picker: a listbox with icons (a native <select> can't show them) ───
+// ─── Troop picker (lib/troop-picker.js) ───────────────────────────
 
-let picker = null; // { root, pop, trigger, target: 'add' | row index, items: [], active }
-
-
-function closePicker({ refocus = false } = {}) {
-  if (!picker) return;
-  const { pop, trigger } = picker;
-  picker = null;
-  pop.remove();
-  trigger?.setAttribute('aria-expanded', 'false');
-  document.removeEventListener('pointerdown', onPickerOutside, true);
-  window.removeEventListener('resize', onPickerViewport);
-  window.removeEventListener('scroll', onPickerViewport, true);
-  window.removeEventListener('hashchange', onPickerViewport);
-  if (refocus && trigger?.isConnected) trigger.focus();
-}
-
-function onPickerOutside(e) {
-  if (picker && !picker.pop.contains(e.target) && !picker.trigger.contains(e.target)) closePicker();
-}
-const isPhone = () => window.matchMedia('(max-width: 640px)').matches;
-
-function onPickerViewport(e) {
-  // Scrolling inside the list is fine; anything else moving the page closes it.
-  if (picker && e?.type === 'scroll' && picker.pop.contains(e.target)) return;
-  // On phones it's a bottom sheet, and the on-screen keyboard resizes and
-  // scrolls the page as soon as someone types in the search box.
-  if (e?.type !== 'hashchange' && isPhone()) return;
-  closePicker();
-}
+const PICKER_GROUPS = TROOP_GROUPS.map((g) => [g, GROUP_LABELS[g]]);
 
 function openPicker(root, trigger, target) {
-  const wasOpen = picker && picker.trigger === trigger;
-  closePicker();
-  if (wasOpen) return;
-  const pop = document.createElement('div');
-  pop.className = 'citadel-pop';
-  pop.innerHTML = `
-    <input class="input citadel-pop-filter" type="search" autocomplete="off" spellcheck="false"
-      placeholder="${esc(t('Find a troop…'))}" aria-label="${esc(t('Find a troop'))}" aria-controls="citadel-pop-list">
-    <div class="citadel-pop-list" id="citadel-pop-list" role="listbox" aria-label="${esc(t('Troops'))}"></div>`;
-  document.body.appendChild(pop);
-  // The wheel over the picker never scrolls the page (which would close it):
-  // the list scrolls while it can, and at either end the wheel stops there.
-  const list = pop.querySelector('.citadel-pop-list');
-  pop.addEventListener('wheel', (ev) => {
-    const down = ev.deltaY > 0;
-    const listCanScroll = list.contains(ev.target)
-      && (down ? list.scrollTop + list.clientHeight < list.scrollHeight - 1 : list.scrollTop > 0);
-    if (!listCanScroll) ev.preventDefault();
-  }, { passive: false });
-  picker = { root, pop, trigger, target, items: [], active: 0 };
-  trigger.setAttribute('aria-expanded', 'true');
-  renderPickerList('');
-  placePicker();
-  const input = pop.querySelector('.citadel-pop-filter');
-  input.addEventListener('input', () => renderPickerList(input.value));
-  pop.addEventListener('keydown', onPickerKey);
-  pop.addEventListener('click', (e) => {
-    const opt = e.target.closest('[data-troop]');
-    if (opt) choosePicked(opt.dataset.troop);
-  });
-  pop.addEventListener('pointermove', (e) => {
-    const opt = e.target.closest('[data-troop]');
-    if (opt && picker) setActive(picker.items.indexOf(opt.dataset.troop), false);
-  });
-  document.addEventListener('pointerdown', onPickerOutside, true);
-  window.addEventListener('resize', onPickerViewport);
-  window.addEventListener('scroll', onPickerViewport, true);
-  window.addEventListener('hashchange', onPickerViewport);
-  // Phones: no keyboard until they tap the search box themselves.
-  if (!isPhone()) input.focus();
-}
-
-/** Under the trigger (or above it when there's no room); phones get a bottom sheet from CSS. */
-function placePicker() {
-  const { pop, trigger } = picker;
-  const box = trigger.getBoundingClientRect();
-  const width = Math.max(box.width, 300);
-  const below = window.innerHeight - box.bottom - 12;
-  const above = box.top - 12;
-  const height = Math.min(380, Math.max(below, above));
-  pop.style.width = `${width}px`;
-  pop.style.maxHeight = `${height}px`;
-  pop.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - width - 8))}px`;
-  if (below >= Math.min(380, above) || below >= 260) pop.style.top = `${box.bottom + 4}px`;
-  else pop.style.top = `${Math.max(8, box.top - 4 - Math.min(height, pop.scrollHeight))}px`;
-}
-
-function renderPickerList(filter) {
-  if (!picker) return;
-  const current = picker.target === 'add' ? null : cs.rows[picker.target]?.troopId;
+  const current = target === 'add' ? null : cs.rows[target]?.troopId ?? null;
   const taken = new Set(cs.rows.map((r) => r.troopId));
   // One siege engine per army: once there is one, others are offered only on its own row.
-  const siegeElsewhere = cs.rows.some((r, k) => k !== picker.target && isSiege(r.troopId));
-  const q = filter.trim().toLowerCase();
-  const items = [];
-  const html = TROOP_GROUPS.map((g) => {
-    const opts = TROOPS.filter((x) => x.group === g && (x.id === current || !taken.has(x.id))
-      && !(siegeElsewhere && x.siegeEngine)
-      && (x.id === current || troopInWindow(x.id, cs.levels))
-      && (!q || tGame(x.name).toLowerCase().includes(q) || x.name.toLowerCase().includes(q)));
-    if (!opts.length) return '';
-    return `<div class="citadel-pop-group" role="presentation">${esc(GROUP_LABELS[g])}</div>${opts.map((x) => {
-      items.push(x.id);
-      return `<div class="citadel-pop-opt ${x.id === current ? 'is-current' : ''}" role="option" id="citadel-opt-${x.id}" data-troop="${x.id}" aria-selected="false">
-        <img src="${icon(x.id)}" alt="" width="28" height="28" decoding="async"><span>${esc(tGame(x.name))}</span>${levelTag(x.id)}${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
-    }).join('')}`;
-  }).join('');
-  picker.items = items;
-  picker.pop.querySelector('.citadel-pop-list').innerHTML = html || `<p class="citadel-pop-empty">${t('No troops match.')}</p>`;
-  setActive(current && !q ? Math.max(0, items.indexOf(current)) : 0, true);
-}
-
-function setActive(k, scroll) {
-  if (!picker || k < 0) return;
-  picker.active = Math.min(k, picker.items.length - 1);
-  const input = picker.pop.querySelector('.citadel-pop-filter');
-  picker.pop.querySelectorAll('.citadel-pop-opt').forEach((el) => {
-    const on = el.dataset.troop === picker.items[picker.active];
-    el.classList.toggle('is-active', on);
-    el.setAttribute('aria-selected', String(on));
-    if (on && scroll) el.scrollIntoView({ block: 'nearest' });
+  const siegeElsewhere = cs.rows.some((r, k) => k !== target && isSiege(r.troopId));
+  openTroopPicker({
+    trigger,
+    troops: TROOPS,
+    groups: PICKER_GROUPS,
+    current,
+    allow: (x) => !taken.has(x.id) && !(siegeElsewhere && x.siegeEngine) && troopInWindow(x.id, cs.levels),
+    tagHtml: levelTag,
+    onPick: (troopId) => choosePicked(root, target, troopId),
   });
-  if (picker.items.length) input.setAttribute('aria-activedescendant', `citadel-opt-${picker.items[picker.active]}`);
-  else input.removeAttribute('aria-activedescendant');
-}
-
-function onPickerKey(e) {
-  if (!picker) return;
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    const n = picker.items.length;
-    if (n) setActive((picker.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n, true);
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    if (picker.items.length) choosePicked(picker.items[picker.active]);
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    closePicker({ refocus: true });
-  } else if (e.key === 'Tab') {
-    closePicker();
-  }
 }
 
 /** Add the troop, or swap the row's troop in place. The count is kept; bonuses
  *  come from its family (BONUS_FAMILIES) — another row's, or the row's own when
  *  swapping within the family — and are cleared otherwise. */
-function choosePicked(troopId) {
-  if (!picker || !troopById(troopId)) return;
-  const { root, target } = picker;
-  closePicker();
+function choosePicked(root, target, troopId) {
+  if (!troopById(troopId)) return;
   let focusSel;
   if (target === 'add') {
     cs.rows = normalizeRows([...cs.rows, { ...emptyRow(troopId), ...familyBonuses(troopId, cs.rows) }]);

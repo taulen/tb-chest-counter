@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_PRESET_ROWS = exports.MAX_PRESETS_PER_USER = void 0;
+exports.UNSAFE_NAME_RE = exports.PRESET_ID_RE = exports.PRESET_NAME_MAX = exports.MAX_PRESET_ROWS = exports.MAX_PRESETS_PER_USER = void 0;
+exports.pct = pct;
+exports.parsePresetName = parsePresetName;
 exports.parseCitadelPreset = parseCitadelPreset;
 exports.listCitadelPresets = listCitadelPresets;
 exports.saveCitadelPreset = saveCitadelPreset;
@@ -20,8 +22,8 @@ exports.deleteCitadelPreset = deleteCitadelPreset;
 const database_js_1 = require("../database.js");
 exports.MAX_PRESETS_PER_USER = 50;
 exports.MAX_PRESET_ROWS = 30;
-const MAX_NAME = 40;
-const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+exports.PRESET_NAME_MAX = 40;
+exports.PRESET_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /**
  * Characters a name may not hold: control characters, and the invisible ones
  * that make two names look identical or flip how the text around them reads
@@ -30,8 +32,9 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
  * always stored and sent as data (bound parameters; escaped where shown); this
  * only keeps what a player sees honest.
  */
-const UNSAFE_NAME_RE = /[\p{Cc}​‎‏‪-‮⁠-⁤⁦-⁩﻿]/u;
+exports.UNSAFE_NAME_RE = /[\p{Cc}​‎‏‪-‮⁠-⁤⁦-⁩﻿]/u;
 const CITADEL_RE = /^(elven|cursed)-\d{1,2}$/;
+/** A bonus percent (-100…1,000,000), rounded to 0.01. Shared with the stack presets. */
 function pct(value, field, errors) {
     const n = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(n) || n < -100 || n > 1_000_000) {
@@ -40,15 +43,20 @@ function pct(value, field, errors) {
     }
     return Math.round(n * 100) / 100;
 }
+/** A saved army's name, whitespace collapsed; '' (with an error) when it can't be used. */
+function parsePresetName(raw, errors) {
+    const name = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
+    if (!name || name.length > exports.PRESET_NAME_MAX)
+        errors.push(`name must be 1-${exports.PRESET_NAME_MAX} characters`);
+    else if (exports.UNSAFE_NAME_RE.test(name))
+        errors.push('name holds control or invisible characters');
+    return name;
+}
 /** Validate a save request: { name, data: { citadelId, rows[] } }. Refuses, never clamps. */
 function parseCitadelPreset(body) {
     const errors = [];
     const b = (body ?? {});
-    const name = typeof b.name === 'string' ? b.name.trim().replace(/\s+/g, ' ') : '';
-    if (!name || name.length > MAX_NAME)
-        errors.push(`name must be 1-${MAX_NAME} characters`);
-    else if (UNSAFE_NAME_RE.test(name))
-        errors.push('name holds control or invisible characters');
+    const name = parsePresetName(b.name, errors);
     const d = (b.data ?? {});
     const citadelId = typeof d.citadelId === 'string' ? d.citadelId : '';
     if (!CITADEL_RE.test(citadelId))
@@ -62,7 +70,7 @@ function parseCitadelPreset(body) {
     for (const [i, raw] of (rawRows ?? []).slice(0, exports.MAX_PRESET_ROWS).entries()) {
         const r = (raw ?? {});
         const troopId = typeof r.troopId === 'string' ? r.troopId : '';
-        if (!ID_RE.test(troopId))
+        if (!exports.PRESET_ID_RE.test(troopId))
             errors.push(`data.rows[${i}].troopId is not a troop id`);
         const count = typeof r.count === 'number' ? r.count : Number(r.count);
         if (!Number.isInteger(count) || count < 0 || count > 100_000_000)

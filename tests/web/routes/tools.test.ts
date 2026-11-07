@@ -225,3 +225,89 @@ describe('/api/tools/citadel-presets', () => {
     expect((await send('put', '/api/tools/citadel-presets', 'user1', { name: 'P7', data: ARMY })).status).toBe(200);
   });
 });
+
+describe('/api/tools/stack-presets', () => {
+  let app: express.Express;
+  let cleanup: () => void;
+  let cookies: Record<'user1' | 'user1b', string>;
+  const SETTINGS = {
+    baseMode: 'fill', baseCount: 760, tierMultiplier: 1.9, siegeMultiplier: 1.25, leadership: 250_000, authority: 0, dominance: 900,
+    monsterMode: 'scaled', templeLevel: 30, specialistsFirst: true, epicHunterLast: false,
+  };
+  const DATA = {
+    rows: [{ troopId: 'corax-1', healthPct: 412.5 }, { troopId: 'heavy-halberdier-7', healthPct: 0 }, { troopId: 'siege-ballistae-7', healthPct: 0 }],
+    settings: SETTINGS,
+  };
+
+  beforeEach(() => {
+    cleanup = makeTestDb().cleanup;
+    seedTwoClans();
+    const su = userRepo.createUser('su', 'Test1234!aA', 'superadmin');
+    const mk = (name: string) => {
+      const u = userRepo.createUser(name, 'Test1234!aA', 'user', su.id, 1);
+      return `${SESSION_COOKIE_NAME}=${userRepo.createSession(u.id)}`;
+    };
+    cookies = { user1: mk('u1'), user1b: mk('u1b') };
+    app = express();
+    app.use(express.json());
+    app.use('/api/tools', requireAuth, requireClanContext, createToolsRouter());
+  });
+
+  afterEach(() => cleanup());
+
+  const send = (method: 'get' | 'put' | 'delete', path: string, who: keyof typeof cookies, body?: object) => {
+    let r = request(app)[method](path).set('Accept', 'application/json').set('Cookie', cookies[who]);
+    if (body) r = r.send(body);
+    return r;
+  };
+
+  it('saves troops and settings per account, apart from the citadel armies', async () => {
+    const save = await send('put', '/api/tools/stack-presets', 'user1', { name: ' Epic  run ', data: DATA });
+    expect(save.status).toBe(200);
+    expect(save.body.preset).toMatchObject({ name: 'Epic run', data: DATA });
+    expect((await send('get', '/api/tools/stack-presets', 'user1')).body.presets).toHaveLength(1);
+    expect((await send('get', '/api/tools/citadel-presets', 'user1')).body.presets).toEqual([]);
+    expect((await send('get', '/api/tools/stack-presets', 'user1b')).body.presets).toEqual([]);
+    expect((await send('delete', `/api/tools/stack-presets/${save.body.preset.id}`, 'user1b')).status).toBe(404);
+    const own = await send('delete', `/api/tools/stack-presets/${save.body.preset.id}`, 'user1');
+    expect(own.status).toBe(200);
+    expect(own.body.presets).toEqual([]);
+  });
+
+  it('refuses malformed armies and settings rather than storing or clamping them', async () => {
+    const bad: object[] = [
+      { name: '', data: DATA },
+      { name: 'Ma​in', data: DATA }, // zero-width space
+      { name: 'X', data: { ...DATA, rows: 'corax-1' } },
+      { name: 'X', data: { ...DATA, rows: [{ troopId: 'Corax!', healthPct: 0 }] } },
+      { name: 'X', data: { ...DATA, rows: [{ troopId: 'corax-1', healthPct: 'lots' }] } },
+      { name: 'X', data: { ...DATA, rows: Array.from({ length: 31 }, () => DATA.rows[0]) } },
+      { name: 'X', data: { rows: DATA.rows } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, baseMode: 'auto' } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, baseCount: 0 } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, baseCount: 12.5 } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, tierMultiplier: 9 } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, siegeMultiplier: -1 } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, leadership: '250000' } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, monsterMode: 'all' } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, templeLevel: 46 } } },
+      { name: 'X', data: { ...DATA, settings: { ...SETTINGS, specialistsFirst: 'yes' } } },
+      [],
+    ];
+    for (const body of bad) {
+      const r = await send('put', '/api/tools/stack-presets', 'user1', body);
+      expect(r.status, JSON.stringify(body).slice(0, 100)).toBe(400);
+    }
+    expect((await send('get', '/api/tools/stack-presets', 'user1')).body.presets).toEqual([]);
+  });
+
+  it('caps an account at 50 but still lets one be overwritten', async () => {
+    for (let i = 0; i < 50; i++) {
+      expect((await send('put', '/api/tools/stack-presets', 'user1', { name: `S${i}`, data: DATA })).status).toBe(200);
+    }
+    expect((await send('put', '/api/tools/stack-presets', 'user1', { name: 'One more', data: DATA })).status).toBe(409);
+    const again = await send('put', '/api/tools/stack-presets', 'user1', { name: 'S7', data: { ...DATA, settings: { ...SETTINGS, baseCount: 800 } } });
+    expect(again.status).toBe(200);
+    expect(again.body.preset.data.settings.baseCount).toBe(800);
+  });
+});

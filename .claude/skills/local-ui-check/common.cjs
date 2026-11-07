@@ -22,6 +22,8 @@ const PAGES = {
   doomsday: '/#events/doomsday',
   hellforge: '/#events/hell-forge',
   tools: '/#tools',
+  citadel: '/#tools/citadel',
+  stacks: '/#tools/stacks',
   triumphal: '/#triumphal',
   resources: '/#resources',
   resadmin: '/#resources/admin',

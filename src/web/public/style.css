@@ -7520,6 +7520,98 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .citadel-log-result { grid-column: 3; }
 }
 
+/* ─── Tools → Stacks ─────────────────────────────────────────────────
+   Shares the Citadel tab's rows, steps, picker and march list; these are the
+   differences: no drag column, a size-and-limits card, and the loss-order table. */
+.stacks-rows .citadel-row { grid-template-columns: minmax(150px, 1fr) 112px 112px 30px; }
+.stacks-rows .citadel-row.is-base .citadel-troop-note { color: var(--accent-gold); font-weight: 600; }
+.stacks-na { text-align: center; color: var(--text-muted); }
+.stacks-intro { margin-top: 12px; }
+.stacks-tool .citadel-army .card-header { row-gap: 8px; }
+/* The saved-army controls keep select + buttons on one line beside the title. */
+.stacks-tool .citadel-army .card-header .citadel-presets { flex: 0 0 auto; flex-wrap: nowrap; }
+/* The levels open the card here, so no divider of their own. */
+.stacks-tool .citadel-army .citadel-levels { margin-top: 0; padding-top: 0; border-top: 0; }
+
+.stacks-size-grid {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(300px, 1.5fr) minmax(170px, 0.7fr);
+  gap: 16px 28px;
+  align-items: start;
+}
+.stacks-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.stacks-field-label { font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
+.stacks-field-label small { display: block; margin-top: 1px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
+.stacks-input { width: 100%; padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.stacks-input::placeholder { color: var(--text-muted); font-size: 12px; text-align: right; }
+.stacks-input.is-auto { border-color: transparent; background: var(--subtle-bg); color: var(--accent-gold); font-weight: 700; cursor: default; }
+.stacks-input.is-auto:focus { outline: none; box-shadow: none; }
+.stacks-base-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.stacks-base-row .stacks-input { flex: 0 0 120px; width: 120px; }
+.stacks-base-note { margin: 0; font-size: 12.5px; line-height: 1.45; }
+.stacks-base-note strong { color: var(--text-primary); }
+.stacks-limits { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.stacks-limit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
+.stacks-limit-grid .stacks-field-label { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
+
+.stacks-advanced { margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.stacks-advanced > summary.card-header { padding: 10px 14px; }
+.stacks-advanced > summary.card-header h2 { font-size: 13px; }
+.stacks-advanced-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 24px;
+  padding: 12px 14px 14px;
+  align-items: start;
+}
+.stacks-advanced-body .stacks-input { max-width: 120px; }
+.stacks-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; color: var(--text-secondary); cursor: pointer; }
+.stacks-check input { margin-top: 2px; accent-color: var(--accent-gold); }
+.stacks-reset { margin: 0; }
+
+.stacks-stats { margin-bottom: 12px; }
+.stat-card.is-over { border-color: var(--accent-red); }
+.stacks-fit-note { margin: -2px 0 14px; }
+.stacks-table { table-layout: fixed; width: 100%; }
+.stacks-table .col-order { width: 64px; }
+.stacks-table .col-count { width: 110px; }
+.stacks-table .col-health { width: 144px; }
+.stacks-table .col-gap { width: 150px; }
+.stacks-table .col-cost { width: 160px; }
+.stacks-order-badge {
+  display: inline-grid; place-items: center; min-width: 30px; height: 22px; padding: 0 7px;
+  border-radius: 999px; background: var(--subtle-bg); color: var(--text-secondary);
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.stacks-table tr.stacks-kind-siege .stacks-order-badge { background: var(--accent-amber-bg); color: var(--accent-amber-text); }
+.stacks-table tr.is-base .stacks-order-badge { background: var(--accent-gold); color: var(--text-on-gold); }
+.stacks-troop { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.stacks-troop .mrow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text-primary); }
+.stacks-table .mrow-sub { display: block; margin-top: 1px; font-size: 11.5px; color: var(--text-muted); }
+.stacks-table .mrow-sub strong { color: var(--accent-gold); font-weight: 600; }
+.stacks-count { font-weight: 700; color: var(--accent-gold); }
+.stacks-cell-sub { display: block; font-size: 11px; color: var(--text-muted); }
+
+@media (max-width: 1100px) {
+  .stacks-size-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .stacks-limits { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 640px) {
+  .stacks-size-grid { grid-template-columns: minmax(0, 1fr); }
+  .stacks-limits { grid-row: auto; }
+  .stacks-limit-grid { grid-template-columns: minmax(0, 1fr); }
+  .stacks-limit-grid .stacks-field { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+  .stacks-limit-grid .stacks-input { max-width: 150px; }
+  /* Two boxes, not Citadel's three: troop and ✕ on line one, Count and
+     Health % side by side under them. */
+  .stacks-tool .citadel-army .card-header .citadel-presets { flex: 1 1 100%; flex-wrap: wrap; }
+  .stacks-rows .citadel-row .citadel-troop { flex: 1 1 60%; }
+  .stacks-rows .citadel-row .citadel-field { flex: 1 1 40%; }
+  .stacks-rows .citadel-row .stacks-na { text-align: left; }
+  .stacks-troop .mrow-name { font-weight: 700; }
+  .stacks-table td[data-role="lead"] { background: transparent; padding: 0; }
+}
+
 /* ─── Events → Ancients: Tin Man scores ──────────────────────────────
    Pasted Rise of the Ancients standings, one column per summon. */
 .tinman-note { padding: 16px 20px; margin: 0; }

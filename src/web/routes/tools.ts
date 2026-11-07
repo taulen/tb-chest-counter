@@ -6,8 +6,8 @@
  * Mounted at /api/tools behind requireAuth + requireClanContext. Reads are open
  * to every role; saving the clan's defaults is admin-only and lands on the
  * caller's active clan (req.clanId), so an admin can only ever set their own.
- * Citadel presets belong to the signed-in ACCOUNT (req.user.id), any role, and
- * are never visible to anyone else.
+ * Citadel and stack presets belong to the signed-in ACCOUNT (req.user.id), any
+ * role, and are never visible to anyone else.
  */
 import { Router } from 'express';
 import { getAncientRoster } from '../../data/ancient-roster.js';
@@ -22,6 +22,12 @@ import {
   saveCitadelLevels,
   saveCitadelPreset,
 } from '../../data/repositories/citadel-preset-repo.js';
+import {
+  deleteStackPreset,
+  listStackPresets,
+  parseStackPreset,
+  saveStackPreset,
+} from '../../data/repositories/stack-preset-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
 import { BUILT_IN_ANCIENT_DEFAULTS, parseAncientSettings } from '../../config/ancient-planner-defaults.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -106,6 +112,35 @@ export function createToolsRouter(): Router {
       return;
     }
     res.json({ ok: true, levels: saveCitadelLevels(req.user!.id, parsed.value) });
+  });
+
+  /** The signed-in account's saved stack-calculator armies. */
+  router.get('/stack-presets', (req, res) => {
+    res.json({ presets: listStackPresets(req.user!.id) });
+  });
+
+  /** Save the current troops and settings under a name (the same name overwrites). */
+  router.put('/stack-presets', (req, res) => {
+    const parsed = parseStackPreset(req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.errors.join('; ') });
+      return;
+    }
+    const preset = saveStackPreset(req.user!.id, parsed.value.name, parsed.value.data);
+    if (!preset) {
+      res.status(409).json({ error: `You can keep at most ${MAX_PRESETS_PER_USER} saved armies. Delete one first.` });
+      return;
+    }
+    res.json({ ok: true, preset, presets: listStackPresets(req.user!.id) });
+  });
+
+  router.delete('/stack-presets/:id', (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0 || !deleteStackPreset(req.user!.id, id)) {
+      res.status(404).json({ error: 'No such saved army.' });
+      return;
+    }
+    res.json({ ok: true, presets: listStackPresets(req.user!.id) });
   });
 
   return router;

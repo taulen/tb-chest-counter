@@ -516,6 +516,11 @@
   },
   {
     "type": "table",
+    "name": "stack_presets",
+    "sql": "CREATE TABLE stack_presets ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (user_id, name) )"
+  },
+  {
+    "type": "table",
     "name": "tinman_scores",
     "sql": "CREATE TABLE tinman_scores ( id INTEGER PRIMARY KEY AUTOINCREMENT, upload_id INTEGER NOT NULL REFERENCES tinman_uploads(id) ON DELETE CASCADE, clan_id INTEGER NOT NULL REFERENCES clans(id), rank INTEGER NOT NULL, raw_name TEXT NOT NULL, member_id INTEGER REFERENCES members(id) ON DELETE SET NULL, match_kind TEXT NOT NULL CHECK (match_kind IN ('exact', 'fuzzy', 'manual', 'unmatched', 'rejected')), points INTEGER NOT NULL )"
   },

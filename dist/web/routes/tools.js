@@ -9,13 +9,14 @@ exports.createToolsRouter = createToolsRouter;
  * Mounted at /api/tools behind requireAuth + requireClanContext. Reads are open
  * to every role; saving the clan's defaults is admin-only and lands on the
  * caller's active clan (req.clanId), so an admin can only ever set their own.
- * Citadel presets belong to the signed-in ACCOUNT (req.user.id), any role, and
- * are never visible to anyone else.
+ * Citadel and stack presets belong to the signed-in ACCOUNT (req.user.id), any
+ * role, and are never visible to anyone else.
  */
 const express_1 = require("express");
 const ancient_roster_js_1 = require("../../data/ancient-roster.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const citadel_preset_repo_js_1 = require("../../data/repositories/citadel-preset-repo.js");
+const stack_preset_repo_js_1 = require("../../data/repositories/stack-preset-repo.js");
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const ancient_planner_defaults_js_1 = require("../../config/ancient-planner-defaults.js");
 const auth_js_1 = require("../middleware/auth.js");
@@ -91,6 +92,32 @@ function createToolsRouter() {
             return;
         }
         res.json({ ok: true, levels: (0, citadel_preset_repo_js_1.saveCitadelLevels)(req.user.id, parsed.value) });
+    });
+    /** The signed-in account's saved stack-calculator armies. */
+    router.get('/stack-presets', (req, res) => {
+        res.json({ presets: (0, stack_preset_repo_js_1.listStackPresets)(req.user.id) });
+    });
+    /** Save the current troops and settings under a name (the same name overwrites). */
+    router.put('/stack-presets', (req, res) => {
+        const parsed = (0, stack_preset_repo_js_1.parseStackPreset)(req.body);
+        if (!parsed.ok) {
+            res.status(400).json({ error: parsed.errors.join('; ') });
+            return;
+        }
+        const preset = (0, stack_preset_repo_js_1.saveStackPreset)(req.user.id, parsed.value.name, parsed.value.data);
+        if (!preset) {
+            res.status(409).json({ error: `You can keep at most ${citadel_preset_repo_js_1.MAX_PRESETS_PER_USER} saved armies. Delete one first.` });
+            return;
+        }
+        res.json({ ok: true, preset, presets: (0, stack_preset_repo_js_1.listStackPresets)(req.user.id) });
+    });
+    router.delete('/stack-presets/:id', (req, res) => {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0 || !(0, stack_preset_repo_js_1.deleteStackPreset)(req.user.id, id)) {
+            res.status(404).json({ error: 'No such saved army.' });
+            return;
+        }
+        res.json({ ok: true, presets: (0, stack_preset_repo_js_1.listStackPresets)(req.user.id) });
     });
     return router;
 }
