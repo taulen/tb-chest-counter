@@ -56,6 +56,15 @@ const ARMIES: Army[] = [
   {"name":"merc-siege-epic","input":{"rows":[["griffin-7"],["heavy-halberdier-6"],["trebuchet"],["palintone"],["epic-monster-hunter-7"],["epic-monster-hunter"],["wyvern"],["sea-lord"]],"baseCount":120,"epicHunterLast":true},"counts":{"griffin-7":120,"heavy-halberdier-6":4560,"trebuchet":260,"palintone":145,"epic-monster-hunter-7":922,"epic-monster-hunter":137,"wyvern":5,"sea-lord":28}},
   {"name":"trebuchet-only","input":{"rows":[["corax-1"],["spearmen-5"],["trebuchet"],["scorpion-rider",40],["unicorn-rider",40]],"baseCount":100},"counts":{"corax-1":100,"spearmen-5":13717,"trebuchet":599,"scorpion-rider":113,"unicorn-rider":156}},
   {"name":"monster-bonus","input":{"rows":[["royal-lion-2",290],["whitemane-2",40],["fire-phoenix-2",330],["kraken-1",80],["wyvern",250]],"baseCount":60},"counts":{"royal-lion-2":60,"whitemane-2":1671,"fire-phoenix-2":4,"kraken-1":20,"wyvern":9}},
+  // The user's army shape (Nov 7 2026). The Superior EMH's card says Health
+  // +914.3%: it has no movement class, so it misses the class bonuses the
+  // guardsmen get. Kaiculator can only add bonuses by attribute, so the first
+  // case enters Guardsman 914 + Human 641. The second enters one Guardsman
+  // number, which is how Kaiculator is usually filled in; the EMH then gets
+  // 1555% too, and that is why Kaiculator shows ~1,200 hunters where the real
+  // bonus gives ~2,000.
+  {"name":"emh-914-split","input":{"rows":[["corax-1",1555],["heavy-halberdier-7",1555],["mounted-knight-7",1555],["heavy-arbalester-7",1555],["punisher-1",1555],["wind-lord",1609],["black-dragon",1609],["kraken-1",1609],["wyvern",1509],["highlander",1555],["epic-monster-hunter",914]],"baseCount":535,"epicHunterLast":true},"counts":{"corax-1":535,"heavy-halberdier-7":20331,"mounted-knight-7":10165,"heavy-arbalester-7":20331,"punisher-1":10700,"wind-lord":98,"black-dragon":102,"kraken-1":45,"wyvern":46,"highlander":2887,"epic-monster-hunter":2014}},
+  {"name":"emh-one-guardsman","input":{"rows":[["corax-1",1555],["heavy-halberdier-7",1555],["mounted-knight-7",1555],["heavy-arbalester-7",1555],["punisher-1",1555],["wind-lord",1609],["black-dragon",1609],["kraken-1",1609],["wyvern",1509],["highlander",1555],["epic-monster-hunter",1555]],"baseCount":535,"epicHunterLast":true},"counts":{"corax-1":535,"heavy-halberdier-7":20331,"mounted-knight-7":10165,"heavy-arbalester-7":20331,"punisher-1":10700,"wind-lord":98,"black-dragon":102,"kraken-1":45,"wyvern":46,"highlander":2887,"epic-monster-hunter":1234}},
 ];
 
 function inputOf(a: Army, baseCount = a.input.baseCount) {
