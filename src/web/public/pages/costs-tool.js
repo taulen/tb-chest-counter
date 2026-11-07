@@ -14,7 +14,6 @@ import { t, tGame } from '../lib/i18n.js';
 import { formatCompact } from '../lib/ancient-planner.js';
 import { CURVES, TREES, mergeRows, GUARDSMEN_TIERS, tierTotal, curveTotal, BLUEPRINTS } from '../lib/research-costs.js';
 
-const SOURCE_URL = 'https://kingdom289.com/general-tips/costs-and-upgrades';
 /** The tree last looked at — a per-browser convenience only. */
 const TREE_KEY = 'tbcc.costs.tree.v1';
 const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -56,7 +55,6 @@ export function renderCostsTool(mount) {
           <div class="costs-chips-slot">${chipsHtml()}</div>
         </div>
         <div class="card-body costs-table-slot">${tableHtml()}</div>
-        <p class="card-note muted-copy costs-source">${t('From {link}. Researches that cost the same share a row.', { link: `<a href="${SOURCE_URL}" target="_blank" rel="noopener">kingdom289.com</a>` })}</p>
       </div>
     </div>`;
 

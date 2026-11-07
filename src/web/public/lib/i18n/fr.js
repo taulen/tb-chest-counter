@@ -1201,7 +1201,6 @@ export const ui = {
   "{points} per level": "{points} par niveau",
   "Find a research…": "Chercher une recherche…",
   "Find a research": "Chercher une recherche",
-  "From {link}. Researches that cost the same share a row.": "D’après {link}. Les recherches au même coût partagent une ligne.",
   "Tier unlock + two maxed 10-level researches": "Déblocage du rang + deux recherches de 10 niveaux au maximum",
   "Blueprints for upgrades": "Plans pour les améliorations",
   "Research tree": "Arbre de recherche",

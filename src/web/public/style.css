@@ -7677,8 +7677,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .costs-search { max-width: 360px; }
 .costs-chips { margin-bottom: 12px; }
 .costs-empty { padding: 16px 20px; margin: 0; }
-.costs-source { padding-top: 12px; }
-.costs-source a { color: var(--accent-gold); }
 
 .costs-table { table-layout: fixed; width: 100%; min-width: 780px; }
 .costs-table .col-lv { width: 56px; }

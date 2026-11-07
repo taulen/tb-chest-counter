@@ -1201,7 +1201,6 @@ export const ui = {
   "{points} per level": "{points} за уровень",
   "Find a research…": "Найти исследование…",
   "Find a research": "Найти исследование",
-  "From {link}. Researches that cost the same share a row.": "Источник: {link}. Исследования с одинаковой стоимостью собраны в одну строку.",
   "Tier unlock + two maxed 10-level researches": "Открытие тира + два исследования по 10 уровней до максимума",
   "Blueprints for upgrades": "Чертежи для улучшений",
   "Research tree": "Ветка исследований",
