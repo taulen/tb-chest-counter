@@ -628,7 +628,10 @@ function paintResults(root, a) {
   const lostOf = (res) => res.army.reduce((x, s) => x + s.lost, 0);
   const avg = Math.round(((lostOf(both.you) + lostOf(both.citadel)) / 2) * 10) / 10;
   el.innerHTML = `<div class="citadel-result-head">${title}
-      <button type="button" class="btn btn-sm citadel-march-btn" data-cit-action="march">${t('March list')}</button>
+      <button type="button" class="btn btn-primary citadel-march-btn" data-cit-action="march">
+        <svg class="citadel-march-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M6 4h8M6 8h8M6 12h8"/><circle cx="2.5" cy="4" r="0.9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="12" r="0.9" fill="currentColor" stroke="none"/>
+        </svg>${t('March list')}</button>
     </div>
     <div class="citadel-outcomes">
       ${outcomeHtml(both.you, t('If you strike first'), 'you')}

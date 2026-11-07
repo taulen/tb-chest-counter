@@ -7295,7 +7295,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .citadel-result-title { margin: 4px 0 12px; }
 .citadel-result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .citadel-result-head .citadel-result-title { flex: 1 1 auto; min-width: 0; }
-.citadel-march-btn { flex: none; margin: 4px 0 12px; }
+/* The step after the result: the gold primary button, so it reads as "next". */
+.citadel-march-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 12px; padding: 8px 16px; box-shadow: var(--shadow-card); }
+.citadel-march-icon { flex: none; }
 
 /* March list modal: the counts in the game's march-screen order. */
 .citadel-march-modal { max-width: 420px; }
