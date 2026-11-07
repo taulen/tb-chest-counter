@@ -24,6 +24,7 @@ const PAGES = {
   tools: '/#tools',
   citadel: '/#tools/citadel',
   stacks: '/#tools/stacks',
+  costs: '/#tools/costs',
   triumphal: '/#triumphal',
   resources: '/#resources',
   resadmin: '/#resources/admin',

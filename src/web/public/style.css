@@ -7623,6 +7623,112 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .stacks-table td[data-role="lead"] { background: transparent; padding: 0; }
 }
 
+/* Tools' sub-tabs: four don't fit a phone in es/ru as one inline strip, so
+   they become equal cells across the width, labels wrapping inside. */
+@media (max-width: 640px) {
+  .tools-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; }
+  .tools-tabs .resources-tab {
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 4px; font-size: 12.5px; line-height: 1.2; text-align: center;
+  }
+}
+
+/* ─── Tools → Costs ──────────────────────────────────────────────────
+   Two tile strips (Guardsmen tiers, blueprints) over one research table:
+   researches that cost the same share a row, levels 1–10 read across, and
+   K/M/B/T differ by colour as well as suffix. Chips + search reuse the
+   Points board's .pb-chips. */
+.costs-glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 0 20px;
+  align-items: start;
+}
+/* One row each on desktop (5 tiers, 8 levels); 3 and 4 a row on a phone. */
+.costs-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
+.costs-tiles-narrow { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.costs-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  text-align: center;
+  min-width: 0;
+}
+.costs-tile .tool-tier-badge { min-width: 0; font-size: 11px; white-space: nowrap; }
+.costs-tile-value { font-size: 17px; font-weight: 800; line-height: 1.2; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.costs-tile-sub { font-size: 11px; line-height: 1.3; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.costs-gold { color: var(--accent-gold); font-weight: 700; }
+.costs-legend .costs-gold { font-weight: 600; }
+
+/* Magnitude, so a row's jump from K to M to B reads without parsing each suffix. */
+.cost-k { color: var(--text-muted); }
+.cost-m { color: var(--text-primary); }
+.cost-b { color: var(--accent-gold); }
+.cost-t { color: var(--accent-gold); font-weight: 800; }
+
+.costs-filters { display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 0; }
+.costs-search { max-width: 360px; }
+.costs-chips { margin-bottom: 12px; }
+.costs-empty { padding: 16px 20px; margin: 0; }
+.costs-source { padding-top: 12px; }
+.costs-source a { color: var(--accent-gold); }
+
+.costs-table { table-layout: fixed; width: 100%; min-width: 780px; }
+.costs-table .col-lv { width: 56px; }
+.costs-table .col-total { width: 74px; }
+.costs-table th, .costs-table td { padding: 6px 6px; }
+.costs-table th:first-child, .costs-table td:first-child { padding-left: 16px; }
+.costs-table th:last-child, .costs-table td.costs-total { padding-right: 16px; }
+.costs-table th.num, .costs-table td.num { text-align: right; white-space: nowrap; }
+.costs-table td.num { font-size: 12.5px; }
+.costs-table thead tr:first-child th { padding-bottom: 2px; }
+.costs-table thead tr + tr th { padding-top: 2px; font-size: 10.5px; color: var(--text-muted); }
+.costs-table .costs-lv-head { text-align: center; }
+.costs-names { display: block; font-size: 12.5px; line-height: 1.45; color: var(--text-primary); }
+.costs-sep { color: var(--text-muted); }
+.costs-table mark { background: var(--accent-gold-bg-strong); color: inherit; border-radius: 3px; padding: 0 1px; }
+.costs-table td.costs-total { font-size: 13px; font-weight: 700; }
+.costs-table tr.costs-unlock > td { background: var(--subtle-bg); }
+.costs-tag {
+  display: inline-block; margin-right: 2px; padding: 1px 6px; border-radius: 999px;
+  background: var(--accent-gold-bg-strong); color: var(--accent-gold);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px;
+}
+.costs-table tr.costs-section > th {
+  padding-top: 14px; padding-bottom: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-muted);
+  background: transparent; border-bottom: 1px solid var(--border);
+}
+.costs-table tr.costs-section:hover { background: transparent; }
+
+@media (min-width: 641px) {
+  /* Phone-only pieces: the collapsed row's level range and the 5×2 level grid. */
+  .costs-table .costs-range, .costs-table td.costs-ladder { display: none; }
+}
+@media (max-width: 640px) {
+  .costs-filters { padding: 12px 14px 0; }
+  .costs-search { max-width: none; }
+  .costs-tiles { padding: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .costs-tiles-narrow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .costs-table { min-width: 0; }
+  .costs-table tr.costs-section { display: block; background: transparent; border: 0; padding: 10px 2px 0; }
+  .costs-table tr.costs-section > th { display: block; padding: 0 0 2px; border: 0; }
+  .costs-table td[data-role="primary"] { font-size: 13px; font-weight: 600; }
+  .costs-names { font-size: 13px; }
+  .costs-table tr.costs-unlock { background: var(--subtle-bg); }
+  .costs-table tr.costs-unlock > td { background: transparent; }
+  .costs-ladder-grid { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px 6px; }
+  .costs-ladder-item { display: flex; flex-direction: column; min-width: 0; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .costs-ladder-lv { font-size: 10px; font-weight: 600; color: var(--text-muted); }
+}
+
 /* ─── Events → Ancients: Tin Man scores ──────────────────────────────
    Pasted Rise of the Ancients standings, one column per summon. */
 .tinman-note { padding: 16px 20px; margin: 0; }

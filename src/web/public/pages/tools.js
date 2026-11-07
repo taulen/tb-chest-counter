@@ -27,11 +27,13 @@ import {
 } from '../lib/ancient-planner.js';
 import { renderCitadelTool } from './citadel-tool.js';
 import { renderStacksTool } from './stacks-tool.js';
+import { renderCostsTool } from './costs-tool.js';
 
 const TOOLS = [
   { key: 'ancient', name: t('Ancient planner') },
   { key: 'citadel', name: t('Citadel') },
   { key: 'stacks', name: t('Stacks') },
+  { key: 'costs', name: t('Costs') },
 ];
 
 /** Bare #tools → the first tool; an unknown key falls back the same way. */
@@ -42,10 +44,11 @@ export async function renderTools(el, toolKey) {
   if (tool.key === 'ancient') await renderAncientPlanner(mount);
   else if (tool.key === 'citadel') await renderCitadelTool(mount);
   else if (tool.key === 'stacks') await renderStacksTool(mount);
+  else if (tool.key === 'costs') renderCostsTool(mount);
 }
 
 function toolTabsHtml(activeKey) {
-  return `<div class="resources-tabs" role="tablist">${TOOLS.map((tool) => {
+  return `<div class="resources-tabs tools-tabs" role="tablist">${TOOLS.map((tool) => {
     const active = tool.key === activeKey;
     return `<a class="resources-tab ${active ? 'is-active' : ''}" href="#tools/${tool.key}" role="tab" aria-selected="${active}">${esc(tool.name)}</a>`;
   }).join('')}</div>`;
