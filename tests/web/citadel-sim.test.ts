@@ -101,6 +101,24 @@ const FIGHTS: Fight[] = [
     lost: { 'corax-1': 65 },
   },
   {
+    // The first Cursed report (Nov 7 2026): same rules as the Elven citadels. The
+    // Ballistae's double hit on the Bull Rider was capped by the stack it killed.
+    name: 'Cursed 25, simulator-sized army, you open',
+    citadelId: 'cursed-25',
+    opener: 'you',
+    army: [
+      row('siege-ballistae-7', 458, 2277, 1616.8),
+      row('corax-1', 32, 5226.5, 3936.8),
+      row('fire-phoenix-1', 4, 3736.5, 2794.8),
+      row('griffin-7', 66, 5326.5, 4036.8),
+    ],
+    luck: { 8: { double: true } },
+    strikes: [2_325_000_000, 115_200_000, 22_550_000, 67_650_000, 25_839_000, 53_460_000, 11_600_000, 34_800_000,
+      8_800_000, 26_400_000],
+    complete: true,
+    lost: { 'corax-1': 2, 'griffin-7': 11 },
+  },
+  {
     name: 'Elven 10, one of each, citadel opens',
     citadelId: 'elven-10',
     opener: 'citadel',

@@ -4,9 +4,9 @@ Plays a citadel attack out strike by strike, for both coin flips, from the troop
 
 ## How the rules were obtained
 
-Nothing here is guessed. Real battle reports (Nov 2026: Elven 10, 15, 20, 25 and 30) were decoded number by number. [citadel-sim.test.ts](../tests/web/citadel-sim.test.ts) replays 13 of them strike for strike, including the losses, so a changed rule fails the suite. Several were tests designed to tell two explanations apart.
+Nothing here is guessed. Real battle reports (Nov 2026: Elven 10, 15, 20, 25 and 30) were decoded number by number. [citadel-sim.test.ts](../tests/web/citadel-sim.test.ts) replays 14 of them strike for strike, including the losses, so a changed rule fails the suite. Several were tests designed to tell two explanations apart.
 
-The first army the simulator sized itself was then played for real (Elven 30, 8 stacks with Vultures and Battle Griffins, Nov 7 2026). The page predicted 65 Corax I lost if you open and 140 if the citadel does. The game took exactly 65 and 140, and the you-open report matched all 11 strikes. Both results are pinned.
+The first army the simulator sized itself was then played for real (Elven 30, 8 stacks with Vultures and Battle Griffins, Nov 7 2026). The page predicted 65 Corax I lost if you open and 140 if the citadel does. The game took exactly 65 and 140, and the you-open report matched all 11 strikes. Both results are pinned. The same day, a Cursed 25 report (4 stacks, 10 strikes, 2 Corax I and 11 Battle Griffin VII lost) matched too, the first Cursed one.
 
 - **Siege.** It only happens while the walls stand. Siege engines strike first (initiative +5 in a siege), then the walls (11), then everything else (10), which hits the walls. Rounds repeat until the walls fall. Walls do hit flying troops. Siege engines deal ×20 to fortifications on top of their "vs fortifications" feature. Units the walls kill are lost; the walls' wounds heal before the battle (5 Fire Phoenix I took 104.6M in total and lost none).
 - **Turn order.** A coin flip decides who opens round 1. After that, the side that did NOT act last opens the next round; it is not a new flip. Within a round the sides alternate, each using its strongest stack that has not acted yet. When one side runs out, the other side's remaining stacks act back to back. Stack strength for ordering is units × strength × (1 + bonus); features play no part.
@@ -46,4 +46,4 @@ On the user's Elven 30 army (Corax I, Phoenix I, Royal Lion I, Ballistae VII) it
 ## Open
 
 - Whether a second squad hit can also double has not been needed yet.
-- Cursed citadels have no game01master template, and none of their reports is pinned yet. The user played several random Cursed 25 armies against the page (Nov 7 2026) and the losses matched every time, so the fight model holds there too. A test needs a report's strike list plus the troop-card bonuses.
+- Cursed citadels have no game01master template. Only Cursed 25 has been played against the page so far: several random armies matched every time (Nov 7 2026), and one report is pinned strike for strike. Other Cursed levels share its rules and unit data source but are unconfirmed.
