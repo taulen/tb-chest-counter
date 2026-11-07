@@ -181,8 +181,8 @@ describe('the Tinman cadence check', () => {
     ...(withRise ? run('🛕 Rise of the Ancients', new Date(at(treasureDay) + DAY).toISOString().slice(0, 10), 1) : []),
   ];
 
-  async function cadenceClean(ics: string): Promise<boolean> {
-    const { cal } = await load({ now: '2026-10-26T08:00:00Z', ics });
+  async function cadenceClean(ics: string, corrections?: Setup['corrections']): Promise<boolean> {
+    const { cal } = await load({ now: '2026-10-26T08:00:00Z', ics, corrections });
     await cal.getEventOccurrences('ancients');
     const buffer = await import('../../src/utils/log-buffer.js');
     return vi.mocked(buffer.resolveEntries).mock.calls.some(([k]) => k === 'event-calendar:tinman-cadence');
@@ -194,8 +194,30 @@ describe('the Tinman cadence check', () => {
     expect(await cadenceClean(feed(ancients('2026-10-22'), ancients('2026-10-28'), ancients('2026-11-03', false)))).toBe(true);
   });
 
+  it('ignores the cut-off run even when a long event outlasts it', async () => {
+    // Feed fetched 2026-11-07: the window's last starts were Treasure 2027-02-07
+    // and a 28-day "Season's Legacy" (untracked) opening that same day, whose
+    // DTEND a month later hid the cut-off from the old latest-DTEND rule.
+    const legacy = [
+      ['BEGIN:VEVENT', `DTSTART:${ics(at('2026-11-03') - 8 * 3600_000)}`, `DTEND:${ics(at('2026-11-30'))}`,
+        "SUMMARY:🌇 Season's Legacy", 'END:VEVENT'].join('\r\n'),
+    ];
+    expect(await cadenceClean(feed(ancients('2026-10-22'), ancients('2026-10-28'), ancients('2026-11-03', false), legacy))).toBe(true);
+  });
+
+  it('judges a run whose Treasure day fell before the feed window', async () => {
+    const riseOnly = run('🛕 Rise of the Ancients', '2026-10-17', 1);
+    expect(await cadenceClean(feed(riseOnly, ancients('2026-10-22'), ancients('2026-10-28')))).toBe(true);
+  });
+
   it('still catches a run that really moved', async () => {
     expect(await cadenceClean(feed(ancients('2026-10-22'), ancients('2026-10-27'), ancients('2026-11-03', false)))).toBe(false);
+  });
+
+  it('judges a corrected run where the correction put it', async () => {
+    // The feed lists 10-27/10-28, a day early; the game ran it on 10-28/10-29.
+    const shifted = feed(ancients('2026-10-22'), ancients('2026-10-27'), ancients('2026-11-03'));
+    expect(await cadenceClean(shifted, [{ eventKey: 'ancients', feed: '2026-10-27', actual: '2026-10-28' }])).toBe(true);
   });
 });
 

@@ -126,13 +126,15 @@ function parseIcsUtc(v) {
         return null;
     return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
 }
+// The Rise of the Ancients row is the Tinman day itself (docs/tinman-scores.md).
+const RISE_OF_THE_ANCIENTS = norm('Rise of the Ancients');
 function parseVevents(text) {
     // Unfold RFC-5545 continuation lines (a CRLF/LF followed by space or tab).
     const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
     const lines = unfolded.split(/\r\n|\n|\r/);
     const out = [];
     let horizon = null;
-    let edge = null;
+    const riseStarts = [];
     // Every "(Day i/n)" row seen, for the missing-day audit below.
     const declared = [];
     let inEvent = false;
@@ -152,13 +154,13 @@ function parseVevents(text) {
                 const end = parseIcsUtc(dtend);
                 if (start !== null && (horizon === null || start < horizon))
                     horizon = start;
-                if (end !== null && (edge === null || end > edge))
-                    edge = end;
                 if (key && start !== null && end !== null && end > start) {
                     const span = declaredRunSpan(summary, start, end);
                     if (span.declared)
                         declared.push({ ...span.declared, key });
                     out.push({ key, start: span.start, end: span.end });
+                    if (key === 'ancients' && norm(summary).startsWith(RISE_OF_THE_ANCIENTS))
+                        riseStarts.push(start);
                 }
             }
             inEvent = false;
@@ -180,7 +182,7 @@ function parseVevents(text) {
             dtend = value;
     }
     warnOnMissingRunDays(declared);
-    return { events: out, horizon, edge };
+    return { events: out, horizon, riseStarts };
 }
 /**
  * The expansion above quietly covers for a feed that dropped days of a run, so
@@ -307,26 +309,41 @@ const TINMAN_CADENCE_KEY = 'event-calendar:tinman-cadence';
  * (ANCIENTS_TINMAN_ANCHOR in utils/game-day.ts), not from this feed — they
  * have to be pure arithmetic on both server and client. So if the game ever
  * moves Ancients, those clans' weeks would silently straddle the event. Every
- * fetch checks the last day of each Ancients run in the feed (Rise of the
- * Ancients, the Tinman day) against the cadence and warns on a mismatch; the
- * fix is moving the anchor constant in both places. Clears itself once the
- * feed agrees again (e.g. after a corrected feed or a moved anchor).
+ * fetch checks each Rise of the Ancients day in the feed (the Tinman day)
+ * against the cadence and warns on a mismatch; the fix is moving the anchor
+ * constant in both places. Clears itself once the feed agrees again (e.g.
+ * after a corrected feed or a moved anchor).
  *
- * A run that reaches the feed's forward edge is skipped: the window often stops
- * between its two days, so it "ends" on the Treasure day, a day before Tinman.
- * That false alarm fired on 2026-10-26 for the 2027-01-26 run.
+ * Only a listed Rise row is judged, never where a run seems to end. The feed's
+ * window is cut by DTSTART, so the last run often stops after its Treasure day
+ * and "ends" a day before Tinman. Twice that raised a false alarm: on
+ * 2026-10-26 for the 2027-01-26 run, and on 2026-11-07 for the 2027-02-07 run.
+ * The first fix skipped runs reaching the latest DTEND, which a 28-day
+ * "Season's Legacy" starting that same day pushed a month further out.
+ *
+ * A run a superadmin corrected is judged where the correction put it, since
+ * the feed's own date is the one known to be wrong.
  */
 function checkTinmanCadence(feed) {
-    const edge = feed.edge ?? Infinity;
-    const runs = fuse(feed.events.filter((e) => e.key === 'ancients')).filter((r) => r.end < edge);
-    if (!runs.length)
+    if (!feed.riseStarts.length)
         return;
-    const off = runs
-        .map((r) => (0, game_day_js_1.gameDateFor)(r.end - DAY_MS, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour))
-        .filter((day) => !(0, game_day_js_1.isTinmanDay)(day));
+    const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
+    const moved = new Map();
+    for (const c of (0, event_schedule_repo_js_1.listCorrections)()) {
+        if (c.eventKey === 'ancients')
+            moved.set(Date.parse(c.feedStartAt), Date.parse(c.actualStartAt));
+    }
+    const days = [];
+    for (const run of fuse(feed.events.filter((e) => e.key === 'ancients'))) {
+        const rise = feed.riseStarts.find((ms) => ms >= run.start && ms < run.end);
+        if (rise === undefined)
+            continue; // cut off by the feed's window: nothing to judge
+        days.push((0, game_day_js_1.gameDateFor)(rise + ((moved.get(run.start) ?? run.start) - run.start), rollover));
+    }
+    const off = days.filter((day) => !(0, game_day_js_1.isTinmanDay)(day));
     if (off.length) {
-        log.warn({ resolveKey: TINMAN_CADENCE_KEY }, `Ancients has moved off the Tinman-to-Tinman week cadence: ${off.length} of ${runs.length} `
-            + `runs in the calendar end on a day that isn't a Tinman day (first: ${off[0]}). Clans using `
+        log.warn({ resolveKey: TINMAN_CADENCE_KEY }, `Ancients has moved off the Tinman-to-Tinman week cadence: ${off.length} of ${days.length} `
+            + `Rise of the Ancients days in the calendar aren't Tinman days (first: ${off[0]}). Clans using `
             + 'Tinman weeks are now cut at the wrong day — update ANCIENTS_TINMAN_ANCHOR in '
             + 'utils/game-day.ts and lib/period.js.');
     }
