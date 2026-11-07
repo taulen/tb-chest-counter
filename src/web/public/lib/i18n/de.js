@@ -791,7 +791,7 @@ export const ui = {
   "Extra": "Extra",
   "Not part of game01master's template": "Nicht Teil der Vorlage von game01master",
   "Elven 10–15: {wyvern} + siege": "Elfen 10–15: {wyvern} + Belagerung",
-  "Elven 20: {wyvern} + {phoenix} + siege": "Elfen 20: {wyvern} + {phoenix} + Belagerung",
+  "Elven 20: {wyvern} + {monster} + siege": "Elfen 20: {wyvern} + {monster} + Belagerung",
   "Elven {level}: game01master + cleanups": "Elfen {level}: game01master + Aufräumer",
   "needed": "nötig",
   "not hit": "kein Treffer",

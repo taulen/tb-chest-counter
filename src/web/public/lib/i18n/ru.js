@@ -791,7 +791,7 @@ export const ui = {
   "Extra": "Доп.",
   "Not part of game01master's template": "Не входит в шаблон game01master",
   "Elven 10–15: {wyvern} + siege": "Эльфийская 10–15: {wyvern} + осада",
-  "Elven 20: {wyvern} + {phoenix} + siege": "Эльфийская 20: {wyvern} + {phoenix} + осада",
+  "Elven 20: {wyvern} + {monster} + siege": "Эльфийская 20: {wyvern} + {monster} + осада",
   "Elven {level}: game01master + cleanups": "Эльфийская {level}: game01master + добивание",
   "needed": "нужно",
   "not hit": "не бьют",

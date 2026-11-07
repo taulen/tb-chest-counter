@@ -67,23 +67,46 @@ const ROLE_LABELS = {
   extra: [t('Extra'), t('Not part of game01master\'s template')],
 };
 
-/** Proven setups: troops and counts only — never anyone's bonuses. */
-const GM_TEMPLATE = ['siege-ballistae-7', 'corax-1', 'fire-phoenix-1', 'royal-lion-1', 'griffin-7', 'vulture-7', 'griffin-6', 'vulture-6'];
+/**
+ * Proven setups: troops and starting counts only — never anyone's bonuses.
+ * Each slot lists the troops that can fill it, best first. The first one the
+ * account's levels allow is used; a slot nothing fits is left out (siege steps
+ * down its own ladder), and a setup whose required slot can't be filled is not
+ * offered. So a G8/M7 account still gets the Elven 25/30 setup, with the
+ * Manticore in the Phoenix's place.
+ *
+ * Below M8 the Fearsome Manticore (M5) is the monster: sized with real card
+ * bonuses it loses 23.5 / 116 on average at Elven 25 / 30, against 20.5 / 102.5
+ * with Fire Phoenix I and 28+ / 138+ with any other monster or none. Its
+ * +253% vs flying lets it take the Pegasus Rider (docs/citadel-simulator.md).
+ */
+const slot = (ids, count = 0, required = false) => ({ ids: Array.isArray(ids) ? ids : [ids], count, required });
+const MONSTER_SLOT = ['fire-phoenix-1', 'manticore'];
+const GM_TEMPLATE = [
+  slot('siege-ballistae-7'),
+  slot(['corax-1', 'griffin-7'], 0, true), // first striker
+  slot(MONSTER_SLOT),                      // second
+  slot('royal-lion-1'),                    // third
+  slot('griffin-7'), slot('vulture-7'), slot('griffin-6'), slot('vulture-6'), // cleanups
+];
 const RECOMMENDED = [
   {
     id: 'rec-wyverns',
     citadelId: 'elven-15',
-    name: t('Elven 10–15: {wyvern} + siege', { wyvern: tGame('Wyvern') }),
-    rows: [['siege-ballistae-7', 0], ['wyvern', 3]],
+    name: () => t('Elven 10–15: {wyvern} + siege', { wyvern: tGame('Wyvern') }),
+    slots: [slot('siege-ballistae-7'), slot('wyvern', 3, true)],
   },
   {
     id: 'rec-e20',
     citadelId: 'elven-20',
-    name: t('Elven 20: {wyvern} + {phoenix} + siege', { wyvern: tGame('Wyvern'), phoenix: tGame('Fire Phoenix I') }),
-    rows: [['siege-ballistae-7', 0], ['wyvern', 12], ['fire-phoenix-1', 1]],
+    name: (rows) => t('Elven 20: {wyvern} + {monster} + siege', {
+      wyvern: tGame('Wyvern'),
+      monster: troopName(rows.find(([id]) => MONSTER_SLOT.includes(id))?.[0] ?? MONSTER_SLOT[0]),
+    }),
+    slots: [slot('siege-ballistae-7'), slot('wyvern', 12, true), slot(MONSTER_SLOT, 1, true)],
   },
-  { id: 'rec-gm-25', citadelId: 'elven-25', name: t('Elven {level}: game01master + cleanups', { level: 25 }), rows: GM_TEMPLATE.map((id) => [id, 0]) },
-  { id: 'rec-gm-30', citadelId: 'elven-30', name: t('Elven {level}: game01master + cleanups', { level: 30 }), rows: GM_TEMPLATE.map((id) => [id, 0]) },
+  { id: 'rec-gm-25', citadelId: 'elven-25', name: () => t('Elven {level}: game01master + cleanups', { level: 25 }), slots: GM_TEMPLATE },
+  { id: 'rec-gm-30', citadelId: 'elven-30', name: () => t('Elven {level}: game01master + cleanups', { level: 30 }), slots: GM_TEMPLATE },
 ];
 
 /** Module state — rebuilt on every page render. */
@@ -235,9 +258,27 @@ export async function renderCitadelTool(mount) {
   paintAll(root);
 }
 
-/** A recommended setup can be used only if every troop in it (siege aside, which steps down) is unlocked. */
-function recommendedFits(rec) {
-  return rec.rows.every(([id]) => isSiege(id) || troopUnlocked(id, cs.levels));
+/**
+ * A recommended setup's [troopId, count] rows for the account's levels, or null
+ * when a required slot can't be filled. Every slot takes its first unlocked
+ * troop not already used (a first striker that stepped down to Battle Griffin
+ * VII drops the Griffin VII cleanup); siege steps down its own ladder. Unlocked,
+ * not "in the picker's window": a Manticore stays the right monster for an
+ * account whose top level hides tier 5 from the picker.
+ */
+function recommendedRows(rec) {
+  const used = new Set();
+  const rows = [];
+  for (const s of rec.slots) {
+    const id = isSiege(s.ids[0]) ? siegeWithin(s.ids[0]) : s.ids.find((x) => !used.has(x) && troopUnlocked(x, cs.levels));
+    if (!id) {
+      if (s.required) return null;
+      continue;
+    }
+    used.add(id);
+    rows.push([id, s.count]);
+  }
+  return rows;
 }
 
 /** The best siege engine the levels allow, no better than `wanted`. */
@@ -383,7 +424,8 @@ function topCardHtml() {
     </div>`).join('');
 
   const saved = cs.presets.map((p) => `<option value="saved:${p.id}" ${cs.selectedPreset === `saved:${p.id}` ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
-  const rec = RECOMMENDED.filter(recommendedFits).map((r) => `<option value="rec:${r.id}" ${cs.selectedPreset === `rec:${r.id}` ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+  const rec = RECOMMENDED.map((r) => [r, recommendedRows(r)]).filter(([, rows]) => rows)
+    .map(([r, rows]) => `<option value="rec:${r.id}" ${cs.selectedPreset === `rec:${r.id}` ? 'selected' : ''}>${esc(r.name(rows))}</option>`).join('');
   const isSaved = cs.selectedPreset.startsWith('saved:');
 
   const citadel = citadelById(cs.citadelId);
@@ -796,13 +838,12 @@ function applyPreset(value) {
   const keep = new Map(cs.rows.map((r) => [r.troopId, r]));
   if (kind === 'rec') {
     const rec = RECOMMENDED.find((r) => r.id === id);
-    if (!rec) return;
+    const recRows = rec && recommendedRows(rec);
+    if (!recRows) return;
     cs.citadelId = rec.citadelId;
     // Your own bonuses for the same troops (or their family) carry over; nothing else is filled in.
     const before = cs.rows;
-    cs.rows = normalizeRows(rec.rows.map(([wanted, count]) => {
-      // A siege engine above your Engineers level steps down to the best you have.
-      const troopId = isSiege(wanted) ? siegeWithin(wanted) : wanted;
+    cs.rows = normalizeRows(recRows.map(([troopId, count]) => {
       const own = keep.get(troopId) ?? familyBonuses(troopId, before);
       return { ...emptyRow(troopId, count), strengthPct: own?.strengthPct ?? null, healthPct: own?.healthPct ?? null };
     }));

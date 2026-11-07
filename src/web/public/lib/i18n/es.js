@@ -791,7 +791,7 @@ export const ui = {
   "Extra": "Extra",
   "Not part of game01master's template": "No forma parte de la plantilla de game01master",
   "Elven 10–15: {wyvern} + siege": "Élfico 10–15: {wyvern} + asedio",
-  "Elven 20: {wyvern} + {phoenix} + siege": "Élfico 20: {wyvern} + {phoenix} + asedio",
+  "Elven 20: {wyvern} + {monster} + siege": "Élfico 20: {wyvern} + {monster} + asedio",
   "Elven {level}: game01master + cleanups": "Élfico {level}: game01master + limpieza",
   "needed": "necesaria",
   "not hit": "sin golpes",

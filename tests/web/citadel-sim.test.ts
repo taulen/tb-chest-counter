@@ -296,6 +296,26 @@ describe('automatic counts (the simulator searches them)', () => {
     expect(lost(r.both.you) + lost(r.both.citadel)).toBeLessThan(lost(gmBoth.you) + lost(gmBoth.citadel));
   });
 
+  it('below M8 the Manticore takes the Phoenix slot at Elven 25 and 30: wins, keeps every monster, beats no monster', () => {
+    // The recommended setup a G8/M7 account gets (pages/citadel-tool.js MONSTER_SLOT),
+    // sized the way the page sizes it, with the user's card bonuses (Nov 7 2026).
+    const cleanups = [row('griffin-7', 0, 5326.5, 4036.8), row('vulture-7', 0, 3636.5, 2694.8), row('griffin-6', 0, 5326.5, 4036.8), row('vulture-6', 0, 3636.5, 2694.8)];
+    const army = (monster: Row[]) => [row('siege-ballistae-7', 0, 2277, 1616.8), row('corax-1', 0, 5226.5, 3936.8), ...monster, row('royal-lion-1', 0, 3736.5, 2794.8), ...cleanups];
+    const size = (citadelId: string, a: Row[]) => {
+      const gm = (gmCounts(citadelId, a) as (number | null)[]).map((n) => (Number.isFinite(n) ? n as number : 0));
+      return optimizeCounts({ citadelId, army: a, starts: [gm] });
+    };
+    for (const citadelId of ['elven-25', 'elven-30']) {
+      const withManticore = size(citadelId, army([row('manticore', 0, 3736.5, 2794.8)]));
+      const without = size(citadelId, army([]));
+      expect(withManticore.ok).toBe(true);
+      for (const res of [withManticore.both.you, withManticore.both.citadel]) {
+        expect(res.army.find((s: { troopId: string }) => s.troopId === 'manticore').lost).toBe(0);
+      }
+      expect(lost(withManticore.both.you) + lost(withManticore.both.citadel)).toBeLessThan(lost(without.both.you) + lost(without.both.citadel));
+    }
+  });
+
   it('every answer still wins with all bonuses 3% lower', () => {
     const army = [row('wyvern', 0, 3611.5, 2669.8), row('fire-phoenix-1', 0, 3711.5, 2769.8)];
     const r = optimizeCounts({ citadelId: 'elven-20', army });
