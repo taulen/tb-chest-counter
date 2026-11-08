@@ -32,8 +32,8 @@ exports.resolvePerformanceConfig = resolvePerformanceConfig;
 exports.PERFORMANCE_SIGNALS = ['goalHits', 'goalPoints', 'tinman', 'events'];
 exports.DEFAULT_PERFORMANCE_CONFIG = {
     weights: {
-        goalHits: 0.3,
-        goalPoints: 0.2,
+        goalHits: 0.2,
+        goalPoints: 0.3,
         tinman: 0.3,
         events: 0.2,
     },

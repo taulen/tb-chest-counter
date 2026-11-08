@@ -77,7 +77,7 @@ describe('performance report', () => {
     const s = r.members.find((m) => m.memberId === steady)!;
     expect(s.signals.goalHits).toMatchObject({ units: 4, hits: 4, value: 1 });
     expect(s.signals.goalPoints.value).toBe(2); // 250%, capped
-    expect(s.score).toBeCloseTo((0.3 * 1 + 0.2 * 2) / 0.5);
+    expect(s.score).toBeCloseTo((0.2 * 1 + 0.3 * 2) / 0.5);
     expect(s.status).toBe('over');
     const l = r.members.find((m) => m.memberId === slacker)!;
     expect(l.signals.goalHits.hits).toBe(0);

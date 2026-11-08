@@ -177,13 +177,18 @@ function statusHtml(m) {
   return `<span class="perf-status ${s.cls}" title="${esc(s.label)}"><span aria-hidden="true">${s.glyph}</span><span class="visually-hidden">${esc(s.label)}:</span> ${pct(m.score)}</span>`;
 }
 
-/** "Goal 3/4 weeks · Tin Man 180% · Events 9/13 runs" — only the signals they have. */
+/**
+ * "Goal 142% (3/4 weeks) · Tin Man 180% · Events 9/13 runs" — only the signals
+ * they have. The goal leads with its share like Tin Man does: by how much a
+ * member beats it counts toward the score, not only how often.
+ */
 function signalSummaryHtml(m) {
   const g = m.signals.goalHits;
+  const gp = m.signals.goalPoints;
   const tm = m.signals.tinman;
   const ev = m.signals.events;
   return [
-    g.units ? tn(g.units, 'Goal {hits}/{n} week', 'Goal {hits}/{n} weeks', { hits: g.hits, n: g.units }) : '',
+    g.units ? tn(g.units, 'Goal {pct} ({hits}/{n} week)', 'Goal {pct} ({hits}/{n} weeks)', { pct: pct(gp.value), hits: g.hits, n: g.units }) : '',
     tm.units ? t('{tinman} {pct}', { tinman: esc(tGame('Tin Man')), pct: pct(tm.value) }) : '',
     ev.units ? tn(ev.units, 'Events {hits}/{n} run', 'Events {hits}/{n} runs', { hits: ev.hits, n: ev.units }) : '',
   ].filter(Boolean).join(' · ');
@@ -452,7 +457,7 @@ function howCardHtml(r) {
         ${item('goalHits', t('the share of closed weeks at or above the weekly points goal that applied that week (the Leaderboard goal, now {goal} points).', { goal })
           + goalStepsHtml(r)
           + (s.goalNearMiss ? ` ${t('A week that misses it but reaches {near} of it (◐, close to goal) counts as {credit} of a hit.', { near: pct((r.goalAmberPct ?? DEFAULT_GOAL_AMBER_PCT) / 100), credit: pct(s.goalNearMiss.credit) })}` : ''))}
-        ${item('goalPoints', t('points each week as a share of that goal.'))}
+        ${item('goalPoints', t('points each week as a share of that goal, so going over it counts: a week at 150% of the goal lifts the score as much as a {tinman} run at 150% of its target.', { tinman: esc(tGame('Tin Man')) }))}
         ${item('tinman', [
           t('points in each finished {tinman} run against the target for their guards level, from the targets pasted on Events → Ancients.', { tinman: esc(tGame('Tin Man')) }),
           s.tinmanMedianFallback

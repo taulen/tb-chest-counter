@@ -56,11 +56,18 @@ export interface PerformanceConfig {
    *  - goalHits:   share of closed weeks the member reached the weekly points
    *                goal (the Leaderboard's goal) — the consistency signal. A
    *                near miss earns partial credit (goalNearMiss).
-   *  - goalPoints: their weekly points as a share of that goal, capped.
+   *  - goalPoints: their weekly points as a share of that goal, capped — the
+   *                "by how much" signal, so going over the goal counts.
    *  - tinman:     Tin Man points per finished run against their guards tier's
    *                target (the Ancient planner targets pasted on Events → Ancients).
    *  - events:     points per finished event run against the clan's median
    *                participant in that run; a run sat out counts as 0.
+   *
+   * goalPoints weighs the same as tinman (both 0.3) so beating the weekly goal
+   * lifts a score exactly as much as beating a Tin Man target by the same
+   * share. Until 2026-11-08 it was goalHits 0.3 / goalPoints 0.2: goalHits tops
+   * out at 100%, so a member at 176% of the goal every single week scored 117%
+   * and could not reach Overachiever, while 176% of a Tin Man target could.
    */
   weights: Record<PerformanceSignal, number>;
   /**
@@ -125,8 +132,8 @@ export interface PerformanceConfig {
 
 export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
   weights: {
-    goalHits: 0.3,
-    goalPoints: 0.2,
+    goalHits: 0.2,
+    goalPoints: 0.3,
     tinman: 0.3,
     events: 0.2,
   },
