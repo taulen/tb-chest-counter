@@ -983,6 +983,12 @@ details.card-collapsible[open] > summary.card-header::after {
   padding: 20px;
 }
 
+/* A tile row closing a padded card already has the body's padding below it;
+   its own margin would double the bottom gap and leave the tiles off-centre. */
+.card-body-padded > .stats-grid:last-child {
+  margin-bottom: 0;
+}
+
 /* ─── Analytics Type Panel ─── */
 .analytics-type-panel {
   padding: 20px;

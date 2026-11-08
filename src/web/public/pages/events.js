@@ -909,7 +909,7 @@ function paint() {
         </div>
         <div class="events-controls">${controlsHtml}</div>
       </div>
-      <div class="card-body">${statCards}</div>
+      <div class="card-body card-body-padded">${statCards}</div>
     </div>
     ${viewsHtml}`;
 
