@@ -83,14 +83,20 @@ export function unresolvedResourcesSectionHtml(data) {
       </li>`;
   };
 
+  // Save all: one click for every row with a resource picked, the way the old
+  // dialog did it. Only worth a button when there is more than one row.
+  const more = total > rows.length
+    ? `<p class="unres-more muted-copy">${t('Showing the newest {shown} of {total}. The rest appear here as these are resolved.', { shown: rows.length, total })}</p>`
+    : '';
+  const saveAll = rows.length > 1
+    ? `<button class="btn btn-primary" data-action="resolve-resource-all">${t('Save all')}</button>`
+    : '';
   return `
     <h2 class="page-section-title">${t('Unresolved Resources')} <span class="chest-type epic">${tn(total, '{n} row', '{n} rows', { n: total })}</span></h2>
     <p class="page-section-intro">${t("The daily Clan Capital read couldn't identify these icons. Pick the resource each row shows and save.")}</p>
     <div class="card unres-card">
       <ul class="unres-list">${rows.map(rowHtml).join('')}</ul>
-      ${total > rows.length
-        ? `<p class="unres-more muted-copy">${t('Showing the newest {shown} of {total}. The rest appear here as these are resolved.', { shown: rows.length, total })}</p>`
-        : ''}
+      ${more || saveAll ? `<div class="unres-footer">${more}${saveAll}</div>` : ''}
     </div>`;
 }
 
@@ -118,7 +124,23 @@ export function wireUnresolvedResources(root) {
   }, true);
 }
 
-/** Save button: set the picked resource, keeping the row's other fields as read. */
+/** Set a row's picked resource, keeping its other fields as read. */
+function patchRow(row, select) {
+  return apiPatch(`/resources/transactions/${row.dataset.unresRow}`, {
+    resourceTypeId: Number.parseInt(select.value, 10),
+    direction: Number.parseInt(row.dataset.direction, 10),
+    amount: Number.parseInt(row.dataset.amount, 10),
+    transactionDate: row.dataset.date,
+  });
+}
+
+async function rerenderInPlace(rerender) {
+  const scrollY = window.scrollY;
+  if (typeof rerender === 'function') await rerender('admin');
+  window.scrollTo(0, scrollY);
+}
+
+/** A row's own Save button. */
 export async function saveUnresolvedResource(txId, rerender) {
   const row = document.querySelector(`[data-unres-row="${txId}"]`);
   const select = document.getElementById(`unresResource-${txId}`);
@@ -128,14 +150,44 @@ export async function saveUnresolvedResource(txId, rerender) {
     select.focus();
     return;
   }
-  const ok = await mustOk(apiPatch(`/resources/transactions/${txId}`, {
-    resourceTypeId: Number.parseInt(select.value, 10),
-    direction: Number.parseInt(row.dataset.direction, 10),
-    amount: Number.parseInt(row.dataset.amount, 10),
-    transactionDate: row.dataset.date,
-  }), t('Save failed'));
-  if (!ok) return;
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
-  window.scrollTo(0, scrollY);
+  if (!await mustOk(patchRow(row, select), t('Save failed'))) return;
+  await rerenderInPlace(rerender);
+}
+
+/**
+ * Save all: every listed row that has a resource picked, then one rerender.
+ * Rows left on "Select..." are skipped and stay listed, and the notice says
+ * how many — the same contract the old dialog's Save all had.
+ */
+export async function saveAllUnresolvedResources(button, rerender) {
+  const rows = [...document.querySelectorAll('.unres-row')];
+  const picked = rows
+    .map((row) => ({ row, select: document.getElementById(`unresResource-${row.dataset.unresRow}`) }))
+    .filter(({ select }) => select?.value);
+  if (!picked.length) {
+    notify(t('Pick a resource'), t('Unresolved Resources'));
+    rows[0]?.querySelector('select')?.focus();
+    return;
+  }
+  if (button) button.disabled = true;
+  let saved = 0;
+  const failures = [];
+  for (const { row, select } of picked) {
+    try {
+      const res = await patchRow(row, select);
+      if (res && typeof res.error === 'string') failures.push(res.error);
+      else saved++;
+    } catch (err) {
+      if (err?.name === 'UnauthenticatedError') return;
+      failures.push(err?.message || String(err));
+    }
+  }
+  await rerenderInPlace(rerender);
+  if (failures.length) notify([...new Set(failures)].join('\n'), t('Save failed'));
+  if (saved) {
+    const unpicked = rows.length - picked.length;
+    notify(`${tn(saved, 'Saved {n} row.', 'Saved {n} rows.')}${unpicked
+      ? ` ${tn(unpicked, '{n} row still needs a resource picked.', '{n} rows still need a resource picked.')}`
+      : ''}`, t('Saved'));
+  }
 }

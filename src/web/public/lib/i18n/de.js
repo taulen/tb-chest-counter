@@ -2440,10 +2440,13 @@ export const ui = {
   // pages/unresolved-resources.js
   "Click to enlarge": "Zum Vergrößern klicken",
   "No screenshot of this row was kept.": "Von dieser Zeile wurde kein Screenshot behalten.",
+  "Showing the newest {shown} of {total}. The rest appear here as these are resolved.": "Die neuesten {shown} von {total} werden angezeigt. Der Rest erscheint hier, sobald diese zugeordnet sind.",
+  "Save all": "Alle speichern",
   "Unresolved Resources": "Offene Ressourcen",
   "The daily Clan Capital read couldn't identify these icons. Pick the resource each row shows and save.": "Das tägliche Auslesen der Clanhauptstadt konnte diese Symbole nicht erkennen. Wähle die Ressource, die jede Zeile zeigt, und speichere.",
-  "Showing the newest {shown} of {total}. The rest appear here as these are resolved.": "Die neuesten {shown} von {total} werden angezeigt. Der Rest erscheint hier, sobald diese zugeordnet sind.",
   "Pick a resource": "Ressource wählen",
+  "Saved {n} rows.": { one: "{n} Zeile gespeichert.", other: "{n} Zeilen gespeichert." },
+  "{n} rows still need a resource picked.": { one: "{n} Zeile braucht noch eine Ressource.", other: "{n} Zeilen brauchen noch eine Ressource." },
   // pages/users.js
   "Upload session file": "Sitzungsdatei hochladen",
   "Open remote login session": "Fernanmeldung öffnen",

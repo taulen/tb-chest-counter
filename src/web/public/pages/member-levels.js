@@ -8,6 +8,7 @@
 
 import { api, apiPost } from '../lib/api.js';
 import { esc, memberLink, notify } from '../lib/ui.js';
+import { sortableThHtml } from '../lib/sort-headers.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
 const LETTERS = ['g', 'm', 's', 'e', 'c', 'd'];
@@ -28,6 +29,11 @@ let preview = null;   // { rows, skipped } from /preview, with picks applied
 let picks = new Map(); // row index → member id ('' = skip)
 let text = '';
 let message = null;   // { error, html }
+// Latest reported levels: newest report first — what an admin opens it to see
+// after an import. Kept across repaints, like the section's open state (a
+// repaint after a pick or a sort would otherwise snap it shut).
+let latestSort = { key: 'reported', dir: 'desc' };
+let latestOpen = false;
 
 export async function mountMemberLevels(target) {
   el = target;
@@ -157,28 +163,65 @@ function previewHtml() {
     </div>`;
 }
 
+/**
+ * Sort the latest-levels rows. Numbers and dates start high-to-low (the first
+ * click on a letter shows the strongest), names A→Z; a member with no report
+ * for that letter sorts last either way, and ties fall back to the name so the
+ * order never jumps between repaints.
+ */
+function sortedLatest() {
+  const { key, dir } = latestSort;
+  const sign = dir === 'asc' ? 1 : -1;
+  const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
+  const value = (r) => (key === 'reported' ? r.lastReported || null
+    : key === 'member' ? null
+      : (r.levels?.[key] ?? null));
+  return latest.slice().sort((a, b) => {
+    if (key === 'member') return sign * byName(a, b);
+    const va = value(a);
+    const vb = value(b);
+    if (va === null && vb === null) return byName(a, b);
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+    return cmp ? sign * cmp : byName(a, b);
+  });
+}
+
+function sortLatestBy(key) {
+  latestSort = latestSort.key === key
+    ? { key, dir: latestSort.dir === 'asc' ? 'desc' : 'asc' }
+    : { key, dir: key === 'member' ? 'asc' : 'desc' };
+  paint();
+}
+
 function latestHtml() {
   if (!latest.length) return '';
-  const body = latest.map((r) => {
+  const th = (key, labelHtml, className = '', title = '') => sortableThHtml({
+    key, labelHtml, sortState: latestSort, className, title,
+  });
+  const body = sortedLatest().map((r) => {
     const g = r.levels.g;
     const est = r.guardsEstimate;
     const gCell = g === undefined
       ? '<span class="events-zero">—</span>'
       : `${g}${est !== null && est !== g ? ` <span class="muted-copy" title="${t('Guards estimate from donations + entries')}">${t('(est. {estimate})', { estimate: est })}</span>` : ''}`;
+    // The phone's compact row shows only the name, so the report date rides on
+    // its sub-line — with newest-first that is what makes the order legible.
     return `<tr>
-      <td data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}${r.isActive ? '' : ` <span class="muted-copy">${t('(left)')}</span>`}</span></td>
-      <td class="num" data-label="G">${gCell}</td>
+      <td data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}${r.isActive ? '' : ` <span class="muted-copy">${t('(left)')}</span>`}</span><span class="mrow-sub">${t('reported {date}', { date: esc(r.lastReported) })}</span></td>
+      <td class="num levels-g" data-label="G">${gCell}</td>
       ${LETTERS.slice(1).map((k) => `<td class="num" data-label="${k.toUpperCase()}" title="${r.asOf[k] ? t('reported {date}', { date: esc(r.asOf[k]) }) : ''}">${r.levels[k] ?? '<span class="events-zero">—</span>'}</td>`).join('')}
-      <td class="history-date" data-label="${t('Reported')}">${esc(r.lastReported)}</td>
+      <td class="history-date" data-label="${t('Reported')}" data-role="hidden">${esc(r.lastReported)}</td>
     </tr>`;
   }).join('');
   return `
-    <details class="card-collapsible tool-roster-list" data-section-key="admin-member-levels">
+    <details class="card-collapsible tool-roster-list" data-section-key="admin-member-levels"${latestOpen ? ' open' : ''}>
       <summary class="card-header"><h2>${t('Latest reported levels ({count})', { count: latest.length })}</h2></summary>
       <div class="events-scroll">
-        <table class="table-responsive levels-table">
-          <colgroup><col class="col-member">${LETTERS.map(() => '<col class="col-lvl">').join('')}<col class="col-date"></colgroup>
-          <thead><tr><th>${t('Member')}</th>${letterHeads()}<th>${t('Reported')}</th></tr></thead>
+        <table class="table-responsive levels-table levels-latest">
+          <colgroup><col class="col-member">${LETTERS.map((k) => `<col class="col-lvl${k === 'g' ? ' col-lvl-g' : ''}">`).join('')}<col class="col-date"></colgroup>
+          <thead><tr>${th('member', t('Member'))}${LETTERS.map((k) => th(k, k.toUpperCase(), 'num', LETTER_TITLE[k])).join('')}${th('reported', t('Reported'))}</tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -188,6 +231,13 @@ function latestHtml() {
 function wire() {
   const ta = el.querySelector('#levelsText');
   if (ta) ta.addEventListener('input', () => { text = ta.value; });
+  const latestDetails = el.querySelector('details[data-section-key="admin-member-levels"]');
+  if (latestDetails) {
+    latestDetails.addEventListener('toggle', () => { latestOpen = latestDetails.open; });
+    latestDetails.querySelectorAll('.levels-latest th[data-sort-key]').forEach((head) => {
+      head.addEventListener('click', () => sortLatestBy(head.dataset.sortKey));
+    });
+  }
   el.querySelectorAll('select.levels-pick').forEach((sel) => {
     sel.addEventListener('change', () => {
       picks.set(Number(sel.dataset.row), sel.value);

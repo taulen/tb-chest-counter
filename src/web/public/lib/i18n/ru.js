@@ -2440,10 +2440,13 @@ export const ui = {
   // pages/unresolved-resources.js
   "Click to enlarge": "Нажмите, чтобы увеличить",
   "No screenshot of this row was kept.": "Скриншот этой строки не сохранён.",
+  "Showing the newest {shown} of {total}. The rest appear here as these are resolved.": "Показаны {shown} самых новых из {total}. Остальные появятся здесь по мере разбора этих.",
+  "Save all": "Сохранить все",
   "Unresolved Resources": "Неразобранные ресурсы",
   "The daily Clan Capital read couldn't identify these icons. Pick the resource each row shows and save.": "Ежедневное чтение Столицы клана не смогло распознать эти значки. Выберите ресурс, показанный в каждой строке, и сохраните.",
-  "Showing the newest {shown} of {total}. The rest appear here as these are resolved.": "Показаны {shown} самых новых из {total}. Остальные появятся здесь по мере разбора этих.",
   "Pick a resource": "Выберите ресурс",
+  "Saved {n} rows.": { one: "Сохранена {n} строка.", few: "Сохранены {n} строки.", many: "Сохранено {n} строк.", other: "Сохранено {n} строк." },
+  "{n} rows still need a resource picked.": { one: "Для {n} строки ещё нужно выбрать ресурс.", few: "Для {n} строк ещё нужно выбрать ресурс.", many: "Для {n} строк ещё нужно выбрать ресурс.", other: "Для {n} строк ещё нужно выбрать ресурс." },
   // pages/users.js
   "Upload session file": "Загрузка файла сессии",
   "Open remote login session": "Открытие сессии удалённого входа",

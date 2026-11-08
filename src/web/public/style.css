@@ -4604,11 +4604,17 @@ details > table {
 }
 .unres-actions .btn { flex-shrink: 0; }
 
-.unres-more {
-  margin: 0;
-  padding: 12px 20px 16px;
+/* "Showing the newest 25 of N" on the left, Save all on the right. */
+.unres-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
   border-top: 1px solid var(--border);
 }
+.unres-more { margin: 0; }
+.unres-footer .btn { margin-left: auto; }
 
 @media (max-width: 760px) {
   .unres-row {
@@ -4617,7 +4623,8 @@ details > table {
     padding: 14px;
   }
   .unres-actions .input { max-width: none; }
-  .unres-more { padding: 12px 14px 14px; }
+  .unres-footer { padding: 12px 14px; }
+  .unres-footer .btn { width: 100%; }
 }
 
 .resource-direction {
@@ -7823,9 +7830,19 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .levels-summary { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); }
 .levels-summary strong { color: var(--text-primary); }
 .levels-table { table-layout: fixed; }
-.levels-table .col-lvl { width: 52px; }
+/* Room for a sort arrow beside the letter, and for an ISO date on one line
+   (at 110px "2026-10-23" broke after its second hyphen). */
+.levels-table .col-lvl { width: 60px; }
 .levels-table .col-assign { width: 240px; }
-.levels-table .col-date { width: 110px; }
+.levels-table .col-date { width: 136px; }
+.levels-table .history-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* G can carry the guards estimate ("7 (est. 8)", "7 (оценка 8)"); at 60px it
+   broke over three lines and doubled the row. */
+.levels-latest .col-lvl-g { width: 116px; }
+.levels-latest td.levels-g { white-space: nowrap; }
 .levels-table th.num, .levels-table td.num { text-align: right; }
 .levels-table .levels-pick { max-width: 230px; }
 .levels-tag { display: inline-block; width: 1.3em; text-align: center; font-weight: 700; }

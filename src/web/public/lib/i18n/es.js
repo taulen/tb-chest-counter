@@ -2440,10 +2440,13 @@ export const ui = {
   // pages/unresolved-resources.js
   "Click to enlarge": "Haz clic para ampliar",
   "No screenshot of this row was kept.": "No se guardó captura de esta fila.",
+  "Showing the newest {shown} of {total}. The rest appear here as these are resolved.": "Se muestran las {shown} más recientes de {total}. El resto aparecerá aquí a medida que se resuelvan estas.",
+  "Save all": "Guardar todo",
   "Unresolved Resources": "Recursos sin resolver",
   "The daily Clan Capital read couldn't identify these icons. Pick the resource each row shows and save.": "La lectura diaria de la Capital del clan no pudo identificar estos iconos. Elige el recurso que muestra cada fila y guarda.",
-  "Showing the newest {shown} of {total}. The rest appear here as these are resolved.": "Se muestran las {shown} más recientes de {total}. El resto aparecerá aquí a medida que se resuelvan estas.",
   "Pick a resource": "Elige un recurso",
+  "Saved {n} rows.": { one: "Guardada {n} fila.", other: "Guardadas {n} filas." },
+  "{n} rows still need a resource picked.": { one: "A {n} fila aún le falta elegir recurso.", other: "A {n} filas aún les falta elegir recurso." },
   // pages/users.js
   "Upload session file": "Subir archivo de sesión",
   "Open remote login session": "Abrir sesión de inicio de sesión remoto",
