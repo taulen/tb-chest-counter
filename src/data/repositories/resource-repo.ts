@@ -411,44 +411,16 @@ export function saveCaptureCursor(cursor: {
 }
 
 /**
- * Dates that have rows from BOTH a manual upload and the automated capture.
- *
- * Neither source is treated as authoritative — the automated capture is
- * insert-only and never touches upload rows — so an overlap means those dates
- * are double-counted until an admin deletes one of the batches. Surfaced in the
- * admin UI rather than resolved silently, because which side to drop depends on
- * which one the admin trusts, and the automated one is brand new.
- */
-export function listSourceOverlapDates(clanId: number): Array<{
-  transactionDate: string;
-  uploadRows: number;
-  scanRows: number;
-}> {
-  const db = getDb();
-  return db.prepare(`
-    SELECT rt.transaction_date AS transactionDate,
-           SUM(CASE WHEN b.source = 'scan' THEN 0 ELSE 1 END) AS uploadRows,
-           SUM(CASE WHEN b.source = 'scan' THEN 1 ELSE 0 END) AS scanRows
-      FROM resource_transactions rt
-      JOIN resource_upload_batches b ON b.id = rt.batch_id
-     WHERE rt.clan_id = ?
-     GROUP BY rt.transaction_date
-    HAVING uploadRows > 0 AND scanRows > 0
-     ORDER BY rt.transaction_date DESC
-  `).all(clanId) as Array<{ transactionDate: string; uploadRows: number; scanRows: number }>;
-}
-
-/**
  * Every scan-written row for this clan from `fromDate` onwards, as identity fields.
  *
  * Feeds the capture's write-side withhold: rows read again that this clan already
  * holds are declined rather than inserted, so losing the sweep's marker costs a
  * re-read instead of a duplicate batch an admin has to find and delete.
  *
- * `source = 'scan'` is a hard boundary, not an optimisation. A manual upload must
- * never suppress a scan read: the two sources are deliberately independent and their
- * overlap is REPORTED for an admin to resolve (see listSourceOverlapDates above), so
- * silently resolving it in the upload's favour here would delete that decision.
+ * `source = 'scan'` is a hard boundary, not an optimisation: a manual upload must
+ * never suppress a scan read. Uploads were removed in Nov 2026 and the last one is
+ * from Jul 2026, far outside any read window, so in practice the boundary only
+ * keeps the withhold's meaning exact.
  *
  * Keys are built in JS rather than SQL because they despace and lowercase the name,
  * and SQLite's LOWER is ASCII-only — v66 made a despaced key the identity everywhere.

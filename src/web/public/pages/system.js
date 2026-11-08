@@ -573,7 +573,7 @@ export async function renderSystem(el, options = {}) {
     <details class="card card-collapsible" data-section-key="resource-capture">
       <summary class="card-header"><h2>${t('Automated Resource Collection')} <span class="muted-copy">· ${resourceCapture?.enabled ? t('enabled') : t('disabled')}</span></h2></summary>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Read each clan\'s Clan Capital → History list off the game once per game day instead of relying on uploaded screenshots. Runs after the chest scan and the might snapshot have committed, so a failure here cannot affect chest, gift or might data.')}</p>
+        <p class="muted-copy mb-12">${t('Read each clan\'s Clan Capital → History list off the game once per game day. Runs after the chest scan and the might snapshot have committed, so a failure here cannot affect chest, gift or might data.')}</p>
         <p class="muted-copy mb-12">${t('This switch is <strong>instance-wide</strong>. Each clan still needs resource tracking turned on individually under <strong>Clans → Resource Tracking</strong>, which is also where you\'ll find the manual collect and diagnostic controls for a single clan.')}</p>
         ${resourceCapture?.calibrated
           ? ''

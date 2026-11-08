@@ -114,13 +114,6 @@ vi.mock('../../../src/config/persistent-env.js', () => ({
   deleteEnvValue: vi.fn(),
 }));
 
-// The resources data router transitively imports the OCR pipeline
-// (paddleocr + sharp). We only exercise its auth gates here, never the
-// actual upload processing, so stub the heavy module out.
-vi.mock('../../../src/vision/resource-ocr.js', () => ({
-  processResourceScreenshot: vi.fn(async () => ({ rows: [], errors: [], unmatchedNames: [] })),
-}));
-
 // Import order matters — mocks above MUST be set before any of these.
 import { createApiRouter } from '../../../src/web/routes/api.js';
 import { createAuthRouter } from '../../../src/web/routes/auth.js';
@@ -201,7 +194,7 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     app.use('/api/clans', createClansRouter());
     // Mirror server.ts: read-only resource data behind requireAuth, mutating
     // routes gate themselves with requireAdmin inside the router.
-    app.use('/api/resources', requireAuth, requireClanContext, createResourcesDataRouter(/* no scanLoop */ undefined));
+    app.use('/api/resources', requireAuth, requireClanContext, createResourcesDataRouter());
     app.use('/api', requireAuth, requireClanContext, createApiRouter(/* no scanLoop */ undefined));
   });
 
@@ -389,8 +382,8 @@ describe('role-gate enforcement (real auth + real routes)', () => {
   //
   // The Resources section (Overview + Totals dashboards) is visible to
   // every clan member, so its read endpoints accept any authenticated
-  // member of a clan. Only the Admin sub-tab mutates data, so upload /
-  // edit / delete stay admin-tier. Orphans (clan_id NULL) are blocked at
+  // member of a clan. Only the Admin sub-tab mutates data, so edit /
+  // delete stay admin-tier. Orphans (clan_id NULL) are blocked at
   // requireClanContext; anon is 401 throughout.
 
   describe('resources data routes', () => {
@@ -431,7 +424,6 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     });
 
     const WRITE: Array<{ name: string; method: 'post' | 'patch' | 'delete'; path: string; body?: object }> = [
-      { name: 'POST /resources/upload', method: 'post', path: '/api/resources/upload', body: { images: [] } },
       { name: 'PATCH /resources/transactions/:id', method: 'patch', path: '/api/resources/transactions/999', body: { direction: 1, amount: 5, transactionDate: '2026-07-12' } },
       { name: 'DELETE /resources/batches/:id', method: 'delete', path: '/api/resources/batches/999' },
     ];

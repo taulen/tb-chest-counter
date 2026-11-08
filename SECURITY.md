@@ -63,12 +63,6 @@ Listed because knowing is better than discovering. Last reviewed October 2026.
   reference code (details go to the server log), but around two dozen handlers
   on signed-in routes still return the underlying message, which can disclose
   paths or SQL detail to an authenticated user. The public share routes don't.
-- **Three paths accept large bodies, before checking who is asking.** Requests
-  are capped at 1MB, except the two database-restore routes and resource
-  screenshot upload, which allow 110MB. Their handlers require a signed-in
-  admin (or the first-run setup), but the body is read before that check runs,
-  so an anonymous client can still make the server buffer up to 110MB on those
-  paths.
 
 ## Third-party terms
 

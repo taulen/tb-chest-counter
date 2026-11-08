@@ -51,7 +51,7 @@ cloud AI — everything runs locally in one container.
   package value.
 - **Resource tracking** — after a scan, the app reads the clan's in-game Clan
   Capital history once a day and records what each member sent, insert-only and
-  safe to re-run. Admins can still upload screenshots of that history by hand.
+  safe to re-run.
 - **Inferred guards levels and Gold Pass** — guardsmen levels are worked out
   from the exact amounts members donate, and Gold Pass holders from a Union
   Chest plus its 250k tractate line. Neither is read off a screen or stored, so
@@ -367,10 +367,10 @@ Pages are role-gated. Members see:
 - **Might** — every member's might and hero level, the clan's might over time,
   and side-by-side member comparison.
 - **Resources** *(if enabled for the clan)* — per-resource totals and charts of
-  what members have sent, filled by the daily Clan Capital history read. Admins
-  can also upload screenshots of that history, and the OCR pipeline extracts
-  each row (member, resource, send/receive, amount, date). Members see
-  read-only Overview / Totals tabs.
+  what members have sent, filled by the daily Clan Capital history read, which
+  extracts each row (member, resource, send/receive, amount, date). Members see
+  read-only Overview / Totals tabs; admins also get the editable ledger, and
+  resolve rows whose resource icon couldn't be identified on the Admin page.
 - **Tools** — the Ancient planner.
 - **Scan History** — recent scan sessions and the chests each captured.
 - **ChestTracker** *(if enabled)* — chesttracker.com snapshots and deltas.

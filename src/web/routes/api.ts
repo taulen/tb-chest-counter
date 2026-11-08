@@ -2892,16 +2892,18 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       const unresolvedResourceCount = getClanById(clanId)?.resourcesEnabled
         ? resourceRepo.countUnresolvedTransactions(clanId)
         : 0;
+      // All three are Admin-page sections that only render while non-zero; the
+      // Admin page reads unresolvedResourceCount from here too, so its section
+      // and the dot can never disagree.
       const payload: {
-        admin: { reviewQueueCount: number; unknownChestsCount: number };
-        resources: { unresolvedCount: number };
+        admin: { reviewQueueCount: number; unknownChestsCount: number; unresolvedResourceCount: number };
         system?: { latestWarningAt: number | null };
       } = {
         admin: {
           reviewQueueCount,
           unknownChestsCount,
+          unresolvedResourceCount,
         },
-        resources: { unresolvedCount: unresolvedResourceCount },
       };
       if (req.user?.role === 'superadmin') {
         payload.system = { latestWarningAt: latestLogEntryAt() };

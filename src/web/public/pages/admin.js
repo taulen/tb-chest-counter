@@ -1,9 +1,10 @@
 // Admin — content-management page for admins/superadmins. Member
 // rename + delete, OCR misread merge rules (player / chest / source),
 // chest-type rarity overrides, the Chest Points board (points-board.js), the
-// review queue (newly-discovered chest names / sources / members), and
+// review queue (newly-discovered chest names / sources / members),
 // the OCR-missing-player-name reassignment workflow with hover-preview
-// of the saved debug crops.
+// of the saved debug crops, and resource rows whose icon couldn't be
+// identified (unresolved-resources.js).
 //
 // Per-clan settings (Discord, ChestTracker, login bridge) live on the
 // Clans page; instance-wide settings (scan interval, calibration,
@@ -19,6 +20,7 @@ import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { mountPointsBoard } from './points-board.js';
 import { mountMemberLevels } from './member-levels.js';
+import { unresolvedResourcesSectionHtml } from './unresolved-resources.js';
 
 /**
  * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
@@ -49,7 +51,12 @@ export async function renderAdmin(el) {
   // System and Clans tabs now — the Admin page only fetches what it
   // actually renders (per-clan content management). Chest Points fetches
   // its own (see mountPointsBoard below).
-  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, triumphalPoints, members, memberChestCounts, stats, reviewQueue, unknownChests] = await Promise.all([
+  //
+  // nav-status is read for the unresolved resource-row count: the same number
+  // that lights the Admin nav dot, so the dot never points at a page with
+  // nothing on it. It is 0 for a clan that doesn't track resources. Tolerated as
+  // null so a transient failure drops one section rather than the page.
+  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, triumphalPoints, members, memberChestCounts, stats, reviewQueue, unknownChests, navStatus] = await Promise.all([
     api('/admin/merge-rules?type=player'),
     api('/admin/merge-rules?type=chest'),
     api('/admin/merge-rules?type=source'),
@@ -61,6 +68,7 @@ export async function renderAdmin(el) {
     api('/stats'),
     api('/admin/review-queue'),
     api('/admin/unknown-chests'),
+    api('/admin/nav-status').catch(() => null),
   ]);
   const sortedMembers = [...members].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
   // Edit Members lists active rows by default; the soft-deleted ones
@@ -83,6 +91,7 @@ export async function renderAdmin(el) {
   el.innerHTML = `
     ${unknownChestsHtml}
     ${reviewQueueHtml}
+    ${unresolvedResourcesSectionHtml(navStatus?.admin?.unresolvedResourceCount)}
     <!-- ═══════════════════════════════════════════════════ -->
     <!-- SECTION: Member Data                                  -->
     <!-- ═══════════════════════════════════════════════════ -->

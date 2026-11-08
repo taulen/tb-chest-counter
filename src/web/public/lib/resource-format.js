@@ -54,6 +54,18 @@ export function resourceIconHtml(slug, name) {
   return `<span class="resource-type-cell"><img src="/assets/resource-icons/${esc(slug)}.png" class="resource-icon-img" alt=""><span class="resource-type-name" title="${label}">${label}</span></span>`;
 }
 
+/**
+ * Hover affordance for a row the reader left unresolved: previews the screenshot
+ * row it came from, click to enlarge (lib/ui.js attachCropPreviews). data-crop-wide
+ * because a history row is wide and short, so it needs more width than a chest crop.
+ */
+export function resourceCropHoverHtml(tx) {
+  if (!tx.hasCrop) return '<span class="muted-copy">—</span>';
+  return `<span class="unknown-crop-hover" data-crop-url="/api/resources/transactions/${tx.id}/crop"`
+    + ` data-crop-wide tabindex="0" role="button"`
+    + ` title="${t('Hover to preview the screenshot row this came from — click to enlarge')}">🖼️</span>`;
+}
+
 /** Just the icon (no label) — for compact cells/cards. */
 export function resourceIconOnly(slug) {
   if (!slug) return '';
@@ -66,7 +78,7 @@ export function resourceIconOnly(slug) {
  * the browser back button and deep-links work.
  *
  * Overview + Totals are read-only dashboards visible to every clan member; the
- * Admin tab (upload + ledger) is only rendered for admins/superadmins so
+ * Admin tab (the ledger) is only rendered for admins/superadmins so
  * regular members never see it. The Admin page + API still enforce this
  * server-side — this is just UI hygiene.
  */

@@ -1,7 +1,5 @@
 import { Router } from 'express';
 import fs from 'fs';
-import path from 'path';
-import { randomUUID } from 'crypto';
 import {
   listResourceTypes,
   UNTRACKED_RESOURCE_SLUGS,
@@ -13,43 +11,23 @@ import {
   deleteBatch,
   clearCaptureCursor,
   getBatchSource,
-  createBatch,
-  insertTransactions,
   getRowCropPath,
-  getCaptureCursor,
-  countUnresolvedTransactions,
-  listSourceOverlapDates,
 } from '../../data/repositories/resource-repo.js';
-import { getAllMembers, upsertMember } from '../../data/repositories/member-repo.js';
-import { loadPlayerNameCanonicaliser } from '../../data/repositories/merge-repo.js';
-import { getClanById } from '../../data/repositories/clan-repo.js';
-import { loadConfig } from '../../config/index.js';
-import { currentGameDate } from '../../utils/game-day.js';
-import {
-  isResourceHistoryCalibrated,
-  missingResourceHistoryTargets,
-} from '../../config/calibration.js';
-import { invalidateReviewQueueCount } from '../../data/repositories/review-queue-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
-import { childLogger } from '../../utils/logger.js';
-import { acquireUploadSlot, releaseUploadSlot } from '../../utils/resource-upload-lock.js';
-import { processResourceScreenshot } from '../../vision/resource-ocr.js';
 import { resolveAllowedCropPath } from '../../utils/crop-dirs.js';
-import type { ScreenshotResult } from '../../vision/resource-ocr.js';
-import { requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
-import type { ScanLoop } from '../../scheduler/loop.js';
+import { requireAdmin } from '../middleware/auth.js';
 
-const log = childLogger('resources-route');
-
-const MAX_UPLOAD_BASE64_BYTES = 27_000_000; // ~20MB decoded
-
-export function createResourcesDataRouter(scanLoop?: ScanLoop): Router {
+export function createResourcesDataRouter(): Router {
   const router = Router();
 
   // The GET routes below are read-only clan resource data and are available to
-  // any authenticated clan member (the Overview + Totals dashboards). The three
-  // mutating routes (upload / edit transaction / delete batch) each guard with
+  // any authenticated clan member (the Overview + Totals dashboards). The two
+  // mutating routes (edit transaction / delete batch) each guard with
   // requireAdmin so only admins can change data.
+  //
+  // Rows arrive only from the daily Clan Capital history read
+  // (scheduler/resource-capture-phase.ts). The screenshot upload that used to
+  // sit beside it was removed in Nov 2026: the read does the same job as well.
 
   /** List the trackable resource types (excludes clan-wide/untracked ones). */
   router.get('/types', (_req, res) => {
@@ -226,49 +204,6 @@ export function createResourcesDataRouter(scanLoop?: ScanLoop): Router {
   });
 
   /**
-   * GET /capture-status — everything the Resources admin card needs to explain
-   * the state of automated collection in one request: whether the feature is on,
-   * whether calibration is finished (and what's outstanding if not), when the
-   * last capture ran, how many rows are waiting to be resolved, and which dates
-   * are double-counted between a manual upload and a capture.
-   *
-   * Available to any clan member because it's all read-only status the Resources
-   * page already shows adjacent data for; the actions below are admin-gated.
-   */
-  router.get('/capture-status', (req, res) => {
-    const clanId = req.clanId!;
-    const cfg = loadConfig();
-    const cursor = getCaptureCursor(clanId);
-    const clan = getClanById(clanId);
-    res.json({
-      enabled: cfg.resourceCaptureEnabled,
-      clanEnabled: !!clan?.resourcesEnabled,
-      // The per-clan "Include in the daily automatic read" switch from the Clans
-      // page. Reported separately from `enabled` because the two gate different
-      // things and only both together mean this clan's history gets read: the
-      // instance-wide schedule can be on while this clan is excluded from it.
-      // Defaults true to match the column default, so a clan predating the switch
-      // reads as included rather than as opted out.
-      clanAutoCapture: clan?.resourceAutoCapture ?? true,
-      calibrated: isResourceHistoryCalibrated(),
-      missingTargets: missingResourceHistoryTargets(),
-      inProgress: !!scanLoop?.isResourceCaptureInProgress(),
-      scanInProgress: !!scanLoop?.isScanInProgress(),
-      currentGameDate: currentGameDate(cfg.gameDayRolloverUtcHour),
-      lastCapture: cursor
-        ? {
-            gameDate: cursor.gameDate,
-            capturedAt: cursor.capturedAt,
-            rowsInserted: cursor.rowsInserted,
-            cursorRows: cursor.topRows.length,
-          }
-        : null,
-      unresolvedCount: countUnresolvedTransactions(clanId),
-      overlaps: listSourceOverlapDates(clanId),
-    });
-  });
-
-  /**
    * Delete a batch and all its transactions (clan-scoped).
    * The deleteBatch repo function includes clan_id in the WHERE clause.
    *
@@ -297,191 +232,6 @@ export function createResourcesDataRouter(scanLoop?: ScanLoop): Router {
     if (wasScan) clearCaptureCursor(clanId);
     logAction(req.user!.id, 'resources.batch.delete', { clanId, batchId, cursorCleared: wasScan });
     res.json({ ok: true, cursorCleared: wasScan });
-  });
-
-  /**
-   * Upload and process one or more history screenshots via OCR.
-   *
-   * Body (JSON):
-   *   images      {string[]} — One or more PNG/JPEG images, base64-encoded.
-   *   uploadDate  {string?}  — ISO date (YYYY-MM-DD) that the screenshot's
-   *                            "Today" header refers to. That header is rendered
-   *                            client-side at the capturing browser's local
-   *                            midnight, so this is the uploader's own calendar
-   *                            date, NOT the 17:00-UTC game day — the UI sends
-   *                            it explicitly for that reason. The fallback below
-   *                            can only guess the server's UTC date.
-   *
-   * Response: NDJSON stream. Each line is a JSON object:
-   *   { type: 'progress', current: N, total: N }   — after each screenshot
-   *   { type: 'done', batchId, inserted, errors }  — final summary line
-   *   { type: 'error', error: string }             — on fatal early errors
-   *
-   * All screenshots are stored as a single batch entry.
-   */
-  router.post('/upload', requireAdmin, async (req, res) => {
-    const clanId = req.clanId!;
-    const body = req.body ?? {};
-
-    if (scanLoop?.isScanInProgress()) {
-      res.status(409).json({ error: 'A scan is currently running. Please wait for it to finish before uploading screenshots.' });
-      return;
-    }
-
-    const rawImages: unknown[] = Array.isArray(body.images) ? body.images : [];
-    if (rawImages.length === 0) {
-      res.status(400).json({ error: 'images[] is required' });
-      return;
-    }
-
-    const imageBuffers: Buffer[] = [];
-    for (const raw of rawImages) {
-      if (typeof raw !== 'string' || raw.length === 0) {
-        res.status(400).json({ error: 'Each entry in images[] must be a non-empty base64 string' });
-        return;
-      }
-      if (raw.length > MAX_UPLOAD_BASE64_BYTES) {
-        res.status(413).json({ error: 'One or more images exceed the 20 MB limit' });
-        return;
-      }
-      try {
-        imageBuffers.push(Buffer.from(raw.replace(/^data:[^;]+;base64,/, ''), 'base64'));
-      } catch {
-        res.status(400).json({ error: 'Invalid base64 image data' });
-        return;
-      }
-    }
-
-    let uploadDate: Date;
-    if (typeof body.uploadDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.uploadDate)) {
-      uploadDate = new Date(body.uploadDate + 'T00:00:00Z');
-    } else {
-      uploadDate = new Date();
-      uploadDate.setUTCHours(0, 0, 0, 0);
-    }
-
-    const allTypes = listResourceTypes();
-    const members = getAllMembers(false, clanId);
-
-    // Switch to NDJSON streaming so the client receives per-screenshot progress.
-    res.setHeader('Content-Type', 'application/x-ndjson');
-    res.flushHeaders();
-
-    const send = (obj: Record<string, unknown>) => res.write(JSON.stringify(obj) + '\n');
-
-    acquireUploadSlot();
-
-    type OcrRow = {
-      memberId: number | null; resourceTypeId: number | null;
-      direction: 1 | -1; amount: number;
-      transactionDate: string; rawPlayerName: string;
-      rowCropPath?: string | null;
-    };
-    const allRows: OcrRow[] = [];
-    const allErrors: string[] = [];
-    const allUnmatchedNames: string[] = [];
-    const total = imageBuffers.length;
-    // Distinguishes this upload's row-crop filenames from any other upload's.
-    const cropToken = `${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
-
-    try {
-      for (let i = 0; i < total; i++) {
-        let result: ScreenshotResult;
-        try {
-          result = await processResourceScreenshot({
-            imageBuffer: imageBuffers[i], clanId, uploadDate, members, allTypes,
-            cropToken: `${cropToken}_i${i}`,
-          });
-        } catch (err) {
-          log.error({ err }, 'resources-route: OCR pipeline failed for one image');
-          allErrors.push('OCR failed for one screenshot: ' + String(err));
-          send({ type: 'progress', current: i + 1, total });
-          continue;
-        }
-        allRows.push(...result.rows as OcrRow[]);
-        allErrors.push(...result.errors);
-        allUnmatchedNames.push(...result.unmatchedNames);
-        send({ type: 'progress', current: i + 1, total });
-      }
-    } finally {
-      releaseUploadSlot();
-    }
-
-    // Names OCR couldn't tie to an existing member: create the member, exactly as a
-    // normal scan does when it meets a name for the first time. These rows used to be
-    // thrown away, silently losing the contribution. The new members surface in the
-    // member review queue (driven by members.first_seen), and each row keeps a crop so
-    // an admin can see the original and rename or merge from there.
-    //
-    // Through the clan's player merge rules first, the same way the automated
-    // capture does. The OCR pass is handed a member list rather than a database so
-    // it cannot see them, and without this an upload re-creates the exact name an
-    // admin has already merged away.
-    //
-    // A rule OVERRIDES the match the OCR pass made rather than only filling in for a
-    // miss: while a duplicate member row for the misread spelling still exists the
-    // fuzzy match finds it, so a rule consulted only on the null path would never be
-    // reached and the rows would keep landing on the duplicate.
-    const canonicalisePlayerName = loadPlayerNameCanonicaliser(clanId);
-    const createdMembers = new Map<string, number>();
-    const ruleResolved = new Map<string, number>();
-    for (const row of allRows) {
-      const key = canonicalisePlayerName(row.rawPlayerName);
-      const viaRule = key !== row.rawPlayerName;
-      if (!viaRule && row.memberId != null) continue;
-      const cache = viaRule ? ruleResolved : createdMembers;
-      let id = cache.get(key);
-      if (id === undefined) {
-        id = upsertMember(key, clanId).id;
-        cache.set(key, id);
-      }
-      row.memberId = id;
-    }
-    if (ruleResolved.size > 0) {
-      log.info(
-        'resources-route: resolved ' + ruleResolved.size + ' name(s) through a player merge rule: '
-        + [...ruleResolved.keys()].map((n) => JSON.stringify(n)).join(', '),
-      );
-    }
-    if (createdMembers.size > 0) {
-      invalidateReviewQueueCount(clanId);
-      log.info(
-        `resources-route: created ${createdMembers.size} new member(s) from unmatched names: ` +
-        [...createdMembers.keys()].map((n) => JSON.stringify(n)).join(', '),
-      );
-    }
-
-    const uploadDateStr = uploadDate.toISOString().slice(0, 10);
-    const batch = createBatch({
-      clanId,
-      uploadedBy: req.user!.id,
-      uploadDate: uploadDateStr,
-      fileCount: total,
-      rowCount: allRows.length,
-      errorCount: allErrors.length,
-      notes: '',
-    });
-
-    // Every row has a member by now — the loop above resolved the nulls.
-    const { inserted } = insertTransactions(allRows.map((r) => ({
-      clanId,
-      batchId: batch.id,
-      memberId: r.memberId!,
-      resourceTypeId: r.resourceTypeId,
-      direction: r.direction,
-      amount: r.amount,
-      transactionDate: r.transactionDate,
-      rawPlayerName: r.rawPlayerName,
-      rowCropPath: r.rowCropPath ?? null,
-    })));
-
-    logAction(req.user!.id, 'resources.upload', {
-      clanId, batchId: batch.id, fileCount: total, inserted,
-      errors: allErrors.length, newMembers: createdMembers.size,
-    });
-
-    send({ type: 'done', ok: true, batchId: batch.id, inserted, errors: allErrors });
-    res.end();
   });
 
   return router;

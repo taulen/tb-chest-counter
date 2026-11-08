@@ -1,11 +1,15 @@
-import { api, apiPost, apiPut, apiPatch, apiDelete } from '../lib/api.js';
-import {
-  esc, formatDate, formatGameDayShort, localDateKey, notify, confirmDialog, attachCropPreviews, holdDialogFocus,
-} from '../lib/ui.js';
+// Resources → Admin: the transaction ledger (filter, sort, edit) and the
+// import history (delete a bad batch). Data arrives only from the daily Clan
+// Capital history read; the screenshot upload that used to live here was
+// removed in Nov 2026, and rows the reader couldn't identify are resolved from
+// the Admin page (unresolved-resources.js).
+
+import { api, apiPatch, apiDelete } from '../lib/api.js';
+import { esc, formatDate, formatGameDayShort, notify, confirmDialog } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
-  formatResourceAmount, resourceIconHtml, directionPillHtml,
+  formatResourceAmount, resourceIconHtml, directionPillHtml, resourceCropHoverHtml,
   resourceTabsHtml, isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -22,106 +26,8 @@ let filters = {
   sortDir: 'desc',
 };
 
-// Persists the upload result summary across the reload() that follows a completed upload.
-let lastUploadSummary = null; // { html: string, cls: string } | null
 // Cached resource types for the inline-edit dropdown (populated on each render).
 let cachedTypes = [];
-
-// ─── Modernized upload: curated file list ──────────────────────────────────────
-// The dropzone builds its own list (drag / paste / browse) rather than relying
-// on the <input>'s FileList, so individual files can be removed before upload.
-// Persists across reload() so a sort/filter/edit doesn't drop a pending batch.
-let selectedFiles = [];
-let thumbUrls = [];
-let pasteHandlerBound = false;
-
-function revokeThumbUrls() {
-  for (const u of thumbUrls) { try { URL.revokeObjectURL(u); } catch (_) { /* noop */ } }
-  thumbUrls = [];
-}
-
-function addFiles(fileList) {
-  const files = Array.from(fileList || []).filter((f) => f.type && f.type.startsWith('image/'));
-  if (!files.length) return;
-  selectedFiles.push(...files);
-  renderThumbs();
-}
-
-function renderThumbs() {
-  const wrap = document.getElementById('resourcesThumbs');
-  if (!wrap) return;
-  const summary = document.getElementById('resourcesUploadSummary');
-  const btn = document.querySelector('[data-action="resources-upload"]');
-  revokeThumbUrls();
-
-  if (selectedFiles.length === 0) {
-    wrap.innerHTML = '';
-    if (summary) summary.textContent = '';
-    if (btn) btn.disabled = true;
-    return;
-  }
-
-  wrap.innerHTML = selectedFiles.map((f, i) => {
-    const url = URL.createObjectURL(f);
-    thumbUrls.push(url);
-    return `<div class="resource-thumb" title="${esc(f.name)}">
-      <img src="${url}" alt="">
-      <button class="resource-thumb-remove" data-thumb-index="${i}" type="button" aria-label="${t('Remove')}">×</button>
-    </div>`;
-  }).join('');
-
-  wrap.querySelectorAll('.resource-thumb-remove').forEach((b) => {
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const idx = Number.parseInt(b.dataset.thumbIndex, 10);
-      if (Number.isFinite(idx)) { selectedFiles.splice(idx, 1); renderThumbs(); }
-    });
-  });
-
-  const bytes = selectedFiles.reduce((s, f) => s + (f.size || 0), 0);
-  if (summary) summary.textContent = `${tn(selectedFiles.length, '{n} screenshot', '{n} screenshots')} · ${t('{size} MB', { size: (bytes / 1024 / 1024).toFixed(1) })}`;
-  if (btn) btn.disabled = false;
-}
-
-// Attach dropzone listeners to the freshly-rendered DOM. Paste is bound once
-// globally (guarded by a live-dropzone lookup) so it isn't duplicated per render.
-function wireUpload() {
-  const dz = document.getElementById('resourcesDropzone');
-  const input = document.getElementById('resourcesFileInput');
-  if (!dz || !input) return;
-
-  dz.addEventListener('click', (e) => {
-    if (e.target.closest('.resource-thumb-remove')) return;
-    input.click();
-  });
-  input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
-
-  ['dragenter', 'dragover'].forEach((ev) => dz.addEventListener(ev, (e) => {
-    e.preventDefault(); dz.classList.add('is-drag');
-  }));
-  dz.addEventListener('dragleave', (e) => {
-    if (dz.contains(e.relatedTarget)) return;
-    dz.classList.remove('is-drag');
-  });
-  dz.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dz.classList.remove('is-drag');
-    addFiles(e.dataTransfer?.files);
-  });
-
-  if (!pasteHandlerBound) {
-    window.addEventListener('paste', (e) => {
-      if (!document.getElementById('resourcesDropzone')) return;
-      const items = e.clipboardData?.items || [];
-      const imgs = [];
-      for (const it of items) {
-        if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) imgs.push(f); }
-      }
-      if (imgs.length) { e.preventDefault(); addFiles(imgs); }
-    });
-    pasteHandlerBound = true;
-  }
-}
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
 
@@ -167,499 +73,11 @@ export function handleResourcesApplyFilters(reload) {
   reload('resources/admin');
 }
 
-// ─── Upload ──────────────────────────────────────────────────────────────────
-
-// Max simultaneous OCR requests. Tesseract is CPU-heavy; 3 keeps throughput
-// high without starving the event loop or blowing RAM on too many WASM workers.
-const UPLOAD_CONCURRENCY = 3;
-
-function toBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function setUploadProgress(resultEl, current, total) {
-  if (!resultEl) return;
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
-  resultEl.querySelector('.upload-progress-header').textContent =
-    t('Processing {current} / {total}…', { current, total });
-  const bar = resultEl.querySelector('.upload-progress-bar');
-  if (bar) {
-    bar.classList.remove('upload-progress-indeterminate');
-    bar.style.width = `${pct}%`;
-  }
-}
-
-export async function handleResourcesUpload(reload) {
-  const dateInput = document.getElementById('resourcesUploadDate');
-  const resultEl = document.getElementById('resourcesUploadResult');
-  const btn = document.querySelector('[data-action="resources-upload"]');
-
-  if (!selectedFiles.length) {
-    await notify(t('Please add one or more screenshots first.'), t('Upload'));
-    return;
-  }
-
-  const files = selectedFiles.slice();
-  // Same reasoning as the field's default (see renderResources): the date is
-  // what "TODAY" meant in the screenshot, which is the uploader's local
-  // calendar date, not the game day.
-  const uploadDate = dateInput?.value || localDateKey();
-  const total = files.length;
-  const label = tn(total, '{n} screenshot', '{n} screenshots');
-  // Captured from the 'done' event so we can offer to resolve any
-  // unmatched-resource ("unknown") rows immediately after the import.
-  let batchId = null;
-
-  if (btn) { btn.disabled = true; btn.textContent = t('Processing…'); }
-  if (resultEl) {
-    resultEl.className = 'resources-upload-result is-loading';
-    resultEl.innerHTML = `
-      <div class="upload-progress-header">${t('Processing {current} / {total}…', { current: 0, total })}</div>
-      <div class="upload-progress-bar-wrap"><div class="upload-progress-bar" style="width:0%"></div></div>
-    `;
-  }
-
-  try {
-    const images = await Promise.all(files.map(toBase64));
-
-    // Use raw fetch so we can stream the NDJSON progress lines as they arrive.
-    const response = await fetch('/api/resources/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ images, uploadDate }),
-    });
-
-    if (response.status === 401) { window.location.replace('/login'); return; }
-    if (!response.ok || !response.body) {
-      const text = await response.text().catch(() => '');
-      let msg = `HTTP ${response.status}`;
-      try { msg = JSON.parse(text).error || msg; } catch { /* ignore */ }
-      throw new Error(msg);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    let done_event = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop(); // keep the incomplete trailing fragment
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let ev;
-        try { ev = JSON.parse(line); } catch { continue; }
-        if (ev.type === 'progress') {
-          setUploadProgress(resultEl, ev.current, ev.total);
-        } else if (ev.type === 'done') {
-          done_event = ev;
-        } else if (ev.type === 'error') {
-          throw new Error(ev.error);
-        }
-      }
-    }
-
-    if (!done_event) throw new Error(t('Server closed the stream without a result.'));
-
-    batchId = done_event.batchId ?? null;
-    const inserted = done_event.inserted ?? 0;
-    const errors = Array.isArray(done_event.errors) ? done_event.errors : [];
-    const errCount = errors.length;
-    const errDetail = errCount > 0
-      ? `<div class="upload-log">${errors.slice(0, 20).map((e) => `<div class="upload-log-error">${esc(e)}</div>`).join('')}</div>`
-      : '';
-    lastUploadSummary = {
-      html: `
-        <strong>${t('Done.')}</strong> ${errCount
-          ? t('{screenshots} processed — {rows}, {errors}', {
-            screenshots: label,
-            rows: tn(inserted, '{n} row inserted', '{n} rows inserted'),
-            errors: tn(errCount, '{n} error', '{n} errors'),
-          })
-          : t('{screenshots} processed — {rows}', {
-            screenshots: label,
-            rows: tn(inserted, '{n} row inserted', '{n} rows inserted'),
-          })}
-        <div class="upload-progress-bar-wrap"><div class="upload-progress-bar" style="width:100%"></div></div>
-        ${errDetail}
-      `,
-      cls: errCount > 0 ? 'resources-upload-result upload-mixed' : 'resources-upload-result upload-success',
-    };
-  } catch (err) {
-    lastUploadSummary = {
-      html: `<strong>${t('Upload failed:')}</strong> ${esc(err.message)}`,
-      cls: 'resources-upload-result upload-mixed',
-    };
-  }
-
-  selectedFiles = [];
-  revokeThumbUrls();
-  if (btn) { btn.disabled = false; btn.textContent = t('Upload & Extract'); }
-  reload('resources/admin');
-
-  // If the OCR couldn't match every icon, some rows landed as "unknown".
-  // Surface them right away in an editable modal so the admin resolves
-  // them in one place instead of hunting them down with the filter and
-  // editing each row individually.
-  if (batchId != null) {
-    await openUnknownResourcesModalForBatch(batchId, reload);
-  }
-}
-
-/**
- * Status card for automated collection — read-only.
- *
- * Deliberately has no buttons. What used to be here moved out for two different
- * reasons: the daily on/off switch is INSTANCE-WIDE and had no business on a page
- * scoped to one clan (a superadmin could change every clan's behaviour while looking
- * at one of them), and the manual collect/diagnose actions belong beside the per-clan
- * toggle on the Clans page, where the clan they act on is explicit rather than
- * inherited from the active session.
- *
- * What stays is what an admin of THIS clan needs about their own data: whether
- * collection is running, when it last ran, what is double-counted, what needs
- * resolving.
- */
-function buildCaptureCardHtml(status) {
-  if (!status) return '';
-
-  // Two independent switches, and the card used to report only the first — so a clan
-  // excluded from the daily read was told its history "is read once per game day",
-  // which is exactly the sort of status line that stops an admin uploading the
-  // screenshots they still need to upload.
-  const autoOn = !!(status.calibrated && status.enabled && status.clanAutoCapture);
-
-  const stateLine = !status.calibrated
-    ? `<p class="muted-copy mb-12">${t('<strong>Not set up yet.</strong> Automated collection needs the world-map chain calibrated. A superadmin finishes that under <strong>System &rarr; Scanner Calibration</strong> (Stages 5 and 6, plus the MAP button in Stage 1).')}</p>`
-    : !status.enabled
-      ? `<p class="muted-copy mb-12">${t('<strong>Calibrated, but the daily run is off.</strong> A superadmin enables it under <strong>System &rarr; Automated Resource Collection</strong>, and can trigger a one-off read for this clan from <strong>Clans &rarr; Resource Tracking</strong>.')}</p>`
-      : status.clanAutoCapture
-        ? `<p class="muted-copy mb-12">${t("<strong>On.</strong> This clan's capital history is read once per game day, right after the might snapshot &mdash; no uploads needed.")}</p>`
-        : `<p class="muted-copy mb-12">${t("<strong>On for the instance, but this clan is left out.</strong> A clan admin ticks <em>Include in the daily automatic read</em> under <strong>Clans &rarr; Resource Tracking</strong> to add it. Until then this clan's rows only arrive from screenshots uploaded below.")}</p>`;
-
-  const lastLine = status.lastCapture
-    ? `<p class="muted-copy mb-12">${t('Last read: game day <strong>{day}</strong> at {time}', {
-         day: esc(status.lastCapture.gameDate),
-         time: esc(formatDate(status.lastCapture.capturedAt)),
-       })} &middot;
-         ${tn(status.lastCapture.rowsInserted, '{n} row recorded.', '{n} rows recorded.')}
-         ${status.lastCapture.gameDate === status.currentGameDate
-           ? t("Today's read is done.")
-           // Only a run that is actually scheduled can be "pending" — saying it of a
-           // clan that has been excluded promises something that will never happen.
-           : autoOn ? t("Today's read is still pending.") : ''}</p>`
-    : `<p class="muted-copy mb-12">${t('Never read from the game yet.')}</p>`;
-
-  // Overlap is a data-correctness warning, not a status line: until an admin deletes
-  // one side, those dates are counted twice in every total on this page.
-  const overlapLine = status.overlaps?.length
-    ? `<div class="resources-upload-result is-warning mb-12">
-         ${t('<strong>Double-counted dates.</strong> These dates have rows from BOTH an uploaded screenshot and an automated read, so their totals are inflated until you delete one of the two batches in Upload History: {dates}.', {
-           dates: esc(status.overlaps.map((ov) => t('{date} ({uploaded} uploaded + {read} read)', { date: ov.transactionDate, uploaded: ov.uploadRows, read: ov.scanRows })).join(', ')),
-         })}
-       </div>`
-    : '';
-
-  const unresolvedLine = status.unresolvedCount > 0
-    ? `<div class="inline-form-row mb-12">
-         <span class="muted-copy">${tn(status.unresolvedCount,
-           "<strong>{n}</strong> row has no resource &mdash; the icon couldn't be identified. Each kept a crop of the original row.",
-           "<strong>{n}</strong> rows have no resource &mdash; the icon couldn't be identified. Each kept a crop of the original row.")}</span>
-         <button class="btn" data-action="resources-resolve-unknowns">${tn(status.unresolvedCount, 'Resolve {n} row', 'Resolve {n} rows')}</button>
-       </div>`
-    : `<p class="muted-copy">${t('No unresolved rows &mdash; every recorded row has a resource.')}</p>`;
-
-  return `
-    <details class="card card-collapsible" data-section-key="resources-automated" open>
-      <summary class="card-header"><h2>${t('Automated Collection')}</h2></summary>
-      <div class="card-body card-body-padded">
-        ${stateLine}
-        ${lastLine}
-        ${overlapLine}
-        ${unresolvedLine}
-      </div>
-    </details>`;
-}
-
-/**
- * Render the debug-screenshot gallery.
- *
- * Fetched separately from the page render and injected, so a few hundred thumbnails
- * can't slow down (or fail) the main admin view. Filenames carry the meaning —
- * p001, p002 … are scroll pages in order, _blank_ is a page where the list went
- * empty and the sweep waited, _final_page_ is where it stopped — so they're shown
- * verbatim rather than prettified into something less precise.
- */
-export async function handleResourcesResolveUnknowns(reload) {
-  let rows = [];
-  try {
-    const qs = new URLSearchParams({
-      resourceTypeId: 'unknown',
-      sortBy: 'date',
-      sortDir: 'desc',
-      limit: '200',
-      offset: '0',
-    });
-    const res = await api(`/resources/transactions?${qs}`);
-    rows = Array.isArray(res?.rows) ? res.rows : [];
-  } catch (err) {
-    return notify(String(err), t('Could not load unresolved rows'));
-  }
-  if (rows.length === 0) {
-    return notify(t('Nothing left to resolve — every row has a resource.'), t('All clear'));
-  }
-  if (!cachedTypes.length) {
-    try {
-      const typesRes = await api('/resources/types');
-      cachedTypes = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
-    } catch (_) { /* fall through with an empty list */ }
-  }
-  openUnknownResourcesModal(rows, reload);
-}
-
-// ─── Post-import: resolve unknown-resource rows ────────────────────────────────
-
-// Fetch the just-imported batch's unmatched-resource rows and, if any exist,
-// pop the editable modal. Silent no-op when the batch imported cleanly.
-async function openUnknownResourcesModalForBatch(batchId, reload) {
-  let rows = [];
-  try {
-    const qs = new URLSearchParams({
-      batchId: String(batchId),
-      resourceTypeId: 'unknown',
-      sortBy: 'date',
-      sortDir: 'asc',
-      limit: '200',
-      offset: '0',
-    });
-    // Use a standalone signal so the reload() that just fired can't abort
-    // this read via the shared page-navigation signal.
-    const res = await api(`/resources/transactions?${qs}`, { signal: new AbortController().signal });
-    rows = Array.isArray(res?.rows) ? res.rows : [];
-  } catch (_) {
-    return; // The main table still shows the unknowns; the modal is a bonus.
-  }
-  if (rows.length === 0) return;
-
-  // The resource dropdown needs the type list. It's populated on every admin
-  // render (which just happened), but fetch as a fallback for robustness.
-  if (!cachedTypes.length) {
-    try {
-      const typesRes = await api('/resources/types');
-      cachedTypes = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
-    } catch (_) { /* fall through with an empty list */ }
-  }
-
-  openUnknownResourcesModal(rows, reload);
-}
-
-// Hover affordance for a row the importer left unresolved. data-crop-wide because
-// a history row is wide and short, so it needs more width than a chest crop.
-function cropHoverHtml(tx) {
-  if (!tx.hasCrop) return '<span class="muted-copy">—</span>';
-  return `<span class="unknown-crop-hover" data-crop-url="/api/resources/transactions/${tx.id}/crop"`
-    + ` data-crop-wide tabindex="0" role="button"`
-    + ` title="${t('Hover to preview the screenshot row this came from — click to enlarge')}">🖼️</span>`;
-}
-
-function unknownRowHtml(tx) {
-  const typeOptions = [
-    `<option value="">${t('— Unknown —')}</option>`,
-    ...cachedTypes.map((type) => `<option value="${type.id}">${esc(tGame(type.name))}</option>`),
-  ].join('');
-  return `
-    <tr data-unknown-row="${tx.id}">
-      <td data-label="${t('Row')}" class="col-crop">${cropHoverHtml(tx)}</td>
-      <td data-label="${t('Member')}">${esc(tx.memberName ?? tx.rawPlayerName ?? '—')}</td>
-      <td data-label="${t('Resource')}">
-        <select class="input input-tight" data-field="resource" autocomplete="off">${typeOptions}</select>
-      </td>
-      <td data-label="${t('Direction')}">
-        <select class="input input-tight" data-field="direction">
-          <option value="1"  ${tx.direction === 1  ? 'selected' : ''}>${t('Sent')}</option>
-          <option value="-1" ${tx.direction === -1 ? 'selected' : ''}>${t('Took')}</option>
-        </select>
-      </td>
-      <td data-label="${t('Amount')}">
-        <input type="number" class="input input-tight" data-field="amount" value="${esc(String(tx.amount))}" min="1" step="1">
-      </td>
-      <td data-label="${t('Date')}">
-        <input type="date" class="input input-tight" data-field="date" lang="sv" value="${esc(tx.transactionDate)}">
-      </td>
-      <td class="col-tx-actions">
-        <button class="btn btn-tight btn-primary" data-unknown-save="${tx.id}">${t('Save')}</button>
-        <span class="unknown-row-status" aria-live="polite"></span>
-      </td>
-    </tr>`;
-}
-
-// Build and show the "Resolve Unknown Resources" overlay. Self-contained:
-// it wires its own listeners (it lives in #modalRoot, outside the delegated
-// #content listener) and reloads the admin page once on close so the main
-// table reflects every fix.
-function openUnknownResourcesModal(rows, reload) {
-  const root = document.getElementById('modalRoot');
-  if (!root) return;
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal-card modal-card-wide unknown-modal" role="dialog" aria-modal="true">
-      <div class="modal-title">${t('Resolve unknown resources')}</div>
-      <p class="modal-form-hint unknown-modal-hint">
-        ${tn(rows.length,
-          "The importer couldn't identify the resource for {n} row. Hover the 🖼️ in the Row column to preview the screenshot row each one came from — or click it to open a zoomable full-size view — then pick the correct resource and save. The other fields are pre-filled from the screenshot and can be edited too.",
-          "The importer couldn't identify the resource for {n} rows. Hover the 🖼️ in the Row column to preview the screenshot row each one came from — or click it to open a zoomable full-size view — then pick the correct resource and save. The other fields are pre-filled from the screenshot and can be edited too.",
-          { n: `<strong class="unknown-remaining">${rows.length}</strong>` })}
-      </p>
-      <div class="unknown-modal-scroll">
-        <table class="unknown-modal-table">
-          <thead><tr>
-            <th>${t('Row')}</th><th>${t('Member')}</th><th>${t('Resource')}</th><th>${t('Direction')}</th><th>${t('Amount')}</th><th>${t('Date')}</th><th></th>
-          </tr></thead>
-          <tbody>${rows.map(unknownRowHtml).join('')}</tbody>
-        </table>
-      </div>
-      <div class="modal-actions">
-        <button class="btn unknown-modal-close">${t('Close')}</button>
-        <button class="btn btn-primary unknown-modal-save-all">${t('Save all')}</button>
-      </div>
-    </div>
-  `;
-
-  root.appendChild(overlay);
-  // The modal lives in #modalRoot, outside the delegated #content listeners, so it
-  // wires its own hover previews.
-  attachCropPreviews(overlay);
-  requestAnimationFrame(() => overlay.classList.add('visible'));
-
-  let dirty = false; // any successful save → reload the admin page on close
-  const remainingEl = overlay.querySelector('.unknown-remaining');
-  const saveAllBtn = overlay.querySelector('.unknown-modal-save-all');
-  const closeBtn = overlay.querySelector('.unknown-modal-close');
-
-  const remainingCount = () => overlay.querySelectorAll('tr[data-unknown-row]:not(.is-resolved)').length;
-  const refreshRemaining = () => {
-    const n = remainingCount();
-    if (remainingEl) remainingEl.textContent = String(n);
-    if (n === 0 && saveAllBtn) { saveAllBtn.disabled = true; saveAllBtn.textContent = t('All resolved'); }
-    if (closeBtn) closeBtn.textContent = n === 0 ? t('Done') : t('Close');
-  };
-
-  let closed = false;
-  const cleanup = () => {
-    if (closed) return;
-    closed = true;
-    overlay.classList.remove('visible');
-    setTimeout(() => overlay.remove(), 180);
-    release();
-    if (dirty) reload('resources/admin');
-  };
-
-  // Focus the first resource dropdown so the operator can pick-and-save
-  // straight from the keyboard without reaching for the mouse. The modal can
-  // open on its own after an upload, so there may be no opener to return to;
-  // holdDialogFocus copes.
-  const release = holdDialogFocus(overlay, {
-    card: overlay.querySelector('.modal-card'),
-    initial: overlay.querySelector('select[data-field="resource"]'),
-    onEscape: cleanup,
-  });
-
-  // Save a single row. Returns true on success. `requireResource` (per-row
-  // Save) rejects rows still set to "unknown"; Save-all passes false and
-  // simply skips them.
-  const saveRow = async (rowEl, { requireResource }) => {
-    if (!rowEl || rowEl.classList.contains('is-resolved')) return false;
-    const txId = rowEl.dataset.unknownRow;
-    const resourceVal = rowEl.querySelector('[data-field="resource"]').value;
-    const statusEl = rowEl.querySelector('.unknown-row-status');
-
-    if (!resourceVal) {
-      if (requireResource) {
-        if (statusEl) { statusEl.textContent = t('Pick a resource'); statusEl.className = 'unknown-row-status is-error'; }
-        return false;
-      }
-      return false; // Save-all: leave unresolved rows untouched.
-    }
-
-    const resourceTypeId = Number.parseInt(resourceVal, 10);
-    const direction = Number.parseInt(rowEl.querySelector('[data-field="direction"]').value, 10);
-    const amount = Number.parseInt(rowEl.querySelector('[data-field="amount"]').value, 10);
-    const transactionDate = rowEl.querySelector('[data-field="date"]').value;
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      if (statusEl) { statusEl.textContent = t('Bad amount'); statusEl.className = 'unknown-row-status is-error'; }
-      return false;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
-      if (statusEl) { statusEl.textContent = t('Bad date'); statusEl.className = 'unknown-row-status is-error'; }
-      return false;
-    }
-
-    try {
-      const res = await apiPatch(`/resources/transactions/${txId}`, { resourceTypeId, direction, amount, transactionDate });
-      if (res?.error) {
-        if (statusEl) { statusEl.textContent = res.error; statusEl.className = 'unknown-row-status is-error'; }
-        return false;
-      }
-    } catch (err) {
-      if (statusEl) { statusEl.textContent = err.message || t('Save failed'); statusEl.className = 'unknown-row-status is-error'; }
-      return false;
-    }
-
-    dirty = true;
-    rowEl.classList.add('is-resolved');
-    rowEl.querySelectorAll('select, input, button').forEach((c) => { c.disabled = true; });
-    if (statusEl) { statusEl.textContent = t('✓ Saved'); statusEl.className = 'unknown-row-status is-ok'; }
-    refreshRemaining();
-    return true;
-  };
-
-  overlay.addEventListener('click', async (e) => {
-    if (e.target === overlay) { cleanup(); return; }
-    if (e.target.closest('.unknown-modal-close')) { cleanup(); return; }
-
-    const saveBtn = e.target.closest('[data-unknown-save]');
-    if (saveBtn) {
-      await saveRow(saveBtn.closest('tr[data-unknown-row]'), { requireResource: true });
-      return;
-    }
-
-    if (e.target.closest('.unknown-modal-save-all')) {
-      saveAllBtn.disabled = true;
-      const pending = Array.from(overlay.querySelectorAll('tr[data-unknown-row]:not(.is-resolved)'));
-      let saved = 0;
-      for (const rowEl of pending) {
-        if (await saveRow(rowEl, { requireResource: false })) saved++;
-      }
-      const left = remainingCount();
-      if (left > 0) {
-        saveAllBtn.disabled = false;
-        notify(`${t('Saved {count}.', { count: saved })} ${tn(left, '{n} row still needs a resource picked.', '{n} rows still need a resource picked.')}`, t('Resources'));
-      } else {
-        notify(tn(saved, 'Saved {n} row.', 'Saved {n} rows.'), t('Saved'));
-      }
-    }
-  });
-}
-
 // ─── Batch delete ─────────────────────────────────────────────────────────────
 
 export async function handleResourcesBatchDelete(batchId, reload) {
   if (!batchId) return;
-  const ok = await confirmDialog(t('Delete this upload batch and all its transactions?'));
+  const ok = await confirmDialog(t('Delete this batch and all its transactions?'));
   if (!ok) return;
   try {
     await apiDelete(`/resources/batches/${batchId}`);
@@ -799,12 +217,9 @@ export async function renderResourcesAdmin(el, navigate) {
   qs.set('limit',   String(PAGE_SIZE));
   qs.set('offset',  String((currentPage - 1) * PAGE_SIZE));
 
-  const [txRes, batchRes, captureRes] = await Promise.all([
+  const [txRes, batchRes] = await Promise.all([
     api(`/resources/transactions?${qs}`),
     api('/resources/batches'),
-    // Status of automated collection. Tolerated as null so an older server (or a
-    // transient failure) degrades to hiding one card rather than blanking the page.
-    api('/resources/capture-status').catch(() => null),
   ]);
 
   const transactions = Array.isArray(txRes?.rows) ? txRes.rows : [];
@@ -813,20 +228,6 @@ export async function renderResourcesAdmin(el, navigate) {
   if (currentPage > totalPages) currentPage = totalPages;
   const batches = Array.isArray(batchRes) ? batchRes : (batchRes?.batches ?? []);
 
-  // Default (and cap) the upload date to the uploader's OWN calendar date, not
-  // the game day.
-  //
-  // This field answers one question: what did "TODAY" mean in the screenshot?
-  // The game's history list renders that header client-side and buckets rows at
-  // the browser's local midnight — so for a hand-taken screenshot it means the
-  // calendar date of the device that took it, which is this admin's. The
-  // scanner gets the same answer by being pinned to a zone whose midnight is
-  // the 17:00 rollover (src/config/game-timezone.ts); nothing can pin an
-  // admin's phone, so the honest default here is their local date.
-  //
-  // Defaulting to the game day, as this did, dated every upload made between
-  // local midnight and 17:00 UTC a day early.
-  const uploadDateKey = localDateKey();
   const th = (key, labelHtml) => sortableThHtml({
     key, labelHtml, sortState: { key: filters.sortBy, dir: filters.sortDir }, action: 'resources-sort',
   });
@@ -849,7 +250,7 @@ export async function renderResourcesAdmin(el, navigate) {
             data-tx-amount="${tx.amount}"
             data-tx-date="${esc(tx.transactionDate)}">
           <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${esc(tx.memberName ?? tx.rawPlayerName ?? '—')}</span></td>
-          <td data-label="${t('Resource')}">${resourceIconHtml(tx.resourceTypeSlug, tx.resourceTypeName)}${tx.hasCrop ? ` ${cropHoverHtml(tx)}` : ''}</td>
+          <td data-label="${t('Resource')}">${resourceIconHtml(tx.resourceTypeSlug, tx.resourceTypeName)}${tx.hasCrop ? ` ${resourceCropHoverHtml(tx)}` : ''}</td>
           <td data-label="${t('Direction')}">${directionPillHtml(tx.direction)}</td>
           <td data-label="${t('Amount')}" class="col-num" data-role="metric">${formatTxAmount(tx)}</td>
           <td data-label="${t('Date')}">${esc(formatGameDayShort(tx.transactionDate))}</td>
@@ -868,7 +269,7 @@ export async function renderResourcesAdmin(el, navigate) {
   ` : '';
 
   const batchRows = batches.length === 0
-    ? `<tr><td colspan="7" class="empty-state-cell">${t('No uploads yet.')}</td></tr>`
+    ? `<tr><td colspan="7" class="empty-state-cell">${t('No imports yet.')}</td></tr>`
     : batches.map((b) => {
         // An automated batch is a scroll sweep, not a pile of files — so its
         // file_count is pages. Labelling both the same would misreport one of them.
@@ -893,51 +294,8 @@ export async function renderResourcesAdmin(el, navigate) {
         </tr>`;
       }).join('');
 
-  const captureCardHtml = buildCaptureCardHtml(captureRes);
-
-  // Is the game reading this clan's history by itself? All four have to be true —
-  // the instance schedule, this clan's inclusion in it, resource tracking for the
-  // clan, and a finished calibration — because any one of them being off means the
-  // daily read never happens and screenshots are the only way data arrives.
-  //
-  // When it IS all on, uploading is redundant work that also creates the
-  // double-counted dates the card above warns about, so the section starts
-  // collapsed rather than being the first thing on the page. Still one click away,
-  // and expanding it survives a rerender (lib/ui.js remembers the choice per page).
-  const autoCollecting = !!(
-    captureRes?.enabled
-    && captureRes?.clanAutoCapture
-    && captureRes?.clanEnabled
-    && captureRes?.calibrated
-  );
-
   el.innerHTML = `
     ${resourceTabsHtml('admin')}
-    ${captureCardHtml}
-    <details class="card card-collapsible" data-section-key="resources-upload" ${autoCollecting ? '' : 'open'}>
-      <summary class="card-header"><h2>${t('Upload Screenshots')}${autoCollecting
-        ? ` <span class="muted-copy">${t('· not needed while the daily read is on')}</span>`
-        : ''}</h2></summary>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy">${t('Upload <strong>History</strong> screenshots from the game. Each screenshot can contain many players — every "sent / took resources" row is read and matched to its clan member automatically. Add as many screenshots as you like.')}</p>
-        <div class="resources-dropzone" id="resourcesDropzone" tabindex="0" role="button" aria-label="${t('Add screenshots by dropping, pasting, or clicking to browse')}">
-          <input type="file" id="resourcesFileInput" accept="image/*" multiple class="is-hidden">
-          <div class="resources-dropzone-inner">
-            <div class="resources-dropzone-icon" aria-hidden="true">🖼️</div>
-            <div class="resources-dropzone-text">${t('<strong>Drop screenshots here</strong>, paste from clipboard, or {browse}', { browse: `<span class="resources-dropzone-browse">${t('browse')}</span>` })}</div>
-            <div class="resources-dropzone-hint">${t('PNG or JPEG · multiple files · many players per screenshot')}</div>
-          </div>
-        </div>
-        <div class="resources-thumbs" id="resourcesThumbs"></div>
-        <div class="resources-upload-actions">
-          <label class="resources-upload-label" for="resourcesUploadDate">${t('Screenshot date')}</label>
-          <input type="date" id="resourcesUploadDate" class="input" lang="sv" value="${uploadDateKey}" max="${uploadDateKey}" title="${esc(t('What "Today" meant in these screenshots — your own calendar date when you took them.'))}">
-          <span class="resources-upload-summary" id="resourcesUploadSummary"></span>
-          <button class="btn btn-primary" data-action="resources-upload" disabled>${esc(t('Upload & Extract'))}</button>
-        </div>
-        <div id="resourcesUploadResult" class="resources-upload-result is-hidden"></div>
-      </div>
-    </details>
 
     <div class="card">
       <div class="card-header"><h2>${t('Resource History')}</h2></div>
@@ -985,7 +343,7 @@ export async function renderResourcesAdmin(el, navigate) {
     </div>
 
     <details class="card card-collapsible" data-section-key="resources-upload-history">
-      <summary class="card-header"><h2>${t('Upload History')}</h2></summary>
+      <summary class="card-header"><h2>${t('Import History')}</h2></summary>
       <div class="card-body">
         <table class="table-responsive resources-batches-table">
           <colgroup>
@@ -1011,20 +369,4 @@ export async function renderResourcesAdmin(el, navigate) {
       </div>
     </details>
   `;
-
-  // Restore the upload summary banner that was stored before reload().
-  if (lastUploadSummary) {
-    const resultEl = document.getElementById('resourcesUploadResult');
-    if (resultEl) {
-      resultEl.className = lastUploadSummary.cls;
-      resultEl.innerHTML = lastUploadSummary.html;
-    }
-    lastUploadSummary = null;
-  }
-
-  // Wire the dropzone and re-render any pending thumbnails (selectedFiles
-  // survives reload, so a sort/filter/edit keeps a staged batch intact).
-  wireUpload();
-  renderThumbs();
-
 }

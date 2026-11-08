@@ -298,22 +298,15 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
     crossOriginEmbedderPolicy: false,
   }));
 
-  // Body limits, scoped.
+  // Body limit: 1MB for everything, which is generous for the largest ordinary
+  // payload here (a list of overrides). Database restores need no exception:
+  // they upload raw application/octet-stream slices (backup-upload.ts), which
+  // the JSON parser never reads, and stream them to disk themselves.
   //
-  // Everything gets 1MB, which is generous for the largest ordinary payload
-  // here (a list of overrides). Database restores need no exception: they
-  // upload raw application/octet-stream slices (backup-upload.ts), which the
-  // JSON parser never reads, and stream them to disk themselves.
-  //
-  // Any exception is registered BEFORE the global parser deliberately:
+  // An exception for one path would have to be registered BEFORE this line:
   // body-parser marks a request as parsed and later parsers skip it, so the
-  // first matching limit is the one that applies.
-  //
-  // Resource screenshots arrive as an array of base64 images, each allowed up
-  // to ~27MB encoded (see MAX_UPLOAD_BASE64_BYTES) and several per upload. The
-  // route enforces the per-image size itself; this only has to be roomy enough
-  // that a legitimate batch is not rejected before that check runs.
-  app.use('/api/resources/upload', express.json({ limit: '110mb' }));
+  // first matching limit is the one that applies. There has been none since the
+  // resource screenshot upload (110MB) was removed in Nov 2026.
   app.use(express.json({ limit: '1mb' }));
 
   /**
@@ -516,7 +509,7 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Resource tracking: read-only data is visible to any authenticated clan
   // member; mutating routes (upload / edit / delete) enforce requireAdmin
   // individually inside the router.
-  app.use('/api/resources', requireAuth, requireClanContext, createResourcesDataRouter(scanLoop));
+  app.use('/api/resources', requireAuth, requireClanContext, createResourcesDataRouter());
 
   // Member might (power level) history. All reads are clan-scoped clan data,
   // visible to any authenticated member; the on/off toggle inside the router

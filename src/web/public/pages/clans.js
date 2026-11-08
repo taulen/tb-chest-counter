@@ -301,7 +301,7 @@ export async function renderClans(el, refreshClanIndicator) {
       await runClanResourceCollect(clanId, { dryRun: true });
     } else if (action === 'clan-resources-collect-full' && clanId) {
       const ok = await confirmDialog(
-        t('This ignores the saved position and re-reads all 14 days. Rows already recorded will be inserted again, which shows up as duplicates you clean up by deleting the extra batch in Resources → Upload History. Use it after fixing a reading bug, not routinely.'),
+        t('This ignores the saved position and re-reads all 14 days. Rows already recorded will be inserted again, which shows up as duplicates you clean up by deleting the extra batch in Resources → Admin → Import History. Use it after fixing a reading bug, not routinely.'),
         { title: t('Re-read all 14 days?'), confirmLabel: t('Read everything'), danger: true },
       );
       if (ok) await runClanResourceCollect(clanId, { fullBackfill: true });
@@ -1140,14 +1140,14 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         <summary class="clan-subsection-summary"><h3>${t('Resource Tracking')}</h3></summary>
         <div class="mt-12">
         <p class="muted-copy mb-8">${t("Tracks what members send to and take from the Clan Capital. Turning this on adds the <strong>Resources</strong> tab to the navigation for this clan's admins.")}</p>
-        <p class="muted-copy mb-8">${t('Contributions can arrive two ways, and both land in the same place. <strong>Automatically</strong> — the Clan Capital history is read straight off the game once per game day, needing nothing from anyone. Or <strong>by upload</strong> — an admin drops in history screenshots, each of which can list any number of players. Either way every row is matched to its clan member for you.')}</p>
+        <p class="muted-copy mb-8">${t('Contributions are read straight off the game: the Clan Capital history is read once per game day, needing nothing from anyone, and every row is matched to its clan member for you.')}</p>
         <div class="inline-form-row">
           <label class="checkbox-row"><input type="checkbox" id="clan-resources-enabled-${clan.id}" ${clan.resourcesEnabled ? 'checked' : ''}> ${t('Track resources for this clan')}</label>
         </div>
         <div class="inline-form-row">
           <label class="checkbox-row"><input type="checkbox" id="clan-resources-auto-${clan.id}" ${clan.resourceAutoCapture ? 'checked' : ''}> ${t('Include in the daily automatic read')}</label>
         </div>
-        <p class="muted-copy mt-4">${t('Untick the second box to keep the tab and uploads for this clan while leaving it out of the nightly read — the one-off buttons below still work either way. The daily read also has to be switched on instance-wide under <strong>System &rarr; Automated Resource Collection</strong>.')}</p>
+        <p class="muted-copy mt-4">${t('Untick the second box to keep the tab for this clan while leaving it out of the nightly read — the one-off buttons below still work either way. The daily read also has to be switched on instance-wide under <strong>System &rarr; Automated Resource Collection</strong>.')}</p>
         <div class="actions mt-8">
           <button class="btn btn-primary" data-action="clan-resources-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>

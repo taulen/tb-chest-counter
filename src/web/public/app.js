@@ -139,14 +139,13 @@ import {
   changeResourcesPage,
   setResourcesFilter,
   sortResources,
-  handleResourcesUpload,
   handleResourcesApplyFilters,
   handleResourcesBatchDelete,
   handleResourcesTxEdit,
   handleResourcesTxSave,
   handleResourcesTxCancel,
-  handleResourcesResolveUnknowns,
 } from './pages/resources.js';
+import { resolveUnresolvedResources } from './pages/unresolved-resources.js';
 import { renderResourcesOverview } from './pages/resources-overview.js';
 import { renderResourcesTotals } from './pages/resources-totals.js';
 import { renderEvents } from './pages/events.js';
@@ -720,12 +719,11 @@ if (contentEl) {
     if (action === 'resources-set-filter') return setResourcesFilter(target.dataset.filterKey, target.dataset.filterValue, loadPage);
     if (action === 'resources-sort') return sortResources(target.dataset.sortKey, loadPage);
     if (action === 'resources-apply-filters') return handleResourcesApplyFilters(loadPage);
-    if (action === 'resources-upload') return handleResourcesUpload(loadPage);
     if (action === 'resources-batch-delete') return handleResourcesBatchDelete(Number.parseInt(target.dataset.batchId || '0', 10), loadPage);
     if (action === 'resources-tx-edit') return handleResourcesTxEdit(Number.parseInt(target.dataset.txId || '0', 10));
     if (action === 'resources-tx-save') return handleResourcesTxSave(Number.parseInt(target.dataset.txId || '0', 10), loadPage);
     if (action === 'resources-tx-cancel') return handleResourcesTxCancel(loadPage);
-    if (action === 'resources-resolve-unknowns') return handleResourcesResolveUnknowns(loadPage);
+    if (action === 'resources-resolve-unknowns') return resolveUnresolvedResources(loadPage);
   });
 
   // Hover preview + click-to-enlarge for any row that kept the screenshot it came
@@ -988,7 +986,7 @@ async function renderRoute(page, content) {
     }
   }
   // Resources is a two-tab page: #resources = Overview (landing),
-  // #resources/admin = the ledger + upload. Both bounce to the dashboard
+  // #resources/admin = the ledger. Both bounce to the dashboard
   // when the active clan doesn't have resources enabled.
   if (page === 'resources/admin') {
     await renderResourcesAdmin(content, navigateTo);
@@ -1311,8 +1309,10 @@ function updatePageHead(navPage) {
 
 // ─── Nav "needs attention" dots ───
 // Polls /api/admin/nav-status to decide whether to light the dot on
-// Admin (review queue + unknown chests outstanding) and System (warn/
-// error log entries newer than the user's last visit). The
+// Admin (review queue, unknown chests or unresolved resource rows
+// outstanding — each one a section on the Admin page that only renders
+// while it has entries) and System (warn/error log entries newer than the
+// user's last visit). The
 // getLastSeenSystemWarningAt / markSystemWarningsSeen pair lives in
 // lib/state.js so the System page can also read it (to auto-open the
 // Recent Warnings card when fresh entries are present).
@@ -1330,17 +1330,11 @@ async function refreshNavDots() {
   if (adminDot) {
     const adminNeeds =
       (status?.admin?.reviewQueueCount ?? 0) > 0 ||
-      (status?.admin?.unknownChestsCount ?? 0) > 0;
+      (status?.admin?.unknownChestsCount ?? 0) > 0 ||
+      // Nobody watches the daily resource read finish, so without the dot these
+      // rows would sit unnoticed until someone happened to open the Admin page.
+      (status?.admin?.unresolvedResourceCount ?? 0) > 0;
     adminDot.classList.toggle('is-hidden', !adminNeeds);
-  }
-  // Resource rows whose resource the reader couldn't identify. Worth a dot
-  // because the automated daily capture means nobody is watching an upload
-  // finish any more — without this, unresolved rows would sit unnoticed until
-  // someone happened to open the Resources admin tab.
-  const resourcesDot = document.getElementById('navResourcesDot');
-  if (resourcesDot) {
-    const needs = (status?.resources?.unresolvedCount ?? 0) > 0;
-    resourcesDot.classList.toggle('is-hidden', !needs);
   }
   const systemDot = document.getElementById('navSystemDot');
   if (systemDot) {

@@ -37,7 +37,7 @@
  *   - It never deletes below the multiplicity a single batch actually observed.
  *     If one batch legitimately read two identical rows, two survive.
  *   - It never touches upload batches. Scan and upload are deliberately
- *     independent and their overlap is an admin decision (listSourceOverlapDates).
+ *     independent, and their overlap was an admin decision.
  *
  * STALE PARTIALS ARE REPORTED, NOT DELETED. Where the same (member, date,
  * resource, direction) holds several DIFFERENT amounts, the smaller ones are

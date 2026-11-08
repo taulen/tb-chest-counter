@@ -775,8 +775,8 @@ export async function runResourceCapturePhase(
     log.warn(
       { noAlert: true },
       `Resource capture wrote ${unresolvedRows} row(s) for clan #${clanId} whose resource could not `
-      + 'be identified from the icon. They are listed under Resources → Admin → Unresolved rows, '
-      + 'each with a crop of the original row.',
+      + 'be identified from the icon. Resolve them under Admin → Unresolved Resources; each kept '
+      + 'a crop of the original row.',
     );
   }
 

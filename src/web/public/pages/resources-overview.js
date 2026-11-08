@@ -283,7 +283,7 @@ async function fetchData() {
 
 export async function renderResourcesOverview(el, navigate) {
   // Read-only dashboard — visible to any authenticated clan member. Admin-only
-  // controls (upload / edit / delete) live on the separate Admin tab.
+  // controls (edit / delete) live on the separate Admin tab.
 
   // Bounce to the dashboard if the active clan doesn't use resources (a
   // superadmin can land here with a stale hash after switching clans).

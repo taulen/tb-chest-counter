@@ -34,7 +34,6 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ScanLoop = void 0;
-const resource_upload_lock_js_1 = require("../utils/resource-upload-lock.js");
 const launcher_js_1 = require("../browser/launcher.js");
 const clan_paths_js_1 = require("../config/clan-paths.js");
 const enums_js_1 = require("../models/enums.js");
@@ -695,10 +694,6 @@ class ScanLoop {
             log.info('Manual scan requested but a scan is already in progress - rejecting');
             return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [], alreadyRunning: true };
         }
-        if ((0, resource_upload_lock_js_1.isResourceUploadActive)()) {
-            log.info('Manual scan requested but resource uploads are in progress - rejecting');
-            return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [], alreadyRunning: true };
-        }
         // Cancel any pending scheduled cycle - the manual scan replaces it,
         // and we'll reschedule the next one for a full interval after this scan.
         if (this.timer) {
@@ -840,16 +835,10 @@ class ScanLoop {
     async runCycle(triggerSource = 'scheduled') {
         if (!this.running)
             return;
-        // If a scan (e.g. manual) is already running, or resource uploads are
-        // active, defer this scheduled cycle by 60 seconds and try again.
+        // If a scan (e.g. manual) is already running, defer this scheduled cycle
+        // by 60 seconds and try again.
         if (this.scanInProgress) {
             log.info('Scheduled scan deferred - another scan is in progress, retrying in 60s');
-            if (this.running)
-                this.scheduleNextCycle(60_000);
-            return;
-        }
-        if ((0, resource_upload_lock_js_1.isResourceUploadActive)()) {
-            log.info('Scheduled scan deferred - resource uploads are in progress, retrying in 60s');
             if (this.running)
                 this.scheduleNextCycle(60_000);
             return;
@@ -959,25 +948,14 @@ class ScanLoop {
         if (scanRanThisCycle) {
             this.cyclesSinceRelaunch++;
             if (this.cyclesSinceRelaunch >= this.getCyclesBeforeRelaunch()) {
-                // The recycle now frees the OCR models for real, and a resource upload
-                // OCRs on the same shared service. Uploads are checked at the top of a
-                // cycle, but one can start while the cycle runs — so re-check here
-                // rather than pulling the models out from under an in-flight import.
-                // Skipping costs nothing: the counter stays over threshold and the
-                // next cycle recycles instead.
-                if ((0, resource_upload_lock_js_1.isResourceUploadActive)()) {
-                    log.info('Deferring the periodic vision recycle — a resource upload is using the OCR models.');
+                try {
+                    await this.performPeriodicRelaunch();
                 }
-                else {
-                    try {
-                        await this.performPeriodicRelaunch();
-                    }
-                    catch (err) {
-                        // Non-fatal: a failed teardown leaves the existing models in place
-                        // and we'll try again next time the threshold trips. Logged at
-                        // warn so the operator sees it in container stdout.
-                        log.warn('Periodic vision recycle threw; continuing with the existing models: ' + String(err));
-                    }
+                catch (err) {
+                    // Non-fatal: a failed teardown leaves the existing models in place
+                    // and we'll try again next time the threshold trips. Logged at
+                    // warn so the operator sees it in container stdout.
+                    log.warn('Periodic vision recycle threw; continuing with the existing models: ' + String(err));
                 }
             }
         }
@@ -998,10 +976,6 @@ class ScanLoop {
     async runSingleScan(triggerSource = 'scheduled') {
         if (this.scanInProgress) {
             log.debug('Scan cycle skipped - another scan is already in progress');
-            return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [] };
-        }
-        if ((0, resource_upload_lock_js_1.isResourceUploadActive)()) {
-            log.debug('Scan cycle skipped - resource uploads are in progress');
             return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [] };
         }
         this.scanInProgress = true;
@@ -1183,10 +1157,6 @@ class ScanLoop {
         if (this.scanInProgress) {
             throw new Error('A scan is already in progress. Wait for it to finish and try again — both drive the same '
                 + 'browser page.');
-        }
-        if ((0, resource_upload_lock_js_1.isResourceUploadActive)()) {
-            throw new Error('A resource screenshot upload is in progress. Both would drive PaddleOCR at once; wait for '
-                + 'the upload to finish.');
         }
         this.scanInProgress = true;
         this.resourceCaptureInProgress = true;
