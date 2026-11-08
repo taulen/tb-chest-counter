@@ -145,7 +145,7 @@ import {
   handleResourcesTxSave,
   handleResourcesTxCancel,
 } from './pages/resources.js';
-import { resolveUnresolvedResources } from './pages/unresolved-resources.js';
+import { saveUnresolvedResource } from './pages/unresolved-resources.js';
 import { renderResourcesOverview } from './pages/resources-overview.js';
 import { renderResourcesTotals } from './pages/resources-totals.js';
 import { renderEvents } from './pages/events.js';
@@ -723,7 +723,7 @@ if (contentEl) {
     if (action === 'resources-tx-edit') return handleResourcesTxEdit(Number.parseInt(target.dataset.txId || '0', 10));
     if (action === 'resources-tx-save') return handleResourcesTxSave(Number.parseInt(target.dataset.txId || '0', 10), loadPage);
     if (action === 'resources-tx-cancel') return handleResourcesTxCancel(loadPage);
-    if (action === 'resources-resolve-unknowns') return resolveUnresolvedResources(loadPage);
+    if (action === 'resolve-resource-row') return saveUnresolvedResource(Number.parseInt(target.dataset.txId || '0', 10), loadPage);
   });
 
   // Hover preview + click-to-enlarge for any row that kept the screenshot it came

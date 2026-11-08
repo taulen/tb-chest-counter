@@ -20,7 +20,9 @@ import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { mountPointsBoard } from './points-board.js';
 import { mountMemberLevels } from './member-levels.js';
-import { unresolvedResourcesSectionHtml } from './unresolved-resources.js';
+import {
+  loadUnresolvedResources, unresolvedResourcesSectionHtml, wireUnresolvedResources,
+} from './unresolved-resources.js';
 
 /**
  * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
@@ -70,6 +72,8 @@ export async function renderAdmin(el) {
     api('/admin/unknown-chests'),
     api('/admin/nav-status').catch(() => null),
   ]);
+  // Rows + resource list only when the count says there is something to resolve.
+  const unresolvedResources = await loadUnresolvedResources(navStatus?.admin?.unresolvedResourceCount);
   const sortedMembers = [...members].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
   // Edit Members lists active rows by default; the soft-deleted ones
   // hide behind a "Show removed members" toggle so the table doesn't
@@ -91,7 +95,7 @@ export async function renderAdmin(el) {
   el.innerHTML = `
     ${unknownChestsHtml}
     ${reviewQueueHtml}
-    ${unresolvedResourcesSectionHtml(navStatus?.admin?.unresolvedResourceCount)}
+    ${unresolvedResourcesSectionHtml(unresolvedResources)}
     <!-- ═══════════════════════════════════════════════════ -->
     <!-- SECTION: Member Data                                  -->
     <!-- ═══════════════════════════════════════════════════ -->
@@ -302,6 +306,8 @@ export async function renderAdmin(el) {
   if (pointsBoardEl) mountPointsBoard(pointsBoardEl, { isSuperadmin }).catch((err) => {
     if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
   });
+
+  wireUnresolvedResources(el);
 
   const memberLevelsEl = el.querySelector('#memberLevels');
   if (memberLevelsEl) mountMemberLevels(memberLevelsEl).catch((err) => {

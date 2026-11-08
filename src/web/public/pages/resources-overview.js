@@ -445,7 +445,7 @@ function resourceGridHtml(cardTypes) {
   return `
     <div class="card">
       <div class="card-header"><h2>${t('Donated by resource')}</h2><span class="card-header-hint">${t('Each in its own unit · click to chart')}</span></div>
-      <div class="card-body"><div class="resources-cards">${cards}</div></div>
+      <div class="card-body card-body-padded"><div class="resources-cards">${cards}</div></div>
     </div>`;
 }
 

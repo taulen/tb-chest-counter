@@ -41,7 +41,16 @@ Page keys: `dashboard analytics leaderboard members member might events tools tr
 
 **The scanner chrome is faked.** Dashboard-only mode has no scanner, so its `/api/status` has no next scan, state `unknown` and a "calibrate" banner — and the sidebar's next-scan countdown, which prod shows on every page, never rendered. That's how the first translation pass shipped «Следующее сканирование через 1 ч 0…» cut off by the sidebar. Every context now answers `/api/status` like a running prod scanner (idle, next scan in ~1h 00m 59s, calibrated). Pass `realStatus: true` to `newContext` for the raw response.
 
-Reading the results:
+**Padding** — run this for any change that adds or moves content inside a card:
+
+```bash
+node .claude/skills/local-ui-check/padding-check.cjs                  # every page × desk,phone (English)
+node .claude/skills/local-ui-check/padding-check.cjs resadmin,admin desk
+```
+
+It flags text (by its glyph box), controls, images and bordered boxes sitting closer than 8px (sides) or 6px (top/bottom) to the inner edge of the card, card body or panel they are in, with every `<details>` opened first. The usual cause is content placed straight into an unpadded `.card-body` — unpadded on purpose so tables run full-bleed — instead of `.card-body-padded` or a block carrying its own inset (two shipped back to back in Nov 2026; the first sweep found five more). Exempt by design: full-bleed bands (table header rows, dividers), scroll strips, ellipsis-clipped text, and the 4px-inset segmented controls (`.resources-tabs`) and Might picker. Shots of flagged pages land in `<run dir>/padding/`.
+
+Reading the layout-check results:
 - **Intentional ellipsis is reported too**: compact-row sub-lines (`.mrow-sub`), clan-chip roles — judge from the shot.
 - **Sort-header buttons** overflowing by a few px (`Gardisten`, `Могущество`) eat cell padding and look fine; anything visibly cut (the Ancient planner's narrow first column) gets a shorter translation.
 - **Collapsed content** (closed `<details>`, a compact row's expand panel) is skipped by the check but opened by `snap.cjs` — snap it to see the expanded layout.

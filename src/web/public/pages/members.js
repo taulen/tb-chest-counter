@@ -829,7 +829,7 @@ async function buildMemberResourcesCard(memberId, resourcesEnabled) {
           <h2>${t('Resources donated')}</h2>
           <span class="card-header-hint">${t('Each in its own unit · weekly trend')}</span>
         </div>
-        <div class="card-body"><div class="resources-cards">${cards}</div></div>
+        <div class="card-body card-body-padded"><div class="resources-cards">${cards}</div></div>
       </div>`;
   } catch (_) {
     return '';

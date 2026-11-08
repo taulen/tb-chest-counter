@@ -4473,11 +4473,14 @@ details > table {
   text-align: right;
 }
 
+/* Sits in the ledger's unpadded card body (the table below runs full-bleed),
+   so it carries the card's inset itself — without it the selects touched the
+   card's border. */
 .resources-filter-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 14px;
+  padding: 16px 20px;
   align-items: center;
 }
 
@@ -4511,68 +4514,111 @@ details > table {
 .resources-batches-table .col-file-count     { width: 60px; }
 .resources-batches-table .col-row-count      { width: 60px; }
 .resources-batches-table .col-error-count    { width: 60px; }
-.resources-batches-table .col-actions-narrow { width: 80px; }
+/* Room for the Delete button plus the cell's 16px sides, in French too
+   ("Supprimer"); at 80px the button ran into the cell's padding and sat 5px
+   off the card's edge. */
+.resources-batches-table .col-actions-narrow { width: 120px; }
 
-/* ─── Post-import "resolve unknowns" modal ─────────────────────────────────── */
-
-/* Wider variant of the shared .modal-card for the inline-editable table. */
+/* Wider variant of the shared .modal-card (contentModal's `wide`). */
 .modal-card-wide {
   max-width: 920px;
 }
 
-.unknown-modal-hint {
-  margin-bottom: 14px;
+/* ─── Admin → Unresolved Resources (pages/unresolved-resources.js) ──────────
+   One row per unread icon: the crop of the original game row on the left —
+   the icon at its right end is the answer — and the picker beside it. */
+.unres-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
+.unres-row {
+  display: grid;
+  grid-template-columns: minmax(0, 560px) minmax(260px, 1fr);
+  gap: 20px;
+  align-items: center;
+  padding: 16px 20px;
+}
+.unres-row + .unres-row { border-top: 1px solid var(--border); }
 
-/* The row table scrolls inside the card so a big batch of unknowns never
-   pushes the action buttons off-screen; the sticky <th> stays visible. */
-.unknown-modal-scroll {
-  max-height: 60vh;
-  overflow: auto;
+.unres-crop {
+  display: block;
+  width: 100%;
+  padding: 0;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  margin-bottom: 16px;
+  background: var(--bg-input);
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color 0.15s;
+}
+.unres-crop img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Keeps the row's height while the lazy image loads (crops are ~1000×73). */
+  aspect-ratio: 1000 / 73;
+}
+.unres-crop:hover { border-color: var(--accent-gold-border); }
+.unres-crop:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.unres-crop.is-empty {
+  cursor: default;
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
-.unknown-modal-table {
-  min-width: 660px;
+.unres-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 }
-
-/* Just the hover glyph — keep it from stealing width from the editable fields. */
-.unknown-modal-table .col-crop {
-  width: 34px;
-  text-align: center;
+.unres-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 0.875rem;
 }
-
-.unknown-modal-table th,
-.unknown-modal-table td {
-  padding: 7px 10px;
-  vertical-align: middle;
-}
-
-.unknown-modal-table select[data-field="resource"] {
-  min-width: 140px;
-}
-
-.unknown-modal-table input[data-field="amount"] {
-  max-width: 90px;
-}
-
-.unknown-modal-table tr.is-resolved {
-  opacity: 0.55;
-}
-
-.unknown-modal-table .col-tx-actions {
-  white-space: nowrap;
-}
-
-.unknown-row-status {
-  margin-left: 8px;
-  font-size: 0.78rem;
+.unres-name {
   font-weight: 600;
+  color: var(--text-primary);
 }
-.unknown-row-status.is-ok    { color: var(--accent-green); }
-.unknown-row-status.is-error { color: var(--accent-red); }
+.unres-amount {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.unres-date {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.unres-actions {
+  display: flex;
+  gap: 8px;
+}
+.unres-actions .input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 280px;
+}
+.unres-actions .btn { flex-shrink: 0; }
+
+.unres-more {
+  margin: 0;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 760px) {
+  .unres-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 14px;
+  }
+  .unres-actions .input { max-width: none; }
+  .unres-more { padding: 12px 14px 14px; }
+}
 
 .resource-direction {
   display: inline-block;
@@ -4645,6 +4691,7 @@ details > table {
 }
 
 @media (max-width: 700px) {
+  .resources-filter-bar { padding: 12px 14px; }
   .resources-filter-bar .input {
     max-width: 100%;
   }
@@ -4737,6 +4784,8 @@ details > table {
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  /* The bar is the card's only content; .card-body is unpadded (for tables). */
+  padding: 14px 20px;
 }
 .resources-scope-select { max-width: 260px; }
 .resources-range-group,
@@ -5336,6 +5385,8 @@ details > table {
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  /* The bar is the card's only content; .card-body is unpadded (for tables). */
+  padding: 14px 20px;
 }
 /* Fixed label width so the arrows don't jump as the label text changes
    length between timeframes (same treatment as the resources totals nav). */
@@ -5363,7 +5414,8 @@ details > table {
 }
 
 @media (max-width: 640px) {
-  .analytics-controls-body { gap: 8px; }
+  .analytics-controls-body,
+  .resources-controls-body { gap: 8px; padding: 12px 14px; }
   /* Let the label shrink rather than push the arrows off the row. */
   .analytics-nav .period-nav-label { min-width: 0; flex: 1 1 auto; }
   .analytics-nav { width: 100%; }
@@ -5409,6 +5461,8 @@ details > table {
   margin: 0;
   font-size: 13px;
 }
+/* First thing in an unpadded body, it sat 1px under the header's line. */
+.card-body > .card-note:first-child { padding-top: 12px; }
 .attention-table .muted-num { color: var(--text-muted); }
 
 /* Member profile timeframe control. Sits above the stat cards, which it
