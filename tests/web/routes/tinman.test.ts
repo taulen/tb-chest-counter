@@ -80,6 +80,14 @@ describe('/api/tinman', () => {
     expect(get.body.date).toBe(DATE);
   });
 
+  it('reads a run whose day is still ahead as empty, so Events opens it on Participants', async () => {
+    // A live Ancients run files its scores under its Tinman day, still ahead.
+    const get = await send('get', '/api/tinman?date=2026-10-29', 'user1');
+    expect(get.status).toBe(200);
+    expect(get.body).toMatchObject({ date: '2026-10-29', summons: [], players: [] });
+    expect((await send('get', '/api/tinman?date=2026-13-01', 'user1')).status).toBe(400);
+  });
+
   it('refuses writes to a plain member', async () => {
     expect((await send('put', `/api/tinman/${DATE}/summons/1`, 'user1', { text: PASTE })).status).toBe(403);
     expect((await send('put', `/api/tinman/${DATE}/assign`, 'user1', { rawName: 'Stranger', memberId: null })).status).toBe(403);

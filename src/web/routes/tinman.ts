@@ -24,12 +24,18 @@ import { currentGameDate, daysBetweenGameDates, isTinmanDay, ANCIENTS_CYCLE_DAYS
 
 const MAX_TEXT_LENGTH = 200_000;
 
-function validDate(raw: unknown, today: string): string | null {
+/** A real YYYY-MM-DD day, or null. */
+function parseDate(raw: unknown): string | null {
   if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
   const ms = Date.parse(`${raw}T00:00:00Z`);
   if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== raw) return null;
-  if (raw > today) return null;
   return raw;
+}
+
+/** A day that can be written to: a past or the current game day. */
+function validDate(raw: unknown, today: string): string | null {
+  const date = parseDate(raw);
+  return date && date <= today ? date : null;
 }
 
 /** 1–max exactly, or null. Strict on purpose: clamping would file a "summon 9" paste under 8. */
@@ -59,15 +65,20 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
    * Standings for one run (`?date=` its day; default: the newest). The per-day
    * events have no cadence to fall back on, so their default is the newest
    * pasted run.
+   *
+   * A future day reads as a run with nothing pasted yet, not an error: a live
+   * Ancients run files its scores under its last (Tinman) day, which is still
+   * ahead until that day, and the Events page opens on Participants only when
+   * this read says the run is empty. Writes keep the past-or-today rule.
    */
   router.get('/', (req, res) => {
     const clanId = req.clanId!;
     const t = today();
     const date = req.query.date !== undefined
-      ? validDate(req.query.date, t)
+      ? parseDate(req.query.date)
       : ancients ? latestTinmanDay(t) : tinmanRepo.listTinmanDates(clanId, 1, eventKey)[0] ?? t;
     if (!date) {
-      res.status(400).json({ error: 'date must be a past or current game day, YYYY-MM-DD' });
+      res.status(400).json({ error: 'date must be a game day, YYYY-MM-DD' });
       return;
     }
     // Each matched player's estimated guards level, so the page can hold their
