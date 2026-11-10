@@ -506,10 +506,32 @@ function restoreClanFromBackup(sourcePath, sourceClanId, options = {}) {
             // that table becomes the restored clan's.
             const backupPointsPerClan = db.prepare(`PRAGMA ${SRC}.table_info(source_point_overrides)`)
                 .all().some((c) => c.name === 'clan_id');
-            record('source_point_overrides', db.prepare(`INSERT OR IGNORE INTO main.source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
-         SELECT ${targetId}, s.source_key, s.chest_name, s.point_value, s.updated_at
-           FROM ${SRC}.source_point_overrides s
-          WHERE ${backupPointsPerClan ? `s.clan_id = ${sourceClanId}` : '1'}`).run().changes);
+            // Since v99 the values have a history: dated rows belong to a step in
+            // source_point_changes, so the steps come first, at fresh ids. An older
+            // backup has neither, and its rows become all-history values.
+            const backupHasHistory = db.prepare(`PRAGMA ${SRC}.table_info(source_point_changes)`).all().length > 0;
+            const offChange = maxId(db, 'source_point_changes');
+            if (backupHasHistory) {
+                record('source_point_changes', copyTable(db, {
+                    table: 'source_point_changes',
+                    where: `s.clan_id = ${sourceClanId}`,
+                    map: { id: `s.id + ${offChange}`, clan_id: String(targetId) },
+                }));
+            }
+            record('source_point_overrides', backupPointsPerClan
+                ? copyTable(db, {
+                    table: 'source_point_overrides',
+                    where: `s.clan_id = ${sourceClanId}`,
+                    drop: ['id'],
+                    map: {
+                        clan_id: String(targetId),
+                        change_id: `CASE WHEN s.change_id IS NULL THEN NULL ELSE s.change_id + ${offChange} END`,
+                    },
+                    orIgnore: true,
+                })
+                : db.prepare(`INSERT OR IGNORE INTO main.source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+           SELECT ${targetId}, s.source_key, s.chest_name, s.point_value, s.updated_at
+             FROM ${SRC}.source_point_overrides s`).run().changes);
             record('review_acknowledgments', copyTable(db, {
                 table: 'review_acknowledgments',
                 where: `s.clan_id = ${sourceClanId}`,

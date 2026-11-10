@@ -693,6 +693,8 @@ const CLAN_VISIBLE_GLOBAL_ACTIONS = [
   'set_source_points',
   'delete_source_points',
   'recalculate_source_points',
+  'edit_source_points_change',
+  'remove_source_points_change',
   'set_triumphal_points',
   'delete_triumphal_points',
 ] as const;

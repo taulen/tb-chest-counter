@@ -2334,10 +2334,13 @@ function createApiRouter(scanLoop) {
         }
         return clanId;
     }
-    // POST /api/admin/source-points/changes { clanId, changes: [{ sourceKey, chestName, points }], dryRun? }
-    // chestName '' is the source's own value. With dryRun the save is only
-    // planned — the response says what it would change and by how much, so the
+    // POST /api/admin/source-points/changes { clanId, changes: [{ sourceKey, chestName, points }], mode, note?, dryRun? }
+    // chestName '' is the source's own value. `mode` is 'forward' (from today's
+    // game day on — earlier chests keep their points) or 'history' (every
+    // recorded chest is rescored). With dryRun the save is only planned, both
+    // ways — the response says what each would change and by how much, so the
     // page can show it before anyone commits. Active clan only; superadmin-only.
+    // See docs/chest-points-history.md.
     router.post('/admin/source-points/changes', auth_js_1.requireSuperAdmin, (req, res) => {
         const changes = req.body?.changes;
         if (!Array.isArray(changes) || changes.length === 0) {
@@ -2349,9 +2352,15 @@ function createApiRouter(scanLoop) {
         try {
             if (req.body?.dryRun)
                 return res.json(pointsBoard.previewPointChanges(clanId, changes));
-            const result = pointsBoard.applyPointChanges(clanId, changes);
+            const mode = req.body?.mode;
+            if (!pointsBoard.isSaveMode(mode)) {
+                return res.status(400).json({ error: "mode must be 'forward' or 'history'" });
+            }
+            const result = pointsBoard.applyPointChanges(clanId, changes, { mode, note: req.body?.note, user: req.user.username });
             (0, user_repo_js_1.logAction)(req.user.id, 'set_source_points', {
                 clanId,
+                mode,
+                effectiveFrom: result.effectiveFrom || 'all history',
                 edits: result.edits.map((e) => ({ sourceKey: e.key, chestName: e.chestName, from: e.from, to: e.to })),
                 updated: result.updated,
             });
@@ -2393,9 +2402,83 @@ function createApiRouter(scanLoop) {
         try {
             if (req.body?.dryRun)
                 return res.json(pointsBoard.previewCopyFrom(clanId, fromClanId));
-            const result = pointsBoard.applyCopyFrom(clanId, fromClanId);
+            const result = pointsBoard.applyCopyFrom(clanId, fromClanId, { user: req.user.username });
             (0, user_repo_js_1.logAction)(req.user.id, 'copy_source_points', {
                 clanId, fromClanId, values: result.values, updated: result.updated, delta: result.impact.delta,
+            });
+            res.json({ ok: true, ...result });
+        }
+        catch (err) {
+            if (err instanceof pointsBoard.PointsChangeError)
+                return res.status(400).json({ error: err.message });
+            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+        }
+    });
+    // GET /api/admin/source-points/history — the active clan's chest point
+    // history: dated changes (each with what it changes against the day before)
+    // and the log of corrections to all history and copies. Any admin may read.
+    router.get('/admin/source-points/history', auth_js_1.requireAdmin, (req, res) => {
+        res.json(pointsBoard.getPointsHistory(req.clanId ?? 1));
+    });
+    /** A dated change's id from the URL, or null after answering 400. */
+    function stepId(req, res) {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            res.status(400).json({ error: 'Bad change id' });
+            return null;
+        }
+        return id;
+    }
+    // POST /api/admin/source-points/history/:id { clanId, effectiveFrom, changes, note?, dryRun? }
+    // Move a dated change to another game day and/or change the values it sets.
+    // Previewed like a save; then the records of its sources are recalculated.
+    router.post('/admin/source-points/history/:id', auth_js_1.requireSuperAdmin, (req, res) => {
+        const clanId = pointsWriteClan(req, res);
+        if (clanId === null)
+            return;
+        const id = stepId(req, res);
+        if (id === null)
+            return;
+        const edit = {
+            effectiveFrom: String(req.body?.effectiveFrom ?? ''),
+            changes: Array.isArray(req.body?.changes) ? req.body.changes : [],
+            note: req.body?.note,
+        };
+        try {
+            if (req.body?.dryRun)
+                return res.json(pointsBoard.previewStepEdit(clanId, id, edit));
+            const result = pointsBoard.applyStepEdit(clanId, id, edit, { user: req.user.username });
+            (0, user_repo_js_1.logAction)(req.user.id, 'edit_source_points_change', {
+                clanId,
+                changeId: id,
+                effectiveFrom: result.effectiveFrom,
+                removed: result.removes,
+                edits: result.edits.map((e) => ({ sourceKey: e.key, chestName: e.chestName, from: e.from, to: e.to })),
+                updated: result.updated,
+            });
+            res.json({ ok: true, ...result });
+        }
+        catch (err) {
+            if (err instanceof pointsBoard.PointsChangeError)
+                return res.status(400).json({ error: err.message });
+            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+        }
+    });
+    // POST /api/admin/source-points/history/:id/remove { clanId, dryRun? }
+    // Remove a dated change: its days go back to the values in force before it.
+    router.post('/admin/source-points/history/:id/remove', auth_js_1.requireSuperAdmin, (req, res) => {
+        const clanId = pointsWriteClan(req, res);
+        if (clanId === null)
+            return;
+        const id = stepId(req, res);
+        if (id === null)
+            return;
+        try {
+            if (req.body?.dryRun)
+                return res.json(pointsBoard.previewStepRemove(clanId, id));
+            const result = pointsBoard.applyStepRemove(clanId, id, { user: req.user.username });
+            (0, user_repo_js_1.logAction)(req.user.id, 'remove_source_points_change', {
+                clanId, changeId: id, effectiveFrom: result.effectiveFrom, updated: result.updated, delta: result.impact.delta,
             });
             res.json({ ok: true, ...result });
         }

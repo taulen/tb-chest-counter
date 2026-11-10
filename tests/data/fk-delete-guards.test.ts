@@ -87,6 +87,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'resource_upload_batches.clan_id',
     'review_acknowledgments.clan_id',
     'share_links.clan_id',
+    // deleteClan clears the values first: they point at these dated steps.
+    'source_point_changes.clan_id',
     'source_point_overrides.clan_id',
     'tinman_scores.clan_id',
     'tinman_targets.clan_id',
@@ -253,6 +255,15 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
      VALUES (?, 'arena', '', 10, ?)`,
   ).run(clanId, now);
+  // A dated change (v99): the step, and a value that belongs to it.
+  const step = db.prepare(
+    `INSERT INTO source_point_changes (clan_id, kind, effective_from, created_at)
+     VALUES (?, 'step', '2026-11-01', ?) RETURNING id`,
+  ).get(clanId, now) as { id: number };
+  db.prepare(
+    `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, effective_from, change_id, updated_at)
+     VALUES (?, 'arena', '', 0, '2026-11-01', ?, ?)`,
+  ).run(clanId, step.id, now);
   db.prepare(
     `INSERT INTO user_sessions (user_id, token, expires_at, created_at, active_clan_id)
      VALUES (2, 'guard-session', ?, ?, ?)`,

@@ -40,6 +40,7 @@
 - Resource-history capture (cursor, open game day, date-floor backstop, adding a resource type): [docs/resource-capture.md](docs/resource-capture.md)
 - Guards levels and Gold Pass (inferred, never stored): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)
 - Chest identity and name-keyed config (renames): [docs/chest-identity.md](docs/chest-identity.md)
+- Chest point values have a history (v99): a save applies "from today on" or to all history; records score the values of the day they were earned; dated changes only write what they change. Read before touching points, scans' point lookup or Recalculate: [docs/chest-points-history.md](docs/chest-points-history.md)
 - Browsers (scanner, GPU, profile locks): [docs/browsers.md](docs/browsers.md); login bridge: [docs/login-bridge.md](docs/login-bridge.md)
 - Wedged-browser liveness bounds: [docs/wedged-browser-liveness.md](docs/wedged-browser-liveness.md)
 - Multi-clan accounts (per-clan roles, the switcher, guest visibility): [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md)

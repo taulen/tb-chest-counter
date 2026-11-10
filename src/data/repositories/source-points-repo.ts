@@ -2,7 +2,13 @@ import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import { getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, isKnownSourceKey, canonicalSourceKey } from '../../vision/source-names.js';
+import { loadConfig } from '../../config/index.js';
+import { currentGameDate } from '../../utils/game-day.js';
 import { notifyChestDataChanged } from './chest-summary-repo.js';
+import {
+  buildSchedule, changedRuns, makeCacheKey, pointsAt, valueRuns, valuesOn,
+  type PointEntry, type PointSchedule,
+} from '../point-timeline.js';
 
 const log = childLogger('source-points-repo');
 
@@ -10,6 +16,10 @@ const log = childLogger('source-points-repo');
 // its own override table, and a clan with no override for a chest scores the
 // built-in default. They were one global table from v43 to v85; v86 copied
 // that table to every clan, so the clans started out identical.
+//
+// Since v99 a value applies FROM a game day (point-timeline.ts): the table
+// holds each key's timeline, and a record scores the values of the day it was
+// earned. "Current values" below means the ones in force today.
 const SOURCE_KEY_SUMMARY_CACHE_KEY = 'sourceKeySummary';
 
 // The source-points summary is an expensive aggregate read by the leaderboard
@@ -73,18 +83,7 @@ export interface SourceChestRowSummary {
   isWildcard: boolean;
 }
 
-/**
- * Build a cache-map key for (source_key, chest_name). Using a tab separator
- * keeps the composite unambiguous without colliding with either column's
- * value space (source keys and chest names never contain tabs).
- */
-export function makeCacheKey(sourceKey: string, chestName: string): string {
-  // Canonicalize the source part (space-insensitive) so overrides match
-  // regardless of whether the source was OCR'd with spaces (Tesseract /
-  // historical) or without (PaddleOCR). The chest name is already canonical
-  // via correctChestName, so it's compared verbatim. See canonicalSourceKey.
-  return `${canonicalSourceKey(sourceKey)}\t${chestName}`;
-}
+export { makeCacheKey, resolvePointsForKey, type OverrideWrite } from '../point-timeline.js';
 
 /**
  * Sort chest rows: wildcard pinned first, then alphabetical by chest name.
@@ -246,169 +245,254 @@ function computeSourceKeySummary(clanId: number): SourceKeySummary[] {
   return summary;
 }
 
-export function getAllOverrides(clanId: number): SourcePointOverride[] {
-  const db = getDb();
-  const rows = db.prepare(
-    'SELECT id, source_key, chest_name, point_value, updated_at FROM source_point_overrides WHERE clan_id = ? ORDER BY source_key, chest_name',
-  ).all(clanId) as {
-    id: number;
-    source_key: string;
-    chest_name: string;
-    point_value: number;
-    updated_at: string;
+/** Today's game day (YYYY-MM-DD) — the day a "from today on" save applies from. */
+export function todayGameDay(): string {
+  return currentGameDate(loadConfig().gameDayRolloverUtcHour);
+}
+
+/** Every value row of the clan — its whole timeline, oldest first. */
+export function loadPointEntries(clanId: number): PointEntry[] {
+  const rows = getDb().prepare(`
+    SELECT source_key, chest_name, point_value, effective_from, change_id, updated_at
+      FROM source_point_overrides WHERE clan_id = ?
+     ORDER BY effective_from, source_key, chest_name
+  `).all(clanId) as {
+    source_key: string; chest_name: string; point_value: number | null;
+    effective_from: string; change_id: number | null; updated_at: string;
   }[];
   return rows.map((r) => ({
-    id: r.id,
     sourceKey: r.source_key,
     chestName: r.chest_name,
-    pointValue: r.point_value,
+    from: r.effective_from,
+    value: r.point_value,
+    changeId: r.change_id,
     updatedAt: r.updated_at,
   }));
 }
 
+/** The clan's values as a step function of time. */
+export function loadPointSchedule(clanId: number): PointSchedule {
+  return buildSchedule(loadPointEntries(clanId), loadConfig().gameDayRolloverUtcHour);
+}
+
+/** The values in force today, one row per key that has one. */
+export function getAllOverrides(clanId: number): SourcePointOverride[] {
+  const entries = loadPointEntries(clanId);
+  const today = valuesOn(entries, todayGameDay());
+  const latest = new Map<string, PointEntry>();
+  for (const e of entries) {
+    const k = makeCacheKey(e.sourceKey, e.chestName);
+    if (!today.has(k)) continue;
+    const cur = latest.get(k);
+    if (!cur || e.from > cur.from) latest.set(k, e);
+  }
+  return [...latest.values()]
+    .sort((a, b) => a.sourceKey.localeCompare(b.sourceKey) || a.chestName.localeCompare(b.chestName))
+    .map((e, i) => ({
+      id: i + 1,
+      sourceKey: e.sourceKey,
+      chestName: e.chestName,
+      pointValue: e.value as number,
+      updatedAt: e.updatedAt,
+    }));
+}
+
 /**
- * Load one clan's overrides into an in-memory map keyed on makeCacheKey(source,
- * chest_name). Called once per scan and passed to getPointsForSourceCached()
- * in the hot loop.
+ * The clan's values in force today, keyed on makeCacheKey(source, chest_name)
+ * — what the board shows and what a save is planned against.
  */
 export function loadOverrides(clanId: number): Map<string, number> {
-  const db = getDb();
-  const rows = db.prepare(
-    'SELECT source_key, chest_name, point_value FROM source_point_overrides WHERE clan_id = ?',
-  ).all(clanId) as { source_key: string; chest_name: string; point_value: number }[];
-  const map = new Map<string, number>();
-  for (const row of rows) {
-    map.set(makeCacheKey(row.source_key, row.chest_name), row.point_value);
-  }
-  return map;
+  return valuesOn(loadPointEntries(clanId), todayGameDay());
 }
 
 /**
- * Hot-path point lookup. Tries the exact (source_key, chest_name) override
- * first, then the wildcard (source_key, '') override, then the hardcoded
- * default — which is itself per-chest where the source pays its chests
- * different rates (SOURCE_CHEST_POINTS). Safe to call for every chest inserted
- * during a scan.
+ * Hot-path point lookup for a scan: the values of the game day the chest was
+ * earned on (`earnedAtMs`, i.e. what becomes `effective_at`), then exact
+ * override → wildcard → default. Load the schedule once per scan.
  */
-export function getPointsForSourceCached(
-  overrides: Map<string, number>,
+export function getPointsForSourceAt(
+  schedule: PointSchedule,
   source: string,
   chestName: string,
+  earnedAtMs: number,
 ): number {
-  const key = getSourceKey(source);
-  if (!key) return 0;
-  return resolvePointsForKey(overrides, key, chestName);
+  return pointsAt(schedule, source, chestName, earnedAtMs);
 }
 
 /**
- * The lookup stack for an already-derived source key: exact override, then the
- * source's wildcard override, then the seeded default. The one place the order
- * is written down — scans, recalculation and the admin board's previews all
- * resolve through it, so a preview can never disagree with what a save does.
+ * Replace the clan's whole timeline with `entries`, then delete any dated step
+ * no entry belongs to any more. Call inside the caller's transaction when
+ * steps are written alongside. Records are NOT touched here; the caller
+ * recalculates afterwards.
  */
-export function resolvePointsForKey(
-  overrides: Map<string, number>,
-  key: string,
-  chestName: string,
-): number {
-  const exact = overrides.get(makeCacheKey(key, chestName));
-  if (exact !== undefined) return exact;
-  const wildcard = overrides.get(makeCacheKey(key, ''));
-  if (wildcard !== undefined) return wildcard;
-  return getDefaultPointsFor(key, chestName);
-}
-
-
-/** One override row to write: `points: null` removes it. `chestName: ''` is the wildcard. */
-export interface OverrideWrite {
-  sourceKey: string;
-  chestName: string;
-  points: number | null;
-}
-
-/**
- * Apply a batch of one clan's override writes in one transaction. Each write
- * first clears every row for the same (canonical source key, chest name) — a
- * source OCR'd with and without spaces can hold one row per spelling, and the
- * lookup map keys on the canonical form, so leaving a second spelling behind
- * would let it win or lose at random. Records are NOT touched here; the caller
- * recalculates the affected sources afterwards (see points-board.ts
- * applyPointChanges).
- */
-export function writeOverrides(clanId: number, writes: OverrideWrite[]): void {
-  if (writes.length === 0) return;
+export function savePointEntries(clanId: number, entries: readonly PointEntry[]): void {
   const db = getDb();
-  const now = new Date().toISOString();
-  const existing = db.prepare(
-    'SELECT id, source_key, chest_name FROM source_point_overrides WHERE clan_id = ?',
-  ).all(clanId) as { id: number; source_key: string; chest_name: string }[];
-  const del = db.prepare('DELETE FROM source_point_overrides WHERE id = ?');
-  const ins = db.prepare(
-    'INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at) VALUES (?, ?, ?, ?, ?)',
-  );
+  const ins = db.prepare(`
+    INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, effective_from, change_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
   db.transaction(() => {
-    for (const w of writes) {
-      const canon = canonicalSourceKey(w.sourceKey);
-      for (const row of existing) {
-        if (row.chest_name === w.chestName && canonicalSourceKey(row.source_key) === canon) del.run(row.id);
-      }
-      if (w.points !== null) ins.run(clanId, w.sourceKey, w.chestName, w.points, now);
+    db.prepare('DELETE FROM source_point_overrides WHERE clan_id = ?').run(clanId);
+    for (const e of entries) {
+      ins.run(clanId, e.sourceKey, e.chestName, e.value, e.from, e.from === '' ? null : e.changeId, e.updatedAt);
     }
+    db.prepare(`
+      DELETE FROM source_point_changes
+       WHERE clan_id = ? AND kind = 'step'
+         AND NOT EXISTS (SELECT 1 FROM source_point_overrides o WHERE o.change_id = source_point_changes.id)
+    `).run(clanId);
   })();
-  const set = writes.filter((w) => w.points !== null).length;
-  log.info(`Source points (clan ${clanId}): wrote ${set} value(s), cleared ${writes.length - set}`);
   invalidateSourceKeySummary();
 }
 
+// ─── The History view's rows (source_point_changes) ───
+
+export type PointChangeKind = 'step' | 'correction' | 'copy';
+
+/** One row of a change's stored lines — the board's own terms. */
+export interface StoredLine {
+  key: string;
+  label: string;
+  chestName: string;
+  from: number;
+  to: number;
+}
+
+export interface PointChangeRow {
+  id: number;
+  kind: PointChangeKind;
+  /** A step's game day; '' for corrections and copies (all history). */
+  effectiveFrom: string;
+  /** Corrections and copies only: what they changed, as shown when saved.
+   *  A step's lines are worked out from the timeline instead. */
+  lines: StoredLine[];
+  note: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+interface ChangeDbRow {
+  id: number; kind: PointChangeKind; effective_from: string; lines: string; note: string;
+  created_at: string; created_by: string; updated_at: string | null; updated_by: string | null;
+}
+
+function toChangeRow(r: ChangeDbRow): PointChangeRow {
+  let lines: StoredLine[] = [];
+  try {
+    const parsed = JSON.parse(r.lines) as unknown;
+    if (Array.isArray(parsed)) lines = parsed as StoredLine[];
+  } catch { /* a malformed log row shows no lines */ }
+  return {
+    id: r.id,
+    kind: r.kind,
+    effectiveFrom: r.effective_from,
+    lines,
+    note: r.note,
+    createdAt: r.created_at,
+    createdBy: r.created_by,
+    updatedAt: r.updated_at,
+    updatedBy: r.updated_by,
+  };
+}
+
+/** The clan's history rows: dated steps newest day first, then the log newest first. */
+export function listPointChanges(clanId: number): PointChangeRow[] {
+  const rows = getDb().prepare(`
+    SELECT * FROM source_point_changes WHERE clan_id = ?
+     ORDER BY kind = 'step' DESC, effective_from DESC, created_at DESC, id DESC
+  `).all(clanId) as ChangeDbRow[];
+  return rows.map(toChangeRow);
+}
+
+export function getPointChange(clanId: number, id: number): PointChangeRow | null {
+  const row = getDb().prepare('SELECT * FROM source_point_changes WHERE clan_id = ? AND id = ?').get(clanId, id) as ChangeDbRow | undefined;
+  return row ? toChangeRow(row) : null;
+}
+
 /**
- * Replace every override of `toClanId` with a copy of `fromClanId`'s, in one
- * transaction — "this clan pays exactly what that one does". A value the
- * target set that the source doesn't have is removed, so it falls back to the
- * built-in default just as it does in the source clan. Records are NOT touched
- * here; the caller recalculates the target afterwards.
+ * The step for `day`, created if the clan has none yet. A second save on the
+ * same day joins the first: the note is replaced only when a new one is given.
  */
-export function copyOverrides(fromClanId: number, toClanId: number): { copied: number; removed: number } {
+export function upsertStep(clanId: number, day: string, user: string, note: string, now: string): number {
   const db = getDb();
-  const now = new Date().toISOString();
-  let copied = 0;
-  let removed = 0;
-  db.transaction(() => {
-    removed = db.prepare('DELETE FROM source_point_overrides WHERE clan_id = ?').run(toClanId).changes;
-    copied = db.prepare(
-      `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
-       SELECT ?, source_key, chest_name, point_value, ? FROM source_point_overrides WHERE clan_id = ?`,
-    ).run(toClanId, now, fromClanId).changes;
-  })();
-  log.info(`Source points: copied ${copied} value(s) from clan ${fromClanId} to clan ${toClanId} (replacing ${removed})`);
-  invalidateSourceKeySummary();
-  return { copied, removed };
+  const existing = db.prepare(
+    "SELECT id FROM source_point_changes WHERE clan_id = ? AND kind = 'step' AND effective_from = ?",
+  ).get(clanId, day) as { id: number } | undefined;
+  if (existing) {
+    db.prepare(`
+      UPDATE source_point_changes
+         SET updated_at = ?, updated_by = ?, note = CASE WHEN ? != '' THEN ? ELSE note END
+       WHERE id = ?
+    `).run(now, user, note, note, existing.id);
+    return existing.id;
+  }
+  return (db.prepare(`
+    INSERT INTO source_point_changes (clan_id, kind, effective_from, note, created_at, created_by)
+    VALUES (?, 'step', ?, ?, ?, ?) RETURNING id
+  `).get(clanId, day, note, now, user) as { id: number }).id;
+}
+
+/** Move a step to another day and/or change its note. */
+export function updateStep(id: number, day: string, note: string, user: string, now: string): void {
+  getDb().prepare(
+    'UPDATE source_point_changes SET effective_from = ?, note = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+  ).run(day, note, now, user, id);
+}
+
+/** Log a correction to all history, or a copy, with the lines it changed. */
+export function insertPointLog(
+  clanId: number, kind: 'correction' | 'copy', lines: StoredLine[], note: string, user: string, now: string,
+): number {
+  return (getDb().prepare(`
+    INSERT INTO source_point_changes (clan_id, kind, effective_from, lines, note, created_at, created_by)
+    VALUES (?, ?, '', ?, ?, ?, ?) RETURNING id
+  `).get(clanId, kind, JSON.stringify(lines), note, now, user) as { id: number }).id;
 }
 
 /**
- * Recalculate one clan's chest_records.point_value from its current override +
- * default stack. Another clan's records are never touched: its values are its
- * own.
+ * Recalculate one clan's chest_records.point_value from its timeline: each
+ * record gets the value in force on the game day it was earned. Another clan's
+ * records are never touched: its values are its own.
  *
  * `onlyCanonKeys` limits the pass to sources whose canonical key is in the
  * set — what a save uses, so it rewrites exactly the sources it changed.
  * Returns the number of rows whose value actually changed.
  */
 export function recalculatePoints(clanId: number, onlyCanonKeys?: ReadonlySet<string>): number {
-  const updated = recalculatePointsForClan(clanId, loadOverrides(clanId), onlyCanonKeys);
+  const schedule = loadPointSchedule(clanId);
+  const updated = rewriteRecords(clanId, (key, chest) => valueRuns(schedule, key, chest), onlyCanonKeys);
   log.info(`Recalculated point values for clan ${clanId}: ${updated} rows updated`);
   invalidateSourceKeySummary();
   return updated;
 }
 
 /**
- * Recalculate one clan's chest_records.point_value using the given override
- * map. Groups by (source_key, chest_name) so every chest name gets its
- * effective value applied in one UPDATE. Notifies the daily-summary rollup
- * when the clan's rows actually changed.
+ * Carry a dated change into the stored records: a record whose value under
+ * the timeline `next` differs from its value under `prev` gets the `next`
+ * one, and nothing else is touched — not even a record that was already out
+ * of line before, which only Recalculate (or a correction to all history)
+ * rewrites. That is what keeps a dated change off the days it doesn't cover.
  */
-function recalculatePointsForClan(
+export function applyTimelineChange(
+  clanId: number, prev: PointSchedule, next: PointSchedule, onlyCanonKeys?: ReadonlySet<string>,
+): number {
+  const updated = rewriteRecords(clanId, (key, chest) => changedRuns(prev, next, key, chest), onlyCanonKeys);
+  log.info(`Applied a dated points change for clan ${clanId}: ${updated} rows updated`);
+  invalidateSourceKeySummary();
+  return updated;
+}
+
+/**
+ * Rewrite one clan's chest_records.point_value. Groups by (source_key,
+ * chest_name), and `runsFor` says which stretches of time to write and with
+ * what value — one UPDATE each, a single one for a pair no dated change
+ * touches. Notifies the daily-summary rollup when rows actually changed.
+ */
+function rewriteRecords(
   clanId: number,
-  overrideMap: Map<string, number>,
+  runsFor: (key: string, chestName: string) => { from: number; to: number; value: number }[],
   onlyCanonKeys?: ReadonlySet<string>,
 ): number {
   const db = getDb();
@@ -437,28 +521,34 @@ function recalculatePointsForClan(
   let totalUpdated = 0;
   const tx = db.transaction(() => {
     for (const group of groups.values()) {
-      const value = resolvePointsForKey(overrideMap, group.sourceKey, group.chestName);
-
       // Resolve string source/name values to their FK ids and UPDATE on
       // those — the chest_source / chest_name columns no longer exist on
       // chest_records post-D3 (they live in the chest_sources / chests
       // reference tables now). `point_value != ?` keeps the count honest:
       // SQLite counts a row rewritten to the value it already held.
       const placeholders = group.sources.map(() => '?').join(', ');
-      const result = db.prepare(`
-        UPDATE chest_records
-           SET point_value = ?
-         WHERE clan_id = ?
-           AND chest_source_id IN (
-             SELECT id FROM chest_sources WHERE source IN (${placeholders})
-           )
-           AND chest_id = (SELECT id FROM chests WHERE name = ?)
-           AND point_value != ?
-      `).run(value, clanId, ...group.sources, group.chestName, value);
-      totalUpdated += result.changes;
+      for (const run of runsFor(group.sourceKey, group.chestName)) {
+        const range: string[] = [];
+        const rangeArgs: number[] = [];
+        if (run.from > 0) { range.push('AND effective_at >= ?'); rangeArgs.push(run.from); }
+        if (Number.isFinite(run.to)) { range.push('AND effective_at < ?'); rangeArgs.push(run.to); }
+        const result = db.prepare(`
+          UPDATE chest_records
+             SET point_value = ?
+           WHERE clan_id = ?
+             AND chest_source_id IN (
+               SELECT id FROM chest_sources WHERE source IN (${placeholders})
+             )
+             AND chest_id = (SELECT id FROM chests WHERE name = ?)
+             AND point_value != ?
+             ${range.join(' ')}
+        `).run(run.value, clanId, ...group.sources, group.chestName, run.value, ...rangeArgs);
+        totalUpdated += result.changes;
+      }
     }
   });
   tx();
   if (totalUpdated > 0) notifyChestDataChanged(clanId);
   return totalUpdated;
 }
+

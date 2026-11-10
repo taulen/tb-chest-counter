@@ -32,7 +32,7 @@ import * as triumphalPointsRepo from '../data/repositories/triumphal-points-repo
 import * as memberRepo from '../data/repositories/member-repo.js';
 import * as clanRepo from '../data/repositories/clan-repo.js';
 import { applyMergeRulesCached, loadMergeRules } from '../data/repositories/merge-repo.js';
-import { loadOverrides as loadSourcePointOverrides, getPointsForSourceCached } from '../data/repositories/source-points-repo.js';
+import { loadPointSchedule, getPointsForSourceAt } from '../data/repositories/source-points-repo.js';
 import { correctChestName, correctTriumphalChestName, getChestRarity, isKnownChestName } from '../vision/chest-names.js';
 import {
   cleanPlayerName, matchKnownPlayer, isLikelyNonLatinName, playerReadingKey, REPEATED_READING_MIN,
@@ -169,7 +169,10 @@ export async function scanCardsPipelined(
   const playerMergeCache = loadMergeRules('player', clanId);
   const chestMergeCache = loadMergeRules('chest', clanId);
   const sourceMergeCache = loadMergeRules('source', clanId);
-  const sourcePointOverrides = loadSourcePointOverrides(clanId);
+  // Point values as they stood on each game day: a chest scores the values of
+  // the day it was earned, so a value changed "from today on" never touches
+  // a chest from before today (docs/chest-points-history.md).
+  const sourcePointSchedule = loadPointSchedule(clanId);
   // Chest names this clan has already stored in a prior scan. A new chest
   // defaulting to COMMON is by design, so the "unrecognised chest" review warning must fire only
   // the FIRST time a genuinely-new name appears, then stay quiet on every
@@ -896,11 +899,6 @@ export async function scanCardsPipelined(
             unknownChestSamples.push(`"${card.chestName}" → "${correctedChest}"`);
           }
         }
-        // Triumphals are bookkeeping only — never grant points.
-        const pointValue = target === 'triumphal'
-          ? 0
-          : getPointsForSourceCached(sourcePointOverrides, cleanedSource, correctedChest);
-
         tabResult.chestsFound++;
         chestsInserted++;
 
@@ -920,6 +918,11 @@ export async function scanCardsPipelined(
         // earnedAt < capturedMs only when a countdown actually parsed (received
         // before the scan); equal means it fell back to scan time.
         if (earnedAt < capturedMs) earnTimeParsed++;
+        // Triumphals are bookkeeping only — never grant points. Everything else
+        // scores the values in force on the game day it was earned.
+        const pointValue = target === 'triumphal'
+          ? 0
+          : getPointsForSourceAt(sourcePointSchedule, cleanedSource, correctedChest, earnedAt);
         const insertArgs = {
           sessionId,
           clanId,

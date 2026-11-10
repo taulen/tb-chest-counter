@@ -7,6 +7,10 @@ import {
 import { invalidateSourceKeySummary } from '../../src/data/repositories/source-points-repo.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 
+/** These tests predate dated changes: a save rescores every record, as a
+ *  correction to all history still does. Dated saves: points-history.test.ts. */
+const HISTORY = { mode: 'history' } as const;
+
 /**
  * The Chest Points admin board. What matters:
  *  - one line per source, valued at what its chests actually score, with the
@@ -188,14 +192,14 @@ describe('saving', () => {
     expect(preview.edits).toEqual([
       { key: 'summoning dark omens', label: 'Summoning Dark Omens', chestName: '', from: 50, to: 60 },
     ]);
-    expect(preview.impact.records).toBe(6);
-    expect(preview.impact.delta).toBe(60);
+    expect(preview.history.impact.records).toBe(6);
+    expect(preview.history.impact.delta).toBe(60);
     // The preview wrote nothing.
     expect(overrideRows()).toEqual([]);
     expect(storedPoints('Summoning Dark Omens', 'Minor Omen Chest')).toEqual([50]);
 
-    const result = applyPointChanges(1, change);
-    expect(result.updated).toBe(preview.impact.records);
+    const result = applyPointChanges(1, change, HISTORY);
+    expect(result.updated).toBe(preview.history.impact.records);
     expect(storedPoints('Summoning Dark Omens', 'Minor Omen Chest')).toEqual([60]);
     // Major and Epic were seeded per chest; the new wildcard outranks a seed,
     // so they are pinned at their own values rather than swept along.
@@ -213,14 +217,14 @@ describe('saving', () => {
 
   it('a saved value leaves nothing for Recalculate', () => {
     seedCrypt();
-    applyPointChanges(1, [{ sourceKey: 'common 10', chestName: '', points: 7 }]);
+    applyPointChanges(1, [{ sourceKey: 'common 10', chestName: '', points: 7 }], HISTORY);
     expect(previewRecalculate(1).records).toBe(0);
     expect(getPointsBoard(1).staleRecords).toBe(0);
   });
 
   it('a chest value moves only that chest', () => {
     seedCrypt();
-    applyPointChanges(1, [{ sourceKey: 'common 10', chestName: 'Orc Chest', points: 9 }]);
+    applyPointChanges(1, [{ sourceKey: 'common 10', chestName: 'Orc Chest', points: 9 }], HISTORY);
     expect(storedPoints('Level 10 Crypt', 'Orc Chest')).toEqual([9]);
     expect(storedPoints('Level 10 Crypt', 'Barbarian Chest')).toEqual([5]);
     expect(overrideRows()).toEqual([{ source_key: 'common 10', chest_name: 'Orc Chest', point_value: 9 }]);
@@ -229,7 +233,7 @@ describe('saving', () => {
   it('putting an exception back on the source value drops its row', () => {
     seedCrypt();
     override('common 10', 'Orc Chest', 9);
-    applyPointChanges(1, [{ sourceKey: 'common 10', chestName: 'Orc Chest', points: 5 }]);
+    applyPointChanges(1, [{ sourceKey: 'common 10', chestName: 'Orc Chest', points: 5 }], HISTORY);
     expect(overrideRows()).toEqual([]);
     expect(storedPoints('Level 10 Crypt', 'Orc Chest')).toEqual([5]);
   });
@@ -241,7 +245,7 @@ describe('saving', () => {
     override('authority rush tournament', '', 25);
     override('authority rush tournament', 'Chest of Authority', 10);
     expect(source('authority rush tournament').points).toBe(10);
-    applyPointChanges(1, [{ sourceKey: 'authority rush tournament', chestName: '', points: 12 }]);
+    applyPointChanges(1, [{ sourceKey: 'authority rush tournament', chestName: '', points: 12 }], HISTORY);
     expect(overrideRows()).toEqual([{ source_key: 'authority rush tournament', chest_name: '', point_value: 12 }]);
     expect(storedPoints('Authority Rush tournament', 'Chest of Authority')).toEqual([12]);
   });
@@ -249,7 +253,7 @@ describe('saving', () => {
   it('collapses spaced and spaceless override rows into one', () => {
     record('Clan wealth', 'Rare Chest of Wealth', 2, 1);
     override('clanwealth', '', 3);
-    applyPointChanges(1, [{ sourceKey: 'clan wealth', chestName: '', points: 2 }]);
+    applyPointChanges(1, [{ sourceKey: 'clan wealth', chestName: '', points: 2 }], HISTORY);
     expect(overrideRows()).toEqual([{ source_key: 'clan wealth', chest_name: '', point_value: 2 }]);
   });
 
@@ -257,7 +261,7 @@ describe('saving', () => {
     seedCrypt();
     const preview = previewPointChanges(1, [{ sourceKey: 'common 10', chestName: '', points: 5 }]);
     expect(preview.edits).toEqual([]);
-    expect(preview.impact.records).toBe(0);
+    expect(preview.history.impact.records).toBe(0);
   });
 
   it('rejects an unknown source, an unseen chest and a bad value', () => {
@@ -345,7 +349,7 @@ describe('per-clan values', () => {
     record('Level 10 Crypt', 'Barbarian Chest', 3, 5);
     recordClan2('Level 10 Crypt', 'Barbarian Chest', 2, 5);
 
-    const result = applyPointChanges(1, [{ sourceKey: 'common 10', chestName: '', points: 40 }]);
+    const result = applyPointChanges(1, [{ sourceKey: 'common 10', chestName: '', points: 40 }], HISTORY);
     expect(result.updated).toBe(3);
     expect(result.impact.clans).toEqual([expect.objectContaining({ id: 1, records: 3 })]);
 
@@ -371,7 +375,7 @@ describe('per-clan values', () => {
     // Clan 2's own crypt counts only its own records.
     expect(getPointsBoard(2).sources.find((s) => s.key === 'common 10')?.records).toBe(2);
 
-    const result = applyPointChanges(2, [{ sourceKey: 'summoning dark omens', chestName: '', points: 70 }]);
+    const result = applyPointChanges(2, [{ sourceKey: 'summoning dark omens', chestName: '', points: 70 }], HISTORY);
     expect(result.updated).toBe(0);
     expect(getPointsBoard(2).sources.find((s) => s.key === 'summoning dark omens')?.chests
       .find((c) => c.name === 'Minor Omen Chest')?.points).toBe(70);
@@ -390,7 +394,7 @@ describe('per-clan values', () => {
     expect(find('lvl 20 24 raid runic squad')?.label).toBe('Raid Runic Squad · Level 20–24');
     expect(find('azada s shop')?.label).toBe('Azada\'s Shop');
 
-    const result = applyPointChanges(1, [{ sourceKey: 'cursed citadel 20', chestName: '', points: 90 }]);
+    const result = applyPointChanges(1, [{ sourceKey: 'cursed citadel 20', chestName: '', points: 90 }], HISTORY);
     expect(result.edits).toEqual([expect.objectContaining({ key: 'cursed citadel 20', from: 20, to: 90 })]);
     expect(source('cursed citadel 20').points).toBe(90);
   });
@@ -404,7 +408,7 @@ describe('copy values from another clan', () => {
     // Clan 1: a source value plus one of its own; clan 2: a different source value.
     override('common 10', '', 40);
     override('arena', '', 7);
-    applyPointChanges(2, [{ sourceKey: 'common 10', chestName: '', points: 60 }]);
+    applyPointChanges(2, [{ sourceKey: 'common 10', chestName: '', points: 60 }], HISTORY);
 
     const preview = previewCopyFrom(2, 1);
     expect(preview.from).toEqual({ id: 1, name: 'Clan #1' });

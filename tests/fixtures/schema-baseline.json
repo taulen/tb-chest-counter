@@ -276,6 +276,11 @@
   },
   {
     "type": "index",
+    "name": "idx_source_point_steps_day",
+    "sql": "CREATE UNIQUE INDEX idx_source_point_steps_day ON source_point_changes(clan_id, effective_from) WHERE kind = 'step'"
+  },
+  {
+    "type": "index",
     "name": "idx_tinman_scores_member",
     "sql": "CREATE INDEX idx_tinman_scores_member ON tinman_scores(clan_id, member_id)"
   },
@@ -511,8 +516,13 @@
   },
   {
     "type": "table",
+    "name": "source_point_changes",
+    "sql": "CREATE TABLE source_point_changes ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), kind TEXT NOT NULL CHECK (kind IN ('step', 'correction', 'copy')), effective_from TEXT NOT NULL DEFAULT '', lines TEXT NOT NULL DEFAULT '[]', note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '', updated_at TEXT, updated_by TEXT )"
+  },
+  {
+    "type": "table",
     "name": "source_point_overrides",
-    "sql": "CREATE TABLE source_point_overrides ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), source_key TEXT NOT NULL, chest_name TEXT NOT NULL DEFAULT '', point_value INTEGER NOT NULL, updated_at TEXT NOT NULL, UNIQUE(clan_id, source_key, chest_name) )"
+    "sql": "CREATE TABLE source_point_overrides ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), source_key TEXT NOT NULL, chest_name TEXT NOT NULL DEFAULT '', point_value INTEGER, effective_from TEXT NOT NULL DEFAULT '', change_id INTEGER REFERENCES source_point_changes(id), updated_at TEXT NOT NULL, UNIQUE(clan_id, source_key, chest_name, effective_from) )"
   },
   {
     "type": "table",

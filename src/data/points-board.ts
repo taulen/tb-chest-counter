@@ -25,14 +25,27 @@
  * The board is one clan's: each clan has its own values (v86), so its record
  * counts, its previews and its saves all stay inside that clan. The sources it
  * lists are every clan's, so a value can be set before the first chest lands.
+ *
+ * Values have a history (v99, docs/chest-points-history.md). The board shows
+ * and edits the values in force TODAY; a save applies them either from today's
+ * game day on (a dated step — earlier chests keep their points) or to all
+ * history (a correction — every record is rescored). The History view lists
+ * the steps, and a step can be moved, re-valued or removed, each previewed the
+ * same way a save is.
  */
 import { getDb } from './database.js';
 import { cached } from '../utils/ttl-cache.js';
+import { loadConfig } from '../config/index.js';
 import { getClanById } from './repositories/clan-repo.js';
 import {
-  getAllOverrides, loadOverrides, makeCacheKey, resolvePointsForKey,
-  writeOverrides, recalculatePoints, copyOverrides, type OverrideWrite,
+  getAllOverrides, loadPointEntries, savePointEntries, recalculatePoints, applyTimelineChange, todayGameDay,
+  upsertStep, updateStep, insertPointLog, listPointChanges, getPointChange,
 } from './repositories/source-points-repo.js';
+import {
+  applyWrites, buildSchedule, collapseRepeats, currentValues, dayStartMs, isGameDay, makeCacheKey,
+  resolvePointsForKey, valuesAt, valuesOn,
+  type OverrideWrite, type PointEntry, type PointSchedule,
+} from './point-timeline.js';
 import {
   canonicalSourceKey, getSourceKey, getDefaultPointsFor, hasDefaultPointsFor, parseSourceLevelRange,
   SOURCE_CHEST_POINTS, SOURCE_POINT_KEYS,
@@ -96,6 +109,10 @@ export interface PointsBoard {
   sources: BoardSource[];
   groups: BoardGroup[];
   staleRecords: number;
+  /** Today's game day — the day a "from today on" save applies from. */
+  today: string;
+  /** Dated changes in the clan's history (the History view's steps). */
+  historySteps: number;
 }
 
 /**
@@ -172,22 +189,39 @@ interface RecordGroup {
   chestName: string;
   stored: number;
   count: number;
+  /** Start (epoch ms) of the stretch of time these records were earned in; 0
+   *  for the first. Within a stretch no value changes, so resolving at `at`
+   *  is resolving every record of the group. */
+  at: number;
+}
+
+/** Every segment start of the given schedules (plus extra instants), the cuts
+ *  a set of record groups must be split at for all of them to resolve exactly. */
+function cutsOf(schedules: PointSchedule[], extra: number[] = []): number[] {
+  return [...new Set([...schedules.flatMap((s) => s.starts), ...extra])]
+    .filter((c) => c > 0 && Number.isSafeInteger(c))
+    .sort((a, b) => a - b);
 }
 
 /**
  * One clan's chest_records grouped down to (source, chest, stored value) — the
  * same rows recalculatePoints walks, so a preview counts exactly what a write
- * would touch.
+ * would touch — and split at `cuts`: the days a value changes on, so each
+ * group sits inside one stretch of constant values.
  */
-function loadRecordGroups(clanId: number): RecordGroup[] {
+function loadRecordGroups(clanId: number, cuts: readonly number[] = []): RecordGroup[] {
+  // The cuts are integers this module computed, never request input.
+  const seg = cuts.length === 0
+    ? '0'
+    : `CASE ${cuts.map((c, i) => `WHEN cr.effective_at < ${Math.trunc(c)} THEN ${i}`).join(' ')} ELSE ${cuts.length} END`;
   const rows = getDb().prepare(`
-    SELECT cr.clan_id, cs.source, ch.name AS chest_name, cr.point_value, COUNT(*) AS cnt
+    SELECT cr.clan_id, cs.source, ch.name AS chest_name, cr.point_value, ${seg} AS seg, COUNT(*) AS cnt
       FROM chest_records cr
       JOIN chest_sources cs ON cs.id = cr.chest_source_id
       JOIN chests ch ON ch.id = cr.chest_id
      WHERE cr.clan_id = ? AND cs.source != ''
-     GROUP BY cr.clan_id, cr.chest_source_id, cr.chest_id, cr.point_value
-  `).all(clanId) as { clan_id: number; source: string; chest_name: string; point_value: number; cnt: number }[];
+     GROUP BY cr.clan_id, cr.chest_source_id, cr.chest_id, cr.point_value, seg
+  `).all(clanId) as { clan_id: number; source: string; chest_name: string; point_value: number; seg: number; cnt: number }[];
 
   const keyOf = new Map<string, string | null>();
   const groups: RecordGroup[] = [];
@@ -206,6 +240,7 @@ function loadRecordGroups(clanId: number): RecordGroup[] {
       chestName: r.chest_name,
       stored: r.point_value,
       count: r.cnt,
+      at: r.seg === 0 ? 0 : cuts[r.seg - 1],
     });
   }
   return groups;
@@ -240,7 +275,7 @@ function loadKnownGroups(clanId: number): RecordGroup[] {
 
   const groups: RecordGroup[] = [];
   const add = (source: string, key: string, chestName: string): void => {
-    groups.push({ clanId, source, key, canon: canonicalSourceKey(key), chestName, stored: 0, count: 0 });
+    groups.push({ clanId, source, key, canon: canonicalSourceKey(key), chestName, stored: 0, count: 0, at: 0 });
   };
   for (const r of recorded) {
     const key = getSourceKey(r.source);
@@ -323,18 +358,33 @@ function sourcePoints(chests: BoardChest[], overrides: Map<string, number>, key:
   return chests.length > 0 ? majorityPoints(chests) : resolvePointsForKey(overrides, key, '');
 }
 
-function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string, number>): PointsBoard {
-  const overridden = new Set(getAllOverrides(clanId).map((o) => makeCacheKey(o.sourceKey, o.chestName)));
+interface BoardOptions {
+  /** The timeline stored records are checked against for "out of date" —
+   *  each record against the values of its own day. Omitted: not counted. */
+  stale?: PointSchedule;
+  /** loadKnownGroups(clanId), for a caller building several boards. */
+  known?: RecordGroup[];
+  today?: string;
+  historySteps?: number;
+}
 
+/**
+ * The board with `overrides` as its values — today's for the page, a past
+ * day's when a dated step is planned or described.
+ */
+function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string, number>, opts: BoardOptions = {}): PointsBoard {
+  const overridden = new Set(overrides.keys());
+
+  interface Stored { at: number; value: number; count: number }
   interface Bucket {
     keys: Map<string, number>;
     sources: Map<string, number>;
-    chests: Map<string, Map<number, number>>;
+    chests: Map<string, Stored[]>;
   }
   // One bucket per CANONICAL key: a source read with and without spaces is
   // one source, scored by one set of overrides.
   const buckets = new Map<string, Bucket>();
-  for (const g of [...groups, ...loadKnownGroups(clanId)]) {
+  for (const g of [...groups, ...(opts.known ?? loadKnownGroups(clanId))]) {
     let b = buckets.get(g.canon);
     if (!b) {
       b = { keys: new Map(), sources: new Map(), chests: new Map() };
@@ -343,9 +393,9 @@ function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string
     b.keys.set(g.key, (b.keys.get(g.key) ?? 0) + g.count);
     if (g.source) b.sources.set(g.source, (b.sources.get(g.source) ?? 0) + g.count);
     if (!g.chestName) continue;
-    const stored = b.chests.get(g.chestName) ?? new Map<number, number>();
+    const stored = b.chests.get(g.chestName) ?? [];
     // A chest only another clan has recorded: listed, with nothing stored.
-    if (g.count > 0) stored.set(g.stored, (stored.get(g.stored) ?? 0) + g.count);
+    if (g.count > 0) stored.push({ at: g.at, value: g.stored, count: g.count });
     b.chests.set(g.chestName, stored);
   }
 
@@ -366,9 +416,9 @@ function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string
     for (const [name, stored] of b.chests) {
       const points = resolvePointsForKey(overrides, key, name);
       let n = 0;
-      for (const [value, count] of stored) {
-        n += count;
-        if (value !== points) stale += count;
+      for (const s of stored) {
+        n += s.count;
+        if (opts.stale && s.value !== resolvePointsForKey(valuesAt(opts.stale, s.at), key, name)) stale += s.count;
       }
       records += n;
       chests.push({
@@ -426,24 +476,70 @@ function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string
     sources: sources.map(({ rank: _rank, ...s }) => s),
     groups: [...boardGroups.values()],
     staleRecords: staleTotal,
+    today: opts.today ?? todayGameDay(),
+    historySteps: opts.historySteps ?? 0,
   };
+}
+
+/** Everything a read or write of one clan's values starts from. */
+interface Ctx {
+  clanId: number;
+  entries: PointEntry[];
+  schedule: PointSchedule;
+  rollover: number;
+  /** Today's game day, and the instant it started. */
+  today: string;
+  todayStart: number;
+  steps: number;
+}
+
+function context(clanId: number): Ctx {
+  const rollover = loadConfig().gameDayRolloverUtcHour;
+  const entries = loadPointEntries(clanId);
+  const today = todayGameDay();
+  return {
+    clanId,
+    entries,
+    schedule: buildSchedule(entries, rollover),
+    rollover,
+    today,
+    todayStart: dayStartMs(today, rollover),
+    steps: listPointChanges(clanId).filter((c) => c.kind === 'step').length,
+  };
+}
+
+/** Today's board, out-of-date counts checked against each record's own day. */
+function currentBoard(ctx: Ctx, groups: RecordGroup[], known?: RecordGroup[]): PointsBoard {
+  return buildBoard(ctx.clanId, groups, currentValues(ctx.schedule), {
+    stale: ctx.schedule, known, today: ctx.today, historySteps: ctx.steps,
+  });
 }
 
 /** One clan's board as the admin page reads it. Cached; every write invalidates it. */
 export function getPointsBoard(clanId: number): PointsBoard {
-  return cached(`${BOARD_CACHE_KEY}:${clanId}`, BOARD_TTL_MS,
-    () => buildBoard(clanId, loadRecordGroups(clanId), loadOverrides(clanId)));
+  return cached(`${BOARD_CACHE_KEY}:${clanId}`, BOARD_TTL_MS, () => {
+    const ctx = context(clanId);
+    return currentBoard(ctx, loadRecordGroups(clanId, cutsOf([ctx.schedule])));
+  });
 }
 
 /**
- * What re-resolving every record under `overrides` would change: per clan, and
- * per (source, chest), largest point swing first.
+ * What re-resolving every record under `next` would change — each record with
+ * the values of its own day: per clan, and per (source, new value), largest
+ * point swing first. `groups` must be cut at every segment start of `next`
+ * (and of `prev`).
+ *
+ * With `prev` — a dated change — only records whose value differs between the
+ * two timelines count, exactly as applyTimelineChange writes them; a record
+ * that was already out of line elsewhere is left alone. Without it — a
+ * correction, a copy, Recalculate — every record off its value counts.
  */
 function computeImpact(
   groups: RecordGroup[],
-  overrides: Map<string, number>,
+  next: PointSchedule,
   board: PointsBoard,
   onlyCanon?: ReadonlySet<string>,
+  prev?: PointSchedule,
 ): PointsImpact {
   const labels = new Map(board.sources.map((s) => [canonicalSourceKey(s.key), s]));
   const clanNames = new Map([[board.clan.id, board.clan.name]]);
@@ -454,8 +550,9 @@ function computeImpact(
 
   for (const g of groups) {
     if (onlyCanon && !onlyCanon.has(g.canon)) continue;
-    const to = resolvePointsForKey(overrides, g.key, g.chestName);
+    const to = resolvePointsForKey(valuesAt(next, g.at), g.key, g.chestName);
     if (to === g.stored) continue;
+    if (prev && resolvePointsForKey(valuesAt(prev, g.at), g.key, g.chestName) === to) continue;
     const d = (to - g.stored) * g.count;
     records += g.count;
     delta += d;
@@ -592,44 +689,136 @@ function planChanges(board: PointsBoard, overrides: Map<string, number>, changes
   return { writes, edits, canonKeys };
 }
 
-function withWrites(overrides: Map<string, number>, writes: OverrideWrite[]): Map<string, number> {
-  const next = new Map(overrides);
-  for (const w of writes) {
-    const k = makeCacheKey(w.sourceKey, w.chestName);
-    if (w.points === null) next.delete(k);
-    else next.set(k, w.points);
-  }
-  return next;
+/** Where a save applies: from today's game day on, or to all history. */
+export type SaveMode = 'forward' | 'history';
+
+export function isSaveMode(v: unknown): v is SaveMode {
+  return v === 'forward' || v === 'history';
+}
+
+const NOTE_MAX = 300;
+
+/** A note as stored: one line, trimmed, capped. */
+function cleanNote(note: unknown): string {
+  if (typeof note !== 'string') return '';
+  return note.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, NOTE_MAX);
 }
 
 export interface ChangesPreview {
   edits: PlannedEdit[];
-  impact: PointsImpact;
+  /** Today's game day — where a "from today on" save starts. */
+  today: string;
+  forward: {
+    impact: PointsImpact;
+    /** Today already has a dated change; this save joins it. */
+    joinsStep: boolean;
+  };
+  history: {
+    impact: PointsImpact;
+    /** Days of dated changes that lose values to this correction — it replaces
+     *  those values for the chests it sets. */
+    replacesSteps: string[];
+  };
 }
 
-/** Dry run of a save: the edits it amounts to and what they do to the clan's stored records. */
-export function previewPointChanges(clanId: number, changes: PointChange[]): ChangesPreview {
-  const groups = loadRecordGroups(clanId);
-  const overrides = loadOverrides(clanId);
-  const board = buildBoard(clanId, groups, overrides);
-  const plan = planChanges(board, overrides, changes);
-  return { edits: plan.edits, impact: computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys) };
+interface SavePlan {
+  ctx: Ctx;
+  groups: RecordGroup[];
+  board: PointsBoard;
+  plan: ReturnType<typeof planChanges>;
+}
+
+function planSave(clanId: number, changes: PointChange[]): SavePlan {
+  const ctx = context(clanId);
+  // Cut at today's start too: a "from today on" save splits the timeline there.
+  const groups = loadRecordGroups(clanId, cutsOf([ctx.schedule], [ctx.todayStart]));
+  const board = currentBoard(ctx, groups);
+  return { ctx, groups, board, plan: planChanges(board, currentValues(ctx.schedule), changes) };
 }
 
 /**
- * Save: write the clan's override rows, then recalculate every one of its
- * records from the sources touched — which also settles any of them that were
- * already stale, exactly as the preview reported.
+ * Dry run of a save, both ways: the edits it amounts to, and what each mode
+ * does to the clan's stored records. The page shows both and lets the admin
+ * pick before anything is written.
  */
-export function applyPointChanges(clanId: number, changes: PointChange[]): ChangesPreview & { updated: number } {
-  const groups = loadRecordGroups(clanId);
-  const overrides = loadOverrides(clanId);
-  const board = buildBoard(clanId, groups, overrides);
-  const plan = planChanges(board, overrides, changes);
-  const impact = computeImpact(groups, withWrites(overrides, plan.writes), board, plan.canonKeys);
-  writeOverrides(clanId, plan.writes);
-  const updated = plan.canonKeys.size > 0 ? recalculatePoints(clanId, plan.canonKeys) : 0;
-  return { edits: plan.edits, impact, updated };
+export function previewPointChanges(clanId: number, changes: PointChange[]): ChangesPreview {
+  const now = new Date().toISOString();
+  const { ctx, groups, board, plan } = planSave(clanId, changes);
+  const forward = applyWrites(ctx.entries, ctx.today, plan.writes, null, now);
+  const history = applyWrites(ctx.entries, '', plan.writes, null, now);
+  const kept = new Set(history);
+  return {
+    edits: plan.edits,
+    today: ctx.today,
+    forward: {
+      impact: computeImpact(groups, buildSchedule(forward, ctx.rollover), board, plan.canonKeys, ctx.schedule),
+      joinsStep: ctx.entries.some((e) => e.from === ctx.today),
+    },
+    history: {
+      impact: computeImpact(groups, buildSchedule(history, ctx.rollover), board, plan.canonKeys),
+      replacesSteps: [...new Set(ctx.entries.filter((e) => e.from !== '' && !kept.has(e)).map((e) => e.from))].sort(),
+    },
+  };
+}
+
+export interface SaveResult {
+  mode: SaveMode;
+  /** The game day the values apply from; '' = all history. */
+  effectiveFrom: string;
+  edits: PlannedEdit[];
+  impact: PointsImpact;
+  updated: number;
+}
+
+/**
+ * Save. 'forward' writes the values as today's dated step (joining one already
+ * saved today) and moves only the records it changes — today's. 'history'
+ * writes them for all history, replacing any dated value of the same chests,
+ * logs the correction, and recalculates every record of the sources touched —
+ * which also settles any that were already out of date. Either way exactly as
+ * the preview reported.
+ */
+export function applyPointChanges(
+  clanId: number,
+  changes: PointChange[],
+  opts: { mode: SaveMode; note?: unknown; user?: string },
+): SaveResult {
+  const now = new Date().toISOString();
+  const { ctx, groups, board, plan } = planSave(clanId, changes);
+  const note = cleanNote(opts.note);
+  const user = opts.user ?? '';
+  let next: PointEntry[] = ctx.entries;
+  getDb().transaction(() => {
+    if (opts.mode === 'forward') {
+      const stepId = upsertStep(clanId, ctx.today, user, note, now);
+      next = applyWrites(ctx.entries, ctx.today, plan.writes, stepId, now);
+      savePointEntries(clanId, next);
+    } else {
+      next = applyWrites(ctx.entries, '', plan.writes, null, now);
+      savePointEntries(clanId, next);
+      if (plan.edits.length > 0) insertPointLog(clanId, 'correction', plan.edits, note, user, now);
+    }
+  })();
+  const nextSchedule = buildSchedule(next, ctx.rollover);
+  let impact: PointsImpact;
+  let updated = 0;
+  if (opts.mode === 'forward') {
+    // Only what the dated change moves: today's chests, never an older one.
+    impact = computeImpact(groups, nextSchedule, board, plan.canonKeys, ctx.schedule);
+    if (plan.canonKeys.size > 0) updated = applyTimelineChange(clanId, ctx.schedule, nextSchedule, plan.canonKeys);
+  } else {
+    // Every record of the sources touched, which also settles any of them that
+    // were already out of date.
+    impact = computeImpact(groups, nextSchedule, board, plan.canonKeys);
+    if (plan.canonKeys.size > 0) updated = recalculatePoints(clanId, plan.canonKeys);
+  }
+  return {
+    mode: opts.mode,
+    effectiveFrom: opts.mode === 'forward' ? ctx.today : '',
+    edits: plan.edits,
+    impact,
+    updated,
+  };
 }
 
 export interface CopyPreview {
@@ -639,6 +828,8 @@ export interface CopyPreview {
   /** What changes on the board's clan, in the board's own terms. */
   edits: PlannedEdit[];
   impact: PointsImpact;
+  /** The board clan's dated changes, which the copy replaces. */
+  dropsSteps: number;
 }
 
 /**
@@ -672,35 +863,281 @@ function copySource(clanId: number, fromClanId: number): { id: number; name: str
   return { id: from.id, name: from.name };
 }
 
+/** The other clan's values in force today, as all-history entries. */
+function copiedEntries(fromClanId: number, now: string): PointEntry[] {
+  return getAllOverrides(fromClanId).map((o) => ({
+    sourceKey: o.sourceKey, chestName: o.chestName, from: '', value: o.pointValue, changeId: null, updatedAt: now,
+  }));
+}
+
 /** Dry run of copying every value of `fromClanId` onto `clanId`. */
 export function previewCopyFrom(clanId: number, fromClanId: number): CopyPreview {
   const from = copySource(clanId, fromClanId);
-  const groups = loadRecordGroups(clanId);
-  const board = buildBoard(clanId, groups, loadOverrides(clanId));
-  const next = loadOverrides(fromClanId);
+  const ctx = context(clanId);
+  const groups = loadRecordGroups(clanId, cutsOf([ctx.schedule]));
+  const board = currentBoard(ctx, groups);
+  const next = copiedEntries(fromClanId, new Date().toISOString());
   return {
     from,
-    values: getAllOverrides(fromClanId).length,
-    edits: boardEdits(board, next),
-    impact: computeImpact(groups, next, board),
+    values: next.length,
+    edits: boardEdits(board, valuesOn(next, '')),
+    impact: computeImpact(groups, buildSchedule(next, ctx.rollover), board),
+    dropsSteps: ctx.steps,
   };
 }
 
 /**
- * Copy: the clan's values become an exact copy of `fromClanId`'s, then every
- * one of its records is recalculated — which also settles any that were
- * already stale, exactly as the preview reported. The source clan is untouched.
+ * Copy: the clan's values become an exact copy of the values `fromClanId`
+ * holds today, for all history — its dated changes go — then every one of its
+ * records is recalculated, which also settles any that were already stale,
+ * exactly as the preview reported. Logged in the History view. The source clan
+ * is untouched.
  */
-export function applyCopyFrom(clanId: number, fromClanId: number): CopyPreview & { updated: number } {
+export function applyCopyFrom(clanId: number, fromClanId: number, opts: { user?: string } = {}): CopyPreview & { updated: number } {
   const preview = previewCopyFrom(clanId, fromClanId);
-  copyOverrides(fromClanId, clanId);
+  const now = new Date().toISOString();
+  getDb().transaction(() => {
+    savePointEntries(clanId, copiedEntries(fromClanId, now));
+    insertPointLog(clanId, 'copy', preview.edits, preview.from.name, opts.user ?? '', now);
+  })();
   const updated = recalculatePoints(clanId);
   return { ...preview, updated };
 }
 
-/** Dry run of Recalculate: every record of the clan whose stored value is out of date. */
+/** Dry run of Recalculate: every record of the clan whose stored value is out of date for its day. */
 export function previewRecalculate(clanId: number): PointsImpact {
+  const ctx = context(clanId);
+  const groups = loadRecordGroups(clanId, cutsOf([ctx.schedule]));
+  return computeImpact(groups, ctx.schedule, currentBoard(ctx, groups));
+}
+
+// ─── History ───
+
+export interface HistoryStep {
+  id: number;
+  /** The game day its values apply from. */
+  effectiveFrom: string;
+  /** What it changes against the values in force the day before, in the
+   *  board's terms — worked out from the timeline as it stands now. */
+  lines: PlannedEdit[];
+  note: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface HistoryLogEntry {
+  id: number;
+  kind: 'correction' | 'copy';
+  /** What it changed, as shown when it was saved. */
+  lines: PlannedEdit[];
+  /** A correction's note; for a copy, the clan it copied from. */
+  note: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface PointsHistory {
+  clan: { id: number; name: string };
+  today: string;
+  /** Dated changes, newest day first. */
+  steps: HistoryStep[];
+  /** Corrections to all history and copies, newest first. */
+  log: HistoryLogEntry[];
+}
+
+/** What the change dated `day` does, against the values of the day before it. */
+function stepLines(ctx: Ctx, groups: RecordGroup[], known: RecordGroup[], day: string): PlannedEdit[] {
+  const before = valuesOn(ctx.entries, day, { before: true });
+  const board = buildBoard(ctx.clanId, groups, before, { known, today: ctx.today });
+  return boardEdits(board, valuesOn(ctx.entries, day));
+}
+
+/** The clan's History view. */
+export function getPointsHistory(clanId: number): PointsHistory {
+  const ctx = context(clanId);
+  const rows = listPointChanges(clanId);
+  // Counts over all time are all a description needs (they pick a source's
+  // majority value); no cuts.
   const groups = loadRecordGroups(clanId);
-  const overrides = loadOverrides(clanId);
-  return computeImpact(groups, overrides, buildBoard(clanId, groups, overrides));
+  const known = loadKnownGroups(clanId);
+  return {
+    clan: { id: clanId, name: getClanById(clanId)?.name ?? `Clan #${clanId}` },
+    today: ctx.today,
+    steps: rows.filter((r) => r.kind === 'step').map((r) => ({
+      id: r.id,
+      effectiveFrom: r.effectiveFrom,
+      lines: stepLines(ctx, groups, known, r.effectiveFrom),
+      note: r.note,
+      createdAt: r.createdAt,
+      createdBy: r.createdBy,
+      updatedAt: r.updatedAt,
+      updatedBy: r.updatedBy,
+    })),
+    log: rows.filter((r) => r.kind !== 'step').map((r) => ({
+      id: r.id,
+      kind: r.kind as 'correction' | 'copy',
+      lines: r.lines,
+      note: r.note,
+      createdAt: r.createdAt,
+      createdBy: r.createdBy,
+    })),
+  };
+}
+
+/** The earliest day a change may be dated from. */
+const MIN_DAY = '2020-01-01';
+
+/** An edit of a dated change: its day, the values it sets (the board's terms), its note. */
+export interface StepEdit {
+  effectiveFrom: string;
+  changes: PointChange[];
+  note?: unknown;
+}
+
+export interface StepPreview {
+  /** The game day it applies from after the edit. */
+  effectiveFrom: string;
+  /** What it changes after the edit; empty = it no longer changes anything and goes. */
+  edits: PlannedEdit[];
+  impact: PointsImpact;
+  /** The change is deleted (removed, or left holding no value of its own). */
+  removes: boolean;
+}
+
+interface StepPlan {
+  id: number;
+  ctx: Ctx;
+  groups: RecordGroup[];
+  next: PointEntry[];
+  day: string;
+  edits: PlannedEdit[];
+  /** Canonical source keys whose records may move. */
+  canon: Set<string>;
+  note: string;
+}
+
+function lineId(key: string, chestName: string): string {
+  return `${canonicalSourceKey(key)}\t${chestName}`;
+}
+
+/**
+ * Plan an edit (or, with `edit` null, the removal) of dated change `id`.
+ *
+ * Its values are taken out of the timeline and put back at the new day. A
+ * move that keeps every value shifts the change's own rows as they are;
+ * anything else is planned again against the values in force on the new day,
+ * exactly as a board save would be. A change can't be moved past another
+ * dated change that sets values for one of the same sources — their order
+ * would silently swap which one wins.
+ */
+function planStepEdit(clanId: number, id: number, edit: StepEdit | null, now: string): StepPlan {
+  const ctx = context(clanId);
+  const step = getPointChange(clanId, id);
+  if (!step || step.kind !== 'step') {
+    throw new PointsChangeError('That dated change no longer exists. Reload the history.');
+  }
+  const own = ctx.entries.filter((e) => e.changeId === id);
+  const base = ctx.entries.filter((e) => e.changeId !== id);
+  const canon = new Set(own.map((e) => canonicalSourceKey(e.sourceKey)));
+
+  if (edit === null) {
+    return {
+      id,
+      ctx,
+      groups: loadRecordGroups(clanId, cutsOf([ctx.schedule])),
+      next: collapseRepeats(base),
+      day: step.effectiveFrom,
+      edits: [],
+      canon,
+      note: step.note,
+    };
+  }
+
+  const day = edit.effectiveFrom;
+  if (!isGameDay(day) || day < MIN_DAY) throw new PointsChangeError('Pick a valid game day.');
+  if (day > ctx.today) throw new PointsChangeError(`A change can't start after today (${ctx.today}).`);
+  if (listPointChanges(clanId).some((r) => r.kind === 'step' && r.id !== id && r.effectiveFrom === day)) {
+    throw new PointsChangeError(`There is already a change from ${day}. Edit that one instead.`);
+  }
+  if (!Array.isArray(edit.changes)) throw new PointsChangeError('changes must be an array');
+  for (const c of edit.changes) {
+    if (c && typeof c.sourceKey === 'string') canon.add(canonicalSourceKey(c.sourceKey));
+  }
+  const lo = day < step.effectiveFrom ? day : step.effectiveFrom;
+  const hi = day < step.effectiveFrom ? step.effectiveFrom : day;
+  const crossing = base.find((e) => e.from > lo && e.from < hi && canon.has(canonicalSourceKey(e.sourceKey)));
+  if (crossing) {
+    throw new PointsChangeError(`The change from ${crossing.from} sets values for the same sources, so this one can't move past it. Move or remove that one first.`);
+  }
+
+  const groups = loadRecordGroups(clanId, cutsOf([ctx.schedule], [dayStartMs(day, ctx.rollover)]));
+  const known = loadKnownGroups(clanId);
+  const current = stepLines(ctx, groups, known, step.effectiveFrom);
+  const asked = new Map(edit.changes.map((c) => [lineId(c?.sourceKey ?? '', c?.chestName ?? ''), c?.points]));
+  const unchanged = asked.size === current.length
+    && current.every((l) => asked.get(lineId(l.key, l.chestName)) === l.to);
+
+  let next: PointEntry[];
+  if (unchanged) {
+    next = collapseRepeats([...base, ...own.map((e) => ({ ...e, from: day, updatedAt: now }))]);
+  } else {
+    // Nothing else is dated `day`, so the values on it are those of the day before.
+    const before = valuesOn(base, day);
+    const plan = planChanges(buildBoard(clanId, groups, before, { known, today: ctx.today }), before, edit.changes);
+    for (const k of plan.canonKeys) canon.add(k);
+    next = applyWrites(base, day, plan.writes, id, now);
+  }
+  const before = valuesOn(next, day, { before: true });
+  const edits = boardEdits(buildBoard(clanId, groups, before, { known, today: ctx.today }), valuesOn(next, day));
+  return {
+    id, ctx, groups, next, day, edits, canon,
+    note: edit.note === undefined ? step.note : cleanNote(edit.note),
+  };
+}
+
+function stepPreview(p: StepPlan): StepPreview {
+  const board = currentBoard(p.ctx, p.groups);
+  return {
+    effectiveFrom: p.day,
+    edits: p.edits,
+    impact: computeImpact(p.groups, buildSchedule(p.next, p.ctx.rollover), board, p.canon, p.ctx.schedule),
+    removes: !p.next.some((e) => e.changeId === p.id),
+  };
+}
+
+function applyStepPlan(clanId: number, p: StepPlan, user: string, now: string): StepPreview & { updated: number } {
+  const preview = stepPreview(p);
+  getDb().transaction(() => {
+    updateStep(p.id, p.day, p.note, user, now);
+    // A change left holding no value is deleted here (savePointEntries).
+    savePointEntries(clanId, p.next);
+  })();
+  const updated = p.canon.size > 0
+    ? applyTimelineChange(clanId, p.ctx.schedule, buildSchedule(p.next, p.ctx.rollover), p.canon)
+    : 0;
+  return { ...preview, updated };
+}
+
+/** Dry run of editing dated change `id`. */
+export function previewStepEdit(clanId: number, id: number, edit: StepEdit): StepPreview {
+  return stepPreview(planStepEdit(clanId, id, edit, new Date().toISOString()));
+}
+
+/** Edit dated change `id`, then move the records whose value it changes. */
+export function applyStepEdit(clanId: number, id: number, edit: StepEdit, opts: { user?: string } = {}): StepPreview & { updated: number } {
+  const now = new Date().toISOString();
+  return applyStepPlan(clanId, planStepEdit(clanId, id, edit, now), opts.user ?? '', now);
+}
+
+/** Dry run of removing dated change `id`: its days go back to the values before it. */
+export function previewStepRemove(clanId: number, id: number): StepPreview {
+  return stepPreview(planStepEdit(clanId, id, null, new Date().toISOString()));
+}
+
+/** Remove dated change `id`, then move the records whose value it changes. */
+export function applyStepRemove(clanId: number, id: number, opts: { user?: string } = {}): StepPreview & { updated: number } {
+  const now = new Date().toISOString();
+  return applyStepPlan(clanId, planStepEdit(clanId, id, null, now), opts.user ?? '', now);
 }

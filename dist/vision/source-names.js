@@ -405,7 +405,7 @@ function getDefaultPointsForKey(key) {
  * source-wide default.
  *
  * This is the bottom of the lookup stack, below both override layers — see
- * getPointsForSourceCached in src/data/repositories/source-points-repo.ts. Call
+ * resolvePointsForKey in src/data/point-timeline.ts. Call
  * it rather than getDefaultPointsForKey wherever a chest name is in hand; the
  * key-only function stays for the places that legitimately have no name (the
  * source-wide "default" shown on the admin page, and the fallback a wildcard

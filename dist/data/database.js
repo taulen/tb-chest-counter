@@ -1203,6 +1203,58 @@ const MIGRATIONS = [
             }
         },
     },
+    {
+        // Chest points get a history (docs/chest-points-history.md). A value now
+        // applies FROM a game day: `effective_from` '' is all history, a date is
+        // "from that game day's reset on". `point_value` NULL is "from that day,
+        // no value of its own" (the chest falls back to the source value or the
+        // default). Every row a save writes from a date belongs to that date's
+        // `source_point_changes` step, which the History view lists and edits;
+        // corrections to all history and copies are kept there as a log.
+        //
+        // The existing rows become the all-history values, so no clan scores
+        // anything differently on the day this lands and no stored record moves.
+        // Guarded for replay.
+        version: 99,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS source_point_changes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          kind TEXT NOT NULL CHECK (kind IN ('step', 'correction', 'copy')),
+          effective_from TEXT NOT NULL DEFAULT '',
+          lines TEXT NOT NULL DEFAULT '[]',
+          note TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          created_by TEXT NOT NULL DEFAULT '',
+          updated_at TEXT,
+          updated_by TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_source_point_steps_day
+          ON source_point_changes(clan_id, effective_from) WHERE kind = 'step';
+      `);
+            const cols = database.prepare('PRAGMA table_info(source_point_overrides)').all();
+            if (cols.some((c) => c.name === 'effective_from'))
+                return;
+            database.exec(`
+        CREATE TABLE source_point_overrides_v99 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          source_key TEXT NOT NULL,
+          chest_name TEXT NOT NULL DEFAULT '',
+          point_value INTEGER,
+          effective_from TEXT NOT NULL DEFAULT '',
+          change_id INTEGER REFERENCES source_point_changes(id),
+          updated_at TEXT NOT NULL,
+          UNIQUE(clan_id, source_key, chest_name, effective_from)
+        );
+        INSERT INTO source_point_overrides_v99 (id, clan_id, source_key, chest_name, point_value, effective_from, updated_at)
+          SELECT id, clan_id, source_key, chest_name, point_value, '', updated_at FROM source_point_overrides;
+        DROP TABLE source_point_overrides;
+        ALTER TABLE source_point_overrides_v99 RENAME TO source_point_overrides;
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

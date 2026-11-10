@@ -8,9 +8,14 @@
 // or a re-render of the Admin page around it keeps them — and every save or
 // recalculate is previewed (records + points that will move, per clan) before
 // anything is written.
+//
+// Values have a history (docs/chest-points-history.md): a save applies either
+// from today's game day on (earlier chests keep their points) or to all
+// history, and the History view lists the dated changes, each of which can be
+// moved, re-valued or removed with the same preview.
 
 import { api, apiPost } from '../lib/api.js';
-import { esc, notify, contentModal, selectDialog } from '../lib/ui.js';
+import { esc, notify, contentModal, selectDialog, formatDate, formatGameDayShort } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
 const CATEGORY_STORE_KEY = 'pointsBoard.category';
@@ -31,6 +36,12 @@ const state = {
    *  in `dirty`, one entry per level it moved. */
   groupDirty: new Map(),
   busy: false,
+  /** 'board' (the values) or 'history' (the dated changes and the log). */
+  view: 'board',
+  history: null,
+  /** The dated change being edited in the History view, as a draft:
+   *  { id, day, note, lines: [{ key, label, chestName, from, to }] }. */
+  stepDraft: null,
 };
 
 let root = null;
@@ -85,6 +96,8 @@ async function refresh() {
     state.expanded.clear();
   }
   state.board = board;
+  if (state.view === 'history') await loadHistory();
+  if (!root?.isConnected) return;
   const title = root.querySelector('.pb-header h2');
   if (title) title.innerHTML = `${t('Chest Points')} <span class="muted-copy">· ${esc(board.clan?.name || '')}</span>`;
   // Drop edits for anything that no longer exists, or now already holds the
@@ -130,10 +143,12 @@ function shellHtml() {
   return `
     <div class="card-header pb-header">
       <h2>${t('Chest Points')}</h2>
-      ${canEdit ? `<div class="pb-header-actions">
+      <div class="pb-header-actions">
+        <button class="btn btn-tight" type="button" data-pb="history" aria-pressed="false" title="${t('What each chest was worth, and from when')}">${t('History')}</button>
+        ${canEdit ? `
         <button class="btn btn-tight" type="button" data-pb="copy" title="${t('Make this clan pay exactly what another clan pays')}">${t('Copy from clan…')}</button>
-        <button class="btn btn-tight" type="button" data-pb="recalc">${t('Recalculate')}</button>
-      </div>` : ''}
+        <button class="btn btn-tight" type="button" data-pb="recalc">${t('Recalculate')}</button>` : ''}
+      </div>
     </div>
     <div class="card-body card-body-padded pb-body"><p class="is-loading">${t('Loading chest points…')}</p></div>
   `;
@@ -142,6 +157,16 @@ function shellHtml() {
 // ─── Rendering ───
 
 function render() {
+  const historyBtn = root.querySelector('[data-pb="history"]');
+  if (historyBtn) {
+    historyBtn.textContent = state.view === 'history' ? t('Back to values') : t('History');
+    historyBtn.setAttribute('aria-pressed', String(state.view === 'history'));
+  }
+  root.querySelectorAll('[data-pb="recalc"], [data-pb="copy"]').forEach((b) => { b.hidden = state.view === 'history'; });
+  if (state.view === 'history') {
+    renderHistory();
+    return;
+  }
   // Recalculate only ever has work when records are out of date — say so on
   // the button rather than letting it look like the step that applies a save.
   const recalc = root.querySelector('[data-pb="recalc"]');
@@ -180,8 +205,11 @@ function statusHtml() {
       ? `<span class="pb-flag">⟳ ${canEdit
         ? tn(b.staleRecords, '{n} record out of date — Recalculate fixes it', '{n} records out of date — Recalculate fixes it', { n: fmt(b.staleRecords) })
         : tn(b.staleRecords, '{n} record out of date', '{n} records out of date', { n: fmt(b.staleRecords) })}</span>`
-      : `<span>✓ ${t('all stored records match these values')}</span>`,
+      : `<span>✓ ${t('all stored records are up to date')}</span>`,
   ];
+  if (b.historySteps > 0) {
+    parts.push(`<button type="button" class="pb-linkish" data-pb="history">${tn(b.historySteps, '{n} dated change', '{n} dated changes', { n: fmt(b.historySteps) })}</button>`);
+  }
   const clan = esc(b.clan?.name || t('this clan'));
   const intro = [
     canEdit
@@ -189,7 +217,7 @@ function statusHtml() {
       : t('What each chest source is worth for <strong>{clan}</strong> — every clan has its own values.', { clan }),
     t('Most sources pay one value for every chest they drop; the few that pay some chests differently list those under the source.'),
     canEdit
-      ? t('Saving a value also updates every chest this clan already recorded from that source, so a save never needs a Recalculate.')
+      ? t('When you save, you choose: from today on (chests from earlier days keep their points) or for all history (every recorded chest is rescored — for fixing a wrong value).')
       : t('<strong>Read-only</strong> — only a superadmin can change values.'),
   ].join(' ');
   return `
@@ -534,6 +562,232 @@ function refreshEditSummary() {
   if (chips) chips.outerHTML = chipsHtml();
 }
 
+// ─── History: the dated changes, and the log of corrections ───
+
+async function loadHistory() {
+  const history = await api('/admin/source-points/history');
+  if (!history || history.error || !Array.isArray(history.steps)) {
+    state.history = { error: history?.error || t('Couldn\'t load the history.') };
+    return;
+  }
+  // A draft belongs to the change it was made on; drop it if that one went.
+  if (state.stepDraft && !history.steps.some((s) => s.id === state.stepDraft.id)) state.stepDraft = null;
+  state.history = history;
+}
+
+async function showHistory(on) {
+  state.view = on ? 'history' : 'board';
+  if (!on) state.stepDraft = null;
+  if (on && !state.history) {
+    root.querySelector('.pb-body').innerHTML = `<p class="is-loading">${t('Loading the history…')}</p>`;
+    await loadHistory();
+    if (!root?.isConnected) return;
+  }
+  render();
+}
+
+/** Who saved it and when, plus the last edit if there was one. */
+function stepMetaHtml(entry) {
+  const parts = [t('saved {when} by {user}', { when: esc(formatDate(entry.createdAt)), user: esc(entry.createdBy || t('unknown')) })];
+  if (entry.updatedAt && entry.updatedAt !== entry.createdAt) {
+    parts.push(t('edited {when} by {user}', { when: esc(formatDate(entry.updatedAt)), user: esc(entry.updatedBy || t('unknown')) }));
+  }
+  return `<span class="pb-meta">${parts.join(' · ')}</span>`;
+}
+
+function noteHtml(note) {
+  return note ? `<p class="pb-hist-note">“${esc(note)}”</p>` : '';
+}
+
+function stepHtml(step) {
+  const editing = state.stepDraft?.id === step.id;
+  return `
+    <article class="pb-hist-item${editing ? ' is-editing' : ''}" data-step-id="${step.id}">
+      <div class="pb-hist-head">
+        <div class="pb-hist-title">
+          <span class="pb-hist-when">${t('From game day {day}', { day: esc(formatGameDayShort(step.effectiveFrom)) })}</span>
+          ${stepMetaHtml(step)}
+        </div>
+        ${canEdit && !editing ? `<div class="pb-hist-actions">
+          <button type="button" class="btn btn-tight" data-pb="step-edit" data-step-id="${step.id}">${t('Edit')}</button>
+          <button type="button" class="btn btn-tight" data-pb="step-remove" data-step-id="${step.id}">${t('Remove')}</button>
+        </div>` : ''}
+      </div>
+      ${editing ? stepEditorHtml() : `
+        ${noteHtml(step.note)}
+        ${step.lines.length > 0 ? editsListHtml(step.lines) : `<p class="muted-copy">${t('No visible change on its own — it keeps some chests at the value they already had.')}</p>`}`}
+    </article>
+  `;
+}
+
+function stepEditorHtml() {
+  const d = state.stepDraft;
+  return `
+    <div class="pb-hist-editor">
+      <label class="pb-hist-field">
+        <span class="pb-impact-heading">${t('Applies from game day')}</span>
+        <input type="date" lang="sv" class="input pb-hist-day" value="${esc(d.day)}" max="${esc(state.history.today)}" data-pb="step-day">
+      </label>
+      ${d.lines.length > 0 ? `
+        <ul class="pb-impact-list pb-hist-lines">
+          ${d.lines.map((l, i) => `<li>
+            <span class="pb-impact-name">${editNameHtml(l)}</span>
+            <span class="pb-hist-line-control">
+              <span class="muted-copy">${fmt(l.from)} →</span>
+              <label class="pb-value">
+                <input type="number" class="input pb-input" min="0" step="1" inputmode="numeric" value="${esc(String(l.to))}"
+                  data-pb="step-line" data-line="${i}" aria-label="${t('Points for {name}', { name: esc(tGame(l.chestName || l.label)) })}">
+                <span class="pb-unit" aria-hidden="true">${t('pts')}</span>
+              </label>
+              <button type="button" class="pb-reset" data-pb="step-line-drop" data-line="${i}" title="${t('Leave this one out of the change')}" aria-label="${t('Leave {name} out of the change', { name: esc(tGame(l.chestName || l.label)) })}">×</button>
+            </span>
+          </li>`).join('')}
+        </ul>` : `<p class="muted-copy">${t('Every value is left out — saving removes this change.')}</p>`}
+      <label class="pb-hist-field">
+        <span class="pb-impact-heading">${t('Note')}</span>
+        <input type="text" class="input pb-note" maxlength="300" value="${esc(d.note)}" data-pb="step-note" placeholder="${t('Why the value changed')}">
+      </label>
+      <div class="pb-hist-actions">
+        <button type="button" class="btn btn-tight" data-pb="step-cancel">${t('Cancel')}</button>
+        <button type="button" class="btn btn-tight btn-primary" data-pb="step-review">${esc(t('Review & save'))}</button>
+      </div>
+    </div>
+  `;
+}
+
+function logHtml(entry) {
+  const title = entry.kind === 'copy'
+    ? t('Copied from {clan} — all history', { clan: esc(entry.note) })
+    : t('Correction — all history');
+  return `
+    <article class="pb-hist-item">
+      <div class="pb-hist-head">
+        <div class="pb-hist-title">
+          <span class="pb-hist-when">${title}</span>
+          ${stepMetaHtml(entry)}
+        </div>
+      </div>
+      ${entry.kind === 'correction' ? noteHtml(entry.note) : ''}
+      ${entry.lines.length > 0 ? editsListHtml(entry.lines) : `<p class="muted-copy">${t('No value changed.')}</p>`}
+    </article>
+  `;
+}
+
+function renderHistory() {
+  const body = root.querySelector('.pb-body');
+  const h = state.history;
+  if (!h) {
+    body.innerHTML = `<p class="is-loading">${t('Loading the history…')}</p>`;
+    return;
+  }
+  if (h.error) {
+    body.innerHTML = `<p class="muted-copy">${esc(h.error)}</p>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="pb-history">
+      <p class="muted-copy pb-intro">${t('A dated change applies from its game day\'s reset on; chests from earlier days keep the points they had. A correction to all history rescored every recorded chest, so it is kept as a record only.')}</p>
+      <h3 class="pb-hist-heading">${t('Dated changes')}</h3>
+      ${h.steps.length > 0
+        ? `<div class="pb-hist-list">${h.steps.map(stepHtml).join('')}</div>`
+        : `<p class="muted-copy pb-empty">${t('No dated changes yet. Values saved “from today on” are listed here.')}</p>`}
+      ${h.log.length > 0 ? `
+        <h3 class="pb-hist-heading">${t('Corrections to all history')}</h3>
+        <div class="pb-hist-list">${h.log.map(logHtml).join('')}</div>` : ''}
+      <p class="muted-copy pb-hist-foot">${t('Changes made before this history was kept (November 2026) were applied to all history and are not listed.')}</p>
+    </div>
+  `;
+}
+
+function startStepEdit(id) {
+  const step = state.history?.steps.find((s) => s.id === id);
+  if (!step) return;
+  state.stepDraft = {
+    id,
+    day: step.effectiveFrom,
+    note: step.note || '',
+    lines: step.lines.map((l) => ({ ...l })),
+  };
+  renderHistory();
+  root.querySelector('[data-pb="step-day"]')?.focus();
+}
+
+async function afterHistoryWrite() {
+  state.stepDraft = null;
+  state.history = null;
+  await refresh();
+}
+
+function reviewStepEdit() {
+  return withBusy(async () => {
+    const d = state.stepDraft;
+    const step = state.history?.steps.find((s) => s.id === d?.id);
+    if (!d || !step) return;
+    for (const l of d.lines) {
+      if (!Number.isInteger(Number(l.to)) || Number(l.to) < 0 || String(l.to).trim() === '') {
+        return notify(t('{name}: “{value}” isn\'t a whole number of points.', { name: tGame(l.chestName || l.label), value: String(l.to) }), t('Check the value'));
+      }
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.day)) return notify(t('Pick the game day the change applies from.'), t('Check the date'));
+    const clanId = state.history.clan.id;
+    const body = {
+      clanId,
+      effectiveFrom: d.day,
+      changes: d.lines.map((l) => ({ sourceKey: l.key, chestName: l.chestName, points: Number(l.to) })),
+      note: d.note,
+    };
+    const preview = await apiPost(`/admin/source-points/history/${d.id}`, { ...body, dryRun: true });
+    if (preview?.error) return notify(preview.error, t('Preview failed'));
+    const day = esc(formatGameDayShort(preview.effectiveFrom));
+    const ok = await confirmImpact({
+      title: preview.removes
+        ? t('Remove the change from {day}?', { day: formatGameDayShort(step.effectiveFrom) })
+        : t('Save the change from {day}?', { day: formatGameDayShort(preview.effectiveFrom) }),
+      html: impactHtml(preview.impact, {
+        edits: preview.removes ? null : preview.edits,
+        intro: preview.removes
+          ? t('As edited it no longer changes anything, so it is removed.')
+          : t('Chests from game day {day} on score these values, until the next change of the same chest.', { day }),
+      }),
+      confirmLabel: preview.removes ? t('Remove change') : t('Save changes'),
+    });
+    if (!ok) return;
+    const result = await apiPost(`/admin/source-points/history/${d.id}`, body);
+    if (result?.error) return notify(result.error, t('Save failed'));
+    await afterHistoryWrite();
+    notify(t('{records} updated · {points} pts', {
+      records: tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) }),
+      points: signed(result.impact.delta),
+    }), result.removes ? t('Change removed') : t('Change saved'));
+  });
+}
+
+function removeStep(id) {
+  return withBusy(async () => {
+    const step = state.history?.steps.find((s) => s.id === id);
+    if (!step) return;
+    const clanId = state.history.clan.id;
+    const preview = await apiPost(`/admin/source-points/history/${id}/remove`, { clanId, dryRun: true });
+    if (preview?.error) return notify(preview.error, t('Preview failed'));
+    const day = esc(formatGameDayShort(step.effectiveFrom));
+    const ok = await confirmImpact({
+      title: t('Remove the change from {day}?', { day: formatGameDayShort(step.effectiveFrom) }),
+      html: impactHtml(preview.impact, {
+        intro: t('Chests from game day {day} on go back to the values in force before it, until the next change of the same chest.', { day }),
+      }),
+      confirmLabel: t('Remove change'),
+    });
+    if (!ok) return;
+    const result = await apiPost(`/admin/source-points/history/${id}/remove`, { clanId });
+    if (result?.error) return notify(result.error, t('Remove failed'));
+    await afterHistoryWrite();
+    notify(t('{records} updated · {points} pts', {
+      records: tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) }),
+      points: signed(result.impact.delta),
+    }), t('Change removed'));
+  });
+}
+
 // ─── Events ───
 
 function wire() {
@@ -549,6 +803,19 @@ function wire() {
     }
     if (t.dataset?.pb === 'group-value') {
       onGroupInput(t);
+      return;
+    }
+    if (state.stepDraft && t.dataset?.pb === 'step-day') {
+      state.stepDraft.day = t.value;
+      return;
+    }
+    if (state.stepDraft && t.dataset?.pb === 'step-note') {
+      state.stepDraft.note = t.value;
+      return;
+    }
+    if (state.stepDraft && t.dataset?.pb === 'step-line') {
+      const line = state.stepDraft.lines[Number(t.dataset.line)];
+      if (line) line.to = t.value.trim();
       return;
     }
     if (t.dataset?.pb === 'value') {
@@ -604,6 +871,20 @@ function wire() {
       recalculate();
     } else if (action === 'copy') {
       copyFromClan();
+    } else if (action === 'history') {
+      showHistory(state.view !== 'history');
+    } else if (action === 'step-edit') {
+      startStepEdit(Number(t.dataset.stepId));
+    } else if (action === 'step-remove') {
+      removeStep(Number(t.dataset.stepId));
+    } else if (action === 'step-cancel') {
+      state.stepDraft = null;
+      renderHistory();
+    } else if (action === 'step-line-drop') {
+      state.stepDraft?.lines.splice(Number(t.dataset.line), 1);
+      renderHistory();
+    } else if (action === 'step-review') {
+      reviewStepEdit();
     }
   });
 }
@@ -660,17 +941,31 @@ function collectChanges() {
 
 // ─── Preview + save ───
 
-function impactHtml(impact, { edits = null, intro = '' } = {}) {
-  const editList = edits && edits.length > 0 ? `
+/** One "source — chest" name, as the board names things. */
+function editNameHtml(e) {
+  return `${esc(tGame(e.label))}${e.chestName ? ` <span class="muted-copy">— ${esc(tGame(e.chestName))}</span>` : ` <span class="muted-copy">— ${t('source value')}</span>`}`;
+}
+
+function editsListHtml(edits) {
+  return `<ul class="pb-impact-list">
+    ${edits.map((e) => `<li>
+      <span class="pb-impact-name">${editNameHtml(e)}</span>
+      <span class="pb-impact-move">${fmt(e.from)} → <strong>${fmt(e.to)}</strong></span>
+    </li>`).join('')}
+  </ul>`;
+}
+
+function editsHtml(edits) {
+  if (!edits || edits.length === 0) return '';
+  return `
     <div class="pb-impact-section">
       <div class="pb-impact-heading">${t('Changes')}</div>
-      <ul class="pb-impact-list">
-        ${edits.map((e) => `<li>
-          <span class="pb-impact-name">${esc(tGame(e.label))}${e.chestName ? ` <span class="muted-copy">— ${esc(tGame(e.chestName))}</span>` : ` <span class="muted-copy">— ${t('source value')}</span>`}</span>
-          <span class="pb-impact-move">${fmt(e.from)} → <strong>${fmt(e.to)}</strong></span>
-        </li>`).join('')}
-      </ul>
-    </div>` : '';
+      ${editsListHtml(edits)}
+    </div>`;
+}
+
+function impactHtml(impact, { edits = null, intro = '' } = {}) {
+  const editList = editsHtml(edits);
 
   // A save only ever touches the board's own clan, so a one-line list would
   // just repeat the totals above it.
@@ -751,6 +1046,95 @@ async function withBusy(fn) {
   }
 }
 
+/**
+ * The save dialog: the edits once, then where they apply — from today's game
+ * day on, or to all history — with what each does to the stored records, and
+ * an optional note for the History view. Resolves { mode, note }, or null.
+ */
+function saveDialog(preview) {
+  const clan = esc(state.board.clan.name);
+  const day = formatGameDayShort(preview.today);
+  // A source nobody had valued yet scored 0 everywhere: the fix belongs to
+  // all history. Anything else defaults to leaving the past alone.
+  const allUnset = preview.edits.every((e) => findSource(e.key)?.unset);
+  let mode = allUnset ? 'history' : 'forward';
+
+  const modeImpact = () => {
+    if (mode === 'forward') {
+      const p = preview.forward;
+      const intro = [
+        p.impact.records > 0
+          ? t('Chests of <strong>{clan}</strong> already recorded today are rescored; everything before today keeps its points.', { clan })
+          : t('No chest recorded before now changes — chests of <strong>{clan}</strong> from today on score the new values.', { clan }),
+        p.joinsStep ? t('This joins the change already saved for today, {day}.', { day: esc(day) }) : '',
+      ].filter(Boolean).join(' ');
+      return impactHtml(p.impact, { intro });
+    }
+    const p = preview.history;
+    const intro = [
+      p.impact.records > 0
+        ? t('Every stored chest record of <strong>{clan}</strong> from these sources gets the new value, whatever day it was earned.', { clan })
+        : t('No stored chest record of <strong>{clan}</strong> changes.', { clan }),
+      p.replacesSteps.length > 0
+        ? `<span class="pb-flag">⚠ ${tn(p.replacesSteps.length, 'It replaces what the dated change from {days} set for these chests.', 'It replaces what the dated changes from {days} set for these chests.', { days: esc(p.replacesSteps.map(formatGameDayShort).join(', ')) })}</span>`
+        : '',
+    ].filter(Boolean).join(' ');
+    return impactHtml(p.impact, { intro });
+  };
+
+  const option = (value, title, text) => `
+    <label class="pb-mode">
+      <input type="radio" name="pb-mode" value="${value}"${mode === value ? ' checked' : ''}>
+      <span class="pb-mode-text"><strong>${title}</strong><span class="muted-copy">${text}</span></span>
+    </label>`;
+
+  return new Promise((resolve) => {
+    const modal = contentModal({
+      title: tn(preview.edits.length, 'Save {n} change for {clan}?', 'Save {n} changes for {clan}?', { n: fmt(preview.edits.length), clan: state.board.clan.name }),
+      wide: true,
+      className: 'pb-impact-modal',
+      html: `
+        ${editsHtml(preview.edits)}
+        <fieldset class="pb-modes">
+          <legend class="pb-impact-heading">${t('Apply to')}</legend>
+          ${option('forward', t('From today on'), t('Chests from game day {day} on score the new values. Chests from earlier days keep their points.', { day: esc(day) }))}
+          ${option('history', t('All history'), t('Every chest this clan ever recorded is rescored. Use it to fix a value that was wrong.'))}
+        </fieldset>
+        <div class="pb-mode-impact">${modeImpact()}</div>
+        <label class="pb-note-field">
+          <span class="pb-impact-heading">${t('Note (optional, shown in the history)')}</span>
+          <input type="text" class="input pb-note" maxlength="300" placeholder="${t('Why the value changed')}">
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn" data-pb-modal="cancel">${t('Cancel')}</button>
+          <button type="button" class="btn btn-primary" data-pb-modal="confirm">${t('Save changes')}</button>
+        </div>`,
+    });
+    if (!modal) return resolve(null);
+    let settled = false;
+    const done = (v) => {
+      if (settled) return;
+      settled = true;
+      modal.close();
+      resolve(v);
+    };
+    modal.content.querySelectorAll('input[name="pb-mode"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        mode = r.value;
+        modal.content.querySelector('.pb-mode-impact').innerHTML = modeImpact();
+      });
+    });
+    modal.content.querySelector('[data-pb-modal="cancel"]').addEventListener('click', () => done(null));
+    modal.content.querySelector('[data-pb-modal="confirm"]').addEventListener('click', () => {
+      done({ mode, note: modal.content.querySelector('.pb-note').value.trim() });
+    });
+    // Closing by ×, backdrop or Escape is a cancel.
+    new MutationObserver((_, obs) => {
+      if (!modal.overlay.isConnected) { obs.disconnect(); done(null); }
+    }).observe(modal.overlay.parentNode, { childList: true });
+  });
+}
+
 function reviewAndSave() {
   return withBusy(async () => {
     const { changes, error } = collectChanges();
@@ -758,7 +1142,6 @@ function reviewAndSave() {
     if (changes.length === 0) return notify(t('Nothing to save.'), t('No changes'));
 
     const clanId = state.board.clan.id;
-    const clanName = esc(state.board.clan.name);
     const preview = await apiPost('/admin/source-points/changes', { clanId, changes, dryRun: true });
     if (preview?.error) return notify(preview.error, t('Preview failed'));
     if (preview.edits.length === 0) {
@@ -767,30 +1150,22 @@ function reviewAndSave() {
       render();
       return notify(t('Those values are already in place — nothing to save.'), t('No changes'));
     }
-    const ok = await confirmImpact({
-      title: tn(preview.edits.length, 'Save {n} change for {clan}?', 'Save {n} changes for {clan}?', { n: fmt(preview.edits.length), clan: state.board.clan.name }),
-      html: impactHtml(preview.impact, {
-        edits: preview.edits,
-        intro: preview.impact.records > 0
-          ? t('Saving updates these stored chest records of <strong>{clan}</strong> right away — there is nothing to Recalculate afterwards. Other clans keep their own values.', { clan: clanName })
-          : t('No stored chest record changes — this only affects chests <strong>{clan}</strong> scans from now on. Other clans keep their own values.', { clan: clanName }),
-      }),
-      confirmLabel: t('Save changes'),
-    });
-    if (!ok) return;
+    const choice = await saveDialog(preview);
+    if (!choice) return;
 
-    const result = await apiPost('/admin/source-points/changes', { clanId, changes });
+    const result = await apiPost('/admin/source-points/changes', { clanId, changes, mode: choice.mode, note: choice.note });
     if (result?.error) return notify(result.error, t('Save failed'));
     state.dirty.clear();
     state.split.clear();
     state.groupDirty.clear();
+    state.history = null;
     await refresh();
+    const changesText = tn(result.edits.length, '{n} change', '{n} changes', { n: fmt(result.edits.length) });
+    const records = tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) });
     notify(
-      t('{changes} saved · {records} updated · {points} pts', {
-        changes: tn(result.edits.length, '{n} change', '{n} changes', { n: fmt(result.edits.length) }),
-        records: tn(result.updated, '{n} record', '{n} records', { n: fmt(result.updated) }),
-        points: signed(result.impact.delta),
-      }),
+      result.mode === 'forward'
+        ? t('{changes} saved from {day} on · {records} updated · {points} pts', { changes: changesText, day: formatGameDayShort(result.effectiveFrom), records, points: signed(result.impact.delta) })
+        : t('{changes} saved · {records} updated · {points} pts', { changes: changesText, records, points: signed(result.impact.delta) }),
       t('Chest points saved'),
     );
   });
@@ -815,7 +1190,7 @@ function recalculate() {
     const ok = await confirmImpact({
       title: t('Recalculate chest points?'),
       html: impactHtml(preview.impact, {
-        intro: t('These stored records of <strong>{clan}</strong> no longer match its current values (usually chests scanned before a value was set). Recalculating brings them in line.', { clan: esc(state.board.clan.name) }),
+        intro: t('These stored records of <strong>{clan}</strong> no longer match the values in force on the day they were earned (usually chests scanned before a value was set). Recalculating brings them in line.', { clan: esc(state.board.clan.name) }),
       }),
       confirmLabel: t('Recalculate'),
     });
@@ -865,7 +1240,10 @@ function copyFromClan() {
         intro: `${tn(preview.values, '<strong>{clan}</strong> will pay exactly what <strong>{from}</strong> pays ({n} saved value; anything {from} hasn\'t set uses the built-in default).', '<strong>{clan}</strong> will pay exactly what <strong>{from}</strong> pays ({n} saved values; anything {from} hasn\'t set uses the built-in default).', { n: fmt(preview.values), clan: esc(clan.name), from: fromName })} `
           + (preview.impact.records > 0
             ? t('These stored chest records of {clan} are updated right away. {from} is not changed.', { clan: esc(clan.name), from: fromName })
-            : t('No stored chest record of {clan} changes. {from} is not changed.', { clan: esc(clan.name), from: fromName })),
+            : t('No stored chest record of {clan} changes. {from} is not changed.', { clan: esc(clan.name), from: fromName }))
+          + (preview.dropsSteps > 0
+            ? ` <span class="pb-flag">⚠ ${tn(preview.dropsSteps, 'The copied values apply to all history, so the dated change of {clan} goes.', 'The copied values apply to all history, so the {n} dated changes of {clan} go.', { n: fmt(preview.dropsSteps), clan: esc(clan.name) })}</span>`
+            : ''),
       }),
       confirmLabel: t('Copy values'),
     });
@@ -874,6 +1252,7 @@ function copyFromClan() {
     const result = await apiPost('/admin/source-points/copy', { clanId: clan.id, fromClanId });
     if (result?.error) return notify(result.error, t('Copy failed'));
     state.split.clear();
+    state.history = null;
     await refresh();
     notify(
       t('{values} copied from {clan} · {records} updated · {points} pts', {

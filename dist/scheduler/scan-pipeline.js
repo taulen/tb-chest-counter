@@ -146,7 +146,10 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
     const playerMergeCache = (0, merge_repo_js_1.loadMergeRules)('player', clanId);
     const chestMergeCache = (0, merge_repo_js_1.loadMergeRules)('chest', clanId);
     const sourceMergeCache = (0, merge_repo_js_1.loadMergeRules)('source', clanId);
-    const sourcePointOverrides = (0, source_points_repo_js_1.loadOverrides)(clanId);
+    // Point values as they stood on each game day: a chest scores the values of
+    // the day it was earned, so a value changed "from today on" never touches
+    // a chest from before today (docs/chest-points-history.md).
+    const sourcePointSchedule = (0, source_points_repo_js_1.loadPointSchedule)(clanId);
     // Chest names this clan has already stored in a prior scan. A new chest
     // defaulting to COMMON is by design, so the "unrecognised chest" review warning must fire only
     // the FIRST time a genuinely-new name appears, then stay quiet on every
@@ -840,10 +843,6 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
                         unknownChestSamples.push(`"${card.chestName}" → "${correctedChest}"`);
                     }
                 }
-                // Triumphals are bookkeeping only — never grant points.
-                const pointValue = target === 'triumphal'
-                    ? 0
-                    : (0, source_points_repo_js_1.getPointsForSourceCached)(sourcePointOverrides, cleanedSource, correctedChest);
                 tabResult.chestsFound++;
                 chestsInserted++;
                 // captured_at is the SCAN clock (monotonic, keeps distinct gifts from
@@ -863,6 +862,11 @@ async function scanCardsPipelined(ctx, page, sessionId, target = 'gifts') {
                 // before the scan); equal means it fell back to scan time.
                 if (earnedAt < capturedMs)
                     earnTimeParsed++;
+                // Triumphals are bookkeeping only — never grant points. Everything else
+                // scores the values in force on the game day it was earned.
+                const pointValue = target === 'triumphal'
+                    ? 0
+                    : (0, source_points_repo_js_1.getPointsForSourceAt)(sourcePointSchedule, cleanedSource, correctedChest, earnedAt);
                 const insertArgs = {
                     sessionId,
                     clanId,

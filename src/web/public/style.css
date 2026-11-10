@@ -6651,6 +6651,82 @@ summary.pb-impact-heading { cursor: pointer; }
   .pb-members { margin-left: 12px; }
 }
 
+/* Chest Points history (docs/chest-points-history.md): the save dialog's
+   "apply to" choice, and the History view of dated changes. */
+.pb-header-actions .btn[hidden] { display: none; }
+.pb-linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-gold);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pb-modes {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 8px;
+}
+.pb-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+}
+.pb-mode:has(input:checked) { border-color: var(--accent-gold-border); background: var(--accent-gold-bg); }
+.pb-mode input { margin-top: 3px; accent-color: var(--accent-gold); flex-shrink: 0; }
+.pb-mode-text { display: grid; gap: 2px; font-size: 13px; line-height: 1.45; min-width: 0; }
+.pb-note-field, .pb-hist-field { display: grid; gap: 4px; margin-bottom: 14px; }
+.pb-note { width: 100%; max-width: 560px; }
+.pb-note-field .pb-impact-heading, .pb-hist-field .pb-impact-heading { margin-bottom: 0; }
+
+.pb-hist-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 18px 0 8px;
+}
+.pb-hist-list { display: grid; gap: 10px; }
+.pb-hist-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.pb-hist-item.is-editing { border-color: var(--accent-gold-border); }
+.pb-hist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.pb-hist-title { display: grid; gap: 2px; min-width: 0; }
+.pb-hist-when { font-weight: 600; font-size: 14px; }
+.pb-hist-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.pb-hist-editor .pb-hist-actions { justify-content: flex-end; }
+.pb-hist-note { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); font-style: italic; overflow-wrap: anywhere; }
+.pb-hist-day { max-width: 200px; }
+.pb-hist-lines { margin-bottom: 14px; max-height: none; }
+.pb-hist-lines li { align-items: center; }
+.pb-hist-line-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.pb-hist-foot { margin-top: 16px; font-size: 12px; }
+@media (max-width: 640px) {
+  .pb-hist-head { flex-direction: column; }
+  .pb-hist-lines li { align-items: stretch; }
+  .pb-hist-line-control { flex-wrap: wrap; }
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    App shell — three layouts from one piece of markup (index.html):
 
