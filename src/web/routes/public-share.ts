@@ -272,11 +272,15 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
     // the board was last whole. A failed run that kept a few chests doesn't
     // reset it, so a clan whose scans keep failing reads as stale, which it is.
     const last = getLastCompletedSession(clan.id);
-    const schedule = scanLoop?.getClanScanSchedule(clan.id) ?? { scanning: false, nextScanAt: null };
+    // `due` and a RELATIVE nextScanInMs, never a time to compare against the
+    // visitor's clock — see clan-scan-schedule.ts for the flicker that caused.
+    const schedule = scanLoop?.getClanScanSchedule(clan.id)
+      ?? { scanning: false, due: false, nextScanInMs: null };
     res.json({
       lastScanAt: last?.completedAt ?? null,
-      nextScanAt: schedule.nextScanAt !== null ? new Date(schedule.nextScanAt).toISOString() : null,
       scanning: schedule.scanning,
+      due: schedule.due,
+      nextScanInMs: schedule.nextScanInMs,
     });
   });
 

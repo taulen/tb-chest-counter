@@ -1,21 +1,26 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveClanScanSchedule = resolveClanScanSchedule;
+const SCANNING = { scanning: true, due: false, nextScanInMs: null };
+const DUE = { scanning: false, due: true, nextScanInMs: null };
+const OFF = { scanning: false, due: false, nextScanInMs: null };
 function resolveClanScanSchedule(input) {
     const { clanId, now } = input;
     if (input.scanningClanId === clanId)
-        return { scanning: true, nextScanAt: null };
+        return SCANNING;
     const pos = input.cycleOrder.indexOf(clanId);
     if (pos !== -1) {
-        // Still ahead in this cycle: due now, it's just waiting for the clans
-        // before it.
-        if (pos > input.cycleCursor)
-            return { scanning: false, nextScanAt: now };
-        // Done this cycle (or in its post-scan phases). The real timer is armed
-        // from the cycle's END, so a full interval from now is a lower bound that
-        // corrects itself the moment the cycle finishes.
-        return { scanning: false, nextScanAt: now + input.intervalMs };
+        // Done this cycle. The real timer is armed from the cycle's END, so a full
+        // interval from now is a lower bound that corrects itself the moment the
+        // cycle finishes.
+        if (pos < input.cycleDoneCount)
+            return { scanning: false, due: false, nextScanInMs: input.intervalMs };
+        // Still ahead in this cycle — or up next with its browser still launching.
+        return DUE;
     }
-    return { scanning: false, nextScanAt: input.nextScanAt };
+    if (input.nextScanAt === null)
+        return OFF;
+    const inMs = input.nextScanAt - now;
+    return inMs > 0 ? { scanning: false, due: false, nextScanInMs: inMs } : DUE;
 }
 //# sourceMappingURL=clan-scan-schedule.js.map

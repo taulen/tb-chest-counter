@@ -192,10 +192,12 @@ export function formatRelativeTime(iso) {
 
 /**
  * A countdown as `1h 05m 09s` / `4m 09s` — the "Next scan in …" format, in
- * the app header and on the share page alike. Negative reads as zero.
+ * the app header and on the share page alike. Rounds UP, like any countdown:
+ * it reads 1s for the last second and is never "0m 00s" while time remains —
+ * callers switch to their "now"/"soon" wording at zero. Negative reads as zero.
  */
 export function formatCountdown(ms) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
   const hours = Math.floor(totalSec / 3600);
   const minutes = Math.floor((totalSec % 3600) / 60);
   const seconds = totalSec % 60;

@@ -116,7 +116,7 @@ async function fakeScannerStatus(ctx) {
     const res = await route.fetch();
     let json;
     try { json = await res.json(); } catch (_) { return route.fulfill({ response: res }); }
-    if (!json.nextScanAt && !json.scanning) json.nextScanAt = new Date(Date.now() + 3659e3).toISOString();
+    if (json.nextScanInMs == null && !json.scanning && !json.due) json.nextScanInMs = 3659e3;
     return route.fulfill({ response: res, json });
   });
 }

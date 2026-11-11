@@ -187,7 +187,7 @@ describe('public share surface (anonymous, token-gated)', () => {
 
   // ── scan status: times only, this clan only, not an API hit ──────
   describe('/scan-status', () => {
-    const NEXT_AT = Date.parse('2026-11-11T14:00:00.000Z');
+    const IN_MS = 45 * 60_000;
     let askedFor: number[] = [];
 
     function appWithLoop(): express.Express {
@@ -195,7 +195,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       const loop = {
         getClanScanSchedule(clanId: number) {
           askedFor.push(clanId);
-          return { scanning: false, nextScanAt: NEXT_AT };
+          return { scanning: false, due: false, nextScanInMs: IN_MS };
         },
       } as unknown as ScanLoop;
       const a = express();
@@ -220,10 +220,12 @@ describe('public share surface (anonymous, token-gated)', () => {
       const r = await request(appWithLoop()).get('/api/public/aAaA11/scan-status');
       expect(r.status).toBe(200);
       // Exact key set — the allow-list, as for /clan.
-      expect(Object.keys(r.body).sort()).toEqual(['lastScanAt', 'nextScanAt', 'scanning']);
+      expect(Object.keys(r.body).sort()).toEqual(['due', 'lastScanAt', 'nextScanInMs', 'scanning']);
       expect(r.body.lastScanAt).toBe('2099-01-01T10:00:00.000Z');
-      expect(r.body.nextScanAt).toBe(new Date(NEXT_AT).toISOString());
+      // Relative, so the page never compares a time against the visitor's clock.
+      expect(r.body.nextScanInMs).toBe(IN_MS);
       expect(r.body.scanning).toBe(false);
+      expect(r.body.due).toBe(false);
       expect(askedFor).toEqual([1]);
     });
 
@@ -236,8 +238,9 @@ describe('public share surface (anonymous, token-gated)', () => {
     it('without a scan loop (dashboard-only) it reports no schedule', async () => {
       const r = await request(app).get('/api/public/aAaA11/scan-status');
       expect(r.status).toBe(200);
-      expect(r.body.nextScanAt).toBeNull();
+      expect(r.body.nextScanInMs).toBeNull();
       expect(r.body.scanning).toBe(false);
+      expect(r.body.due).toBe(false);
     });
   });
 

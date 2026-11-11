@@ -156,14 +156,31 @@ function start() {
   // /scan-status is polled (it isn't counted as an API hit); the strip's
   // numbers tick every second in between, by touching only the two <strong>s
   // so a hover tooltip on either item isn't torn down under the pointer.
+  // Every 15 s while a scan is running or due, so the board picks up the new
+  // chests soon after it ends; every minute otherwise.
   const SCAN_POLL_MS = 60_000;
+  const SCAN_POLL_BUSY_MS = 15_000;
   const ICON_LAST_SCAN = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.85" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.4 2.5v2.8h2.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 5.2v3l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const ICON_NEXT_SCAN = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4.5 2h7M4.5 14h7M5.2 2c0 2.9 2.8 3.9 2.8 6s-2.8 3.1-2.8 6M10.8 2c0 2.9-2.8 3.9-2.8 6s2.8 3.1 2.8 6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  // The last /scan-status answer: { lastScanAt, nextScanAt, scanning }.
+  // The last /scan-status answer — { lastScanAt, scanning, due, nextScanInMs }
+  // — plus receivedAt, this browser's clock when it arrived.
   let scanStatus = null;
   // Whether the strip last rendered "Next scan in …" (vs "soon"), so the tick
   // knows when the countdown ran out and the wording has to change.
   let scanCountingDown = false;
+  let scanPollTimer = null;
+
+  // The server sends time REMAINING, so the countdown runs on this browser's
+  // clock from the moment the answer arrived: a device whose clock is off
+  // still counts down to the right moment, and never reads "due" as a
+  // second-long countdown (the server says due outright).
+  function stampScanStatus(s) {
+    return { ...s, receivedAt: Date.now() };
+  }
+
+  function nextScanRemainingMs(s) {
+    return s.receivedAt + s.nextScanInMs - Date.now();
+  }
 
   function renderScanStatus() {
     const el = document.getElementById('scanStatus');
@@ -175,13 +192,14 @@ function start() {
     scanCountingDown = false;
     if (s?.scanning) {
       items.push(`<span class="public-share-scan-item is-scanning"><span class="public-share-scan-dot" aria-hidden="true"></span><strong>${t('Scanning…')}</strong></span>`);
-    } else if (s?.nextScanAt) {
-      const remainingMs = Date.parse(s.nextScanAt) - Date.now();
+    } else if (s && (s.due || s.nextScanInMs != null)) {
+      const remainingMs = s.nextScanInMs != null ? nextScanRemainingMs(s) : 0;
       scanCountingDown = remainingMs > 0;
       const text = scanCountingDown
         ? t('Next scan in {time}', { time: `<strong data-scan-countdown>${esc(formatCountdown(remainingMs))}</strong>` })
         : t('Next scan: soon');
-      items.push(`<span class="public-share-scan-item" title="${esc(formatDate(s.nextScanAt))}">${ICON_NEXT_SCAN}<span>${text}</span></span>`);
+      const title = scanCountingDown ? ` title="${esc(formatDate(s.receivedAt + s.nextScanInMs))}"` : '';
+      items.push(`<span class="public-share-scan-item"${title}>${ICON_NEXT_SCAN}<span>${text}</span></span>`);
     }
     el.innerHTML = items.join('');
     // Leaderboard only: ChestTracker's numbers come from its own site, not our scans.
@@ -191,30 +209,43 @@ function start() {
   function tickScanStatus() {
     const s = scanStatus;
     if (!s) return;
-    if (scanCountingDown && Date.parse(s.nextScanAt) - Date.now() <= 0) {
+    if (scanCountingDown && nextScanRemainingMs(s) <= 0) {
       renderScanStatus();
       // The scan starts on the dot: ask again shortly instead of reading
       // "soon" for up to a whole poll interval.
-      setTimeout(refreshScanStatus, 5_000);
+      scheduleScanPoll(5_000);
       return;
     }
     const el = document.getElementById('scanStatus');
     const ago = el.querySelector('[data-scan-ago]');
     if (ago) ago.textContent = formatTimeAgo(s.lastScanAt);
     const countdown = el.querySelector('[data-scan-countdown]');
-    if (countdown) countdown.textContent = formatCountdown(Date.parse(s.nextScanAt) - Date.now());
+    if (countdown) countdown.textContent = formatCountdown(nextScanRemainingMs(s));
+  }
+
+  // One timer, so a visibility change or a countdown running out can pull the
+  // next poll forward without starting a second chain.
+  function scheduleScanPoll(ms) {
+    clearTimeout(scanPollTimer);
+    scanPollTimer = setTimeout(refreshScanStatus, ms);
   }
 
   async function refreshScanStatus() {
+    clearTimeout(scanPollTimer);
+    // No polling from a background tab; visibilitychange restarts it.
+    if (document.visibilityState !== 'visible') return;
     let next;
     try {
-      next = await fetchJson(`${API}/scan-status`);
+      next = stampScanStatus(await fetchJson(`${API}/scan-status`));
     } catch {
-      return; // keep showing the last answer; the next poll tries again
+      // Keep showing the last answer; try again later.
+      scheduleScanPoll(SCAN_POLL_MS);
+      return;
     }
     const prevLastScanAt = scanStatus?.lastScanAt ?? null;
     scanStatus = next;
     renderScanStatus();
+    scheduleScanPoll(next.scanning || next.due ? SCAN_POLL_BUSY_MS : SCAN_POLL_MS);
     // A scan finished while the page was open: bring in its chests too, or the
     // strip would say "just now" over a board from before it.
     if (prevLastScanAt && next.lastScanAt && next.lastScanAt !== prevLastScanAt && currentTab === 'leaderboard') {
@@ -425,7 +456,7 @@ function start() {
   async function init() {
     // In parallel with /clan, and awaited before the first render, so the
     // strip is there with the board instead of popping in above it a beat later.
-    const scanStatusLoad = fetchJson(`${API}/scan-status`).catch(() => null);
+    const scanStatusLoad = fetchJson(`${API}/scan-status`).then(stampScanStatus).catch(() => null);
     let info;
     try {
       info = await fetchJson(`${API}/clan`);
@@ -459,10 +490,9 @@ function start() {
     wireEvents();
     renderCurrentTab();
     setInterval(tickScanStatus, 1000);
-    // No polling from a background tab; catch up the moment it's looked at again.
-    setInterval(() => {
-      if (document.visibilityState === 'visible') refreshScanStatus();
-    }, SCAN_POLL_MS);
+    scheduleScanPoll(scanStatus?.scanning || scanStatus?.due ? SCAN_POLL_BUSY_MS : SCAN_POLL_MS);
+    // A background tab stops polling (refreshScanStatus); catch up the moment
+    // it's looked at again.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') refreshScanStatus();
     });
