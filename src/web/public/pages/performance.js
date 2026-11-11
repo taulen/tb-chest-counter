@@ -188,8 +188,8 @@ function signalSummaryHtml(m) {
   const tm = m.signals.tinman;
   const ev = m.signals.events;
   return [
-    g.units ? tn(g.units, 'Goal {pct} ({hits}/{n} week)', 'Goal {pct} ({hits}/{n} weeks)', { pct: pct(gp.value), hits: g.hits, n: g.units }) : '',
-    tm.units ? t('{tinman} {pct}', { tinman: esc(tGame('Tin Man')), pct: pct(tm.value) }) : '',
+    g.units ? tn(g.units, 'Goal {pct} ({hits}/{n} week)', 'Goal {pct} ({hits}/{n} weeks)', { pct: pct(gp.share), hits: g.hits, n: g.units }) : '',
+    tm.units ? t('{tinman} {pct}', { tinman: esc(tGame('Tin Man')), pct: pct(tm.share) }) : '',
     ev.units ? tn(ev.units, 'Events {hits}/{n} run', 'Events {hits}/{n} runs', { hits: ev.hits, n: ev.units }) : '',
   ].filter(Boolean).join(' · ');
 }
@@ -275,9 +275,11 @@ function sortValue(m, key, rankOf) {
     case 'rank': return rankOf.get(m.memberId) ?? null;
     case 'name': return m.name.toLowerCase();
     case 'score': return m.score;
-    case 'goal': return m.signals.goalHits.units ? m.signals.goalHits.value * 10 + (m.signals.goalPoints.value ?? 0) : null;
-    case 'tinman': return m.signals.tinman.units ? m.signals.tinman.value : null;
-    case 'events': return m.signals.events.units ? m.signals.events.value : null;
+    // Hits first, then the real share: hit shares differ by at least ~1/200,
+    // which ×1e6 dwarfs any share a week can reach.
+    case 'goal': return m.signals.goalHits.units ? m.signals.goalHits.value * 1e6 + (m.signals.goalPoints.share ?? 0) : null;
+    case 'tinman': return m.signals.tinman.units ? m.signals.tinman.share : null;
+    case 'events': return m.signals.events.units ? m.signals.events.share : null;
     case 'guards': return m.guardsLevel;
     case 'since': return m.tenureStart;
     default: return null;
@@ -293,7 +295,7 @@ function goalCellHtml(m, r) {
   const p = m.signals.goalPoints;
   if (!r.weeklyGoal) return `<span class="perf-dim" title="${esc(t('No weekly points goal is set'))}">—</span>`;
   if (!h.units) return `<span class="perf-dim" title="${esc(t('No whole week in the clan in this timeframe'))}">—</span>`;
-  let title = tn(h.units, 'Reached the weekly goal in {hits} of {n} week; {pct} of the goal on average', 'Reached the weekly goal in {hits} of {n} weeks; {pct} of the goal on average', { hits: h.hits, n: h.units, pct: pct(p.value) });
+  let title = tn(h.units, 'Reached the weekly goal in {hits} of {n} week; {pct} of the goal on average', 'Reached the weekly goal in {hits} of {n} weeks; {pct} of the goal on average', { hits: h.hits, n: h.units, pct: pct(p.share) });
   if (h.near) {
     title += ` · ${tn(h.near, '{n} more week came close to it and counts as part of a hit', '{n} more weeks came close to it and count as part of a hit', { n: h.near })}`;
   }
@@ -303,25 +305,25 @@ function goalCellHtml(m, r) {
   const near = h.near
     ? ` <span class="perf-cell-near"><span aria-hidden="true">◐</span><span class="visually-hidden">${t('close to goal')}:</span> ${h.near}</span>`
     : '';
-  return `<span class="perf-cell${h.counted ? '' : ' is-thin'}" title="${esc(title)}">${h.hits}/${h.units}${near} <span class="perf-cell-sub">${pct(p.value)}</span></span>`;
+  return `<span class="perf-cell${h.counted ? '' : ' is-thin'}" title="${esc(title)}">${h.hits}/${h.units}${near} <span class="perf-cell-sub">${pct(p.share)}</span></span>`;
 }
 
 function tinmanCellHtml(m) {
   const s = m.signals.tinman;
   if (!s.units) return `<span class="perf-dim" title="${esc(t('No finished {tinman} run in this timeframe', { tinman: tGame('Tin Man') }))}">—</span>`;
-  let title = tn(s.units, '{pct} of their target on average, over {n} run', '{pct} of their target on average, over {n} runs', { pct: pct(s.value), n: s.units });
+  let title = tn(s.units, '{pct} of their target on average, over {n} run', '{pct} of their target on average, over {n} runs', { pct: pct(s.share), n: s.units });
   if (m.tinmanMedianRuns) {
     title += ` · ${tn(m.tinmanMedianRuns, '{n} run had no targets pasted, so it is measured against the median player', '{n} runs had no targets pasted, so they are measured against the median player', { n: m.tinmanMedianRuns })}`;
   }
   title += thinNote(s);
-  return `<span class="perf-cell${s.counted ? '' : ' is-thin'}" title="${esc(title)}">${pct(s.value)} <span class="perf-cell-sub">${tn(s.units, '{n} run', '{n} runs', { n: s.units })}</span></span>`;
+  return `<span class="perf-cell${s.counted ? '' : ' is-thin'}" title="${esc(title)}">${pct(s.share)} <span class="perf-cell-sub">${tn(s.units, '{n} run', '{n} runs', { n: s.units })}</span></span>`;
 }
 
 function eventsCellHtml(m) {
   const s = m.signals.events;
   if (!s.units) return `<span class="perf-dim" title="${esc(t('No finished event run in this timeframe'))}">—</span>`;
-  const title = tn(s.units, 'Took part in {hits} of {n} event run; {pct} of the median participant on average', 'Took part in {hits} of {n} event runs; {pct} of the median participant on average', { hits: s.hits, n: s.units, pct: pct(s.value) }) + thinNote(s);
-  return `<span class="perf-cell${s.counted ? '' : ' is-thin'}" title="${esc(title)}">${s.hits}/${s.units} <span class="perf-cell-sub">${pct(s.value)}</span></span>`;
+  const title = tn(s.units, 'Took part in {hits} of {n} event run; {pct} of the median participant on average', 'Took part in {hits} of {n} event runs; {pct} of the median participant on average', { hits: s.hits, n: s.units, pct: pct(s.share) }) + thinNote(s);
+  return `<span class="perf-cell${s.counted ? '' : ' is-thin'}" title="${esc(title)}">${s.hits}/${s.units} <span class="perf-cell-sub">${pct(s.share)}</span></span>`;
 }
 
 function guardsHtml(m) {
@@ -467,7 +469,16 @@ function howCardHtml(r) {
         ].join(' '))}
         ${item('events', t('points in each finished run of {events} against the median participant. A run sat out counts as 0.', { events }))}
       </ul>
-      <p>${t('A week or run only counts if the member was in the clan for all of it, and one counts for at most {cap}, so a single huge week can’t hide empty ones.', { cap: pct(s.ratioCap) })}</p>
+      <p>${s.overCurve
+        ? t('A week or run only counts if the member was in the clan for all of it. Up to {from} of the goal or target, a share counts as it is; above that, every doubling adds {step}: {twice} scores {twiceScore}, and {capAt} or more scores {cap}, the most one week or run can count, so a single huge week can’t hide empty ones. The columns show the real shares.', {
+          from: pct(s.overCurve.from),
+          step: pct(s.overCurve.perDoubling),
+          twice: pct(2 * s.overCurve.from),
+          twiceScore: pct(Math.min(s.overCurve.from + s.overCurve.perDoubling, s.ratioCap)),
+          capAt: pct(s.overCurve.from * 2 ** ((s.ratioCap - s.overCurve.from) / s.overCurve.perDoubling)),
+          cap: pct(s.ratioCap),
+        })
+        : t('A week or run only counts if the member was in the clan for all of it, and one counts for at most {cap}, so a single huge week can’t hide empty ones.', { cap: pct(s.ratioCap) })}</p>
       <p>${t('The score is the weighted average of the parts a member has enough data for. 100% means meeting every expectation; {over} or more is an overachiever, below {under} an underachiever.', { over: pct(s.overThreshold), under: pct(s.underThreshold) })}</p>
       <p>${tn(r.requiredDays, 'To be shown, a member needs {n} day in the clan within this timeframe. Time in the clan counts from their first chest, might reading or sighting, whichever is earliest, so a renamed player keeps their old name’s history.', 'To be shown, a member needs {n} days in the clan within this timeframe. Time in the clan counts from their first chest, might reading or sighting, whichever is earliest, so a renamed player keeps their old name’s history.', { n: r.requiredDays })}</p>
     </div>

@@ -185,7 +185,7 @@ weekGoals, members, guards) {
             const hit = actual >= goal;
             const near = !hit && !!config.goalNearMiss && actual >= goal * amber;
             units.push({
-                ratio: (0, performance_score_js_1.unitRatio)(actual, goal, config.ratioCap),
+                ratio: (0, performance_score_js_1.unitRatio)(actual, goal),
                 hit,
                 credit: hit ? 1 : near ? config.goalNearMiss.credit : 0,
             });
@@ -237,7 +237,7 @@ function tinmanUnits(clanId, config, today, windowFrom, members, guards) {
             if (!expected || !(expected > 0))
                 continue;
             const actual = totals.get(m.id) ?? 0;
-            units.get(m.id).push({ ratio: (0, performance_score_js_1.unitRatio)(actual, expected, config.ratioCap), hit: actual >= expected });
+            units.get(m.id).push({ ratio: (0, performance_score_js_1.unitRatio)(actual, expected), hit: actual >= expected });
             if (!hasTargets)
                 medianRuns.set(m.id, (medianRuns.get(m.id) ?? 0) + 1);
         }
@@ -272,7 +272,7 @@ async function eventUnits(input, config, today, windowFrom, dataStart, members) 
                 if (m.tenureStart > firstDay)
                     continue;
                 const actual = ranked.byMember.get(m.id)?.points ?? 0;
-                units.get(m.id).push({ ratio: (0, performance_score_js_1.unitRatio)(actual, typical, config.ratioCap), hit: actual > 0 });
+                units.get(m.id).push({ ratio: (0, performance_score_js_1.unitRatio)(actual, typical), hit: actual > 0 });
             }
         }
         perEvent.push({ key, name: def.name, runs });
@@ -305,6 +305,7 @@ async function buildReport(input, nowMs) {
         scoring: {
             weights: config.weights,
             minUnits: config.minUnits,
+            overCurve: config.overCurve,
             ratioCap: config.ratioCap,
             overThreshold: config.overThreshold,
             underThreshold: config.underThreshold,

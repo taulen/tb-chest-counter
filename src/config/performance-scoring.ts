@@ -12,10 +12,13 @@
  *  - Each SIGNAL is measured per unit: a closed clan week, a finished Tin Man
  *    run, a finished event run. A unit only counts for a member who was in the
  *    clan for the whole of it, so a mid-week joiner is never held to that week.
- *  - A unit becomes a RATIO against its expectation (1.0 = exactly met), capped
- *    at `ratioCap` so one huge week can't hide a string of empty ones.
- *  - A signal's value is the mean of its unit ratios; it only counts once the
- *    member has `minUnits` of it in the window.
+ *  - A unit's SHARE of its expectation (1.0 = exactly met) is scored on a
+ *    curve: as it is up to `overCurve.from` (100%), then each doubling adds
+ *    `overCurve.perDoubling`, capped at `ratioCap`. So 400% stands out from
+ *    200%, yet one huge week still can't hide a string of empty ones.
+ *  - A signal's value is the mean of its scored units; it only counts once the
+ *    member has `minUnits` of it in the window. The page shows the real
+ *    shares beside it, uncurved.
  *  - The SCORE is the weighted mean of the signals the member has, the weights
  *    re-normalised over those. 1.0 (shown as 100%) = meeting every expectation.
  *
@@ -56,8 +59,9 @@ export interface PerformanceConfig {
    *  - goalHits:   share of closed weeks the member reached the weekly points
    *                goal (the Leaderboard's goal) — the consistency signal. A
    *                near miss earns partial credit (goalNearMiss).
-   *  - goalPoints: their weekly points as a share of that goal, capped — the
-   *                "by how much" signal, so going over the goal counts.
+   *  - goalPoints: their weekly points as a share of that goal, scored on the
+   *                `overCurve` — the "by how much" signal, so going over the
+   *                goal counts.
    *  - tinman:     Tin Man points per finished run against their guards tier's
    *                target (the Ancient planner targets pasted on Events → Ancients).
    *  - events:     points per finished event run against the clan's median
@@ -84,7 +88,25 @@ export interface PerformanceConfig {
    * Null = met or not met only.
    */
   goalNearMiss: { credit: number } | null;
-  /** A unit ratio is capped here before averaging (2 = at most 200% per unit). */
+  /**
+   * How a unit's share ABOVE `from` turns into score. Up to `from` a share
+   * scores as it is (half the goal = 50%). Above it, every doubling adds
+   * `perDoubling`: from 1 at 0.5, 200% of the goal scores 150% and 400%
+   * scores 200% (= `ratioCap`). Null = a share scores as it is, up to the cap.
+   *
+   * Since 2026-11-11, at the clan's request. Before that it was linear up to
+   * the 200% cap: 210% of a target scored the same as 500%, and SIK had 19 of
+   * 93 members over 120%, bunched at 116–153%. On SIK's live data the curve
+   * leaves 7 overachievers, the ones big across the board, and the 5 members
+   * it newly drops under 70% were weak on Tin Man and events, held up only
+   * by weekly points. A unit still counts for at most 200%.
+   *
+   * Compared then and kept as the alternative: `from: 2` with a 300% cap
+   * (nobody loses points; the top is raised instead). It flagged MORE
+   * overachievers (SIK 19 → 24–27), the opposite of what the clan wanted.
+   */
+  overCurve: { from: number; perDoubling: number } | null;
+  /** The most one unit can score (2 = 200%), after `overCurve`. */
   ratioCap: number;
   /** Score at or above this → Overachiever. */
   overThreshold: number;
@@ -144,6 +166,7 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
     events: 2,
   },
   goalNearMiss: { credit: 0.5 },
+  overCurve: { from: 1, perDoubling: 0.5 },
   ratioCap: 2,
   overThreshold: 1.2,
   underThreshold: 0.7,

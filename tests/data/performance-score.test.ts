@@ -4,6 +4,7 @@ import {
   guardsLevelOn,
   median,
   requiredPresentDays,
+  scoredRatio,
   statusFor,
   summarizeSignals,
   unitRatio,
@@ -15,6 +16,7 @@ const config: PerformanceConfig = {
   ...DEFAULT_PERFORMANCE_CONFIG,
   weights: { goalHits: 0.3, goalPoints: 0.2, tinman: 0.3, events: 0.2 },
   minUnits: { goalHits: 2, goalPoints: 2, tinman: 1, events: 2 },
+  overCurve: { from: 1, perDoubling: 0.5 },
   ratioCap: 2,
   overThreshold: 1.2,
   underThreshold: 0.7,
@@ -23,15 +25,51 @@ const config: PerformanceConfig = {
 };
 
 const u = (ratio: number, hit = ratio >= 1): PerformanceUnit => ({ ratio, hit });
+/** 1 + 0.5 × log2(share): what a share over 100% scores under `config`. */
+const curve = (share: number) => 1 + 0.5 * Math.log2(share);
 
 describe('unitRatio', () => {
-  it('caps a huge unit so it cannot hide empty ones', () => {
-    expect(unitRatio(50_000, 10_000, 2)).toBe(2);
-    expect(unitRatio(5_000, 10_000, 2)).toBe(0.5);
-    expect(unitRatio(-5, 10, 2)).toBe(0);
+  it('is the real share, uncapped', () => {
+    expect(unitRatio(50_000, 10_000)).toBe(5);
+    expect(unitRatio(5_000, 10_000)).toBe(0.5);
+    expect(unitRatio(-5, 10)).toBe(0);
   });
   it('refuses an expectation it cannot measure against', () => {
-    expect(() => unitRatio(1, 0, 2)).toThrow();
+    expect(() => unitRatio(1, 0)).toThrow();
+  });
+});
+
+describe('scoredRatio', () => {
+  it('scores a share up to 100% as it is', () => {
+    expect(scoredRatio(0, config)).toBe(0);
+    expect(scoredRatio(0.5, config)).toBe(0.5);
+    expect(scoredRatio(1, config)).toBe(1);
+  });
+  it('adds 50% per doubling above it, so the cap takes 400%', () => {
+    expect(scoredRatio(2, config)).toBeCloseTo(1.5);
+    expect(scoredRatio(4, config)).toBeCloseTo(2);
+    expect(scoredRatio(1.5, config)).toBeCloseTo(curve(1.5));
+    // 200% and 400% no longer score the same; 400% and 800% do.
+    expect(scoredRatio(4, config)).toBeGreaterThan(scoredRatio(2, config) + 0.4);
+    expect(scoredRatio(8, config)).toBe(2);
+  });
+  it('still lets no single unit hide an empty one beyond the cap', () => {
+    const s = summarizeSignals({ weeks: [u(10), u(0)], tinman: [], events: [] }, config);
+    expect(s.goalPoints.value).toBeCloseTo(1);
+    expect(s.goalPoints.share).toBeCloseTo(5);
+  });
+  it('is linear up to the cap with no curve', () => {
+    const linear = { ...config, overCurve: null };
+    expect(scoredRatio(1.5, linear)).toBe(1.5);
+    expect(scoredRatio(3, linear)).toBe(2);
+  });
+  it('can start the curve higher up', () => {
+    const late = { ...config, overCurve: { from: 2, perDoubling: 1 }, ratioCap: 3 };
+    expect(scoredRatio(1.5, late)).toBe(1.5);
+    expect(scoredRatio(2, late)).toBe(2);
+    expect(scoredRatio(3, late)).toBeCloseTo(2 + Math.log2(1.5));
+    expect(scoredRatio(4, late)).toBeCloseTo(3);
+    expect(scoredRatio(9, late)).toBe(3);
   });
 });
 
@@ -47,8 +85,10 @@ describe('summarizeSignals + compositeScore', () => {
   it('reads weeks twice: how often the goal was reached and by how much', () => {
     const s = summarizeSignals({ weeks: [u(2), u(0.5), u(1), u(1.5)], tinman: [], events: [] }, config);
     expect(s.goalHits).toMatchObject({ units: 4, hits: 3, value: 0.75, counted: true });
-    expect(s.goalPoints.value).toBeCloseTo(1.25);
-    expect(s.tinman).toMatchObject({ units: 0, value: null, counted: false });
+    // The score uses the curved shares, the page shows the real ones.
+    expect(s.goalPoints.value).toBeCloseTo((1.5 + 0.5 + 1 + curve(1.5)) / 4);
+    expect(s.goalPoints.share).toBeCloseTo(1.25);
+    expect(s.tinman).toMatchObject({ units: 0, value: null, share: null, counted: false });
   });
 
   it('gives a near miss its partial credit toward the hit share', () => {
@@ -69,7 +109,7 @@ describe('summarizeSignals + compositeScore', () => {
     const s = summarizeSignals({ weeks: [u(0)], tinman: [u(1.5)], events: [u(0, false)] }, config);
     expect(s.goalHits.counted).toBe(false);
     expect(s.events.counted).toBe(false);
-    expect(compositeScore(s, config)).toBeCloseTo(1.5);
+    expect(compositeScore(s, config)).toBeCloseTo(curve(1.5));
   });
 
   it('is null with nothing to score', () => {
@@ -80,11 +120,11 @@ describe('summarizeSignals + compositeScore', () => {
 
   it('weighs every signal when all are present', () => {
     const s = summarizeSignals({
-      weeks: [u(2), u(2)], // hits 1.0, points 2.0
+      weeks: [u(2), u(2)], // hits 1.0, points 200% → 1.5
       tinman: [u(1.25)],
       events: [u(1), u(0, false)], // 0.5
     }, config);
-    expect(compositeScore(s, config)).toBeCloseTo(0.3 * 1 + 0.2 * 2 + 0.3 * 1.25 + 0.2 * 0.5);
+    expect(compositeScore(s, config)).toBeCloseTo(0.3 * 1 + 0.2 * 1.5 + 0.3 * curve(1.25) + 0.2 * 0.5);
   });
 });
 

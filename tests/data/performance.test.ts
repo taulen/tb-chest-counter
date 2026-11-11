@@ -76,8 +76,11 @@ describe('performance report', () => {
     expect(r.units.weeks).toBe(4);
     const s = r.members.find((m) => m.memberId === steady)!;
     expect(s.signals.goalHits).toMatchObject({ units: 4, hits: 4, value: 1 });
-    expect(s.signals.goalPoints.value).toBe(2); // 250%, capped
-    expect(s.score).toBeCloseTo((0.2 * 1 + 0.3 * 2) / 0.5);
+    // 250% of the goal every week: shown as 250%, scored 1 + 0.5 × log2(2.5).
+    expect(s.signals.goalPoints.share).toBeCloseTo(2.5);
+    const scored = 1 + 0.5 * Math.log2(2.5);
+    expect(s.signals.goalPoints.value).toBeCloseTo(scored);
+    expect(s.score).toBeCloseTo((0.2 * 1 + 0.3 * scored) / 0.5);
     expect(s.status).toBe('over');
     const l = r.members.find((m) => m.memberId === slacker)!;
     expect(l.signals.goalHits.hits).toBe(0);
@@ -158,7 +161,8 @@ describe('performance report', () => {
     const r = await report();
     expect(r.units).toMatchObject({ tinmanRuns: 1, tinmanRunsWithTargets: 1 });
     const by = (id: number) => r.members.find((m) => m.memberId === id)!.signals.tinman;
-    expect(by(steady)).toMatchObject({ units: 1, hits: 1, value: 1.25 });
+    expect(by(steady)).toMatchObject({ units: 1, hits: 1, share: 1.25 });
+    expect(by(steady).value).toBeCloseTo(1 + 0.5 * Math.log2(1.25));
     expect(by(slacker).value).toBeCloseTo(0.025);
     expect(by(absent)).toMatchObject({ units: 1, hits: 0, value: 0 });
     // One run is shown but doesn't count yet: a month needs two.

@@ -48,6 +48,20 @@ describe('performance scoring config', () => {
     expect(C.overThreshold).toBeLessThanOrEqual(C.ratioCap);
   });
 
+  it('curves shares above its start down, never up', () => {
+    if (C.overCurve === null) return;
+    const { from, perDoubling } = C.overCurve;
+    // Starting below 100% would shrink a share that merely meets the goal;
+    // starting at or past the cap would never curve anything.
+    expect(from).toBeGreaterThanOrEqual(1);
+    expect(from).toBeLessThan(C.ratioCap);
+    expect(perDoubling).toBeGreaterThan(0);
+    // from + p·log2(x/from) ≤ x for every x ≥ from exactly when its slope at
+    // `from` (p / (from·ln 2)) is at most 1: past that, a share just over the
+    // start would score more than it is.
+    expect(perDoubling).toBeLessThanOrEqual(from * Math.LN2);
+  });
+
   it('gives a near miss less than a hit', () => {
     // Where a near miss starts is the clan's amber setting, not config.
     if (C.goalNearMiss === null) return;

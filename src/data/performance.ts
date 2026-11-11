@@ -125,7 +125,7 @@ export interface PerformanceReport {
   /** Finished runs counted per event, in config order. */
   events: Array<{ key: string; name: string; runs: number }>;
   /** As used for THIS timeframe: `minUnits` already carries its overrides. */
-  scoring: Pick<PerformanceConfig, 'weights' | 'minUnits' | 'ratioCap' | 'overThreshold' | 'underThreshold'
+  scoring: Pick<PerformanceConfig, 'weights' | 'minUnits' | 'overCurve' | 'ratioCap' | 'overThreshold' | 'underThreshold'
     | 'assumedGuardsLevel' | 'goalNearMiss' | 'tinmanMedianFallback'>;
   members: PerformanceMemberRow[];
   tooNew: PerformanceTooNewRow[];
@@ -272,7 +272,7 @@ function weekUnits(
       const hit = actual >= goal;
       const near = !hit && !!config.goalNearMiss && actual >= goal * amber;
       units.push({
-        ratio: unitRatio(actual, goal, config.ratioCap),
+        ratio: unitRatio(actual, goal),
         hit,
         credit: hit ? 1 : near ? config.goalNearMiss!.credit : 0,
       });
@@ -334,7 +334,7 @@ function tinmanUnits(
       }
       if (!expected || !(expected > 0)) continue;
       const actual = totals.get(m.id) ?? 0;
-      units.get(m.id)!.push({ ratio: unitRatio(actual, expected, config.ratioCap), hit: actual >= expected });
+      units.get(m.id)!.push({ ratio: unitRatio(actual, expected), hit: actual >= expected });
       if (!hasTargets) medianRuns.set(m.id, (medianRuns.get(m.id) ?? 0) + 1);
     }
   }
@@ -377,7 +377,7 @@ async function eventUnits(
       for (const m of members) {
         if (m.tenureStart > firstDay) continue;
         const actual = ranked.byMember.get(m.id)?.points ?? 0;
-        units.get(m.id)!.push({ ratio: unitRatio(actual, typical, config.ratioCap), hit: actual > 0 });
+        units.get(m.id)!.push({ ratio: unitRatio(actual, typical), hit: actual > 0 });
       }
     }
     perEvent.push({ key, name: def.name, runs });
@@ -412,6 +412,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
     scoring: {
       weights: config.weights,
       minUnits: config.minUnits,
+      overCurve: config.overCurve,
       ratioCap: config.ratioCap,
       overThreshold: config.overThreshold,
       underThreshold: config.underThreshold,

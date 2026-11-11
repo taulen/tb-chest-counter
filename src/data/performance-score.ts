@@ -12,7 +12,7 @@ import {
 
 /** One measured unit: a closed week, a finished Tin Man run or event run. */
 export interface PerformanceUnit {
-  /** Actual over expected, capped. 1 = exactly met. */
+  /** Actual over expected, uncapped (the real share). 1 = exactly met. */
   ratio: number;
   /** Goal reached, target reached, or (events) took part. */
   hit: boolean;
@@ -28,8 +28,16 @@ export interface SignalSummary {
   hits: number;
   /** Units that missed but earned partial credit (near misses). */
   near: number;
-  /** Mean of the unit ratios (goalHits: the hit share). Null with no units. */
+  /**
+   * What the score uses: the mean of the SCORED unit ratios (see scoredRatio),
+   * or for goalHits the hit share. Null with no units.
+   */
   value: number | null;
+  /**
+   * Mean of the REAL unit ratios, uncurved and uncapped — what the page shows
+   * as "% of the goal / target / median". Null with no units.
+   */
+  share: number | null;
   /** Has enough units (config.minUnits) to count toward the score. */
   counted: boolean;
 }
@@ -37,12 +45,25 @@ export interface SignalSummary {
 export type PerformanceStatus = 'over' | 'on-track' | 'under' | 'unscored';
 
 /**
- * actual / expected, capped at `cap`. Never negative. An expectation of zero or
- * less can't be measured against and must be filtered out by the caller.
+ * actual / expected, uncapped. Never negative. An expectation of zero or less
+ * can't be measured against and must be filtered out by the caller.
  */
-export function unitRatio(actual: number, expected: number, cap: number): number {
+export function unitRatio(actual: number, expected: number): number {
   if (!(expected > 0)) throw new Error(`unitRatio: expected must be > 0, got ${expected}`);
-  return Math.min(Math.max(actual, 0) / expected, cap);
+  return Math.max(actual, 0) / expected;
+}
+
+/**
+ * What one unit's real share counts for in the score. Up to `overCurve.from`
+ * it counts as it is; above, every doubling adds `overCurve.perDoubling`
+ * (from 1 at 0.5: 200% → 150%, 400% → 200%), and nothing counts for more than
+ * `ratioCap`.
+ */
+export function scoredRatio(ratio: number, config: Pick<PerformanceConfig, 'overCurve' | 'ratioCap'>): number {
+  const share = Math.max(ratio, 0);
+  const c = config.overCurve;
+  const curved = c && share > c.from ? c.from + c.perDoubling * Math.log2(share / c.from) : share;
+  return Math.min(curved, config.ratioCap);
 }
 
 /** Median of a list, or null when it is empty. */
@@ -55,18 +76,20 @@ export function median(values: number[]): number | null {
 
 const creditOf = (u: PerformanceUnit) => u.credit ?? (u.hit ? 1 : 0);
 
-function summarize(units: PerformanceUnit[], value: (u: PerformanceUnit[]) => number, minUnits: number): SignalSummary {
+const mean = (units: PerformanceUnit[], of: (u: PerformanceUnit) => number) =>
+  units.reduce((s, u) => s + of(u), 0) / units.length;
+
+function summarize(units: PerformanceUnit[], value: (u: PerformanceUnit) => number, minUnits: number): SignalSummary {
+  const any = units.length > 0;
   return {
     units: units.length,
     hits: units.filter((u) => u.hit).length,
     near: units.filter((u) => !u.hit && creditOf(u) > 0).length,
-    value: units.length ? value(units) : null,
-    counted: units.length >= minUnits && units.length > 0,
+    value: any ? mean(units, value) : null,
+    share: any ? mean(units, (u) => u.ratio) : null,
+    counted: units.length >= minUnits && any,
   };
 }
-
-const meanRatio = (units: PerformanceUnit[]) => units.reduce((s, u) => s + u.ratio, 0) / units.length;
-const hitShare = (units: PerformanceUnit[]) => units.reduce((s, u) => s + creditOf(u), 0) / units.length;
 
 /**
  * Every signal for one member from their units. Weeks feed two signals: how
@@ -76,11 +99,12 @@ export function summarizeSignals(
   units: { weeks: PerformanceUnit[]; tinman: PerformanceUnit[]; events: PerformanceUnit[] },
   config: PerformanceConfig,
 ): Record<PerformanceSignal, SignalSummary> {
+  const scored = (u: PerformanceUnit) => scoredRatio(u.ratio, config);
   return {
-    goalHits: summarize(units.weeks, hitShare, config.minUnits.goalHits),
-    goalPoints: summarize(units.weeks, meanRatio, config.minUnits.goalPoints),
-    tinman: summarize(units.tinman, meanRatio, config.minUnits.tinman),
-    events: summarize(units.events, meanRatio, config.minUnits.events),
+    goalHits: summarize(units.weeks, creditOf, config.minUnits.goalHits),
+    goalPoints: summarize(units.weeks, scored, config.minUnits.goalPoints),
+    tinman: summarize(units.tinman, scored, config.minUnits.tinman),
+    events: summarize(units.events, scored, config.minUnits.events),
   };
 }
 

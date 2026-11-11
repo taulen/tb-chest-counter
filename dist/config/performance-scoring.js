@@ -13,10 +13,13 @@
  *  - Each SIGNAL is measured per unit: a closed clan week, a finished Tin Man
  *    run, a finished event run. A unit only counts for a member who was in the
  *    clan for the whole of it, so a mid-week joiner is never held to that week.
- *  - A unit becomes a RATIO against its expectation (1.0 = exactly met), capped
- *    at `ratioCap` so one huge week can't hide a string of empty ones.
- *  - A signal's value is the mean of its unit ratios; it only counts once the
- *    member has `minUnits` of it in the window.
+ *  - A unit's SHARE of its expectation (1.0 = exactly met) is scored on a
+ *    curve: as it is up to `overCurve.from` (100%), then each doubling adds
+ *    `overCurve.perDoubling`, capped at `ratioCap`. So 400% stands out from
+ *    200%, yet one huge week still can't hide a string of empty ones.
+ *  - A signal's value is the mean of its scored units; it only counts once the
+ *    member has `minUnits` of it in the window. The page shows the real
+ *    shares beside it, uncurved.
  *  - The SCORE is the weighted mean of the signals the member has, the weights
  *    re-normalised over those. 1.0 (shown as 100%) = meeting every expectation.
  *
@@ -44,6 +47,7 @@ exports.DEFAULT_PERFORMANCE_CONFIG = {
         events: 2,
     },
     goalNearMiss: { credit: 0.5 },
+    overCurve: { from: 1, perDoubling: 0.5 },
     ratioCap: 2,
     overThreshold: 1.2,
     underThreshold: 0.7,
