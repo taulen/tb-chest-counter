@@ -73,8 +73,6 @@ export const ui = {
   "Scanning…": "Сканирование…",
   "This clan is inactive — no scheduled scans": "Клан неактивен — плановых сканирований нет",
   "Next scan: now": "Скан: сейчас",
-  "{hours}h {minutes}m {seconds}s": "{hours} ч {minutes} м {seconds} с",
-  "{minutes}m {seconds}s": "{minutes} м {seconds} с",
   "Next scan in {time}": "Скан через {time}",
   // external.js
   "Loading external data…": "Загрузка внешних данных…",
@@ -452,6 +450,8 @@ export const ui = {
   "{n}w ago": { one: "{n} нед. назад", few: "{n} нед. назад", many: "{n} нед. назад", other: "{n} нед. назад" },
   "{n}mo ago": { one: "{n} мес. назад", few: "{n} мес. назад", many: "{n} мес. назад", other: "{n} мес. назад" },
   "{n}y ago": { one: "{n} г. назад", few: "{n} г. назад", many: "{n} л. назад", other: "{n} г. назад" },
+  "{hours}h {minutes}m {seconds}s": "{hours} ч {minutes} м {seconds} с",
+  "{minutes}m {seconds}s": "{minutes} м {seconds} с",
   "{seconds}s": "{seconds} с",
   "Manual": "Вручную",
   "Import": "Импорт",
@@ -2701,6 +2701,8 @@ export const ui = {
   "Remove from clan": "Удалить из клана",
   // public-share.js
   "Invalid share link.": "Недействительная ссылка для просмотра.",
+  "Last scan {when}": "Последний скан {when}",
+  "Next scan: soon": "Скан: скоро",
   "Failed to load leaderboard.": "Не удалось загрузить рейтинг.",
   "Failed to load ChestTracker data.": "Не удалось загрузить данные ChestTracker.",
   "This share link is invalid or has been revoked.": "Эта ссылка для просмотра недействительна или была отозвана.",

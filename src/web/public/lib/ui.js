@@ -191,6 +191,20 @@ export function formatRelativeTime(iso) {
 }
 
 /**
+ * A countdown as `1h 05m 09s` / `4m 09s` — the "Next scan in …" format, in
+ * the app header and on the share page alike. Negative reads as zero.
+ */
+export function formatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  return hours > 0
+    ? t('{hours}h {minutes}m {seconds}s', { hours, minutes: String(minutes).padStart(2, '0'), seconds: String(seconds).padStart(2, '0') })
+    : t('{minutes}m {seconds}s', { minutes, seconds: String(seconds).padStart(2, '0') });
+}
+
+/**
  * Format a span between two ISO timestamps as `Xh Ym Zs`. Used for
  * scan duration displays. Returns '-' when either bound is missing or
  * the range is degenerate.

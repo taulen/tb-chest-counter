@@ -73,8 +73,6 @@ export const ui = {
   "Scanning…": "Scan en cours…",
   "This clan is inactive — no scheduled scans": "Ce clan est inactif — aucun scan planifié",
   "Next scan: now": "Scan : maintenant",
-  "{hours}h {minutes}m {seconds}s": "{hours} h {minutes} min {seconds} s",
-  "{minutes}m {seconds}s": "{minutes} min {seconds} s",
   "Next scan in {time}": "Scan dans {time}",
   // external.js
   "Loading external data…": "Chargement des données externes…",
@@ -452,6 +450,8 @@ export const ui = {
   "{n}w ago": { one: "il y a {n} sem.", other: "il y a {n} sem." },
   "{n}mo ago": { one: "il y a {n} mois", other: "il y a {n} mois" },
   "{n}y ago": { one: "il y a {n} an", other: "il y a {n} ans" },
+  "{hours}h {minutes}m {seconds}s": "{hours} h {minutes} min {seconds} s",
+  "{minutes}m {seconds}s": "{minutes} min {seconds} s",
   "{seconds}s": "{seconds} s",
   "Manual": "Manuel",
   "Import": "Import",
@@ -2701,6 +2701,8 @@ export const ui = {
   "Remove from clan": "Retirer du clan",
   // public-share.js
   "Invalid share link.": "Lien de partage invalide.",
+  "Last scan {when}": "Dernier scan {when}",
+  "Next scan: soon": "Scan : bientôt",
   "Failed to load leaderboard.": "Impossible de charger le classement.",
   "Failed to load ChestTracker data.": "Impossible de charger les données ChestTracker.",
   "This share link is invalid or has been revoked.": "Ce lien de partage est invalide ou a été révoqué.",

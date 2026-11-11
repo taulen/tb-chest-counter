@@ -6,7 +6,7 @@
 import {
   $, $$,
   escapeHtml, esc,
-  formatDate, formatDateShort, formatRelativeTime, formatDuration, formatTriggerSource,
+  formatDate, formatDateShort, formatRelativeTime, formatDuration, formatCountdown, formatTriggerSource,
   openModal, notify, confirmDialog, promptDialog,
   buildHash, parseHashRoute,
   memberHash, memberLink, sessionHash, chestHash, slugifyChestName,
@@ -1564,14 +1564,7 @@ function renderNextScanCountdown() {
     el.textContent = t('Next scan: now');
     return;
   }
-  const totalSec = Math.floor(remainingMs / 1000);
-  const hours = Math.floor(totalSec / 3600);
-  const minutes = Math.floor((totalSec % 3600) / 60);
-  const seconds = totalSec % 60;
-  const formatted = hours > 0
-    ? t('{hours}h {minutes}m {seconds}s', { hours, minutes: String(minutes).padStart(2, '0'), seconds: String(seconds).padStart(2, '0') })
-    : t('{minutes}m {seconds}s', { minutes, seconds: String(seconds).padStart(2, '0') });
-  el.textContent = t('Next scan in {time}', { time: formatted });
+  el.textContent = t('Next scan in {time}', { time: formatCountdown(remainingMs) });
 }
 
 // ─── Init ───

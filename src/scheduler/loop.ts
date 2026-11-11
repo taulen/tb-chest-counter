@@ -30,6 +30,7 @@ import {
   MAINTENANCE_BUFFER_MS,
 } from './scan-finalize.js';
 import type { ScanResult } from './scan-result.js';
+import { resolveClanScanSchedule, type ClanScanSchedule } from './clan-scan-schedule.js';
 export type { ScanResult } from './scan-result.js';
 
 // Re-export so existing consumers that imported these types from
@@ -146,6 +147,14 @@ export class ScanLoop {
    * failure.
    */
   private resourceCaptureInProgress = false;
+  /**
+   * The clans the running cycle walks, in order, and the index it is on. Empty
+   * between cycles. Only read by getClanScanSchedule: mid-cycle the global
+   * timer is the cycle's own start, which says nothing about whether one clan
+   * is still waiting its turn or was scanned ten minutes ago.
+   */
+  private cycleOrder: number[] = [];
+  private cycleCursor = -1;
   /** Pending idle teardown of a warm calibration page. See
    *  scheduleCalibrationTeardown. */
   private calibrationIdleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -503,6 +512,28 @@ export class ScanLoop {
       return clanId === 1 ? this.nextScanAt : null;
     }
     return active.some((c) => c.id === clanId) ? this.nextScanAt : null;
+  }
+
+  /**
+   * One clan's place in the schedule, for the public share page — right for
+   * every clan while a cycle walks them one at a time, where the global timer
+   * is only right for the cycle as a whole. See clan-scan-schedule.ts.
+   */
+  getClanScanSchedule(clanId: number): ClanScanSchedule {
+    // The phases after a scan don't count as scanning: the chests are written
+    // and the session finalised, so the page already says "Last scan just now".
+    const chestScanRunning = this.scanInProgress
+      && !this.mightCaptureInProgress
+      && !this.resourceCaptureInProgress;
+    return resolveClanScanSchedule({
+      clanId,
+      now: Date.now(),
+      nextScanAt: this.getNextScanAtForClan(clanId),
+      intervalMs: this.config.scanIntervalMs,
+      cycleOrder: this.cycleOrder,
+      cycleCursor: this.cycleCursor,
+      scanningClanId: chestScanRunning ? this.clanId : null,
+    });
   }
 
   /**
@@ -948,9 +979,11 @@ export class ScanLoop {
     // actually OCR something.
     let scanRanThisCycle = false;
 
+    this.cycleOrder = clansToScan.map((c) => c.id);
     for (let i = 0; i < clansToScan.length; i++) {
       const clan = clansToScan[i];
       if (!this.running) break;
+      this.cycleCursor = i;
 
       // Defense in depth: skip any clan that hasn't been signed in yet.
       // Without a storage-state.json the launched browser would either
@@ -1007,6 +1040,8 @@ export class ScanLoop {
         }
       }
     }
+    this.cycleOrder = [];
+    this.cycleCursor = -1;
 
     // Scanning is done for this cycle and the next one is a whole interval
     // away, so let the browser go. This is the main lever on steady-state

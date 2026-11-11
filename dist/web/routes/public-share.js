@@ -16,6 +16,7 @@ const share_token_js_1 = require("../../utils/share-token.js");
 const index_js_1 = require("../../config/index.js");
 const parse_int_js_1 = require("../../utils/parse-int.js");
 const asset_versioning_js_1 = require("../asset-versioning.js");
+const session_repo_js_1 = require("../../data/repositories/session-repo.js");
 const PUBLIC_DIR = path_1.default.resolve('src/web/public');
 // Cache-bust JS/CSS references on each container start so a redeploy
 // doesn't get masked by Cloudflare or browser cache.
@@ -111,7 +112,7 @@ function paramAsString(p) {
  * deleted (getClanById filters those), so a revoked link and a deleted clan
  * are indistinguishable from outside.
  */
-function resolveShare(token) {
+function resolveShare(token, { countHit = true } = {}) {
     if (!share_token_js_1.SHARE_TOKEN_REGEX.test(token))
         return null;
     const link = (0, share_link_repo_js_1.resolveActiveShareLink)(token);
@@ -122,12 +123,13 @@ function resolveShare(token) {
         return null;
     // Count the data-API hit (best-effort; never blocks the response). Page
     // loads are counted separately in publicShareTokenHandler.
-    (0, share_link_repo_js_1.recordApiHit)(link.id);
+    if (countHit)
+        (0, share_link_repo_js_1.recordApiHit)(link.id);
     return { clan, linkId: link.id };
 }
 /** Thin wrapper for the handlers that only need the clan. */
-function resolveClan(token) {
-    return resolveShare(token)?.clan ?? null;
+function resolveClan(token, opts) {
+    return resolveShare(token, opts)?.clan ?? null;
 }
 /**
  * Public-side twin of the authenticated router's resolveShareCode: pick
@@ -191,7 +193,7 @@ function publicShareTokenHandler(req, res, next) {
  * /api/public/:token/* — read-only data endpoints used by the public
  * share page. Mounted via app.use('/api/public', ...) in server.ts.
  */
-function createPublicShareApiRouter() {
+function createPublicShareApiRouter(scanLoop) {
     const router = (0, express_1.Router)();
     router.use((_req, res, next) => {
         applyShareHeaders(res);
@@ -228,6 +230,28 @@ function createPublicShareApiRouter() {
             leaderboardGoalAmberPct: goal.amberPct,
             // Every earlier goal, so last week is coloured by last week's goal.
             leaderboardGoalHistory: goal.history,
+        });
+    });
+    // GET /:token/scan-status — "Last scan … · Next scan in …" above the board.
+    // Times only: no error text, no progress, nothing about other clans. The page
+    // polls it, so it is NOT counted as an API hit — a tab left open would
+    // otherwise outcount every real read on the link's usage figures.
+    router.get('/:token/scan-status', (req, res) => {
+        const token = paramAsString(req.params.token);
+        const clan = resolveClan(token, { countHit: false });
+        if (!clan) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+        // The last COMPLETED scan, as on the dashboard's Last Scan card: the moment
+        // the board was last whole. A failed run that kept a few chests doesn't
+        // reset it, so a clan whose scans keep failing reads as stale, which it is.
+        const last = (0, session_repo_js_1.getLastCompletedSession)(clan.id);
+        const schedule = scanLoop?.getClanScanSchedule(clan.id) ?? { scanning: false, nextScanAt: null };
+        res.json({
+            lastScanAt: last?.completedAt ?? null,
+            nextScanAt: schedule.nextScanAt !== null ? new Date(schedule.nextScanAt).toISOString() : null,
+            scanning: schedule.scanning,
         });
     });
     // GET /:token/leaderboard — same query model as the authenticated

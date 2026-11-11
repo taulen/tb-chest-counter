@@ -110,6 +110,15 @@ async function fakeScannerStatus(ctx) {
     if (json.onboarding) json.onboarding = { ...json.onboarding, nextStep: 'ready' };
     return route.fulfill({ response: res, json });
   });
+  // Same gap on the share page's "Last scan … · Next scan in …" strip: its
+  // /scan-status has no loop to ask, so the countdown half never rendered.
+  await ctx.route('**/api/public/*/scan-status', async (route) => {
+    const res = await route.fetch();
+    let json;
+    try { json = await res.json(); } catch (_) { return route.fulfill({ response: res }); }
+    if (!json.nextScanAt && !json.scanning) json.nextScanAt = new Date(Date.now() + 3659e3).toISOString();
+    return route.fulfill({ response: res, json });
+  });
 }
 
 async function settle(page) {

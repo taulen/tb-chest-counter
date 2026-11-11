@@ -428,7 +428,7 @@ function startWebServer(port, scanLoop, options = {}) {
     // Public share API (no auth). Mounted before /api/auth so the
     // /api-wide cache-control middleware doesn't strip our private,no-store
     // header — the public-share router applies its own headers per response.
-    app.use('/api/public', (0, public_share_js_1.createPublicShareApiRouter)());
+    app.use('/api/public', (0, public_share_js_1.createPublicShareApiRouter)(scanLoop));
     // Public share top-level key handler. Acts only on single-segment paths
     // that match the share-key regex (3-10 alphanumerics — a generated token or
     // an admin-chosen vanity key) and aren't in RESERVED_SHARE_KEYS; everything

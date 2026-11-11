@@ -29,6 +29,7 @@ import {
 import { insertSnapshot } from '../../../src/data/repositories/external-repo.js';
 import { makeTestDb, seedTwoClans, seedChestData } from '../../helpers/test-db.js';
 import { getDb } from '../../../src/data/database.js';
+import type { ScanLoop } from '../../../src/scheduler/loop.js';
 
 const TOKEN_A = 'aAaA11'; // clan 1 — a generated token, case-sensitive
 const VANITY_A = 'family'; // clan 1's second live link, an admin-chosen key
@@ -87,6 +88,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       '/api/public/__TOK__/clan',
       '/api/public/__TOK__/leaderboard',
       '/api/public/__TOK__/faq',
+      '/api/public/__TOK__/scan-status',
       '/api/public/__TOK__/external/latest',
       '/api/public/__TOK__/external/snapshots',
     ];
@@ -180,6 +182,62 @@ describe('public share surface (anonymous, token-gated)', () => {
       expect(link.timeframeChanges).toBe(1);
       // The beacon bypasses resolveShare(), so it must NOT bump apiHitCount.
       expect(link.apiHitCount).toBe(0);
+    });
+  });
+
+  // ── scan status: times only, this clan only, not an API hit ──────
+  describe('/scan-status', () => {
+    const NEXT_AT = Date.parse('2026-11-11T14:00:00.000Z');
+    let askedFor: number[] = [];
+
+    function appWithLoop(): express.Express {
+      askedFor = [];
+      const loop = {
+        getClanScanSchedule(clanId: number) {
+          askedFor.push(clanId);
+          return { scanning: false, nextScanAt: NEXT_AT };
+        },
+      } as unknown as ScanLoop;
+      const a = express();
+      a.use('/api/public', createPublicShareApiRouter(loop));
+      return a;
+    }
+
+    function addSession(clanId: number, completedAt: string, status: string): void {
+      getDb().prepare(
+        `INSERT INTO scan_sessions (clan_id, started_at, completed_at, status, trigger_source)
+         VALUES (?, ?, ?, ?, 'scheduled')`,
+      ).run(clanId, completedAt, completedAt, status);
+    }
+
+    it('reports this clan\'s last COMPLETED scan and its schedule, nothing else', async () => {
+      addSession(1, '2099-01-01T10:00:00.000Z', 'completed');
+      // Newer, but failed: the board wasn't made whole by it.
+      addSession(1, '2099-01-01T11:00:00.000Z', 'failed');
+      // Another clan's newer scan must not leak through this clan's link.
+      addSession(2, '2099-01-01T12:00:00.000Z', 'completed');
+
+      const r = await request(appWithLoop()).get('/api/public/aAaA11/scan-status');
+      expect(r.status).toBe(200);
+      // Exact key set — the allow-list, as for /clan.
+      expect(Object.keys(r.body).sort()).toEqual(['lastScanAt', 'nextScanAt', 'scanning']);
+      expect(r.body.lastScanAt).toBe('2099-01-01T10:00:00.000Z');
+      expect(r.body.nextScanAt).toBe(new Date(NEXT_AT).toISOString());
+      expect(r.body.scanning).toBe(false);
+      expect(askedFor).toEqual([1]);
+    });
+
+    it('is polled, so it never counts as an API hit', async () => {
+      await request(appWithLoop()).get('/api/public/aAaA11/scan-status');
+      await request(appWithLoop()).get('/api/public/aAaA11/scan-status');
+      expect(getShareLink(1, linkIdA)!.apiHitCount).toBe(0);
+    });
+
+    it('without a scan loop (dashboard-only) it reports no schedule', async () => {
+      const r = await request(app).get('/api/public/aAaA11/scan-status');
+      expect(r.status).toBe(200);
+      expect(r.body.nextScanAt).toBeNull();
+      expect(r.body.scanning).toBe(false);
     });
   });
 

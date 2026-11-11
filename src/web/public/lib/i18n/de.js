@@ -73,8 +73,6 @@ export const ui = {
   "Scanning…": "Scannt…",
   "This clan is inactive — no scheduled scans": "Dieser Clan ist inaktiv — keine geplanten Scans",
   "Next scan: now": "Nächster Scan: jetzt",
-  "{hours}h {minutes}m {seconds}s": "{hours}h {minutes}m {seconds}s",
-  "{minutes}m {seconds}s": "{minutes}m {seconds}s",
   "Next scan in {time}": "Nächster Scan in {time}",
   // external.js
   "Loading external data…": "Externe Daten werden geladen…",
@@ -452,6 +450,8 @@ export const ui = {
   "{n}w ago": { one: "vor {n} Wo.", other: "vor {n} Wo." },
   "{n}mo ago": { one: "vor {n} Mon.", other: "vor {n} Mon." },
   "{n}y ago": { one: "vor {n} J.", other: "vor {n} J." },
+  "{hours}h {minutes}m {seconds}s": "{hours}h {minutes}m {seconds}s",
+  "{minutes}m {seconds}s": "{minutes}m {seconds}s",
   "{seconds}s": "{seconds}s",
   "Manual": "Manuell",
   "Import": "Import",
@@ -2701,6 +2701,8 @@ export const ui = {
   "Remove from clan": "Aus Clan entfernen",
   // public-share.js
   "Invalid share link.": "Ungültiger Freigabelink.",
+  "Last scan {when}": "Letzter Scan {when}",
+  "Next scan: soon": "Nächster Scan: bald",
   "Failed to load leaderboard.": "Rangliste konnte nicht geladen werden.",
   "Failed to load ChestTracker data.": "ChestTracker-Daten konnten nicht geladen werden.",
   "This share link is invalid or has been revoked.": "Dieser Freigabelink ist ungültig oder wurde widerrufen.",

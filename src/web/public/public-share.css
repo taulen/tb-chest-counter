@@ -108,6 +108,46 @@
   .public-share-nav-faq .nav-faq-extra { display: none; }
 }
 
+/* "Last scan 14m ago · Next scan in 1h 46m 12s" between the tabs and the
+   board — the first thing a member asks is whether their chests are in yet.
+   Two items that wrap onto their own centred lines on a narrow phone rather
+   than one sentence that would break mid-phrase. */
+.public-share-scan {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 22px;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 14px 16px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.public-share-scan:not(.is-hidden) + .container { padding-top: 14px; }
+.public-share-scan-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.public-share-scan-item svg { flex: none; color: var(--text-muted); }
+.public-share-scan-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  /* Fixed-width digits: a ticking countdown must not jiggle its line. */
+  font-variant-numeric: tabular-nums;
+}
+.public-share-scan-item.is-scanning strong { color: var(--accent-gold); }
+.public-share-scan-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+  flex: none;
+  animation: faq-new-pulse 1.8s ease-out infinite;
+}
+
 .public-share-snapshot-meta {
   color: var(--text-secondary);
   font-size: 13px;
