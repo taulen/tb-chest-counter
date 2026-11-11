@@ -35,7 +35,7 @@ node .claude/skills/local-ui-check/snap.cjs dashboard ru phone --click '#hamburg
 node .claude/skills/local-ui-check/snap.cjs login ru phone --signed-out
 ```
 
-Page keys: `dashboard analytics leaderboard members member might events tools triumphal resources resadmin sessions external admin users clans system share login` (`member` and `share` come from the DB). Then **Read the PNGs** — the numbers find candidates, only the image tells you whether it's broken.
+Page keys: `dashboard analytics leaderboard members member might events tools triumphal resources resadmin sessions external admin users clans system share login` (`member` and `share` come from the DB), plus one per sub-tab — `ancients olympus …` (Events), `citadel stacks costs rewards` (Tools), `adminreview adminmembers adminchests adminpoints` (Admin; bare `admin` lands on Review while it has anything, else Members). The full list is `PAGES` in [common.cjs](common.cjs). Then **Read the PNGs** — the numbers find candidates, only the image tells you whether it's broken.
 
 `layout-check` prints, per page/viewport/language: JS errors, a wrong `<html lang>`, horizontal page overflow, elements spilling past the viewport (sideways-scrolling strips excepted), text clipped in a box, text overflowing its own box, and text cut by a clipping parent — the last three only where English doesn't do the same. Shots and `results.json` go to `<run dir>/check/`; snaps to `<run dir>/snaps/`.
 

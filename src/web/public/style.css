@@ -7596,6 +7596,21 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
 }
 
+/* Admin's tabs: three, or four while Review has something. The bar already
+   separates the tab from what's under it, so the Review tab's first section
+   title doesn't need its full 40px on top as well. One equal-width row on a
+   phone; a long label wraps inside its own cell rather than pushing the bar
+   past the screen edge. */
+.admin-tabs + .page-section-title { margin-top: 8px; }
+@media (max-width: 640px) {
+  .admin-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+  .admin-tabs .resources-tab {
+    min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 7px 4px; font-size: 12.5px; line-height: 1.2; text-align: center;
+  }
+}
+
 /* ─── Tools → Costs ──────────────────────────────────────────────────
    Two tile strips (Guardsmen tiers, blueprints) over one research table:
    researches that cost the same share a row, levels 1–10 read across, and

@@ -903,7 +903,10 @@ window.addEventListener('unhandledrejection', (event) => {
 let navToken = 0;
 let pageLoadController = null;
 
-async function loadPage(page) {
+// With no page it redraws the current route — what a page's action handlers
+// want when the page has sub-routes (Admin's tabs) and they don't know which
+// one is showing.
+async function loadPage(page = currentPage) {
   const myToken = ++navToken;
   pageLoadController?.abort();
   pageLoadController = new AbortController();
@@ -1013,6 +1016,12 @@ async function renderRoute(page, content) {
     await renderTools(content, page.startsWith('tools/') ? decodeURIComponent(page.slice('tools/'.length)) : '');
     return;
   }
+  // Admin: #admin = Review while anything needs it, else Members;
+  // #admin/<tab> = a specific tab.
+  if (page === 'admin' || page.startsWith('admin/')) {
+    await renderAdmin(content, page.startsWith('admin/') ? decodeURIComponent(page.slice('admin/'.length)) : '');
+    return;
+  }
 
   switch (page) {
     case 'dashboard': await renderDashboard(content); break;
@@ -1027,7 +1036,6 @@ async function renderRoute(page, content) {
       await renderExternal(content, navigateTo);
       break;
     case 'resources': await renderResourcesOverview(content, navigateTo); break;
-    case 'admin': await renderAdmin(content); break;
     case 'users': await renderUsers(content); break;
     case 'clans': await renderClans(content, refreshClanIndicator); break;
     case 'system': await renderSystem(content); break;
@@ -1271,6 +1279,7 @@ function updateNavState() {
   else if (currentPage.startsWith('resources')) navPage = 'resources';
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('tools')) navPage = 'tools';
+  else if (currentPage.startsWith('admin/')) navPage = 'admin';
   else if (currentPage.startsWith('system')) navPage = 'system';
   $$('nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage));
   updatePageHead(navPage);
@@ -1315,8 +1324,8 @@ function updatePageHead(navPage) {
 // while it has entries) and System (warn/error log entries newer than the
 // user's last visit). The
 // getLastSeenSystemWarningAt / markSystemWarningsSeen pair lives in
-// lib/state.js so the System page can also read it (to auto-open the
-// Recent Warnings card when fresh entries are present).
+// lib/state.js so the System page can also read it (to badge the
+// Recent Warnings card with what is new since the last visit).
 async function refreshNavDots() {
   // Only admins/superadmins can hit /admin/nav-status. For everyone else
   // the relevant tabs are hidden anyway, so skip the request.
@@ -1571,12 +1580,12 @@ function renderNextScanCountdown() {
 (async () => {
   await checkAuth();
 
-  // On first login (no scans yet but members exist), go straight to admin page
-  // so the super admin can review/fix member names before first scan
+  // On first login (no scans yet but members exist), go straight to Admin →
+  // Members so the super admin can review/fix member names before first scan
   const stats = await api('/stats');
   const members = await api('/members');
   if (stats.totalSessions === 0 && members.length > 0 && (currentUser?.role === 'admin' || currentUser?.role === 'superadmin') && !window.location.hash) {
-    navigateTo('admin');
+    navigateTo('admin/members');
   } else {
     syncRouteFromHash();
   }

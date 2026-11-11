@@ -136,7 +136,7 @@ function patchRow(row, select) {
 
 async function rerenderInPlace(rerender) {
   const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
 }
 

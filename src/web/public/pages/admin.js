@@ -1,10 +1,18 @@
-// Admin — content-management page for admins/superadmins. Member
-// rename + delete, OCR misread merge rules (player / chest / source),
-// chest-type rarity overrides, the Chest Points board (points-board.js), the
-// review queue (newly-discovered chest names / sources / members),
-// the OCR-missing-player-name reassignment workflow with hover-preview
-// of the saved debug crops, and resource rows whose icon couldn't be
-// identified (unresolved-resources.js).
+// Admin — content-management page for admins/superadmins, split into tabs
+// (one route each, like Tools): #admin/<tab>.
+//
+//   review  — only while something needs attention: the OCR-missing-player-name
+//             reassignment workflow with hover-preview of the saved debug crops,
+//             the review queue (newly-discovered chest names / sources /
+//             members, likely renames) and resource rows whose icon couldn't be
+//             identified (unresolved-resources.js).
+//   members — levels from chat, member rename + delete, player merge rules.
+//   chests  — chest-name and chest-source merge rules.
+//   points  — the Chest Points board (points-board.js) and Triumphal Chest Points.
+//
+// Bare #admin lands on Review while it has anything, else on Members. Each tab
+// fetches only what it renders. Actions re-render with `rerender()` — no page
+// argument — so the router redraws whichever tab is showing.
 //
 // Per-clan settings (Discord, ChestTracker, login bridge) live on the
 // Clans page; instance-wide settings (scan interval, calibration,
@@ -40,7 +48,57 @@ function countedOption(value, count) {
   return `<option value="${esc(value)}">${esc(value)} (${tn(n, '{n} chest', '{n} chests')})</option>`;
 }
 
-export async function renderAdmin(el) {
+const ADMIN_TABS = ['review', 'members', 'chests', 'points'];
+
+/**
+ * Everything the Admin nav dot counts, or null when nav-status failed. The
+ * Review tab, its count and the dot all read this one number, so a tab can
+ * never claim work the dot doesn't (or the reverse).
+ */
+function attentionCount(navStatus) {
+  const a = navStatus?.admin;
+  if (!a) return null;
+  return (a.reviewQueueCount ?? 0) + (a.unknownChestsCount ?? 0) + (a.unresolvedResourceCount ?? 0);
+}
+
+/**
+ * Same segmented bar and link-per-tab routing as Tools. Review is only shown
+ * while it has something — or when it is the open tab, so the bar still says
+ * where you are after its last item is cleared. A failed count (null) keeps it
+ * visible rather than hiding work.
+ */
+function adminTabsHtml(active, count) {
+  const tabs = [];
+  if (count !== 0 || active === 'review') {
+    tabs.push({
+      key: 'review',
+      label: count > 0
+        ? `${t('Review ({count})', { count })}<span class="nav-dot" aria-hidden="true"></span>`
+        : t('Review'),
+    });
+  }
+  tabs.push(
+    { key: 'members', label: t('Members') },
+    { key: 'chests', label: t('Chests') },
+    { key: 'points', label: t('Points') },
+  );
+  return `<div class="resources-tabs admin-tabs" role="tablist" aria-label="${esc(t('Page sections'))}">${tabs.map(({ key, label }) => {
+    const on = key === active;
+    // One wrapper so a label that wraps on a phone keeps Review's dot inline
+    // after its count instead of becoming a flex item on a line of its own.
+    return `<a class="resources-tab${on ? ' is-active' : ''}" href="#admin/${key}" role="tab" aria-selected="${on}"><span>${label}</span></a>`;
+  }).join('')}</div>`;
+}
+
+/** Log a mount failure unless it is a sign-out or a navigation abort. */
+function reportMountError(err) {
+  if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
+}
+
+/**
+ * @param {string} requested  the part of the route after `admin/` ('' for bare #admin)
+ */
+export async function renderAdmin(el, requested = '') {
   const currentUser = getCurrentUser();
   if (currentUser?.role !== 'admin' && currentUser?.role !== 'superadmin') {
     el.innerHTML = `<div class="empty-state"><p>${t('Admin access required.')}</p></div>`;
@@ -49,57 +107,87 @@ export async function renderAdmin(el) {
   // Chest Points are per clan (the active clan's board); Triumphal Chest Points
   // are one global table. Any admin can view them, but only superadmins can edit.
   const isSuperadmin = currentUser?.role === 'superadmin';
-  // Scanner / Discord / ChestTracker / scan-interval data lives on the
-  // System and Clans tabs now — the Admin page only fetches what it
-  // actually renders (per-clan content management). Chest Points fetches
-  // its own (see mountPointsBoard below).
-  //
-  // nav-status is read for the unresolved resource-row count: the same number
-  // that lights the Admin nav dot, so the dot never points at a page with
-  // nothing on it. It is 0 for a clan that doesn't track resources. Tolerated as
-  // null so a transient failure drops one section rather than the page.
-  const [playerRules, chestRules, sourceRules, chestTypes, chestSources, triumphalPoints, members, memberChestCounts, stats, reviewQueue, unknownChests, navStatus] = await Promise.all([
-    api('/admin/merge-rules?type=player'),
-    api('/admin/merge-rules?type=chest'),
-    api('/admin/merge-rules?type=source'),
-    api('/admin/unique-chests'),
-    api('/admin/unique-sources'),
-    api('/admin/triumphal-points'),
+
+  // nav-status drives the tab bar (whether Review shows, and its count) and the
+  // Review tab's unresolved resource-row section. Started first and shared, so
+  // an explicit tab never waits on it before fetching its own data. Tolerated as
+  // null so a transient failure costs the count, not the page.
+  const navStatusP = api('/admin/nav-status').catch(() => null);
+  let tab = ADMIN_TABS.includes(requested) ? requested : '';
+  if (!tab) tab = attentionCount(await navStatusP) === 0 ? 'members' : 'review';
+
+  let body;
+  if (tab === 'review') body = await reviewTab(navStatusP);
+  else if (tab === 'members') body = await membersTab();
+  else if (tab === 'chests') body = await chestsTab();
+  else body = await pointsTab(isSuperadmin);
+
+  el.innerHTML = `${adminTabsHtml(tab, attentionCount(await navStatusP))}${body.html}`;
+  body.wire?.(el);
+}
+
+/** OCR-missing player names, the review queue and unresolved resource rows. */
+async function reviewTab(navStatusP) {
+  const [reviewQueue, unknownChests, unresolvedResources] = await Promise.all([
+    api('/admin/review-queue'),
+    api('/admin/unknown-chests'),
+    // Rows + resource list only when the count says there is something to resolve.
+    navStatusP.then((s) => loadUnresolvedResources(s?.admin?.unresolvedResourceCount)),
+  ]);
+
+  // The reassign dropdowns need the roster and its chest counts, which only an
+  // unread name calls for — most visits have none, and skip both reads.
+  let unknownChestsHtml = '';
+  if (Array.isArray(unknownChests) && unknownChests.length > 0) {
+    const [members, memberChestCounts] = await Promise.all([
+      api('/members?include=inactive'),
+      api('/admin/member-chest-counts'),
+    ]);
+    const { activeMembers, chestCounts } = rosterFor(members, memberChestCounts);
+    unknownChestsHtml = renderUnknownChestsSection(unknownChests, activeMembers, chestCounts);
+  }
+
+  const html = `${unknownChestsHtml}${renderReviewQueueSection(reviewQueue)}${unresolvedResourcesSectionHtml(unresolvedResources)}`;
+  return {
+    html: html.trim() ? html : `<div class="empty-state"><p>${t('Nothing needs review right now.')}</p></div>`,
+    wire: (el) => wireUnresolvedResources(el),
+  };
+}
+
+/**
+ * Members sorted by name and split active / removed, plus memberId → chest
+ * count. Merge-player + rename dropdowns only target active members — merging
+ * into a removed identity would silently resurrect them, which isn't what the
+ * operator clicked.
+ */
+function rosterFor(members, memberChestCounts) {
+  const sorted = [...(Array.isArray(members) ? members : [])]
+    .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
+  return {
+    activeMembers: sorted.filter((m) => m.isActive !== false),
+    removedMembers: sorted.filter((m) => m.isActive === false),
+    // From its own admin route (see the comment there). Guarded because an
+    // `{ error }` body would otherwise turn every count into NaN rather than
+    // the honest 0.
+    chestCounts: memberChestCounts && !memberChestCounts.error ? memberChestCounts : {},
+  };
+}
+
+/** Levels from chat, Edit Members and Merge Player Names. */
+async function membersTab() {
+  const [members, memberChestCounts, stats, playerRules] = await Promise.all([
     api('/members?include=inactive'),
     api('/admin/member-chest-counts'),
     api('/stats'),
-    api('/admin/review-queue'),
-    api('/admin/unknown-chests'),
-    api('/admin/nav-status').catch(() => null),
+    api('/admin/merge-rules?type=player'),
   ]);
-  // Rows + resource list only when the count says there is something to resolve.
-  const unresolvedResources = await loadUnresolvedResources(navStatus?.admin?.unresolvedResourceCount);
-  const sortedMembers = [...members].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
   // Edit Members lists active rows by default; the soft-deleted ones
   // hide behind a "Show removed members" toggle so the table doesn't
-  // get cluttered. Merge-player + rename dropdowns only target active
-  // members — merging into a removed identity would silently
-  // resurrect them, which isn't what the operator clicked.
-  const activeMembers = sortedMembers.filter((m) => m.isActive !== false);
-  const removedMembers = sortedMembers.filter((m) => m.isActive === false);
-
-  // memberId → chest-record count, from its own admin route (see the comment
-  // there). Guarded because an `{ error }` body would otherwise turn every
-  // count into NaN rather than the honest 0.
-  const chestCounts = memberChestCounts && !memberChestCounts.error ? memberChestCounts : {};
+  // get cluttered.
+  const { activeMembers, removedMembers, chestCounts } = rosterFor(members, memberChestCounts);
   const memberOption = (m) => countedOption(m.name, chestCounts[m.id]);
 
-  const reviewQueueHtml = renderReviewQueueSection(reviewQueue);
-  const unknownChestsHtml = renderUnknownChestsSection(unknownChests, activeMembers, chestCounts);
-
-  el.innerHTML = `
-    ${unknownChestsHtml}
-    ${reviewQueueHtml}
-    ${unresolvedResourcesSectionHtml(unresolvedResources)}
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- SECTION: Member Data                                  -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <h2 class="page-section-title">${t('Member Data')}</h2>
+  const html = `
     <p class="page-section-intro">${t('Edit names, delete duplicates, and merge OCR misreads into the correct player.')}</p>
 
     <!-- Levels from chat: self-contained, fills itself (pages/member-levels.js). -->
@@ -188,13 +276,26 @@ export async function renderAdmin(el) {
         </details>` : `<p class="muted-copy">${t('No active player merge rules.')}</p>`}
       </div>
     </div>
+  `;
+  return {
+    html,
+    wire: (el) => {
+      const memberLevelsEl = el.querySelector('#memberLevels');
+      if (memberLevelsEl) mountMemberLevels(memberLevelsEl).catch(reportMountError);
+    },
+  };
+}
 
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- SECTION: Chest Data                                   -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <h2 class="page-section-title">${t('Chest Data')}</h2>
-    <p class="page-section-intro">${t('Fix OCR misreads in chest names and override automatic chest type classification.')}</p>
+/** Merge Chest Names and Merge Chest Sources. */
+async function chestsTab() {
+  const [chestRules, sourceRules, chestTypes, chestSources] = await Promise.all([
+    api('/admin/merge-rules?type=chest'),
+    api('/admin/merge-rules?type=source'),
+    api('/admin/unique-chests'),
+    api('/admin/unique-sources'),
+  ]);
 
+  const html = `
     <div class="card">
       <div class="card-header"><h2>${t('Merge Chest Names')}</h2></div>
       <div class="card-body card-body-padded">
@@ -292,37 +393,36 @@ export async function renderAdmin(el) {
         </details>` : `<p class="muted-copy">${t('No active source merge rules.')}</p>`}
       </div>
     </div>
+  `;
+  return { html };
+}
 
+/** The Chest Points board and Triumphal Chest Points. */
+async function pointsTab(isSuperadmin) {
+  const triumphalPoints = await api('/admin/triumphal-points');
+  const html = `
     <!-- Chest Points: self-contained, fills itself (pages/points-board.js). -->
     <div class="card pb-card" id="pointsBoard"></div>
 
     ${renderTriumphalPointsSection(triumphalPoints, isSuperadmin)}
-
   `;
-
-  // Not awaited: the board loads its own data, so the rest of the page is
-  // usable while it does.
-  const pointsBoardEl = el.querySelector('#pointsBoard');
-  if (pointsBoardEl) mountPointsBoard(pointsBoardEl, { isSuperadmin }).catch((err) => {
-    if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
-  });
-
-  wireUnresolvedResources(el);
-
-  const memberLevelsEl = el.querySelector('#memberLevels');
-  if (memberLevelsEl) mountMemberLevels(memberLevelsEl).catch((err) => {
-    if (err?.name !== 'UnauthenticatedError' && err?.name !== 'AbortError') console.error(err);
-  });
-
-  // ChestTracker Integration is now per-clan on the Clans tab; the
-  // single-clan card that used to live here has been removed.
+  return {
+    html,
+    wire: (el) => {
+      // Not awaited: the board loads its own data, so the rest of the tab is
+      // usable while it does.
+      const pointsBoardEl = el.querySelector('#pointsBoard');
+      if (pointsBoardEl) mountPointsBoard(pointsBoardEl, { isSuperadmin }).catch(reportMountError);
+    },
+  };
 }
 
 // ─── Action handlers ───
 //
-// All `loadPage('admin')` re-renders are routed through the `rerender`
-// callback the dispatcher injects so this module never has to import
-// loadPage from app.js (would be a circular dep).
+// Re-renders go through the `rerender` callback the dispatcher injects (the
+// router's loadPage) so this module never has to import it from app.js (would
+// be a circular dep). Called with no page, it redraws the current route — the
+// Admin tab the action was taken on.
 
 // ─── Player merge: one form, two hosts ───
 // The Merge Player Names card here and the Merge dialog on the Members page
@@ -380,7 +480,7 @@ export async function doMergePlayer(rerender) {
     $('#mergePlayerFrom').value,
     playerMergeTarget($('#mergePlayerTo'), $('#mergePlayerToCustom')),
     async () => {
-      if (typeof rerender === 'function') await rerender('admin');
+      if (typeof rerender === 'function') await rerender();
       window.scrollTo(0, scrollY);
     },
   );
@@ -394,7 +494,7 @@ export async function doMergeChest(rerender) {
   const scrollY = window.scrollY;
   const result = await apiPost('/admin/merge-rules', { type: 'chest', fromValue: from, toValue: to });
   if (result?.error) return notify(result.error, t('Merge failed'));
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
   notify(t('Merged "{from}" into "{to}".', { from, to }), t('Merge complete'));
 }
@@ -407,7 +507,7 @@ export async function doMergeSource(rerender) {
   const scrollY = window.scrollY;
   const result = await apiPost('/admin/merge-rules', { type: 'source', fromValue: from, toValue: to });
   if (result?.error) return notify(result.error, t('Merge failed'));
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
   notify(t('Merged "{from}" into "{to}".', { from, to }), t('Merge complete'));
 }
@@ -491,7 +591,7 @@ export async function saveAllTriumphalPoints(rerender) {
     if (result?.error) errors.push(`${entry.chestName}: ${result.error}`);
   }
 
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
 
   if (errors.length > 0) {
@@ -509,7 +609,7 @@ function renderReviewQueueSection(queue) {
     { key: 'member', label: t('New Members'), entries: queue.members?.entries || [], ack: queue.members?.acknowledgedAt || null, valueHeader: t('Member') },
     // Triumphal (Bank) chests with no configured value. No Acknowledge —
     // resolved by a superadmin assigning a package value in the Triumphal
-    // Chest Points card below (which removes them from this list).
+    // Chest Points card on the Points tab (which removes them from this list).
     { key: 'triumphal', label: t('New Triumphal Chests'), entries: queue.triumphalChests?.entries || [], ack: null, valueHeader: t('Chest Name'), noAck: true },
   ];
   const activeGroups = groups.filter((g) => g.entries.length > 0);
@@ -547,7 +647,7 @@ function renderReviewQueueSection(queue) {
             </table>
           </details>
           ${g.noAck
-            ? `<p class="muted-copy mt-12">${t('Assign each a package value under <strong>Triumphal Chest Points</strong> below — that scores them and clears them from this list.')}</p>`
+            ? `<p class="muted-copy mt-12">${t('Assign each a package value under {link} on the Points tab — that scores them and clears them from this list.', { link: `<a href="#admin/points">${t('Triumphal Chest Points')}</a>` })}</p>`
             : `<div class="inline-form-row mt-12">
             <button class="btn" data-action="acknowledge-review" data-review-category="${g.key}">${t('Acknowledge')}</button>
           </div>
@@ -606,7 +706,7 @@ export async function mergeRenameSuggestion(fromName, toName, fromChests, rerend
   if (!ok) return;
   const scrollY = window.scrollY;
   await submitPlayerMerge(fromName, toName, async () => {
-    if (typeof rerender === 'function') await rerender('admin');
+    if (typeof rerender === 'function') await rerender();
     window.scrollTo(0, scrollY);
   });
 }
@@ -614,7 +714,7 @@ export async function mergeRenameSuggestion(fromName, toName, fromChests, rerend
 export async function dismissRenameSuggestion(fromMemberId, toMemberId, rerender) {
   if (!await mustOk(apiPost('/admin/rename-suggestions/dismiss', { fromMemberId, toMemberId }), t('Dismiss failed'))) return;
   const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
 }
 
@@ -622,7 +722,7 @@ export async function acknowledgeReviewQueue(category, rerender) {
   const result = await apiPost('/admin/review-queue/acknowledge', { category });
   if (result?.error) return notify(result.error, t('Acknowledge failed'));
   const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
 }
 
@@ -705,7 +805,7 @@ export async function reassignUnknownRow(chestId, rerender) {
   const result = await apiPost('/admin/unknown-chests/reassign', { chestIds: [chestId], memberName });
   if (result?.error) return notify(result.error, t('Reassign failed'));
   const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
 }
 
@@ -728,7 +828,7 @@ export async function reassignUnknownBulk(sessionId, rerender) {
   const result = await apiPost('/admin/unknown-chests/reassign', { chestIds, memberName });
   if (result?.error) return notify(result.error, t('Reassign failed'));
   const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender('admin');
+  if (typeof rerender === 'function') await rerender();
   window.scrollTo(0, scrollY);
 }
 
@@ -739,7 +839,7 @@ export async function deleteRule(id, rerender) {
   );
   if (!ok) return;
   if (!await mustOk(apiDelete(`/admin/merge-rules/${id}`), t('Delete rule failed'))) return;
-  if (typeof rerender === 'function') rerender('admin');
+  if (typeof rerender === 'function') rerender();
 }
 
 export async function saveMemberName(id) {
@@ -769,7 +869,7 @@ export async function deleteMemberById(id, name, rerender) {
   if (!await mustOk(apiDelete(`/members/${id}`), t('Remove member failed'))) return;
   // Rerender so the row moves into the "Show removed members"
   // collapsible (always soft-deleted now, so it's always recoverable).
-  if (rerender) rerender('admin');
+  if (rerender) rerender();
   else {
     const row = $(`#member-row-${id}`);
     if (row) row.remove();
@@ -784,7 +884,7 @@ export async function restoreMemberById(id, name, rerender) {
   );
   if (!ok) return;
   if (!await mustOk(apiPost(`/members/${id}/restore`, {}), t('Restore member failed'))) return;
-  if (rerender) rerender('admin');
+  if (rerender) rerender();
 }
 
 /**
