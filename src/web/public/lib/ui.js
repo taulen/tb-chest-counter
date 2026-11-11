@@ -537,8 +537,8 @@ function ensureToastRoot() {
 // (default — stable across re-renders since the headings don't move).
 // Recording closes as well as opens lets us defeat an inline `open`
 // attribute that would otherwise re-pop the section after a rerender
-// (e.g. System's "Recent Warnings" renders `<details open>` whenever
-// there are entries, ignoring that the user just collapsed it).
+// (e.g. System's calibration card renders `<details open>` while its
+// step is outstanding, ignoring that the user just collapsed it).
 //
 // State is scoped to the current page — switching tabs clears it, so
 // expanding "Server-Side Backups" on System doesn't auto-expand a
@@ -854,16 +854,6 @@ export function attachCropPreviews(root) {
   root.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') enlarge(event);
   });
-}
-
-// Drop a single section's persisted state. Pages call this when they
-// want a fresh inline `open` attribute to win even if the user had
-// previously collapsed the section in the same scope (e.g. Recent
-// Warnings auto-opening when new warnings have arrived since the last
-// visit).
-export function forgetDetailsState(key) {
-  if (!key) return;
-  userDetailsState.delete(`key:${key}`);
 }
 
 export function restoreDetailsState(container, scope = null) {

@@ -112,7 +112,7 @@ export function setCurrentPeriodOffset(offset) {
 }
 
 // "Last time the user actually visited the System page." Drives the
-// nav-dot indicator AND the auto-open of Recent Warnings when fresh
+// nav-dot indicator AND the "N new" badge on Recent Warnings when fresh
 // entries have arrived since that visit. Per-browser via localStorage —
 // no per-user server state needed.
 const LAST_SEEN_SYSTEM_KEY = 'lastSeenSystemWarningAt';

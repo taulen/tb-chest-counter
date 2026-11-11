@@ -8,7 +8,7 @@
 // page. Closing the page abandons the in-flight calibration.
 
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
-import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate, forgetDetailsState, prefersReducedMotion } from '../lib/ui.js';
+import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate, prefersReducedMotion } from '../lib/ui.js';
 import { getCurrentUser, getLastSeenSystemWarningAt } from '../lib/state.js';
 import { warningHeadline, hasMoreThanHeadline, splitWarnings } from '../lib/warning-digest.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
@@ -28,12 +28,9 @@ const SCAN_STATUS_LABELS = {
   failed: t('failed'),
 };
 
-// Stable key for the Recent Warnings <details> card. Used both as the
-// data-section-key attribute (so the persisted-state map keys off this
-// rather than the count-bearing summary text) and as the argument to
-// forgetDetailsState below — when there are NEW warnings since the
-// last visit we want the inline `open` to win even if the user had
-// previously collapsed the card.
+// Stable key for the Recent Warnings <details> card, so the remembered
+// open/closed state keys off this rather than the count-bearing summary text
+// (which also carries the "N new" badge).
 const RECENT_WARNINGS_KEY = 'system-recent-warnings';
 
 // ─── Module-local state ───
@@ -493,15 +490,17 @@ export async function renderSystem(el, options = {}) {
   const deletedClans = Array.isArray(deletedClansResp?.clans) ? deletedClansResp.clans : [];
   const logEntries = Array.isArray(logBufferResp?.entries) ? logBufferResp.entries : [];
 
-  // Auto-open Recent Warnings if anything has been logged since the
-  // user's last visit to this page. loadPage() bumps lastSeen AFTER
-  // restoreDetailsState runs, so on every render lastSeen still
-  // reflects the previous visit — exactly what we want to compare
-  // against. forgetDetailsState clears any persisted collapse so the
-  // inline `open` we add below isn't immediately overridden.
+  // Recent Warnings stays collapsed like every other card; what is new since
+  // the user's last visit shows as a badge on its header instead. It used to
+  // auto-open, and with roughly a warning a day it was open on nearly every
+  // visit. It also counted informational entries the nav dot ignores, so it
+  // opened with the dot dark. The badge counts what the dot counts: alerting
+  // entries (resolved ones are no longer alerting), grouped like the list,
+  // newer than the last visit. loadPage() bumps lastSeen AFTER rendering, so
+  // here it still reflects the previous visit.
   const lastSeenWarningAt = getLastSeenSystemWarningAt();
-  const hasNewWarnings = logEntries.some((e) => Number(e.ts) > lastSeenWarningAt);
-  if (hasNewWarnings) forgetDetailsState(RECENT_WARNINGS_KEY);
+  const newWarningCount = splitWarnings(logEntries).attention
+    .filter((e) => Number(e.ts) > lastSeenWarningAt).length;
 
   const scanIntervalMinutes = settings?.scanIntervalMinutes ?? 60;
   const scanIntervalLiveApplied = !!settings?.liveApplied;
@@ -663,8 +662,8 @@ export async function renderSystem(el, options = {}) {
       </div>
     </details>
 
-    <details class="card card-collapsible" data-section-key="${RECENT_WARNINGS_KEY}"${hasNewWarnings ? ' open' : ''}>
-      <summary class="card-header"><h2>${t('Recent Warnings ({count})', { count: logEntries.length })}</h2></summary>
+    <details class="card card-collapsible" data-section-key="${RECENT_WARNINGS_KEY}">
+      <summary class="card-header"><h2>${t('Recent Warnings ({count})', { count: logEntries.length })}${newWarningCount > 0 ? ` <span class="chest-type epic">${tn(newWarningCount, '{n} new', '{n} new', { n: newWarningCount })}</span>` : ''}</h2></summary>
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">${t('Captures every <strong>warn</strong> and <strong>error</strong> log entry the app emits. Persisted to <code>data/warnings.jsonl</code> so this survives container restarts. Newest first.')}</p>
         <div class="inline-form-row mb-12">
@@ -904,7 +903,7 @@ function deletedClansCardHtml(clans) {
   return `
     <h2 class="page-section-title">${t('Deleted Clans ({count})', { count: clans.length })}</h2>
     <p class="page-section-intro">${t('Deleting a clan hides it everywhere — the clan picker, the scanner, Discord, its public share link — but keeps every row. Restoring puts it back exactly as it was, on the same id and the same share link. Its members can\'t sign in to it while it sits here.')}</p>
-    <details class="card card-collapsible" data-section-key="system-deleted-clans" open>
+    <details class="card card-collapsible" data-section-key="system-deleted-clans">
       <summary class="card-header"><h2>${t('Restore a Deleted Clan')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="table-responsive-wrap">
