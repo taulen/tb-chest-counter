@@ -517,19 +517,44 @@ function eventRunLabel(run) {
 }
 
 /**
+ * A run's points for its Points cell. Pasted event scores run to hundreds of
+ * millions (Ragnarok), which a 110px column can't hold in full: those read
+ * compact, with the exact figure in the cell's title.
+ */
+function eventRunPointsText(run) {
+  return run.source === 'scores' && run.points >= 1_000_000 ? formatCompact(run.points) : run.points.toLocaleString();
+}
+
+/** The Points cell's tooltip for a run ranked by the pasted event ranking. */
+function eventRunScoreTitle(run) {
+  return t('From the pasted event ranking · {points} chest points', { points: run.chestPoints.toLocaleString() });
+}
+
+/**
  * The member's points over the event's recent runs, oldest on the left, scaled
  * to their own best. A run they had no chest in is a gap, not a zero bar — same
- * rule as the Events page's run-over-run chart.
+ * rule as the Events page's run-over-run chart. Runs ranked by the pasted event
+ * ranking (member-events.ts) are scaled to their best pasted score, the others
+ * to their best chest points: the two units never share a scale.
  */
 function eventRunsSparkHtml(event) {
   const runs = [...event.runs].reverse();
-  const peak = Math.max(1, ...runs.map((r) => r.points));
+  const peakOf = (source) => Math.max(1, ...runs.filter((r) => r.source === source).map((r) => r.points));
+  const peaks = { scores: peakOf('scores'), chests: peakOf('chests') };
   return `<span class="member-events-spark">${runs.map((r) => {
-    const tip = r.rank === null
-      ? t('{run}: no chests', { run: eventRunLabel(r) })
-      : t('{run}: {points} pts · #{rank} of {n}', {
-        run: eventRunLabel(r), points: r.points.toLocaleString(), rank: r.rank, n: r.participants,
-      });
+    const scored = r.source === 'scores';
+    let tip;
+    if (r.rank === null) {
+      tip = scored
+        ? t('{run}: not on the event ranking', { run: eventRunLabel(r) })
+        : t('{run}: no chests', { run: eventRunLabel(r) });
+    } else {
+      const vars = { run: eventRunLabel(r), points: r.points.toLocaleString(), rank: r.rank, n: r.participants };
+      tip = scored
+        ? t('{run}: {points} in the event ranking · #{rank} of {n}', vars)
+        : t('{run}: {points} pts · #{rank} of {n}', vars);
+    }
+    const peak = peaks[r.source] ?? peaks.chests;
     const mark = r.rank === null
       ? '<span class="member-events-spark-gap"></span>'
       : `<span class="member-events-spark-bar${r.isCurrent ? ' is-current' : ''}" style="height: ${Math.max(8, Math.round((r.points / peak) * 100))}%"></span>`;
@@ -547,12 +572,19 @@ function memberEventRunsCardHtml(events) {
     const live = latest.isCurrent && e.mode !== 'cycle' ? ` ${LIVE_MARK}` : '';
     const runLink = `<a class="member-link" href="${eventRunHash(e.key, latest.runDay)}">${eventRunLabel(latest)}</a>`;
     const played = e.runs.filter((r) => r.rank !== null).length;
+    // An event with pasted scores in view counts runs on its ranking, not chests.
+    const playedTitle = e.runs.some((r) => r.source === 'scores')
+      ? tn(played, 'Took part in {n} of the last {runs} runs', 'Took part in {n} of the last {runs} runs', { runs: e.runs.length })
+      : tn(played, 'Chests in {n} of the last {runs} runs', 'Chests in {n} of the last {runs} runs', { runs: e.runs.length });
+    const pointsTitle = latest.source === 'scores'
+      ? ` title="${latest.rank !== null ? `${latest.points.toLocaleString()} · ` : ''}${eventRunScoreTitle(latest)}"`
+      : '';
     return `<tr>
       <td data-label="${t('Event')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${eventRunHash(e.key)}">${esc(tGame(e.name))}</a></span><span class="mrow-sub">${eventRunLabel(latest)}</span></td>
       <td data-label="${t('Latest run')}" data-role="hidden">${runLink}${live}</td>
-      <td data-label="${t('Points')}" class="num" data-role="metric">${latest.rank !== null ? latest.points.toLocaleString() : '<span class="muted-copy">—</span>'}</td>
+      <td data-label="${t('Points')}" class="num" data-role="metric"${pointsTitle}>${latest.rank !== null ? eventRunPointsText(latest) : '<span class="muted-copy">—</span>'}</td>
       <td data-label="${t('Rank')}" class="num">${memberRankHtml(latest.rank, latest.participants)}</td>
-      <td data-label="${t('Recent runs')}" title="${tn(played, 'Chests in {n} of the last {runs} runs', 'Chests in {n} of the last {runs} runs', { runs: e.runs.length })}">${eventRunsSparkHtml(e)}</td>
+      <td data-label="${t('Recent runs')}" title="${playedTitle}">${eventRunsSparkHtml(e)}</td>
     </tr>`;
   }).join('');
   // A label and a row of quiet chips. This was a sentence of bare links, which
