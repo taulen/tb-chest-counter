@@ -862,7 +862,7 @@ export async function saveMemberName(id) {
 export async function deleteMemberById(id, name, rerender) {
   const label = name ? `"${name}"` : t('this member');
   const ok = await confirmDialog(
-    t('Remove {member}? Their chest history stays intact, but they\'ll be excluded from future scans so a new player with a similar name can\'t get matched into their identity. You can restore them later from "Show removed members".', { member: label }),
+    t('Remove {member}? Their chest history stays intact, but they\'ll be excluded from future scans so a new player with a similar name can\'t get matched into their identity. You can restore them later under Admin → Members → "Show removed members".', { member: label }),
     { title: t('Remove member'), confirmLabel: t('Remove'), cancelLabel: t('Cancel'), danger: true },
   );
   if (!ok) return;

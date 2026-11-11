@@ -613,7 +613,7 @@ export const ui = {
   "Delete rule failed": "Не удалось удалить правило",
   "Rename failed": "Не удалось переименовать",
   "this member": "этого участника",
-  "Remove {member}? Their chest history stays intact, but they'll be excluded from future scans so a new player with a similar name can't get matched into their identity. You can restore them later from \"Show removed members\".": "Удалить {member}? История сундуков сохранится, но участник будет исключён из будущих сканирований, чтобы новый игрок с похожим именем не совпал с ним. Восстановить можно позже через \"Показать удалённых участников\".",
+  "Remove {member}? Their chest history stays intact, but they'll be excluded from future scans so a new player with a similar name can't get matched into their identity. You can restore them later under Admin → Members → \"Show removed members\".": "Удалить {member}? История сундуков сохранится, но участник будет исключён из будущих сканирований, чтобы новый игрок с похожим именем не совпал с ним. Восстановить можно позже в разделе Админ → Участники → \"Показать удалённых участников\".",
   "Remove member": "Удалить участника",
   "Remove member failed": "Не удалось удалить участника",
   "Restore {member}? They'll be eligible for matching in future scans again.": "Восстановить {member}? Участник снова будет сопоставляться в будущих сканированиях.",

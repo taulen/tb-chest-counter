@@ -1736,8 +1736,9 @@ th.sortable:hover {
    wrapped its arrow onto a line of its own and made every growing row taller
    than its neighbours. */
 .members-table .col-metric { width: 150px; }
-/* The Merge button plus the cell padding; 80px let it spill past the card. */
-.members-table .col-actions { width: 100px; }
+/* Merge + Remove plus the cell padding, sized for the widest pair (Russian
+   "Объединить" + "Удалить"); 80px let Merge alone spill past the card. */
+.members-table .col-actions { width: 190px; }
 .members-table th.num,
 .members-table td.num {
   text-align: right;

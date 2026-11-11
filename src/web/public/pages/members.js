@@ -220,7 +220,10 @@ export function renderMembersTable(el) {
                     Seen drops into the expand panel. Left unmarked (not "hidden")
                     so it stays reachable — "hidden" means shown elsewhere. */''}
               <td data-label="${t('Last Seen')}" title="${formatDate(m.lastSeen)}"${showMight ? '' : ' data-role="metric"'}>${formatDateShort(m.lastSeen)}</td>
-              ${isAdmin ? `<td class="col-actions"><button class="btn btn-tight" data-action="prompt-merge-member" data-member-id="${m.id}">${t('Merge')}</button></td>` : ''}
+              ${/* Remove is the Admin page's own action (app.js's delete-member):
+                    a soft delete, restored from Admin → Members. GET /members
+                    lists active members only, so the reload drops the row. */''}
+              ${isAdmin ? `<td class="col-actions nowrap"><button class="btn btn-tight" data-action="prompt-merge-member" data-member-id="${m.id}">${t('Merge')}</button><button class="btn btn-tight btn-danger ml-4" data-action="delete-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">${t('Remove')}</button></td>` : ''}
             </tr>`;
             }).join('')}
           </tbody></table>`}

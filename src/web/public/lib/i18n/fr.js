@@ -613,7 +613,7 @@ export const ui = {
   "Delete rule failed": "Échec de la suppression de la règle",
   "Rename failed": "Échec du renommage",
   "this member": "ce membre",
-  "Remove {member}? Their chest history stays intact, but they'll be excluded from future scans so a new player with a similar name can't get matched into their identity. You can restore them later from \"Show removed members\".": "Retirer {member} ? Son historique de coffres reste intact, mais il sera exclu des scans futurs afin qu'un nouveau joueur au nom proche ne puisse pas être associé à son identité. Vous pourrez le restaurer plus tard via « Afficher les membres retirés ».",
+  "Remove {member}? Their chest history stays intact, but they'll be excluded from future scans so a new player with a similar name can't get matched into their identity. You can restore them later under Admin → Members → \"Show removed members\".": "Retirer {member} ? Son historique de coffres reste intact, mais il sera exclu des scans futurs afin qu'un nouveau joueur au nom proche ne puisse pas être associé à son identité. Vous pourrez le restaurer plus tard via Administration → Membres → « Afficher les membres retirés ».",
   "Remove member": "Retirer le membre",
   "Remove member failed": "Échec du retrait du membre",
   "Restore {member}? They'll be eligible for matching in future scans again.": "Restaurer {member} ? Il pourra de nouveau être reconnu lors des scans futurs.",
