@@ -17,6 +17,10 @@ vi.mock('../../src/data/repositories/event-schedule-repo.js', () => ({
   setCorrection: vi.fn(),
   syncArchivedRuns: vi.fn(),
 }));
+// Every clan here plays the normal kingdom (Seasonal Kingdoms: event-calendar-schedule.test.ts).
+vi.mock('../../src/data/repositories/clan-repo.js', () => ({
+  clanCalendarRealm: vi.fn(() => 'default'),
+}));
 
 import { getEventOccurrences, getEventSchedule } from '../../src/external/event-calendar.js';
 import { getFirstCompletedAtOrAfter } from '../../src/data/repositories/session-repo.js';

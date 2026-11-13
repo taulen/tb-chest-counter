@@ -45,6 +45,14 @@
  * time, so an occurrence's upper bound is extended to the first completed scan
  * after its reset (see getFirstCompletedAtOrAfter) to catch chests claimed just
  * after the event ended.
+ *
+ * Two feeds, one per REALM. A clan marked as playing a Seasonal Kingdom reads
+ * tbclanportal's SK calendar (`feed.ics?realm=season`, the "Seasonal Kingdoms"
+ * toggle on its calendar page) — same format, same 17:00 UTC days, but its own
+ * rotation: in SK 2026 Ancients, Ragnarök and Pursuit of Experience each came
+ * every 5 days, and Olympus and Dark Omens weren't listed at all. Each realm is
+ * fetched, cached and archived on its own; the Tinman cadence check and the
+ * superadmin corrections are the normal kingdom's only. docs/seasonal-kingdoms.md.
  */
 
 import { childLogger } from '../utils/logger.js';
@@ -54,6 +62,7 @@ import { loadConfig } from '../config/index.js';
 import { EVENT_CATALOG, getEventDef } from '../config/event-catalog.js';
 import { getFirstCompletedAtOrAfter } from '../data/repositories/session-repo.js';
 import { getEventDataStart } from '../data/repositories/event-repo.js';
+import { clanCalendarRealm, type CalendarRealm } from '../data/repositories/clan-repo.js';
 import {
   listArchivedRuns,
   listCorrections,
@@ -64,8 +73,16 @@ import {
 
 const log = childLogger('event-calendar');
 
-const FEED_URL =
-  process.env.EVENT_CALENDAR_ICS_URL || 'https://tbclanportal.com/calendar/feed.ics';
+const FEED_URLS: Record<CalendarRealm, string> = {
+  default: process.env.EVENT_CALENDAR_ICS_URL || 'https://tbclanportal.com/calendar/feed.ics',
+  season:
+    process.env.EVENT_CALENDAR_SK_ICS_URL || 'https://tbclanportal.com/calendar/feed.ics?realm=season',
+};
+
+/** The feed a clan's events follow; the normal kingdom's when no clan is given. */
+function realmFor(clanId?: number): CalendarRealm {
+  return clanId == null ? 'default' : clanCalendarRealm(clanId);
+}
 const USER_AGENT = 'tb-chest-counter/1.0 (+self-hosted personal use)';
 // The schedule changes at most once a day (17:00 UTC reset). A few hours keeps
 // the feed fresh without hammering it — the parsed result is reused across
@@ -281,12 +298,12 @@ function warnOnMissingRunDays(declared: DeclaredDay[]): void {
   }
 }
 
-async function fetchFeed(): Promise<Feed> {
+async function fetchFeed(realm: CalendarRealm): Promise<Feed> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let text: string;
   try {
-    const res = await fetch(FEED_URL, {
+    const res = await fetch(FEED_URLS[realm], {
       headers: { accept: 'text/calendar', 'user-agent': USER_AGENT },
       signal: controller.signal,
     });
@@ -298,33 +315,39 @@ async function fetchFeed(): Promise<Feed> {
   return parseVevents(text);
 }
 
-// In-process cache of the parsed feed (shared across clans). `inflight`
+// In-process cache of each realm's parsed feed (shared across clans). `inflight`
 // coalesces concurrent misses into one fetch; a fetch failure serves the last
 // good result when we have one, so a transient feed outage is invisible.
-let cache: { expires: number; feed: Feed } | null = null;
-let inflight: Promise<Feed> | null = null;
+const caches = new Map<CalendarRealm, { expires: number; feed: Feed }>();
+const inflights = new Map<CalendarRealm, Promise<Feed>>();
 
-async function getFeed(): Promise<Feed> {
+async function getFeed(realm: CalendarRealm = 'default'): Promise<Feed> {
   const now = Date.now();
-  if (cache && cache.expires > now) return cache.feed;
-  if (inflight) return inflight;
-  inflight = fetchFeed()
+  const cached = caches.get(realm);
+  if (cached && cached.expires > now) return cached.feed;
+  const pending = inflights.get(realm);
+  if (pending) return pending;
+  const inflight = fetchFeed(realm)
     .then((feed) => {
-      cache = { feed, expires: Date.now() + TTL_MS };
-      log.info(`Loaded ${feed.events.length} tracked calendar VEVENTs from ${FEED_URL}`);
-      archiveFeed(feed);
-      checkTinmanCadence(feed);
+      caches.set(realm, { feed, expires: Date.now() + TTL_MS });
+      log.info(`Loaded ${feed.events.length} tracked calendar VEVENTs from ${FEED_URLS[realm]}`);
+      archiveFeed(feed, realm);
+      // The Tinman weeks it guards are a normal-kingdom cadence; SK clans can't
+      // use them (setClanSeasonalKingdom), so the SK feed has nothing to check.
+      if (realm === 'default') checkTinmanCadence(feed);
       return feed;
     })
     .catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
-      log.warn(`Event calendar fetch failed: ${msg}`);
-      if (cache) return cache.feed; // serve stale rather than break the page
+      log.warn(`Event calendar fetch failed (${FEED_URLS[realm]}): ${msg}`);
+      const stale = caches.get(realm);
+      if (stale) return stale.feed; // serve stale rather than break the page
       throw err;
     })
     .finally(() => {
-      inflight = null;
+      inflights.delete(realm);
     });
+  inflights.set(realm, inflight);
   return inflight;
 }
 
@@ -351,7 +374,7 @@ function fuse(spans: Array<{ start: number; end: number }>): Array<{ start: numb
  * fetch, so at most every TTL. A failure costs nothing the feed doesn't still
  * hold, so it is logged and swallowed rather than allowed to break the page.
  */
-function archiveFeed(feed: Feed): void {
+function archiveFeed(feed: Feed, realm: CalendarRealm): void {
   if (feed.horizon == null || !feed.events.length) return;
   try {
     const runs: CalendarRun[] = [];
@@ -360,7 +383,7 @@ function archiveFeed(feed: Feed): void {
         runs.push({ eventKey: key, start: g.start, end: g.end });
       }
     }
-    syncArchivedRuns(feed.horizon, Date.now(), runs);
+    syncArchivedRuns(feed.horizon, Date.now(), runs, realm);
   } catch (err) {
     log.warn(`Event calendar archive failed: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -419,11 +442,14 @@ function checkTinmanCadence(feed: Feed): void {
  * An event's runs as the feed has given them: what it carries now, plus the
  * archived runs from before its rolling window began. Corrections NOT applied.
  */
-async function feedRunsFor(eventKey: string): Promise<Array<{ start: number; end: number }>> {
-  const feed = await getFeed();
+async function feedRunsFor(
+  eventKey: string,
+  realm: CalendarRealm = 'default',
+): Promise<Array<{ start: number; end: number }>> {
+  const feed = await getFeed(realm);
   const current = feed.events.filter((e) => e.key === eventKey);
   const horizon = feed.horizon ?? Infinity;
-  const archived = listArchivedRuns(eventKey).filter((r) => r.start < horizon);
+  const archived = listArchivedRuns(eventKey, realm).filter((r) => r.start < horizon);
   return fuse([...archived, ...current]);
 }
 
@@ -432,11 +458,17 @@ async function feedRunsFor(eventKey: string): Promise<Array<{ start: number; end
  * A correction matches a run by its exact feed start, so once the portal fixes
  * its own feed there is no run left at that start and the correction just stops
  * applying — it never fights a feed that has caught up.
+ *
+ * Normal-kingdom feed only. A correction is keyed by event and feed start, and
+ * the SK feed often has a run of the same event starting the same day, which a
+ * correction made for the normal feed would otherwise move as well.
  */
 function applyCorrections(
   eventKey: string,
   runs: Array<{ start: number; end: number }>,
+  realm: CalendarRealm,
 ): Array<{ start: number; end: number }> {
+  if (realm !== 'default') return runs;
   const moves = new Map<number, number>();
   for (const c of listCorrections()) {
     if (c.eventKey === eventKey) moves.set(Date.parse(c.feedStartAt), Date.parse(c.actualStartAt));
@@ -468,8 +500,11 @@ function labelFor(startMs: number, endMs: number): string {
 
 // An event's occurrence spans, ascending: feed + archive, with admin
 // corrections applied. Shared by the occurrence list and the schedule.
-async function groupsFor(eventKey: string): Promise<Array<{ start: number; end: number }>> {
-  return applyCorrections(eventKey, await feedRunsFor(eventKey));
+async function groupsFor(
+  eventKey: string,
+  realm: CalendarRealm,
+): Promise<Array<{ start: number; end: number }>> {
+  return applyCorrections(eventKey, await feedRunsFor(eventKey, realm), realm);
 }
 
 // A rolling cycle is infinite backwards, so the list is floored at the clan's
@@ -622,8 +657,10 @@ function dataFloorMs(eventKey: string, clanId?: number): number {
 
 /**
  * Schedule tag for an event: its next UPCOMING occurrence (earliest run that
- * hasn't started yet) and whether one is running right now. Feed-driven and
- * clan-agnostic — for the "next event" hint on the Events tabs.
+ * hasn't started yet) and whether one is running right now. Feed-driven — for
+ * the "next event" hint on the Events tabs. `clanId` only picks the feed (a
+ * Seasonal Kingdom clan's or the normal one); nothing else about the clan
+ * matters here.
  *
  * A rolling-cycle event (Triumphal) has neither: it never starts and never
  * stops, so `live` stays false (a permanent "Live now" badge is noise) and
@@ -632,6 +669,7 @@ function dataFloorMs(eventKey: string, clanId?: number): number {
  */
 export async function getEventSchedule(
   eventKey: string,
+  clanId?: number,
 ): Promise<{ next: EventOccurrence | null; live: boolean; cycleEndsAt: string | null }> {
   const cycle = getEventDef(eventKey)?.cycle;
   if (cycle) {
@@ -642,7 +680,7 @@ export async function getEventSchedule(
       cycleEndsAt: current ? new Date(current.end).toISOString() : null,
     };
   }
-  const groups = await groupsFor(eventKey);
+  const groups = await groupsFor(eventKey, realmFor(clanId));
   const now = Date.now();
   const live = groups.some((g) => g.start <= now && now < g.end);
   const upcoming = groups
@@ -677,8 +715,13 @@ export async function getEventSchedule(
  * are reconstructed from its proven cadence and flagged `estimated` — see
  * `backfilledGroups`.
  *
+ * `clanId` also picks the feed: a Seasonal Kingdom clan's runs come from the
+ * SK calendar. A rolling cycle (Triumphal) is the same in both — the SK feed's
+ * Triumphal Challenge resets on the very instants the catalog's anchor gives.
+ *
  * Returns [] for events with neither a calendar mapping nor a cycle, and when
- * the feed is empty.
+ * the feed is empty — which is also what an SK clan gets for an event its feed
+ * doesn't list (Olympus, Dark Omens in SK 2026).
  */
 export async function getEventOccurrences(
   eventKey: string,
@@ -687,7 +730,7 @@ export async function getEventOccurrences(
   const cycle = getEventDef(eventKey)?.cycle;
   const base: Span[] = cycle
     ? cycleGroups(cycle, dataFloorMs(eventKey, clanId)).map((g) => ({ ...g, estimated: false }))
-    : backfilledGroups(await groupsFor(eventKey), eventKey, clanId);
+    : backfilledGroups(await groupsFor(eventKey, realmFor(clanId)), eventKey, clanId);
   if (!base.length) return [];
   const groups = base.map((g) => ({
     start: g.start,

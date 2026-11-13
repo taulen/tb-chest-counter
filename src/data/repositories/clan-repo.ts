@@ -140,6 +140,13 @@ export interface Clan {
    * are upstream's and always Sunday-based.
    */
   weekStart: WeekStart;
+
+  /**
+   * The clan plays a Seasonal Kingdom (v100): its events run on the SK
+   * calendar, not the normal kingdom's — see docs/seasonal-kingdoms.md. Never
+   * paired with Tinman weeks, whose fixed 6-day cadence SK doesn't follow.
+   */
+  seasonalKingdom: boolean;
 }
 
 /**
@@ -200,6 +207,7 @@ function rowToClan(row: Record<string, unknown>): Clan {
     leaderboardWeeklyGoalPoints: (row.leaderboard_weekly_goal_points as number | null) ?? null,
     leaderboardGoalAmberPct: (row.leaderboard_goal_amber_pct as number | null | undefined) ?? null,
     weekStart: isWeekStart(row.week_start) ? row.week_start : 'sunday',
+    seasonalKingdom: !!(row.seasonal_kingdom as number | undefined),
     deletedAt: (row.deleted_at as string) || '',
   };
 }
@@ -404,6 +412,30 @@ export function setClanWeekStart(id: number, weekStart: WeekStart): void {
  */
 export function getClanWeekStart(id: number): WeekStart {
   return getClanById(id)?.weekStart ?? 'sunday';
+}
+
+/**
+ * Mark a clan as playing a Seasonal Kingdom, or not. Turning it on also moves a
+ * clan off Tinman weeks: those are cut on the normal kingdom's fixed 6-day
+ * Ancients cadence, and SK runs Ancients on its own (every 5 days in SK 2026).
+ * Returns the week shape the clan ends up with, so the caller can tell the page.
+ */
+export function setClanSeasonalKingdom(id: number, enabled: boolean): WeekStart {
+  const db = getDb();
+  return db.transaction(() => {
+    db.prepare('UPDATE clans SET seasonal_kingdom = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+    if (enabled) {
+      db.prepare("UPDATE clans SET week_start = 'sunday' WHERE id = ? AND week_start = 'ancients'").run(id);
+    }
+    return getClanWeekStart(id);
+  })();
+}
+
+/** Which event calendar a clan follows: the Seasonal Kingdom one, or the normal one. */
+export type CalendarRealm = 'default' | 'season';
+
+export function clanCalendarRealm(id: number): CalendarRealm {
+  return getClanById(id)?.seasonalKingdom ? 'season' : 'default';
 }
 
 /** An admin's saved Ancient planner starting values (v79). */

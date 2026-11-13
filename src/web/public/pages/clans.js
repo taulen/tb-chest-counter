@@ -361,6 +361,35 @@ export async function renderClans(el, refreshClanIndicator) {
       } catch {
         notify(t('Save failed.'), t('Week'));
       }
+    } else if (action === 'clan-sk-save' && clanId) {
+      const enabled = !!el.querySelector(`#clan-sk-${clanId}`)?.checked;
+      try {
+        const r = await fetch(`/api/clans/${clanId}/seasonal-kingdom`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+        const j = await r.json();
+        if (!r.ok) return notify(j.error || t('Save failed'), t('Seasonal Kingdom'));
+        // Turning SK on can move the clan off Tinman weeks; the server says
+        // which week it ended up with. Mirror that, and the marker, in place.
+        const week = el.querySelector(`#clan-week-start-${clanId}`);
+        if (week) {
+          week.value = j.weekStart;
+          const tinman = week.querySelector('option[value="ancients"]');
+          if (tinman) tinman.disabled = enabled;
+        }
+        el.querySelector(`#clan-sk-marker-${clanId}`)?.toggleAttribute('hidden', !enabled);
+        if (getCurrentUser()?.activeClan?.id === clanId) setWeekStart(j.weekStart);
+        notify(
+          enabled
+            ? t('Seasonal Kingdom on: this clan’s events now follow the Seasonal Kingdom calendar.')
+            : t('Seasonal Kingdom off: this clan’s events follow the normal calendar again.'),
+          t('Seasonal Kingdom'),
+        );
+      } catch {
+        notify(t('Save failed.'), t('Seasonal Kingdom'));
+      }
     } else if (action === 'clan-goal-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-goal-enabled-${clanId}`)?.checked;
       const raw = el.querySelector(`#clan-goal-points-${clanId}`).value.trim();
@@ -1026,7 +1055,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
   return `
     <div class="card" data-clan-card-id="${clan.id}">
       <div class="card-header">
-        <h2>${escapeHtml(clan.name)} <span class="muted-copy clan-card-meta">#${clan.id} · ${escapeHtml(clan.slug)}</span></h2>
+        <h2>${escapeHtml(clan.name)} <span class="muted-copy clan-card-meta">#${clan.id} · ${escapeHtml(clan.slug)}<span id="clan-sk-marker-${clan.id}"${clan.seasonalKingdom ? '' : ' hidden'}> · ${t('Seasonal Kingdom')}</span></span></h2>
       </div>
       <div class="card-body card-body-padded">
         ${isSuperAdmin ? `
@@ -1189,6 +1218,19 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
 
         <hr class="section-divider">
         <details class="clan-subsection">
+        <summary class="clan-subsection-summary"><h3>${t('Seasonal Kingdom')}</h3></summary>
+        <div class="mt-12">
+        <p class="muted-copy mb-8">${t('Turn this on for a clan playing in a <strong>Seasonal Kingdom</strong>. Its events then follow the Seasonal Kingdom calendar, where most events come round every few days instead of every few weeks. That calendar decides the event runs on the Events and Performance pages.')}</p>
+        <div class="inline-form-row">
+          <label class="checkbox-row"><input type="checkbox" id="clan-sk-${clan.id}" ${clan.seasonalKingdom ? 'checked' : ''}> ${t('This clan plays in a Seasonal Kingdom')}</label>
+          <button class="btn btn-primary" data-action="clan-sk-save" data-clan-id="${clan.id}">${t('Save')}</button>
+        </div>
+        <p class="muted-copy mt-8">${t('Tinman to Tinman weeks are not available in a Seasonal Kingdom, so turning this on switches the clan to Sunday weeks.')}</p>
+        </div>
+        </details>
+
+        <hr class="section-divider">
+        <details class="clan-subsection">
         <summary class="clan-subsection-summary"><h3>${t('Week')}</h3></summary>
         <div class="mt-12">
         <p class="muted-copy mb-8">${t("What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.")}</p>
@@ -1196,7 +1238,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <div><label for="clan-week-start-${clan.id}">${t('Week runs')}</label>
             <select id="clan-week-start-${clan.id}" class="input">
               <option value="sunday" ${clan.weekStart !== 'ancients' ? 'selected' : ''}>${t('Sunday to Sunday (7 days)')}</option>
-              <option value="ancients" ${clan.weekStart === 'ancients' ? 'selected' : ''}>${t('Tinman to Tinman (6 days)')}</option>
+              <option value="ancients" ${clan.weekStart === 'ancients' ? 'selected' : ''}${clan.seasonalKingdom ? ' disabled' : ''}>${t('Tinman to Tinman (6 days)')}</option>
             </select>
           </div>
           <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">${t('Save')}</button>

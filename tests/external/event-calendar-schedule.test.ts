@@ -26,6 +26,11 @@ vi.mock('../../src/utils/log-buffer.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/utils/log-buffer.js')>()),
   resolveEntries: vi.fn(() => 0),
 }));
+// Clan SK_CLAN plays a Seasonal Kingdom; every other clan the normal one.
+const SK_CLAN = 5;
+vi.mock('../../src/data/repositories/clan-repo.js', () => ({
+  clanCalendarRealm: vi.fn((id: number) => (id === 5 ? 'season' : 'default')),
+}));
 
 const DAY = 24 * 60 * 60 * 1000;
 const at = (d: string) => Date.parse(`${d}T17:00:00.000Z`);
@@ -67,6 +72,8 @@ const FEED_OCT21 = feed(
 interface Setup {
   now: string;
   ics: string;
+  /** The Seasonal Kingdom feed (feed.ics?realm=season); defaults to `ics`. */
+  skIcs?: string;
   archived?: Record<string, Array<{ start: number; end: number }>>;
   corrections?: Array<{ eventKey: string; feed: string; actual: string; id?: number }>;
   dataStart?: string | null;
@@ -78,10 +85,17 @@ async function load(s: Setup) {
   vi.setSystemTime(Date.parse(s.now));
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({ ok: true, status: 200, statusText: 'OK', text: async () => s.ics })),
+    vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => (String(url).includes('realm=season') ? s.skIcs ?? s.ics : s.ics),
+    })),
   );
   const repo = await import('../../src/data/repositories/event-schedule-repo.js');
-  vi.mocked(repo.listArchivedRuns).mockImplementation((k: string) => s.archived?.[k] ?? []);
+  vi.mocked(repo.listArchivedRuns).mockImplementation(
+    (k: string, realm = 'default') => (realm === 'default' ? s.archived?.[k] : undefined) ?? [],
+  );
   vi.mocked(repo.listCorrections).mockReturnValue(
     (s.corrections ?? []).map((c, i) => ({
       id: c.id ?? i + 1,
@@ -273,5 +287,77 @@ describe('schedule corrections', () => {
 
     expect(await cal.saveScheduleCorrection('olympus', feedStart, '2026-10-24', 7)).toEqual({ ok: true });
     expect(repo.setCorrection).toHaveBeenCalledWith('olympus', at('2026-10-30'), at('2026-10-24'), 7);
+  });
+});
+
+describe('a Seasonal Kingdom clan', () => {
+  // Both feeds as fetched on 2026-11-13 (SK 2026 opened Nov 11 09:00 UTC). The
+  // normal kingdom runs Ancients on its 6-day Tinman cadence (Nov 10, 16, …);
+  // the SK one had Tinman on Nov 13 and then every 5 days, and Ragnarök on
+  // Nov 12 and 15 — the "Vaults day today, Tinman tomorrow" the user reported.
+  const ancientsRun = (treasureDay: string) => [
+    ...run("💎 Ancients' Treasure", treasureDay, 1),
+    ...run('🛕 Rise of the Ancients', new Date(at(treasureDay) + DAY).toISOString().slice(0, 10), 1),
+  ];
+  const NORMAL = feed(ancientsRun('2026-11-03'), ancientsRun('2026-11-09'), ancientsRun('2026-11-15'));
+  const SK = feed(
+    [['BEGIN:VEVENT', 'DTSTART:20261111T090000Z', 'DTEND:20270208T090000Z', 'SUMMARY:⚔️ Pinnacle of Warfare', 'END:VEVENT'].join('\r\n')],
+    ancientsRun('2026-11-12'),
+    ancientsRun('2026-11-16'),
+    run('⚡ Ragnarök', '2026-11-12', 1),
+    run('⚡ Ragnarök', '2026-11-15', 1),
+  );
+  const NOW = '2026-11-13T12:00:00Z';
+
+  it('reads its runs from the SK calendar; other clans keep the normal one', async () => {
+    const { cal } = await load({ now: NOW, ics: NORMAL, skIcs: SK });
+    const sk = await cal.getEventOccurrences('ancients', SK_CLAN);
+    expect(sk.map((o) => [o.from, o.resetAt, o.isCurrent])).toEqual([
+      [iso('2026-11-12'), iso('2026-11-14'), true],
+    ]);
+    const normal = await cal.getEventOccurrences('ancients', 1);
+    expect(normal.map((o) => o.from)).toEqual([iso('2026-11-09'), iso('2026-11-03')]);
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url).includes('realm=season')).sort())
+      .toEqual([false, true]);
+  });
+
+  it('gets the next-run hint from the SK calendar too', async () => {
+    const { cal } = await load({ now: NOW, ics: NORMAL, skIcs: SK });
+    expect((await cal.getEventSchedule('ragnarok', SK_CLAN)).next?.from).toBe(iso('2026-11-15'));
+    expect((await cal.getEventSchedule('ancients', SK_CLAN)).live).toBe(true);
+    expect((await cal.getEventSchedule('ancients', 1)).next?.from).toBe(iso('2026-11-15'));
+  });
+
+  it('archives the SK feed apart from the normal one', async () => {
+    const { cal, repo } = await load({ now: NOW, ics: NORMAL, skIcs: SK });
+    await cal.getEventOccurrences('ragnarok', SK_CLAN);
+    expect(repo.syncArchivedRuns).toHaveBeenCalledTimes(1);
+    const [horizon, , runs, realm] = vi.mocked(repo.syncArchivedRuns).mock.calls[0];
+    expect(realm).toBe('season');
+    expect(horizon).toBe(Date.parse('2026-11-11T09:00:00Z'));
+    expect(runs).toContainEqual({ eventKey: 'ragnarok', start: at('2026-11-12'), end: at('2026-11-13') });
+    expect(repo.listArchivedRuns).toHaveBeenCalledWith('ragnarok', 'season');
+  });
+
+  it('is never moved by a normal-kingdom correction, nor held to the 6-day Tinman cadence', async () => {
+    // A correction keyed on a Ragnarök starting Nov 12 must not touch the SK run
+    // that starts the same day; and the SK Tinman days (Nov 13, 17) are off the
+    // normal cadence by design. Both checks read the corrections, so an SK-only
+    // fetch never asks for them.
+    const { cal, repo } = await load({
+      now: NOW,
+      ics: NORMAL,
+      skIcs: SK,
+      corrections: [{ eventKey: 'ragnarok', feed: '2026-11-12', actual: '2026-11-10' }],
+    });
+    const ragnarok = await cal.getEventOccurrences('ragnarok', SK_CLAN);
+    expect(ragnarok.map((o) => o.from)).toEqual([iso('2026-11-12')]);
+    await cal.getEventOccurrences('ancients', SK_CLAN);
+    expect(repo.listCorrections).not.toHaveBeenCalled();
+  });
+
+  it('has no runs for an event its calendar does not list', async () => {
+    const { cal } = await load({ now: NOW, ics: FEED_OCT21, skIcs: SK });
+    expect(await cal.getEventOccurrences('dark-omens', SK_CLAN)).toEqual([]);
   });
 });

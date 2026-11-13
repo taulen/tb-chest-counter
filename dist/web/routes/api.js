@@ -840,11 +840,12 @@ function createApiRouter(scanLoop) {
     // events with no schedule, e.g. Citadels and Heroics, or when the feed is down).
     // A rolling-cycle event (Triumphal) is never "next" and never flagged live —
     // it always is — so it carries endsAt: when the current cycle resets.
-    router.get('/events', async (_req, res) => {
+    router.get('/events', async (req, res) => {
         const summary = (0, event_catalog_js_1.getEventCatalogSummary)();
+        const clanId = req.clanId ?? 1;
         const events = await Promise.all(summary.map(async (e) => {
             try {
-                const { next, live, cycleEndsAt } = await (0, event_calendar_js_1.getEventSchedule)(e.key);
+                const { next, live, cycleEndsAt } = await (0, event_calendar_js_1.getEventSchedule)(e.key, clanId);
                 return {
                     ...e,
                     nextFrom: next?.from ?? null,

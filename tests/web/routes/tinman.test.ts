@@ -206,4 +206,62 @@ describe('/api/tinman', () => {
       expect(actions).toEqual([{ action: 'dark-omens_upload' }, { action: 'dark-omens_delete' }]);
     });
   });
+
+  describe('in a Seasonal Kingdom', () => {
+    // The SK calendar as fetched in Nov 2026: Tinman on Nov 13, then every 5
+    // days. The normal cadence (Oct 23 + 6k) would put it on Nov 16 instead.
+    const ev = (summary: string, start: string, end: string) =>
+      ['BEGIN:VEVENT', `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${summary}`, 'END:VEVENT'].join('\r\n');
+    const SK_FEED = [
+      'BEGIN:VCALENDAR',
+      ev("💎 Ancients' Treasure", '20261112T170000Z', '20261113T170000Z'),
+      ev('🛕 Rise of the Ancients', '20261113T170000Z', '20261114T170000Z'),
+      ev("💎 Ancients' Treasure", '20261116T170000Z', '20261117T170000Z'),
+      ev('🛕 Rise of the Ancients', '20261117T170000Z', '20261118T170000Z'),
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    beforeEach(() => {
+      vi.setSystemTime(new Date('2026-11-18T12:00:00Z')); // game day 2026-11-17, an SK Tinman day
+      // The sessions above were issued on Oct 24 and have lapsed by now.
+      const session = (name: string) => {
+        const { id } = getDb().prepare('SELECT id FROM users WHERE username = ?').get(name) as { id: number };
+        return `${SESSION_COOKIE_NAME}=${userRepo.createSession(id)}`;
+      };
+      cookies = { admin1: session('a1'), admin2: session('a2'), user1: session('u1') };
+      getDb().prepare('UPDATE clans SET seasonal_kingdom = 1 WHERE id = 1').run();
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => (String(url).includes('realm=season') ? SK_FEED : 'BEGIN:VCALENDAR\r\nEND:VCALENDAR'),
+      })));
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('defaults to the newest Tinman day on its own calendar, not the 6-day cadence', async () => {
+      const get = await send('get', '/api/tinman', 'user1');
+      expect(get.body.date).toBe('2026-11-17');
+      expect(get.body.isTinmanDay).toBe(true);
+      expect((await send('get', '/api/tinman?date=2026-11-16', 'user1')).body.isTinmanDay).toBe(false);
+    });
+
+    it('warns about a paste filed off its calendar, and not about one on it', async () => {
+      const off = await send('put', '/api/tinman/2026-11-16/summons/1', 'admin1', { text: PASTE });
+      expect(off.status).toBe(200);
+      expect(off.body.warning).toMatch(/Seasonal Kingdom calendar/);
+      const on = await send('put', '/api/tinman/2026-11-13/summons/1', 'admin1', { text: PASTE });
+      expect(on.body.warning).toBeNull();
+      // Nov 17's Tinman day is today, not past, so Nov 13's run isn't a cycle old yet.
+      expect(on.body.staleWarning).toBeNull();
+    });
+
+    it('leaves a normal-kingdom clan on the 6-day cadence', async () => {
+      const put = await send('put', '/api/tinman/2026-11-16/summons/1', 'admin2', { text: PASTE });
+      expect(put.body.warning).toBeNull(); // Nov 16 is a Tinman day on Oct 23 + 6k
+    });
+  });
 });

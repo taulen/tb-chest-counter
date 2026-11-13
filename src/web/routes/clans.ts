@@ -8,6 +8,7 @@ import type { ScanLoop } from '../../scheduler/loop.js';
 import { createInactivityRouter } from './clans/inactivity.js';
 import { createLeaderboardGoalRouter } from './clans/leaderboard-goal.js';
 import { createWeekStartRouter } from './clans/week-start.js';
+import { createSeasonalKingdomRouter } from './clans/seasonal-kingdom.js';
 
 /**
  * `/api/clans` is split into sub-routers, composed here. Each
@@ -34,6 +35,7 @@ export function createClansRouter(scanLoop?: ScanLoop): Router {
   router.use(createInactivityRouter());
   router.use(createLeaderboardGoalRouter());
   router.use(createWeekStartRouter());
+  router.use(createSeasonalKingdomRouter());
 
   return router;
 }

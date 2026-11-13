@@ -1271,6 +1271,50 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Seasonal Kingdoms (docs/seasonal-kingdoms.md). An SK is a 90-day
+    // tournament server with its own event rotation, so a clan playing one
+    // reads its event windows from tbclanportal's SK calendar
+    // (feed.ics?realm=season) instead of the normal one.
+    //
+    //  - clans.seasonal_kingdom: the per-clan switch on the Clans page.
+    //  - event_calendar_runs gains `realm` and it joins the key: the two feeds
+    //    list the same event keys, often starting on the same day (both list a
+    //    Triumphal reset on 2026-11-21), so without it one feed's archive would
+    //    overwrite the other's. Every existing row is the normal feed's.
+    //  - Forest Essence and Magic Seeds are SK clan-capital resources; their
+    //    icon templates ship as assets/resource-icons/<slug>.png.
+    //
+    // All three halves are guarded, so a replay is a no-op.
+    version: 100,
+    run: (database): void => {
+      const clanCols = database.prepare('PRAGMA table_info(clans)').all() as { name: string }[];
+      if (!clanCols.some((c) => c.name === 'seasonal_kingdom')) {
+        database.exec('ALTER TABLE clans ADD COLUMN seasonal_kingdom INTEGER NOT NULL DEFAULT 0');
+      }
+      const runCols = database.prepare('PRAGMA table_info(event_calendar_runs)').all() as { name: string }[];
+      if (!runCols.some((c) => c.name === 'realm')) {
+        database.exec(`
+          CREATE TABLE event_calendar_runs_v100 (
+            realm TEXT NOT NULL DEFAULT 'default',
+            event_key TEXT NOT NULL,
+            start_at TEXT NOT NULL,
+            end_at TEXT NOT NULL,
+            PRIMARY KEY (realm, event_key, start_at)
+          );
+          INSERT INTO event_calendar_runs_v100 (realm, event_key, start_at, end_at)
+            SELECT 'default', event_key, start_at, end_at FROM event_calendar_runs;
+          DROP TABLE event_calendar_runs;
+          ALTER TABLE event_calendar_runs_v100 RENAME TO event_calendar_runs;
+        `);
+      }
+      const insertType = database.prepare(
+        'INSERT OR IGNORE INTO resource_types (name, slug) VALUES (?, ?)',
+      );
+      insertType.run('Forest Essence', 'forest-essence');
+      insertType.run('Magic Seeds', 'magic-seeds');
+    },
+  },
 ];
 
 /**

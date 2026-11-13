@@ -351,6 +351,45 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
     });
   });
 
+  describe('Seasonal Kingdom', () => {
+    it('is off for a clan until switched on, and shows on the clan', async () => {
+      expect((await request(app).get('/api/clans/1')).body.clan.seasonalKingdom).toBe(false);
+      const on = await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: true });
+      expect(on.status).toBe(200);
+      expect(on.body).toMatchObject({ ok: true, seasonalKingdom: true, weekStart: 'sunday' });
+      expect((await request(app).get('/api/clans/1')).body.clan.seasonalKingdom).toBe(true);
+      const off = await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: false });
+      expect(off.body.seasonalKingdom).toBe(false);
+      expect((await request(app).get('/api/clans/1')).body.clan.seasonalKingdom).toBe(false);
+    });
+
+    it('moves a Tinman-week clan to Sunday weeks, and keeps it off Tinman weeks', async () => {
+      await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients' });
+      const on = await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: true });
+      expect(on.body.weekStart).toBe('sunday');
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('sunday');
+      const tinman = await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients' });
+      expect(tinman.status).toBe(400);
+      // Back in a normal kingdom, Tinman weeks are a choice again (not restored by themselves).
+      await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: false });
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('sunday');
+      expect((await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients' })).status).toBe(200);
+    });
+
+    it('only touches the clan it is set on', async () => {
+      await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: true });
+      expect((await request(app).get('/api/clans/2')).body.clan.seasonalKingdom).toBe(false);
+    });
+
+    it('rejects anything but a boolean, and an unknown clan', async () => {
+      for (const bad of [undefined, 'true', 1, null]) {
+        const res = await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: bad });
+        expect(res.status, `enabled=${String(bad)}`).toBe(400);
+      }
+      expect((await request(app).put('/api/clans/999/seasonal-kingdom').send({ enabled: true })).status).toBe(404);
+    });
+  });
+
   // Phase A3 regression: deleting a clan must clear its onboardState
   // entry so the per-process Map doesn't grow forever as clans are
   // added and removed. We can't peek at the Map directly through HTTP,

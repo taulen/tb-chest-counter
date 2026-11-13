@@ -1,10 +1,15 @@
 import { getDb } from '../database.js';
+import type { CalendarRealm } from './clan-repo.js';
 
 // Event schedule state the calendar feed can't hold for us (migration v76):
 // the runs it has already shown (it forgets them after ~a month) and the hand
 // corrections for runs it has wrong. Both are GLOBAL — the feed is one
 // game-wide schedule, so there is no clan_id. Instants are stored as ISO UTC
 // strings from toISOString(), so they compare correctly as text.
+//
+// Archived runs are kept per REALM (v100): the normal-kingdom feed and the
+// Seasonal Kingdom one (docs/seasonal-kingdoms.md) list the same event keys,
+// often on the same days. Corrections stay normal-kingdom only.
 
 export interface CalendarRun {
   eventKey: string;
@@ -26,14 +31,17 @@ export interface ScheduleCorrection {
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
-/** Archived runs of one event, ascending, as epoch ms. */
-export function listArchivedRuns(eventKey: string): Array<{ start: number; end: number }> {
+/** Archived runs of one event in one realm's feed, ascending, as epoch ms. */
+export function listArchivedRuns(
+  eventKey: string,
+  realm: CalendarRealm = 'default',
+): Array<{ start: number; end: number }> {
   const rows = getDb()
     .prepare(
       `SELECT start_at, end_at FROM event_calendar_runs
-        WHERE event_key = ? ORDER BY start_at`,
+        WHERE realm = ? AND event_key = ? ORDER BY start_at`,
     )
-    .all(eventKey) as { start_at: string; end_at: string }[];
+    .all(realm, eventKey) as { start_at: string; end_at: string }[];
   return rows.map((r) => ({ start: Date.parse(r.start_at), end: Date.parse(r.end_at) }));
 }
 
@@ -46,20 +54,25 @@ export function listArchivedRuns(eventKey: string): Array<{ start: number; end: 
  * feed has forgotten — are never touched; that is the whole point of keeping
  * them. Future runs are never stored: they can still move.
  */
-export function syncArchivedRuns(horizonMs: number, nowMs: number, runs: CalendarRun[]): void {
+export function syncArchivedRuns(
+  horizonMs: number,
+  nowMs: number,
+  runs: CalendarRun[],
+  realm: CalendarRealm = 'default',
+): void {
   const db = getDb();
   const del = db.prepare(
-    'DELETE FROM event_calendar_runs WHERE start_at >= ? AND start_at <= ?',
+    'DELETE FROM event_calendar_runs WHERE realm = ? AND start_at >= ? AND start_at <= ?',
   );
   const ins = db.prepare(
-    `INSERT OR REPLACE INTO event_calendar_runs (event_key, start_at, end_at)
-     VALUES (?, ?, ?)`,
+    `INSERT OR REPLACE INTO event_calendar_runs (realm, event_key, start_at, end_at)
+     VALUES (?, ?, ?, ?)`,
   );
   db.transaction(() => {
-    del.run(iso(horizonMs), iso(nowMs));
+    del.run(realm, iso(horizonMs), iso(nowMs));
     for (const r of runs) {
       if (r.start < horizonMs || r.start > nowMs) continue;
-      ins.run(r.eventKey, iso(r.start), iso(r.end));
+      ins.run(realm, r.eventKey, iso(r.start), iso(r.end));
     }
   })();
 }

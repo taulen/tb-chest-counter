@@ -16,13 +16,20 @@ function createWeekStartRouter() {
      */
     router.put('/:clanId/week-start', auth_js_1.requireClanAdmin, (req, res) => {
         const id = req.parsedClanId;
-        if (!(0, clan_repo_js_1.getClanById)(id)) {
+        const clan = (0, clan_repo_js_1.getClanById)(id);
+        if (!clan) {
             res.status(404).json({ error: 'Clan not found' });
             return;
         }
         const weekStart = req.body?.weekStart;
         if (!(0, game_day_js_1.isWeekStart)(weekStart)) {
             res.status(400).json({ error: `weekStart must be one of: ${game_day_js_1.WEEK_STARTS.join(', ')}` });
+            return;
+        }
+        // Tinman weeks are cut on the normal kingdom's fixed 6-day Ancients
+        // cadence; a Seasonal Kingdom runs Ancients on its own schedule.
+        if (weekStart === 'ancients' && clan.seasonalKingdom) {
+            res.status(400).json({ error: 'Tinman weeks are not available in a Seasonal Kingdom.' });
             return;
         }
         (0, clan_repo_js_1.setClanWeekStart)(id, weekStart);

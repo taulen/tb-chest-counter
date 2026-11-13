@@ -7,12 +7,12 @@ exports.setCorrection = setCorrection;
 exports.deleteCorrection = deleteCorrection;
 const database_js_1 = require("../database.js");
 const iso = (ms) => new Date(ms).toISOString();
-/** Archived runs of one event, ascending, as epoch ms. */
-function listArchivedRuns(eventKey) {
+/** Archived runs of one event in one realm's feed, ascending, as epoch ms. */
+function listArchivedRuns(eventKey, realm = 'default') {
     const rows = (0, database_js_1.getDb)()
         .prepare(`SELECT start_at, end_at FROM event_calendar_runs
-        WHERE event_key = ? ORDER BY start_at`)
-        .all(eventKey);
+        WHERE realm = ? AND event_key = ? ORDER BY start_at`)
+        .all(realm, eventKey);
     return rows.map((r) => ({ start: Date.parse(r.start_at), end: Date.parse(r.end_at) }));
 }
 /**
@@ -24,17 +24,17 @@ function listArchivedRuns(eventKey) {
  * feed has forgotten — are never touched; that is the whole point of keeping
  * them. Future runs are never stored: they can still move.
  */
-function syncArchivedRuns(horizonMs, nowMs, runs) {
+function syncArchivedRuns(horizonMs, nowMs, runs, realm = 'default') {
     const db = (0, database_js_1.getDb)();
-    const del = db.prepare('DELETE FROM event_calendar_runs WHERE start_at >= ? AND start_at <= ?');
-    const ins = db.prepare(`INSERT OR REPLACE INTO event_calendar_runs (event_key, start_at, end_at)
-     VALUES (?, ?, ?)`);
+    const del = db.prepare('DELETE FROM event_calendar_runs WHERE realm = ? AND start_at >= ? AND start_at <= ?');
+    const ins = db.prepare(`INSERT OR REPLACE INTO event_calendar_runs (realm, event_key, start_at, end_at)
+     VALUES (?, ?, ?, ?)`);
     db.transaction(() => {
-        del.run(iso(horizonMs), iso(nowMs));
+        del.run(realm, iso(horizonMs), iso(nowMs));
         for (const r of runs) {
             if (r.start < horizonMs || r.start > nowMs)
                 continue;
-            ins.run(r.eventKey, iso(r.start), iso(r.end));
+            ins.run(realm, r.eventKey, iso(r.start), iso(r.end));
         }
     })();
 }

@@ -20,7 +20,15 @@ import { getGuardsSummaries } from '../../data/repositories/guards-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { loadConfig } from '../../config/index.js';
-import { currentGameDate, daysBetweenGameDates, isTinmanDay, ANCIENTS_CYCLE_DAYS } from '../../utils/game-day.js';
+import {
+  currentGameDate,
+  daysBetweenGameDates,
+  gameDateFor,
+  isTinmanDay,
+  ANCIENTS_CYCLE_DAYS,
+} from '../../utils/game-day.js';
+import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
+import { getEventOccurrences } from '../../external/event-calendar.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 
@@ -53,6 +61,26 @@ function latestTinmanDay(today: string): string {
   return today;
 }
 
+/**
+ * A Seasonal Kingdom clan's Tinman days, newest first, or null for a
+ * normal-kingdom clan (whose fixed 6-day cadence answers instead).
+ *
+ * SK runs Ancients on its own rotation (every 5 days in SK 2026, and its first
+ * run was a day off even that), so the only reliable list is the clan's own
+ * calendar: each started Ancients run ends on its Tinman day. A feed outage
+ * gives [] — the checks below then stay silent rather than guess.
+ */
+async function seasonalTinmanDays(clanId: number): Promise<string[] | null> {
+  if (clanCalendarRealm(clanId) !== 'season') return null;
+  const rollover = loadConfig().gameDayRolloverUtcHour;
+  try {
+    const runs = await getEventOccurrences('ancients', clanId);
+    return runs.map((o) => gameDateFor(Date.parse(o.resetAt) - 1, rollover));
+  } catch {
+    return [];
+  }
+}
+
 export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancients'): Router {
   const router = Router();
   const today = () => currentGameDate(loadConfig().gameDayRolloverUtcHour);
@@ -71,12 +99,15 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
    * ahead until that day, and the Events page opens on Participants only when
    * this read says the run is empty. Writes keep the past-or-today rule.
    */
-  router.get('/', (req, res) => {
+  router.get('/', async (req, res) => {
     const clanId = req.clanId!;
     const t = today();
+    const skDays = ancients ? await seasonalTinmanDays(clanId) : null;
+    const newestPasted = () => tinmanRepo.listTinmanDates(clanId, 1, eventKey)[0] ?? t;
     const date = req.query.date !== undefined
       ? parseDate(req.query.date)
-      : ancients ? latestTinmanDay(t) : tinmanRepo.listTinmanDates(clanId, 1, eventKey)[0] ?? t;
+      : skDays ? skDays.find((d) => d <= t) ?? newestPasted()
+      : ancients ? latestTinmanDay(t) : newestPasted();
     if (!date) {
       res.status(400).json({ error: 'date must be a game day, YYYY-MM-DD' });
       return;
@@ -92,14 +123,16 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
         guardsLevel: p.memberId ? guards?.get(p.memberId)?.level ?? null : null,
       })),
       targets: ancients ? tinmanRepo.getTinmanTargets(clanId, date) : null,
-      isTinmanDay: ancients ? isTinmanDay(date) : null,
+      isTinmanDay: !ancients ? null
+        : skDays ? (skDays.length ? skDays.includes(date) : null)
+        : isTinmanDay(date),
       dates: tinmanRepo.listTinmanDates(clanId, 30, eventKey),
       maxSummons: maxRounds,
     });
   });
 
   /** Paste one summon's cumulative ranking. Re-sending a summon replaces it. */
-  router.put('/:date/summons/:summon', requireAdmin, (req, res) => {
+  router.put('/:date/summons/:summon', requireAdmin, async (req, res) => {
     const clanId = req.clanId!;
     const date = validDate(req.params.date, today());
     const summon = parseSummon(req.params.summon, maxRounds);
@@ -124,12 +157,25 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
       clanId, date, summon, rows: parsed.rows, uploadedBy: req.user!.username, eventKey,
     });
     logAction(req.user!.id, action('upload'), { clanId, date, summon, ...result });
-    const ageDays = daysBetweenGameDates(date, today());
+    const t = today();
+    const ageDays = daysBetweenGameDates(date, t);
+    const skDays = ancients ? await seasonalTinmanDays(clanId) : null;
+    // An SK run is "more than a cycle old" once a later Tinman day has fully
+    // passed — the 6-day count below is the normal kingdom's cadence.
+    const stale = skDays
+      ? skDays.some((d) => d > date && d < t)
+      : ageDays !== null && ageDays > ANCIENTS_CYCLE_DAYS;
+    let warning: string | null = null;
+    if (skDays) {
+      if (skDays.length && !skDays.includes(date)) warning = `${date} isn't a Tinman day on the Seasonal Kingdom calendar.`;
+    } else if (ancients && !isTinmanDay(date)) {
+      warning = `${date} isn't a Tinman day on the usual 6-day cadence.`;
+    }
     res.json({
       ok: true,
       result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5), missingRanks: missingRanks(parsed.rows) },
-      warning: !ancients || isTinmanDay(date) ? null : `${date} isn't a Tinman day on the usual 6-day cadence.`,
-      staleWarning: ancients && ageDays !== null && ageDays > ANCIENTS_CYCLE_DAYS ? 'This run is more than a cycle old.' : null,
+      warning,
+      staleWarning: ancients && stale ? 'This run is more than a cycle old.' : null,
     });
   });
 
