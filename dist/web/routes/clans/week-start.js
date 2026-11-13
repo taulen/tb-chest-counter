@@ -9,10 +9,11 @@ const _shared_js_1 = require("./_shared.js");
 function createWeekStartRouter() {
     const router = (0, _shared_js_1.createClanSubRouter)();
     /**
-     * Set how this clan cuts its week: 'sunday' (Sunday → Sunday) or 'ancients'
-     * (Tinman to Tinman, 6 days). Every Weekly view the clan sees follows it.
-     * Clan-admin only, per the same ownership rule every /api/clans config route
-     * follows.
+     * Set how this clan cuts its week: 'sunday' (Sunday → Sunday), 'ancients'
+     * (Tinman to Tinman, 6 days) or, in a Seasonal Kingdom, 'ancients-sk'
+     * (Tinman to Tinman on the SK cadence). Every Weekly view the clan sees
+     * follows it. Clan-admin only, per the same ownership rule every /api/clans
+     * config route follows.
      */
     router.put('/:clanId/week-start', auth_js_1.requireClanAdmin, (req, res) => {
         const id = req.parsedClanId;
@@ -26,10 +27,13 @@ function createWeekStartRouter() {
             res.status(400).json({ error: `weekStart must be one of: ${game_day_js_1.WEEK_STARTS.join(', ')}` });
             return;
         }
-        // Tinman weeks are cut on the normal kingdom's fixed 6-day Ancients
-        // cadence; a Seasonal Kingdom runs Ancients on its own schedule.
-        if (weekStart === 'ancients' && clan.seasonalKingdom) {
-            res.status(400).json({ error: 'Tinman weeks are not available in a Seasonal Kingdom.' });
+        // Each kingdom cuts Tinman weeks on its own Ancients cadence.
+        if (!(0, clan_repo_js_1.weekStartAllowed)(clan, weekStart)) {
+            res.status(400).json({
+                error: clan.seasonalKingdom
+                    ? 'This clan plays a Seasonal Kingdom: its Tinman weeks are ancients-sk.'
+                    : 'ancients-sk is for Seasonal Kingdom clans: use ancients for Tinman weeks.',
+            });
             return;
         }
         (0, clan_repo_js_1.setClanWeekStart)(id, weekStart);

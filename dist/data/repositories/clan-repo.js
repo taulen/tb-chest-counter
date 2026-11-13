@@ -19,6 +19,7 @@ exports.listGoalHistory = listGoalHistory;
 exports.setClanWeekStart = setClanWeekStart;
 exports.getClanWeekStart = getClanWeekStart;
 exports.setClanSeasonalKingdom = setClanSeasonalKingdom;
+exports.weekStartAllowed = weekStartAllowed;
 exports.clanCalendarRealm = clanCalendarRealm;
 exports.getClanAncientDefaults = getClanAncientDefaults;
 exports.setClanAncientDefaults = setClanAncientDefaults;
@@ -258,20 +259,32 @@ function getClanWeekStart(id) {
     return getClanById(id)?.weekStart ?? 'sunday';
 }
 /**
- * Mark a clan as playing a Seasonal Kingdom, or not. Turning it on also moves a
- * clan off Tinman weeks: those are cut on the normal kingdom's fixed 6-day
- * Ancients cadence, and SK runs Ancients on its own (every 5 days in SK 2026).
- * Returns the week shape the clan ends up with, so the caller can tell the page.
+ * Mark a clan as playing a Seasonal Kingdom, or not. A clan on Tinman weeks
+ * keeps them across the switch, on the cadence of the kingdom it now plays:
+ * the normal 6-day 'ancients' becomes the SK 'ancients-sk' and back, since SK
+ * runs Ancients on its own rotation (every 5 days in SK 2026). Returns the week
+ * shape the clan ends up with, so the caller can tell the page.
  */
 function setClanSeasonalKingdom(id, enabled) {
     const db = (0, database_js_1.getDb)();
     return db.transaction(() => {
         db.prepare('UPDATE clans SET seasonal_kingdom = ? WHERE id = ?').run(enabled ? 1 : 0, id);
-        if (enabled) {
-            db.prepare("UPDATE clans SET week_start = 'sunday' WHERE id = ? AND week_start = 'ancients'").run(id);
-        }
+        const [from, to] = enabled ? ['ancients', 'ancients-sk'] : ['ancients-sk', 'ancients'];
+        db.prepare('UPDATE clans SET week_start = ? WHERE id = ? AND week_start = ?').run(to, id, from);
         return getClanWeekStart(id);
     })();
+}
+/**
+ * Whether a clan may hold `weekStart`: each kingdom has its own Tinman week
+ * ('ancients' normal, 'ancients-sk' Seasonal Kingdom) and can't hold the
+ * other's, whose cadence it doesn't play on.
+ */
+function weekStartAllowed(clan, weekStart) {
+    if (weekStart === 'ancients')
+        return !clan.seasonalKingdom;
+    if (weekStart === 'ancients-sk')
+        return clan.seasonalKingdom;
+    return true;
 }
 function clanCalendarRealm(id) {
     return getClanById(id)?.seasonalKingdom ? 'season' : 'default';

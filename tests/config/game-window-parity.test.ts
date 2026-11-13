@@ -18,17 +18,20 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  gameWindow, ANCIENTS_TINMAN_ANCHOR, ANCIENTS_CYCLE_DAYS, isTinmanDay, type WeekStart,
+  gameWindow, ANCIENTS_TINMAN_ANCHOR, ANCIENTS_CYCLE_DAYS, SK_TINMAN_ANCHOR, SK_CYCLE_DAYS,
+  isTinmanDay, weekLengthDays, WEEK_STARTS as SERVER_WEEK_STARTS, type WeekStart,
 } from '../../src/utils/game-day.js';
 // The frontend module is plain ESM with no DOM access at import time.
 import {
   computeGameWindow, computeGameWindowDates, formatPeriodLabel, gameWeekStartOf,
+  isWeekStart as clientIsWeekStart, weekLengthDays as clientWeekLengthDays,
   ANCIENTS_TINMAN_ANCHOR as CLIENT_ANCHOR, ANCIENTS_CYCLE_DAYS as CLIENT_CYCLE,
+  SK_TINMAN_ANCHOR as CLIENT_SK_ANCHOR, SK_CYCLE_DAYS as CLIENT_SK_CYCLE,
 } from '../../src/web/public/lib/period.js';
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'yearly'];
 const ROLLOVERS = [17, 0, 5, 23];
-const WEEK_STARTS: WeekStart[] = ['sunday', 'ancients'];
+const WEEK_STARTS: WeekStart[] = ['sunday', 'ancients', 'ancients-sk'];
 
 describe('server game windows match the client', () => {
   afterEach(() => vi.useRealTimers());
@@ -59,10 +62,38 @@ describe('server game windows match the client', () => {
     expect(mismatches, mismatches.slice(0, 20).join('\n')).toEqual([]);
   });
 
-  it('shares one Tinman anchor and cycle length', () => {
+  it('shares one Tinman anchor and cycle length per kingdom', () => {
     expect(CLIENT_ANCHOR).toBe(ANCIENTS_TINMAN_ANCHOR);
     expect(CLIENT_CYCLE).toBe(ANCIENTS_CYCLE_DAYS);
     expect(isTinmanDay(ANCIENTS_TINMAN_ANCHOR)).toBe(true);
+    expect(CLIENT_SK_ANCHOR).toBe(SK_TINMAN_ANCHOR);
+    expect(CLIENT_SK_CYCLE).toBe(SK_CYCLE_DAYS);
+    expect(isTinmanDay(SK_TINMAN_ANCHOR, 'ancients-sk')).toBe(true);
+  });
+
+  it('knows the same week shapes, of the same lengths', () => {
+    // A shape the client didn't know would fall back to the viewed clan's own
+    // week and silently cut a different window from the server's.
+    for (const weekStart of SERVER_WEEK_STARTS) {
+      expect(clientIsWeekStart(weekStart), weekStart).toBe(true);
+      expect(clientWeekLengthDays(weekStart), weekStart).toBe(weekLengthDays(weekStart));
+    }
+    expect([...SERVER_WEEK_STARTS].sort()).toEqual([...WEEK_STARTS].sort());
+  });
+
+  it('cuts a Seasonal Kingdom Tinman week on the SK cadence', () => {
+    // SK 2026: Tinman 2026-11-17, then every 5 days (Nov 22, 27, …).
+    vi.useFakeTimers({ now: Date.parse('2026-11-20T12:00:00Z') });
+    expect(gameWindow('weekly', 0, 17, 'ancients-sk')).toEqual({
+      from: '2026-11-17T17:00:00.000Z', to: '2026-11-22T17:00:00.000Z',
+    });
+    expect(formatPeriodLabel('weekly', 0, 17, 'ancients-sk')).toBe('2026-11-17 → 2026-11-21');
+    expect(gameWindow('weekly', 1, 17, 'ancients-sk')!.from).toBe('2026-11-12T17:00:00.000Z');
+    vi.setSystemTime(Date.parse('2026-11-22T17:00:00Z'));
+    expect(gameWindow('weekly', 0, 17, 'ancients-sk')!.from).toBe('2026-11-22T17:00:00.000Z');
+    expect(isTinmanDay('2026-11-27', 'ancients-sk')).toBe(true);
+    expect(isTinmanDay('2027-02-05', 'ancients-sk')).toBe(true); // the season's last
+    expect(isTinmanDay('2026-11-23', 'ancients-sk')).toBe(false);
   });
 
   it('cuts a Tinman week from one Tinman start to the next', () => {

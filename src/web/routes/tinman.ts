@@ -126,6 +126,8 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
       isTinmanDay: !ancients ? null
         : skDays ? (skDays.length ? skDays.includes(date) : null)
         : isTinmanDay(date),
+      // Which schedule isTinmanDay was judged by, so the card words its warning.
+      seasonalKingdom: skDays !== null,
       dates: tinmanRepo.listTinmanDates(clanId, 30, eventKey),
       maxSummons: maxRounds,
     });

@@ -325,7 +325,9 @@ function paint() {
 
   const cols = summonColumns();
   const body = `
-    ${data.isTinmanDay === false ? `<p class="tinman-warn">⚠ ${t('{date} isn\'t a Tinman day on the usual 6-day cadence.', { date: esc(data.date) })}</p>` : ''}
+    ${data.isTinmanDay === false ? `<p class="tinman-warn">⚠ ${data.seasonalKingdom
+      ? t('{date} isn\'t a Tinman day on the Seasonal Kingdom calendar.', { date: esc(data.date) })
+      : t('{date} isn\'t a Tinman day on the usual 6-day cadence.', { date: esc(data.date) })}</p>` : ''}
     ${targetsOpen && admin && L.hasTargets ? targetsPanelHtml() : ''}
     ${uploadOpen && admin ? uploadPanelHtml() : ''}
     ${summonsStripHtml(admin)}

@@ -426,8 +426,9 @@ function getConcentration(clanId, fromDay, toDay, weekStart = 'sunday', weeks = 
     // a concentration figure for one week is a fact, and only the run of them
     // says whether the clan is becoming more or less dependent.
     // Both are code constants, never input, so inlining them is safe.
-    const daysIntoWeek = weekStart === 'ancients'
-        ? `(((CAST(julianday(game_day) - julianday('${game_day_js_1.ANCIENTS_TINMAN_ANCHOR}') AS INTEGER)) % ${game_day_js_1.ANCIENTS_CYCLE_DAYS}) + ${game_day_js_1.ANCIENTS_CYCLE_DAYS}) % ${game_day_js_1.ANCIENTS_CYCLE_DAYS}`
+    const cadence = (0, game_day_js_1.isTinmanWeek)(weekStart) ? game_day_js_1.TINMAN_CADENCES[weekStart] : null;
+    const daysIntoWeek = cadence
+        ? `(((CAST(julianday(game_day) - julianday('${cadence.anchor}') AS INTEGER)) % ${cadence.days}) + ${cadence.days}) % ${cadence.days}`
         : `CAST(strftime('%w', game_day) AS INTEGER)`;
     const weeklyRows = db.prepare(`
     SELECT DATE(game_day, '-' || ${daysIntoWeek} || ' days') AS weekStart,

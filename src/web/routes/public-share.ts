@@ -240,7 +240,7 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
       // authenticated app, which depends on the configured day-rollover
       // hour. No PII; same value is exposed by /api/stats.
       gameDayRolloverUtcHour: loadConfig().gameDayRolloverUtcHour,
-      // 'sunday' or 'ancients' (Tinman to Tinman) — how this clan cuts its
+      // 'sunday', 'ancients' or 'ancients-sk' (Tinman to Tinman) — how this clan cuts its
       // week, so the share page's Weekly tab is the same window as the app's.
       weekStart: clan.weekStart,
       // The clan's weekly points goal, or null when they haven't set one. Rides

@@ -52,8 +52,9 @@
  * toggle on its calendar page) — same format, same 17:00 UTC days, but its own
  * rotation: in SK 2026 Ancients, Ragnarök and Pursuit of Experience each came
  * every 5 days, and Olympus and Dark Omens weren't listed at all. Each realm is
- * fetched, cached and archived on its own; the Tinman cadence check and the
- * superadmin corrections are the normal kingdom's only. docs/seasonal-kingdoms.md.
+ * fetched, cached and archived on its own, and checked against its own Tinman
+ * week cadence; superadmin corrections are the normal kingdom's only.
+ * docs/seasonal-kingdoms.md.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getEventSchedule = getEventSchedule;
@@ -266,10 +267,11 @@ async function getFeed(realm = 'default') {
         caches.set(realm, { feed, expires: Date.now() + TTL_MS });
         log.info(`Loaded ${feed.events.length} tracked calendar VEVENTs from ${FEED_URLS[realm]}`);
         archiveFeed(feed, realm);
-        // The Tinman weeks it guards are a normal-kingdom cadence; SK clans can't
-        // use them (setClanSeasonalKingdom), so the SK feed has nothing to check.
+        // Each feed guards its own kingdom's Tinman weeks.
         if (realm === 'default')
             checkTinmanCadence(feed);
+        else
+            checkSeasonalTinmanCadence(feed);
         return feed;
     })
         .catch((err) => {
@@ -372,6 +374,41 @@ function checkTinmanCadence(feed) {
     }
     else {
         (0, log_buffer_js_1.resolveEntries)(TINMAN_CADENCE_KEY);
+    }
+}
+const SK_TINMAN_CADENCE_KEY = 'event-calendar:sk-tinman-cadence';
+/**
+ * The Seasonal Kingdom counterpart of `checkTinmanCadence`: SK clans' Tinman
+ * weeks ('ancients-sk') are cut on SK_TINMAN_ANCHOR + SK_CYCLE_DAYS, which hold
+ * for one season only — every new season opens on its own dates. So this
+ * judges the UPCOMING Tinman days in the SK feed (today's included) and warns
+ * as soon as they stop fitting. Past days, and any before the anchor, are left
+ * alone: a season's first Tinman is off its own cadence (SK 2026: Nov 13, then
+ * every 5 days from the Nov 17 anchor), and that is known, not news. Quiet, and
+ * any old warning resolved, while no clan uses SK Tinman weeks — then the
+ * constants cut nothing.
+ */
+function checkSeasonalTinmanCadence(feed) {
+    if (!(0, clan_repo_js_1.listClans)().some((c) => c.weekStart === 'ancients-sk')) {
+        (0, log_buffer_js_1.resolveEntries)(SK_TINMAN_CADENCE_KEY);
+        return;
+    }
+    const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
+    const today = (0, game_day_js_1.gameDateFor)(Date.now(), rollover);
+    const days = [...new Set(feed.riseStarts.map((ms) => (0, game_day_js_1.gameDateFor)(ms, rollover)))]
+        .filter((d) => d >= today && d >= game_day_js_1.SK_TINMAN_ANCHOR)
+        .sort();
+    if (!days.length)
+        return; // nothing scheduled yet: nothing to judge
+    const off = days.filter((day) => !(0, game_day_js_1.isTinmanDay)(day, 'ancients-sk'));
+    if (off.length) {
+        log.warn({ resolveKey: SK_TINMAN_CADENCE_KEY }, `Seasonal Kingdom Ancients is off the SK Tinman-week cadence: ${off.length} of ${days.length} `
+            + `upcoming Rise of the Ancients days in the SK calendar aren't Tinman days (first: ${off[0]}). `
+            + 'SK clans using Tinman weeks are now cut at the wrong day — a new season brings new dates; '
+            + 'update SK_TINMAN_ANCHOR / SK_CYCLE_DAYS in utils/game-day.ts and lib/period.js.');
+    }
+    else {
+        (0, log_buffer_js_1.resolveEntries)(SK_TINMAN_CADENCE_KEY);
     }
 }
 /**

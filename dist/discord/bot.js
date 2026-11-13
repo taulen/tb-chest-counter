@@ -1055,7 +1055,7 @@ async function sendWeeklyDigestForClan(clanId, rollover) {
             webExternalUrl: (0, clan_repo_js_1.clanPublicUrl)((0, clan_repo_js_1.getClanById)(clanId), loadConfig().webExternalUrl) || undefined,
             firstDay: week.firstDay,
             lastDay: week.lastDay,
-            tinman: weekStart === 'ancients',
+            tinman: (0, game_day_js_1.isTinmanWeek)(weekStart),
         });
         await channel.send({ content: message });
         log.info(`Clan #${clanId} weekly digest posted: ${data.totalChests} chests, ${data.totalPoints} pts, ${data.activePlayers} active players`);

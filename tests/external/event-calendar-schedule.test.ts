@@ -27,9 +27,12 @@ vi.mock('../../src/utils/log-buffer.js', async (importOriginal) => ({
   resolveEntries: vi.fn(() => 0),
 }));
 // Clan SK_CLAN plays a Seasonal Kingdom; every other clan the normal one.
+// listClans: the clans whose week shapes decide whether the SK Tinman cadence
+// is checked at all — none on SK Tinman weeks unless a test says so.
 const SK_CLAN = 5;
 vi.mock('../../src/data/repositories/clan-repo.js', () => ({
   clanCalendarRealm: vi.fn((id: number) => (id === 5 ? 'season' : 'default')),
+  listClans: vi.fn(() => []),
 }));
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -74,6 +77,8 @@ interface Setup {
   ics: string;
   /** The Seasonal Kingdom feed (feed.ics?realm=season); defaults to `ics`. */
   skIcs?: string;
+  /** Week shapes of the live clans (listClans); none by default. */
+  weekStarts?: string[];
   archived?: Record<string, Array<{ start: number; end: number }>>;
   corrections?: Array<{ eventKey: string; feed: string; actual: string; id?: number }>;
   dataStart?: string | null;
@@ -107,6 +112,8 @@ async function load(s: Setup) {
   );
   const events = await import('../../src/data/repositories/event-repo.js');
   vi.mocked(events.getEventDataStart).mockReturnValue(s.dataStart ?? null);
+  const clans = await import('../../src/data/repositories/clan-repo.js');
+  vi.mocked(clans.listClans).mockReturnValue((s.weekStarts ?? []).map((weekStart) => ({ weekStart })) as never);
   const cal = await import('../../src/external/event-calendar.js');
   return { cal, repo };
 }
@@ -359,5 +366,44 @@ describe('a Seasonal Kingdom clan', () => {
   it('has no runs for an event its calendar does not list', async () => {
     const { cal } = await load({ now: NOW, ics: FEED_OCT21, skIcs: SK });
     expect(await cal.getEventOccurrences('dark-omens', SK_CLAN)).toEqual([]);
+  });
+});
+
+describe('the Seasonal Kingdom Tinman cadence check', () => {
+  // SK Tinman weeks are cut on 2026-11-17 + 5k. Each run: Treasure, then Rise.
+  const skRun = (riseDay: string) => [
+    ...run("💎 Ancients' Treasure", new Date(at(riseDay) - DAY).toISOString().slice(0, 10), 1),
+    ...run('🛕 Rise of the Ancients', riseDay, 1),
+  ];
+
+  async function skCadenceResolved(s: Omit<Setup, 'ics'>): Promise<boolean> {
+    const { cal } = await load({ ics: feed(), ...s });
+    await cal.getEventOccurrences('ancients', SK_CLAN);
+    const buffer = await import('../../src/utils/log-buffer.js');
+    return vi.mocked(buffer.resolveEntries).mock.calls.some(([k]) => k === 'event-calendar:sk-tinman-cadence');
+  }
+
+  it('is clean on SK 2026, whose first Tinman predates the anchor', async () => {
+    // Nov 13 is off the 5-day cadence and still upcoming on Nov 12's game day:
+    // the season's first Tinman, before the anchor, is not news.
+    const skIcs = feed(skRun('2026-11-13'), skRun('2026-11-17'), skRun('2026-11-22'), skRun('2026-11-27'));
+    expect(await skCadenceResolved({ now: '2026-11-13T12:00:00Z', skIcs, weekStarts: ['ancients-sk'] })).toBe(true);
+  });
+
+  it('warns when a new season moves the upcoming Tinman days', async () => {
+    // A next season on its own dates: Mar 1 + 5k is off the Nov 17 + 5k cadence.
+    const skIcs = feed(skRun('2027-03-01'), skRun('2027-03-06'), skRun('2027-03-11'));
+    expect(await skCadenceResolved({ now: '2027-02-25T12:00:00Z', skIcs, weekStarts: ['sunday', 'ancients-sk'] })).toBe(false);
+  });
+
+  it('ignores past Tinman days off the cadence', async () => {
+    const skIcs = feed(skRun('2026-11-12'), skRun('2026-11-22'), skRun('2026-11-27'));
+    expect(await skCadenceResolved({ now: '2026-11-20T12:00:00Z', skIcs, weekStarts: ['ancients-sk'] })).toBe(true);
+  });
+
+  it('stays quiet while no clan uses SK Tinman weeks', async () => {
+    const skIcs = feed(skRun('2027-03-01'), skRun('2027-03-06'));
+    // Resolved (cleared), not warned, though the dates are off.
+    expect(await skCadenceResolved({ now: '2027-02-25T12:00:00Z', skIcs, weekStarts: ['sunday', 'ancients'] })).toBe(true);
   });
 });

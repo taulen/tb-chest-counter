@@ -29,8 +29,9 @@ export function setGameDayRolloverUtcHour(hour) {
 
 let _weekStart = 'sunday';
 
-/** How the viewed clan cuts its week: 'sunday' or 'ancients' (Tinman to
- *  Tinman, 6 days). Set once at bootstrap from /api/auth/me's activeClan
+/** How the viewed clan cuts its week: 'sunday', 'ancients' (Tinman to
+ *  Tinman, 6 days) or 'ancients-sk' (Tinman to Tinman in a Seasonal Kingdom,
+ *  5 days). Set once at bootstrap from /api/auth/me's activeClan
  *  (or the share page's /clan) and read by every week calculation in
  *  lib/period.js. A clan switch reloads the page, so it never goes stale. */
 export function getWeekStart() {
@@ -38,7 +39,7 @@ export function getWeekStart() {
 }
 
 export function setWeekStart(weekStart) {
-  if (weekStart === 'sunday' || weekStart === 'ancients') {
+  if (weekStart === 'sunday' || weekStart === 'ancients' || weekStart === 'ancients-sk') {
     _weekStart = weekStart;
   }
 }

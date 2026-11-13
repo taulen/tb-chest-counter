@@ -20,8 +20,34 @@ import {
   pasteIntoLoginSession,
 } from '../lib/login-bridge.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { isTinmanWeek, weekLengthDays } from '../lib/period.js';
 
 export { saveLoginSession, cancelLoginSession, reloadLoginSession, pasteIntoLoginSession };
+
+/** A week shape's name, as the Week card's dropdown words it. */
+function weekStartLabel(weekStart) {
+  if (weekStart === 'ancients') return t('Tinman to Tinman (6 days)');
+  if (weekStart === 'ancients-sk') return t('Tinman to Tinman (5 days)');
+  return t('Sunday to Sunday (7 days)');
+}
+
+/** The Tinman week a clan can pick: its kingdom's own cadence. */
+function tinmanWeekFor(seasonalKingdom) {
+  return seasonalKingdom ? 'ancients-sk' : 'ancients';
+}
+
+/** The Week card's line explaining when a Tinman week opens, for this kingdom. */
+function tinmanWeekHint(seasonalKingdom) {
+  const names = { event: tGame('Rise of the Ancients'), ancients: tGame('Ancients') };
+  return seasonalKingdom
+    ? tn(
+      weekLengthDays('ancients-sk'),
+      'In a Seasonal Kingdom, Tinman to Tinman opens when {event} ({ancients} day 2) begins at 17:00 UTC and runs until the next one begins, {n} day later.',
+      'In a Seasonal Kingdom, Tinman to Tinman opens when {event} ({ancients} day 2) begins at 17:00 UTC and runs until the next one begins, {n} days later.',
+      names,
+    )
+    : t('Tinman to Tinman opens when {event} ({ancients} day 2) begins at 17:00 UTC and runs until the next one begins, six days later.', names);
+}
 
 // Inline icons (currentColor, theme-aware). The share pill shows the copy
 // icon so the click-to-copy affordance is obvious; the analytics button
@@ -371,14 +397,20 @@ export async function renderClans(el, refreshClanIndicator) {
         });
         const j = await r.json();
         if (!r.ok) return notify(j.error || t('Save failed'), t('Seasonal Kingdom'));
-        // Turning SK on can move the clan off Tinman weeks; the server says
-        // which week it ended up with. Mirror that, and the marker, in place.
+        // A clan on Tinman weeks moves to the new kingdom's cadence; the server
+        // says which week it ended up with. Mirror that, the kingdom's Tinman
+        // option and hint, and the marker, in place.
         const week = el.querySelector(`#clan-week-start-${clanId}`);
         if (week) {
+          const tinman = week.querySelector('option:not([value="sunday"])');
+          if (tinman) {
+            tinman.value = tinmanWeekFor(enabled);
+            tinman.textContent = weekStartLabel(tinman.value);
+          }
           week.value = j.weekStart;
-          const tinman = week.querySelector('option[value="ancients"]');
-          if (tinman) tinman.disabled = enabled;
         }
+        const hint = el.querySelector(`#clan-week-hint-${clanId}`);
+        if (hint) hint.innerHTML = tinmanWeekHint(enabled);
         el.querySelector(`#clan-sk-marker-${clanId}`)?.toggleAttribute('hidden', !enabled);
         if (getCurrentUser()?.activeClan?.id === clanId) setWeekStart(j.weekStart);
         notify(
@@ -694,7 +726,7 @@ function updateGoalPreview(el, clanId) {
   }
   // The week shape as currently SELECTED, saved or not, so the preview answers
   // "what would this goal mean" while the admin is still choosing.
-  const weekDays = el.querySelector(`#clan-week-start-${clanId}`)?.value === 'ancients' ? 6 : 7;
+  const weekDays = weekLengthDays(el.querySelector(`#clan-week-start-${clanId}`)?.value || 'sunday');
   const per = (days) => Math.round((weekly / weekDays) * days).toLocaleString();
   // The amber field as typed; blank or out of range previews the default.
   const rawAmber = el.querySelector(`#clan-goal-amber-${clanId}`)?.value.trim() ?? '';
@@ -756,7 +788,7 @@ function renderDailyDigestStatus(clan) {
 function renderWeeklyDigestStatus(clan) {
   if (!clan.discordWeeklyDigestEnabled) return '';
   if (!clan.lastWeeklyDigestAt) {
-    const never = clan.weekStart === 'ancients'
+    const never = isTinmanWeek(clan.weekStart)
       ? t('Last weekly digest: never run yet — sends after the first scan once the current Tinman week ends.')
       : t('Last weekly digest: never run yet — sends after the first scan once the current week ends.');
     return `<p class="muted-copy digest-status-line">${never}</p>`;
@@ -1120,7 +1152,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <label class="checkbox-row" title="${t('Posted after the rollover that ends the week set on the Week card below')}"><input type="checkbox" id="clan-discord-weekly-${clan.id}" ${clan.discordWeeklyDigestEnabled ? 'checked' : ''}> ${t('Weekly digest')}</label>
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-cmds-${clan.id}" ${clan.discordCommandsEnabled ? 'checked' : ''}> ${t('Slash commands')}</label>
         </div>
-        <p class="muted-copy mt-4 hint-text">${t("The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>{week}</strong> — and goes out with the daily one, after the first scan once the week has ended.", { week: clan.weekStart === 'ancients' ? t('Tinman to Tinman (6 days)') : t('Sunday to Sunday (7 days)') })}</p>
+        <p class="muted-copy mt-4 hint-text">${t("The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>{week}</strong> — and goes out with the daily one, after the first scan once the week has ended.", { week: weekStartLabel(clan.weekStart) })}</p>
         <div class="inline-form-row mt-8">
           <div class="form-row-grow">
             <label>${t('Digest DM recipients (optional)')}</label>
@@ -1225,7 +1257,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <label class="checkbox-row"><input type="checkbox" id="clan-sk-${clan.id}" ${clan.seasonalKingdom ? 'checked' : ''}> ${t('This clan plays in a Seasonal Kingdom')}</label>
           <button class="btn btn-primary" data-action="clan-sk-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
-        <p class="muted-copy mt-8">${t('Tinman to Tinman weeks are not available in a Seasonal Kingdom, so turning this on switches the clan to Sunday weeks.')}</p>
+        <p class="muted-copy mt-8">${t('A clan on Tinman to Tinman weeks keeps them when this is switched: they follow the Tinman days of the kingdom it plays in.')}</p>
         </div>
         </details>
 
@@ -1237,13 +1269,13 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         <div class="inline-form-row">
           <div><label for="clan-week-start-${clan.id}">${t('Week runs')}</label>
             <select id="clan-week-start-${clan.id}" class="input">
-              <option value="sunday" ${clan.weekStart !== 'ancients' ? 'selected' : ''}>${t('Sunday to Sunday (7 days)')}</option>
-              <option value="ancients" ${clan.weekStart === 'ancients' ? 'selected' : ''}${clan.seasonalKingdom ? ' disabled' : ''}>${t('Tinman to Tinman (6 days)')}</option>
+              <option value="sunday" ${isTinmanWeek(clan.weekStart) ? '' : 'selected'}>${weekStartLabel('sunday')}</option>
+              <option value="${tinmanWeekFor(clan.seasonalKingdom)}" ${isTinmanWeek(clan.weekStart) ? 'selected' : ''}>${weekStartLabel(tinmanWeekFor(clan.seasonalKingdom))}</option>
             </select>
           </div>
           <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
-        <p class="muted-copy mt-8">${t('Tinman to Tinman opens when {event} ({ancients} day 2) begins at 17:00 UTC and runs until the next one begins, six days later.', { event: tGame('Rise of the Ancients'), ancients: tGame('Ancients') })}</p>
+        <p class="muted-copy mt-8" id="clan-week-hint-${clan.id}">${tinmanWeekHint(clan.seasonalKingdom)}</p>
         </div>
         </details>
 

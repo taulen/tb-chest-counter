@@ -133,18 +133,19 @@ export interface Clan {
   leaderboardGoalAmberPct: number | null;
 
   /**
-   * How this clan cuts its week: 'sunday' (Sunday → Sunday at the rollover) or
-   * 'ancients' (Tinman to Tinman, 6 days). See WeekStart in utils/game-day.ts.
-   * Every "Weekly" window the clan sees follows it — leaderboard, dashboard,
-   * member profile, Discord bot — except the ChestTracker import, whose weeks
-   * are upstream's and always Sunday-based.
+   * How this clan cuts its week: 'sunday' (Sunday → Sunday at the rollover),
+   * 'ancients' (Tinman to Tinman, 6 days) or, for a Seasonal Kingdom clan only,
+   * 'ancients-sk' (Tinman to Tinman on the SK cadence, 5 days). See WeekStart
+   * in utils/game-day.ts. Every "Weekly" window the clan sees follows it —
+   * leaderboard, dashboard, member profile, Discord bot — except the
+   * ChestTracker import, whose weeks are upstream's and always Sunday-based.
    */
   weekStart: WeekStart;
 
   /**
    * The clan plays a Seasonal Kingdom (v100): its events run on the SK
-   * calendar, not the normal kingdom's — see docs/seasonal-kingdoms.md. Never
-   * paired with Tinman weeks, whose fixed 6-day cadence SK doesn't follow.
+   * calendar, not the normal kingdom's — see docs/seasonal-kingdoms.md. Its
+   * Tinman weeks are 'ancients-sk', never the normal 6-day 'ancients'.
    */
   seasonalKingdom: boolean;
 }
@@ -415,20 +416,31 @@ export function getClanWeekStart(id: number): WeekStart {
 }
 
 /**
- * Mark a clan as playing a Seasonal Kingdom, or not. Turning it on also moves a
- * clan off Tinman weeks: those are cut on the normal kingdom's fixed 6-day
- * Ancients cadence, and SK runs Ancients on its own (every 5 days in SK 2026).
- * Returns the week shape the clan ends up with, so the caller can tell the page.
+ * Mark a clan as playing a Seasonal Kingdom, or not. A clan on Tinman weeks
+ * keeps them across the switch, on the cadence of the kingdom it now plays:
+ * the normal 6-day 'ancients' becomes the SK 'ancients-sk' and back, since SK
+ * runs Ancients on its own rotation (every 5 days in SK 2026). Returns the week
+ * shape the clan ends up with, so the caller can tell the page.
  */
 export function setClanSeasonalKingdom(id: number, enabled: boolean): WeekStart {
   const db = getDb();
   return db.transaction(() => {
     db.prepare('UPDATE clans SET seasonal_kingdom = ? WHERE id = ?').run(enabled ? 1 : 0, id);
-    if (enabled) {
-      db.prepare("UPDATE clans SET week_start = 'sunday' WHERE id = ? AND week_start = 'ancients'").run(id);
-    }
+    const [from, to] = enabled ? ['ancients', 'ancients-sk'] : ['ancients-sk', 'ancients'];
+    db.prepare('UPDATE clans SET week_start = ? WHERE id = ? AND week_start = ?').run(to, id, from);
     return getClanWeekStart(id);
   })();
+}
+
+/**
+ * Whether a clan may hold `weekStart`: each kingdom has its own Tinman week
+ * ('ancients' normal, 'ancients-sk' Seasonal Kingdom) and can't hold the
+ * other's, whose cadence it doesn't play on.
+ */
+export function weekStartAllowed(clan: Pick<Clan, 'seasonalKingdom'>, weekStart: WeekStart): boolean {
+  if (weekStart === 'ancients') return !clan.seasonalKingdom;
+  if (weekStart === 'ancients-sk') return clan.seasonalKingdom;
+  return true;
 }
 
 /** Which event calendar a clan follows: the Seasonal Kingdom one, or the normal one. */

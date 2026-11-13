@@ -26,27 +26,48 @@ function resolveRolloverHr(override) {
 }
 
 // ─── Week shape ───
-// A clan's week is either Sunday → Sunday (the default) or Tinman → Tinman:
-// 6 days opening when Rise of the Ancients (Ancients day 2) begins. Mirrors
-// src/utils/game-day.ts; tests/config/game-window-parity.test.ts asserts the
-// two agree, constants included.
+// A clan's week is Sunday → Sunday (the default) or Tinman → Tinman: from the
+// day Rise of the Ancients (Ancients day 2) begins to the next one — 6 days in
+// a normal kingdom ('ancients'), 5 in a Seasonal Kingdom ('ancients-sk', SK
+// 2026's cadence). Mirrors src/utils/game-day.ts;
+// tests/config/game-window-parity.test.ts asserts the two agree, constants
+// included.
 export const ANCIENTS_TINMAN_ANCHOR = '2026-10-23';
 export const ANCIENTS_CYCLE_DAYS = 6;
+export const SK_TINMAN_ANCHOR = '2026-11-17';
+export const SK_CYCLE_DAYS = 5;
+
+const TINMAN_CADENCES = {
+  ancients: { anchor: ANCIENTS_TINMAN_ANCHOR, days: ANCIENTS_CYCLE_DAYS },
+  'ancients-sk': { anchor: SK_TINMAN_ANCHOR, days: SK_CYCLE_DAYS },
+};
+
+/** The week shapes a clan can hold. */
+export function isWeekStart(v) {
+  return v === 'sunday' || v === 'ancients' || v === 'ancients-sk';
+}
+
+/** True for either Tinman-to-Tinman shape. */
+export function isTinmanWeek(weekStart) {
+  return weekStart === 'ancients' || weekStart === 'ancients-sk';
+}
 
 function resolveWeekStart(override) {
-  return override === 'sunday' || override === 'ancients' ? override : getWeekStart();
+  return isWeekStart(override) ? override : getWeekStart();
 }
 
 /** Length of the viewed clan's game week, in game days. */
 export function weekLengthDays(weekStartOverride) {
-  return resolveWeekStart(weekStartOverride) === 'ancients' ? ANCIENTS_CYCLE_DAYS : 7;
+  const weekStart = resolveWeekStart(weekStartOverride);
+  return isTinmanWeek(weekStart) ? TINMAN_CADENCES[weekStart].days : 7;
 }
 
 // Days to step back from a shifted-UTC midnight to the first day of its week.
 function daysIntoWeek(day, weekStart) {
-  if (weekStart === 'ancients') {
-    const since = Math.round((day.getTime() - Date.parse(`${ANCIENTS_TINMAN_ANCHOR}T00:00:00Z`)) / 86_400_000);
-    return ((since % ANCIENTS_CYCLE_DAYS) + ANCIENTS_CYCLE_DAYS) % ANCIENTS_CYCLE_DAYS;
+  if (isTinmanWeek(weekStart)) {
+    const { anchor, days } = TINMAN_CADENCES[weekStart];
+    const since = Math.round((day.getTime() - Date.parse(`${anchor}T00:00:00Z`)) / 86_400_000);
+    return ((since % days) + days) % days;
   }
   return day.getUTCDay();
 }

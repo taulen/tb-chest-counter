@@ -14,11 +14,12 @@
  * gameDayKeyFor(): subtract the rollover hours, then read off the UTC date.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ANCIENTS_CYCLE_DAYS = exports.ANCIENTS_TINMAN_ANCHOR = exports.WEEK_STARTS = void 0;
+exports.TINMAN_CADENCES = exports.SK_CYCLE_DAYS = exports.SK_TINMAN_ANCHOR = exports.ANCIENTS_CYCLE_DAYS = exports.ANCIENTS_TINMAN_ANCHOR = exports.WEEK_STARTS = void 0;
 exports.gameDateFor = gameDateFor;
 exports.currentGameDate = currentGameDate;
 exports.daysBetweenGameDates = daysBetweenGameDates;
 exports.isWeekStart = isWeekStart;
+exports.isTinmanWeek = isTinmanWeek;
 exports.weekLengthDays = weekLengthDays;
 exports.gameWindow = gameWindow;
 exports.gameWeekWindow = gameWeekWindow;
@@ -53,7 +54,7 @@ function daysBetweenGameDates(from, to) {
         return null;
     return Math.round((b - a) / 86_400_000);
 }
-exports.WEEK_STARTS = ['sunday', 'ancients'];
+exports.WEEK_STARTS = ['sunday', 'ancients', 'ancients-sk'];
 /**
  * A known Tinman game day. Every Tinman day is this date plus a multiple of
  * ANCIENTS_CYCLE_DAYS — read off the tbclanportal feed (Rise of the Ancients,
@@ -64,21 +65,44 @@ exports.WEEK_STARTS = ['sunday', 'ancients'];
  */
 exports.ANCIENTS_TINMAN_ANCHOR = '2026-10-23';
 exports.ANCIENTS_CYCLE_DAYS = 6;
+/**
+ * The same for a Seasonal Kingdom, read off its own feed (feed.ics?realm=season):
+ * SK 2026 had Tinman on 2026-11-17 and every 5 days after it, to the season's
+ * end on 2027-02-08. Its first Tinman (Nov 13) came 4 days before that, so the
+ * season's first few days sit in a week that opens a day early; every week from
+ * Nov 17 on is exact. The anchor is therefore the FIRST Tinman of the cadence,
+ * not just any one: the cadence check ignores days before it. A NEW SEASON
+ * brings its own dates: event-calendar.ts checks the SK feed's upcoming Tinman
+ * days against this pair and warns when they stop fitting, and the fix is
+ * moving both constants here and in lib/period.js.
+ */
+exports.SK_TINMAN_ANCHOR = '2026-11-17';
+exports.SK_CYCLE_DAYS = 5;
+/** Each Tinman week shape's anchor day and length. */
+exports.TINMAN_CADENCES = {
+    ancients: { anchor: exports.ANCIENTS_TINMAN_ANCHOR, days: exports.ANCIENTS_CYCLE_DAYS },
+    'ancients-sk': { anchor: exports.SK_TINMAN_ANCHOR, days: exports.SK_CYCLE_DAYS },
+};
 function isWeekStart(v) {
     return typeof v === 'string' && exports.WEEK_STARTS.includes(v);
 }
+/** True for either Tinman-to-Tinman shape. */
+function isTinmanWeek(weekStart) {
+    return weekStart === 'ancients' || weekStart === 'ancients-sk';
+}
 /** Length of one game week, in game days. */
 function weekLengthDays(weekStart) {
-    return weekStart === 'ancients' ? exports.ANCIENTS_CYCLE_DAYS : 7;
+    return isTinmanWeek(weekStart) ? exports.TINMAN_CADENCES[weekStart].days : 7;
 }
 /**
  * Days to step back from a game day (as a UTC-midnight Date in shifted time)
  * to the first day of the week holding it.
  */
 function daysIntoWeek(day, weekStart) {
-    if (weekStart === 'ancients') {
-        const since = Math.round((day.getTime() - Date.parse(`${exports.ANCIENTS_TINMAN_ANCHOR}T00:00:00Z`)) / 86_400_000);
-        return ((since % exports.ANCIENTS_CYCLE_DAYS) + exports.ANCIENTS_CYCLE_DAYS) % exports.ANCIENTS_CYCLE_DAYS;
+    if (isTinmanWeek(weekStart)) {
+        const { anchor, days } = exports.TINMAN_CADENCES[weekStart];
+        const since = Math.round((day.getTime() - Date.parse(`${anchor}T00:00:00Z`)) / 86_400_000);
+        return ((since % days) + days) % days;
     }
     return day.getUTCDay();
 }
@@ -166,11 +190,13 @@ function closedWeekAt(rolloverMs, rolloverUtcHour, weekStart) {
     };
 }
 /**
- * True when `gameDay` (YYYY-MM-DD) is a Tinman day on the ANCIENTS_TINMAN_ANCHOR
- * cadence. event-calendar.ts uses it to notice the game moving Ancients.
+ * True when `gameDay` (YYYY-MM-DD) is a Tinman day on a Tinman week's cadence —
+ * the normal kingdom's by default. event-calendar.ts uses it to notice the game
+ * moving Ancients.
  */
-function isTinmanDay(gameDay) {
-    const d = daysBetweenGameDates(exports.ANCIENTS_TINMAN_ANCHOR, gameDay);
-    return d !== null && d % exports.ANCIENTS_CYCLE_DAYS === 0;
+function isTinmanDay(gameDay, cadence = 'ancients') {
+    const { anchor, days } = exports.TINMAN_CADENCES[cadence];
+    const d = daysBetweenGameDates(anchor, gameDay);
+    return d !== null && ((d % days) + days) % days === 0;
 }
 //# sourceMappingURL=game-day.js.map

@@ -363,17 +363,31 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
       expect((await request(app).get('/api/clans/1')).body.clan.seasonalKingdom).toBe(false);
     });
 
-    it('moves a Tinman-week clan to Sunday weeks, and keeps it off Tinman weeks', async () => {
+    it('keeps a Tinman-week clan on Tinman weeks, on the new kingdom\'s cadence', async () => {
       await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients' });
       const on = await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: true });
-      expect(on.body.weekStart).toBe('sunday');
-      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('sunday');
-      const tinman = await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients' });
-      expect(tinman.status).toBe(400);
-      // Back in a normal kingdom, Tinman weeks are a choice again (not restored by themselves).
-      await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: false });
-      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('sunday');
+      expect(on.body.weekStart).toBe('ancients-sk');
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('ancients-sk');
+      const off = await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: false });
+      expect(off.body.weekStart).toBe('ancients');
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('ancients');
+    });
+
+    it('leaves a Sunday-week clan on Sunday weeks either way', async () => {
+      expect((await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: true })).body.weekStart).toBe('sunday');
+      expect((await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: false })).body.weekStart).toBe('sunday');
+    });
+
+    it('only lets each kingdom pick its own Tinman week', async () => {
+      // Normal kingdom: the 6-day week, never the SK one.
+      expect((await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients-sk' })).status).toBe(400);
       expect((await request(app).put('/api/clans/1/week-start').send({ weekStart: 'ancients' })).status).toBe(200);
+      // Seasonal Kingdom: the SK week, never the 6-day one.
+      await request(app).put('/api/clans/2/seasonal-kingdom').send({ enabled: true });
+      expect((await request(app).put('/api/clans/2/week-start').send({ weekStart: 'ancients' })).status).toBe(400);
+      const sk = await request(app).put('/api/clans/2/week-start').send({ weekStart: 'ancients-sk' });
+      expect(sk.status).toBe(200);
+      expect((await request(app).get('/api/clans/2')).body.clan.weekStart).toBe('ancients-sk');
     });
 
     it('only touches the clan it is set on', async () => {

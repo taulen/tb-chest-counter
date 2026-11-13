@@ -19,7 +19,7 @@ import {
   setClanLastWeeklyDigestStatus,
   type Clan,
 } from '../data/repositories/clan-repo.js';
-import { closedWeekAt, gameWindow, gameDateFor } from '../utils/game-day.js';
+import { closedWeekAt, gameWindow, gameDateFor, isTinmanWeek } from '../utils/game-day.js';
 import { childLogger } from '../utils/logger.js';
 import type { ScanResult } from '../scheduler/loop.js';
 
@@ -1169,7 +1169,7 @@ async function sendWeeklyDigestForClan(clanId: number, rollover: Date): Promise<
       webExternalUrl: clanPublicUrl(getClanById(clanId), loadConfig().webExternalUrl) || undefined,
       firstDay: week.firstDay,
       lastDay: week.lastDay,
-      tinman: weekStart === 'ancients',
+      tinman: isTinmanWeek(weekStart),
     });
     await channel.send({ content: message });
     log.info(
