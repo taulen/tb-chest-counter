@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RENAME_SUGGESTION_WINDOW_DAYS = void 0;
 exports.namesShareStem = namesShareStem;
 exports.getRenameSuggestions = getRenameSuggestions;
+exports.mergeNameMatchedRenames = mergeNameMatchedRenames;
 exports.dismissRenameSuggestion = dismissRenameSuggestion;
 /**
  * Likely in-game renames, surfaced in the admin Review Queue as merge suggestions.
@@ -35,6 +36,7 @@ exports.dismissRenameSuggestion = dismissRenameSuggestion;
  */
 const database_js_1 = require("../database.js");
 const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const merge_repo_js_1 = require("./merge-repo.js");
 /** How recent the new name's first reading must be for a pair to be suggested. */
 exports.RENAME_SUGGESTION_WINDOW_DAYS = 30;
 /** Days the might series may skip between the old name's last read and the new one's first. */
@@ -179,6 +181,45 @@ function side(r, which) {
         level: which === 'first' ? r.firstLevel : r.lastLevel,
         power: which === 'first' ? r.firstPower : r.lastPower,
     };
+}
+/**
+ * "Merge all name matches": fold every name-linked pair the admin's page showed, in
+ * one go. A retag wave is dozens of pairs (SK7: 41) whose names already prove them,
+ * and clicking through each confirm adds nothing.
+ *
+ * Only pairs that are BOTH in `pairs` (what the page showed) AND still a name-linked
+ * suggestion now are merged: the page can be stale, and a might-only pair always gets
+ * a person's eye on its own row. Each pair goes through the ordinary player merge, so
+ * it gets everything a single Merge does (records, might history, resources, the
+ * alias that keeps leftover "From: old" cards landing on the new name).
+ *
+ * Oldest hand-over first, so a chain X → A → B folds X into A before A goes into B.
+ * The other way round, A is gone by the time X is merged, and addMergeRule's
+ * missing-destination branch would RENAME X to A's old name instead.
+ */
+function mergeNameMatchedRenames(clanId, pairs, nowMs = Date.now()) {
+    const wanted = new Set(pairs.map((p) => `${p.fromMemberId}>${p.toMemberId}`));
+    const approved = getRenameSuggestions(clanId, nowMs)
+        .filter((s) => s.nameMatch && wanted.has(`${s.from.memberId}>${s.to.memberId}`))
+        .sort((a, b) => a.from.gameDate.localeCompare(b.from.gameDate));
+    const out = { merged: [], skipped: wanted.size - approved.length, failed: [] };
+    const nameOf = (0, database_js_1.getDb)().prepare('SELECT name FROM members WHERE id = ? AND clan_id = ?');
+    for (const s of approved) {
+        const from = nameOf.get(s.from.memberId, clanId)?.name;
+        const to = nameOf.get(s.to.memberId, clanId)?.name;
+        if (!from || !to) {
+            out.skipped++;
+            continue;
+        }
+        try {
+            (0, merge_repo_js_1.addMergeRule)('player', from, to, clanId);
+            out.merged.push({ from, to });
+        }
+        catch (err) {
+            out.failed.push({ from, to, error: err instanceof Error ? err.message : String(err) });
+        }
+    }
+    return out;
 }
 /** Remember that an admin said this pair is two different players. */
 function dismissRenameSuggestion(clanId, fromMemberId, toMemberId) {

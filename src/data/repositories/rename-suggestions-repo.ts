@@ -29,6 +29,7 @@
  */
 import { getDb } from '../database.js';
 import { foldDiacritics } from '../../vision/ocr-normalize.js';
+import { addMergeRule } from './merge-repo.js';
 
 /** How recent the new name's first reading must be for a pair to be suggested. */
 export const RENAME_SUGGESTION_WINDOW_DAYS = 30;
@@ -210,6 +211,53 @@ function side(r: SeriesRow, which: 'first' | 'last'): RenameSide {
     level: which === 'first' ? r.firstLevel : r.lastLevel,
     power: which === 'first' ? r.firstPower : r.lastPower,
   };
+}
+
+export interface RenameMergeOutcome {
+  merged: { from: string; to: string }[];
+  /** Requested pairs that are no longer a name-linked suggestion — left alone. */
+  skipped: number;
+  failed: { from: string; to: string; error: string }[];
+}
+
+/**
+ * "Merge all name matches": fold every name-linked pair the admin's page showed, in
+ * one go. A retag wave is dozens of pairs (SK7: 41) whose names already prove them,
+ * and clicking through each confirm adds nothing.
+ *
+ * Only pairs that are BOTH in `pairs` (what the page showed) AND still a name-linked
+ * suggestion now are merged: the page can be stale, and a might-only pair always gets
+ * a person's eye on its own row. Each pair goes through the ordinary player merge, so
+ * it gets everything a single Merge does (records, might history, resources, the
+ * alias that keeps leftover "From: old" cards landing on the new name).
+ *
+ * Oldest hand-over first, so a chain X → A → B folds X into A before A goes into B.
+ * The other way round, A is gone by the time X is merged, and addMergeRule's
+ * missing-destination branch would RENAME X to A's old name instead.
+ */
+export function mergeNameMatchedRenames(
+  clanId: number,
+  pairs: { fromMemberId: number; toMemberId: number }[],
+  nowMs: number = Date.now(),
+): RenameMergeOutcome {
+  const wanted = new Set(pairs.map((p) => `${p.fromMemberId}>${p.toMemberId}`));
+  const approved = getRenameSuggestions(clanId, nowMs)
+    .filter((s) => s.nameMatch && wanted.has(`${s.from.memberId}>${s.to.memberId}`))
+    .sort((a, b) => a.from.gameDate.localeCompare(b.from.gameDate));
+  const out: RenameMergeOutcome = { merged: [], skipped: wanted.size - approved.length, failed: [] };
+  const nameOf = getDb().prepare('SELECT name FROM members WHERE id = ? AND clan_id = ?');
+  for (const s of approved) {
+    const from = (nameOf.get(s.from.memberId, clanId) as { name: string } | undefined)?.name;
+    const to = (nameOf.get(s.to.memberId, clanId) as { name: string } | undefined)?.name;
+    if (!from || !to) { out.skipped++; continue; }
+    try {
+      addMergeRule('player', from, to, clanId);
+      out.merged.push({ from, to });
+    } catch (err) {
+      out.failed.push({ from, to, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return out;
 }
 
 /** Remember that an admin said this pair is two different players. */
