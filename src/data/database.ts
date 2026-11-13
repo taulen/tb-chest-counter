@@ -7,6 +7,7 @@ import { getSourceKey, getSourceRarity, sourceSpellingKey, canonicalSourceKey } 
 import { despace } from '../vision/ocr-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
 import { repairAldrin } from './repair-aldrin-2026-11.js';
+import { repairCutNames } from './repair-cut-names-2026-11.js';
 import { backfillGoalHistory } from './goal-history.js';
 import { DEFAULT_CONFIG } from '../config/defaults.js';
 
@@ -1313,6 +1314,16 @@ const MIGRATIONS: Migration[] = [
       );
       insertType.run('Forest Essence', 'forest-essence');
       insertType.run('Magic Seeds', 'magic-seeds');
+    },
+  },
+  {
+    // One-time repair: member names the member-list reader cut at a kingdom number
+    // ("Living SK7" read as "Living S") and that a merge then kept as the surviving
+    // name — SK7's 41 hand-named members, Nov 13 2026. See repair-cut-names-2026-11.ts.
+    // Generic and guarded, so another database or a replay is a no-op.
+    version: 101,
+    run: (database): void => {
+      database.transaction(() => repairCutNames(database))();
     },
   },
 ];

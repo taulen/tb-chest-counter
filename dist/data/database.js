@@ -15,6 +15,7 @@ const chest_names_js_1 = require("../vision/chest-names.js");
 const source_names_js_1 = require("../vision/source-names.js");
 const config_integrity_js_1 = require("./config-integrity.js");
 const repair_aldrin_2026_11_js_1 = require("./repair-aldrin-2026-11.js");
+const repair_cut_names_2026_11_js_1 = require("./repair-cut-names-2026-11.js");
 const goal_history_js_1 = require("./goal-history.js");
 const defaults_js_1 = require("../config/defaults.js");
 const log = (0, logger_js_1.childLogger)('database');
@@ -1295,6 +1296,16 @@ const MIGRATIONS = [
             const insertType = database.prepare('INSERT OR IGNORE INTO resource_types (name, slug) VALUES (?, ?)');
             insertType.run('Forest Essence', 'forest-essence');
             insertType.run('Magic Seeds', 'magic-seeds');
+        },
+    },
+    {
+        // One-time repair: member names the member-list reader cut at a kingdom number
+        // ("Living SK7" read as "Living S") and that a merge then kept as the surviving
+        // name — SK7's 41 hand-named members, Nov 13 2026. See repair-cut-names-2026-11.ts.
+        // Generic and guarded, so another database or a replay is a no-op.
+        version: 101,
+        run: (database) => {
+            database.transaction(() => (0, repair_cut_names_2026_11_js_1.repairCutNames)(database))();
         },
     },
 ];

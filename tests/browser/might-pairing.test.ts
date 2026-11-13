@@ -192,6 +192,26 @@ describe('pairNamesWithMight', () => {
     ]);
   });
 
+  it('keeps a kingdom number that is part of the name', () => {
+    // SK7, Nov 2026: cutting at the FIRST K-number read "Living SK7" as "Living S"
+    // and "Tigger K260 SK" as "Tigger", minting a second member for each.
+    const rows: PRow[] = [
+      row(38, [['Living SK7 (K:7 X:173 Y:269)', 60, 380]]),
+      row(83, [['19,772,030', 780, 130]]),
+      row(270, [['Tigger K260 SK', 40, 200], ['(K:7 X:182 Y:262)', 250, 180]]),
+      row(316, [['18,789,275', 790, 130]]),
+      row(446, [['Fiin SK 3 (K:7 X:172 Y:270)', 60, 400]]),
+      row(492, [['21,776,920', 790, 130]]),
+      row(620, [['KacieSK2 (K:7 X:150 Y:201)', 60, 400]]),
+      row(666, [['20,291,460', 790, 130]]),
+      row(790, [['Princess 260 SK (K:7 X:120 Y:300)', 60, 400]]),
+      row(836, [['13,137,286', 790, 130]]),
+    ];
+    expect(paired(rows).map((p) => p.name)).toEqual([
+      'Living SK7', 'Tigger K260 SK', 'Fiin SK 3', 'KacieSK2', 'Princess 260 SK',
+    ]);
+  });
+
   it('ignores a status line that has no member row above it', () => {
     // From 2026.07.31_001548_edzDsByl.png: the crop starts mid-row, so the first
     // thing on the page is the tail of a member whose name is off-crop. It must

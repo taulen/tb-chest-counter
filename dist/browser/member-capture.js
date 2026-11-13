@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.COORD_RE = exports.MEMBER_CANONICAL_WIDTH = void 0;
+exports.NAME_BEFORE_COORD_RE = exports.COORD_RE = exports.MEMBER_CANONICAL_WIDTH = void 0;
 exports.paddleMemberOcr = paddleMemberOcr;
 exports.paddleMemberText = paddleMemberText;
 exports.positionalMemberName = positionalMemberName;
@@ -80,6 +80,17 @@ exports.MEMBER_CANONICAL_WIDTH = 1000;
  *  labels and "Online"/"Was yesterday" status lines don't, which makes this the
  *  reliable "this row is a member" signal for both readers of the panel. */
 exports.COORD_RE = /\(?\s*[Kk]\s*[:.]?\s*\d/;
+/**
+ * A member row's name: everything before its coordinate marker, which is the LAST
+ * "K<digit>" on the row — not the first. A name can carry its own kingdom number,
+ * and cutting at the first one read SK7's whole roster wrong (Nov 2026): "Living
+ * SK7" as "Living S", "Tigger K260 SK" as "Tigger", "Fiin SK 3" as "Fiin S", so every
+ * one of them was minted as a second member beside the correctly named one. The
+ * lookahead is what moves the cut to the last marker; without one the name is cut at
+ * its own last K-number, which is no worse than before.
+ */
+exports.NAME_BEFORE_COORD_RE = /^\s*(.+?)\s*\(?\s*[Kk]\s*[:.]?\s*\d(?!.*[Kk]\s*[:.]?\s*\d)/;
+const COORD_WORD_RE = /[Kk]\s*[:.]?\s*\d/;
 /** Resize a member-list crop to canonical width, run PaddleOCR, group regions
  *  into rows (adaptive Y threshold), and return the rows plus the canonical
  *  PNG so non-Latin name spans can be re-cropped.
@@ -173,7 +184,8 @@ async function extractRawNamesPaddle(cropBuffer, langAvailable) {
         if (!exports.COORD_RE.test(line))
             continue;
         coordRows++;
-        const m = line.match(/([A-Za-z][A-Za-z0-9 _.'"-]{1,30}?)\s*\(?\s*[Kk]\s*[:.]?\s*\d/);
+        // Up to the LAST K-number (see NAME_BEFORE_COORD_RE): "Living SK7 (K:7 …)".
+        const m = line.match(/([A-Za-z][A-Za-z0-9 _.'"-]{1,30}?)\s*\(?\s*[Kk]\s*[:.]?\s*\d(?!.*[Kk]\s*[:.]?\s*\d)/);
         const latinName = (m?.[1] ?? '').trim();
         // The Latin-only v6 model reads Cyrillic/Arabic names as empty or Latin
         // homoglyphs ("Рей" → "Pe"), which the regex above happily accepts. Member
@@ -185,7 +197,14 @@ async function extractRawNamesPaddle(cropBuffer, langAvailable) {
         // Where the coordinates start. Everything before it is the name, whatever
         // it is made of — needed by both the non-Latin re-read and the positional
         // fallback below.
-        const coordIdx = row.words.findIndex((wd) => /[Kk]\s*[:.]?\s*\d/.test(wd.text));
+        // The LAST word carrying a K-number: a name word can carry one too ("SK7").
+        let coordIdx = -1;
+        for (let i = row.words.length - 1; i >= 0; i--) {
+            if (COORD_WORD_RE.test(row.words[i].text)) {
+                coordIdx = i;
+                break;
+            }
+        }
         let recovered = '';
         if (worthRecovering) {
             const nameWords = row.words.slice(0, coordIdx >= 0 ? coordIdx : row.words.length);

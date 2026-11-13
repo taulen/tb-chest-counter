@@ -176,10 +176,11 @@ function pairNamesWithMight(rows, canonicalWidth = member_capture_js_1.MEMBER_CA
         // word-level split above, counted as a second distinct name, and would have
         // created a bogus "261 vacation" member. So the merged form is stripped too,
         // below, once the name has been extracted.
-        // The name is everything before the coordinate marker. Non-greedy up to the
-        // marker rather than a character class, so names with spaces and punctuation
-        // ("John Wick II", "Princess of Chaos") survive intact.
-        const m = line2.match(/^\s*(.+?)\s*\(?\s*[Kk]\s*[:.]?\s*\d/);
+        // The name is everything before the coordinate marker — the LAST K-number on the
+        // row, since a name can carry its own ("Living SK7"). Non-greedy up to the marker
+        // rather than a character class, so names with spaces and punctuation ("John Wick
+        // II", "Princess of Chaos") survive intact.
+        const m = line2.match(member_capture_js_1.NAME_BEFORE_COORD_RE);
         // Cleaned but NOT prefix-stripped. stripLikelyPrefixTag treats any leading
         // token of ≤3 letters as a clan tag, which mangles perfectly ordinary names:
         // against the live roster it turned "Tax Collector" into "Collector", "DS
