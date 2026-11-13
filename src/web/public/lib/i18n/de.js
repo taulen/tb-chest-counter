@@ -2635,6 +2635,7 @@ export const ui = {
   "Restored {name}": "{name} wiederhergestellt",
   "Restored member": "Mitglied wiederhergestellt",
   "(unseen {n}+ days)": { one: "(seit {n}+ Tag nicht gesehen)", other: "(seit {n}+ Tagen nicht gesehen)" },
+  "(not on the in-game member list)": "(nicht in der Mitgliederliste im Spiel)",
   "global default": "globaler Standard",
   "Every {interval}": "Alle {interval}",
   "TB auth detected": "TB-Anmeldung erkannt",

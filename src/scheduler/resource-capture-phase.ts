@@ -30,7 +30,9 @@
  * capture. That's deliberate and matches the manual upload path: a resource
  * contribution is evidence the player exists and the row carries a real amount,
  * so dropping it would lose data. The new member lands in the review queue with
- * a crop attached.
+ * a crop attached — but INACTIVE when the clan's member list is being read and the
+ * name isn't on it (`retireOffRosterMembers`): the history reaches back days, so most
+ * such donors are former members, not today's players.
  */
 import type { Page } from 'playwright';
 import type { AppConfig, ClanMember } from '../models/types.js';
@@ -49,7 +51,7 @@ import {
   measureDateAlignment,
   withholdAlreadyRecorded,
 } from '../browser/resource-sweep-rules.js';
-import { getAllMembers, upsertMember } from '../data/repositories/member-repo.js';
+import { getAllMembers, retireOffRosterMembers, upsertMember } from '../data/repositories/member-repo.js';
 import { loadPlayerNameCanonicaliser } from '../data/repositories/merge-repo.js';
 import { getClanById } from '../data/repositories/clan-repo.js';
 import {
@@ -652,6 +654,24 @@ export async function runResourceCapturePhase(
         .map((n) => JSON.stringify(n))
         .join(', ')}${createdMembers.size > NAME_SAMPLE_LIMIT ? ', …' : ''}.`,
     );
+    // A donor the roster doesn't know is usually a FORMER member — the history reaches
+    // back days, and a clan's first read reaches back before the app tracked it. Keep
+    // the row (it carries real donations) but don't count them as one of today's
+    // players. Same switches as the inactivity sweep, which applies this rule too.
+    const inactivityDays = clan.inactivityDays ?? config.memberInactivityDays;
+    if (clan.inactivitySweepEnabled && inactivityDays > 0) {
+      const retired = retireOffRosterMembers(clanId);
+      if (retired.length > 0) {
+        log.info(
+          `Resource capture marked ${retired.length} of them inactive for clan #${clanId}: not on the `
+          + 'in-game member list, so a former member (the next member-list read reactivates anyone '
+          + 'who is in the clan after all).',
+        );
+        logSystemAction(clanId, 'member.auto_deactivate', {
+          clanId, offRoster: true, count: retired.length, members: retired.map((m) => m.name),
+        });
+      }
+    }
   }
 
   const unresolvedRows = resolved.filter((r) => r.resourceTypeId == null).length;

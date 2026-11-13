@@ -320,6 +320,56 @@ export function deactivateStaleMembers(
   return stale;
 }
 
+/** How recent this clan's last member-list read must be for "not on it" to mean anything. */
+export const ROSTER_READ_FRESH_HOURS = 36;
+
+/**
+ * Soft-remove members known ONLY from Clan Capital resource history — never on any
+ * in-game member list we read (no might snapshot, ever), never sent a gift — while
+ * this clan's member list IS being read. That list is the authoritative roster, so a
+ * name absent from every read of it is a former member, not one of today's players.
+ *
+ * The resource history reaches back days, and a clan's first read reaches back to
+ * before the app tracked it at all. Every donor not on the roster used to be created
+ * as an ACTIVE member with last_seen = now: SK7's first read (Nov 13 2026) added 10
+ * ex-members to an 80-player roster, and the time-based sweep would only have retired
+ * them a week later because "now" was their last sighting.
+ *
+ * Nothing is lost: the row and its donations stay (resource totals don't filter on
+ * is_active) and it still sits in the New Members review queue for a merge if it is
+ * really a misread of a current player. If the player IS in the clan — joined after
+ * today's read, or a read that missed their row — the next member-list read matches
+ * inactive members too and reactivates them (`markMembersSeen`).
+ *
+ * Chest senders are left to the time-based sweep: narrower on purpose, and a gift is
+ * a sighting in its own right.
+ */
+export function retireOffRosterMembers(
+  clanId: number,
+  nowMs: number = Date.now(),
+): Array<{ id: number; name: string }> {
+  const db = getDb();
+  const latest = (db.prepare(
+    'SELECT MAX(captured_at) AS at FROM member_snapshots WHERE clan_id = ?',
+  ).get(clanId) as { at: string | null }).at;
+  if (!latest || Date.parse(latest) < nowMs - ROSTER_READ_FRESH_HOURS * 60 * 60 * 1000) return [];
+
+  const offRoster = db.prepare(`
+    SELECT m.id, m.name FROM members m
+     WHERE m.clan_id = ? AND m.is_active = 1
+       AND NOT EXISTS (SELECT 1 FROM member_snapshots s WHERE s.member_id = m.id)
+       AND NOT EXISTS (SELECT 1 FROM chest_records c WHERE c.member_id = m.id)
+       AND NOT EXISTS (SELECT 1 FROM triumphal_chest_records t WHERE t.member_id = m.id)
+  `).all(clanId) as Array<{ id: number; name: string }>;
+  if (offRoster.length === 0) return [];
+
+  const leftAt = new Date(nowMs).toISOString();
+  const retire = db.prepare('UPDATE members SET is_active = 0, left_at = ? WHERE id = ? AND is_active = 1');
+  db.transaction(() => { for (const m of offRoster) retire.run(leftAt, m.id); })();
+  invalidateMemberDerivedCaches(clanId);
+  return offRoster;
+}
+
 /**
  * Active members last seen at or after `sinceIso` (any scan that read their
  * name), most recently seen first, at most `limit`.

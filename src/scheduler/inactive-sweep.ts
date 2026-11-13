@@ -1,6 +1,6 @@
 import { childLogger } from '../utils/logger.js';
 import { listClans } from '../data/repositories/clan-repo.js';
-import { deactivateStaleMembers } from '../data/repositories/member-repo.js';
+import { deactivateStaleMembers, retireOffRosterMembers } from '../data/repositories/member-repo.js';
 import { getLastCompletedSession } from '../data/repositories/session-repo.js';
 import { logSystemAction } from '../data/repositories/user-repo.js';
 
@@ -53,6 +53,23 @@ export function runInactiveSweep(): void {
       if (!clan.inactivitySweepEnabled) continue;
       const days = clan.inactivityDays ?? defaultInactivityDays;
       if (days <= 0) continue;
+
+      // Members known only from resource history and on no member-list read. Not
+      // time-based (the roster freshness check is its own outage guard), so it runs
+      // before the scan-outage skip below — and at boot, which is what cleaned up
+      // the ex-members SK7's first resource read had added before this existed.
+      const offRoster = retireOffRosterMembers(clan.id);
+      if (offRoster.length > 0) {
+        total += offRoster.length;
+        log.info(`Clan #${clan.id}: marked ${offRoster.length} member(s) inactive (not on the in-game member list)`);
+        logSystemAction(clan.id, 'member.auto_deactivate', {
+          clanId: clan.id,
+          offRoster: true,
+          count: offRoster.length,
+          members: offRoster.map((m) => m.name),
+        });
+      }
+
       const cutoff = cutoffIso(days);
 
       // Scanner-outage guard: a member's last_seen can only advance when a

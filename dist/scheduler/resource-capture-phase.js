@@ -427,6 +427,22 @@ async function runResourceCapturePhase(ctx, page) {
                 .slice(0, NAME_SAMPLE_LIMIT)
                 .map((n) => JSON.stringify(n))
                 .join(', ')}${createdMembers.size > NAME_SAMPLE_LIMIT ? ', …' : ''}.`);
+        // A donor the roster doesn't know is usually a FORMER member — the history reaches
+        // back days, and a clan's first read reaches back before the app tracked it. Keep
+        // the row (it carries real donations) but don't count them as one of today's
+        // players. Same switches as the inactivity sweep, which applies this rule too.
+        const inactivityDays = clan.inactivityDays ?? config.memberInactivityDays;
+        if (clan.inactivitySweepEnabled && inactivityDays > 0) {
+            const retired = (0, member_repo_js_1.retireOffRosterMembers)(clanId);
+            if (retired.length > 0) {
+                log.info(`Resource capture marked ${retired.length} of them inactive for clan #${clanId}: not on the `
+                    + 'in-game member list, so a former member (the next member-list read reactivates anyone '
+                    + 'who is in the clan after all).');
+                (0, user_repo_js_1.logSystemAction)(clanId, 'member.auto_deactivate', {
+                    clanId, offRoster: true, count: retired.length, members: retired.map((m) => m.name),
+                });
+            }
+        }
     }
     const unresolvedRows = resolved.filter((r) => r.resourceTypeId == null).length;
     const notes = [

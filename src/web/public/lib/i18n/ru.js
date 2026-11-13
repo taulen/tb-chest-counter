@@ -2635,6 +2635,7 @@ export const ui = {
   "Restored {name}": "Восстановлен {name}",
   "Restored member": "Участник восстановлен",
   "(unseen {n}+ days)": { one: "(не виден {n}+ день)", few: "(не виден {n}+ дня)", many: "(не виден {n}+ дней)", other: "(не виден {n}+ дней)" },
+  "(not on the in-game member list)": "(нет в списке участников в игре)",
   "global default": "глобальное значение",
   "Every {interval}": "Каждые {interval}",
   "TB auth detected": "Авторизация TB обнаружена",

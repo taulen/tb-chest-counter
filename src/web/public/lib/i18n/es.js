@@ -2635,6 +2635,7 @@ export const ui = {
   "Restored {name}": "Se restauró a {name}",
   "Restored member": "Miembro restaurado",
   "(unseen {n}+ days)": { one: "(sin verse {n}+ día)", other: "(sin verse {n}+ días)" },
+  "(not on the in-game member list)": "(no está en la lista de miembros del juego)",
   "global default": "predeterminado global",
   "Every {interval}": "Cada {interval}",
   "TB auth detected": "Autenticación de TB detectada",

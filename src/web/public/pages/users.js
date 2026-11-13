@@ -319,7 +319,9 @@ function formatAuditDetails(action, d, ctx) {
     case 'member.auto_deactivate': {
       const names = Array.isArray(d.members) ? d.members : [];
       const count = d.count ?? names.length;
-      const reason = d.days != null ? ` ${tn(d.days, '(unseen {n}+ days)', '(unseen {n}+ days)')}` : '';
+      const reason = d.offRoster
+        ? ` ${t('(not on the in-game member list)')}`
+        : d.days != null ? ` ${tn(d.days, '(unseen {n}+ days)', '(unseen {n}+ days)')}` : '';
       const list = names.length ? `: ${names.map((n) => esc(n)).join(', ')}` : '';
       return `${tn(count, '{n} member', '{n} members')}${reason}${list}${clanSuffix(d.clanId)}`;
     }
