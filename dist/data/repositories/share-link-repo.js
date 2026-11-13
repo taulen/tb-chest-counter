@@ -6,6 +6,7 @@ exports.resolveActiveShareLink = resolveActiveShareLink;
 exports.shareLinkTokenExists = shareLinkTokenExists;
 exports.getShareLink = getShareLink;
 exports.listActiveShareLinks = listActiveShareLinks;
+exports.listPublicBoardTokens = listPublicBoardTokens;
 exports.revokeShareLink = revokeShareLink;
 exports.setShareLinkLabel = setShareLinkLabel;
 exports.restoreShareLink = restoreShareLink;
@@ -108,6 +109,29 @@ function listActiveShareLinks(clanId) {
        ORDER BY created_at DESC, id DESC`)
         .all(clanId);
     return rows.map(rowToShareLink);
+}
+/**
+ * The one live link per clan the login page lists under "Public boards",
+ * keyed by clan id. A clan holding none is absent.
+ *
+ * A clan can hold several live links at once, one per audience, so this picks
+ * the one most worth advertising: an admin-chosen vanity key first (readable,
+ * and chosen to be handed out), then whichever the clan's visitors actually
+ * use most, then the oldest. CWB's `cwb` beats its generated `4CFbId` this way.
+ */
+function listPublicBoardTokens() {
+    const rows = (0, database_js_1.getDb)()
+        .prepare(`SELECT clan_id, token FROM (
+         SELECT clan_id, token,
+                ROW_NUMBER() OVER (
+                  PARTITION BY clan_id
+                  ORDER BY is_vanity DESC, hit_count DESC, id ASC
+                ) AS rn
+         FROM share_links
+         WHERE revoked_at IS NULL
+       ) WHERE rn = 1`)
+        .all();
+    return new Map(rows.map((r) => [r.clan_id, r.token]));
 }
 /** Revoke one link. Returns false when the id isn't this clan's or is already revoked. */
 function revokeShareLink(clanId, linkId, reason, userId) {

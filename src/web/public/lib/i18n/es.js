@@ -2751,6 +2751,8 @@ export const ui = {
   // login.html
   "Sign in to continue": "Inicia sesión para continuar",
   "Sign In": "Iniciar sesión",
+  "Public boards": "Clasificaciones públicas",
+  "Clan leaderboards anyone can view, no account needed.": "Clasificaciones de clanes que cualquiera puede ver, sin necesidad de cuenta.",
   // public-share.html
   "& access": "y acceso",
   // config/event-catalog.ts

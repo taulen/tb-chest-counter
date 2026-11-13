@@ -2751,6 +2751,8 @@ export const ui = {
   // login.html
   "Sign in to continue": "Войдите, чтобы продолжить",
   "Sign In": "Войти",
+  "Public boards": "Публичные рейтинги",
+  "Clan leaderboards anyone can view, no account needed.": "Рейтинги кланов, открытые всем, без учётной записи.",
   // public-share.html
   "& access": "и доступ",
   // config/event-catalog.ts

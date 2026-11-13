@@ -51,6 +51,13 @@
       <input type="password" id="password" name="password" class="input" autocomplete="current-password" required>
       <button type="submit" class="btn" data-i18n>Sign In</button>
     </form>
+    <!-- Filled by login.js from /api/public/boards; stays hidden when no clan
+         has a live share link (or the call fails). -->
+    <nav class="login-boards" id="publicBoards" aria-labelledby="publicBoardsTitle" hidden>
+      <h2 class="login-boards-title" id="publicBoardsTitle" data-i18n>Public boards</h2>
+      <p class="login-boards-hint" data-i18n>Clan leaderboards anyone can view, no account needed.</p>
+      <ul class="login-boards-list" id="publicBoardsList"></ul>
+    </nav>
     <div class="login-lang">
       <select class="lang-select" data-lang-select aria-label="Language" data-i18n-attr="aria-label"></select>
     </div>

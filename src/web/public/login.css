@@ -88,6 +88,68 @@ label {
   transform: scale(0.99);
 }
 
+/* Public boards: every clan's share link, under the form. A divider sets it
+   apart from sign-in so it doesn't read as a second login step. */
+.login-boards {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+.login-boards[hidden] {
+  display: none;
+}
+.login-boards-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.login-boards-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.login-boards-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.login-boards-list a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color var(--transition), background var(--transition);
+}
+.login-boards-list a:hover {
+  border-color: var(--accent-gold-border);
+  background: var(--accent-gold-bg);
+}
+.login-boards-list a:focus-visible {
+  outline: none;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px var(--accent-gold-bg-strong);
+}
+.login-boards-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.login-boards-arrow {
+  flex: none;
+  color: var(--accent-gold);
+}
+
 .login-lang {
   margin-top: 20px;
   display: flex;

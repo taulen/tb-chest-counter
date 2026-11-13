@@ -20,7 +20,13 @@ import {
   createPublicShareApiRouter,
   publicShareTokenHandler,
 } from '../../../src/web/routes/public-share.js';
-import { setClanChestTrackerSettings, setClanWeekStart } from '../../../src/data/repositories/clan-repo.js';
+import {
+  getClanById,
+  setClanActive,
+  setClanChestTrackerSettings,
+  setClanPublicUrl,
+  setClanWeekStart,
+} from '../../../src/data/repositories/clan-repo.js';
 import {
   createShareLink,
   revokeShareLink,
@@ -151,6 +157,49 @@ describe('public share surface (anonymous, token-gated)', () => {
 
       const notToken = await request(app).get('/some/deeper/path');
       expect(notToken.status).toBe(418); // hit the fall-through sentinel
+    });
+  });
+
+  // ── /boards: the login page's list of every clan's board ─────────
+  describe('/boards', () => {
+    async function boards(): Promise<{ name: string; url: string }[]> {
+      const r = await request(app).get('/api/public/boards');
+      expect(r.status).toBe(200);
+      return r.body.boards;
+    }
+
+    it('lists one link per sharing clan, vanity first, and skips clans with none', async () => {
+      // Clan 1 holds a generated token AND a vanity key: the vanity one is the
+      // one advertised. Clan 2 holds no link, so it isn't listed at all.
+      expect(await boards()).toEqual([{ name: getClanById(1)!.name, url: `/${VANITY_A}` }]);
+    });
+
+    it('without a vanity key, picks the link visitors use most', async () => {
+      const quiet = createShareLink(2, 'bBbB22', null).id;
+      const busy = createShareLink(2, 'cCcC33', null).id;
+      getDb().prepare('UPDATE share_links SET hit_count = ? WHERE id = ?').run(5, quiet);
+      getDb().prepare('UPDATE share_links SET hit_count = ? WHERE id = ?').run(50, busy);
+      const clan2 = (await boards()).find((b) => b.name === 'Clan #2');
+      expect(clan2?.url).toBe('/cCcC33');
+    });
+
+    it('builds each link on the clan\'s own domain', async () => {
+      setClanPublicUrl(1, 'https://sinful.day');
+      expect((await boards())[0].url).toBe(`https://sinful.day/${VANITY_A}`);
+    });
+
+    it('drops revoked links and paused clans', async () => {
+      const r = createShareLink(2, 'dDdD44', null);
+      revokeShareLink(2, r.id, 'disabled', null);
+      setClanActive(1, false);
+      expect(await boards()).toEqual([]);
+    });
+
+    it('is never counted as a visit or API hit on the listed link', async () => {
+      await boards();
+      const link = getShareLink(1, linkIdA)!;
+      expect(link.hitCount).toBe(0);
+      expect(link.apiHitCount).toBe(0);
     });
   });
 

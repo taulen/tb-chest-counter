@@ -1,8 +1,9 @@
 import path from 'path';
 import fs from 'fs';
 import { Router, json, type Request, type Response, type NextFunction } from 'express';
-import { getClanById } from '../../data/repositories/clan-repo.js';
+import { getClanById, listClans, clanPublicUrl } from '../../data/repositories/clan-repo.js';
 import {
+  listPublicBoardTokens,
   resolveActiveShareLink,
   recordVisit,
   recordApiHit,
@@ -222,6 +223,25 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
   router.use((_req, res, next) => {
     applyShareHeaders(res);
     next();
+  });
+
+  // GET /boards — the login page's "Public boards" list: every ACTIVE clan
+  // holding a live share link, by name, with one link to its board (see
+  // listPublicBoardTokens for which one). Each link is built on the clan's own
+  // domain, so SIK's board opens on sinful.day even from cwb.fyi's login page.
+  //
+  // This publishes the listed keys to anyone who opens /login — deliberately:
+  // a board an admin has shared is meant to be found. A clan that wants out
+  // revokes its links; a paused (inactive) clan isn't advertised. Not counted
+  // as a hit on any link: nobody has opened a board yet.
+  router.get('/boards', (_req, res) => {
+    const tokens = listPublicBoardTokens();
+    const globalUrl = loadConfig().webExternalUrl;
+    const boards = listClans({ activeOnly: true })
+      .filter((c) => tokens.has(c.id))
+      .map((c) => ({ name: c.name, url: `${clanPublicUrl(c, globalUrl)}/${tokens.get(c.id)}` }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ boards });
   });
 
   // GET /:token/clan — minimum needed by the public page to render a

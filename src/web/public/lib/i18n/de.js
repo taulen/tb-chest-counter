@@ -2751,6 +2751,8 @@ export const ui = {
   // login.html
   "Sign in to continue": "Melde dich an, um fortzufahren",
   "Sign In": "Anmelden",
+  "Public boards": "Öffentliche Ranglisten",
+  "Clan leaderboards anyone can view, no account needed.": "Clan-Ranglisten, die jeder ansehen kann, ganz ohne Konto.",
   // public-share.html
   "& access": "& Zugang",
   // config/event-catalog.ts

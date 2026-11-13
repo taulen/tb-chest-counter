@@ -200,6 +200,24 @@ function createPublicShareApiRouter(scanLoop) {
         applyShareHeaders(res);
         next();
     });
+    // GET /boards — the login page's "Public boards" list: every ACTIVE clan
+    // holding a live share link, by name, with one link to its board (see
+    // listPublicBoardTokens for which one). Each link is built on the clan's own
+    // domain, so SIK's board opens on sinful.day even from cwb.fyi's login page.
+    //
+    // This publishes the listed keys to anyone who opens /login — deliberately:
+    // a board an admin has shared is meant to be found. A clan that wants out
+    // revokes its links; a paused (inactive) clan isn't advertised. Not counted
+    // as a hit on any link: nobody has opened a board yet.
+    router.get('/boards', (_req, res) => {
+        const tokens = (0, share_link_repo_js_1.listPublicBoardTokens)();
+        const globalUrl = (0, index_js_1.loadConfig)().webExternalUrl;
+        const boards = (0, clan_repo_js_1.listClans)({ activeOnly: true })
+            .filter((c) => tokens.has(c.id))
+            .map((c) => ({ name: c.name, url: `${(0, clan_repo_js_1.clanPublicUrl)(c, globalUrl)}/${tokens.get(c.id)}` }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        res.json({ boards });
+    });
     // GET /:token/clan — minimum needed by the public page to render a
     // header and decide whether to show the ChestTracker tab.
     router.get('/:token/clan', (req, res) => {
