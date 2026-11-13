@@ -119,28 +119,53 @@ describe('row totals and the unlock path', () => {
 });
 
 describe('mergeRows', () => {
-  it('keeps every name exactly once, cheapest first', () => {
+  it('keeps every name exactly once, in the tree order of the sheet', () => {
     for (const s of sections) {
       const groups = mergeRows(s.rows);
       expect(groups.flatMap((g) => g.names).sort()).toEqual(s.rows.map(([n]) => n).sort());
-      for (let i = 1; i < groups.length; i++) expect(groups[i].first).toBeGreaterThanOrEqual(groups[i - 1].first);
+      const firstAt = groups.map((g) => s.rows.findIndex(([n]) => n === g.names[0]));
+      for (let i = 1; i < firstAt.length; i++) expect(firstAt[i], s.name).toBeGreaterThan(firstAt[i - 1]);
     }
   });
 
-  it('merges same-cost rows and keeps unlocks apart from curves', () => {
+  it('follows the tree: research IV opens the VI troops, and Brunhild hangs off it', () => {
+    // The game: Archers V → Training Cost IV → March Speed IV → Heavy Arbalester
+    // VI, Captain Brunhild under Training Cost IV. Sorted by price, research IV
+    // sat above the V troops and Brunhild shared their 900M row.
+    const rows = mergeRows(sections.find((s) => s.name === 'Guardsmen I')!.rows).map((g) => g.names);
+    const at = (name: string) => rows.findIndex((names) => names.includes(name));
+    expect(at("Guardsmen's Training Cost IV")).toBe(at('Archers V') + 1);
+    expect(rows[at("Guardsmen's Training Cost IV")]).toContain("Guardsmen's March Speed IV");
+    expect(rows[at('Captain Brunhild')]).toEqual(['Captain Brunhild']);
+    expect(at('Captain Brunhild')).toBe(at("Guardsmen's Training Cost IV") + 1);
+    expect(at('Heavy Arbalester VI')).toBe(at('Captain Brunhild') + 1);
+  });
+
+  it('never puts a captain in a row with anything but captains', () => {
+    for (const s of sections) {
+      for (const g of mergeRows(s.rows)) {
+        const captains = g.names.filter((n) => n.startsWith('Captain '));
+        if (captains.length) expect(captains, s.name).toEqual(g.names);
+      }
+    }
+  });
+
+  it('merges same-cost rows and keeps unlocks, curves and captains apart', () => {
     const groups = mergeRows([
       ['A I', 300],
       ['B I', 's1'],
       ['C I', 's1'],
       ['A II', 450_000],
       ['B II', 's2'],
+      ['Captain X', 450_000],
       ['D I', 300],
     ]);
     expect(groups).toEqual([
-      { curve: null, unlock: 300, names: ['A I', 'D I'], first: 300, total: 300 },
-      { curve: 's1', unlock: null, names: ['B I', 'C I'], first: 300, total: curveTotal('s1') },
-      { curve: 's2', unlock: null, names: ['B II'], first: 45_000, total: curveTotal('s2') },
-      { curve: null, unlock: 450_000, names: ['A II'], first: 450_000, total: 450_000 },
+      { curve: null, unlock: 300, names: ['A I', 'D I'], total: 300 },
+      { curve: 's1', unlock: null, names: ['B I', 'C I'], total: curveTotal('s1') },
+      { curve: null, unlock: 450_000, names: ['A II'], total: 450_000 },
+      { curve: 's2', unlock: null, names: ['B II'], total: curveTotal('s2') },
+      { curve: null, unlock: 450_000, names: ['Captain X'], total: 450_000 },
     ]);
   });
 });

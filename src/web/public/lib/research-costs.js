@@ -10,7 +10,9 @@
 // captain, a crypt level) costs one of 18 unlock prices. So a curve is stored
 // once in CURVES and a row is [name, curveKey] or [name, unlockPrice]; the page
 // merges rows that cost the same (mergeRows) — that is most of what makes it
-// compact. Totals are computed, never copied: the sheet's own total column has
+// compact. Rows stay in the sheet's order, which walks each tree along its
+// path; never sort them by price (see mergeRows for why that misleads).
+// Totals are computed, never copied: the sheet's own total column has
 // slips (10.8M, 198.7M and 4.3M against levels that sum to 12.8M, 200.1M, 5.7M).
 //
 // Fixed against the sheet, each where the sheet contradicts itself:
@@ -622,31 +624,42 @@ export function curveTotal(key) {
   return CURVES[key].reduce((a, b) => a + b, 0);
 }
 
+/** A captain branches off a research; it never shares a row with troops or crypts. */
+const isCaptain = (name) => name.startsWith('Captain ');
+
 /**
  * A section's rows with everything that costs the same merged into one group,
- * cheapest level 1 first — which is also the order the tree unlocks them in.
- * Names keep the sheet's order inside a group. `total` is ONE of them: a
- * research maxed, or the unlock price — rowTotal() is the whole row.
+ * in TREE order: a group sits where its first member does in the sheet, which
+ * walks each tree along its path. Names keep the sheet's order inside a group.
+ * `total` is ONE of them: a research maxed, or the unlock price — rowTotal()
+ * is the whole row.
  *
- * @returns {{ curve: string|null, unlock: number|null, names: string[], first: number, total: number }[]}
+ * Never by price. A stage's unlock costs about 10× the level 1 of the research
+ * after it, so cheapest-first put Guardsmen's research IV right above the V
+ * troops, reading as "research IV opens troops V". In the game the V troops
+ * come first and research IV opens the VI troops (training cost IV → march
+ * speed IV → Heavy Arbalester VI). A research's numeral says nothing about the
+ * troops it opens: Monsters' Cost III opens Monsters VI. Only the sheet's
+ * order does. Captains get their own row for the same reason: Brunhild costs what the V
+ * troops do but hangs off training cost IV, a stage later.
+ *
+ * @returns {{ curve: string|null, unlock: number|null, names: string[], total: number }[]}
  */
 export function mergeRows(rows) {
   const groups = new Map();
-  rows.forEach(([name, cost], order) => {
+  for (const [name, cost] of rows) {
     const isCurve = typeof cost === 'string';
-    const key = isCurve ? `c:${cost}` : `u:${cost}`;
+    const key = isCurve ? `c:${cost}` : `${isCaptain(name) ? 'h' : 'u'}:${cost}`;
     let g = groups.get(key);
     if (!g) {
       g = isCurve
-        ? { curve: cost, unlock: null, names: [], first: CURVES[cost][0], total: curveTotal(cost), order }
-        : { curve: null, unlock: cost, names: [], first: cost, total: cost, order };
+        ? { curve: cost, unlock: null, names: [], total: curveTotal(cost) }
+        : { curve: null, unlock: cost, names: [], total: cost };
       groups.set(key, g);
     }
     g.names.push(name);
-  });
-  return [...groups.values()]
-    .sort((a, b) => a.first - b.first || a.order - b.order)
-    .map(({ order, ...g }) => g);
+  }
+  return [...groups.values()];
 }
 
 /**
