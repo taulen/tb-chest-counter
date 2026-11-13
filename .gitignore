@@ -4,6 +4,8 @@ node_modules/
 /data/
 # Machine-local Claude Code settings (permissions allowlist) — not shared.
 .claude/settings.local.json
+# Deploy webhook + prod URL for scripts/deploy-when-idle.mjs — the repo is public.
+deploy.local.json
 # Source maps in the committed build — debug-only, not needed at runtime.
 dist/**/*.map
 config.json

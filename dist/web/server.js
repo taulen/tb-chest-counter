@@ -402,12 +402,18 @@ function startWebServer(port, scanLoop, options = {}) {
     // src/utils/build-info.ts for the rationale (Portainer's git deploys
     // don't ship .git, so a real commit SHA isn't available at build
     // time).
+    //
+    // `scanner` is what scripts/deploy-when-idle.mjs waits on before it
+    // redeploys: a restart mid-scan loses the cycle. Public like the rest of
+    // this probe; it says no more than the public share page's own "scanning
+    // now / next scan in" already does.
     app.get('/api/health', (_req, res) => {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.json({
             ok: true,
             builtAt: build_info_js_1.BUILD_INFO.builtAt,
             fingerprint: build_info_js_1.BUILD_INFO.fingerprint,
+            scanner: scanLoop?.getDeployState() ?? { busy: false, nextScanAt: null },
         });
     });
     // Disable caching on all API responses. The dashboard reads stats and

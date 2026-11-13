@@ -435,6 +435,24 @@ class ScanLoop {
         return this.scanInProgress;
     }
     /**
+     * Whether a redeploy right now would cut into scanning, for
+     * scripts/deploy-when-idle.mjs (via /api/health).
+     *
+     * `scanInProgress` alone is not enough: a cycle walks every active clan
+     * back to back, and between two clans it is false for the half minute
+     * before the next clan starts. A deploy on Nov 13 2026 watched one clan's
+     * session complete, fired, and killed the next clan's scan 10 s in. The
+     * cycle's clan list stays set until the whole cycle is done, so "busy"
+     * holds across that gap. The might and resource phases run inside the
+     * scan lock, so they count too.
+     */
+    getDeployState() {
+        return {
+            busy: this.scanInProgress || this.cycleOrder.length > 0,
+            nextScanAt: this.nextScanAt,
+        };
+    }
+    /**
      * Returns the number of chests found in the current in-progress scan.
      * Zero when no scan is running.
      */

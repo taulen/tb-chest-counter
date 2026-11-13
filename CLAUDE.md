@@ -6,6 +6,7 @@
 - Static frontend files in `src/web/public/` are copied directly (no build step needed for CSS/JS/HTML).
 - Type check: **`npm run typecheck`** — `src/` AND the tests (`tsconfig.test.json`), exactly what CI runs. A bare `npx tsc --noEmit` checks `src/` only, and vitest strips types, so a stale test fixture passes every test locally and fails only CI: that kept CI red for seven pushes in Oct 2026.
 - After pushing, check the run: `gh run list --workflow ci.yml --limit 1`. A red run is reported, even when it isn't from your change.
+- **Deploy only with `node scripts/deploy-when-idle.mjs`** (run it in the background). A redeploy mid-scan loses the cycle, and one completed scan session does NOT mean idle: a cycle scans every clan back to back with ~30 s gaps where nothing is pending. The script waits on prod's own `/api/health` → `scanner.busy` (whole cycle + manual scans) and a 5-min margin to the next cycle, then fires the webhook and confirms the new build. A hook in [.claude/settings.json](.claude/settings.json) refuses any direct webhook call. Config: gitignored `deploy.local.json`.
 - The Docker image is Linux-only by design; local dev on any OS is unaffected. Details: [docs/docker-image.md](docs/docker-image.md).
 
 ## Project Structure
