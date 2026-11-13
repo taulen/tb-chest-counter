@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { buildPointsGuide, placeChest, type PointsGuideSection } from '../../src/data/points-guide.js';
 import { invalidateSourceKeySummary } from '../../src/data/repositories/source-points-repo.js';
-import { makeTestDb } from '../helpers/test-db.js';
+import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 
 /**
  * The leaderboard FAQ's points table. What matters:
@@ -164,6 +164,65 @@ describe('buildPointsGuide', () => {
 
   it('is empty, not broken, before the first scan', () => {
     expect(buildPointsGuide(1)).toEqual({ sections: [], notCounted: [] });
+  });
+});
+
+describe('buildPointsGuide for a clan with values but no chests yet', () => {
+  // Clan 1 has received the realistic mix; clan 2 is brand new — values set
+  // (as copying another clan's values gives it, Nov 2026) but never scanned.
+  // Its FAQ used to read "nothing scanned yet".
+  const value = (clanId: number, key: string, chest: string, points: number) =>
+    getDb().prepare(
+      `INSERT INTO source_point_overrides (clan_id, source_key, chest_name, point_value, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(clanId, key, chest, points, new Date().toISOString());
+
+  beforeEach(() => {
+    seedTwoClans();
+    seedRealisticMix();
+    value(2, 'common 10', '', 7);
+    value(2, 'arena', "Gladiator's Chest", 4);
+    value(2, 'alchemy tournament', '', 11);
+    value(2, 'event trials of olympus', '', 9);
+    value(2, 'rise of the anclents event', '', 25); // an OCR-typo key no chest resolves to
+    invalidateSourceKeySummary();
+  });
+
+  it('lists what the site has received under the sources it has values for, at its own values', () => {
+    const guide = buildPointsGuide(2);
+    const crypts = section(guide.sections, 'crypts');
+    expect(crypts?.kind === 'matrix' && crypts.levels).toEqual([10]);
+    expect(crypts?.kind === 'matrix' && crypts.rows).toEqual([{ label: 'Common Crypt', cells: [7] }]);
+    const other = section(guide.sections, 'other');
+    expect(other?.kind === 'chests' && other.rows).toEqual([{ chest: "Gladiator's Chest", source: 'Arena', points: 4 }]);
+    const tournaments = section(guide.sections, 'tournaments');
+    // The source-wide value prices the real chest; the OCR stray stays out.
+    expect(tournaments?.kind === 'chests' && tournaments.rows)
+      .toEqual([{ chest: 'Prepared alchemical cauldron', source: 'Alchemy tournament', points: 11 }]);
+  });
+
+  it('never lists chests under a source it has no values for', () => {
+    // Clan 1 received Runic, Vault, Chimera, Jörmungandr … — clan 2 set nothing
+    // there, which is what keeps a Seasonal Kingdom's own chests out of a
+    // normal clan's table and the other way round.
+    const keys = buildPointsGuide(2).sections.map((s) => s.key).sort();
+    expect(keys).toEqual(['crypts', 'other', 'tournaments']);
+  });
+
+  it('still leaves typo keys and clan rewards out', () => {
+    const guide = buildPointsGuide(2);
+    const sections = JSON.stringify(guide.sections);
+    expect(sections).not.toContain('anclents');
+    expect(sections).not.toContain('Olympus'); // a clan reward: named under notCounted only
+    expect(guide.notCounted).toEqual(['Olympus Elite Chest']);
+  });
+
+  it('adds nothing to a clan that has received chests but set no values', () => {
+    // Clan 1's table is unchanged by clan 2's values.
+    const before = JSON.stringify(buildPointsGuide(1));
+    value(1, 'level 21 heroic monster', '', 1); // a key nobody received: changes nothing
+    invalidateSourceKeySummary();
+    expect(JSON.stringify(buildPointsGuide(1))).toBe(before);
   });
 });
 

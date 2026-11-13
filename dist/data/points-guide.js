@@ -16,15 +16,23 @@
  * that never drop anything) and listing those would advertise values no player
  * can earn.
  *
- * Each clan has its own scoring table (v86), so this is per clan too: the
- * chests that clan has received, at the values that clan pays. Observation
- * counts are used here to drop OCR strays and never leave the server.
+ * Each clan has its own scoring table (v86), so this is per clan too, at the
+ * values that clan pays. It lists the chests that clan has received, PLUS every
+ * chest some clan on this site has received under a source this clan has set
+ * values for. Without the second half a clan whose values were set up before
+ * its first scan — a new Seasonal Kingdom clan given a copy of another clan's
+ * values (Nov 2026) — showed "nothing scanned yet", and a young clan showed
+ * only the handful it had happened to receive. The source-key condition is what
+ * keeps another kingdom's chests out: a normal clan has no values for the
+ * Seasonal Kingdom's own sources, so their chests never reach its table.
+ * Observation counts are used here to drop OCR strays and never leave the server.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.placeChest = placeChest;
 exports.buildPointsGuide = buildPointsGuide;
 const database_js_1 = require("./database.js");
 const clan_reward_chests_js_1 = require("./clan-reward-chests.js");
+const clan_repo_js_1 = require("./repositories/clan-repo.js");
 const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
 const source_categories_js_1 = require("./source-categories.js");
 const source_names_js_1 = require("../vision/source-names.js");
@@ -146,15 +154,60 @@ function mergeTiers(rows) {
     }
     return out;
 }
+/**
+ * Every (source key, chest) any live clan has received, with counts summed
+ * across clans. Built from the per-clan summaries, which are cached and
+ * invalidated together, so this costs no query of its own once they're warm.
+ */
+function siteObservations() {
+    const keys = new Map();
+    const chestTotals = new Map();
+    for (const clan of (0, clan_repo_js_1.listClans)()) {
+        for (const s of (0, source_points_repo_js_1.getSourceKeySummary)(clan.id)) {
+            if (s.totalCount === 0)
+                continue;
+            let k = keys.get(s.sourceKey);
+            if (!k) {
+                k = { source: s.sampleSource, total: 0, topTotal: 0, chests: new Map() };
+                keys.set(s.sourceKey, k);
+            }
+            k.total += s.totalCount;
+            if (s.totalCount > k.topTotal) {
+                k.topTotal = s.totalCount;
+                k.source = s.sampleSource;
+            }
+            for (const row of s.chestRows) {
+                if (row.isWildcard || row.count === 0)
+                    continue;
+                k.chests.set(row.chestName, (k.chests.get(row.chestName) ?? 0) + row.count);
+                chestTotals.set(row.chestName, (chestTotals.get(row.chestName) ?? 0) + row.count);
+            }
+        }
+    }
+    return { keys, chestTotals };
+}
+/** True when the clan has set any value under this source, for a chest or the whole source. */
+function hasValuesSet(summary) {
+    return summary.chestRows.some((r) => r.override !== null);
+}
 function buildPointsGuide(clanId) {
     const notCounted = clanRewardChestNamesStored();
     const excluded = new Set(notCounted);
     const seen = [];
+    const summaries = (0, source_points_repo_js_1.getSourceKeySummary)(clanId);
     const chestTotals = new Map();
-    for (const summary of (0, source_points_repo_js_1.getSourceKeySummary)(clanId)) {
+    for (const summary of summaries) {
+        for (const row of summary.chestRows) {
+            if (row.isWildcard || row.count === 0 || excluded.has(row.chestName))
+                continue;
+            chestTotals.set(row.chestName, (chestTotals.get(row.chestName) ?? 0) + row.count);
+        }
+    }
+    for (const summary of summaries) {
         for (const row of summary.chestRows) {
             // The wildcard row is a rule, not a chest anyone received; count 0 is an
-            // override for a chest this source has never actually dropped.
+            // override for a chest this clan has never received (added below when
+            // it is a real chest).
             if (row.isWildcard || row.count === 0 || excluded.has(row.chestName))
                 continue;
             seen.push({
@@ -164,8 +217,40 @@ function buildPointsGuide(clanId) {
                 points: row.effectivePoints,
                 count: row.count,
                 keyTotal: summary.totalCount,
+                chestTotal: chestTotals.get(row.chestName) ?? row.count,
+                own: true,
             });
-            chestTotals.set(row.chestName, (chestTotals.get(row.chestName) ?? 0) + row.count);
+        }
+    }
+    // Chests this clan hasn't received (yet) but has values for: what the rest of
+    // the site has received under each source the clan has set values for, priced
+    // the way this clan's table prices them — chest value, else the source-wide
+    // value, else the built-in default, exactly as a scan would score it.
+    const configured = summaries.filter(hasValuesSet);
+    if (configured.length > 0) {
+        const site = siteObservations();
+        for (const summary of configured) {
+            const onSite = site.keys.get(summary.sourceKey);
+            if (!onSite)
+                continue; // a key no chest has resolved to: a typo, or a level nothing drops
+            const received = new Set(summary.chestRows.filter((r) => !r.isWildcard && r.count > 0).map((r) => r.chestName));
+            const chestValues = new Map(summary.chestRows
+                .filter((r) => !r.isWildcard && r.override !== null)
+                .map((r) => [r.chestName, r.override]));
+            for (const [chest, count] of onSite.chests) {
+                if (received.has(chest) || excluded.has(chest))
+                    continue;
+                seen.push({
+                    key: summary.sourceKey,
+                    source: onSite.source,
+                    chest,
+                    points: chestValues.get(chest) ?? summary.wildcardOverride ?? (0, source_names_js_1.getDefaultPointsFor)(summary.sourceKey, chest),
+                    count,
+                    keyTotal: onSite.total,
+                    chestTotal: site.chestTotals.get(chest) ?? count,
+                    own: false,
+                });
+            }
         }
     }
     const matrix = new Map();
@@ -177,11 +262,13 @@ function buildPointsGuide(clanId) {
         const at = placeChest(s.key, s.source, s.chest);
         if (at.section === 'crypts') {
             // One value per type and level; should two disagree, the one most chests
-            // were actually scored at is the one a player will meet.
+            // were actually scored at is the one a player will meet — and what the
+            // clan itself received beats what only other clans have.
             const cells = matrix.get(at.row) ?? new Map();
             const cur = cells.get(at.level);
-            if (!cur || s.count > cur.count)
-                cells.set(at.level, { points: s.points, count: s.count });
+            if (!cur || (s.own && !cur.own) || (s.own === cur.own && s.count > cur.count)) {
+                cells.set(at.level, { points: s.points, count: s.count, own: s.own });
+            }
             matrix.set(at.row, cells);
         }
         else if (at.section === 'heroic' || at.section === 'runic' || at.section === 'vault') {
@@ -192,7 +279,7 @@ function buildPointsGuide(clanId) {
         else {
             // Named lists also drop a chest that is a stray of its NAME: a known chest
             // read once against the wrong source would otherwise get a line of its own.
-            if (isStray(s.count, chestTotals.get(s.chest) ?? s.count))
+            if (isStray(s.count, s.chestTotal))
                 continue;
             const rows = chests.get(at.section) ?? new Map();
             // Spaced and spaceless spellings of one source are separate summary keys

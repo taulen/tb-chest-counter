@@ -15,16 +15,24 @@
  * that never drop anything) and listing those would advertise values no player
  * can earn.
  *
- * Each clan has its own scoring table (v86), so this is per clan too: the
- * chests that clan has received, at the values that clan pays. Observation
- * counts are used here to drop OCR strays and never leave the server.
+ * Each clan has its own scoring table (v86), so this is per clan too, at the
+ * values that clan pays. It lists the chests that clan has received, PLUS every
+ * chest some clan on this site has received under a source this clan has set
+ * values for. Without the second half a clan whose values were set up before
+ * its first scan — a new Seasonal Kingdom clan given a copy of another clan's
+ * values (Nov 2026) — showed "nothing scanned yet", and a young clan showed
+ * only the handful it had happened to receive. The source-key condition is what
+ * keeps another kingdom's chests out: a normal clan has no values for the
+ * Seasonal Kingdom's own sources, so their chests never reach its table.
+ * Observation counts are used here to drop OCR strays and never leave the server.
  */
 
 import { getDb } from './database.js';
 import { clanRewardChestIds } from './clan-reward-chests.js';
-import { getSourceKeySummary } from './repositories/source-points-repo.js';
+import { listClans } from './repositories/clan-repo.js';
+import { getSourceKeySummary, type SourceKeySummary } from './repositories/source-points-repo.js';
 import { sourceCategory } from './source-categories.js';
-import { canonicalSourceKey, parseSourceLevelRange } from '../vision/source-names.js';
+import { canonicalSourceKey, getDefaultPointsFor, parseSourceLevelRange } from '../vision/source-names.js';
 import { foldDiacritics } from '../vision/ocr-normalize.js';
 
 /** One row per crypt/citadel type, one column per level. */
@@ -190,17 +198,78 @@ function mergeTiers(rows: { from: number; to: number; points: number }[]): Point
   return out;
 }
 
+/** What the whole site has received under one source key, across live clans. */
+interface SiteKey {
+  /** The source string most seen for the key, for display and level ranges. */
+  source: string;
+  /** Records under the key, summed over clans. */
+  total: number;
+  /** The single largest clan total — decides which clan's source string wins. */
+  topTotal: number;
+  /** Records per chest name under the key. */
+  chests: Map<string, number>;
+}
+
+/**
+ * Every (source key, chest) any live clan has received, with counts summed
+ * across clans. Built from the per-clan summaries, which are cached and
+ * invalidated together, so this costs no query of its own once they're warm.
+ */
+function siteObservations(): { keys: Map<string, SiteKey>; chestTotals: Map<string, number> } {
+  const keys = new Map<string, SiteKey>();
+  const chestTotals = new Map<string, number>();
+  for (const clan of listClans()) {
+    for (const s of getSourceKeySummary(clan.id)) {
+      if (s.totalCount === 0) continue;
+      let k = keys.get(s.sourceKey);
+      if (!k) {
+        k = { source: s.sampleSource, total: 0, topTotal: 0, chests: new Map() };
+        keys.set(s.sourceKey, k);
+      }
+      k.total += s.totalCount;
+      if (s.totalCount > k.topTotal) {
+        k.topTotal = s.totalCount;
+        k.source = s.sampleSource;
+      }
+      for (const row of s.chestRows) {
+        if (row.isWildcard || row.count === 0) continue;
+        k.chests.set(row.chestName, (k.chests.get(row.chestName) ?? 0) + row.count);
+        chestTotals.set(row.chestName, (chestTotals.get(row.chestName) ?? 0) + row.count);
+      }
+    }
+  }
+  return { keys, chestTotals };
+}
+
+/** True when the clan has set any value under this source, for a chest or the whole source. */
+function hasValuesSet(summary: SourceKeySummary): boolean {
+  return summary.chestRows.some((r) => r.override !== null);
+}
+
 export function buildPointsGuide(clanId: number): PointsGuide {
   const notCounted = clanRewardChestNamesStored();
   const excluded = new Set(notCounted);
 
-  interface Seen { key: string; source: string; chest: string; points: number; count: number; keyTotal: number }
+  // `own`: the clan received it. Its rows keep the clan's own counts for the
+  // stray test (as they always have); the others are judged on the site's.
+  interface Seen {
+    key: string; source: string; chest: string; points: number;
+    count: number; keyTotal: number; chestTotal: number; own: boolean;
+  }
   const seen: Seen[] = [];
+  const summaries = getSourceKeySummary(clanId);
   const chestTotals = new Map<string, number>();
-  for (const summary of getSourceKeySummary(clanId)) {
+  for (const summary of summaries) {
+    for (const row of summary.chestRows) {
+      if (row.isWildcard || row.count === 0 || excluded.has(row.chestName)) continue;
+      chestTotals.set(row.chestName, (chestTotals.get(row.chestName) ?? 0) + row.count);
+    }
+  }
+  for (const summary of summaries) {
     for (const row of summary.chestRows) {
       // The wildcard row is a rule, not a chest anyone received; count 0 is an
-      // override for a chest this source has never actually dropped.
+      // override for a chest this clan has never received (added below when
+      // it is a real chest).
       if (row.isWildcard || row.count === 0 || excluded.has(row.chestName)) continue;
       seen.push({
         key: summary.sourceKey,
@@ -209,12 +278,47 @@ export function buildPointsGuide(clanId: number): PointsGuide {
         points: row.effectivePoints,
         count: row.count,
         keyTotal: summary.totalCount,
+        chestTotal: chestTotals.get(row.chestName) ?? row.count,
+        own: true,
       });
-      chestTotals.set(row.chestName, (chestTotals.get(row.chestName) ?? 0) + row.count);
     }
   }
 
-  type Cell = { points: number; count: number };
+  // Chests this clan hasn't received (yet) but has values for: what the rest of
+  // the site has received under each source the clan has set values for, priced
+  // the way this clan's table prices them — chest value, else the source-wide
+  // value, else the built-in default, exactly as a scan would score it.
+  const configured = summaries.filter(hasValuesSet);
+  if (configured.length > 0) {
+    const site = siteObservations();
+    for (const summary of configured) {
+      const onSite = site.keys.get(summary.sourceKey);
+      if (!onSite) continue; // a key no chest has resolved to: a typo, or a level nothing drops
+      const received = new Set(
+        summary.chestRows.filter((r) => !r.isWildcard && r.count > 0).map((r) => r.chestName),
+      );
+      const chestValues = new Map(
+        summary.chestRows
+          .filter((r) => !r.isWildcard && r.override !== null)
+          .map((r) => [r.chestName, r.override as number]),
+      );
+      for (const [chest, count] of onSite.chests) {
+        if (received.has(chest) || excluded.has(chest)) continue;
+        seen.push({
+          key: summary.sourceKey,
+          source: onSite.source,
+          chest,
+          points: chestValues.get(chest) ?? summary.wildcardOverride ?? getDefaultPointsFor(summary.sourceKey, chest),
+          count,
+          keyTotal: onSite.total,
+          chestTotal: site.chestTotals.get(chest) ?? count,
+          own: false,
+        });
+      }
+    }
+  }
+
+  type Cell = { points: number; count: number; own: boolean };
   type ChestRow = PointsGuideChests['rows'][number];
   const matrix = new Map<MatrixRowId, Map<number, Cell>>();
   const tiers = new Map<TierSectionKey, { from: number; to: number; points: number }[]>();
@@ -225,10 +329,13 @@ export function buildPointsGuide(clanId: number): PointsGuide {
     const at = placeChest(s.key, s.source, s.chest);
     if (at.section === 'crypts') {
       // One value per type and level; should two disagree, the one most chests
-      // were actually scored at is the one a player will meet.
+      // were actually scored at is the one a player will meet — and what the
+      // clan itself received beats what only other clans have.
       const cells = matrix.get(at.row) ?? new Map<number, Cell>();
       const cur = cells.get(at.level);
-      if (!cur || s.count > cur.count) cells.set(at.level, { points: s.points, count: s.count });
+      if (!cur || (s.own && !cur.own) || (s.own === cur.own && s.count > cur.count)) {
+        cells.set(at.level, { points: s.points, count: s.count, own: s.own });
+      }
       matrix.set(at.row, cells);
     } else if (at.section === 'heroic' || at.section === 'runic' || at.section === 'vault') {
       const list = tiers.get(at.section) ?? [];
@@ -237,7 +344,7 @@ export function buildPointsGuide(clanId: number): PointsGuide {
     } else {
       // Named lists also drop a chest that is a stray of its NAME: a known chest
       // read once against the wrong source would otherwise get a line of its own.
-      if (isStray(s.count, chestTotals.get(s.chest) ?? s.count)) continue;
+      if (isStray(s.count, s.chestTotal)) continue;
       const rows = chests.get(at.section) ?? new Map<string, ChestRow>();
       // Spaced and spaceless spellings of one source are separate summary keys
       // that score identically — one line between them.
