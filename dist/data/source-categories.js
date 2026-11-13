@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SOURCE_CATEGORIES = void 0;
 exports.sourceCategory = sourceCategory;
+exports.sourceSortRank = sourceSortRank;
 /**
  * Which family a chest source belongs to — the grouping shared by the
  * leaderboard FAQ's points table (points-guide.ts) and the Chest Points admin
@@ -49,5 +50,22 @@ function sourceCategory(key) {
     if (/event|omens|carrot|beastman|yokai|sakura|pumpkin/.test(canon))
         return 'events';
     return 'other';
+}
+/**
+ * Order within a category: crypt tier / citadel kind first (common, rare, epic,
+ * Tartaros; elven, cursed), then the caller's own order — the level, usually.
+ * Shared by the Chest Points board and the leaderboard's per-player breakdown
+ * so both list a family's sources the same way round.
+ */
+function sourceSortRank(key) {
+    if (/^tartaros \d+$/.test(key))
+        return 3;
+    if (/^rare \d+$/.test(key))
+        return 1;
+    if (/^epic \d+$/.test(key))
+        return 2;
+    if (/^cursed citadel \d+$/.test(key))
+        return 1;
+    return 0;
 }
 //# sourceMappingURL=source-categories.js.map

@@ -20,7 +20,7 @@ import {
   createPublicShareApiRouter,
   publicShareTokenHandler,
 } from '../../../src/web/routes/public-share.js';
-import { setClanChestTrackerSettings } from '../../../src/data/repositories/clan-repo.js';
+import { setClanChestTrackerSettings, setClanWeekStart } from '../../../src/data/repositories/clan-repo.js';
 import {
   createShareLink,
   revokeShareLink,
@@ -89,6 +89,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       '/api/public/__TOK__/leaderboard',
       '/api/public/__TOK__/faq',
       '/api/public/__TOK__/scan-status',
+      '/api/public/__TOK__/leaderboard/1/breakdown',
       '/api/public/__TOK__/external/latest',
       '/api/public/__TOK__/external/snapshots',
     ];
@@ -260,6 +261,58 @@ describe('public share surface (anonymous, token-gated)', () => {
     });
   });
 
+  // ── per-player breakdown: this clan's active members only ────────
+  describe('/leaderboard/:memberId/breakdown', () => {
+    const memberId = (clanId: number, name: string): number =>
+      (getDb().prepare('SELECT id FROM members WHERE clan_id = ? AND name = ?').get(clanId, name) as { id: number }).id;
+
+    it('splits the member\'s board row by source and adds up to it', async () => {
+      const alice = memberId(1, 'Alice');
+      const board = await request(app).get('/api/public/aAaA11/leaderboard');
+      const row = (board.body as Array<{ memberId: number; totalChests: number; totalPoints: number }>)
+        .find((e) => e.memberId === alice)!;
+
+      const r = await request(app).get(`/api/public/aAaA11/leaderboard/${alice}/breakdown`);
+      expect(r.status).toBe(200);
+      // Exact key set — the allow-list for what an anonymous visitor gets.
+      expect(Object.keys(r.body).sort()).toEqual(['memberId', 'memberName', 'sections', 'totalChests', 'totalPoints']);
+      expect(Object.keys(r.body.sections[0]).sort()).toEqual(['chests', 'key', 'points', 'rows']);
+      expect(Object.keys(r.body.sections[0].rows[0]).sort()).toEqual(['chests', 'points', 'source']);
+      expect(r.body.memberName).toBe('Alice');
+      expect(r.body.totalChests).toBe(row.totalChests);
+      expect(r.body.totalPoints).toBe(row.totalPoints);
+      const sources = r.body.sections.flatMap((s: { rows: { source: string }[] }) => s.rows.map((x) => x.source));
+      expect(sources.sort()).toEqual(['Level 5 Crypt', 'Raid']);
+    });
+
+    it('refuses another clan\'s member through this clan\'s token', async () => {
+      // Clan 2 is private: its Alice must not be readable by id via clan 1's link.
+      const foreign = memberId(2, 'Alice');
+      const r = await request(app).get(`/api/public/aAaA11/leaderboard/${foreign}/breakdown`);
+      expect(r.status).toBe(404);
+    });
+
+    it('refuses a member who has left, like the board does', async () => {
+      const bob = memberId(1, 'Bob');
+      getDb().prepare('UPDATE members SET is_active = 0 WHERE id = ?').run(bob);
+      expect((await request(app).get(`/api/public/aAaA11/leaderboard/${bob}/breakdown`)).status).toBe(404);
+    });
+
+    it('400s a member id that isn\'t a positive integer', async () => {
+      for (const bad of ['abc', '0', '-3', '1.5', '99999999999']) {
+        const r = await request(app).get(`/api/public/aAaA11/leaderboard/${bad}/breakdown`);
+        expect(r.status, `${bad} → ${r.status}`).toBe(400);
+      }
+    });
+
+    it('fires on hover, so it never counts as an API hit', async () => {
+      const alice = memberId(1, 'Alice');
+      await request(app).get(`/api/public/aAaA11/leaderboard/${alice}/breakdown`);
+      await request(app).get(`/api/public/aAaA11/leaderboard/${alice}/breakdown`);
+      expect(getShareLink(1, linkIdA)!.apiHitCount).toBe(0);
+    });
+  });
+
   // ── no secret / PII leakage ──────────────────────────────────────
   describe('responses expose no secrets', () => {
     it('/clan returns only display fields, never the token or discord secret', async () => {
@@ -305,7 +358,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       // Exact key sets — the allow-list for what an anonymous visitor gets.
       expect(Object.keys(r.body).sort()).toEqual(['board', 'contacts', 'pointsGuide']);
       expect(Object.keys(r.body.contacts).sort()).toEqual(['clanAdmins', 'siteAdmins']);
-      expect(Object.keys(r.body.board).sort()).toEqual(['goalAmberPct', 'goalWeeklyPoints', 'goldPass', 'guards', 'might']);
+      expect(Object.keys(r.body.board).sort()).toEqual(['goalAmberPct', 'goalWeeklyPoints', 'goldPass', 'guards', 'might', 'weekStart']);
       // Most recently active first.
       expect(r.body.contacts.clanAdmins).toEqual(['adminnew', 'adminold']);
       expect(r.body.contacts.siteAdmins).toEqual(['boss']);
@@ -326,7 +379,15 @@ describe('public share surface (anonymous, token-gated)', () => {
     // the token clan's data. (Separate cases: the might lookup is cached.)
     it('explains no board extras the clan has no data for', async () => {
       const r = await request(app).get('/api/public/aAaA11/faq');
-      expect(r.body.board).toEqual({ goalWeeklyPoints: null, goalAmberPct: 66, guards: false, might: false, goldPass: false });
+      expect(r.body.board).toEqual({ goalWeeklyPoints: null, goalAmberPct: 66, guards: false, might: false, goldPass: false, weekStart: 'sunday' });
+    });
+
+    // "When does a week start?" must be the clan's answer: a clan counting
+    // Tinman to Tinman was told its weeks start on Sunday.
+    it('states the clan\'s own week, Tinman to Tinman included', async () => {
+      setClanWeekStart(1, 'ancients');
+      const r = await request(app).get('/api/public/aAaA11/faq');
+      expect(r.body.board.weekStart).toBe('ancients');
     });
 
     it('explains Might once the clan has a might snapshot', async () => {

@@ -17,6 +17,7 @@ const index_js_1 = require("../../config/index.js");
 const parse_int_js_1 = require("../../utils/parse-int.js");
 const asset_versioning_js_1 = require("../asset-versioning.js");
 const session_repo_js_1 = require("../../data/repositories/session-repo.js");
+const member_source_breakdown_js_1 = require("../../data/member-source-breakdown.js");
 const PUBLIC_DIR = path_1.default.resolve('src/web/public');
 // Cache-bust JS/CSS references on each container start so a redeploy
 // doesn't get masked by Cloudflare or browser cache.
@@ -270,6 +271,37 @@ function createPublicShareApiRouter(scanLoop) {
             return;
         }
         res.json((0, leaderboard_handler_js_1.queryLeaderboard)(clan.id, (0, leaderboard_handler_js_1.parseLeaderboardQuery)(req)));
+    });
+    // GET /:token/leaderboard/:memberId/breakdown — one board row's chests and
+    // points split by the source that paid them, for the window in ?from/?to
+    // (parsed exactly as /leaderboard parses it). Feeds the per-player hover card
+    // and the tap-to-open sheet on a phone. Only an ACTIVE member of the token's
+    // clan answers — the people the board already lists — so an id from another
+    // clan, or a former member, is a 404 like a bad token.
+    //
+    // NOT counted as an API hit: it fires on hover, and one visitor running the
+    // pointer down the board would otherwise outcount every real read the link
+    // gets — the reason /scan-status isn't counted either.
+    router.get('/:token/leaderboard/:memberId/breakdown', (req, res) => {
+        const token = paramAsString(req.params.token);
+        const clan = resolveClan(token, { countHit: false });
+        if (!clan) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+        const raw = paramAsString(req.params.memberId);
+        const memberId = /^\d{1,10}$/.test(raw) ? Number(raw) : NaN;
+        if (!Number.isSafeInteger(memberId) || memberId <= 0) {
+            res.status(400).json({ error: 'Invalid member id' });
+            return;
+        }
+        const { from, to } = (0, leaderboard_handler_js_1.parseLeaderboardQuery)(req);
+        const breakdown = (0, member_source_breakdown_js_1.getMemberSourceBreakdown)(clan.id, memberId, from, to);
+        if (!breakdown) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+        res.json(breakdown);
     });
     // GET /:token/faq — the leaderboard FAQ modal: the global points-per-chest
     // table, plus who a visitor can ask for an account. Contacts are this

@@ -14,7 +14,7 @@ import { buildPointsGuide, type PointsGuide } from '../../data/points-guide.js';
 import { getClanById, listGoalHistory, type Clan } from '../../data/repositories/clan-repo.js';
 import type { LeaderboardEntry } from '../../models/types.js';
 import { loadConfig } from '../../config/index.js';
-import { currentGameDate, gameDateFor, gameWindow } from '../../utils/game-day.js';
+import { currentGameDate, gameDateFor, gameWindow, type WeekStart } from '../../utils/game-day.js';
 import { amberPctOrDefault, weeklyGoalForDays, type WeeklyGoalStep } from '../../utils/weekly-goal.js';
 
 function isValidIso(s: string | undefined): s is string {
@@ -105,6 +105,12 @@ export interface LeaderboardFeatures {
   guards: boolean;
   might: boolean;
   goldPass: boolean;
+  /**
+   * How this clan cuts its week — Sunday, or Tinman to Tinman ('ancients',
+   * 'ancients-sk' in a Seasonal Kingdom) — for the "when does a week start?"
+   * answer. From the clan, like the rest of this, never from the opening page.
+   */
+  weekStart: WeekStart;
 }
 
 export interface LeaderboardFaq {
@@ -134,6 +140,7 @@ function leaderboardFeatures(clan: Clan | null, clanId: number): LeaderboardFeat
     guards: rows.some((e) => e.guardsLevel != null),
     might: rows.some((e) => e.might != null || e.heroLevel != null),
     goldPass: rows.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
+    weekStart: clan?.weekStart ?? 'sunday',
   };
 }
 

@@ -43,3 +43,17 @@ export function sourceCategory(key: string): SourceCategory {
   if (/event|omens|carrot|beastman|yokai|sakura|pumpkin/.test(canon)) return 'events';
   return 'other';
 }
+
+/**
+ * Order within a category: crypt tier / citadel kind first (common, rare, epic,
+ * Tartaros; elven, cursed), then the caller's own order — the level, usually.
+ * Shared by the Chest Points board and the leaderboard's per-player breakdown
+ * so both list a family's sources the same way round.
+ */
+export function sourceSortRank(key: string): number {
+  if (/^tartaros \d+$/.test(key)) return 3;
+  if (/^rare \d+$/.test(key)) return 1;
+  if (/^epic \d+$/.test(key)) return 2;
+  if (/^cursed citadel \d+$/.test(key)) return 1;
+  return 0;
+}

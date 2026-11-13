@@ -50,7 +50,7 @@ import {
   canonicalSourceKey, getSourceKey, getDefaultPointsFor, hasDefaultPointsFor, parseSourceLevelRange,
   SOURCE_CHEST_POINTS, SOURCE_POINT_KEYS,
 } from '../vision/source-names.js';
-import { SOURCE_CATEGORIES, sourceCategory, type SourceCategory } from './source-categories.js';
+import { SOURCE_CATEGORIES, sourceCategory, sourceSortRank, type SourceCategory } from './source-categories.js';
 
 /** Largest value a save accepts — the biggest real one is 10,000. */
 export const MAX_POINTS = 1_000_000;
@@ -322,14 +322,6 @@ function sourceLabel(key: string, category: SourceCategory, sample: string): str
   return sample || titleCase(key).replace(/ S\b/g, '\'s');
 }
 
-/** Order within a category: crypt tier / citadel kind first, then the label. */
-function sortRank(key: string): number {
-  if (/^tartaros \d+$/.test(key)) return 3;
-  if (/^rare \d+$/.test(key)) return 1;
-  if (/^epic \d+$/.test(key)) return 2;
-  if (/^cursed citadel \d+$/.test(key)) return 1;
-  return 0;
-}
 
 /** The value most records score; ties go to the value more chests share, then the lower. */
 function majorityPoints(chests: BoardChest[]): number {
@@ -446,7 +438,7 @@ function buildBoard(clanId: number, groups: RecordGroup[], overrides: Map<string
         : points === 0 && !wildcardSet && !hasDefaultPointsFor(key, ''),
       staleRecords: stale,
       group: sourceGroup(key, category)?.id ?? null,
-      rank: sortRank(key),
+      rank: sourceSortRank(key),
     });
   }
 

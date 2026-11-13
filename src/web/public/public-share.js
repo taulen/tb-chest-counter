@@ -17,7 +17,9 @@ import {
   sortLeaderboardEntries,
   renderLeaderboardCardHtml,
   copyLeaderboardData,
+  leaderboardWindowLabel,
 } from './lib/leaderboard-render.js';
+import { initLeaderboardBreakdown, breakdownNameHtml } from './lib/leaderboard-breakdown.js';
 import {
   renderSnapshotDetailCardHtml,
   renderShareCodeSelect,
@@ -145,6 +147,14 @@ function start() {
   };
   // What the last leaderboard render showed, for the Copy data button.
   let lastCopy = null;
+  // The board on screen, for the per-player breakdown: which window its rows
+  // are for (a click on another period moves currentPeriod before the new rows
+  // land), and each row by member id, so the card can name the member and
+  // their rank before its own fetch returns.
+  let boardWindow = { period: currentPeriod, offset: currentPeriodOffset };
+  let boardEntries = new Map();
+  // Hover card + name → modal. Set up in wireEvents.
+  let breakdown = null;
 
   async function fetchJson(url) {
     const r = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
@@ -258,7 +268,11 @@ function start() {
   async function renderLeaderboard({ quiet = false } = {}) {
     const seq = ++renderSeq;
     const el = document.getElementById('content');
-    if (!quiet) el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
+    if (!quiet) {
+      // The rows an open breakdown card is anchored to are about to go.
+      breakdown?.reset();
+      el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
+    }
     // The window this render fetches, kept so the label it paints is the one
     // its numbers belong to.
     const period = currentPeriod;
@@ -276,6 +290,12 @@ function start() {
       return;
     }
     if (seq !== renderSeq) return;
+
+    // New rows, maybe a new window: breakdowns fetched for the old board are
+    // stale (a finished scan is one reason this ran), and so is an open card.
+    boardWindow = { period, offset };
+    boardEntries = new Map(rows.map((e) => [e.memberId, e]));
+    breakdown?.reset();
 
     const sorted = sortLeaderboardEntries(rows, leaderboardSort.key, leaderboardSort.dir);
     // Whole result set, not the visible page — see the auth page's note.
@@ -302,9 +322,9 @@ function start() {
       // rolloverHr defaults to whatever we pushed into shared state
       // during init() from the /clan response.
       pageSize: PAGE_SIZE,
-      // Public page can't link to member detail (no auth, no router) —
-      // render plain text instead of the auth memberLink helper.
-      playerCellHtml: (e) => esc(e.memberName),
+      // No member profile to link to here (no auth, no router): the name opens
+      // the player's chest breakdown instead, and hovering the row previews it.
+      playerCellHtml: breakdownNameHtml,
       // No FAQ button on the card: the tab row's "FAQ & access" is always on
       // screen, on either tab, and two of the same button read as a mistake.
       actions: { ...ACTIONS, openFaq: null },
@@ -333,6 +353,7 @@ function start() {
 
   async function renderChestTracker() {
     const seq = ++renderSeq;
+    breakdown?.reset();
     const el = document.getElementById('content');
     el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
     let data;
@@ -411,6 +432,26 @@ function start() {
     // Mobile compact-row expand/collapse (delegated; survives re-renders).
     initMobileRows(document.getElementById('content'));
     initSortableHeaders(document.getElementById('content'));
+
+    // Per-player chest breakdown: hover a row, or click / tap a name. Always
+    // for the window the board on screen was fetched for.
+    breakdown = initLeaderboardBreakdown(document.getElementById('content'), {
+      load: (memberId) => {
+        const params = new URLSearchParams();
+        const win = computeGameWindow(boardWindow.period, boardWindow.offset);
+        if (win) { params.set('from', win.from); params.set('to', win.to); }
+        const qs = params.toString();
+        return fetchJson(`${API}/leaderboard/${memberId}/breakdown${qs ? `?${qs}` : ''}`);
+      },
+      context: (memberId) => {
+        const e = boardEntries.get(memberId);
+        return {
+          memberName: e?.memberName || '',
+          rank: e?.rank ?? null,
+          windowLabel: leaderboardWindowLabel(boardWindow.period, boardWindow.offset, rolloverHr),
+        };
+      },
+    });
 
     document.getElementById('content').addEventListener('click', (ev) => {
       const target = ev.target.closest('[data-action]');

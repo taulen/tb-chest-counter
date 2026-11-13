@@ -52,6 +52,7 @@ exports.countChestsByMember = countChestsByMember;
 exports.getChests = getChests;
 exports.getMemberStats = getMemberStats;
 exports.getLeaderboard = getLeaderboard;
+exports.getMemberChestsBySource = getMemberChestsBySource;
 exports.getTotalChestCount = getTotalChestCount;
 exports.getRecentChests = getRecentChests;
 exports.getSingleDayRecords = getSingleDayRecords;
@@ -575,6 +576,41 @@ function computeLeaderboard(clanId, from, to, options = {}) {
         totalChests: row.total_chests,
         totalPoints: row.total_points,
     }));
+}
+/**
+ * One member's leaderboard chests in a [from, to) window, counted and summed
+ * per chest_sources row — the raw input to the leaderboard's per-player
+ * breakdown (src/data/member-source-breakdown.ts).
+ *
+ * The WHERE is computeLeaderboard's with `member_id = ?` added — same window
+ * column, same clan-reward exclusion — so the groups always add up to exactly
+ * the chests and points on that member's leaderboard row. Keep the two in step.
+ *
+ * Plans as a range on idx_cr_clan_member_effective_pts (clan, member,
+ * effective_at), fetching each row for its source id: one member's records, a
+ * few thousand at most even all-time, which is why it isn't cached.
+ */
+function getMemberChestsBySource(clanId, memberId, from, to) {
+    const conditions = ['clan_id = ?', 'member_id = ?'];
+    const params = [clanId, memberId];
+    if (from) {
+        conditions.push('effective_at >= ?');
+        params.push(isoToMs(from));
+    }
+    if (to) {
+        conditions.push('effective_at < ?');
+        params.push(isoToMs(to));
+    }
+    return (0, database_js_1.getDb)().prepare(`
+    SELECT COALESCE(cs.source, '') AS source, g.chests, g.points
+    FROM (
+      SELECT chest_source_id, COUNT(*) AS chests, SUM(point_value) AS points
+      FROM chest_records
+      WHERE ${conditions.join(' AND ')}${(0, clan_reward_chests_js_1.clanRewardExclusionSql)()}
+      GROUP BY chest_source_id
+    ) g
+    LEFT JOIN chest_sources cs ON cs.id = g.chest_source_id
+  `).all(...params);
 }
 function getTotalChestCount(clanId) {
     const db = (0, database_js_1.getDb)();

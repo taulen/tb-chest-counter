@@ -6283,6 +6283,258 @@ table.faq-matrix { min-width: 460px; }
   .faq-steps > li::before { left: 12px; }
 }
 
+/* ─── Leaderboard per-player breakdown (lib/leaderboard-breakdown.js) ────────
+   A player's points split by chest source: a hover card beside the row on a
+   desktop, the same overview in a modal from the name (the phone path). */
+
+/* The name opens the modal: it reads as the name and shows it is clickable on
+   hover, exactly like .member-link on the signed-in board. */
+.lb-name-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  transition: color var(--transition);
+}
+.lb-name-btn:hover {
+  color: var(--accent-gold);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+@media (max-width: 640px) {
+  /* No hover on a phone, so the name is the only way in: a dotted underline
+     says it opens something without out-shouting the row. */
+  .lb-name-btn {
+    font-weight: inherit;
+    text-decoration: underline dotted;
+    text-decoration-color: var(--text-muted);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+}
+
+.lbb-card {
+  position: fixed;
+  z-index: 9999;
+  /* A glance, never a target: the pointer passes through to the rows below,
+     so moving down the board moves the card instead of parking on it. */
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  width: 440px;
+  max-width: calc(100vw - 16px);
+  max-height: min(78vh, 720px);
+  padding: 14px 16px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.lbb-card.visible {
+  opacity: 1;
+  transform: none;
+}
+.lbb-card.is-wide { width: 860px; }
+@media (prefers-reduced-motion: reduce) {
+  .lbb-card { transition: none; transform: none; }
+}
+
+.lbb-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.lbb-who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.lbb-name {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lbb-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.lbb-sheet-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: -6px 0 8px;
+}
+
+.lbb-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.lbb-totals strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.lbb-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lbb-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 28px;
+  align-items: start;
+}
+.lbb-cols.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* One grid per line, the same tracks in every one, so the numbers line up
+   down a column whichever section they sit in. */
+.lbb-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5em 5.5em;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.lbb-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lbb-src {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lbb-colhead {
+  padding-top: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.lbb-section + .lbb-section { margin-top: 6px; }
+.lbb-section-head {
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.lbb-section-head .lbb-src { color: var(--accent-gold); }
+/* The fill is the line's share of the member's points — a bar chart read
+   down the card, so what made the score stands out without reading a number. */
+.lbb-row {
+  border-radius: 4px;
+  background-image: linear-gradient(90deg, var(--accent-gold-bg-strong) 0 var(--lbb-share, 0%), transparent var(--lbb-share, 0%));
+}
+.lbb-row .lbb-pts {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.lbb-row.is-zero,
+.lbb-row.is-zero .lbb-pts {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.lbb-empty {
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* A card too long for the viewport fades out at the bottom and says where the
+   rest is. The modal scrolls instead. */
+.lbb-card .lbb-body { overflow: hidden; }
+.lbb-card.is-clipped .lbb-body::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, var(--bg-elevated));
+}
+.lbb-more {
+  display: none;
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.lbb-card.is-clipped .lbb-more { display: block; }
+
+/* The modal: one column of sources reads best narrow; two columns get the
+   wide card. Only the lines scroll, so the totals stay in view. */
+.lbb-modal {
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+}
+.lbb-modal.is-two { max-width: 920px; }
+.lbb-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lbb-modal .lbb-body {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+/* The modal is where the list is read, so a long source name wraps instead of
+   ending in an ellipsis — on a phone the column is too narrow for most. The
+   glance card keeps the ellipsis. */
+.lbb-modal .lbb-src {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .lbb-cols.is-two { grid-template-columns: minmax(0, 1fr); }
+  /* Stacked, the second column's header row would repeat the first's. */
+  .lbb-cols.is-two .lbb-col + .lbb-col .lbb-colhead { display: none; }
+  .lbb-cols.is-two .lbb-col + .lbb-col { margin-top: 6px; }
+}
+
 /* ─── Chart data tables (lib/chart-a11y.js) ─────────────────────────────────
    "Show data as table" under each Chart.js chart: the same numbers the canvas
    draws, readable without a mouse or a screen. Collapsed by default so the

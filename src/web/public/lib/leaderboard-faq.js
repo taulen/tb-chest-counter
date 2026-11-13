@@ -16,6 +16,7 @@
 
 import { escapeHtml, esc, contentModal } from './ui.js';
 import { t, tn, tGame } from './i18n.js';
+import { isTinmanWeek, weekLengthDays } from './period.js';
 
 const REPO_URL = 'https://github.com/taulen/tb-chest-counter';
 
@@ -46,6 +47,15 @@ const SECTION_TITLES = {
 
 function sectionTitle(section) {
   return SECTION_TITLES[section.key] || section.title;
+}
+
+/**
+ * A points-table section's heading by key ('crypts', 'heroic', …), or '' for a
+ * key this list doesn't know. Shared with lib/leaderboard-breakdown.js, whose
+ * per-player sections are these same ones, so the two read alike.
+ */
+export function pointsSectionTitle(key) {
+  return SECTION_TITLES[key] || '';
 }
 
 function renderMatrix(section) {
@@ -130,13 +140,35 @@ function rolloverLabel(hr) {
   return t('{utc} ({local} your time)', { utc, local });
 }
 
+/**
+ * When this clan's day, week and month start. The week is the clan's own
+ * (Clans → Week): Sunday, or Tinman to Tinman — 6 days, or 5 in a Seasonal
+ * Kingdom — so a clan counting from Tinman isn't told its week starts Sunday.
+ */
+function timeframesAnswerHtml(rolloverHr, weekStart) {
+  const time = escapeHtml(rolloverLabel(rolloverHr));
+  if (!isTinmanWeek(weekStart)) {
+    return t("Every timeframe follows the game's daily reset at {time}. Weeks start on Sunday at that time, months on the 1st.", { time });
+  }
+  const days = weekLengthDays(weekStart);
+  // Names the event once: in several languages the game calls the Ancients
+  // event and its day-2 stage the same thing, so "{event} ({ancients} day 2)"
+  // read "Восстание Древних (день 2 Восстание Древних)".
+  return tn(
+    days,
+    "Every timeframe follows the game's daily reset at {time}. This clan's week runs Tinman to Tinman: it starts on Tinman day, when {event} begins, and lasts {n} day, until the next one. Months start on the 1st.",
+    "Every timeframe follows the game's daily reset at {time}. This clan's week runs Tinman to Tinman: it starts on Tinman day, when {event} begins, and lasts {n} days, until the next one. Months start on the 1st.",
+    { time, event: escapeHtml(tGame('Rise of the Ancients')) },
+  );
+}
+
 function renderHowTab({ mode, rolloverHr, board, notCounted }) {
-  const { goalWeeklyPoints = null, goalAmberPct = GOAL_WARN_PCT, guards = false, might = false, goldPass = false } = board || {};
+  const { goalWeeklyPoints = null, goalAmberPct = GOAL_WARN_PCT, guards = false, might = false, goldPass = false, weekStart = 'sunday' } = board || {};
   const items = [];
 
   items.push(qa(t('How are points counted?'), `<p>${t("When a member opens a crypt, defeats a monster or earns an event chest, the game posts a gift in the clan's Gifts tab saying who earned it and where it came from. The clan's scanner collects those gifts and credits each one to that member, worth the points shown on the <em>Chest points</em> tab.")}</p>`));
 
-  items.push(qa(t('When does a day, week or month start?'), `<p>${t("Every timeframe follows the game's daily reset at {time}. Weeks start on Sunday at that time, months on the 1st.", { time: escapeHtml(rolloverLabel(rolloverHr)) })}</p>`));
+  items.push(qa(t('When does a day, week or month start?'), `<p>${timeframesAnswerHtml(rolloverHr, weekStart)}</p>`));
 
   items.push(qa(t('How up to date is it?'), `<p>${t('The board updates after every scan of the Gifts tab, so a chest earned in the last little while may not be on it yet.')}</p>`));
 

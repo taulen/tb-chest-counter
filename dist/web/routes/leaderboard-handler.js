@@ -110,6 +110,7 @@ function leaderboardFeatures(clan, clanId) {
         guards: rows.some((e) => e.guardsLevel != null),
         might: rows.some((e) => e.might != null || e.heroLevel != null),
         goldPass: rows.some((e) => e.goldPass === 'current' || e.goldPass === 'previous'),
+        weekStart: clan?.weekStart ?? 'sunday',
     };
 }
 /**

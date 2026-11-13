@@ -452,6 +452,16 @@ export function renderLeaderboardCardHtml({
   </div>`;
 }
 
+/**
+ * The timeframe a board view covers, as its title states it: "Weekly ·
+ * 2026-11-08 → 2026-11-14", or "All Time". Used by the copied text and the
+ * per-player breakdown (lib/leaderboard-breakdown.js).
+ */
+export function leaderboardWindowLabel(period, offset, rolloverHr) {
+  const range = formatPeriodLabel(period, offset, rolloverHr);
+  return period === 'all' ? range : `${PERIOD_LABELS[period]} · ${range}`;
+}
+
 // ─── Copy data ────────────────────────────────────────────────
 
 // Status marks for the copied text, NOT the page's ✓ ◐ ↓: the in-game chat font
@@ -482,8 +492,7 @@ export function leaderboardCopyText({
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
   // The week's "a → b" range: → is an arrow like ↓, which the chat font lacks.
-  const range = formatPeriodLabel(period, offset, rolloverHr).replace(' → ', ' - ');
-  const when = period === 'all' ? range : `${PERIOD_LABELS[period]} · ${range}`;
+  const when = leaderboardWindowLabel(period, offset, rolloverHr).replace(' → ', ' - ');
 
   const header = [t('Rank'), t('Player'), countLabel, t('Points')];
   if (periodGoal !== null) header.push(t('Status'));

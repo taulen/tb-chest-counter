@@ -212,18 +212,6 @@ function sourceLabel(key, category, sample) {
     // Keys flatten an apostrophe to a space: "azada s shop" is Azada's Shop.
     return sample || titleCase(key).replace(/ S\b/g, '\'s');
 }
-/** Order within a category: crypt tier / citadel kind first, then the label. */
-function sortRank(key) {
-    if (/^tartaros \d+$/.test(key))
-        return 3;
-    if (/^rare \d+$/.test(key))
-        return 1;
-    if (/^epic \d+$/.test(key))
-        return 2;
-    if (/^cursed citadel \d+$/.test(key))
-        return 1;
-    return 0;
-}
 /** The value most records score; ties go to the value more chests share, then the lower. */
 function majorityPoints(chests) {
     const byValue = new Map();
@@ -321,7 +309,7 @@ function buildBoard(clanId, groups, overrides, opts = {}) {
                 : points === 0 && !wildcardSet && !(0, source_names_js_1.hasDefaultPointsFor)(key, ''),
             staleRecords: stale,
             group: sourceGroup(key, category)?.id ?? null,
-            rank: sortRank(key),
+            rank: (0, source_categories_js_1.sourceSortRank)(key),
         });
     }
     const order = new Map(source_categories_js_1.SOURCE_CATEGORIES.map((c, i) => [c.key, i]));

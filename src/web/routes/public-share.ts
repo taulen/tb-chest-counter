@@ -26,6 +26,7 @@ import { loadConfig } from '../../config/index.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
 import { versionHtmlAssets } from '../asset-versioning.js';
 import { getLastCompletedSession } from '../../data/repositories/session-repo.js';
+import { getMemberSourceBreakdown } from '../../data/member-source-breakdown.js';
 import type { Clan } from '../../data/repositories/clan-repo.js';
 import type { ScanLoop } from '../../scheduler/loop.js';
 
@@ -296,6 +297,38 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
       return;
     }
     res.json(queryLeaderboard(clan.id, parseLeaderboardQuery(req)));
+  });
+
+  // GET /:token/leaderboard/:memberId/breakdown — one board row's chests and
+  // points split by the source that paid them, for the window in ?from/?to
+  // (parsed exactly as /leaderboard parses it). Feeds the per-player hover card
+  // and the tap-to-open sheet on a phone. Only an ACTIVE member of the token's
+  // clan answers — the people the board already lists — so an id from another
+  // clan, or a former member, is a 404 like a bad token.
+  //
+  // NOT counted as an API hit: it fires on hover, and one visitor running the
+  // pointer down the board would otherwise outcount every real read the link
+  // gets — the reason /scan-status isn't counted either.
+  router.get('/:token/leaderboard/:memberId/breakdown', (req, res) => {
+    const token = paramAsString(req.params.token);
+    const clan = resolveClan(token, { countHit: false });
+    if (!clan) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    const raw = paramAsString(req.params.memberId);
+    const memberId = /^\d{1,10}$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(memberId) || memberId <= 0) {
+      res.status(400).json({ error: 'Invalid member id' });
+      return;
+    }
+    const { from, to } = parseLeaderboardQuery(req);
+    const breakdown = getMemberSourceBreakdown(clan.id, memberId, from, to);
+    if (!breakdown) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    res.json(breakdown);
   });
 
   // GET /:token/faq — the leaderboard FAQ modal: the global points-per-chest
