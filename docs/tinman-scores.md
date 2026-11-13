@@ -13,7 +13,7 @@ Rise of the Ancients standings, pasted in by an admin after each summon. The car
   - The target is always the whole run's, never split per summon: the clan judges the total, so mid-run everyone simply reads as not there yet. The kill count is kept for display only.
   - The goal colours (`goalStatusClassFor`: green at target, amber from 66%, red below) and their glyph + words are the Leaderboard's.
   - Players under target are listed in *Below Tin Man target* at the bottom of the page.
-- **Formats** the parser reads: markdown tables, tab-separated rows, and plain `rank name points` lines. Points can use any thousands separator. Lines it can't read are reported back, never dropped silently.
+- **Formats** the parser reads (one parser for every event below): markdown tables, tab-separated rows, CSV (`1,Name,"63,965,364"`, unquoted, or `;`-separated), and plain `rank name points` lines. Plain lines may separate name and points with `-` `–` `:` `=` `,`, end in "points"/"pts", carry markdown bold, or lead with a medal instead of a rank. Points can use any thousands separator, but only one kind per number, so a name ending in a digit keeps it (`Fiin SK 3 239,421`). In CSV the name is its own field, so `10,Fiin SK 3,239,421` reads as "Fiin SK 3" even unquoted. Lines it can't read are reported back, never dropped silently.
 
 ## Per-day scores (Events → Olympus, Ragnarok, Dark Omens)
 

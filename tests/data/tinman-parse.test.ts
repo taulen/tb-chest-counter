@@ -46,6 +46,86 @@ describe('parseTinmanStandings', () => {
     ]);
   });
 
+  it('reads a CSV export with quoted points', () => {
+    // Lines from a real SK7 paste (2026-11-14) that read as nothing before.
+    const csv = [
+      'Rank,Name,Points',
+      '1,Ariron SK,"3,279,585"',
+      '5,Sergio Magaña,"266,327"',
+      '10,Fiin SK 3,"239,421"',
+      '46,Tojalkis 007,"45,515"',
+      '71,Störtebeker 260 SK,"14,083"',
+      '73,taulen K260 SK,0',
+    ].join('\r\n');
+    const { rows, skipped } = parseTinmanStandings(csv);
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([
+      { rank: 1, name: 'Ariron SK', points: 3_279_585 },
+      { rank: 5, name: 'Sergio Magaña', points: 266_327 },
+      { rank: 10, name: 'Fiin SK 3', points: 239_421 },
+      { rank: 46, name: 'Tojalkis 007', points: 45_515 },
+      { rank: 71, name: 'Störtebeker 260 SK', points: 14_083 },
+      { rank: 73, name: 'taulen K260 SK', points: 0 },
+    ]);
+  });
+
+  it('reads CSV without quotes, quoted names, and semicolon CSV', () => {
+    const { rows, skipped } = parseTinmanStandings([
+      '1,Ariron SK,3,279,585',
+      '10,Fiin SK 3,239,421',
+      '"11","Smith, John","1,000"',
+      '12;Sombrita K260 SK;224.811',
+      'Zorro,"172,737"',
+      '"Bob ""Ace"" Jr",500',
+    ].join('\n'));
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([
+      { rank: 1, name: 'Ariron SK', points: 3_279_585 },
+      { rank: 10, name: 'Fiin SK 3', points: 239_421 },
+      { rank: 11, name: 'Smith, John', points: 1_000 },
+      { rank: 12, name: 'Sombrita K260 SK', points: 224_811 },
+      { rank: 5, name: 'Zorro', points: 172_737 },
+      { rank: 6, name: 'Bob "Ace" Jr', points: 500 },
+    ]);
+  });
+
+  it('reads chat-style lists: separators, units, bold and medals', () => {
+    const { rows, skipped } = parseTinmanStandings([
+      '🥇 **Ariron SK** – 3,279,585 points',
+      '#2 Frostbite sk7: 2,385,257 pts',
+      '3) DragonFly K260 SK7 - 437,542',
+      '4.Mean Lucifer = 281,574',
+      '| 5 | **Sergio Magaña** | **266,327** |',
+      '6. Kobe 260 SK7\t265,399',
+      'Chenzo — 137,999 Punkte',
+    ].join('\n'));
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([
+      { rank: 1, name: 'Ariron SK', points: 3_279_585 },
+      { rank: 2, name: 'Frostbite sk7', points: 2_385_257 },
+      { rank: 3, name: 'DragonFly K260 SK7', points: 437_542 },
+      { rank: 4, name: 'Mean Lucifer', points: 281_574 },
+      { rank: 5, name: 'Sergio Magaña', points: 266_327 },
+      { rank: 6, name: 'Kobe 260 SK7', points: 265_399 },
+      { rank: 7, name: 'Chenzo', points: 137_999 },
+    ]);
+  });
+
+  it('never reads a number at the end of a name into mixed-separator points', () => {
+    const { rows } = parseTinmanStandings('10 Fiin SK 3 239,421\nFiin SK 3 239.421\nAgent 007, 1,234');
+    expect(rows).toEqual([
+      { rank: 10, name: 'Fiin SK 3', points: 239_421 },
+      { rank: 2, name: 'Fiin SK 3', points: 239_421 },
+      { rank: 3, name: 'Agent 007', points: 1_234 },
+    ]);
+  });
+
+  it('skips headers in other wordings', () => {
+    const { rows, skipped } = parseTinmanStandings('"Rank","Name","Points"\n# | Player | Score\nPos;Member;Damage\n1,Ace,10');
+    expect(skipped).toEqual([]);
+    expect(rows).toEqual([{ rank: 1, name: 'Ace', points: 10 }]);
+  });
+
   it('keeps unreadable names apart instead of merging them into one player', () => {
     // From the CWB paste (2026-10-23): two stand-ins on different ranks.
     const { rows } = parseTinmanStandings('| 24 | rerw | 0 |\n| 25 | *(Name not visible)* | 0 |\n| 54 | *(Name not visible)* | 0 |');

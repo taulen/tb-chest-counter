@@ -176,7 +176,7 @@ function createTinmanRouter(eventKey = 'ancients') {
         const parsed = (0, tinman_parse_js_1.parseTinmanStandings)(text);
         if (parsed.rows.length === 0) {
             res.status(400).json({
-                error: 'No ranking rows found. Expected lines like "| 1 | Name | 63,965,364 |" or "1 Name 63,965,364".',
+                error: 'No ranking rows found. Expected lines like "| 1 | Name | 63,965,364 |", "1,Name,\\"63,965,364\\"" or "1 Name 63,965,364".',
                 skipped: parsed.skipped.slice(0, 5),
             });
             return;
