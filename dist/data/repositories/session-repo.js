@@ -368,8 +368,14 @@ function getScanCoverage(clanId, fromIso, toIso) {
  *
  * started_at / completed_at are ISO TEXT, so the duration is computed in JS
  * rather than with SQLite date functions on a column that isn't a timestamp.
+ *
+ * `scanRunning` is the scheduler's word that this clan's chest scan is live
+ * right now. The DB alone can't say it: a running session and an abandoned one
+ * both look like "pending, no completed_at". With it set, the newest unfinished
+ * row is flagged `running` and carries its elapsed time so far, so the chart
+ * draws it as in progress instead of as a scan that never completed.
  */
-function getScanHealthSeries(clanId, limit = 60) {
+function getScanHealthSeries(clanId, limit = 60, opts = {}) {
     const rows = (0, database_js_1.getDb)().prepare(`
     SELECT id, started_at, completed_at, status, chests_found, errors_encountered
     FROM scan_sessions
@@ -377,18 +383,31 @@ function getScanHealthSeries(clanId, limit = 60) {
     ORDER BY started_at DESC
     LIMIT ?
   `).all(clanId, limit);
+    // Rows are newest-first here. A live scan created its session when it
+    // started, so it can only be the newest row — and only while that row is
+    // still open. Older open rows are crash leftovers, never "running".
+    const now = opts.now ?? Date.now();
+    const newest = rows[0];
+    const runningId = opts.scanRunning && newest && !newest.completed_at
+        && (newest.status === enums_js_1.ScanStatus.PENDING || newest.status === enums_js_1.ScanStatus.PROCESSING)
+        ? newest.id
+        : null;
     return rows.reverse().map((r) => {
         const start = Date.parse(r.started_at);
         const end = r.completed_at ? Date.parse(r.completed_at) : NaN;
+        const running = r.id === runningId;
         return {
             id: r.id,
             startedAt: r.started_at,
             // Null for a scan that never finished — plotting it as zero would draw
-            // the worst outcome as the fastest one.
+            // the worst outcome as the fastest one. Also null for the live scan,
+            // whose time so far is in elapsedMs and must not feed the median.
             durationMs: Number.isFinite(start) && Number.isFinite(end) ? end - start : null,
             errors: r.errors_encountered ?? 0,
             chests: r.chests_found ?? 0,
             status: r.status,
+            running,
+            elapsedMs: running && Number.isFinite(start) ? Math.max(0, now - start) : null,
         };
     });
 }

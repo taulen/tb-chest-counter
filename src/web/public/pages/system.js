@@ -103,11 +103,23 @@ function scanHealthCardHtml(scans) {
     : 0;
   const peak = Math.max(1, ...durations);
   const errorScans = scans.filter((s) => s.errors > 0).length;
-  const unfinished = scans.filter((s) => s.durationMs === null).length;
+  const unfinished = scans.filter((s) => s.durationMs === null && !s.running).length;
+  const live = scans.find((s) => s.running) ?? null;
 
   const fmtMin = (ms) => t('{minutes}m', { minutes: Math.round(ms / 60000) });
 
   const bars = scans.map((s) => {
+    // The scan running right now: its height is the time so far, capped at the
+    // tallest finished scan. Not a failure, so never red — but it still turns
+    // gold once it runs past three times the median, because a wedged browser
+    // looks exactly like a scan that won't end.
+    if (s.running) {
+      const elapsed = s.elapsedMs ?? 0;
+      const h = Math.min(100, Math.max(2, Math.round((elapsed / peak) * 100)));
+      const slow = median > 0 && elapsed > median * 3;
+      return `<span class="scanhealth-bar is-running${slow ? ' is-slow' : ''}" style="height: ${h}%"
+                title="${s.startedAt} · ${t('Scan in progress')} · ${t('{duration} so far', { duration: fmtMin(elapsed) })}"></span>`;
+    }
     // An unfinished scan is drawn as a full-height marked bar. Plotting it as
     // zero would render the worst outcome as the fastest one.
     if (s.durationMs === null) {
@@ -136,6 +148,7 @@ function scanHealthCardHtml(scans) {
         </div>
         <div class="scanhealth-legend">
           <span>${tn(errorScans, '{n} of {total} logged an error', '{n} of {total} logged an error', { n: errorScans, total: scans.length })}</span>
+          ${live ? `<span class="scanhealth-running">${t('Scan in progress')} · ${t('{duration} so far', { duration: fmtMin(live.elapsedMs ?? 0) })}</span>` : ''}
           ${unfinished > 0 ? `<span class="scanhealth-warn">${tn(unfinished, '{n} never completed', '{n} never completed', { n: unfinished })}</span>` : ''}
         </div>
       </div>
