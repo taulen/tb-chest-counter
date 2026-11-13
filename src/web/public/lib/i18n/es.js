@@ -585,7 +585,7 @@ export const ui = {
   "Never acknowledged — all entries are shown.": "Nunca revisado: se muestran todas las entradas.",
   "Lv {level}": "Nv. {level}",
   "Likely Renames": "Posibles cambios de nombre",
-  "One player's might stopped being read the day before a new name appeared at the same level and might. That is usually an in-game rename, which splits a player's chest history across two names. Merge to fold the old name into the new one.": "El poder de un jugador dejó de leerse el día antes de que apareciera un nombre nuevo con el mismo nivel y poder. Suele ser un cambio de nombre en el juego, que divide el historial de cofres del jugador entre dos nombres. Combina para unir el nombre antiguo con el nuevo.",
+  "One name stopped being read the day before a new one appeared: the same name with a tag added or dropped, or a different name at the same level and might. That is usually an in-game rename, which splits a player's chest history across two names. Merge to fold the old name into the new one.": "Un nombre dejó de leerse el día antes de que apareciera uno nuevo: el mismo nombre con una etiqueta añadida o quitada, o un nombre distinto con el mismo nivel y poder. Suele ser un cambio de nombre en el juego, que divide el historial de cofres del jugador entre dos nombres. Combina para unir el nombre antiguo con el nuevo.",
   "Old Name": "Nombre antiguo",
   "Switched": "Cambio",
   "Might (last → first)": "Poder (último → primero)",

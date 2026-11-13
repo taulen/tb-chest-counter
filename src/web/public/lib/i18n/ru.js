@@ -585,7 +585,7 @@ export const ui = {
   "Never acknowledged — all entries are shown.": "Ни разу не принималось — показаны все записи.",
   "Lv {level}": "Ур. {level}",
   "Likely Renames": "Вероятные переименования",
-  "One player's might stopped being read the day before a new name appeared at the same level and might. That is usually an in-game rename, which splits a player's chest history across two names. Merge to fold the old name into the new one.": "Мощь одного игрока перестала считываться за день до того, как появилось новое имя с тем же уровнем и мощью. Обычно это переименование в игре, из-за которого история сундуков игрока делится между двумя именами. Объедините, чтобы перенести старое имя в новое.",
+  "One name stopped being read the day before a new one appeared: the same name with a tag added or dropped, or a different name at the same level and might. That is usually an in-game rename, which splits a player's chest history across two names. Merge to fold the old name into the new one.": "Одно имя перестало считываться за день до того, как появилось новое: то же имя с добавленным или убранным тегом либо другое имя с тем же уровнем и мощью. Обычно это переименование в игре, из-за которого история сундуков игрока делится между двумя именами. Объедините, чтобы перенести старое имя в новое.",
   "Old Name": "Старое имя",
   "Switched": "Смена",
   "Might (last → first)": "Мощь (последняя → первая)",

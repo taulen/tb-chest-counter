@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RENAME_SUGGESTION_WINDOW_DAYS = void 0;
+exports.namesShareStem = namesShareStem;
 exports.getRenameSuggestions = getRenameSuggestions;
 exports.dismissRenameSuggestion = dismissRenameSuggestion;
 /**
@@ -18,11 +19,22 @@ exports.dismissRenameSuggestion = dismissRenameSuggestion;
  * the same might. Two different players matching on all of that, on consecutive days,
  * with the first one never read again, is not a coincidence that happens.
  *
+ * Many renames do leave a trace, though: the player adds or drops a tag ("Living SK7"
+ * → "Living S", "Tigger K260 SK" → "Tigger"). When one name is the other plus a tag, the
+ * NAME is the evidence and the might only has to not contradict it. That matters most
+ * when a whole clan retags on one day: SK7 renamed 41 players from Nov 12 to Nov 13 2026,
+ * and with might as the only signal the pairing was a lottery. Seasonal Kingdom players
+ * grow 5-260% a day, so most real pairs fell outside the might window, and the closest
+ * might among the rest belonged to someone else ("Living SK7" → "Tigger" while "Tigger
+ * K260 SK" → "Tigger" was there). Name-linked pairs are therefore judged on looser
+ * numbers AND claim their members before any might-only pair can.
+ *
  * Suggestions only — merging is an admin's call (two alts of one owner can hand over
  * the same way, and only a person knows). "Not the same player" is remembered per pair
  * in `rename_suggestion_dismissals`.
  */
 const database_js_1 = require("../database.js");
+const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
 /** How recent the new name's first reading must be for a pair to be suggested. */
 exports.RENAME_SUGGESTION_WINDOW_DAYS = 30;
 /** Days the might series may skip between the old name's last read and the new one's first. */
@@ -38,7 +50,40 @@ const MAX_LEVEL_GAIN = 8;
  * life (live: "From: Cauldron" cards were still being opened hours after the rename).
  */
 const OLD_NAME_GRACE_DAYS = 2;
+/**
+ * Name-linked pairs: hero levels gained per day of gap. A Seasonal Kingdom starts from
+ * scratch and its players gain a dozen levels a day (live, Nov 12 → 13: 122 → 134), far
+ * past {@link MAX_LEVEL_GAIN}. Still a cap, so a stranger who happens to share a short
+ * stem ("Ace" leaves, "Ace of Spades" joins at twice the level) isn't suggested.
+ */
+const LINKED_LEVEL_GAIN_PER_DAY = 15;
+/**
+ * Name-linked pairs: the lowest new/old might ratio. There is no ceiling — live SK pairs
+ * grew up to 3.6× overnight at the same level — and the floor allows for troops lost in
+ * battle, while still refusing a newcomer at a fraction of the old player's might.
+ */
+const LINKED_MIN_POWER_RATIO = 0.8;
+/** The shortest name a tag can be added to or dropped from and still identify anyone. */
+const MIN_STEM_LENGTH = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Letters and digits of any script — case, accents, spacing and punctuation gone. */
+function stemKey(name) {
+    return (0, ocr_normalize_js_1.foldDiacritics)(name.normalize('NFKC')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+/**
+ * True when one name is the whole of the other with a tag added or dropped at either
+ * end: "Living SK7" / "Living S", "Tigger K260 SK" / "Tigger", "KacieSK2" / "KacieS".
+ * A changed ending is NOT a link ("Drop A" / "Drop B" are two players), so a tag swap
+ * ("Bob K34" → "Bob SK") is left to the might evidence like any other rename.
+ */
+function namesShareStem(a, b) {
+    const ka = stemKey(a);
+    const kb = stemKey(b);
+    const [short, long] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+    if (short.length < MIN_STEM_LENGTH)
+        return false;
+    return long.startsWith(short) || long.endsWith(short);
+}
 const dayMs = (gameDate) => Date.parse(`${gameDate}T00:00:00Z`);
 /** Likely renames for a clan, best match first. Pure read. */
 function getRenameSuggestions(clanId, nowMs = Date.now()) {
@@ -82,24 +127,31 @@ function getRenameSuggestions(clanId, nowMs = Date.now()) {
             const gapDays = (toStart - dayMs(from.lastDate)) / DAY_MS;
             if (gapDays < 1 || gapDays > MAX_GAP_DAYS)
                 continue;
+            // The old name must have stopped collecting too, past the leftover-card grace.
+            if (from.lastChestAt !== null && from.lastChestAt > toStart + OLD_NAME_GRACE_DAYS * DAY_MS)
+                continue;
+            const nameMatch = namesShareStem(from.name, to.name);
             const ratio = to.firstPower / from.lastPower;
-            if (ratio < MIN_POWER_RATIO || ratio > MAX_POWER_RATIO)
+            if (nameMatch
+                ? ratio < LINKED_MIN_POWER_RATIO
+                : ratio < MIN_POWER_RATIO || ratio > MAX_POWER_RATIO)
                 continue;
             // A 0 is the badge failing to read, not a level — compare only real values.
             if (from.lastLevel > 0 && to.firstLevel > 0) {
                 const gain = to.firstLevel - from.lastLevel;
-                if (gain < 0 || gain > MAX_LEVEL_GAIN)
+                const maxGain = nameMatch ? LINKED_LEVEL_GAIN_PER_DAY * gapDays : MAX_LEVEL_GAIN;
+                if (gain < 0 || gain > maxGain)
                     continue;
             }
-            // The old name must have stopped collecting too, past the leftover-card grace.
-            if (from.lastChestAt !== null && from.lastChestAt > toStart + OLD_NAME_GRACE_DAYS * DAY_MS)
-                continue;
-            candidates.push({ from, to, ratio });
+            candidates.push({ from, to, ratio, nameMatch });
         }
     }
-    // Closest might first, then each member used once: a member can only have been
-    // renamed into one name, and a name can only have come from one member.
-    candidates.sort((a, b) => Math.abs(a.ratio - 1) - Math.abs(b.ratio - 1));
+    // Name-linked pairs first, then closest might; each member used once: a member can
+    // only have been renamed into one name, and a name can only have come from one member.
+    // Linked-first is what stops a retag wave from cross-pairing: a might-only pair can
+    // only take members whose own name-linked partner didn't exist.
+    candidates.sort((a, b) => Number(b.nameMatch) - Number(a.nameMatch)
+        || Math.abs(a.ratio - 1) - Math.abs(b.ratio - 1));
     const usedFrom = new Set();
     const usedTo = new Set();
     const out = [];
@@ -112,6 +164,7 @@ function getRenameSuggestions(clanId, nowMs = Date.now()) {
             from: side(c.from, 'last'),
             to: side(c.to, 'first'),
             powerChangePct: Math.round((c.ratio - 1) * 10000) / 100,
+            nameMatch: c.nameMatch,
         });
     }
     return out.sort((a, b) => b.to.gameDate.localeCompare(a.to.gameDate));

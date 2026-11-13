@@ -660,7 +660,8 @@ function renderReviewQueueSection(queue) {
 
 /**
  * Likely in-game renames: one member's might readings stop and another's start the
- * next day at the same level and might (rename-suggestions-repo.ts). Each pair is
+ * next day, under the same name with a tag added or dropped or at the same level and
+ * might (rename-suggestions-repo.ts). Each pair is
  * resolved on its own — merged, or marked as two different players — so there is no
  * Acknowledge here.
  */
@@ -675,7 +676,7 @@ function renderRenameSuggestions(entries) {
         <h2>${t('Likely Renames')} (${entries.length})</h2>
       </div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('One player\'s might stopped being read the day before a new name appeared at the same level and might. That is usually an in-game rename, which splits a player\'s chest history across two names. Merge to fold the old name into the new one.')}</p>
+        <p class="muted-copy mb-12">${t('One name stopped being read the day before a new one appeared: the same name with a tag added or dropped, or a different name at the same level and might. That is usually an in-game rename, which splits a player\'s chest history across two names. Merge to fold the old name into the new one.')}</p>
         <table class="table-responsive">
           <thead><tr>
             <th>${t('Old Name')}</th><th>${t('New Name')}</th><th>${t('Switched')}</th><th>${t('Might (last → first)')}</th><th>${t('Chests')}</th><th class="col-actions"></th>

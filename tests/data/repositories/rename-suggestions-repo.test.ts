@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../../src/data/database.js';
 import {
-  getRenameSuggestions, dismissRenameSuggestion,
+  getRenameSuggestions, dismissRenameSuggestion, namesShareStem,
 } from '../../../src/data/repositories/rename-suggestions-repo.js';
 import { makeTestDb } from '../../helpers/test-db.js';
 
@@ -109,5 +109,80 @@ describe('getRenameSuggestions', () => {
     member('Cauldron', [['2026-11-02', 239, 488196331]]);
     member('Aldrin', [['2026-11-03', 241, 490352131]]);
     expect(getRenameSuggestions(2, NOW)).toEqual([]);
+  });
+
+  // SK7 (clan 5) dropped its kingdom tags on Nov 12 → 13 2026, 41 players at once. With
+  // might as the only signal, the closest might belonged to the wrong player four times
+  // out of seven here: Living SK7 → Tigger, Arean SK7 → Blas de Lezo S, NoPantsPanda SK7
+  // → TASH S, Strela K260 SK → Arean S.
+  const SK_NOW = Date.parse('2026-11-13T20:00:00Z');
+  const pairs = (out: ReturnType<typeof getRenameSuggestions>) => out.map((s) => `${s.from.name}>${s.to.name}`).sort();
+
+  it('pairs a retag wave by name, not by the closest might', () => {
+    const live: [string, number, number, string, number, number][] = [
+      ['Arean SK7', 105, 15114620, 'Arean S', 108, 17400010],
+      ['Blas de Lezo SK7', 103, 14394065, 'Blas de Lezo S', 105, 15047065],
+      ['Strela K260 SK', 108, 16811195, 'Strela', 108, 17820715],
+      ['Living SK7', 107, 19772030, 'Living S', 110, 21603720],
+      ['Tigger K260 SK', 110, 18789275, 'Tigger', 110, 19686010],
+      ['NoPantsPanda SK7', 77, 10884055, 'NoPantsPanda S', 79, 12688605],
+      ['TASH SK7', 77, 9240024, 'TASH S', 77, 11032179],
+    ];
+    for (const [oldName, oldLevel, oldPower, newName, newLevel, newPower] of live) {
+      member(oldName, [['2026-11-12', oldLevel, oldPower]], ['2026-11-12', '2026-11-13']);
+      member(newName, [['2026-11-13', newLevel, newPower]]);
+    }
+    const out = getRenameSuggestions(1, SK_NOW);
+    expect(pairs(out)).toEqual(live.map(([o, , , n]) => `${o}>${n}`).sort());
+    expect(out.every((s) => s.nameMatch)).toBe(true);
+  });
+
+  it('lets a name-linked pair through on Seasonal Kingdom growth', () => {
+    // Live: RM sin 3.6× might at the same level, taulen +12 levels overnight.
+    member('RM sin sk7', [['2026-11-12', 83, 3202305]]);
+    member('RM sin s', [['2026-11-13', 83, 11670005]]);
+    member('taulen K260 SK', [['2026-11-12', 122, 25252485]]);
+    member('taulen', [['2026-11-13', 134, 33379355]]);
+    expect(pairs(getRenameSuggestions(1, SK_NOW))).toEqual(['RM sin sk7>RM sin s', 'taulen K260 SK>taulen']);
+  });
+
+  it('still refuses a name-linked pair the numbers contradict', () => {
+    member('Ace K260 SK', [['2026-11-12', 103, 16391675]]);
+    member('Ace', [['2026-11-13', 95, 16703335]]); // level dropped
+    member('Bart SK7', [['2026-11-12', 100, 20000000]]);
+    member('Bart', [['2026-11-13', 101, 12000000]]); // 40% of the might
+    member('Cid', [['2026-11-12', 100, 20000000]]);
+    member('Cid the Great', [['2026-11-13', 140, 60000000]]); // +40 levels in a day
+    expect(getRenameSuggestions(1, SK_NOW)).toEqual([]);
+  });
+
+  it('keeps might-only pairs for members without a name-linked partner', () => {
+    member('Living SK7', [['2026-11-12', 107, 19772030]]);
+    member('Living S', [['2026-11-13', 110, 21603720]]);
+    member('Cauldron', [['2026-11-12', 239, 488196331]]);
+    member('Aldrin', [['2026-11-13', 241, 490352131]]);
+    const out = getRenameSuggestions(1, SK_NOW);
+    expect(pairs(out)).toEqual(['Cauldron>Aldrin', 'Living SK7>Living S']);
+    expect(out.map((s) => s.nameMatch)).toEqual([true, false]);
+  });
+});
+
+describe('namesShareStem', () => {
+  it('links a tag added or dropped at either end', () => {
+    expect(namesShareStem('Living SK7', 'Living S')).toBe(true);
+    expect(namesShareStem('Tigger K260 SK', 'Tigger')).toBe(true);
+    expect(namesShareStem('KacieSK2', 'KacieS')).toBe(true);
+    expect(namesShareStem('Fiin SK 3', 'Fiin S')).toBe(true);
+    expect(namesShareStem('DR JMD K260Sk', 'DR JMD')).toBe(true);
+    expect(namesShareStem('[K34] Löwenherz', 'Lowenherz')).toBe(true);
+    expect(namesShareStem('Микам SK', 'Микам')).toBe(true);
+  });
+
+  it('does not link a changed ending, an unrelated name or a stub', () => {
+    expect(namesShareStem('Drop A', 'Drop B')).toBe(false);
+    expect(namesShareStem('Bob K34', 'Bob SK')).toBe(false);
+    expect(namesShareStem('Cauldron', 'Aldrin')).toBe(false);
+    expect(namesShareStem('Arean SK7', 'Blas de Lezo S')).toBe(false);
+    expect(namesShareStem('Al K260', 'Al')).toBe(false);
   });
 });

@@ -585,7 +585,7 @@ export const ui = {
   "Never acknowledged — all entries are shown.": "Nie bestätigt — alle Einträge werden angezeigt.",
   "Lv {level}": "Lvl {level}",
   "Likely Renames": "Wahrscheinliche Umbenennungen",
-  "One player's might stopped being read the day before a new name appeared at the same level and might. That is usually an in-game rename, which splits a player's chest history across two names. Merge to fold the old name into the new one.": "Die Macht eines Spielers wurde nicht mehr gelesen, einen Tag bevor ein neuer Name mit gleichem Level und gleicher Macht auftauchte. Das ist meist eine Umbenennung im Spiel, die den Truhenverlauf eines Spielers auf zwei Namen aufteilt. Vereinen führt den alten Namen in den neuen über.",
+  "One name stopped being read the day before a new one appeared: the same name with a tag added or dropped, or a different name at the same level and might. That is usually an in-game rename, which splits a player's chest history across two names. Merge to fold the old name into the new one.": "Ein Name wurde nicht mehr gelesen, einen Tag bevor ein neuer auftauchte: derselbe Name mit hinzugefügtem oder entferntem Kürzel oder ein anderer Name mit gleichem Level und gleicher Macht. Das ist meist eine Umbenennung im Spiel, die den Truhenverlauf eines Spielers auf zwei Namen aufteilt. Vereinen führt den alten Namen in den neuen über.",
   "Old Name": "Alter Name",
   "Switched": "Gewechselt",
   "Might (last → first)": "Macht (letzte → erste)",
