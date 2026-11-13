@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../../src/data/database.js';
 import {
-  getRenameSuggestions, dismissRenameSuggestion, namesShareStem, mergeNameMatchedRenames,
+  getRenameSuggestions, dismissRenameSuggestion, namesShareStem,
 } from '../../../src/data/repositories/rename-suggestions-repo.js';
 import { makeTestDb } from '../../helpers/test-db.js';
 
@@ -164,57 +164,6 @@ describe('getRenameSuggestions', () => {
     const out = getRenameSuggestions(1, SK_NOW);
     expect(pairs(out)).toEqual(['Cauldron>Aldrin', 'Living SK7>Living S']);
     expect(out.map((s) => s.nameMatch)).toEqual([true, false]);
-  });
-
-  describe('mergeNameMatchedRenames', () => {
-    const memberRow = (id: number) => getDb().prepare('SELECT name, aliases FROM members WHERE id = ?').get(id) as
-      { name: string; aliases: string } | undefined;
-    const chestsOf = (id: number) => (getDb().prepare('SELECT COUNT(*) AS n FROM chest_records WHERE member_id = ?').get(id) as { n: number }).n;
-
-    it('merges the name-linked pairs it was sent, and nothing else', () => {
-      const living = member('Living SK7', [['2026-11-12', 107, 19772030]], ['2026-11-12', '2026-11-12']);
-      const livingS = member('Living S', [['2026-11-13', 110, 21603720]], ['2026-11-13']);
-      const tigger = member('Tigger K260 SK', [['2026-11-12', 110, 18789275]], ['2026-11-12']);
-      const tiggerNew = member('Tigger', [['2026-11-13', 110, 19686010]]);
-      const cauldron = member('Cauldron', [['2026-11-12', 239, 488196331]]);
-      const aldrin = member('Aldrin', [['2026-11-13', 241, 490352131]]);
-
-      const outcome = mergeNameMatchedRenames(1, [
-        { fromMemberId: living, toMemberId: livingS },
-        { fromMemberId: tigger, toMemberId: tiggerNew },
-        { fromMemberId: cauldron, toMemberId: aldrin }, // might-only: needs its own click
-        { fromMemberId: living, toMemberId: aldrin }, // not a suggestion at all
-      ], SK_NOW);
-
-      expect(outcome.merged.map((m) => `${m.from}>${m.to}`).sort()).toEqual(['Living SK7>Living S', 'Tigger K260 SK>Tigger']);
-      expect(outcome.skipped).toBe(2);
-      expect(outcome.failed).toEqual([]);
-      expect(memberRow(living)).toBeUndefined();
-      expect(memberRow(tigger)).toBeUndefined();
-      expect(chestsOf(livingS)).toBe(3);
-      // The old name stays an alias, so a leftover "From: Living SK7" card still lands here.
-      expect(JSON.parse(memberRow(livingS)!.aliases)).toEqual(['Living SK7']);
-      expect(memberRow(cauldron)?.name).toBe('Cauldron');
-      expect(pairs(getRenameSuggestions(1, SK_NOW))).toEqual(['Cauldron>Aldrin']);
-    });
-
-    it('folds a chain oldest first, so the middle name is not reborn', () => {
-      // X → A on Nov 11, A → B on Nov 13. Merging A → B first would leave X to be
-      // renamed "Zed K260" by the missing-destination branch.
-      const x = member('Zed K260 SK', [['2026-11-10', 100, 10000000]], ['2026-11-10']);
-      const a = member('Zed K260', [['2026-11-11', 100, 10050000], ['2026-11-12', 100, 10100000]], ['2026-11-11']);
-      const b = member('Zed', [['2026-11-13', 100, 10150000]], ['2026-11-13']);
-      const shown = getRenameSuggestions(1, SK_NOW);
-      expect(pairs(shown)).toEqual(['Zed K260 SK>Zed K260', 'Zed K260>Zed']);
-
-      const outcome = mergeNameMatchedRenames(1, shown.map((s) => ({ fromMemberId: s.from.memberId, toMemberId: s.to.memberId })), SK_NOW);
-      expect(outcome.merged.map((m) => `${m.from}>${m.to}`)).toEqual(['Zed K260 SK>Zed K260', 'Zed K260>Zed']);
-      expect(memberRow(x)).toBeUndefined();
-      expect(memberRow(a)).toBeUndefined();
-      expect(chestsOf(b)).toBe(3);
-      const names = (getDb().prepare('SELECT name FROM members WHERE clan_id = 1').all() as { name: string }[]).map((m) => m.name);
-      expect(names).toEqual(['Zed']);
-    });
   });
 });
 

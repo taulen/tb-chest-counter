@@ -2632,32 +2632,6 @@ function createApiRouter(scanLoop) {
             res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
         }
     });
-    // POST /api/admin/rename-suggestions/merge-names { pairs: [{ fromMemberId, toMemberId }] }
-    // "Merge all name matches" on Likely Renames: merges the pairs the page showed that
-    // are still name-linked suggestions (renameSuggestionsRepo.mergeNameMatchedRenames).
-    router.post('/admin/rename-suggestions/merge-names', auth_js_1.requireAdmin, (req, res) => {
-        const clanId = req.clanId ?? 1;
-        const raw = req.body?.pairs;
-        if (!Array.isArray(raw) || raw.length === 0 || raw.length > 500) {
-            return res.status(400).json({ error: 'pairs required' });
-        }
-        const pairs = raw.map((p) => ({ fromMemberId: Number(p?.fromMemberId), toMemberId: Number(p?.toMemberId) }));
-        if (pairs.some((p) => !Number.isInteger(p.fromMemberId) || !Number.isInteger(p.toMemberId))) {
-            return res.status(400).json({ error: 'pairs must be member id pairs' });
-        }
-        try {
-            const outcome = renameSuggestionsRepo.mergeNameMatchedRenames(clanId, pairs);
-            reviewQueueRepo.invalidateReviewQueueCount(clanId);
-            // One ordinary merge_player entry per pair, exactly what a single Merge logs,
-            // so the audit log reads each one the same way.
-            for (const m of outcome.merged)
-                (0, user_repo_js_1.logAction)(req.user.id, 'merge_player', { from: m.from, to: m.to, clanId });
-            res.json({ ok: true, ...outcome });
-        }
-        catch (err) {
-            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-        }
-    });
     // GET /api/admin/unknown-chests — rows where OCR failed to read the
     // player name. See chestRepo.getUnknownChests for the predicate.
     // Also self-heals any stale "Manual review needed" banners on sessions

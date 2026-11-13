@@ -13,15 +13,20 @@
  * the same might. Two different players matching on all of that, on consecutive days,
  * with the first one never read again, is not a coincidence that happens.
  *
- * Many renames do leave a trace, though: the player adds or drops a tag ("Living SK7"
- * → "Living S", "Tigger K260 SK" → "Tigger"). When one name is the other plus a tag, the
- * NAME is the evidence and the might only has to not contradict it. That matters most
- * when a whole clan retags on one day: SK7 renamed 41 players from Nov 12 to Nov 13 2026,
- * and with might as the only signal the pairing was a lottery. Seasonal Kingdom players
- * grow 5-260% a day, so most real pairs fell outside the might window, and the closest
- * might among the rest belonged to someone else ("Living SK7" → "Tigger" while "Tigger
- * K260 SK" → "Tigger" was there). Name-linked pairs are therefore judged on looser
- * numbers AND claim their members before any might-only pair can.
+ * Some pairs do leave a trace, though: one name is the other plus a tag ("Bob K34" →
+ * "Bob"). Then the NAME is the evidence and the might only has to not contradict it.
+ * The live case that forced this (SK7, Nov 13 2026) turned out NOT to be renames: the
+ * member-list reader was cutting names at their own kingdom number ("Living SK7" read
+ * as "Living S", fixed in member-capture.ts), minting 41 cut-off twins in one day. But
+ * the pairing lesson stands either way — Seasonal Kingdom players grow 5-260% a day, so
+ * with might as the only signal most pairs fell outside the window and the closest
+ * might among the rest was someone else's ("Living SK7" → "Tigger" while "Tigger K260
+ * SK" was there). Name-linked pairs are judged on looser numbers AND claim their
+ * members before any might-only pair can.
+ *
+ * Which way a merge goes matters as much as the pairing: a merge keeps the NEW name.
+ * There is deliberately no bulk merge — one folded those 41 hand-set names into their
+ * cut-off twins (repaired by migration v101).
  *
  * Suggestions only — merging is an admin's call (two alts of one owner can hand over
  * the same way, and only a person knows). "Not the same player" is remembered per pair
@@ -29,7 +34,6 @@
  */
 import { getDb } from '../database.js';
 import { foldDiacritics } from '../../vision/ocr-normalize.js';
-import { addMergeRule } from './merge-repo.js';
 
 /** How recent the new name's first reading must be for a pair to be suggested. */
 export const RENAME_SUGGESTION_WINDOW_DAYS = 30;
@@ -211,53 +215,6 @@ function side(r: SeriesRow, which: 'first' | 'last'): RenameSide {
     level: which === 'first' ? r.firstLevel : r.lastLevel,
     power: which === 'first' ? r.firstPower : r.lastPower,
   };
-}
-
-export interface RenameMergeOutcome {
-  merged: { from: string; to: string }[];
-  /** Requested pairs that are no longer a name-linked suggestion — left alone. */
-  skipped: number;
-  failed: { from: string; to: string; error: string }[];
-}
-
-/**
- * "Merge all name matches": fold every name-linked pair the admin's page showed, in
- * one go. A retag wave is dozens of pairs (SK7: 41) whose names already prove them,
- * and clicking through each confirm adds nothing.
- *
- * Only pairs that are BOTH in `pairs` (what the page showed) AND still a name-linked
- * suggestion now are merged: the page can be stale, and a might-only pair always gets
- * a person's eye on its own row. Each pair goes through the ordinary player merge, so
- * it gets everything a single Merge does (records, might history, resources, the
- * alias that keeps leftover "From: old" cards landing on the new name).
- *
- * Oldest hand-over first, so a chain X → A → B folds X into A before A goes into B.
- * The other way round, A is gone by the time X is merged, and addMergeRule's
- * missing-destination branch would RENAME X to A's old name instead.
- */
-export function mergeNameMatchedRenames(
-  clanId: number,
-  pairs: { fromMemberId: number; toMemberId: number }[],
-  nowMs: number = Date.now(),
-): RenameMergeOutcome {
-  const wanted = new Set(pairs.map((p) => `${p.fromMemberId}>${p.toMemberId}`));
-  const approved = getRenameSuggestions(clanId, nowMs)
-    .filter((s) => s.nameMatch && wanted.has(`${s.from.memberId}>${s.to.memberId}`))
-    .sort((a, b) => a.from.gameDate.localeCompare(b.from.gameDate));
-  const out: RenameMergeOutcome = { merged: [], skipped: wanted.size - approved.length, failed: [] };
-  const nameOf = getDb().prepare('SELECT name FROM members WHERE id = ? AND clan_id = ?');
-  for (const s of approved) {
-    const from = (nameOf.get(s.from.memberId, clanId) as { name: string } | undefined)?.name;
-    const to = (nameOf.get(s.to.memberId, clanId) as { name: string } | undefined)?.name;
-    if (!from || !to) { out.skipped++; continue; }
-    try {
-      addMergeRule('player', from, to, clanId);
-      out.merged.push({ from, to });
-    } catch (err) {
-      out.failed.push({ from, to, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-  return out;
 }
 
 /** Remember that an admin said this pair is two different players. */

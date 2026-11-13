@@ -670,16 +670,14 @@ function renderRenameSuggestions(entries) {
   // One decimal of millions is what the comparison needs (488.2M → 490.4M); the
   // exact readings sit in the tooltip.
   const might = (side) => `<span class="nowrap" title="${Number(side.power).toLocaleString()}">${t('Lv {level}', { level: side.level })} · ${(side.power / 1e6).toFixed(1)}M</span>`;
-  // A clan retagging at once is dozens of pairs the names already prove (SK7: 41),
-  // so those merge in one go. Might-only pairs stay one-by-one: they need an eye.
-  const named = entries.filter((r) => r.nameMatch);
+  // No bulk merge: each pair is merged on its own, by a person. A "Merge all" here
+  // once folded 41 hand-set names into misread twins (Nov 2026) — a merge keeps the
+  // NEW name, and a batch of near-identical pairs is as likely a read defect as a
+  // rename.
   return `
     <div class="card">
       <div class="card-header">
         <h2>${t('Likely Renames')} (${entries.length})</h2>
-        ${named.length >= 2
-          ? `<button class="btn btn-tight btn-primary" data-action="merge-renames-by-name" data-pairs="${named.map((r) => `${r.from.memberId}>${r.to.memberId}`).join(',')}">${t('Merge all name matches ({n})', { n: named.length })}</button>`
-          : ''}
       </div>
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">${t('One name stopped being read the day before a new one appeared: the same name with a tag added or dropped, or a different name at the same level and might. That is usually an in-game rename, which splits a player\'s chest history across two names. Merge to fold the old name into the new one.')}</p>
@@ -716,30 +714,6 @@ export async function mergeRenameSuggestion(fromName, toName, fromChests, rerend
     if (typeof rerender === 'function') await rerender();
     window.scrollTo(0, scrollY);
   });
-}
-
-/** "Merge all name matches": `pairsAttr` is the button's "from>to,from>to" member ids. */
-export async function mergeRenamesByName(pairsAttr, rerender) {
-  const pairs = String(pairsAttr || '').split(',').filter(Boolean).map((p) => {
-    const [fromMemberId, toMemberId] = p.split('>').map(Number);
-    return { fromMemberId, toMemberId };
-  });
-  if (pairs.length === 0) return;
-  const ok = await confirmDialog(
-    tn(pairs.length, 'Merge {n} renamed player whose new name is the old one with a tag added or dropped? Each old name\'s chests, might history and resources move to its new name, and future scans that read an old name count for the new one. Pairs matched on might alone stay for you to check one by one.', 'Merge {n} renamed players whose new name is the old one with a tag added or dropped? Each old name\'s chests, might history and resources move to its new name, and future scans that read an old name count for the new one. Pairs matched on might alone stay for you to check one by one.', { n: pairs.length }),
-    { title: t('Merge renamed players'), confirmLabel: t('Merge all') },
-  );
-  if (!ok) return;
-  const result = await apiPost('/admin/rename-suggestions/merge-names', { pairs });
-  if (result?.error) return notify(result.error, t('Merge failed'));
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
-  const lines = [tn(result.merged?.length ?? 0, 'Merged {n} renamed player.', 'Merged {n} renamed players.', { n: result.merged?.length ?? 0 })];
-  if (result.skipped) lines.push(tn(result.skipped, '{n} pair was no longer suggested and was left alone.', '{n} pairs were no longer suggested and were left alone.', { n: result.skipped }));
-  // notify() escapes its message, so names and errors go in as plain text.
-  for (const f of result.failed || []) lines.push(`${f.from} → ${f.to}: ${f.error}`);
-  notify(lines.join(' '), result.failed?.length ? t('Merge failed') : t('Merge complete'));
 }
 
 export async function dismissRenameSuggestion(fromMemberId, toMemberId, rerender) {
