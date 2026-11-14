@@ -82,7 +82,7 @@ function start() {
     }
   })();
   let currentTab = 'leaderboard';
-  let currentPeriod = 'daily';
+  let currentPeriod = 'weekly';
   let currentPeriodOffset = 0;
   let currentPage = 1;
   let leaderboardSort = { key: 'rank', dir: 'asc' };
