@@ -97,6 +97,16 @@ describe('matchKnownPlayer', () => {
     expect(matchKnownPlayer('Niien', ['Biin'])).toBe('Niien');
   });
 
+  it('matches a one-letter member exactly, and nothing else onto it', () => {
+    // SK7's "D" (Nov 2026). The distance tier needs 3+ characters on both sides.
+    expect(matchKnownPlayer('D', ['Darth', 'D', 'Dj'])).toBe('D');
+    expect(matchKnownPlayer('d', ['D'])).toBe('D');
+    for (const read of ['O', 'l', 'Dx', 'TD']) {
+      expect(matchKnownPlayer(read, ['D']), read).toBe(read);
+    }
+    expect(matchKnownPlayer('D', ['Dj', 'Do'])).toBe('D');
+  });
+
   // Regression: any substring of a long member name used to fragment-
   // match into that member via the old Tier 3 (substring containment).
   it('rejects fragment matches into a long member name', () => {

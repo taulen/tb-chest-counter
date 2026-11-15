@@ -238,12 +238,11 @@ function pairNamesWithMight(rows, canonicalWidth = member_capture_js_1.MEMBER_CA
                     best = { value, x: word.box.x };
             }
         }
-        // A letter count guard mirroring member capture's: two letters minimum, any
-        // script, so a name mangled down to punctuation can't become a roster
-        // lookup. Counted as "without might" only when the name was usable —
+        // Member capture's guard, shared: two letters (any script) or a lone letter,
+        // so a name mangled down to punctuation can't become a roster lookup while
+        // SK7's "D" can. Counted as "without might" only when the name was usable —
         // otherwise a garbled row would look like a crop problem.
-        const letters = (name.match(/\p{L}/gu) || []).length;
-        if (name.length < 2 || letters < 2)
+        if (!(0, member_capture_js_1.isUsableMemberName)(name))
             continue;
         names.push(name);
         if (best === null) {
@@ -589,7 +588,7 @@ function nameMatchCandidates(name) {
     // ("-=Ghost=-") keeps its stored spelling; this just also lets it match a roster
     // row that has it without.
     const ornamentStripped = name.replace(/^[^\s\p{L}\p{N}]{1,3}\s*/u, '');
-    if (ornamentStripped !== name && (ornamentStripped.match(/\p{L}/gu) || []).length >= 2) {
+    if (ornamentStripped !== name && (0, member_capture_js_1.isUsableMemberName)(ornamentStripped)) {
         forms.push(ornamentStripped);
     }
     // Zero-for-oh, the one homoglyph this font actually produces. Measured on the

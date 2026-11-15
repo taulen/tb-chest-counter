@@ -114,5 +114,24 @@ describe('parseGiftCards', () => {
     ].join('\n');
     // Single "0" is rejected as a player name, so no card is emitted.
     expect(parseGiftCards(text)).toHaveLength(0);
+    expect(parseGiftCards(text.replace('From: 0', 'From: |'))).toHaveLength(0);
+  });
+
+  it('keeps a player whose whole name is one letter', () => {
+    // SK7 has a member called "D" (Nov 2026). The Open click claims the card
+    // whether or not it parses, so rejecting it lost his chests for good.
+    const text = [
+      'Barbarian Chest',
+      'From: D Time left: 19h 20m',
+      'Source: Level 15 Crypt Open',
+      'Cobra Chest',
+      'From: Mr C Time left: 19h 21m',
+      'Source: Level 20 Crypt Open',
+    ].join('\n');
+    const cards = parseGiftCards(text);
+    expect(cards.map((c) => [c.playerName, c.chestName, c.source])).toEqual([
+      ['D', 'Barbarian Chest', 'Level 15 Crypt'],
+      ['Mr C', 'Cobra Chest', 'Level 20 Crypt'],
+    ]);
   });
 });

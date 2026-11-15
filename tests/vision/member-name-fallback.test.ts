@@ -18,7 +18,21 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { positionalMemberName } from '../../src/browser/member-capture.js';
+import { positionalMemberName, isUsableMemberName } from '../../src/browser/member-capture.js';
+
+describe('isUsableMemberName', () => {
+  it('takes a lone letter as a name — SK7 has a member called "D"', () => {
+    for (const name of ['D', 'x', 'Д', 'Mr C', 'Lj', 'TC', 'Рей']) {
+      expect(isUsableMemberName(name), name).toBe(true);
+    }
+  });
+
+  it('still refuses a read with no letter, or one letter among junk', () => {
+    for (const name of ['', '.', '/ -', '7', '220', 'D.', '/ D', 'X7']) {
+      expect(isUsableMemberName(name), name).toBe(false);
+    }
+  });
+});
 
 const words = (...texts: string[]): Array<{ text: string }> => texts.map((text) => ({ text }));
 

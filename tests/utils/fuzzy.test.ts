@@ -76,6 +76,21 @@ describe('fuzzyMatchMember', () => {
     expect(fuzzyMatchMember('Nimxx', [mk('Nimath', 1)])).toBeNull();
   });
 
+  it('matches a one- or two-character name exactly or not at all', () => {
+    // SK7's member "D" (Nov 2026): on a 1-edit budget every garbled one-letter read
+    // and every "Dx"/"TD" was within reach of him. matchKnownPlayer has always had
+    // this 3-character floor on the gift-scan side.
+    const roster = [mk('D', 1), mk('TC', 2), mk('Mel', 3)];
+    expect(fuzzyMatchMember('D', roster)?.name).toBe('D');
+    expect(fuzzyMatchMember('d', roster)?.name).toBe('D');
+    expect(fuzzyMatchMember('TC', roster)?.name).toBe('TC');
+    for (const read of ['l', 'O', 'Dx', 'TD', 'TG']) {
+      expect(fuzzyMatchMember(read, roster), read).toBeNull();
+    }
+    // Three characters and up keep their one-edit budget.
+    expect(fuzzyMatchMember('Mal', roster)?.name).toBe('Mel');
+  });
+
   it('does not match a name that resembles nothing on the roster', () => {
     expect(match('CompletelyDifferent')).toBeNull();
     expect(match('')).toBeNull();

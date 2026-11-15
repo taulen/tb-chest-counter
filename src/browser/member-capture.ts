@@ -313,6 +313,26 @@ const LEVEL_PARSE_MAX = 9999;
 const LEVEL_NEEDS_SPACE_BELOW = 10;
 
 /**
+ * Whether a cleaned member-list reading is a name at all: two letters or more
+ * (any script, so a recovered Cyrillic or Arabic name counts), or exactly one
+ * letter and nothing else.
+ *
+ * The one-letter case is a real player, not a precaution relaxed: SK7's "D"
+ * (Nov 2026) reads cleanly — "113" | "D (K:1071 X:478 Y:506)" — and the old
+ * two-letter floor dropped him from the roster build and from every might sweep,
+ * while the gift parser rejected his "From: D" line, so every chest he sent was
+ * claimed by the Open click and never recorded. What the floor exists for — a row
+ * mangled down to punctuation ("." / "/ -") — has no letter and still fails.
+ *
+ * Shared by member capture and might capture, the two readers of this panel, so
+ * they cannot disagree about whether a row has a name.
+ */
+export function isUsableMemberName(name: string): boolean {
+  if (/^\p{L}$/u.test(name)) return true;
+  return (name.match(/\p{L}/gu) || []).length >= 2;
+}
+
+/**
  * Split a member-list reading into its hero level and the player's name, for the case
  * where OCR returned the level badge and the name as ONE region.
  *
@@ -339,9 +359,8 @@ export function splitBadgeAndName(text: string): { level: number; name: string }
   if (!(level >= 1 && level <= LEVEL_PARSE_MAX)) return null;
   if (separator.length === 0) return null;
   if (level < LEVEL_NEEDS_SPACE_BELOW && !/\s/u.test(separator)) return null;
-  // A name mangled down to punctuation is not a name. Counted across all scripts so a
-  // Cyrillic or Arabic reading isn't dropped by a Latin-only guard.
-  if ((name.match(/\p{L}/gu) || []).length < 2) return null;
+  // A name mangled down to punctuation is not a name; a single letter is ("113 D").
+  if (!isUsableMemberName(name)) return null;
 
   return { level, name };
 }
@@ -841,10 +860,8 @@ export async function captureClanMembers(
       const withoutBadge = splitBadgeAndName(name);
       if (withoutBadge) name = withoutBadge.name;
 
-      // Count letters across all scripts (\p{L}) so recovered Cyrillic/Arabic
-      // names aren't dropped by a Latin-only guard.
-      const letterCount = (name.match(/\p{L}/gu) || []).length;
-      if (name.length < 2 || letterCount < 2) {
+      // Letters counted across all scripts, and a lone letter is a name ("D").
+      if (!isUsableMemberName(name)) {
         droppedShortNameCount++;
         if (droppedShortNameSamples.length < 10) {
           droppedShortNameSamples.push(`"${raw}" → "${name}"`);
@@ -926,7 +943,7 @@ export async function captureClanMembers(
 
   if (droppedShortNameCount > 0) {
     log.warn(
-      `Member capture: dropped ${droppedShortNameCount} candidate(s) as too short after cleaning (length < 2 or letterCount < 2). Samples: ${droppedShortNameSamples.join(', ')}`,
+      `Member capture: dropped ${droppedShortNameCount} candidate(s) as having no name after cleaning (fewer than 2 letters, and not a single letter). Samples: ${droppedShortNameSamples.join(', ')}`,
     );
   }
 

@@ -119,6 +119,9 @@ function editBudget(a: string, b: string): number {
  */
 const CASE_DIVERGENCE_ALLOWANCE = 1;
 
+/** Shortest despaced key, on either side, that may be matched by distance at all. */
+const MIN_FUZZY_KEY_LENGTH = 3;
+
 /**
  * Exact (accent-folded) name or alias match, with no fuzzy fallback.
  *
@@ -174,13 +177,19 @@ export function fuzzyMatchMember(
   if (exact) return exact;
 
   const key = prepareKey(rawName);
-  if (!key) return null;
+  // Below three characters a name is matched exactly or not at all — the floor
+  // matchKnownPlayer has always had on the gift-scan side. One edit is a third to all
+  // of a name that short, so a distance match there is a different player: with SK7's
+  // member "D" (Nov 2026) on the roster, any garbled one-letter read, or a "Dx"/"TD"
+  // two-letter joiner, sat within a 1-edit budget of him and would have taken his row.
+  if (key.length < MIN_FUZZY_KEY_LENGTH) return null;
   const cased = prepareKeyKeepingCase(rawName);
 
   let best: ClanMember | null = null;
   let bestDist = Infinity;
   for (const m of members) {
     const mNorm = prepareKey(m.normalizedName);
+    if (mNorm.length < MIN_FUZZY_KEY_LENGTH) continue;
     // A numeric or roman-numeral alt suffix is a different account, and no budget can
     // express that: "FELI 2" is 1 edit from "FELI", the floor every fuzzy matcher has
     // to allow. Checked before distance so it can't be undercut by a closer neighbour.

@@ -461,13 +461,28 @@ describe('pairNamesWithMight', () => {
         .toBe(pairNamesWithMight(merged).pairs[0].name);
     });
 
-    it('drops a row rather than emitting a one-letter name', () => {
-      // Stripping "220 " off "220 X" would leave a single letter. Since digits aren't
-      // letters, the remainder's letter count always equals the whole name's, so such
-      // a row fails the two-letter floor either way and is discarded — no junk name,
-      // and nothing for the caller to create a member from.
-      const rows: PRow[] = [
+    it('keeps a one-letter name, split from the badge either way', () => {
+      // SK7 has a member called "D" (Nov 2026). This is the user's own screenshot of
+      // his row as PaddleOCR reads it — the badge as its own word — and the old
+      // two-letter floor dropped it, so he never had a might value.
+      const split: PRow[] = [
+        row(199, [['113', 20, 40], ['D (K:1071 X:478 Y:506)', 90, 300]]),
+        row(236, [['51,401,555', 790, 130]]),
+      ];
+      expect(pairNamesWithMight(split).pairs).toMatchObject([{ name: 'D', might: 51_401_555, level: 113 }]);
+
+      const merged: PRow[] = [
         row(38, [['220 X (K:289 X:1 Y:1)', 20, 200]]),
+        row(83, [['11,111,111', 790, 130]]),
+      ];
+      const { pairs, names } = pairNamesWithMight(merged);
+      expect(names).toEqual(['X']);
+      expect(pairs).toMatchObject([{ name: 'X', might: 11_111_111, level: 220 }]);
+    });
+
+    it('still drops a row whose remainder has no letter at all', () => {
+      const rows: PRow[] = [
+        row(38, [['220 7 (K:289 X:1 Y:1)', 20, 200]]),
         row(83, [['11,111,111', 790, 130]]),
       ];
       const { pairs, names, anchors } = pairNamesWithMight(rows);
@@ -647,6 +662,11 @@ describe('splitBadgeAndName', () => {
     expect(split('12345 Foo')).toBe('none');
     expect(split('0 Foo')).toBe('none');
     expect(split('373/ -')).toBe('none');
-    expect(split('373/ A')).toBe('none');
+    expect(split('373/ 7')).toBe('none');
+  });
+
+  it('accepts a one-letter name — SK7 has a member called "D"', () => {
+    expect(split('113 D')).toBe('113|D');
+    expect(split('113/ D')).toBe('113|D');
   });
 });

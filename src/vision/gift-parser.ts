@@ -88,11 +88,20 @@ export function parseGiftCards(text: string): GiftEntry[] {
       }
 
       const candidate = fromMatch[1].trim().replace(/[|,'"]/g, '').replace(/[.,;:]+$/, '').trim();
-      // Reject garbage players: single chars, or short all-digit/punct
-      // strings ("0"). Accept 3+ char all-numeric ("050" = player "oSo")
+      // Reject garbage players: a lone digit or symbol, or short all-digit/punct
+      // strings ("0", "|"). Accept 3+ char all-numeric ("050" = player "oSo")
       // — the fuzzy matcher downstream resolves it to the real name.
+      //
+      // A lone LETTER is a player: SK7 has a member called "D" (Nov 2026).
+      // Rejecting the card never kept a chest out of the database honestly —
+      // the scanner's Open click claims it in-game whether or not this parses,
+      // so a dropped card is a chest lost for good, where a misread letter at
+      // worst lands in the New Members review queue with its crop. The
+      // matcher only ever matches a name this short exactly (its distance tiers
+      // need 3+ characters on both sides), so "D" can't absorb anyone else.
       const validPlayer = candidate.length >= 3
-        || (candidate.length >= 2 && !/^[\d\s\W]+$/.test(candidate));
+        || (candidate.length >= 2 && !/^[\d\s\W]+$/.test(candidate))
+        || /^\p{L}$/u.test(candidate);
 
       // Extract hours AND minutes from time left.
       // OCR formats: "ime left: R19 h : 42", "ime left: 19h 30m", "imeleft: B19h: 30"
