@@ -131,6 +131,13 @@ export interface MemberLatestLevels {
   asOf: Partial<Record<LevelKey, string>>;
   /** The newest report date of any letter. */
   lastReported: string;
+  /**
+   * When that newest report was saved (ISO), and its row id. The date alone
+   * can't order a day's imports — Admin → Levels sorts newest import first by
+   * the save time, then by id, which keeps one import in its paste order.
+   */
+  lastReportedAt: string;
+  lastReportId: number;
 }
 
 /** One member's latest reported levels, or null when they never posted any. */
@@ -141,11 +148,11 @@ export function getLatestLevelsForMember(clanId: number, memberId: number): Memb
 /** Each member's latest reported value per letter. Members never reported are absent. */
 export function getLatestLevels(clanId: number): MemberLatestLevels[] {
   const rows = getDb().prepare(`
-    SELECT member_id AS memberId, observed_date AS date,
+    SELECT id, member_id AS memberId, observed_date AS date, created_at AS createdAt,
            g_level AS g, m_level AS m, s_level AS s, e_level AS e, c_level AS c, d_level AS d
     FROM member_level_reports WHERE clan_id = ?
     ORDER BY observed_date ASC, id ASC
-  `).all(clanId) as Array<{ memberId: number; date: string } & Record<LevelKey, number | null>>;
+  `).all(clanId) as Array<{ id: number; memberId: number; date: string; createdAt: string } & Record<LevelKey, number | null>>;
 
   const members = new Map(getAllMembers(false, clanId).map((m) => [m.id, m]));
   const out = new Map<number, MemberLatestLevels>();
@@ -154,7 +161,10 @@ export function getLatestLevels(clanId: number): MemberLatestLevels[] {
     if (!m) continue;
     let entry = out.get(r.memberId);
     if (!entry) {
-      entry = { memberId: m.id, name: m.name, isActive: m.isActive, levels: {}, asOf: {}, lastReported: r.date };
+      entry = {
+        memberId: m.id, name: m.name, isActive: m.isActive, levels: {}, asOf: {},
+        lastReported: r.date, lastReportedAt: r.createdAt, lastReportId: r.id,
+      };
       out.set(r.memberId, entry);
     }
     for (const k of LEVEL_KEYS) {
@@ -164,6 +174,8 @@ export function getLatestLevels(clanId: number): MemberLatestLevels[] {
       }
     }
     entry.lastReported = r.date;
+    entry.lastReportedAt = r.createdAt;
+    entry.lastReportId = r.id;
   }
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }

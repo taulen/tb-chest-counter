@@ -7,7 +7,7 @@
 // so nothing is saved until an admin has seen who each one was matched to.
 
 import { api, apiPost } from '../lib/api.js';
-import { esc, memberLink, notify } from '../lib/ui.js';
+import { esc, formatDate, memberLink, notify } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
@@ -164,6 +164,19 @@ function previewHtml() {
 }
 
 /**
+ * Order by when the report was saved: the day, then the save time (several
+ * imports land on one day), and within one import the paste order in either
+ * direction — so the last import sits on top reading as it was pasted.
+ */
+function byReported(a, b, sign) {
+  const day = String(a.lastReported || '').localeCompare(String(b.lastReported || ''));
+  if (day) return sign * day;
+  const at = String(a.lastReportedAt || '').localeCompare(String(b.lastReportedAt || ''));
+  if (at) return sign * at;
+  return (a.lastReportId || 0) - (b.lastReportId || 0);
+}
+
+/**
  * Sort the latest-levels rows. Numbers and dates start high-to-low (the first
  * click on a letter shows the strongest), names A→Z; a member with no report
  * for that letter sorts last either way, and ties fall back to the name so the
@@ -173,11 +186,10 @@ function sortedLatest() {
   const { key, dir } = latestSort;
   const sign = dir === 'asc' ? 1 : -1;
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
-  const value = (r) => (key === 'reported' ? r.lastReported || null
-    : key === 'member' ? null
-      : (r.levels?.[key] ?? null));
+  const value = (r) => (key === 'member' ? null : (r.levels?.[key] ?? null));
   return latest.slice().sort((a, b) => {
     if (key === 'member') return sign * byName(a, b);
+    if (key === 'reported') return byReported(a, b, sign) || byName(a, b);
     const va = value(a);
     const vb = value(b);
     if (va === null && vb === null) return byName(a, b);
@@ -212,7 +224,7 @@ function latestHtml() {
       <td data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}${r.isActive ? '' : ` <span class="muted-copy">${t('(left)')}</span>`}</span><span class="mrow-sub">${t('reported {date}', { date: esc(r.lastReported) })}</span></td>
       <td class="num levels-g" data-label="G">${gCell}</td>
       ${LETTERS.slice(1).map((k) => `<td class="num" data-label="${k.toUpperCase()}" title="${r.asOf[k] ? t('reported {date}', { date: esc(r.asOf[k]) }) : ''}">${r.levels[k] ?? '<span class="events-zero">—</span>'}</td>`).join('')}
-      <td class="history-date" data-label="${t('Reported')}" data-role="hidden">${esc(r.lastReported)}</td>
+      <td class="history-date" data-label="${t('Reported')}" data-role="hidden"${r.lastReportedAt ? ` title="${esc(formatDate(r.lastReportedAt))}"` : ''}>${esc(r.lastReported)}</td>
     </tr>`;
   }).join('');
   return `

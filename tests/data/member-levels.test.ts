@@ -115,6 +115,24 @@ describe('member levels import', () => {
     });
   });
 
+  it('tells two imports on one day apart — save time, and row id in paste order', () => {
+    const ace = addMember('Ace');
+    const zed = addMember('Zed');
+    const bob = addMember('Bob');
+    levels.importLevelReports({ clanId: 1, date: TODAY, entries: [{ memberId: ace, levels: { g: 7 } }], createdBy: 'a', createdByUserId: null });
+    getDb().prepare("UPDATE member_level_reports SET created_at = '2026-10-23T10:00:00.000Z'").run();
+    levels.importLevelReports({
+      clanId: 1, date: TODAY, createdBy: 'a', createdByUserId: null,
+      entries: [{ memberId: zed, levels: { g: 8 } }, { memberId: bob, levels: { g: 6 } }],
+    });
+    const byName = new Map(levels.getLatestLevels(1).map((r) => [r.name, r]));
+    const [a, z, b] = [byName.get('Ace')!, byName.get('Zed')!, byName.get('Bob')!];
+    expect([a.lastReported, z.lastReported, b.lastReported]).toEqual([TODAY, TODAY, TODAY]);
+    expect(z.lastReportedAt > a.lastReportedAt).toBe(true);
+    expect(z.lastReportedAt).toBe(b.lastReportedAt);
+    expect(z.lastReportId).toBeLessThan(b.lastReportId);
+  });
+
   it('refuses a member from another clan and out-of-range levels', () => {
     const now = new Date().toISOString();
     const other = (getDb().prepare(

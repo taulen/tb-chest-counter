@@ -97,7 +97,7 @@ function getLatestLevelsForMember(clanId, memberId) {
 /** Each member's latest reported value per letter. Members never reported are absent. */
 function getLatestLevels(clanId) {
     const rows = (0, database_js_1.getDb)().prepare(`
-    SELECT member_id AS memberId, observed_date AS date,
+    SELECT id, member_id AS memberId, observed_date AS date, created_at AS createdAt,
            g_level AS g, m_level AS m, s_level AS s, e_level AS e, c_level AS c, d_level AS d
     FROM member_level_reports WHERE clan_id = ?
     ORDER BY observed_date ASC, id ASC
@@ -110,7 +110,10 @@ function getLatestLevels(clanId) {
             continue;
         let entry = out.get(r.memberId);
         if (!entry) {
-            entry = { memberId: m.id, name: m.name, isActive: m.isActive, levels: {}, asOf: {}, lastReported: r.date };
+            entry = {
+                memberId: m.id, name: m.name, isActive: m.isActive, levels: {}, asOf: {},
+                lastReported: r.date, lastReportedAt: r.createdAt, lastReportId: r.id,
+            };
             out.set(r.memberId, entry);
         }
         for (const k of member_levels_parse_js_1.LEVEL_KEYS) {
@@ -120,6 +123,8 @@ function getLatestLevels(clanId) {
             }
         }
         entry.lastReported = r.date;
+        entry.lastReportedAt = r.createdAt;
+        entry.lastReportId = r.id;
     }
     return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
