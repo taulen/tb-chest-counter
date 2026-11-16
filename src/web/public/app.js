@@ -32,6 +32,7 @@ import { applyTheme, bindThemeSwitcher } from './lib/theme.js';
 import { adoptAccountLanguage, bindLanguageSwitcher, t, tn } from './lib/i18n.js';
 import { initMobileRows } from './lib/mobile-rows.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
+import { renderScanCards, tickScanCards } from './lib/scan-card.js';
 // renderExternalAdminCardHtml + wireExternalAdminHandlers are
 // exported by external.js but currently unused (the Admin tab
 // renders its own ChestTracker card via clans-page Discord/CT
@@ -1423,9 +1424,15 @@ async function updateStatus() {
     // still working — 20-40s for might, up to half an hour for a full resource
     // backfill. Treat both as busy, or the header claims "idle" through all of it
     // and throws away the progress messages those phases are producing.
+    // `activity` also covers the half minute between two clans of a cycle,
+    // where nothing is "in progress" but the next clan's browser is launching.
+    const activity = status.activity ?? null;
     const isScanning = status.state === 'scanning' || status.state === 'processing'
       || status.mightInProgress === true
-      || status.resourceInProgress === true;
+      || status.resourceInProgress === true
+      || activity !== null;
+    // The placeholder's italic "loading" look must not outlive the first poll.
+    text.classList.remove('is-loading');
     if (isScanning && status.progressMessage) {
       text.textContent = status.progressMessage;
     } else if (isScanning && status.liveChestCount > 0) {
@@ -1440,6 +1447,12 @@ async function updateStatus() {
     dot.className = 'dot';
     if (isScanning) dot.classList.add('scanning');
     else if (status.state === 'error' || status.state === 'cooldown') dot.classList.add('error');
+
+    renderScanCards(activity, {
+      detail: status.progressMessage
+        || (activity?.phase === 'starting' ? t('Launching browser…') : '')
+        || (activity?.phase === 'scan' ? statusStateLabel(status.state) : ''),
+    });
 
     if (errBtn && errPanel) {
       if (status.lastScanError) {
@@ -1461,18 +1474,20 @@ async function updateStatus() {
     // not in the active scan rotation — distinct from "scanner stopped".
     // Render a clear message instead of an empty header.
     nextScanClanInactive = !!status.clanInactive;
-    nextScanInProgress = !!status.scanInProgress;
+    nextScanInProgress = !!status.scanInProgress || activity !== null;
     renderNextScanCountdown();
 
     renderOnboardingBanner(status.onboarding);
 
     // Disable the manual scan buttons (Scan This Clan / Scan All Clans)
     // while a scan is running. They live in the shell next to this status
-    // (sidebar foot, and again in the phone menu), superadmin only.
+    // (sidebar foot, and again in the phone menu), superadmin only. The scan
+    // card hides them meanwhile; disabled is the backstop, and it holds
+    // through the gap between two clans of a cycle too.
     const scanBtns = document.querySelectorAll('[data-action="trigger-scan"]');
     scanBtns.forEach((btn) => {
       if (btn.dataset.localBusy) return;
-      if (status.scanInProgress) {
+      if (status.scanInProgress || activity !== null) {
         btn.disabled = true;
         btn.textContent = t('Scan in progress...');
       } else {
@@ -1490,6 +1505,9 @@ async function updateStatus() {
     if (statusFailures >= STATUS_MAX_FAILURES) {
       $('#statusText').textContent = t('Disconnected');
       $('#statusDot').className = 'dot error';
+      // The card hides the status line; drop it so "Disconnected" shows
+      // instead of a frozen scan.
+      renderScanCards(null);
     }
   }
 }
@@ -1594,6 +1612,7 @@ function renderNextScanCountdown() {
   loadPage(currentPage);
   setInterval(updateStatus, 2000);
   setInterval(renderNextScanCountdown, 1000);
+  setInterval(tickScanCards, 1000);
   // Re-poll nav-dot state every 60s so a warning logged while the user
   // sits on (say) the Dashboard still lights the System dot without a
   // page navigation. Cheap counts-only endpoint.

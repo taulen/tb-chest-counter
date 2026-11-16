@@ -290,6 +290,24 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     if (!isMyScan && (rawState === 'scanning' || rawState === 'processing')) state = 'idle';
     if (!isMyError && rawState === 'error') state = 'idle';
 
+    // The sidebar's scan card: which clan, which phase, how long, and where
+    // in the cycle. Same visibility rule as the progress fields, applied to
+    // the activity's own clan so the gap between two clans of a cycle (when
+    // the next one is already the active clan) counts too. The cycle
+    // position stays superadmin-only: it would tell a clan admin how many
+    // other clans share the instance.
+    const rawActivity = scanLoop?.getScanActivity() ?? null;
+    const activity = rawActivity && (isSuperadmin || rawActivity.clanId === req.clanId)
+      ? {
+        clanId: rawActivity.clanId,
+        clanName: getClanById(rawActivity.clanId)?.name ?? null,
+        phase: rawActivity.phase,
+        elapsedMs: rawActivity.elapsedMs,
+        cyclePosition: isSuperadmin ? rawActivity.cyclePosition : null,
+        cycleTotal: isSuperadmin ? rawActivity.cycleTotal : null,
+      }
+      : null;
+
     // Onboarding banner data: the dashboard renders a "do X next"
     // strip when the instance / current clan isn't fully provisioned.
     // Calibration is global; member capture is per-clan. We return the
@@ -320,6 +338,7 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       // "idle" that whole time is the difference between an operator watching
       // progress and an operator wondering whether anything is happening at all.
       resourceInProgress: isMyScan ? (scanLoop?.isResourceCaptureInProgress() ?? false) : false,
+      activity,
       lastScanError: isMyError ? rawError : null,
       nextScanAt: nextScanAt ? new Date(nextScanAt).toISOString() : null,
       clanInactive,

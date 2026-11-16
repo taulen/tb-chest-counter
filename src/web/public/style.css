@@ -302,6 +302,184 @@ td, th, .stat-card .value, .num {
   .header-right > .scan-controls { order: 10; flex-basis: 100%; justify-content: flex-end; }
 }
 
+/* ─── Scan card (lib/scan-card.js) ───
+   While a scan runs: the clan being scanned, the phase, elapsed time and one
+   segment per clan of the cycle. It stands in for the status line, the
+   countdown pill and the scan buttons (which only said "Scan in progress..."
+   twice). A card in the sidebar foot and the phone menu; a one-line strip in
+   the tablet top bar; the phone top bar keeps just the pulsing dot. */
+.scan-card { display: none; }
+.topbar.is-scanning .scan-card { display: block; }
+.topbar.is-scanning .scan-controls,
+.topbar.is-scanning .header-right > .next-scan,
+.topbar.is-scanning .header-right > .status { display: none; }
+
+.scan-card {
+  min-width: 0;
+  padding: 10px 11px 11px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 12px;
+  background:
+    radial-gradient(140% 100% at 0% 0%, var(--accent-gold-bg-strong), transparent 65%),
+    var(--accent-gold-bg);
+}
+.scan-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.scan-card-pulse {
+  position: relative;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+}
+.scan-card-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent-gold);
+  animation: scan-card-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes scan-card-ping {
+  0% { transform: scale(1); opacity: 0.7; }
+  80%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.scan-card-phase {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+}
+.scan-card-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+/* The clan name is what the card is for, so a long one wraps to a second line
+   rather than losing its end (13.5px fits "CWB - ChaosWithoutBorders" on one). */
+.scan-card-clan {
+  margin-top: 7px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+.scan-card-detail {
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.scan-card-time:empty,
+.scan-card-detail:empty,
+.scan-card-step:empty { display: none; }
+.scan-card-progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scan-card-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 3px;
+}
+.scan-card-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-light);
+}
+.scan-card-seg.is-done { background: var(--accent-gold-border); }
+.scan-card-seg.is-current {
+  background: linear-gradient(90deg, var(--accent-gold-bg-strong) 0%, var(--accent-gold) 50%, var(--accent-gold-bg-strong) 100%);
+  background-size: 200% 100%;
+  animation: scan-card-shimmer 1.4s linear infinite;
+}
+@keyframes scan-card-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: 0 0; }
+}
+.scan-card-step {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* Tablet top bar: the card becomes a right-aligned strip on the row the scan
+   buttons would have taken. */
+@media (min-width: 641px) and (max-width: 1099px) {
+  /* A fit-content column can't shrink below the strip's one-line content, which
+     ran it off the right edge; a full-width, right-packed column can. */
+  .topbar.is-scanning .header { grid-template-columns: auto minmax(0, 1fr); }
+  .topbar.is-scanning .header-right { width: 100%; min-width: 0; justify-content: flex-end; }
+  .topbar.is-scanning .header-right > .scan-card {
+    order: 10;
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .header-right > .scan-card .scan-card-head { flex-shrink: 0; }
+  .header-right > .scan-card .scan-card-clan,
+  .header-right > .scan-card .scan-card-detail {
+    margin: 0;
+    display: block;
+    min-width: 0;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  /* The progress line gives way before the clan name does. */
+  .header-right > .scan-card .scan-card-clan { max-width: 240px; flex-shrink: 0; font-size: 13px; }
+  .header-right > .scan-card .scan-card-detail { max-width: 320px; }
+  .header-right > .scan-card .scan-card-progress { margin: 0; width: 96px; flex-shrink: 0; }
+}
+@media (min-width: 641px) and (max-width: 859px) {
+  .header-right > .scan-card .scan-card-detail { display: none; }
+  .header-right > .scan-card .scan-card-clan { flex-shrink: 1; }
+}
+
+/* Phone: the top bar has no room, so it keeps the status dot (pulsing) and the
+   card opens the slide-out menu instead. */
+@media (max-width: 640px) {
+  .topbar.is-scanning .header-right > .status { display: flex; }
+  .topbar.is-scanning .header-right > .scan-card { display: none; }
+  .nav-mobile-account > .scan-card { margin-bottom: 16px; }
+}
+
 .header .status .dot {
   display: inline-block;
   width: 8px;

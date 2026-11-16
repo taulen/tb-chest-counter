@@ -112,6 +112,23 @@ async function fakeScannerStatus(ctx) {
     if (!json.nextScanAt) json.nextScanAt = new Date(Date.now() + 3659e3).toISOString();
     json.scanInProgress = false;
     if (json.onboarding) json.onboarding = { ...json.onboarding, nextStep: 'ready' };
+    // TB_UI_SCANNING=1: mid-scan instead (the sidebar scan card), clan 2 of 3
+    // of a cycle. TB_UI_SCANNING_CLAN overrides the clan name, to try a long one.
+    if (process.env.TB_UI_SCANNING) {
+      Object.assign(json, {
+        state: 'scanning',
+        scanInProgress: true,
+        progressMessage: 'Capturing chests… 24 chests seen (6 screenshots)',
+        activity: {
+          clanId: 1,
+          clanName: process.env.TB_UI_SCANNING_CLAN || 'CWB - ChaosWithoutBorders',
+          phase: 'scan',
+          elapsedMs: 754e3,
+          cyclePosition: 2,
+          cycleTotal: 3,
+        },
+      });
+    }
     return route.fulfill({ response: res, json });
   });
   // Same gap on the share page's "Last scan … · Next scan in …" strip: its

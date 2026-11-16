@@ -65,6 +65,18 @@ interface ScanLoopOptions {
   onProgress?: (update: { phase: 'auth' | 'member-capture' | 'scan'; message: string }) => void;
 }
 
+/** What the scanner is busy with, for the dashboard's scan card. */
+export interface ScanActivity {
+  clanId: number;
+  /** 'starting' = between two clans of a cycle, the next one's browser launching. */
+  phase: 'starting' | 'scan' | 'might' | 'resources' | 'calibration';
+  /** How long this clan's scan has run; null while starting or calibrating. */
+  elapsedMs: number | null;
+  /** 1-based place in the running cycle; null outside a cycle (a single-clan manual scan). */
+  cyclePosition: number | null;
+  cycleTotal: number | null;
+}
+
 /**
  * Subset of AppConfig fields that the calibration wizard can write.
  * Each stage of the wizard provides only a slice of these (e.g. stage 1
@@ -156,6 +168,12 @@ export class ScanLoop {
    */
   private cycleOrder: number[] = [];
   private cycleDoneCount = 0;
+  /**
+   * When the running clan scan (or manual resource collect) started; null
+   * between scans. Only feeds the dashboard's elapsed timer — see
+   * getScanActivity.
+   */
+  private scanStartedAt: number | null = null;
   /** Pending idle teardown of a warm calibration page. See
    *  scheduleCalibrationTeardown. */
   private calibrationIdleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -554,6 +572,36 @@ export class ScanLoop {
       cycleDoneCount: this.cycleDoneCount + (inPostScanPhase ? 1 : 0),
       scanningClanId: chestScanRunning ? this.clanId : null,
     });
+  }
+
+  /**
+   * What the scanner is doing right now, for the dashboard's scan card; null
+   * when there is nothing to show.
+   *
+   * Mid-cycle there is a gap between two clans (the next clan's browser
+   * launching) where scanInProgress is false but the cycle is still running.
+   * It reports as 'starting' on the clan about to be scanned (setActiveClan
+   * runs before the launch), so the card doesn't blink out and back between
+   * clans. Once every clan is done the cycle is only releasing the browser,
+   * so that reads as idle.
+   */
+  getScanActivity(): ScanActivity | null {
+    const cycleMidway = this.cycleOrder.length > 0 && this.cycleDoneCount < this.cycleOrder.length;
+    if (!this.scanInProgress && !cycleMidway) return null;
+    let phase: ScanActivity['phase'];
+    if (this.resourceCaptureInProgress) phase = 'resources';
+    else if (this.mightCaptureInProgress) phase = 'might';
+    else if (!this.scanInProgress) phase = 'starting';
+    // A calibration capture holds the scan lock without starting a scan.
+    else if (this.scanStartedAt === null) phase = 'calibration';
+    else phase = 'scan';
+    return {
+      clanId: this.clanId,
+      phase,
+      elapsedMs: this.scanInProgress && this.scanStartedAt !== null ? Date.now() - this.scanStartedAt : null,
+      cyclePosition: cycleMidway ? this.cycleDoneCount + 1 : null,
+      cycleTotal: cycleMidway ? this.cycleOrder.length : null,
+    };
   }
 
   /** The next timer is armed (or won't be): the cycle no longer speaks for any clan. */
@@ -1130,6 +1178,7 @@ export class ScanLoop {
     }
 
     this.scanInProgress = true;
+    this.scanStartedAt = Date.now();
     this.liveChestCount = 0;
     this.progressMessage = '';
 
@@ -1340,6 +1389,7 @@ export class ScanLoop {
       );
     }
     this.scanInProgress = true;
+    this.scanStartedAt = Date.now();
     this.resourceCaptureInProgress = true;
     try {
       const { targetClanId } = opts;
@@ -1437,6 +1487,7 @@ export class ScanLoop {
       // Non-fatal: next scan will handle navigation
     }
     this.scanInProgress = false;
+    this.scanStartedAt = null;
     this.liveChestCount = 0;
     this.progressMessage = '';
   }

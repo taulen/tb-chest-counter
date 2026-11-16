@@ -136,6 +136,12 @@ class ScanLoop {
      */
     cycleOrder = [];
     cycleDoneCount = 0;
+    /**
+     * When the running clan scan (or manual resource collect) started; null
+     * between scans. Only feeds the dashboard's elapsed timer — see
+     * getScanActivity.
+     */
+    scanStartedAt = null;
     /** Pending idle teardown of a warm calibration page. See
      *  scheduleCalibrationTeardown. */
     calibrationIdleTimer = null;
@@ -508,6 +514,41 @@ class ScanLoop {
             cycleDoneCount: this.cycleDoneCount + (inPostScanPhase ? 1 : 0),
             scanningClanId: chestScanRunning ? this.clanId : null,
         });
+    }
+    /**
+     * What the scanner is doing right now, for the dashboard's scan card; null
+     * when there is nothing to show.
+     *
+     * Mid-cycle there is a gap between two clans (the next clan's browser
+     * launching) where scanInProgress is false but the cycle is still running.
+     * It reports as 'starting' on the clan about to be scanned (setActiveClan
+     * runs before the launch), so the card doesn't blink out and back between
+     * clans. Once every clan is done the cycle is only releasing the browser,
+     * so that reads as idle.
+     */
+    getScanActivity() {
+        const cycleMidway = this.cycleOrder.length > 0 && this.cycleDoneCount < this.cycleOrder.length;
+        if (!this.scanInProgress && !cycleMidway)
+            return null;
+        let phase;
+        if (this.resourceCaptureInProgress)
+            phase = 'resources';
+        else if (this.mightCaptureInProgress)
+            phase = 'might';
+        else if (!this.scanInProgress)
+            phase = 'starting';
+        // A calibration capture holds the scan lock without starting a scan.
+        else if (this.scanStartedAt === null)
+            phase = 'calibration';
+        else
+            phase = 'scan';
+        return {
+            clanId: this.clanId,
+            phase,
+            elapsedMs: this.scanInProgress && this.scanStartedAt !== null ? Date.now() - this.scanStartedAt : null,
+            cyclePosition: cycleMidway ? this.cycleDoneCount + 1 : null,
+            cycleTotal: cycleMidway ? this.cycleOrder.length : null,
+        };
     }
     /** The next timer is armed (or won't be): the cycle no longer speaks for any clan. */
     endCycleTracking() {
@@ -1041,6 +1082,7 @@ class ScanLoop {
             return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [] };
         }
         this.scanInProgress = true;
+        this.scanStartedAt = Date.now();
         this.liveChestCount = 0;
         this.progressMessage = '';
         const result = {
@@ -1221,6 +1263,7 @@ class ScanLoop {
                 + 'browser page.');
         }
         this.scanInProgress = true;
+        this.scanStartedAt = Date.now();
         this.resourceCaptureInProgress = true;
         try {
             const { targetClanId } = opts;
@@ -1310,6 +1353,7 @@ class ScanLoop {
             // Non-fatal: next scan will handle navigation
         }
         this.scanInProgress = false;
+        this.scanStartedAt = null;
         this.liveChestCount = 0;
         this.progressMessage = '';
     }
