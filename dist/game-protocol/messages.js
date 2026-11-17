@@ -200,6 +200,8 @@ function parsePlayers(frame) {
                 cityId: id1(v[16]),
                 goldPass: Array.isArray(v[22]) && v[22][0] === 1,
                 goldIngots: num(v[17]),
+                avatarFrame: num(v[6]),
+                cityAppearance: num(v[5]),
             });
             return;
         }

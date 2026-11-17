@@ -4,11 +4,18 @@
  *   heroAvatars  a player's heroAvatar (game_players.hero_avatar, message 402
  *                field [4]) is the id of a T13 hero-avatar row; that row's icon
  *                is the portrait ("icon_garvel_72").
- *   troops       every Tools → Citadel/Stacks troop and citadel defender
+ *   avatarFrames a player's portrait frame (game_players.avatar_frame, 402
+ *                field [6]) is the id of a T52 customization; its visual is
+ *                the frame sprite ("vip_frame"). 1 = "Standard", the default.
+ *   troops      every Tools → Citadel/Stacks troop and citadel defender
  *                (TROOPS + DEFENDERS in web/public/lib/citadel-sim.js) is
  *                matched to a T9 unit by its English name AND its
  *                strength/health, which the game has many rows for (one per
  *                event realm) but all with the same icon.
+ *   troopTiers   the same troops → the matched unit's tier (T9 f2), which
+ *                picks the game's frame for its icon.
+ *   unitFrames   tier → the back, frame and badge the game draws a unit icon
+ *                in (unit-frames.ts; extracted from the WebGL client).
  *   chests       English chest name → the icon most of the T8 items of that
  *                name use (one name can be several items, e.g. per source).
  *   resources    English resource name → the icon of the lowest-id T8 item of
@@ -16,13 +23,19 @@
  *   techs        T21 tech/talent id → icon.
  *   ancients     the Ancient planner's pictures by key (EVENT_ART in
  *                selection.ts): tome, figurine, clock, tinman.
+ *   cityLooks    a player's city look (game_players.city_appearance, 402
+ *                field [5], a T52 customization) → lowest city level → icon;
+ *                9 = "Player's City", the default.
+ *   status       city state and holdings by key (STATUS_ART in selection.ts):
+ *                shield, burning, wallsDown, flame, city, goldIngots.
  *
  * Every mapping only names images that were actually extracted.
  */
 import fs from 'fs';
 import path from 'path';
 import type { ArtItem, ArtStatic, ArtUnit } from './art-static.js';
-import { EVENT_ART, isChestName, isResourceItem, safeArtName } from './selection.js';
+import { EVENT_ART, STATUS_ART, isChestName, isResourceItem, safeArtName } from './selection.js';
+import { HERO_LEVEL_BADGE, unitFrameArt, type UnitFrameArt } from './unit-frames.js';
 
 export interface TroopStats {
   id: string;
@@ -33,8 +46,16 @@ export interface TroopStats {
 
 export interface ArtMappings {
   heroAvatars: Record<string, string>;
+  /** T52 frame id (game_players.avatar_frame) → the frame drawn around the hero portrait. */
+  avatarFrames: Record<string, string>;
+  /** The plate the hero level is written on over a framed portrait (client UI art), or null. */
+  heroLevelBadge: string | null;
   /** Tools troop/defender id → icon (null: no T9 unit matched). Was `mercenaries` (mercs only) before Nov 2026. */
   troops: Record<string, string | null>;
+  /** Tools troop/defender id → the matched unit's tier (null: none, or its rows disagree). */
+  troopTiers: Record<string, number | null>;
+  /** Tier ("0"–"10") → the game's frame art for a unit icon of that tier. */
+  unitFrames: Record<string, UnitFrameArt>;
   chests: Record<string, string>;
   resources: Record<string, string>;
   techs: Record<string, string>;
@@ -42,10 +63,17 @@ export interface ArtMappings {
   captains: Record<string, string>;
   /** EVENT_ART key (tome, figurine, clock, tinman) → image. */
   ancients: Record<string, string>;
+  /** T52 city look id (game_players.city_appearance) → lowest city level → icon. */
+  cityLooks: Record<string, Record<string, string>>;
+  /** STATUS_ART key (shield, burning, wallsDown, flame, city, goldIngots) → image. */
+  status: Record<string, string>;
 }
 
 export function emptyMappings(): ArtMappings {
-  return { heroAvatars: {}, troops: {}, chests: {}, resources: {}, techs: {}, captains: {}, ancients: {} };
+  return {
+    heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
+    chests: {}, resources: {}, techs: {}, captains: {}, ancients: {}, cityLooks: {}, status: {},
+  };
 }
 
 export function normalizeGameName(s: string): string {
@@ -94,11 +122,46 @@ export function matchTroopIcons(
   return out;
 }
 
+/**
+ * Troop → the tier of the unit it matches, on the same rule as its icon: the
+ * rows with its name AND stats decide (most common tier); without such a row,
+ * a name whose rows all share one tier. Rows that disagree give null — the
+ * icon is then shown without a frame rather than in a guessed one.
+ */
+export function matchTroopTiers(troops: TroopStats[], units: ArtUnit[]): Record<string, number | null> {
+  const byName = new Map<string, ArtUnit[]>();
+  for (const u of units) {
+    if (typeof u.tier !== 'number') continue; // a cache from before tiers were read
+    const k = normalizeGameName(u.name);
+    if (!byName.has(k)) byName.set(k, []);
+    byName.get(k)!.push(u);
+  }
+  const out: Record<string, number | null> = {};
+  for (const t of troops) {
+    const named = byName.get(normalizeGameName(t.name)) ?? [];
+    const exact = named.filter((u) => u.strength === t.strength && u.health === t.health);
+    let tier: number | null = null;
+    if (exact.length) tier = Number(mostCommon(exact.map((u) => String(u.tier))));
+    else if (named.length && new Set(named.map((u) => u.tier)).size === 1) tier = named[0].tier;
+    out[t.id] = tier;
+  }
+  return out;
+}
+
 export function heroAvatarIcons(st: ArtStatic, available: (name: string) => boolean): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [id, h] of Object.entries(st.heroes)) {
     const icon = safeArtName(h.icon);
     if (available(icon)) out[id] = icon;
+  }
+  return out;
+}
+
+export function avatarFrameIcons(st: ArtStatic, available: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, f] of Object.entries(st.frames ?? {})) {
+    const img = safeArtName(f.visual);
+    if (available(img)) out[id] = img;
   }
   return out;
 }
@@ -152,6 +215,30 @@ export function captainIcons(st: ArtStatic, available: (name: string) => boolean
   return out;
 }
 
+/** City look → its icons by lowest city level, for the looks with at least one extracted. */
+export function cityLookIcons(st: ArtStatic, available: (name: string) => boolean): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const [id, look] of Object.entries(st.cityLooks ?? {})) {
+    const icons: Record<string, string> = {};
+    for (const [lvl, icon] of Object.entries(look.icons)) {
+      const img = safeArtName(icon);
+      if (available(img)) icons[lvl] = img;
+    }
+    if (Object.keys(icons).length) out[id] = icons;
+  }
+  return out;
+}
+
+/** STATUS_ART key → its image, for the ones that were extracted. */
+export function statusIcons(available: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, address] of Object.entries(STATUS_ART)) {
+    const name = safeArtName(address);
+    if (available(name)) out[key] = name;
+  }
+  return out;
+}
+
 /** EVENT_ART key → its image, for the ones that were extracted. */
 export function eventIcons(available: (name: string) => boolean): Record<string, string> {
   const out: Record<string, string> = {};
@@ -170,12 +257,18 @@ export function buildMappings(
 ): ArtMappings {
   return {
     heroAvatars: heroAvatarIcons(st, available),
+    avatarFrames: avatarFrameIcons(st, available),
+    heroLevelBadge: available(safeArtName(HERO_LEVEL_BADGE)) ? safeArtName(HERO_LEVEL_BADGE) : null,
     troops: matchTroopIcons(troops, st.units, available),
+    troopTiers: matchTroopTiers(troops, st.units),
+    unitFrames: unitFrameArt(available),
     chests: chestIcons(st.items, available),
     resources: resourceIcons(st.items, resourceNames, available),
     techs: techIcons(st, available),
     captains: captainIcons(st, available),
     ancients: eventIcons(available),
+    cityLooks: cityLookIcons(st, available),
+    status: statusIcons(available),
   };
 }
 
@@ -183,6 +276,45 @@ export function buildMappings(
 export function heroAvatarImageFrom(mappings: ArtMappings | null, heroAvatar: number | null | undefined): string | null {
   if (heroAvatar === null || heroAvatar === undefined || !Number.isInteger(heroAvatar)) return null;
   return mappings?.heroAvatars[String(heroAvatar)] ?? null;
+}
+
+/** The game's default portrait frame ("Standard"), for a player whose frame is unknown. */
+export const DEFAULT_AVATAR_FRAME = 1;
+
+/**
+ * The frame image a player's hero portrait is drawn in: theirs, else the
+ * game's default (a player with none set has 1 = "Standard" anyway). Null when
+ * the art has neither.
+ */
+export function avatarFrameImageFrom(mappings: ArtMappings | null, frameId: number | null | undefined): string | null {
+  const frames = mappings?.avatarFrames;
+  if (!frames) return null;
+  const own = frameId !== null && frameId !== undefined && Number.isInteger(frameId) ? frames[String(frameId)] : undefined;
+  return own ?? frames[String(DEFAULT_AVATAR_FRAME)] ?? null;
+}
+
+/** The game's default city look ("Player's City"), for a player whose look is unknown. */
+export const DEFAULT_CITY_LOOK = 9;
+
+/**
+ * The icon of a player's city as the game shows it: their look (theirs, else
+ * the default) at the highest level step their city has reached. Null when
+ * the art has neither look.
+ */
+export function cityLookImageFrom(
+  mappings: ArtMappings | null,
+  lookId: number | null | undefined,
+  cityLevel: number | null | undefined,
+): string | null {
+  const looks = mappings?.cityLooks;
+  if (!looks) return null;
+  const own = lookId !== null && lookId !== undefined && Number.isInteger(lookId) ? looks[String(lookId)] : undefined;
+  const icons = own ?? looks[String(DEFAULT_CITY_LOOK)];
+  if (!icons) return null;
+  const steps = Object.keys(icons).map(Number).sort((a, b) => a - b);
+  const level = typeof cityLevel === 'number' && cityLevel > 0 ? cityLevel : 1;
+  const step = [...steps].reverse().find((s) => s <= level) ?? steps[0];
+  return icons[String(step)] ?? null;
 }
 
 const TROOP_FILE = path.resolve('src', 'web', 'public', 'lib', 'citadel-sim.js');

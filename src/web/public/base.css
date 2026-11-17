@@ -316,6 +316,13 @@ html { scrollbar-gutter: stable; }
   --ancient-badge-ring: #f3e2bd;
   --ancient-badge-text: #f8edd3;
   --ancient-tinman-shadow: rgba(0, 0, 0, 0.35);
+
+  /* Numbers written over the game's own badge sprites: a troop's tier numeral
+     on its plain disc (tiers VIII–X have no numbered badge) and the hero
+     level on a framed portrait's plate. Copies the game's badge lettering,
+     so it is the same on every theme. */
+  --game-badge-text: #fbf3dc;
+  --game-badge-shadow: rgba(0, 0, 0, 0.85);
 }
 
 /* ─── Light theme ─────────────────────────────────────────────── */

@@ -171,7 +171,7 @@ function createGameRouter() {
         const out = {};
         for (const [memberId, p] of (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId)) {
             out[memberId] = {
-                heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
+                heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, frameUrl: p.frameUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
                 tiers: tiers.get(memberId)?.tiers ?? null,
             };
         }

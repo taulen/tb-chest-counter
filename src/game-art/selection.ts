@@ -12,7 +12,12 @@
  */
 import type { ArtStatic } from './art-static.js';
 
-export const ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan', 'events'] as const;
+/**
+ * `ui` is the client's own interface art (unit frames, backs, tier badges):
+ * not in the catalogue at all, it comes from the WebGL client build
+ * (webgl-client.ts, unit-frames.ts), so it has no pattern here.
+ */
+export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'ui'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
 
 /**
@@ -29,6 +34,28 @@ export const EVENT_ART: Record<string, { address: string; region?: string }> = {
   tinman: { address: 'map_clan_doomsday_boss_scaled' },
 };
 
+/**
+ * Small pictures for a player's city state and holdings, by key (the
+ * `status` mapping; lib/game-art.js statusIconUrl). The game's own icons:
+ *   shield      the Shield of Peace item icon — what most "Shield of Peace"
+ *               items (T8) use, and named in the client's own code
+ *   burning     "fire in the fort": a fortress wall in flames
+ *   wallsDown   the destroyed-fortress icon (a city with its walls broken)
+ *   flame       a plain flame that stays legible at 16 px (the 72s do not)
+ *   city        the default city look at level 1 (T52 "Player's City");
+ *               a player's own look by level is the `cityLooks` mapping
+ *   goldIngots  the Gold Ingots item icon (T8 item 16)
+ * Not `player_feiry_city_*`: that is the "Fiery" city look, not a city on fire.
+ */
+export const STATUS_ART: Record<string, string> = {
+  shield: 'booster_piece_shield_orange_72',
+  burning: 'fire_in_the_fort_72',
+  wallsDown: 'destroyed_fortress_icon',
+  flame: 'spells_magic_fire_22',
+  city: 'player_city_lv1_icon',
+  goldIngots: 'gold_bar_72',
+};
+
 /** Address → the Spine atlas region its picture is cut from. */
 export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map(
   Object.values(EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region as string]),
@@ -37,6 +64,10 @@ export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map(
 export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   // Hero avatar portraits come from the hero-avatar table (T13) alone.
   heroes: [],
+  // Portrait frames come from the customizations table (T52) alone.
+  frames: [],
+  // City looks (icon per city level) come from T52 alone.
+  cities: [],
   // Troop cards: guardsmen/specialists/siege ("unit_knight_72"), mercenaries
   // ("merc_spec_flying_9_icon_72"); monster and event mercs come via T9.
   troops: [/^unit_[a-z0-9_]+_72$/, /^merc_[a-z0-9_]+_icon_72$/],
@@ -49,6 +80,10 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   clan: [/^clan_(frame|emblem)_\d+(_lg)?$/],
   // Exactly the EVENT_ART addresses.
   events: Object.values(EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
+  // Exactly the STATUS_ART addresses.
+  status: Object.values(STATUS_ART).map((a) => new RegExp(`^${a}$`)),
+  // From the client build, not the catalogue (see ART_CATEGORIES).
+  ui: [],
 };
 
 /** Items (T8) below this id are the game's currencies and base resources. */
@@ -76,6 +111,8 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
     if (c.icon) out.heroes.add(c.icon.toLowerCase());
     if (c.art) out.heroes.add(c.art.toLowerCase());
   }
+  for (const f of Object.values(st.frames ?? {})) out.frames.add(f.visual.toLowerCase());
+  for (const c of Object.values(st.cityLooks ?? {})) for (const icon of Object.values(c.icons)) out.cities.add(icon.toLowerCase());
   for (const u of st.units) out.troops.add(u.icon.toLowerCase());
   for (const t of Object.values(st.techs)) out.research.add(t.icon.toLowerCase());
   for (const it of st.items) {

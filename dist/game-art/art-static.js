@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
+exports.ART_STATIC_FORMAT = exports.TABLE_CUSTOMIZATIONS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
 exports.buildArtStatic = buildArtStatic;
 exports.staticKey = staticKey;
 exports.loadArtStatic = loadArtStatic;
@@ -14,9 +14,16 @@ exports.loadArtStatic = loadArtStatic;
  * module's exports and cache stay as they are; it reuses its parsers.
  *
  *   T8  items        f3 name vector, f6 visual JSON {"icon": "<72px icon>"}
- *   T9  units        f1 name vector, f4 icon, f10 strength, f12 health
+ *   T9  units        f1 name vector, f2 tier (0–10: Archer I = 1, Corax II = 9;
+ *                    picks the icon's frame colour, unit-frames.ts), f4 icon,
+ *                    f10 strength, f12 health
  *   T13 hero avatars f1 name vector, f3 icon — a player's heroAvatar IS the T13 id
  *   T21 techs        f1 name vector, f3 icon (research and hero talents)
+ *   T52 customizations f1 kind (1 portrait frame, 2 city look, 3 …), f2 name
+ *                    vector, f4 visual JSON {"visual": "<frame sprite>", …} —
+ *                    a player's 402 field 6 IS the id of their frame, field 5
+ *                    of their city look (whose visual is JSON again, with an
+ *                    icon per city level: {"icon": {"1": …, "5": …}})
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -35,6 +42,14 @@ exports.TABLE_HERO_AVATARS = 13;
 exports.TABLE_TECHS = 21;
 /** Captains: f5 name vector, f7 JSON config naming the sprites (smallIcon, unitAltarArt). */
 exports.TABLE_CAPTAINS = 75;
+/** Customizations (portrait frames, city looks): f1 kind, f2 name vector, f4 visual JSON. */
+exports.TABLE_CUSTOMIZATIONS = 52;
+/** T52 kind of a hero-portrait frame. */
+const CUSTOMIZATION_FRAME = 1;
+/** T52 kind of a city look; its visual JSON holds another JSON with {"icon": {minCityLevel: icon}}. */
+const CUSTOMIZATION_CITY = 2;
+/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames). */
+exports.ART_STATIC_FORMAT = 2;
 async function fetchBuffer(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok)
@@ -85,7 +100,7 @@ function buildArtStatic(version, strings, vectors, tables, en) {
         const icon = str(row[4]);
         const n = name(row[1]);
         if (icon && n)
-            units.push({ id, name: n, strength: num(row[10]), health: num(row[12]), icon });
+            units.push({ id, name: n, tier: num(row[2]), strength: num(row[10]), health: num(row[12]), icon });
     }
     const techs = {};
     for (const [id, row] of rows(exports.TABLE_TECHS)) {
@@ -124,7 +139,43 @@ function buildArtStatic(version, strings, vectors, tables, en) {
         if (n && (icon || art))
             captains[id] = { name: n, icon, art };
     }
-    return { version, heroes, units, techs, items, captains };
+    const frames = {};
+    const cityLooks = {};
+    for (const [id, row] of rows(exports.TABLE_CUSTOMIZATIONS)) {
+        if (row[1] !== CUSTOMIZATION_FRAME && row[1] !== CUSTOMIZATION_CITY)
+            continue;
+        let cfg = {};
+        try {
+            cfg = JSON.parse(str(row[4]) ?? '{}');
+        }
+        catch {
+            continue;
+        }
+        if (typeof cfg.visual !== 'string' || !cfg.visual)
+            continue;
+        if (row[1] === CUSTOMIZATION_FRAME) {
+            // Animated frames name a Spine animation separately; `visual` is their still.
+            frames[id] = { name: name(row[2]), visual: cfg.visual };
+            continue;
+        }
+        let look = {};
+        try {
+            look = JSON.parse(cfg.visual);
+        }
+        catch {
+            continue;
+        }
+        const icons = {};
+        if (look.icon && typeof look.icon === 'object') {
+            for (const [lvl, icon] of Object.entries(look.icon)) {
+                if (/^\d+$/.test(lvl) && typeof icon === 'string' && icon)
+                    icons[lvl] = icon;
+            }
+        }
+        if (Object.keys(icons).length)
+            cityLooks[id] = { name: name(row[2]), icons };
+    }
+    return { version, format: exports.ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks };
 }
 function staticKey(v) {
     return `${v.composite.slice(0, 16)}-${v.translationsCatalog.replace(/\.json$/, '')}`;
@@ -152,8 +203,8 @@ async function loadArtStatic(dir) {
     const file = cacheFile(dir, key);
     if (fs_1.default.existsSync(file)) {
         const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
-        // A cache from before captains were read is rebuilt once.
-        if (cached.captains)
+        // A cache from an older format (no captains, no unit tiers) is rebuilt once.
+        if (cached.captains && cached.format === exports.ART_STATIC_FORMAT)
             return cached;
     }
     const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
@@ -162,7 +213,7 @@ async function loadArtStatic(dir) {
         fetchBuffer(STATIC_BASE + version.files.noDuplicates),
         fetchEnglish(version.translationsCatalog),
     ]);
-    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS]), en);
+    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_CUSTOMIZATIONS]), en);
     fs_1.default.mkdirSync(dir, { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs_1.default.writeFileSync(tmp, JSON.stringify(data));
