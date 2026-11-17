@@ -58,6 +58,10 @@ exports.loadTroopList = loadTroopList;
  *   artifacts    T110 artifact type → its icon (the type's config `icon`).
  *   equipment    T11 equipment item type → its icon (f2 address, "arch_body").
  *   inserts      T8 gem / enchantment id → its icon (f6 visual).
+ *   itemFrames   item quality grade → the back an item tile is drawn on, the
+ *                plain back of an ungraded item, and the item frame
+ *                (unit-frames.ts; from the WebGL client). Item icons
+ *                themselves go by id (item-icons.ts), not through here.
  *
  * Every mapping only names images that were actually extracted.
  */
@@ -69,7 +73,7 @@ function emptyMappings() {
     return {
         heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
         chests: {}, resources: {}, techs: {}, captains: {}, captainArt: {}, ancients: {}, cityLooks: {}, status: {},
-        artifacts: {}, equipment: {}, inserts: {},
+        artifacts: {}, equipment: {}, inserts: {}, itemFrames: { backs: {}, plainBack: null, frame: null },
     };
 }
 /** id → its icon, for the ones that were extracted (artifacts, equipment, gems). */
@@ -295,6 +299,7 @@ function buildMappings(st, troops, resourceNames, available) {
         artifacts: iconsById(st.artifacts, available),
         equipment: iconsById(st.equipment, available),
         inserts: iconsById(st.inserts, available),
+        itemFrames: (0, unit_frames_js_1.itemFrameArt)(available),
     };
 }
 /** The image for a heroAvatar value, or null (unknown avatar, art not extracted yet). */

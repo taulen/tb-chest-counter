@@ -3,13 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
 exports.readTables = readTables;
 exports.asIdRecord = asIdRecord;
 exports.buildNames = buildNames;
+exports.fixedResourceGrants = fixedResourceGrants;
+exports.readItem = readItem;
 exports.buildDragon = buildDragon;
 exports.buildEvents = buildEvents;
 exports.buildHeroLevels = buildHeroLevels;
@@ -31,7 +33,9 @@ exports.resetGameNamesMemo = resetGameNamesMemo;
  * own id space. The tables we use:
  *
  *   T7  map objects   f3 name vector
- *   T8  gift types    f3 chest name vector, f14 source template vector
+ *   T8  gift types    f3 chest name vector, f14 source template vector — and every
+ *                     other item: f1 kind, f8/f12 duration, f10 quality, f7 grants
+ *                     (see GameItem; a chest's rewards are T8 items too)
  *   T13 hero avatars  f1 name vector, f3 icon string
  *   T21 techs         f1 name vector, f5 levels (research + hero talents)
  *   T11 equipment     see TABLE_EQUIPMENT (gems/enchantments are T8 items)
@@ -156,15 +160,27 @@ const NEEDED_TABLES = [
     exports.TABLE_FACTIONS,
     exports.TABLE_DRAGONS,
 ];
+/** Item kinds (T8 f1) whose f8 is a duration in seconds: Speedup, Clan Speedup. */
+exports.SPEEDUP_ITEM_KINDS = new Set([3, 11]);
+/** VIP status (T8 f1); its duration is f12. */
+exports.VIP_ITEM_KIND = 6;
+/**
+ * Items below this id are the base resources and currencies (Gold 1, Silver 2,
+ * Lumber 3, Iron 4, Stone 5, Food 6, Tar 13, Dragon Coins 30, Epic Tar 32,
+ * Rare Tar 34, Sacred Potion 35) — the same line the art pipeline draws
+ * (RESOURCE_ITEM_MAX_ID, game-art/selection.ts).
+ */
+exports.BASE_RESOURCE_MAX_ID = 100;
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
  * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: event
  * titles (T44); 6: terrain names; 7: hero and captain levels — XP thresholds,
  * Stats, Might; 8: the Hall of Fame's factions and the real names of techs
- * 800–803; 9: the Dragon (T73) — Nov 2026); a cached file with an older
- * format is rebuilt.
+ * 800–803; 9: the Dragon (T73); 10: items — kind, quality grade, resource pack
+ * amounts and speedup durations, for the chest rewards — Nov 2026); a cached
+ * file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 9;
+exports.NAMES_FORMAT = 10;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -383,10 +399,15 @@ function buildNames(version, strings, vectors, tables, en) {
     const vecTemplate = vecText;
     const rows = (table) => Object.entries(tables.get(table) ?? {}).filter((e) => Array.isArray(e[1]));
     const gifts = {};
+    const items = {};
     for (const [id, row] of rows(exports.TABLE_GIFT_TYPES)) {
         const chest = vecText(row[3]);
-        if (chest)
-            gifts[id] = { chest, source: vecTemplate(row[14]) ?? '' };
+        if (!chest)
+            continue;
+        gifts[id] = { chest, source: vecTemplate(row[14]) ?? '' };
+        const item = readItem(row);
+        if (item)
+            items[id] = item;
     }
     const techs = {};
     for (const [id, row] of rows(exports.TABLE_TECHS)) {
@@ -523,11 +544,67 @@ function buildNames(version, strings, vectors, tables, en) {
     return {
         version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT,
         gifts, techs, objects, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+        items,
         events: buildEvents(tables.get(exports.TABLE_TOURNAMENTS), str, en),
         heroLevels: buildHeroLevels(rows(exports.TABLE_HERO_LEVELS)),
         factions, ...(hallOfFame ? { hallOfFame } : {}),
         ...(dragon ? { dragon } : {}),
     };
+}
+const isPositive = (v) => typeof v === 'number' && v > 0;
+/** An empty map or list — or no container at all (a number, a string, nothing). */
+function isEmptyCell(v) {
+    if (Array.isArray(v))
+        return v.length === 0;
+    if (v && typeof v === 'object')
+        return Object.keys(v).length === 0;
+    return true;
+}
+/**
+ * T8 f7 → the resources the item always gives, when that is ALL it gives:
+ * exactly one entry (no draw) whose payload grants only base resources (ids
+ * below BASE_RESOURCE_MAX_ID) and no units, items or timed effects. A chest's
+ * weighted draw, a booster's effect or a pack of other items is no fixed
+ * resource grant: undefined.
+ */
+function fixedResourceGrants(f7) {
+    if (!Array.isArray(f7) || f7.length !== 1 || !Array.isArray(f7[0]) || f7[0].length !== 1)
+        return undefined;
+    const entry = f7[0][0];
+    if (!Array.isArray(entry) || !Array.isArray(entry[2]))
+        return undefined;
+    const payload = entry[2];
+    const grants = payload[0];
+    if (!grants || typeof grants !== 'object' || Array.isArray(grants) || '$pairs' in grants)
+        return undefined;
+    // The payload cells after the resource map that can grant something else:
+    // [1] units, [2]/[3] item lists, [9] and [15] maps, [11] timed effects (a booster's).
+    if (![1, 2, 3, 9, 11, 15].every((i) => isEmptyCell(payload[i])))
+        return undefined;
+    const out = {};
+    for (const [id, amount] of Object.entries(grants)) {
+        const n = Number(id);
+        if (!Number.isInteger(n) || n <= 0 || n >= exports.BASE_RESOURCE_MAX_ID || !isPositive(amount))
+            return undefined;
+        out[id] = amount;
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+/** One T8 row → its GameItem; null when the row has no kind. */
+function readItem(row) {
+    const kind = row[1];
+    if (typeof kind !== 'number')
+        return null;
+    const item = { kind };
+    if (isPositive(row[10]))
+        item.quality = row[10];
+    const seconds = exports.SPEEDUP_ITEM_KINDS.has(kind) ? row[8] : kind === exports.VIP_ITEM_KIND ? row[12] : undefined;
+    if (isPositive(seconds))
+        item.seconds = seconds;
+    const grants = fixedResourceGrants(row[7]);
+    if (grants)
+        item.grants = grants;
+    return item;
 }
 /** A T73 text's effect_strings → [translation key, value] in id order; [] when it has none. */
 function effectStrings(json) {

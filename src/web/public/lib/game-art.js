@@ -7,6 +7,8 @@
 // the game's own art is ever shown, nothing bundled in the repo.
 
 let art = null;
+/** art.names as a Set: an index holds thousands of names and a page asks for hundreds. */
+let artNames = new Set();
 let loading = null;
 
 /** Start (or reuse) the one fetch of the art index. Resolves to the index or null. */
@@ -14,7 +16,11 @@ export function loadGameArt() {
   if (!loading) {
     loading = fetch('/api/game-art', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { art = j && j.base ? j : null; return art; })
+      .then((j) => {
+        art = j && j.base ? j : null;
+        artNames = new Set(art?.names ?? []);
+        return art;
+      })
       .catch(() => { loading = null; return null; });
   }
   return loading;
@@ -22,7 +28,7 @@ export function loadGameArt() {
 
 /** URL of a game image by name, or null when there is none (yet). */
 export function gameArtUrl(name) {
-  return art && name && art.names?.includes(name) ? `${art.base}${name}.png` : null;
+  return art && name && artNames.has(name) ? `${art.base}${name}.png` : null;
 }
 
 /**
@@ -88,6 +94,113 @@ export function ancientArtUrl(key) {
 export function chestIconUrl(chestName) {
   return gameArtUrl(art?.mappings?.chests?.[chestName]);
 }
+
+// ─── Item tiles, reward chips, chest tiles ──────────────────────────────────
+// An item drawn the way the game's inventory and reward windows draw it (the
+// item-tile sprites from the WebGL client, src/game-art/unit-frames.ts
+// ITEM_QUALITY_COLOURS): the icon on a back coloured by its quality grade
+// (T8 f10 1–8, Poor grey … Godlike gold; the plain brown back without a
+// grade), inside the thin bronze item frame. Geometry and the amount badge:
+// style.css "Game item tiles". Item icons are by item id and come from the
+// server with the data (item-icons.ts); chest icons can also go by name.
+
+/** The tile's back and frame for a quality grade; null pieces when the art lacks them. */
+function itemFrameUrls(quality) {
+  const f = art?.mappings?.itemFrames;
+  if (!f) return { back: null, frame: null };
+  const graded = Number(quality) > 0 ? f.backs?.[String(quality)] : null;
+  return { back: gameArtUrl(graded ?? f.plainBack), frame: gameArtUrl(f.frame) };
+}
+
+/**
+ * A game item's picture: its icon on the back of its quality grade in the
+ * item frame, as the game draws it; the bare icon when `framed` is false or
+ * the frame art is missing; a neutral tile with the name's first letter when
+ * there is no icon (art not extracted yet, or an item the art lacks) — never
+ * a broken image, never a picture of ours. Decorative: the name or amount
+ * belongs beside it (or in a label around it).
+ *
+ * @param {string|null} iconUrl  the item's icon URL (from the server, by item id)
+ * @param {object} [opts]
+ * @param {number} [opts.size=40]     the whole tile in px, frame included
+ * @param {number} [opts.quality=0]   T8 quality grade 1–8; 0 = none (plain back)
+ * @param {string} [opts.name='']     display name, for the placeholder's letter
+ * @param {boolean} [opts.framed=true] draw the back and frame
+ * @param {string} [opts.badge='']    short text over the bottom-right, the way
+ *                                    the game prints an amount on a reward ("250K", "×3")
+ * @param {string} [opts.cls='']      extra class(es)
+ */
+export function itemIconHtml(iconUrl, { size = 40, quality = 0, name = '', framed = true, badge = '', cls = '' } = {}) {
+  const q = Number(quality) > 0 ? Number(quality) : 0;
+  const classes = ['game-item', q ? `game-item-q${q}` : '', cls].filter(Boolean).join(' ');
+  // The size is a custom property, so a layout can resize tiles in CSS (a
+  // phone grid); style.css sizes the box from it.
+  const style = `--gi-size:${size}px`;
+  const badgeHtml = badge ? `<span class="game-item-badge">${esc(badge)}</span>` : '';
+  if (!iconUrl) {
+    const letter = (String(name ?? '').trim()[0] ?? '?').toUpperCase();
+    return `<span class="${attr(classes)} is-empty" style="${style}" aria-hidden="true"><span class="game-item-letter">${esc(letter)}</span>${badgeHtml}</span>`;
+  }
+  const { back, frame } = framed ? itemFrameUrls(q) : { back: null, frame: null };
+  if (!frame) {
+    return `<span class="${attr(classes)} is-bare" style="${style}" aria-hidden="true">`
+      + `<img class="game-item-art" src="${attr(iconUrl)}" alt="" decoding="async" loading="lazy">${badgeHtml}</span>`;
+  }
+  return `<span class="${attr(classes)}" style="${style}" aria-hidden="true">`
+    + (back ? `<img class="game-item-back" src="${attr(back)}" alt="" decoding="async" loading="lazy">` : '')
+    + `<img class="game-item-art" src="${attr(iconUrl)}" alt="" decoding="async" loading="lazy">`
+    + `<img class="game-item-frame" src="${attr(frame)}" alt="" decoding="async" loading="lazy">`
+    + `${badgeHtml}</span>`;
+}
+
+/**
+ * A chest's picture as an item tile (itemIconHtml): the chest's own icon —
+ * `url` when the caller has it (by gift type, exact), else the chest NAME's
+ * icon (chestIconUrl) — framed in its quality grade when one is known.
+ * Missing art gives the neutral placeholder. `chestName` is the English name
+ * the art maps; pass `name` for a translated placeholder letter.
+ *
+ * @param {string} chestName
+ * @param {{ size?: number, url?: string|null, quality?: number, framed?: boolean, name?: string, badge?: string, cls?: string }} [opts]
+ */
+export function chestIconHtml(chestName, { size = 40, url = null, quality = 0, framed = true, name = '', badge = '', cls = '' } = {}) {
+  return itemIconHtml(url || chestIconUrl(chestName), {
+    size, quality, framed, badge, name: name || chestName, cls: ['game-chest', cls].filter(Boolean).join(' '),
+  });
+}
+
+/**
+ * A reward the way the game's reward window lists one: the item tile with
+ * the amount printed over its corner and the name under it — or, `inline`,
+ * a small tile with the amount beside it (dense table cells, where a badge
+ * would not fit). The whole chip is one labelled image for assistive tech
+ * ("Silver: 1,250,000").
+ *
+ * @param {{ name: string, iconUrl?: string|null, quality?: number }} item  name already for display (tGame)
+ * @param {string} amount  short amount ("1.3M", "2d 4h", "12"); '' for none
+ * @param {object} [opts]
+ * @param {number} [opts.size=56]
+ * @param {'stack'|'inline'} [opts.layout='stack']
+ * @param {string} [opts.label]   full text for the tooltip and screen readers (default "name: amount")
+ * @param {boolean} [opts.showName=true]  the name under the tile (stack only)
+ * @param {string} [opts.sub='']  an extra muted line under the name (stack only)
+ * @param {string} [opts.cls='']
+ */
+export function rewardChipHtml(item, amount, { size = 56, layout = 'stack', label, showName = true, sub = '', cls = '' } = {}) {
+  const name = String(item?.name ?? '');
+  const full = label ?? (amount ? `${name}: ${amount}` : name);
+  const inline = layout === 'inline';
+  const tile = itemIconHtml(item?.iconUrl ?? null, { size, quality: item?.quality ?? 0, name, badge: inline ? '' : amount });
+  const classes = ['reward-chip', inline ? 'is-inline' : '', cls].filter(Boolean).join(' ');
+  return `<span class="${attr(classes)}" role="img" aria-label="${attr(full)}" title="${attr(full)}" style="--gi-size:${size}px">`
+    + tile
+    + (inline && amount ? `<span class="reward-chip-amount">${esc(amount)}</span>` : '')
+    + (!inline && showName ? `<span class="reward-chip-name">${esc(name)}</span>` : '')
+    + (!inline && sub ? `<span class="reward-chip-sub">${esc(sub)}</span>` : '')
+    + '</span>';
+}
+
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** The game's icon for a resource by its name, or null. */
 export function resourceIconUrl(resourceName) {

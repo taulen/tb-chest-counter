@@ -109,9 +109,58 @@ export function captainTileArt(available: (name: string) => boolean): CaptainTil
   return out;
 }
 
+/**
+ * An item's tile — a chest reward, a chest — the way the game's inventory and
+ * reward windows draw one: a 72×72 back coloured by the item's quality grade
+ * (T8 f10, the forge's ladder: 1 Poor grey, 2 Common white, 3 Uncommon green,
+ * 4 Rare blue, 5 Epic violet, 6 Legendary orange, 7 Ascendant red, 8 Godlike
+ * gold), the icon over it, and the thin bronze item frame (94×92, centred
+ * 2 px low, as a unit icon's). An item without a grade (resources, packs,
+ * speedups) sits on the plain brown resource back. The client's sprites are
+ * named for exactly this (`back_icon_subject_72x72_<colour>`,
+ * `back_icon_resources_72x72`, `frame_icon_thing_94x92`); which view picks
+ * which is in client code we cannot read, so the grade → colour rule is the
+ * forge's own ladder (client.craft.<colour>_item_title). Many item icons are
+ * opaque squares that cover the back; the cut-out ones (Gold, materials)
+ * show it. Geometry: style.css .game-item.
+ */
+export const ITEM_QUALITY_COLOURS: Record<number, string> = {
+  1: 'grey', 2: 'white', 3: 'green', 4: 'blue', 5: 'violet', 6: 'orange', 7: 'red', 8: 'gold',
+};
+const itemBackName = (colour: string): string => `back_icon_subject_72x72_${colour}`;
+export const ITEM_PLAIN_BACK = 'back_icon_resources_72x72';
+export const ITEM_FRAME = 'frame_icon_thing_94x92';
+
+export interface ItemFrameArt {
+  /** Quality grade (1–8) → back image (safeArtName), for the grades extracted. */
+  backs: Record<string, string>;
+  /** The back of an item with no grade, or null. */
+  plainBack: string | null;
+  /** The item frame, or null (the tile is then drawn without one). */
+  frame: string | null;
+}
+
+/** The client texture names an item tile uses. */
+export function itemFrameTextures(): string[] {
+  return [...Object.values(ITEM_QUALITY_COLOURS).map(itemBackName), ITEM_PLAIN_BACK, ITEM_FRAME];
+}
+
+export function itemFrameArt(available: (name: string) => boolean): ItemFrameArt {
+  const pick = (n: string): string | null => (available(safeArtName(n)) ? safeArtName(n) : null);
+  const backs: Record<string, string> = {};
+  for (const [grade, colour] of Object.entries(ITEM_QUALITY_COLOURS)) {
+    const back = pick(itemBackName(colour));
+    if (back) backs[grade] = back;
+  }
+  return { backs, plainBack: pick(ITEM_PLAIN_BACK), frame: pick(ITEM_FRAME) };
+}
+
 /** Every texture we take from the client build. */
 export function clientUiTextures(): string[] {
-  return [...new Set([...unitFrameTextures(), HERO_LEVEL_BADGE, CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF])];
+  return [...new Set([
+    ...unitFrameTextures(), HERO_LEVEL_BADGE, CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF,
+    ...itemFrameTextures(),
+  ])];
 }
 
 export interface UnitFrameArt {

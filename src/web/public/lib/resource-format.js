@@ -83,22 +83,23 @@ export function resourceIconOnly(name) {
 
 /**
  * The segmented tab control shown at the top of the Resources pages.
- * `active` is 'overview', 'totals', or 'admin'. Links use hash sub-routes so
- * the browser back button and deep-links work.
+ * `active` is 'overview', 'totals', 'chests' or 'admin'. Links use hash
+ * sub-routes so the browser back button and deep-links work.
  *
- * Overview + Totals are read-only dashboards visible to every clan member; the
- * Admin tab (the ledger) is only rendered for admins/superadmins so
- * regular members never see it. The Admin page + API still enforce this
- * server-side — this is just UI hygiene.
+ * Overview, Totals and Chest rewards are read-only dashboards visible to every
+ * clan member; the Admin tab (the ledger) is only rendered for
+ * admins/superadmins so regular members never see it. The Admin page + API
+ * still enforce this server-side — this is just UI hygiene.
  */
 export function resourceTabsHtml(active) {
   const tab = (key, hash, label) =>
     `<a class="resources-tab ${active === key ? 'is-active' : ''}" href="${hash}">${label}</a>`;
   const user = getCurrentUser();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
-  return `<div class="resources-tabs" role="tablist">
+  return `<div class="resources-tabs resources-nav" role="tablist">
     ${tab('overview', '#resources', t('Overview'))}
     ${tab('totals', '#resources/totals', t('Totals'))}
+    ${tab('chests', '#resources/chests', t('Chest rewards'))}
     ${isAdmin ? tab('admin', '#resources/admin', t('Admin')) : ''}
   </div>`;
 }

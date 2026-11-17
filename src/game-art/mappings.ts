@@ -31,6 +31,10 @@
  *   artifacts    T110 artifact type → its icon (the type's config `icon`).
  *   equipment    T11 equipment item type → its icon (f2 address, "arch_body").
  *   inserts      T8 gem / enchantment id → its icon (f6 visual).
+ *   itemFrames   item quality grade → the back an item tile is drawn on, the
+ *                plain back of an ungraded item, and the item frame
+ *                (unit-frames.ts; from the WebGL client). Item icons
+ *                themselves go by id (item-icons.ts), not through here.
  *
  * Every mapping only names images that were actually extracted.
  */
@@ -38,7 +42,15 @@ import fs from 'fs';
 import path from 'path';
 import type { ArtItem, ArtStatic, ArtUnit } from './art-static.js';
 import { EVENT_ART, STATUS_ART, isChestName, isResourceItem, safeArtName } from './selection.js';
-import { HERO_LEVEL_BADGE, captainTileArt, unitFrameArt, type CaptainTileArt, type UnitFrameArt } from './unit-frames.js';
+import {
+  HERO_LEVEL_BADGE,
+  captainTileArt,
+  itemFrameArt,
+  unitFrameArt,
+  type CaptainTileArt,
+  type ItemFrameArt,
+  type UnitFrameArt,
+} from './unit-frames.js';
 
 export interface TroopStats {
   id: string;
@@ -84,13 +96,15 @@ export interface ArtMappings {
   equipment?: Record<string, string>;
   /** T8 gem / enchantment id → icon. Same age as `artifacts`. */
   inserts?: Record<string, string>;
+  /** The pieces of an item tile (unit-frames.ts). Absent in an index built before the chest rewards (selection 10). */
+  itemFrames?: ItemFrameArt;
 }
 
 export function emptyMappings(): ArtMappings {
   return {
     heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
     chests: {}, resources: {}, techs: {}, captains: {}, captainArt: {}, ancients: {}, cityLooks: {}, status: {},
-    artifacts: {}, equipment: {}, inserts: {},
+    artifacts: {}, equipment: {}, inserts: {}, itemFrames: { backs: {}, plainBack: null, frame: null },
   };
 }
 
@@ -322,6 +336,7 @@ export function buildMappings(
     artifacts: iconsById(st.artifacts, available),
     equipment: iconsById(st.equipment, available),
     inserts: iconsById(st.inserts, available),
+    itemFrames: itemFrameArt(available),
   };
 }
 
