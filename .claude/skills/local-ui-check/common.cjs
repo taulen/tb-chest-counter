@@ -32,7 +32,7 @@ const PAGES = {
   rewards: '/#tools/rewards',
   triumphal: '/#triumphal',
   resources: '/#resources',
-  reschests: '/#resources/chests',
+  chestrewards: '/#chest-rewards',
   resadmin: '/#resources/admin',
   sessions: '/#sessions',
   external: '/#external',

@@ -34,6 +34,30 @@ const HISTORY_SHOWN = 30;
 /** The open tab and tree, kept while navigating within the SPA. */
 const view = { tab: 'research', tree: null, rankKind: 7, rankPage: null };
 
+// My Clan's sections. Triumphal Chests is a tab here too (Nov 2026: it left the
+// main menu), but a page of its own (#triumphal): its period selector lives in
+// the address, so it can't be an in-page panel.
+const CLAN_TABS = [
+  { key: 'research', label: () => t('Research') },
+  { key: 'rankings', label: () => t('Rankings') },
+  { key: 'treasury', label: () => t('Treasury') },
+  { key: 'history', label: () => t('History') },
+  { key: 'triumphal', label: () => t('Triumphal Chests') },
+];
+
+/** Open My Clan on a section (#clan/<tab>). */
+export function setClanTab(key) {
+  if (CLAN_TABS.some((tb) => tb.key === key && key !== 'triumphal')) view.tab = key;
+}
+
+/** My Clan's tab strip as links, for the Triumphal Chests page (#triumphal). */
+export function clanTabLinksHtml(active) {
+  return `<div class="resources-tabs view-tabs" role="navigation" aria-label="${esc(t('Page sections'))}">${CLAN_TABS.map((tb) => {
+    const href = tb.key === 'triumphal' ? '#triumphal' : `#clan/${tb.key}`;
+    return `<a class="resources-tab${tb.key === active ? ' is-active' : ''}" href="${href}"${tb.key === active ? ' aria-current="page"' : ''}>${esc(tb.label())}</a>`;
+  }).join('')}</div>`;
+}
+
 /** Medal tier → CSS modifier (colour) — the tier's name is always written next to it. */
 const TIER_CLASS = { 1: 'is-bronze', 2: 'is-silver', 3: 'is-gold', 4: 'is-platinum' };
 
@@ -81,23 +105,19 @@ export async function renderClan(content) {
       loadGameArt(),
     ]);
   } catch {
-    content.innerHTML = noteCard(t("Couldn't load the clan. Try again in a minute."));
+    // The strip stays, so Triumphal Chests is reachable whatever the game data.
+    content.innerHTML = clanTabLinksHtml(view.tab) + noteCard(t("Couldn't load the clan. Try again in a minute."));
     return;
   }
   if (!data?.linked) {
-    content.innerHTML = noteCard(t("The clan hasn't been read from the game yet. The next scan reads it."));
+    content.innerHTML = clanTabLinksHtml(view.tab) + noteCard(t("The clan hasn't been read from the game yet. The next scan reads it."));
     return;
   }
 
   const clanTrees = (trees?.trees || []).filter((tr) => tr.kind === 'clan' && tr.nodes.length && !/talents/i.test(tr.layout || ''));
   const levels = data.techs?.levels || {};
-  const tabs = [
-    { key: 'research', label: esc(t('Research')) },
-    { key: 'rankings', label: esc(t('Rankings')) },
-    { key: 'treasury', label: esc(t('Treasury')) },
-    { key: 'history', label: esc(t('History')) },
-  ];
-  if (!tabs.some((tb) => tb.key === view.tab)) view.tab = 'research';
+  const tabs = CLAN_TABS.map((tb) => ({ key: tb.key, label: esc(tb.label()) }));
+  if (!tabs.some((tb) => tb.key === view.tab) || view.tab === 'triumphal') view.tab = 'research';
 
   content.innerHTML = `
     <div class="clan-page">
@@ -111,6 +131,10 @@ export async function renderClan(content) {
     </div>`;
 
   wireViewTabs(content, 'clan-view', (key) => {
+    if (key === 'triumphal') {
+      window.location.hash = '#triumphal';
+      return;
+    }
     view.tab = key;
     if (key === 'rankings') mountRankings(content, data);
   });

@@ -60,7 +60,7 @@ name, and an unmapped item is left out with a log line). Its icon comes from
 the game's own bundles, matched by name (game-art `resources` mapping) — no
 image is ever added to the repo.
 
-### Chest rewards (Resources → Chest rewards)
+### Chest rewards (its own menu entry, #chest-rewards)
 
 `game_claims` keeps the game's own reply to every claim request: `rewards` is
 `{itemId: amountOrCount}` SUMMED over the request's `batch_size` chests of one
@@ -968,7 +968,7 @@ Each table has its own id space:
 |---|---|---|
 | 4 | terrain types ("Dense forest") | f2 vector |
 | 7 | map objects | f3 vector |
-| 8 | gift types — and every item (`items`, format 10: f1 kind, f8/f12 seconds, f10 quality, f7 fixed resource grants; see [Chest rewards](#chest-rewards-resources--chest-rewards)) | f3 chest name, f14 source template |
+| 8 | gift types — and every item (`items`, format 10: f1 kind, f8/f12 seconds, f10 quality, f7 fixed resource grants; see [Chest rewards](#chest-rewards-its-own-menu-entry-chest-rewards)) | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
 | 9 | units | f1 name, f2 tier (0–10), f4 icon, f10 strength, f12 health |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |

@@ -93,7 +93,7 @@ import {
   changeMemberResourcesPage,
 } from './pages/members.js';
 import { renderMight } from './pages/might.js';
-import { renderClan } from './pages/clan.js';
+import { renderClan, setClanTab, clanTabLinksHtml } from './pages/clan.js';
 import { renderChats } from './pages/chats.js';
 import { renderPerformance } from './pages/performance.js';
 import {
@@ -965,9 +965,10 @@ async function renderRoute(page, content) {
       return;
     }
   }
-  // Resources is a four-tab page: #resources = Overview (landing),
-  // #resources/totals = per-member totals, #resources/chests = what opened
-  // chests paid out, #resources/admin = the ledger.
+  // Resources is a three-tab page: #resources = Overview (landing),
+  // #resources/totals = per-member totals, #resources/admin = the ledger.
+  // Chest rewards has its own menu entry (#chest-rewards); its old address
+  // under Resources still opens it.
   if (page === 'resources/admin') {
     await renderResourcesAdmin(content);
     return;
@@ -976,7 +977,13 @@ async function renderRoute(page, content) {
     await renderResourcesTotals(content);
     return;
   }
-  if (page === 'resources/chests') {
+  // My Clan on a section: #clan/research, #clan/rankings, …
+  if (page.startsWith('clan/')) {
+    setClanTab(decodeURIComponent(page.slice('clan/'.length)));
+    await renderClan(content);
+    return;
+  }
+  if (page === 'chest-rewards' || page === 'resources/chests') {
     await renderResourcesChestRewards(content);
     return;
   }
@@ -1007,7 +1014,13 @@ async function renderRoute(page, content) {
     case 'dashboard': await renderDashboard(content); break;
     case 'analytics': await renderAnalytics(content); break;
     case 'leaderboard': await renderLeaderboard(content); break;
-    case 'triumphal': await renderTriumphal(content); break;
+    case 'triumphal': {
+      // A tab of My Clan (its strip on top), but its own page: the period
+      // selector lives in the address (#triumphal?period=…).
+      content.innerHTML = `${clanTabLinksHtml('triumphal')}<div data-triumphal-body></div>`;
+      await renderTriumphal(content.querySelector('[data-triumphal-body]'));
+      break;
+    }
     case 'members': await renderMembers(content); break;
     case 'might': await renderMight(content); break;
     case 'clan': await renderClan(content); break;
@@ -1257,6 +1270,8 @@ function updateNavState() {
   if (currentPage.startsWith('member/')) navPage = 'members';
   else if (currentPage.startsWith('session/')) navPage = 'sessions';
   else if (currentPage.startsWith('chest/') || currentPage.startsWith('source/')) navPage = 'analytics';
+  else if (currentPage === 'resources/chests') navPage = 'chest-rewards';
+  else if (currentPage === 'triumphal' || currentPage.startsWith('clan/')) navPage = 'clan';
   else if (currentPage.startsWith('resources')) navPage = 'resources';
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('tools')) navPage = 'tools';
@@ -1275,6 +1290,7 @@ const PAGE_SUBTITLES = {
   performance: t('Who beats their goals, and who falls short'),
   might: t('Power over time, member by member'),
   resources: t('Clan Capital donations'),
+  'chest-rewards': t("What the clan's opened chests paid out"),
   events: t('Event runs and who took part'),
   tools: t('Calculators for planning events'),
   triumphal: t('Bank gifts and triumphal packages'),

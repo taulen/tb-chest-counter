@@ -24,7 +24,6 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { computeGameWindow } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
-import { resourceTabsHtml } from '../lib/resource-format.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { describeChart } from '../lib/chart-a11y.js';
 import { readToken } from '../lib/theme.js';
@@ -215,7 +214,7 @@ function trendKeys() {
 export async function renderResourcesChestRewards(el) {
   mountedEl = el;
   destroyChart();
-  el.innerHTML = `${resourceTabsHtml('chests')}<div class="empty-state"><p>${t('Loading chest rewards…')}</p></div>`;
+  el.innerHTML = `<div class="empty-state"><p>${t('Loading chest rewards…')}</p></div>`;
   // The game's art index (frames, chest icons) is in before the first paint.
   await loadGameArt();
   await reload();
@@ -261,7 +260,6 @@ function paint(error = '') {
     : viewPanelHtml(VIEW_GROUP, 'income', view.mode, incomeHtml())
       + viewPanelHtml(VIEW_GROUP, 'chests', view.mode, byChestHtml());
   mountedEl.innerHTML = `
-    ${resourceTabsHtml('chests')}
     <div class="chest-rewards-page">
       ${headerHtml()}
       <div class="chest-rewards-body">${body}</div>

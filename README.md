@@ -365,16 +365,18 @@ Pages are role-gated. Members see:
   progress, single-day records, guards level, Gold Pass, full chest history).
 - **Events** — per-event chest breakdowns per player for each event run, plus
   Tin Man / Ancients standings and targets.
-- **Triumphal Chests** — separate leaderboard/history for triumphal chests,
-  scored from their package value and kept **out of the main leaderboard**.
+- **My Clan** — the clan as the game shows it: research, rankings, treasury,
+  history, and a **Triumphal Chests** tab — the separate leaderboard/history for
+  triumphal chests, scored from their package value and kept **out of the main
+  leaderboard**.
+- **Chest rewards** — what the clan's opened chests paid out per day, week or
+  month, and what each chest type gives on average and how often, in the
+  game's own art.
 - **Might** — every member's might and hero level, the clan's might over time,
   and side-by-side member comparison.
 - **Resources** — per-resource totals and charts of what members have sent and
   received, from the Clan Capital ledger every scan reads. Members see
-  read-only Overview / Totals / Chest rewards tabs (what the clan's opened
-  chests paid out per day, week or month, and what each chest type gives on
-  average and how often, in the game's own art); admins also get the
-  editable ledger.
+  read-only Overview / Totals tabs; admins also get the editable ledger.
 - **Tools** — the Ancient planner, Citadel simulator, stack calculator,
   research costs and reward splitter.
 - **Scan History** — recent scan sessions and the chests each recorded.

@@ -99,7 +99,6 @@ export function resourceTabsHtml(active) {
   return `<div class="resources-tabs resources-nav" role="tablist">
     ${tab('overview', '#resources', t('Overview'))}
     ${tab('totals', '#resources/totals', t('Totals'))}
-    ${tab('chests', '#resources/chests', t('Chest rewards'))}
     ${isAdmin ? tab('admin', '#resources/admin', t('Admin')) : ''}
   </div>`;
 }
