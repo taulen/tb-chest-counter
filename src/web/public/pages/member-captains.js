@@ -18,12 +18,25 @@ const HERO_ID = 1;
 const FINE_HOVER = '(hover: hover) and (pointer: fine)';
 // Hover intent: a pointer crossing the grid on its way elsewhere opens nothing.
 const SHOW_DELAY_MS = 200;
-const HIDE_DELAY_MS = 100;
+const HIDE_DELAY_MS = 150;
+// After a card hides, how long the next tile skips the show delay.
+const WARM_MS = 800;
 const HISTORY_LINES = 8;
 // An artifact's star level runs 1–25: five steps fill one of five stars.
 const STAR_STEPS = 5;
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+
+/**
+ * Bonus values come preformatted in the game's own strings, with a decimal
+ * comma ("+41,25%"). English writes a decimal point; es/fr/ru/de keep the
+ * comma. Only a comma followed by one or two digits is a decimal one — a
+ * thousands separator always has three.
+ */
+const gameValue = (v) => {
+  const s = String(v ?? '');
+  return getLanguage() === 'en' ? s.replace(/(\d),(\d{1,2})(?!\d)/g, '$1.$2') : s;
+};
 /** XP runs to the hundreds of billions: compact in the viewer's language (430.2B, 430,2 млрд), the full number on hover. */
 const fmtCompact = (n) => {
   try {
@@ -166,8 +179,16 @@ function heroTileHtml(hero) {
     </button>`;
 }
 
-/** The hero's details: portrait, level, XP and what it wears (in full in the dialog). */
+/**
+ * The hero's details, as a captain's: portrait, level, XP to the next level,
+ * when it was first read, its level-ups, and its six equipment slots (compact
+ * in the hover card, in full across the dialog). No Stats block: the game's
+ * hero Stats add research and gear to the level's values, which we don't model.
+ */
 function heroDetailHtml(hero, { withName = false } = {}) {
+  const history = (hero.changes || []).slice(0, HISTORY_LINES)
+    .map((ch) => `<li><span>${esc(t('Level {from} → {to}', { from: ch.prevLevel, to: ch.level }))}</span><span class="muted-copy">${esc(formatDateShort(ch.changedAt))}</span></li>`)
+    .join('');
   return `<div class="captain-detail is-hero">
       <div class="captain-detail-art is-portrait captain-hero-art">${heroAvatarHtml(hero, 120)}</div>
       <div class="captain-detail-body">
@@ -176,8 +197,15 @@ function heroDetailHtml(hero, { withName = false } = {}) {
           ${hero.level != null ? `<span class="captain-detail-level">${t('Level {n}', { n: hero.level })}</span>` : ''}
           <span class="captain-detail-rarity">${esc(t('Hero'))}</span>
         </div>
-        ${xpBarHtml(hero)}
+        ${hero.xp != null ? xpBarHtml(hero) : `<p class="captain-detail-note">${t("The hero's XP is read with the member's next daily city read.")}</p>`}
+        <dl class="captain-detail-facts">
+          <div><dt>${t('Active line-up')}</dt><dd>${t('Leads it')}</dd></div>
+          ${hero.firstSeen ? `<div><dt>${t('Tracked since')}</dt><dd title="${esc(formatDate(hero.firstSeen))}">${esc(formatDateShort(hero.firstSeen))}</dd></div>` : ''}
+        </dl>
         ${withName ? equipmentHtml(hero, { full: false }) : ''}
+        ${history ? `
+          <div class="captain-detail-section">${t('Level history')}</div>
+          <ul class="captain-history">${history}</ul>` : ''}
       </div>
     </div>
     ${withName ? '' : `<div class="captain-gear">${equipmentHtml(hero, { full: true })}</div>`}`;
@@ -238,7 +266,7 @@ function equipmentChangeSub(ch, captainName) {
   return parts.join(' · ');
 }
 
-const linesHtml = (lines) => `<ul class="captain-bonus-list">${lines.map(([text, value]) => `<li><span>${esc(tGame(text))}</span><span class="captain-bonus-value">${esc(value)}</span></li>`).join('')}</ul>`;
+const linesHtml = (lines) => `<ul class="captain-bonus-list">${lines.map(([text, value]) => `<li><span>${esc(tGame(text))}</span><span class="captain-bonus-value">${esc(gameValue(value))}</span></li>`).join('')}</ul>`;
 
 /** One worn item: icon in its quality frame, name, grade, and (in full) its bonuses and inserts. */
 function gearItemHtml(it, { full }) {
@@ -254,11 +282,26 @@ function gearItemHtml(it, { full }) {
     </li>`;
 }
 
+/** A slot with nothing in it, as the game shows one: the bare frame. */
+const emptySlotHtml = () => `<li class="gear-item is-empty">
+      <span class="gear-icon" aria-hidden="true"></span>
+      <span class="gear-body"><span class="gear-name">${t('Empty slot')}</span></span>
+    </li>`;
+
+/**
+ * Every slot the game shows for this wearer (`gearSlots`: the hero's six, a
+ * captain's three), in its order, empty ones as bare frames. An item at a
+ * position outside those is still listed, never hidden. Nothing at all while
+ * no item was read.
+ */
 function equipmentHtml(c, { full }) {
   const items = Array.isArray(c.equipment) ? c.equipment : [];
   if (!items.length) return '';
-  return `<div class="captain-detail-section">${t('Equipment')}</div>
-    <ul class="gear-list${full ? ' is-full' : ' is-compact'}">${items.map((it) => gearItemHtml(it, { full })).join('')}</ul>`;
+  const slots = Array.isArray(c.gearSlots) && c.gearSlots.length ? c.gearSlots : items.map((it) => it.position);
+  const byPosition = new Map(items.map((it) => [it.position, it]));
+  const rows = [...slots.map((p) => byPosition.get(p) ?? null), ...items.filter((it) => !slots.includes(it.position))];
+  return `<div class="captain-detail-section">${t('Equipment')} <span class="gear-count">${items.length}/${rows.length}</span></div>
+    <ul class="gear-list${full ? ' is-full' : ' is-compact'}">${rows.map((it) => (it ? gearItemHtml(it, { full }) : emptySlotHtml())).join('')}</ul>`;
 }
 
 /** History lines with something to say (a replayed read can repeat the one before). */
@@ -309,7 +352,7 @@ function detailHtml(c, changes, { withName = false } = {}) {
 /** An artifact as the game's artifact book shows it: level line, star line, random bonuses. */
 function artifactDetailHtml(a, changes, { withName = false } = {}) {
   const history = historyLines(changes.filter((ch) => ch.artifactType === a.artifactType), artifactChangeText);
-  const bonus = (b) => `<li class="artifact-roll quality-${Number(b.quality) || 0}"><span>${esc(tGame(b.text))}</span><span class="captain-bonus-value">${esc(b.value)}</span></li>`;
+  const bonus = (b) => `<li class="artifact-roll quality-${Number(b.quality) || 0}"><span>${esc(tGame(b.text))}</span><span class="captain-bonus-value">${esc(gameValue(b.value))}</span></li>`;
   return `<div class="captain-detail artifact-detail rarity-${artifactRarityClass(a.rarity)}">
       <div class="captain-detail-art is-portrait artifact-art">${a.iconUrl ? `<img src="${esc(a.iconUrl)}" alt="" decoding="async">` : ''}</div>
       <div class="captain-detail-body">
@@ -344,10 +387,15 @@ function artifactDetailHtml(a, changes, { withName = false } = {}) {
 let hoverCard = null;
 let showTimer = 0;
 let hideTimer = 0;
+// Until then, the next tile shows its card at once: moving from captain to
+// captain, a card hidden over the gap between two tiles (or a pass over one
+// tile faster than the intent delay) made it look random whether one showed.
+let warmUntil = 0;
 
 function hideHoverCard() {
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
+  if (hoverCard?.classList.contains('is-visible')) warmUntil = Date.now() + WARM_MS;
   hoverCard?.classList.remove('is-visible');
 }
 
@@ -407,8 +455,9 @@ function wireTiles(el, views) {
     if (!v) return;
     clearTimeout(hideTimer);
     clearTimeout(showTimer);
-    // Already showing a card: swap straight to this one.
-    const delay = hoverCard?.classList.contains('is-visible') ? 0 : SHOW_DELAY_MS;
+    // Already showing a card, or one just hid: swap straight to this one.
+    const warm = hoverCard?.classList.contains('is-visible') || Date.now() < warmUntil;
+    const delay = warm ? 0 : SHOW_DELAY_MS;
     showTimer = setTimeout(() => showHoverCard(tile, v.hoverHtml), delay);
   });
   el.addEventListener('mouseout', (ev) => {
@@ -429,7 +478,8 @@ function stepLinesHtml(lines, next) {
   if (!rows.length) return '';
   return `<ul class="captain-bonus-list hof-lines">${rows.map(([text, value]) => {
     const up = after.get(text);
-    return `<li><span>${esc(tGame(text))}</span><span class="hof-values">${value ? `<span class="captain-bonus-value">${esc(value)}</span>` : ''}${up ? `<span class="hof-next-value">${value ? '&rsaquo; ' : ''}${esc(up)}</span>` : ''}</span></li>`;
+    // Three cells on a shared grid, so every row's values line up (hof-lines).
+    return `<li><span>${esc(tGame(text))}</span><span class="captain-bonus-value">${value ? esc(gameValue(value)) : ''}</span><span class="hof-next-value">${up ? `${value ? '&rsaquo; ' : ''}${esc(gameValue(up))}` : ''}</span></li>`;
   }).join('')}</ul>`;
 }
 

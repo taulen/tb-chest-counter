@@ -213,6 +213,31 @@ export function getPlayerHeroEntry(clanId: number, playerId: number): PlayerCapt
   ).get(clanId, playerId, HERO_ENTRY_ID) as PlayerCaptain | undefined) ?? null;
 }
 
+export interface HeroLevelChange {
+  level: number;
+  prevLevel: number;
+  changedAt: string;
+}
+
+/**
+ * The hero's level-ups since `sinceIso`, newest first, from the player record
+ * history (game_player_history.hero_level: the hero has no captain history
+ * rows). The first reading is a starting point, never a change.
+ */
+export function getPlayerHeroLevelChanges(clanId: number, playerId: number, sinceIso: string, limit = 50): HeroLevelChange[] {
+  return getDb().prepare(
+    `WITH h AS (
+       SELECT hero_level AS level, captured_at AS changedAt,
+              LAG(hero_level) OVER (ORDER BY captured_at) AS prevLevel
+         FROM game_player_history
+        WHERE clan_id = ? AND player_id = ? AND hero_level IS NOT NULL
+     )
+     SELECT level, prevLevel, changedAt FROM h
+      WHERE prevLevel IS NOT NULL AND level <> prevLevel AND changedAt >= ?
+      ORDER BY changedAt DESC LIMIT ?`,
+  ).all(clanId, playerId, sinceIso, limit) as HeroLevelChange[];
+}
+
 export interface CaptainChange {
   captainId: number;
   level: number;

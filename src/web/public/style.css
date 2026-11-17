@@ -2037,8 +2037,9 @@ label {
   vertical-align: middle;
 }
 .hero-framed > img { position: absolute; display: block; max-width: none; }
-.hero-framed-art { left: calc(13 * var(--u)); top: calc(9 * var(--u)); width: calc(72 * var(--u)); height: calc(72 * var(--u)); object-fit: cover; }
-.hero-framed-frame { left: 0; top: calc(1.5 * var(--u)); width: calc(98 * var(--u)); height: calc(95 * var(--u)); }
+/* Two classes: a container's generic img rule (.captain-detail-art img) must never resize these. */
+.hero-framed > .hero-framed-art { left: calc(13 * var(--u)); top: calc(9 * var(--u)); width: calc(72 * var(--u)); height: calc(72 * var(--u)); object-fit: cover; }
+.hero-framed > .hero-framed-frame { left: 0; top: calc(1.5 * var(--u)); width: calc(98 * var(--u)); height: calc(95 * var(--u)); object-fit: fill; }
 /* The hero level on the game's level plate (LevelView: 29 × 35, its top-left
    53 px into and 8 px above the portrait), the number 1.5 px above centre. */
 .hero-framed-level {
@@ -8929,10 +8930,31 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   overflow: visible;
   transition: transform 0.12s ease;
 }
+/* The framed hero portrait fills its cell like a captain card does (it was a
+   fixed 98 px box beside ~128 px cards — user, Nov 2026: "weird with smaller
+   hero card"). The cell is the container; the frame, art and level plate all
+   scale from --hero-box. !important: heroAvatarHtml sets the box inline. */
+.captain-hero-portrait { container-type: inline-size; }
+.captain-hero-portrait .hero-framed {
+  --hero-box: 100cqw !important;
+  width: 100cqw !important;
+  height: 100cqw !important;
+}
 .captain-tile.is-hero:hover .captain-hero-portrait,
 .captain-tile.is-hero:focus-visible .captain-hero-portrait { transform: translateY(-2px); }
 .captain-tile.is-hero:focus-visible .captain-hero-portrait { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 8px; }
-.captain-detail-art.captain-hero-art { display: flex; justify-content: center; align-items: flex-start; }
+/* The framed portrait scales with the dialog's / hover card's art box, centred in it. */
+.captain-detail-art.captain-hero-art {
+  container-type: inline-size;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.captain-hero-art .hero-framed {
+  --hero-box: 92cqw !important;
+  width: 92cqw !important;
+  height: 92cqw !important;
+}
 
 /* Details: the dialog (click / tap) and the desktop hover card share it. */
 .captain-detail {
@@ -9339,11 +9361,28 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   text-transform: uppercase;
 }
 
-.gear-list.is-compact .gear-body {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-  align-items: baseline;
+/* The grade always on its own line under the name, never wrapped beside it. */
+.gear-list.is-compact .gear-body { gap: 1px; }
+
+/* An empty slot: the bare frame, as the game shows it. */
+.gear-item.is-empty .gear-icon {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: var(--subtle-bg);
+}
+.gear-item.is-empty .gear-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.gear-list.is-full .gear-item.is-empty {
+  border-style: dashed;
+  background: transparent;
+}
+.gear-count {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 .gear-body .captain-bonus-list { font-size: 12.5px; }
@@ -9379,7 +9418,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   /* The hero and the three line-up captains in one row, as in the game. */
   .captain-grid.is-lineup { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 6px; }
   .captain-grid.is-lineup .captain-name { font-size: 11.5px; }
-  .captain-grid.is-lineup .captain-hero-portrait .hero-framed { transform: scale(0.8); }
   .captain-modal .captain-detail { grid-template-columns: 1fr; }
   .captain-modal .captain-detail-art {
     width: 100%;
@@ -9465,15 +9503,25 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.hof-lines { font-size: 12.5px; }
-.hof-values {
-  display: inline-flex;
-  gap: 6px;
-  white-space: nowrap;
+/* Bonus, now, next: one grid for the whole list, so every row's values line up. */
+.captain-bonus-list.hof-lines {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 10px;
+  font-size: 12.5px;
 }
+.captain-bonus-list.hof-lines li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: 10px;
+  align-items: baseline;
+}
+.hof-lines .captain-bonus-value,
+.hof-lines .hof-next-value { text-align: right; }
 .hof-next-value {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .hof-requires {
   color: var(--text-muted);

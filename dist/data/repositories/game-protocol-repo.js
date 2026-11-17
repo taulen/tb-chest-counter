@@ -8,6 +8,7 @@ exports.saveLedger = saveLedger;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
 exports.updateCityDragon = updateCityDragon;
+exports.saveHeroEntryFromArchive = saveHeroEntryFromArchive;
 exports.saveCaptains = saveCaptains;
 exports.saveArtifacts = saveArtifacts;
 exports.saveCaptainEquipment = saveCaptainEquipment;
@@ -186,6 +187,26 @@ function updateCityDragon(clanId, playerId, gameDate, dragon) {
  * history: the captains' history (and the member timeline built on it) is
  * captains only, and the hero's level history is game_players.hero_level.
  */
+/**
+ * The hero's field-9 entry (level, XP) from an archived city read, for the
+ * one-time replay: the stored row keeps the newest read's values whatever the
+ * replay order — a live read today is never overwritten by an older archived
+ * one — and the earliest read as first_seen ("Tracked since"). Returns 1 when
+ * the row was written.
+ */
+function saveHeroEntryFromArchive(clanId, playerId, hero, at) {
+    if (hero.id !== equipment_js_1.HERO_ENTRY_ID)
+        return 0;
+    return (0, database_js_1.getDb)().prepare(`INSERT INTO game_player_captains (clan_id, player_id, captain_id, level, stars, xp, slot, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, captain_id) DO UPDATE SET
+       first_seen = MIN(game_player_captains.first_seen, excluded.first_seen),
+       level = CASE WHEN excluded.last_seen > game_player_captains.last_seen THEN excluded.level ELSE game_player_captains.level END,
+       stars = CASE WHEN excluded.last_seen > game_player_captains.last_seen THEN excluded.stars ELSE game_player_captains.stars END,
+       xp = CASE WHEN excluded.last_seen > game_player_captains.last_seen THEN excluded.xp ELSE game_player_captains.xp END,
+       slot = CASE WHEN excluded.last_seen > game_player_captains.last_seen THEN excluded.slot ELSE game_player_captains.slot END,
+       last_seen = MAX(game_player_captains.last_seen, excluded.last_seen)`).run(clanId, playerId, equipment_js_1.HERO_ENTRY_ID, hero.level, hero.stars, hero.xp, hero.slot, at, at).changes > 0 ? 1 : 0;
+}
 function saveCaptains(clanId, playerId, captains, now = new Date().toISOString()) {
     const db = (0, database_js_1.getDb)();
     const prev = new Map(db.prepare('SELECT captain_id, level, stars FROM game_player_captains WHERE clan_id = ? AND player_id = ?')

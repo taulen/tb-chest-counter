@@ -200,11 +200,13 @@ function createGameRouter() {
         // The hero leads the tab: its portrait in the player's frame with the
         // level plate, its level / XP and what it wears — all city field 9's
         // entry id 1 (level / XP stored since Nov 2026; the player record's hero
-        // level until then). NOT city field 26: that is the dragon.
+        // level until then). NOT city field 26: that is the dragon. The player
+        // record is read every scan, the city once a day: its level is the
+        // fresher one, and the entry's XP only counts while it is at that level.
         const player = (0, game_profile_repo_js_1.getGamePlayer)(clanId, playerId);
         const heroEntry = (0, game_profile_repo_js_1.getPlayerHeroEntry)(clanId, playerId);
-        const heroLevel = heroEntry?.level ?? player?.heroLevel ?? null;
-        const heroXp = heroEntry?.xp ?? null;
+        const heroLevel = player?.heroLevel ?? heroEntry?.level ?? null;
+        const heroXp = heroEntry && heroEntry.level === heroLevel ? heroEntry.xp : null;
         const heroView = heroLevel !== null && heroXp !== null ? (0, hero_levels_js_1.heroLevelView)(names, equipment_js_1.HERO_ENTRY_ID, heroLevel, 0, false) : null;
         const hero = player ? {
             name: names?.heroes?.[String(player.heroAvatar)]?.name || null,
@@ -215,7 +217,11 @@ function createGameRouter() {
             xpNext: heroView?.xpNext ?? null,
             avatarUrl: player.avatarUrl,
             frameUrl: player.frameUrl,
+            firstSeen: heroEntry?.firstSeen ?? null,
+            // Level-ups from the player record (the hero has no captain history rows).
+            changes: (0, game_profile_repo_js_1.getPlayerHeroLevelChanges)(clanId, playerId, since),
             equipment: gear.get(equipment_js_1.HERO_ENTRY_ID) ?? [],
+            gearSlots: equipment_js_1.HERO_GEAR_POSITIONS,
         } : null;
         // The Hall of Fame: faction levels are city techs 800–803 (factions.ts).
         const techs = (0, game_profile_repo_js_1.getPlayerTechs)(clanId, playerId);
@@ -246,6 +252,7 @@ function createGameRouter() {
                     stats: view?.stats ?? null,
                     starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
                     equipment: gear.get(c.captainId) ?? [],
+                    gearSlots: equipment_js_1.CAPTAIN_GEAR_POSITIONS,
                 };
             }),
             changes: (0, game_profile_repo_js_1.getPlayerCaptainChanges)(clanId, playerId, since).map((c) => {

@@ -31,6 +31,7 @@ import { computeGameWindow, getCurrentGameDayKey, periodOffsetFromAnchor } from 
 import { applyTheme, bindThemeSwitcher } from './lib/theme.js';
 import { adoptAccountLanguage, bindLanguageSwitcher, t, tn } from './lib/i18n.js';
 import { initMobileRows } from './lib/mobile-rows.js';
+import { checkLiveBuild, initBuildCheck, noteLiveBuild, reloadIfNewBuild } from './lib/build-check.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
 import { renderScanCards, tickScanCards } from './lib/scan-card.js';
 // renderExternalAdminCardHtml + wireExternalAdminHandlers are
@@ -272,6 +273,8 @@ async function checkAuth() {
     // the latest commit. Failure here is non-fatal — the footer just
     // stays as "—" if /api/health doesn't respond.
     refreshBuildFooter();
+    // A tab open across a deploy reloads into the new build at its next navigation.
+    initBuildCheck();
   } catch {
     window.location.href = '/login';
   }
@@ -288,6 +291,7 @@ async function refreshBuildFooter() {
       return;
     }
     const data = await res.json();
+    noteLiveBuild(data.fingerprint);
     const fp = data.fingerprint || t('unknown');
     const builtAt = data.builtAt || 'unknown';
     // Format the timestamp for the visible footer; full fingerprint +
@@ -809,6 +813,9 @@ if ('scrollRestoration' in window.history) {
 let resetScrollAfterRender = false;
 
 window.addEventListener('hashchange', () => {
+  // A newer build went live while this tab was open: load it, on this route.
+  if (reloadIfNewBuild()) return;
+  void checkLiveBuild();
   const previousPage = currentPage;
   syncRouteFromHash();
   if (currentPage !== previousPage) {

@@ -388,6 +388,18 @@ the hero first in the line-up row (portrait in the player's frame with the
 level plate, level / XP from this field-9 entry — the player record's hero
 level until a city read stored it — and its gear).
 
+The hero's detail matches a captain's: XP to the next level, "Tracked since",
+level-ups (from `game_player_history.hero_level` — the hero writes no captain
+history) and **all six gear slots**, empty ones as bare frames. Slots come from
+`HERO_GEAR_POSITIONS` (0–5) and `CAPTAIN_GEAR_POSITIONS` (3–5: prod never had
+a captain item elsewhere). The level shown is the player record's (read every
+scan); the entry's XP only counts while the entry is at that level, else the
+dialog says the XP comes with the next daily city read. The hero's entry was
+only stored from live reads until the `heroEntry` city parser (Nov 2026)
+filled it from the archive — newest read wins whatever the order, earliest
+read is first_seen (`saveHeroEntryFromArchive`). No Stats block for the hero:
+the game's hero Stats add research and gear to the level's values.
+
 **City field 26 is the DRAGON, not the hero** (found Nov 2026; it was read as
 "hero" since v103). Its XP sits on **T73 (Dragons)** thresholds to the unit:
 prod rows at `{"level":100,"xp":1404294900}` and `{"level":150,"xp":17020294900}`

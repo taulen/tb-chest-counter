@@ -21,6 +21,7 @@ import {
   getPlayerCaptainChanges,
   getPlayerCaptains,
   getPlayerHeroEntry,
+  getPlayerHeroLevelChanges,
   getPlayerEquipment,
   getPlayerEquipmentChanges,
   getPlayerGoldIngotsDaily,
@@ -48,7 +49,7 @@ import { clanLogoUrl } from '../../game-art/clan-logo.js';
 import { itemIconUrls } from '../../game-art/item-icons.js';
 import { CLAN_RANKING_KINDS } from '../../game-protocol/messages.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
-import { describeItem, HERO_ENTRY_ID } from '../../game-protocol/equipment.js';
+import { CAPTAIN_GEAR_POSITIONS, describeItem, HERO_ENTRY_ID, HERO_GEAR_POSITIONS } from '../../game-protocol/equipment.js';
 import { catalogKeyForEventTitle } from '../../game-protocol/event-mapping.js';
 import { getEventRun, getEventStandings, latestEventRuns, listEventRuns, type StoredEventRun } from '../../data/repositories/game-event-repo.js';
 import { heroLevelView } from '../../game-protocol/hero-levels.js';
@@ -231,11 +232,13 @@ export function createGameRouter(): Router {
     // The hero leads the tab: its portrait in the player's frame with the
     // level plate, its level / XP and what it wears — all city field 9's
     // entry id 1 (level / XP stored since Nov 2026; the player record's hero
-    // level until then). NOT city field 26: that is the dragon.
+    // level until then). NOT city field 26: that is the dragon. The player
+    // record is read every scan, the city once a day: its level is the
+    // fresher one, and the entry's XP only counts while it is at that level.
     const player = getGamePlayer(clanId, playerId);
     const heroEntry = getPlayerHeroEntry(clanId, playerId);
-    const heroLevel = heroEntry?.level ?? player?.heroLevel ?? null;
-    const heroXp = heroEntry?.xp ?? null;
+    const heroLevel = player?.heroLevel ?? heroEntry?.level ?? null;
+    const heroXp = heroEntry && heroEntry.level === heroLevel ? heroEntry.xp : null;
     const heroView = heroLevel !== null && heroXp !== null ? heroLevelView(names, HERO_ENTRY_ID, heroLevel, 0, false) : null;
     const hero = player ? {
       name: names?.heroes?.[String(player.heroAvatar)]?.name || null,
@@ -246,7 +249,11 @@ export function createGameRouter(): Router {
       xpNext: heroView?.xpNext ?? null,
       avatarUrl: player.avatarUrl,
       frameUrl: player.frameUrl,
+      firstSeen: heroEntry?.firstSeen ?? null,
+      // Level-ups from the player record (the hero has no captain history rows).
+      changes: getPlayerHeroLevelChanges(clanId, playerId, since),
       equipment: gear.get(HERO_ENTRY_ID) ?? [],
+      gearSlots: HERO_GEAR_POSITIONS,
     } : null;
     // The Hall of Fame: faction levels are city techs 800–803 (factions.ts).
     const techs = getPlayerTechs(clanId, playerId);
@@ -277,6 +284,7 @@ export function createGameRouter(): Router {
           stats: view?.stats ?? null,
           starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
           equipment: gear.get(c.captainId) ?? [],
+          gearSlots: CAPTAIN_GEAR_POSITIONS,
         };
       }),
       changes: getPlayerCaptainChanges(clanId, playerId, since).map((c) => {

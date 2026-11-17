@@ -2767,6 +2767,9 @@ export const ui = {
   "Evolution {from} → {to}": "Évolution {from} → {to}",
   "Dragon level": "Niveau du Dragon",
   "Dragon evolution": "Évolution du Dragon",
+  "Empty slot": "Emplacement vide",
+  "The hero's XP is read with the member's next daily city read.": "L'XP du héros est lue lors de la prochaine lecture quotidienne de la cité du membre.",
+  "Leads it": "La mène",
 };
 
 export const game = {

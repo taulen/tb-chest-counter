@@ -11,6 +11,7 @@ exports.getPlayerTechChanges = getPlayerTechChanges;
 exports.getPlayerGoldIngotsDaily = getPlayerGoldIngotsDaily;
 exports.getPlayerCaptains = getPlayerCaptains;
 exports.getPlayerHeroEntry = getPlayerHeroEntry;
+exports.getPlayerHeroLevelChanges = getPlayerHeroLevelChanges;
 exports.getPlayerCaptainChanges = getPlayerCaptainChanges;
 exports.getPlayerArtifacts = getPlayerArtifacts;
 exports.getPlayerArtifactChanges = getPlayerArtifactChanges;
@@ -138,6 +139,22 @@ function getPlayerCaptains(clanId, playerId) {
 function getPlayerHeroEntry(clanId, playerId) {
     return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, level, stars, xp, slot, first_seen AS firstSeen, last_seen AS lastSeen
        FROM game_player_captains WHERE clan_id = ? AND player_id = ? AND captain_id = ?`).get(clanId, playerId, equipment_js_1.HERO_ENTRY_ID) ?? null;
+}
+/**
+ * The hero's level-ups since `sinceIso`, newest first, from the player record
+ * history (game_player_history.hero_level: the hero has no captain history
+ * rows). The first reading is a starting point, never a change.
+ */
+function getPlayerHeroLevelChanges(clanId, playerId, sinceIso, limit = 50) {
+    return (0, database_js_1.getDb)().prepare(`WITH h AS (
+       SELECT hero_level AS level, captured_at AS changedAt,
+              LAG(hero_level) OVER (ORDER BY captured_at) AS prevLevel
+         FROM game_player_history
+        WHERE clan_id = ? AND player_id = ? AND hero_level IS NOT NULL
+     )
+     SELECT level, prevLevel, changedAt FROM h
+      WHERE prevLevel IS NOT NULL AND level <> prevLevel AND changedAt >= ?
+      ORDER BY changedAt DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
 }
 /**
  * Captain level/star changes since `sinceIso`, newest first, each with the
