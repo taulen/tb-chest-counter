@@ -1440,9 +1440,9 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
-    // Game protocol, phase 2 (Nov 2026): link our rows to the game's own ids,
-    // let a clan scan without a browser, and start collecting what the protocol
-    // gives that OCR never could. See docs/game-protocol.md.
+    // Game protocol, phase 2 (Nov 2026): link our rows to the game's own ids so
+    // the protocol can replace the browser scan, and start collecting what the
+    // protocol gives that OCR never could. See docs/game-protocol.md.
     //
     //   members.game_player_id        the game's permanent player id (renames keep it)
     //   chest_records / triumphal_chest_records.game_gift_id
@@ -1450,7 +1450,6 @@ const MIGRATIONS: Migration[] = [
     //   resource_transactions.game_entry_id
     //                                 the Clan Capital ledger entry a row came from;
     //                                 unique, so re-reading the ledger never double-counts
-    //   clans.scan_mode               'browser' (OCR, as before) | 'protocol'
     //   game_claims                   rewards each claimed chest gave
     //   game_player_techs (+ history) research + hero talent levels per player
     //   game_city_snapshots           daily buildings + hero summary per player
@@ -1470,7 +1469,6 @@ const MIGRATIONS: Migration[] = [
       addColumn('chest_records', 'game_gift_id', 'game_gift_id INTEGER');
       addColumn('triumphal_chest_records', 'game_gift_id', 'game_gift_id INTEGER');
       addColumn('resource_transactions', 'game_entry_id', 'game_entry_id INTEGER');
-      addColumn('clans', 'scan_mode', "scan_mode TEXT NOT NULL DEFAULT 'browser'");
       database.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_members_game_player
           ON members (clan_id, game_player_id) WHERE game_player_id IS NOT NULL;

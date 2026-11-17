@@ -53,7 +53,7 @@ yet still have history. Each part is isolated: one failing costs nothing else.
 
 v103 also adds the columns the protocol scan will use: `chest_records` /
 `triumphal_chest_records.game_gift_id`, `resource_transactions.game_entry_id`
-(unique), `clans.scan_mode` (`browser` | `protocol`), and `game_claims`.
+(unique) and `game_claims`.
 
 ## Session check
 
