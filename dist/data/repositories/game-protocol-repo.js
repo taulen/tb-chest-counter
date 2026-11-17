@@ -13,6 +13,7 @@ exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
 exports.saveRawSnapshot = saveRawSnapshot;
+exports.rawCitiesMissingData = rawCitiesMissingData;
 exports.pruneRawSnapshots = pruneRawSnapshots;
 exports.hasRawSnapshot = hasRawSnapshot;
 exports.recentCaptureRuns = recentCaptureRuns;
@@ -210,6 +211,23 @@ function saveMapObjects(clanId, objects, now = new Date().toISOString()) {
 /** Keep a raw game reply (gzip of its decoded JSON) once per game day. */
 function saveRawSnapshot(clanId, kind, refId, gameDate, value, now = new Date().toISOString()) {
     (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_raw_snapshots (clan_id, kind, ref_id, game_date, captured_at, payload) VALUES (?, ?, ?, ?, ?, ?)`).run(clanId, kind, refId, gameDate, now, (0, zlib_1.gzipSync)(JSON.stringify(value)));
+}
+/**
+ * The latest archived city reply of every player in the clan who has one but
+ * no research or no captains stored — so a parser fixed or added later fills
+ * them from what was already read (a reply holds both). Body as archived.
+ */
+function rawCitiesMissingData(clanId) {
+    const rows = (0, database_js_1.getDb)().prepare(`
+    SELECT r.ref_id AS playerId, r.captured_at AS capturedAt, r.payload
+      FROM game_raw_snapshots r
+     WHERE r.clan_id = ? AND r.kind = 'city'
+       AND r.game_date = (SELECT MAX(game_date) FROM game_raw_snapshots
+                           WHERE clan_id = r.clan_id AND kind = 'city' AND ref_id = r.ref_id)
+       AND (NOT EXISTS (SELECT 1 FROM game_player_techs t WHERE t.clan_id = r.clan_id AND t.player_id = r.ref_id)
+         OR NOT EXISTS (SELECT 1 FROM game_player_captains c WHERE c.clan_id = r.clan_id AND c.player_id = r.ref_id))
+  `).all(clanId);
+    return rows.map((r) => ({ playerId: r.playerId, capturedAt: r.capturedAt, body: JSON.parse((0, zlib_1.gunzipSync)(r.payload).toString('utf8')) }));
 }
 /** Drop raw snapshots of one kind from game days before `beforeGameDate`. Returns rows removed. */
 function pruneRawSnapshots(kind, beforeGameDate) {

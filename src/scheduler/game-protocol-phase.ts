@@ -21,7 +21,7 @@ import { clanDataDir, clanStorageStatePath } from '../config/clan-paths.js';
 import { GameClient, SessionLoggedOutError } from '../game-protocol/client.js';
 import { noteSessionHealthy, noteSessionLoggedOut } from './session-health.js';
 import { loadGameNames, type GameNames } from '../game-protocol/static-data.js';
-import type { Frame } from '../game-protocol/codec.js';
+import type { Frame, Wire } from '../game-protocol/codec.js';
 import {
   parseCityRecord,
   parseClanRecord,
@@ -37,6 +37,7 @@ import {
   citySnapshotPlayers,
   cityChangedSinceRead,
   playersWithCaptains,
+  rawCitiesMissingData,
   pruneRawSnapshots,
   saveCaptains,
   finishCaptureRun,
@@ -247,6 +248,25 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
   }
 
   try {
+    // What was already read comes first: a member with an archived city reply
+    // but no research or captains stored (a parser fixed or added since — the
+    // research parser missed players without tech 1215 until Nov 17 2026) is
+    // filled from that reply, dated to when it was read. No request.
+    let refilled = 0;
+    for (const raw of rawCitiesMissingData(clanId)) {
+      const city = parseCityRecord({ type: 601, seq: 0, head: [601, 0], body: raw.body as Wire[], children: [], events: [] });
+      if (!city) continue;
+      if (Object.keys(city.techs).length) saveTechs(clanId, raw.playerId, city.techs, raw.capturedAt);
+      const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
+      if (captains.length) saveCaptains(clanId, raw.playerId, captains, raw.capturedAt);
+      refilled++;
+    }
+    if (refilled) parts.push(`${refilled} filled from archived city replies`);
+  } catch (err) {
+    parts.push(`archive re-read failed: ${String(err)}`);
+  }
+
+  try {
     // Every member once a game day, plus — every scan — anyone whose might or
     // hero level moved since their city was last read, so a finished research
     // or talent is dated to the scan that saw it (history keeps every change).
@@ -261,6 +281,8 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
         && (!done.has(p.playerId) || changedSince.has(p.playerId) || !withCaptains.has(p.playerId)))
       .slice(0, MAX_CITIES_PER_CYCLE);
     let changed = 0;
+    let failed = 0;
+    let firstError = '';
     for (const p of todo) {
       try {
         const cityFrame = await d.client.city(p.cityId as number);
@@ -276,12 +298,17 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
           const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
           if (captains.length) changed += saveCaptains(clanId, p.playerId, captains, now);
         }
-      } catch {
+      } catch (err) {
         // One unreadable city never stops the rest; it is retried next cycle.
+        // Counted in the log line — a silent skip hid missing data before.
+        failed++;
+        if (!firstError) firstError = String(err instanceof Error ? err.message : err);
       }
       await pause(100);
     }
-    if (todo.length) parts.push(`${todo.length} cities read (${changed} research/talent/captain changes)`);
+    if (todo.length) {
+      parts.push(`${todo.length} cities read (${changed} research/talent/captain changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
+    }
     // ~5 KB per city per day: keep RAW_CITY_DAYS of them, not every day forever.
     const keepFrom = new Date(Date.parse(`${d.gameDate}T00:00:00Z`) - RAW_CITY_DAYS * 86_400_000).toISOString().slice(0, 10);
     pruneRawSnapshots('city', keepFrom);

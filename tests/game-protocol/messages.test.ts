@@ -114,9 +114,20 @@ describe('game messages', () => {
     expect(tileOf(0, 0)).toBe(0);
   });
 
-  it('finds the tech map (research + talents) in city details (601)', () => {
-    const techs = { 1197: [1197, 1], 1215: [1215, 1], 1233: [1233, 8], 29006: [29006, 20] };
-    expect(parseCityTechs(frame(601, [[[[[1], {}, [], techs]]]]))).toEqual({ 1197: 1, 1215: 1, 1233: 8, 29006: 20 });
+  it('reads the tech map (research + talents) from city field 17 (601)', () => {
+    const city: Wire[] = [];
+    city[0] = [1];
+    city[12] = { 3: [3, 41, 25, 0] };
+    city[17] = { 1197: [1197, 1], 1215: [1215, 1], 1233: [1233, 8], 29006: [29006, 20] };
+    expect(parseCityTechs(frame(601, [[[city], []]]))).toEqual({ 1197: 1, 1215: 1, 1233: 8, 29006: 20 });
+  });
+
+  it('reads the techs of a player who has not researched tech 1215', () => {
+    // Gudal (SK7, Nov 2026): 49 techs, no 1215 — the old search found none.
+    const city: Wire[] = [];
+    city[0] = [1];
+    city[17] = { 1000: [1000, 1], 1001: [1001, 4], 1018: [1018, 4] };
+    expect(parseCityTechs(frame(601, [[[city], []]]))).toEqual({ 1000: 1, 1001: 4, 1018: 4 });
   });
 });
 

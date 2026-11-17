@@ -196,27 +196,24 @@ function parseMapObjects(frame) {
 function tileOf(x, y) {
     return Math.floor(y / 20) * 50 + Math.floor(x / 20);
 }
-/** Message 601: a city's tech levels (research + hero talents). */
+/**
+ * Message 601: a city's tech levels (research + hero talents) — the city
+ * record's field 17, `{techId: [techId, level]}`. Read from the field itself:
+ * the first version searched the reply for a map holding tech 1215, so a
+ * player who had not researched 1215 got no research at all (6 members on
+ * Nov 17 2026, their captains from the same reply stored fine).
+ */
 function parseCityTechs(frame) {
-    let best = null;
-    const walk = (v) => {
-        if (!v || typeof v !== 'object')
-            return;
-        if (!Array.isArray(v) && !('$pairs' in v) && !('$bin' in v)) {
-            const o = v;
-            if ('1215' in o && (!best || Object.keys(o).length > Object.keys(best).length))
-                best = o;
-            Object.values(o).forEach(walk);
-            return;
-        }
-        if (Array.isArray(v))
-            v.forEach(walk);
-    };
-    frame.body.forEach(walk);
+    let root = frame.body;
+    while (Array.isArray(root) && root.length === 1)
+        root = root[0];
+    const t = arr(arr(arr(root)[0])[0])[17];
     const out = {};
-    for (const [k, v] of Object.entries(best ?? {})) {
-        if (Array.isArray(v) && typeof v[1] === 'number')
-            out[k] = v[1];
+    if (t && typeof t === 'object' && !Array.isArray(t) && !('$pairs' in t) && !('$bin' in t)) {
+        for (const [k, v] of Object.entries(t)) {
+            if (Array.isArray(v) && typeof v[1] === 'number')
+                out[k] = v[1];
+        }
     }
     return out;
 }

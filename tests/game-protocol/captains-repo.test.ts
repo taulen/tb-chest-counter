@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
-import { playersWithCaptains, saveCaptains } from '../../src/data/repositories/game-protocol-repo.js';
+import { playersWithCaptains, rawCitiesMissingData, saveCaptains, saveRawSnapshot, saveTechs } from '../../src/data/repositories/game-protocol-repo.js';
 import { getPlayerCaptainChanges, getPlayerCaptains } from '../../src/data/repositories/game-profile-repo.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
@@ -41,5 +41,18 @@ describe('captains', () => {
       [28, null, 164, null, 4],
     ]);
     expect(getDb().prepare('SELECT COUNT(*) AS n FROM game_player_captain_history').get()).toEqual({ n: 5 });
+  });
+
+  it('hands back the latest archived city of a player missing research or captains, until both are stored', () => {
+    const clanId = 1;
+    const body = [[[[[[4599920185526]]], []]]];
+    saveRawSnapshot(clanId, 'city', PLAYER, '2026-11-16', [['older']], '2026-11-16T05:00:00Z');
+    saveRawSnapshot(clanId, 'city', PLAYER, '2026-11-17', body, '2026-11-17T04:27:00Z');
+    expect(rawCitiesMissingData(clanId)).toEqual([{ playerId: PLAYER, capturedAt: '2026-11-17T04:27:00Z', body }]);
+
+    saveCaptains(clanId, PLAYER, [cap(8, 200, 6)], '2026-11-17T04:27:00Z');
+    expect(rawCitiesMissingData(clanId)).toHaveLength(1); // research still missing
+    saveTechs(clanId, PLAYER, { 1000: 1 }, '2026-11-17T04:27:00Z');
+    expect(rawCitiesMissingData(clanId)).toEqual([]);
   });
 });
