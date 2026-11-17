@@ -417,9 +417,17 @@ async function loadAndRenderMemberDetail(data) {
   // Might history card. Returns null when the member has fewer than two
   // readings (or the feature is off), in which case the card is simply absent.
   // Its chart needs a mounted canvas, so the draw call happens after render.
-  const { buildMemberMightCard } = await import('./might.js');
-  const mightCard = await buildMemberMightCard(data.id).catch(() => null);
-  currentMemberMightDraw = mightCard?.draw ?? (() => {});
+  const { buildMemberMightCard, buildMemberIngotsCard } = await import('./might.js');
+  // Gold Ingots ride on the Might tab under the might chart (null when the
+  // member isn't linked to a game player or nothing was read yet).
+  const [mightCard, ingotsCard] = await Promise.all([
+    buildMemberMightCard(data.id).catch(() => null),
+    buildMemberIngotsCard(data.id).catch(() => null),
+  ]);
+  currentMemberMightDraw = () => {
+    mightCard?.draw?.();
+    ingotsCard?.draw?.();
+  };
   // Inferred data — a failure drops the cards, never the profile. The game
   // profile (rank, joined, city, VIP, Gold Pass) likewise never blocks it.
   const [guards, game] = await Promise.all([
@@ -431,7 +439,7 @@ async function loadAndRenderMemberDetail(data) {
   currentMemberGame = game && game.linked && game.player ? game : null;
   renderMemberDetail(
     data, chestPage, triumphalPage,
-    resourceCardHtml, mightCard?.html ?? '', mightCard?.statsHtml ?? '', resourcePage,
+    resourceCardHtml, (mightCard?.html ?? '') + (ingotsCard?.html ?? ''), mightCard?.statsHtml ?? '', resourcePage,
     guards && !guards.error ? guards : null,
   );
   if (!eventsPending) return;

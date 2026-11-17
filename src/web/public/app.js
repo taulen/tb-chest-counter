@@ -305,6 +305,26 @@ async function refreshBuildFooter() {
 }
 
 /**
+ * The active clan's in-game logo beside its name in the header (label or
+ * switcher). Hidden until a scan has read the clan's record — and when the
+ * game art isn't extracted — so the header never shows a broken image.
+ */
+async function refreshClanLogo() {
+  let url = null;
+  try {
+    const res = await fetch('/api/game/clan/logo');
+    if (res.ok) url = (await res.json())?.logoUrl ?? null;
+  } catch {
+    // No logo then; the name alone still says which clan.
+  }
+  for (const img of document.querySelectorAll('[data-clan-logo]')) {
+    if (url) img.setAttribute('src', url);
+    else img.removeAttribute('src');
+    img.classList.toggle('is-hidden', !url);
+  }
+}
+
+/**
  * Populate the per-clan label or the superadmin clan-switcher dropdown
  * based on the current user. Refreshes after a clan rename or after the
  * superadmin switches active clan.
@@ -315,6 +335,7 @@ async function refreshClanIndicator() {
   const switcherEl = $('#clanSwitcher');
   const switcherSelect = $('#clanSwitcherSelect');
   if (!currentUser) return;
+  void refreshClanLogo();
 
   // Superadmins switch between every clan; anyone else only when they were
   // granted extra clans (multiClan), and then only between those.

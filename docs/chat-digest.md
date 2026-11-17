@@ -58,8 +58,14 @@ scheduled one doesn't follow.
 The numbers are the Discord daily digest's (`getDailyDigestData`: the game
 day's chests and points per member, ranked by points, clan-reward chests
 excluded). They reproduce the hand-written 15 November post exactly (Princess
-of Chaos 35 chests (5,815), jass 13 (3,560) … Granizel 9 (310)). English only
-for now.
+of Chaos 35 chests (5,815), jass 13 (3,560) … Granizel 9 (310)).
+
+**Language** (per clan, v122; en by default): en / es / fr / ru / de. The
+header, the month ("15 de noviembre", "15 ноября", "15. November") and the
+chest plural (Intl.PluralRules: 1 сундук, 22 сундука, 13 сундуков) follow it,
+numbers take the language's grouping ("3.560", "3 560") — unless that costs
+entries against the size cap (a French narrow no-break space is 3 bytes), then
+the plain grouping. English is the hand-written post word for word.
 
 ## How it is sent
 

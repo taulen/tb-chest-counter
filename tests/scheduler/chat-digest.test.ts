@@ -98,6 +98,33 @@ describe('chat digest — the post', () => {
     expect(text.split('\n')).toEqual(['Daily Digest — 15 November', 'Our top 1 crypters', ' 1) Evil Name ··········· 1 chest (50)']);
     expect(formatChatDigest([], '2026-11-15', 20)).toEqual({ text: '', shown: 0 });
   });
+
+  it('writes the post in the clan\'s language: header, month, plural and number grouping', () => {
+    const rows = [{ name: 'jass', chests: 13, points: 3560 }, { name: 'Lafym', chests: 1, points: 481 }, { name: 'nurgul', chests: 22, points: 2650 }];
+    const ru = formatChatDigest(rows, '2026-11-15', 20, 'ru').text.split('\n');
+    expect(ru[0]).toBe('Итоги дня — 15 ноября');
+    expect(ru[1]).toBe('Наши лучшие 3 по склепам');
+    // Russian plurals: 13 сундуков, 1 сундук, 22 сундука.
+    expect(ru[2]).toMatch(/13 сундуков \(3\s560\)$/);
+    expect(ru[3]).toMatch(/1 сундук \(481\)$/);
+    expect(ru[4]).toMatch(/22 сундука \(2\s650\)$/);
+    const de = formatChatDigest(rows, '2026-11-15', 20, 'de').text.split('\n');
+    expect(de[0]).toBe('Tagesübersicht — 15. November');
+    expect(de[2]).toMatch(/13 Truhen \(3\.560\)$/);
+    expect(de[3]).toMatch(/1 Truhe \(481\)$/);
+    expect(formatChatDigest(rows, '2026-11-15', 20, 'es').text.split('\n')[0]).toBe('Resumen diario — 15 de noviembre');
+    expect(digestDayLabel('2026-08-01', 'fr')).toBe('1 août');
+  });
+
+  it('a language never breaks the size ceiling', () => {
+    const many = SCREENSHOT_ROWS.map((r) => ({ ...r, chests: r.chests * 1000, points: r.points * 1000 }));
+    for (const lang of ['en', 'es', 'fr', 'ru', 'de'] as const) {
+      const r = formatChatDigest(many, '2026-11-15', 20, lang);
+      expect(r.text.length).toBeLessThanOrEqual(MAX_POST_CHARS);
+      expect(Buffer.byteLength(r.text, 'utf8')).toBeLessThanOrEqual(MAX_POST_BYTES);
+      expect(r.shown).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('chat digest — when', () => {

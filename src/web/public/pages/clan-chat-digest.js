@@ -4,7 +4,7 @@
 // queued for the clan's next scan and uses the day's one message.
 
 import { escapeHtml, notify, confirmDialog, formatDate } from '../lib/ui.js';
-import { t } from '../lib/i18n.js';
+import { t, LANGUAGES } from '../lib/i18n.js';
 
 /** The collapsed section on the clan card. */
 export function chatDigestSectionHtml(clanId) {
@@ -94,6 +94,10 @@ function renderChatDigest(root, box, clanId, data) {
       </div>
       <div><label for="clan-chat-digest-entries-${clanId}">${t('Entries')}</label>
         <input id="clan-chat-digest-entries-${clanId}" class="input" type="number" min="${data.limits.entriesMin}" max="${data.limits.entriesMax}" step="1" value="${s.entries}"></div>
+      <div><label for="clan-chat-digest-language-${clanId}">${t('Language of the post')}</label>
+        <select id="clan-chat-digest-language-${clanId}" class="input">
+          ${LANGUAGES.map((l) => `<option value="${escapeHtml(l.code)}" ${l.code === (s.language || 'en') ? 'selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}
+        </select></div>
       <button class="btn btn-primary" type="button" data-chat-digest-save>${t('Save')}</button>
     </div>
     <p class="muted-copy mt-4 hint-text">${t("Only the clan's named group chats the scanner account is in are listed. The post goes out with the first scan after the daily reset, once the game day has closed; saving never posts.")}</p>
@@ -129,6 +133,7 @@ function renderChatDigest(root, box, clanId, data) {
       enabled: !!box.querySelector(`#clan-chat-digest-enabled-${clanId}`)?.checked,
       channelUrl: box.querySelector(`#clan-chat-digest-channel-${clanId}`)?.value || null,
       entries: Number.parseInt(box.querySelector(`#clan-chat-digest-entries-${clanId}`)?.value || '', 10),
+      language: box.querySelector(`#clan-chat-digest-language-${clanId}`)?.value || 'en',
     };
     try {
       const r = await fetch(`/api/clans/${clanId}/chat-digest`, {

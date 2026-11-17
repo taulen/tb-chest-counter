@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { savePlayers } from '../../src/data/repositories/game-protocol-repo.js';
-import { getGamePlayer } from '../../src/data/repositories/game-profile-repo.js';
+import { getGamePlayer, getPlayerGoldIngotsDaily } from '../../src/data/repositories/game-profile-repo.js';
 import type { ClanMember, PlayerRecord } from '../../src/game-protocol/messages.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
@@ -49,5 +49,17 @@ describe('gold ingots', () => {
     savePlayers(CLAN, members, [player(null)], '2026-11-17T10:20:00Z', '2026-11-16');
     expect(getGamePlayer(CLAN, PLAYER)?.goldIngots).toBe(12163);
     expect(daily()).toEqual([{ game_date: '2026-11-16', gold_ingots: 12163 }]);
+  });
+
+  it('serves the Might tab its history: the day\'s last reading per game day, bounded by a start day', () => {
+    savePlayers(CLAN, members, [player(12100)], '2026-11-16T10:00:00Z', '2026-11-15');
+    savePlayers(CLAN, members, [player(12163)], '2026-11-17T10:00:00Z', '2026-11-16');
+    savePlayers(CLAN, members, [player(12169)], '2026-11-17T10:20:00Z', '2026-11-16');
+    expect(getPlayerGoldIngotsDaily(CLAN, PLAYER)).toEqual({
+      current: 12169,
+      readAt: '2026-11-17T10:20:00Z',
+      points: [{ gameDate: '2026-11-15', goldIngots: 12100 }, { gameDate: '2026-11-16', goldIngots: 12169 }],
+    });
+    expect(getPlayerGoldIngotsDaily(CLAN, PLAYER, '2026-11-16').points).toEqual([{ gameDate: '2026-11-16', goldIngots: 12169 }]);
   });
 });

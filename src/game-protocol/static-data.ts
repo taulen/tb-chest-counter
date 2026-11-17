@@ -41,6 +41,8 @@ const STATIC_BRANCH = 'production';
 const ENGLISH = 'csv_en_US';
 
 export const TABLE_MAP_OBJECTS = 7;
+/** Terrain types ("Dense forest", "Forested hills"): f2 name vector — a chat tile share's staticId. */
+export const TABLE_TERRAINS = 4;
 export const TABLE_GIFT_TYPES = 8;
 export const TABLE_HEROES = 13;
 export const TABLE_TECHS = 21;
@@ -85,7 +87,7 @@ export const TABLE_EQUIPMENT = 11;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
-  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS,
+  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS,
 ];
 
 export interface GameNames {
@@ -95,6 +97,8 @@ export interface GameNames {
   gifts: Record<string, { chest: string; source: string }>;
   techs: Record<string, { name: string; maxLevel: number }>;
   objects: Record<string, string>;
+  /** Terrain types by T4 id (a chat tile share's staticId → "Dense forest"). Format 5+. */
+  terrains?: Record<string, string>;
   heroes: Record<string, { name: string; icon: string }>;
   /** Captains by T75 id: name, rarity (T75 f2), and the sprite names from its config. */
   captains: Record<string, GameCaptain>;
@@ -192,10 +196,10 @@ export interface GameCaptain {
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
  * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: event
- * titles (T44) — Nov 2026); a cached file with an older
+ * titles (T44); 6: terrain names — Nov 2026); a cached file with an older
  * format is rebuilt.
  */
-export const NAMES_FORMAT = 5;
+export const NAMES_FORMAT = 6;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -443,6 +447,11 @@ export function buildNames(
     const name = vecText(row[3]);
     if (name) objects[id] = name;
   }
+  const terrains: Record<string, string> = {};
+  for (const [id, row] of rows(TABLE_TERRAINS)) {
+    const name = vecText(row[2]);
+    if (name) terrains[id] = name;
+  }
   const heroes: GameNames['heroes'] = {};
   for (const [id, row] of rows(TABLE_HEROES)) {
     const name = vecText(row[1]);
@@ -526,7 +535,7 @@ export function buildNames(
   }
   return {
     version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
-    gifts, techs, objects, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+    gifts, techs, objects, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
     events: buildEvents(tables.get(TABLE_TOURNAMENTS), str, en),
   };
 }

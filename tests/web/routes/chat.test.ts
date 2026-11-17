@@ -90,6 +90,16 @@ describe('/api/chat', () => {
     expect(r.body.people[101]).toMatchObject({ memberId: expect.any(Number) });
   });
 
+  it('names a shared map tile by its terrain, kept apart from the map objects whose ids overlap', async () => {
+    // staticId 4 is the Portal map object for a player share, and the Sea terrain for a tile.
+    resetChatNamesCache({ objects: { 4: 'Portal' }, terrains: { 4: 'Sea', 113: 'Forested hills' } } as unknown as GameNames);
+    const tile = JSON.stringify({ subs: { '/%0%/': { type: 'coord', entryType: 'tile', x: 824, y: 168, realmId: 260, staticId: 113, name: '', v: 1 } } });
+    saveChatMessages(1, [msg(CLAN1, 9, T0 + 5000, '/%0%/', { data: tile })]);
+    const r = await get('/api/chat/clan', 'user1');
+    expect(r.body.terrains).toEqual({ 113: 'Forested hills' });
+    expect(r.body.objects).toEqual({ 4: 'Portal' });
+  });
+
   it('pages with cursors, reads the newer side, searches and filters', async () => {
     const page = await get('/api/chat/clan?limit=2', 'user1');
     expect(page.body.hasMore).toBe(true);

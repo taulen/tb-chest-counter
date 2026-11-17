@@ -21,6 +21,7 @@ import {
   getPlayerCaptains,
   getPlayerEquipment,
   getPlayerEquipmentChanges,
+  getPlayerGoldIngotsDaily,
   getPlayerTechChanges,
   getPlayerTechs,
 } from '../../data/repositories/game-profile-repo.js';
@@ -131,6 +132,27 @@ export function createGameRouter(): Router {
       // G/S/E/M tiers and crypt level from the member's research (null until read).
       tiers: getMemberTiers(clanId).get(memberId) ?? null,
     });
+  });
+
+  /**
+   * A member's Gold Ingots: the current value and one reading per game day
+   * (the Might tab's chart). `days` bounds the history; 0 or absent = all of it.
+   */
+  router.get('/members/:memberId/gold-ingots', (req, res) => {
+    const clanId = req.clanId!;
+    const memberId = Number.parseInt(String(req.params.memberId), 10);
+    if (!Number.isFinite(memberId) || !getMemberById(memberId, clanId)) {
+      res.status(404).json({ error: 'Member not found' });
+      return;
+    }
+    const playerId = gamePlayerIdForMember(memberId, clanId);
+    if (playerId === null) {
+      res.json({ linked: false, current: null, readAt: null, points: [] });
+      return;
+    }
+    const days = Math.min(Math.max(Number.parseInt(String(req.query.days ?? '0'), 10) || 0, 0), 3650);
+    const since = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : '';
+    res.json({ linked: true, ...getPlayerGoldIngotsDaily(clanId, playerId, since) });
   });
 
   /** Research + hero talent levels for one member, and their recent changes. */
@@ -336,6 +358,14 @@ export function createGameRouter(): Router {
    * treasury, and the clan's research levels with their recent changes. The
    * trees themselves come from /tech-trees (kind 'clan').
    */
+  /**
+   * Just the active clan's logo, for the header beside the clan's name (every
+   * page asks once, so it reads one row — not the whole Clan page).
+   */
+  router.get('/clan/logo', (req, res) => {
+    res.json({ logoUrl: clanLogoUrl(getClanInfo(req.clanId!)?.logo ?? null) });
+  });
+
   router.get('/clan', async (req, res) => {
     const clanId = req.clanId!;
     const info = getClanInfo(clanId);

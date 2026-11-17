@@ -54,6 +54,7 @@ function freshState() {
     results: null,
     people: {},
     objects: {},
+    terrains: {},
     loading: false,
     history: null,
     available: true,
@@ -115,6 +116,12 @@ function objectName(id) {
   return n ? tGame(n) : '';
 }
 
+/** A terrain type's name ("Dense forest") for a shared map tile — the game's words. */
+function terrainName(id) {
+  const n = typeof id === 'number' ? state.terrains[id] : null;
+  return n ? tGame(n) : '';
+}
+
 function locationChip(label, coords) {
   if (!coords) return `<span class="chat-chip">${PIN_SVG}${marked(label || t('Location'))}</span>`;
   return `<button type="button" class="chat-chip chat-loc" data-chat-action="copy-coords" data-coords="${esc(coords)}"
@@ -135,11 +142,15 @@ function subHtml(sub) {
   const strong = (v) => `<strong>${marked(v)}</strong>`;
   switch (sub.type) {
     case 'coord': {
-      const obj = objectName(sub.staticId);
+      // As the game writes a shared location (client_config.value.poi.copy_coords.*):
+      // a player's portal (map object 4) "Player's portal NAME", any other player
+      // object "Player's City NAME", a clan object "Clan Capital CLAN", a map tile
+      // its terrain ("Dense forest"), anything else its own name.
       let label;
-      if (sub.entryType === 'tile') label = t('Location');
-      else if (sub.entryType === 'user') label = [obj, name].filter(Boolean).join(' ');
-      else label = name || obj;
+      if (sub.entryType === 'tile') label = name || terrainName(sub.staticId) || t('Location');
+      else if (sub.entryType === 'user') label = [sub.staticId === 4 ? tGame("Player's portal") : tGame("Player's City"), name].filter(Boolean).join(' ');
+      else if (sub.entryType === 'clan') label = [objectName(sub.staticId), name].filter(Boolean).join(' ');
+      else label = name || objectName(sub.staticId);
       return locationChip(label, coordsOf(sub));
     }
     case 'raid':
@@ -276,6 +287,7 @@ function resultsQuery(extra) {
 function absorb(res) {
   Object.assign(state.people, res.people ?? {});
   Object.assign(state.objects, res.objects ?? {});
+  Object.assign(state.terrains, res.terrains ?? {});
   state.history = res.history ?? state.history;
   state.available = res.available !== false;
 }

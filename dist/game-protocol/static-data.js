@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
@@ -53,6 +53,8 @@ const TRANSLATIONS_BASE = 'https://assets-translations.totalbattle.dev//';
 const STATIC_BRANCH = 'production';
 const ENGLISH = 'csv_en_US';
 exports.TABLE_MAP_OBJECTS = 7;
+/** Terrain types ("Dense forest", "Forested hills"): f2 name vector — a chat tile share's staticId. */
+exports.TABLE_TERRAINS = 4;
 exports.TABLE_GIFT_TYPES = 8;
 exports.TABLE_HEROES = 13;
 exports.TABLE_TECHS = 21;
@@ -107,14 +109,15 @@ const NEEDED_TABLES = [
     exports.TABLE_EQUIPMENT,
     exports.TABLE_CLAN_MEDALS,
     exports.TABLE_TOURNAMENTS,
+    exports.TABLE_TERRAINS,
 ];
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
  * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: event
- * titles (T44) — Nov 2026); a cached file with an older
+ * titles (T44); 6: terrain names — Nov 2026); a cached file with an older
  * format is rebuilt.
  */
-exports.NAMES_FORMAT = 5;
+exports.NAMES_FORMAT = 6;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -351,6 +354,12 @@ function buildNames(version, strings, vectors, tables, en) {
         if (name)
             objects[id] = name;
     }
+    const terrains = {};
+    for (const [id, row] of rows(exports.TABLE_TERRAINS)) {
+        const name = vecText(row[2]);
+        if (name)
+            terrains[id] = name;
+    }
     const heroes = {};
     for (const [id, row] of rows(exports.TABLE_HEROES)) {
         const name = vecText(row[1]);
@@ -454,7 +463,7 @@ function buildNames(version, strings, vectors, tables, en) {
     }
     return {
         version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT,
-        gifts, techs, objects, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+        gifts, techs, objects, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
         events: buildEvents(tables.get(exports.TABLE_TOURNAMENTS), str, en),
     };
 }

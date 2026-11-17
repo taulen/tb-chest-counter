@@ -16,6 +16,8 @@ export interface ChatDigestSettings {
   entries: number;
   /** Minutes after 00:00 UTC (1050 = 17:30 UTC). */
   postUtcMinute: number;
+  /** The post's language (v122): en (default), es, fr, ru, de. */
+  language: DigestLanguage;
   testRequestedAt: string | null;
   testRequestedBy: number | null;
   posterUserId: string | null;
@@ -50,6 +52,12 @@ export interface ChatDigestPost {
   updatedAt: string;
 }
 
+/** Languages the digest post can be written in (the site's languages). */
+export const DIGEST_LANGUAGES = ['en', 'es', 'fr', 'ru', 'de'] as const;
+export type DigestLanguage = (typeof DIGEST_LANGUAGES)[number];
+export const isDigestLanguage = (v: unknown): v is DigestLanguage =>
+  typeof v === 'string' && (DIGEST_LANGUAGES as readonly string[]).includes(v);
+
 export const DIGEST_ENTRIES_MIN = 3;
 export const DIGEST_ENTRIES_MAX = 20;
 export const DEFAULT_POST_UTC_MINUTE = 17 * 60 + 30;
@@ -60,6 +68,7 @@ type SettingsRow = {
   clan_id: number; enabled: number; channel_url: string | null; channel_name: string; entries: number;
   post_utc_minute: number; test_requested_at: string | null; test_requested_by: number | null;
   poster_user_id: string | null; poster_name: string | null; channels_checked_at: string | null;
+  language?: string | null;
 };
 
 const toSettings = (r: SettingsRow): ChatDigestSettings => ({
@@ -69,6 +78,7 @@ const toSettings = (r: SettingsRow): ChatDigestSettings => ({
   channelName: r.channel_name,
   entries: r.entries,
   postUtcMinute: r.post_utc_minute,
+  language: isDigestLanguage(r.language) ? r.language : 'en',
   testRequestedAt: r.test_requested_at,
   testRequestedBy: r.test_requested_by,
   posterUserId: r.poster_user_id,
@@ -81,7 +91,7 @@ export function getChatDigestSettings(clanId: number): ChatDigestSettings {
   const r = getDb().prepare('SELECT * FROM chat_digest_settings WHERE clan_id = ?').get(clanId) as SettingsRow | undefined;
   return r ? toSettings(r) : {
     clanId, enabled: false, channelUrl: null, channelName: '', entries: DIGEST_ENTRIES_MAX, postUtcMinute: DEFAULT_POST_UTC_MINUTE,
-    testRequestedAt: null, testRequestedBy: null, posterUserId: null, posterName: null, channelsCheckedAt: null,
+    language: 'en', testRequestedAt: null, testRequestedBy: null, posterUserId: null, posterName: null, channelsCheckedAt: null,
   };
 }
 
@@ -93,16 +103,19 @@ export function enabledChatDigestClanIds(): number[] {
 /** Save the admin's choices. Only stores — saving never posts anything. */
 export function saveChatDigestSettings(
   clanId: number,
-  s: { enabled: boolean; channelUrl: string | null; channelName: string; entries: number; postUtcMinute: number },
+  s: { enabled: boolean; channelUrl: string | null; channelName: string; entries: number; postUtcMinute: number; language?: DigestLanguage },
   now = new Date().toISOString(),
 ): ChatDigestSettings {
+  // A caller that doesn't name a language keeps the stored one.
+  const language = s.language ?? getChatDigestSettings(clanId).language;
   getDb().prepare(
-    `INSERT INTO chat_digest_settings (clan_id, enabled, channel_url, channel_name, entries, post_utc_minute, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO chat_digest_settings (clan_id, enabled, channel_url, channel_name, entries, post_utc_minute, language, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (clan_id) DO UPDATE SET
        enabled = excluded.enabled, channel_url = excluded.channel_url, channel_name = excluded.channel_name,
-       entries = excluded.entries, post_utc_minute = excluded.post_utc_minute, updated_at = excluded.updated_at`,
-  ).run(clanId, s.enabled ? 1 : 0, s.channelUrl, s.channelName, s.entries, s.postUtcMinute, now);
+       entries = excluded.entries, post_utc_minute = excluded.post_utc_minute, language = excluded.language,
+       updated_at = excluded.updated_at`,
+  ).run(clanId, s.enabled ? 1 : 0, s.channelUrl, s.channelName, s.entries, s.postUtcMinute, language, now);
   return getChatDigestSettings(clanId);
 }
 

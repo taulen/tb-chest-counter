@@ -2184,6 +2184,18 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v122 — the in-game chat digest's language per clan (en default; es,
+        // fr, ru, de). Built in parallel with other branches: renumber at merge.
+        // PRAGMA-guarded: runMigrations may replay this.
+        version: 122,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(chat_digest_settings)').all();
+            if (!cols.some((c) => c.name === 'language')) {
+                database.exec("ALTER TABLE chat_digest_settings ADD COLUMN language TEXT NOT NULL DEFAULT 'en'");
+            }
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

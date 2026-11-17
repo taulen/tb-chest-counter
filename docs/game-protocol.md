@@ -206,7 +206,8 @@ copy is the record:
 **Content.** Structured lines arrive as a placeholder in the text (`/%0%/`)
 plus `data` = `{"subs": {"/%0%/": {…, "v": 1}}}` ([chat-text.ts](../src/game-protocol/chat-text.ts)):
 `coord` (a shared location: `entryType` user / poi / tile / clan / landmark,
-`x`, `y`, `realmId`, `staticId` = T7 map object, `name`), `raid` (`created`,
+`x`, `y`, `realmId`, `staticId` = T7 map object — for `tile` a T4 TERRAIN type, the
+id spaces overlap — `name`), `raid` (`created`,
 `targetStaticId`, `name` = who), `clan` (join / leave / kicked with `kicker` /
 archived), `journal` (attack / crypt / scout / clan_announcement / pvpladder —
 a shared report, `name` = its subject), `spawn_sabotage_spawn_to_enemy`
@@ -214,6 +215,12 @@ a shared report, `name` = its subject), `spawn_sabotage_spawn_to_enemy`
 `custom_type` `service` = the game's own posts (raids, joins…). The sender's
 `sender_info` (`realm,playerHex,clanHex,0,rank,tag`) gives the player id
 (`sender_player_id`) and the clan rank when the message was sent.
+
+The page writes a location as the game does (`client_config.value.poi.copy_coords.*`):
+"Player's portal NAME" (user, staticId 4), "Player's City NAME" (other user),
+"<object> CLAN" (clan: "Clan Capital …"), the terrain ("Dense forest", T4 f2 via
+`names.json` `terrains`) for a tile, else its name — every label an official
+game text (tGame).
 
 **Search.** `search_text` = the text with each placeholder replaced by its names
 and coordinates; `chat_messages_fts` (FTS5, external content on
@@ -653,6 +660,7 @@ Each table has its own id space:
 
 | Table | Holds | Name |
 |---|---|---|
+| 4 | terrain types ("Dense forest") | f2 vector |
 | 7 | map objects | f3 vector |
 | 8 | gift types | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
