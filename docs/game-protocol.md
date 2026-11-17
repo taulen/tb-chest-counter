@@ -698,6 +698,40 @@ Every scan stores the clan's rank and value in each ranking
 and the latest list per kind with each clan's tag, name, logo and members
 (`game_clan_ranking_lists`, v117) — the My Clan page's Rankings tab.
 
+### Joins & leaves (My Clan tab)
+
+One clan-wide list of who joined, who left and who came back, newest first by
+game day (`GET /api/game/clan/roster-changes?filter=joined|left&q=&before=&limit=`,
+[roster-changes.ts](../src/data/roster-changes.ts) for the rules,
+[roster-changes-repo.ts](../src/data/repositories/roster-changes-repo.ts) for
+the rows). Nothing new is stored; it reads what the member sync already keeps:
+
+- **Joined**: `game_players.joined_at` — the game's own join time (clan record
+  `[2]` `joinedAt`) of the player's *current* stint, for every player ever seen
+  in the clan (`in_clan` 1 or 0). The game overwrites it on a rejoin, so an
+  earlier stint's join is never shown. An alt a merge rule folds into a main
+  shows under the main, "as" its game name.
+- **Came back**: a join after a recorded leave of the same member, or of a
+  member the site already had on the roster more than an hour before the join
+  (`members.first_seen` earlier) — they were in the clan before.
+- **Restored**: audit `restore_member` (an admin's Restore), matched by name.
+- **Left** (the game's): audit `member.left_clan` with `linked: true`.
+- **Marked as left** (the site's record): `member.left_clan` with
+  `linked: false` (the first sync sweeping an OCR-era row), or `members.left_at`
+  with no audit row within a minute of it (the OCR-era 7-day sweep, the
+  off-roster retirement, an admin's Remove). Dated when the site noticed.
+- Never twice: `left_at` is the member's latest departure (cleared on the way
+  back in), skipped when the sync's audit row is beside it. An unlinked row's
+  sweep whose member has since been merged away or deleted is dropped (a
+  duplicate spelling, not a person); a linked player's goes to the surviving
+  member. `members.first_seen` is never shown as a join (it is when the site
+  first read the name — for most of an OCR-era clan the day tracking started).
+  `[Unknown]` never appears. Inactive members with no `left_at` (removed before
+  the column existed) have no date and are left out.
+
+The member Timeline's joined / came back / left entries come from the same
+function, filtered to the member, so the two never disagree.
+
 ### Clan logo ([`clan-logo.ts`](../src/game-art/clan-logo.ts))
 
 One number, the clan record's `[1][2]` (and 15200's `[1]` for any clan), one

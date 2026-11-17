@@ -6,14 +6,18 @@ exports.loadTimelineSources = loadTimelineSources;
  * already kept by other features: the player record's history, the site's
  * audit log, research / captain / artifact / equipment history, troop tier
  * changes, the city's shield / burning history, the daily might and the
- * dragon of each daily city snapshot. Every
- * read is clan-scoped; a member without a linked game player gets only the
- * site's own entries (renames, merges, left / restored).
+ * dragon of each daily city snapshot — and the clan's joins & leaves
+ * (roster-changes-repo.ts), this member's part of them. Every read is
+ * clan-scoped; a member without a linked game player gets only the site's own
+ * entries (renames, merges, left / restored) and the might.
  */
 const database_js_1 = require("../database.js");
 const member_repo_js_1 = require("./member-repo.js");
 const game_profile_repo_js_1 = require("./game-profile-repo.js");
 const member_tiers_js_1 = require("../member-tiers.js");
+const roster_changes_js_1 = require("../roster-changes.js");
+const roster_changes_repo_js_1 = require("./roster-changes-repo.js");
+const index_js_1 = require("../../config/index.js");
 const ALL_TIME = '0000';
 const NO_LIMIT = 1_000_000;
 /** Everything the timeline needs for one member, or null when the member isn't in this clan. */
@@ -22,13 +26,16 @@ function loadTimelineSources(clanId, memberId, playerId) {
     if (!member)
         return null;
     const db = (0, database_js_1.getDb)();
+    // Joined / came back / left / restored: the clan's Joins & leaves list,
+    // this member's part of it (roster-changes.ts) — so the two never disagree.
+    const moves = (0, roster_changes_js_1.buildRosterChanges)((0, roster_changes_repo_js_1.loadRosterSources)(clanId), (0, index_js_1.loadConfig)().gameDayRolloverUtcHour)
+        .filter((m) => m.memberId === memberId);
     // The site's actions about this member: a manual rename (the sync's own
-    // carry source "game" and show as the player renaming in the game), a merge
-    // of another name INTO this member (by the member's name or an alias), and
-    // leaving / being restored.
+    // carry source "game" and show as the player renaming in the game) and a
+    // merge of another name INTO this member (by the member's name or an alias).
     const names = [member.name, ...member.aliases];
     const auditRows = db.prepare(`SELECT created_at AS at, action, details FROM audit_log
-      WHERE action IN ('rename_member', 'merge_player', 'member.left_clan', 'restore_member')
+      WHERE action IN ('rename_member', 'merge_player')
         AND (clan_id = ? OR clan_id IS NULL)
       ORDER BY created_at`).all(clanId);
     const audit = [];
@@ -41,9 +48,7 @@ function loadTimelineSources(clanId, memberId, playerId) {
             continue;
         }
         const forMember = (r.action === 'rename_member' && Number(d.id) === memberId) ||
-            (r.action === 'member.left_clan' && Number(d.id) === memberId) ||
-            (r.action === 'merge_player' && typeof d.to === 'string' && names.includes(d.to) && (d.clanId === undefined || Number(d.clanId) === clanId)) ||
-            (r.action === 'restore_member' && typeof d.name === 'string' && names.includes(d.name));
+            (r.action === 'merge_player' && typeof d.to === 'string' && names.includes(d.to) && (d.clanId === undefined || Number(d.clanId) === clanId));
         if (forMember)
             audit.push({ at: r.at, action: r.action, details: d });
     }
@@ -51,12 +56,10 @@ function loadTimelineSources(clanId, memberId, playerId) {
       WHERE member_id = ? AND clan_id = ? AND game_date != '' AND power > 0 ORDER BY game_date`).all(memberId, clanId);
     if (playerId === null) {
         return {
-            joinedAt: null, playerHistory: [], audit, techChanges: [], tierChanges: [], captainChanges: [],
+            moves, playerHistory: [], audit, techChanges: [], tierChanges: [], captainChanges: [],
             artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays, dragonDays: [],
         };
     }
-    const joined = db.prepare('SELECT joined_at AS joinedAt FROM game_players WHERE clan_id = ? AND player_id = ?')
-        .get(clanId, playerId);
     const playerHistory = db.prepare(`SELECT captured_at AS at, name, hero_level AS heroLevel, city_level AS cityLevel, vip, gold_pass AS goldPass,
             hero_avatar AS heroAvatar, role
        FROM game_player_history WHERE clan_id = ? AND player_id = ? ORDER BY captured_at`).all(clanId, playerId);
@@ -94,7 +97,7 @@ function loadTimelineSources(clanId, memberId, playerId) {
         dragonDays.push({ day: r.day, at: r.at, level, stage });
     }
     return {
-        joinedAt: joined?.joinedAt ?? null,
+        moves,
         playerHistory,
         audit,
         techChanges,

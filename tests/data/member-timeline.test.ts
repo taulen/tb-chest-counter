@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildTimeline, pageTimeline, timelineCursor, type TimelineLookups, type TimelineSources } from '../../src/data/member-timeline.js';
+import { buildRosterChanges, type RosterMember, type RosterSources } from '../../src/data/roster-changes.js';
 
 const look: TimelineLookups = {
   techName: (id) => `Tech ${id}`,
@@ -23,9 +24,17 @@ const look: TimelineLookups = {
 };
 
 const empty = (): TimelineSources => ({
-  joinedAt: null, playerHistory: [], audit: [], techChanges: [], tierChanges: [], captainChanges: [],
+  moves: [], playerHistory: [], audit: [], techChanges: [], tierChanges: [], captainChanges: [],
   artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays: [], dragonDays: [],
 });
+
+const member = (id: number, name: string, over: Partial<RosterMember> = {}): RosterMember => ({
+  id, name, normalizedName: name.toLowerCase(), aliases: [], firstSeen: '2026-12-01T00:00:00Z', lastSeen: '2026-11-17T00:00:00Z',
+  isActive: true, leftAt: null, ...over,
+});
+
+/** One member's moves, the way the timeline repo takes them from the clan's list. */
+const movesOf = (memberId: number, roster: RosterSources) => buildRosterChanges(roster, 17).filter((m) => m.memberId === memberId);
 
 const ph = (at: string, over: Partial<TimelineSources['playerHistory'][number]> = {}) => ({
   at, name: 'taulen302', heroLevel: 210, cityLevel: 44, vip: 17, goldPass: 0, heroAvatar: 9, role: 4, ...over,
@@ -124,16 +133,38 @@ describe('member timeline', () => {
 
   it('shows the admin\'s manual renames and merges into the member, not the sync\'s own renames', () => {
     const src = empty();
-    src.joinedAt = 1_790_000_000;
+    src.moves = movesOf(1300, {
+      members: [member(1300, 'Nimduen')],
+      players: [{ playerId: 77, name: 'Нимдуен', joinedAt: 1_790_000_000, inClan: false, memberId: 1300, linked: true }],
+      audit: [{ at: '2026-11-17T04:00:00Z', action: 'member.left_clan', details: { id: 1300, name: 'Nimduen', source: 'game', linked: true } }],
+    });
     src.audit = [
       { at: '2026-11-17T01:52:48Z', action: 'merge_player', details: { from: 'Нимдуен', to: 'Nimduen', clanId: 2 } },
       { at: '2026-11-17T02:07:06Z', action: 'rename_member', details: { id: 1300, from: 'Nimduen', newName: 'Нимдуен', source: 'game' } },
       { at: '2026-11-17T03:00:00Z', action: 'rename_member', details: { id: '1300', newName: 'Nimduen' } },
-      { at: '2026-11-17T04:00:00Z', action: 'member.left_clan', details: { id: 1300 } },
     ];
     const t = buildTimeline(src, look, 17);
     expect(t.map((e) => e.kind)).toEqual(['left', 'renamed', 'merged', 'joined']);
     expect(t.find((e) => e.kind === 'renamed')).toMatchObject({ by: 'admin', to: 'Nimduen' });
+    expect(t.find((e) => e.kind === 'left')).toMatchObject({ site: false });
+  });
+
+  it('takes joined / came back / left from the clan\'s Joins & leaves, so the two views agree', () => {
+    const roster = {
+      members: [
+        member(1, 'Nightfrog', { firstSeen: '2026-08-23T17:35:33Z' }),
+        member(2, 'Ghost', { isActive: false, leftAt: '2026-10-25T17:20:30Z' }),
+      ],
+      players: [{ playerId: 9, name: 'Nightfrog', joinedAt: Date.parse('2026-11-17T17:15:08Z') / 1000, inClan: true, memberId: 1, linked: true }],
+      audit: [],
+    };
+    const src = empty();
+    src.moves = movesOf(1, roster);
+    expect(buildTimeline(src, look, 17)).toEqual([
+      expect.objectContaining({ kind: 'joined', returned: true, seenSince: '2026-08-23T17:35:33Z', prevLeftAt: null }),
+    ]);
+    src.moves = movesOf(2, roster);
+    expect(buildTimeline(src, look, 17)).toEqual([expect.objectContaining({ kind: 'left', site: true, at: '2026-10-25T17:20:30Z' })]);
   });
 
   it('pages by cursor: stable when newer entries appear, filtered by group', () => {

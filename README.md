@@ -368,7 +368,9 @@ Pages are role-gated. Members see:
 - **Events** — per-event chest breakdowns per player for each event run, plus
   Tin Man / Ancients standings and targets.
 - **My Clan** — the clan as the game shows it: research, rankings, treasury,
-  history, and a **Triumphal Chests** tab — the separate leaderboard/history for
+  history, **Joins & leaves** (who joined, left or came back, by game day, from
+  the game's own join times and the site's departure records), and a
+  **Triumphal Chests** tab — the separate leaderboard/history for
   triumphal chests, scored from their package value and kept **out of the main
   leaderboard**.
 - **Chest rewards** — what the clan's opened chests paid out per day, week or

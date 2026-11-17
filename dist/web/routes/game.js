@@ -16,9 +16,13 @@ const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
+const roster_changes_js_1 = require("../../data/roster-changes.js");
+const roster_changes_repo_js_1 = require("../../data/repositories/roster-changes-repo.js");
+const member_timeline_js_1 = require("../../data/member-timeline.js");
+const index_js_1 = require("../../config/index.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
-const index_js_1 = require("../../game-art/index.js");
+const index_js_2 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
 const clan_logo_js_1 = require("../../game-art/clan-logo.js");
 const item_icons_js_1 = require("../../game-art/item-icons.js");
@@ -36,7 +40,7 @@ const dragon_js_1 = require("../../game-protocol/dragon.js");
  */
 let withIconsMemo = null;
 function treesWithIcons(trees) {
-    const art = (0, index_js_1.currentGameArt)();
+    const art = (0, index_js_2.currentGameArt)();
     const key = `${trees.version}|${art?.version ?? ''}`;
     if (withIconsMemo?.key === key)
         return withIconsMemo.value;
@@ -45,10 +49,10 @@ function treesWithIcons(trees) {
         ...trees,
         trees: trees.trees.map((tr) => ({
             ...tr,
-            iconUrl: tr.icon ? (0, index_js_1.gameArtUrl)(tr.icon) : null,
+            iconUrl: tr.icon ? (0, index_js_2.gameArtUrl)(tr.icon) : null,
             nodes: tr.nodes.map((n) => {
                 const name = techIcons[String(n.techId)] ?? n.icon;
-                return { ...n, iconUrl: name ? (0, index_js_1.gameArtUrl)(name) : null };
+                return { ...n, iconUrl: name ? (0, index_js_2.gameArtUrl)(name) : null };
             }),
         })),
     };
@@ -56,6 +60,10 @@ function treesWithIcons(trees) {
     return value;
 }
 const CHANGES_DAYS = 90;
+/** Joins & leaves: a page, the most one request may ask for, and the header's window. */
+const ROSTER_PAGE_DEFAULT = 50;
+const ROSTER_PAGE_MAX = 200;
+const ROSTER_COUNT_DAYS = 30;
 /** A stored event run as the API sends it: the site's event key when the catalog knows the title. */
 function eventRunApi(r, nowSec) {
     return {
@@ -151,12 +159,12 @@ function createGameRouter() {
             return;
         }
         const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
-        const mappings = (0, index_js_1.currentGameArt)()?.mappings;
+        const mappings = (0, index_js_2.currentGameArt)()?.mappings;
         const portraits = mappings?.captains ?? {};
         // Artifact / equipment / gem icons from the game's bundles, null until extracted.
         const iconUrl = (map, id) => {
             const img = map?.[String(id)];
-            return img ? (0, index_js_1.gameArtUrl)(img) : null;
+            return img ? (0, index_js_2.gameArtUrl)(img) : null;
         };
         const artifactIconUrl = (type) => iconUrl(mappings?.artifacts, type);
         const itemView = (type, enchantment, gems) => {
@@ -190,10 +198,10 @@ function createGameRouter() {
                 rarity,
                 rarityName: c?.rarityName ?? '',
                 maxStars: starLevels.length ? Math.max(...starLevels) : 0,
-                iconUrl: portrait ? (0, index_js_1.gameArtUrl)(portrait) : null,
-                artUrl: full ? (0, index_js_1.gameArtUrl)(full) : c?.art ? (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(c.art)) : null,
-                tileBackUrl: tile?.backs?.[String(rarity)] ? (0, index_js_1.gameArtUrl)(tile.backs[String(rarity)]) : null,
-                tileFrameUrl: tile?.frames?.[String(rarity)] ? (0, index_js_1.gameArtUrl)(tile.frames[String(rarity)]) : null,
+                iconUrl: portrait ? (0, index_js_2.gameArtUrl)(portrait) : null,
+                artUrl: full ? (0, index_js_2.gameArtUrl)(full) : c?.art ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(c.art)) : null,
+                tileBackUrl: tile?.backs?.[String(rarity)] ? (0, index_js_2.gameArtUrl)(tile.backs[String(rarity)]) : null,
+                tileFrameUrl: tile?.frames?.[String(rarity)] ? (0, index_js_2.gameArtUrl)(tile.frames[String(rarity)]) : null,
             };
         };
         const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
@@ -225,11 +233,11 @@ function createGameRouter() {
         } : null;
         // The Hall of Fame: faction levels are city techs 800–803 (factions.ts).
         const techs = (0, game_profile_repo_js_1.getPlayerTechs)(clanId, playerId);
-        const hallOfFame = (0, factions_js_1.hallOfFameView)(names, techs.readAt ? techs.levels : null, (n) => (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(n)));
+        const hallOfFame = (0, factions_js_1.hallOfFameView)(names, techs.readAt ? techs.levels : null, (n) => (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(n)));
         // The dragon: city field 26 of the latest daily city snapshot, on the
         // Dragons table's levels and evolutions (dragon.ts).
         const city = (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId);
-        const dragon = city ? (0, dragon_js_1.dragonView)(names, city.dragon, (n) => (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(n))) : null;
+        const dragon = city ? (0, dragon_js_1.dragonView)(names, city.dragon, (n) => (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(n))) : null;
         res.json({
             linked: true,
             hero,
@@ -237,9 +245,9 @@ function createGameRouter() {
             hallOfFame,
             // Shared tile art: the level plate and the star sprites (null until extracted).
             tileArt: {
-                levelPlateUrl: tile?.levelPlate ? (0, index_js_1.gameArtUrl)(tile.levelPlate) : null,
-                starOnUrl: tile?.starOn ? (0, index_js_1.gameArtUrl)(tile.starOn) : null,
-                starOffUrl: tile?.starOff ? (0, index_js_1.gameArtUrl)(tile.starOff) : null,
+                levelPlateUrl: tile?.levelPlate ? (0, index_js_2.gameArtUrl)(tile.levelPlate) : null,
+                starOnUrl: tile?.starOn ? (0, index_js_2.gameArtUrl)(tile.starOn) : null,
+                starOffUrl: tile?.starOff ? (0, index_js_2.gameArtUrl)(tile.starOff) : null,
             },
             captains: (0, game_profile_repo_js_1.getPlayerCaptains)(clanId, playerId).map((c) => {
                 // The XP window of its level and the Stats screen (Heroes table, T10).
@@ -378,7 +386,7 @@ function createGameRouter() {
                 const g = names?.medals?.[String(m.medalId)];
                 return {
                     ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '',
-                    iconUrl: g?.icon ? (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(g.icon)) : null,
+                    iconUrl: g?.icon ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(g.icon)) : null,
                 };
             }),
             techs: { ...(0, game_clan_repo_js_1.getClanTechs)(clanId), changes: (0, game_clan_repo_js_1.getClanTechChanges)(clanId, since) },
@@ -401,12 +409,47 @@ function createGameRouter() {
                 const l = lists.get(kind);
                 return {
                     kind,
-                    iconUrl: (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(selection_js_1.CLAN_RANKING_ICONS[kind] ?? '')),
+                    iconUrl: (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(selection_js_1.CLAN_RANKING_ICONS[kind] ?? '')),
                     capturedAt: l?.capturedAt ?? null,
                     entries: (l?.entries ?? []).map((e) => ({ ...e, logoUrl: (0, clan_logo_js_1.clanLogoUrl)(e.logo) })),
                 };
             }),
             history: (0, game_clan_repo_js_1.getClanRankHistory)(clanId, since),
+        });
+    });
+    /**
+     * Joins & leaves (My Clan): who joined the clan, who left, who came back,
+     * newest first — the rules are data/roster-changes.ts's. `?filter=joined|left`,
+     * `?q=` part of a name, `?before=` the cursor of the last entry shown,
+     * `?limit=`. `counts` are the last 30 days' whatever the filter, and
+     * `readSince` is the game's first read of the roster (join times exist for
+     * everyone in the clan from then on). Each entry carries the player's
+     * portrait and frame when the game has them.
+     */
+    router.get('/clan/roster-changes', (req, res) => {
+        const clanId = req.clanId;
+        const all = (0, roster_changes_js_1.buildRosterChanges)((0, roster_changes_repo_js_1.loadRosterSources)(clanId), (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
+        const filter = req.query.filter === 'joined' || req.query.filter === 'left' ? req.query.filter : null;
+        const query = typeof req.query.q === 'string' ? req.query.q.slice(0, 80) : '';
+        const list = (0, roster_changes_js_1.filterRosterChanges)(all, { filter, query });
+        const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit ?? ''), 10) || ROSTER_PAGE_DEFAULT, 1), ROSTER_PAGE_MAX);
+        const page = (0, member_timeline_js_1.pageNewestFirst)(list, { before: typeof req.query.before === 'string' ? req.query.before.slice(0, 200) : null, limit });
+        // The portrait: a join's own player (an alt's is its own), else the member's.
+        const byMember = (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId);
+        const byPlayer = new Map([...byMember.values()].map((p) => [p.playerId, p]));
+        const profileOf = (e) => (e.playerId !== null
+            ? byPlayer.get(e.playerId) ?? (0, game_profile_repo_js_1.getGamePlayer)(clanId, e.playerId)
+            : e.memberId !== null ? byMember.get(e.memberId) ?? null : null);
+        const since = new Date(Date.now() - ROSTER_COUNT_DAYS * 86_400_000).toISOString();
+        res.json({
+            entries: page.entries.map((e) => {
+                const p = profileOf(e);
+                return { ...e, avatarUrl: p?.avatarUrl ?? null, frameUrl: p?.frameUrl ?? null, heroLevel: p?.heroLevel ?? null };
+            }),
+            next: page.next,
+            total: list.length,
+            counts: { days: ROSTER_COUNT_DAYS, ...(0, roster_changes_js_1.countRosterChanges)(all, since) },
+            readSince: (0, roster_changes_repo_js_1.rosterReadSince)(clanId),
         });
     });
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */
