@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../../src/data/database.js';
 import * as mightRepo from '../../../src/data/repositories/might-repo.js';
 import { getMemberEvidenceCropPath, upsertMember } from '../../../src/data/repositories/member-repo.js';
-import { getReviewQueue } from '../../../src/data/repositories/review-queue-repo.js';
 import { resolveAllowedCropPath, MIGHT_NEW_MEMBER_CROP_DIR } from '../../../src/utils/crop-dirs.js';
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import path from 'node:path';
@@ -13,7 +12,8 @@ import path from 'node:path';
  * of their member-list row as the evidence an admin acknowledges them against.
  *
  * These pin the three things that have to line up for that hover to work: the
- * path is stored, the review queue advertises it, and the resolver finds it.
+ * path is stored and the resolver finds it (the review queue that advertised it
+ * is gone: members come from the game roster now).
  */
 describe('might new-member evidence crops', () => {
   let cleanup: () => void;
@@ -38,20 +38,6 @@ describe('might new-member evidence crops', () => {
     expect(getMemberEvidenceCropPath(member.id, 1)).toBe(p);
     // Clan-scoped: another clan's admin must not reach it by guessing the id.
     expect(getMemberEvidenceCropPath(member.id, 2)).toBeNull();
-  });
-
-  it('marks the review-queue entry as having a crop', () => {
-    const withCrop = upsertMember('HasCrop', 1);
-    const without = upsertMember('NoCrop', 1);
-
-    mightRepo.saveSnapshots(1, '2026-07-31', '2026-07-31T18:00:00.000Z', [
-      { memberId: withCrop.id, might: 1_000_000, cropPath: cropPath('a.png') },
-      { memberId: without.id, might: 2_000_000 },
-    ]);
-
-    const entries = getReviewQueue(1).members.entries;
-    expect(entries.find((e) => e.value === 'HasCrop')?.hasCrop).toBe(true);
-    expect(entries.find((e) => e.value === 'NoCrop')?.hasCrop).toBe(false);
   });
 
   it('does not blank an existing crop when the day is re-captured', () => {

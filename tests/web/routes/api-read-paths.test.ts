@@ -430,9 +430,10 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
     it('GET /api/admin/review-queue', async () => {
       const res = await request(app).get('/api/admin/review-queue');
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('chestNames');
-      expect(res.body).toHaveProperty('chestSources');
-      expect(res.body).toHaveProperty('members');
+      // Only triumphal chests without a value remain (the OCR-era
+      // name/source/member lists were retired in Nov 2026).
+      expect(res.body).toHaveProperty('triumphalChests');
+      expect(res.body).not.toHaveProperty('members');
     });
 
     it('GET /api/admin/unique-chests', async () => {

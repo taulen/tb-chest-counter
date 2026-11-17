@@ -595,67 +595,37 @@ export async function saveAllTriumphalPoints(rerender) {
   }
 }
 
+/**
+ * Triumphal (Bank) chests the clan received that have no package value yet —
+ * they score 0 until a superadmin sets one in the Triumphal Chest Points card
+ * on the Points tab (which also clears them from here). The OCR-era "new
+ * chest names / sources / members" lists to acknowledge are gone: names come
+ * from the game itself now (Nov 2026).
+ */
 function renderReviewQueueSection(queue) {
-  if (!queue) return '';
-  const groups = [
-    { key: 'chest_name', label: t('New Chest Names'), entries: queue.chestNames?.entries || [], ack: queue.chestNames?.acknowledgedAt || null, valueHeader: t('Chest Name') },
-    { key: 'chest_source', label: t('New Chest Sources'), entries: queue.chestSources?.entries || [], ack: queue.chestSources?.acknowledgedAt || null, valueHeader: t('Source') },
-    { key: 'member', label: t('New Members'), entries: queue.members?.entries || [], ack: queue.members?.acknowledgedAt || null, valueHeader: t('Member') },
-    // Triumphal (Bank) chests with no configured value. No Acknowledge —
-    // resolved by a superadmin assigning a package value in the Triumphal
-    // Chest Points card on the Points tab (which removes them from this list).
-    { key: 'triumphal', label: t('New Triumphal Chests'), entries: queue.triumphalChests?.entries || [], ack: null, valueHeader: t('Chest Name'), noAck: true },
-  ];
-  const activeGroups = groups.filter((g) => g.entries.length > 0);
-  const totalNew = activeGroups.reduce((sum, g) => sum + g.entries.length, 0);
-  if (totalNew === 0) return '';
-
+  const entries = queue?.triumphalChests?.entries || [];
+  if (entries.length === 0) return '';
   return `
-    <h2 class="page-section-title">${t('Review Queue')} <span class="chest-type epic">${tn(totalNew, '{n} new', '{n} new', { n: totalNew })}</span></h2>
-    <p class="page-section-intro">${t('Recently-discovered chest names, sources, and members. Skim for OCR misspellings or unknown source types that need a point value. Click <strong>Acknowledge</strong> once reviewed to clear the list.')}</p>
-    ${activeGroups.map((g) => `
-      <div class="card">
-        <div class="card-header">
-          <h2>${g.label} (${g.entries.length})</h2>
-        </div>
-        <div class="card-body card-body-padded">
-          <details open>
-            <summary class="collapse-toggle">${tn(g.entries.length, 'Show {n} new entry', 'Show {n} new entries', { n: g.entries.length })}</summary>
-            <table class="table-responsive mt-12">
-              <thead><tr>
-                <th>${g.valueHeader}</th><th>${t('First Seen')}</th><th>${t('Chests')}</th>
-                ${g.key === 'member' ? `<th>${t('Row')}</th>` : ''}
-              </tr></thead>
-              <tbody>
-                ${g.entries.map((e) => `<tr>
-                  <td data-label="${g.valueHeader}" data-role="primary"><span class="mrow-name">${g.key === 'chest_name' || g.key === 'triumphal' ? chestLabelHtml(e.value, esc(e.value)) : esc(e.value)}</span></td>
-                  <td data-label="${t('First Seen')}" class="muted-copy">${formatDate(e.firstSeen)}</td>
-                  <td data-label="${t('Chests')}" data-role="metric">${e.count}</td>
-                  ${g.key === 'member' ? `<td data-label="${t('Row')}">${e.hasCrop && e.memberId
-                    ? `<span class="unknown-crop-hover" data-crop-url="/api/admin/members/${e.memberId}/crop" data-crop-wide tabindex="0" role="button" title="${t('Hover to preview the screenshot this member was first seen in — click to enlarge')}">🖼️</span>`
-                    : '<span class="muted-copy">—</span>'}</td>` : ''}
-                </tr>`).join('')}
-              </tbody>
-            </table>
-          </details>
-          ${g.noAck
-            ? `<p class="muted-copy mt-12">${t('Assign each a package value under {link} on the Points tab — that scores them and clears them from this list.', { link: `<a href="#admin/points">${t('Triumphal Chest Points')}</a>` })}</p>`
-            : `<div class="inline-form-row mt-12">
-            <button class="btn" data-action="acknowledge-review" data-review-category="${g.key}">${t('Acknowledge')}</button>
-          </div>
-          <p class="muted-copy mt-8">${g.ack ? t('Last acknowledged: {date}', { date: formatDate(g.ack) }) : t('Never acknowledged — all entries are shown.')}</p>`}
-        </div>
+    <h2 class="page-section-title">${t('Review Queue')} <span class="chest-type epic">${tn(entries.length, '{n} new', '{n} new', { n: entries.length })}</span></h2>
+    <div class="card">
+      <div class="card-header">
+        <h2>${t('New Triumphal Chests')} (${entries.length})</h2>
       </div>
-    `).join('')}
+      <div class="card-body card-body-padded">
+        <table class="table-responsive">
+          <thead><tr><th>${t('Chest Name')}</th><th>${t('First Seen')}</th><th>${t('Chests')}</th></tr></thead>
+          <tbody>
+            ${entries.map((e) => `<tr>
+              <td data-label="${t('Chest Name')}" data-role="primary"><span class="mrow-name">${chestLabelHtml(e.value, esc(e.value))}</span></td>
+              <td data-label="${t('First Seen')}" class="muted-copy">${formatDate(e.firstSeen)}</td>
+              <td data-label="${t('Chests')}" data-role="metric">${e.count}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="muted-copy mt-12">${t('Assign each a package value under {link} on the Points tab — that scores them and clears them from this list.', { link: `<a href="#admin/points">${t('Triumphal Chest Points')}</a>` })}</p>
+      </div>
+    </div>
   `;
-}
-
-export async function acknowledgeReviewQueue(category, rerender) {
-  const result = await apiPost('/admin/review-queue/acknowledge', { category });
-  if (result?.error) return notify(result.error, t('Acknowledge failed'));
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
 }
 
 function renderUnknownChestsSection(chests, members, chestCounts) {

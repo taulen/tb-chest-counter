@@ -12,7 +12,6 @@ import {
   deleteBatch,
 } from '../../../src/data/repositories/resource-repo.js';
 import { upsertMember, getMemberEvidenceCropPath } from '../../../src/data/repositories/member-repo.js';
-import { getReviewQueue } from '../../../src/data/repositories/review-queue-repo.js';
 
 /**
  * Row crops are the evidence an admin hovers while resolving an unresolved
@@ -184,10 +183,6 @@ describe('resource row crops', () => {
 
     // The resource crop is a single outlined row; the chest crop is a whole batch.
     expect(getMemberEvidenceCropPath(member.id, 1)).toBe(resourceCrop);
-    // ...and it is what the review queue reports as available.
-    const entry = getReviewQueue(1).members.entries.find((e) => e.value === 'Taulen');
-    expect(entry?.hasCrop).toBe(true);
-    expect(entry?.memberId).toBe(member.id);
   });
 
   it('falls back to the chest crop when the member has no resource crop', () => {
@@ -207,7 +202,6 @@ describe('resource row crops', () => {
     ).run(session.id, member.id, chest.id, chestCrop);
 
     expect(getMemberEvidenceCropPath(member.id, 1)).toBe(chestCrop);
-    expect(getReviewQueue(1).members.entries.find((e) => e.value === 'Taulen')?.hasCrop).toBe(true);
   });
 
   it('reports no crop for a member with none, and is clan-scoped', () => {
@@ -227,7 +221,6 @@ describe('resource row crops', () => {
 
     const other = upsertMember('NoEvidence', 1);
     expect(getMemberEvidenceCropPath(other.id, 1)).toBeNull();
-    expect(getReviewQueue(1).members.entries.find((e) => e.value === 'NoEvidence')?.hasCrop).toBe(false);
   });
 
   it('survives a crop file that is already gone', () => {

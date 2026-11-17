@@ -2089,21 +2089,6 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     }
   });
 
-  // POST /api/admin/review-queue/acknowledge { category }
-  router.post('/admin/review-queue/acknowledge', requireAdmin, (req, res) => {
-    const category = String(req.body?.category ?? '');
-    if (category !== 'chest_name' && category !== 'chest_source' && category !== 'member') {
-      return res.status(400).json({ error: 'invalid category' });
-    }
-    try {
-      reviewQueueRepo.acknowledge(category, req.clanId ?? 1);
-      logAction(req.user!.id, 'acknowledge_review_queue', { category, clanId: req.clanId ?? 1 });
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-    }
-  });
-
   // GET /api/admin/unknown-chests — rows where the retired OCR scanner failed to read the
   // player name. See chestRepo.getUnknownChests for the predicate.
   // Also self-heals any stale "Manual review needed" banners on sessions
@@ -2222,8 +2207,7 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       // entry/row arrays. Both are memoized per clan; the badge tolerates
       // short staleness and is invalidated on every relevant mutation.
       const counts = reviewQueueRepo.getReviewQueueCount(clanId);
-      const reviewQueueCount = counts.chestNames + counts.chestSources + counts.members
-        + counts.triumphalChests;
+      const reviewQueueCount = counts.triumphalChests;
       const unknownChestsCount = chestRepo.countUnknownChests(clanId);
       // Resource rows the reader couldn't identify a resource for. The count is
       // served from the partial index added in v59 so it stays cheap on this
