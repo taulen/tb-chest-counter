@@ -629,6 +629,12 @@ class ScanLoop {
                 this.reportProgress('Reading chat…');
                 const { refreshChatSession } = await import('./chat-capture.js');
                 log.info(`Clan #${clanId} ${await refreshChatSession(clanId, capture.data.client, capture.data.record.clanId)}`);
+                // The daily digest into the clan's chosen group chat (opt-in; at most
+                // one message a day — see chat-digest.ts). Never throws.
+                const { runChatDigest } = await import('./chat-digest.js');
+                const digestNote = await runChatDigest(clanId, { client: capture.data.client, rolloverUtcHour: this.config.gameDayRolloverUtcHour });
+                if (digestNote)
+                    log.info(`Clan #${clanId} ${digestNote}`);
                 return done;
             }
             catch (err) {

@@ -1703,6 +1703,67 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v115 — the daily digest posted into an in-game group chat
+        // (scheduler/chat-digest.ts, docs/chat-digest.md):
+        //   chat_digest_settings  per clan: on/off, the chosen group chat (by URL,
+        //                         or by name until the scanner account's channel
+        //                         list resolves it), entries, post time; who posts.
+        //   chat_post_channels    the group chats the clan's scanner account is a
+        //                         member of — the only channels it may post into.
+        //   chat_digest_posts     one row per clan per digest day, reserved BEFORE
+        //                         sending: the at-most-one-message-a-day guarantee.
+        // CWB (clan 2) starts enabled into "CWB • Carter" while testing (user, Nov
+        // 2026); every other clan starts off. IF NOT EXISTS / OR IGNORE: replay-safe.
+        version: 115,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS chat_digest_settings (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          enabled INTEGER NOT NULL DEFAULT 0,
+          channel_url TEXT,
+          channel_name TEXT NOT NULL DEFAULT '',
+          entries INTEGER NOT NULL DEFAULT 20,
+          post_utc_minute INTEGER NOT NULL DEFAULT 1050,
+          test_requested_at TEXT,
+          test_requested_by INTEGER,
+          poster_user_id TEXT,
+          poster_name TEXT,
+          channels_checked_at TEXT,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS chat_post_channels (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          channel_url TEXT NOT NULL,
+          custom_type TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          member_count INTEGER NOT NULL DEFAULT 0,
+          seen_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, channel_url)
+        );
+        CREATE TABLE IF NOT EXISTS chat_digest_posts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          game_date TEXT NOT NULL,
+          sent_game_date TEXT NOT NULL,
+          channel_url TEXT NOT NULL,
+          channel_name TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          message_id INTEGER,
+          text TEXT NOT NULL,
+          error TEXT,
+          trigger TEXT NOT NULL DEFAULT 'scheduled',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE (clan_id, game_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_digest_posts_sent_day ON chat_digest_posts (clan_id, sent_game_date);
+      `);
+            database.prepare(`INSERT OR IGNORE INTO chat_digest_settings (clan_id, enabled, channel_name, entries, post_utc_minute, updated_at)
+         SELECT id, 1, ?, 20, 1050, ? FROM clans WHERE id = 2 AND slug = 'cwb-chaoswithoutborders'`).run('CWB • Carter', new Date().toISOString());
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

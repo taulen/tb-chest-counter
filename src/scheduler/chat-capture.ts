@@ -77,6 +77,11 @@ export async function refreshChatSession(clanId: number, client: GameClient, gam
   }
 }
 
+/** The clan's chat session from its last scan, or null (the chat digest lists the account's group chats with it). */
+export function chatSessionFor(clanId: number): ChatSession | null {
+  return sessions.get(clanId)?.session ?? null;
+}
+
 /** Start the between-scans poller (idempotent). */
 export function startChatPoller(): void {
   if (pollTimer) return;

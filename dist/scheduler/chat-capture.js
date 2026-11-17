@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.refreshChatSession = refreshChatSession;
+exports.chatSessionFor = chatSessionFor;
 exports.startChatPoller = startChatPoller;
 exports.stopChatPoller = stopChatPoller;
 const chat_js_1 = require("../game-protocol/chat.js");
@@ -57,6 +58,10 @@ async function refreshChatSession(clanId, client, gameClanId) {
         log.warn({ noAlert: true }, `Clan #${clanId} chat sync failed (the scan is unaffected): ${String(err)}`);
         return 'chat failed';
     }
+}
+/** The clan's chat session from its last scan, or null (the chat digest lists the account's group chats with it). */
+function chatSessionFor(clanId) {
+    return sessions.get(clanId)?.session ?? null;
 }
 /** Start the between-scans poller (idempotent). */
 function startChatPoller() {

@@ -8880,3 +8880,22 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
 }
 
+
+/* Clans → In-game chat digest: the post as it will read in the game's chat.
+   Proportional font on purpose — the game's chat is, and the dot leaders are
+   sized for it. */
+.chat-digest-preview {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+}
