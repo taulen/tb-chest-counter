@@ -2,23 +2,17 @@
  * Player levels reported in the in-game chat — G (guardsmen), M, S, E, C and
  * D, as people post them — imported by an admin from Admin → Levels from chat.
  *
- * Two writes per imported player:
- *  - a member_level_reports row: the full record of what was said, every
- *    letter, dated;
- *  - for G, an admin guards report (member_guards_reports), the same entry an
- *    admin makes by hand on a member's profile. The guards estimator weighs it
- *    as a pin for that date, so a G8 posted today makes the member G8 even with
- *    no donation that reveals it — and later donations can still carry them
- *    higher. Not written twice for the same member, day and level.
+ * One write per imported player: a member_level_reports row, the full record
+ * of what was said, every letter, dated. It no longer sets anyone's guards
+ * level — that is the Guardsmen tier from their research, as the game reports
+ * it (guards-repo). Dragon (D) is the one letter only chat knows.
  *
  * Reading: each member's LATEST value per letter (a newer post that leaves a
  * letter out doesn't blank it), with the date it was reported.
  */
 import { getDb } from '../database.js';
 import { getAllMembers, getMemberById } from './member-repo.js';
-import { addGuardsReport } from './guards-repo.js';
 import { resolveNamesToMembers } from '../name-resolver.js';
-import { GUARDS_MAX_LEVEL, GUARDS_MIN_LEVEL } from '../../config/guards-ladder.js';
 import { LEVEL_KEYS, LEVEL_MAX, type LevelKey, type LevelReportLine, type Levels } from '../member-levels-parse.js';
 
 export interface LevelPreviewRow {
@@ -51,7 +45,6 @@ export interface LevelImportEntry {
 
 export interface LevelImportResult {
   saved: number;
-  guardsReports: number;
   /** Entries dropped: member not in this clan, or no valid level. */
   rejected: number;
 }
@@ -75,18 +68,13 @@ export function importLevelReports(input: {
   createdByUserId: number | null;
 }): LevelImportResult {
   const db = getDb();
-  const result: LevelImportResult = { saved: 0, guardsReports: 0, rejected: 0 };
+  const result: LevelImportResult = { saved: 0, rejected: 0 };
   const now = new Date().toISOString();
   const insert = db.prepare(`
     INSERT INTO member_level_reports
       (clan_id, member_id, observed_date, g_level, m_level, s_level, e_level, c_level, d_level, raw_text, created_by, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const sameReport = db.prepare(
-    'SELECT 1 AS hit FROM member_guards_reports WHERE clan_id = ? AND member_id = ? AND observed_date = ? AND level = ?',
-  );
-
-  const guardsToAdd: Array<{ memberId: number; level: number }> = [];
   db.transaction(() => {
     const seen = new Set<number>();
     for (const e of input.entries) {
@@ -103,22 +91,8 @@ export function importLevelReports(input: {
         String(e.raw ?? '').slice(0, 500), input.createdBy, now,
       );
       result.saved++;
-      const g = levels.g;
-      if (g !== undefined && g >= GUARDS_MIN_LEVEL && g <= GUARDS_MAX_LEVEL
-        && !sameReport.get(input.clanId, member.id, input.date, g)) {
-        guardsToAdd.push({ memberId: member.id, level: g });
-      }
     }
   })();
-
-  // Through the guards repo, so its cache is dropped like a hand entry's.
-  for (const g of guardsToAdd) {
-    addGuardsReport({
-      clanId: input.clanId, memberId: g.memberId, level: g.level,
-      observedDate: input.date, note: 'Posted in chat (levels import)', createdBy: input.createdByUserId,
-    });
-    result.guardsReports++;
-  }
   return result;
 }
 

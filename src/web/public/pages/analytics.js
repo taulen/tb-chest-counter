@@ -191,7 +191,7 @@ export async function renderAnalytics(el) {
     // Null when the clan hasn't configured one, which is a real state, not an
     // error — the contributor table simply carries no colour.
     api('/leaderboard/goal').catch(() => null),
-    // Guards levels and Gold Pass holders: inferred, not period-scoped, and
+    // Guards levels and Gold Pass holders: from the game, not period-scoped, and
     // optional — the card is simply absent if this fails.
     api('/guards/overview').catch(() => null),
   ]);
@@ -1017,9 +1017,10 @@ function activityClockCardHtml(current) {
 const MAKEUP_LEVEL_UPS_SHOWN = 8;
 
 /**
- * Guardsmen levels and Gold Pass holders across the active roster. Both are
- * about the clan as it is NOW, so the card ignores the timeframe above — and
- * says so, the same way the might card does.
+ * Guardsmen levels and Gold Pass holders across the active roster, both as the
+ * game reports them: the Guardsmen tier from each member's research, and the
+ * Gold Pass flag on their game record. About the clan as it is NOW, so the card
+ * ignores the timeframe above — and says so, the same way the might card does.
  */
 function clanMakeupCardHtml() {
   const clan = staticData?.guards?.clan;
@@ -1028,10 +1029,10 @@ function clanMakeupCardHtml() {
   const current = clan.goldPass?.current;
   const previous = clan.goldPass?.previous;
   const total = clan.activeMembers || 0;
-  if (!g || (g.estimated === 0 && !current?.holders && !previous?.holders)) return '';
+  if (!g || (g.known === 0 && !current?.holders && !previous?.holders)) return '';
 
   const levelRows = g.distribution.map((d) => {
-    const pct = g.estimated > 0 ? Math.round((d.members / g.estimated) * 100) : 0;
+    const pct = g.known > 0 ? Math.round((d.members / g.known) * 100) : 0;
     return `<div class="type-row type-row--compact type-guards">
       <span class="type-row-name"><span class="type-row-dot"></span>${t('G{level}', { level: d.level })}</span>
       <div class="type-row-bar"><span style="width: ${Math.max(1, pct)}%"></span></div>
@@ -1041,18 +1042,19 @@ function clanMakeupCardHtml() {
   }).join('');
 
   const gaps = [
-    g.unknown > 0 ? tn(g.unknown, '{n} not revealed yet', '{n} not revealed yet') : '',
-    g.stale > 0 ? tn(g.stale, '{n} not seen donating for over {days} days', '{n} not seen donating for over {days} days', { days: staticData.guards.staleDays }) : '',
-    g.lowConfidence > 0 ? tn(g.lowConfidence, '{n} low confidence', '{n} low confidence') : '',
+    g.unknown > 0 ? tn(g.unknown, '{n} not read from the game yet', '{n} not read from the game yet') : '',
+    g.stale > 0 ? tn(g.stale, '{n} not read for over {days} days', '{n} not read for over {days} days', { days: staticData.guards.staleDays }) : '',
   ].filter(Boolean).join(' · ');
 
   const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
+  const cycleLine = current?.firstDay && current?.lastDay
+    ? t('{event} cycle {from} – {to}', { event: tGame('Triumphal'), from: esc(current.firstDay.replace(/-/g, '/')), to: esc(current.lastDay.replace(/-/g, '/')) })
+    : '';
   const passHtml = current ? `
     <div class="stat-card makeup-pass">
-      <div class="label">${t('Gold Pass this cycle')}</div>
+      <div class="label">${t('Gold Pass now')}</div>
       <div class="value">${current.holders.toLocaleString()}<span class="stat-of"> ${t('of {total}', { total: total.toLocaleString() })} · ${pct(current.holders)}%</span></div>
-      <div class="sub">${t('{event} cycle {from} – {to}', { event: tGame('Triumphal'), from: esc(current.firstDay.replace(/-/g, '/')), to: esc(current.lastDay.replace(/-/g, '/')) })}${previous ? ` · ${t('last cycle {count}', { count: previous.holders.toLocaleString() })}` : ''}</div>
-      ${current.basis === 'union-only' ? `<p class="muted-copy">${t('This clan does not capture resources, so {chests} alone decide it.', { chests: tGame('Union Chests') })}</p>` : ''}
+      <div class="sub">${[t('as the game reports it'), cycleLine, previous ? t('last cycle {count}', { count: previous.holders.toLocaleString() }) : ''].filter(Boolean).join(' · ')}</div>
     </div>` : '';
 
   const ups = g.recentLevelUps || [];
@@ -1063,26 +1065,10 @@ function clanMakeupCardHtml() {
         ${ups.slice(0, MAKEUP_LEVEL_UPS_SHOWN).map((u) => `<li>
           <span class="makeup-ups-name">${memberLink(u.memberId, u.name)}</span>
           <span>${t('G{level}', { level: u.from })} → <strong>${t('G{level}', { level: u.to })}</strong></span>
-          <span class="muted-copy" title="${t('Seen at G{from} on {after}, at G{to} on {by}', { from: u.from, after: esc(u.after), to: u.to, by: esc(u.by) })}">${t('by {date}', { date: esc(u.by.replace(/-/g, '/')) })}</span>
+          <span class="muted-copy" title="${t('Research read at G{from} on {after}, at G{to} on {by}', { from: u.from, after: esc(u.after), to: u.to, by: esc(u.by) })}">${t('by {date}', { date: esc(u.by.replace(/-/g, '/')) })}</span>
         </li>`).join('')}
       </ul>
       ${ups.length > MAKEUP_LEVEL_UPS_SHOWN ? `<p class="muted-copy">${t('and {count} more', { count: (ups.length - MAKEUP_LEVEL_UPS_SHOWN).toLocaleString() })}</p>` : ''}
-    </div>` : '';
-
-  // First-known levels from an admin's entry (by hand or the chat import). Not
-  // level-ups — nothing earlier was known — so they get their own list.
-  const learned = g.recentlyLearned || [];
-  const learnedHtml = learned.length > 0 ? `
-    <div class="makeup-ups">
-      <div class="label">${t('Levels learned, last 30 days')}</div>
-      <ul class="makeup-ups-list">
-        ${learned.slice(0, MAKEUP_LEVEL_UPS_SHOWN).map((u) => `<li>
-          <span class="makeup-ups-name">${memberLink(u.memberId, u.name)}</span>
-          <span><strong>${t('G{level}', { level: u.level })}</strong></span>
-          <span class="muted-copy" title="${t('Entered by an admin — no donation had revealed a level before')}">${t('entered {date}', { date: esc(u.date.replace(/-/g, '/')) })}</span>
-        </li>`).join('')}
-      </ul>
-      ${learned.length > MAKEUP_LEVEL_UPS_SHOWN ? `<p class="muted-copy">${t('and {count} more', { count: (learned.length - MAKEUP_LEVEL_UPS_SHOWN).toLocaleString() })}</p>` : ''}
     </div>` : '';
 
   return `
@@ -1094,15 +1080,14 @@ function clanMakeupCardHtml() {
       <div class="card-body card-body-padded">
         <div class="makeup-grid">
           <div>
-            <div class="type-breakdown-list">${levelRows || `<p class="muted-copy">${t('No levels revealed yet.')}</p>`}</div>
+            <div class="type-breakdown-list">${levelRows || `<p class="muted-copy">${t('No research read from the game yet.')}</p>`}</div>
             <p class="muted-copy makeup-note">${gaps
-              ? t('Guards levels are estimated from {essence} and {tractates} donations, plus levels admins enter — {gaps}.', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates'), gaps })
-              : t('Guards levels are estimated from {essence} and {tractates} donations, plus levels admins enter.', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })}</p>
+              ? t('Each member\'s {guardsmen} tier, read from their research in the game — {gaps}.', { guardsmen: tGame('Guardsmen'), gaps })
+              : t('Each member\'s {guardsmen} tier, read from their research in the game.', { guardsmen: tGame('Guardsmen') })}</p>
           </div>
           <div>
             ${passHtml}
             ${upsHtml}
-            ${learnedHtml}
           </div>
         </div>
       </div>

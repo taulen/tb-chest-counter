@@ -112,7 +112,7 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
       res.status(400).json({ error: 'date must be a game day, YYYY-MM-DD' });
       return;
     }
-    // Each matched player's estimated guards level, so the page can hold their
+    // Each matched player's guards level (from research), so the page can hold their
     // total against their tier's target. Null = unknown (the page assumes G7).
     const standings = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
     const guards = ancients ? getGuardsSummaries(clanId, t) : null;

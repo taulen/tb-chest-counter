@@ -9,7 +9,7 @@ Rise of the Ancients standings, pasted in by an admin after each summon. The car
 - **Nothing creates a member.** An unknown name stays unknown until an admin assigns it under *Names to check*. An assignment applies to the whole run and records the spelling as the member's alias, so future runs match exactly. "Not a clan member" on a fuzzy guess sticks for the run's later pastes.
 - **Storage** (v80): `tinman_uploads` holds one row per clan, day and summon, with the uploader stored as a username. `tinman_scores` keeps the pasted name next to the matched member. The `member_id` FK is SET NULL on delete, so the row falls back to its pasted name. A player merge repoints it, and clan delete and clan restore handle both tables.
 - **Targets** (v81, `tinman_targets`, one per clan and run): an admin pastes the Ancient planner's *Points per member* card. Its "points each" per tier and its "For N kills" line are kept.
-  - Each player is held to their tier's target: their estimated guards level, or G7 when unknown, never T9.
+  - Each player is held to their tier's target: their guards level (the Guardsmen tier from research), or G7 when unknown, never T9.
   - The target is always the whole run's, never split per summon: the clan judges the total, so mid-run everyone simply reads as not there yet. The kill count is kept for display only.
   - The goal colours (`goalStatusClassFor`: green at target, amber from 66%, red below) and their glyph + words are the Leaderboard's.
   - Players under target are listed in *Below Tin Man target* at the bottom of the page.

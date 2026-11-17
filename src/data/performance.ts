@@ -12,8 +12,9 @@
  *    goal. Same numbers as the Leaderboard: chest_daily_summary's earned
  *    points, clan rewards out.
  *  - Tin Man runs: the pasted standings' run total against the run's target for
- *    the member's guards tier — their level on that run's day, from the guards
- *    estimate's level-ups; unknown = the configured assumed level.
+ *    the member's guards tier — their level on that run's day, from the
+ *    Guardsmen level-ups their research shows; unknown = the configured
+ *    assumed level.
  *  - Event runs: each finished run of the configured events, ranked the Events
  *    page's way, against the run's median participant. Sitting a run out is 0.
  *
@@ -38,7 +39,7 @@ import {
   getClanDataStartDay,
   getMemberFirstChestDays,
 } from './repositories/chest-summary-repo.js';
-import { getGuardsEstimates } from './repositories/guards-repo.js';
+import { getGuardsLevels, type MemberGuards } from './repositories/guards-repo.js';
 import * as tinmanRepo from './repositories/tinman-repo.js';
 import { rankedRun } from './member-events.js';
 import { getEventOccurrences } from '../external/event-calendar.js';
@@ -46,7 +47,6 @@ import { daysBetweenGameDates, gameDateFor, gameWindow, type WeekStart } from '.
 import { cached, invalidate } from '../utils/ttl-cache.js';
 import { amberPctOrDefault, amberRatioForDays, weeklyGoalForDays, type WeeklyGoalStep } from '../utils/weekly-goal.js';
 import { readGoalHistory } from './goal-history.js';
-import type { GuardsEstimate } from './guards-estimator.js';
 import type { TargetTier } from './tinman-parse.js';
 import {
   compositeScore,
@@ -63,7 +63,8 @@ import {
 
 /**
  * Dropped under this same literal by notifyChestDataChanged (chest-summary-repo),
- * every Tin Man write (tinman-repo) and invalidateGuardsCache (guards-repo).
+ * and every Tin Man write (tinman-repo). Guards levels change with a scan's
+ * research reads, which the TTL covers.
  */
 const CACHE_PREFIX = 'performance:';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -73,7 +74,7 @@ const MAX_WEEKS = 600;
 export interface PerformanceMemberRow {
   memberId: number;
   name: string;
-  /** Current estimated guards level, or null when unknown. */
+  /** Current guards level (Guardsmen tier from research), or null when unknown. */
   guardsLevel: number | null;
   /** First game day in the clan (see the file header). */
   tenureStart: string;
@@ -180,7 +181,7 @@ function activeMembers(clanId: number, rollover: number, today: string): MemberB
   });
 }
 
-function levelOn(est: GuardsEstimate | undefined, day: string): number | null {
+function levelOn(est: MemberGuards | undefined, day: string): number | null {
   return est ? guardsLevelOn(day, est.level, est.levelUps) : null;
 }
 
@@ -240,7 +241,7 @@ function weekUnits(
   /** Per week, the goal and amber band it was played under (see goalsForWeeks). */
   weekGoals: WeekGoal[],
   members: MemberBase[],
-  guards: Map<number, GuardsEstimate>,
+  guards: Map<number, MemberGuards>,
 ): Map<number, PerformanceUnit[]> {
   const out = new Map<number, PerformanceUnit[]>();
   if (!input.weeklyGoal || weeks.length === 0) return out;
@@ -295,7 +296,7 @@ function tinmanUnits(
   today: string,
   windowFrom: string,
   members: MemberBase[],
-  guards: Map<number, GuardsEstimate>,
+  guards: Map<number, MemberGuards>,
 ): TinmanResult {
   const units = new Map<number, PerformanceUnit[]>(members.map((m) => [m.id, []]));
   const medianRuns = new Map<number, number>();
@@ -440,7 +441,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
     else tooNew.push({ memberId: m.id, name: m.name, tenureStart: m.tenureStart, presentDays });
   }
 
-  const guards = getGuardsEstimates(input.clanId);
+  const guards = getGuardsLevels(input.clanId);
   const weeks = input.weeklyGoal ? closedWeeks(input, nowMs, windowFrom, dataStart) : [];
   const weekGoals = goalsForWeeks(input, weeks);
   const weekly = weekUnits(input, config, weeks, weekGoals, eligible, guards);
@@ -490,7 +491,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
 
 /**
  * The report for one clan and timeframe, cached for a few minutes and dropped
- * whenever the chests, Tin Man pastes or guards estimates behind it change.
+ * whenever the chests or Tin Man pastes behind it change.
  */
 export function getPerformanceReport(input: PerformanceInput): Promise<PerformanceReport> {
   const nowMs = input.nowMs ?? Date.now();

@@ -57,9 +57,10 @@ export function parseLeaderboardQuery(req: Request): {
  * Joining them in SQL would tie one cache's lifetime to the other's and put a
  * might read on the Discord digest and CSV export paths that never asked for it.
  *
- * The estimated guards level and Gold Pass status ride along the same way and
- * for the same reasons — both are derived from resource and chest data on their
- * own schedule. They describe the member NOW, whatever window the board shows.
+ * The guards level (Guardsmen tier from research) and Gold Pass status ride
+ * along the same way and for the same reasons — both come from the game on
+ * their own schedule. They describe the member NOW, whatever window the board
+ * shows.
  *
  * getLatestMightByMember returns a SHARED, cached Map — never mutate it here.
  * Rows are rebuilt rather than assigned into, because getLeaderboard's own array
@@ -86,7 +87,6 @@ export function queryLeaderboard(
       might: hit ? hit.might : null,
       heroLevel: hit ? hit.heroLevel : null,
       guardsLevel: g ? g.level : null,
-      guardsConfidence: g ? g.confidence : null,
       guardsAsOf: g ? g.asOf : null,
       guardsStale: g ? g.stale : false,
       goldPass: goldPass.get(row.memberId) ?? null,

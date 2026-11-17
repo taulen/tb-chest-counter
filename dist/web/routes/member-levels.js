@@ -55,7 +55,7 @@ const MAX_ENTRIES = 300;
 function createMemberLevelsRouter() {
     const router = (0, express_1.Router)();
     const today = () => (0, game_day_js_1.currentGameDate)((0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
-    /** Each member's latest reported levels, next to the guards estimate. */
+    /** Each member's latest reported levels, next to the guards level from research. */
     router.get('/', (req, res) => {
         const clanId = req.clanId;
         const guards = (0, guards_repo_js_1.getGuardsSummaries)(clanId, today());

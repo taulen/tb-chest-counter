@@ -38,7 +38,7 @@
 
 - Game protocol / direct client (src/game-protocol; it IS the scan since Nov 17 2026; game_* tables v102–v103; never present an old website token — it ends the account's session): [docs/game-protocol.md](docs/game-protocol.md)
 - Adding a resource type the game introduced (migration + icon): [docs/game-protocol.md](docs/game-protocol.md)
-- Guards levels and Gold Pass (inferred, never stored): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)
+- Guards levels (Guardsmen tier from research) and Gold Pass (the game's flag; no donation inference any more): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)
 - Chest identity and name-keyed config (renames): [docs/chest-identity.md](docs/chest-identity.md)
 - Chest point values have a history (v99): a save applies "from today on" or to all history; records score the values of the day they were earned; dated changes only write what they change. Read before touching points, scans' point lookup or Recalculate: [docs/chest-points-history.md](docs/chest-points-history.md)
 - Browser (login bridge only: GPU, profile locks, unbounded Playwright calls): [docs/browsers.md](docs/browsers.md); login bridge: [docs/login-bridge.md](docs/login-bridge.md)

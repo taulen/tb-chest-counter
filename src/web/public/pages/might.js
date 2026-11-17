@@ -257,7 +257,7 @@ export async function renderMight(el) {
     fetchOverview(),
     api(`/might/totals?days=${windowDays()}`),
     fetchEvents(),
-    // Inferred, optional: a failure only leaves the Guards column out.
+    // Optional: a failure only leaves the Guards column out.
     api('/guards/overview').catch(() => null),
   ]);
   const guardsByMember = new Map(
@@ -524,7 +524,7 @@ function renderTableCard(rows, guardsByMember = new Map()) {
         <col class="col-date">
       </colgroup><thead><tr>
         ${th('rank', t('Rank'))}${th('name', t('Member'))}${th('might', t('Might'), 'num')}${th('delta', t('Change'), 'num')}
-        ${showGuards ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })) : ''}
+        ${showGuards ? th('guards', t('Guards'), 'num', t('{guardsmen} tier from their research, as the game reports it — hover a value for when it was read', { guardsmen: tGame('Guardsmen') })) : ''}
         ${showHero ? th('hero', t('Hero Level'), 'num') : ''}
         ${th('lastSeen', t('Last Seen'))}
       </tr></thead><tbody>

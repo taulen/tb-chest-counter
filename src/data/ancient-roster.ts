@@ -1,6 +1,6 @@
 /**
  * The roster the Ancient planner (Tools page) prefills from: who is in the clan
- * right now, and each member's estimated guards level.
+ * right now, and each member's guards level.
  *
  * Source, in order of preference:
  *  1. The newest might capture, when it is at most MIGHT_ROSTER_MAX_AGE_DAYS
@@ -10,9 +10,9 @@
  *     most recently seen first, capped at MAX_ROSTER — a clan never holds more,
  *     so anything past 100 is a departure the game member sync hasn't caught.
  *
- * Guards levels are the estimator's (guards-repo), never stored. A member with
- * no usable donation evidence comes back with a null level; the planner decides
- * how to count them.
+ * Guards levels are the Guardsmen tier from research (guards-repo). A member
+ * whose research hasn't been read comes back with a null level; the planner
+ * decides how to count them.
  */
 import { getLatestCaptureRoster } from './repositories/might-repo.js';
 import { getRecentlySeenMembers } from './repositories/member-repo.js';
@@ -29,9 +29,9 @@ export const RECENT_WINDOW_DAYS = 7;
 export interface AncientRosterMember {
   memberId: number;
   name: string;
-  /** Estimated guards level 1–9, or null when there is no evidence. */
+  /** Guards level 1–9 from research, or null when it hasn't been read. */
   guardsLevel: number | null;
-  /** The estimate has had no new evidence for a while (it may have risen). */
+  /** Their research hasn't been read for a while (the level may have risen). */
   guardsStale: boolean;
 }
 

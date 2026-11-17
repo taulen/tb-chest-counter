@@ -19,7 +19,7 @@ export interface AncientPlannerSettings {
   trick: number;
   /** Expected overshoot, %. */
   margin: number;
-  /** Members with no guards estimate: 'skip' or a tier key 'g1'–'g9'. */
+  /** Members with no known guards level: 'skip' or a tier key 'g1'–'g9'. */
   unknownAs: string;
   /** Summons planned, 1–8. */
   summons: number;

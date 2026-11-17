@@ -147,7 +147,7 @@ let targetsResult = null;
 let belowEl = null;
 let belowOpen = false;
 
-/** Guards levels can't be inferred for everyone; a member without one is held to G7. */
+/** Not every member's research has been read; a member without a level is held to G7. */
 const ASSUMED_TIER = 'g7';
 
 function isAdmin() {
@@ -599,7 +599,7 @@ function tableHtml(cols) {
           <thead><tr>
             ${th('rank', t('Rank'))}
             ${th('name', t('Player'))}
-            ${L.hasTargets ? th('tier', t('Tier'), '', t('Estimated guards level — G7 assumed when unknown')) : ''}
+            ${L.hasTargets ? th('tier', t('Tier'), '', t('Guards level from their research — G7 assumed when unknown')) : ''}
             ${summonHeads}
             ${th('total', t('Total'), 'num', t('Points over the whole run so far'))}
             ${L.hasTargets ? th('pct', t('Target'), 'num', t('What this tier should have by now — sorts by how far along each player is')) : ''}

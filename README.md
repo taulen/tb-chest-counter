@@ -48,9 +48,9 @@ runs in one container.
   per-member history and a clan-wide trend.
 - **Resource tracking** — the Clan Capital ledger is read every scan: what each
   member donated and what the clan paid out, one row per ledger line.
-- **Inferred guards levels and Gold Pass** — guardsmen levels are worked out
-  from the exact amounts members donate, and Gold Pass holders from a Union
-  Chest plus its 250k tractate line.
+- **Troop tiers and Gold Pass from the game** — each member's G/S/E/M tiers and
+  crypt level come from their research (with when each was reached), and the
+  Gold Pass from their game record.
 - **Events** — per-event chest breakdowns, with timeframes taken from the
   public **tbclanportal.com** event calendar (one event run = one selectable
   window). Includes Tin Man / Rise of the Ancients standings pasted per summon,

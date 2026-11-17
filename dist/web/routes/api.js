@@ -855,17 +855,14 @@ function createApiRouter(scanLoop) {
         const result = eventRepo.getEventBreakdown(key, req.clanId ?? 1, from, to);
         if (!result)
             return res.status(404).json({ error: 'Unknown event' });
-        // The Triumphal tab marks who held a Gold Pass in the cycle on screen. Same
-        // window, same Union Chests — goldPassForWindow reads them through this very
-        // breakdown — so the marker can never disagree with the column beside it.
+        // The Triumphal tab marks who held a Gold Pass in the cycle on screen, as
+        // the game reported it: anyone whose record showed it inside the window.
+        // `basis` says how much of the window the game history covers.
         if (key === 'triumphal' && from && to) {
-            const pass = (0, gold_pass_repo_js_1.goldPassForWindow)(req.clanId ?? 1, from, to, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
+            const pass = (0, gold_pass_repo_js_1.goldPassForWindow)(req.clanId ?? 1, from, to);
             return res.json({
                 ...result,
-                goldPass: {
-                    basis: pass.basis,
-                    memberIds: [...pass.members].filter(([, e]) => e.goldPass).map(([id]) => id),
-                },
+                goldPass: { basis: pass.basis, memberIds: [...pass.memberIds] },
             });
         }
         res.json(result);

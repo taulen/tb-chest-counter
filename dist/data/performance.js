@@ -48,8 +48,9 @@ exports.getPerformanceReport = getPerformanceReport;
  *    goal. Same numbers as the Leaderboard: chest_daily_summary's earned
  *    points, clan rewards out.
  *  - Tin Man runs: the pasted standings' run total against the run's target for
- *    the member's guards tier — their level on that run's day, from the guards
- *    estimate's level-ups; unknown = the configured assumed level.
+ *    the member's guards tier — their level on that run's day, from the
+ *    Guardsmen level-ups their research shows; unknown = the configured
+ *    assumed level.
  *  - Event runs: each finished run of the configured events, ranked the Events
  *    page's way, against the run's median participant. Sitting a run out is 0.
  *
@@ -77,7 +78,8 @@ const goal_history_js_1 = require("./goal-history.js");
 const performance_score_js_1 = require("./performance-score.js");
 /**
  * Dropped under this same literal by notifyChestDataChanged (chest-summary-repo),
- * every Tin Man write (tinman-repo) and invalidateGuardsCache (guards-repo).
+ * and every Tin Man write (tinman-repo). Guards levels change with a scan's
+ * research reads, which the TTL covers.
  */
 const CACHE_PREFIX = 'performance:';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -333,7 +335,7 @@ async function buildReport(input, nowMs) {
         else
             tooNew.push({ memberId: m.id, name: m.name, tenureStart: m.tenureStart, presentDays });
     }
-    const guards = (0, guards_repo_js_1.getGuardsEstimates)(input.clanId);
+    const guards = (0, guards_repo_js_1.getGuardsLevels)(input.clanId);
     const weeks = input.weeklyGoal ? closedWeeks(input, nowMs, windowFrom, dataStart) : [];
     const weekGoals = goalsForWeeks(input, weeks);
     const weekly = weekUnits(input, config, weeks, weekGoals, eligible, guards);
@@ -380,7 +382,7 @@ async function buildReport(input, nowMs) {
 }
 /**
  * The report for one clan and timeframe, cached for a few minutes and dropped
- * whenever the chests, Tin Man pastes or guards estimates behind it change.
+ * whenever the chests or Tin Man pastes behind it change.
  */
 function getPerformanceReport(input) {
     const nowMs = input.nowMs ?? Date.now();

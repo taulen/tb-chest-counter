@@ -127,15 +127,14 @@ export interface LeaderboardEntry {
   might?: number | null;
   heroLevel?: number | null;
   /**
-   * Estimated guards level and how far to trust it (see guards-repo.ts), also
-   * decorated on by queryLeaderboard. Null when the member has never donated
-   * anything the ladder can read.
+   * Guards level — the Guardsmen tier from the member's research, as the game
+   * reports it (guards-repo.ts) — and when it was read, also decorated on by
+   * queryLeaderboard. Null until their research has been read.
    */
   guardsLevel?: number | null;
-  guardsConfidence?: 'high' | 'medium' | 'low' | null;
   guardsAsOf?: string | null;
   guardsStale?: boolean;
-  /** 'current' = Gold Pass this Triumphal cycle; 'previous' = last cycle only. */
+  /** 'current' = the game reports a Gold Pass now; 'previous' = last Triumphal cycle only. */
   goldPass?: 'current' | 'previous' | null;
 }
 

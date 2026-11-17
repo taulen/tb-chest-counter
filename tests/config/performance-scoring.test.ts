@@ -16,7 +16,7 @@ import {
   resolvePerformanceConfig,
 } from '../../src/config/performance-scoring.js';
 import { EVENT_CATALOG } from '../../src/config/event-catalog.js';
-import { GUARDS_MAX_LEVEL, GUARDS_MIN_LEVEL } from '../../src/config/guards-ladder.js';
+import { GUARDS_MAX_LEVEL, GUARDS_MIN_LEVEL } from '../../src/config/guards-levels.js';
 
 const PAGE = fs.readFileSync(
   path.resolve(fileURLToPath(new URL('../../src/web/public/pages/performance.js', import.meta.url))),

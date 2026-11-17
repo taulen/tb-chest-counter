@@ -70,11 +70,11 @@ describe('/api/member-levels', () => {
       date: '2020-01-01',
       entries: [{ memberId: taulen, levels: pre.body.rows[0].levels, raw: pre.body.rows[0].raw }],
     });
-    expect(imp.body.result).toEqual({ saved: 1, guardsReports: 1, rejected: 0 });
+    expect(imp.body.result).toEqual({ saved: 1, rejected: 0 });
 
     const get = await send('get', '/api/member-levels', 'user1');
     expect(get.body.rows[0]).toMatchObject({
-      memberId: taulen, levels: { g: 8, d: 284 }, lastReported: '2026-10-23', guardsEstimate: 8,
+      memberId: taulen, levels: { g: 8, d: 284 }, lastReported: '2026-10-23', guardsEstimate: null,
     });
   });
 });
