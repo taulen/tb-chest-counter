@@ -32,6 +32,7 @@ exports.recentCaptureRuns = recentCaptureRuns;
  */
 const zlib_1 = require("zlib");
 const database_js_1 = require("../database.js");
+const equipment_js_1 = require("../../game-protocol/equipment.js");
 function startCaptureRun(clanId) {
     const r = (0, database_js_1.getDb)()
         .prepare('INSERT INTO game_capture_runs (clan_id, started_at) VALUES (?, ?)')
@@ -163,12 +164,17 @@ function saveTechs(clanId, playerId, techs, now = new Date().toISOString()) {
     return changed;
 }
 function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toISOString()) {
+    // The `hero` column holds the city's field 26 — the DRAGON (named before
+    // that was known; CityRecord.dragon).
     (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.hero));
+     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon));
 }
 /**
  * Store a player's captains (city field 9); a history row only when a captain
  * is new or its level or star level moved. Returns the number of such changes.
+ * The hero's entry (id 1) is stored for its current level and XP but writes no
+ * history: the captains' history (and the member timeline built on it) is
+ * captains only, and the hero's level history is game_players.hero_level.
  */
 function saveCaptains(clanId, playerId, captains, now = new Date().toISOString()) {
     const db = (0, database_js_1.getDb)();
@@ -183,6 +189,8 @@ function saveCaptains(clanId, playerId, captains, now = new Date().toISOString()
     db.transaction(() => {
         for (const c of captains) {
             upsert.run(clanId, playerId, c.id, c.level, c.stars, c.xp, c.slot, now, now);
+            if (c.id === equipment_js_1.HERO_ENTRY_ID)
+                continue;
             const p = prev.get(c.id);
             if (!p || p.level !== c.level || p.stars !== c.stars) {
                 hist.run(clanId, playerId, c.id, c.level, c.stars, now);

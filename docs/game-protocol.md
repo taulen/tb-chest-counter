@@ -266,8 +266,8 @@ Each capture also, every cycle:
 
 Once per game day: every member's city (601: research + talents into
 `game_player_techs`, with `game_player_tech_history` rows only on change;
-captains into `game_player_captains` (v108); buildings + hero into
-`game_city_snapshots`; ≤ 120 cities a cycle, **20 per 601 request** — the game
+captains into `game_player_captains` (v108); buildings + the DRAGON (field 26,
+in the column named `hero` before that was known) into `game_city_snapshots`; ≤ 120 cities a cycle, **20 per 601 request** — the game
 client itself asks for a clan's 19 objects in one — split back into
 single-city bodies by `splitCityReply`; a failed batch falls back to one
 request per city), and a gzipped raw copy of the
@@ -285,7 +285,7 @@ account's — lists the captains the player owns. Per entry:
 
 | Index | Holds |
 |---|---|
-| 0 | captain id (T75); id 1 is the hero (no T75 row), skipped |
+| 0 | hero id in **T10 (Heroes)**: 1 is the hero, every other id is a captain and equals its T75 id. The hero's entry is stored too (since Nov 2026, for its level / XP and gear) but writes no captain history |
 | 1 | active line-up slot, 1–3 (0 = not in it) |
 | 3 | `[cityId]` |
 | 9 | experience |
@@ -373,7 +373,16 @@ left out until Nov 2026; the `heroEquipment` city parser re-reads the archive
 once for the hero ONLY (`saveCaptainEquipment(…, onlyCaptains)`), so the
 captains' equipment history already stored is untouched. The Captains tab puts
 the hero first in the line-up row (portrait in the player's frame with the
-level plate, level / XP from the city's hero record, its gear).
+level plate, level / XP from this field-9 entry — the player record's hero
+level until a city read stored it — and its gear).
+
+**City field 26 is the DRAGON, not the hero** (found Nov 2026; it was read as
+"hero" since v103). Its XP sits on **T73 (Dragons)** thresholds to the unit:
+prod rows at `{"level":100,"xp":1404294900}` and `{"level":150,"xp":17020294900}`
+are dragons parked at exactly the level-100 / 150 threshold (an evolution cap),
+the user's "Salty" is level 237 with 1,258,975,435,937 (T73 L237 1.2157T ≤ xp <
+L238 1.2699T), while `game_players.hero_level` disagrees with it everywhere.
+`CityRecord.dragon` now; the snapshot column keeps its old name `hero`.
 
 **Captain pictures** (user, Nov 2026: "very different from what I see
 in-game"). T75's config names four: `smallIcon` (carter_icon, the 72 px head
@@ -397,17 +406,53 @@ else the level-up art; the dialog and hover card show it.
 head shot between them, the level on `icons_tir_shield_2` at the top-right and
 `icons_star_up` per star along the bottom.
 
-**XP to the next level is not shown:** the per-level XP thresholds were not
-found. T75 f10's 500 per-level rows hold three growing values (Carter L200:
-494,718 / 9,275,970 / 247,359 = half the first) — none sums or scales to the
-stored XP (633,274,738,935 at level 200, "12,954,943,875 to the next level"
-in the game); T73 (300 levels, 234,810,294,900 at 200) is another curve; no
-static table holds a value between 600B and 700B outside map objects. XP is
-shown compact (633.3B, locale-aware) with the full number on hover.
+**Levels, XP and the Stats screen come from T10 (Heroes)** — the hero and
+every captain is a row there (key = the field-9 id; f1 type 0 hero / 1
+captain; f15 battler unit = the T75 id). f7 is 600 level rows
+`[level, expRequired, reward, leadership, authority, dominance, effectId,
+clientInfo, ratingContribution]`:
 
-Not read yet: the Stats screen's Leadership / Authority / Dominance / Might and
-"Features" block (probably built from the skills and T75 f11 star rows — not a
-direct per-level value), and the instance fields a, b, c of an item.
+- `expRequired` is the cumulative XP the level starts at (past 2^53, from about
+  level 450, the codec hands `"…n"` strings). All 6,179 captains on prod sat
+  inside req(level) ≤ xp < req(level + 1). Carter level 201 starts at
+  646,229,682,960; the game's "12,954,943,875 to the next level" was taken 150
+  XP after our read (XP moves every battle). All captains share these
+  thresholds (two series differ by rounding only, from level 411); the hero
+  has its own (level 214: 2,281,050,768,780 – 2,395,050,768,780).
+- Leadership / Authority / Dominance are stored ×100: Carter level 200 has
+  4,000,000 / 2,000,000 / 1,000,000 — the Stats screen's 40,000 / 20,000 /
+  10,000. The same for every captain at a level.
+- **Might** = the sum of `ratingContribution` over levels 1…L + the current
+  star row's T75 f12 `[8]` (not cumulative): Carter 2,500,000 + ★6 270,000 =
+  2,770,000, exactly the game's. The per-level Might differs by captain group.
+- `clientInfo` is the level's "Features" props (Carter 200: Crypt exploration
+  efficiency +200 %, Tar capacity +200 %) — not shown yet.
+
+names.json (format 5) keeps them as `heroLevels` (each distinct series once,
+~70 KB) and `captains[id].starMight`; `heroLevelView`
+([hero-levels.ts](../src/game-protocol/hero-levels.ts)) turns a level into the
+XP window and the Stats. The dialog shows the game's XP bar ("13B to the next
+level") and, for captains, the four stats; the hero gets the bar only (its
+in-game Stats add research and gear).
+
+How it was found: the per-level ranges measured from prod's (level, xp) pairs
+matched no number sequence the table walker could see — T10's levels are an
+ARRAY of rows, not a level-keyed map. The client's IL2CPP metadata
+(`Il2CppData/Metadata/global-metadata.dat` inside Triumph.data) names every
+static table: `Rk.Rubens.Generated.StaticAll`'s 226 fields are the tables in
+file order (T10 Heroes, T13 Avatars, T73 Dragons, T75 BattlerUnit, T112
+Levels, T195 ArmiesPresetCaptainPowerCalculator, …) and each `*Static` class
+lists a row's fields (`HeroLevelStatic`: _level, _expRequired, _leadership,
+_mastery, _dominance, _effectId, _clientInfo, _ratingContribution;
+`BattlerUnitLevelStatic` = T75 f10: attack, hp, defense, …, power). Reading
+them needs only the metadata (version 31): header pairs of (offset, size)
+from byte 8 — strings 3rd, fields 12th, type definitions 20th — type
+definitions are 88 bytes (name, namespace = string indexes; fieldStart at +32,
+field count u16 at +68), field definitions 12 bytes (name index first). A
+machine-local reader lives under the gitignored `research/`.
+
+Not read yet: the level "Features" (above) and the instance fields a, b, c of
+an item.
 
 ### The clan itself (v111, My Clan page)
 
@@ -591,13 +636,13 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 15000 | `[[[[clanId], 2147483647]]]` | clan record: `[0]` clan id, `[1]` tag/name/description, `[2]` members `[[id], role, joinedAt]`, `[3]` ~860 `[[id], ts, 0]` (departures), `[13]` gifts `[giftId, [senderId], giftType, expiresAt, count, tab]` |
 | 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[5]` city look and `[6]` portrait frame (T52 customizations; v114), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[22]` `[1]` = Gold Pass |
 | 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
-| 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
+| 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` the player's dragon (not the hero), `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
 | 312 | `[[[tileIds], [versions], [], []]]` | per 20×20 tile `[tileId, version, …, [4] cities, [5] objects]`; `tile = floor(y/20)*50 + floor(x/20)` |
 | 25 | `[[[clanId]]]` | clan might (key 1) and wealth points (key 7) — see "The clan itself" |
 | 14003 | `[[[capitalId]]]` | the Clan Capital's Border counters; key 30 = help points |
 | 28001 | `[[[clanId]]]` | the clan's displayed medals `[[medalId, earnedAt], …]` |
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kind 7 = wealth |
-| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[10]` item instances, `[12]` buildings, `[14]` active effects (artifacts), `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army |
+| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[10]` item instances, `[12]` buildings, `[14]` active effects (artifacts), `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` the player's dragon (not the hero), `[30]` own army |
 | 61000 | `[[]]` | the signed-in account's own artifacts (ignores any argument) |
 | 312 | `[[[tileIds], [versions], [], []]]` | map objects per 20×20 tile; `tile = floor(y/20)*50 + floor(x/20)` |
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kinds 7 wealth, 1 might, 3 valor, 4 conquest, 5 crypts |
@@ -631,6 +676,8 @@ Each table has its own id space:
 | 62 | clan medals | f5 vector (f4 unlock text, f6 tier) |
 | 52 | customizations: f1 kind (1 portrait frame, 2 city look) | f2 name vector, f4 visual JSON |
 | 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
+| 10 | heroes: the hero (row 1) and every captain (row = T75 id) | — f7 their 600 levels: XP thresholds, Stats, Might (see Captains above) |
+| 73 | dragons (city field 26) | f2 their 300 levels `[level, xp, …]` |
 | 11 | equipment, one row per item type AND quality grade | f3 vector |
 | 110–113 | artifacts (`$pairs` tables keyed `[type]`) | T110 f8 vector |
 

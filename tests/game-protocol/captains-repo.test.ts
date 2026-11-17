@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { playersWithCaptains, rawCitiesMissingData, saveCaptains, saveRawSnapshot, saveTechs } from '../../src/data/repositories/game-protocol-repo.js';
-import { getPlayerCaptainChanges, getPlayerCaptains } from '../../src/data/repositories/game-profile-repo.js';
+import { getPlayerCaptainChanges, getPlayerCaptains, getPlayerHeroEntry } from '../../src/data/repositories/game-profile-repo.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
 let cleanup: () => void;
@@ -54,5 +54,17 @@ describe('captains', () => {
     expect(rawCitiesMissingData(clanId)).toHaveLength(1); // research still missing
     saveTechs(clanId, PLAYER, { 1000: 1 }, '2026-11-17T04:27:00Z');
     expect(rawCitiesMissingData(clanId)).toEqual([]);
+  });
+
+  it("stores the hero's entry (id 1) for its level and XP, outside the captains and their history", () => {
+    const clanId = 1;
+    saveCaptains(clanId, PLAYER, [cap(1, 213, 0, 2_200_000_000_000), cap(8, 200, 6)], '2026-11-17T01:00:00Z');
+    // The hero levels up: not a captain change (its level history is game_players.hero_level).
+    expect(saveCaptains(clanId, PLAYER, [cap(1, 214, 0, 2_295_854_228_842), cap(8, 200, 6)], '2026-11-17T03:00:00Z')).toBe(0);
+
+    expect(getPlayerCaptains(clanId, PLAYER).map((c) => c.captainId)).toEqual([8]);
+    expect(getPlayerHeroEntry(clanId, PLAYER)).toMatchObject({ captainId: 1, level: 214, xp: 2_295_854_228_842 });
+    expect(getDb().prepare('SELECT captain_id FROM game_player_captain_history').all()).toEqual([{ captain_id: 8 }]);
+    expect(getPlayerHeroEntry(clanId, PLAYER + 1)).toBeNull();
   });
 });

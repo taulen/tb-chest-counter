@@ -397,7 +397,7 @@ async function collectExtras(clanId, d, clanFrame) {
                 continue;
             if (Object.keys(city.techs).length)
                 (0, game_protocol_repo_js_1.saveTechs)(clanId, raw.playerId, city.techs, raw.capturedAt);
-            const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
+            const captains = city.captains.filter((c) => c.id === equipment_js_1.HERO_ENTRY_ID || d.names.captains?.[String(c.id)]);
             if (captains.length)
                 (0, game_protocol_repo_js_1.saveCaptains)(clanId, raw.playerId, captains, raw.capturedAt);
             saveCityGear(clanId, raw.playerId, city, d.names, raw.capturedAt);
@@ -478,9 +478,10 @@ async function collectExtras(clanId, d, clanFrame) {
                     // instead of waiting for every city to be read again.
                     (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'city', p.playerId, d.gameDate, body, now);
                     changed += (0, game_protocol_repo_js_1.saveTechs)(clanId, p.playerId, city.techs, now);
-                    (0, game_protocol_repo_js_1.saveCitySnapshot)(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, hero: city.hero }, now);
-                    // Field 9 also holds the hero (id 1, no T75 row): keep named captains.
-                    const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
+                    (0, game_protocol_repo_js_1.saveCitySnapshot)(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, dragon: city.dragon }, now);
+                    // Field 9 also holds the hero (id 1, no T75 row): kept for its level
+                    // and XP (no history row); otherwise named captains only.
+                    const captains = city.captains.filter((c) => c.id === equipment_js_1.HERO_ENTRY_ID || d.names.captains?.[String(c.id)]);
                     if (captains.length)
                         changed += (0, game_protocol_repo_js_1.saveCaptains)(clanId, p.playerId, captains, now);
                     // The artifacts the line-up captains wear (field 14) and every

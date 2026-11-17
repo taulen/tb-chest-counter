@@ -98,7 +98,7 @@ describe('game messages', () => {
       ownerId: 4599909974644,
       techs: { 1215: 2, 29006: 20 },
       buildings: { 3: { type: 41, level: 25 }, 7: { type: 12, level: 30 } },
-      hero: { level: 116, xp: 98765 },
+      dragon: { level: 116, xp: 98765 },
       troops: [{ id: 27, count: 1211 }, { id: 30, count: 1705 }],
       captains: [
         { id: 1, level: 214, stars: 0, xp: 2295854228842, slot: 0, equipment: [] },

@@ -7,6 +7,7 @@
  */
 import { getDb } from '../database.js';
 import { avatarFrameImage, gameArtUrl, heroAvatarImage } from '../../game-art/index.js';
+import { HERO_ENTRY_ID } from '../../game-protocol/equipment.js';
 
 export interface GamePlayerProfile {
   playerId: number;
@@ -45,7 +46,8 @@ export interface GameCitySnapshot {
   capturedAt: string;
   techCount: number;
   buildings: Record<string, { type: number; level: number }>;
-  hero: { level: number | null; xp: number | null };
+  /** City field 26 — the player's dragon, not the hero (column `hero`, named before that was known). */
+  dragon: { level: number | null; xp: number | null };
 }
 
 type PlayerRow = {
@@ -124,7 +126,7 @@ export function getLatestCity(clanId: number, playerId: number): GameCitySnapsho
     capturedAt: r.captured_at,
     techCount: r.tech_count,
     buildings: JSON.parse(r.buildings || '{}'),
-    hero: JSON.parse(r.hero || '{}'),
+    dragon: JSON.parse(r.hero || '{}'),
   };
 }
 
@@ -166,13 +168,24 @@ export interface PlayerCaptain {
   lastSeen: string;
 }
 
-/** A player's captains as last read, highest level first (the game's own order). */
+/** A player's captains as last read, highest level first (the game's own order). The hero's entry is left out. */
 export function getPlayerCaptains(clanId: number, playerId: number): PlayerCaptain[] {
   return getDb().prepare(
     `SELECT captain_id AS captainId, level, stars, xp, slot, first_seen AS firstSeen, last_seen AS lastSeen
-       FROM game_player_captains WHERE clan_id = ? AND player_id = ?
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ? AND captain_id <> ?
       ORDER BY level DESC, stars DESC, captain_id`,
-  ).all(clanId, playerId) as PlayerCaptain[];
+  ).all(clanId, playerId, HERO_ENTRY_ID) as PlayerCaptain[];
+}
+
+/**
+ * The hero as city field 9 lists it (entry id 1: level and XP on the Heroes
+ * table's own curve), or null until a city read since Nov 2026 stored it.
+ */
+export function getPlayerHeroEntry(clanId: number, playerId: number): PlayerCaptain | null {
+  return (getDb().prepare(
+    `SELECT captain_id AS captainId, level, stars, xp, slot, first_seen AS firstSeen, last_seen AS lastSeen
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ? AND captain_id = ?`,
+  ).get(clanId, playerId, HERO_ENTRY_ID) as PlayerCaptain | undefined) ?? null;
 }
 
 export interface CaptainChange {

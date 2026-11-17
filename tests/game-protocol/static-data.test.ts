@@ -6,6 +6,7 @@ import {
   TABLE_CLAN_MEDALS,
   TABLE_GIFT_TYPES,
   TABLE_HEROES,
+  TABLE_HERO_LEVELS,
   TABLE_MAP_OBJECTS,
   TABLE_TECHS,
   buildNames,
@@ -96,7 +97,36 @@ describe('game names from static data', () => {
       art: 'lvlup_carter',
       // Star 1's props string is '{}': no lines, so no entry.
       stars: { 2: [['Crypt exploration efficiency', '+5,0%'], ['Eagles of Resolve points', '315']] },
+      // f12 [star][8]: the Might the star level adds.
+      starMight: { 1: 0, 2: 420 },
     });
+  });
+
+  it('reads hero and captain levels (T10): XP thresholds, Stats ÷ 100, Might per level — each series once', () => {
+    // [level, expRequired, reward, leadership, authority, dominance, effectId, clientInfo, might]
+    const lv = (level: number, xp: Wire, might: number): Wire =>
+      [level, xp, [{ 7: 1 }, {}], level * 1_000_000, level * 500_000, level * 250_000, 0, 0, might];
+    const t = new Map(tables);
+    t.set(TABLE_HERO_LEVELS, {
+      1: [1, 0, 0, 0, 0, [], [], [lv(1, 0, 600), lv(2, 220, 40), lv(3, '9007199254740993n', 60)], [], [], [], 2, 0, [], [], 0],
+      8: [8, 1, 0, 0, 0, [], [], [lv(1, 0, 300), lv(2, 110, 20), lv(3, 440, 30)], [], [], [], 1, 0, [], [], 8],
+      20: [20, 1, 0, 0, 0, [], [], [lv(2, 110, 30), lv(1, 0, 450), lv(3, 440, 45)], [], [], [], 1, 0, [], [], 20],
+      // A gap in the levels: indexing by level would lie, so it is left out.
+      99: [99, 1, 0, 0, 0, [], [], [lv(1, 0, 1), lv(3, 9, 1)], [], [], [], 1, 0, [], [], 99],
+    });
+    const h = buildNames('v1', strings, vectors, t, en).heroLevels!;
+    const s = (id: string, f: keyof NonNullable<typeof h>['heroes'][string]) => h.series[h.heroes[id][f]];
+    expect(Object.keys(h.heroes).sort()).toEqual(['1', '20', '8']);
+    expect(s('8', 'xp')).toEqual([0, 110, 440]);
+    expect(s('1', 'xp')).toEqual([0, 220, 9007199254740992]);
+    expect(s('8', 'leadership')).toEqual([10_000, 20_000, 30_000]);
+    expect(s('8', 'authority')).toEqual([5_000, 10_000, 15_000]);
+    expect(s('8', 'dominance')).toEqual([2_500, 5_000, 7_500]);
+    expect(s('20', 'might')).toEqual([450, 30, 45]);
+    // Captains 8 and 20 share XP and the Stats (rows sorted by level first); only Might differs.
+    expect(h.heroes['20'].xp).toBe(h.heroes['8'].xp);
+    expect(h.heroes['20'].leadership).toBe(h.heroes['8'].leadership);
+    expect(h.heroes['20'].might).not.toBe(h.heroes['8'].might);
   });
 
   it("names a captain by its battler when the row's own name vector is wrong", () => {

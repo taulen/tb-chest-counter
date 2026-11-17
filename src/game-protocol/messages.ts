@@ -390,8 +390,14 @@ export interface CityRecord {
   techs: Record<string, number>;
   /** Building slot → { type, level }. */
   buildings: Record<string, { type: number; level: number }>;
-  /** Hero summary: level and experience, when present. */
-  hero: { level: number | null; xp: number | null };
+  /**
+   * Field 26: the player's DRAGON (level and experience), not the hero — its
+   * XP sits on T73 (Dragons) thresholds to the unit ("Salty", level 237;
+   * dragons capped at 100 / 150 hold exactly 1,404,294,900 / 17,020,294,900).
+   * The hero is field 9's entry id 1. Stored in game_city_snapshots' `hero`
+   * column, named before this was known (Nov 2026).
+   */
+  dragon: { level: number | null; xp: number | null };
   /**
    * Field 30: the city's army — `[unitId, count, 0]` per troop type (T9 ids:
    * Heavy arbalester VI 80, Vulture VII 36, Crystal Dragon 152, City Walls V
@@ -502,14 +508,14 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
       if (typeof row[1] === 'number' && typeof row[2] === 'number') buildings[slot] = { type: row[1], level: row[2] };
     }
   }
-  const h = r[26];
-  const heroRow = h && typeof h === 'object' && !Array.isArray(h) && !('$bin' in h) && !('$pairs' in h) ? arr(Object.values(h)[0]) : [];
+  const d = r[26];
+  const dragonRow = d && typeof d === 'object' && !Array.isArray(d) && !('$bin' in d) && !('$pairs' in d) ? arr(Object.values(d)[0]) : [];
   return {
     cityId,
     ownerId: id1(arr(r[1])[0]),
     techs: parseCityTechs(frame),
     buildings,
-    hero: { level: num(heroRow[3]), xp: num(heroRow[2]) },
+    dragon: { level: num(dragonRow[3]), xp: num(dragonRow[2]) },
     troops: arr(r[30])
       .map((e) => arr(e))
       .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')

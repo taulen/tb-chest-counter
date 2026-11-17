@@ -3,13 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
 exports.readTables = readTables;
 exports.asIdRecord = asIdRecord;
 exports.buildNames = buildNames;
+exports.buildHeroLevels = buildHeroLevels;
 exports.loadGameNames = loadGameNames;
 exports.resetGameNamesMemo = resetGameNamesMemo;
 /**
@@ -85,6 +86,16 @@ exports.TABLE_ARTIFACT_BONUSES = 113;
  * f3 name vector, f6 visual JSON {"icon": …}.
  */
 exports.TABLE_EQUIPMENT = 11;
+/**
+ * The game's Heroes (the client's `StaticAll.Heroes`, HeroStatic): the hero
+ * (row 1) and every captain (row = its T75 id; f15 battler unit id). Keyed by
+ * the id city field 9 lists. f7 = its 600 levels (HeroLevelStatic), each
+ * `[level, expRequired (cumulative, "…n" past 2^53), reward, leadership,
+ * authority, dominance, effectId, clientInfo, ratingContribution]` — the
+ * Stats screen shows leadership / authority / dominance ÷ 100 (Carter level
+ * 200: 4,000,000 → "Leadership 40,000"). See docs/game-protocol.md.
+ */
+exports.TABLE_HERO_LEVELS = 10;
 const NEEDED_TABLES = [
     exports.TABLE_MAP_OBJECTS,
     exports.TABLE_GIFT_TYPES,
@@ -97,13 +108,15 @@ const NEEDED_TABLES = [
     exports.TABLE_ARTIFACT_BONUSES,
     exports.TABLE_EQUIPMENT,
     exports.TABLE_CLAN_MEDALS,
+    exports.TABLE_HERO_LEVELS,
 ];
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
- * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems — Nov 2026); a cached file with an older
- * format is rebuilt.
+ * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: hero
+ * and captain levels — XP thresholds, Stats, Might — Nov 2026); a cached file
+ * with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 4;
+exports.NAMES_FORMAT = 5;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -356,11 +369,14 @@ function buildNames(version, strings, vectors, tables, en) {
             continue;
         const rarity = typeof row[2] === 'number' ? row[2] : 0;
         const stars = {};
+        const starMight = {};
         const starRows = row[12];
         if (starRows && typeof starRows === 'object' && !Array.isArray(starRows)) {
             for (const [star, sr] of Object.entries(starRows)) {
                 if (!Array.isArray(sr))
                     continue;
+                if (typeof sr[8] === 'number')
+                    starMight[star] = sr[8];
                 let props = [];
                 try {
                     props = JSON.parse(str(sr[7]) ?? '{}').props ?? [];
@@ -380,6 +396,7 @@ function buildNames(version, strings, vectors, tables, en) {
             icon: cfg.smallIcon ?? '',
             art: cfg.unitAltarArt ?? '',
             stars,
+            starMight,
         };
     }
     const medals = {};
@@ -438,7 +455,56 @@ function buildNames(version, strings, vectors, tables, en) {
     return {
         version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT,
         gifts, techs, objects, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+        heroLevels: buildHeroLevels(rows(exports.TABLE_HERO_LEVELS)),
     };
+}
+/** A wire number as a JS number; past 2^53 the codec hands "…n" strings — approximate is fine there. */
+const wireNumber = (v) => {
+    if (typeof v === 'number')
+        return v;
+    if (typeof v === 'string' && /^-?\d+n$/.test(v))
+        return Number(v.slice(0, -1));
+    return null;
+};
+/**
+ * T10 (Heroes) → the level series of the hero and every captain, each
+ * distinct series stored once. A row without a usable 600-level f7 is skipped.
+ */
+function buildHeroLevels(heroRows) {
+    const series = [];
+    const seen = new Map();
+    const intern = (values) => {
+        const key = values.join(',');
+        let i = seen.get(key);
+        if (i === undefined) {
+            i = series.length;
+            series.push(values);
+            seen.set(key, i);
+        }
+        return i;
+    };
+    const heroes = {};
+    for (const [id, row] of heroRows) {
+        const levels = Array.isArray(row[7]) ? row[7].filter((e) => Array.isArray(e) && typeof e[0] === 'number') : [];
+        if (!levels.length)
+            continue;
+        levels.sort((a, b) => a[0] - b[0]);
+        // Contiguous from level 1, or the index-by-level arrays would lie.
+        if (levels.some((e, i) => e[0] !== i + 1))
+            continue;
+        const col = (c, scale = 1) => levels.map((e) => {
+            const n = wireNumber(e[c]);
+            return n === null ? 0 : scale === 1 ? n : Math.round(n / scale);
+        });
+        heroes[id] = {
+            xp: intern(col(1)),
+            leadership: intern(col(3, 100)),
+            authority: intern(col(4, 100)),
+            dominance: intern(col(5, 100)),
+            might: intern(col(8)),
+        };
+    }
+    return { series, heroes };
 }
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && !('$bin' in v) && !('$pairs' in v);
 /**

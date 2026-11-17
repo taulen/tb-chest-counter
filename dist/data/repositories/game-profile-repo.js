@@ -9,6 +9,7 @@ exports.getLatestCity = getLatestCity;
 exports.getPlayerTechs = getPlayerTechs;
 exports.getPlayerTechChanges = getPlayerTechChanges;
 exports.getPlayerCaptains = getPlayerCaptains;
+exports.getPlayerHeroEntry = getPlayerHeroEntry;
 exports.getPlayerCaptainChanges = getPlayerCaptainChanges;
 exports.getPlayerArtifacts = getPlayerArtifacts;
 exports.getPlayerArtifactChanges = getPlayerArtifactChanges;
@@ -23,6 +24,7 @@ exports.getPlayerEquipmentChanges = getPlayerEquipmentChanges;
  */
 const database_js_1 = require("../database.js");
 const index_js_1 = require("../../game-art/index.js");
+const equipment_js_1 = require("../../game-protocol/equipment.js");
 const toProfile = (r) => ({
     playerId: r.player_id,
     name: r.name,
@@ -81,7 +83,7 @@ function getLatestCity(clanId, playerId) {
         capturedAt: r.captured_at,
         techCount: r.tech_count,
         buildings: JSON.parse(r.buildings || '{}'),
-        hero: JSON.parse(r.hero || '{}'),
+        dragon: JSON.parse(r.hero || '{}'),
     };
 }
 /** techId → level, plus when the levels were last read. */
@@ -108,11 +110,19 @@ function getPlayerTechChanges(clanId, playerId, sinceIso, limit = 200) {
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_tech_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
       ORDER BY changed_at DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
 }
-/** A player's captains as last read, highest level first (the game's own order). */
+/** A player's captains as last read, highest level first (the game's own order). The hero's entry is left out. */
 function getPlayerCaptains(clanId, playerId) {
     return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, level, stars, xp, slot, first_seen AS firstSeen, last_seen AS lastSeen
-       FROM game_player_captains WHERE clan_id = ? AND player_id = ?
-      ORDER BY level DESC, stars DESC, captain_id`).all(clanId, playerId);
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ? AND captain_id <> ?
+      ORDER BY level DESC, stars DESC, captain_id`).all(clanId, playerId, equipment_js_1.HERO_ENTRY_ID);
+}
+/**
+ * The hero as city field 9 lists it (entry id 1: level and XP on the Heroes
+ * table's own curve), or null until a city read since Nov 2026 stored it.
+ */
+function getPlayerHeroEntry(clanId, playerId) {
+    return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, level, stars, xp, slot, first_seen AS firstSeen, last_seen AS lastSeen
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ? AND captain_id = ?`).get(clanId, playerId, equipment_js_1.HERO_ENTRY_ID) ?? null;
 }
 /**
  * Captain level/star changes since `sinceIso`, newest first, each with the

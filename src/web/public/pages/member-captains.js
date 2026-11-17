@@ -32,6 +32,46 @@ const fmtCompact = (n) => {
   }
 };
 
+/**
+ * The game's XP bar: an "XP" badge on a gold-trimmed bar filled by the share
+ * of this level's XP already earned, and "{n} to the next level" (compact;
+ * the exact numbers on hover). Just the XP when the level table is unknown.
+ */
+function xpBarHtml(c) {
+  if (c.xp == null) return '';
+  const floor = Number(c.xpFloor);
+  const next = Number(c.xpNext);
+  if (c.xpFloor == null || c.xpNext == null || !(next > floor)) {
+    return `<div class="captain-xp is-plain" title="${esc(fmt(c.xp))}"><span class="captain-xp-badge">${t('XP')}</span><span class="captain-xp-text">${esc(fmtCompact(c.xp))}</span></div>`;
+  }
+  const xp = Number(c.xp);
+  const pct = Math.max(0, Math.min(100, Math.round(((xp - floor) / (next - floor)) * 100)));
+  const toNext = Math.max(0, next - xp);
+  const label = t('{n} to the next level', { n: fmtCompact(toNext) });
+  return `<div class="captain-xp" title="${esc(`${fmt(xp)} / ${fmt(next)}`)}">
+      <span class="captain-xp-badge">${t('XP')}</span>
+      <span class="captain-xp-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(label)}">
+        <span class="captain-xp-fill" style="--xp-fill:${pct}%"></span>
+      </span>
+      <span class="captain-xp-text">${esc(label)}</span>
+    </div>`;
+}
+
+/**
+ * The game's Stats screen: Leadership, Authority, Dominance (the game's own
+ * stat names, so tGame) and Might at this level and star level.
+ */
+function statsHtml(stats) {
+  if (!stats) return '';
+  const row = (label, v) => `<div><dt>${esc(label)}</dt><dd>${esc(fmt(v))}</dd></div>`;
+  return `<dl class="captain-detail-facts captain-stats">
+      ${row(tGame('Leadership'), stats.leadership)}
+      ${row(tGame('Authority'), stats.authority)}
+      ${row(tGame('Dominance'), stats.dominance)}
+      ${row(t('Might'), stats.might)}
+    </dl>`;
+}
+
 /** The panel placeholder; mountMemberCaptains fills it the first time its tab opens. */
 export function memberCaptainsPanelHtml() {
   return `<div class="member-captains" data-member-captains><div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div></div>`;
@@ -135,9 +175,7 @@ function heroDetailHtml(hero, { withName = false } = {}) {
           ${hero.level != null ? `<span class="captain-detail-level">${t('Level {n}', { n: hero.level })}</span>` : ''}
           <span class="captain-detail-rarity">${esc(t('Hero'))}</span>
         </div>
-        <dl class="captain-detail-facts">
-          ${hero.xp != null ? `<div><dt>${t('XP')}</dt><dd title="${esc(fmt(hero.xp))}">${esc(fmtCompact(hero.xp))}</dd></div>` : ''}
-        </dl>
+        ${xpBarHtml(hero)}
         ${withName ? equipmentHtml(hero, { full: false }) : ''}
       </div>
     </div>
@@ -248,8 +286,9 @@ function detailHtml(c, changes, { withName = false } = {}) {
           ${c.rarityName ? `<span class="captain-detail-rarity">${esc(tGame(c.rarityName))}</span>` : ''}
         </div>
         ${starsHtml(c.stars, c.maxStars)}
+        ${xpBarHtml(c)}
+        ${statsHtml(c.stats)}
         <dl class="captain-detail-facts">
-          ${c.xp != null ? `<div><dt>${t('XP')}</dt><dd title="${esc(fmt(c.xp))}">${esc(fmtCompact(c.xp))}</dd></div>` : ''}
           ${c.slot ? `<div><dt>${t('Active line-up')}</dt><dd>${t('Slot {n}', { n: c.slot })}</dd></div>` : ''}
           <div><dt>${t('Tracked since')}</dt><dd title="${esc(formatDate(c.firstSeen))}">${esc(formatDateShort(c.firstSeen))}</dd></div>
         </dl>
