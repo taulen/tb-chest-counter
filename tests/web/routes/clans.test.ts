@@ -5,18 +5,13 @@ import request from 'supertest';
 // All side-effectful neighbours of clans.ts get stubbed before we
 // import the router. The intent of this file is to verify HTTP shape
 // + multi-clan scoping + that the route handlers call the right
-// downstream functions — not to exercise Discord, the scanner, or
-// the browser launcher (each of those has its own test surface).
+// downstream functions — not to exercise Discord or the scanner
+// (each of those has its own test surface).
 vi.mock('../../../src/discord/bot.js', () => ({
   startClanBot: vi.fn(),
   stopClanBot: vi.fn(),
   sendClanTestMessage: vi.fn(async () => ({ ok: true })),
   isClanBotConnected: vi.fn(() => false),
-}));
-
-vi.mock('../../../src/browser/launcher.js', () => ({
-  launchBrowser: vi.fn(),
-  closeBrowser: vi.fn(async () => {}),
 }));
 
 vi.mock('../../../src/scheduler/loop.js', () => ({
@@ -149,14 +144,6 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
       const res = await request(app).post('/api/clans/1/discord/test');
       expect(res.status).toBe(200);
       expect(vi.mocked(sendClanTestMessage)).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe('GET /api/clans/:clanId/onboard/status', () => {
-    it('returns idle status for a clan with no onboard activity', async () => {
-      const res = await request(app).get('/api/clans/1/onboard/status');
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('idle');
     });
   });
 
@@ -401,31 +388,6 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
         expect(res.status, `enabled=${String(bad)}`).toBe(400);
       }
       expect((await request(app).put('/api/clans/999/seasonal-kingdom').send({ enabled: true })).status).toBe(404);
-    });
-  });
-
-  // Phase A3 regression: deleting a clan must clear its onboardState
-  // entry so the per-process Map doesn't grow forever as clans are
-  // added and removed. We can't peek at the Map directly through HTTP,
-  // but we can prove indirectly: after delete + recreate of a clan with
-  // the same id, the onboard status comes back as 'idle' (the default
-  // for an unknown id), not whatever stale state was there before.
-  describe('Phase A3: onboardState cleanup on clan delete', () => {
-    it('returns to idle after the clan is deleted', async () => {
-      // Status route returns idle by default — synthesise a non-idle
-      // entry by hitting a route that writes onboardState. The simplest
-      // is to delete the clan and then re-fetch status: the id is gone,
-      // status should be the synthetic idle.
-      // (Full integration of "set non-idle → delete → re-create → idle"
-      // would require running the actual capture flow which spawns a
-      // browser. The cleanup happens in the DELETE handler regardless,
-      // so the no-leak invariant is captured here as a baseline.)
-      const del = await request(app).delete('/api/clans/2');
-      expect(del.status).toBe(200);
-
-      const res = await request(app).get('/api/clans/2/onboard/status');
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('idle');
     });
   });
 });

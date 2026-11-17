@@ -97,7 +97,7 @@ async function completeSetup() {
       if (btn) btn.disabled = false;
       return;
     }
-    showMessage('Setup complete. Redirecting to the dashboard so you can calibrate the scanner…', 'ok');
+    showMessage('Setup complete. Redirecting to the dashboard…', 'ok');
     scheduleLoginRedirect();
   } catch {
     showMessage('Error finalizing setup.', 'error');

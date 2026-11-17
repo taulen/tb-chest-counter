@@ -66,8 +66,6 @@ const catalog_export_js_1 = require("../../output/catalog-export.js");
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const database_js_1 = require("../../data/database.js");
 const index_js_1 = require("../../config/index.js");
-const calibration_js_1 = require("../../config/calibration.js");
-const member_capture_js_1 = require("../../browser/member-capture.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const resourceRepo = __importStar(require("../../data/repositories/resource-repo.js"));
 const persistent_env_js_1 = require("../../config/persistent-env.js");
@@ -93,99 +91,6 @@ function createPreImportBackup() {
     fs_1.default.copyFileSync(dbPath, backupPath);
     return backupFilename;
 }
-let calibrationJob = null;
-const VALID_STAGES = new Set([
-    'main', 'sidebars', 'gifts', 'members', 'worldmap', 'capital',
-]);
-function parseStage(value, fallback = 'gifts') {
-    return typeof value === 'string' && VALID_STAGES.has(value)
-        ? value
-        : fallback;
-}
-function calibrationImagePath(stage) {
-    return path_1.default.resolve('data', 'screenshots', `calibration_${stage}.png`);
-}
-function calibrationMetaPath(stage) {
-    return path_1.default.resolve('data', 'screenshots', `calibration_${stage}.meta.json`);
-}
-/**
- * Which AppConfig fields belong to which wizard stage.
- *
- * Module scope because three handlers need the same answer — the stage save (to
- * reject cross-stage writes), the stage reset (to know what to zero), and the
- * env mapping below. It lived inside the save handler while the reset route
- * didn't exist; a second copy would be the kind of duplication that let the
- * CalibrationStage union drift out of sync with the scheduler's.
- *
- * Stage 2 ("sidebars") and Stage 3 ("gifts") used to be one stage but were split
- * because the sidebars are visible from any My Clan sub-section while the
- * panel-specific targets (Open button, card crop, top tabs) need the Gifts
- * sub-section open.
- */
-const CALIBRATION_STAGE_FIELDS = {
-    main: [
-        'uiClanButtonXPct', 'uiClanButtonYPct',
-        'uiWorldMapButtonXPct', 'uiWorldMapButtonYPct',
-    ],
-    sidebars: [
-        'uiGiftsSidebarXPct', 'uiGiftsSidebarYPct',
-        'uiMembersSidebarXPct', 'uiMembersSidebarYPct',
-    ],
-    gifts: [
-        'uiGiftsTabXPct', 'uiGiftsTabYPct',
-        'uiTriumphalTabXPct', 'uiTriumphalTabYPct',
-        'scanOpenButtonXPct', 'scanOpenButtonYPct',
-        'scanCropLeftPct', 'scanCropTopPct', 'scanCropRightPct', 'scanCropBottomPct',
-    ],
-    members: [
-        'memberListCropLeftPct', 'memberListCropTopPct',
-        'memberListCropRightPct', 'memberListCropBottomPct',
-    ],
-    worldmap: [
-        'uiClanCapitalButtonXPct', 'uiClanCapitalButtonYPct',
-        'uiClanCapitalMarkerXPct', 'uiClanCapitalMarkerYPct',
-    ],
-    capital: [
-        'uiCapitalHistorySidebarXPct', 'uiCapitalHistorySidebarYPct',
-        'resourceHistoryCropLeftPct', 'resourceHistoryCropTopPct',
-        'resourceHistoryCropRightPct', 'resourceHistoryCropBottomPct',
-    ],
-};
-/** Field name → the app.env key it persists to. */
-const CALIBRATION_FIELD_ENV = {
-    uiClanButtonXPct: 'UI_CLAN_BUTTON_X_PCT',
-    uiClanButtonYPct: 'UI_CLAN_BUTTON_Y_PCT',
-    uiGiftsSidebarXPct: 'UI_GIFTS_SIDEBAR_X_PCT',
-    uiGiftsSidebarYPct: 'UI_GIFTS_SIDEBAR_Y_PCT',
-    uiGiftsTabXPct: 'UI_GIFTS_TAB_X_PCT',
-    uiGiftsTabYPct: 'UI_GIFTS_TAB_Y_PCT',
-    uiTriumphalTabXPct: 'UI_TRIUMPHAL_TAB_X_PCT',
-    uiTriumphalTabYPct: 'UI_TRIUMPHAL_TAB_Y_PCT',
-    uiMembersSidebarXPct: 'UI_MEMBERS_SIDEBAR_X_PCT',
-    uiMembersSidebarYPct: 'UI_MEMBERS_SIDEBAR_Y_PCT',
-    scanOpenButtonXPct: 'SCAN_OPEN_BUTTON_X_PCT',
-    scanOpenButtonYPct: 'SCAN_OPEN_BUTTON_Y_PCT',
-    scanCropLeftPct: 'SCAN_CROP_LEFT_PCT',
-    scanCropTopPct: 'SCAN_CROP_TOP_PCT',
-    scanCropRightPct: 'SCAN_CROP_RIGHT_PCT',
-    scanCropBottomPct: 'SCAN_CROP_BOTTOM_PCT',
-    memberListCropLeftPct: 'MEMBER_LIST_CROP_LEFT_PCT',
-    memberListCropTopPct: 'MEMBER_LIST_CROP_TOP_PCT',
-    memberListCropRightPct: 'MEMBER_LIST_CROP_RIGHT_PCT',
-    memberListCropBottomPct: 'MEMBER_LIST_CROP_BOTTOM_PCT',
-    uiWorldMapButtonXPct: 'UI_WORLD_MAP_BUTTON_X_PCT',
-    uiWorldMapButtonYPct: 'UI_WORLD_MAP_BUTTON_Y_PCT',
-    uiClanCapitalButtonXPct: 'UI_CLAN_CAPITAL_BUTTON_X_PCT',
-    uiClanCapitalButtonYPct: 'UI_CLAN_CAPITAL_BUTTON_Y_PCT',
-    uiClanCapitalMarkerXPct: 'UI_CLAN_CAPITAL_MARKER_X_PCT',
-    uiClanCapitalMarkerYPct: 'UI_CLAN_CAPITAL_MARKER_Y_PCT',
-    uiCapitalHistorySidebarXPct: 'UI_CAPITAL_HISTORY_SIDEBAR_X_PCT',
-    uiCapitalHistorySidebarYPct: 'UI_CAPITAL_HISTORY_SIDEBAR_Y_PCT',
-    resourceHistoryCropLeftPct: 'RESOURCE_HISTORY_CROP_LEFT_PCT',
-    resourceHistoryCropTopPct: 'RESOURCE_HISTORY_CROP_TOP_PCT',
-    resourceHistoryCropRightPct: 'RESOURCE_HISTORY_CROP_RIGHT_PCT',
-    resourceHistoryCropBottomPct: 'RESOURCE_HISTORY_CROP_BOTTOM_PCT',
-};
 /**
  * The game-period slot in progress for a `?period=` param — the same window the
  * Leaderboard shows for it: 17:00-reset days, the clan's own week shape (Sunday
@@ -280,49 +185,15 @@ function createApiRouter(scanLoop) {
                 cycleTotal: isSuperadmin ? rawActivity.cycleTotal : null,
             }
             : null;
-        // Onboarding banner data: the dashboard renders a "do X next"
-        // strip when the instance / current clan isn't fully provisioned.
-        // Calibration is global; member capture is per-clan. We return the
-        // first unmet precondition so the client UI is just `nextStep ===
-        // 'calibrate'` / `'capture-members'` / `'ready'` — no logic on the
-        // browser side.
-        const calibrated = (0, calibration_js_1.isFullyCalibrated)();
-        const clanScopedForBanner = req.clanId ?? null;
-        const captureNeeded = clanScopedForBanner !== null
-            && (0, member_capture_js_1.needsMemberCapture)(clanScopedForBanner);
-        const onboardingNextStep = !calibrated
-            ? 'calibrate'
-            : captureNeeded
-                ? 'capture-members'
-                : 'ready';
         res.json({
             state,
             scanInProgress: isMyScan ? rawScanInProgress : false,
             liveChestCount: isMyScan ? (scanLoop?.getLiveChestCount() ?? 0) : 0,
             progressMessage: isMyScan ? (scanLoop?.getProgressMessage() ?? '') : '',
-            // The might snapshot runs after the scan is finalised, so `state` has
-            // already gone back to 'idle' while the browser is still working. Without
-            // this the header would show "idle" and discard the progress messages.
-            mightInProgress: isMyScan ? (scanLoop?.isMightCaptureInProgress() ?? false) : false,
-            // Same reasoning as mightInProgress, and it matters more here: a resource
-            // capture can run for half an hour on a full backfill, so a header claiming
-            // "idle" that whole time is the difference between an operator watching
-            // progress and an operator wondering whether anything is happening at all.
-            resourceInProgress: isMyScan ? (scanLoop?.isResourceCaptureInProgress() ?? false) : false,
             activity,
             lastScanError: isMyError ? rawError : null,
             nextScanAt: nextScanAt ? new Date(nextScanAt).toISOString() : null,
             clanInactive,
-            onboarding: {
-                calibrated,
-                memberCaptureDone: clanScopedForBanner !== null ? !captureNeeded : null,
-                nextStep: onboardingNextStep,
-                clanId: clanScopedForBanner,
-                // "2 of 4 stages done" beats "not calibrated": the banner is the only
-                // thing most operators read, and a bare blocker gives them no sense of
-                // how much is left or which stage to open.
-                calibrationProgress: (0, calibration_js_1.requiredCalibrationProgress)(),
-            },
             timestamp: new Date().toISOString(),
         });
     });
@@ -1082,41 +953,12 @@ function createApiRouter(scanLoop) {
         // Two manual-scan modes:
         //   - default: scope to the clan the superadmin currently has selected
         //     in the dropdown (req.clanId resolves via the session's active
-        //     clan). Hot-swaps the browser to that clan if needed.
+        //     clan).
         //   - { allClans: true }: iterate every active clan, same path the
         //     scheduled cycle uses. Useful when the operator wants to refresh
         //     every clan outside the normal interval.
         const allClans = req.body?.allClans === true;
         const targetClanId = req.clanId ?? undefined;
-        // Onboarding gate: refuse to start a chest scan until calibration
-        // is done AND the target clan(s) have a captured member list. Both
-        // checks are also enforced inside the scan loop itself, but failing
-        // here gives the client a clear, actionable JSON error instead of
-        // a generic "scan failed" toast after several seconds of browser
-        // launch overhead.
-        if (!(0, calibration_js_1.isFullyCalibrated)()) {
-            return res.status(409).json({
-                error: 'Calibrate the scanner before running any scan. Open Admin → Scanner Mode → Calibrate and complete every stage.',
-                nextStep: 'calibrate',
-            });
-        }
-        if (allClans) {
-            const pending = (0, clan_repo_js_1.listClans)({ activeOnly: true }).filter((c) => (0, member_capture_js_1.needsMemberCapture)(c.id));
-            if (pending.length > 0) {
-                return res.status(409).json({
-                    error: `Capture the member list for clan${pending.length > 1 ? 's' : ''} ${pending.map((c) => `"${c.name}"`).join(', ')} before running a scan.`,
-                    nextStep: 'capture-members',
-                    clanIds: pending.map((c) => c.id),
-                });
-            }
-        }
-        else if (targetClanId && (0, member_capture_js_1.needsMemberCapture)(targetClanId)) {
-            return res.status(409).json({
-                error: 'Capture the clan member list before running a scan. Open Clans → Capture members.',
-                nextStep: 'capture-members',
-                clanId: targetClanId,
-            });
-        }
         (0, user_repo_js_1.logAction)(req.user.id, 'trigger_manual_scan', {
             username: req.user.username,
             mode: allClans ? 'all-clans' : 'single-clan',
@@ -1155,530 +997,6 @@ function createApiRouter(scanLoop) {
             });
         }
         res.json({ ok: true, cleared: prev !== null });
-    });
-    // ─── Scanner calibration (one-by-one pipelined scanner) ───
-    // The scanner refuses to run until the operator has completed the
-    // Calibrate flow (Open-button click target + OCR crop rectangle).
-    // GET /api/admin/scanner-settings - debug N + whether calibration is done.
-    router.get('/admin/scanner-settings', auth_js_1.requireSuperAdmin, (_req, res) => {
-        (0, index_js_1.resetConfig)();
-        const config = (0, index_js_1.loadConfig)();
-        const clickCalibrated = config.scanOpenButtonXPct > 0 && config.scanOpenButtonYPct > 0;
-        const cropCalibrated = config.scanCropLeftPct > 0
-            && config.scanCropTopPct > 0
-            && config.scanCropRightPct > config.scanCropLeftPct
-            && config.scanCropBottomPct > config.scanCropTopPct;
-        res.json({
-            scanDebugFirstN: config.scanDebugFirstN,
-            scanMaxChests: config.scanMaxChests,
-            calibrated: clickCalibrated && cropCalibrated,
-            clickCalibrated,
-            cropCalibrated,
-            openButtonXPct: config.scanOpenButtonXPct,
-            openButtonYPct: config.scanOpenButtonYPct,
-            cropLeftPct: config.scanCropLeftPct,
-            cropTopPct: config.scanCropTopPct,
-            cropRightPct: config.scanCropRightPct,
-            cropBottomPct: config.scanCropBottomPct,
-        });
-    });
-    // PUT /api/admin/scanner-settings { scanDebugFirstN, scanMaxChests? }
-    //
-    // scanMaxChests is the runaway-loop ceiling on one sweep, not a target: a
-    // healthy sweep ends when the tab runs dry well below it. The bounds mirror
-    // configSchema.scanMaxChests, and the page sends the field only when it has
-    // a value, so an older cached bundle can't reset the cap to the default.
-    router.put('/admin/scanner-settings', auth_js_1.requireSuperAdmin, (req, res) => {
-        try {
-            const scanDebugFirstN = (0, parse_int_js_1.parseBoundedInt)(req.body?.scanDebugFirstN, 10, { min: 0, max: 100 });
-            const scanMaxChests = req.body?.scanMaxChests === undefined
-                ? undefined
-                : (0, parse_int_js_1.parseBoundedInt)(req.body.scanMaxChests, 2000, { min: 100, max: 10_000 });
-            (0, persistent_env_js_1.updateEnvValue)('SCAN_DEBUG_FIRST_N', String(scanDebugFirstN));
-            if (scanMaxChests !== undefined) {
-                (0, persistent_env_js_1.updateEnvValue)('SCAN_MAX_CHESTS', String(scanMaxChests));
-            }
-            (0, index_js_1.resetConfig)();
-            if (scanLoop) {
-                scanLoop.setScannerSettings({ scanDebugFirstN, scanMaxChests });
-            }
-            (0, user_repo_js_1.logAction)(req.user.id, 'update_scanner_settings', { scanDebugFirstN, scanMaxChests });
-            res.json({ ok: true, scanDebugFirstN, scanMaxChests: scanMaxChests ?? (0, index_js_1.loadConfig)().scanMaxChests });
-        }
-        catch (err) {
-            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-        }
-    });
-    // PUT /api/admin/settings/raw-ocr-capture { enabled }
-    //
-    // Toggle the forensic "persist raw OCR'd player name on every chest
-    // record" feature. When disabled, also purges any previously-captured
-    // values so the column doesn't sit there eating space after the
-    // operator is done investigating.
-    router.put('/admin/settings/raw-ocr-capture', auth_js_1.requireSuperAdmin, (req, res) => {
-        const enabled = req.body?.enabled === true || req.body?.enabled === 'true';
-        (0, persistent_env_js_1.updateEnvValue)('ENABLE_RAW_OCR_CAPTURE', enabled ? 'true' : 'false');
-        (0, index_js_1.resetConfig)();
-        let purged = { chestRecords: 0, triumphalChestRecords: 0 };
-        if (!enabled) {
-            purged = chestRepo.purgeRawPlayerOcr();
-        }
-        if (scanLoop) {
-            scanLoop.setScannerSettings({ enableRawOcrCapture: enabled });
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, 'update_raw_ocr_capture', { enabled, purged });
-        res.json({ ok: true, enabled, purged });
-    });
-    // GET /api/admin/settings/raw-ocr-capture
-    //
-    // Returns the current toggle state and a quick count of how many
-    // captured rows exist (used by the System page to decide whether to
-    // surface a "captured X rows" hint next to the toggle).
-    router.get('/admin/settings/raw-ocr-capture', auth_js_1.requireSuperAdmin, (_req, res) => {
-        const cfg = (0, index_js_1.loadConfig)();
-        const counts = chestRepo.getRawPlayerOcrCounts();
-        res.json({
-            enabled: cfg.enableRawOcrCapture,
-            capturedCounts: counts,
-        });
-    });
-    // GET /api/members/:id/raw-ocr?limit=&source=chests|triumphals
-    //
-    // Recent raw OCR strings that resolved to this member. Superadmin
-    // only — mirrors the System-page toggle that controls capture.
-    // Returns empty when the capture toggle has never been on (or was
-    // on then disabled+purged).
-    //
-    // `source` selects which scan path's captures to return:
-    //   - 'chests'     → normal gift chests (default)
-    //   - 'triumphals' → triumphal chests
-    // The member detail page passes whichever tab the operator is
-    // viewing so the captures it shows match the rows above.
-    router.get('/members/:id/raw-ocr', auth_js_1.requireSuperAdmin, (req, res) => {
-        const memberId = (0, parse_int_js_1.parseBoundedInt)(req.params.id, 0, { min: 1 });
-        if (!memberId)
-            return res.status(400).json({ error: 'Invalid member id' });
-        const limit = (0, parse_int_js_1.parseBoundedInt)(req.query.limit, 50, { min: 1, max: 500 });
-        const source = req.query.source === 'triumphals' ? 'triumphals' : 'chests';
-        const clanId = req.clanId ?? 1;
-        const memberClanId = memberRepo.getMemberClanId(memberId);
-        if (memberClanId !== null && memberClanId !== clanId) {
-            return res.status(404).json({ error: 'Member not found' });
-        }
-        const rows = source === 'triumphals'
-            ? triumphalChestRepo.getRawPlayerOcrForMember(memberId, clanId, limit)
-            : chestRepo.getRawPlayerOcrForMember(memberId, clanId, limit);
-        res.json({ source, rows });
-    });
-    /**
-     * Automated resource-history capture: an INSTANCE-WIDE feature switch.
-     *
-     * Lives here, next to the other global scanner settings, rather than on the
-     * clan-scoped /api/resources router where it started. That was a genuine design
-     * error: a switch affecting every clan was reachable from one clan's page, so a
-     * superadmin looking at clan #2 could silently change behaviour for all of them.
-     * Per-clan opt-in is a different setting — clans.resources_enabled — and this
-     * phase honours both.
-     */
-    router.get('/admin/resource-capture', auth_js_1.requireSuperAdmin, (_req, res) => {
-        (0, index_js_1.resetConfig)();
-        res.json({
-            enabled: (0, index_js_1.loadConfig)().resourceCaptureEnabled,
-            calibrated: (0, calibration_js_1.isResourceHistoryCalibrated)(),
-            missingTargets: (0, calibration_js_1.missingResourceHistoryTargets)(),
-        });
-    });
-    /**
-     * Turn the daily capture on or off for the whole instance.
-     *
-     * Persists to data/app.env (survives a container recreate, unlike .env) and pushes
-     * the value into the running ScanLoop so it applies on the next cycle without a
-     * restart — same pattern as might tracking. Turning it off only stops further
-     * capture; nothing recorded is removed, because resource history is the entire
-     * point of the feature and a toggle must not be able to destroy it.
-     */
-    router.put('/admin/resource-capture', auth_js_1.requireSuperAdmin, (req, res) => {
-        const enabled = req.body?.enabled === true || req.body?.enabled === 'true';
-        if (enabled && !(0, calibration_js_1.isResourceHistoryCalibrated)()) {
-            return res.status(400).json({
-                error: 'Cannot enable automated collection before it is calibrated. Outstanding: '
-                    + `${(0, calibration_js_1.missingResourceHistoryTargets)().join('; ')}.`,
-            });
-        }
-        (0, persistent_env_js_1.updateEnvValue)('RESOURCE_CAPTURE_ENABLED', enabled ? 'true' : 'false');
-        (0, index_js_1.resetConfig)();
-        scanLoop?.setScannerSettings({ resourceCaptureEnabled: enabled });
-        (0, user_repo_js_1.logAction)(req.user.id, 'update_resource_capture', { enabled });
-        res.json({ ok: true, enabled, calibrated: (0, calibration_js_1.isResourceHistoryCalibrated)() });
-    });
-    // ─── Multi-stage calibration wizard endpoints ───
-    // The wizard walks the operator through three stages (main map, gifts
-    // panel, members list). Each stage captures its own screenshot and
-    // saves a slice of the calibration fields without disturbing the
-    // others. Operator-driven navigation between stages avoids the
-    // chicken-and-egg problem of needing calibrated positions to navigate
-    // to the screen where they get calibrated.
-    /** GET /api/admin/calibration
-     *  Returns the full calibration state for the wizard:
-     *  every field's current value plus a per-stage `complete` flag
-     *  computed from the same predicate the runtime uses to refuse. */
-    router.get('/admin/calibration', auth_js_1.requireSuperAdmin, (_req, res) => {
-        (0, index_js_1.resetConfig)();
-        const cfg = (0, index_js_1.loadConfig)();
-        const isPosSet = (x, y) => x > 0 && y > 0;
-        // One definition of stage completeness, shared with the /status banner —
-        // see calibrationStageStatus(). This route used to carry its own copy of
-        // the rules, which is two places to update when a stage gains a target.
-        const stageStatus = (0, calibration_js_1.calibrationStageStatus)();
-        const byKey = Object.fromEntries(stageStatus.map((s) => [s.key, s]));
-        res.json({
-            stages: {
-                main: { complete: byKey.main.complete },
-                sidebars: { complete: byKey.sidebars.complete },
-                gifts: { complete: byKey.gifts.complete },
-                members: { complete: byKey.members.complete },
-                worldmap: { complete: byKey.worldmap.complete },
-                capital: { complete: byKey.capital.complete },
-                // The ordered list the UI renders its checklist from: key, number,
-                // label, whether a scan needs it, whether it's done.
-                list: stageStatus,
-                requiredProgress: (0, calibration_js_1.requiredCalibrationProgress)(),
-                // Triumphal is optional — surface its calibration state separately
-                // so the UI can show a "skipped" badge.
-                triumphalSet: isPosSet(cfg.uiTriumphalTabXPct, cfg.uiTriumphalTabYPct),
-                // The MAP button is Stage 1's optional target, needed only by the
-                // resource-history chain. Reported separately for the same reason.
-                worldMapSet: isPosSet(cfg.uiWorldMapButtonXPct, cfg.uiWorldMapButtonYPct),
-                // One flag the Resources page can consult without re-deriving the chain.
-                resourceHistoryReady: (0, calibration_js_1.isResourceHistoryCalibrated)(),
-            },
-            fields: {
-                uiClanButtonXPct: cfg.uiClanButtonXPct,
-                uiClanButtonYPct: cfg.uiClanButtonYPct,
-                uiGiftsSidebarXPct: cfg.uiGiftsSidebarXPct,
-                uiGiftsSidebarYPct: cfg.uiGiftsSidebarYPct,
-                uiGiftsTabXPct: cfg.uiGiftsTabXPct,
-                uiGiftsTabYPct: cfg.uiGiftsTabYPct,
-                uiTriumphalTabXPct: cfg.uiTriumphalTabXPct,
-                uiTriumphalTabYPct: cfg.uiTriumphalTabYPct,
-                uiMembersSidebarXPct: cfg.uiMembersSidebarXPct,
-                uiMembersSidebarYPct: cfg.uiMembersSidebarYPct,
-                scanOpenButtonXPct: cfg.scanOpenButtonXPct,
-                scanOpenButtonYPct: cfg.scanOpenButtonYPct,
-                scanCropLeftPct: cfg.scanCropLeftPct,
-                scanCropTopPct: cfg.scanCropTopPct,
-                scanCropRightPct: cfg.scanCropRightPct,
-                scanCropBottomPct: cfg.scanCropBottomPct,
-                memberListCropLeftPct: cfg.memberListCropLeftPct,
-                memberListCropTopPct: cfg.memberListCropTopPct,
-                memberListCropRightPct: cfg.memberListCropRightPct,
-                memberListCropBottomPct: cfg.memberListCropBottomPct,
-                uiWorldMapButtonXPct: cfg.uiWorldMapButtonXPct,
-                uiWorldMapButtonYPct: cfg.uiWorldMapButtonYPct,
-                uiClanCapitalButtonXPct: cfg.uiClanCapitalButtonXPct,
-                uiClanCapitalButtonYPct: cfg.uiClanCapitalButtonYPct,
-                uiClanCapitalMarkerXPct: cfg.uiClanCapitalMarkerXPct,
-                uiClanCapitalMarkerYPct: cfg.uiClanCapitalMarkerYPct,
-                uiCapitalHistorySidebarXPct: cfg.uiCapitalHistorySidebarXPct,
-                uiCapitalHistorySidebarYPct: cfg.uiCapitalHistorySidebarYPct,
-                resourceHistoryCropLeftPct: cfg.resourceHistoryCropLeftPct,
-                resourceHistoryCropTopPct: cfg.resourceHistoryCropTopPct,
-                resourceHistoryCropRightPct: cfg.resourceHistoryCropRightPct,
-                resourceHistoryCropBottomPct: cfg.resourceHistoryCropBottomPct,
-            },
-        });
-    });
-    /** POST /api/admin/calibration/screenshot?stage=main|gifts|members
-     *  Kicks off a background screenshot capture for the requested stage.
-     *  Operator must have manually navigated to the right screen first —
-     *  we do not auto-navigate (the navigation chain itself depends on
-     *  calibration that may not yet exist). Polled via the status route. */
-    router.post('/admin/calibration/screenshot', auth_js_1.requireSuperAdmin, (req, res) => {
-        if (!scanLoop) {
-            return res.status(503).json({ error: 'Scanner not available' });
-        }
-        if (calibrationJob && calibrationJob.status === 'running') {
-            return res.status(409).json({
-                error: 'A calibration capture is already in progress. Wait for it to finish or refresh.',
-            });
-        }
-        const stage = parseStage(req.query.stage ?? req.body?.stage);
-        // Optional in-flight nav overrides — the wizard sends marks the
-        // operator has clicked in the browser but hasn't saved yet. Only
-        // accept a known shape; anything else is ignored, so a malformed
-        // body can't make us click random pixels.
-        const rawOverrides = (req.body?.overrides ?? {});
-        const isPctPair = (v) => {
-            if (!v || typeof v !== 'object')
-                return false;
-            const o = v;
-            return typeof o.xPct === 'number' && typeof o.yPct === 'number'
-                && o.xPct >= 0 && o.xPct <= 1 && o.yPct >= 0 && o.yPct <= 1;
-        };
-        const overrides = {};
-        for (const name of [
-            'clanButton', 'giftsSidebar', 'membersSidebar',
-            'worldMapButton', 'clanCapitalButton', 'clanCapitalMarker', 'capitalHistorySidebar',
-        ]) {
-            const value = rawOverrides[name];
-            if (isPctPair(value))
-                overrides[name] = value;
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, 'capture_calibration_screenshot', {
-            stage,
-            overrides: Object.keys(overrides),
-        });
-        calibrationJob = {
-            status: 'running',
-            startedAt: Date.now(),
-            finishedAt: null,
-            error: null,
-            warning: null,
-            canvasBounds: null,
-            stage,
-        };
-        scanLoop.captureCalibrationScreenshot(stage, overrides)
-            .then((result) => {
-            calibrationJob = result.ok
-                ? {
-                    status: 'done',
-                    startedAt: calibrationJob?.startedAt ?? Date.now(),
-                    finishedAt: Date.now(),
-                    error: null,
-                    warning: result.warning ?? null,
-                    canvasBounds: result.canvasBounds ?? null,
-                    stage,
-                }
-                : {
-                    status: 'error',
-                    startedAt: calibrationJob?.startedAt ?? Date.now(),
-                    finishedAt: Date.now(),
-                    error: result.error || 'Calibration capture failed',
-                    warning: null,
-                    canvasBounds: null,
-                    stage,
-                };
-        })
-            .catch((err) => {
-            calibrationJob = {
-                status: 'error',
-                startedAt: calibrationJob?.startedAt ?? Date.now(),
-                finishedAt: Date.now(),
-                error: String(err instanceof Error ? err.message : err),
-                warning: null,
-                canvasBounds: null,
-                stage,
-            };
-        });
-        res.json({ started: true, stage });
-    });
-    /** GET /api/admin/calibration/screenshot/status
-     *  Polled by the wizard after kicking off a capture. Reports current
-     *  job state and (on done) the canvas bounds + image URL for the
-     *  stage that was just captured. Recovery path: if no job is in
-     *  flight but a stage screenshot + sidecar exist on disk, surface
-     *  them as a `done` result so the operator can resume across
-     *  process restarts without re-running the slow capture. */
-    router.get('/admin/calibration/screenshot/status', auth_js_1.requireSuperAdmin, (req, res) => {
-        if (calibrationJob) {
-            const elapsedMs = (calibrationJob.finishedAt ?? Date.now()) - calibrationJob.startedAt;
-            if (calibrationJob.status === 'running') {
-                return res.json({ status: 'running', elapsedMs, stage: calibrationJob.stage });
-            }
-            if (calibrationJob.status === 'error') {
-                return res.json({
-                    status: 'error',
-                    elapsedMs,
-                    stage: calibrationJob.stage,
-                    error: calibrationJob.error,
-                });
-            }
-            return res.json({
-                status: 'done',
-                elapsedMs,
-                stage: calibrationJob.stage,
-                warning: calibrationJob.warning,
-                canvasBounds: calibrationJob.canvasBounds,
-                imageUrl: `/api/admin/calibration/image?stage=${calibrationJob.stage}&t=${calibrationJob.finishedAt}`,
-            });
-        }
-        // Recovery: if the operator passed a stage but no in-memory job exists,
-        // try the on-disk sidecar for that stage.
-        const requestedStage = parseStage(req.query.stage, 'gifts');
-        const imagePath = calibrationImagePath(requestedStage);
-        const metaPath = calibrationMetaPath(requestedStage);
-        if (fs_1.default.existsSync(imagePath) && fs_1.default.existsSync(metaPath)) {
-            try {
-                const meta = JSON.parse(fs_1.default.readFileSync(metaPath, 'utf8'));
-                if (meta && typeof meta === 'object' && meta.canvasBounds) {
-                    const stat = fs_1.default.statSync(imagePath);
-                    return res.json({
-                        status: 'done',
-                        elapsedMs: 0,
-                        stage: requestedStage,
-                        canvasBounds: meta.canvasBounds,
-                        imageUrl: `/api/admin/calibration/image?stage=${requestedStage}&t=${stat.mtimeMs}`,
-                        recovered: true,
-                    });
-                }
-            }
-            catch {
-                // Sidecar corrupt — fall through to idle
-            }
-        }
-        res.json({ status: 'idle' });
-    });
-    /** GET /api/admin/calibration/image?stage=... — serves the saved PNG. */
-    router.get('/admin/calibration/image', auth_js_1.requireSuperAdmin, (req, res) => {
-        const stage = parseStage(req.query.stage, 'gifts');
-        const imagePath = calibrationImagePath(stage);
-        if (!fs_1.default.existsSync(imagePath)) {
-            return res.status(404).json({
-                error: `No calibration screenshot saved for stage '${stage}' yet. Click Capture first.`,
-            });
-        }
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Cache-Control', 'no-store');
-        fs_1.default.createReadStream(imagePath).pipe(res);
-    });
-    /** POST /api/admin/calibration/reset
-     *  Body: { stage }
-     *
-     *  Zero every field belonging to one stage, putting it back to uncalibrated.
-     *
-     *  Needed because a saved mark can be *corrected* by re-marking and saving, but
-     *  never *removed* — and some marks need removing rather than moving: a
-     *  Triumphal tab marked on a clan that has none, or an optional
-     *  resource-collection target set by mistake, both leave a non-zero value that
-     *  makes the runtime think a target exists where it doesn't. Re-saving can't
-     *  express "nothing here"; the save route deliberately rejects zeros so a
-     *  half-built payload can't silently wipe calibration.
-     *
-     *  Scoped to one stage on purpose: an all-stages reset would be one misclick
-     *  away from taking chest scanning down. */
-    router.post('/admin/calibration/reset', auth_js_1.requireSuperAdmin, (req, res) => {
-        const stage = parseStage(req.body?.stage, 'main');
-        if (req.body?.stage !== stage) {
-            return res.status(400).json({ error: `Unknown calibration stage: ${String(req.body?.stage)}` });
-        }
-        try {
-            for (const field of CALIBRATION_STAGE_FIELDS[stage]) {
-                (0, persistent_env_js_1.updateEnvValue)(CALIBRATION_FIELD_ENV[field], '0');
-            }
-            (0, index_js_1.resetConfig)();
-            if (scanLoop) {
-                const zeroed = Object.fromEntries(CALIBRATION_STAGE_FIELDS[stage].map((f) => [f, 0]));
-                scanLoop.setCalibration(zeroed);
-            }
-            (0, user_repo_js_1.logAction)(req.user.id, 'reset_calibration', { stage });
-            res.json({ ok: true, stage, cleared: CALIBRATION_STAGE_FIELDS[stage] });
-        }
-        catch (err) {
-            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-        }
-    });
-    /** PUT /api/admin/calibration
-     *  Body: { stage: 'main'|'gifts'|'members', fields: { ... } }
-     *  Validates that all fields belong to the named stage (refuses
-     *  cross-stage writes), then persists each via updateEnvValue and
-     *  live-updates the running ScanLoop. Validation is per-stage so
-     *  callers can save partial calibrations without first satisfying
-     *  every requirement of every stage. */
-    router.put('/admin/calibration', auth_js_1.requireSuperAdmin, (req, res) => {
-        const stage = parseStage(req.body?.stage);
-        const fields = (req.body?.fields ?? {});
-        const inUnit = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0 && n < 1;
-        const inUnitOrZero = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1;
-        // Field whitelist per stage. Anything not on the list is rejected
-        // so a buggy client can't sneak a cross-stage write past validation.
-        // Stage 2 ("sidebars") and Stage 3 ("gifts") used to be one stage
-        // but were split because the sidebars are visible from any My Clan
-        // sub-section while the panel-specific targets (Open button, card
-        // crop, top tabs) need the Gifts sub-section open.
-        const allowedKeys = CALIBRATION_STAGE_FIELDS;
-        // Triumphal is optional — 0 means "this clan has no Triumphal tab".
-        // Crop rectangles must satisfy right > left and bottom > top.
-        const optionalZeroKeys = new Set(['uiTriumphalTabXPct', 'uiTriumphalTabYPct']);
-        for (const [key, value] of Object.entries(fields)) {
-            if (!allowedKeys[stage].includes(key)) {
-                return res.status(400).json({ error: `Field '${key}' is not part of stage '${stage}'` });
-            }
-            const isValid = optionalZeroKeys.has(key) ? inUnitOrZero(value) : inUnit(value);
-            if (!isValid) {
-                return res.status(400).json({
-                    error: `Field '${key}' must be a number ${optionalZeroKeys.has(key) ? '0..1' : 'strictly between 0 and 1'}`,
-                });
-            }
-        }
-        // Stage-specific cross-field validation: rectangles must be valid.
-        if (stage === 'gifts') {
-            const l = fields.scanCropLeftPct;
-            const t = fields.scanCropTopPct;
-            const r = fields.scanCropRightPct;
-            const b = fields.scanCropBottomPct;
-            if (l !== undefined && r !== undefined && r <= l) {
-                return res.status(400).json({ error: 'scanCropRightPct must be > scanCropLeftPct' });
-            }
-            if (t !== undefined && b !== undefined && b <= t) {
-                return res.status(400).json({ error: 'scanCropBottomPct must be > scanCropTopPct' });
-            }
-        }
-        if (stage === 'members') {
-            const l = fields.memberListCropLeftPct;
-            const t = fields.memberListCropTopPct;
-            const r = fields.memberListCropRightPct;
-            const b = fields.memberListCropBottomPct;
-            if (r <= l)
-                return res.status(400).json({ error: 'memberListCropRightPct must be > memberListCropLeftPct' });
-            if (b <= t)
-                return res.status(400).json({ error: 'memberListCropBottomPct must be > memberListCropTopPct' });
-        }
-        // Stage 6 saves in two passes (History first, then the rectangle once History
-        // is open), so the rectangle fields can legitimately be absent — validate the
-        // ordering only when they're actually present.
-        if (stage === 'capital') {
-            const l = fields.resourceHistoryCropLeftPct;
-            const t = fields.resourceHistoryCropTopPct;
-            const r = fields.resourceHistoryCropRightPct;
-            const b = fields.resourceHistoryCropBottomPct;
-            if (l !== undefined && r !== undefined && r <= l) {
-                return res.status(400).json({ error: 'resourceHistoryCropRightPct must be > resourceHistoryCropLeftPct' });
-            }
-            if (t !== undefined && b !== undefined && b <= t) {
-                return res.status(400).json({ error: 'resourceHistoryCropBottomPct must be > resourceHistoryCropTopPct' });
-            }
-        }
-        // Persist each field. The env var name is the field name converted
-        // to UPPER_SNAKE_CASE (e.g. uiClanButtonXPct → UI_CLAN_BUTTON_X_PCT).
-        const fieldToEnv = CALIBRATION_FIELD_ENV;
-        try {
-            for (const [key, value] of Object.entries(fields)) {
-                (0, persistent_env_js_1.updateEnvValue)(fieldToEnv[key], String(value));
-            }
-            // Saving Stage 4 stamps the member-list crop revision.
-            //
-            // Might tracking reads its numbers from this same rectangle, and every
-            // instance calibrated before might tracking existed has a rectangle drawn
-            // around the names column only — the power number sits to its right and
-            // never enters the crop. Rather than let those instances run a daily
-            // capture that can only ever come back empty, might capture refuses to
-            // start until this revision is at least 1, which can only happen when an
-            // operator has re-saved Stage 4 against the current instructions (which
-            // now tell them to include the might column).
-            if (stage === 'members') {
-                const next = ((0, index_js_1.loadConfig)().memberListCropRevision || 0) + 1;
-                (0, persistent_env_js_1.updateEnvValue)('MEMBER_LIST_CROP_REVISION', String(next));
-            }
-            (0, index_js_1.resetConfig)();
-            if (scanLoop) {
-                scanLoop.setCalibration(fields);
-            }
-            (0, user_repo_js_1.logAction)(req.user.id, 'save_calibration', { stage, fields });
-            res.json({ ok: true, stage, fields });
-        }
-        catch (err) {
-            res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-        }
     });
     // GET /api/export/catalog - chest names, source keys, and admin corrections
     // as a single JSON file intended to be committed into the repo so new
@@ -1723,7 +1041,7 @@ function createApiRouter(scanLoop) {
         if (!scanLoop)
             return null; // dashboard-only mode: always safe
         const state = scanLoop.getState();
-        if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING || state === enums_js_1.AppState.NAVIGATING || state === enums_js_1.AppState.CHECKING_AUTH) {
+        if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING) {
             return `Cannot restore backup while scanner is active (${state}).`;
         }
         return null;
@@ -1862,7 +1180,7 @@ function createApiRouter(scanLoop) {
         try {
             if (scanLoop) {
                 const state = scanLoop.getState();
-                if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING || state === enums_js_1.AppState.NAVIGATING || state === enums_js_1.AppState.CHECKING_AUTH) {
+                if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING) {
                     return res.status(409).json({ error: `Cannot restore backup while scanner is active (${state}).` });
                 }
             }
@@ -1959,7 +1277,7 @@ function createApiRouter(scanLoop) {
     router.post('/admin/backups/restore-clan', auth_js_1.requireSuperAdmin, async (req, res) => {
         if (scanLoop) {
             const state = scanLoop.getState();
-            if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING || state === enums_js_1.AppState.NAVIGATING || state === enums_js_1.AppState.CHECKING_AUTH) {
+            if (state === enums_js_1.AppState.SCANNING || state === enums_js_1.AppState.PROCESSING) {
                 return res.status(409).json({ error: `Cannot restore a clan while the scanner is active (${state}).` });
             }
         }
@@ -2222,11 +1540,10 @@ function createApiRouter(scanLoop) {
     });
     // DELETE /api/members/:id - remove member
     //
-    // Always soft-deletes (sets is_active = 0) so the scan-pipeline's
-    // fuzzy matcher stops seeing the member while the row stays
-    // recoverable from Admin → "Show removed members". A subsequent
-    // scan that OCRs the same name (or an existing alias) auto-
-    // reactivates the row via upsertMember.
+    // Always soft-deletes (sets is_active = 0) so the name matchers stop
+    // seeing the member while the row stays recoverable from Admin →
+    // "Show removed members". A subsequent scan that finds the player in
+    // the clan again reactivates the row.
     router.delete('/members/:id', auth_js_1.requireAdmin, (req, res) => {
         const memberId = parseInt(String(req.params.id));
         const memberClanId = memberRepo.getMemberClanId(memberId);
@@ -2650,7 +1967,7 @@ function createApiRouter(scanLoop) {
             res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
         }
     });
-    // GET /api/admin/unknown-chests — rows where OCR failed to read the
+    // GET /api/admin/unknown-chests — rows where the retired OCR scanner failed to read the
     // player name. See chestRepo.getUnknownChests for the predicate.
     // Also self-heals any stale "Manual review needed" banners on sessions
     // whose unknown rows were already reassigned before the auto-clear
@@ -2689,8 +2006,8 @@ function createApiRouter(scanLoop) {
     });
     // GET /api/admin/members/:memberId/crop
     // Streams a screenshot crop showing where a member came from, for the "New
-    // Members" review-queue hover. Evidence can sit on a might-capture member-list
-    // row, a resource-import row or a scanned chest row —
+    // Members" review-queue hover. Evidence (kept by the retired screenshot
+    // reader) can sit on a member-list row, a resource-import row or a chest row —
     // memberRepo.getMemberEvidenceCropPath picks the tightest one and scopes the
     // lookup to this clan.
     router.get('/admin/members/:memberId/crop', auth_js_1.requireAdmin, (req, res) => {

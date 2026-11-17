@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.realNameBehindCut = realNameBehindCut;
 exports.repairCutNames = repairCutNames;
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+const name_normalize_js_1 = require("../utils/name-normalize.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('repair-cut-names');
 /** What the old reader cut off: a tail starting at a K-number. */
@@ -34,7 +34,7 @@ function repairCutNames(database) {
         const real = realNameBehindCut(m.name, aliases);
         if (!real)
             continue;
-        const holder = taken.get(m.clanId, m.id, normalizeName(real), (0, ocr_normalize_js_1.despace)(real));
+        const holder = taken.get(m.clanId, m.id, normalizeName(real), (0, name_normalize_js_1.despace)(real));
         if (holder) {
             log.warn(`Clan #${m.clanId}: left "${m.name}" as is — "${holder.name}" already holds the name "${real}"`);
             continue;
@@ -42,7 +42,7 @@ function repairCutNames(database) {
         const kept = aliases.filter((a) => a.trim().toLowerCase() !== real.toLowerCase());
         if (!kept.some((a) => a.trim().toLowerCase() === m.name.toLowerCase()))
             kept.push(m.name);
-        rename.run(real, normalizeName(real), (0, ocr_normalize_js_1.despace)(real), JSON.stringify(kept), m.id);
+        rename.run(real, normalizeName(real), (0, name_normalize_js_1.despace)(real), JSON.stringify(kept), m.id);
         repointRules.run(real, m.clanId, m.name);
         dropSelfRule.run(m.clanId, real, real);
         restored.push(`#${m.clanId} "${m.name}" → "${real}"`);

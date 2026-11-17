@@ -1,15 +1,16 @@
 /**
- * Pins that every path which can mint a `members` row from a name read off the
- * screen also consults the clan's player merge rules.
+ * Pins that every path which can mint a `members` row from a name it read also
+ * consults the clan's player merge rules.
  *
  * A player merge rule is the admin saying "this reading IS that player", and for
- * months exactly ONE place in the codebase read the table: the gift scan
- * (scan-pipeline.ts). Four other paths turn an OCR'd name into a members row —
- * the daily might capture, the roster build, the automated resource-history read
- * and the manual resource upload — and each resolved names through fuzzy.ts and
+ * months exactly ONE place in the codebase read the table: the OCR gift scan
+ * (since retired). Four other paths turned a read name into a members row — the
+ * daily might capture, the roster build, the automated resource-history read and
+ * the manual resource upload — and each resolved names through fuzzy.ts and
  * `upsertMember`, neither of which has ever looked at merge_rules. So a rule an
  * admin had already written was ignored by all four, and the duplicate member it
- * existed to prevent was re-created on the very next capture.
+ * existed to prevent was re-created on the very next capture. Today the member
+ * sync from the game (game-protocol/member-sync.ts) is the path that matters.
  *
  * It ran for days before anyone could prove it, because the failure looks exactly
  * like the feature working: the rule is listed on the Merge Rules page, the merge
@@ -95,8 +96,8 @@ describe('player merge rules are honoured wherever a read name creates a member'
   it('finds the member-creating paths at all', () => {
     // A guard on the guard: if upsertMember is ever renamed, the scan above quietly
     // matches nothing and this test passes while checking absolutely nothing.
-    expect(callers.length).toBeGreaterThanOrEqual(5);
-    expect(callers).toContain('scheduler/might-capture-phase.ts');
+    expect(callers.length).toBeGreaterThanOrEqual(3);
+    expect(callers).toContain('game-protocol/member-sync.ts');
   });
 
   it('has every caller either consulting the rules or listed as exempt', () => {

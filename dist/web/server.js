@@ -453,9 +453,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // Multi-clan management. Superadmin CRUD + clan switcher (activate
     // endpoint) live here. Mounted before the catch-all /api router so
     // /api/clans doesn't collide with anything in api.ts.
-    app.use('/api/clans', (0, clans_js_1.createClansRouter)(scanLoop));
-    // The login bridge pauses the scan loop while it's open (a second headed
-    // Chromium would fight the scanner for RAM). Wire its teardown hook so the
+    app.use('/api/clans', (0, clans_js_1.createClansRouter)());
+    // The login bridge pauses the scan loop while it's open (a scan's direct
+    // game login would take over the session being signed in). Wire its teardown hook so the
     // scanner resumes whenever the bridge ends — crucially including the
     // internal idle-teardown / max-session paths that never hit the
     // save/cancel routes. Without this, an abandoned login session left the
@@ -477,10 +477,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // individually inside the router.
     app.use('/api/resources', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, resources_js_1.createResourcesDataRouter)());
     // Member might (power level) history. All reads are clan-scoped clan data,
-    // visible to any authenticated member; the on/off toggle inside the router
-    // guards with requireSuperAdmin. Kept as its own mount so the feature can be
-    // disabled or removed without touching the chest-data routes.
-    app.use('/api/might', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, might_js_1.createMightRouter)(scanLoop));
+    // visible to any authenticated member. Kept as its own mount, apart from the
+    // chest-data routes.
+    app.use('/api/might', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, might_js_1.createMightRouter)());
     // What the game protocol collects about players (profile, research, talents).
     app.use('/api/game', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, game_js_1.createGameRouter)());
     // Guards levels and Gold Pass holders — both inferred from resource and chest
@@ -504,10 +503,6 @@ function startWebServer(port, scanLoop, options = {}) {
     // Performance page: over- and underachievers. Admins only, enforced inside
     // with requireAdmin (the active clan's role).
     app.use('/api/performance', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, performance_js_1.createPerformanceRouter)());
-    // The rest of assets/ (OCR models, reference crops) stays behind a session —
-    // nothing a page loads lives there. resource-icons/ and calibration-examples/
-    // are served publicly by the frontend asset router above.
-    app.use('/assets', auth_js_2.requireAuth, express_1.default.static(path_1.default.resolve('assets'), { maxAge: '86400000' }));
     // SPA fallback - protected. Serves a freshly-rewritten index.html with
     // ?v=BUILD_VERSION on JS/CSS references.
     app.get('/{*path}', auth_js_2.requireAuth, (_req, res) => {

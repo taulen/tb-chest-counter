@@ -14,7 +14,7 @@
  */
 import {
   canonicalSourceKey, getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, SOURCE_CHEST_POINTS,
-} from '../vision/source-names.js';
+} from './source-names.js';
 
 export interface PointEntry {
   sourceKey: string;

@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.saveSnapshots = saveSnapshots;
-exports.hasSnapshotForGameDate = hasSnapshotForGameDate;
 exports.getLastCaptureAt = getLastCaptureAt;
 exports.getLatestCaptureRoster = getLatestCaptureRoster;
 exports.getSnapshotDates = getSnapshotDates;
@@ -20,17 +19,18 @@ exports.getSeriesForMembers = getSeriesForMembers;
  * keyed on the game-day date rather than a wall-clock timestamp so a re-capture
  * on the same day overwrites rather than duplicating.
  *
- * Boundary note: this is *our own* OCR-read data, keyed on `members(id)`. It is
+ * Boundary note: this is *our own* data, keyed on `members(id)` — read from the
+ * game by every scan, and by the retired screenshot reader before that. It is
  * deliberately unrelated to the ChestTracker import (`snapshot`,
  * `player_snapshot`, `ct_player_ref`, …) — nothing here reads or writes those
  * tables, and nothing there should ever join to these rows. The two datasets
  * answer different questions and must be able to break independently.
  *
  * `level` is the account level from the avatar badge — the column the v30 bootstrap
- * created for it and nothing ever filled. It's only populated when the calibrated
- * crop reaches left far enough to include the avatars, which the default calibration
- * does not; 0 means "not read", since the column is NOT NULL and rebuilding the
- * table to allow NULL isn't worth it. Filter on `level > 0`.
+ * created for it and nothing ever filled. Only the retired screenshot reader ever
+ * filled it, and only when its crop included the avatars; 0 means "not read", since
+ * the column is NOT NULL and rebuilding the table to allow NULL isn't worth it.
+ * Filter on `level > 0`.
  */
 const database_js_1 = require("../database.js");
 const hero_level_js_1 = require("../hero-level.js");
@@ -88,8 +88,8 @@ function longestNonDecreasingIndices(values) {
  * production had them everywhere: 108 of 237 members with at least one drop across
  * fifteen game days, which is what made the member chart's level line saw-tooth. The
  * capture-side cause (a badge matched against the EDGE of a member's row band, so a
- * pixel of jitter handed it to the member above — see browser/might-capture.ts's
- * ownerForBadge) is fixed, but two things still need this:
+ * pixel of jitter handed it to the member above, in the since-retired OCR capture)
+ * was fixed, but two things still need this:
  *
  *   - the fifteen days already in the database, which no capture fix can revisit;
  *   - the residue, because OCR never reaches zero error and one bad reading is
@@ -190,8 +190,8 @@ function saveSnapshots(clanId, gameDate, capturedAtIso, rows) {
     // MISREAD doesn't, and the ratchet made every wrong-high value permanent for its
     // game day. The badge mis-assignment that filed one member's level under their
     // neighbour put values like 367 on a level-179 player, and "Re-capture now" then
-    // could not correct it, which is precisely what that action promises to do (see
-    // `force` in scheduler/might-capture-phase.ts). Judging which readings a member's
+    // could not correct it, which is precisely what that action promised to do.
+    // Judging which readings a member's
     // history supports is the read side's job — trustedHeroLevels — and it can only do
     // that honestly if the write side stops editorialising.
     const stmt = db.prepare(`
@@ -215,18 +215,6 @@ function saveSnapshots(clanId, gameDate, capturedAtIso, rows) {
     const written = tx(rows);
     dropCaches(clanId);
     return written;
-}
-/**
- * True when this clan already has a snapshot for the given game day. The
- * scheduler's once-a-day gate: cheap enough to run every scan cycle, and it
- * makes the capture self-healing across downtime without any persisted
- * catch-up state (same property the inactivity sweep relies on).
- */
-function hasSnapshotForGameDate(clanId, gameDate) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare(`SELECT 1 AS hit FROM member_snapshots
-     WHERE clan_id = ? AND game_date = ? LIMIT 1`).get(clanId, gameDate);
-    return row !== undefined;
 }
 /** When this clan's most recent might capture ran, or null if never. */
 function getLastCaptureAt(clanId) {

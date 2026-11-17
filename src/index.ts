@@ -1,8 +1,6 @@
 import { loadConfig } from './config/index.js';
 import { createLogger } from './utils/logger.js';
 import { initDatabase, closeDb } from './data/database.js';
-import { createVisionProvider } from './vision/factory.js';
-import { launchBrowser, closeBrowser, type BrowserSession } from './browser/launcher.js';
 import { ScanLoop } from './scheduler/loop.js';
 import { MultiClanExternalLoop } from './scheduler/external-loop.js';
 import { startInactiveSweep, stopInactiveSweep } from './scheduler/inactive-sweep.js';
@@ -14,10 +12,8 @@ import {
   onClanScanCompleted,
 } from './discord/bot.js';
 import { printScanReport } from './output/console-report.js';
-import { cleanOldScreenshots } from './browser/screenshotter.js';
 import { needsSetup } from './setup-wizard.js';
 import { DEFAULT_CONFIG } from './config/defaults.js';
-import { clanStorageStatePath, clanBrowserProfileDir } from './config/clan-paths.js';
 import { BUILD_INFO } from './utils/build-info.js';
 import { startGameArtSchedule } from './game-art/store.js';
 
@@ -120,7 +116,7 @@ async function main(): Promise<void> {
   startGameArtSchedule();
 
   if (dashboardOnly) {
-    // Dashboard-only mode: no browser, no scanning. startWebServer
+    // Dashboard-only mode: no scanning. startWebServer
     // already logs "Web dashboard running at http://localhost:..." so
     // we don't need a second "Dashboard: ..." line here.
     log.info('Dashboard-only mode');
@@ -128,29 +124,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Spin up the local OCR pipeline (PaddleOCR — PP-OCRv6_small via ONNX).
-  // Member-list capture (member-capture.ts) uses the same shared service.
-  const vision = createVisionProvider();
-  await vision.initialize(config);
-
-  // Clean old screenshots
-  await cleanOldScreenshots('./data/screenshots', config.screenshotRetentionDays);
-
-  // Launch browser
-  let browserSession: BrowserSession | undefined;
   let scanLoop: ScanLoop | undefined;
 
   try {
-    // Boot launch hydrates from clan #1's per-clan paths. The first
-    // scheduled scan will iterate active clans and re-launch with the
-    // matching clan's paths if there are more than one active.
-    browserSession = await launchBrowser(config, {
-      storageStatePath: clanStorageStatePath(1),
-      userDataDir: clanBrowserProfileDir(1),
-    });
-
-    // Create scan loop
-    scanLoop = new ScanLoop(config, browserSession, vision, (result, clanId) => {
+    scanLoop = new ScanLoop(config, (result, clanId) => {
       // Called after each scan completes for one clan. Routes the report
       // to that clan's Discord bot — a no-op when the clan has Discord
       // disabled, no token, or the bot isn't yet running.
@@ -195,14 +172,6 @@ async function main(): Promise<void> {
     scanLoop?.stop();
     externalLoop.stop();
     stopInactiveSweep();
-    if (browserSession) await closeBrowser(browserSession);
-    if (vision.teardown) {
-      try {
-        await vision.teardown();
-      } catch (err) {
-        log.warn('Vision teardown during shutdown failed: ' + String(err));
-      }
-    }
     await stopAllDiscordBots();
     closeDb();
     log.info('Goodbye!');

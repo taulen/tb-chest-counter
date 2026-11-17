@@ -5,9 +5,9 @@
 
 ## How it was tested
 
-<!-- The commands you ran, plus anything checked by hand. Scanning, calibration
-     and the login bridge can only be exercised against the real game — say so
-     if that's what you did, and what you saw. -->
+<!-- The commands you ran, plus anything checked by hand. Scanning and the
+     login bridge can only be exercised against the real game — say so if
+     that's what you did, and what you saw. -->
 
 ## Screenshots
 

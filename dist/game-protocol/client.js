@@ -29,7 +29,7 @@ exports.buildLoginBody = buildLoginBody;
  * website token rotates on every GetGameStartData, which is why step 1 runs on
  * every connect instead of reusing a stored token: the session cookie always
  * yields the current one. A direct login takes over the account's game session,
- * so the scanner only ever connects while its own browser is not in the game.
+ * which is why the scan loop pauses while the login bridge has the game open.
  * Full background: docs/game-protocol.md.
  */
 const crypto_1 = __importDefault(require("crypto"));
@@ -64,7 +64,7 @@ class SessionLoggedOutError extends GameProtocolError {
     }
 }
 exports.SessionLoggedOutError = SessionLoggedOutError;
-/** Substrings only TB's public marketing / login page has (same as browser/auth.ts). */
+/** Substrings only TB's public marketing / login page has. */
 const LOGGED_OUT_SIGNATURES = ['register or log in', 'sign up with'];
 /** Classify the /en/ page. Pure; unit-tested. Ambiguous pages are 'unknown', never 'logged-out'. */
 function classifySitePage(status, html) {

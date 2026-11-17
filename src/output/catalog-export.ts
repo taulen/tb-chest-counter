@@ -2,7 +2,7 @@ import * as chestRepo from '../data/repositories/chest-repo.js';
 import * as mergeRepo from '../data/repositories/merge-repo.js';
 import * as sourcePointsRepo from '../data/repositories/source-points-repo.js';
 import { getDb } from '../data/database.js';
-import { getSourceKey, getDefaultPointsForKey, isKnownSourceKey } from '../vision/source-names.js';
+import { getSourceKey, getDefaultPointsForKey, isKnownSourceKey } from '../data/source-names.js';
 
 // v1: flat sourceKeys entries with a single pointValue per key.
 // v2: sourceKeys gained a tiers[] array keyed on chest_type.

@@ -16,7 +16,7 @@
  *
  * chestName values must match `chests.name` — the spelling the DB actually
  * holds, which is whatever `correctChestName` produces (see KNOWN_CHESTS in
- * src/vision/chest-names.ts). Getting that wrong is silent: the rule resolves
+ * src/data/chest-names.ts). Getting that wrong is silent: the rule resolves
  * to no chest ids and its column renders a permanent 0 that looks exactly like
  * "nobody did the event". Two things stop that now — tests/config/event-catalog.test.ts
  * fails the build if any name here disagrees with correctChestName, and

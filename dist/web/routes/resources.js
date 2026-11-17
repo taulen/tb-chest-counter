@@ -17,9 +17,9 @@ function createResourcesDataRouter() {
     // mutating routes (edit transaction / delete batch) each guard with
     // requireAdmin so only admins can change data.
     //
-    // Rows arrive only from the daily Clan Capital history read
-    // (scheduler/resource-capture-phase.ts). The screenshot upload that used to
-    // sit beside it was removed in Nov 2026: the read does the same job as well.
+    // Rows arrive from the Clan Capital ledger every scan reads from the game
+    // (scheduler/protocol-scan.ts). Older rows came from the retired screenshot
+    // reader and stay readable and editable here.
     /** List the trackable resource types (excludes clan-wide/untracked ones). */
     router.get('/types', (_req, res) => {
         const types = (0, resource_repo_js_1.listResourceTypes)().filter((t) => !resource_repo_js_1.UNTRACKED_RESOURCE_SLUGS.has(t.slug));
@@ -38,7 +38,8 @@ function createResourcesDataRouter() {
         const offset = Math.max(0, Number.parseInt(q.offset ?? '0', 10) || 0);
         const memberId = q.memberId ? Number.parseInt(q.memberId, 10) : undefined;
         const batchId = q.batchId ? Number.parseInt(q.batchId, 10) : undefined;
-        // 'unknown' is a sentinel meaning "resource_type_id IS NULL" (unmatched OCR).
+        // 'unknown' is a sentinel meaning "resource_type_id IS NULL" (a row the old
+        // screenshot reader could not match to a resource).
         const wantsUnknown = q.resourceTypeId === 'unknown';
         const resourceTypeId = (!wantsUnknown && q.resourceTypeId) ? Number.parseInt(q.resourceTypeId, 10) : undefined;
         const rawDir = Number.parseInt(q.direction ?? '', 10);
@@ -152,7 +153,8 @@ function createResourcesDataRouter() {
     });
     /**
      * GET /transactions/:txId/crop — stream the saved screenshot row for a
-     * transaction the importer left unresolved, for the admin hover preview.
+     * transaction the retired screenshot reader left unresolved, for the admin
+     * hover preview.
      *
      * Same shape as the chest-side crop endpoint: the stored path is resolved and
      * then confined to UNRESOLVED_CROP_DIR, so a maliciously stored path can't be
@@ -184,20 +186,9 @@ function createResourcesDataRouter() {
     });
     /**
      * Delete a batch and all its transactions (clan-scoped).
-     * The deleteBatch repo function includes clan_id in the WHERE clause.
-     *
-     * Deleting an AUTOMATED batch also forgets the capture's marker, and that pairing
-     * is not optional. The marker means "everything below this was recorded"; deleting
-     * the batch makes that false while the rows are still sitting in the game. Without
-     * clearing it the next run stops at the marker, treats the deleted rows as already
-     * held, and they are gone from the database for good once they age off the list
-     * ~14 days later. Clearing it makes the next run read the whole visible window,
-     * and the write-side withhold stops that re-read duplicating anything still held.
-     *
-     * Done HERE and not inside deleteBatch, deliberately: the capture phase calls
-     * deleteBatch itself to clean up its own empty batch when a write fails, and that
-     * runs BEFORE it saves the cursor — so a repo-level hook would throw away a
-     * perfectly good marker on every write failure.
+     * The deleteBatch repo function includes clan_id in the WHERE clause. Ledger
+     * rows deleted this way come back on the next scan while the game still lists
+     * the entries (about two weeks): the import keys on the game's entry id.
      */
     router.delete('/batches/:batchId', auth_js_1.requireAdmin, (req, res) => {
         const clanId = req.clanId;
@@ -206,12 +197,9 @@ function createResourcesDataRouter() {
             res.status(400).json({ error: 'Invalid batchId' });
             return;
         }
-        const wasScan = (0, resource_repo_js_1.getBatchSource)(batchId, clanId) === 'scan';
         (0, resource_repo_js_1.deleteBatch)(batchId, clanId);
-        if (wasScan)
-            (0, resource_repo_js_1.clearCaptureCursor)(clanId);
-        (0, user_repo_js_1.logAction)(req.user.id, 'resources.batch.delete', { clanId, batchId, cursorCleared: wasScan });
-        res.json({ ok: true, cursorCleared: wasScan });
+        (0, user_repo_js_1.logAction)(req.user.id, 'resources.batch.delete', { clanId, batchId });
+        res.json({ ok: true });
     });
     return router;
 }

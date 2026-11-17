@@ -15,7 +15,7 @@ function resolveClanScanSchedule(input) {
         // cycle finishes.
         if (pos < input.cycleDoneCount)
             return { scanning: false, due: false, nextScanInMs: input.intervalMs };
-        // Still ahead in this cycle — or up next with its browser still launching.
+        // Still ahead in this cycle, or up next.
         return DUE;
     }
     if (input.nextScanAt === null)

@@ -75,9 +75,9 @@ describe('frontend assets are served without a session', () => {
     expect(res.headers['content-type']).toMatch(/javascript/);
   });
 
-  it('serves the resource icons and calibration examples the pages reference', async () => {
+  it('serves the resource icons the pages reference', async () => {
     const app = makeApp();
-    for (const dir of ['resource-icons', 'calibration-examples']) {
+    for (const dir of ['resource-icons']) {
       const [first] = fs.readdirSync(path.join(ASSETS_DIR, dir));
       const res = await request(app).get(`/assets/${dir}/${first}`);
       expect(res.status, `${dir}/${first}`).toBe(200);
@@ -101,8 +101,7 @@ describe('what the asset router leaves to the gated routes', () => {
     expect((await request(app).get('/')).headers.location).toBe('/login');
   });
 
-  it('keeps the rest of assets/ out of reach', async () => {
-    const [model] = fs.readdirSync(path.join(ASSETS_DIR, 'paddle-models'));
-    expect((await request(makeApp()).get(`/assets/paddle-models/${model}`)).status).toBe(302);
+  it('serves nothing from assets/ outside the listed directories', async () => {
+    expect((await request(makeApp()).get('/assets/other/file.png')).status).toBe(302);
   });
 });

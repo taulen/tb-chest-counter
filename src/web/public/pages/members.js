@@ -314,20 +314,6 @@ export function setMembersFilter(text) {
 
 // ─── Member detail ────────────────────────────────────────────
 
-async function fetchRawOcrRows(memberId, source) {
-  // Forensic data — superadmin only, mirroring the System-page toggle
-  // that controls capture. Skip the request entirely for everyone else
-  // so we don't generate wasted 403s on every member-page view; the
-  // server endpoint is the authoritative gate.
-  if (getCurrentUser()?.role !== 'superadmin') return [];
-  try {
-    const r = await api(`/members/${memberId}/raw-ocr?limit=100&source=${source}`);
-    return Array.isArray(r?.rows) ? r.rows : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function viewMemberByName(name, navigate) {
   const data = await api(`/members/${encodeURIComponent(name)}`);
   if (data.error) { navigate('members'); return; }
@@ -395,14 +381,11 @@ async function loadAndRenderMemberDetail(data) {
     memberEventsFor = data.id;
     memberEventsAt = Date.now();
   }
-  // Fetch both chest types + both raw-ocr sources up front so the tab
-  // switcher is instant (no per-click round-trip). Bandwidth is fine —
-  // a single page of each is ≤ 25 rows + at most 100 raw-OCR strings.
-  const [chestPage, triumphalPage, rawOcrChests, rawOcrTriumphals] = await Promise.all([
+  // Fetch both chest types up front so the tab switcher is instant (no
+  // per-click round-trip). Bandwidth is fine — a page of each is ≤ 25 rows.
+  const [chestPage, triumphalPage] = await Promise.all([
     fetchMemberChests(data.id),
     fetchMemberTriumphals(data.id),
-    fetchRawOcrRows(data.id, 'chests'),
-    fetchRawOcrRows(data.id, 'triumphals'),
   ]);
   // One feature check for both resource surfaces (the donated-totals card and
   // the Resources history tab) so a member view makes a single /clans call.
@@ -425,7 +408,7 @@ async function loadAndRenderMemberDetail(data) {
   ]);
   currentMemberGame = game && game.linked && game.player ? game : null;
   renderMemberDetail(
-    data, chestPage, triumphalPage, rawOcrChests, rawOcrTriumphals,
+    data, chestPage, triumphalPage,
     resourceCardHtml, mightCard?.html ?? '', mightCard?.statsHtml ?? '', resourcePage,
     guards && !guards.error ? guards : null,
   );
@@ -1292,7 +1275,7 @@ function wireMemberPeriodControls() {
   });
 }
 
-function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total: 0 }, rawOcrChests = [], rawOcrTriumphals = [], resourceCardHtml = '', mightCardHtml = '', mightStatsHtml = '', resourcePage = { rows: [], total: 0 }, guards = null) {
+function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total: 0 }, resourceCardHtml = '', mightCardHtml = '', mightStatsHtml = '', resourcePage = { rows: [], total: 0 }, guards = null) {
   const content = $('#content');
   const isAdmin = ['admin', 'superadmin'].includes(getCurrentUser()?.role);
   const chests = chestPage.chests || [];
@@ -1611,44 +1594,6 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       </div>`;
     })();
 
-  const rawOcrHtml = (() => {
-      // Only the two chest tabs have raw player OCR behind them — the
-      // resource ledger is imported by a different pipeline, whose
-      // unresolved rows are inspected via crops on the Resources page.
-      if (currentMemberChestsTab === 'resources') return '';
-      const isChests = currentMemberChestsTab === 'chests';
-      const activeOcr = isChests ? rawOcrChests : rawOcrTriumphals;
-      if (activeOcr.length === 0) return '';
-      const heading = isChests
-        ? t('Captured Raw OCR — gift chests ({count})', { count: activeOcr.length })
-        : t('Captured Raw OCR — triumphal chests ({count})', { count: activeOcr.length });
-      const intro = isChests
-        ? t('The literal OCR strings the scanner read on the gift chests that ended up attached to this member. Useful when a member is unexpectedly accumulating chests — if you see something nothing like the player\'s name, the matcher misfired. Capture is gated by the "Raw OCR Capture" toggle on the System page.')
-        : t('The literal OCR strings the scanner read on the triumphal chests that ended up attached to this member. Useful when a member is unexpectedly accumulating chests — if you see something nothing like the player\'s name, the matcher misfired. Capture is gated by the "Raw OCR Capture" toggle on the System page.');
-      // data-section-key keeps the collapsible's open state stable
-      // across renders even though the count + source label change
-      // when the operator flips tabs (see feedback_collapsible_section_key).
-      return `<details class="card card-collapsible" data-section-key="member-raw-ocr">
-        <summary class="card-header"><h2>${heading}</h2></summary>
-        <div class="card-body">
-          <p class="muted-copy mb-12">${intro}</p>
-          <table class="table-responsive member-ocr-table">
-            <colgroup>
-              <col class="col-ocr">
-              <col class="col-session">
-              <col class="col-date">
-            </colgroup>
-            <thead><tr><th>${t('Raw OCR')}</th><th>${t('Session')}</th><th>${t('Captured')}</th></tr></thead><tbody>
-            ${activeOcr.map((r) => `<tr>
-              <td data-label="${t('Raw OCR')}" data-role="primary"><span class="mrow-name"><code>${esc(r.rawPlayerOcr)}</code></span></td>
-              <td data-label="${t('Session')}">#${r.sessionId}</td>
-              <td data-label="${t('Captured')}" data-role="metric">${formatDate(new Date(r.capturedAt).toISOString())}</td>
-            </tr>`).join('')}
-          </tbody></table>
-        </div>
-      </details>`;
-    })();
-
   // The profile is four view tabs under the header (lib/view-tabs.js), so no
   // section has to be scrolled past to reach another. Might & guards only
   // exists when one of its cards does; the open tab carries across members.
@@ -1661,7 +1606,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       { key: 'research', label: t('Research'), html: memberTechPanelHtml('research') },
       { key: 'talents', label: t('Talents'), html: memberTechPanelHtml('talent') },
     ] : []),
-    { key: 'history', label: t('History'), html: `${historyCardHtml}${rawOcrHtml}` },
+    { key: 'history', label: t('History'), html: historyCardHtml },
   ];
   const view = views.some((v) => v.key === currentMemberView) ? currentMemberView : 'overview';
   content.innerHTML = `
@@ -1688,10 +1633,8 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   mountTechs(view);
 
   // Wire up the tab switcher — mirrors the pattern in sessions.js.
-  // Flipping tabs is purely client-side toggling: both datasets are
-  // already in the DOM, so no round-trip required. We also flip the
-  // captured-OCR section by re-rendering it from currentMemberChestsTab,
-  // but since the data is in module scope we just re-call render.
+  // Flipping tabs is purely client-side: every dataset is already in
+  // module scope, so no round-trip is needed — just re-render.
   if (hasTriumphals || hasResources) {
     const tabBar = content.querySelector('#memberChestsTabs');
     tabBar?.addEventListener('click', (ev) => {
@@ -1700,11 +1643,8 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       const next = btn.dataset.memberTab;
       if (next === currentMemberChestsTab) return;
       currentMemberChestsTab = next;
-      // Re-render to refresh the Captured Raw OCR card with the new
-      // source's rows. The tab panels could be toggled in-place but
-      // the OCR card needs a full re-render to swap its content.
       renderMemberDetail(
-        data, chestPage, triumphalPage, rawOcrChests, rawOcrTriumphals,
+        data, chestPage, triumphalPage,
         resourceCardHtml, mightCardHtml, mightStatsHtml, resourcePage, guards,
       );
     });

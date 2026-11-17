@@ -405,16 +405,14 @@ export function getScanCoverage(
  * Recent scans as a time series, for the capture-health strip on System.
  *
  * scan_sessions has always been a flat admin list plus one dashboard tile. As a
- * series it is a different thing: duration creeping up over weeks is how a
- * wedged browser announces itself before it costs anyone a five-hour scan, and
- * an error rate that climbs is usually calibration drifting rather than the
- * game changing.
+ * series it is a different thing: duration creeping up over weeks, or an error
+ * rate that climbs, shows a problem before it costs anyone a cycle.
  *
  * Deliberately NOT reporting chests-per-screenshot, which is the obvious third
- * metric and is broken twice over. screenshots_taken stays at its DDL default
- * of 0 on the partial-keep path, so the ratio divides by zero on exactly the
- * aborted sessions worth looking at; and chests_found records new chests, so it
- * tracks how busy the CLAN was, not how well the scanner read.
+ * metric and is broken twice over. screenshots_taken is 0 on every protocol
+ * scan (and was on the old partial-keep path), so the ratio divides by zero;
+ * and chests_found records new chests, so it tracks how busy the CLAN was, not
+ * how well the scanner read.
  *
  * started_at / completed_at are ISO TEXT, so the duration is computed in JS
  * rather than with SQLite date functions on a column that isn't a timestamp.

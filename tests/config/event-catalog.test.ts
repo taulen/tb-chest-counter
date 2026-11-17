@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { EVENT_CATALOG } from '../../src/config/event-catalog.js';
-import { correctChestName } from '../../src/vision/chest-names.js';
+import { correctChestName } from '../../src/data/chest-names.js';
 
 function declaredNames(rule: { chestName?: string; chestNames?: string[] }): string[] {
   return [...(rule.chestName ? [rule.chestName] : []), ...(rule.chestNames || [])];

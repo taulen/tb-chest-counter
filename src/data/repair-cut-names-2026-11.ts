@@ -24,7 +24,7 @@
  * two different aliases both fit.
  */
 import type Database from 'better-sqlite3';
-import { despace } from '../vision/ocr-normalize.js';
+import { despace } from '../utils/name-normalize.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('repair-cut-names');

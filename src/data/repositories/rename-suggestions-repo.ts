@@ -17,7 +17,7 @@
  * "Bob"). Then the NAME is the evidence and the might only has to not contradict it.
  * The live case that forced this (SK7, Nov 13 2026) turned out NOT to be renames: the
  * member-list reader was cutting names at their own kingdom number ("Living SK7" read
- * as "Living S", fixed in member-capture.ts), minting 41 cut-off twins in one day. But
+ * as "Living S", an OCR defect since retired with the reader), minting 41 cut-off twins in one day. But
  * the pairing lesson stands either way — Seasonal Kingdom players grow 5-260% a day, so
  * with might as the only signal most pairs fell outside the window and the closest
  * might among the rest was someone else's ("Living SK7" → "Tigger" while "Tigger K260
@@ -33,7 +33,7 @@
  * in `rename_suggestion_dismissals`.
  */
 import { getDb } from '../database.js';
-import { foldDiacritics } from '../../vision/ocr-normalize.js';
+import { foldDiacritics } from '../../utils/name-normalize.js';
 
 /** How recent the new name's first reading must be for a pair to be suggested. */
 export const RENAME_SUGGESTION_WINDOW_DAYS = 30;

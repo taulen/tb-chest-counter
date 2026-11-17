@@ -19,9 +19,9 @@ exports.getEventMemberDetail = getEventMemberDetail;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const event_catalog_js_1 = require("../../config/event-catalog.js");
-const source_names_js_1 = require("../../vision/source-names.js");
-const chest_names_js_1 = require("../../vision/chest-names.js");
-const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const source_names_js_1 = require("../source-names.js");
+const chest_names_js_1 = require("../chest-names.js");
+const name_normalize_js_1 = require("../../utils/name-normalize.js");
 const log = (0, logger_js_1.childLogger)('event-repo');
 // One warn per (event, declared name) per process. Deliberately NOT log-throttle:
 // that coalesces bursts within a rolling window, and this is a permanent config
@@ -37,7 +37,7 @@ function warnOnce(eventKey, message) {
 }
 /** Accent-, case- and punctuation-insensitive identity of a chest name. */
 function foldKey(s) {
-    return (0, ocr_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+    return (0, name_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 // captured_at is INTEGER ms post-v30; convert at the boundary (same shape
 // as chest-repo.ts / triumphal-chest-repo.ts).
@@ -151,9 +151,9 @@ function resolvePredicate(def) {
     // an unaccented needle could never match "Jörmungandr Shop", and migration v63
     // makes the accented spelling the surviving one for every duplicated source.
     const sourcesMatching = (contains) => {
-        const needle = (0, ocr_normalize_js_1.foldDiacritics)(contains).toLowerCase();
+        const needle = (0, name_normalize_js_1.foldDiacritics)(contains).toLowerCase();
         return allSources
-            .filter((s) => (0, ocr_normalize_js_1.foldDiacritics)(s.source || '').toLowerCase().includes(needle))
+            .filter((s) => (0, name_normalize_js_1.foldDiacritics)(s.source || '').toLowerCase().includes(needle))
             .map((s) => s.id);
     };
     const chestIdToColumn = new Map();

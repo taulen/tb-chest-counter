@@ -1,8 +1,9 @@
 // Resources → Admin: the transaction ledger (filter, sort, edit) and the
-// import history (delete a bad batch). Data arrives only from the daily Clan
-// Capital history read; the screenshot upload that used to live here was
-// removed in Nov 2026, and rows the reader couldn't identify are resolved from
-// the Admin page (unresolved-resources.js).
+// import history (delete a bad batch). Data arrives from the Clan Capital
+// ledger every scan reads from the game. Older rows came from the retired
+// screenshot reader and the screenshot upload (removed Nov 2026); rows that
+// reader couldn't identify are resolved from the Admin page
+// (unresolved-resources.js).
 
 import { api, apiPatch, apiDelete } from '../lib/api.js';
 import { esc, formatDate, formatGameDayShort, notify, confirmDialog } from '../lib/ui.js';
@@ -284,7 +285,7 @@ export async function renderResourcesAdmin(el, navigate) {
           <td data-label="${t('Source')}">${isScan
             ? `<span class="resource-direction resource-batch-auto" title="${t('Read from the game by the automated capture')}">${t('Automatic')}</span>`
             : `<span class="resource-direction resource-batch-upload" title="${t('Screenshots uploaded by an admin')}">${t('Upload')}</span>`}</td>
-          <td data-label="${t('Screenshot Date')}">${esc(formatGameDayShort(b.uploadDate))}</td>
+          <td data-label="${t('Date')}">${esc(formatGameDayShort(b.uploadDate))}</td>
           <td data-label="${isScan ? t('Pages') : t('Files')}" class="col-num">${b.fileCount ?? 1}</td>
           <td data-label="${t('Rows')}"    class="col-num" data-role="metric">${b.rowCount}</td>
           <td data-label="${t('Errors')}"  class="col-num">${b.errorCount}</td>
@@ -358,7 +359,7 @@ export async function renderResourcesAdmin(el, navigate) {
           <thead><tr>
             <th>${t('Imported')}</th>
             <th>${t('Source')}</th>
-            <th>${t('Screenshot Date')}</th>
+            <th>${t('Date')}</th>
             <th class="col-num">${t('Files')}</th>
             <th class="col-num">${t('Rows')}</th>
             <th class="col-num">${t('Errors')}</th>

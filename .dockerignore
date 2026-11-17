@@ -1,8 +1,5 @@
 node_modules
 npm-debug.log*
-data/browser-profile
-data/screenshots
-data/backups
-data/uploads
+data
 .git
 .vscode

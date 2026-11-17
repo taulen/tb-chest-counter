@@ -3,19 +3,17 @@ import { ScanLoop } from '../../src/scheduler/loop.js';
 
 // getScanActivity only reads in-memory flags, so the loop is built with inert
 // collaborators and the flags are set directly — the states it reports are
-// the ones runCycle / runSingleScan / finishScan leave behind.
+// the ones runCycle / runProtocolClanScan leave behind.
 type LoopState = {
   scanInProgress: boolean;
   scanStartedAt: number | null;
-  mightCaptureInProgress: boolean;
-  resourceCaptureInProgress: boolean;
   cycleOrder: number[];
   cycleDoneCount: number;
   clanId: number;
 };
 
 function makeLoop(state: Partial<LoopState>): ScanLoop {
-  const loop = new ScanLoop({ scanIntervalMs: 60_000 } as never, {} as never, {} as never);
+  const loop = new ScanLoop({ scanIntervalMs: 60_000 } as never);
   Object.assign(loop as unknown as LoopState, state);
   return loop;
 }
@@ -43,9 +41,9 @@ describe('ScanLoop.getScanActivity', () => {
   });
 
   it('keeps reporting across the gap between two clans of a cycle', () => {
-    // runCycle has moved on to clan 7 (setActiveClan before the browser launch)
-    // while scanInProgress is false.
-    const activity = makeLoop({ clanId: 7, cycleOrder: [1, 5, 7], cycleDoneCount: 2 }).getScanActivity();
+    // runCycle has moved on to clan 7 while the previous clan is still the
+    // active one and no scan is running.
+    const activity = makeLoop({ clanId: 5, cycleOrder: [1, 5, 7], cycleDoneCount: 2 }).getScanActivity();
     expect(activity).toEqual({
       clanId: 7, phase: 'starting', elapsedMs: null, cyclePosition: 3, cycleTotal: 3,
     });
@@ -53,15 +51,5 @@ describe('ScanLoop.getScanActivity', () => {
 
   it('is idle once every clan of the cycle is done', () => {
     expect(makeLoop({ cycleOrder: [1, 5], cycleDoneCount: 2 }).getScanActivity()).toBeNull();
-  });
-
-  it('names the post-scan phases', () => {
-    const base = { scanInProgress: true, scanStartedAt: Date.now() };
-    expect(makeLoop({ ...base, mightCaptureInProgress: true }).getScanActivity()?.phase).toBe('might');
-    expect(makeLoop({ ...base, resourceCaptureInProgress: true }).getScanActivity()?.phase).toBe('resources');
-  });
-
-  it('tells a calibration capture apart from a scan', () => {
-    expect(makeLoop({ scanInProgress: true }).getScanActivity()).toMatchObject({ phase: 'calibration', elapsedMs: null });
   });
 });

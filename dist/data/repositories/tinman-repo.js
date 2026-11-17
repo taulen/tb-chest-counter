@@ -43,7 +43,7 @@ exports.deleteTinmanTargets = deleteTinmanTargets;
 const database_js_1 = require("../database.js");
 const member_repo_js_1 = require("./member-repo.js");
 const name_resolver_js_1 = require("../name-resolver.js");
-const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const name_normalize_js_1 = require("../../utils/name-normalize.js");
 const tinman_parse_js_1 = require("../tinman-parse.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 exports.TINMAN_MAX_SUMMONS = 8;
@@ -72,7 +72,7 @@ function dropPerformanceCache(clanId) {
 }
 /** Normalised identity of a pasted name, for carrying decisions between uploads. */
 function nameKey(raw) {
-    return (0, ocr_normalize_js_1.despace)(raw) || raw.trim().toLowerCase();
+    return (0, name_normalize_js_1.despace)(raw) || raw.trim().toLowerCase();
 }
 /**
  * Decisions an admin already made for this run, by pasted name: a manual

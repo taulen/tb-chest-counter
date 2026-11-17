@@ -54,7 +54,7 @@ const index_js_1 = require("../config/index.js");
 const clan_repo_js_1 = require("./repositories/clan-repo.js");
 const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
 const point_timeline_js_1 = require("./point-timeline.js");
-const source_names_js_1 = require("../vision/source-names.js");
+const source_names_js_1 = require("./source-names.js");
 const source_categories_js_1 = require("./source-categories.js");
 /** Largest value a save accepts — the biggest real one is 10,000. */
 exports.MAX_POINTS = 1_000_000;

@@ -66,8 +66,8 @@ const express_1 = __importStar(require("express"));
  * SPA fallback, so a `.html` path falls through to the routes after this one,
  * as does anything that isn't a file here (a directory, a missing path).
  */
-/** The /assets subdirectories the frontend references (resource-format.js, system.js). */
-const PUBLIC_ASSET_DIRS = ['resource-icons', 'calibration-examples'];
+/** The /assets subdirectories the frontend references (resource-format.js). */
+const PUBLIC_ASSET_DIRS = ['resource-icons'];
 function skipHtml(handler) {
     return (req, res, next) => (path_1.default.extname(req.path).toLowerCase() === '.html' ? next() : handler(req, res, next));
 }

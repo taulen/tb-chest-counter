@@ -164,7 +164,7 @@
            + ChestTracker per-clan settings, delete). -->
       <a href="#" data-page="clans" id="navClans" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg><span class="nav-label" data-i18n>Clans</span></a>
       <!-- Superadmin-only: instance-wide settings (scan interval,
-           calibration, restart, backup/import). -->
+           event dates, restart, backup/import). -->
       <a href="#" data-page="system" id="navSystem" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="nav-label" data-i18n>System</span><span id="navSystemDot" class="nav-dot is-hidden"><span class="visually-hidden" data-i18n> (new warnings logged)</span></span></a>
     </div>
     <!-- Mobile-only account section at the bottom of the slide-out menu -->
@@ -195,14 +195,6 @@
   <div class="container page-head" id="pageHead">
     <h1 class="page-title" id="pageTitle"></h1>
     <p class="page-subtitle" id="pageSubtitle"></p>
-  </div>
-
-  <div class="container">
-    <!-- Onboarding banner — surfaced by app.js when /api/status reports
-         calibration or member capture isn't done yet. Hidden by default
-         and shown once status arrives. Sits OUTSIDE the page swap region
-         so it doesn't get clobbered on route changes. -->
-    <div id="onboardingBanner" class="onboarding-banner is-hidden" role="status"></div>
   </div>
 
   <div class="container" id="content">

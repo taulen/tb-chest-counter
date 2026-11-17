@@ -7,11 +7,11 @@ exports.makeMemberResolver = makeMemberResolver;
  * permanent player id (members.game_player_id, v103).
  *
  * For every member of the clan record (name first run through the clan's
- * player merge rules, like every OCR read path):
+ * player merge rules):
  *   1. already linked → that member;
  *   2. else link an unlinked member whose name matches exactly (accent- and
  *      space-insensitive, aliases included — exactMatchMember);
- *   3. else link an unlinked ACTIVE member that fuzzy-matches (OCR damage) AND
+ *   3. else link an unlinked ACTIVE member that fuzzy-matches (a stored OCR misread) AND
  *      whose latest might is within ±15 % of the game's — the might check is
  *      what makes a fuzzy link safe enough to do automatically;
  *   4. else create the member under its exact game name and link it.
@@ -19,9 +19,8 @@ exports.makeMemberResolver = makeMemberResolver;
  * rename audited), is marked seen, gets the day's might/hero snapshot, and
  * members linked to players no longer in the clan record are marked as left.
  *
- * The snapshot replaces the OCR might capture: that phase skips a game day that
- * already has a snapshot. markMembersSeen + snapshots also keep the inactivity
- * sweeps working (they key on both).
+ * markMembersSeen + snapshots also keep the inactivity sweeps working (they key
+ * on both).
  */
 const database_js_1 = require("../data/database.js");
 const member_repo_js_1 = require("../data/repositories/member-repo.js");
@@ -66,7 +65,7 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
     /** Players whose member is linked to them — the only ones that may rename, re-role or snapshot it. */
     const owned = new Set();
     // A player merge rule is the admin saying "this name IS that member" — it
-    // decides the match, exactly as on every OCR read path.
+    // decides the match.
     const canonical = (0, merge_repo_js_1.loadPlayerNameCanonicaliser)(clanId);
     for (const rm of roster) {
         const p = byPlayer.get(rm.playerId);

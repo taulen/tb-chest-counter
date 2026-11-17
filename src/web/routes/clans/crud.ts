@@ -32,7 +32,6 @@ import { createPreActionBackup } from '../../../utils/db-backup.js';
 import { requireAuth, requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { childLogger } from '../../../utils/logger.js';
 import { createClanSubRouter, deletedClanSummary, publicClan, publicClanWithCounts } from './_shared.js';
-import type { OnboardState } from './onboard.js';
 
 const log = childLogger('clans-route');
 
@@ -45,12 +44,8 @@ function parseLinkId(raw: string | string[] | undefined): number | null {
 /**
  * Clan CRUD: list, fetch, create, rename, delete, public share-link
  * generate/disable, and the superadmin "switch active clan" route.
- *
- * The DELETE handler also clears the onboard state for the removed
- * clan so the in-memory progress map doesn't grow forever — that's
- * why this router takes the OnboardState bag.
  */
-export function createCrudRouter(onboardState: OnboardState): Router {
+export function createCrudRouter(): Router {
   const router = createClanSubRouter();
 
   /**
@@ -141,9 +136,9 @@ export function createCrudRouter(onboardState: OnboardState): Router {
   });
 
   /**
-   * Create a new clan. Superadmin only. The clan starts empty — adding
-   * the in-app login session, calibration, and the initial member list
-   * happen via the add-clan onboarding flow.
+   * Create a new clan. Superadmin only. The clan starts empty: once an
+   * admin signs it in through the login bridge, the next scan reads its
+   * members and gifts from the game.
    *
    * Game URL is intentionally not per-clan: every clan logs into the
    * same Total Battle game (clan switching happens inside the game's
@@ -393,7 +388,6 @@ export function createCrudRouter(onboardState: OnboardState): Router {
       res.status(409).json({ error: result.reason });
       return;
     }
-    onboardState.clear(id);
     logAction(req.user!.id, 'clan.delete', { clanId: id, soft: true });
     res.json({ ok: true, soft: true, name: target.name });
   });

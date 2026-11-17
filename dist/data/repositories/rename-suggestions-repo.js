@@ -23,7 +23,7 @@ exports.dismissRenameSuggestion = dismissRenameSuggestion;
  * "Bob"). Then the NAME is the evidence and the might only has to not contradict it.
  * The live case that forced this (SK7, Nov 13 2026) turned out NOT to be renames: the
  * member-list reader was cutting names at their own kingdom number ("Living SK7" read
- * as "Living S", fixed in member-capture.ts), minting 41 cut-off twins in one day. But
+ * as "Living S", an OCR defect since retired with the reader), minting 41 cut-off twins in one day. But
  * the pairing lesson stands either way — Seasonal Kingdom players grow 5-260% a day, so
  * with might as the only signal most pairs fell outside the window and the closest
  * might among the rest was someone else's ("Living SK7" → "Tigger" while "Tigger K260
@@ -39,7 +39,7 @@ exports.dismissRenameSuggestion = dismissRenameSuggestion;
  * in `rename_suggestion_dismissals`.
  */
 const database_js_1 = require("../database.js");
-const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const name_normalize_js_1 = require("../../utils/name-normalize.js");
 /** How recent the new name's first reading must be for a pair to be suggested. */
 exports.RENAME_SUGGESTION_WINDOW_DAYS = 30;
 /** Days the might series may skip between the old name's last read and the new one's first. */
@@ -73,7 +73,7 @@ const MIN_STEM_LENGTH = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Letters and digits of any script — case, accents, spacing and punctuation gone. */
 function stemKey(name) {
-    return (0, ocr_normalize_js_1.foldDiacritics)(name.normalize('NFKC')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    return (0, name_normalize_js_1.foldDiacritics)(name.normalize('NFKC')).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 }
 /**
  * True when one name is the whole of the other with a tag added or dropped at either

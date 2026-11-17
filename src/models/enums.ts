@@ -24,23 +24,8 @@ export enum ScanStatus {
   FAILED = 'failed',
 }
 
-export enum ScreenState {
-  GIFT_TAB = 'gift_tab',
-  NO_GIFTS = 'no_gifts',
-  LOGIN_REQUIRED = 'login_required',
-  LOADING = 'loading',
-  MAIN_GAME = 'main_game',
-  POPUP = 'popup',
-  MAINTENANCE = 'maintenance',
-  /** The game's "Connection lost" dialog: the account was signed in elsewhere. */
-  SESSION_KICKED = 'session_kicked',
-  UNKNOWN = 'unknown',
-}
-
 export enum AppState {
   IDLE = 'idle',
-  CHECKING_AUTH = 'checking_auth',
-  NAVIGATING = 'navigating',
   SCANNING = 'scanning',
   PROCESSING = 'processing',
   EXPORTING = 'exporting',

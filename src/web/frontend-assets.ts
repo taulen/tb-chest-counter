@@ -30,8 +30,8 @@ import type { RequestHandler } from 'express';
  * as does anything that isn't a file here (a directory, a missing path).
  */
 
-/** The /assets subdirectories the frontend references (resource-format.js, system.js). */
-const PUBLIC_ASSET_DIRS = ['resource-icons', 'calibration-examples'] as const;
+/** The /assets subdirectories the frontend references (resource-format.js). */
+const PUBLIC_ASSET_DIRS = ['resource-icons'] as const;
 
 function skipHtml(handler: RequestHandler): RequestHandler {
   return (req, res, next) => (

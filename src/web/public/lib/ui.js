@@ -496,8 +496,8 @@ export function openModal({ title, message, type = 'info', defaultValue = null, 
 function classifyToast(title) {
   if (!title) return 'info';
   const text = String(englishOf(title)).toLowerCase();
-  if (/(fail|error|invalid|not allowed|cannot|incomplete|nothing|no member|no stage|partial)/.test(text)) return 'error';
-  if (/(saved|success|complete|started|deleted|calibrated|merge complete)/.test(text)) return 'success';
+  if (/(fail|error|invalid|not allowed|cannot|incomplete|nothing|no member|partial)/.test(text)) return 'error';
+  if (/(saved|success|complete|started|deleted|merge complete)/.test(text)) return 'success';
   return 'info';
 }
 
@@ -537,8 +537,8 @@ function ensureToastRoot() {
 // (default — stable across re-renders since the headings don't move).
 // Recording closes as well as opens lets us defeat an inline `open`
 // attribute that would otherwise re-pop the section after a rerender
-// (e.g. System's calibration card renders `<details open>` while its
-// step is outstanding, ignoring that the user just collapsed it).
+// (a card rendered `<details open>` would otherwise ignore that the user
+// just collapsed it).
 //
 // State is scoped to the current page — switching tabs clears it, so
 // expanding "Server-Side Backups" on System doesn't auto-expand a
@@ -607,8 +607,8 @@ export function showCropPreview(url, trigger, { wide = false } = {}) {
   // can't inject markup here.
   img.src = url;
   img.alt = t('Screenshot of the row this entry came from');
-  // Chest batch crops age out with screenshotRetentionDays while the DB row keeps
-  // pointing at them, so a hover on an old entry can 404. Say so instead of showing
+  // Chest batch crops were aged out by the old screenshot retention while the DB
+  // row keeps pointing at them, so a hover on an old entry can 404. Say so instead of showing
   // a broken-image icon.
   img.addEventListener('error', () => {
     pop.textContent = CROP_UNAVAILABLE;

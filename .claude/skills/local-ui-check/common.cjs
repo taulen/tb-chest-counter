@@ -96,12 +96,12 @@ async function newContext(browser, lang, vpName, { signedIn = true, theme = 'dar
 }
 
 /**
- * Dashboard-only mode has no scanner, so /api/status says state 'unknown',
- * no next scan and "calibrate the scanner" — and the status chrome prod shows
- * on every page (the next-scan countdown pill in the sidebar) never renders.
- * That is exactly where the first i18n pass missed a Russian overflow. Answer
- * like a running prod scanner instead: idle, next scan 1h 00m 59s out (the
- * widest countdown it normally shows), calibrated.
+ * Dashboard-only mode has no scanner, so /api/status says state 'unknown' and
+ * no next scan — and the status chrome prod shows on every page (the next-scan
+ * countdown pill in the sidebar) never renders. That is exactly where the first
+ * i18n pass missed a Russian overflow. Answer like a running prod scanner
+ * instead: idle, next scan 1h 00m 59s out (the widest countdown it normally
+ * shows).
  */
 async function fakeScannerStatus(ctx) {
   await ctx.route('**/api/status', async (route) => {
@@ -111,14 +111,13 @@ async function fakeScannerStatus(ctx) {
     if (!json.state || json.state === 'unknown') json.state = 'idle';
     if (!json.nextScanAt) json.nextScanAt = new Date(Date.now() + 3659e3).toISOString();
     json.scanInProgress = false;
-    if (json.onboarding) json.onboarding = { ...json.onboarding, nextStep: 'ready' };
     // TB_UI_SCANNING=1: mid-scan instead (the sidebar scan card), clan 2 of 3
     // of a cycle. TB_UI_SCANNING_CLAN overrides the clan name, to try a long one.
     if (process.env.TB_UI_SCANNING) {
       Object.assign(json, {
         state: 'scanning',
         scanInProgress: true,
-        progressMessage: 'Capturing chests… 24 chests seen (6 screenshots)',
+        progressMessage: 'Opening chests (21/40)…',
         activity: {
           clanId: 1,
           clanName: process.env.TB_UI_SCANNING_CLAN || 'CWB - ChaosWithoutBorders',

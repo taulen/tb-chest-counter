@@ -23,7 +23,7 @@ exports.parseLevelReports = parseLevelReports;
  *
  * Pure — no database — so tests can run it on its own.
  */
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+const name_normalize_js_1 = require("../utils/name-normalize.js");
 exports.LEVEL_KEYS = ['g', 'm', 's', 'e', 'c', 'd'];
 /** Highest believable value per letter; anything above is a misread. */
 exports.LEVEL_MAX = { g: 10, m: 10, s: 10, e: 10, c: 60, d: 500 };
@@ -57,7 +57,7 @@ function parseLevelReports(text) {
             skipped.push(line);
             continue;
         }
-        const key = (0, ocr_normalize_js_1.despace)(name) || name.toLowerCase();
+        const key = (0, name_normalize_js_1.despace)(name) || name.toLowerCase();
         const prev = byKey.get(key);
         if (prev) {
             prev.levels = { ...prev.levels, ...levels };

@@ -26,9 +26,8 @@ let _setupDoneReject = null;
  *  awaiter in src/index.ts hangs on this promise; resolving it lets the
  *  process tear down the setup-mode server and start the normal one.
  *
- *  Calibration and member capture are deliberately NOT part of setup —
- *  they're guarded server-side everywhere a scan can be triggered, and
- *  the dashboard surfaces the next required step to the operator. */
+ *  Nothing else is needed: the first scan reads the clan's members and
+ *  gifts straight from the game. */
 function waitForSetupComplete() {
     return new Promise((resolve, reject) => {
         _setupDoneResolve = resolve;
@@ -63,8 +62,7 @@ function isGameAuthenticated() {
  *  server's middleware uses this to redirect random URLs back to
  *  /setup until the operator has both filled in the form and signed
  *  in to Total Battle. Once both are done, isSetupFlowActive() flips
- *  false and the main app takes over (with its own onboarding
- *  banners for calibrate / capture-members). */
+ *  false and the main app takes over. */
 function isSetupFlowActive() {
     if ((0, setup_wizard_js_1.needsSetup)())
         return true;
@@ -262,9 +260,7 @@ function createSetupRouter() {
      * storage state. The setup page calls this once it sees the bridge
      * write succeed; with that, setup is over — the awaiter in
      * src/index.ts resolves and the container transitions to normal
-     * mode. Calibration and the first member-capture / chest scan
-     * happen later from the main app (gated server-side so nothing can
-     * scan until both are done).
+     * mode, whose first scan cycle starts straight away.
      */
     router.post('/auth-saved', (_req, res) => {
         if (!setupCompletedInProcess) {

@@ -1,23 +1,19 @@
 /**
- * Game protocol capture — the parallel run.
+ * Game protocol capture — the first half of every clan's scan.
  *
- * Before each clan's OCR scan, read what the game server itself reports for
- * that clan and store it (migration v102):
+ * Reads what the game server itself reports for the clan and stores it
+ * (migration v102):
  *
  *   - the clan record: members (role, joined) and BOTH gift tabs, read before
- *     the scan claims anything, so each scan can be compared gift by gift;
+ *     the scan claims anything;
  *   - every member's player record: name, might, hero level, city level, VIP,
  *     Gold Pass, current hero;
  *   - the Clan Capital ledger (~two weeks, stored by entry id).
  *
- * Contract, same as the post-scan phases: this never throws out of its call
- * site, never touches the OCR tables or the scan state, and never decides a
- * clan needs re-authentication — the scan that follows is the authority on
- * that. A failure is a logged, recorded no-op and the next cycle tries again.
- *
- * It runs BEFORE the clan's browser is launched: a direct login takes over the
- * account's game session, and the scan's own fresh navigation then takes it
- * back. See docs/game-protocol.md.
+ * The scan (protocol-scan.ts) then records and claims the gifts on the same
+ * session. This never throws out of its call site: a failure is a logged,
+ * recorded outcome and the next cycle tries again. A definite logout flags the
+ * clan for re-authentication. See docs/game-protocol.md.
  */
 import path from 'path';
 import { childLogger } from '../utils/logger.js';
@@ -42,20 +38,17 @@ import {
   cityChangedSinceRead,
   finishCaptureRun,
   hasRawSnapshot,
-  loadScanComparisonInputs,
   saveCitySnapshot,
   saveGifts,
   saveLedger,
   saveMapObjects,
   savePlayers,
   saveRawSnapshot,
-  saveScanComparison,
   saveTechs,
   startCaptureRun,
   type MapObjectRow,
   type NamedGift,
 } from '../data/repositories/game-protocol-repo.js';
-import { compareGifts } from '../game-protocol/compare.js';
 import { syncMembersFromGame } from '../game-protocol/member-sync.js';
 import { currentGameDate } from '../utils/game-day.js';
 import { loadTechTrees } from '../game-protocol/tech-trees.js';
@@ -282,28 +275,3 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
   return parts.join('; ');
 }
 
-/**
- * After a scan: compare its OCR rows with the gift list the game reported just
- * before it, per tab, store the result and log one `[game-vs-ocr]` line.
- * Read-only towards the OCR tables; never throws.
- */
-export function compareScanWithGameCapture(clanId: number, sessionId: number): void {
-  try {
-    const inputs = loadScanComparisonInputs(clanId, sessionId);
-    if (!inputs) return;
-    const expand = (rows: typeof inputs.gifts, tab: number) =>
-      rows.filter((g) => g.tab === tab).flatMap((g) => Array.from({ length: g.count }, () => g));
-    const parts: string[] = [];
-    for (const [tab, label, ocr] of [[1, 'gifts', inputs.chestRows], [2, 'triumphal', inputs.triumphalRows]] as const) {
-      const c = compareGifts(expand(inputs.gifts, tab), ocr, inputs.captureEpoch);
-      saveScanComparison(clanId, sessionId, inputs.runId, tab, c);
-      parts.push(
-        `${label}: game ${c.game} · OCR ${c.ocr} · matched ${c.matched} · misreads ${c.misreads} · ` +
-        `OCR-only ${c.ocrOnly} (+${c.ocrLate} late) · game-only ${c.gameOnly}`,
-      );
-    }
-    log.info(`[game-vs-ocr] clan #${clanId} session ${sessionId} — ${parts.join(' | ')}`);
-  } catch (err) {
-    log.warn({ noAlert: true }, `[game-vs-ocr] comparison failed for clan #${clanId} session ${sessionId}: ${String(err)}`);
-  }
-}

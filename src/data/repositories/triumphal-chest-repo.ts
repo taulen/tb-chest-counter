@@ -59,14 +59,12 @@ function rowToChest(row: Record<string, unknown>): ChestRecord {
 
 export function insertChest(
   chest: Omit<ChestRecord, 'id'> & {
-    debugCropPath?: string | null;
     clanId: number;
-    /** Raw OCR'd player name. See chest-repo.ts insertChest for rationale. */
-    rawPlayerOcr?: string | null;
-    /** Best-effort in-game received time (epoch ms) from the gift's "time
-     *  left" countdown; see src/utils/gift-time.ts. NULL for non-scan paths. */
+    /** In-game received time (epoch ms): the gift's arrival time as the game
+     *  reports it. NULL for import paths. */
     earnedAt?: number | null;
-    /** The game gift this row came from (protocol scan, v103); NULL for OCR rows. */
+    /** The game gift this row came from (protocol scan, v103); NULL for rows
+     *  recorded before the switch to the game protocol. */
     gameGiftId?: number | null;
   },
 ): ChestRecord {
@@ -77,8 +75,7 @@ export function insertChest(
   // Sanity guard: a triumphal record must at least have a non-empty name.
   // The set of valid names is no longer closed (new bank chests like
   // Conqueror's Chest are captured and score 0 until a superadmin assigns
-  // a value), so we only reject the truly-nameless — the scan path already
-  // resolves/cleans names via correctTriumphalChestName().
+  // a value), so we only reject the truly-nameless.
   if (!chest.chestName || !chest.chestName.trim()) {
     throw new Error('triumphal insertChest: chestName is required');
   }
@@ -86,8 +83,8 @@ export function insertChest(
   const chestSourceId = getOrCreateChestSourceId(chest.chestSource);
   const result = db.prepare(`
     INSERT INTO triumphal_chest_records
-      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at, game_gift_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     chest.clanId,
     chest.sessionId,
@@ -97,8 +94,6 @@ export function insertChest(
     chest.pointValue,
     isoToMs(chest.capturedAt),
     Math.round(chest.confidence * 100),
-    chest.debugCropPath ?? null,
-    chest.rawPlayerOcr ?? null,
     chest.earnedAt ?? null,
     chest.gameGiftId ?? null,
   );
@@ -113,9 +108,9 @@ export function deleteBySession(sessionId: number, clanId: number): number {
   return result.changes;
 }
 
-/** Triumphal counterpart to chestRepo.countChestsBySession — the triumphal
- *  sweep is pipelined the same way, so a crash mid-sweep leaves rows here
- *  that no in-memory tally survived to describe. */
+/** Triumphal counterpart to chestRepo.countChestsBySession — triumphal gifts
+ *  are recorded the same way, so a crash mid-scan leaves rows here that no
+ *  in-memory tally survived to describe. */
 export function countBySession(sessionId: number, clanId: number): number {
   const db = getDb();
   const row = db.prepare(
@@ -222,26 +217,6 @@ export function getMemberStats(
     totalChests: row.totalChests || 0,
     totalPoints: row.totalPoints || 0,
   };
-}
-
-/**
- * Triumphal twin of chest-repo's getRawPlayerOcrForMember. Returns
- * the captured raw OCR strings that resolved to this member on the
- * triumphal scan path, for the System-page "Raw OCR Capture" feature.
- */
-export function getRawPlayerOcrForMember(
-  memberId: number,
-  clanId: number,
-  limit: number,
-): Array<{ rawPlayerOcr: string; capturedAt: number; sessionId: number }> {
-  const db = getDb();
-  const rows = db.prepare(
-    `SELECT raw_player_ocr AS rawPlayerOcr, captured_at AS capturedAt, session_id AS sessionId
-     FROM triumphal_chest_records
-     WHERE member_id = ? AND clan_id = ? AND raw_player_ocr IS NOT NULL
-     ORDER BY captured_at DESC LIMIT ?`,
-  ).all(memberId, clanId, limit) as Array<{ rawPlayerOcr: string; capturedAt: number; sessionId: number }>;
-  return rows;
 }
 
 export interface TriumphalLeaderboardEntry {

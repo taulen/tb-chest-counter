@@ -7,8 +7,8 @@ import { logAction } from '../data/repositories/user-repo.js';
 import { clearClanNeedsReauth } from '../data/repositories/clan-repo.js';
 
 // Per-clan persistent profile + storage-state paths. Putting each clan
-// under its own directory means scans can hot-swap which clan's auth is
-// active without losing the other clans' Total Battle / Google sign-ins.
+// under its own directory keeps every clan's Total Battle sign-in isolated
+// from the others.
 import { clanLoginProfileDir, clanStorageStatePath } from '../config/clan-paths.js';
 import { TB_GAME_URL } from '../config/game-url.js';
 import { getConfig } from '../config/index.js';
@@ -31,8 +31,8 @@ import {
   STREAM_LADDER,
 } from './login-bridge/link-quality.js';
 import { measureSocketRtt } from './login-bridge/rtt.js';
-import { GPU_ARGS, isBridgeGpuEnabled, logWebglRenderer } from '../browser/gpu.js';
-import { clearStaleProfileLocks, killProfileOwner } from '../browser/profile-lock.js';
+import { GPU_ARGS, isBridgeGpuEnabled, logWebglRenderer } from './login-bridge/gpu.js';
+import { clearStaleProfileLocks, killProfileOwner } from './login-bridge/profile-lock.js';
 
 const log = childLogger('login-bridge');
 
@@ -335,11 +335,10 @@ class LoginBridge {
       // back at the login form.
       fs.mkdirSync(profileDir, { recursive: true });
 
-      // iGPU offload. In new headless this is the same configuration the
-      // scanner has been running on the iGPU for months, so it inherits
-      // SCANNER_GPU by default. Under Xvfb it cannot work at all — a virtual
-      // framebuffer has no hardware-backed surface — so don't even try, or
-      // we'd pay the stall-then-relaunch detour on every session.
+      // iGPU offload (LOGIN_BRIDGE_GPU), validated in new headless. Under Xvfb
+      // it cannot work at all — a virtual framebuffer has no hardware-backed
+      // surface — so don't even try, or we'd pay the stall-then-relaunch
+      // detour on every session.
       let gpuEnabled = isBridgeGpuEnabled() && !headed;
       if (isBridgeGpuEnabled() && headed) {
         log.warn(
@@ -584,7 +583,7 @@ class LoginBridge {
       timeout: BROWSER_LAUNCH_TIMEOUT_MS,
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
       locale: 'en-US',
-      // Same zone as the scanner — see ../config/game-timezone.ts.
+      // The game day's own zone — see ../config/game-timezone.ts.
       timezoneId: gameDayTimezoneId(getConfig().gameDayRolloverUtcHour),
       env: headed && this.xvfb ? { ...process.env, DISPLAY: this.xvfb.display } : process.env,
       args: [
@@ -594,7 +593,7 @@ class LoginBridge {
         '--mute-audio',
         // The bridge window is never "visible" to the compositor under Xvfb,
         // and Chromium throttles rendering for occluded/background windows —
-        // which shows up as a stuttering screencast. The scanner sets these too.
+        // which shows up as a stuttering screencast.
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding',
@@ -972,7 +971,7 @@ class LoginBridge {
 
   /**
    * Seed the bridge's persistent context with cookies + localStorage from the
-   * scanner's existing storage-state.json. Best-effort — failures are logged
+   * clan's existing storage-state.json. Best-effort — failures are logged
    * and swallowed so a malformed/missing file doesn't block login.
    */
   private async hydrateFromStorageState(context: BrowserContext, storageStatePath: string): Promise<void> {
@@ -1054,18 +1053,18 @@ class LoginBridge {
     const cookies = state.cookies ?? [];
     const hasTbAuth = cookies.some((c) => typeof c.domain === 'string' && c.domain.includes('totalbattle'));
 
-    // Capture-completeness check. The ONLY cookie the headless scanner
-    // needs is PTBHSSID — TB's server-side session id. The big Google /
+    // Capture-completeness check. The ONLY cookie the scan needs is
+    // PTBHSSID — TB's server-side session id. The big Google /
     // YouTube OAuth cookie set (which is what swings the total between
     // ~16 and ~55) only matters for the interactive bridge remembering
-    // the account; the scanner just replays the session cookie. So we key
+    // the account; the scan just replays the session cookie. So we key
     // the warning on PTBHSSID presence, NOT on the raw cookie count — a
     // 16-cookie capture with a valid PTBHSSID is healthy and has scanned
     // fine for months. Warning on the count was a false alarm.
     const hasSessionCookie = cookies.some((c) => c.name === 'PTBHSSID');
     if (!hasSessionCookie) {
       log.warn(
-        `Captured session is missing the TB session cookie (PTBHSSID) — the scanner will treat this clan as logged out. ` +
+        `Captured session is missing the TB session cookie (PTBHSSID) — the scan will treat this clan as logged out. ` +
           `Wait for the game to fully load (canvas + your base visible) before saving.`,
       );
     } else {
@@ -1082,9 +1081,9 @@ class LoginBridge {
       logAction(adminUserId, 'login_session_save', { cookies: cookies.length, hasTbAuth, clanId });
     }
 
-    // Fresh storage-state on disk — the auth-check phase will be able
-    // to load the canvas again, so drop the "needs re-auth" badge and
-    // re-arm the Discord notice for the next time cookies expire.
+    // Fresh storage-state on disk — the next scan can sign in again, so
+    // drop the "needs re-auth" badge and re-arm the Discord notice for the
+    // next time cookies expire.
     clearClanNeedsReauth(clanId);
 
     await this.teardown();

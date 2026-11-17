@@ -35,12 +35,11 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createMightRouter = createMightRouter;
 /**
- * Read API for member might (power level) tracking, plus the superadmin toggle.
+ * Read API for member might (power level) history. Every scan records each
+ * member's might and hero level from the game (game-protocol/member-sync.ts).
  *
  * Everything might-related lives in this one router rather than being threaded
- * into api.ts: the feature is new, can only be validated against the live game,
- * and must be removable or disableable without touching the routes that serve
- * chest data.
+ * into api.ts, so it stays separate from the routes that serve chest data.
  *
  * Deliberately unrelated to the ChestTracker import routes (/api/external) —
  * different source, different tables, no shared queries. Do not join these
@@ -52,12 +51,7 @@ exports.createMightRouter = createMightRouter;
 const express_1 = require("express");
 const mightRepo = __importStar(require("../../data/repositories/might-repo.js"));
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
-const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
-const user_repo_js_1 = require("../../data/repositories/user-repo.js");
-const auth_js_1 = require("../middleware/auth.js");
 const index_js_1 = require("../../config/index.js");
-const persistent_env_js_1 = require("../../config/persistent-env.js");
-const calibration_js_1 = require("../../config/calibration.js");
 const game_day_js_1 = require("../../utils/game-day.js");
 const logger_js_1 = require("../../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('might-route');
@@ -76,12 +70,11 @@ function clampDays(raw, fallback = DEFAULT_DAYS) {
         return fallback;
     return Math.min(MAX_DAYS, n);
 }
-function createMightRouter(scanLoop) {
+function createMightRouter() {
     const router = (0, express_1.Router)();
     /**
      * Everything the Members page needs in one call: latest might per active
-     * member with its delta, plus enough status for the UI to explain itself when
-     * there's no data yet (feature off? not calibrated? just never run?).
+     * member with its delta, plus when the last reading was taken.
      *
      * Members with no snapshot are included with `might: null` rather than
      * omitted, so the table shows the whole roster and marks the gaps instead of
@@ -117,11 +110,6 @@ function createMightRouter(scanLoop) {
         res.json({
             rows,
             deltaDays,
-            enabled: cfg.mightTrackingEnabled,
-            calibrated: (0, calibration_js_1.isMemberListCropSet)(),
-            // False when the Stage 4 rectangle predates might tracking. Capture is
-            // hard-gated on this, so the UI must be able to say so.
-            cropIncludesMight: (0, calibration_js_1.isMemberListCropRecalibrated)(),
             lastCapture: mightRepo.getLastCaptureAt(clanId),
             daysCollected: mightRepo.getSnapshotDates(clanId).length,
             rolloverUtcHour: cfg.gameDayRolloverUtcHour,
@@ -247,73 +235,6 @@ function createMightRouter(scanLoop) {
             log.warn({ noAlert: true }, `Could not build might chart event annotations (chart still renders): ${String(err instanceof Error ? err.message : err)}`);
             res.json({ days, windows: [], unavailable: true });
         }
-    });
-    /**
-     * Arm a one-shot re-capture, overwriting today's readings on the next scan.
-     *
-     * Deliberately does NOT start a scan itself — driving the browser is the
-     * scheduler's job and a manual scan is already a button. This only clears the
-     * once-a-day gate, so "Re-capture now" then "Trigger Manual Scan" gives a
-     * complete test loop without waiting for the 17:00 UTC rollover.
-     */
-    router.post('/recapture', auth_js_1.requireSuperAdmin, (req, res) => {
-        if (!scanLoop) {
-            res.status(503).json({ error: 'Scanner is not running in this process.' });
-            return;
-        }
-        // Every active clan, not just the caller's. This button is on the instance-wide
-        // System page, a cycle sweeps all clans anyway, and getting a clean first day for
-        // one clan while the others sit on yesterday's data is never what's wanted.
-        const clanIds = (0, clan_repo_js_1.listClans)({ activeOnly: true }).map((c) => c.id);
-        const armed = scanLoop.requestMightRecapture(clanIds);
-        if (armed === 0) {
-            res.status(400).json({
-                error: clanIds.length === 0
-                    ? 'No active clans to re-capture.'
-                    : 'Might tracking is disabled — enable it first.',
-            });
-            return;
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, 'might_recapture_requested', { clanIds });
-        res.json({ ok: true, armed, clanIds });
-    });
-    /** Current toggle state + why it might not be doing anything. */
-    router.get('/settings', auth_js_1.requireSuperAdmin, (req, res) => {
-        const cfg = (0, index_js_1.loadConfig)();
-        res.json({
-            enabled: cfg.mightTrackingEnabled,
-            calibrated: (0, calibration_js_1.isMemberListCropSet)(),
-            cropIncludesMight: (0, calibration_js_1.isMemberListCropRecalibrated)(),
-            cropRevision: (0, calibration_js_1.getMemberListCropRevision)(),
-            lastCapture: mightRepo.getLastCaptureAt(req.clanId),
-        });
-    });
-    /**
-     * Flip might tracking on or off.
-     *
-     * Persists to data/app.env (survives a container recreate, unlike .env) and
-     * pushes the value into the running ScanLoop so it takes effect on the next
-     * cycle without a restart — same pattern as the raw-OCR-capture toggle.
-     *
-     * Turning it off is purely a stop to further capture; existing snapshots are
-     * kept, because the whole value of this data is its history and a toggle
-     * should not be able to destroy months of it.
-     */
-    router.put('/settings', auth_js_1.requireSuperAdmin, (req, res) => {
-        const enabled = req.body?.enabled === true || req.body?.enabled === 'true';
-        (0, persistent_env_js_1.updateEnvValue)('MIGHT_TRACKING_ENABLED', enabled ? 'true' : 'false');
-        (0, index_js_1.resetConfig)();
-        scanLoop?.setScannerSettings({ mightTrackingEnabled: enabled });
-        (0, user_repo_js_1.logAction)(req.user.id, 'update_might_tracking', { enabled });
-        // Report the calibration gate back so the UI can immediately say "on, but
-        // waiting for a Stage 4 re-calibration" instead of implying it's collecting.
-        const cfg = (0, index_js_1.loadConfig)();
-        res.json({
-            ok: true,
-            enabled,
-            calibrated: (0, calibration_js_1.isMemberListCropSet)(),
-            cropIncludesMight: (0, calibration_js_1.isMemberListCropRecalibrated)(),
-        });
     });
     return router;
 }

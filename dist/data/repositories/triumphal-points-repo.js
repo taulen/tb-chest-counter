@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getKnownChestNames = getKnownChestNames;
 exports.getAll = getAll;
 exports.getManagementList = getManagementList;
 exports.getNewChestNames = getNewChestNames;
@@ -8,16 +7,6 @@ exports.countNewChestNames = countNewChestNames;
 exports.setPoints = setPoints;
 exports.deletePoints = deletePoints;
 const database_js_1 = require("../database.js");
-/**
- * Names with a configured package value — the live "known triumphal
- * chests" set the scan resolves OCR against (passed to
- * correctTriumphalChestName). Seeded with the built-in defaults at v54.
- */
-function getKnownChestNames() {
-    const db = (0, database_js_1.getDb)();
-    const rows = db.prepare('SELECT chest_name FROM triumphal_chest_points ORDER BY chest_name').all();
-    return rows.map((r) => r.chest_name);
-}
 function getAll() {
     const db = (0, database_js_1.getDb)();
     const rows = db.prepare('SELECT id, chest_name, package_points, updated_at FROM triumphal_chest_points ORDER BY chest_name').all();

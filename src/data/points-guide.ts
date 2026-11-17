@@ -32,8 +32,8 @@ import { clanRewardChestIds } from './clan-reward-chests.js';
 import { listClans } from './repositories/clan-repo.js';
 import { getSourceKeySummary, type SourceKeySummary } from './repositories/source-points-repo.js';
 import { sourceCategory } from './source-categories.js';
-import { canonicalSourceKey, getDefaultPointsFor, parseSourceLevelRange } from '../vision/source-names.js';
-import { foldDiacritics } from '../vision/ocr-normalize.js';
+import { canonicalSourceKey, getDefaultPointsFor, parseSourceLevelRange } from './source-names.js';
+import { foldDiacritics } from '../utils/name-normalize.js';
 
 /** One row per crypt/citadel type, one column per level. */
 export interface PointsGuideMatrix {

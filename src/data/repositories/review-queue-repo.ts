@@ -1,8 +1,8 @@
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
-import { isHardcodedChestName } from '../../vision/chest-names.js';
-import { isHardcodedSource } from '../../vision/source-names.js';
+import { isHardcodedChestName } from '../chest-names.js';
+import { isHardcodedSource } from '../source-names.js';
 import { getRenameSuggestions, type RenameSuggestion } from './rename-suggestions-repo.js';
 
 const log = childLogger('review-queue-repo');

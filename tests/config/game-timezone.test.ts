@@ -8,9 +8,8 @@
  * offset outside the ±14h range real zones cover, which would produce a name
  * `Intl` rejects at launch rather than here.
  *
- * The name also reaches Playwright, which refuses to start the browser on an id
- * it doesn't recognise — so a bad value stops a clan being scanned at all, not
- * merely mis-dates a row.
+ * The name also reaches Playwright, which refuses to start the login bridge's
+ * browser on an id it doesn't recognise.
  *
  * Pure — no browser, no DB — so it runs in `npm run guards` as part of the build.
  */
@@ -19,8 +18,6 @@ import { describe, it, expect } from 'vitest';
 import {
   gameDayTimezoneId,
   gameDayUtcOffsetHours,
-  expectedBrowserTimezoneOffsetMinutes,
-  zoneOffsetMinutesBehindUtc,
 } from '../../src/config/game-timezone.js';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
 
@@ -77,30 +74,9 @@ describe('gameDayTimezoneId', () => {
     expect(DEFAULT_CONFIG.gameDayRolloverUtcHour).toBe(17);
     expect(gameDayTimezoneId(17)).toBe('Etc/GMT-7');
     expect(gameDayUtcOffsetHours(17)).toBe(7);
-    // getTimezoneOffset() counts minutes BEHIND UTC — the launcher's probe
-    // compares against this, so an inverted sign here would make the probe pass
-    // on exactly the broken configuration it exists to catch.
-    expect(expectedBrowserTimezoneOffsetMinutes(17)).toBe(-420);
   });
 
   it('maps a midnight rollover to UTC rather than an offset zone', () => {
     expect(gameDayTimezoneId(0)).toBe('UTC');
-    expect(expectedBrowserTimezoneOffsetMinutes(0)).toBe(0);
-  });
-});
-
-describe('zoneOffsetMinutesBehindUtc', () => {
-  it('agrees with the rollover math on the fixed-offset zones', () => {
-    for (let rollover = 0; rollover < 24; rollover++) {
-      expect(zoneOffsetMinutesBehindUtc(gameDayTimezoneId(rollover), new Date('2026-08-02T12:00:00Z')))
-        .toBe(expectedBrowserTimezoneOffsetMinutes(rollover));
-    }
-  });
-
-  it('follows a city zone across its DST change', () => {
-    // The launcher compares this against the live browser, so a standard-time
-    // constant would raise a false alarm for half the year.
-    expect(zoneOffsetMinutesBehindUtc('Europe/Berlin', new Date('2026-01-15T12:00:00Z'))).toBe(-60);
-    expect(zoneOffsetMinutesBehindUtc('Europe/Berlin', new Date('2026-07-15T12:00:00Z'))).toBe(-120);
   });
 });

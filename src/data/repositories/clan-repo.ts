@@ -72,9 +72,11 @@ export interface Clan {
   lastWeeklyDigestWeek: string;
   lastWeeklyDigestError: string;
 
-  // Flagged true by the auth-check phase when the saved TB session
-  // cannot load the game canvas (cookies expired or evicted). Cleared
-  // when the operator saves a fresh session via the login bridge.
+  // Flagged true when a scan's game capture or the 30-minute session
+  // check finds the saved TB session logged out (cookies expired or
+  // evicted); see scheduler/session-health.ts. Cleared when either sees it
+  // signed in again, or the operator saves a fresh session via the login
+  // bridge.
   // reauthFailedAt is the ISO timestamp of the most recent failure;
   // empty when needsReauth is false.
   needsReauth: boolean;
@@ -83,16 +85,6 @@ export interface Clan {
   // Resource tracking feature toggle. Off by default; admins enable it
   // per-clan from the Clan settings page to surface the Resources tab.
   resourcesEnabled: boolean;
-  /**
-   * Include this clan in the DAILY automated read of the Clan Capital history.
-   *
-   * Distinct from resourcesEnabled, which is "does this clan track resources at
-   * all" (the tab, uploads). A clan can track resources and still be read by hand —
-   * before this existed the only ways to arrange that were disabling the read for
-   * every clan or giving up the tab. Ignored entirely when resourcesEnabled is off,
-   * and gated in turn by the instance-wide RESOURCE_CAPTURE_ENABLED.
-   */
-  resourceAutoCapture: boolean;
 
   // Daily member-inactivity sweep, per clan. inactivitySweepEnabled is the
   // on/off toggle (defaults on). inactivityDays is the threshold — days a
@@ -197,11 +189,6 @@ function rowToClan(row: Record<string, unknown>): Clan {
     needsReauth: !!(row.needs_reauth as number),
     reauthFailedAt: (row.reauth_failed_at as string) || '',
     resourcesEnabled: !!(row.resources_enabled as number),
-    // Defaults to true for rows written before the column existed — see migration
-    // v60: adding it must not silently stop reading a clan that was being read.
-    resourceAutoCapture: (row.resource_auto_capture as number | undefined) === undefined
-      ? true
-      : !!(row.resource_auto_capture as number),
     inactivitySweepEnabled: !!(row.inactivity_sweep_enabled as number),
     inactivityDays: (row.inactivity_days as number | null) ?? null,
     leaderboardGoalEnabled: !!(row.leaderboard_goal_enabled as number),
@@ -302,12 +289,11 @@ export function createClan(input: CreateClanInput): Clan {
   // populated with the global TB constant for backward-compat but
   // isn't surfaced anywhere in the UI or repos.
   // resources_enabled = 1 for a NEW clan: resource tracking is part of what
-  // the app does now, and the instance-wide switch defaults on too, so a clan
-  // created today starts collecting as soon as Stages 5+6 are calibrated. The
-  // column's own DEFAULT stays 0 on purpose — that governs EXISTING rows a
-  // migration adds the column to, and turning a feature on under a running
-  // deployment is not a migration's call. Per-clan opt-out is on the Clans
-  // page, and resource_auto_capture (the daily-read switch) already defaults 1.
+  // the app does now, so a clan created today shows its Resources tab from
+  // the first scan. The column's own DEFAULT stays 0 on purpose — that governs
+  // EXISTING rows a migration adds the column to, and turning a feature on
+  // under a running deployment is not a migration's call. Per-clan opt-out is
+  // on the Clans page.
   const result = db.prepare(`
     INSERT INTO clans (
       name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by,
@@ -601,12 +587,11 @@ export function markClanNeedsReauth(id: number): { firstTime: boolean } {
  * callers can announce a recovery exactly once instead of every cycle.
  *
  * Two callers, and the second is the one that makes the flag trustworthy:
- * the login bridge after it writes a fresh storage-state.json, and the
- * auth-check phase whenever it verifies the saved session still loads the
- * game. Without the latter the flag was effectively write-once — a single
- * bad cycle (a canvas that timed out under memory pressure, say) left the
- * clan reading "Needs re-authentication" forever, while every scan after it
- * signed in perfectly well. The badge even claimed to mean "the most recent
+ * the login bridge after it writes a fresh storage-state.json, and
+ * session-health.ts whenever a scan or session check sees the saved session
+ * signed in. Without the latter the flag was effectively write-once — a single
+ * bad cycle left the clan reading "Needs re-authentication" forever, while
+ * every scan after it signed in perfectly well. The badge even claimed to mean "the most recent
  * scan was able to load the game", which nothing enforced.
  *
  * The `needs_reauth = 1` guard also keeps the happy path write-free: a
@@ -660,12 +645,6 @@ export function setClanChestTrackerSettings(id: number, s: ChestTrackerSettings)
 export function setClanResourcesEnabled(id: number, enabled: boolean): void {
   const db = getDb();
   db.prepare('UPDATE clans SET resources_enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
-}
-
-/** Include or exclude this clan from the daily automated history read. */
-export function setClanResourceAutoCapture(id: number, enabled: boolean): void {
-  const db = getDb();
-  db.prepare('UPDATE clans SET resource_auto_capture = ? WHERE id = ?').run(enabled ? 1 : 0, id);
 }
 
 /**

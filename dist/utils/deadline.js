@@ -14,11 +14,10 @@
 // `.catch(() => {})` is no defence against that. It handles a rejection; it
 // cannot rescue an await that never returns. So every such call gets a
 // deadline, and the caller decides what to do when the deadline passes. The
-// bounded input wrappers live in browser/input.ts; this module is just the
-// primitive.
+// login bridge (src/web/login-bridge.ts) is the caller.
 //
-// Lived here as web/login-bridge/deadline.ts until the scanner needed it too:
-// a five-hour scan on 2026-08-04 was parked inside an unbounded page.mouse.up.
+// The retired browser scanner was the reason it moved here: a five-hour scan
+// on 2026-08-04 was parked inside an unbounded page.mouse.up.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeadlineExceeded = void 0;
 exports.withDeadline = withDeadline;

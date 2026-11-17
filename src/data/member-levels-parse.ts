@@ -19,7 +19,7 @@
  *
  * Pure — no database — so tests can run it on its own.
  */
-import { despace } from '../vision/ocr-normalize.js';
+import { despace } from '../utils/name-normalize.js';
 
 export const LEVEL_KEYS = ['g', 'm', 's', 'e', 'c', 'd'] as const;
 export type LevelKey = (typeof LEVEL_KEYS)[number];

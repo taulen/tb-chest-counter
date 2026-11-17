@@ -7,7 +7,6 @@
 - Type check: **`npm run typecheck`** — `src/` AND the tests (`tsconfig.test.json`), exactly what CI runs. A bare `npx tsc --noEmit` checks `src/` only, and vitest strips types, so a stale test fixture passes every test locally and fails only CI: that kept CI red for seven pushes in Oct 2026.
 - After pushing, check the run: `gh run list --workflow ci.yml --limit 1`. A red run is reported, even when it isn't from your change.
 - **Deploy only with `node scripts/deploy-when-idle.mjs`** (run it in the background). A redeploy mid-scan loses the cycle, and one completed scan session does NOT mean idle: a cycle scans every clan back to back with ~30 s gaps where nothing is pending. The script waits on prod's own `/api/health` → `scanner.busy` (whole cycle + manual scans) and a 5-min margin to the next cycle, then fires the webhook and confirms the new build. A hook in [.claude/settings.json](.claude/settings.json) refuses any direct webhook call. Config: gitignored `deploy.local.json`.
-- The Docker image is Linux-only by design; local dev on any OS is unaffected. Details: [docs/docker-image.md](docs/docker-image.md).
 
 ## Project Structure
 
@@ -21,9 +20,8 @@
 ## Rules that apply almost everywhere
 
 - **Cloudflare caches `.js`/`.css` by extension and ignores `no-store`.** Every asset URL must be path-versioned (`/v/<BUILD_VERSION>/…`, never `?v=`), and no static file may sit behind auth. When a prod fix "doesn't work", read `cf-cache-status` / `Age` off a real response before re-reading the code. Read [docs/cloudflare-caching.md](docs/cloudflare-caching.md) before touching asset serving.
-- **Never call `page.mouse.*`, `page.keyboard.*` or `page.evaluate()` directly** — Playwright puts no timeout on them. Go through [input.ts](src/browser/input.ts) / `withDeadline` ([deadline.ts](src/utils/deadline.ts)).
+- **In the login bridge, never await `page.mouse.*`, `page.keyboard.*` or `page.evaluate()` unbounded** — Playwright puts no timeout on them. Wrap them in `withDeadline` / `settleWithDeadline` ([deadline.ts](src/utils/deadline.ts)).
 - **Env toggles only reach the container if listed in `docker-compose.yml`'s `environment:` list.**
-- **Do not add a timeout around OCR** — it can never fire. Why: [docs/wedged-browser-liveness.md](docs/wedged-browser-liveness.md).
 - **`req.user.clanId` / `req.user.role` are the ACTIVE clan's, not the account's home.** An account can hold extra clans with a role in each; `validateSession` scopes the user to the clan it is viewing, which is what keeps every gate clan-confined. Need the home clan? `getUserById`. Read [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md) before touching auth or user listings.
 - **UI text is translated (en/es/fr/ru/de).** Every user-visible string goes through `t()`/`tn()` from [lib/i18n.js](src/web/public/lib/i18n.js) with a string literal, and needs an entry in all four `lib/i18n/*.js` dictionaries — `npm run build` fails otherwise. Game names (chests, sources, events, resources) use `tGame()` at display points only, and its dictionary takes official in-game names only. Read [docs/i18n.md](docs/i18n.md).
 - **Schema changes: append a migration at version 73 or higher**, then `npm run build && node scripts/update-schema-baseline.mjs` and commit the fixture. See [docs/database-schema.md](docs/database-schema.md).
@@ -34,24 +32,22 @@
 - On startup, any PENDING scan sessions from prior crashes are marked FAILED.
 - **Scans read the game directly** ([protocol-scan.ts](src/scheduler/protocol-scan.ts), Nov 2026): capture → record every gift keyed by `game_gift_id` → claim it (15013) → ledger rows keyed by `game_entry_id`. Recording comes BEFORE claiming, and a claim is permanent in-game, so a scan that fails or is aborted **keeps every chest it already saved**; the session is only rolled back when it has nothing on disk. Decide that from a DB row count (`persistedChestCount` in [scan-finalize.ts](src/scheduler/scan-finalize.ts)), never from `result.newChests`.
 - A scan-in-progress guard prevents concurrent scans.
-- Members, might/hero snapshots and departures come from the game every scan ([member-sync.ts](src/game-protocol/member-sync.ts)); the OCR might and resource-history phases no longer run. The browser/OCR scan code is still in the tree but unused, pending removal — the browser itself remains for the login bridge.
+- Members, might/hero snapshots and departures come from the game every scan ([member-sync.ts](src/game-protocol/member-sync.ts)). The browser/OCR scanner (calibration, OCR might and resource-history captures) was removed in Nov 2026; history it recorded stays readable. The only browser left is the login bridge's.
 
 ## Read before changing that area
 
 - Game protocol / direct client (src/game-protocol; it IS the scan since Nov 17 2026; game_* tables v102–v103; never present an old website token — it ends the account's session): [docs/game-protocol.md](docs/game-protocol.md)
-
-- Resource-history capture (cursor, open game day, date-floor backstop, adding a resource type): [docs/resource-capture.md](docs/resource-capture.md)
+- Adding a resource type the game introduced (migration + icon): [docs/game-protocol.md](docs/game-protocol.md)
 - Guards levels and Gold Pass (inferred, never stored): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)
 - Chest identity and name-keyed config (renames): [docs/chest-identity.md](docs/chest-identity.md)
 - Chest point values have a history (v99): a save applies "from today on" or to all history; records score the values of the day they were earned; dated changes only write what they change. Read before touching points, scans' point lookup or Recalculate: [docs/chest-points-history.md](docs/chest-points-history.md)
-- Browsers (scanner, GPU, profile locks): [docs/browsers.md](docs/browsers.md); login bridge: [docs/login-bridge.md](docs/login-bridge.md)
-- Wedged-browser liveness bounds: [docs/wedged-browser-liveness.md](docs/wedged-browser-liveness.md)
+- Browser (login bridge only: GPU, profile locks, unbounded Playwright calls): [docs/browsers.md](docs/browsers.md); login bridge: [docs/login-bridge.md](docs/login-bridge.md)
 - Multi-clan accounts (per-clan roles, the switcher, guest visibility): [docs/multi-clan-accounts.md](docs/multi-clan-accounts.md)
 - Performance page scoring (weights, thresholds, tenure; retune in one config file): [docs/performance-page.md](docs/performance-page.md)
 - Citadel simulator (battle rules measured from real reports, troop/defender data, game01master sizing, per-account saved armies): [docs/citadel-simulator.md](docs/citadel-simulator.md)
 - Stack calculator (Tools → Stacks: Kaiculator's sizing ported and pinned count-for-count by 19 probed armies, deliberate differences, how to re-probe, where the 53 mercenaries come from): [docs/stack-calculator.md](docs/stack-calculator.md)
 - Rewards tool (Tools → Rewards: clan Dragon Coins/fragments split by Olympus points, Dark Omens Essence or Spoils of Dread damage; exclusions; why fragments may differ from totalcalculator by 1): [docs/rewards-tool.md](docs/rewards-tool.md)
-- Seasonal Kingdom clans (v100 `clans.seasonal_kingdom`): events follow tbclanportal's SK feed (`?realm=season`), archive is per realm, corrections are normal-kingdom only, SK Tinman weeks are `ancients-sk` (5 days; anchor is per season — a cadence warning says when to move it); Forest Essence / Magic Seeds templates are provisional: [docs/seasonal-kingdoms.md](docs/seasonal-kingdoms.md)
+- Seasonal Kingdom clans (v100 `clans.seasonal_kingdom`): events follow tbclanportal's SK feed (`?realm=season`), archive is per realm, corrections are normal-kingdom only, SK Tinman weeks are `ancients-sk` (5 days; anchor is per season — a cadence warning says when to move it): [docs/seasonal-kingdoms.md](docs/seasonal-kingdoms.md)
 - Weekly points goal is historical (v93 `clan_goal_history`); anything judging a PAST window goes through `weeklyGoalForWindow` / `resolveWeeklyGoalForWindow`, never today's number: [docs/performance-page.md#weekly-goal-history](docs/performance-page.md#weekly-goal-history)
 - Running the dashboard locally + screenshots per language/viewport (ask first unless requested): [.claude/skills/local-ui-check/SKILL.md](.claude/skills/local-ui-check/SKILL.md)
 

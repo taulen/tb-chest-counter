@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.levenshtein = levenshtein;
 exports.exactMatchMember = exactMatchMember;
 exports.fuzzyMatchMember = fuzzyMatchMember;
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+const name_normalize_js_1 = require("./name-normalize.js");
 function levenshtein(a, b) {
     const m = a.length;
     const n = b.length;
@@ -22,7 +22,7 @@ function levenshtein(a, b) {
 // this module had its own, and the chest-name and source-key matchers had none, which is
 // how "Jörmungandr" ended up recorded twice.
 function prepareForMatch(raw) {
-    return (0, ocr_normalize_js_1.foldDiacritics)(raw.trim().toLowerCase().replace(/\s+/g, ' '));
+    return (0, name_normalize_js_1.foldDiacritics)(raw.trim().toLowerCase().replace(/\s+/g, ' '));
 }
 /**
  * Distances are measured on the DESPACED key, not on `prepareForMatch`'s output.
@@ -42,22 +42,24 @@ function prepareForMatch(raw) {
  * this is what brings the other two paths into line with it.
  */
 function prepareKey(raw) {
-    return (0, ocr_normalize_js_1.despace)(raw);
+    return (0, name_normalize_js_1.despace)(raw);
 }
 /** Same key minus the case fold, for the case-divergence check below. */
 function prepareKeyKeepingCase(raw) {
-    return (0, ocr_normalize_js_1.despaceKeepingCase)(raw);
+    return (0, name_normalize_js_1.despaceKeepingCase)(raw);
 }
 /**
  * Edit-distance budget for a fuzzy name match: 2 for names of 6+ characters, 1 below
- * that. Deliberately identical to the budget matchKnownPlayer uses on the scan side,
- * so a name behaves the same whether it arrives from a gift scan or a resource import.
+ * that. It was kept identical to the budget the retired OCR gift scan used, so a name
+ * behaved the same whichever path it arrived on.
  *
  * This was `max(len) / 3` — up to 4 edits on a 12-character name. That was set for
  * Tesseract (937dcc9), and one of the three edits it budgeted for was a missing space
  * ("Morarn II" → "Morarnll"), which was a dictionary bug in the OCR setup, not real
  * name damage; PP-OCRv6 preserves spaces since the dict gained its trailing space
- * entry. Tesseract itself is gone — the vision factory only builds PaddleOcrProvider.
+ * entry. Both OCR engines are gone now; scans read exact names from the game, so
+ * this budget only matters for names typed or pasted by people and for matching
+ * them against the OCR-era spellings still stored.
  *
  * Spaces now cost nothing at all: both sides are despaced before they reach here (see
  * prepareKey), so the entire budget is available for character damage instead of being
@@ -184,7 +186,7 @@ function fuzzyMatchMember(rawName, members) {
         // A numeric or roman-numeral alt suffix is a different account, and no budget can
         // express that: "FELI 2" is 1 edit from "FELI", the floor every fuzzy matcher has
         // to allow. Checked before distance so it can't be undercut by a closer neighbour.
-        if ((0, ocr_normalize_js_1.namesDifferByAltSuffix)(rawName, m.name))
+        if ((0, name_normalize_js_1.namesDifferByAltSuffix)(rawName, m.name))
             continue;
         const dist = levenshtein(key, mNorm);
         if (dist > editBudget(key, mNorm) || dist >= bestDist)

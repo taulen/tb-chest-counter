@@ -10,8 +10,10 @@
 //      spans (eventBandSpans) — a band always names itself on hover.
 //   3. Ranking table — current might and its change.
 //
-// Data comes from /api/might, which is fed by the daily OCR snapshot of the
-// in-game member list. Nothing here touches ChestTracker data.
+// Data comes from /api/might: every scan records each member's might and hero
+// level as the game reports them (game-protocol/member-sync.ts); older days
+// are the daily snapshots the retired screenshot reader took. Nothing here
+// touches ChestTracker data.
 //
 // INTERACTION RULE: nothing on this page re-renders the whole page. Ticking a
 // member fetches that one member's series and redraws one canvas (unticking
@@ -282,7 +284,7 @@ export async function renderMight(el) {
   }
 
   if (ranked.length === 0) {
-    el.innerHTML = renderEmptyState(overview);
+    el.innerHTML = renderEmptyState();
     return;
   }
 
@@ -302,33 +304,14 @@ export async function renderMight(el) {
   wireControls(el);
 }
 
-function renderEmptyState(overview) {
-  const reasons = [];
-  if (overview?.enabled !== true) {
-    reasons.push(t('Might tracking is currently <strong>off</strong>. A superadmin can enable it on the System page.'));
-  }
-  if (overview?.calibrated !== true) {
-    reasons.push(t('The member-list crop is not calibrated. Run Admin → Scanner Mode → Calibrate, Stage 4.'));
-  } else if (overview?.cropIncludesMight !== true) {
-    // The gate that applies to every instance calibrated before this feature:
-    // the saved rectangle was drawn around the names only.
-    reasons.push(
-      t('The saved member-list rectangle predates might tracking, so capture is <strong>blocked</strong>. Re-run Admin → Scanner Mode → Calibrate, <strong>Stage 4</strong>, and drag the rectangle right so it includes the might number next to the shield icon. Capture starts on the next scan cycle after you save the stage.'),
-    );
-  }
-  if (reasons.length === 0) {
-    reasons.push(
-      t('No snapshot has been recorded yet. The first one lands on the next scan cycle after the {hour}:00 UTC game-day rollover — check the scan log if it doesn\'t appear.', { hour: overview?.rolloverUtcHour ?? 17 }),
-    );
-    reasons.push(
-      t('If the scan log says member rows were read but no power number was found, the Stage 4 rectangle is still cutting off the might column — widen it further right and save the stage again.'),
-    );
-  }
+function renderEmptyState() {
   return `<div class="card">
     <div class="card-header"><h2>${t('Member Might')}</h2></div>
     <div class="card-body card-body-padded">
-      <div class="empty-state"><p>${t('No might history yet.')}</p></div>
-      <ul class="muted-copy">${reasons.map((r) => `<li>${r}</li>`).join('')}</ul>
+      <div class="empty-state">
+        <p>${t('No might history yet.')}</p>
+        <p class="muted-copy">${t('Every scan records each member\'s might from the game, so the first readings land with the next scan.')}</p>
+      </div>
     </div>
   </div>`;
 }
@@ -521,9 +504,8 @@ function renderTableCard(rows, guardsByMember = new Map()) {
   const th = (key, label, className = '', title = '') =>
     sortableThHtml({ key, labelHtml: label, sortState: tableSort, className, title });
 
-  // Hero level needs the calibrated crop to reach the avatars, which most instances
-  // don't do — so the column only appears once something has actually been read,
-  // rather than sitting there full of dashes.
+  // The column only appears once a hero level has actually been read, rather
+  // than sitting there full of dashes.
   const showHero = rows.some((r) => r.heroLevel);
 
   return `<div class="card">
@@ -933,9 +915,8 @@ export async function buildMemberMightCard(memberId) {
   const current = first.latest ?? first.points[first.points.length - 1] ?? null;
   if (!current) return null;
 
-  // Hero level only shows when it has actually been read — it needs the calibrated
-  // crop to reach the avatars, so on most instances there is nothing to show and an
-  // empty card would just be noise.
+  // Hero level only shows when it has actually been read — an empty card would
+  // just be noise.
   // Compact headline, exact figure underneath. A stat card is min 160px wide with
   // 18px padding, so ~124px of room — and "1,310,381,155" at the 28px headline size
   // needs closer to 220px. Scaling the headline keeps it consistent with every other
@@ -1104,9 +1085,8 @@ function drawMemberMightChart(points) {
   if (withHero) {
     datasets.push({
       label: t('Hero level (right)'),
-      // Missing readings stay null and are spanned, not zeroed: the hero level
-      // comes off the avatar in the member-list crop, so a day the OCR couldn't
-      // read it is a gap in knowledge — plotting 0 would draw a cliff down to
+      // Missing readings stay null and are spanned, not zeroed: a day without a
+      // hero level is a gap in knowledge — plotting 0 would draw a cliff down to
       // level zero and back.
       data: points.map((p) => (p.heroLevel ?? null)),
       borderColor: tok.accentBlue,

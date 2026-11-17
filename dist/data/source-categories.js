@@ -15,7 +15,7 @@ exports.sourceSortRank = sourceSortRank;
  * "other": the failure mode of a new source is a row in the wrong box, never a
  * missing one.
  */
-const source_names_js_1 = require("../vision/source-names.js");
+const source_names_js_1 = require("./source-names.js");
 /** Display order and titles. */
 exports.SOURCE_CATEGORIES = [
     { key: 'crypts', title: 'Crypts' },

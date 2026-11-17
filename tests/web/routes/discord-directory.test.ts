@@ -30,11 +30,6 @@ vi.mock('../../../src/discord/bot.js', () => ({
   isClanBotConnected: vi.fn(() => false),
 }));
 
-vi.mock('../../../src/browser/launcher.js', () => ({
-  launchBrowser: vi.fn(),
-  closeBrowser: vi.fn(async () => {}),
-}));
-
 vi.mock('../../../src/scheduler/loop.js', () => ({ ScanLoop: class {} }));
 
 vi.mock('../../../src/config/index.js', () => ({

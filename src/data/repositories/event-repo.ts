@@ -19,9 +19,9 @@ import {
   type EventDefinition,
   type EventLevelBucket,
 } from '../../config/event-catalog.js';
-import { parseSourceLevel, parseSourceLevelRange } from '../../vision/source-names.js';
-import { correctChestName } from '../../vision/chest-names.js';
-import { foldDiacritics } from '../../vision/ocr-normalize.js';
+import { parseSourceLevel, parseSourceLevelRange } from '../source-names.js';
+import { correctChestName } from '../chest-names.js';
+import { foldDiacritics } from '../../utils/name-normalize.js';
 
 const log = childLogger('event-repo');
 

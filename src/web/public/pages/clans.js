@@ -143,8 +143,8 @@ export async function renderClans(el, refreshClanIndicator) {
 
   el.innerHTML = `
     <p class="page-section-intro">${isSuperAdmin
-      ? t("Each clan has its own member roster, chest data, browser session, Discord channel, and ChestTracker share code. The single-instance scanner cycles through every active clan in sequence on each scheduled interval.")
-      : t("Manage your clan's Discord and ChestTracker integrations, refresh the Total Battle login session, and run member capture or first-scan onboarding.")}</p>
+      ? t("Each clan has its own member roster, chest data, Total Battle login, Discord channel, and ChestTracker share code. The scanner reads every active clan in turn on each scheduled interval.")
+      : t("Manage your clan's Discord and ChestTracker integrations and refresh the Total Battle login session.")}</p>
 
     <!-- Login bridge panel — shared with the setup wizard via
          lib/login-bridge.js. Rendered as a centered modal over the page
@@ -162,7 +162,7 @@ export async function renderClans(el, refreshClanIndicator) {
           <div><label>${t('Clan name')}</label><input id="newClanName" class="input" type="text" placeholder="${t('e.g. Arcane Dawn')}"></div>
           <button class="btn btn-primary" data-action="clan-create">${t('Create')}</button>
         </div>
-        <p class="muted-copy mt-12">${t("After creating, sign in to TB for the new clan via the in-app login bridge, then run member capture and the first scan from this page. Clan switching happens inside the game's canvas — every clan logs into the same TB domain.")}</p>
+        <p class="muted-copy mt-12">${t('After creating, sign in to TB for the new clan via the in-app login bridge. The next scan reads its members and chests from the game.')}</p>
       </div>
     </div>
     ` : ''}
@@ -321,26 +321,13 @@ export async function renderClans(el, refreshClanIndicator) {
       } catch {
         notify(t('ChestTracker save failed.'), t('ChestTracker'));
       }
-    } else if (action === 'clan-resources-collect' && clanId) {
-      await runClanResourceCollect(clanId, {});
-    } else if (action === 'clan-resources-collect-dry' && clanId) {
-      await runClanResourceCollect(clanId, { dryRun: true });
-    } else if (action === 'clan-resources-collect-full' && clanId) {
-      const ok = await confirmDialog(
-        t('This ignores the saved position and re-reads all 14 days. Rows already recorded will be inserted again, which shows up as duplicates you clean up by deleting the extra batch in Resources → Admin → Import History. Use it after fixing a reading bug, not routinely.'),
-        { title: t('Re-read all 14 days?'), confirmLabel: t('Read everything'), danger: true },
-      );
-      if (ok) await runClanResourceCollect(clanId, { fullBackfill: true });
-    } else if (action === 'clan-resources-debug-shots' && clanId) {
-      await loadClanResourceDebugShots(clanId);
     } else if (action === 'clan-resources-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-resources-enabled-${clanId}`)?.checked;
-      const autoCapture = !!el.querySelector(`#clan-resources-auto-${clanId}`)?.checked;
       try {
         const r = await fetch(`/api/clans/${clanId}/resources`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled, autoCapture }),
+          body: JSON.stringify({ enabled }),
         });
         const j = await r.json();
         if (!r.ok) return notify(j.error || t('Save failed'), t('Resource Tracking'));
@@ -590,24 +577,6 @@ export async function renderClans(el, refreshClanIndicator) {
       if (target.checked) discordManualMode.add(clanId);
       else discordManualMode.delete(clanId);
       syncDiscordPickers(el, clanId);
-    } else if (action === 'clan-onboard-capture' && clanId) {
-      try {
-        const r = await fetch(`/api/clans/${clanId}/onboard/capture-members`, { method: 'POST' });
-        const j = await r.json();
-        if (!r.ok) return notify(j.error || t('Capture failed'), t('Capture members'));
-        pollClanOnboardStatus(clanId, el);
-      } catch {
-        notify(t('Capture failed.'), t('Capture members'));
-      }
-    } else if (action === 'clan-onboard-firstscan' && clanId) {
-      try {
-        const r = await fetch(`/api/clans/${clanId}/onboard/first-scan`, { method: 'POST' });
-        const j = await r.json();
-        if (!r.ok) return notify(j.error || t('Scan failed'), t('First scan'));
-        pollClanOnboardStatus(clanId, el);
-      } catch {
-        notify(t('Scan failed.'), t('First scan'));
-      }
     }
   };
   el.addEventListener('click', el._clanActionHandler);
@@ -652,11 +621,7 @@ export async function renderClans(el, refreshClanIndicator) {
   };
   el.addEventListener('input', el._clanInputHandler);
 
-  // Kick off a status poll for any clan currently mid-onboarding so the
-  // status pill ("Capturing members…", "Running first scan…") refreshes
-  // automatically without a page reload.
   for (const clan of clans) {
-    pollClanOnboardStatus(clan.id, el);
     // Populate the Discord dropdowns without being asked. The lookup is a
     // read of the clan's own bot and is cached server-side for a minute, so
     // the re-render after every mutation on this page costs nothing.
@@ -810,15 +775,15 @@ function renderWeeklyDigestStatus(clan) {
 
 // Three states: never signed in, signed in but cookies expired (needs
 // re-auth), and signed in with valid-looking cookies. The middle state
-// only flips on when the auth-check phase confirms the canvas wouldn't
-// load on the last scan — it's a real "do something" indicator, not a
-// "maybe expired" guess.
+// only flips on when a scan or the session check saw the saved session
+// logged out — it's a real "do something" indicator, not a "maybe
+// expired" guess.
 function renderAuthBadge(clan) {
   if (clan.needsReauth) {
     const when = clan.reauthFailedAt ? formatRelativeTime(clan.reauthFailedAt) : '';
     const tip = when
       ? t('The saved Total Battle session stopped working ({when}). Click Refresh login.', { when: escapeHtml(when) })
-      : t('The saved Total Battle session no longer loads the game canvas. Click Refresh login.');
+      : t('The saved Total Battle session no longer signs in. Click Refresh login.');
     return `<span class="chest-type common" title="${tip}">${t('Needs re-authentication')}</span>`;
   }
   if (clan.authenticated) {
@@ -829,7 +794,7 @@ function renderAuthBadge(clan) {
 
 function renderAuthCopy(clan) {
   if (clan.needsReauth) {
-    return t("The scanner could not load the Total Battle canvas with this clan's saved session on the last run — cookies have likely expired. Re-authenticate below to resume scans.");
+    return t("The last scan or login check found this clan's saved Total Battle session signed out — it has likely expired. Re-authenticate below to resume scans.");
   }
   if (clan.authenticated) {
     return t('A previous login was saved for this clan. If scans fail with auth errors, refresh the session below.');
@@ -1201,35 +1166,13 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         <summary class="clan-subsection-summary"><h3>${t('Resource Tracking')}</h3></summary>
         <div class="mt-12">
         <p class="muted-copy mb-8">${t("Tracks what members send to and take from the Clan Capital. Turning this on adds the <strong>Resources</strong> tab to the navigation for this clan's admins.")}</p>
-        <p class="muted-copy mb-8">${t('Contributions are read straight off the game: the Clan Capital history is read once per game day, needing nothing from anyone, and every row is matched to its clan member for you.')}</p>
+        <p class="muted-copy mb-8">${t('Contributions are read straight from the game: every scan reads the Clan Capital ledger and matches each entry to its clan member for you.')}</p>
         <div class="inline-form-row">
           <label class="checkbox-row"><input type="checkbox" id="clan-resources-enabled-${clan.id}" ${clan.resourcesEnabled ? 'checked' : ''}> ${t('Track resources for this clan')}</label>
         </div>
-        <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-resources-auto-${clan.id}" ${clan.resourceAutoCapture ? 'checked' : ''}> ${t('Include in the daily automatic read')}</label>
-        </div>
-        <p class="muted-copy mt-4">${t('Untick the second box to keep the tab for this clan while leaving it out of the nightly read — the one-off buttons below still work either way. The daily read also has to be switched on instance-wide under <strong>System &rarr; Automated Resource Collection</strong>.')}</p>
         <div class="actions mt-8">
           <button class="btn btn-primary" data-action="clan-resources-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
-        ${clan.resourcesEnabled ? `
-        <hr class="section-divider">
-        <p class="muted-copy mb-8">${t("<strong>Read from the game now.</strong> These are one-off runs against <strong>this clan only</strong> — for proving the feature works before trusting the schedule, or pulling today's rows in early. They work whether or not the daily read is switched on.")}</p>
-        <p class="muted-copy mb-8">${t('<strong>Collect now</strong> reads whatever is new since the last run — normally a few seconds. <strong>Diagnose</strong> reads the whole list and keeps a screenshot of every page but writes nothing, which is the safe way to check accuracy. <strong>Re-read all 14 days</strong> writes everything it finds, so rows already recorded get inserted a second time; only reach for it after fixing a reading problem.')}</p>
-        <div class="inline-form-row mb-8" data-resource-capture-clan="${clan.id}">
-          <button class="btn" data-action="clan-resources-collect" data-clan-id="${clan.id}">${t('Collect now')}</button>
-          <button class="btn" data-action="clan-resources-collect-dry" data-clan-id="${clan.id}"
-            title="${t('Reads the whole list and keeps a screenshot of every page, but writes nothing to the database')}">${t('Diagnose (write nothing)')}</button>
-          <button class="btn" data-action="clan-resources-collect-full" data-clan-id="${clan.id}"
-            title="${t('Ignores the saved position and re-reads all 14 days — rows already recorded will be inserted again')}">${t('Re-read all 14 days')}</button>
-        </div>
-        <div id="clanResourceCollectStatus-${clan.id}" class="muted-copy mb-8"></div>
-        <details class="clan-subsection" data-section-key="clan-resource-debug-${clan.id}">
-          <summary class="clan-subsection-summary"><h3>${t('Debug screenshots')}</h3></summary>
-          <div class="mt-12" id="clanResourceDebugShots-${clan.id}">
-            <button class="btn" data-action="clan-resources-debug-shots" data-clan-id="${clan.id}">${t('Load frames from the last run')}</button>
-          </div>
-        </details>` : ''}
         </div>
         </details>
 
@@ -1328,21 +1271,6 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
         </div>
         </div>
         </details>
-
-        ${(clan.memberCount || 0) === 0 || (clan.scanCount || 0) === 0 ? `
-        <hr class="section-divider">
-        <h3>${t('Onboarding')}</h3>
-        <p class="muted-copy">${t('Use these after signing in to TB for this clan via the admin "Browser Session" panel.')}</p>
-        <div class="actions">
-          ${(clan.memberCount || 0) === 0
-            ? `<button class="btn" data-action="clan-onboard-capture" data-clan-id="${clan.id}">${t('Capture members')}</button>`
-            : ''}
-          ${(clan.scanCount || 0) === 0
-            ? `<button class="btn" data-action="clan-onboard-firstscan" data-clan-id="${clan.id}">${t('Run first scan')}</button>`
-            : ''}
-          <span id="clan-onboard-status-${clan.id}" class="muted-copy"></span>
-        </div>
-        ` : ''}
 
         ${isSuperAdmin ? `
         <hr class="section-divider">
@@ -1637,180 +1565,4 @@ async function openShareAnalytics(clanId, el, refreshClanIndicator) {
       btn.disabled = false;
     }
   });
-}
-
-const clanOnboardPollers = new Map();
-async function pollClanOnboardStatus(clanId, rootEl) {
-  // Single shared poller per clan. Cancel any previous one to avoid
-  // accumulating timers when the page is re-rendered.
-  if (clanOnboardPollers.has(clanId)) {
-    clearTimeout(clanOnboardPollers.get(clanId));
-  }
-  const tick = async () => {
-    try {
-      const r = await fetch(`/api/clans/${clanId}/onboard/status`);
-      if (!r.ok) return;
-      const j = await r.json();
-      const statusEl = rootEl.querySelector(`#clan-onboard-status-${clanId}`);
-      if (statusEl) {
-        if (j.status === 'idle') {
-          statusEl.textContent = '';
-        } else if (j.status === 'failed') {
-          statusEl.textContent = t('Failed: {error}', { error: j.error || j.message });
-        } else {
-          statusEl.textContent = j.message || j.status;
-        }
-      }
-      // Re-arm if work is still in progress.
-      if (j.status === 'capturing-members' || j.status === 'first-scan') {
-        clanOnboardPollers.set(clanId, setTimeout(tick, 2000));
-      } else {
-        clanOnboardPollers.delete(clanId);
-      }
-    } catch {
-      // Network blip — don't lose the poller, retry shortly.
-      clanOnboardPollers.set(clanId, setTimeout(tick, 4000));
-    }
-  };
-  void tick();
-}
-
-// ─── Per-clan resource capture (manual controls) ──────────────────────────────
-//
-// These act on ONE clan, named in the URL, which is the whole reason they live on
-// this page rather than the Resources tab: the Resources endpoints resolve the clan
-// from the operator's active session, so a button beside clan #3 would have driven a
-// capture against whichever clan happened to be active. The instance-wide daily
-// schedule is a separate switch on the System page.
-
-/** Human-readable summary of a finished capture. */
-function describeClanCollect(o) {
-  const parts = [];
-  if (o?.dryRun) parts.push(t('DIAGNOSTIC — nothing written'));
-  else parts.push(o?.rowsInserted ? tn(o.rowsInserted, '{n} new row(s) recorded', '{n} new row(s) recorded', { n: o.rowsInserted }) : t('no new rows'));
-  if (o?.rowsSeen != null) parts.push(tn(o.rowsSeen, '{n} read', '{n} read', { n: o.rowsSeen }));
-  if (o?.pagesScanned != null) parts.push(tn(o.pagesScanned, '{n} page(s)', '{n} page(s)', { n: o.pagesScanned }));
-  if (o?.oldestDateLabel) parts.push(t('back to "{date}"', { date: String(o.oldestDateLabel).toLowerCase() }));
-  const STOP = {
-    cursor: t('stopped where the last run left off'),
-    'date-floor': t('STOPPED EARLY — hit the date backstop without finding where the last run left off'),
-    'end-of-list': t('read to the end of the list'),
-    'no-new-rows': t('STOPPED EARLY — list scrolling but adding nothing'),
-    blank: t('STOPPED EARLY — the rows never came back'),
-    'page-limit': t('STOPPED EARLY — hit the page limit'),
-    crashed: t('PARTIAL — the browser crashed mid-sweep; rows read so far were kept'),
-    error: t('stopped on an error'),
-  };
-  if (o?.stopReason) parts.push(STOP[o.stopReason] ?? t('stopped: {reason}', { reason: o.stopReason }));
-  if (o?.unresolvedRows) {
-    const pct = o.rowsSeen ? ` (${Math.round((o.unresolvedRows / o.rowsSeen) * 100)}%)` : '';
-    parts.push(`${tn(o.unresolvedRows, '{n} unresolved', '{n} unresolved', { n: o.unresolvedRows })}${pct}`);
-  }
-  if (o?.created?.length) parts.push(tn(o.created.length, '{n} new member(s)', '{n} new member(s)', { n: o.created.length }));
-  if (o?.skipped) parts.push(t('skipped: {reason}', { reason: o.skipped }));
-  // Both of these are normal, not warnings — but a run that reports "no new rows"
-  // while having read 600 needs to say where they went, or it reads as a failure.
-  if (o?.deferredRows) {
-    parts.push(tn(o.deferredRows, '{n} held back — today is still in progress in-game, so its lines can still grow; the next run records that day complete', '{n} held back — today is still in progress in-game, so its lines can still grow; the next run records that day complete', { n: o.deferredRows }));
-  }
-  if (o?.withheldRows) {
-    parts.push(o?.dryRun
-      ? tn(o.withheldRows, '{n} already recorded', '{n} already recorded', { n: o.withheldRows })
-      : tn(o.withheldRows, '{n} already recorded, not written again', '{n} already recorded, not written again', { n: o.withheldRows }));
-  }
-  // A dry run returns before the marker is ever saved, so it must not claim it moved.
-  if (o?.anchorDate) {
-    parts.push(o?.dryRun ? t('position would move to {date}', { date: o.anchorDate }) : t('position now at {date}', { date: o.anchorDate }));
-  }
-  if (o?.cursorLost) parts.push(t('previous position not re-found — rows may duplicate earlier ones'));
-  let out = parts.join(' · ') + '.';
-  if (o?.debugDir) out += ` ${t('Frames: {dir}', { dir: o.debugDir })}`;
-  return out;
-}
-
-/**
- * Start a capture for one clan and poll until it finishes.
- *
- * Polling rather than awaiting the request: a sweep runs for minutes and a full
- * backfill for the better part of an hour, while the Cloudflare proxy in front of
- * this app gives up at ~100s and would hand back a 504 over a capture that is
- * working perfectly well.
- */
-async function runClanResourceCollect(clanId, body) {
-  const statusEl = document.getElementById(`clanResourceCollectStatus-${clanId}`);
-  const buttons = document.querySelectorAll(`[data-resource-capture-clan="${clanId}"] button`);
-  buttons.forEach((b) => { b.disabled = true; });
-  const say = (text) => { if (statusEl) statusEl.textContent = text; };
-  say(t('Starting: world map → clan capital → History…'));
-
-  try {
-    const started = await fetch(`/api/clans/${clanId}/resources/collect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }).then((r) => r.json());
-    if (started?.error) { say(started.error); return; }
-
-    const deadline = Date.now() + 90 * 60_000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 2500));
-      let res;
-      try {
-        res = await fetch(`/api/clans/${clanId}/resources/collect/status`).then((r) => r.json());
-      } catch (err) {
-        say(t('Lost contact while polling: {error}. The capture may still be running.', { error: String(err) }));
-        return;
-      }
-      if (res?.status === 'running') {
-        const secs = Math.round((res.elapsedMs ?? 0) / 1000);
-        say(res.progress ? `${res.progress} · ${t('{s}s', { s: secs })}` : t('Reading the history… {s}s', { s: secs }));
-        continue;
-      }
-      if (res?.status === 'error') { say(res.error || t('The collection failed.')); return; }
-      if (res?.status === 'done') { say(describeClanCollect(res.outcome)); return; }
-      say(t('No capture is running for this clan.'));
-      return;
-    }
-    say(t('Stopped watching after 90 minutes — check the container logs.'));
-  } finally {
-    buttons.forEach((b) => { b.disabled = false; });
-  }
-}
-
-/** List and show the frames the last manual run saved for this clan. */
-async function loadClanResourceDebugShots(clanId) {
-  const host = document.getElementById(`clanResourceDebugShots-${clanId}`);
-  if (!host) return;
-  host.innerHTML = `<p class="muted-copy">${t('Loading…')}</p>`;
-  let data;
-  try {
-    data = await fetch(`/api/clans/${clanId}/resources/debug-shots`).then((r) => r.json());
-  } catch (err) {
-    host.innerHTML = `<p class="muted-copy">${t('Could not list frames: {error}', { error: escapeHtml(String(err)) })}</p>`;
-    return;
-  }
-  const shots = Array.isArray(data?.shots) ? data.shots : [];
-  if (!data?.run || shots.length === 0) {
-    host.innerHTML = `<p class="muted-copy">${t('No frames on disk. Run <em>Diagnose</em> — every scroll page is saved, and they age out with the normal screenshot retention.')}</p>`;
-    return;
-  }
-  const total = shots.reduce((n, sh) => n + (sh.bytes || 0), 0);
-  host.innerHTML = `
-    <p class="muted-copy mb-8">${tn(shots.length, '{n} frame(s) · {size} MB from {run}. Copy the run off the box with {command}', '{n} frame(s) · {size} MB from {run}. Copy the run off the box with {command}', {
-      n: shots.length,
-      size: (total / 1024 / 1024).toFixed(1),
-      run: `<code>${escapeHtml(data.run)}</code>`,
-      command: `<code>scp -r &lt;host&gt;:&lt;app-dir&gt;/${escapeHtml(data.scpPath ?? '')} .</code>`,
-    })}</p>
-    <p class="muted-copy mb-8">${t('<code>pNNN-crop</code> is exactly what the reader saw for that page — the frame to judge accuracy from. <code>pNNN-full</code> is the whole screen, for checking the rectangle sits where it should. <code>blank-pNNN</code> is a page where the list went empty and the sweep waited; <code>final-page</code> is where it stopped.')}</p>
-    <div class="resources-debug-grid">
-      ${shots.map((sh) => {
-        const url = `/api/clans/${clanId}/resources/debug-shots/${encodeURIComponent(data.run)}/${encodeURIComponent(sh.name)}`;
-        const label = sh.name.replace(/_\d{4}-[\dT-]+Z?\.png$/, '').replace(/\.png$/, '');
-        return `<figure class="resources-debug-shot">
-          <a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(sh.name)}" loading="lazy"></a>
-          <figcaption>${escapeHtml(label)} <span class="muted-copy">${t('{size} KB', { size: Math.round((sh.bytes || 0) / 1024) })}</span></figcaption>
-        </figure>`;
-      }).join('')}
-    </div>`;
 }

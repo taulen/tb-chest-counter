@@ -591,15 +591,6 @@ td, th, .stat-card .value, .num {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* Very subtle, non-blocking hint under the session chest list when a scan
-   captured no receive-times (earn_time fell back to scan time). Purely
-   informational — NOT an error, so no banner/box/red styling, just muted text. */
-.session-earntime-note {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin: 0 0 12px;
-}
-.session-earntime-note a { color: inherit; text-decoration: underline; }
 
 /* ─── Hamburger (mobile) ─── */
 .hamburger {
@@ -820,205 +811,6 @@ nav a.active {
   max-width: var(--content-max);
   margin: 0 auto;
   padding: 24px 20px;
-}
-/* The onboarding banner's container sits right above the page's own. */
-.container:has(> #onboardingBanner.is-hidden) { padding: 0; }
-.container:has(> #onboardingBanner) { padding-bottom: 0; }
-
-/* ─── Onboarding banner ─── */
-/* Top-of-page strip surfaced by /api/status when calibration or member
-   capture is still pending. Sticks the next required step in front of
-   the operator regardless of which page they're on — anywhere the
-   header renders, the banner renders. */
-.onboarding-banner {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 0 0 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--accent-gold-border);
-  border-radius: 10px;
-  /* Theme-aware gold tint. Dark and OLED inherit the rgba(240,192,64,*)
-     pair; light theme overrides to rgba(184,138,0,*) so the banner stays
-     legible on a white card instead of glowing yellow. */
-  background: var(--accent-gold-bg-strong);
-}
-.onboarding-banner-icon {
-  font-size: 22px;
-  line-height: 1;
-  color: var(--accent-gold);
-}
-.onboarding-banner-body {
-  flex: 1;
-  min-width: 0;
-}
-.onboarding-banner-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-.onboarding-banner-text {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-.onboarding-banner .btn {
-  flex-shrink: 0;
-}
-/* Stage pips: four dots that fill in as calibration progresses, so the banner
-   shows distance travelled rather than only that something is missing. */
-.onboarding-banner-progress {
-  display: flex;
-  gap: 5px;
-  margin-top: 8px;
-}
-.onboarding-pip {
-  width: 26px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border-light);
-}
-/* Done is green and the step to take is gold — gold being the one colour
-   in the app that means "act here". */
-.onboarding-pip.is-done {
-  background: var(--accent-green);
-}
-.onboarding-pip.is-next {
-  background: var(--accent-gold);
-}
-
-/* ─── Setup checklist (System page) ───
-   The ordered "do these, in this order" list shown above every other card
-   while the scanner still can't run. Removes itself once every required step
-   is done — it's an onboarding aid, not furniture. */
-/* Border-only by default: the calibration card wears this while it's the
-   outstanding step, and it's a tall card with a screenshot canvas in it — a
-   full-surface tint behind that reads as a warning state for the image, not
-   for the step. The checklist, which is short and entirely about the prompt,
-   opts into the filled treatment below. */
-.card-attention {
-  border-color: var(--accent-gold-border);
-}
-details.card-attention > .card-header {
-  background: var(--accent-gold-bg-strong);
-}
-.setup-checklist {
-  background: var(--accent-gold-bg-strong);
-}
-.setup-checklist-title {
-  margin: 0 0 4px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.setup-checklist-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-.setup-checklist-step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-}
-.setup-checklist-step.is-next {
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 0 1px var(--accent-gold);
-}
-.setup-checklist-step.is-complete .setup-checklist-label {
-  color: var(--text-secondary);
-}
-.setup-checklist-mark {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--bg-input);
-  color: var(--text-secondary);
-}
-.setup-checklist-step.is-complete .setup-checklist-mark {
-  background: var(--accent-green-bg-strong);
-  color: var(--accent-green);
-}
-.setup-checklist-step.is-next .setup-checklist-mark {
-  background: var(--accent-gold);
-  color: var(--text-on-gold);
-}
-.setup-checklist-label {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-primary);
-  font-size: 13px;
-}
-.setup-checklist-action {
-  flex-shrink: 0;
-}
-@media (max-width: 640px) {
-  .setup-checklist-step {
-    flex-wrap: wrap;
-  }
-  .setup-checklist-label {
-    flex-basis: calc(100% - 32px);
-  }
-  .setup-checklist-action {
-    margin-left: 32px;
-  }
-}
-
-/* Trigger for a stage's worked example. Reads as a link, behaves as the crop
-   triggers elsewhere (hover previews, click enlarges). */
-.calibration-example-link {
-  color: var(--accent-blue);
-  cursor: zoom-in;
-  font-size: 13px;
-}
-.calibration-example-link:hover,
-.calibration-example-link:focus-visible {
-  text-decoration: underline;
-}
-
-/* Stage buttons inside the wizard carry their own state marker, so six
-   identical buttons no longer read as six equally-plausible next moves. */
-.calibration-stage-btn.is-complete .calibration-stage-mark {
-  color: var(--accent-gold);
-}
-.calibration-stage-mark {
-  font-size: 12px;
-  opacity: 0.9;
-}
-
-/* A short outline pulse to put the eye on whatever was just asked for: the
-   checklist when the onboarding banner points at it, or the single button that
-   moves a calibration stage forward. Not scoped to .card — the same two-beat
-   ring reads correctly on a button. */
-@keyframes attention-flash {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  30% { box-shadow: 0 0 0 3px var(--accent-blue); }
-}
-.is-flashing {
-  animation: attention-flash 1s ease-in-out 2;
-}
-@media (max-width: 640px) {
-  .onboarding-banner {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .onboarding-banner .btn {
-    width: 100%;
-    text-align: center;
-  }
 }
 
 /* ─── Stats Grid ─── */
@@ -1927,8 +1719,8 @@ th.sortable:hover {
 .members-table th.col-actions,
 .members-table td.col-actions { text-align: right; }
 
-/* Member-detail history tabs (Chests / Triumphal Chests / Resources) plus the
-   Captured Raw OCR list under them. Locked for the same reason as the roster
+/* Member-detail history tabs (Chests / Triumphal Chests / Resources). Locked
+   for the same reason as the roster
    table above, and for one more: flipping a tab swaps a table with a different
    column count into the same card, and paging swaps a whole tbody. Without
    fixed widths each page sized its columns from its own longest cell, so
@@ -1936,8 +1728,7 @@ th.sortable:hover {
    order — identifying info left, date last. */
 .member-chests-table,
 .member-triumphals-table,
-.member-resources-table,
-.member-ocr-table {
+.member-resources-table {
   table-layout: fixed;
   width: 100%;
 }
@@ -2046,10 +1837,6 @@ th.sortable:hover {
 .member-events-idle-chip:hover,
 .member-events-idle-chip:focus-visible { color: var(--text-primary); border-color: var(--accent-gold-border); }
 
-.member-ocr-table .col-ocr { width: auto; }
-.member-ocr-table .col-session { width: 90px; }
-.member-ocr-table .col-date { width: 180px; }
-
 .member-chests-table th.num,
 .member-chests-table td.num,
 .member-resources-table th.num,
@@ -2064,8 +1851,7 @@ th.sortable:hover {
    Same rule as .leaderboard-table td[data-label="Player"]. */
 .member-chests-table td[data-role="primary"],
 .member-triumphals-table td[data-role="primary"],
-.member-resources-table td[data-role="primary"],
-.member-ocr-table td[data-role="primary"] {
+.member-resources-table td[data-role="primary"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4146,34 +3932,6 @@ details > table {
   text-overflow: ellipsis;
 }
 
-/* Calibration wizard — screenshot + SVG overlay anchored on top of an
-   inline-block wrapper so the overlay percentages reference the image
-   bounds. Display is JS-toggled via inline style.display because the
-   wizard hides/shows the whole block during stage transitions. */
-.calibration-canvas {
-  margin-top: 12px;
-}
-.calibration-image-wrapper {
-  position: relative;
-  display: inline-block;
-  max-width: 100%;
-  cursor: crosshair;
-  user-select: none;
-}
-.calibration-image {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
-.calibration-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
 /* Slug + numeric id annotation rendered alongside the clan card title.
    Lighter weight so the name remains the primary read. */
 .clan-card-meta {
@@ -5596,41 +5354,6 @@ details > table {
   .chart-container--legend { height: 228px; }
   .might-compare-chart { height: 320px; }
   .might-table { min-width: 0; }
-}
-
-/* ─── Resource capture debug-screenshot gallery ──────────────────────────────── */
-/* Thumbnails of every scroll page from a manual collection. Wide-and-short crops,
-   so the grid gives each one full width at a small height rather than square
-   tiles that would crush the rows into illegibility. */
-.resources-debug-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
-}
-
-.resources-debug-shot {
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bg-elevated);
-}
-
-.resources-debug-shot img {
-  display: block;
-  width: 100%;
-  height: auto;
-  /* The frames are the evidence — never let a layout rule crop them. */
-  object-fit: contain;
-}
-
-.resources-debug-shot figcaption {
-  padding: 6px 8px;
-  font-size: 0.75rem;
-  /* Filenames carry the page number and are long; wrap rather than truncate so
-     the page order stays readable. */
-  overflow-wrap: anywhere;
-  border-top: 1px solid var(--border);
 }
 
 /* ─── Analytics timeframe controls ─────────────────────────────────────── */

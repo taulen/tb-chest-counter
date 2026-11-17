@@ -70,7 +70,7 @@ const path_1 = __importDefault(require("path"));
 const zlib_1 = __importDefault(require("zlib"));
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const database_js_1 = require("./database.js");
-const chest_names_js_1 = require("../vision/chest-names.js");
+const chest_names_js_1 = require("./chest-names.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('clan-restore');
 /** Schema name the backup is attached under. */

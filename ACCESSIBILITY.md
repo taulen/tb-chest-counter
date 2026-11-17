@@ -72,9 +72,8 @@ Listed because knowing is better than discovering:
 - **Not tested with assistive technology.** The work above follows the
   standard patterns, but nobody has yet run the site with a screen reader end to
   end.
-- **The game-facing admin tools are visual by nature.** Calibration means
-  clicking points on a screenshot of the game, and the login bridge streams the
-  game as live video. The game itself is a WebGL canvas with nothing a screen
+- **The game-facing admin tool is visual by nature.** The login bridge streams
+  the game as live video. The game itself is a WebGL canvas with nothing a screen
   reader can read, and that is outside this project's control.
 - **Discord tables are monospace text blocks**, which screen readers tend to
   read character by character.

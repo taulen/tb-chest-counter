@@ -4,7 +4,7 @@ The login bridge streams an in-container Chromium into the admin UI over a
 WebSocket. Two uses, both interactive:
 
 1. **Signing a clan in** with email + password, then capturing the resulting
-   cookies as that clan's `storage-state.json` for the scanner to replay.
+   cookies as that clan's `storage-state.json` for the scans to replay.
 2. **Operating the account** — several admins share one game account and use the
    bridge from time to time to perform simple in-game actions.
 
@@ -90,9 +90,11 @@ So the justification died twice over. "Headless" in that April commit also meant
 
 ## GPU rendering — `LOGIN_BRIDGE_GPU`
 
-Unset follows `SCANNER_GPU`; `0`/`1` decides independently. The flag set lives in
-[`src/browser/gpu.ts`](../src/browser/gpu.ts), shared with the scanner so the two
-launch sites cannot drift apart. Host setup: [igpu-passthrough.md](igpu-passthrough.md).
+`1` turns it on; unset or `0` keeps software rendering. (It used to follow the
+scanner's `SCANNER_GPU` when unset; that toggle went with the browser scanner.)
+The flag set and the probe live in
+[`src/web/login-bridge/gpu.ts`](../src/web/login-bridge/gpu.ts). Host setup:
+[igpu-passthrough.md](igpu-passthrough.md).
 
 Software-rendering a 3D WebGL canvas is the hard ceiling on bridge framerate.
 Screencast tuning cannot lift it — the screencast can only forward frames the
@@ -212,9 +214,9 @@ The profile appears to be in use by another Chromium process (24) on another
 computer (f174855942cd)
 ```
 
-[`src/browser/profile-lock.ts`](../src/browser/profile-lock.ts) clears the
-singleton set before every launch, in both the scanner and the bridge (they use
-separate profile dirs — see [`clan-paths.ts`](../src/config/clan-paths.ts)).
+[`src/web/login-bridge/profile-lock.ts`](../src/web/login-bridge/profile-lock.ts)
+clears the singleton set before every launch (one profile dir per clan — see
+[`clan-paths.ts`](../src/config/clan-paths.ts)).
 Only locks that **provably** cannot be live are removed: a different hostname, or
 this hostname with a dead pid. A lock naming this host with a running pid is left
 alone and warned about.
@@ -238,9 +240,10 @@ file that is definitely there. Use `unlink()` on the link itself.
 | Teardown step | 5s screencast/CDP, 15s browser close | Nothing on the exit path may hang. |
 | Storage-state read | 20s | A wedged browser must not hang the save request. |
 
-The bridge **pauses the scan loop** while open and resumes it from a teardown
-hook, so every exit path — save, cancel, idle, max-session, browser death —
-resumes the scanner.
+The bridge **pauses the scan loop** while open (a scan's direct game login
+would take over the session being driven) and resumes it from a teardown hook,
+so every exit path — save, cancel, idle, max-session, browser death — resumes
+the scanner.
 
 ### Surviving a browser that dies (or wedges)
 
@@ -282,7 +285,7 @@ had already been cleared on the way in. Only restarting the container cleared
 it. A hung close now costs a leaked process and nothing else.
 
 **4. A browser that outlives its close deadline is SIGKILLed.**
-Via `killProfileOwner()` in [`profile-lock.ts`](../src/browser/profile-lock.ts),
+Via `killProfileOwner()` in [`profile-lock.ts`](../src/web/login-bridge/profile-lock.ts),
 which reads the owning pid out of `SingletonLock`. Leaving it alive is worse
 than a leaked process: it still holds the profile lock with a *live pid on this
 host*, which is the one case `clearStaleProfileLocks` refuses to break, so the
