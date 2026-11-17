@@ -3,7 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameClient = exports.GameProtocolError = exports.DEFAULT_CLIENT_VERSION = exports.USER_AGENT = void 0;
+exports.GameClient = exports.SessionLoggedOutError = exports.GameProtocolError = exports.DEFAULT_CLIENT_VERSION = exports.USER_AGENT = void 0;
+exports.classifySitePage = classifySitePage;
+exports.checkSiteSession = checkSiteSession;
 exports.siteCookieHeader = siteCookieHeader;
 exports.loadOrCreateDevice = loadOrCreateDevice;
 exports.parseSitePage = parseSitePage;
@@ -52,6 +54,49 @@ class GameProtocolError extends Error {
     }
 }
 exports.GameProtocolError = GameProtocolError;
+/** The site served its logged-out page for the stored cookies: a definite re-auth. */
+class SessionLoggedOutError extends GameProtocolError {
+    constructor() {
+        super('totalbattle.com served the logged-out page for the stored session — the clan needs re-authentication');
+        this.name = 'SessionLoggedOutError';
+    }
+}
+exports.SessionLoggedOutError = SessionLoggedOutError;
+/** Substrings only TB's public marketing / login page has (same as browser/auth.ts). */
+const LOGGED_OUT_SIGNATURES = ['register or log in', 'sign up with'];
+/** Classify the /en/ page. Pure; unit-tested. Ambiguous pages are 'unknown', never 'logged-out'. */
+function classifySitePage(status, html) {
+    if (status !== 200)
+        return 'unknown';
+    if (/"suid":"[a-z0-9]+:\d+"/.test(html))
+        return 'ok';
+    const text = html.toLowerCase();
+    return LOGGED_OUT_SIGNATURES.some((s) => text.includes(s)) ? 'logged-out' : 'unknown';
+}
+/**
+ * Is the clan's stored login still alive? One GET of the site page with the
+ * stored cookies — no token is presented, so this is safe to run as often as
+ * we like. Network errors and odd pages answer 'unknown'.
+ */
+async function checkSiteSession(storageStatePath) {
+    let cookies;
+    try {
+        cookies = siteCookieHeader(storageStatePath);
+    }
+    catch {
+        return 'logged-out';
+    }
+    try {
+        const res = await fetch(`${SITE}/en/`, {
+            headers: { cookie: cookies, 'user-agent': exports.USER_AGENT, accept: 'text/html' },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        return classifySitePage(res.status, await res.text());
+    }
+    catch {
+        return 'unknown';
+    }
+}
 /** Cookies the browser would send to totalbattle.com, from a Playwright storage state. */
 function siteCookieHeader(storageStatePath) {
     const raw = fs_1.default.readFileSync(storageStatePath, 'utf8').replace(/^﻿/, '').trim();
@@ -109,8 +154,10 @@ async function fetchSiteBootstrap(cookieHeader) {
     const html = await res.text();
     const token = tokenFromSetCookie(res.headers.getSetCookie());
     const { suid, realmUrls } = parseSitePage(html);
+    if (classifySitePage(res.status, html) === 'logged-out')
+        throw new SessionLoggedOutError();
     if (!token || !suid) {
-        throw new GameProtocolError('totalbattle.com did not recognise the stored session (no token/account id) — the clan needs re-authentication');
+        throw new GameProtocolError('totalbattle.com returned an unexpected page (no token or account id) — not treated as a logout');
     }
     return { token, suid, realmUrls };
 }

@@ -30,6 +30,7 @@ const path_1 = __importDefault(require("path"));
 const logger_js_1 = require("../utils/logger.js");
 const clan_paths_js_1 = require("../config/clan-paths.js");
 const client_js_1 = require("../game-protocol/client.js");
+const session_health_js_1 = require("./session-health.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
@@ -46,6 +47,7 @@ async function runGameProtocolCapture(clanId) {
             storageStatePath: (0, clan_paths_js_1.clanStorageStatePath)(clanId),
             deviceFile: path_1.default.join((0, clan_paths_js_1.clanDataDir)(clanId), 'game-device.json'),
         });
+        (0, session_health_js_1.noteSessionHealthy)(clanId, 'the game capture signed in with the saved session');
         const record = (0, messages_js_1.parseClanRecord)(await client.clanRecord());
         if (!record || !record.members.length) {
             throw new Error(`the game returned no member list for clan ${client.clanId} — is the account still in the clan?`);
@@ -95,7 +97,13 @@ async function runGameProtocolCapture(clanId) {
     catch (err) {
         const error = String(err instanceof Error ? err.message : err);
         (0, game_protocol_repo_js_1.finishCaptureRun)(runId, { ok: false, error, durationMs: Date.now() - started });
-        log.warn({ noAlert: true }, `Clan #${clanId} game capture failed (the scan is unaffected): ${error}`);
+        if (err instanceof client_js_1.SessionLoggedOutError) {
+            // A definite logout is the same signal the scan's auth check acts on.
+            (0, session_health_js_1.noteSessionLoggedOut)(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
+        }
+        else {
+            log.warn({ noAlert: true }, `Clan #${clanId} game capture failed (the scan is unaffected): ${error}`);
+        }
         return { ok: false, error };
     }
 }

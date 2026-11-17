@@ -18,33 +18,22 @@ const game_url_js_1 = require("../config/game-url.js");
 const logger_js_1 = require("../utils/logger.js");
 const memory_snapshot_js_1 = require("../utils/memory-snapshot.js");
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
-const bot_js_1 = require("../discord/bot.js");
+const session_health_js_1 = require("./session-health.js");
 const log = (0, logger_js_1.childLogger)('scanner');
 /**
- * The saved session just proved it still works. Retire any outstanding
- * re-authentication flag, because this phase is the only thing in the app
- * that actually knows.
+ * The saved session just proved it still works: retire any outstanding
+ * re-authentication flag.
  *
  * This closes a one-way door. The flag used to be cleared solely by the
  * login bridge writing a fresh storage-state, so ONE bad cycle — a canvas
  * that timed out because the container was under memory pressure, not
  * because the cookies had expired — pinned the clan to "Needs
  * re-authentication" indefinitely, plus a Discord notice telling admins to
- * fix a login that was never broken. Every scan afterwards signed in fine
- * and said nothing.
- *
- * Only the 1 → 0 transition reports, so the healthy path is silent (and
- * write-free).
+ * fix a login that was never broken. The browser-free session check
+ * (session-check.ts) reports through the same helper.
  */
 function noteSessionHealthy(clanId) {
-    const { recovered } = (0, clan_repo_js_1.clearClanNeedsReauth)(clanId);
-    if (!recovered)
-        return;
-    log.info(`Clan #${clanId} no longer needs re-authentication — the saved session loaded the game on this ` +
-        'cycle. Clearing the flag; whatever failed earlier was transient.');
-    // Balances the earlier "login expired" ping. Without it an admin is left
-    // chasing an alert for a problem that has already gone away.
-    void (0, bot_js_1.postReauthResolvedNotice)(clanId).catch(() => { });
+    (0, session_health_js_1.noteSessionHealthy)(clanId, 'the saved session loaded the game on this cycle; whatever failed earlier was transient');
 }
 /**
  * Drive the auth phase. Returns once the session is verified logged in
@@ -109,20 +98,13 @@ async function performAuthCheck(ctx) {
                 // usable. markClanNeedsReauth returns firstTime=true only on the
                 // 0→1 transition, so the Discord notice fires once per
                 // failure streak instead of every cycle.
-                const { firstTime } = (0, clan_repo_js_1.markClanNeedsReauth)(ctx.clanId);
                 const cause = err instanceof auth_js_1.LoggedOutError
                     ? 'saved Total Battle session is logged out'
                     : 'saved Total Battle session cannot load the game canvas';
-                const reason = `Clan #${ctx.clanId} needs re-authentication — ${cause}. Open Clans → Refresh login.`;
-                // Keyed so the System page retires it once the flag clears, instead
-                // of listing it under "Needs attention" long after the fix.
-                log.error({ resolveKey: (0, clan_repo_js_1.reauthWarningKey)(ctx.clanId) }, reason);
+                // Flag + keyed System warning + one Discord ping per streak (fire and
+                // forget, so delivery never blocks the scanner moving on).
+                (0, session_health_js_1.noteSessionLoggedOut)(ctx.clanId, cause);
                 ctx.reportProgress('auth', 'Saved login expired — re-authenticate via Clans → Refresh login.');
-                if (firstTime) {
-                    // Fire and forget — Discord delivery shouldn't block the
-                    // scanner moving on to the next clan.
-                    void (0, bot_js_1.postReauthRequiredNotice)(ctx.clanId).catch(() => { });
-                }
                 return { ok: false, session };
             }
             // Non-headless mode can continue to manual login fallback.

@@ -89,6 +89,8 @@ class ScanLoop {
     running = false;
     scanInProgress = false;
     timer = null;
+    /** Browser-free login check of every active clan, every 30 min (session-check.ts). */
+    sessionCheckTimer = null;
     nextScanAt = null; // epoch ms when the next scheduled scan fires
     /**
      * Safety timer armed whenever the loop is paused. A pause is only ever
@@ -282,6 +284,7 @@ class ScanLoop {
     async start() {
         this.running = true;
         log.info(`Scan loop started (interval: ${this.config.scanIntervalMs / 1000}s)`);
+        this.armSessionChecks();
         // If we previously detected maintenance and stored a "blocked until"
         // timestamp, defer the first cycle until that time. Survives redeploys
         // because the value lives on the mounted data volume.
@@ -360,11 +363,33 @@ class ScanLoop {
             clearTimeout(this.timer);
             this.timer = null;
         }
+        if (this.sessionCheckTimer) {
+            clearInterval(this.sessionCheckTimer);
+            this.sessionCheckTimer = null;
+        }
         // A deliberate stop is not a pause — don't let the watchdog silently
         // resume a loop the operator (or shutdown) explicitly halted.
         this.clearPauseWatchdog();
         this.nextScanAt = null;
         log.info('Scan loop stopped');
+    }
+    /**
+     * Check every active clan's saved login without a browser, every 30 min and
+     * once shortly after start, so "Authenticated" on the Clans page is true even
+     * while scans are paused (session-check.ts). Rides the game-protocol toggle:
+     * it is the same direct talk to totalbattle.com. Never throws, never blocks.
+     */
+    armSessionChecks() {
+        if (!this.config.gameProtocolCaptureEnabled || this.sessionCheckTimer)
+            return;
+        const run = () => {
+            void import('./session-check.js')
+                .then(({ checkClanSessions }) => checkClanSessions())
+                .catch((err) => log.warn({ noAlert: true }, `Session check failed: ${String(err)}`));
+        };
+        setTimeout(run, 60_000).unref();
+        this.sessionCheckTimer = setInterval(run, 30 * 60_000);
+        this.sessionCheckTimer.unref();
     }
     /** (Re)arm the pause safety timer — see pauseWatchdog. */
     armPauseWatchdog() {

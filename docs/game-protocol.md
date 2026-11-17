@@ -17,6 +17,18 @@ chest + source) and stores the result in `game_scan_comparisons`; one
 OCR-only / game-only. Read it with
 `echo "SELECT * FROM game_scan_comparisons ORDER BY created_at DESC LIMIT 10" | ssh tb-read sql`.
 
+## Session check
+
+[`session-check.ts`](../src/scheduler/session-check.ts) GETs `/en/` with each
+active clan's stored cookies every 30 minutes (and the capture does the same
+before each scan). It presents no token, so it is safe to run often. A logged-in
+page clears "Needs re-authentication"; the site's own logged-out page sets it,
+through [`session-health.ts`](../src/scheduler/session-health.ts) — the same
+path as the scan's auth check (System warning keyed for auto-resolve, one
+Discord ping per streak). Anything ambiguous (HTTP error, maintenance page)
+changes nothing. Before this, "Authenticated" only meant "a session file
+exists", so a dead login looked fine for as long as scans were paused.
+
 ## Rules that bite
 
 - **Never present an old website token.** The site rotates its JWT on every

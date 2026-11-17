@@ -817,12 +817,12 @@ function renderAuthBadge(clan) {
   if (clan.needsReauth) {
     const when = clan.reauthFailedAt ? formatRelativeTime(clan.reauthFailedAt) : '';
     const tip = when
-      ? t('Last scan {when} could not load the Total Battle canvas with the saved session. Click Refresh login.', { when: escapeHtml(when) })
+      ? t('The saved Total Battle session stopped working ({when}). Click Refresh login.', { when: escapeHtml(when) })
       : t('The saved Total Battle session no longer loads the game canvas. Click Refresh login.');
     return `<span class="chest-type common" title="${tip}">${t('Needs re-authentication')}</span>`;
   }
   if (clan.authenticated) {
-    return `<span class="chest-type uncommon" title="${t('A storage-state file exists for this clan and the most recent scan was able to load the game.')}">${t('Authenticated')}</span>`;
+    return `<span class="chest-type uncommon" title="${t('A login is saved for this clan and it still works.')}">${t('Authenticated')}</span>`;
   }
   return `<span class="chest-type common" title="${t('No storage-state file on disk. The scanner will skip this clan until you log in.')}">${t('Not authenticated')}</span>`;
 }

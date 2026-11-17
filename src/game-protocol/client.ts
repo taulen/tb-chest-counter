@@ -42,6 +42,50 @@ export class GameProtocolError extends Error {
   }
 }
 
+/** The site served its logged-out page for the stored cookies: a definite re-auth. */
+export class SessionLoggedOutError extends GameProtocolError {
+  constructor() {
+    super('totalbattle.com served the logged-out page for the stored session — the clan needs re-authentication');
+    this.name = 'SessionLoggedOutError';
+  }
+}
+
+/** Substrings only TB's public marketing / login page has (same as browser/auth.ts). */
+const LOGGED_OUT_SIGNATURES = ['register or log in', 'sign up with'];
+
+export type SiteSessionState = 'ok' | 'logged-out' | 'unknown';
+
+/** Classify the /en/ page. Pure; unit-tested. Ambiguous pages are 'unknown', never 'logged-out'. */
+export function classifySitePage(status: number, html: string): SiteSessionState {
+  if (status !== 200) return 'unknown';
+  if (/"suid":"[a-z0-9]+:\d+"/.test(html)) return 'ok';
+  const text = html.toLowerCase();
+  return LOGGED_OUT_SIGNATURES.some((s) => text.includes(s)) ? 'logged-out' : 'unknown';
+}
+
+/**
+ * Is the clan's stored login still alive? One GET of the site page with the
+ * stored cookies — no token is presented, so this is safe to run as often as
+ * we like. Network errors and odd pages answer 'unknown'.
+ */
+export async function checkSiteSession(storageStatePath: string): Promise<SiteSessionState> {
+  let cookies: string;
+  try {
+    cookies = siteCookieHeader(storageStatePath);
+  } catch {
+    return 'logged-out';
+  }
+  try {
+    const res = await fetch(`${SITE}/en/`, {
+      headers: { cookie: cookies, 'user-agent': USER_AGENT, accept: 'text/html' },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    return classifySitePage(res.status, await res.text());
+  } catch {
+    return 'unknown';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Stored session + per-clan device identity
 // ---------------------------------------------------------------------------
@@ -126,8 +170,9 @@ export async function fetchSiteBootstrap(cookieHeader: string): Promise<SiteBoot
   const html = await res.text();
   const token = tokenFromSetCookie(res.headers.getSetCookie());
   const { suid, realmUrls } = parseSitePage(html);
+  if (classifySitePage(res.status, html) === 'logged-out') throw new SessionLoggedOutError();
   if (!token || !suid) {
-    throw new GameProtocolError('totalbattle.com did not recognise the stored session (no token/account id) — the clan needs re-authentication');
+    throw new GameProtocolError('totalbattle.com returned an unexpected page (no token or account id) — not treated as a logout');
   }
   return { token, suid, realmUrls };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Frame, Wire } from '../../src/game-protocol/codec.js';
 import { GIFT_LIFETIME_S, parseCityTechs, parseClanRecord, parseLedger, parsePlayers } from '../../src/game-protocol/messages.js';
-import { buildLoginBody, loginHumanArray, parseSitePage } from '../../src/game-protocol/client.js';
+import { buildLoginBody, classifySitePage, loginHumanArray, parseSitePage } from '../../src/game-protocol/client.js';
 
 const frame = (type: number, body: Wire[]): Frame => ({ type, seq: 1, head: [type, 1], body, children: [], events: [] });
 
@@ -58,6 +58,15 @@ describe('game messages', () => {
 });
 
 describe('direct client building blocks', () => {
+  it('only calls a session logged out on the site’s own logged-out page', () => {
+    expect(classifySitePage(200, '<script>{"suid":"tb:117471041"}</script>')).toBe('ok');
+    expect(classifySitePage(200, '<h1>Register or log in</h1>')).toBe('logged-out');
+    expect(classifySitePage(200, '<p>Sign up with Google</p>')).toBe('logged-out');
+    // A maintenance page, a Cloudflare challenge or an outage proves nothing.
+    expect(classifySitePage(200, '<h1>Maintenance</h1>')).toBe('unknown');
+    expect(classifySitePage(503, '<h1>Register or log in</h1>')).toBe('unknown');
+  });
+
   it('pulls the game account id and realm servers out of the site page', () => {
     const html = 'x"externalId":"ab","suid":"tb:117471041","suid_simulate":0 '
       + '{"realm_id":1071,"logic_url":["https:\\/\\/game-us62.totalbattle.com\\/rubens-realm1071","https:\\/\\/game-us62-fallback.totalbattle.com\\/rubens-realm1071"],"json_rpc_url":[]}';

@@ -22,7 +22,8 @@
 import path from 'path';
 import { childLogger } from '../utils/logger.js';
 import { clanDataDir, clanStorageStatePath } from '../config/clan-paths.js';
-import { GameClient } from '../game-protocol/client.js';
+import { GameClient, SessionLoggedOutError } from '../game-protocol/client.js';
+import { noteSessionHealthy, noteSessionLoggedOut } from './session-health.js';
 import { loadGameNames } from '../game-protocol/static-data.js';
 import { parseClanRecord, parseLedger, parsePlayers, type PlayerRecord } from '../game-protocol/messages.js';
 import {
@@ -60,6 +61,7 @@ export async function runGameProtocolCapture(clanId: number): Promise<GameProtoc
       storageStatePath: clanStorageStatePath(clanId),
       deviceFile: path.join(clanDataDir(clanId), 'game-device.json'),
     });
+    noteSessionHealthy(clanId, 'the game capture signed in with the saved session');
     const record = parseClanRecord(await client.clanRecord());
     if (!record || !record.members.length) {
       throw new Error(`the game returned no member list for clan ${client.clanId} — is the account still in the clan?`);
@@ -114,7 +116,12 @@ export async function runGameProtocolCapture(clanId: number): Promise<GameProtoc
   } catch (err) {
     const error = String(err instanceof Error ? err.message : err);
     finishCaptureRun(runId, { ok: false, error, durationMs: Date.now() - started });
-    log.warn({ noAlert: true }, `Clan #${clanId} game capture failed (the scan is unaffected): ${error}`);
+    if (err instanceof SessionLoggedOutError) {
+      // A definite logout is the same signal the scan's auth check acts on.
+      noteSessionLoggedOut(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
+    } else {
+      log.warn({ noAlert: true }, `Clan #${clanId} game capture failed (the scan is unaffected): ${error}`);
+    }
     return { ok: false, error };
   }
 }
