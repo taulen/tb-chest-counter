@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { decodeFrames, encodeFrame, messages, type Frame, type Wire, type BinValue } from './codec.js';
+import { SiteCookieJar } from './site-session.js';
 
 const SITE = 'https://totalbattle.com';
 const RPC_URL = `${SITE}/restapi/totalbattle/web/`;
@@ -161,11 +162,12 @@ function tokenFromSetCookie(setCookies: string[]): string | null {
   return null;
 }
 
-export async function fetchSiteBootstrap(cookieHeader: string): Promise<SiteBootstrap> {
+export async function fetchSiteBootstrap(jar: SiteCookieJar): Promise<SiteBootstrap> {
   const res = await fetch(`${SITE}/en/`, {
-    headers: { cookie: cookieHeader, 'user-agent': USER_AGENT, accept: 'text/html' },
+    headers: { cookie: jar.header(), 'user-agent': USER_AGENT, accept: 'text/html' },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
+  jar.apply(res.headers.getSetCookie());
   if (!res.ok) throw new GameProtocolError(`GET /en/ → HTTP ${res.status}`);
   const html = await res.text();
   const token = tokenFromSetCookie(res.headers.getSetCookie());
@@ -179,6 +181,8 @@ export async function fetchSiteBootstrap(cookieHeader: string): Promise<SiteBoot
 
 export interface GameStartData {
   sig: string;
+  /** The rotated website token; the browser confirms it via bytokenoauth. */
+  newToken: string | null;
   realmId: number;
   playerId: number;
   accountId: number;
@@ -186,7 +190,7 @@ export interface GameStartData {
   humanData: Record<string, unknown>;
 }
 
-export async function getGameStartData(boot: SiteBootstrap, cookieHeader: string, device: DeviceIdentity): Promise<GameStartData> {
+export async function getGameStartData(boot: SiteBootstrap, jar: SiteCookieJar, device: DeviceIdentity): Promise<GameStartData> {
   const body = {
     id: crypto.randomUUID(),
     jsonrpc: '2.0',
@@ -222,10 +226,11 @@ export async function getGameStartData(boot: SiteBootstrap, cookieHeader: string
   };
   const res = await fetch(RPC_URL, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: SITE, referer: `${SITE}/en/`, 'user-agent': USER_AGENT, cookie: cookieHeader },
+    headers: { 'content-type': 'application/json', origin: SITE, referer: `${SITE}/en/`, 'user-agent': USER_AGENT, cookie: jar.header() },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
+  jar.apply(res.headers.getSetCookie());
   const json = (await res.json()) as { result?: Record<string, unknown> & { error?: { message?: string } } };
   const r = json.result;
   if (!r || r.error || typeof r.sig !== 'string') {
@@ -234,12 +239,27 @@ export async function getGameStartData(boot: SiteBootstrap, cookieHeader: string
   const account = (r.account ?? {}) as { id?: number; createdAt?: number };
   return {
     sig: r.sig,
+    newToken: typeof r.new_token === 'string' ? r.new_token : null,
     realmId: Number(r.realmID),
     playerId: Number(r.stringGuid),
     accountId: Number(r.accountId ?? account.id),
     accountCreatedAt: Number(account.createdAt ?? 0),
     humanData: (r.human_data ?? {}) as Record<string, unknown>,
   };
+}
+
+/**
+ * The browser's follow-up to GetGameStartData: re-login the website session
+ * with the rotated token. The reply sets fresh PTBHSSID and auth cookies, which
+ * the jar keeps. Skipping this step is what ended CWB's session.
+ */
+export async function confirmRotatedToken(jar: SiteCookieJar, newToken: string): Promise<void> {
+  const res = await fetch(`${SITE}/login/bytokenoauth/?token=${encodeURIComponent(newToken)}`, {
+    headers: { cookie: jar.header(), 'user-agent': USER_AGENT, accept: 'text/html', referer: `${SITE}/en/` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  jar.apply(res.headers.getSetCookie());
+  if (!res.ok) throw new GameProtocolError(`bytokenoauth → HTTP ${res.status}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -301,10 +321,15 @@ export class GameClient {
   ) {}
 
   static async connect(opts: ConnectOptions): Promise<GameClient> {
-    const cookies = siteCookieHeader(opts.storageStatePath);
+    siteCookieHeader(opts.storageStatePath); // throws early when no session is stored at all
+    const jar = SiteCookieJar.load(opts.storageStatePath);
     const device = loadOrCreateDevice(opts.deviceFile);
-    const boot = await fetchSiteBootstrap(cookies);
-    const start = await getGameStartData(boot, cookies, device);
+    // Exactly the browser's sequence, with every Set-Cookie kept: page → token
+    // rotation → re-login with the rotated token → cookies written back.
+    const boot = await fetchSiteBootstrap(jar);
+    const start = await getGameStartData(boot, jar, device);
+    if (start.newToken) await confirmRotatedToken(jar, start.newToken);
+    jar.save();
     const url = boot.realmUrls.get(start.realmId)?.[0];
     if (!url) throw new GameProtocolError(`no game server listed for realm ${start.realmId}`);
 

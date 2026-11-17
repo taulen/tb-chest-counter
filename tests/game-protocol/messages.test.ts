@@ -88,7 +88,7 @@ describe('direct client building blocks', () => {
     expect(arr[29]).toBe('unity');
 
     const body = buildLoginBody(
-      { sig: 'f'.repeat(64), realmId: 1071, playerId: 1, accountId: 84522508, accountCreatedAt: 1766741935, humanData: {} },
+      { sig: 'f'.repeat(64), newToken: null, realmId: 1071, playerId: 1, accountId: 84522508, accountCreatedAt: 1766741935, humanData: {} },
       'tb:117471041', device, '349.9.1116',
     );
     const login = body[0] as Wire[];
