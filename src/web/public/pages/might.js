@@ -328,16 +328,20 @@ function headerStatsHtml() {
     : null;
   const d = formatDelta(clanDelta);
   const days = state.overview?.daysCollected ?? 0;
+  // Compact headlines (7.3B), the exact figure on hover and in the sub line:
+  // "7,319,795,165" at the headline size spilled out of the card on phones,
+  // the same reason the member Might card is compact.
+  const deltaShort = clanDelta === null || clanDelta === 0 ? d.text : `${clanDelta > 0 ? '+' : ''}${formatMightShort(clanDelta)}`;
 
   return `<div class="stats-grid">
     <div class="stat-card">
       <div class="label">${t('Clan Might')}</div>
-      <div class="value">${newest ? formatMight(newest.totalMight) : '—'}</div>
-      <div class="sub">${newest ? tn(newest.memberCount, '{n} member counted', '{n} members counted', { n: newest.memberCount }) : ''}</div>
+      <div class="value" title="${newest ? formatMight(newest.totalMight) : ''}">${newest ? formatMightShort(newest.totalMight) : '—'}</div>
+      <div class="sub">${newest ? `${formatMight(newest.totalMight)} · ${tn(newest.memberCount, '{n} member counted', '{n} members counted', { n: newest.memberCount })}` : ''}</div>
     </div>
     <div class="stat-card">
       <div class="label">${t('Change over window')}</div>
-      <div class="value ${d.cls}">${d.arrow} ${d.text}</div>
+      <div class="value ${d.cls}" title="${esc(d.text)}">${d.arrow} ${deltaShort}</div>
       <div class="sub">${oldest && newest && totals.length > 1 ? `${esc(oldest.gameDate)} → ${esc(newest.gameDate)}` : t('Needs two or more days')}</div>
     </div>
     <div class="stat-card">

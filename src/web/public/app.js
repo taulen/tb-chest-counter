@@ -83,6 +83,7 @@ import { renderDashboard } from './pages/dashboard.js';
 import {
   renderMembers,
   renderMembersTable,
+  membersTabsHtml,
   setMembersSort,
   setMembersFilter,
   setMembersMightWindow,
@@ -267,7 +268,6 @@ async function checkAuth() {
     // enabled flag, not by user role — any logged-in user sees it when
     // it's on, nobody sees it when it's off.
     refreshExternalNavVisibility();
-    refreshMightNavVisibility();
 
     // Render the build SHA in the footer so the operator can verify
     // after a redeploy that the running container actually picked up
@@ -426,26 +426,6 @@ async function refreshExternalNavVisibility() {
 }
 window.refreshExternalNavVisibility = refreshExternalNavVisibility;
 
-/**
- * Show or hide the Might nav link.
- *
- * Visible when the feature is on OR when snapshots already exist — so turning
- * tracking off doesn't hide the history it already collected, while an instance
- * that has never enabled it doesn't carry a tab leading to an empty page.
- */
-async function refreshMightNavVisibility() {
-  const link = $('#navMight');
-  if (!link) return;
-  try {
-    if (!currentUser) { link.classList.add('is-hidden'); return; }
-    const overview = await api('/might/overview');
-    const hasData = (overview?.daysCollected ?? 0) > 0;
-    link.classList.toggle('is-hidden', overview?.enabled !== true && !hasData);
-  } catch {
-    link.classList.add('is-hidden');
-  }
-}
-window.refreshMightNavVisibility = refreshMightNavVisibility;
 
 async function logout() {
   await fetch('/api/auth/logout', { method: 'POST' });
@@ -1022,7 +1002,12 @@ async function renderRoute(page, content) {
       break;
     }
     case 'members': await renderMembers(content); break;
-    case 'might': await renderMight(content); break;
+    case 'might': {
+      // A tab of Members (its strip on top), still its own page.
+      content.innerHTML = `${membersTabsHtml('might')}<div data-might-body></div>`;
+      await renderMight(content.querySelector('[data-might-body]'));
+      break;
+    }
     case 'clan': await renderClan(content); break;
     case 'chats': await renderChats(content); break;
     case 'performance': await renderPerformance(content); break;
@@ -1272,6 +1257,7 @@ function updateNavState() {
   else if (currentPage.startsWith('chest/') || currentPage.startsWith('source/')) navPage = 'analytics';
   else if (currentPage === 'resources/chests') navPage = 'chest-rewards';
   else if (currentPage === 'triumphal' || currentPage.startsWith('clan/')) navPage = 'clan';
+  else if (currentPage === 'might') navPage = 'members';
   else if (currentPage.startsWith('resources')) navPage = 'resources';
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('tools')) navPage = 'tools';

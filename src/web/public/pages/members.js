@@ -174,6 +174,16 @@ function memberNameHtml(m, g) {
   return markers ? `<span class="name-badged"><span class="name-badged-text">${name}</span>${markers}</span>` : name;
 }
 
+/**
+ * Members' two views as a tab strip of links: the roster (#members) and Might
+ * (#might — the might ranking, the clan's might over time and member
+ * comparison; it left the main menu in Nov 2026, being the same people).
+ */
+export function membersTabsHtml(active) {
+  const tab = (key, href, label) => `<a class="resources-tab${key === active ? ' is-active' : ''}" href="${href}"${key === active ? ' aria-current="page"' : ''}>${label}</a>`;
+  return `<div class="resources-tabs view-tabs" role="navigation" aria-label="${t('Page sections')}">${tab('roster', '#members', t('Members'))}${tab('might', '#might', t('Might'))}</div>`;
+}
+
 export function renderMembersTable(el) {
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
@@ -194,7 +204,7 @@ export function renderMembersTable(el) {
   const mightWindow = getMightWindow();
   const mightDays = mightWindowParams(mightWindow).days;
 
-  el.innerHTML = `<div class="card">
+  el.innerHTML = `${membersTabsHtml('roster')}<div class="card">
     <div class="card-header members-header">
       <h2>${t('Clan Members ({count})', { count: countLabel })}</h2>
       ${showMight ? `<div class="period-selector" id="membersMightWindow">${mightWindowButtonsHtml(mightWindow, (o) => `data-action="members-might-window" data-window="${o.id}"`)}</div>` : ''}

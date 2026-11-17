@@ -362,7 +362,9 @@ Pages are role-gated. Members see:
 - **Leaderboard** — daily / weekly / monthly / yearly / all-time, with
   period stepping, sorting, pagination, and an FAQ of points per chest.
 - **Members** — sortable roster plus per-member detail (rank, week-over-week
-  progress, single-day records, guards level, Gold Pass, full chest history).
+  progress, single-day records, guards level, Gold Pass, full chest history),
+  and a **Might** tab: every member's might and hero level, the clan's might
+  over time, and side-by-side member comparison.
 - **Events** — per-event chest breakdowns per player for each event run, plus
   Tin Man / Ancients standings and targets.
 - **My Clan** — the clan as the game shows it: research, rankings, treasury,
@@ -372,8 +374,6 @@ Pages are role-gated. Members see:
 - **Chest rewards** — what the clan's opened chests paid out per day, week or
   month, and what each chest type gives on average and how often, in the
   game's own art.
-- **Might** — every member's might and hero level, the clan's might over time,
-  and side-by-side member comparison.
 - **Resources** — per-resource totals and charts of what members have sent and
   received, from the Clan Capital ledger every scan reads. Members see
   read-only Overview / Totals tabs; admins also get the editable ledger.
