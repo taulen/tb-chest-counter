@@ -5,10 +5,12 @@
 // list and never the page (a page scroll would close it). On phones it is a
 // bottom sheet (CSS) and stays open while the keyboard resizes the page.
 
+import { troopIconUrl } from './game-art.js';
 import { esc } from './ui.js';
 import { t, tGame } from './i18n.js';
 
-const icon = (troopId) => new URL(`../img/troops/${troopId}.webp`, import.meta.url).href;
+// The game's own icon for the troop when the extracted art has it, else the bundled picture.
+const icon = (troopId) => troopIconUrl(troopId, new URL(`../img/troops/${troopId}.webp`, import.meta.url).href);
 
 let picker = null; // { pop, trigger, opts, items: [], active }
 

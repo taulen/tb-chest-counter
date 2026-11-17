@@ -16,6 +16,7 @@
 // Bonuses change with every captain, artifact or research swap, so nothing
 // ships with any; the page says when they were typed or saved.
 
+import { loadGameArt, troopIconUrl } from '../lib/game-art.js';
 import { api, apiPut, apiDelete } from '../lib/api.js';
 import { esc, notify, confirmDialog, promptDialog, choiceDialog, contentModal, copyTextToClipboard, formatRelativeTime } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -48,7 +49,8 @@ const DRAFT_KEY = 'tbcc.citadel.draft.v1';
 /** Bonuses older than this get an amber "check them" nudge. */
 const STALE_MS = 6 * 3600 * 1000;
 
-const icon = (troopId) => new URL(`../img/troops/${troopId}.webp`, import.meta.url).href;
+// The game's own icon for the troop when the extracted art has it, else the bundled picture.
+const icon = (troopId) => troopIconUrl(troopId, new URL(`../img/troops/${troopId}.webp`, import.meta.url).href);
 const troopName = (id) => tGame(troopById(id)?.name ?? id);
 
 const GROUP_LABELS = {
@@ -214,6 +216,8 @@ function saveDraft() {
 }
 
 export async function renderCitadelTool(mount) {
+  // The troop pictures come from the game's art when it is extracted.
+  await loadGameArt();
   closeTroopPicker();
   const draft = loadDraft();
   cs = {

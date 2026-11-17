@@ -356,7 +356,7 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
     const p = playerId === null ? null : getGamePlayer(clan.id, playerId);
     const game = p ? {
       role: p.role, joinedAt: p.joinedAt, inClan: p.inClan, cityLevel: p.cityLevel, vip: p.vip,
-      goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar,
+      goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl,
     } : null;
     res.json({ ...breakdown, game });
   });

@@ -18,7 +18,33 @@ import {
   getPlayerTechs,
 } from '../../data/repositories/game-profile-repo.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
-import { loadTechTrees } from '../../game-protocol/tech-trees.js';
+import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
+import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
+
+/**
+ * The trees with each tree's and node's sprite as a URL (the game's own icon
+ * from the art pipeline), memoised per trees + art version.
+ */
+let withIconsMemo: { key: string; value: unknown } | null = null;
+function treesWithIcons(trees: TechTrees): unknown {
+  const art = currentGameArt();
+  const key = `${trees.version}|${art?.version ?? ''}`;
+  if (withIconsMemo?.key === key) return withIconsMemo.value;
+  const techIcons = art?.mappings?.techs ?? {};
+  const value = {
+    ...trees,
+    trees: trees.trees.map((tr) => ({
+      ...tr,
+      iconUrl: tr.icon ? gameArtUrl(tr.icon) : null,
+      nodes: tr.nodes.map((n) => {
+        const name = techIcons[String(n.techId)] ?? n.icon;
+        return { ...n, iconUrl: name ? gameArtUrl(name) : null };
+      }),
+    })),
+  };
+  withIconsMemo = { key, value };
+  return value;
+}
 
 const CHANGES_DAYS = 90;
 
@@ -72,7 +98,7 @@ export function createGameRouter(): Router {
     const out: Record<number, object> = {};
     for (const [memberId, p] of getGamePlayersByMember(clanId)) {
       out[memberId] = {
-        heroAvatar: p.heroAvatar, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
+        heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
         tiers: tiers.get(memberId)?.tiers ?? null,
       };
     }
@@ -86,7 +112,7 @@ export function createGameRouter(): Router {
    */
   router.get('/tech-trees', async (_req, res) => {
     try {
-      res.json(await loadTechTrees());
+      res.json(treesWithIcons(await loadTechTrees()));
     } catch {
       res.status(503).json({ error: 'Research trees are not available yet' });
     }

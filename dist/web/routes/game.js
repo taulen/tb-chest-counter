@@ -15,6 +15,32 @@ const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
+const index_js_1 = require("../../game-art/index.js");
+/**
+ * The trees with each tree's and node's sprite as a URL (the game's own icon
+ * from the art pipeline), memoised per trees + art version.
+ */
+let withIconsMemo = null;
+function treesWithIcons(trees) {
+    const art = (0, index_js_1.currentGameArt)();
+    const key = `${trees.version}|${art?.version ?? ''}`;
+    if (withIconsMemo?.key === key)
+        return withIconsMemo.value;
+    const techIcons = art?.mappings?.techs ?? {};
+    const value = {
+        ...trees,
+        trees: trees.trees.map((tr) => ({
+            ...tr,
+            iconUrl: tr.icon ? (0, index_js_1.gameArtUrl)(tr.icon) : null,
+            nodes: tr.nodes.map((n) => {
+                const name = techIcons[String(n.techId)] ?? n.icon;
+                return { ...n, iconUrl: name ? (0, index_js_1.gameArtUrl)(name) : null };
+            }),
+        })),
+    };
+    withIconsMemo = { key, value };
+    return value;
+}
 const CHANGES_DAYS = 90;
 function createGameRouter() {
     const router = (0, express_1.Router)();
@@ -63,7 +89,7 @@ function createGameRouter() {
         const out = {};
         for (const [memberId, p] of (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId)) {
             out[memberId] = {
-                heroAvatar: p.heroAvatar, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
+                heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
                 tiers: tiers.get(memberId)?.tiers ?? null,
             };
         }
@@ -76,7 +102,7 @@ function createGameRouter() {
      */
     router.get('/tech-trees', async (_req, res) => {
         try {
-            res.json(await (0, tech_trees_js_1.loadTechTrees)());
+            res.json(treesWithIcons(await (0, tech_trees_js_1.loadTechTrees)()));
         }
         catch {
             res.status(503).json({ error: 'Research trees are not available yet' });

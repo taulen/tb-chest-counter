@@ -48,7 +48,8 @@ const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ no
 exports.VERSION_RE = /^[0-9a-f]{32}$/;
 exports.FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 function gameArtDir() {
-    return path_1.default.resolve('data', 'game-art');
+    // GAME_ART_DIR: local runs and tools only; prod keeps data/game-art on the volume.
+    return process.env.GAME_ART_DIR ? path_1.default.resolve(process.env.GAME_ART_DIR) : path_1.default.resolve('data', 'game-art');
 }
 // ---------------------------------------------------------------------------
 // Reading (routes, mappings)

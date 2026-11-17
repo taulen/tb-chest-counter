@@ -66,7 +66,8 @@ export const VERSION_RE = /^[0-9a-f]{32}$/;
 export const FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 
 export function gameArtDir(): string {
-  return path.resolve('data', 'game-art');
+  // GAME_ART_DIR: local runs and tools only; prod keeps data/game-art on the volume.
+  return process.env.GAME_ART_DIR ? path.resolve(process.env.GAME_ART_DIR) : path.resolve('data', 'game-art');
 }
 
 // ---------------------------------------------------------------------------

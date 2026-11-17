@@ -5021,6 +5021,25 @@ details > table {
   }
 }
 
+/* Phone trees are turned on their side with narrow nodes: a smaller icon above-left. */
+@media (max-width: 640px) {
+  .tech-node {
+    gap: 6px;
+    padding: 5px 6px 8px;
+  }
+  .tech-node-icon {
+    width: 26px;
+    height: 26px;
+    align-self: flex-start;
+  }
+  .tech-node-name {
+    font-size: 10.5px;
+  }
+  .tech-node-level {
+    font-size: 10px;
+  }
+}
+
 /* ─── Resources: overview controls (scope + range + bucket) ──────────── */
 .resources-controls { margin-bottom: 16px; }
 .resources-controls-body {
@@ -8653,14 +8672,43 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   position: absolute;
   box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
   padding: 6px 8px 9px;
   border-radius: 8px;
   border: 1px solid var(--border-light);
   background: var(--bg-card);
   overflow: hidden;
+}
+
+/* The game's own icon for the node (game art), name and level beside it. */
+.tech-node-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.tech-node.is-locked .tech-node-icon {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.tech-node-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.tech-tree-btn-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .tech-node-name {

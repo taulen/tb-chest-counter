@@ -6,6 +6,7 @@
  * members.game_player_id (v103).
  */
 import { getDb } from '../database.js';
+import { gameArtUrl, heroAvatarImage } from '../../game-art/index.js';
 
 export interface GamePlayerProfile {
   playerId: number;
@@ -20,6 +21,8 @@ export interface GamePlayerProfile {
   vip: number | null;
   goldPass: boolean;
   heroAvatar: number | null;
+  /** The hero's portrait from the game's art (/game-art/…), or null before the art is extracted. */
+  avatarUrl: string | null;
   lastSeen: string;
 }
 
@@ -49,8 +52,15 @@ const toProfile = (r: PlayerRow): GamePlayerProfile => ({
   vip: r.vip,
   goldPass: r.gold_pass === 1,
   heroAvatar: r.hero_avatar,
+  avatarUrl: heroAvatarUrl(r.hero_avatar),
   lastSeen: r.last_seen,
 });
+
+/** URL of a hero portrait by the game's avatar id, or null. */
+export function heroAvatarUrl(heroAvatar: number | null | undefined): string | null {
+  const name = heroAvatarImage(heroAvatar);
+  return name ? gameArtUrl(name) : null;
+}
 
 /** The game player a member is linked to, or null when not linked yet. */
 export function gamePlayerIdForMember(memberId: number, clanId: number): number | null {

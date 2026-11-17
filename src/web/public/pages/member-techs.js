@@ -16,7 +16,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 // Layout grids, in CSS px. Desktop: a step per game column and per game row.
 // Phone (turned): node size, the gap between the three columns, and the step
 // from one game column (a row there) to the next.
-const DESK = { colStep: 142, rowStep: 86, nodeW: 126, nodeH: 66 };
+const DESK = { colStep: 192, rowStep: 82, nodeW: 176, nodeH: 64 };
 const PHONE_GRID = { nodeW: 100, gap: 10, rowStep: 88, nodeH: 70 };
 const PHONE = '(max-width: 640px)';
 
@@ -106,6 +106,7 @@ function render(el, kind, trees, techs, tiers) {
         ${g.trees.map((tr) => {
           const p = treeProgress(tr, levels);
           return `<button type="button" class="tech-tree-btn${tr.id === openTree[kind] ? ' is-active' : ''}${p.pct === 100 ? ' is-done' : ''}" data-tree="${tr.id}" aria-pressed="${tr.id === openTree[kind]}">
+            ${tr.iconUrl ? `<img class="tech-tree-btn-icon" src="${esc(tr.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}
             <span class="tech-tree-btn-name">${esc(tGame(tr.name))}</span>
             <span class="tech-tree-btn-pct">${p.pct}%</span>
           </button>`;
@@ -253,8 +254,11 @@ function treeHtml(tree, levels, trees, phone = false) {
       outside.length ? t('Also needs: {list}', { list: outside.join(', ') }) : '',
     ].filter(Boolean).join('\n');
     return `<div class="tech-node ${state}" style="left:${x(n)}px;top:${y(n)}px;width:${NODE_W}px;height:${NODE_H}px" title="${esc(title)}" role="img" aria-label="${esc(`${tGame(n.name)}: ${lvl} / ${n.maxLevel}`)}">
-        <span class="tech-node-name">${esc(tGame(n.name))}</span>
-        <span class="tech-node-level">${esc(levelText)}</span>
+        ${n.iconUrl ? `<img class="tech-node-icon" src="${esc(n.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}
+        <span class="tech-node-text">
+          <span class="tech-node-name">${esc(tGame(n.name))}</span>
+          <span class="tech-node-level">${esc(levelText)}</span>
+        </span>
         <span class="tech-node-bar" style="--tech-fill:${n.maxLevel ? Math.round((lvl / n.maxLevel) * 100) : 0}%"></span>
       </div>`;
   }).join('');

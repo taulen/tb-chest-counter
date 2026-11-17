@@ -47,6 +47,29 @@ writes rotated cookies back ([`site-session.ts`](../src/game-protocol/site-sessi
 on a throwaway account five such logins in a row, plus four replays of the old
 flow, all left the session alive.
 
+## Game art ([`src/game-art/`](../src/game-art/))
+
+The game's own sprites, extracted on the server in plain Node — never stored in
+the repo. `versions.totalbattle.com/config` → `unity_catalog_version.webgl` names
+the asset catalogue at `assets-unity.totalbattle.dev/webgl/<hash>` (custom
+binary: per bundle a name, group, content hash, bundle hash and the lower-cased
+asset addresses inside). Only bundles holding images we use are downloaded
+(heroes, troops/mercenaries, research/talent icons, chests, resources, clan),
+decoded (UnityFS + LZ4 → SerializedFile type trees → Texture2D RGBA32 / RGB24 /
+RGB565 / DXT1 / DXT5, Sprites cut from their atlas — pixel-identical to UnityPy
+on 2188 references) and written as PNG to `data/game-art/<catalog>/` with an
+`index.json` (images + mappings). Runs at startup and daily; a new catalogue
+re-downloads only changed bundles; current + previous version are kept.
+
+Served public and path-versioned (`/game-art/<catalog>/<name>.png`, immutable)
+per [cloudflare-caching.md](cloudflare-caching.md); `GET /api/game-art` gives the
+names and mappings. Mappings: hero portrait by `game_players.hero_avatar` (= T13
+row id), the Tools mercenaries by name + exact strength/health against T9, tech
+and talent icons from T21 f3, chests and resources by name. Used by the member
+profile (portrait, research/talent tree icons), the public board card and the
+Tools troop pictures (`lib/game-art.js`, falling back to the bundled pictures).
+`GAME_ART_DIR` / `GAME_STATIC_DIR` override the caches for local runs only.
+
 ## Chat (v104)
 
 [`chat.ts`](../src/game-protocol/chat.ts) + [`chat-capture.ts`](../src/scheduler/chat-capture.ts):

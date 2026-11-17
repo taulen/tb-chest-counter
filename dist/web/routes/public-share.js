@@ -327,7 +327,7 @@ function createPublicShareApiRouter(scanLoop) {
         const p = playerId === null ? null : (0, game_profile_repo_js_1.getGamePlayer)(clan.id, playerId);
         const game = p ? {
             role: p.role, joinedAt: p.joinedAt, inClan: p.inClan, cityLevel: p.cityLevel, vip: p.vip,
-            goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar,
+            goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl,
         } : null;
         res.json({ ...breakdown, game });
     });

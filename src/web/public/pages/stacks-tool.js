@@ -7,6 +7,7 @@
 // kept per ACCOUNT on the server (/api/tools/stack-presets). Troop levels are
 // the same per-account levels the Citadel tab uses.
 
+import { loadGameArt, troopIconUrl } from '../lib/game-art.js';
 import { api, apiPut, apiDelete } from '../lib/api.js';
 import { esc, notify, confirmDialog, promptDialog, choiceDialog, contentModal, copyTextToClipboard } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -27,7 +28,8 @@ import { parseBonus, nextFreeName } from './citadel-tool.js';
 
 const DRAFT_KEY = 'tbcc.stacks.draft.v1';
 
-const icon = (troopId) => new URL(`../img/troops/${troopId}.webp`, import.meta.url).href;
+// The game's own icon for the troop when the extracted art has it, else the bundled picture.
+const icon = (troopId) => troopIconUrl(troopId, new URL(`../img/troops/${troopId}.webp`, import.meta.url).href);
 const troopName = (id) => tGame(troopById(id)?.name ?? id);
 
 const GROUP_LABELS = {
@@ -127,6 +129,8 @@ function saveDraft() {
 }
 
 export async function renderStacksTool(mount) {
+  // The troop pictures come from the game's art when it is extracted.
+  await loadGameArt();
   closeTroopPicker();
   const draft = loadDraft();
   ss = {

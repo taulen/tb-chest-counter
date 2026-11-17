@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.heroAvatarUrl = heroAvatarUrl;
 exports.gamePlayerIdForMember = gamePlayerIdForMember;
 exports.getGamePlayer = getGamePlayer;
 exports.getGamePlayersByMember = getGamePlayersByMember;
@@ -14,6 +15,7 @@ exports.getPlayerTechChanges = getPlayerTechChanges;
  * members.game_player_id (v103).
  */
 const database_js_1 = require("../database.js");
+const index_js_1 = require("../../game-art/index.js");
 const toProfile = (r) => ({
     playerId: r.player_id,
     name: r.name,
@@ -26,8 +28,14 @@ const toProfile = (r) => ({
     vip: r.vip,
     goldPass: r.gold_pass === 1,
     heroAvatar: r.hero_avatar,
+    avatarUrl: heroAvatarUrl(r.hero_avatar),
     lastSeen: r.last_seen,
 });
+/** URL of a hero portrait by the game's avatar id, or null. */
+function heroAvatarUrl(heroAvatar) {
+    const name = (0, index_js_1.heroAvatarImage)(heroAvatar);
+    return name ? (0, index_js_1.gameArtUrl)(name) : null;
+}
 /** The game player a member is linked to, or null when not linked yet. */
 function gamePlayerIdForMember(memberId, clanId) {
     const r = (0, database_js_1.getDb)().prepare('SELECT game_player_id AS id FROM members WHERE id = ? AND clan_id = ?').get(memberId, clanId);
