@@ -130,6 +130,49 @@ minute on the cached key (no game or website traffic). The first sync of a
 channel backfills (history reaches months back: a realm channel returned 600
 messages from three months). Tables `chat_channels` / `chat_messages`.
 
+**Retention (v114).** The service only serves recent history, so the stored
+copy is the record:
+
+- Messages are **permanent**: inserted the first time any read returns them,
+  never deleted or blanked by a later read (the only delete is deleting the
+  clan). A re-read of a known id replaces the text only when it really changed
+  (an edit; the old text is kept in `previous_message`).
+- Reads include the boundary millisecond both ways (`include=true`) and
+  de-duplicate by id, so a message sharing a millisecond with the newest or
+  oldest stored one is never skipped.
+- The first read takes up to 20,000 clan-chat messages back from now; every
+  later sync reads another 1,000 older (`readMessagesBefore`) until the
+  service returns less than a page, then `chat_channels.history_complete` = 1
+  and the channel is never asked for older history again. As of 2026-11-17
+  the stored clan chat reached back to 2026-10-02 (clan 2, 20,052 lines),
+  2026-10-21 (clan 3, 20,025) and 2026-11-11 (clan 5, 9,935) — the first two
+  stopped at the 20,000 first-read cap, which this backfill now continues.
+- `translations`: every message seen carries `{}` — the game's translate
+  button calls its own endpoint and stores nothing. A filled map would be kept
+  (`translations`, JSON) and shown in the viewer's language; we never call a
+  translation service ourselves.
+
+**Content.** Structured lines arrive as a placeholder in the text (`/%0%/`)
+plus `data` = `{"subs": {"/%0%/": {…, "v": 1}}}` ([chat-text.ts](../src/game-protocol/chat-text.ts)):
+`coord` (a shared location: `entryType` user / poi / tile / clan / landmark,
+`x`, `y`, `realmId`, `staticId` = T7 map object, `name`), `raid` (`created`,
+`targetStaticId`, `name` = who), `clan` (join / leave / kicked with `kicker` /
+archived), `journal` (attack / crypt / scout / clan_announcement / pvpladder —
+a shared report, `name` = its subject), `spawn_sabotage_spawn_to_enemy`
+(`spawnerName`, `staticAtomId`, `targetClanName`, `atomCoord`), `clan_spawn`.
+`custom_type` `service` = the game's own posts (raids, joins…). The sender's
+`sender_info` (`realm,playerHex,clanHex,0,rank,tag`) gives the player id
+(`sender_player_id`) and the clan rank when the message was sent.
+
+**Search.** `search_text` = the text with each placeholder replaced by its names
+and coordinates; `chat_messages_fts` (FTS5, external content on
+`chat_messages.id`, unicode61 without diacritics, kept by triggers) indexes it
+with `sender_name`. `GET /api/chat/clan` (any member of the active clan) serves
+only the clan's own `clanGroup` channel — newest first, `before`/`after`
+cursors `<ms>:<messageId>`, `q` (every word as a prefix), `sender`, `from`/`to`
+— and `GET /api/chat/clan/senders` the writers; private (whisper) channels are
+never reachable through it.
+
 ## Members and collection (v103)
 
 Each capture also, every cycle:

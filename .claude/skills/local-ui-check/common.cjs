@@ -14,6 +14,7 @@ const PAGES = {
   leaderboard: '/#leaderboard',
   performance: '/#performance',
   members: '/#members',
+  chats: '/#chats',
   might: '/#might',
   events: '/#events',
   ancients: '/#events/ancients',

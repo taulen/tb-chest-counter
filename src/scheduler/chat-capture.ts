@@ -9,12 +9,17 @@
  *     cannot disturb the account; a rejected key is dropped and the next scan
  *     issues a fresh one.
  *
- * The first sync of a channel backfills its history (the service keeps months).
+ * The first sync of a channel backfills its history (the service keeps months);
+ * every later sync reads another slice further back until the service has
+ * nothing older. Stored messages are permanent (chat-repo.ts): a line the
+ * service no longer serves stays on the site.
  * Nothing here may ever fail a scan: every entry point swallows and logs.
  */
 import type { GameClient } from '../game-protocol/client.js';
-import { chatLogin, listChannels, readMessages, type ChatChannel, type ChatSession } from '../game-protocol/chat.js';
-import { newestChatMessageAt, saveChatMessages, upsertChatChannel } from '../data/repositories/chat-repo.js';
+import { chatLogin, listChannels, readMessages, readMessagesBefore, type ChatChannel, type ChatSession } from '../game-protocol/chat.js';
+import {
+  isChatHistoryComplete, markChatHistoryComplete, newestChatMessageAt, oldestChatMessageAt, saveChatMessages, upsertChatChannel,
+} from '../data/repositories/chat-repo.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
 
@@ -25,6 +30,8 @@ const pollWarner = createCoalescedWarner((m) => log.warn({ noAlert: true }, m), 
 const KEPT_TYPES = ['clanGroup', 'whisper'];
 /** How far back the first sync of a channel reads. */
 const BACKFILL = { clanGroup: 20_000, whisper: 2_000 } as Record<string, number>;
+/** Older history read per sync after that, until the service has nothing older (5 requests). */
+const OLDER_PER_SYNC = 1_000;
 const POLL_MS = 60_000;
 
 interface ClanChat {
@@ -45,15 +52,27 @@ async function sync(clanId: number, chat: ClanChat): Promise<{ channels: number;
   let added = 0;
   const now = new Date().toISOString();
   for (const c of channels) {
+    upsertChatChannel(clanId, c, now);
     const after = newestChatMessageAt(clanId, c.url);
-    // Nothing new since what we hold: skip the request.
-    if (after && c.lastMessageAt !== null && c.lastMessageAt <= after) {
-      upsertChatChannel(clanId, c, now);
+    if (!after) {
+      // A channel's first read: back from now, as far as its backfill size.
+      const first = await readMessagesBefore(chat.session, c.url, Date.now(), BACKFILL[c.customType] ?? 2_000);
+      added += saveChatMessages(clanId, first.messages, now);
+      if (first.reachedStart) markChatHistoryComplete(clanId, c.url);
       continue;
     }
-    const messages = await readMessages(chat.session, c.url, after, after ? 2_000 : (BACKFILL[c.customType] ?? 2_000));
-    upsertChatChannel(clanId, c, now);
-    added += saveChatMessages(clanId, messages, now);
+    // New lines, unless the channel says nothing came after what we hold.
+    if (c.lastMessageAt === null || c.lastMessageAt > after) {
+      added += saveChatMessages(clanId, await readMessages(chat.session, c.url, after, 2_000), now);
+    }
+    // Older history the service still serves: a slice per sync, until it has
+    // nothing older (then the channel is marked complete and never asked again).
+    // Everything stored stays stored — the service only keeps recent history.
+    if (!isChatHistoryComplete(clanId, c.url)) {
+      const older = await readMessagesBefore(chat.session, c.url, oldestChatMessageAt(clanId, c.url), OLDER_PER_SYNC);
+      added += saveChatMessages(clanId, older.messages, now);
+      if (older.reachedStart) markChatHistoryComplete(clanId, c.url);
+    }
   }
   return { channels: channels.length, added };
 }

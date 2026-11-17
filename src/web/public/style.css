@@ -8880,3 +8880,203 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
 }
 
+
+/* ── Chats (pages/chats.js) ────────────────────────────────────────────────
+   The clan chat laid out like the game's: a time gutter, then a card per
+   message headed "<rank> <name>". Theme tokens only. The left column lists
+   channels (only Clan chat for now) and folds away on phones. */
+.chat-page {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.chat-channels { margin-bottom: 0; }
+.chat-channels ul { list-style: none; margin: 0; padding: 8px; }
+.chat-channel {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-channel:hover { background: var(--hover-overlay); }
+.chat-channel.is-active { background: var(--accent-gold-bg); color: var(--accent-gold); }
+.chat-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 18px 12px;
+  margin-bottom: 0;
+}
+.chat-top h2 { margin: 0; font-size: 17px; }
+.chat-status { margin: 4px 0 0; font-size: 13px; color: var(--text-secondary); min-height: 1em; }
+.chat-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 2px;
+}
+.chat-page [hidden] { display: none !important; }
+.chat-tools label { margin: 0; }
+.chat-search { flex: 1 1 260px; min-width: 0; }
+.chat-search .input { width: 100%; max-width: none; }
+.chat-filter .input { width: auto; max-width: 240px; }
+.chat-date .input { width: auto; }
+.chat-date { display: flex; align-items: center; gap: 6px; }
+.chat-date-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.chat-results { margin: 4px 0 6px; font-size: 12px; color: var(--text-muted); min-height: 1em; }
+.chat-log {
+  height: calc(100dvh - 340px);
+  min-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: 6px 12px 6px 6px;
+}
+.chat-log:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.chat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-msg {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.chat-time {
+  padding-top: 9px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.chat-card {
+  min-width: 0;
+  padding: 6px 12px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+.chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  min-width: 0;
+}
+.chat-avatar {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+.chat-avatar.is-empty { display: inline-block; background: var(--subtle-bg); }
+.chat-rank { color: var(--accent-blue); font-weight: 600; }
+.chat-name { color: var(--text-secondary); font-weight: 600; overflow-wrap: anywhere; }
+.chat-name .member-link { color: inherit; }
+/* Leader, superiors and officers stand out, as in the game. */
+.chat-msg.role-1 .chat-name,
+.chat-msg.role-2 .chat-name,
+.chat-msg.role-3 .chat-name { color: var(--accent-gold); }
+.chat-edited { font-size: 12px; color: var(--text-muted); }
+.chat-text {
+  color: var(--text-primary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-text a { color: var(--accent-blue); text-decoration: underline; overflow-wrap: anywhere; }
+.chat-translation { margin: 4px 0 0; font-size: 13px; font-style: italic; color: var(--text-secondary); }
+.chat-empty { font-style: italic; color: var(--text-muted); }
+.chat-msg.is-service .chat-card {
+  border-style: dashed;
+  background: var(--subtle-bg);
+  color: var(--text-secondary);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.chat-event strong { color: var(--text-primary); }
+.chat-chip {
+  display: inline-flex;
+  flex-wrap: wrap; /* the coordinates drop to their own line before the name squeezes */
+  align-items: center;
+  gap: 0 4px;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--subtle-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.92em;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+}
+.chat-chip.is-unknown { color: var(--text-muted); font-style: italic; }
+.chat-loc {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+.chat-loc:hover { background: var(--hover-overlay-strong); }
+.chat-loc:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.chat-loc.is-copied { border-color: var(--accent-green); }
+.chat-chip-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chat-coords { color: var(--text-secondary); white-space: nowrap; }
+.chat-page mark { background: var(--accent-gold-bg-strong); color: inherit; border-radius: 2px; padding: 0 1px; }
+.chat-day { display: flex; justify-content: center; margin: 8px 0 2px; }
+.chat-day span {
+  padding: 2px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--bg-card);
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.chat-edge { display: flex; justify-content: center; min-height: 4px; padding: 6px 0; }
+.chat-start { font-size: 12px; color: var(--text-muted); }
+.chat-none { margin: 0; padding: 48px 12px; text-align: center; color: var(--text-muted); }
+.chat-jump { position: absolute; right: 32px; bottom: 52px; box-shadow: var(--shadow-elevated); }
+.chat-note { margin: 8px 0 0; font-size: 12px; color: var(--text-muted); }
+
+@media (max-width: 760px) {
+  .chat-page { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  /* One channel today: its name is the card's heading, so the list folds away. */
+  .chat-channels { display: none; }
+  .chat-main { padding: 12px 10px 10px; }
+  /* Search on its own row; writer and date share the next. */
+  .chat-tools > .chat-search { flex: 1 1 100%; }
+  .chat-tools > .chat-filter { flex: 1 1 40%; min-width: 0; }
+  .chat-filter .input { width: 100%; max-width: none; }
+  .chat-date .input { flex: 1 1 auto; min-width: 0; width: 100%; }
+  .chat-log { height: calc(100dvh - 330px); min-height: 320px; padding: 4px 6px 4px 2px; }
+  .chat-msg { grid-template-columns: 38px minmax(0, 1fr); gap: 6px; }
+  .chat-card { padding: 6px 9px 7px; }
+  .chat-jump { right: 18px; bottom: 48px; }
+}

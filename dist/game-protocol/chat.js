@@ -7,6 +7,7 @@ exports.SENDBIRD_APP_ID = void 0;
 exports.chatLogin = chatLogin;
 exports.listChannels = listChannels;
 exports.readMessages = readMessages;
+exports.readMessagesBefore = readMessagesBefore;
 /**
  * In-game chat (Sendbird), read the way the game client reads it.
  *
@@ -123,39 +124,31 @@ function toMessage(channelUrl, m) {
         senderInfo: m.user?.metadata?.memberInfo ?? '',
         message: m.message ?? '',
         data: m.data ?? '',
+        updatedAt: typeof m.updated_at === 'number' ? m.updated_at : 0,
+        translations: m.translations && typeof m.translations === 'object' && Object.keys(m.translations).length
+            ? JSON.stringify(m.translations) : '',
     };
 }
 /**
- * Messages of one channel strictly after `afterMs` (oldest first), paging
- * forward until caught up or `max` reached. `afterMs = 0` reads backwards from
- * now instead, as far as `max` messages (the first read of a channel).
+ * Messages of one channel from `afterMs` on (oldest first), paging forward
+ * until caught up or `max` reached. The boundary millisecond is included —
+ * a message sharing it with the newest stored one would otherwise be skipped
+ * for good; the store ignores the ones it already holds. `afterMs = 0` reads
+ * backwards from now instead, as far as `max` messages (a channel's first read).
  */
 async function readMessages(s, channelUrl, afterMs, max = 2000) {
     const url = `/group_channels/${encodeURIComponent(channelUrl)}/messages`;
     const PAGE = 200;
     const seen = new Map();
     if (afterMs <= 0) {
-        let before = Date.now();
-        while (seen.size < max) {
-            const q = new URLSearchParams({ message_ts: String(before), prev_limit: String(PAGE), next_limit: '0', reverse: 'true', include: 'false' });
-            const r = await api(s, `${url}?${q}`);
-            const batch = (r.messages ?? []).map((m) => toMessage(channelUrl, m)).filter((m) => m !== null);
-            for (const m of batch)
-                seen.set(m.messageId, m);
-            if (batch.length < PAGE)
-                break;
-            const oldest = Math.min(...batch.map((m) => m.createdAt));
-            if (oldest >= before)
-                break;
-            before = oldest;
-        }
+        return (await readMessagesBefore(s, channelUrl, Date.now(), max)).messages;
     }
     else {
         let after = afterMs;
         while (seen.size < max) {
-            const q = new URLSearchParams({ message_ts: String(after), prev_limit: '0', next_limit: String(PAGE), include: 'false' });
+            const q = new URLSearchParams({ message_ts: String(after), prev_limit: '0', next_limit: String(PAGE), include: 'true' });
             const r = await api(s, `${url}?${q}`);
-            const batch = (r.messages ?? []).map((m) => toMessage(channelUrl, m)).filter((m) => m !== null && m.createdAt > afterMs);
+            const batch = (r.messages ?? []).map((m) => toMessage(channelUrl, m)).filter((m) => m !== null && m.createdAt >= afterMs);
             const before = seen.size;
             for (const m of batch)
                 seen.set(m.messageId, m);
@@ -165,5 +158,37 @@ async function readMessages(s, channelUrl, afterMs, max = 2000) {
         }
     }
     return [...seen.values()].sort((a, b) => a.createdAt - b.createdAt || a.messageId - b.messageId);
+}
+/**
+ * Messages of one channel up to `beforeMs` (paging back, oldest first in the
+ * result), at most about `max`. `reachedStart` is true when the service
+ * returned less than a full page — the channel's history goes no further
+ * back — so the backfill can stop asking. The boundary millisecond is
+ * included and de-duplicated by id, so ties on it are never skipped.
+ */
+async function readMessagesBefore(s, channelUrl, beforeMs, max = 2000) {
+    const url = `/group_channels/${encodeURIComponent(channelUrl)}/messages`;
+    const PAGE = 200;
+    const seen = new Map();
+    let before = beforeMs;
+    let reachedStart = false;
+    while (seen.size < max) {
+        const q = new URLSearchParams({ message_ts: String(before), prev_limit: String(PAGE), next_limit: '0', reverse: 'true', include: 'true' });
+        const r = await api(s, `${url}?${q}`);
+        const batch = (r.messages ?? []).map((m) => toMessage(channelUrl, m)).filter((m) => m !== null && m.createdAt <= beforeMs);
+        const had = seen.size;
+        for (const m of batch)
+            seen.set(m.messageId, m);
+        if (batch.length < PAGE) {
+            reachedStart = true;
+            break;
+        }
+        // A full page that added nothing: a whole page on one millisecond. Stop
+        // rather than loop; the next backfill resumes from the oldest stored.
+        if (seen.size === had)
+            break;
+        before = Math.min(...batch.map((m) => m.createdAt));
+    }
+    return { messages: [...seen.values()].sort((a, b) => a.createdAt - b.createdAt || a.messageId - b.messageId), reachedStart };
 }
 //# sourceMappingURL=chat.js.map

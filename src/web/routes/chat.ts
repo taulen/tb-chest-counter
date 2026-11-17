@@ -1,0 +1,159 @@
+/**
+ * /api/chat — the stored in-game chat for the Chats page.
+ *
+ * Only the CLAN chat (the clan's `clanGroup` channel) is served, to any
+ * signed-in member of the active clan. Private messages (whisper channels) are
+ * collected too but are never reachable through this router: every query is
+ * pinned to clanChatChannels(clanId), which only ever lists clanGroup channels
+ * of the caller's own clan.
+ *
+ * The history is what we stored, not what the game still serves — see
+ * chat-repo.ts: lines the game no longer returns stay readable here.
+ */
+import { Router, type Request } from 'express';
+import { getDb } from '../../data/database.js';
+import {
+  chatHistoryInfo, chatSenders, clanChatChannels, readChatPage,
+  type ChatCursor, type StoredChatMessage,
+} from '../../data/repositories/chat-repo.js';
+import { heroAvatarUrl } from '../../data/repositories/game-profile-repo.js';
+import { chatSenderRank, chatSenderTag, parseChatSubs, type ChatSub } from '../../game-protocol/chat-text.js';
+import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
+
+/** The game's map-object names, refreshed at most every 10 minutes (the page polls). */
+let namesCache: { at: number; names: GameNames | null } = { at: 0, names: null };
+async function objectNames(): Promise<GameNames['objects']> {
+  if (Date.now() - namesCache.at > 10 * 60_000) {
+    namesCache = { at: Date.now(), names: await loadGameNames().catch(() => namesCache.names) };
+  }
+  return namesCache.names?.objects ?? {};
+}
+
+/** Test seam. */
+export function resetChatNamesCache(names: GameNames | null = null): void {
+  namesCache = { at: names ? Date.now() : 0, names };
+}
+
+function cursor(v: unknown): ChatCursor | null {
+  const m = /^(\d{1,15}):(\d{1,20})$/.exec(String(v ?? ''));
+  return m ? { at: Number(m[1]), id: Number(m[2]) } : null;
+}
+
+function positiveInt(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+/** staticIds a sub refers to (a map object, a raid target, a sabotage squad), for name lookup. */
+function subStaticIds(sub: ChatSub): number[] {
+  const ids: number[] = [];
+  for (const k of ['staticId', 'targetStaticId', 'staticAtomId']) {
+    const v = sub[k];
+    if (typeof v === 'number' && v > 0) ids.push(v);
+  }
+  return ids;
+}
+
+function parseTranslations(json: string): Record<string, string> | null {
+  if (!json) return null;
+  try {
+    const t = JSON.parse(json) as unknown;
+    return t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, string>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function toApi(m: StoredChatMessage) {
+  return {
+    key: `${m.createdAt}:${m.messageId}`,
+    at: m.createdAt,
+    kind: m.customType === 'service' ? 'service' : 'user',
+    sender: {
+      name: m.senderName,
+      playerId: m.senderPlayerId,
+      // The game's clan rank and tag when the message was sent.
+      rank: chatSenderRank(m.senderInfo),
+      tag: chatSenderTag(m.senderInfo),
+    },
+    text: m.message,
+    subs: parseChatSubs(m.data),
+    translations: parseTranslations(m.translations),
+    edited: m.previousMessage !== null,
+    previousText: m.previousMessage,
+  };
+}
+
+/**
+ * Who the senders are on the site: their member (for the profile link), hero
+ * portrait and current clan rank. Clan-scoped.
+ */
+function people(clanId: number, playerIds: number[]): Record<number, { memberId: number | null; avatarUrl: string | null; role: number | null }> {
+  const out: Record<number, { memberId: number | null; avatarUrl: string | null; role: number | null }> = {};
+  const ids = [...new Set(playerIds)];
+  if (!ids.length) return out;
+  const db = getDb();
+  const ph = ids.map(() => '?').join(',');
+  for (const id of ids) out[id] = { memberId: null, avatarUrl: null, role: null };
+  const players = db.prepare(`SELECT player_id, hero_avatar, role FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
+    .all(clanId, ...ids) as Array<{ player_id: number; hero_avatar: number | null; role: number | null }>;
+  for (const p of players) Object.assign(out[p.player_id], { avatarUrl: heroAvatarUrl(p.hero_avatar), role: p.role });
+  const members = db.prepare(`SELECT id, game_player_id FROM members WHERE clan_id = ? AND game_player_id IN (${ph})`)
+    .all(clanId, ...ids) as Array<{ id: number; game_player_id: number }>;
+  for (const m of members) out[m.game_player_id].memberId = m.id;
+  return out;
+}
+
+export function createChatRouter(): Router {
+  const router = Router();
+
+  /**
+   * One page of the clan chat. Newest first; `before=<at>:<messageId>` pages
+   * back, `after=<at>:<messageId>` reads the newer side (oldest first — the
+   * live poll and "load newer"). `q` searches (every word, prefix), `sender`
+   * is a game player id, `from` / `to` bound the time (ms, to exclusive).
+   */
+  router.get('/clan', async (req: Request, res) => {
+    const clanId = req.clanId!;
+    const channels = clanChatChannels(clanId);
+    const limit = Math.min(positiveInt(req.query.limit) ?? 100, 200);
+    const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
+    const rows = readChatPage(clanId, channels, {
+      before: cursor(req.query.before),
+      after: cursor(req.query.after),
+      q,
+      senderPlayerId: positiveInt(req.query.sender),
+      fromMs: positiveInt(req.query.from),
+      toMs: positiveInt(req.query.to),
+      limit,
+    });
+    const messages = rows.map(toApi);
+    const objects: Record<number, string> = {};
+    const names = await objectNames();
+    for (const m of messages) {
+      for (const sub of Object.values(m.subs)) {
+        for (const id of subStaticIds(sub)) if (names[id]) objects[id] = names[id];
+      }
+    }
+    res.json({
+      available: channels.length > 0,
+      history: chatHistoryInfo(clanId, channels),
+      messages,
+      hasMore: rows.length === limit,
+      people: people(clanId, messages.map((m) => m.sender.playerId).filter((p): p is number => p !== null)),
+      objects,
+    });
+  });
+
+  /** Everyone who has written in the clan chat, busiest first (the sender filter). */
+  router.get('/clan/senders', (req: Request, res) => {
+    const clanId = req.clanId!;
+    const senders = chatSenders(clanId, clanChatChannels(clanId));
+    const who = people(clanId, senders.map((s) => s.playerId));
+    res.json({
+      senders: senders.map((s) => ({ ...s, memberId: who[s.playerId]?.memberId ?? null })),
+    });
+  });
+
+  return router;
+}

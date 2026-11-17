@@ -25,6 +25,7 @@ const routes_js_1 = require("../game-art/routes.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
 const game_js_1 = require("./routes/game.js");
+const chat_js_1 = require("./routes/chat.js");
 const guards_js_1 = require("./routes/guards.js");
 const tools_js_1 = require("./routes/tools.js");
 const tinman_js_1 = require("./routes/tinman.js");
@@ -482,6 +483,9 @@ function startWebServer(port, scanLoop, options = {}) {
     app.use('/api/might', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, might_js_1.createMightRouter)());
     // What the game protocol collects about players (profile, research, talents).
     app.use('/api/game', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, game_js_1.createGameRouter)());
+    // The stored clan chat (Chats page): any member of the active clan reads it;
+    // private messages are never served (the router is pinned to clan channels).
+    app.use('/api/chat', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, chat_js_1.createChatRouter)());
     // Guards levels and Gold Pass holders — both inferred from resource and chest
     // data, so the reads are visible to any clan member; the one write (an admin
     // entering a member's level) guards with requireAdmin inside the router.
