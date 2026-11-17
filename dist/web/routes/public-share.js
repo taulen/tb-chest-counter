@@ -19,6 +19,8 @@ const asset_versioning_js_1 = require("../asset-versioning.js");
 const session_repo_js_1 = require("../../data/repositories/session-repo.js");
 const member_source_breakdown_js_1 = require("../../data/member-source-breakdown.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
+const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
+const clan_logo_js_1 = require("../../game-art/clan-logo.js");
 const PUBLIC_DIR = path_1.default.resolve('src/web/public');
 // Cache-bust JS/CSS references on each container start so a redeploy
 // doesn't get masked by Cloudflare or browser cache.
@@ -231,6 +233,9 @@ function createPublicShareApiRouter(scanLoop) {
         const goal = (0, leaderboard_handler_js_1.resolveWeeklyGoal)(clan);
         res.json({
             clanName: clan.name,
+            // The clan's in-game logo (a public, path-versioned /game-art image —
+            // the game shows it to anyone on the map); null until a scan read it.
+            clanLogoUrl: (0, clan_logo_js_1.clanLogoUrl)((0, game_clan_repo_js_1.getClanInfo)(clan.id)?.logo ?? null),
             ctEnabled: !!clan.ctShareCode,
             // The frontend mirrors the same period→[from,to) math used by the
             // authenticated app, which depends on the configured day-rollover

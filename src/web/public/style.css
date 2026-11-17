@@ -152,6 +152,17 @@ td, th, .stat-card .value, .num {
   background-color: var(--bg-card);
   color: var(--text-primary);
 }
+/* The active clan's in-game logo leading the label or the switcher (the
+   switcher stays a native dropdown; the logo sits beside it). */
+.clan-switcher { gap: 8px; }
+.clan-switcher select { flex: 1 1 auto; min-width: 0; }
+.clan-header-logo {
+  flex: none;
+  align-self: center;
+  object-fit: contain;
+}
+.clan-indicator .clan-header-logo { width: 20px; height: 20px; }
+.clan-switcher .clan-header-logo { width: 26px; height: 26px; }
 
 .user-menu-btn {
   display: flex;

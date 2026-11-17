@@ -392,8 +392,9 @@ describe('public share surface (anonymous, token-gated)', () => {
       // leaderboardGoalHistory: { from, weeklyPoints, amberPct } steps only —
       // numbers the board already shows week by week; no set-at time and no who.
       // leaderboardGoalAmberPct: the amber percent the board's caption states.
+      // clanLogoUrl: the clan's in-game logo, a public /game-art image (or null).
       expect(Object.keys(r.body).sort()).toEqual([
-        'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardGoalAmberPct', 'leaderboardGoalHistory',
+        'clanLogoUrl', 'clanName', 'ctEnabled', 'gameDayRolloverUtcHour', 'leaderboardGoalAmberPct', 'leaderboardGoalHistory',
         'leaderboardWeeklyGoalPoints', 'weekStart',
       ]);
       const raw = JSON.stringify(r.body);

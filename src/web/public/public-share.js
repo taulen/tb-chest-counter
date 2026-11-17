@@ -508,6 +508,19 @@ function start() {
     }
     clanName = info.clanName || '';
     document.getElementById('clanName').textContent = info.clanName || 'TB Chest Counter';
+    // The clan's own in-game logo replaces the app's chest mark once a scan
+    // has read it (the name beside it says whose it is, so it's decorative).
+    if (info.clanLogoUrl) {
+      const mark = document.querySelector('.public-share-header .brand-logo');
+      const logo = document.createElement('img');
+      logo.className = 'brand-logo public-share-clan-logo';
+      logo.src = info.clanLogoUrl;
+      logo.alt = '';
+      logo.width = 36;
+      logo.height = 36;
+      logo.decoding = 'async';
+      mark?.replaceWith(logo);
+    }
     document.title = t('{clan} · Leaderboard', { clan: info.clanName || t('Clan') });
     if (Number.isFinite(info.gameDayRolloverUtcHour)) {
       rolloverHr = info.gameDayRolloverUtcHour;

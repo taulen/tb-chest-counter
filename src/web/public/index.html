@@ -87,11 +87,15 @@
       <div id="statusErrorDetails" class="status-error-details is-hidden" role="status"></div>
       <!-- Multi-clan: read-only label for clan-scoped users; superadmins
            get a dropdown to switch which clan they're viewing. -->
+      <!-- The clan's in-game logo leads either control (decorative: the name
+           beside it says which clan). Filled by app.js once a scan read it. -->
       <div id="clanIndicator" class="clan-indicator is-hidden" aria-live="polite">
+        <img class="clan-header-logo is-hidden" data-clan-logo alt="" width="20" height="20" decoding="async">
         <span class="clan-indicator-label" data-i18n>Clan</span>
         <span id="clanIndicatorName" class="clan-indicator-name"></span>
       </div>
       <div id="clanSwitcher" class="clan-switcher is-hidden">
+        <img class="clan-header-logo is-hidden" data-clan-logo alt="" width="26" height="26" decoding="async">
         <select id="clanSwitcherSelect" aria-label="Active clan" data-i18n-attr="aria-label"></select>
       </div>
       <div id="userInfo" class="user-info is-hidden">

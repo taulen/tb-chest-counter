@@ -262,6 +262,14 @@ export function createGameRouter(): Router {
    * treasury, and the clan's research levels with their recent changes. The
    * trees themselves come from /tech-trees (kind 'clan').
    */
+  /**
+   * Just the active clan's logo, for the header beside the clan's name (every
+   * page asks once, so it reads one row — not the whole Clan page).
+   */
+  router.get('/clan/logo', (req, res) => {
+    res.json({ logoUrl: clanLogoUrl(getClanInfo(req.clanId!)?.logo ?? null) });
+  });
+
   router.get('/clan', async (req, res) => {
     const clanId = req.clanId!;
     const info = getClanInfo(clanId);

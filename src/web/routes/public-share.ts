@@ -29,6 +29,8 @@ import { versionHtmlAssets } from '../asset-versioning.js';
 import { getLastCompletedSession } from '../../data/repositories/session-repo.js';
 import { getMemberSourceBreakdown } from '../../data/member-source-breakdown.js';
 import { gamePlayerIdForMember, getGamePlayer } from '../../data/repositories/game-profile-repo.js';
+import { getClanInfo } from '../../data/repositories/game-clan-repo.js';
+import { clanLogoUrl } from '../../game-art/clan-logo.js';
 import type { Clan } from '../../data/repositories/clan-repo.js';
 import type { ScanLoop } from '../../scheduler/loop.js';
 
@@ -257,6 +259,9 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
     const goal = resolveWeeklyGoal(clan);
     res.json({
       clanName: clan.name,
+      // The clan's in-game logo (a public, path-versioned /game-art image —
+      // the game shows it to anyone on the map); null until a scan read it.
+      clanLogoUrl: clanLogoUrl(getClanInfo(clan.id)?.logo ?? null),
       ctEnabled: !!clan.ctShareCode,
       // The frontend mirrors the same period→[from,to) math used by the
       // authenticated app, which depends on the configured day-rollover
