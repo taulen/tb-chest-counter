@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SENDBIRD_APP_ID = void 0;
 exports.chatLogin = chatLogin;
+exports.channelListQuery = channelListQuery;
 exports.listChannels = listChannels;
 exports.readMessages = readMessages;
 exports.readMessagesBefore = readMessagesBefore;
@@ -83,16 +84,29 @@ async function api(s, pathAndQuery) {
         throw new client_js_1.GameProtocolError(`chat API ${pathAndQuery.split('?')[0]} → HTTP ${res.status}`);
     return (await res.json());
 }
+/**
+ * The query the game client itself sends to list a user's channels (recorded
+ * Nov 2026). `custom_types` MUST keep literal commas: URLSearchParams writes
+ * them as %2C, which the chat service reads as ONE type named
+ * "clanGroup,whisper" — that matched nothing, so private messages and every
+ * named group chat ("CWB • Carter") were never listed. Each type name is
+ * encoded on its own, the separators stay commas.
+ */
+function channelListQuery(customTypes, token = '') {
+    const q = new URLSearchParams({
+        limit: '100', show_member: 'true', show_empty: 'true', show_frozen: 'true', show_metadata: 'true',
+        distinct_mode: 'all', order: 'latest_last_message', member_state_filter: 'all',
+        super_mode: 'all', public_mode: 'all', hidden_mode: 'unhidden_only',
+        ...(token ? { token } : {}),
+    });
+    return `${q}&custom_types=${customTypes.map((t) => encodeURIComponent(t)).join(',')}`;
+}
 /** Every channel of the given custom types the chat user belongs to. */
 async function listChannels(s, customTypes) {
     const out = [];
     let token = '';
     for (let page = 0; page < 20; page++) {
-        const q = new URLSearchParams({
-            limit: '100', custom_types: customTypes.join(','), show_member: 'true', show_empty: 'false',
-            order: 'latest_last_message', ...(token ? { token } : {}),
-        });
-        const r = await api(s, `/users/${encodeURIComponent(s.userId)}/my_group_channels?${q}`);
+        const r = await api(s, `/users/${encodeURIComponent(s.userId)}/my_group_channels?${channelListQuery(customTypes, token)}`);
         for (const c of r.channels ?? []) {
             out.push({
                 url: c.channel_url,

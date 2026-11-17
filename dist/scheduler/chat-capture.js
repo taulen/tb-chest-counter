@@ -16,6 +16,13 @@ const KEPT_TYPES = ['clanGroup', 'whisper'];
 const BACKFILL = { clanGroup: 20_000, whisper: 2_000 };
 /** Older history read per sync after that, until the service has nothing older (5 requests). */
 const OLDER_PER_SYNC = 1_000;
+/**
+ * New channels backfilled per sync (the rest wait for the next minute). Until
+ * Nov 2026 the channel list asked for "clanGroup%2Cwhisper" and matched
+ * nothing, so private chats were never listed; once fixed, an account's ~30
+ * private chats would all backfill in one burst. The clan chat goes first.
+ */
+const FIRST_READS_PER_SYNC = 3;
 const POLL_MS = 60_000;
 const sessions = new Map();
 let pollTimer = null;
@@ -27,11 +34,16 @@ async function sync(clanId, chat) {
         ? listed
         : [...listed, { url: clanUrl, customType: 'clanGroup', name: '', memberCount: 0, members: [], lastMessageAt: null }];
     let added = 0;
+    let firstReads = 0;
     const now = new Date().toISOString();
-    for (const c of channels) {
+    const ordered = [...channels].sort((a, b) => Number(b.customType === 'clanGroup') - Number(a.customType === 'clanGroup'));
+    for (const c of ordered) {
         (0, chat_repo_js_1.upsertChatChannel)(clanId, c, now);
         const after = (0, chat_repo_js_1.newestChatMessageAt)(clanId, c.url);
         if (!after) {
+            if (firstReads >= FIRST_READS_PER_SYNC)
+                continue; // next sync
+            firstReads++;
             // A channel's first read: back from now, as far as its backfill size.
             const first = await (0, chat_js_1.readMessagesBefore)(chat.session, c.url, Date.now(), BACKFILL[c.customType] ?? 2_000);
             added += (0, chat_repo_js_1.saveChatMessages)(clanId, first.messages, now);
