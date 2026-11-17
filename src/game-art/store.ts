@@ -12,6 +12,12 @@
  * whose bundle hash is unchanged since the previous version is copied instead
  * of downloaded. It never throws: a failed run logs and leaves the served
  * version alone. Only the current and previous versions are kept.
+ *
+ * The unit-icon frames (category `ui`) are not in the catalogue: they come
+ * from the WebGL client build (webgl-client.ts, one ~43 MB download per client
+ * build, reused across catalogue versions while the build is unchanged). They
+ * are optional — when they cannot be read the troop icons show unframed and
+ * the rest of the art is unaffected.
  */
 import fs from 'fs';
 import path from 'path';
@@ -26,12 +32,15 @@ import { encodePng } from './png.js';
 import { selectArt, safeArtName, ART_CATEGORIES, SPINE_REGIONS, type ArtCategory } from './selection.js';
 import { loadArtStatic, type ArtStatic } from './art-static.js';
 import {
+  avatarFrameImageFrom,
   buildMappings,
   heroAvatarImageFrom,
   loadTroopList,
   type ArtMappings,
   type TroopStats,
 } from './mappings.js';
+import { clientUiTextures, unitFrameArt } from './unit-frames.js';
+import { extractClientTextures, webglClientVersionFromConfig, webglDataUrl } from './webgl-client.js';
 
 const log = childLogger('game-art');
 /** Daily check failures repeat with the same cause; one line per 6 h is plenty. */
@@ -42,18 +51,22 @@ export interface GameArtImage {
   h: number;
   file: string;
   category: ArtCategory;
-  /** The bundle it came from; lets the next version reuse it when unchanged. */
+  /**
+   * The bundle it came from; lets the next version reuse it when unchanged.
+   * `client:<build>` for the WebGL client's UI art.
+   */
   bundle: string;
 }
 
 /**
  * What we extract changes when we start using a new kind of image (2: captain
- * portraits; 3: the Ancients artifacts and boss, Nov 2026). Bump this with
+ * portraits; 3: the Ancients artifacts and boss; 4: unit-icon frames from the
+ * WebGL client, Nov 2026). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 3;
+export const ART_SELECTION_VERSION = 4;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */
@@ -63,6 +76,8 @@ export interface GameArtIndex {
   builtAt: string;
   /** Static data the mappings were computed from. */
   staticVersion: string | null;
+  /** WebGL client build the `ui` images came from; null/absent = none read (yet). */
+  client?: string | null;
   /** Keyed by image name (= file name without .png). */
   images: Record<string, GameArtImage>;
   mappings: ArtMappings;
@@ -160,6 +175,11 @@ export function heroAvatarImage(heroAvatar: number | null | undefined, dir: stri
   return heroAvatarImageFrom(currentGameArt(dir)?.mappings ?? null, heroAvatar);
 }
 
+/** The frame image for a player's portrait (game_players.avatar_frame; the game's default when unknown), or null. */
+export function avatarFrameImage(frameId: number | null | undefined, dir: string = gameArtDir()): string | null {
+  return avatarFrameImageFrom(currentGameArt(dir)?.mappings ?? null, frameId);
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
@@ -240,6 +260,12 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
 
   const config = JSON.parse((await fetchBuffer(fetchImpl, VERSIONS_URL, 30_000)).toString('utf8')) as unknown;
   const version = catalogVersionFromConfig(config);
+  let client: string | null = null;
+  try {
+    client = webglClientVersionFromConfig(config);
+  } catch {
+    client = null; // no frames this run; everything else proceeds
+  }
   const state = readState(dir);
   const resourceNames = new Set((opts.resourceNames ? opts.resourceNames() : await defaultResourceNames()).map((n) => n.toLowerCase()));
   const loadStatic = opts.loadStatic ?? loadArtStatic;
@@ -256,14 +282,40 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     } catch {
       st = null;
     }
-    if (!st || st.version === existing.staticVersion) return { status: 'unchanged', version };
-    const troops = await loadTroops(opts);
-    const has = (n: string): boolean => n in existing.images;
-    const updated: GameArtIndex = { ...existing, staticVersion: st.version, mappings: buildMappings(st, troops, resourceNames, has) };
+    // Frames this version has not got yet (the client download failed last
+    // time): add them in place. Only new file names are written, so nothing
+    // already served changes under its immutable URL.
+    let frames: UnitFrames | null = null;
+    if (!existing.client && client) {
+      try {
+        frames = await collectUnitFrames(fetchImpl, client, path.join(dir, version), null, null, existing.images);
+      } catch (err) {
+        warner.warn('ui', `Game art ${version}: unit frames unavailable, troop icons stay unframed (${errText(err)})`);
+      }
+    }
+    const staticMoved = !!st && st.version !== existing.staticVersion;
+    if (!frames && !staticMoved) return { status: 'unchanged', version };
+    const images = { ...existing.images, ...(frames?.images ?? {}) };
+    const has = (n: string): boolean => n in images;
+    const mappings = st
+      ? buildMappings(st, await loadTroops(opts), resourceNames, has)
+      : { ...existing.mappings, unitFrames: unitFrameArt(has) };
+    const updated: GameArtIndex = {
+      ...existing,
+      images,
+      staticVersion: st?.version ?? existing.staticVersion,
+      client: frames?.client ?? existing.client ?? null,
+      mappings,
+    };
     writeJsonAtomic(path.join(dir, version, 'index.json'), updated);
     resetGameArtMemo();
-    log.info(`Game art ${version}: mappings recomputed for static data ${st.version}`);
-    return { status: 'remapped', version, images: Object.keys(existing.images).length };
+    log.info(
+      `Game art ${version}: ` +
+      (frames ? `${Object.keys(frames.images).length} unit frames added from client ${frames.client}` : '') +
+      (frames && staticMoved ? '; ' : '') +
+      (staticMoved ? `mappings recomputed for static data ${st!.version}` : ''),
+    );
+    return { status: 'remapped', version, images: Object.keys(images).length };
   }
 
   const catalogBuf = await fetchBuffer(fetchImpl, UNITY_BASE + version, CATALOG_TIMEOUT_MS);
@@ -363,6 +415,20 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     throw new Error(`${failures.length} of ${total} bundles failed (e.g. ${failures[0] ?? 'no images'})`);
   }
 
+  // The unit-icon frames, from the client build: reused while the build is
+  // unchanged; when it cannot be read, the previous version's frames are kept.
+  const prevDir = prev && prevVersion ? path.join(dir, prevVersion) : null;
+  let frames: UnitFrames | null = null;
+  if (client) {
+    try {
+      frames = await collectUnitFrames(fetchImpl, client, tmp, prev, prevDir, {});
+    } catch (err) {
+      warner.warn('ui', `Game art ${version}: unit frames unavailable from client ${client} (${errText(err)})`);
+    }
+  }
+  if (!frames && prev?.client && prevDir) frames = copyUnitFrames(prev, prevDir, tmp);
+  Object.assign(images, frames?.images ?? {});
+
   const has = (n: string): boolean => n in images;
   const seconds = Math.round((Date.now() - started) / 1000);
   const index: GameArtIndex = {
@@ -370,6 +436,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     selection: ART_SELECTION_VERSION,
     builtAt: new Date().toISOString(),
     staticVersion: st.version,
+    client: frames?.client ?? null,
     images: Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),
     mappings: buildMappings(st, troops, resourceNames, has),
     stats: { bundles: total, downloaded, reused, bytes, failed: failures.length, seconds },
@@ -386,10 +453,13 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
 
   const perCat = ART_CATEGORIES.map((c) => `${c} ${Object.values(images).filter((i) => i.category === c).length}`).join(', ');
   const troopIcons = Object.values(index.mappings.troops);
+  const framed = Object.entries(index.mappings.troops)
+    .filter(([id, icon]) => icon && index.mappings.unitFrames[String(index.mappings.troopTiers[id])]).length;
   log.info(
     `Game art ${version}: ${Object.keys(images).length} images (${perCat}) from ${total} bundles ` +
     `(${downloaded} downloaded, ${reused} reused), ${(bytes / 1048576).toFixed(1)} MB in ${seconds}s; ` +
-    `${failures.length} failed; troop icons ${troopIcons.filter(Boolean).length}/${troopIcons.length}`,
+    `${failures.length} failed; troop icons ${troopIcons.filter(Boolean).length}/${troopIcons.length}, ` +
+    `framed ${framed} (client ${frames?.client ?? 'none'}${frames?.downloaded ? ', downloaded' : ''})`,
   );
   if (failures.length) {
     warner.warn('bundles', `Game art ${version}: ${failures.length} bundle(s) failed, e.g. ${failures.slice(0, 3).join('; ')}`);
@@ -404,6 +474,72 @@ async function loadTroops(opts: EnsureGameArtOptions): Promise<TroopStats[]> {
     warner.warn('troops', `Game art: troop list unavailable, no troop icon mapping (${String(err)})`);
     return [];
   }
+}
+
+const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/** The client data file is one ~43 MB download (brotli; ~69 MB once decoded). */
+const CLIENT_TIMEOUT_MS = 300_000;
+
+interface UnitFrames {
+  images: Record<string, GameArtImage>;
+  client: string;
+  downloaded: boolean;
+}
+
+/**
+ * The unit-icon frames of client build `client` as PNGs in `outDir`: copied
+ * from the previous version when it read the same build, else extracted from
+ * the build's data file. Names in `skip` are never written (adding frames to a
+ * live version only ever adds files). Throws when the build yields none.
+ */
+async function collectUnitFrames(
+  fetchImpl: typeof fetch,
+  client: string,
+  outDir: string,
+  prev: GameArtIndex | null,
+  prevDir: string | null,
+  skip: Record<string, GameArtImage>,
+): Promise<UnitFrames> {
+  const wanted = clientUiTextures();
+  if (prev && prevDir && prev.client === client && wanted.every((w) => prev.images[safeArtName(w)])) {
+    const copied = copyUnitFrames(prev, prevDir, outDir);
+    if (copied) return copied;
+  }
+  const names = new Set(wanted);
+  const { images: found, errors } = extractClientTextures(
+    await fetchBuffer(fetchImpl, webglDataUrl(client), CLIENT_TIMEOUT_MS, 2),
+    (n) => names.has(n),
+  );
+  if (!found.length) throw new Error(errors[0] ?? 'no unit frame textures in the client build');
+  const images: Record<string, GameArtImage> = {};
+  for (const img of found) {
+    const name = safeArtName(img.name);
+    if (images[name] || skip[name]) continue;
+    const file = `${name}.png`;
+    fs.writeFileSync(path.join(outDir, file), await encodePng(img.image));
+    images[name] = { w: img.image.width, h: img.image.height, file, category: 'ui', bundle: `client:${client}` };
+  }
+  if (errors.length) {
+    warner.warn('ui-textures', `Game art: ${errors.length} unit frame texture(s) unreadable in client ${client}, e.g. ${errors[0]}`);
+  }
+  return { images, client, downloaded: true };
+}
+
+/** The previous version's unit frames, copied into `outDir` (null when it has none). */
+function copyUnitFrames(prev: GameArtIndex, prevDir: string, outDir: string): UnitFrames | null {
+  if (!prev.client) return null;
+  const images: Record<string, GameArtImage> = {};
+  for (const [name, img] of Object.entries(prev.images)) {
+    if (img.category !== 'ui') continue;
+    try {
+      fs.copyFileSync(path.join(prevDir, img.file), path.join(outDir, img.file));
+      images[name] = img;
+    } catch {
+      // a file gone from the previous version: that frame is missing, nothing more
+    }
+  }
+  return Object.keys(images).length ? { images, client: prev.client, downloaded: false } : null;
 }
 
 /** Remove version dirs other than `keep`, and temp dirs left by a crashed run. */

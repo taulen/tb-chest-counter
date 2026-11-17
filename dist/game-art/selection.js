@@ -1,12 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.SPINE_REGIONS = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
+exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.SPINE_REGIONS = exports.STATUS_ART = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
 exports.isChestName = isChestName;
 exports.isResourceItem = isResourceItem;
 exports.staticIconsByCategory = staticIconsByCategory;
 exports.selectArt = selectArt;
 exports.safeArtName = safeArtName;
-exports.ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan', 'events'];
+/**
+ * `ui` is the client's own interface art (unit frames, backs, tier badges):
+ * not in the catalogue at all, it comes from the WebGL client build
+ * (webgl-client.ts, unit-frames.ts), so it has no pattern here.
+ */
+exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'ui'];
 /**
  * Event pictures the app shows by key (Tools → Ancient planner), the game's
  * own art. With a `region`, the address is a Spine animation and the picture
@@ -20,11 +25,36 @@ exports.EVENT_ART = {
     // The Ancients boss as the event map shows it.
     tinman: { address: 'map_clan_doomsday_boss_scaled' },
 };
+/**
+ * Small pictures for a player's city state and holdings, by key (the
+ * `status` mapping; lib/game-art.js statusIconUrl). The game's own icons:
+ *   shield      the Shield of Peace item icon — what most "Shield of Peace"
+ *               items (T8) use, and named in the client's own code
+ *   burning     "fire in the fort": a fortress wall in flames
+ *   wallsDown   the destroyed-fortress icon (a city with its walls broken)
+ *   flame       a plain flame that stays legible at 16 px (the 72s do not)
+ *   city        the default city look at level 1 (T52 "Player's City");
+ *               a player's own look by level is the `cityLooks` mapping
+ *   goldIngots  the Gold Ingots item icon (T8 item 16)
+ * Not `player_feiry_city_*`: that is the "Fiery" city look, not a city on fire.
+ */
+exports.STATUS_ART = {
+    shield: 'booster_piece_shield_orange_72',
+    burning: 'fire_in_the_fort_72',
+    wallsDown: 'destroyed_fortress_icon',
+    flame: 'spells_magic_fire_22',
+    city: 'player_city_lv1_icon',
+    goldIngots: 'gold_bar_72',
+};
 /** Address → the Spine atlas region its picture is cut from. */
 exports.SPINE_REGIONS = new Map(Object.values(exports.EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region]));
 exports.ART_PATTERNS = {
     // Hero avatar portraits come from the hero-avatar table (T13) alone.
     heroes: [],
+    // Portrait frames come from the customizations table (T52) alone.
+    frames: [],
+    // City looks (icon per city level) come from T52 alone.
+    cities: [],
     // Troop cards: guardsmen/specialists/siege ("unit_knight_72"), mercenaries
     // ("merc_spec_flying_9_icon_72"); monster and event mercs come via T9.
     troops: [/^unit_[a-z0-9_]+_72$/, /^merc_[a-z0-9_]+_icon_72$/],
@@ -37,6 +67,10 @@ exports.ART_PATTERNS = {
     clan: [/^clan_(frame|emblem)_\d+(_lg)?$/],
     // Exactly the EVENT_ART addresses.
     events: Object.values(exports.EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
+    // Exactly the STATUS_ART addresses.
+    status: Object.values(exports.STATUS_ART).map((a) => new RegExp(`^${a}$`)),
+    // From the client build, not the catalogue (see ART_CATEGORIES).
+    ui: [],
 };
 /** Items (T8) below this id are the game's currencies and base resources. */
 exports.RESOURCE_ITEM_MAX_ID = 100;
@@ -65,6 +99,11 @@ function staticIconsByCategory(st, resourceNames) {
         if (c.art)
             out.heroes.add(c.art.toLowerCase());
     }
+    for (const f of Object.values(st.frames ?? {}))
+        out.frames.add(f.visual.toLowerCase());
+    for (const c of Object.values(st.cityLooks ?? {}))
+        for (const icon of Object.values(c.icons))
+            out.cities.add(icon.toLowerCase());
     for (const u of st.units)
         out.troops.add(u.icon.toLowerCase());
     for (const t of Object.values(st.techs))

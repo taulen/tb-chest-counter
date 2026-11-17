@@ -1997,6 +1997,53 @@ label {
   object-fit: cover;
 }
 
+/* The portrait inside the player's frame, as the game's UserIconView draws
+   it: the 72-pixel portrait with the frame sprite stretched over 98 × 95
+   pixels, centred 4 px low. --hero-box is the 98-pixel width; --u one game
+   pixel. Both are the game's own art. */
+.hero-framed {
+  --u: calc(var(--hero-box, 54px) / 98);
+  position: relative;
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+.hero-framed > img { position: absolute; display: block; max-width: none; }
+.hero-framed-art { left: calc(13 * var(--u)); top: calc(9 * var(--u)); width: calc(72 * var(--u)); height: calc(72 * var(--u)); object-fit: cover; }
+.hero-framed-frame { left: 0; top: calc(1.5 * var(--u)); width: calc(98 * var(--u)); height: calc(95 * var(--u)); }
+/* The hero level on the game's level plate (LevelView: 29 × 35, its top-left
+   53 px into and 8 px above the portrait), the number 1.5 px above centre. */
+.hero-framed-level {
+  position: absolute;
+  left: calc(66 * var(--u));
+  top: calc(1 * var(--u));
+  width: calc(29 * var(--u));
+  height: calc(35 * var(--u));
+}
+.hero-framed-level img { display: block; width: 100%; height: 100%; }
+/* No plate sprite yet (art index not in): a plate of ours in its place. */
+.hero-framed-level.is-plain {
+  border: 1px solid var(--accent-gold-border);
+  border-radius: calc(3 * var(--u)) calc(3 * var(--u)) calc(14 * var(--u)) calc(14 * var(--u));
+  background: var(--bg-elevated);
+}
+.hero-framed-level-num {
+  position: absolute;
+  inset: 0 0 calc(3 * var(--u));
+  display: grid;
+  place-items: center;
+  font-family: var(--font-sans);
+  font-size: calc(14 * var(--u));
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--game-badge-text);
+  text-shadow: 0 0 calc(1.5 * var(--u)) var(--game-badge-shadow), 0 calc(1 * var(--u)) calc(1 * var(--u)) var(--game-badge-shadow);
+}
+.hero-framed-level-num.is-3 { font-size: calc(11.5 * var(--u)); }
+.hero-framed-level.is-plain .hero-framed-level-num { color: var(--text-primary); text-shadow: none; }
+
 .member-rank-badge.top-3 {
   border-color: var(--accent-gold);
   background: var(--accent-gold-bg);
@@ -6437,6 +6484,9 @@ table.faq-matrix { min-width: 460px; }
   gap: 10px;
   margin: -6px 0 8px;
 }
+/* A framed portrait has no text baseline: centre the row on it instead. */
+.lbb-who:has(.hero-framed),
+.lbb-sheet-meta:has(.hero-framed) { align-items: center; }
 
 /* The game's facts about the player (lib/game-facts.js), above the totals. */
 .lbb-facts {
@@ -7670,6 +7720,42 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .citadel-row-head span:nth-child(n+2):not(.citadel-head-troop) { text-align: center; }
 .citadel-troop { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .citadel-icon { width: 36px; height: 36px; border-radius: 6px; flex-shrink: 0; }
+/* A troop icon drawn the way the game draws it (its UnitIconView prefab): the
+   coloured back, the portrait, the 94×92 frame 2 px low and the 33×33 tier
+   badge over the top-left corner — all the game's own sprites, coloured by the
+   unit's tier (src/game-art/unit-frames.ts). The whole picture spans 95 × 94
+   game pixels; --unit-size is its width here, so --u is one game pixel and
+   nothing spills outside the box the caller sized. */
+.unit-icon {
+  --u: calc(var(--unit-size, 36px) / 95);
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 0;
+  vertical-align: middle;
+}
+.unit-icon > img,
+.unit-icon-tier { position: absolute; display: block; max-width: none; }
+.unit-icon-back,
+.unit-icon-art { left: calc(12 * var(--u)); top: calc(10.5 * var(--u)); width: calc(72 * var(--u)); height: calc(72 * var(--u)); }
+.unit-icon-frame { left: calc(1 * var(--u)); top: calc(2.5 * var(--u)); width: calc(94 * var(--u)); height: calc(92 * var(--u)); }
+.unit-icon-tier { left: 0; top: calc(0.5 * var(--u)); width: calc(33 * var(--u)); height: calc(33 * var(--u)); }
+.unit-icon-tier img { display: block; width: 100%; height: 100%; }
+/* VIII–X: the game has no numbered badge, so the numeral is written over its
+   plain disc, in the game's badge lettering (base.css --game-badge-*). */
+.unit-icon-num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-sans);
+  font-size: calc(11 * var(--u));
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--game-badge-text);
+  text-shadow: 0 0 calc(1.5 * var(--u)) var(--game-badge-shadow), 0 calc(1 * var(--u)) calc(1 * var(--u)) var(--game-badge-shadow);
+}
 /* A troop the game's art has no icon for (or before it is extracted): a
    neutral tile with the name's first letter, never a bundled picture. */
 .troop-icon-ph {

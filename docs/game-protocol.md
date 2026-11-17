@@ -74,8 +74,8 @@ the repo. `versions.totalbattle.com/config` → `unity_catalog_version.webgl` na
 the asset catalogue at `assets-unity.totalbattle.dev/webgl/<hash>` (custom
 binary: per bundle a name, group, content hash, bundle hash and the lower-cased
 asset addresses inside). Only bundles holding images we use are downloaded
-(heroes, troops/mercenaries, research/talent icons, chests, resources, clan,
-events),
+(heroes, portrait frames, city looks, troops/mercenaries, research/talent
+icons, chests, resources, clan, events, status icons),
 decoded (UnityFS + LZ4 → SerializedFile type trees → Texture2D RGBA32 / RGB24 /
 RGB565 / DXT1 / DXT5, Sprites cut from their atlas — pixel-identical to UnityPy
 on 2188 references) and written as PNG to `data/game-art/<catalog>/` with an
@@ -90,12 +90,58 @@ row id), every Tools troop and citadel defender (`troops`: TROOPS + DEFENDERS of
 since the one named from the wiki, "Many-Armed Giant", took the game's
 "Many-Armed Guardian"), tech and talent icons from T21 f3, chests and resources by name,
 captain portraits from T75, and the Ancient planner's pictures (`ancients`,
-`EVENT_ART` in [selection.ts](../src/game-art/selection.ts)).
+`EVENT_ART` in [selection.ts](../src/game-art/selection.ts)). From the
+customizations table T52 (f1 kind, f2 name, f4 visual JSON): portrait frames
+(`avatarFrames`, kind 1, by `game_players.avatar_frame` = 402 field 6; the
+`visual` sprite; 1 = "Standard", the default) and city looks (`cityLooks`,
+kind 2, by `city_appearance` = 402 field 5; an icon per city level step, 9 =
+"Player's City"). `status` names the small city-state pictures by key
+(`STATUS_ART`): shield = the Shield of Peace item icon
+(`booster_piece_shield_orange_72`), burning = `fire_in_the_fort_72`, wallsDown =
+`destroyed_fortress_icon`, flame = `spells_magic_fire_22` (legible at 16 px),
+city = `player_city_lv1_icon`, goldIngots = `gold_bar_72` (T8 item 16).
+`player_feiry_city_*` is the "Fiery" city look, not a city on fire.
+
+**The client's own UI art** ([webgl-client.ts](../src/game-art/webgl-client.ts),
+category `ui`): frames, coloured backs and badges are not in the catalogue.
+They are in the WebGL client build's Resources — `versions…config` →
+`webgl_client_version.default` → `assets-webgl-client.totalbattle.dev/<build>/Build/Triumph.data`
+(~43 MB brotli, ~69 MB raw; a `UnityWebData1.0` container whose
+`data.unity3d` UnityFS bundle holds `resources.assets`). That file has **no
+type trees**, so Texture2D is read with Unity's fixed 2020.2–2022.1 field
+layout and accepted only when the read ends exactly at the object's size (a
+newer engine fails loudly, never guesses). One download per client build;
+reused across catalogue versions while the build is unchanged, and when it
+cannot be read the previous version's frames are kept (or icons stay
+unframed). The prefabs were read the same way (GameObject / RectTransform /
+Image sprite references), which is where the geometry below comes from:
+
+- **Unit icons** (`UnitIconView`, [unit-frames.ts](../src/game-art/unit-frames.ts)):
+  72×72 box; back `back_icon_units_72x72_<colour>`; the portrait; frame
+  `frame_icon_units_94x92_<colour>` (94×92, 2 px low); tier badge
+  `icons_tir_<roman>_1` (33×33, top-left at −12/−10). The colour is the unit's
+  **tier** (T9 f2: Archer I = 1 … Corax II = 9, Dwarf = 0) on the game's tier
+  ladder — 0 grey, I white, II green, III blue, IV violet, V orange, VI red,
+  VII gold, VIII–X whiteII/greenII/blueII (the same colours as its per-tier
+  `drapery_tir_*`). The client picks the sprites in code; the ladder is how its
+  art is named and coloured. VIII–X have no numbered badge: the plain disc of
+  their colour family (`icons_tir_I/II/III_3`) with the numeral written over it.
+  Mappings `troopTiers` (troop → tier, on the same rows as its icon) and
+  `unitFrames` (tier → back/frame/badge/numeral).
+- **Player portraits** (`UserIconView`): the 72-pixel portrait with the frame
+  sprite stretched to 98×95 and centred 4 px low (`backForFrame` is opaque and
+  belongs to frame previews, not drawn), and the **hero level** on a
+  `LevelView` plate — 29×35, top-left 53 px into and 8 px above the portrait,
+  the number centred. The view picks among `icons_tir_1` / `icons_tir_shield_1…6`
+  in code; we use the sprite the prefab is saved with, `icons_tir_shield_4`
+  (`heroLevelBadge`).
 
 **Only the game's own art is shown** — no game, wiki or third-party picture is
 committed (the troop webps and Ancient cut-outs were removed in Nov 2026). A
 troop the art lacks shows a neutral tile with its initial (`troopIconHtml` in
-`lib/game-art.js`); an Ancient picture the art lacks is left out.
+`lib/game-art.js`); without its frame art, the plain icon; an Ancient picture
+the art lacks is left out. A portrait without a frame image is the plain round
+one (`heroAvatarHtml` in `lib/game-facts.js`).
 
 **Spine stills** ([spine.ts](../src/game-art/spine.ts)): the Ancients artifacts
 (Tome of Knowledge, Enchanted Figurine, Mysterious Clock) exist in the game only
@@ -373,7 +419,7 @@ form for each value — 181 captured requests re-encode byte-identical.
 | Type | Ask (body) | Reply |
 |---|---|---|
 | 15000 | `[[[[clanId], 2147483647]]]` | clan record: `[0]` clan id, `[1]` tag/name/description, `[2]` members `[[id], role, joinedAt]`, `[3]` ~860 `[[id], ts, 0]` (departures), `[13]` gifts `[giftId, [senderId], giftType, expiresAt, count, tab]` |
-| 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[22]` `[1]` = Gold Pass |
+| 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[5]` city look and `[6]` portrait frame (T52 customizations; v114), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[22]` `[1]` = Gold Pass |
 | 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
 | 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
 | 312 | `[[[tileIds], [versions], [], []]]` | per 20×20 tile `[tileId, version, …, [4] cities, [5] objects]`; `tile = floor(y/20)*50 + floor(x/20)` |
@@ -405,8 +451,10 @@ Each table has its own id space:
 | 7 | map objects | f3 vector |
 | 8 | gift types | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
+| 9 | units | f1 name, f2 tier (0–10), f4 icon, f10 strength, f12 health |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |
 | 62 | clan medals | f5 vector (f4 unlock text, f6 tier) |
+| 52 | customizations: f1 kind (1 portrait frame, 2 city look) | f2 name vector, f4 visual JSON |
 | 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
 
 Captains (T75): f1 kind, f2 rarity (1 rare, 2 epic, 3 legendary, 4 mythic;

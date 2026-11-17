@@ -52,12 +52,15 @@ gameDate = now.slice(0, 10)) {
     const db = (0, database_js_1.getDb)();
     const roles = new Map(members.map((m) => [m.playerId, m]));
     const upsert = db.prepare(`INSERT INTO game_players
-       (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar, city_id, gold_ingots, first_seen, last_seen)
-     VALUES (@clanId, @playerId, @name, @role, @joinedAt, 1, @might, @heroLevel, @cityLevel, @vip, @goldPass, @heroAvatar, @cityId, @goldIngots, @now, @now)
+       (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar,
+        avatar_frame, city_appearance, city_id, gold_ingots, first_seen, last_seen)
+     VALUES (@clanId, @playerId, @name, @role, @joinedAt, 1, @might, @heroLevel, @cityLevel, @vip, @goldPass, @heroAvatar,
+        @avatarFrame, @cityAppearance, @cityId, @goldIngots, @now, @now)
      ON CONFLICT (clan_id, player_id) DO UPDATE SET
        name = excluded.name, role = excluded.role, joined_at = excluded.joined_at, in_clan = 1,
        might = excluded.might, hero_level = excluded.hero_level, city_level = excluded.city_level,
        vip = excluded.vip, gold_pass = excluded.gold_pass, hero_avatar = excluded.hero_avatar,
+       avatar_frame = excluded.avatar_frame, city_appearance = excluded.city_appearance,
        city_id = excluded.city_id, gold_ingots = COALESCE(excluded.gold_ingots, game_players.gold_ingots),
        last_seen = excluded.last_seen`);
     // Gold Ingots tick up every few minutes, so they are kept per game day (the
@@ -81,6 +84,7 @@ gameDate = now.slice(0, 10)) {
                 clanId, playerId: p.playerId, name: p.name, role: m.role, joinedAt: m.joinedAt,
                 might: p.might, heroLevel: p.heroLevel, cityLevel: p.cityLevel, vip: p.vip,
                 goldPass: p.goldPass ? 1 : 0, heroAvatar: p.heroAvatar, cityId: p.cityId, goldIngots: p.goldIngots ?? null, now,
+                avatarFrame: p.avatarFrame ?? null, cityAppearance: p.cityAppearance ?? null,
             };
             upsert.run(row);
             if (p.goldIngots !== null && p.goldIngots !== undefined)

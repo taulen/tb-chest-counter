@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.heroAvatarUrl = heroAvatarUrl;
+exports.avatarFrameUrl = avatarFrameUrl;
 exports.gamePlayerIdForMember = gamePlayerIdForMember;
 exports.getGamePlayer = getGamePlayer;
 exports.getGamePlayersByMember = getGamePlayersByMember;
@@ -35,11 +36,19 @@ const toProfile = (r) => ({
     mapSeenAt: r.map_seen_at ?? null,
     heroAvatar: r.hero_avatar,
     avatarUrl: heroAvatarUrl(r.hero_avatar),
+    avatarFrame: r.avatar_frame ?? null,
+    frameUrl: avatarFrameUrl(r.avatar_frame),
+    cityAppearance: r.city_appearance ?? null,
     lastSeen: r.last_seen,
 });
 /** URL of a hero portrait by the game's avatar id, or null. */
 function heroAvatarUrl(heroAvatar) {
     const name = (0, index_js_1.heroAvatarImage)(heroAvatar);
+    return name ? (0, index_js_1.gameArtUrl)(name) : null;
+}
+/** URL of the frame a portrait is drawn in, by the player's frame id (the game's default when unknown), or null. */
+function avatarFrameUrl(frameId) {
+    const name = (0, index_js_1.avatarFrameImage)(frameId);
     return name ? (0, index_js_1.gameArtUrl)(name) : null;
 }
 /** The game player a member is linked to, or null when not linked yet. */
