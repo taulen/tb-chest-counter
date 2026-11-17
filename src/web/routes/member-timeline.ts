@@ -1,6 +1,6 @@
 /**
  * A member's timeline (profile → Timeline): GET /api/game/members/:memberId/timeline
- * ?before=<cursor>&groups=clan,growth,research,captains,city&limit=60.
+ * ?before=<cursor>&groups=clan,growth,titles,research,captains,city&limit=60.
  *
  * Clan-scoped like the rest of /api/game (any member of the clan may read).
  * The timeline is built whole from what the member's history tables hold
@@ -74,6 +74,11 @@ export function createMemberTimelineRouter(opts: { names?: () => Promise<GameNam
       dragonIconUrl: (stage) => {
         const icon = stage !== null ? names?.dragon?.stages?.[String(stage)]?.icon : undefined;
         return icon ? gameArtUrl(safeArtName(icon)) : null;
+      },
+      // T29: name, duration and source; the round icon (art mapping `titles`).
+      title: (id) => {
+        const t = names?.titles?.[String(id)];
+        return { name: t?.name || `#${id}`, seconds: t?.seconds ?? 0, source: t?.source ?? '', iconUrl: art(mappings?.titles, id) };
       },
     };
 

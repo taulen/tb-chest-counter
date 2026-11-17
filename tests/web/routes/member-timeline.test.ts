@@ -55,7 +55,10 @@ describe('/api/game/members/:id/timeline', () => {
     db.prepare(`INSERT INTO audit_log (user_id, clan_id, action, details, created_at) VALUES (NULL, 2, 'merge_player', ?, '2026-11-17T01:00:00Z')`)
       .run(JSON.stringify({ from: 'X', to: 'Nimduen', clanId: 2 }));
 
-    const names = { techs: { 1001: { name: 'Ballistics', maxLevel: 10 }, 1002: { name: 'Masonry', maxLevel: 10 } } } as unknown as GameNames;
+    const names = {
+      techs: { 1001: { name: 'Ballistics', maxLevel: 10 }, 1002: { name: 'Masonry', maxLevel: 10 } },
+      titles: { 29: { name: 'Prefect', description: '', source: 'Received from the Loyalty Bonus', seconds: 604_800, icon: 'perfect_28', art: 'bonus_perfect_72' } },
+    } as unknown as GameNames;
     app = express();
     app.use('/api/game', requireAuth, requireClanContext, createMemberTimelineRouter({ names: async () => names }));
   });
@@ -89,5 +92,35 @@ describe('/api/game/members/:id/timeline', () => {
     expect(p2.next).toBeNull();
     const clan = (await get(`/api/game/members/${memberId}/timeline?groups=clan`, 'user1')).body;
     expect(clan.entries.map((e: { kind: string }) => e.kind)).toEqual(['merged', 'joined']);
+  });
+
+  it('adds the player\'s titles under Titles, and tags merges of names neither the game nor a person gave', async () => {
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO game_player_titles (clan_id, player_id, title_id, assigned_at, event_id, first_seen, last_seen, gone_at)
+       VALUES (1, ?, 29, ?, NULL, '2026-11-16T12:00:00.000Z', '2026-11-17T10:00:00.000Z', NULL)`,
+    ).run(PLAYER, Date.parse('2026-11-16T10:00:00Z') / 1000);
+    const audit = db.prepare(`INSERT INTO audit_log (user_id, clan_id, action, details, created_at) VALUES (NULL, ?, ?, ?, ?)`);
+    // A spelling only the screenshot reader ever produced.
+    audit.run(1, 'merge_player', JSON.stringify({ from: 'Nimdu3n', to: 'Nimduen', clanId: 1 }), '2026-05-01T11:10:58.131Z');
+    // A name an admin typed (in any clan) is a person's, not the reader's.
+    audit.run(2, 'rename_member', JSON.stringify({ id: '999', newName: 'Nim the Typed' }), '2026-05-01T09:00:00.000Z');
+    audit.run(1, 'merge_player', JSON.stringify({ from: 'Nim the Typed', to: 'Nimduen', clanId: 1 }), '2026-05-02T11:00:00.000Z');
+
+    const titles = (await get(`/api/game/members/${memberId}/timeline?groups=titles`, 'user1')).body;
+    expect(titles.entries).toEqual([expect.objectContaining({
+      kind: 'titles', group: 'titles', day: '2026-11-15', at: '2026-11-16T10:00:00.000Z',
+      items: [expect.objectContaining({ titleId: 29, name: 'Prefect', change: 'received' })],
+    })]);
+
+    const merged = (await get(`/api/game/members/${memberId}/timeline?groups=clan`, 'user1')).body.entries
+      .filter((e: { kind: string }) => e.kind === 'merged')
+      .map((e: { ocr: boolean; from?: string; items?: unknown[] }) => [e.ocr, e.items ?? e.from]);
+    expect(merged).toEqual([
+      // The game reports "Нимдуен" for the player: a real merge.
+      [false, 'Нимдуен'],
+      [false, 'Nim the Typed'],
+      [true, [{ name: 'Nimdu3n', ats: ['2026-05-01T11:10:58.131Z'] }]],
+    ]);
   });
 });

@@ -10551,6 +10551,30 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tl-items { list-style: none; margin: 4px 0 2px; padding: 0; display: grid; gap: 3px; }
 .tl-items li { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12.5px; }
 .tl-items li span { min-width: 0; }
+/* Titles: the game's round icons; an ended title's icon greys out, each line
+   keeps its own time (a day's entry is dated by its latest). */
+.tl-img.is-round { border-radius: 50%; }
+.tl-items li.is-ended .tl-img { filter: grayscale(1); opacity: 0.6; }
+.tl-item-time { margin-left: auto; padding-left: 8px; color: var(--text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* A merge of a screenshot-era spelling: the site's tidying, not news. A
+   spelling's dates drop under it when the line is too narrow. */
+.tl-entry.is-ocr .tl-body { color: var(--text-secondary); }
+.tl-items li.is-spelling { flex-wrap: wrap; row-gap: 0; }
+.tl-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--subtle-bg-strong);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: 1px;
+  cursor: help;
+}
 .tl-foot { display: flex; justify-content: center; padding: 6px 16px 14px; }
 .tl-foot:empty { display: none; }
 

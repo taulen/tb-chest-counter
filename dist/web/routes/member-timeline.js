@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createMemberTimelineRouter = createMemberTimelineRouter;
 /**
  * A member's timeline (profile → Timeline): GET /api/game/members/:memberId/timeline
- * ?before=<cursor>&groups=clan,growth,research,captains,city&limit=60.
+ * ?before=<cursor>&groups=clan,growth,titles,research,captains,city&limit=60.
  *
  * Clan-scoped like the rest of /api/game (any member of the clan may read).
  * The timeline is built whole from what the member's history tables hold
@@ -73,6 +73,11 @@ function createMemberTimelineRouter(opts = {}) {
             dragonIconUrl: (stage) => {
                 const icon = stage !== null ? names?.dragon?.stages?.[String(stage)]?.icon : undefined;
                 return icon ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(icon)) : null;
+            },
+            // T29: name, duration and source; the round icon (art mapping `titles`).
+            title: (id) => {
+                const t = names?.titles?.[String(id)];
+                return { name: t?.name || `#${id}`, seconds: t?.seconds ?? 0, source: t?.source ?? '', iconUrl: art(mappings?.titles, id) };
             },
         };
         const timeline = (0, member_timeline_js_1.buildTimeline)(src, look, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);

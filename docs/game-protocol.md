@@ -662,7 +662,7 @@ dragon read is a gap; a stage first seen on an old read is the stage's baseline.
 The chat-level import that used to supply the Dragon level is retired
 ([member-levels.md](member-levels.md)).
 
-### Titles (v125, profile header)
+### Titles (v125, profile header and Timeline)
 
 The small round icons the game (and tbclanportal) shows beside a player —
 "Prefect" from the Loyalty Bonus, tournament titles like "Blademaster",
@@ -725,6 +725,32 @@ through tGame; their official es/fr/ru/de texts come from the game's CSVs
 (`titles.title_name.*`, `titles.description.*`, `titles.title_source.*`; a
 text holding `"` stays English). The art is selection v11's `titles` category
 (mappings `titles` = round icon, `titleArt` = 72 px picture).
+
+**Timeline** (group Titles, its own filter chip): a `titles` entry per game day
+with one line per change, the round icon beside each
+([member-timeline.ts](../src/data/member-timeline.ts) `titleChanges`):
+
+- A title **with a set end**: "Received the title X" at its `assignedAt` (the
+  game's own time, so a title already held at the first read still shows when
+  it was received); "Received the title X again" when a new grant arrived
+  before the last one's end (a tournament won again — the clock restarts, no
+  end in between); "The title X ran out" at `assignedAt + seconds` once that
+  has passed (the server drops it then); "No longer holds the title X" at
+  `gone_at` when the first read without it came more than 5 minutes before its
+  end (taken). Still running: no end line.
+- A title **with no set end**: the game re-grants Premium's three every hour
+  or two with a new `assignedAt`, and they take turns (Great Ruler → Great
+  Marshal → Great Ruler within three hours on prod), so these count by reads:
+  titles sharing a source are one holding while every read saw one of them (or
+  the next was assigned before the last went). One "received" line at the
+  holding's first grant; "No longer holds" at the first read with none,
+  named by the title held last. Re-grants and switches are not lines.
+- One line: shown as the sentence. Several on a game day: "Received 2 titles
+  · 1 title ended", folded; each line keeps its own time; an ended title's
+  icon greys out.
+
+Prod, Nov 17 2026: 1,006 grants of 210 players → 638 day entries (447 of one
+line), 902 received, 16 again, 1 gone; Premium's hourly re-grants add none.
 
 ### The clan itself (v111, My Clan page)
 
@@ -799,6 +825,44 @@ the rows). Nothing new is stored; it reads what the member sync already keeps:
 
 The member Timeline's joined / came back / left entries come from the same
 function, filtered to the member, so the two never disagree.
+
+### Member Timeline: merges of screenshot-era spellings
+
+The Timeline shows an admin's merge of another name into the member
+(`merge_player` audit rows: 301 from 2026-04-07 to 2026-11-17). Most were the
+OCR era's cleanup — the screenshot reader's misreadings ("lg 5 5S pw" for
+"أوزيريس", "FENROTH Of CHAOS", "Mκam from Chaos") folded into the real name —
+and read like events in the player's life when they aren't. A merged-in name
+is a **screenshot-era spelling** when the game never reported it for any
+player (`game_players.name`, `game_player_history.name`, any clan) and no
+person typed it (the `newName` of a `rename_member` row without `source`):
+before the switch-over names came from the reader or an admin, so a name that
+is neither the game's nor an admin's can only be the reader's
+(`isScreenshotSpelling`, [member-timeline.ts](../src/data/member-timeline.ts);
+the repo looks the names up per request, exact strings).
+
+Such merges are tagged (`ocr: true`, a muted "screenshot era" pill with an
+explanation on hover), and a run of them — nothing else on the Timeline
+between — folds into one entry dated by its newest merge: the era merged the
+same misreading again and again (FENRØTH's variants 18 times from July to
+August, "أوزيريس" 43 times). The fold lists each spelling once with every date
+it was merged in (more than three: first – last · N×), headline "Merged 4
+spellings into this member"; one spelling merged once stays a single line.
+Nothing is hidden or deleted. Not tagged, shown as before: the game's own spelling merged into the
+site's member (the six Cyrillic names on Nov 17, "Нимдуен" → "Nimduen", which
+keep the readable name — see Members above), and names an admin typed (the
+Nov 13 Seasonal Kingdom renames, "Tigger K260 SK" → "Tigger"). Manual
+renames (`rename_member`) are never tagged.
+
+Prod, Nov 17 2026: 249 of the 301 merges are tagged, 229 of them on current
+members' timelines (85 members; 85–178 entries, as joins, leaves and might
+moves split the runs). The 52 untagged: 42 merges
+of Nov 13 (the admin-typed SK names), the six Cyrillic game names, "JOooO"
+and "Princess Hulsa" (names the game reports), "Stortebeker" → "Störtebeker"
+and "DR JMD" → "FRANK DA TANK" (typed). About 20 tagged ones look like real renames the
+reader saw ("Grillkaiser" → "Child of Chaos", "Phoenix of chaos" →
+"ChaoticChefPhoenix"): no stored name from before Nov 17 tells those from a
+misreading, which is why the pill says "screenshot era", not "misread".
 
 ### Clan logo ([`clan-logo.ts`](../src/game-art/clan-logo.ts))
 
