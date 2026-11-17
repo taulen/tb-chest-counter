@@ -830,6 +830,9 @@ nav a.active {
   border-radius: var(--radius-lg);
   padding: 16px 18px;
   box-shadow: var(--shadow-card);
+  /* A grid item: without this a long unwrapped sub-line (de/ru "Seen") widens
+     its column past the phone viewport. */
+  min-width: 0;
 }
 
 .stat-card .label {

@@ -1676,6 +1676,24 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Chests are opened a chest TYPE at a time (one 15013 with every gift of
+    // that type, like the game's own "Claim chests"), and the game sums the
+    // rewards of a request. A game_claims row is now one request: gift_id its
+    // first gift, batch_size how many chests it opened, gift_ids all of them
+    // (JSON, null for a single chest). Rewards per chest type still average as
+    // SUM(rewards) / SUM(batch_size). Guarded: runMigrations may replay this.
+    version: 109,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(game_claims)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'batch_size')) {
+        database.exec('ALTER TABLE game_claims ADD COLUMN batch_size INTEGER NOT NULL DEFAULT 1');
+      }
+      if (!cols.some((c) => c.name === 'gift_ids')) {
+        database.exec('ALTER TABLE game_claims ADD COLUMN gift_ids TEXT');
+      }
+    },
+  },
 ];
 
 /**

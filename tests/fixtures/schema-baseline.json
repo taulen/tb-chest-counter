@@ -477,7 +477,7 @@
   {
     "type": "table",
     "name": "game_claims",
-    "sql": "CREATE TABLE game_claims ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), session_id INTEGER NOT NULL, gift_id INTEGER NOT NULL, gift_type INTEGER NOT NULL, tab INTEGER NOT NULL, rewards TEXT NOT NULL, claimed_at TEXT NOT NULL )"
+    "sql": "CREATE TABLE game_claims ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), session_id INTEGER NOT NULL, gift_id INTEGER NOT NULL, gift_type INTEGER NOT NULL, tab INTEGER NOT NULL, rewards TEXT NOT NULL, claimed_at TEXT NOT NULL , batch_size INTEGER NOT NULL DEFAULT 1, gift_ids TEXT)"
   },
   {
     "type": "table",

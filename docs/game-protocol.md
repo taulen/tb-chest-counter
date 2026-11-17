@@ -13,7 +13,11 @@ manual scan) is `ScanLoop.runProtocolClanScan`:
    members, and returns its live session and data;
 2. [`protocol-scan.ts`](../src/scheduler/protocol-scan.ts) records every gift —
    `count − rows already carrying its game_gift_id`, so re-runs never double —
-   THEN claims each gift entry (one 15013 per entry; rewards → `game_claims`),
+   THEN claims them (15013): single Gifts-tab chests one request per chest
+   TYPE (every gift of that type, like the game's own "Claim chests" — SIK's 49
+   took ~15 s one by one), Triumphal chests and bundles one chest per request
+   like the Open button; a refused batch is retried chest by chest; each
+   request's (summed) rewards → `game_claims` with `batch_size` / `gift_ids` (v109),
    THEN imports the ledger;
 3. the session is finalised like any scan (`finalizeScanSuccess`, Discord report).
 4. then, on the same session, the slower collection (`collectCaptureExtras`:

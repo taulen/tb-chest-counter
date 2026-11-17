@@ -98,6 +98,22 @@ describe('recordAndClaim', () => {
     ]);
   });
 
+  it('opens single Gifts-tab chests a chest type per request, keeping the summed rewards per request', async () => {
+    const miana = upsertMember('Miana', 1).id;
+    const client = fakeClient();
+    const silver = { giftType: 1156, chestName: 'Silver Chest', sourceName: 'Bank' };
+    const tally = await recordAndClaim(ctx(sessionRepo.createSession('manual', 1).id), capture([
+      gift(30, 501, 'Miana'), gift(31, 501, 'Miana', silver), gift(32, 501, 'Miana'), gift(33, 501, 'Miana'),
+    ], new Map([[501, miana]]), client));
+
+    expect(tally).toMatchObject({ claimed: 4, claimFailures: 0 });
+    expect(client.claims).toEqual([{ 30: 1, 32: 1, 33: 1 }, { 31: 1 }]);
+    expect(getDb().prepare('SELECT gift_id, gift_type, batch_size, gift_ids FROM game_claims ORDER BY id').all()).toEqual([
+      { gift_id: 30, gift_type: 5212, batch_size: 3, gift_ids: '[30,32,33]' },
+      { gift_id: 31, gift_type: 1156, batch_size: 1, gift_ids: null },
+    ]);
+  });
+
   it('keeps a chest whose claim failed, and a re-run neither loses nor doubles it', async () => {
     const miana = upsertMember('Miana', 1).id;
     const gifts = [gift(20, 501, 'Miana'), gift(21, 501, 'Miana')];

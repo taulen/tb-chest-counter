@@ -8,9 +8,11 @@
  *      a member sent is earned whether or not we open it, and a gift already
  *      recorded (a re-run after a crash, a claim that failed) is never recorded
  *      twice: only `count − rows already carrying its id` rows are added.
- *   2. Then each gift is claimed (15013) and the rewards it gave are kept in
- *      game_claims. A failed claim leaves the gift in the game; the next cycle
- *      records nothing new for it and claims it again.
+ *   2. Then the gifts are claimed (15013) — single Gifts-tab chests a chest
+ *      type per request, Triumphal chests and bundles one chest per request —
+ *      and each request's rewards are kept in game_claims. A failed claim
+ *      leaves the gift in the game; the next cycle records nothing new for it
+ *      and claims it again.
  *   3. The Clan Capital ledger becomes resource_transactions rows (one per entry,
  *      game_entry_id unique), from the day after the newest row the retired
  *      screenshot reader captured, so the switch-over never double-counts a day.
@@ -39,13 +41,16 @@ import { parseClaimRewards } from '../game-protocol/messages.js';
 import { ledgerToRows } from '../game-protocol/ledger-rows.js';
 import { makeMemberResolver } from '../game-protocol/member-sync.js';
 import type { CaptureData } from './game-protocol-phase.js';
+import type { NamedGift } from '../data/repositories/game-protocol-repo.js';
 import type { ChestRecord, GiftEntry } from '../models/types.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('protocol-scan');
 
-/** Pause between claims; the game client itself spaces its requests. */
+/** Pause between claim requests; the game client itself spaces its requests. */
 const CLAIM_GAP_MS = 150;
+/** Most gifts in one claim request (the game's own "Claim chests" sends the whole tab). */
+const CLAIM_BATCH_MAX = 100;
 /** Sender name used when the game gave us neither a member link nor a name. */
 const UNKNOWN_SENDER = '[Unknown]';
 
@@ -153,30 +158,80 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     tally.warnings.push(`gift types without a name in the game data: ${[...unnamed].join(', ')}`);
   }
 
-  // 2. Claim exactly as the game's Open button does: one chest per request
-  //    (a 3× Triumphal bundle is three requests with the same id), so each
-  //    reward set is attributable and no request asks for more than one.
+  // 2. Claim. Single Gifts-tab chests go a chest TYPE at a time: one request
+  //    holding every gift of that type, the way the game's own "Claim chests"
+  //    asks for the whole tab — a few requests instead of one per chest, and
+  //    rewards still known per type (the game sums a request's rewards). A
+  //    refused batch is retried a chest at a time, so one bad gift never holds
+  //    the rest. Triumphal chests and bundles (count > 1) go exactly as the
+  //    Open button does: one chest per request, a 3× bundle three requests.
   const saveClaim = getDb().prepare(
-    'INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    `INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at, batch_size, gift_ids)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  let i = 0;
-  for (const g of d.gifts) {
-    i++;
-    if (i % 10 === 1) ctx.reportProgress(`Opening chests (${i}/${d.gifts.length})…`);
-    let opened = 0;
+  const gap = () => new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
+  let warned = false;
+  const claimFailed = (giftId: number, err: unknown) => {
+    if (!warned) log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${giftId} failed (recorded; retried next cycle): ${String(err)}`);
+    warned = true;
+  };
+  /** One gift, one chest per request; true when every chest of it opened. */
+  const claimSingly = async (g: NamedGift): Promise<boolean> => {
     for (let n = 0; n < g.count; n++) {
       try {
         const rewards = parseClaimRewards(await d.client.claim({ [g.giftId]: 1 }));
-        saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString());
-        opened++;
+        saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString(), 1, null);
       } catch (err) {
-        if (tally.claimFailures === 0) log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${g.giftId} failed (recorded; retried next cycle): ${String(err)}`);
-        break;
+        claimFailed(g.giftId, err);
+        return false;
       }
-      await new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
+      await gap();
     }
-    if (opened === g.count) tally.claimed++;
+    return true;
+  };
+
+  const batches = new Map<number, NamedGift[]>();
+  const singles: NamedGift[] = [];
+  for (const g of d.gifts) {
+    if (g.tab === 1 && g.count === 1) {
+      const list = batches.get(g.giftType) ?? [];
+      list.push(g);
+      batches.set(g.giftType, list);
+    } else {
+      singles.push(g);
+    }
+  }
+  let done = 0;
+  const progress = () => ctx.reportProgress(`Opening chests (${done}/${d.gifts.length})…`);
+  for (const all of batches.values()) {
+    for (let at = 0; at < all.length; at += CLAIM_BATCH_MAX) {
+      const group = all.slice(at, at + CLAIM_BATCH_MAX);
+      progress();
+      try {
+        const ask: Record<number, number> = {};
+        for (const g of group) ask[g.giftId] = 1;
+        const rewards = parseClaimRewards(await d.client.claim(ask));
+        saveClaim.run(
+          clanId, sessionId, group[0].giftId, group[0].giftType, 1, JSON.stringify(rewards), new Date().toISOString(),
+          group.length, group.length > 1 ? JSON.stringify(group.map((g) => g.giftId)) : null,
+        );
+        tally.claimed += group.length;
+        await gap();
+      } catch {
+        await gap();
+        for (const g of group) {
+          if (await claimSingly(g)) tally.claimed++;
+          else tally.claimFailures++;
+        }
+      }
+      done += group.length;
+    }
+  }
+  for (const g of singles) {
+    if (done % 10 === 0) progress();
+    if (await claimSingly(g)) tally.claimed++;
     else tally.claimFailures++;
+    done++;
   }
   if (tally.claimFailures) {
     tally.warnings.push(`${tally.claimFailures} of ${d.gifts.length} chest(s) could not be opened; they are recorded and the next scan opens them`);
