@@ -1974,6 +1974,9 @@ label {
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
+  /* A flex box drops the space between its items: "Leader: <name>" read
+     "Leader:Name" and "🛡 Shielded" "🛡Shielded". */
+  gap: 0.3em;
 }
 
 .game-fact-pill.is-rank {
@@ -1996,6 +1999,11 @@ label {
 .game-fact-pill.is-shielded {
   border-color: var(--accent-blue);
   color: var(--accent-blue);
+}
+/* Windows draws 🛡 as a pale grey outline, near-invisible on the light
+   theme's white: outline it in the pill's blue (the list's mark does the same). */
+.game-fact-pill.is-shielded > [aria-hidden] {
+  filter: drop-shadow(0 0 0.6px var(--accent-blue));
 }
 
 .game-fact-pill.is-burning {
@@ -6023,11 +6031,30 @@ details > table {
   white-space: nowrap;
 }
 
-/* City marks after a member's name (map state: burning, shield). */
+/* City marks after a member's name (map state: burning, shield), each on a
+   small chip in the profile pills' colours (blue shield, red burning). The chip
+   is what carries them in the light theme: Windows draws 🛡 as a pale grey
+   outline that all but vanished on white. */
 .city-mark {
   flex: none;
-  font-size: 13px;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
   line-height: 1;
+}
+.city-mark.is-shielded {
+  background: var(--accent-blue-bg);
+  box-shadow: inset 0 0 0 1px var(--accent-blue);
+}
+.city-mark.is-shielded > [aria-hidden] {
+  filter: drop-shadow(0 0 0.6px var(--accent-blue));
+}
+.city-mark.is-burning {
+  background: var(--accent-red-bg-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-red);
 }
 
 .leaderboard-table .col-guards { width: 84px; }
@@ -9004,6 +9031,12 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+/* Without a rarity colour (the hero, common captains) --rarity is a border
+   colour: fine for a frame, unreadable as text ("HERO" read 1.9:1 on the
+   light theme's white). Those labels take the secondary text colour. */
+.captain-detail:not(.rarity-1):not(.rarity-2):not(.rarity-3):not(.rarity-4) .captain-detail-rarity {
+  color: var(--text-secondary);
 }
 
 .captain-detail .captain-stars {
