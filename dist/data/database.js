@@ -18,6 +18,7 @@ const repair_aldrin_2026_11_js_1 = require("./repair-aldrin-2026-11.js");
 const repair_cut_names_2026_11_js_1 = require("./repair-cut-names-2026-11.js");
 const goal_history_js_1 = require("./goal-history.js");
 const defaults_js_1 = require("../config/defaults.js");
+const chat_text_js_1 = require("../game-protocol/chat-text.js");
 const log = (0, logger_js_1.childLogger)('database');
 let db = null;
 /**
@@ -1806,6 +1807,88 @@ const MIGRATIONS = [
           burning INTEGER NOT NULL,
           PRIMARY KEY (clan_id, player_id, changed_at)
         );
+      `);
+        },
+    },
+    {
+        // v113 — the clan chat as a permanent, searchable history (Chats page).
+        //   - chat_messages gets a stable INTEGER PRIMARY KEY (rebuilt once, in a
+        //     transaction): the full-text index refers to rows by it, and an
+        //     implicit rowid may change on VACUUM. The old key stays UNIQUE.
+        //   - sender_player_id (from sender_info's hex), search_text (the text with
+        //     its placeholders' names and coordinates), updated_at +
+        //     previous_message (an edit keeps the text it replaced), translations.
+        //   - chat_channels.history_complete: the backfill reached the start.
+        //   - chat_messages_fts (FTS5, external content, kept by triggers).
+        // Replay-safe: every step is guarded or idempotent.
+        version: 113,
+        run: (database) => {
+            const cols = (table) => database.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+            if (!cols('chat_messages').includes('id')) {
+                database.transaction(() => {
+                    database.exec(`
+            CREATE TABLE chat_messages_v113 (
+              id INTEGER PRIMARY KEY,
+              clan_id INTEGER NOT NULL REFERENCES clans(id),
+              channel_url TEXT NOT NULL,
+              message_id INTEGER NOT NULL,
+              created_at INTEGER NOT NULL,
+              custom_type TEXT NOT NULL DEFAULT '',
+              sender_id TEXT NOT NULL DEFAULT '',
+              sender_name TEXT NOT NULL DEFAULT '',
+              sender_info TEXT NOT NULL DEFAULT '',
+              message TEXT NOT NULL DEFAULT '',
+              data TEXT NOT NULL DEFAULT '',
+              captured_at TEXT NOT NULL,
+              sender_player_id INTEGER,
+              search_text TEXT NOT NULL DEFAULT '',
+              updated_at INTEGER NOT NULL DEFAULT 0,
+              previous_message TEXT,
+              translations TEXT NOT NULL DEFAULT '',
+              UNIQUE (clan_id, channel_url, message_id)
+            );
+            INSERT INTO chat_messages_v113
+              (clan_id, channel_url, message_id, created_at, custom_type, sender_id, sender_name, sender_info, message, data, captured_at)
+              SELECT clan_id, channel_url, message_id, created_at, custom_type, sender_id, sender_name, sender_info, message, data, captured_at
+                FROM chat_messages ORDER BY clan_id, channel_url, created_at, message_id;
+            DROP TABLE chat_messages;
+            ALTER TABLE chat_messages_v113 RENAME TO chat_messages;
+          `);
+                })();
+            }
+            database.exec(`
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_time ON chat_messages (clan_id, channel_url, created_at);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages (clan_id, sender_player_id, created_at);
+      `);
+            if (!cols('chat_channels').includes('history_complete')) {
+                database.exec('ALTER TABLE chat_channels ADD COLUMN history_complete INTEGER NOT NULL DEFAULT 0');
+            }
+            // Derived columns for the rows stored before v113.
+            const todo = database.prepare("SELECT id, message, data, sender_info FROM chat_messages WHERE search_text = '' OR sender_player_id IS NULL").all();
+            const fill = database.prepare('UPDATE chat_messages SET search_text = ?, sender_player_id = ? WHERE id = ?');
+            database.transaction(() => {
+                for (const r of todo)
+                    fill.run((0, chat_text_js_1.chatSearchText)(r.message, r.data), (0, chat_text_js_1.chatSenderPlayerId)(r.sender_info), r.id);
+            })();
+            database.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
+          search_text, sender_name,
+          content='chat_messages', content_rowid='id',
+          tokenize='unicode61 remove_diacritics 2'
+        );
+        CREATE TRIGGER IF NOT EXISTS chat_messages_fts_ai AFTER INSERT ON chat_messages BEGIN
+          INSERT INTO chat_messages_fts (rowid, search_text, sender_name) VALUES (new.id, new.search_text, new.sender_name);
+        END;
+        CREATE TRIGGER IF NOT EXISTS chat_messages_fts_ad AFTER DELETE ON chat_messages BEGIN
+          INSERT INTO chat_messages_fts (chat_messages_fts, rowid, search_text, sender_name)
+            VALUES ('delete', old.id, old.search_text, old.sender_name);
+        END;
+        CREATE TRIGGER IF NOT EXISTS chat_messages_fts_au AFTER UPDATE OF search_text, sender_name ON chat_messages BEGIN
+          INSERT INTO chat_messages_fts (chat_messages_fts, rowid, search_text, sender_name)
+            VALUES ('delete', old.id, old.search_text, old.sender_name);
+          INSERT INTO chat_messages_fts (rowid, search_text, sender_name) VALUES (new.id, new.search_text, new.sender_name);
+        END;
+        INSERT INTO chat_messages_fts (chat_messages_fts) VALUES ('rebuild');
       `);
         },
     },

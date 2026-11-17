@@ -93,6 +93,7 @@ import {
 } from './pages/members.js';
 import { renderMight } from './pages/might.js';
 import { renderClan } from './pages/clan.js';
+import { renderChats } from './pages/chats.js';
 import { renderPerformance } from './pages/performance.js';
 import {
   renderAnalytics,
@@ -980,6 +981,7 @@ async function renderRoute(page, content) {
     case 'members': await renderMembers(content); break;
     case 'might': await renderMight(content); break;
     case 'clan': await renderClan(content); break;
+    case 'chats': await renderChats(content); break;
     case 'performance': await renderPerformance(content); break;
     case 'sessions': await renderSessions(content); break;
     case 'external':
@@ -1248,6 +1250,7 @@ const PAGE_SUBTITLES = {
   triumphal: t('Bank gifts and triumphal packages'),
   members: t('Everyone in the clan'),
   clan: t('The clan as the game shows it: research, treasury, wealth'),
+  chats: t('The clan chat, kept for good'),
   sessions: t('Every scan the bot has run'),
   external: t('Imported from ChestTracker'),
   admin: t('Corrections, review and scoring'),

@@ -99,7 +99,12 @@ Every scan, per clan:
 Every minute:
 
 - **Chat** — the clan chat and the scanner account's private messages, with
-  months of history read on the first sync.
+  months of history read on the first sync and older history pulled a slice
+  at a time until the game has nothing older. Every stored line is kept for
+  good, also once the game stops serving it. The **Chats** page shows the
+  clan chat (searchable, filter by writer, jump to a date, new lines live;
+  shared map locations, raids, joins and reports shown as the game shows
+  them). Private messages are stored but never shown.
 
 Once a day:
 

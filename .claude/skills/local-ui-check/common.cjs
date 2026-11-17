@@ -15,6 +15,7 @@ const PAGES = {
   performance: '/#performance',
   clan: '/#clan',
   members: '/#members',
+  chats: '/#chats',
   might: '/#might',
   events: '/#events',
   ancients: '/#events/ancients',

@@ -6,6 +6,11 @@
   },
   {
     "type": "index",
+    "name": "idx_chat_messages_sender",
+    "sql": "CREATE INDEX idx_chat_messages_sender ON chat_messages (clan_id, sender_player_id, created_at)"
+  },
+  {
+    "type": "index",
     "name": "idx_chat_messages_time",
     "sql": "CREATE INDEX idx_chat_messages_time ON chat_messages (clan_id, channel_url, created_at)"
   },
@@ -392,12 +397,37 @@
   {
     "type": "table",
     "name": "chat_channels",
-    "sql": "CREATE TABLE chat_channels ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, custom_type TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', member_count INTEGER NOT NULL DEFAULT 0, members TEXT NOT NULL DEFAULT '[]', last_message_at INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, channel_url) )"
+    "sql": "CREATE TABLE chat_channels ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, custom_type TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', member_count INTEGER NOT NULL DEFAULT 0, members TEXT NOT NULL DEFAULT '[]', last_message_at INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, history_complete INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (clan_id, channel_url) )"
   },
   {
     "type": "table",
     "name": "chat_messages",
-    "sql": "CREATE TABLE chat_messages ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, message_id INTEGER NOT NULL, created_at INTEGER NOT NULL, custom_type TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL DEFAULT '', sender_name TEXT NOT NULL DEFAULT '', sender_info TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '', captured_at TEXT NOT NULL, PRIMARY KEY (clan_id, channel_url, message_id) )"
+    "sql": "CREATE TABLE chat_messages ( id INTEGER PRIMARY KEY, clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, message_id INTEGER NOT NULL, created_at INTEGER NOT NULL, custom_type TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL DEFAULT '', sender_name TEXT NOT NULL DEFAULT '', sender_info TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '', captured_at TEXT NOT NULL, sender_player_id INTEGER, search_text TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0, previous_message TEXT, translations TEXT NOT NULL DEFAULT '', UNIQUE (clan_id, channel_url, message_id) )"
+  },
+  {
+    "type": "table",
+    "name": "chat_messages_fts",
+    "sql": "CREATE VIRTUAL TABLE chat_messages_fts USING fts5( search_text, sender_name, content='chat_messages', content_rowid='id', tokenize='unicode61 remove_diacritics 2' )"
+  },
+  {
+    "type": "table",
+    "name": "chat_messages_fts_config",
+    "sql": "CREATE TABLE 'chat_messages_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "chat_messages_fts_data",
+    "sql": "CREATE TABLE 'chat_messages_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "chat_messages_fts_docsize",
+    "sql": "CREATE TABLE 'chat_messages_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+    "type": "table",
+    "name": "chat_messages_fts_idx",
+    "sql": "CREATE TABLE 'chat_messages_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
   },
   {
     "type": "table",
@@ -738,6 +768,21 @@
     "type": "table",
     "name": "users",
     "sql": "CREATE TABLE users ( id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('superadmin', 'admin', 'user')), created_by INTEGER REFERENCES users(id), created_at TEXT NOT NULL, last_login TEXT, clan_id INTEGER REFERENCES clans(id) , last_visited TEXT, theme TEXT NOT NULL DEFAULT 'dark', language TEXT NOT NULL DEFAULT '')"
+  },
+  {
+    "type": "trigger",
+    "name": "chat_messages_fts_ad",
+    "sql": "CREATE TRIGGER chat_messages_fts_ad AFTER DELETE ON chat_messages BEGIN INSERT INTO chat_messages_fts (chat_messages_fts, rowid, search_text, sender_name) VALUES ('delete', old.id, old.search_text, old.sender_name); END"
+  },
+  {
+    "type": "trigger",
+    "name": "chat_messages_fts_ai",
+    "sql": "CREATE TRIGGER chat_messages_fts_ai AFTER INSERT ON chat_messages BEGIN INSERT INTO chat_messages_fts (rowid, search_text, sender_name) VALUES (new.id, new.search_text, new.sender_name); END"
+  },
+  {
+    "type": "trigger",
+    "name": "chat_messages_fts_au",
+    "sql": "CREATE TRIGGER chat_messages_fts_au AFTER UPDATE OF search_text, sender_name ON chat_messages BEGIN INSERT INTO chat_messages_fts (chat_messages_fts, rowid, search_text, sender_name) VALUES ('delete', old.id, old.search_text, old.sender_name); INSERT INTO chat_messages_fts (rowid, search_text, sender_name) VALUES (new.id, new.search_text, new.sender_name); END"
   },
   {
     "type": "view",

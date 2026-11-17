@@ -20,6 +20,7 @@ import { createGameArtRouter } from '../game-art/routes.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
 import { createGameRouter } from './routes/game.js';
+import { createChatRouter } from './routes/chat.js';
 import { createGuardsRouter } from './routes/guards.js';
 import { createToolsRouter } from './routes/tools.js';
 import { createTinmanRouter } from './routes/tinman.js';
@@ -529,6 +530,9 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   app.use('/api/might', requireAuth, requireClanContext, createMightRouter());
   // What the game protocol collects about players (profile, research, talents).
   app.use('/api/game', requireAuth, requireClanContext, createGameRouter());
+  // The stored clan chat (Chats page): any member of the active clan reads it;
+  // private messages are never served (the router is pinned to clan channels).
+  app.use('/api/chat', requireAuth, requireClanContext, createChatRouter());
 
   // Guards levels and Gold Pass holders — both inferred from resource and chest
   // data, so the reads are visible to any clan member; the one write (an admin
