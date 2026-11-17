@@ -8,6 +8,7 @@ exports.saveLedger = saveLedger;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
 exports.saveCaptains = saveCaptains;
+exports.playersWithCaptains = playersWithCaptains;
 exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
@@ -163,6 +164,10 @@ function saveCaptains(clanId, playerId, captains, now = new Date().toISOString()
         }
     })();
     return changed;
+}
+/** Players of this clan with any captain stored (v106) — the rest are read once more to backfill. */
+function playersWithCaptains(clanId) {
+    return new Set((0, database_js_1.getDb)().prepare('SELECT DISTINCT player_id FROM game_player_captains WHERE clan_id = ?').all(clanId).map((r) => r.player_id));
 }
 /** Players of this clan whose city was already captured for the game day. */
 function citySnapshotPlayers(clanId, gameDate) {

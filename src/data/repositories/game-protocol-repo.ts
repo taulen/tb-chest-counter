@@ -225,6 +225,14 @@ export function saveCaptains(clanId: number, playerId: number, captains: Array<{
   return changed;
 }
 
+/** Players of this clan with any captain stored (v106) — the rest are read once more to backfill. */
+export function playersWithCaptains(clanId: number): Set<number> {
+  return new Set(
+    (getDb().prepare('SELECT DISTINCT player_id FROM game_player_captains WHERE clan_id = ?').all(clanId) as
+      Array<{ player_id: number }>).map((r) => r.player_id),
+  );
+}
+
 /** Players of this clan whose city was already captured for the game day. */
 export function citySnapshotPlayers(clanId: number, gameDate: string): Set<number> {
   return new Set(

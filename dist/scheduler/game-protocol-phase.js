@@ -167,11 +167,15 @@ async function collectExtras(clanId, d, clanFrame) {
         // Every member once a game day, plus — every scan — anyone whose might or
         // hero level moved since their city was last read, so a finished research
         // or talent is dated to the scan that saw it (history keeps every change).
+        // Also anyone with no captains stored yet: a one-time backfill so the
+        // Captains tab fills on the next scan instead of after the next reset.
         const done = (0, game_protocol_repo_js_1.citySnapshotPlayers)(clanId, d.gameDate);
         const changedSince = (0, game_protocol_repo_js_1.cityChangedSinceRead)(clanId, d.gameDate);
+        const withCaptains = (0, game_protocol_repo_js_1.playersWithCaptains)(clanId);
         const todo = d.record.members
             .map((m) => d.byId.get(m.playerId))
-            .filter((p) => !!p && p.cityId !== null && (!done.has(p.playerId) || changedSince.has(p.playerId)))
+            .filter((p) => !!p && p.cityId !== null
+            && (!done.has(p.playerId) || changedSince.has(p.playerId) || !withCaptains.has(p.playerId)))
             .slice(0, MAX_CITIES_PER_CYCLE);
         let changed = 0;
         for (const p of todo) {
