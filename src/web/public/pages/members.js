@@ -2,7 +2,7 @@
 // sortable columns; per-member detail view with rank badge, weekly
 // progress, chest type breakdown, and paginated chest history.
 
-import { loadGameArt } from '../lib/game-art.js';
+import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { api } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatGameDayShort, formatRelativeTime,
@@ -1382,7 +1382,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
             </colgroup>
             <thead><tr><th>${t('Chest')}</th><th>${t('Type')}</th><th>${t('Source')}</th><th class="num">${t('Points')}</th><th>${t('Received')}</th></tr></thead><tbody>
             ${chests.map((c) => `<tr>
-              <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a></span><span class="mrow-sub">${formatDate(c.effectiveAt)}</span></td>
+              <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${chestLabelHtml(c.chestName, `<a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a>`)}</span><span class="mrow-sub">${formatDate(c.effectiveAt)}</span></td>
               <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABEL[c.chestType] ?? c.chestType}</span></td>
               <td data-label="${t('Source')}">${sourceLink(c.chestSource)}</td>
               <td data-label="${t('Points')}" class="num" data-role="metric">${c.pointValue}</td>
@@ -1400,7 +1400,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
             </colgroup>
             <thead><tr><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Received')}</th></tr></thead><tbody>
             ${triumphals.map((c) => `<tr>
-              <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${esc(tGame(c.chestName))}</span><span class="mrow-sub">${esc(tGame(c.chestSource))}</span></td>
+              <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)))}</span><span class="mrow-sub">${esc(tGame(c.chestSource))}</span></td>
               <td data-label="${t('Source')}" data-role="hidden">${esc(tGame(c.chestSource))}</td>
               <td data-label="${t('Received')}" data-role="metric">${formatDate(c.effectiveAt)}</td>
             </tr>`).join('')}

@@ -22,6 +22,8 @@ import { api } from '../lib/api.js';
 import { esc, memberLink, copyTextToClipboard } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt } from '../lib/game-art.js';
+import { resourceIconOnly } from '../lib/resource-format.js';
 import { formatCompact } from '../lib/ancient-planner.js';
 import { distributeRewards, scoreAfterDay, parsePot } from '../lib/rewards-split.js';
 
@@ -101,6 +103,8 @@ function saveExcluded() {
 // ─── Mount ─────────────────────────────────────────────────────────
 
 export async function renderRewardsTool(mount) {
+  // The pot's Dragon Coins icon (never rejects; usually already in).
+  await loadGameArt();
   const prefs = loadPrefs();
   const event = EVENTS[prefs.event] ? prefs.event : 'olympus';
   const basisByEvent = { olympus: 'olympus', 'dark-omens': 'essence' };
@@ -365,7 +369,7 @@ function potsCardHtml() {
       <div class="card-header"><h2>${t('Rewards to share')}</h2><span class="card-header-hint">${t('The clan\'s totals')}</span></div>
       <div class="card-body-padded">
         <div class="rewards-pots">
-          ${field('coins', esc(tGame('Dragon Coins')))}
+          ${field('coins', `${resourceIconOnly('Dragon Coins')}${esc(tGame('Dragon Coins'))}`)}
           ${field('fragments', t('Clan fragments'))}
         </div>
         <p class="tool-slider-hint">${t('Whole numbers; 7.5m and 250k work too.')}</p>

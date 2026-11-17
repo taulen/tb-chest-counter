@@ -26,6 +26,7 @@ import {
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { mountPointsBoard } from './points-board.js';
 import {
   loadUnresolvedResources, unresolvedResourcesSectionHtml, wireUnresolvedResources,
@@ -132,6 +133,8 @@ async function reviewTab(navStatusP) {
     api('/admin/unknown-chests'),
     // Rows + resource list only when the count says there is something to resolve.
     navStatusP.then((s) => loadUnresolvedResources(s?.admin?.unresolvedResourceCount)),
+    // The new chests' pictures (never rejects).
+    loadGameArt(),
   ]);
 
   // The reassign dropdowns need the roster and its chest counts, which only an
@@ -389,7 +392,8 @@ async function chestsTab() {
 
 /** The Chest Points board and Triumphal Chest Points. */
 async function pointsTab(isSuperadmin) {
-  const triumphalPoints = await api('/admin/triumphal-points');
+  // The chests' pictures here and on the board (loadGameArt never rejects).
+  const [triumphalPoints] = await Promise.all([api('/admin/triumphal-points'), loadGameArt()]);
   const html = `
     <!-- Chest Points: self-contained, fills itself (pages/points-board.js). -->
     <div class="card pb-card" id="pointsBoard"></div>
@@ -521,7 +525,7 @@ function renderTriumphalPointsSection(rows, isSuperadmin) {
               <thead><tr><th>${t('Chest')}</th><th>${t('Chests Seen')}</th><th>${t('Per Chest')}</th><th>${t('Package (3-of-a-kind)')}</th></tr></thead>
               <tbody>
                 ${list.map((row) => `<tr${row.isNew ? ' class="row-needs-attention"' : ''}>
-                  <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${esc(tGame(row.chestName))}${row.isNew ? ` <span class="chest-type epic" title="${t('Seen in scans but has no point value yet — it currently scores 0. Set a package value to score it.')}">${t('New')}</span>` : ''}</span><span class="mrow-sub">${tn(row.observedCount, '{n} seen', '{n} seen', { n: row.observedCount })}</span></td>
+                  <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${chestLabelHtml(row.chestName, esc(tGame(row.chestName)))}${row.isNew ? ` <span class="chest-type epic" title="${t('Seen in scans but has no point value yet — it currently scores 0. Set a package value to score it.')}">${t('New')}</span>` : ''}</span><span class="mrow-sub">${tn(row.observedCount, '{n} seen', '{n} seen', { n: row.observedCount })}</span></td>
                   <td data-label="${t('Chests Seen')}" data-role="hidden">${row.observedCount}</td>
                   <td data-label="${t('Per Chest')}" data-role="metric">${row.perChestPoints ?? '—'}</td>
                   <td data-label="${t('Package (3-of-a-kind)')}">
@@ -624,7 +628,7 @@ function renderReviewQueueSection(queue) {
               </tr></thead>
               <tbody>
                 ${g.entries.map((e) => `<tr>
-                  <td data-label="${g.valueHeader}" data-role="primary"><span class="mrow-name">${esc(e.value)}</span></td>
+                  <td data-label="${g.valueHeader}" data-role="primary"><span class="mrow-name">${g.key === 'chest_name' || g.key === 'triumphal' ? chestLabelHtml(e.value, esc(e.value)) : esc(e.value)}</span></td>
                   <td data-label="${t('First Seen')}" class="muted-copy">${formatDate(e.firstSeen)}</td>
                   <td data-label="${t('Chests')}" data-role="metric">${e.count}</td>
                   ${g.key === 'member' ? `<td data-label="${t('Row')}">${e.hasCrop && e.memberId
@@ -696,7 +700,7 @@ function renderUnknownChestsSection(chests, members, chestCounts) {
             <tbody>
               ${rows.map((r) => `<tr id="unknown-row-${r.id}">
                 <td data-label="${t('Received')}" class="muted-copy">${formatDate(r.effectiveAt)}</td>
-                <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${esc(tGame(r.chestName))}</span><span class="mrow-sub">${formatDate(r.effectiveAt)}</span></td>
+                <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${chestLabelHtml(r.chestName, esc(tGame(r.chestName)))}</span><span class="mrow-sub">${formatDate(r.effectiveAt)}</span></td>
                 <td data-label="${t('Source')}" class="muted-copy">${esc(tGame(r.chestSource))}</td>
                 <td data-label="${t('Pts')}" data-role="metric">${r.pointValue}</td>
                 <td data-label="${t('Crop')}">${r.hasCrop

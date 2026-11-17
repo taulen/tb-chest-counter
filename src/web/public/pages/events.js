@@ -40,6 +40,7 @@ import { mountTinmanScores, prefetchTinmanScores } from './tinman-scores.js';
 import { fetchGameStandings, mountGameStandings, renderGameRankings } from './game-standings.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt, chestIconUrl, chestLabelHtml } from '../lib/game-art.js';
 
 const PAGE_SIZE = 25;
 const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
@@ -309,6 +310,7 @@ async function reload() {
     const [breakdown, membersRes] = await Promise.all([
       api(`/events/${encodeURIComponent(currentEventKey)}?${qs}`),
       api('/members'),  // active members only — for the non-participants list
+      loadGameArt(),    // the Finish Reward cards' chest pictures (never rejects)
     ]);
     cache = breakdown;
     activeMembers = Array.isArray(membersRes) ? membersRes : [];
@@ -689,8 +691,12 @@ function paint() {
       sub = `${esc(recips[0].name)} +${recips.length - 1}`;
       cardTitle = recips.map((r) => `${r.name}: ${r.count}`).join(' · ');
     }
+    // The chest's own picture where the art has it; the trophy otherwise.
+    const cardLabel = ic.chestName && chestIconUrl(ic.chestName)
+      ? chestLabelHtml(ic.chestName, esc(tGame(ic.label)), { size: 22 })
+      : `🏆 ${esc(tGame(ic.label))}`;
     return `<div class="stat-card stat-card-lead" title="${esc(cardTitle)}">
-      <div class="label">🏆 ${esc(tGame(ic.label))}</div>
+      <div class="label">${cardLabel}</div>
       <div class="value">${value}</div>
       <div class="events-finish-sub">${sub}</div>
     </div>`;
@@ -1089,7 +1095,11 @@ async function toggleParticipantRow(row) {
 
   let resp;
   try {
-    resp = await api(`/events/${encodeURIComponent(currentEventKey)}/member/${encodeURIComponent(memberId)}?${qs}`);
+    // The chests' pictures (loadGameArt never rejects).
+    [resp] = await Promise.all([
+      api(`/events/${encodeURIComponent(currentEventKey)}/member/${encodeURIComponent(memberId)}?${qs}`),
+      loadGameArt(),
+    ]);
   } catch {
     resp = null;
   }
@@ -1102,7 +1112,7 @@ async function toggleParticipantRow(row) {
   }
   const bodyHtml = rows
     .map((r) => `<tr>
-      <td><a class="member-link" href="${chestHash(r.chestName, 'all')}">${esc(tGame(r.chestName))}</a></td>
+      <td>${chestLabelHtml(r.chestName, `<a class="member-link" href="${chestHash(r.chestName, 'all')}">${esc(tGame(r.chestName))}</a>`, { size: 20 })}</td>
       <td>${r.source ? sourceLink(r.source) : '—'}</td>
       <td class="num">${(r.chests || 0).toLocaleString()}</td>
       <td class="num">${(r.points || 0).toLocaleString()}</td>

@@ -12,6 +12,7 @@
 import { api } from '../lib/api.js';
 import { esc, formatDate, memberLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { computeGameWindow, periodAnchorFromOffset } from '../lib/period.js';
 import { sortLeaderboardEntries, renderLeaderboardCardHtml } from '../lib/leaderboard-render.js';
 import {
@@ -56,6 +57,8 @@ export async function renderTriumphal(el) {
     api(`/triumphal/stats${suffix}`),
     api(`/triumphal/leaderboard${suffix}`),
     api(`/triumphal/chests?${recentParams.toString()}`),
+    // The chests' pictures in Recent chests (never rejects).
+    loadGameArt(),
   ]);
 
   // Total points within the window — derived client-side from the same
@@ -131,8 +134,8 @@ export async function renderTriumphal(el) {
         <th>${t('Received')}</th>
       </tr></thead><tbody>
       ${recentPageRows.map((r) => `<tr>
-        <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.playerName)}</span><span class="mrow-sub">${esc(tGame(r.chestName))}</span></td>
-        <td data-label="${t('Chest')}">${esc(tGame(r.chestName))}</td>
+        <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.playerName)}</span><span class="mrow-sub">${chestLabelHtml(r.chestName, esc(tGame(r.chestName)), { size: 16 })}</span></td>
+        <td data-label="${t('Chest')}">${chestLabelHtml(r.chestName, esc(tGame(r.chestName)))}</td>
         <td data-label="${t('Source')}">${esc(tGame(r.chestSource || ''))}</td>
         <td data-label="${t('Received')}" data-role="metric">${formatDate(r.effectiveAt)}</td>
       </tr>`).join('')}

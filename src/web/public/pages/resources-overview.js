@@ -443,6 +443,12 @@ function resourceGridHtml(cardTypes) {
     </div>`;
 }
 
+/** The selected resource's icon at the start of a card heading ('' without art). */
+function resourceHeadIcon(name) {
+  const icon = resourceIconOnly(name);
+  return icon ? `<span class="resource-head-icon">${icon}</span>` : '';
+}
+
 function mainChartHtml(typeById, buckets) {
   const type = view.resourceTypeId != null ? typeById.get(view.resourceTypeId) : null;
   const title = type ? t('{resource} over time', { resource: esc(tGame(type.name)) }) : t('Over time');
@@ -457,7 +463,7 @@ function mainChartHtml(typeById, buckets) {
   return `
     <div class="card">
       <div class="card-header">
-        <h2>${title}</h2>
+        <h2>${type ? resourceHeadIcon(type.name) : ''}${title}</h2>
         ${group}
       </div>
       <div class="card-body card-body-padded">
@@ -499,7 +505,7 @@ function topDonorsHtml(typeById) {
 
   return `
     <div class="card">
-      <div class="card-header"><h2>${t('Top donors')}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2></div>
+      <div class="card-header"><h2>${type ? resourceHeadIcon(type.name) : ''}${t('Top donors')}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2></div>
       <div class="card-body">
         <table class="table-responsive resources-donors-table">
           <colgroup><col class="col-rank"><col class="col-player"><col class="col-num"></colgroup>
@@ -546,7 +552,7 @@ function nonDonorsHtml(typeById) {
   return `
     <div class="card">
       <div class="card-header">
-        <h2>${t("Haven't donated")}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2>
+        <h2>${type ? resourceHeadIcon(type.name) : ''}${t("Haven't donated")}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2>
         <span class="card-header-hint">${tn(total, '{n} member', '{n} members', { n: total })} · ${t('this period')}</span>
       </div>
       <div class="card-body">

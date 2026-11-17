@@ -193,6 +193,33 @@ equipment icons from T11 f2 (`equipment`) and gem / enchantment icons from T8
 (`inserts`), and the Ancient planner's pictures (`ancients`,
 `EVENT_ART` in [selection.ts](../src/game-art/selection.ts)).
 
+**Chest art across the site** (by chest name, `mappings.chests`; ~99% of
+recorded chests have a picture). Every list of chests puts the bare icon in
+front of the name with `chestLabelHtml(chestName, labelHtml, { size })` — no
+tile: at table sizes a frame is noise, and only the Chest rewards tab knows a
+chest's quality grade (it draws framed, graded tiles, `chestIconHtml`). The
+label keeps the page's own markup (link, ellipsis, name-over-source stack), so
+locked columns keep their widths. Sizes: 22 px in table rows, 28 px beside a
+two-line name, 20 px in drill-down sub-tables, 16 px in a phone row's summary
+line and in chips, 44 px on the chest's own page. Shown on: Dashboard Recent
+Chests; Scan History session detail (chests + triumphal); Triumphal Chests
+recent list; member profile History (chests + triumphal tabs); Analytics →
+Breakdown → Chest (the icon replaces the type dot; the bar keeps the type
+colour), the `#chest/<name>` page header, and a source page's per-member
+records; Events per-member drill-down and the Finish Reward card (event
+columns carry `chestName` for info cards; 🏆 when the art lacks it); the
+Leaderboard FAQ points guide (also on the public share page); Admin → Review
+(new chest names, new triumphal chests, unread-name rows) and Admin → Points
+(Chest Points chests and chips, Triumphal Chest Points). Left as text: `<option>`
+lists, merge-rule tables (mostly OCR misreads), sentences (audit log, FAQ
+footnotes), CSV/clipboard exports and Discord. Without an art index, or before
+it loads, the label is the plain name; pages await `loadGameArt()` before
+their first render. A chest the art lacks gets the neutral letter tile, so a
+column still lines up. Resource icons (`resourceIconHtml` / `resourceIconOnly`
+in `lib/resource-format.js`) sit beside resource names the same way, and also
+lead the Resources overview's per-resource headings and the Rewards tool's
+Dragon Coins pot.
+
 **Only the game's own art is shown** — no game, wiki or third-party picture is
 committed (the troop webps and Ancient cut-outs were removed in Nov 2026). A
 troop the art lacks shows a neutral tile with its initial (`troopIconHtml` in
