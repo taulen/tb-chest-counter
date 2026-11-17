@@ -121,9 +121,15 @@ function createCrudRouter() {
             res.status(400).json({ error: 'Clan name is required' });
             return;
         }
+        const shortCode = (0, clan_repo_js_1.normalizeShortCode)(req.body?.shortCode);
+        if (shortCode === null) {
+            res.status(400).json({ error: 'Short code: 1–8 letters or digits' });
+            return;
+        }
         try {
             const clan = (0, clan_repo_js_1.createClan)({
                 name,
+                shortCode,
                 createdBy: req.user?.id ?? null,
             });
             (0, user_repo_js_1.logAction)(req.user.id, 'clan.create', { clanId: clan.id, name });
@@ -147,9 +153,16 @@ function createCrudRouter() {
             res.status(404).json({ error: 'Clan not found' });
             return;
         }
-        if (typeof req.body?.name === 'string' && req.body.name.trim()) {
+        const hasName = typeof req.body?.name === 'string' && req.body.name.trim();
+        const hasCode = 'shortCode' in (req.body ?? {});
+        if (hasName || hasCode) {
+            const shortCode = hasCode ? (0, clan_repo_js_1.normalizeShortCode)(req.body.shortCode) : existing.shortCode;
+            if (shortCode === null) {
+                res.status(400).json({ error: 'Short code: 1–8 letters or digits' });
+                return;
+            }
             try {
-                (0, clan_repo_js_1.renameClan)(id, req.body.name.trim());
+                (0, clan_repo_js_1.renameClan)(id, hasName ? req.body.name.trim() : existing.baseName, shortCode);
             }
             catch (err) {
                 res.status(400).json({ error: err instanceof Error ? err.message : 'Rename failed' });

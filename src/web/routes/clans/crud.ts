@@ -4,6 +4,7 @@ import {
   getClanById,
   createClan,
   renameClan,
+  normalizeShortCode,
   setClanActive,
   setClanScanIntervalMinutes,
   setClanPublicUrl,
@@ -148,9 +149,15 @@ export function createCrudRouter(): Router {
       res.status(400).json({ error: 'Clan name is required' });
       return;
     }
+    const shortCode = normalizeShortCode(req.body?.shortCode);
+    if (shortCode === null) {
+      res.status(400).json({ error: 'Short code: 1–8 letters or digits' });
+      return;
+    }
     try {
       const clan = createClan({
         name,
+        shortCode,
         createdBy: req.user?.id ?? null,
       });
       logAction(req.user!.id, 'clan.create', { clanId: clan.id, name });
@@ -174,9 +181,16 @@ export function createCrudRouter(): Router {
       res.status(404).json({ error: 'Clan not found' });
       return;
     }
-    if (typeof req.body?.name === 'string' && req.body.name.trim()) {
+    const hasName = typeof req.body?.name === 'string' && req.body.name.trim();
+    const hasCode = 'shortCode' in (req.body ?? {});
+    if (hasName || hasCode) {
+      const shortCode = hasCode ? normalizeShortCode(req.body.shortCode) : existing.shortCode;
+      if (shortCode === null) {
+        res.status(400).json({ error: 'Short code: 1–8 letters or digits' });
+        return;
+      }
       try {
-        renameClan(id, req.body.name.trim());
+        renameClan(id, hasName ? req.body.name.trim() : existing.baseName, shortCode);
       } catch (err) {
         res.status(400).json({ error: err instanceof Error ? err.message : 'Rename failed' });
         return;

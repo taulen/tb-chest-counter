@@ -165,13 +165,18 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     // would tell a clan admin how many other clans share the instance.
     const overview = scanLoop?.getScanOverview() ?? null;
     const visible = (overview?.clans ?? []).filter((c) => isSuperadmin || c.clanId === req.clanId);
-    const clans = visible.map((c) => ({
+    const clans = visible.map((c) => {
+      const clan = getClanById(c.clanId);
+      return {
       clanId: c.clanId,
-      clanName: getClanById(c.clanId)?.name ?? null,
+      clanName: clan?.name ?? null,
+      // For tight spots: the scan card names several clans at once by code.
+      clanShort: clan?.shortCode || null,
       phase: c.phase,
       elapsedMs: c.elapsedMs,
       progressMessage: c.progressMessage,
-    }));
+      };
+    });
     const first = clans[0];
     const activity = first && overview
       ? {

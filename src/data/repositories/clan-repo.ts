@@ -15,7 +15,17 @@ const log = childLogger('clan-repo');
  */
 export interface Clan {
   id: number;
+  /**
+   * The clan's label everywhere it is shown: "CWB - ChaosWithoutBorders" when
+   * it has a short code, else just its name (clanLabel). Edit forms use
+   * `baseName` + `shortCode`; tight spots (the scan card with several clans)
+   * use `shortCode`.
+   */
   name: string;
+  /** The name alone, without the short code (clans.name, v124). */
+  baseName: string;
+  /** "CWB" — the clan's short code; '' when none is set (v124). */
+  shortCode: string;
   slug: string;
   gameUrl: string;
   scanIntervalMinutes: number | null;
@@ -148,10 +158,27 @@ export function slugifyClanName(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/** A clan's label: "CWB - ChaosWithoutBorders" with a short code, else the name alone. */
+export function clanLabel(name: string, shortCode: string | null | undefined): string {
+  const code = (shortCode ?? '').trim();
+  return code ? `${code} - ${name}` : name;
+}
+
+/** A short code: 1–8 letters or digits, as typed; '' clears it. Null when invalid. */
+export function normalizeShortCode(raw: unknown): string | null {
+  const code = typeof raw === 'string' ? raw.trim() : '';
+  if (!code) return '';
+  return /^[\p{L}\p{N}]{1,8}$/u.test(code) ? code : null;
+}
+
 function rowToClan(row: Record<string, unknown>): Clan {
+  const baseName = row.name as string;
+  const shortCode = (row.short_code as string | null | undefined) ?? '';
   return {
     id: row.id as number,
-    name: row.name as string,
+    name: clanLabel(baseName, shortCode),
+    baseName,
+    shortCode,
     slug: row.slug as string,
     gameUrl: row.game_url as string,
     scanIntervalMinutes: (row.scan_interval_minutes as number | null) ?? null,
@@ -263,6 +290,8 @@ export function clanCount(): number {
 
 export interface CreateClanInput {
   name: string;
+  /** The short code ("CWB"); optional. */
+  shortCode?: string;
   createdBy?: number | null;
   scanIntervalMinutes?: number | null;
 }
@@ -270,7 +299,10 @@ export interface CreateClanInput {
 export function createClan(input: CreateClanInput): Clan {
   const db = getDb();
   const now = new Date().toISOString();
-  const slug = slugifyClanName(input.name);
+  const shortCode = (input.shortCode ?? '').trim();
+  // The slug follows the label, so "CWB" + "ChaosWithoutBorders" keeps the
+  // URL a clan created as "CWB - ChaosWithoutBorders" always had.
+  const slug = slugifyClanName(clanLabel(input.name.trim(), shortCode));
   if (!slug) {
     throw new Error('Clan name produces an empty slug');
   }
@@ -280,10 +312,11 @@ export function createClan(input: CreateClanInput): Clan {
   // isn't surfaced anywhere in the UI or repos.
   const result = db.prepare(`
     INSERT INTO clans (
-      name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by
-    ) VALUES (?, ?, ?, ?, 1, ?, ?)
+      name, short_code, slug, game_url, scan_interval_minutes, is_active, created_at, created_by
+    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
   `).run(
     input.name.trim(),
+    shortCode,
     slug,
     'https://totalbattle.com',
     input.scanIntervalMinutes ?? null,
@@ -296,11 +329,18 @@ export function createClan(input: CreateClanInput): Clan {
   return created;
 }
 
-export function renameClan(id: number, newName: string): void {
+/**
+ * Set a clan's name and short code. The slug follows the label ("CWB -
+ * ChaosWithoutBorders" → cwb-chaoswithoutborders), so splitting a name into
+ * code + name keeps the clan's URL.
+ */
+export function renameClan(id: number, newName: string, shortCode?: string): void {
   const db = getDb();
-  const slug = slugifyClanName(newName);
+  const current = db.prepare('SELECT short_code FROM clans WHERE id = ?').get(id) as { short_code: string } | undefined;
+  const code = (shortCode ?? current?.short_code ?? '').trim();
+  const slug = slugifyClanName(clanLabel(newName.trim(), code));
   if (!slug) throw new Error('Clan name produces an empty slug');
-  db.prepare('UPDATE clans SET name = ?, slug = ? WHERE id = ?').run(newName.trim(), slug, id);
+  db.prepare('UPDATE clans SET name = ?, short_code = ?, slug = ? WHERE id = ?').run(newName.trim(), code, slug, id);
 }
 
 export function setClanActive(id: number, active: boolean): void {

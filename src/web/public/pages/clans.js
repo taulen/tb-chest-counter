@@ -157,7 +157,8 @@ export async function renderClans(el, refreshClanIndicator) {
       <div class="card-header"><h2>${t('Add Clan')}</h2></div>
       <div class="card-body card-body-padded">
         <div class="inline-form-row">
-          <div><label>${t('Clan name')}</label><input id="newClanName" class="input" type="text" placeholder="${t('e.g. Arcane Dawn')}"></div>
+          <div class="clan-code-field"><label for="newClanShortCode">${t('Short code')}</label><input id="newClanShortCode" class="input" type="text" maxlength="8" placeholder="${t('e.g. ARD')}" autocomplete="off" spellcheck="false"></div>
+          <div><label for="newClanName">${t('Clan name')}</label><input id="newClanName" class="input" type="text" placeholder="${t('e.g. Arcane Dawn')}"></div>
           <button class="btn btn-primary" data-action="clan-create">${t('Create')}</button>
         </div>
         <p class="muted-copy mt-12">${t('After creating, sign in to TB for the new clan via the in-app login bridge. The next scan reads its members and chests from the game.')}</p>
@@ -196,12 +197,13 @@ export async function renderClans(el, refreshClanIndicator) {
     const clanId = clanIdAttr ? Number.parseInt(clanIdAttr, 10) : null;
     if (action === 'clan-create') {
       const name = $('#newClanName')?.value.trim();
+      const shortCode = $('#newClanShortCode')?.value.trim() || '';
       if (!name) return notify(t('Clan name is required.'), t('Create clan'));
       try {
         const r = await fetch('/api/clans', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, shortCode }),
         });
         const j = await r.json();
         if (!r.ok) return notify(j.error || t('Create failed'), t('Create clan'));
@@ -211,10 +213,12 @@ export async function renderClans(el, refreshClanIndicator) {
       }
     } else if (action === 'clan-rename' && clanId) {
       const nameInput = el.querySelector(`#clan-name-${clanId}`);
+      const codeInput = el.querySelector(`#clan-code-${clanId}`);
       const intervalInput = el.querySelector(`#clan-interval-${clanId}`);
       try {
         const body = {};
         if (nameInput?.value.trim()) body.name = nameInput.value.trim();
+        if (codeInput) body.shortCode = codeInput.value.trim();
         if (intervalInput) {
           const v = intervalInput.value.trim();
           body.scanIntervalMinutes = v === '' ? null : Number(v);
@@ -1022,7 +1026,8 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
       <div class="card-body card-body-padded">
         ${isSuperAdmin ? `
         <div class="inline-form-row">
-          <div><label>${t('Name')}</label><input id="clan-name-${clan.id}" class="input" type="text" value="${escapeHtml(clan.name)}"></div>
+          <div class="clan-code-field"><label for="clan-code-${clan.id}">${t('Short code')}</label><input id="clan-code-${clan.id}" class="input" type="text" maxlength="8" value="${escapeHtml(clan.shortCode || '')}" autocomplete="off" spellcheck="false"></div>
+          <div><label for="clan-name-${clan.id}">${t('Name')}</label><input id="clan-name-${clan.id}" class="input" type="text" value="${escapeHtml(clan.baseName ?? clan.name)}"></div>
           <div>
             <label>${t('Scan interval (minutes; blank = global)')}</label>
             <input id="clan-interval-${clan.id}" class="input" type="number" min="1" value="${intervalVal}" placeholder="${intervalPlaceholder}">
@@ -1033,6 +1038,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
           </div>
           <button class="btn" data-action="clan-rename" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
+        <p class="muted-copy hint-text mt-8">${t('The short code (e.g. CWB) stands in for the name where space is tight, like the scan card when several clans scan at once.')}</p>
         <p class="muted-copy hint-text mt-8">${t("Public URL is the domain this clan's members use. The Discord digest link and the share-link URLs below are built on it.")}</p>
         <p class="warning-text hint-text mt-8">⚠ ${t('Leave the scan interval blank for normal operation — only override for testing.')}</p>
         ` : ''}

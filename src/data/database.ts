@@ -8,6 +8,7 @@ import { despace } from '../utils/name-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
 import { repairAldrin } from './repair-aldrin-2026-11.js';
 import { repairCutNames } from './repair-cut-names-2026-11.js';
+import { splitClanShortCodes } from './clan-short-code.js';
 import { backfillGoalHistory } from './goal-history.js';
 import { DEFAULT_CONFIG } from '../config/defaults.js';
 import { chatSearchText, chatSenderPlayerId } from '../game-protocol/chat-text.js';
@@ -2243,6 +2244,19 @@ const MIGRATIONS: Migration[] = [
           PRIMARY KEY (clan_id, event_type, run, occurrence, read_at)
         );
       `);
+    },
+  },
+  {
+    // Clan short code (Nov 2026): "CWB" beside the name "ChaosWithoutBorders",
+    // for tight spots like the scan card with several clans at once. Clan
+    // names were typed as "CWB - ChaosWithoutBorders"; that form is split once
+    // into code + name. The slug is untouched (share URLs resolve on it), and
+    // the clan's label stays "CWB - ChaosWithoutBorders" (clan-repo clanLabel).
+    // Replay-safe: the column is guarded and a split name no longer matches.
+    // See clan-short-code.ts.
+    version: 124,
+    run: (database): void => {
+      splitClanShortCodes(database);
     },
   },
 ];

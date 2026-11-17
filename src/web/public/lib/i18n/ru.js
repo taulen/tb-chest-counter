@@ -2770,6 +2770,9 @@ export const ui = {
   "Empty slot": "Пустой слот",
   "The hero's XP is read with the member's next daily city read.": "Опыт героя считывается при следующем ежедневном чтении города участника.",
   "Leads it": "Во главе",
+  "Short code": "Короткий код",
+  "e.g. ARD": "напр. ARD",
+  "The short code (e.g. CWB) stands in for the name where space is tight, like the scan card when several clans scan at once.": "Короткий код (напр. CWB) заменяет название там, где мало места, — например, в карточке сканирования, когда сканируются несколько кланов одновременно.",
 };
 
 export const game = {

@@ -2770,6 +2770,9 @@ export const ui = {
   "Empty slot": "Ranura vacía",
   "The hero's XP is read with the member's next daily city read.": "La EXP del héroe se lee en la próxima lectura diaria de la ciudad del miembro.",
   "Leads it": "La encabeza",
+  "Short code": "Código corto",
+  "e.g. ARD": "p. ej. ARD",
+  "The short code (e.g. CWB) stands in for the name where space is tight, like the scan card when several clans scan at once.": "El código corto (p. ej. CWB) sustituye al nombre donde hay poco espacio, como en la tarjeta de escaneo cuando se escanean varios clanes a la vez.",
 };
 
 export const game = {

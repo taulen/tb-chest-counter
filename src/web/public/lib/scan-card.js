@@ -59,7 +59,11 @@ export function renderScanCards(activity, { detail = '' } = {}) {
     && (Number.isFinite(activity.cycleDone) || Number.isFinite(activity.cyclePosition));
   const done = Number.isFinite(activity.cycleDone) ? activity.cycleDone : (activity.cyclePosition ?? 1) - 1;
   const nameOf = (c) => c.clanName || t('Clan #{id}', { id: c.clanId });
-  const clanName = clans.map(nameOf).join(' · ');
+  // Several clans at once: their short codes ("CWB · SIK · SK7") fit the card;
+  // full names were cut off. The full names stay in the tooltip.
+  const shortOf = (c) => c.clanShort || nameOf(c);
+  const clanName = clans.map(several ? shortOf : nameOf).join(' · ');
+  const clanTitle = clans.map(nameOf).join(' · ');
   // One segment per clan of the cycle: done, current (one per clan scanning
   // now), still to come. Outside a cycle the single segment is just the
   // "working" shimmer.
@@ -76,7 +80,7 @@ export function renderScanCards(activity, { detail = '' } = {}) {
     setText(card.querySelector('.scan-card-phase'), PHASE_LABELS[activity.phase] ?? PHASE_LABELS.scan);
     const clanEl = card.querySelector('.scan-card-clan');
     setText(clanEl, clanName);
-    if (clanEl) clanEl.title = clanName;
+    if (clanEl) clanEl.title = clanTitle;
     const detailEl = card.querySelector('.scan-card-detail');
     setText(detailEl, detailText);
     if (detailEl) detailEl.title = several ? clans.map((c) => `${nameOf(c)}: ${c.progressMessage || ''}`).join('\n') : detailText;

@@ -2770,6 +2770,9 @@ export const ui = {
   "Empty slot": "Emplacement vide",
   "The hero's XP is read with the member's next daily city read.": "L'XP du héros est lue lors de la prochaine lecture quotidienne de la cité du membre.",
   "Leads it": "La mène",
+  "Short code": "Code court",
+  "e.g. ARD": "p. ex. ARD",
+  "The short code (e.g. CWB) stands in for the name where space is tight, like the scan card when several clans scan at once.": "Le code court (p. ex. CWB) remplace le nom là où la place manque, comme sur la carte de scan quand plusieurs clans sont scannés en même temps.",
 };
 
 export const game = {

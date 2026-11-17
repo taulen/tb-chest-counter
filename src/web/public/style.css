@@ -1927,6 +1927,9 @@ label {
   flex-wrap: wrap;
 }
 
+/* A clan's short code ("CWB"): at most 8 characters, so a narrow field. */
+.clan-code-field .input { width: 7.5em; }
+
 .import-row {
   align-items: center;
 }

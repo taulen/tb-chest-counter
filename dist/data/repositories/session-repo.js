@@ -382,7 +382,7 @@ clanId, limit = 60,
  */
 opts = {}) {
     const rows = (0, database_js_1.getDb)().prepare(`
-    SELECT s.id, s.clan_id, COALESCE(c.name, '') AS clan_name, s.started_at, s.completed_at, s.status,
+    SELECT s.id, s.clan_id, COALESCE(CASE WHEN c.short_code <> '' THEN c.short_code || ' - ' || c.name ELSE c.name END, '') AS clan_name, s.started_at, s.completed_at, s.status,
            s.chests_found, s.errors_encountered
     FROM scan_sessions s LEFT JOIN clans c ON c.id = s.clan_id
     WHERE (? IS NULL OR s.clan_id = ?)

@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.slugifyClanName = slugifyClanName;
+exports.clanLabel = clanLabel;
+exports.normalizeShortCode = normalizeShortCode;
 exports.listClans = listClans;
 exports.listDeletedClans = listDeletedClans;
 exports.getClanById = getClanById;
@@ -52,10 +54,26 @@ function slugifyClanName(name) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 }
+/** A clan's label: "CWB - ChaosWithoutBorders" with a short code, else the name alone. */
+function clanLabel(name, shortCode) {
+    const code = (shortCode ?? '').trim();
+    return code ? `${code} - ${name}` : name;
+}
+/** A short code: 1–8 letters or digits, as typed; '' clears it. Null when invalid. */
+function normalizeShortCode(raw) {
+    const code = typeof raw === 'string' ? raw.trim() : '';
+    if (!code)
+        return '';
+    return /^[\p{L}\p{N}]{1,8}$/u.test(code) ? code : null;
+}
 function rowToClan(row) {
+    const baseName = row.name;
+    const shortCode = row.short_code ?? '';
     return {
         id: row.id,
-        name: row.name,
+        name: clanLabel(baseName, shortCode),
+        baseName,
+        shortCode,
         slug: row.slug,
         gameUrl: row.game_url,
         scanIntervalMinutes: row.scan_interval_minutes ?? null,
@@ -152,7 +170,10 @@ function clanCount() {
 function createClan(input) {
     const db = (0, database_js_1.getDb)();
     const now = new Date().toISOString();
-    const slug = slugifyClanName(input.name);
+    const shortCode = (input.shortCode ?? '').trim();
+    // The slug follows the label, so "CWB" + "ChaosWithoutBorders" keeps the
+    // URL a clan created as "CWB - ChaosWithoutBorders" always had.
+    const slug = slugifyClanName(clanLabel(input.name.trim(), shortCode));
     if (!slug) {
         throw new Error('Clan name produces an empty slug');
     }
@@ -161,21 +182,28 @@ function createClan(input) {
     // isn't surfaced anywhere in the UI or repos.
     const result = db.prepare(`
     INSERT INTO clans (
-      name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by
-    ) VALUES (?, ?, ?, ?, 1, ?, ?)
-  `).run(input.name.trim(), slug, 'https://totalbattle.com', input.scanIntervalMinutes ?? null, now, input.createdBy ?? null);
+      name, short_code, slug, game_url, scan_interval_minutes, is_active, created_at, created_by
+    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(input.name.trim(), shortCode, slug, 'https://totalbattle.com', input.scanIntervalMinutes ?? null, now, input.createdBy ?? null);
     log.info(`Created clan #${result.lastInsertRowid} "${input.name}" (slug=${slug})`);
     const created = getClanById(result.lastInsertRowid);
     if (!created)
         throw new Error('Failed to read back created clan');
     return created;
 }
-function renameClan(id, newName) {
+/**
+ * Set a clan's name and short code. The slug follows the label ("CWB -
+ * ChaosWithoutBorders" → cwb-chaoswithoutborders), so splitting a name into
+ * code + name keeps the clan's URL.
+ */
+function renameClan(id, newName, shortCode) {
     const db = (0, database_js_1.getDb)();
-    const slug = slugifyClanName(newName);
+    const current = db.prepare('SELECT short_code FROM clans WHERE id = ?').get(id);
+    const code = (shortCode ?? current?.short_code ?? '').trim();
+    const slug = slugifyClanName(clanLabel(newName.trim(), code));
     if (!slug)
         throw new Error('Clan name produces an empty slug');
-    db.prepare('UPDATE clans SET name = ?, slug = ? WHERE id = ?').run(newName.trim(), slug, id);
+    db.prepare('UPDATE clans SET name = ?, short_code = ?, slug = ? WHERE id = ?').run(newName.trim(), code, slug, id);
 }
 function setClanActive(id, active) {
     const db = (0, database_js_1.getDb)();
