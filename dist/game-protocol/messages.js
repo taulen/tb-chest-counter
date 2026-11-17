@@ -336,14 +336,14 @@ function parseCityRecord(frame) {
                 buildings[slot] = { type: row[1], level: row[2] };
         }
     }
-    const h = r[26];
-    const heroRow = h && typeof h === 'object' && !Array.isArray(h) && !('$bin' in h) && !('$pairs' in h) ? arr(Object.values(h)[0]) : [];
+    const d = r[26];
+    const dragonRow = d && typeof d === 'object' && !Array.isArray(d) && !('$bin' in d) && !('$pairs' in d) ? arr(Object.values(d)[0]) : [];
     return {
         cityId,
         ownerId: id1(arr(r[1])[0]),
         techs: parseCityTechs(frame),
         buildings,
-        hero: { level: num(heroRow[3]), xp: num(heroRow[2]) },
+        dragon: { level: num(dragonRow[3]), xp: num(dragonRow[2]) },
         troops: arr(r[30])
             .map((e) => arr(e))
             .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')

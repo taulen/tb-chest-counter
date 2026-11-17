@@ -84,10 +84,20 @@ export const TABLE_ARTIFACT_BONUSES = 113;
  * f3 name vector, f6 visual JSON {"icon": …}.
  */
 export const TABLE_EQUIPMENT = 11;
+/**
+ * The game's Heroes (the client's `StaticAll.Heroes`, HeroStatic): the hero
+ * (row 1) and every captain (row = its T75 id; f15 battler unit id). Keyed by
+ * the id city field 9 lists. f7 = its 600 levels (HeroLevelStatic), each
+ * `[level, expRequired (cumulative, "…n" past 2^53), reward, leadership,
+ * authority, dominance, effectId, clientInfo, ratingContribution]` — the
+ * Stats screen shows leadership / authority / dominance ÷ 100 (Carter level
+ * 200: 4,000,000 → "Leadership 40,000"). See docs/game-protocol.md.
+ */
+export const TABLE_HERO_LEVELS = 10;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
-  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS,
+  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS,
 ];
 
 export interface GameNames {
@@ -114,6 +124,8 @@ export interface GameNames {
   inserts?: Record<string, GameInsert>;
   /** Events (T44) by "type,run": the game's code, title key and English title. Format 5+. */
   events?: Record<string, GameEvent>;
+  /** Hero and captain levels: XP thresholds and the Stats screen's values (T10). Format 5+. */
+  heroLevels?: HeroLevels;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
 }
@@ -191,15 +203,45 @@ export interface GameCaptain {
    * From T75 f12 {star: [star, …, [7] props JSON, …]}.
    */
   stars: Record<string, Array<[string, string]>>;
+  /**
+   * Might a star level adds (T75 f12 [star][8], the star's rating
+   * contribution: Carter ★6 270,000). Not cumulative: the current star's own
+   * value. Format 5+.
+   */
+  starMight?: Record<string, number>;
+}
+
+/**
+ * Level tables of the Heroes table (T10): series are stored once and shared —
+ * every captain has the same XP thresholds and Leadership / Authority /
+ * Dominance; Might per level differs by captain group. Each array is indexed
+ * by level − 1.
+ */
+export interface HeroLevels {
+  /** Distinct series; a hero's fields point into this list. */
+  series: number[][];
+  /** Field-9 id (1 = the hero, else the T75 captain id) → its series indexes. */
+  heroes: Record<string, HeroLevelSeries>;
+}
+
+export interface HeroLevelSeries {
+  /** Cumulative XP a level starts at (level 1 = 0). Past 2^53 (≈ level 450) only approximate. */
+  xp: number;
+  /** The Stats screen's Leadership / Authority / Dominance at each level (stored ÷ 100). */
+  leadership: number;
+  authority: number;
+  dominance: number;
+  /** Might each level adds (its rating contribution); a captain's Might = the sum up to its level + its star's. */
+  might: number;
 }
 
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
  * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: event
- * titles (T44); 6: terrain names — Nov 2026); a cached file with an older
- * format is rebuilt.
+ * titles (T44); 6: terrain names; 7: hero and captain levels — XP thresholds,
+ * Stats, Might — Nov 2026); a cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 6;
+export const NAMES_FORMAT = 7;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -469,10 +511,12 @@ export function buildNames(
     if (!name) continue;
     const rarity = typeof row[2] === 'number' ? row[2] : 0;
     const stars: GameCaptain['stars'] = {};
+    const starMight: Record<string, number> = {};
     const starRows = row[12];
     if (starRows && typeof starRows === 'object' && !Array.isArray(starRows)) {
       for (const [star, sr] of Object.entries(starRows as Record<string, Wire>)) {
         if (!Array.isArray(sr)) continue;
+        if (typeof sr[8] === 'number') starMight[star] = sr[8];
         let props: Array<{ propText?: string; propValue?: string }> = [];
         try { props = (JSON.parse(str(sr[7]) ?? '{}') as { props?: typeof props }).props ?? []; } catch { /* no props */ }
         const lines = props
@@ -488,6 +532,7 @@ export function buildNames(
       icon: cfg.smallIcon ?? '',
       art: cfg.unitAltarArt ?? '',
       stars,
+      starMight,
     };
   }
   const medals: NonNullable<GameNames['medals']> = {};
@@ -537,6 +582,7 @@ export function buildNames(
     version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
     gifts, techs, objects, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
     events: buildEvents(tables.get(TABLE_TOURNAMENTS), str, en),
+    heroLevels: buildHeroLevels(rows(TABLE_HERO_LEVELS)),
   };
 }
 
@@ -565,6 +611,53 @@ export function buildEvents(
   }
   return out;
 }
+
+/** A wire number as a JS number; past 2^53 the codec hands "…n" strings — approximate is fine there. */
+const wireNumber = (v: Wire): number | null => {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && /^-?\d+n$/.test(v)) return Number(v.slice(0, -1));
+  return null;
+};
+
+/**
+ * T10 (Heroes) → the level series of the hero and every captain, each
+ * distinct series stored once. A row without a usable 600-level f7 is skipped.
+ */
+export function buildHeroLevels(heroRows: Array<[string, Wire[]]>): HeroLevels {
+  const series: number[][] = [];
+  const seen = new Map<string, number>();
+  const intern = (values: number[]): number => {
+    const key = values.join(',');
+    let i = seen.get(key);
+    if (i === undefined) {
+      i = series.length;
+      series.push(values);
+      seen.set(key, i);
+    }
+    return i;
+  };
+  const heroes: Record<string, HeroLevelSeries> = {};
+  for (const [id, row] of heroRows) {
+    const levels = Array.isArray(row[7]) ? (row[7] as Wire[]).filter((e): e is Wire[] => Array.isArray(e) && typeof e[0] === 'number') : [];
+    if (!levels.length) continue;
+    levels.sort((a, b) => (a[0] as number) - (b[0] as number));
+    // Contiguous from level 1, or the index-by-level arrays would lie.
+    if (levels.some((e, i) => e[0] !== i + 1)) continue;
+    const col = (c: number, scale = 1): number[] => levels.map((e) => {
+      const n = wireNumber(e[c]);
+      return n === null ? 0 : scale === 1 ? n : Math.round(n / scale);
+    });
+    heroes[id] = {
+      xp: intern(col(1)),
+      leadership: intern(col(3, 100)),
+      authority: intern(col(4, 100)),
+      dominance: intern(col(5, 100)),
+      might: intern(col(8)),
+    };
+  }
+  return { series, heroes };
+}
+
 
 const isPlainObject = (v: Wire): v is Record<string, Wire> =>
   !!v && typeof v === 'object' && !Array.isArray(v) && !('$bin' in v) && !('$pairs' in v);

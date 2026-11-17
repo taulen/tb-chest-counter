@@ -9065,6 +9065,68 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-variant-numeric: tabular-nums;
 }
 
+/* The game's XP bar: a badge, a gold-trimmed track filled to this level's share, "{n} to the next level". */
+.captain-xp {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  margin: 10px 0 0;
+}
+
+.captain-xp-badge {
+  grid-row: span 2;
+  align-self: center;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--accent-gold);
+  color: var(--text-on-gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.captain-xp-track {
+  position: relative;
+  height: 10px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--accent-gold-bg-strong);
+  overflow: hidden;
+}
+
+.captain-xp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--xp-fill, 0%);
+  border-radius: inherit;
+  background: linear-gradient(to bottom, var(--accent-gold-hover), var(--accent-gold));
+}
+
+.captain-xp-text {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.captain-xp.is-plain {
+  grid-template-columns: auto 1fr;
+}
+
+.captain-xp.is-plain .captain-xp-badge { grid-row: auto; }
+
+.captain-xp.is-plain .captain-xp-text {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.captain-stats {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
 .captain-detail-section {
   margin: 14px 0 6px;
   padding-top: 10px;

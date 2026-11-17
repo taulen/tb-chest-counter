@@ -27,6 +27,7 @@ const artifacts_js_1 = require("../../game-protocol/artifacts.js");
 const equipment_js_1 = require("../../game-protocol/equipment.js");
 const event_mapping_js_1 = require("../../game-protocol/event-mapping.js");
 const game_event_repo_js_1 = require("../../data/repositories/game-event-repo.js");
+const hero_levels_js_1 = require("../../game-protocol/hero-levels.js");
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
  * from the art pipeline), memoised per trees + art version.
@@ -212,16 +213,21 @@ function createGameRouter() {
         };
         const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
         // The hero leads the tab: its portrait in the player's frame with the
-        // level plate, its level / XP (the city's hero record) and what it wears
-        // (city field 9's entry id 1 — gear tracked since Nov 2026).
+        // level plate, its level / XP and what it wears — all city field 9's
+        // entry id 1 (level / XP stored since Nov 2026; the player record's hero
+        // level until then). NOT city field 26: that is the dragon.
         const player = (0, game_profile_repo_js_1.getGamePlayer)(clanId, playerId);
-        const cityHero = (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId)?.hero;
-        const heroLevel = cityHero?.level ?? player?.heroLevel ?? null;
+        const heroEntry = (0, game_profile_repo_js_1.getPlayerHeroEntry)(clanId, playerId);
+        const heroLevel = heroEntry?.level ?? player?.heroLevel ?? null;
+        const heroXp = heroEntry?.xp ?? null;
+        const heroView = heroLevel !== null && heroXp !== null ? (0, hero_levels_js_1.heroLevelView)(names, equipment_js_1.HERO_ENTRY_ID, heroLevel, 0, false) : null;
         const hero = player ? {
             name: names?.heroes?.[String(player.heroAvatar)]?.name || null,
             level: heroLevel,
             heroLevel,
-            xp: cityHero?.xp ?? null,
+            xp: heroXp,
+            xpFloor: heroView?.xpFloor ?? null,
+            xpNext: heroView?.xpNext ?? null,
             avatarUrl: player.avatarUrl,
             frameUrl: player.frameUrl,
             equipment: gear.get(equipment_js_1.HERO_ENTRY_ID) ?? [],
@@ -235,12 +241,19 @@ function createGameRouter() {
                 starOnUrl: tile?.starOn ? (0, index_js_1.gameArtUrl)(tile.starOn) : null,
                 starOffUrl: tile?.starOff ? (0, index_js_1.gameArtUrl)(tile.starOff) : null,
             },
-            captains: (0, game_profile_repo_js_1.getPlayerCaptains)(clanId, playerId).map((c) => ({
-                ...c,
-                ...describe(c.captainId),
-                starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
-                equipment: gear.get(c.captainId) ?? [],
-            })),
+            captains: (0, game_profile_repo_js_1.getPlayerCaptains)(clanId, playerId).map((c) => {
+                // The XP window of its level and the Stats screen (Heroes table, T10).
+                const view = (0, hero_levels_js_1.heroLevelView)(names, c.captainId, c.level, c.stars);
+                return {
+                    ...c,
+                    ...describe(c.captainId),
+                    xpFloor: view?.xpFloor ?? null,
+                    xpNext: view?.xpNext ?? null,
+                    stats: view?.stats ?? null,
+                    starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
+                    equipment: gear.get(c.captainId) ?? [],
+                };
+            }),
             changes: (0, game_profile_repo_js_1.getPlayerCaptainChanges)(clanId, playerId, since).map((c) => {
                 const { name, iconUrl } = describe(c.captainId);
                 return { ...c, name, iconUrl };
