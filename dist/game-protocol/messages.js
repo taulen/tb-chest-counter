@@ -155,6 +155,16 @@ function parseCityRecord(frame) {
             .map((e) => arr(e))
             .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')
             .map((e) => ({ id: e[0], count: e[1] })),
+        captains: arr(r[9])
+            .map((e) => arr(e))
+            .filter((e) => typeof e[0] === 'number' && typeof e[10] === 'number')
+            .map((e) => ({
+            id: e[0],
+            level: e[10],
+            stars: num(e[18]) ?? 0,
+            xp: num(e[9]),
+            slot: num(e[1]) ?? 0,
+        })),
     };
 }
 /** Message 312 (map tiles): `[[id], type, …, level@5, …, [realm,x,y]@8, [owner]@9, expiresAt@10, …]`. */

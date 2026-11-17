@@ -53,8 +53,40 @@ export interface GameNames {
   objects: Record<string, string>;
   heroes: Record<string, { name: string; icon: string }>;
   /** Captains by T75 id: name, rarity (T75 f2), and the sprite names from its config. */
-  captains: Record<string, { name: string; rarity: number; icon: string; art: string }>;
+  captains: Record<string, GameCaptain>;
+  /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
+  format?: number;
 }
+
+export interface GameCaptain {
+  name: string;
+  /** T75 f2: 1 rare, 2 epic, 3 legendary, 4 mythic. */
+  rarity: number;
+  /** The game's label for the rarity ("Epic Captain"). */
+  rarityName: string;
+  icon: string;
+  art: string;
+  /**
+   * Bonuses per star level, as the game's Stats screen lists them under "Star
+   * level N": [text, value] pairs ("Crypt exploration efficiency", "+50,0%").
+   * From T75 f12 {star: [star, …, [7] props JSON, …]}.
+   */
+  stars: Record<string, Array<[string, string]>>;
+}
+
+/**
+ * Bump when names.json gains a field the app reads (2: captain star bonuses
+ * and rarity labels, Nov 2026); a cached file with an older format is rebuilt.
+ */
+export const NAMES_FORMAT = 2;
+
+/** T75 f2 rarity → the game's own label key. */
+const CAPTAIN_RARITY_KEYS: Record<number, string> = {
+  1: 'client.captain.info.rare_captain',
+  2: 'client.captain.info.epic_captain',
+  3: 'client.captain.info.legendary_captain',
+  4: 'client.captain.info.mythical_captain',
+};
 
 export interface StaticVersion {
   composite: string;
@@ -252,18 +284,38 @@ export function buildNames(
   }
   const captains: GameNames['captains'] = {};
   for (const [id, row] of rows(TABLE_CAPTAINS)) {
-    const name = vecText(row[5]);
-    if (!name) continue;
-    let cfg: { smallIcon?: string; unitAltarArt?: string } = {};
+    let cfg: { smallIcon?: string; unitAltarArt?: string; animationLinkage?: string } = {};
     try { cfg = JSON.parse(str(row[7]) ?? '{}'); } catch { /* not a config */ }
+    // The battler's own name (battler_unit.name.<key of battler_<key>_unit>)
+    // first: f5 is wrong for some rows — id 28 is Helen (her sprites, her
+    // battler) but its f5 vector says "Hercules" (Nov 2026).
+    const battler = /^battler_(.+)_unit$/.exec(cfg.animationLinkage ?? '')?.[1];
+    const name = (battler ? en.get(`battler_unit.name.${battler}`) : undefined) ?? vecText(row[5]);
+    if (!name) continue;
+    const rarity = typeof row[2] === 'number' ? row[2] : 0;
+    const stars: GameCaptain['stars'] = {};
+    const starRows = row[12];
+    if (starRows && typeof starRows === 'object' && !Array.isArray(starRows)) {
+      for (const [star, sr] of Object.entries(starRows as Record<string, Wire>)) {
+        if (!Array.isArray(sr)) continue;
+        let props: Array<{ propText?: string; propValue?: string }> = [];
+        try { props = (JSON.parse(str(sr[7]) ?? '{}') as { props?: typeof props }).props ?? []; } catch { /* no props */ }
+        const lines = props
+          .filter((p) => p.propText)
+          .map((p): [string, string] => [en.get(p.propText as string) ?? (p.propText as string), String(p.propValue ?? '')]);
+        if (lines.length) stars[star] = lines;
+      }
+    }
     captains[id] = {
       name,
-      rarity: typeof row[2] === 'number' ? row[2] : 0,
+      rarity,
+      rarityName: en.get(CAPTAIN_RARITY_KEYS[rarity] ?? '') ?? '',
       icon: cfg.smallIcon ?? '',
       art: cfg.unitAltarArt ?? '',
+      stars,
     };
   }
-  return { version, builtAt: new Date().toISOString(), gifts, techs, objects, heroes, captains };
+  return { version, builtAt: new Date().toISOString(), format: NAMES_FORMAT, gifts, techs, objects, heroes, captains };
 }
 
 // ---------------------------------------------------------------------------
@@ -303,8 +355,8 @@ export async function loadGameNames(): Promise<GameNames> {
   const file = path.join(staticDir(), key, 'names.json');
   if (fs.existsSync(file)) {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as GameNames;
-    // A names.json from before a table was added (captains) is rebuilt once.
-    if (cached.captains) {
+    // A names.json from an older format (before captains' star bonuses) is rebuilt once.
+    if ((cached.format ?? 1) >= NAMES_FORMAT) {
       memo = cached;
       return memo;
     }

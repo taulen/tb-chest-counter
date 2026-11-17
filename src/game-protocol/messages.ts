@@ -183,6 +183,25 @@ export interface CityRecord {
    * their ids merely overlap T75 (checked Nov 2026).
    */
   troops: Array<{ id: number; count: number }>;
+  /**
+   * Field 9: every captain the player owns, read for ANY player's city (not
+   * only the signed-in one). Per entry [0] captain id (T75), [1] active slot
+   * (1–3 = in the active line-up, 0 = not), [9] experience, [10] level,
+   * [12] equipment, [14] skills, [18] star level. Checked against the game's
+   * Captains screen (Nov 2026): Cleopatra 278 ★5, Leonidas 234 ★2, Dustan 151
+   * ★6, active Carter/Hercules/Farhad = slots 1/2/3. Entry id 1 is the hero
+   * (no T75 row); the caller keeps the ids T75 names.
+   */
+  captains: CityCaptain[];
+}
+
+export interface CityCaptain {
+  id: number;
+  level: number;
+  stars: number;
+  xp: number | null;
+  /** 1–3 = in the active line-up, 0 = not. */
+  slot: number;
 }
 
 /**
@@ -217,6 +236,16 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
       .map((e) => arr(e))
       .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')
       .map((e) => ({ id: e[0] as number, count: e[1] as number })),
+    captains: arr(r[9])
+      .map((e) => arr(e))
+      .filter((e) => typeof e[0] === 'number' && typeof e[10] === 'number')
+      .map((e) => ({
+        id: e[0] as number,
+        level: e[10] as number,
+        stars: num(e[18]) ?? 0,
+        xp: num(e[9]),
+        slot: num(e[1]) ?? 0,
+      })),
   };
 }
 

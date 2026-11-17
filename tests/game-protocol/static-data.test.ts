@@ -2,6 +2,7 @@ import zlib from 'zlib';
 import { describe, expect, it } from 'vitest';
 import { encodeValues, type Wire } from '../../src/game-protocol/codec.js';
 import {
+  TABLE_CAPTAINS,
   TABLE_GIFT_TYPES,
   TABLE_HEROES,
   TABLE_MAP_OBJECTS,
@@ -28,6 +29,9 @@ const strings: Wire[] = [
   'icon_garvel_72', // 10
   'map_object.vault', // 11
   '{}', // 12
+  'unit.name.carter', // 13
+  '{"smallIcon":"carter_icon","unitAltarArt":"lvlup_carter"}', // 14
+  '{"props":[{"icon":"","propText":"hero_level.client_info.n0002","propValue":"+5,0%"},{"icon":"","propText":"hero_level.client_info.resolve_points","propValue":"315"}]}', // 15
 ];
 const vectors: Wire[] = [
   [1], // 0: Infernal Chest
@@ -37,6 +41,7 @@ const vectors: Wire[] = [
   [9], // 4: Garvel
   [11], // 5: Vault of the Ancients
   [12], // 6: JSON fragment, not a name
+  [13], // 7: Carter
 ];
 const en = new Map([
   ['item.name.n0176', 'Infernal Chest'],
@@ -45,6 +50,10 @@ const en = new Map([
   ['tech.name.n0020', 'Sacred Potion production %level%'],
   ['hero_avatar.avatar_name.n0001', 'Garvel'],
   ['map_object.vault', 'Vault of the Ancients'],
+  ['unit.name.carter', 'Carter'],
+  ['client.captain.info.epic_captain', 'Epic Captain'],
+  ['hero_level.client_info.n0002', 'Crypt exploration efficiency'],
+  ['hero_level.client_info.resolve_points', 'Eagles of Resolve points'],
 ]);
 const tables = new Map<number, Record<string, Wire>>([
   [TABLE_GIFT_TYPES, {
@@ -57,6 +66,13 @@ const tables = new Map<number, Record<string, Wire>>([
   }],
   [TABLE_HEROES, { 1: [1, 4, 1489, 10, 0, [2747], 0, 1, 0] }],
   [TABLE_MAP_OBJECTS, { 150329: [150329, 6, 0, 5, 0, 0] }],
+  // Carter's real layout, trimmed: f2 rarity, f5 name, f7 sprites, f12 star levels.
+  [TABLE_CAPTAINS, {
+    8: [8, 2, 2, 0, 0, 7, 0, 14, [], [], {}, {}, {
+      1: [1, [0], [{}, {}, 1], 0, 80, 10000, 0, 12, 0, []],
+      2: [2, [0], [{ 71008: 40 }, {}, 1], 0, 0, 11500, 0, 15, 420, []],
+    }, 0],
+  }],
 ]);
 
 describe('game names from static data', () => {
@@ -67,6 +83,28 @@ describe('game names from static data', () => {
     expect(n.techs['20']).toEqual({ name: 'Sacred Potion production I', maxLevel: 3 });
     expect(n.heroes['1']).toEqual({ name: 'Garvel', icon: 'icon_garvel_72' });
     expect(n.objects['150329']).toBe('Vault of the Ancients');
+  });
+
+  it('reads captains: rarity label, sprites and the bonuses per star level', () => {
+    const n = buildNames('v1', strings, vectors, tables, en);
+    expect(n.captains['8']).toEqual({
+      name: 'Carter',
+      rarity: 2,
+      rarityName: 'Epic Captain',
+      icon: 'carter_icon',
+      art: 'lvlup_carter',
+      // Star 1's props string is '{}': no lines, so no entry.
+      stars: { 2: [['Crypt exploration efficiency', '+5,0%'], ['Eagles of Resolve points', '315']] },
+    });
+  });
+
+  it("names a captain by its battler when the row's own name vector is wrong", () => {
+    // id 28 in the real data: f5 says Hercules, the battler (and the sprites) are Helen.
+    const helen = new Map([...en, ['battler_unit.name.helen', 'Helen']]);
+    const helenStrings: Wire[] = [...strings, '{"smallIcon":"helen_icon","animationLinkage":"battler_helen_unit"}'];
+    const t = new Map(tables);
+    t.set(TABLE_CAPTAINS, { 28: [28, 2, 3, 0, 1, 7, 0, helenStrings.length - 1, [], [], {}, {}, {}, 0] });
+    expect(buildNames('v1', helenStrings, vectors, t, helen).captains['28'].name).toBe('Helen');
   });
 
   it('drops names that resolve to a JSON fragment', () => {

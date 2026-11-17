@@ -1641,6 +1641,41 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // The real captains: city field 9, readable for every member's city.
+    // Level and star level as the game's Captains screen shows them; history
+    // keeps a row whenever either moves (or a captain is new). Experience is
+    // kept current only — it moves with every battle. The v106 tables were
+    // empty since v107, so they are replaced with the right columns.
+    version: 108,
+    run: (database): void => {
+      database.exec(`
+        DROP TABLE IF EXISTS game_player_captain_history;
+        DROP TABLE IF EXISTS game_player_captains;
+        CREATE TABLE game_player_captains (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          captain_id INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          stars INTEGER NOT NULL,
+          xp INTEGER,
+          slot INTEGER NOT NULL DEFAULT 0,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, captain_id)
+        );
+        CREATE TABLE game_player_captain_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          captain_id INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          stars INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, captain_id, changed_at)
+        );
+      `);
+    },
+  },
 ];
 
 /**

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
@@ -53,6 +53,18 @@ exports.TABLE_TECHS = 21;
 /** Captains (Hercules, Skadi, Aurora…): f1 kind, f2 rarity, f5 name, f7 JSON config with the sprite names. */
 exports.TABLE_CAPTAINS = 75;
 const NEEDED_TABLES = [exports.TABLE_MAP_OBJECTS, exports.TABLE_GIFT_TYPES, exports.TABLE_HEROES, exports.TABLE_TECHS, exports.TABLE_CAPTAINS];
+/**
+ * Bump when names.json gains a field the app reads (2: captain star bonuses
+ * and rarity labels, Nov 2026); a cached file with an older format is rebuilt.
+ */
+exports.NAMES_FORMAT = 2;
+/** T75 f2 rarity → the game's own label key. */
+const CAPTAIN_RARITY_KEYS = {
+    1: 'client.captain.info.rare_captain',
+    2: 'client.captain.info.epic_captain',
+    3: 'client.captain.info.legendary_captain',
+    4: 'client.captain.info.mythical_captain',
+};
 const FETCH_TIMEOUT_MS = 120_000;
 async function fetchBuffer(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -240,22 +252,47 @@ function buildNames(version, strings, vectors, tables, en) {
     }
     const captains = {};
     for (const [id, row] of rows(exports.TABLE_CAPTAINS)) {
-        const name = vecText(row[5]);
-        if (!name)
-            continue;
         let cfg = {};
         try {
             cfg = JSON.parse(str(row[7]) ?? '{}');
         }
         catch { /* not a config */ }
+        // The battler's own name (battler_unit.name.<key of battler_<key>_unit>)
+        // first: f5 is wrong for some rows — id 28 is Helen (her sprites, her
+        // battler) but its f5 vector says "Hercules" (Nov 2026).
+        const battler = /^battler_(.+)_unit$/.exec(cfg.animationLinkage ?? '')?.[1];
+        const name = (battler ? en.get(`battler_unit.name.${battler}`) : undefined) ?? vecText(row[5]);
+        if (!name)
+            continue;
+        const rarity = typeof row[2] === 'number' ? row[2] : 0;
+        const stars = {};
+        const starRows = row[12];
+        if (starRows && typeof starRows === 'object' && !Array.isArray(starRows)) {
+            for (const [star, sr] of Object.entries(starRows)) {
+                if (!Array.isArray(sr))
+                    continue;
+                let props = [];
+                try {
+                    props = JSON.parse(str(sr[7]) ?? '{}').props ?? [];
+                }
+                catch { /* no props */ }
+                const lines = props
+                    .filter((p) => p.propText)
+                    .map((p) => [en.get(p.propText) ?? p.propText, String(p.propValue ?? '')]);
+                if (lines.length)
+                    stars[star] = lines;
+            }
+        }
         captains[id] = {
             name,
-            rarity: typeof row[2] === 'number' ? row[2] : 0,
+            rarity,
+            rarityName: en.get(CAPTAIN_RARITY_KEYS[rarity] ?? '') ?? '',
             icon: cfg.smallIcon ?? '',
             art: cfg.unitAltarArt ?? '',
+            stars,
         };
     }
-    return { version, builtAt: new Date().toISOString(), gifts, techs, objects, heroes, captains };
+    return { version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT, gifts, techs, objects, heroes, captains };
 }
 // ---------------------------------------------------------------------------
 // Cache on the data volume
@@ -292,8 +329,8 @@ async function loadGameNames() {
     const file = path_1.default.join(staticDir(), key, 'names.json');
     if (fs_1.default.existsSync(file)) {
         const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
-        // A names.json from before a table was added (captains) is rebuilt once.
-        if (cached.captains) {
+        // A names.json from an older format (before captains' star bonuses) is rebuilt once.
+        if ((cached.format ?? 1) >= exports.NAMES_FORMAT) {
             memo = cached;
             return memo;
         }

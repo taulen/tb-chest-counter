@@ -29,6 +29,7 @@ import {
 import { t, tn, tGame } from '../lib/i18n.js';
 import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
 import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
+import { memberCaptainsPanelHtml, mountMemberCaptains } from './member-captains.js';
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
@@ -1600,6 +1601,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     ...(currentMemberGame ? [
       { key: 'research', label: t('Research'), html: memberTechPanelHtml('research') },
       { key: 'talents', label: t('Talents'), html: memberTechPanelHtml('talent') },
+      { key: 'captains', label: t('Captains'), html: memberCaptainsPanelHtml() },
     ] : []),
     { key: 'history', label: t('History'), html: historyCardHtml },
   ];
@@ -1616,6 +1618,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     if (key === 'research' || key === 'talents') {
       mountMemberTechs(content, data.id, key === 'research' ? 'research' : 'talent', currentMemberGame?.tiers ?? null);
     }
+    if (key === 'captains') mountMemberCaptains(content, data.id);
   };
   wireViewTabs(content, MEMBER_VIEW_GROUP, (key) => {
     currentMemberView = key;

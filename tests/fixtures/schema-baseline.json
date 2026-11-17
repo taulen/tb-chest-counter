@@ -497,12 +497,12 @@
   {
     "type": "table",
     "name": "game_player_captain_history",
-    "sql": "CREATE TABLE game_player_captain_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captain_id INTEGER NOT NULL, value INTEGER NOT NULL, changed_at TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, captain_id, changed_at) )"
+    "sql": "CREATE TABLE game_player_captain_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captain_id INTEGER NOT NULL, level INTEGER NOT NULL, stars INTEGER NOT NULL, changed_at TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, captain_id, changed_at) )"
   },
   {
     "type": "table",
     "name": "game_player_captains",
-    "sql": "CREATE TABLE game_player_captains ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captain_id INTEGER NOT NULL, value INTEGER NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, captain_id) )"
+    "sql": "CREATE TABLE game_player_captains ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captain_id INTEGER NOT NULL, level INTEGER NOT NULL, stars INTEGER NOT NULL, xp INTEGER, slot INTEGER NOT NULL DEFAULT 0, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, captain_id) )"
   },
   {
     "type": "table",

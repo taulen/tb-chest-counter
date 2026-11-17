@@ -13,6 +13,7 @@ exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
 exports.saveRawSnapshot = saveRawSnapshot;
+exports.pruneRawSnapshots = pruneRawSnapshots;
 exports.hasRawSnapshot = hasRawSnapshot;
 exports.recentCaptureRuns = recentCaptureRuns;
 /**
@@ -143,29 +144,32 @@ function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toI
      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.hero));
 }
 /**
- * Store a player's captains; a history row only when a captain is new or its
- * value changed. Returns the number of such changes.
+ * Store a player's captains (city field 9); a history row only when a captain
+ * is new or its level or star level moved. Returns the number of such changes.
  */
 function saveCaptains(clanId, playerId, captains, now = new Date().toISOString()) {
     const db = (0, database_js_1.getDb)();
-    const prev = new Map(db.prepare('SELECT captain_id, value FROM game_player_captains WHERE clan_id = ? AND player_id = ?')
-        .all(clanId, playerId).map((r) => [r.captain_id, r.value]));
-    const upsert = db.prepare(`INSERT INTO game_player_captains (clan_id, player_id, captain_id, value, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (clan_id, player_id, captain_id) DO UPDATE SET value = excluded.value, last_seen = excluded.last_seen`);
-    const hist = db.prepare('INSERT OR IGNORE INTO game_player_captain_history (clan_id, player_id, captain_id, value, changed_at) VALUES (?, ?, ?, ?, ?)');
+    const prev = new Map(db.prepare('SELECT captain_id, level, stars FROM game_player_captains WHERE clan_id = ? AND player_id = ?')
+        .all(clanId, playerId).map((r) => [r.captain_id, r]));
+    const upsert = db.prepare(`INSERT INTO game_player_captains (clan_id, player_id, captain_id, level, stars, xp, slot, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, captain_id) DO UPDATE SET
+       level = excluded.level, stars = excluded.stars, xp = excluded.xp, slot = excluded.slot, last_seen = excluded.last_seen`);
+    const hist = db.prepare('INSERT OR IGNORE INTO game_player_captain_history (clan_id, player_id, captain_id, level, stars, changed_at) VALUES (?, ?, ?, ?, ?, ?)');
     let changed = 0;
     db.transaction(() => {
         for (const c of captains) {
-            upsert.run(clanId, playerId, c.id, c.value, now, now);
-            if (prev.get(c.id) !== c.value) {
-                hist.run(clanId, playerId, c.id, c.value, now);
+            upsert.run(clanId, playerId, c.id, c.level, c.stars, c.xp, c.slot, now, now);
+            const p = prev.get(c.id);
+            if (!p || p.level !== c.level || p.stars !== c.stars) {
+                hist.run(clanId, playerId, c.id, c.level, c.stars, now);
                 changed++;
             }
         }
     })();
     return changed;
 }
-/** Players of this clan with any captain stored (v106) — the rest are read once more to backfill. */
+/** Players of this clan with any captain stored (v108) — the rest are read once more to backfill. */
 function playersWithCaptains(clanId) {
     return new Set((0, database_js_1.getDb)().prepare('SELECT DISTINCT player_id FROM game_player_captains WHERE clan_id = ?').all(clanId).map((r) => r.player_id));
 }
@@ -206,6 +210,10 @@ function saveMapObjects(clanId, objects, now = new Date().toISOString()) {
 /** Keep a raw game reply (gzip of its decoded JSON) once per game day. */
 function saveRawSnapshot(clanId, kind, refId, gameDate, value, now = new Date().toISOString()) {
     (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_raw_snapshots (clan_id, kind, ref_id, game_date, captured_at, payload) VALUES (?, ?, ?, ?, ?, ?)`).run(clanId, kind, refId, gameDate, now, (0, zlib_1.gzipSync)(JSON.stringify(value)));
+}
+/** Drop raw snapshots of one kind from game days before `beforeGameDate`. Returns rows removed. */
+function pruneRawSnapshots(kind, beforeGameDate) {
+    return (0, database_js_1.getDb)().prepare('DELETE FROM game_raw_snapshots WHERE kind = ? AND game_date < ?').run(kind, beforeGameDate).changes;
 }
 function hasRawSnapshot(clanId, kind, refId, gameDate) {
     return !!(0, database_js_1.getDb)().prepare('SELECT 1 FROM game_raw_snapshots WHERE clan_id = ? AND kind = ? AND ref_id = ? AND game_date = ?')

@@ -15,7 +15,9 @@ const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
+const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_1 = require("../../game-art/index.js");
+const selection_js_1 = require("../../game-art/selection.js");
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
  * from the art pipeline), memoised per trees + art version.
@@ -81,6 +83,52 @@ function createGameRouter() {
         const { levels, readAt } = (0, game_profile_repo_js_1.getPlayerTechs)(clanId, playerId);
         const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
         res.json({ linked: true, levels, readAt, changes: (0, game_profile_repo_js_1.getPlayerTechChanges)(clanId, playerId, since) });
+    });
+    /**
+     * A member's captains as the game's Captains screen shows them — level, star
+     * level, active line-up slot — with the portrait, full artwork, rarity and
+     * the current star level's bonuses; plus recent level/star changes.
+     */
+    router.get('/members/:memberId/captains', async (req, res) => {
+        const clanId = req.clanId;
+        const memberId = Number.parseInt(String(req.params.memberId), 10);
+        if (!Number.isFinite(memberId) || !(0, member_repo_js_1.getMemberById)(memberId, clanId)) {
+            res.status(404).json({ error: 'Member not found' });
+            return;
+        }
+        const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clanId);
+        if (playerId === null) {
+            res.json({ linked: false, captains: [], changes: [] });
+            return;
+        }
+        const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
+        const portraits = (0, index_js_1.currentGameArt)()?.mappings?.captains ?? {};
+        const describe = (id) => {
+            const c = names?.captains?.[String(id)];
+            const portrait = portraits[String(id)];
+            const starLevels = Object.keys(c?.stars ?? {}).map(Number).filter(Number.isFinite);
+            return {
+                name: c?.name ?? `#${id}`,
+                rarity: c?.rarity ?? 0,
+                rarityName: c?.rarityName ?? '',
+                maxStars: starLevels.length ? Math.max(...starLevels) : 0,
+                iconUrl: portrait ? (0, index_js_1.gameArtUrl)(portrait) : null,
+                artUrl: c?.art ? (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(c.art)) : null,
+            };
+        };
+        const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
+        res.json({
+            linked: true,
+            captains: (0, game_profile_repo_js_1.getPlayerCaptains)(clanId, playerId).map((c) => ({
+                ...c,
+                ...describe(c.captainId),
+                starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
+            })),
+            changes: (0, game_profile_repo_js_1.getPlayerCaptainChanges)(clanId, playerId, since).map((c) => {
+                const { name, iconUrl } = describe(c.captainId);
+                return { ...c, name, iconUrl };
+            }),
+        });
     });
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */
     router.get('/roster', (req, res) => {

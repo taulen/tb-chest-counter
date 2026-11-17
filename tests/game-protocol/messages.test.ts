@@ -81,6 +81,12 @@ describe('game messages', () => {
     city[17] = { 1215: [1215, 2], 29006: [29006, 20] };
     city[26] = { 1: [1, [5], 98765, 116] };
     city[30] = [[27, 1211, 0], [30, 1705, 0]];
+    // Captains: the real entry layout (equipment/skills trimmed); id 1 is the hero.
+    city[9] = [
+      [1, 0, 9, [4599917580129], 1, 0, 0, 0, 0, 2295854228842, 214, 0, [], 1, [], [1, 12, 2, 9, 5], 1794234013, 0, 0, []],
+      [20, 0, 0, [4599917580129], 1, 0, 0, 0, 0, 14939681299178, 278, 0, [], 0, [], [], 0, 0, 5, []],
+      [8, 1, 0, [4599917580129], 1, 0, 0, 0, 0, 633274738935, 200, 0, [], 0, [], [], 0, 0, 6, []],
+    ];
     // Real reply nesting: [[[city], []]].
     const r = parseCityRecord(frame(601, [[[city], []]]));
     expect(r).toEqual({
@@ -90,6 +96,11 @@ describe('game messages', () => {
       buildings: { 3: { type: 41, level: 25 }, 7: { type: 12, level: 30 } },
       hero: { level: 116, xp: 98765 },
       troops: [{ id: 27, count: 1211 }, { id: 30, count: 1705 }],
+      captains: [
+        { id: 1, level: 214, stars: 0, xp: 2295854228842, slot: 0 },
+        { id: 20, level: 278, stars: 5, xp: 14939681299178, slot: 0 },
+        { id: 8, level: 200, stars: 6, xp: 633274738935, slot: 1 },
+      ],
     });
   });
 

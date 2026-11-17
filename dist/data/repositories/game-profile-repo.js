@@ -91,16 +91,29 @@ function getPlayerTechChanges(clanId, playerId, sinceIso, limit = 200) {
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_tech_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
       ORDER BY changed_at DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
 }
-/** A player's captains as last read: captain id, the game's value for it, when first and last seen. */
+/** A player's captains as last read, highest level first (the game's own order). */
 function getPlayerCaptains(clanId, playerId) {
-    return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, value, first_seen AS firstSeen, last_seen AS lastSeen
-       FROM game_player_captains WHERE clan_id = ? AND player_id = ? ORDER BY value DESC`).all(clanId, playerId);
+    return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, level, stars, xp, slot, first_seen AS firstSeen, last_seen AS lastSeen
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ?
+      ORDER BY level DESC, stars DESC, captain_id`).all(clanId, playerId);
 }
-/** Captain changes since `sinceIso`, newest first — the first read's baseline left out. */
+/**
+ * Captain level/star changes since `sinceIso`, newest first, each with the
+ * values it moved from. The first read's baseline is left out: it is when we
+ * started looking, not when the player got there.
+ */
 function getPlayerCaptainChanges(clanId, playerId, sinceIso, limit = 100) {
-    return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, value, changed_at AS changedAt FROM game_player_captain_history h
-      WHERE clan_id = ? AND player_id = ? AND changed_at >= ?
-        AND changed_at > (SELECT MIN(changed_at) FROM game_player_captain_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
-      ORDER BY changed_at DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
+    return (0, database_js_1.getDb)().prepare(`WITH h AS (
+       SELECT captain_id, level, stars, changed_at,
+              LAG(level) OVER w AS prev_level, LAG(stars) OVER w AS prev_stars
+         FROM game_player_captain_history
+        WHERE clan_id = ? AND player_id = ?
+       WINDOW w AS (PARTITION BY captain_id ORDER BY changed_at)
+     )
+     SELECT captain_id AS captainId, level, stars, prev_level AS prevLevel, prev_stars AS prevStars, changed_at AS changedAt
+       FROM h
+      WHERE changed_at >= ?
+        AND changed_at > (SELECT MIN(changed_at) FROM game_player_captain_history WHERE clan_id = ? AND player_id = ?)
+      ORDER BY changed_at DESC, level DESC LIMIT ?`).all(clanId, playerId, sinceIso, clanId, playerId, limit);
 }
 //# sourceMappingURL=game-profile-repo.js.map

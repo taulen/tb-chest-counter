@@ -122,10 +122,45 @@ Each capture also, every cycle:
 
 Once per game day: every member's city (601: research + talents into
 `game_player_techs`, with `game_player_tech_history` rows only on change;
-buildings + hero into `game_city_snapshots`; ≤ 120 cities a cycle), and a
-gzipped raw copy of the clan record and each clan-owned object (record f5,
-Clan Capital) in `game_raw_snapshots` — kept raw so fields we have not mapped
-yet still have history. Each part is isolated: one failing costs nothing else.
+captains into `game_player_captains` (v108); buildings + hero into
+`game_city_snapshots`; ≤ 120 cities a cycle), and a gzipped raw copy of the
+clan record and each clan-owned object (record f5, Clan Capital) in
+`game_raw_snapshots` — kept raw so fields we have not mapped yet still have
+history. Each city reply is archived raw too (kind `city`, one per player per
+game day, the day's latest read; ~5 KB gzipped; kept 60 game days): captains
+sat in field 9 all along, and without the raw reply every city had to be read
+again to get them. Each part is isolated: one failing costs nothing else.
+
+### Captains (city field 9)
+
+Field 9 of every 601 city reply — **any player's**, not only the signed-in
+account's — lists the captains the player owns. Per entry:
+
+| Index | Holds |
+|---|---|
+| 0 | captain id (T75); id 1 is the hero (no T75 row), skipped |
+| 1 | active line-up slot, 1–3 (0 = not in it) |
+| 3 | `[cityId]` |
+| 9 | experience |
+| 10 | **level** (what the Captains screen shows) |
+| 12 | equipment `[captainId, slotId, itemUid, 100]` — item instances, not types |
+| 14 | skills |
+| 18 | **star level** |
+
+Calibrated against the game's Captains screen (Nov 2026): Cleopatra 278 ★5,
+Aydae 235, Leonidas 234 ★2, Dustan 151 ★6, Artemisia 136 ★1; Carter, Helen and
+Farhad in slots 1/2/3. `game_player_captains` holds the current level, stars,
+XP and slot; `game_player_captain_history` a row when a captain is new or its
+level or stars move (XP alone moves every battle and is not history). Members
+with no captains stored are read on the next scan whatever the day.
+
+Field 30 is NOT captains: it is the signed-in account's own **army** —
+`[unitId, count, 0]` per troop type, T9 ids that merely overlap T75 (v106
+stored it as captains; v107 cleared it).
+
+Not read yet: the Stats screen's Leadership / Authority / Dominance / Might and
+"Features" block (probably built from the skills), and equipment / artifact
+bonuses (the city data only carries item instance ids).
 
 v103 also adds the columns the protocol scan will use: `chest_records` /
 `triumphal_chest_records.game_gift_id`, `resource_transactions.game_entry_id`
@@ -202,7 +237,7 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 15000 | `[[[[clanId], 2147483647]]]` | clan record: `[0]` clan id, `[1]` tag/name/description, `[2]` members `[[id], role, joinedAt]`, `[3]` ~860 `[[id], ts, 0]` (departures), `[13]` gifts `[giftId, [senderId], giftType, expiresAt, count, tab]` |
 | 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[22]` `[1]` = Gold Pass |
 | 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
-| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details; the `{techId: [techId, level]}` map holds research and hero talents |
+| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army |
 | 312 | `[[[tileIds], [versions], [], []]]` | map objects per 20×20 tile; `tile = floor(y/20)*50 + floor(x/20)` |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
@@ -229,8 +264,21 @@ Each table has its own id space:
 | 8 | gift types | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |
+| 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
 
-A rebuild downloads ~67 MB and decodes only these four tables (the rest are
+Captains (T75): f1 kind, f2 rarity (1 rare, 2 epic, 3 legendary, 4 mythic;
+labels `client.captain.info.<rarity>_captain`), f7 JSON config (`smallIcon`
+portrait, `unitAltarArt` full art), f10 per-level stats (500 levels), f12 star
+levels `{star: [star, cond, cost, …, [7] props JSON, [8] …]}` — the props are the
+Stats screen's "Star level N" lines (`{"props":[{"propText": key, "propValue":
+"+50,0%"}]}`). f5 is wrong for some rows: id 28 is Helen (her sprites and
+battler) but its f5 vector says "Hercules", so the battler name wins. Their
+es/fr/ru/de names and bonus texts come from the game's own CSVs (tGame).
+
+`names.json` carries a `format` (NAMES_FORMAT); a cached file with an older
+one is rebuilt once.
+
+A rebuild downloads ~67 MB and decodes only the tables it needs (the rest are
 skipped unbuilt), about 7 s.
 
 The game's source text differs from what the OCR era stored in places ("Level

@@ -36,6 +36,9 @@ import {
 import {
   citySnapshotPlayers,
   cityChangedSinceRead,
+  playersWithCaptains,
+  pruneRawSnapshots,
+  saveCaptains,
   finishCaptureRun,
   hasRawSnapshot,
   saveCitySnapshot,
@@ -181,6 +184,8 @@ export async function runGameProtocolCapture(
 
 /** Cities per cycle: a big clan's daily research pass spreads over a couple of cycles. */
 const MAX_CITIES_PER_CYCLE = 120;
+/** Game days of raw city replies kept (game_raw_snapshots kind 'city'). */
+const RAW_CITY_DAYS = 60;
 /** Map tiles per cycle (members' city tiles + their neighbours). */
 const MAX_TILES_PER_CYCLE = 60;
 const TILE_BATCH = 9;
@@ -227,24 +232,39 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
     // or talent is dated to the scan that saw it (history keeps every change).
     const done = citySnapshotPlayers(clanId, d.gameDate);
     const changedSince = cityChangedSinceRead(clanId, d.gameDate);
+    // Also anyone with no captains stored yet: a one-time backfill so the
+    // Captains tab fills on the next scan instead of after the next reset.
+    const withCaptains = playersWithCaptains(clanId);
     const todo = d.record.members
       .map((m) => d.byId.get(m.playerId))
-      .filter((p): p is PlayerRecord => !!p && p.cityId !== null && (!done.has(p.playerId) || changedSince.has(p.playerId)))
+      .filter((p): p is PlayerRecord => !!p && p.cityId !== null
+        && (!done.has(p.playerId) || changedSince.has(p.playerId) || !withCaptains.has(p.playerId)))
       .slice(0, MAX_CITIES_PER_CYCLE);
     let changed = 0;
     for (const p of todo) {
       try {
-        const city = parseCityRecord(await d.client.city(p.cityId as number));
+        const cityFrame = await d.client.city(p.cityId as number);
+        const city = parseCityRecord(cityFrame);
         if (city) {
+          // The whole reply too (the day's latest read): a field decoded later
+          // — captains were in it all along — can be re-parsed from this
+          // instead of waiting for every city to be read again.
+          saveRawSnapshot(clanId, 'city', p.playerId, d.gameDate, cityFrame.body, now);
           changed += saveTechs(clanId, p.playerId, city.techs, now);
           saveCitySnapshot(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, hero: city.hero }, now);
+          // Field 9 also holds the hero (id 1, no T75 row): keep named captains.
+          const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
+          if (captains.length) changed += saveCaptains(clanId, p.playerId, captains, now);
         }
       } catch {
         // One unreadable city never stops the rest; it is retried next cycle.
       }
       await pause(100);
     }
-    if (todo.length) parts.push(`${todo.length} cities read (${changed} research/talent changes)`);
+    if (todo.length) parts.push(`${todo.length} cities read (${changed} research/talent/captain changes)`);
+    // ~5 KB per city per day: keep RAW_CITY_DAYS of them, not every day forever.
+    const keepFrom = new Date(Date.parse(`${d.gameDate}T00:00:00Z`) - RAW_CITY_DAYS * 86_400_000).toISOString().slice(0, 10);
+    pruneRawSnapshots('city', keepFrom);
   } catch (err) {
     parts.push(`city pass failed: ${String(err)}`);
   }

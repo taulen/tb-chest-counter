@@ -99,12 +99,16 @@ Once a day:
 
 - **Research and hero talents** for every member, with a history of each
   level change.
+- **Captains** for every member — level, star level and the active line-up,
+  with a history of each level and star — shown on the profile with the
+  game's portraits, art and star bonuses.
 - **Buildings and hero** for every member's city.
-- **The raw clan record and Clan Capital**, archived as received, so fields
-  that are not decoded yet still have history once they are.
+- **Raw replies** — the clan record, the Clan Capital and every member's city
+  — archived as received, so fields that are not decoded yet still have
+  history once they are.
 
-Much of this is collected ahead of being shown: research and talent trees,
-rewards and the Clan Capital are on the way to the dashboard.
+Some of this is collected ahead of being shown: rewards and the Clan Capital
+are on the way to the dashboard.
 
 Chest, item, research and hero names come from the game's public static data,
 which the server downloads and caches itself when the game publishes a new
