@@ -43,22 +43,28 @@ const enums_js_1 = require("../models/enums.js");
 const state_machine_js_1 = require("./state-machine.js");
 const sessionRepo = __importStar(require("../data/repositories/session-repo.js"));
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
+const scan_account_repo_js_1 = require("../data/repositories/scan-account-repo.js");
 const logger_js_1 = require("../utils/logger.js");
 const scan_finalize_js_1 = require("./scan-finalize.js");
 const clan_scan_schedule_js_1 = require("./clan-scan-schedule.js");
+const scan_lanes_js_1 = require("./scan-lanes.js");
 const log = (0, logger_js_1.childLogger)('scanner');
 /**
- * The scan scheduler. Every cycle walks the active clans one at a time and
- * scans each straight from the game's own servers (runProtocolClanScan →
- * game-protocol-phase.ts → protocol-scan.ts → chat-capture.ts). See
- * docs/game-protocol.md.
+ * The scan scheduler. Every cycle scans every active clan straight from the
+ * game's own servers (runProtocolClanScan → game-protocol-phase.ts →
+ * protocol-scan.ts → chat-capture.ts). See docs/game-protocol.md.
+ *
+ * Clans on DIFFERENT Total Battle accounts scan at the same time; clans on
+ * the same account one after another, in one lane (scan-lanes.ts), because a
+ * game login takes over that account's session. A clan whose account is not
+ * known yet runs alone. SCAN_PARALLEL=0 puts every clan in one lane.
  */
 class ScanLoop {
     config;
     onScanComplete;
+    hooks;
     stateMachine = new state_machine_js_1.StateMachine();
     running = false;
-    scanInProgress = false;
     timer = null;
     /** Browser-free login check of every active clan, every 30 min (session-check.ts). */
     sessionCheckTimer = null;
@@ -77,51 +83,47 @@ class ScanLoop {
     // (+3-min idle teardown) — the only thing that pauses the scanner — so a
     // real login session always ends and resumes on its own well first.
     static PAUSE_WATCHDOG_MS = 35 * 60_000;
-    liveChestCount = 0; // Chests found during the in-progress scan
+    /** Scans running right now, by clan, in start order. */
+    runs = new Map();
+    /** Clans queued on a lane (a cycle's or a manual scan) and not started yet. */
+    queued = new Set();
+    lanes = new scan_lanes_js_1.LaneQueue();
     /**
-     * The clans the running cycle walks, in order, and how many at the front it
-     * is finished with. Empty from the moment the next timer is armed. Only read
-     * by getClanScanSchedule: mid-cycle the global timer is the cycle's own
-     * start, which says nothing about whether one clan is still waiting its turn
-     * or was scanned ten minutes ago.
+     * The running cycle: its clans in order and which of them are finished
+     * (scanned or skipped). null from the moment the next timer is armed. With
+     * lanes, clans finish out of order — hence a set, not a count.
      */
-    cycleOrder = [];
-    cycleDoneCount = 0;
-    /**
-     * When the running clan scan started; null between scans. Only feeds the
-     * dashboard's elapsed timer — see getScanActivity.
-     */
-    scanStartedAt = null;
-    progressMessage = ''; // Latest human-readable progress for the admin UI header
+    cycle = null;
     /** Last scan failure surfaced to the UI header + /api/status. Set in the
      *  catch blocks below, cleared when a scan completes successfully. The
-     *  `phase` is whatever progressMessage was mid-flight when the error hit
+     *  `phase` is whatever progress message was mid-flight when the error hit
      *  — it gives the user concrete "during X" context instead of a bare
      *  exception string. */
     lastScanError = null;
     lastCapturedAtMs = 0; // Monotonic clock backing for nextCapturedAt(); see comment there.
-    /**
-     * Clan currently being scanned. Set by runProtocolClanScan, so all the
-     * per-scan persistence (sessions, members, chests) stamps the right
-     * clan_id and the status routes can tell whose scan is running.
-     */
-    clanId = 1;
-    constructor(config, onScanComplete) {
+    /** The clan of the most recent scan — what getActiveClanId reports between scans. */
+    lastClanId = 1;
+    constructor(config, onScanComplete, hooks = {}) {
         this.config = config;
         this.onScanComplete = onScanComplete;
+        this.hooks = hooks;
     }
-    /** Switch which clan the next scan targets (and the status routes report). */
+    /** The clan the status routes report when nothing runs (the last one scanned). */
     setActiveClan(clanId) {
-        this.clanId = clanId;
+        this.lastClanId = clanId;
     }
+    /** A clan scanning now (the oldest), else the last one scanned. */
     getActiveClanId() {
-        return this.clanId;
+        return this.runs.keys().next().value ?? this.lastClanId;
     }
-    reportProgress(message) {
-        this.progressMessage = message;
+    /** Clans scanning right now, oldest first. */
+    getRunningClanIds() {
+        return [...this.runs.keys()];
     }
-    getProgressMessage() {
-        return this.progressMessage;
+    /** The progress line of one clan's scan, or of the oldest running scan. */
+    getProgressMessage(clanId) {
+        const run = clanId === undefined ? this.runs.values().next().value : this.runs.get(clanId);
+        return run?.progressMessage ?? '';
     }
     getLastScanError() {
         return this.lastScanError;
@@ -136,18 +138,18 @@ class ScanLoop {
     clearLastScanError() {
         this.lastScanError = null;
     }
-    recordScanError(err) {
+    recordScanError(err, clanId, phaseHint) {
         const message = err instanceof Error ? err.message : String(err);
-        const phase = this.progressMessage || 'Scan failed';
-        this.lastScanError = { message, phase, at: new Date().toISOString(), clanId: this.clanId };
+        const phase = phaseHint || this.runs.get(clanId)?.progressMessage || 'Scan failed';
+        this.lastScanError = { message, phase, at: new Date().toISOString(), clanId };
         // Pass the Error object so pino's built-in err serializer renders
         // the stack trace into docker stdout. Bare strings would just print
         // the message and drop the trace we actually need for debugging.
         if (err instanceof Error) {
-            log.error({ err, phase }, `Scan failed during: ${phase}`);
+            log.error({ err, phase, clanId }, `Clan #${clanId} scan failed during: ${phase}`);
         }
         else {
-            log.error({ err: String(err), phase }, `Scan failed during: ${phase}`);
+            log.error({ err: String(err), phase, clanId }, `Clan #${clanId} scan failed during: ${phase}`);
         }
     }
     /**
@@ -160,8 +162,8 @@ class ScanLoop {
      *
      * This helper forces each call to return a timestamp at least 1ms newer
      * than the previous one by bumping off the max of (wall clock, last+1).
-     * The drift is capped at one scan's worth of inserts (~hundreds of ms)
-     * and is indistinguishable from normal "row created at" jitter.
+     * Shared by every lane, so two clans scanning at once never get the same
+     * timestamp either.
      */
     nextCapturedAt() {
         const now = Date.now();
@@ -171,7 +173,7 @@ class ScanLoop {
     }
     async start() {
         this.running = true;
-        log.info(`Scan loop started (interval: ${this.config.scanIntervalMs / 1000}s)`);
+        log.info(`Scan loop started (interval: ${this.config.scanIntervalMs / 1000}s, ${this.parallel() ? 'clans on different accounts in parallel' : 'serial (SCAN_PARALLEL=0)'})`);
         this.armSessionChecks();
         // New chat messages every minute between scans, on the chat session key
         // each scan refreshes (never touches the game or website login).
@@ -191,7 +193,7 @@ class ScanLoop {
         // another clan was scanned most recently — e.g. a manual scan of clan #2
         // — even though the global countdown still had time left.
         const activeClanIds = (0, clan_repo_js_1.listClans)({ activeOnly: true }).map((c) => c.id);
-        const clanIdsToCheck = activeClanIds.length > 0 ? activeClanIds : [this.clanId];
+        const clanIdsToCheck = activeClanIds.length > 0 ? activeClanIds : [this.lastClanId];
         const lastCompletedAt = sessionRepo.getLatestCompletedAt(clanIdsToCheck);
         if (lastCompletedAt) {
             const elapsedMs = Date.now() - new Date(lastCompletedAt).getTime();
@@ -226,11 +228,15 @@ class ScanLoop {
         this.nextScanAt = null;
         log.info('Scan loop stopped');
     }
+    parallel() {
+        return this.hooks.parallel ? this.hooks.parallel() : (0, scan_lanes_js_1.scanParallelEnabled)();
+    }
     /**
      * Check every active clan's saved login without the game client, every
      * 30 min and once shortly after start, so "Authenticated" on the Clans page
      * is true even while scans are paused (session-check.ts). It is only a page
-     * load with the stored cookies and never presents a token.
+     * load with the stored cookies and never presents a token. It also learns
+     * which account each login is, for the scan lanes.
      * Never throws, never blocks.
      */
     armSessionChecks() {
@@ -253,7 +259,7 @@ class ScanLoop {
             this.pauseWatchdog = null;
             // Only self-heal a genuinely stuck pause: if we've since resumed or a
             // scan is somehow running, there's nothing to recover.
-            if (this.running || this.scanInProgress)
+            if (this.running || this.runs.size > 0)
                 return;
             log.warn('Scanner has been paused longer than the safety window — auto-resuming. ' +
                 'A login session likely ended without resuming the scanner.');
@@ -270,11 +276,13 @@ class ScanLoop {
      * Pauses scheduled scans without tearing down the scanner state. Used while
      * the admin login bridge is open: a scan signs in to the game directly,
      * which takes over the account's game session — the very session the admin
-     * is signing in on. resume() re-arms the next cycle.
+     * is signing in on. Global on purpose (any lane might be that account).
+     * resume() re-arms the next cycle. Clans a running cycle has queued but not
+     * started are skipped.
      * Returns false if a scan is already mid-flight (caller should refuse).
      */
     pause() {
-        if (this.scanInProgress)
+        if (this.runs.size > 0)
             return false;
         if (this.timer) {
             clearTimeout(this.timer);
@@ -317,32 +325,46 @@ class ScanLoop {
     isPaused() {
         return !this.running;
     }
+    /** Any clan scanning right now. */
     isScanInProgress() {
-        return this.scanInProgress;
+        return this.runs.size > 0;
+    }
+    /** This clan is scanning, or queued to (a cycle's or a manual scan). */
+    isClanScanQueuedOrRunning(clanId) {
+        return this.runs.has(clanId) || this.queued.has(clanId);
+    }
+    /** A whole cycle is running (scheduled or "Scan All Clans"). */
+    isCycleRunning() {
+        return this.cycle !== null;
     }
     /**
      * Whether a redeploy right now would cut into scanning, for
      * scripts/deploy-when-idle.mjs (via /api/health).
      *
-     * `scanInProgress` alone is not enough: a cycle walks every active clan
-     * back to back, and between two clans it is false for a moment before the
-     * next clan starts. A deploy on Nov 13 2026 watched one clan's session
-     * complete, fired, and killed the next clan's scan 10 s in. The cycle's
-     * clan list stays set until the whole cycle is done, so "busy" holds
-     * across that gap.
+     * A running scan alone is not enough: a cycle walks the clans of each lane
+     * back to back, and between two clans nothing is running for a moment
+     * before the next one starts. A deploy on Nov 13 2026 watched one clan's
+     * session complete, fired, and killed the next clan's scan 10 s in. The
+     * cycle stays set until every lane is done, and a manual scan queued on a
+     * busy lane counts too — so "busy" holds across every gap.
      */
     getDeployState() {
         return {
-            busy: this.scanInProgress || this.cycleOrder.length > 0,
+            busy: this.runs.size > 0 || this.cycle !== null || this.queued.size > 0 || !this.lanes.idle(),
             nextScanAt: this.nextScanAt,
         };
     }
     /**
-     * Returns the number of chests found in the current in-progress scan.
-     * Zero when no scan is running.
+     * Chests found so far by one clan's running scan, or by every running scan
+     * together. Zero when nothing runs.
      */
-    getLiveChestCount() {
-        return this.liveChestCount;
+    getLiveChestCount(clanId) {
+        if (clanId !== undefined)
+            return this.runs.get(clanId)?.liveChestCount ?? 0;
+        let n = 0;
+        for (const r of this.runs.values())
+            n += r.liveChestCount;
+        return n;
     }
     /**
      * Returns the epoch ms when the next scheduled scan will fire,
@@ -375,8 +397,8 @@ class ScanLoop {
     }
     /**
      * One clan's place in the schedule, for the public share page — right for
-     * every clan while a cycle walks them one at a time, where the global timer
-     * is only right for the cycle as a whole. See clan-scan-schedule.ts.
+     * every clan while a cycle runs, where the global timer is only right for
+     * the cycle as a whole. See clan-scan-schedule.ts.
      */
     getClanScanSchedule(clanId) {
         return (0, clan_scan_schedule_js_1.resolveClanScanSchedule)({
@@ -384,75 +406,114 @@ class ScanLoop {
             now: Date.now(),
             nextScanAt: this.getNextScanAtForClan(clanId),
             intervalMs: this.config.scanIntervalMs,
-            cycleOrder: this.cycleOrder,
-            cycleDoneCount: this.cycleDoneCount,
-            scanningClanId: this.scanInProgress ? this.clanId : null,
+            cycleOrder: this.cycle?.order ?? [],
+            cycleDoneCount: 0,
+            doneClanIds: this.cycle ? [...this.cycle.done] : [],
+            scanningClanId: null,
+            scanningClanIds: [...this.runs.keys()],
         });
     }
     /**
-     * What the scanner is doing right now, for the dashboard's scan card; null
-     * when there is nothing to show.
+     * Everything the scanner is doing right now, for the dashboard's scan card;
+     * null when there is nothing to show.
      *
-     * Mid-cycle there is a gap between two clans where scanInProgress is false
-     * but the cycle is still running. It reports as 'starting' on the clan
-     * about to be scanned, so the card doesn't blink out and back between
-     * clans.
+     * Mid-cycle there can be a moment where no clan is scanning but the cycle
+     * is still running (between two clans of a lane). It reports the clan up
+     * next as 'starting', so the card doesn't blink out and back.
      */
-    getScanActivity() {
-        const cycleMidway = this.cycleOrder.length > 0 && this.cycleDoneCount < this.cycleOrder.length;
-        if (!this.scanInProgress && !cycleMidway)
+    getScanOverview() {
+        const now = Date.now();
+        const clans = [...this.runs.values()].map((r) => ({
+            clanId: r.clanId,
+            phase: 'scan',
+            elapsedMs: now - r.startedAt,
+            progressMessage: r.progressMessage,
+            liveChestCount: r.liveChestCount,
+        }));
+        const cycle = this.cycle;
+        const midway = cycle !== null && cycle.done.size < cycle.order.length;
+        if (clans.length === 0 && midway) {
+            const next = cycle.order.find((id) => !cycle.done.has(id));
+            if (next !== undefined)
+                clans.push({ clanId: next, phase: 'starting', elapsedMs: null, progressMessage: '', liveChestCount: 0 });
+        }
+        if (clans.length === 0)
             return null;
         return {
-            clanId: cycleMidway && !this.scanInProgress ? this.cycleOrder[this.cycleDoneCount] : this.clanId,
-            phase: this.scanInProgress ? 'scan' : 'starting',
-            elapsedMs: this.scanInProgress && this.scanStartedAt !== null ? Date.now() - this.scanStartedAt : null,
-            cyclePosition: cycleMidway ? this.cycleDoneCount + 1 : null,
-            cycleTotal: cycleMidway ? this.cycleOrder.length : null,
+            clans,
+            cycleDone: midway ? cycle.done.size : null,
+            cycleTotal: midway ? cycle.order.length : null,
         };
     }
-    /** The next timer is armed (or won't be): the cycle no longer speaks for any clan. */
-    endCycleTracking() {
-        this.cycleOrder = [];
-        this.cycleDoneCount = 0;
+    /**
+     * The oldest entry of getScanOverview as one activity — what callers that
+     * show a single clan read. cyclePosition is the first clan not finished yet.
+     */
+    getScanActivity() {
+        const o = this.getScanOverview();
+        if (!o)
+            return null;
+        const first = o.clans[0];
+        return {
+            clanId: first.clanId,
+            phase: first.phase,
+            elapsedMs: first.elapsedMs,
+            cyclePosition: o.cycleDone !== null ? o.cycleDone + 1 : null,
+            cycleTotal: o.cycleTotal,
+        };
     }
     scheduleNextCycle(delayMs) {
         if (this.timer) {
             clearTimeout(this.timer);
         }
         this.nextScanAt = Date.now() + delayMs;
-        this.timer = setTimeout(() => this.runCycle(), delayMs);
+        this.timer = setTimeout(() => { void this.runCycle(); }, delayMs);
+    }
+    /** The lane a clan scans in right now. */
+    laneOf(clanId) {
+        return (0, scan_lanes_js_1.laneKeyFor)((0, scan_account_repo_js_1.getClanScanAccount)(clanId), this.parallel());
     }
     /**
      * Trigger a one-off scan of one clan outside the normal schedule — the
-     * superadmin "Trigger Manual Scan" button. The operator picks a clan in
-     * the dropdown and expects the scan to target only that clan regardless
-     * of where the scheduled rotation happens to be.
+     * superadmin "Scan This Clan" button. It queues on the clan's lane: when a
+     * clan on the same account is scanning, it starts right after; clans on
+     * other accounts are not waited for.
      */
     async triggerManualScan(targetClanId) {
-        if (this.scanInProgress) {
-            log.info('Manual scan requested but a scan is already in progress - rejecting');
+        const clanId = targetClanId ?? this.lastClanId;
+        if (this.isClanScanQueuedOrRunning(clanId)) {
+            log.info(`Manual scan of clan #${clanId} requested but it is already scanning or queued - rejecting`);
             return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [], alreadyRunning: true };
         }
         // Cancel any pending scheduled cycle - the manual scan replaces it,
         // and we'll reschedule the next one for a full interval after this scan.
-        if (this.timer) {
+        // A running cycle reschedules at its own end instead.
+        if (this.timer && !this.cycle) {
             clearTimeout(this.timer);
             this.timer = null;
             this.nextScanAt = null;
             log.info('Cleared pending scheduled scan - manual scan will replace it');
         }
+        const lane = this.laneOf(clanId);
+        this.queued.add(clanId);
         let result;
         try {
-            result = await this.runProtocolClanScan(targetClanId ?? this.clanId, 'manual');
+            result = await this.lanes.run(lane, () => {
+                this.queued.delete(clanId);
+                return this.scanClan(clanId, 'manual', lane);
+            });
         }
         catch (err) {
             if (!this.lastScanError || this.lastScanError.at < new Date(Date.now() - 5_000).toISOString()) {
-                this.recordScanError(err);
+                this.recordScanError(err, clanId);
             }
             result = { success: false, chestsFound: 0, newChests: 0, errors: 1, giftsData: [], triumphalData: [] };
         }
+        finally {
+            this.queued.delete(clanId);
+        }
         // Reschedule the next cycle to run a full interval after this manual scan
-        if (this.running) {
+        if (this.running && !this.cycle && !this.timer) {
             const delay = this.stateMachine.isError()
                 ? Math.min(this.config.scanIntervalMs * 3, 1800_000)
                 : this.config.scanIntervalMs;
@@ -470,8 +531,8 @@ class ScanLoop {
      * pattern.
      */
     async triggerManualScanAllClans() {
-        if (this.scanInProgress) {
-            log.info('Manual scan-all requested but a scan is already in progress - rejecting');
+        if (this.cycle) {
+            log.info('Manual scan-all requested but a cycle is already running - rejecting');
             return;
         }
         if (this.timer) {
@@ -500,7 +561,7 @@ class ScanLoop {
         // If there's a pending scheduled scan, recompute its fire time so the
         // change takes effect immediately. Use the same "start" anchor (current
         // nextScanAt - prevInterval) and add the new interval on top of that.
-        if (this.running && !this.scanInProgress && this.nextScanAt !== null && this.timer) {
+        if (this.running && this.runs.size === 0 && !this.cycle && this.nextScanAt !== null && this.timer) {
             const anchor = this.nextScanAt - prevIntervalMs; // when the last scan finished
             const newNextAt = anchor + nextIntervalMs;
             const remaining = Math.max(0, newNextAt - Date.now());
@@ -508,8 +569,9 @@ class ScanLoop {
             this.scheduleNextCycle(remaining);
         }
     }
+    /** Scanning while any clan scans; otherwise what the last scan left behind. */
     getState() {
-        return this.stateMachine.getState();
+        return this.runs.size > 0 ? enums_js_1.AppState.SCANNING : this.stateMachine.getState();
     }
     /**
      * One full sweep across every active clan. Called from the timer for
@@ -517,44 +579,48 @@ class ScanLoop {
      * superadmin clicks "Scan all clans". The trigger source is threaded
      * down so the resulting scan_sessions row carries the correct
      * `trigger_source`.
+     *
+     * Every lane walks its clans in cycle order while the lanes run side by
+     * side; clans whose account is unknown run alone, after them. A manual scan
+     * already queued on a lane goes first there.
      */
     async runCycle(triggerSource = 'scheduled') {
         if (!this.running)
             return;
-        // If a scan (e.g. manual) is already running, defer this scheduled cycle
-        // by 60 seconds and try again.
-        if (this.scanInProgress) {
-            log.info('Scheduled scan deferred - another scan is in progress, retrying in 60s');
+        // A cycle is already running (e.g. "Scan All Clans" when the timer fired):
+        // try again in 60 seconds.
+        if (this.cycle) {
+            log.info('Scheduled scan deferred - a cycle is in progress, retrying in 60s');
             if (this.running)
                 this.scheduleNextCycle(60_000);
             return;
         }
-        // Iterate every active clan in sequence. Serial, because each direct
-        // login takes over that account's game session.
-        const activeClans = (0, clan_repo_js_1.listClans)({ activeOnly: true });
-        const clansToScan = activeClans.length > 0 ? activeClans : [{ id: 1 }];
-        this.cycleOrder = clansToScan.map((c) => c.id);
-        for (let i = 0; i < clansToScan.length; i++) {
-            const clan = clansToScan[i];
-            if (!this.running)
-                break;
-            this.cycleDoneCount = i;
-            // A clan that has never been signed in has no session to scan with;
-            // it enters the rotation once the login bridge has saved one.
-            if (!fs_1.default.existsSync((0, clan_paths_js_1.clanStorageStatePath)(clan.id))) {
-                log.info(`Clan #${clan.id}: skipping scan — no saved login yet (sign in via Clans → Log in to Total Battle).`);
-                continue;
-            }
-            try {
-                await this.runProtocolClanScan(clan.id, triggerSource);
-            }
-            catch (err) {
-                if (!this.lastScanError || this.lastScanError.at < new Date(Date.now() - 5_000).toISOString()) {
-                    this.recordScanError(err);
-                }
-            }
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
         }
-        this.cycleDoneCount = this.cycleOrder.length;
+        const activeClans = (0, clan_repo_js_1.listClans)({ activeOnly: true });
+        const order = (activeClans.length > 0 ? activeClans : [{ id: 1 }]).map((c) => c.id);
+        const cycle = { order, done: new Set() };
+        this.cycle = cycle;
+        const accounts = (0, scan_account_repo_js_1.getClanScanAccounts)();
+        const plan = (0, scan_lanes_js_1.planLanes)(order, (id) => accounts.get(id) ?? null, this.parallel());
+        if (plan.lanes.length > 1 || plan.exclusive.length > 0) {
+            log.info(`Scan cycle: ${plan.lanes.length} lane(s) in parallel` +
+                `${plan.lanes.map((l) => ` [${l.clanIds.map((id) => `#${id}`).join(' → ')}]`).join('')}` +
+                `${plan.exclusive.length ? `, then alone (account not known yet): ${plan.exclusive.map((id) => `#${id}`).join(', ')}` : ''}`);
+        }
+        const jobs = [];
+        const enqueue = (lane, clanId) => {
+            this.queued.add(clanId);
+            jobs.push(this.lanes.run(lane, () => this.cycleScan(clanId, triggerSource, lane, cycle)).catch(() => { }));
+        };
+        for (const lane of plan.lanes)
+            for (const id of lane.clanIds)
+                enqueue(lane.key, id);
+        for (const id of plan.exclusive)
+            enqueue(scan_lanes_js_1.EXCLUSIVE, id);
+        await Promise.all(jobs);
         if (this.running) {
             // Always retry at the normal scan interval. Most failures are
             // transient (a game server hiccup, a brief network blip) and the
@@ -567,99 +633,140 @@ class ScanLoop {
             }
             this.scheduleNextCycle(this.config.scanIntervalMs);
         }
-        this.endCycleTracking();
+        if (this.cycle === cycle)
+            this.cycle = null;
+    }
+    /** One clan's turn in a cycle, on its lane. */
+    async cycleScan(clanId, triggerSource, lane, cycle) {
+        this.queued.delete(clanId);
+        try {
+            // Paused (the login bridge) or stopped meanwhile: the rest of the cycle is skipped.
+            if (!this.running)
+                return;
+            // A clan that has never been signed in has no session to scan with;
+            // it enters the rotation once the login bridge has saved one.
+            const hasLogin = this.hooks.hasLogin ? this.hooks.hasLogin(clanId) : fs_1.default.existsSync((0, clan_paths_js_1.clanStorageStatePath)(clanId));
+            if (!hasLogin) {
+                log.info(`Clan #${clanId}: skipping scan — no saved login yet (sign in via Clans → Log in to Total Battle).`);
+                return;
+            }
+            try {
+                await this.scanClan(clanId, triggerSource, lane);
+            }
+            catch (err) {
+                if (!this.lastScanError || this.lastScanError.at < new Date(Date.now() - 5_000).toISOString()) {
+                    this.recordScanError(err, clanId);
+                }
+            }
+        }
+        finally {
+            cycle.done.add(clanId);
+        }
+    }
+    /** Run one clan's scan with its own per-scan state (several run at once, one per lane). */
+    async scanClan(clanId, triggerSource, lane) {
+        if (this.runs.has(clanId)) {
+            return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [], alreadyRunning: true };
+        }
+        const run = { clanId, lane, startedAt: Date.now(), liveChestCount: 0, progressMessage: '' };
+        this.runs.set(clanId, run);
+        this.lastClanId = clanId;
+        try {
+            if (this.hooks.scanClan) {
+                return await this.hooks.scanClan(clanId, triggerSource, (m) => { run.progressMessage = m; });
+            }
+            return await this.runProtocolClanScan(run, triggerSource);
+        }
+        finally {
+            this.runs.delete(clanId);
+        }
     }
     /**
      * One clan's scan, straight from the game (docs/game-protocol.md):
      * capture (members, gifts, ledger) → record every gift → claim → ledger
-     * rows → finalize → cities, map tiles, raw archive → chat. Owns the single-flight flags. No session row when
+     * rows → finalize → cities, map tiles, raw archive → chat. No session row when
      * the capture cannot even sign in; once one exists, a throw keeps whatever
      * was recorded (finalizeScanFailure decides from the DB row count).
      */
-    async runProtocolClanScan(clanId, triggerSource) {
+    async runProtocolClanScan(run, triggerSource) {
+        const { clanId } = run;
         const result = { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [] };
-        if (this.scanInProgress)
-            return { ...result, alreadyRunning: true };
-        this.setActiveClan(clanId);
-        this.scanInProgress = true;
-        this.scanStartedAt = Date.now();
-        this.liveChestCount = 0;
-        this.progressMessage = '';
-        try {
-            this.stateMachine.transition(enums_js_1.AppState.SCANNING);
-            this.reportProgress('Reading clan data from the game server…');
-            const { runGameProtocolCapture, collectCaptureExtras } = await import('./game-protocol-phase.js');
-            const capture = await runGameProtocolCapture(clanId, { rolloverUtcHour: this.config.gameDayRolloverUtcHour });
-            if (!capture.ok || !capture.data) {
-                // Nothing was recorded or claimed. A logged-out session has already been
-                // flagged for re-authentication by the capture.
-                this.recordScanError(new Error(capture.loggedOut
-                    ? 'The saved Total Battle login has expired — refresh it under Clans → Log in to Total Battle.'
-                    : `Could not read the clan from the game: ${capture.error ?? 'unknown error'}`));
-                this.stateMachine.transition(enums_js_1.AppState.ERROR);
-                return result;
-            }
-            const scanSession = sessionRepo.createSession(triggerSource, clanId);
-            result.sessionId = scanSession.id;
-            try {
-                const { recordAndClaim } = await import('./protocol-scan.js');
-                const tally = await recordAndClaim({
-                    clanId,
-                    sessionId: scanSession.id,
-                    rolloverUtcHour: this.config.gameDayRolloverUtcHour,
-                    nextCapturedAt: () => this.nextCapturedAt(),
-                    reportProgress: (message) => this.reportProgress(message),
-                    incrementLiveChestCount: () => { this.liveChestCount++; },
-                }, capture.data);
-                result.giftsData = tally.gifts;
-                result.triumphalData = tally.triumphal;
-                result.chestsFound = tally.gifts.length;
-                result.newChests = tally.gifts.length;
-                result.errors = tally.claimFailures;
-                const done = (0, scan_finalize_js_1.finalizeScanSuccess)(this.buildScanFinalizeContext(), result, scanSession.id, tally.warnings.length ? tally.warnings.join('\n') : null);
-                // After the scan is final, on the same game session: the slower
-                // collection (member cities, map tiles, raw archive) — kept out of
-                // the way of opening chests — then chat (clan chat + the account's
-                // private messages). Neither throws. scanInProgress stays set, so a
-                // deploy still waits for them.
-                if (capture.clanFrame) {
-                    this.reportProgress('Reading member cities…');
-                    await collectCaptureExtras(clanId, capture.data, capture.clanFrame);
-                }
-                this.reportProgress('Reading chat…');
-                const { refreshChatSession } = await import('./chat-capture.js');
-                log.info(`Clan #${clanId} ${await refreshChatSession(clanId, capture.data.client, capture.data.record.clanId)}`);
-                // The daily digest into the clan's chosen group chat (opt-in; at most
-                // one message a day — see chat-digest.ts). Never throws.
-                const { runChatDigest } = await import('./chat-digest.js');
-                const digestNote = await runChatDigest(clanId, { client: capture.data.client, rolloverUtcHour: this.config.gameDayRolloverUtcHour });
-                if (digestNote)
-                    log.info(`Clan #${clanId} ${digestNote}`);
-                return done;
-            }
-            catch (err) {
-                const outcome = (0, scan_finalize_js_1.finalizeScanFailure)(err, this.buildScanFinalizeContext(), result, scanSession.id);
-                if (outcome.action === 'rethrow')
-                    throw err;
-                return result;
-            }
+        const report = (message) => { run.progressMessage = message; };
+        this.stateMachine.transition(enums_js_1.AppState.SCANNING);
+        report('Reading clan data from the game server…');
+        const { runGameProtocolCapture, collectCaptureExtras } = await import('./game-protocol-phase.js');
+        const capture = await runGameProtocolCapture(clanId, { rolloverUtcHour: this.config.gameDayRolloverUtcHour });
+        if (!capture.ok || !capture.data) {
+            // Nothing was recorded or claimed. A logged-out session has already been
+            // flagged for re-authentication by the capture.
+            this.recordScanError(new Error(capture.loggedOut
+                ? 'The saved Total Battle login has expired — refresh it under Clans → Log in to Total Battle.'
+                : `Could not read the clan from the game: ${capture.error ?? 'unknown error'}`), clanId);
+            this.stateMachine.transition(enums_js_1.AppState.ERROR);
+            return result;
         }
-        finally {
-            this.scanInProgress = false;
-            this.scanStartedAt = null;
-            this.liveChestCount = 0;
-            this.progressMessage = '';
+        // The account this login is: keys the clan's scan lane from now on.
+        const client = capture.data.client;
+        if (client.suid && (0, scan_account_repo_js_1.setClanScanAccount)(clanId, client.suid, client.playerId ?? null, 'scan')) {
+            log.info(`Clan #${clanId}: scanner account learned from its scan (scan lanes updated)`);
+        }
+        const scanSession = sessionRepo.createSession(triggerSource, clanId);
+        result.sessionId = scanSession.id;
+        try {
+            const { recordAndClaim } = await import('./protocol-scan.js');
+            const tally = await recordAndClaim({
+                clanId,
+                sessionId: scanSession.id,
+                rolloverUtcHour: this.config.gameDayRolloverUtcHour,
+                nextCapturedAt: () => this.nextCapturedAt(),
+                reportProgress: report,
+                incrementLiveChestCount: () => { run.liveChestCount++; },
+            }, capture.data);
+            result.giftsData = tally.gifts;
+            result.triumphalData = tally.triumphal;
+            result.chestsFound = tally.gifts.length;
+            result.newChests = tally.gifts.length;
+            result.errors = tally.claimFailures;
+            const done = (0, scan_finalize_js_1.finalizeScanSuccess)(this.buildScanFinalizeContext(run), result, scanSession.id, tally.warnings.length ? tally.warnings.join('\n') : null);
+            // After the scan is final, on the same game session: the slower
+            // collection (member cities, map tiles, raw archive) — kept out of
+            // the way of opening chests — then chat (clan chat + the account's
+            // private messages). Neither throws. The run stays registered, so a
+            // deploy still waits for them.
+            if (capture.clanFrame) {
+                report('Reading member cities…');
+                await collectCaptureExtras(clanId, capture.data, capture.clanFrame);
+            }
+            report('Reading chat…');
+            const { refreshChatSession } = await import('./chat-capture.js');
+            log.info(`Clan #${clanId} ${await refreshChatSession(clanId, capture.data.client, capture.data.record.clanId)}`);
+            // The daily digest into the clan's chosen group chat (opt-in; at most
+            // one message a day — see chat-digest.ts). Never throws.
+            const { runChatDigest } = await import('./chat-digest.js');
+            const digestNote = await runChatDigest(clanId, { client: capture.data.client, rolloverUtcHour: this.config.gameDayRolloverUtcHour });
+            if (digestNote)
+                log.info(`Clan #${clanId} ${digestNote}`);
+            return done;
+        }
+        catch (err) {
+            const outcome = (0, scan_finalize_js_1.finalizeScanFailure)(err, this.buildScanFinalizeContext(run), result, scanSession.id);
+            if (outcome.action === 'rethrow')
+                throw err;
+            return result;
         }
     }
-    /** The context object handed to the finalize helpers. */
-    buildScanFinalizeContext() {
+    /** The context object handed to the finalize helpers, for one clan's run. */
+    buildScanFinalizeContext(run) {
         return {
-            clanId: this.clanId,
+            clanId: run.clanId,
             stateMachine: this.stateMachine,
-            recordScanError: (err) => this.recordScanError(err),
+            recordScanError: (err) => this.recordScanError(err, run.clanId),
             getLastScanError: () => this.lastScanError,
-            clearLastScanError: () => { this.lastScanError = null; },
-            reportProgress: (message) => this.reportProgress(message),
+            // Only this clan's own failure: with lanes another clan's error may be
+            // the one on display, and this clan's success says nothing about it.
+            clearLastScanError: () => { if (this.lastScanError?.clanId === run.clanId)
+                this.lastScanError = null; },
+            reportProgress: (message) => { run.progressMessage = message; },
             onScanComplete: this.onScanComplete,
         };
     }

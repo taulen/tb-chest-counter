@@ -14,13 +14,15 @@ exports.checkClanSessions = checkClanSessions;
  * (client.checkSiteSession), presents no token, and is run every 30 minutes by
  * the scan loop. Definite answers go through session-health.ts — the same path
  * the scan's game capture uses — and 'unknown' (network error, odd page) changes
- * nothing.
+ * nothing. The same page names the website account the login belongs to, which
+ * keys the scan lanes (scan-lanes.ts).
  */
 const fs_1 = __importDefault(require("fs"));
 const logger_js_1 = require("../utils/logger.js");
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
 const clan_paths_js_1 = require("../config/clan-paths.js");
 const client_js_1 = require("../game-protocol/client.js");
+const scan_account_repo_js_1 = require("../data/repositories/scan-account-repo.js");
 const session_health_js_1 = require("./session-health.js");
 const log = (0, logger_js_1.childLogger)('session-check');
 async function checkClanSessions() {
@@ -28,9 +30,13 @@ async function checkClanSessions() {
         const file = (0, clan_paths_js_1.clanStorageStatePath)(clan.id);
         if (!fs_1.default.existsSync(file))
             continue;
-        const state = await (0, client_js_1.checkSiteSession)(file);
+        const { state, suid } = await (0, client_js_1.checkSiteSessionAccount)(file);
         if (state === 'ok')
             (0, session_health_js_1.noteSessionHealthy)(clan.id, 'the saved session is signed in on totalbattle.com (checked without a browser)');
+        // Which account the login is: clans on the same account share a scan lane.
+        if (state === 'ok' && suid && (0, scan_account_repo_js_1.setClanScanAccount)(clan.id, suid, null, 'session-check')) {
+            log.info(`Clan #${clan.id}: scanner account learned from the saved login (scan lanes updated)`);
+        }
         else if (state === 'logged-out')
             (0, session_health_js_1.noteSessionLoggedOut)(clan.id, 'saved Total Battle session is logged out (checked without a browser)');
         else

@@ -98,5 +98,17 @@ describe('getScanHealthSeries — every clan (System is instance-wide)', () => {
     expect(series.every((s) => typeof s.clanName === 'string' && s.clanName.length > 0)).toBe(true);
     expect(series.find((s) => s.running)?.id).toBe(live);
   });
-});
 
+  it('marks every clan scanning at once as running (parallel lanes)', () => {
+    const { clanIdA, clanIdB } = seedTwoClans();
+    const open = (clan: number, startIso: string) => {
+      const id = createSession('scheduled', clan).id;
+      getDb().prepare('UPDATE scan_sessions SET started_at = ? WHERE id = ?').run(startIso, id);
+      return id;
+    };
+    const a = open(clanIdA, '2026-11-17T02:00:00.000Z');
+    const b = open(clanIdB, '2026-11-17T02:00:05.000Z');
+    const series = getScanHealthSeries(null, 10, { runningClanIds: [clanIdA, clanIdB], now: Date.parse('2026-11-17T02:01:00.000Z') });
+    expect(series.filter((s) => s.running).map((s) => s.id).sort()).toEqual([a, b].sort());
+  });
+});

@@ -43,6 +43,10 @@ vi.mock('../../../src/scheduler/loop.js', () => ({
     getLastScanError() { return null; }
     clearLastScanError() {}
     getActiveClanId() { return 1; }
+    getRunningClanIds() { return []; }
+    getScanOverview() { return null; }
+    isClanScanQueuedOrRunning() { return false; }
+    isCycleRunning() { return false; }
     getState() { return 'IDLE'; }
     getScanIntervalMs() { return 60_000; }
     setScanIntervalMs() {}

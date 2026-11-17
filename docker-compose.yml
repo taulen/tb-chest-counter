@@ -74,6 +74,11 @@ services:
       # opt-in daily digest, Clans → In-game chat digest). 1 = nothing is ever
       # sent; reading chat is unaffected. See docs/chat-digest.md.
       - CHAT_SEND_DISABLED=${CHAT_SEND_DISABLED:-0}
+      # Scan clans on DIFFERENT Total Battle accounts at the same time; clans on
+      # one account always stay in one lane, one after another (a game login
+      # takes over the account's session). 0 = every clan one after another, as
+      # before. See scheduler/scan-lanes.ts.
+      - SCAN_PARALLEL=${SCAN_PARALLEL:-1}
     ports:
       - "${HOST_WEB_PORT:-3010}:3000"
     # iGPU passthrough for the login bridge's GPU rendering. Requires /dev/dri
