@@ -263,38 +263,53 @@ export interface ArtifactChange {
   artifactType: number;
   level: number;
   star: number;
-  /** The previous read's values; null when the artifact is new. */
+  /** The previous read's values; null when it is the artifact's first row. */
   prevLevel: number | null;
   prevStar: number | null;
   /** The rolls changed (rerolled) since the previous read. */
   rerolled: boolean;
+  /**
+   * The line-up move this row records (v118): 'in' — first seen after the
+   * player's baseline, or back after leaving; 'out' — it left the line-up;
+   * null — it stayed (level / stars / rolls moved). Only line-up captains'
+   * artifacts are visible, so a first sighting is never "a new artifact".
+   */
+  lineup: 'in' | 'out' | null;
   changedAt: string;
 }
 
 /**
- * Artifact level / star level / roll changes since `sinceIso`, newest first.
- * The first read's baseline is left out, as for captains.
+ * Artifact changes since `sinceIso`, newest first: level / star level / roll
+ * moves and line-up moves. The first read's baseline is left out, as for
+ * captains.
  */
 export function getPlayerArtifactChanges(clanId: number, playerId: number, sinceIso: string, limit = 100): ArtifactChange[] {
   const rows = getDb().prepare(
     `WITH h AS (
-       SELECT artifact_type, level, star, bonuses, changed_at,
-              LAG(level) OVER w AS prev_level, LAG(star) OVER w AS prev_star, LAG(bonuses) OVER w AS prev_bonuses
+       SELECT artifact_type, level, star, bonuses, in_lineup, changed_at,
+              LAG(level) OVER w AS prev_level, LAG(star) OVER w AS prev_star, LAG(bonuses) OVER w AS prev_bonuses,
+              LAG(in_lineup) OVER w AS prev_in_lineup
          FROM game_player_artifact_history
         WHERE clan_id = ? AND player_id = ?
        WINDOW w AS (PARTITION BY artifact_type ORDER BY changed_at)
      )
      SELECT artifact_type AS artifactType, level, star, prev_level AS prevLevel, prev_star AS prevStar,
-            (prev_bonuses IS NOT NULL AND prev_bonuses <> bonuses) AS rerolled, changed_at AS changedAt
+            (prev_bonuses IS NOT NULL AND prev_bonuses <> bonuses) AS rerolled,
+            in_lineup AS inLineup, prev_in_lineup AS prevInLineup, changed_at AS changedAt
        FROM h
       WHERE changed_at >= ?
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_artifact_history WHERE clan_id = ? AND player_id = ?)
         -- An archive replay can leave a row equal to the one before it (the
         -- live read, replayed past): not a change.
-        AND NOT (prev_level IS level AND prev_star IS star AND prev_bonuses IS bonuses)
+        AND NOT (prev_level IS level AND prev_star IS star AND prev_bonuses IS bonuses AND prev_in_lineup IS in_lineup)
       ORDER BY changed_at DESC, level DESC, artifact_type LIMIT ?`,
-  ).all(clanId, playerId, sinceIso, clanId, playerId, limit) as Array<Omit<ArtifactChange, 'rerolled'> & { rerolled: number }>;
-  return rows.map((r) => ({ ...r, rerolled: r.rerolled === 1 }));
+  ).all(clanId, playerId, sinceIso, clanId, playerId, limit) as Array<
+    Omit<ArtifactChange, 'rerolled' | 'lineup'> & { rerolled: number; inLineup: number; prevInLineup: number | null }>;
+  return rows.map(({ inLineup, prevInLineup, ...r }) => ({
+    ...r,
+    rerolled: r.rerolled === 1,
+    lineup: inLineup === 0 ? 'out' : prevInLineup === null || prevInLineup === 0 ? 'in' : null,
+  }));
 }
 
 export interface PlayerEquipmentItem {

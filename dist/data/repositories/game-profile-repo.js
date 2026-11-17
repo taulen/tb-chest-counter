@@ -165,27 +165,34 @@ function parseIds(json) {
     }
 }
 /**
- * Artifact level / star level / roll changes since `sinceIso`, newest first.
- * The first read's baseline is left out, as for captains.
+ * Artifact changes since `sinceIso`, newest first: level / star level / roll
+ * moves and line-up moves. The first read's baseline is left out, as for
+ * captains.
  */
 function getPlayerArtifactChanges(clanId, playerId, sinceIso, limit = 100) {
     const rows = (0, database_js_1.getDb)().prepare(`WITH h AS (
-       SELECT artifact_type, level, star, bonuses, changed_at,
-              LAG(level) OVER w AS prev_level, LAG(star) OVER w AS prev_star, LAG(bonuses) OVER w AS prev_bonuses
+       SELECT artifact_type, level, star, bonuses, in_lineup, changed_at,
+              LAG(level) OVER w AS prev_level, LAG(star) OVER w AS prev_star, LAG(bonuses) OVER w AS prev_bonuses,
+              LAG(in_lineup) OVER w AS prev_in_lineup
          FROM game_player_artifact_history
         WHERE clan_id = ? AND player_id = ?
        WINDOW w AS (PARTITION BY artifact_type ORDER BY changed_at)
      )
      SELECT artifact_type AS artifactType, level, star, prev_level AS prevLevel, prev_star AS prevStar,
-            (prev_bonuses IS NOT NULL AND prev_bonuses <> bonuses) AS rerolled, changed_at AS changedAt
+            (prev_bonuses IS NOT NULL AND prev_bonuses <> bonuses) AS rerolled,
+            in_lineup AS inLineup, prev_in_lineup AS prevInLineup, changed_at AS changedAt
        FROM h
       WHERE changed_at >= ?
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_artifact_history WHERE clan_id = ? AND player_id = ?)
         -- An archive replay can leave a row equal to the one before it (the
         -- live read, replayed past): not a change.
-        AND NOT (prev_level IS level AND prev_star IS star AND prev_bonuses IS bonuses)
+        AND NOT (prev_level IS level AND prev_star IS star AND prev_bonuses IS bonuses AND prev_in_lineup IS in_lineup)
       ORDER BY changed_at DESC, level DESC, artifact_type LIMIT ?`).all(clanId, playerId, sinceIso, clanId, playerId, limit);
-    return rows.map((r) => ({ ...r, rerolled: r.rerolled === 1 }));
+    return rows.map(({ inLineup, prevInLineup, ...r }) => ({
+        ...r,
+        rerolled: r.rerolled === 1,
+        lineup: inLineup === 0 ? 'out' : prevInLineup === null || prevInLineup === 0 ? 'in' : null,
+    }));
 }
 /** What every captain of a player wears (v112), by captain then position. */
 function getPlayerEquipment(clanId, playerId) {

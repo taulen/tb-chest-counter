@@ -6,7 +6,8 @@ record (members + both gift tabs), player records, the Clan Capital ledger and
 any player's city (research + hero talents). Code: [`src/game-protocol/`](../src/game-protocol/).
 
 Status (Nov 17 2026): **this is the scan.** Each clan in a cycle (and each
-manual scan) is `ScanLoop.runProtocolClanScan`:
+manual scan) is `ScanLoop.runProtocolClanScan` — clans on different accounts at
+the same time (see [Scan lanes](#scan-lanes)):
 
 1. [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts) signs in,
    reads the clan record (members, gifts), player records and the ledger, syncs
@@ -348,8 +349,12 @@ what level and star level, with which rolls
 ([artifacts.ts](../src/game-protocol/artifacts.ts)). Artifacts on benched
 captains are not in the city data at all: `game_player_artifacts.in_lineup`
 marks one that dropped out instead of deleting it; history
-(`game_player_artifact_history`) gets a row when an artifact is new or its
-level, star level or rolls change. Checked against the game's artifact book
+(`game_player_artifact_history`) gets a row when an artifact comes into the
+line-up or its level, star level or rolls change, and — `in_lineup = 0`, v118 —
+when it leaves it. Because only line-up captains' artifacts are visible, a
+first sighting after a player's baseline is "Into the line-up", never "a new
+artifact" (Princess of Chaos swapping captains moved Mythril Pickaxe and Ifrit
+Belt out and Chronoglyph in). Checked against the game's artifact book
 (Nov 2026): Torch of Olympus, Legendary, level 50/60 "Crypt exploration
 efficiency 130%", star level 21 (four stars and a partial fifth) "136%",
 random bonuses Epic Crypt +100%, Common / Rare / Epic +50%.
@@ -368,9 +373,48 @@ which version of each city parser has replayed the archive (`CITY_PARSERS` in
 added or changed is replayed over every archived reply, oldest read first, on
 the next scan — bump its version to re-run it.
 
+**The hero's gear.** Field 9's entry id 1 is the hero (no T75 row); it wears
+equipment like a captain, so its items are stored under captain id 1
+(`HERO_ENTRY_ID`, [equipment.ts](../src/game-protocol/equipment.ts)). It was
+left out until Nov 2026; the `heroEquipment` city parser re-reads the archive
+once for the hero ONLY (`saveCaptainEquipment(…, onlyCaptains)`), so the
+captains' equipment history already stored is untouched. The Captains tab puts
+the hero first in the line-up row (portrait in the player's frame with the
+level plate, level / XP from the city's hero record, its gear).
+
+**Captain pictures** (user, Nov 2026: "very different from what I see
+in-game"). T75's config names four: `smallIcon` (carter_icon, the 72 px head
+shot), `battleIcon` (carter_battle_icon, a 148×184 bust card),
+`unitAltarArt` (lvlup_carter, the level-up art) and `unitInfoSprite`
+(battler_carter_battlerinfo — not an image: an `_artbundle` JSON recipe
+`{backName, frontName: "battler_carter", frontScale, …}` whose front PNG is
+not an addressable asset). The captain screen's full-body picture is
+`<smallIcon base>_scaled` (carter_scaled, 289×411: Carter with the torch, the
+lasso and the potion satchel — the still of `carter_artbundle`'s front
+"carter" over `heroes_back_abstract`). Nothing in the static data names it; the
+client derives it, and `<icon minus _icon>_scaled` exists for 81 of 90 T75
+rows (the older Beowulf / Skadi / Heimdall / Artemisia / Attila rows have only
+the head shot and, some, the level-up art). Mapping `captainArt` = `_scaled`,
+else the level-up art; the dialog and hover card show it.
+
+**Captain tiles** are drawn like the game's line-up (unit-frames.ts
+`captainTileArt`): the unit icon's back and frame in the RARITY colour
+(1 rare → blue, 2 epic → violet, 3 legendary → gold, 4 mythic → red; the same
+`back_icon_units_72x72_*` / `frame_icon_units_94x92_*` client sprites), the
+head shot between them, the level on `icons_tir_shield_2` at the top-right and
+`icons_star_up` per star along the bottom.
+
+**XP to the next level is not shown:** the per-level XP thresholds were not
+found. T75 f10's 500 per-level rows hold three growing values (Carter L200:
+494,718 / 9,275,970 / 247,359 = half the first) — none sums or scales to the
+stored XP (633,274,738,935 at level 200, "12,954,943,875 to the next level"
+in the game); T73 (300 levels, 234,810,294,900 at 200) is another curve; no
+static table holds a value between 600B and 700B outside map objects. XP is
+shown compact (633.3B, locale-aware) with the full number on hover.
+
 Not read yet: the Stats screen's Leadership / Authority / Dominance / Might and
-"Features" block (probably built from the skills), and the instance fields a,
-b, c of an item.
+"Features" block (probably built from the skills and T75 f11 star rows — not a
+direct per-level value), and the instance fields a, b, c of an item.
 
 ### The clan itself (v111, My Clan page)
 
@@ -452,11 +496,42 @@ manages under 100 ms), 30–90 ms between batched reads (cities, tiles, clan
 objects). Reads are batched the way the client batches them: 100 players per
 402, 20 cities per 601, 9 tiles per 312.
 
+## Scan lanes
+
+[`scan-lanes.ts`](../src/scheduler/scan-lanes.ts): a cycle scans clans on
+**different Total Battle accounts at the same time** and clans on **one
+account one after another**, in one lane — a game login takes over the
+account's session, so two scans on one account at once would knock each other
+out (SIK and SK7 share a website account). The account is the website user id
+(`tb:<n>`, the `suid` on the site page) in `clan_scan_accounts` (v119),
+learned by the 30-minute session check from the stored login (the same page it
+already loads) and by every scan (`GameClient.suid` / `playerId`), and
+forgotten when a new login is saved. A clan whose account is not known yet runs
+**alone** — after every lane queued before it, before anything queued after it —
+since it might share an account with any clan.
+
+- A cycle queues each lane's clans in cycle order; lanes run side by side; it
+  ends (and arms the next timer) when every lane is done.
+- "Scan This Clan" queues on the clan's lane — straight away if the lane is
+  free, right after the lane's current scan if not; a clan already scanning or
+  queued is refused. "Scan All Clans" is refused while a cycle runs.
+- Per-scan state (progress line, live chest count, start time) is per clan;
+  `/api/status` lists every clan scanning (`activity.clans`) and the sidebar
+  card shows them together ("CWB · SIK"). `scanner.busy` in `/api/health` holds
+  while any lane has work queued or running, so
+  [`deploy-when-idle.mjs`](../scripts/deploy-when-idle.mjs) still waits.
+- The login bridge still pauses scanning globally.
+- A shared rebuild (game names after a patch) runs once even when two lanes
+  ask for it.
+- `SCAN_PARALLEL=0` (docker-compose) puts every clan in one lane: the old
+  serial scan.
+
 ## Session check
 
 [`session-check.ts`](../src/scheduler/session-check.ts) GETs `/en/` with each
 active clan's stored cookies every 30 minutes (and the capture does the same
-before each scan). It presents no token, so it is safe to run often. A logged-in
+before each scan). It presents no token, so it is safe to run often. A signed-in
+page also names the account (`suid`), which keys the clan's scan lane. A logged-in
 page clears "Needs re-authentication"; the site's own logged-out page sets it,
 through [`session-health.ts`](../src/scheduler/session-health.ts) — the same
 path the scan's game capture uses (System warning keyed for auto-resolve, one

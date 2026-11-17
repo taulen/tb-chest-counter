@@ -45,7 +45,7 @@ import { clanLogoUrl } from '../../game-art/clan-logo.js';
 import { itemIconUrls } from '../../game-art/item-icons.js';
 import { CLAN_RANKING_KINDS } from '../../game-protocol/messages.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
-import { describeItem } from '../../game-protocol/equipment.js';
+import { describeItem, HERO_ENTRY_ID } from '../../game-protocol/equipment.js';
 
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
@@ -152,7 +152,7 @@ export function createGameRouter(): Router {
     }
     const playerId = gamePlayerIdForMember(memberId, clanId);
     if (playerId === null) {
-      res.json({ linked: false, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
+      res.json({ linked: false, hero: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
       return;
     }
     const names = await loadGameNames().catch(() => null);
@@ -179,22 +179,52 @@ export function createGameRouter(): Router {
       if (!gear.has(it.captainId)) gear.set(it.captainId, []);
       gear.get(it.captainId)!.push({ position: it.position, itemType: it.itemType, firstSeen: it.firstSeen, ...itemView(it.itemType, it.enchantment, it.gems) });
     }
+    // The game's captain tile pieces (rarity back + frame, level plate, stars)
+    // and the captain screen's full-body art (carter_scaled), when extracted.
+    const tile = mappings?.captainTile;
+    const fullArt = mappings?.captainArt ?? {};
     const describe = (id: number) => {
       const c = names?.captains?.[String(id)];
       const portrait = portraits[String(id)];
       const starLevels = Object.keys(c?.stars ?? {}).map(Number).filter(Number.isFinite);
+      const rarity = c?.rarity ?? 0;
+      const full = fullArt[String(id)];
       return {
         name: c?.name ?? `#${id}`,
-        rarity: c?.rarity ?? 0,
+        rarity,
         rarityName: c?.rarityName ?? '',
         maxStars: starLevels.length ? Math.max(...starLevels) : 0,
         iconUrl: portrait ? gameArtUrl(portrait) : null,
-        artUrl: c?.art ? gameArtUrl(safeArtName(c.art)) : null,
+        artUrl: full ? gameArtUrl(full) : c?.art ? gameArtUrl(safeArtName(c.art)) : null,
+        tileBackUrl: tile?.backs?.[String(rarity)] ? gameArtUrl(tile.backs[String(rarity)]) : null,
+        tileFrameUrl: tile?.frames?.[String(rarity)] ? gameArtUrl(tile.frames[String(rarity)]) : null,
       };
     };
     const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
+    // The hero leads the tab: its portrait in the player's frame with the
+    // level plate, its level / XP (the city's hero record) and what it wears
+    // (city field 9's entry id 1 — gear tracked since Nov 2026).
+    const player = getGamePlayer(clanId, playerId);
+    const cityHero = getLatestCity(clanId, playerId)?.hero;
+    const heroLevel = cityHero?.level ?? player?.heroLevel ?? null;
+    const hero = player ? {
+      name: names?.heroes?.[String(player.heroAvatar)]?.name || null,
+      level: heroLevel,
+      heroLevel,
+      xp: cityHero?.xp ?? null,
+      avatarUrl: player.avatarUrl,
+      frameUrl: player.frameUrl,
+      equipment: gear.get(HERO_ENTRY_ID) ?? [],
+    } : null;
     res.json({
       linked: true,
+      hero,
+      // Shared tile art: the level plate and the star sprites (null until extracted).
+      tileArt: {
+        levelPlateUrl: tile?.levelPlate ? gameArtUrl(tile.levelPlate) : null,
+        starOnUrl: tile?.starOn ? gameArtUrl(tile.starOn) : null,
+        starOffUrl: tile?.starOff ? gameArtUrl(tile.starOff) : null,
+      },
       captains: getPlayerCaptains(clanId, playerId).map((c) => ({
         ...c,
         ...describe(c.captainId),

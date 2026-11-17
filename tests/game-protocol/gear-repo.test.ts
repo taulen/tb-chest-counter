@@ -44,8 +44,8 @@ describe('artifacts', () => {
     ]);
     // The baseline read is left out of the changes.
     expect(getPlayerArtifactChanges(CLAN, PLAYER, '2026-11-01T00:00:00Z')).toEqual([
-      { artifactType: 16, level: 50, star: 21, prevLevel: 49, prevStar: 21, rerolled: false, changedAt: '2026-11-17T05:00:00Z' },
-      { artifactType: 20, level: 50, star: 22, prevLevel: 50, prevStar: 22, rerolled: true, changedAt: '2026-11-17T05:00:00Z' },
+      { artifactType: 16, level: 50, star: 21, prevLevel: 49, prevStar: 21, rerolled: false, lineup: null, changedAt: '2026-11-17T05:00:00Z' },
+      { artifactType: 20, level: 50, star: 22, prevLevel: 50, prevStar: 22, rerolled: true, lineup: null, changedAt: '2026-11-17T05:00:00Z' },
     ]);
   });
 
@@ -55,6 +55,24 @@ describe('artifacts', () => {
     expect(getPlayerArtifacts(CLAN, PLAYER).map((a) => [a.artifactType, a.inLineup])).toEqual([[16, true], [20, false]]);
     saveArtifacts(CLAN, PLAYER, [art(20, 50, 22)], '2026-11-17T03:00:00Z');
     expect(getPlayerArtifacts(CLAN, PLAYER).map((a) => [a.artifactType, a.inLineup])).toEqual([[20, true], [16, false]]);
+  });
+
+  it('records line-up moves: a first sighting after the baseline is INTO the line-up, a drop OUT of it (v118)', () => {
+    // Baseline: Mythril Pickaxe (10) and Ifrit Belt (11) on the line-up captains.
+    saveArtifacts(CLAN, PLAYER, [art(10, 40, 20), art(11, 40, 19)], '2026-11-17T01:00:00Z');
+    // Captains swapped: both leave, Chronoglyph (20) comes in.
+    expect(saveArtifacts(CLAN, PLAYER, [art(20, 50, 22)], '2026-11-17T02:00:00Z')).toBe(3);
+    // Nothing moved: no rows (a benched artifact is recorded leaving once).
+    expect(saveArtifacts(CLAN, PLAYER, [art(20, 50, 22)], '2026-11-17T03:00:00Z')).toBe(0);
+    // The belt comes back.
+    expect(saveArtifacts(CLAN, PLAYER, [art(20, 50, 22), art(11, 40, 19)], '2026-11-17T04:00:00Z')).toBe(1);
+    const moves = getPlayerArtifactChanges(CLAN, PLAYER, '2026-11-01T00:00:00Z').map((c) => [c.artifactType, c.lineup, c.changedAt]);
+    expect(moves).toEqual([
+      [11, 'in', '2026-11-17T04:00:00Z'],
+      [20, 'in', '2026-11-17T02:00:00Z'],
+      [10, 'out', '2026-11-17T02:00:00Z'],
+      [11, 'out', '2026-11-17T02:00:00Z'],
+    ]);
   });
 
   it('replays an archive oldest first without duplicating history, keeping the first time seen', () => {
@@ -72,6 +90,21 @@ describe('artifacts', () => {
 });
 
 describe('captain equipment', () => {
+  it('re-reads only the given wearers: the hero (entry 1) without touching the captains already stored', () => {
+    // Captains' gear as stored by the first replay of the whole archive (from
+    // its oldest read) and the live reads since.
+    saveCaptainEquipment(CLAN, PLAYER, [item(8, 3, 'u0', 4400)], '2026-11-15T05:00:00Z');
+    saveCaptainEquipment(CLAN, PLAYER, [item(8, 3, 'u1', 4423)], '2026-11-17T05:00:00Z');
+    const carter = () => getPlayerEquipmentChanges(CLAN, PLAYER, '2026-11-01T00:00:00Z').filter((c) => c.captainId === 8).map((c) => [c.itemType, c.changedAt]);
+    const before = carter();
+    // The hero-only re-read of that oldest read: Carter's older item is
+    // ignored (his rows are left alone), the hero's u9 is recorded.
+    const n = saveCaptainEquipment(CLAN, PLAYER, [item(8, 3, 'u0', 4400), item(1, 0, 'u9', 4501)], '2026-11-15T05:00:00Z', new Set([1]));
+    expect(n).toBe(1);
+    expect(getPlayerEquipment(CLAN, PLAYER).map((e) => [e.captainId, e.position, e.itemType])).toEqual([[1, 0, 4501], [8, 3, 4423]]);
+    expect(carter()).toEqual(before);
+  });
+
   it('keeps what each captain wears and a history row when an item, its gems or enchantment change, or a position empties', () => {
     expect(saveCaptainEquipment(CLAN, PLAYER, [item(8, 3, 'u1', 4423, 8408, [257]), item(8, 4, 'u2', 4430)], '2026-11-17T01:00:00Z')).toBe(2);
     expect(saveCaptainEquipment(CLAN, PLAYER, [item(8, 3, 'u1', 4423, 8408, [257]), item(8, 4, 'u2', 4430)], '2026-11-17T02:00:00Z')).toBe(0);

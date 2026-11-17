@@ -8770,7 +8770,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   grid-template-columns: repeat(auto-fill, minmax(104px, 128px));
   margin-bottom: 20px;
 }
-
 .captain-tile {
   display: flex;
   flex-direction: column;
@@ -8860,6 +8859,84 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A captain's tile as the game draws it (pages/member-captains.js
+   gameTileHtml): on the unit icon's 95-unit box (.unit-icon) — rarity back,
+   head shot, rarity frame — with the level on the game's shield plate at the
+   top-right and the star sprites along the bottom. Sized by the grid cell. */
+.captain-gt {
+  display: block;
+  width: 100%;
+  container-type: inline-size;
+}
+.captain-gt-box {
+  --u: calc(100cqw / 95);
+  position: relative;
+  display: block;
+  width: 100cqw;
+  height: 100cqw;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.captain-tile:hover .captain-gt-box,
+.captain-tile:focus-visible .captain-gt-box {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 calc(4 * var(--u)) color-mix(in srgb, var(--rarity) 70%, transparent));
+}
+.captain-tile:focus-visible .captain-gt-box { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.captain-gt-box > img,
+.captain-gt-level,
+.captain-gt-stars { position: absolute; display: block; max-width: none; }
+.captain-gt-back,
+.captain-gt-face { left: calc(12 * var(--u)); top: calc(10.5 * var(--u)); width: calc(72 * var(--u)); height: calc(72 * var(--u)); object-fit: cover; }
+.captain-gt-frame { left: calc(1 * var(--u)); top: calc(2.5 * var(--u)); width: calc(94 * var(--u)); height: calc(92 * var(--u)); }
+/* The plate where the hero portrait's is (29 × 35, top-right of the art). */
+.captain-gt-level { left: calc(64 * var(--u)); top: 0; width: calc(29 * var(--u)); height: calc(35 * var(--u)); }
+.captain-gt-level img { display: block; width: 100%; height: 100%; }
+.captain-gt-level.is-plain { border-radius: 6px 6px 12px 12px; background: color-mix(in srgb, var(--bg-primary) 82%, transparent); border: 1px solid var(--rarity); }
+.captain-gt-num {
+  position: absolute;
+  inset: 0 0 calc(3 * var(--u));
+  display: grid;
+  place-items: center;
+  font-family: var(--font-sans);
+  font-size: calc(13 * var(--u));
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--game-badge-text);
+  text-shadow: 0 0 calc(1.5 * var(--u)) var(--game-badge-shadow), 0 calc(1 * var(--u)) calc(1 * var(--u)) var(--game-badge-shadow);
+}
+.captain-gt-num.is-3 { font-size: calc(10.5 * var(--u)); }
+.captain-gt-level.is-plain .captain-gt-num { color: var(--text-primary); text-shadow: none; }
+.captain-gt-stars {
+  left: calc(12 * var(--u));
+  right: calc(11 * var(--u));
+  top: calc(72 * var(--u));
+  display: flex;
+  justify-content: center;
+  gap: 0;
+}
+.captain-gt-stars img { width: calc(13 * var(--u)); height: calc(13 * var(--u)); filter: drop-shadow(0 calc(0.5 * var(--u)) calc(1 * var(--u)) rgba(0, 0, 0, 0.8)); }
+.captain-gt-stars .captain-star { font-size: calc(12 * var(--u)); }
+
+/* The hero leads the line-up: its portrait in the player's frame with the
+   level plate (lib/game-facts.js heroAvatarHtml), centred in the cell. */
+.captain-hero-portrait {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  aspect-ratio: 1;
+  /* The framed portrait keeps its own size (scaled down on phones): the cell
+     stays square, so the hero's name lines up with the captains'. */
+  min-height: 0;
+  overflow: visible;
+  transition: transform 0.12s ease;
+}
+.captain-tile.is-hero:hover .captain-hero-portrait,
+.captain-tile.is-hero:focus-visible .captain-hero-portrait { transform: translateY(-2px); }
+.captain-tile.is-hero:focus-visible .captain-hero-portrait { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 8px; }
+.captain-detail-art.captain-hero-art { display: flex; justify-content: center; align-items: flex-start; }
 
 /* Details: the dialog (click / tap) and the desktop hover card share it. */
 .captain-detail {
@@ -9235,7 +9312,10 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
     grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
     gap: 12px 10px;
   }
-  .captain-grid.is-lineup { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The hero and the three line-up captains in one row, as in the game. */
+  .captain-grid.is-lineup { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 6px; }
+  .captain-grid.is-lineup .captain-name { font-size: 11.5px; }
+  .captain-grid.is-lineup .captain-hero-portrait .hero-framed { transform: scale(0.8); }
   .captain-modal .captain-detail { grid-template-columns: 1fr; }
   .captain-modal .captain-detail-art {
     width: 100%;
@@ -9691,4 +9771,67 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .clan-rank-table col.col-value,
   .clan-rank-history-table col.col-date,
   .clan-rank-history-table col.col-rank { width: auto; }
+}
+
+/* ── Member timeline (pages/member-timeline.js) ───────────────────────────────
+   Dense rows like the Chats page: time gutter, icon, one line; a day's folded
+   changes open in place. Theme tokens only. */
+.tl-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px 4px; }
+.tl-chip.active { border-color: var(--accent-gold); color: var(--accent-gold); }
+.tl-list { list-style: none; margin: 0; padding: 4px 16px 8px; }
+.tl-day { display: flex; justify-content: flex-start; margin: 10px 0 4px; }
+.tl-day span {
+  padding: 2px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.tl-entry {
+  display: grid;
+  grid-template-columns: 42px 26px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.tl-entry:last-child { border-bottom: 0; }
+.tl-time { padding-top: 2px; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.tl-icon { display: flex; justify-content: center; }
+.tl-img { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; }
+.tl-img.is-small { width: 20px; height: 20px; flex: none; }
+.tl-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+}
+.tl-glyph.is-good { color: var(--accent-green); }
+.tl-glyph.is-bad { color: var(--accent-red); }
+.tl-glyph.is-gold { color: var(--accent-gold); font-weight: 700; }
+.tl-body { min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.tl-body strong { font-weight: 600; }
+.tl-fold summary { cursor: pointer; list-style-position: inside; }
+.tl-fold summary::marker { color: var(--text-muted); }
+.tl-items { list-style: none; margin: 4px 0 2px; padding: 0; display: grid; gap: 3px; }
+.tl-items li { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12.5px; }
+.tl-items li span { min-width: 0; }
+.tl-foot { display: flex; justify-content: center; padding: 6px 16px 14px; }
+.tl-foot:empty { display: none; }
+
+@media (max-width: 640px) {
+  .tl-chips { padding: 10px 10px 2px; gap: 4px; }
+  .tl-list { padding: 2px 10px 6px; }
+  .tl-entry { grid-template-columns: 36px 24px minmax(0, 1fr); gap: 6px; font-size: 12.5px; }
 }

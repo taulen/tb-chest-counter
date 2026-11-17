@@ -427,8 +427,11 @@ export function getScanHealthSeries(
   /** One clan, or null for every clan (System's instance-wide strip). */
   clanId: number | null,
   limit = 60,
-  /** `runningClanId`: the clan a scan is running for right now, if any. */
-  opts: { scanRunning?: boolean; runningClanId?: number | null; now?: number } = {},
+  /**
+   * `runningClanId` / `runningClanIds`: the clans a scan is running for right
+   * now (several at once with parallel lanes), if any.
+   */
+  opts: { scanRunning?: boolean; runningClanId?: number | null; runningClanIds?: readonly number[]; now?: number } = {},
 ): Array<{
   id: number;
   clanId: number;
@@ -457,17 +460,21 @@ export function getScanHealthSeries(
   // started, so it can only be the newest row of its clan — and only while
   // that row is still open. Older open rows are crash leftovers, never "running".
   const now = opts.now ?? Date.now();
-  const liveClan = opts.runningClanId ?? (opts.scanRunning && clanId !== null ? clanId : null);
-  const newest = liveClan === null ? undefined : rows.find((r) => r.clan_id === liveClan);
-  const runningId = newest && !newest.completed_at
-    && (newest.status === ScanStatus.PENDING || newest.status === ScanStatus.PROCESSING)
-    ? newest.id
-    : null;
+  const liveClans = new Set<number>(opts.runningClanIds ?? []);
+  const one = opts.runningClanId ?? (opts.scanRunning && clanId !== null ? clanId : null);
+  if (one !== null) liveClans.add(one);
+  const runningIds = new Set<number>();
+  for (const liveClan of liveClans) {
+    const newest = rows.find((r) => r.clan_id === liveClan);
+    if (newest && !newest.completed_at && (newest.status === ScanStatus.PENDING || newest.status === ScanStatus.PROCESSING)) {
+      runningIds.add(newest.id);
+    }
+  }
 
   return rows.reverse().map((r) => {
     const start = Date.parse(r.started_at);
     const end = r.completed_at ? Date.parse(r.completed_at) : NaN;
-    const running = r.id === runningId;
+    const running = runningIds.has(r.id);
     return {
       id: r.id,
       clanId: r.clan_id,

@@ -584,6 +584,8 @@ function deleteClan(id) {
         // The clan's logo and rankings (v117).
         db.prepare('DELETE FROM game_clan_rankings WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_clan_ranking_lists WHERE clan_id = ?').run(id);
+        // The scanner account (v118).
+        db.prepare('DELETE FROM clan_scan_accounts WHERE clan_id = ?').run(id);
         // In-game chat (v104).
         db.prepare('DELETE FROM chat_messages WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM chat_channels WHERE clan_id = ?').run(id);

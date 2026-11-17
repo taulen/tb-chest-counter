@@ -62,12 +62,13 @@ export interface GameArtImage {
  * What we extract changes when we start using a new kind of image (2: captain
  * portraits; 3: the Ancients artifacts and boss; 4: unit-icon frames from the
  * WebGL client; 5: captains' artifacts and equipment; 6: clan logo layers,
- * medal and ranking icons, every item icon — Nov 2026). Bump this with
+ * medal and ranking icons, every item icon; 7: captains' full-body art
+ * (`_scaled`) and their tile pieces — Nov 2026). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 6;
+export const ART_SELECTION_VERSION = 7;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */

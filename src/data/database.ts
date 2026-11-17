@@ -2101,6 +2101,41 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    // v118 — artifact history records line-up moves. Only artifacts on the
+    // three line-up captains are visible (city field 14), so "first seen"
+    // after a player's baseline means INTO the line-up, not a new artifact,
+    // and a drop means OUT of it (user, Nov 2026: Princess of Chaos swapped
+    // captains). in_lineup = 1 on every row so far; a 0 row marks it leaving.
+    // Guarded: runMigrations may replay this.
+    version: 118,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(game_player_artifact_history)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'in_lineup')) {
+        database.exec('ALTER TABLE game_player_artifact_history ADD COLUMN in_lineup INTEGER NOT NULL DEFAULT 1');
+      }
+    },
+  },
+  {
+    // v119 — the Total Battle account each clan's scanner signs in with (the
+    // website user id `tb:<n>`, and the game player id once a scan saw it).
+    // Clans on different accounts scan in parallel; clans on one account stay
+    // in one lane (scheduler/scan-lanes.ts). Learned by the 30-minute session
+    // check from the stored login and by every scan; cleared when a new login
+    // is saved, until it is learned again. IF NOT EXISTS: replay-safe.
+    version: 119,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS clan_scan_accounts (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          account TEXT NOT NULL,
+          player_id INTEGER,
+          source TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+    },
+  },
+  {
     // v122 — the in-game chat digest's language per clan (en default; es,
     // fr, ru, de). Built in parallel with other branches: renumber at merge.
     // PRAGMA-guarded: runMigrations may replay this.

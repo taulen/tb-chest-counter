@@ -6,14 +6,15 @@ const DUE = { scanning: false, due: true, nextScanInMs: null };
 const OFF = { scanning: false, due: false, nextScanInMs: null };
 function resolveClanScanSchedule(input) {
     const { clanId, now } = input;
-    if (input.scanningClanId === clanId)
+    if (input.scanningClanId === clanId || input.scanningClanIds?.includes(clanId))
         return SCANNING;
     const pos = input.cycleOrder.indexOf(clanId);
     if (pos !== -1) {
         // Done this cycle. The real timer is armed from the cycle's END, so a full
         // interval from now is a lower bound that corrects itself the moment the
         // cycle finishes.
-        if (pos < input.cycleDoneCount)
+        const done = input.doneClanIds ? input.doneClanIds.includes(clanId) : pos < input.cycleDoneCount;
+        if (done)
             return { scanning: false, due: false, nextScanInMs: input.intervalMs };
         // Still ahead in this cycle, or up next.
         return DUE;

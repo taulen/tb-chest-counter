@@ -146,8 +146,12 @@ const CITY_BATCH = 20;
  * version per clan (game_parse_markers) — bump a version when that parsing
  * changes, and every archived read is re-parsed on the next scan.
  */
-exports.CITY_PARSERS = { artifacts: 1, equipment: 1 };
-/** Artifacts (field 14) and captain equipment (fields 9 + 10) of one city read. */
+// heroEquipment (Nov 2026): the hero's gear — field 9's entry id 1 — was left
+// out; one re-read of the archive gives it history from the first archived read
+// without touching the captains' equipment history already stored.
+exports.CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1 };
+const HERO_ONLY = new Set([equipment_js_1.HERO_ENTRY_ID]);
+/** Artifacts (field 14) and the hero's and captains' equipment (fields 9 + 10) of one city read. */
 function saveCityGear(clanId, playerId, city, names, at, only) {
     let changed = 0;
     // A reply without effects / items is malformed, not "nothing worn" — skip it
@@ -155,9 +159,10 @@ function saveCityGear(clanId, playerId, city, names, at, only) {
     if ((!only || only.has('artifacts')) && city.effects.length && names.artifacts) {
         changed += (0, game_protocol_repo_js_1.saveArtifacts)(clanId, playerId, (0, artifacts_js_1.artifactsFromEffects)(city.effects, names.artifacts), at);
     }
-    if ((!only || only.has('equipment')) && city.items.length) {
-        const captains = city.captains.filter((c) => names.captains?.[String(c.id)]);
-        changed += (0, game_protocol_repo_js_1.saveCaptainEquipment)(clanId, playerId, (0, equipment_js_1.captainEquipment)(captains, city.items), at);
+    const allGear = !only || only.has('equipment');
+    if ((allGear || only?.has('heroEquipment')) && city.items.length) {
+        const wearers = city.captains.filter((c) => c.id === equipment_js_1.HERO_ENTRY_ID || names.captains?.[String(c.id)]);
+        changed += (0, game_protocol_repo_js_1.saveCaptainEquipment)(clanId, playerId, (0, equipment_js_1.captainEquipment)(wearers, city.items), at, allGear ? undefined : HERO_ONLY);
     }
     return changed;
 }

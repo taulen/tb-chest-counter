@@ -32,6 +32,13 @@ export interface ClanScanScheduleInput {
   cycleDoneCount: number;
   /** The clan whose chest scan is running right now (post-scan phases excluded), or null. */
   scanningClanId: number | null;
+  /**
+   * With parallel lanes (scan-lanes.ts) clans finish out of order: the clans
+   * of the cycle that are finished, and every clan scanning now. When given
+   * they replace cycleDoneCount / scanningClanId.
+   */
+  doneClanIds?: readonly number[];
+  scanningClanIds?: readonly number[];
 }
 
 export interface ClanScanSchedule {
@@ -48,13 +55,14 @@ const OFF: ClanScanSchedule = { scanning: false, due: false, nextScanInMs: null 
 
 export function resolveClanScanSchedule(input: ClanScanScheduleInput): ClanScanSchedule {
   const { clanId, now } = input;
-  if (input.scanningClanId === clanId) return SCANNING;
+  if (input.scanningClanId === clanId || input.scanningClanIds?.includes(clanId)) return SCANNING;
   const pos = input.cycleOrder.indexOf(clanId);
   if (pos !== -1) {
     // Done this cycle. The real timer is armed from the cycle's END, so a full
     // interval from now is a lower bound that corrects itself the moment the
     // cycle finishes.
-    if (pos < input.cycleDoneCount) return { scanning: false, due: false, nextScanInMs: input.intervalMs };
+    const done = input.doneClanIds ? input.doneClanIds.includes(clanId) : pos < input.cycleDoneCount;
+    if (done) return { scanning: false, due: false, nextScanInMs: input.intervalMs };
     // Still ahead in this cycle, or up next.
     return DUE;
   }
