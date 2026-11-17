@@ -26,9 +26,11 @@
  *     the restore must land on the row the live database already has rather than
  *     mint a second one. Only the rows this clan actually referenced are
  *     considered; a restore should not import chest names the install never saw.
- *     Chest names go through `correctChestName` on the way in, so a historical
- *     spelling lands on the canonical row instead of being re-created as a
- *     duplicate that `cleanupChestNames` would have to merge on the next boot.
+ *     A chest lands on the live row of the same name, or else on the oldest
+ *     live row it folds onto (accents, case, spacing, punctuation — `despace`),
+ *     so an older spelling ("Jormungandr's Chest") joins the live chest instead
+ *     of being re-created as a duplicate next to it. Only a chest the install
+ *     has never held is added, under the backup's own spelling and type.
  *
  * Foreign keys stay ON throughout and the whole thing is one transaction: a
  * mapping mistake aborts the restore rather than writing half a clan.
@@ -64,7 +66,8 @@ import path from 'path';
 import zlib from 'zlib';
 import Database from 'better-sqlite3';
 import { getDb, syncSourceRarities } from './database.js';
-import { correctChestName, getChestRarity } from './chest-names.js';
+import { declaredChestType } from './chest-names.js';
+import { despace } from '../utils/name-normalize.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('clan-restore');
@@ -398,7 +401,7 @@ export function restoreClanFromBackup(
       record('clans', 1);
 
       // ── 2. Global reference tables, by name ───────────────────────────────
-      // Only the rows this clan referenced, canonicalised on the way in.
+      // Only the rows this clan referenced, landed on the live spelling.
       const usedChestIds = db.prepare(
         `SELECT DISTINCT chest_id AS id FROM ${SRC}.chest_records WHERE clan_id = @c
          UNION SELECT DISTINCT chest_id FROM ${SRC}.triumphal_chest_records WHERE clan_id = @c`,
@@ -407,29 +410,39 @@ export function restoreClanFromBackup(
       if (usedChestIds.length > 0) {
         const idList = usedChestIds.map((r) => r.id).join(',');
         const srcChests = db.prepare(
-          `SELECT id, name FROM ${SRC}.chests WHERE id IN (${idList})`,
-        ).all() as { id: number; name: string }[];
-        const insertChest = db.prepare(
-          'INSERT OR IGNORE INTO main.chests (name, chest_type) VALUES (?, ?)',
-        );
-        let added = 0;
-        for (const c of srcChests) {
-          const canonical = correctChestName(c.name);
-          added += insertChest.run(canonical, getChestRarity(canonical)).changes;
-        }
-        record('chests', added);
+          `SELECT id, name, chest_type FROM ${SRC}.chests WHERE id IN (${idList}) ORDER BY id`,
+        ).all() as { id: number; name: string; chest_type: string }[];
 
-        // The map pairs the SOURCE id with the live row for the CANONICAL
-        // spelling, so a record captured under an old name lands on the right
-        // chest instead of resurrecting the variant.
+        // The map pairs the SOURCE id with the live row of the same chest, so a
+        // record captured under an older spelling lands on the right chest
+        // instead of resurrecting the variant. Oldest live row first, the
+        // spelling the scan resolves a game name to as well.
+        const liveExact = new Map<string, number>();
+        const liveFolded = new Map<string, number>();
+        const remember = (name: string, id: number): void => {
+          liveExact.set(name, id);
+          const k = despace(name);
+          if (k && !liveFolded.has(k)) liveFolded.set(k, id);
+        };
+        for (const r of db.prepare('SELECT id, name FROM main.chests ORDER BY id').all() as { id: number; name: string }[]) {
+          remember(r.name, r.id);
+        }
+        const insertChest = db.prepare(
+          'INSERT INTO main.chests (name, chest_type) VALUES (?, ?) RETURNING id',
+        );
         db.prepare('CREATE TEMP TABLE map_chest (old INTEGER PRIMARY KEY, new INTEGER NOT NULL)').run();
         const insertMap = db.prepare('INSERT INTO temp.map_chest (old, new) VALUES (?, ?)');
-        const liveChestId = db.prepare('SELECT id FROM main.chests WHERE name = ?');
+        let added = 0;
         for (const c of srcChests) {
-          const live = liveChestId.get(correctChestName(c.name)) as { id: number } | undefined;
-          if (!live) throw new Error(`Could not map chest "${c.name}" into the live chests table`);
-          insertMap.run(c.id, live.id);
+          let id = liveExact.get(c.name) ?? liveFolded.get(despace(c.name));
+          if (id === undefined) {
+            id = (insertChest.get(c.name, declaredChestType(c.name) ?? c.chest_type) as { id: number }).id;
+            remember(c.name, id);
+            added++;
+          }
+          insertMap.run(c.id, id);
         }
+        record('chests', added);
       } else {
         db.prepare('CREATE TEMP TABLE map_chest (old INTEGER PRIMARY KEY, new INTEGER NOT NULL)').run();
       }
@@ -569,9 +582,9 @@ export function restoreClanFromBackup(
 
       // OR IGNORE for one reason only: `chest_records` has
       // UNIQUE(session_id, member_id, chest_id, captured_at), and two historical
-      // spellings can canonicalise onto the same live chest. A row that collides
-      // is the same physical chest read twice, so dropping it is the correct
-      // outcome — `cleanupChestNames` resolves the identical merge the same way.
+      // spellings can land on the same live chest. A row that collides is the
+      // same physical chest read twice, so dropping it is the correct outcome —
+      // migration v61 resolved the identical merge the same way.
       // It never masks a foreign-key problem: SQLite's conflict clauses do not
       // apply to FK violations, which still abort the whole restore.
       for (const table of ['chest_records', 'triumphal_chest_records']) {

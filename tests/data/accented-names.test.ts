@@ -1,46 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { correctChestName, getChestRarity } from '../../src/data/chest-names.js';
 import { canonicalSourceKey, getSourceKey } from '../../src/data/source-names.js';
-import { foldDiacritics, ocrNormalize } from '../../src/utils/name-normalize.js';
+import { foldDiacritics } from '../../src/utils/name-normalize.js';
 
 /**
  * An accent must FOLD onto its base letter, never be deleted.
  *
  * The strip-don't-fold bug was visible in production: the game's "Jörmungandr" reached the
- * chest catalog as "jrmungandrs chest" against a catalog entry of "jormungandrs chest", so
- * one missing letter kept them apart and the same chest was recorded under two names — 57
- * rows as "Jormungandr's Chest", 24 as "Jörmungandr's Chest", each scoring separately. The
- * source-key slug had the identical hole and produced "epic j rmungandr squad".
+ * (since retired) chest catalog as "jrmungandrs chest" against a catalog entry of
+ * "jormungandrs chest", so one missing letter kept them apart and the same chest was
+ * recorded under two names. The source-key slug had the identical hole and produced
+ * "epic j rmungandr squad".
  */
-describe('accented characters in OCR names', () => {
+describe('accented characters in names', () => {
   it('folds a diacritic onto its base letter rather than dropping it', () => {
     expect(foldDiacritics('Jörmungandr')).toBe('Jormungandr');
     expect(foldDiacritics('LORD DRÁCON')).toBe('LORD DRACON');
     expect(foldDiacritics('SABÃO II')).toBe('SABAO II');
     expect(foldDiacritics('chaφs')).toBe('chaφs'); // not a diacritic — left alone
-  });
-
-  it('normalises an accented chest name onto the same form as its plain spelling', () => {
-    expect(ocrNormalize("Jörmungandr's Chest")).toBe(ocrNormalize("Jormungandr's Chest"));
-  });
-
-  describe('chest names', () => {
-    it('maps both spellings onto the one catalog name', () => {
-      // The game spells it with the umlaut, so that is canonical — and the plain reading
-      // still has to land on it.
-      expect(correctChestName("Jörmungandr's Chest")).toBe("Jörmungandr's Chest");
-      expect(correctChestName("Jormungandr's Chest")).toBe("Jörmungandr's Chest");
-    });
-
-    it('gives both spellings the same rarity, so scoring cannot diverge', () => {
-      expect(getChestRarity("Jörmungandr's Chest")).toBe(getChestRarity("Jormungandr's Chest"));
-    });
-
-    it('still refuses to map an unrelated name onto a catalog entry', () => {
-      // Folding must not make the matcher greedier: this is not a catalog chest and has to
-      // survive as itself so the review queue picks it up.
-      expect(correctChestName('Zärgothian Trinket')).toBe('Zärgothian Trinket');
-    });
   });
 
   describe('source keys', () => {

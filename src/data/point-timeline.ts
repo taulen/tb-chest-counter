@@ -44,8 +44,8 @@ export interface OverrideWrite {
 export function makeCacheKey(sourceKey: string, chestName: string): string {
   // Canonicalize the source part (space-insensitive) so overrides match
   // regardless of whether the source was OCR'd with spaces (Tesseract /
-  // historical) or without (PaddleOCR). The chest name is already canonical
-  // via correctChestName, so it's compared verbatim. See canonicalSourceKey.
+  // historical) or without (PaddleOCR). The chest name is the stored one
+  // (the game's own spelling), so it's compared verbatim. See canonicalSourceKey.
   return `${canonicalSourceKey(sourceKey)}\t${chestName}`;
 }
 

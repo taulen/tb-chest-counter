@@ -22,8 +22,8 @@
  *    per-chest drill-down, every audit view, and a member's own chest history.
  *    The clan does hold these chests; the events page shows who received them.
  *
- * Resolution is deliberately forgiving in the same three tiers as
- * resolvePredicate (exact → correctChestName → accent/case/punctuation fold),
+ * Resolution is deliberately forgiving in the same two tiers as
+ * resolvePredicate (exact → accent/case/punctuation fold),
  * because the failure mode here is the mirror image of the Ragnarok zero and
  * worse: a stranded name doesn't blank a column, it silently puts 1006 chests
  * back onto one member's record where they look like a real result. So an
@@ -32,7 +32,6 @@
 
 import { getDb } from './database.js';
 import { EVENT_CATALOG } from '../config/event-catalog.js';
-import { correctChestName } from './chest-names.js';
 import { foldDiacritics } from '../utils/name-normalize.js';
 import { childLogger } from '../utils/logger.js';
 
@@ -76,7 +75,7 @@ export function clanRewardChestNames(): string[] {
  * row moments before the post-scan rollup rebuild.
  */
 export function clanRewardChestIds(): number[] {
-  const rows = getDb().prepare('SELECT id, name FROM chests').all() as Array<{
+  const rows = getDb().prepare('SELECT id, name FROM chests ORDER BY id').all() as Array<{
     id: number;
     name: string;
   }>;
@@ -96,9 +95,7 @@ export function clanRewardChestIds(): number[] {
       ids.push(exact);
       continue;
     }
-    const corrected = correctChestName(name);
-    const hit =
-      (corrected !== name ? byExact.get(corrected) : undefined) ?? byFold.get(foldKey(name));
+    const hit = byFold.get(foldKey(name));
     if (hit !== undefined) {
       ids.push(hit);
       warnOnce(

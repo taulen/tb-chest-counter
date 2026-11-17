@@ -443,7 +443,8 @@ export function addMergeRule(
           db.prepare('DELETE FROM chests WHERE id = ?').run(fromRow.id);
         }
 
-        // No name-keyed config moves here, unlike cleanupChestNames: this branch
+        // No name-keyed config moves here (the retired boot-time chest rename
+        // pass, cleanupChestNames, did move it): this branch
         // is clan-scoped and deliberately leaves triumphal records on the old
         // `chests` row (above). triumphal_chest_points is GLOBAL — no clan_id —
         // (source_point_overrides is per clan since v86, but is left for the same

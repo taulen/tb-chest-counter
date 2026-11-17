@@ -121,7 +121,7 @@ async function recordAndClaim(ctx, d) {
             unnamed.add(g.giftType);
         const chestName = (0, merge_repo_js_1.applyMergeRulesCached)(chestMerge, stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`));
         const source = (0, merge_repo_js_1.applyMergeRulesCached)(sourceMerge, stored(sourceNames, g.sourceName));
-        const chestType = (0, chest_names_js_1.getChestRarity)(chestName);
+        const chestType = (0, chest_names_js_1.chestTypeFor)(chestName);
         const senderName = g.senderName || d.byId.get(g.senderId)?.name || '';
         const memberId = memberFor(g.senderId, senderName) ?? memberFor(0, UNKNOWN_SENDER);
         if (memberId === null) {
@@ -144,7 +144,6 @@ async function recordAndClaim(ctx, d) {
                 pointValue,
                 capturedAt: ctx.nextCapturedAt(),
                 earnedAt,
-                confidence: 1,
                 gameGiftId: g.giftId,
             };
             const inserted = tab === 2 ? triumphalChestRepo.insertChest(row) : chestRepo.insertChest(row);
@@ -152,7 +151,7 @@ async function recordAndClaim(ctx, d) {
                 continue;
             const entry = {
                 playerName: row.playerName, chestName, chestType, source, timeLeft: '',
-                giftTab: tab === 2 ? 'triumphal' : 'gifts', quantity: 1, confidence: 1,
+                giftTab: tab === 2 ? 'triumphal' : 'gifts', quantity: 1,
             };
             if (tab === 2) {
                 tally.triumphal.push(entry);

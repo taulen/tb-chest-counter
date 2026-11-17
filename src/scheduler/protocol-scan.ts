@@ -35,14 +35,14 @@ import {
   listResourceTypes,
   UNTRACKED_RESOURCE_SLUGS,
 } from '../data/repositories/resource-repo.js';
-import { getChestRarity } from '../data/chest-names.js';
+import { chestTypeFor } from '../data/chest-names.js';
 import { normalizeGiftText } from '../game-protocol/gift-text.js';
 import { parseClaimRewards } from '../game-protocol/messages.js';
 import { ledgerToRows } from '../game-protocol/ledger-rows.js';
 import { makeMemberResolver } from '../game-protocol/member-sync.js';
 import type { CaptureData } from './game-protocol-phase.js';
 import type { NamedGift } from '../data/repositories/game-protocol-repo.js';
-import type { ChestRecord, GiftEntry } from '../models/types.js';
+import type { GiftEntry } from '../models/types.js';
 import { childLogger } from '../utils/logger.js';
 import { CLAIM_GAP, requestGap } from '../utils/request-gap.js';
 import { planGiftClaims } from '../game-protocol/claim-plan.js';
@@ -118,7 +118,7 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     if (!g.chestName) unnamed.add(g.giftType);
     const chestName = applyMergeRulesCached(chestMerge, stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`));
     const source = applyMergeRulesCached(sourceMerge, stored(sourceNames, g.sourceName));
-    const chestType = getChestRarity(chestName) as ChestRecord['chestType'];
+    const chestType = chestTypeFor(chestName);
     const senderName = g.senderName || d.byId.get(g.senderId)?.name || '';
     const memberId = memberFor(g.senderId, senderName) ?? memberFor(0, UNKNOWN_SENDER);
     if (memberId === null) {
@@ -141,14 +141,13 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
         pointValue,
         capturedAt: ctx.nextCapturedAt(),
         earnedAt,
-        confidence: 1,
         gameGiftId: g.giftId,
       };
       const inserted = tab === 2 ? triumphalChestRepo.insertChest(row) : chestRepo.insertChest(row);
       if (!inserted) continue;
       const entry: GiftEntry = {
         playerName: row.playerName, chestName, chestType, source, timeLeft: '',
-        giftTab: tab === 2 ? 'triumphal' : 'gifts', quantity: 1, confidence: 1,
+        giftTab: tab === 2 ? 'triumphal' : 'gifts', quantity: 1,
       };
       if (tab === 2) {
         tally.triumphal.push(entry);

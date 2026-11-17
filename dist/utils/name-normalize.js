@@ -1,10 +1,10 @@
 "use strict";
 /**
- * Shared name-matching primitives: the normalizers used by the chest-name
- * matcher (data/chest-names.ts), the member-name matcher (utils/fuzzy.ts),
- * source keys and the merge rules. Much of the stored text was written by the
- * retired OCR scanner, so they stay tolerant of its misreads — homoglyphs,
- * digit/letter swaps, lost spaces — when matching names against it.
+ * Shared name-matching primitives: the normalizers used by the member-name
+ * matcher (utils/fuzzy.ts), source keys, the merge rules and the chest-name
+ * folds. Much of the stored text was written by the retired OCR scanner, so
+ * they stay tolerant of its misreads — homoglyphs, digit/letter swaps, lost
+ * spaces — when matching names against it.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.transliterateCyrillicHomoglyphs = transliterateCyrillicHomoglyphs;
@@ -12,18 +12,15 @@ exports.foldDiacritics = foldDiacritics;
 exports.despace = despace;
 exports.despaceKeepingCase = despaceKeepingCase;
 exports.namesDifferByAltSuffix = namesDifferByAltSuffix;
-exports.ocrNormalize = ocrNormalize;
 /**
  * Cyrillic glyphs that are visually identical (or nearly so) to Latin
  * letters. Tesseract with multi-language models loaded routinely picks
  * the Cyrillic glyph for individual chars in otherwise-Latin words —
  * "Stone" comes back as "Sтоnе" (mid-word т/о/е are Cyrillic), or a
  * known player "Andre" as "Аndre" (leading А is Cyrillic). Mapping
- * these onto their Latin lookalikes before fuzzy matching lets
- * `correctChestName` and `matchKnownPlayer` resolve the canonical form.
- * Uppercase forms cover both cases because `ocrNormalize` lowercases
- * first, but Cyrillic uppercase doesn't lowercase to ASCII — so we
- * list both.
+ * these onto their Latin lookalikes before matching lets the merge rules
+ * resolve the canonical form. Uppercase forms are listed too, because
+ * Cyrillic uppercase doesn't lowercase to ASCII.
  */
 const CYRILLIC_TO_LATIN = {
     // Uppercase
@@ -42,19 +39,6 @@ function transliterateCyrillicHomoglyphs(s) {
         out += CYRILLIC_TO_LATIN[ch] ?? ch;
     return out;
 }
-/**
- * Normalize a string for OCR-aware comparison. Maps characters that
- * Tesseract routinely confuses with each other onto a shared form,
- * strips apostrophes and non-alpha chars, then lowercases. The goal
- * is that "050" and "oSo" both normalize to the same string, and
- * "Priests Chest" matches "Priest's Chest". Also collapses Cyrillic
- * homoglyphs onto Latin so multi-lang Tesseract picking "Сtone" for
- * "Stone" still resolves correctly.
- *
- * Shared by correctChestName and matchKnownPlayer. Note this strips
- * every non-Latin character — for genuinely non-Latin names use
- * `normalizeNonLatin` instead.
- */
 /**
  * Fold accented Latin letters onto their base letter: ö → o, é → e, ç → c.
  *
@@ -113,9 +97,7 @@ function despaceKeepingCase(s) {
  * capture's OCR skeleton collapsed, and both came off the same live roster readings
  * ("mimo0000" for "mimooooo", "Me9rond" for "Megrond"). Leaving 9 out was enough to
  * make this rule reject that real pair, so the two sets stay in step: a digit
- * belongs here only when no letter genuinely looks like it. Note `ocrNormalize`
- * folds a smaller set (no 9→g) because it also deletes every digit afterwards, so
- * the difference never showed there.
+ * belongs here only when no letter genuinely looks like it.
  *
  * Order is preserved, so this is a signature rather than a set: "Player37" and
  * "Player73" have different ones.
@@ -164,7 +146,7 @@ function altKey(s) {
  *
  *   despaced keys      feli2 / feli    1 edit against a budget of 1   → merged
  *   ocrNormalize       "feli" / "feli" the 2 is DELETED, so this is
- *                                      an EXACT match, reached before
+ *   (since removed)                    an EXACT match, reached before
  *                                      any distance check at all      → merged
  *   sameOcrSkeleton    fell / fell     same, digits stripped          → merged
  *
@@ -223,17 +205,5 @@ function namesDifferByAltSuffix(a, b) {
     return shorter.length >= 3
         && longer.startsWith(shorter)
         && ALT_SUFFIX.test(longer.slice(shorter.length));
-}
-function ocrNormalize(s) {
-    return foldDiacritics(transliterateCyrillicHomoglyphs(s))
-        .toLowerCase()
-        .replace(/0/g, 'o') // 0 ↔ o (very common)
-        .replace(/5/g, 's') // 5 ↔ S
-        .replace(/1/g, 'l') // 1 ↔ l ↔ I
-        .replace(/!/g, 'i') // ! ↔ I
-        .replace(/8/g, 'b') // 8 ↔ B
-        .replace(/[^a-z ]/g, '') // strip apostrophes, digits-now-letters, punctuation
-        .replace(/\s+/g, ' ')
-        .trim();
 }
 //# sourceMappingURL=name-normalize.js.map

@@ -10,10 +10,11 @@
  * those silently, and every one of them fails the same way: a zero that looks
  * like a result. That is what took weeks to notice on the Events page.
  *
- * So the invariant this enforces is not "use ids everywhere" (the game exposes
- * no chest id — a name is the only thing that arrives from OCR, and
- * event-catalog.ts is a committed source file that cannot reference a
- * per-install autoincrement id). It is: a stranded reference must never be
+ * So the invariant this enforces is not "use ids everywhere" (the game's gift
+ * type is a chest AND a source, and rows from the OCR era arrived as read
+ * strings — a chest name is the only identity both share — and event-catalog.ts
+ * is a committed source file that cannot reference a per-install
+ * autoincrement id). It is: a stranded reference must never be
  * silent. Findings go to `log.warn`, which the System page already renders from
  * the 20-entry ring buffer — no new endpoint, no new card.
  *
@@ -26,7 +27,6 @@ exports.checkConfigIntegrity = checkConfigIntegrity;
 exports.reportConfigIntegrity = reportConfigIntegrity;
 const logger_js_1 = require("../utils/logger.js");
 const event_catalog_js_1 = require("../config/event-catalog.js");
-const chest_names_js_1 = require("./chest-names.js");
 const name_normalize_js_1 = require("../utils/name-normalize.js");
 const source_names_js_1 = require("./source-names.js");
 const log = (0, logger_js_1.childLogger)('config-integrity');
@@ -49,7 +49,7 @@ function checkConfigIntegrity(database) {
         return [];
     const findings = [];
     const add = (f) => { findings.push(f); };
-    const chests = database.prepare('SELECT id, name FROM chests').all();
+    const chests = database.prepare('SELECT id, name FROM chests ORDER BY id').all();
     const chestNames = new Set(chests.map((c) => c.name));
     const chestByFold = new Map();
     for (const c of chests) {
@@ -66,8 +66,7 @@ function checkConfigIntegrity(database) {
             for (const name of declared) {
                 if (chestNames.has(name))
                     continue;
-                const live = (chestNames.has((0, chest_names_js_1.correctChestName)(name)) ? (0, chest_names_js_1.correctChestName)(name) : undefined)
-                    ?? chestByFold.get(foldKey(name));
+                const live = chestByFold.get(foldKey(name));
                 if (live) {
                     // The Jörmungandr shape: the literal disagrees with a name the DB
                     // really carries. Unambiguous, and a one-line fix.
@@ -234,9 +233,11 @@ function checkConfigIntegrity(database) {
             fix: 'Merge them on the Merge Rules admin page. Migration v63 cleared the historical ones, so a new pair means one got past getOrCreateChestSourceId.',
         });
     }
-    // getOrCreateChestId has no canonical reuse scan (its chest_sources sibling
-    // does), so every OCR variant of a chest outside KNOWN_CHESTS mints its own
-    // row. Nothing has gone wrong yet; this is the guard that says when it does.
+    // The scan resolves a game name to the stored spelling that normalises the
+    // same (protocol-scan's storedNames), but getOrCreateChestId itself has no
+    // reuse scan (its chest_sources sibling does), so a spelling that gets past
+    // that fold mints its own row. Nothing has gone wrong yet; this is the guard
+    // that says when it does.
     const byChestFold = new Map();
     for (const c of chests) {
         const k = foldKey(c.name);
@@ -256,7 +257,7 @@ function checkConfigIntegrity(database) {
             severity: 'warning',
             subject: variants.join('" / "'),
             detail: 'One chest is stored under several spellings, splitting its records across two ids.',
-            fix: 'Merge them on the Merge Rules admin page, or add the canonical spelling to KNOWN_CHESTS so the boot-time rename pass folds them.',
+            fix: 'Merge them on the Merge Rules admin page.',
         });
     }
     return findings;

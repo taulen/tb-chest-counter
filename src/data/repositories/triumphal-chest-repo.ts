@@ -3,9 +3,9 @@ import type { ChestRecord } from '../../models/types.js';
 import type { ChestType } from '../../models/enums.js';
 import { getOrCreateChestId, getOrCreateChestSourceId } from './chest-repo.js';
 
-// Local conversion helpers — captured_at is INTEGER ms, confidence is
-// INTEGER 0–100 post-v30; the public surface still works with ISO
-// strings + 0.0–1.0 floats. Same shape as in chest-repo.ts.
+// Local conversion helpers — captured_at is INTEGER ms post-v30; the
+// public surface still works with ISO strings. Same shape as in
+// chest-repo.ts.
 function isoToMs(iso: string): number {
   return Date.parse(iso);
 }
@@ -53,7 +53,6 @@ function rowToChest(row: Record<string, unknown>): ChestRecord {
     pointValue: row.point_value as number,
     capturedAt: msToIso(row.captured_at as number),
     effectiveAt: msToIso((row.effective_at ?? row.captured_at) as number),
-    confidence: (row.confidence as number) / 100,
   };
 }
 
@@ -83,8 +82,8 @@ export function insertChest(
   const chestSourceId = getOrCreateChestSourceId(chest.chestSource);
   const result = db.prepare(`
     INSERT INTO triumphal_chest_records
-      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, earned_at, game_gift_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     chest.clanId,
     chest.sessionId,
@@ -93,7 +92,6 @@ export function insertChest(
     chestSourceId,
     chest.pointValue,
     isoToMs(chest.capturedAt),
-    Math.round(chest.confidence * 100),
     chest.earnedAt ?? null,
     chest.gameGiftId ?? null,
   );

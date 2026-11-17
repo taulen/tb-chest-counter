@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { childLogger } from '../utils/logger.js';
-import { correctChestName, getChestRarity, isHardcodedChestName, KNOWN_CHESTS, TRIUMPHAL_PACKAGE_POINTS } from './chest-names.js';
+import { declaredChestType, TRIUMPHAL_PACKAGE_POINTS } from './chest-names.js';
 import { getSourceKey, getSourceRarity, sourceSpellingKey, canonicalSourceKey } from './source-names.js';
 import { despace } from '../utils/name-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
@@ -940,8 +940,8 @@ const MIGRATIONS: Migration[] = [
   {
     // The per-clan rarity overrides went with the admin Chest Type card. Every
     // one was already written through to chests.chest_type when it was set, so
-    // nothing they said is lost; a chest's type is now declared in KNOWN_CHESTS
-    // (syncChestTypes) or comes from its crypt (v83).
+    // nothing they said is lost; a chest's type is now declared in CHEST_TYPES
+    // (chest-names.ts, syncChestTypes) or comes from its crypt (v83).
     version: 84,
     sql: 'DROP TABLE IF EXISTS chest_type_overrides;',
   },
@@ -2298,6 +2298,52 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v126 — the record views stop carrying `confidence` and `debug_crop_path`.
+    // Neither was ever a measurement anyone could read: the OCR gift parser
+    // hard-coded confidence 0.6 (every OCR row holds 60), the protocol scan
+    // wrote 1 (100) from Nov 17 2026 until this release, and the crop path
+    // belonged to the removed screenshot scanner. The columns stay on the
+    // tables — history is kept as recorded — but nothing reads them, and new
+    // rows leave them at their defaults. The views are otherwise as v83 (and
+    // the v72 baseline, for triumphal) left them. Replay-safe: dropped and
+    // rebuilt either way.
+    version: 126,
+    run: (database): void => {
+      database.exec(`
+        DROP VIEW IF EXISTS chest_records_v;
+        CREATE VIEW chest_records_v AS
+          SELECT
+            cr.id, cr.clan_id, cr.session_id,
+            m.name AS player_name,
+            cr.member_id,
+            ch.name AS chest_name, COALESCE(cs.rarity, ch.chest_type) AS chest_type,
+            COALESCE(cs.source, '') AS chest_source,
+            1 AS quantity,
+            cr.point_value, cr.captured_at, cr.effective_at,
+            cr.chest_id, cr.chest_source_id
+          FROM chest_records cr
+          JOIN members m ON m.id = cr.member_id
+          JOIN chests ch ON ch.id = cr.chest_id
+          LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id;
+        DROP VIEW IF EXISTS triumphal_chest_records_v;
+        CREATE VIEW triumphal_chest_records_v AS
+          SELECT
+            tr.id, tr.clan_id, tr.session_id,
+            m.name AS player_name,
+            tr.member_id,
+            ch.name AS chest_name, ch.chest_type,
+            COALESCE(cs.source, '') AS chest_source,
+            1 AS quantity,
+            tr.point_value, tr.captured_at, tr.effective_at,
+            tr.chest_id, tr.chest_source_id
+          FROM triumphal_chest_records tr
+          JOIN members m ON m.id = tr.member_id
+          JOIN chests ch ON ch.id = tr.chest_id
+          LEFT JOIN chest_sources cs ON cs.id = tr.chest_source_id;
+      `);
+    },
+  },
 ];
 
 /**
@@ -2354,116 +2400,17 @@ function runMigrations(database: Database.Database): void {
 
 
 /**
- * Reconcile chest names in the `chests` reference table against the
- * canonical list in chest-names.ts. Idempotent — does nothing on a
- * healthy DB. Picks up new entries to KNOWN_CHESTS / correctChestName
- * fixes the next time the server boots, by renaming the affected
- * `chests` row in place (or merging into an existing canonical row
- * if both happened to coexist).
- *
- * Not a schema migration; runs every startup as a small reconciliation
- * pass. Cheap (one row per distinct chest name).
- */
-function cleanupChestNames(database: Database.Database): void {
-  const rows = database.prepare(
-    'SELECT id, name FROM chests',
-  ).all() as { id: number; name: string }[];
-
-  let fixed = 0;
-  for (const row of rows) {
-    const corrected = correctChestName(row.name);
-    if (corrected === row.name) continue;
-
-    const rarity = getChestRarity(corrected);
-
-    const existing = database.prepare(
-      'SELECT id FROM chests WHERE name = ? AND id != ?',
-    ).get(corrected, row.id) as { id: number } | undefined;
-
-    if (existing) {
-      // OR IGNORE, then drop whatever could not move. chest_records has
-      // UNIQUE(session_id, member_id, chest_id, captured_at), and one scan really
-      // can hold several chests for one member at one instant — 180 such groups in
-      // production — so if the surviving chest is already there for that moment,
-      // the plain UPDATE throws SQLITE_CONSTRAINT. This runs inside initDatabase,
-      // so that is not a failed rename, it is an app that cannot boot. A row that
-      // collides is the same physical chest read under two spellings, so dropping
-      // it is the correct outcome rather than a loss — migration v61 does exactly
-      // this for the same merge and this path never learned it.
-      let moved = 0;
-      let dropped = 0;
-      for (const table of ['chest_records', 'triumphal_chest_records']) {
-        moved += database.prepare(
-          `UPDATE OR IGNORE ${table} SET chest_id = ? WHERE chest_id = ?`,
-        ).run(existing.id, row.id).changes;
-        dropped += database.prepare(
-          `DELETE FROM ${table} WHERE chest_id = ?`,
-        ).run(row.id).changes;
-      }
-      if (dropped > 0) {
-        log.info(
-          `Chest merge "${row.name}" → "${corrected}": ${moved} record(s) repointed, `
-          + `${dropped} exact duplicate(s) removed.`,
-        );
-      }
-      database.prepare('UPDATE chests SET chest_type = ? WHERE id = ?').run(rarity, existing.id);
-      database.prepare('DELETE FROM chests WHERE id = ?').run(row.id);
-    } else {
-      database.prepare(
-        'UPDATE chests SET name = ?, chest_type = ? WHERE id = ?',
-      ).run(corrected, rarity, row.id);
-    }
-
-    // Two tables keep the chest NAME as text rather than an id, so a rename here detaches
-    // whatever an admin configured against the old spelling: the override survives but points
-    // at a name no chest has, and shows up as a row with 0 chests. This is not hypothetical —
-    // it is the same failure the accent fold produced on the source-key side, and this helper
-    // has always renamed without carrying them.
-    //
-    // OR IGNORE first because each has a UNIQUE key on the name and a value may already exist
-    // under the corrected spelling; that one is the admin's own and wins. Whatever cannot move
-    // is then removed rather than left stranded.
-    for (const table of ['source_point_overrides', 'triumphal_chest_points']) {
-      database.prepare(
-        `UPDATE OR IGNORE ${table} SET chest_name = ? WHERE chest_name = ?`,
-      ).run(corrected, row.name);
-      database.prepare(`DELETE FROM ${table} WHERE chest_name = ?`).run(row.name);
-    }
-
-    // merge_rules is the third name-keyed table and the one nothing has ever
-    // carried. Only `to_value` moves: a chest rule is variant → canonical, so
-    // `from_value` IS the bad spelling and must keep pointing at it — that is the
-    // whole job of the rule. Repointing from_value too would collapse the rule
-    // onto itself, the self-loop cleanup would delete it, and the next scan would
-    // re-mint the `chests` row this rename just removed.
-    database.prepare(
-      "UPDATE merge_rules SET to_value = ? WHERE type = 'chest' AND to_value = ?",
-    ).run(corrected, row.name);
-    database.prepare(
-      "DELETE FROM merge_rules WHERE type = 'chest' AND from_value = to_value",
-    ).run();
-
-    fixed++;
-    log.info(`Fixed chest name: "${row.name}" → "${corrected}" (${rarity})`);
-  }
-
-  if (fixed > 0) {
-    log.info(`Cleaned up ${fixed} chest name variations`);
-  }
-}
-
-/**
- * Give every chest the type KNOWN_CHESTS declares for it. getOrCreateChestId
+ * Give every chest the type CHEST_TYPES declares for it. getOrCreateChestId
  * sets a type on first sight only, so without this a type changed in the
- * catalog never reached a chest already stored. Names the catalog doesn't
- * declare keep the type they were first stored with.
+ * list never reached a chest already stored. Names the list doesn't declare
+ * keep the type they were first stored with.
  */
 function syncChestTypes(database: Database.Database): void {
   const rows = database.prepare('SELECT id, name, chest_type FROM chests').all() as
     { id: number; name: string; chest_type: string }[];
   const update = database.prepare('UPDATE chests SET chest_type = ? WHERE id = ?');
   for (const row of rows) {
-    const declared = isHardcodedChestName(row.name) ? KNOWN_CHESTS[row.name] : undefined;
+    const declared = declaredChestType(row.name);
     if (declared && declared !== row.chest_type) update.run(declared, row.id);
   }
 }
@@ -2503,11 +2450,9 @@ export function initDatabase(dbPath: string): Database.Database {
 
   runMigrations(db);
   ensureSeedClan(db);
-  cleanupChestNames(db);
   syncChestTypes(db);
   syncSourceRarities(db);
-  // Right after the rename pass, so anything it just stranded is reported in the
-  // same breath. Read-only and never throws — see config-integrity.ts.
+  // Read-only and never throws — see config-integrity.ts.
   reportConfigIntegrity(db);
 
   // Self-heal stale "Manual review needed" banners on any scan session

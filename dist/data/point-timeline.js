@@ -37,8 +37,8 @@ const source_names_js_1 = require("./source-names.js");
 function makeCacheKey(sourceKey, chestName) {
     // Canonicalize the source part (space-insensitive) so overrides match
     // regardless of whether the source was OCR'd with spaces (Tesseract /
-    // historical) or without (PaddleOCR). The chest name is already canonical
-    // via correctChestName, so it's compared verbatim. See canonicalSourceKey.
+    // historical) or without (PaddleOCR). The chest name is the stored one
+    // (the game's own spelling), so it's compared verbatim. See canonicalSourceKey.
     return `${(0, source_names_js_1.canonicalSourceKey)(sourceKey)}\t${chestName}`;
 }
 /**

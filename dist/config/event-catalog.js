@@ -16,13 +16,14 @@
  * to pre-declare chests before they show up in the data.
  *
  * chestName values must match `chests.name` — the spelling the DB actually
- * holds, which is whatever `correctChestName` produces (see KNOWN_CHESTS in
- * src/data/chest-names.ts). Getting that wrong is silent: the rule resolves
- * to no chest ids and its column renders a permanent 0 that looks exactly like
- * "nobody did the event". Two things stop that now — tests/config/event-catalog.test.ts
- * fails the build if any name here disagrees with correctChestName, and
+ * holds, which is the game's own (docs/chest-identity.md). Getting that wrong
+ * is silent: the rule resolves to no chest ids and its column renders a
+ * permanent 0 that looks exactly like "nobody did the event". Three things stop
+ * that now — tests/config/chest-name-literals.test.ts fails the build if a name
+ * here is spelled differently from the same chest anywhere else in the code,
  * resolvePredicate in src/data/repositories/event-repo.ts folds a stale spelling
- * onto the live chest anyway and warns instead of silently dropping the rule.
+ * onto the live chest anyway and warns instead of silently dropping the rule,
+ * and checkConfigIntegrity reports it at boot.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EVENT_CATALOG = void 0;
@@ -77,9 +78,8 @@ exports.EVENT_CATALOG = [
         rules: [
             // Jörmungandr's Chest covers both the Jörmungandr Shop and the Epic
             // Jörmungandr squad kill (same chest name, different sources). Spell it
-            // with the umlaut — that is what `chests.name` holds; see the test in
-            // tests/config/event-catalog.test.ts, which pins every name here against
-            // correctChestName so the next rename cannot strand this rule again.
+            // with the umlaut — that is the game's name and what `chests.name`
+            // holds; the plain-o literal read 0 here for weeks.
             { chestName: "Jörmungandr's Chest", label: 'Jormungandr' },
             { chestName: "Fenrir's Chest", label: 'Fenrir' },
         ],

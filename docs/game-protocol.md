@@ -42,7 +42,9 @@ spelling already stored for it when `normalizeGiftText`
 ([`gift-text.ts`](../src/game-protocol/gift-text.ts)) matches (the OCR era
 stored "Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), then
 the clan's chest/source merge rules apply as before, so point values keep keying
-on the same names.
+on the same names. A chest's type (common … legendary, arena) stays the site's
+own `CHEST_TYPES`, not the item quality grade (T8 f10), which follows the crypt
+level rather than the chest — see [chest-identity.md](chest-identity.md#chest-types).
 
 Ledger → `resource_transactions` ([`ledger-rows.ts`](../src/game-protocol/ledger-rows.ts)):
 one row per entry (`game_entry_id` unique); kind 1 = clan payout (direction −1),

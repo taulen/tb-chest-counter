@@ -23,8 +23,8 @@
  *    per-chest drill-down, every audit view, and a member's own chest history.
  *    The clan does hold these chests; the events page shows who received them.
  *
- * Resolution is deliberately forgiving in the same three tiers as
- * resolvePredicate (exact → correctChestName → accent/case/punctuation fold),
+ * Resolution is deliberately forgiving in the same two tiers as
+ * resolvePredicate (exact → accent/case/punctuation fold),
  * because the failure mode here is the mirror image of the Ragnarok zero and
  * worse: a stranded name doesn't blank a column, it silently puts 1006 chests
  * back onto one member's record where they look like a real result. So an
@@ -36,7 +36,6 @@ exports.clanRewardChestIds = clanRewardChestIds;
 exports.clanRewardExclusionSql = clanRewardExclusionSql;
 const database_js_1 = require("./database.js");
 const event_catalog_js_1 = require("../config/event-catalog.js");
-const chest_names_js_1 = require("./chest-names.js");
 const name_normalize_js_1 = require("../utils/name-normalize.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('clan-rewards');
@@ -78,7 +77,7 @@ function clanRewardChestNames() {
  * row moments before the post-scan rollup rebuild.
  */
 function clanRewardChestIds() {
-    const rows = (0, database_js_1.getDb)().prepare('SELECT id, name FROM chests').all();
+    const rows = (0, database_js_1.getDb)().prepare('SELECT id, name FROM chests ORDER BY id').all();
     const byExact = new Map();
     const byFold = new Map();
     for (const row of rows) {
@@ -95,8 +94,7 @@ function clanRewardChestIds() {
             ids.push(exact);
             continue;
         }
-        const corrected = (0, chest_names_js_1.correctChestName)(name);
-        const hit = (corrected !== name ? byExact.get(corrected) : undefined) ?? byFold.get(foldKey(name));
+        const hit = byFold.get(foldKey(name));
         if (hit !== undefined) {
             ids.push(hit);
             warnOnce(name, `Clan-reward chest "${name}" is a stale spelling of a chest the database holds under `

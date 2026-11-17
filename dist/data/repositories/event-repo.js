@@ -20,7 +20,6 @@ const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const event_catalog_js_1 = require("../../config/event-catalog.js");
 const source_names_js_1 = require("../source-names.js");
-const chest_names_js_1 = require("../chest-names.js");
 const name_normalize_js_1 = require("../../utils/name-normalize.js");
 const log = (0, logger_js_1.childLogger)('event-repo');
 // One warn per (event, declared name) per process. Deliberately NOT log-throttle:
@@ -92,16 +91,17 @@ function columnLabelForRule(rule, index) {
  * plain-o literal matched nothing, the rule was dropped with a bare `return`,
  * and the column was emitted anyway as a permanent 0.
  *
- * Now it resolves in three tiers — exact, then through `correctChestName` (which
- * already knows the canonical spelling, so a rename self-heals the moment it
- * ships), then on an accent/case/punctuation-folded key — and records anything
- * that didn't land on tier 1 as a config error, so a stale literal still gets
- * the right number AND says it needs fixing. `hasMatches` is false when nothing
- * resolved at all; the errors are still populated so the caller can report why.
+ * Now it resolves in two tiers — exact, then on an accent/case/punctuation-folded
+ * key — and records anything that didn't land on tier 1 as a config error, so a
+ * stale literal still gets the right number AND says it needs fixing. (A third
+ * tier ran the literal through the OCR-era spelling corrector; chests arrive
+ * under the game's own names now, so there is nothing for it to correct.)
+ * `hasMatches` is false when nothing resolved at all; the errors are still
+ * populated so the caller can report why.
  */
 function resolvePredicate(def) {
     const db = (0, database_js_1.getDb)();
-    const allChests = db.prepare('SELECT id, name FROM chests').all();
+    const allChests = db.prepare('SELECT id, name FROM chests ORDER BY id').all();
     const byExact = new Map();
     const byFold = new Map();
     const chestIdToNameAll = new Map();
@@ -112,22 +112,19 @@ function resolvePredicate(def) {
         if (!k)
             continue;
         // Two rows folding to the same key shouldn't happen (config-integrity flags
-        // it if it ever does); prefer the canonical spelling, matching how migration
-        // v61 picks a survivor, so the tie-break can't disagree with the DB.
-        const held = byFold.get(k);
-        if (!held || ((0, chest_names_js_1.correctChestName)(c.name) === c.name && (0, chest_names_js_1.correctChestName)(held.name) !== held.name)) {
+        // it if it ever does); the oldest wins, the spelling the scan resolves a
+        // game name to (protocol-scan's storedNames, oldest row first).
+        if (!byFold.has(k))
             byFold.set(k, c);
-        }
     }
     const configErrors = [];
     const deadColumns = new Map();
-    /** Exact → corrected → folded. Records a config error for anything past tier 1. */
+    /** Exact → folded. Records a config error for anything past tier 1. */
     const resolveName = (declared) => {
         const exact = byExact.get(declared);
         if (exact)
             return exact;
-        const corrected = (0, chest_names_js_1.correctChestName)(declared);
-        const hit = (corrected !== declared ? byExact.get(corrected) : undefined) ?? byFold.get(foldKey(declared));
+        const hit = byFold.get(foldKey(declared));
         configErrors.push({ declared, resolvedTo: hit ? hit.name : null, kind: 'chest' });
         if (hit) {
             warnOnce(def.key, `Events catalog: "${declared}" is a stale spelling of "${hit.name}" — its chests are still `

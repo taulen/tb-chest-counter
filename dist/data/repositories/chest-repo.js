@@ -83,26 +83,18 @@ const log = (0, logger_js_1.childLogger)('chest-repo');
 // (which is what pins the synchronous event loop). Dropped immediately on
 // scan completion and other chest-data mutations via the invalidation hooks.
 exports.ANALYTICS_CACHE_TTL_MS = 15000;
-// ─── captured_at + confidence storage conversions ───
+// ─── captured_at storage conversions ───
 //
 // Post-v30 captured_at is stored as INTEGER ms-since-epoch (was a
-// 24-char ISO TEXT) and confidence is stored as INTEGER 0–100 (was
-// REAL 0.0–1.0). The application surface stays the same — repo
-// callers pass / receive ISO strings and 0.0–1.0 floats — and these
-// helpers convert at the boundary. Filter args (from / to) get the
-// same treatment so `WHERE captured_at >= ?` keeps comparing
-// numbers to numbers.
+// 24-char ISO TEXT). The application surface stays the same — repo
+// callers pass / receive ISO strings — and these helpers convert at the
+// boundary. Filter args (from / to) get the same treatment so
+// `WHERE captured_at >= ?` keeps comparing numbers to numbers.
 function isoToMs(iso) {
     return Date.parse(iso);
 }
 function msToIso(ms) {
     return new Date(ms).toISOString();
-}
-function confFloatToInt(f) {
-    return Math.round(f * 100);
-}
-function confIntToFloat(i) {
-    return i / 100;
 }
 /**
  * Convert an `MIN(captured_at)` / `MAX(captured_at)` SQLite aggregate
@@ -181,7 +173,6 @@ function rowToChest(row) {
         pointValue: row.point_value,
         capturedAt: msToIso(row.captured_at),
         effectiveAt: msToIso((row.effective_at ?? row.captured_at)),
-        confidence: confIntToFloat(row.confidence),
     };
 }
 /**
@@ -189,8 +180,8 @@ function rowToChest(row) {
  * Hot path during scans — gets called once per inserted chest.
  *
  * On the first time a chest is observed, `chest_type` is set from
- * `defaultType` (the catalog type for that name). Subsequent observations
- * leave it alone; a type declared later in KNOWN_CHESTS reaches the row
+ * `defaultType` (chestTypeFor, chest-names.ts). Subsequent observations
+ * leave it alone; a type declared later in CHEST_TYPES reaches the row
  * through syncChestTypes at boot.
  */
 function getOrCreateChestId(name, defaultType) {
@@ -262,9 +253,9 @@ function insertChest(chest) {
     try {
         const result = db.prepare(`
       INSERT INTO chest_records
-        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), confFloatToInt(chest.confidence), chest.earnedAt ?? null, chest.gameGiftId ?? null);
+        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, earned_at, game_gift_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), chest.earnedAt ?? null, chest.gameGiftId ?? null);
         return { id: result.lastInsertRowid, ...chest };
     }
     catch (err) {

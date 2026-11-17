@@ -110,11 +110,12 @@ export const SOURCE_POINT_KEYS: readonly string[] = Object.keys(SOURCE_POINTS);
  * table, then the source-wide default. Overrides always beat defaults — a
  * seeded value must never quietly outrank something an admin typed.
  *
- * Chest names must be the spelling `correctChestName` produces, for the same
- * reason event-catalog.ts must: `chests` rows are reconciled through it on
- * every boot, so a name this table spells differently is a name no row can
- * ever carry, and the entry would read as a silent 0-point default rather than
- * as an error. tests/config/source-points-seed.test.ts pins that.
+ * Chest names must be spelled exactly as the game spells them (what
+ * `chests.name` holds), for the same reason event-catalog.ts must: a name this
+ * table spells differently is a name no row carries, and the entry would read
+ * as a silent 0-point default rather than as an error.
+ * tests/config/chest-name-literals.test.ts keeps one spelling per chest across
+ * every hand-written list.
  */
 export const SOURCE_CHEST_POINTS: Record<string, Record<string, number>> = {
   'alchemy tournament': {
@@ -358,8 +359,7 @@ const SOURCE_POINTS_CANONICAL = new Map<string, number>(
 
 // Same canonical-form index for the per-chest table. Only the SOURCE key is
 // canonicalised: chest names are matched exactly, because a stored chest name
-// has already been through correctChestName and so carries the one spelling
-// this table is pinned against.
+// is the game's own spelling, the one this table is pinned against.
 const SOURCE_CHEST_POINTS_CANONICAL = new Map<string, number>(
   Object.entries(SOURCE_CHEST_POINTS).flatMap(([key, byName]) =>
     Object.entries(byName).map(

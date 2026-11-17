@@ -1,44 +1,48 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TRIUMPHAL_PACKAGE_POINTS = exports.TRIUMPHAL_CHEST_NAMES = exports.KNOWN_CHESTS = void 0;
-exports.cleanChestName = cleanChestName;
-exports.correctChestName = correctChestName;
-exports.getChestRarity = getChestRarity;
-exports.isHardcodedChestName = isHardcodedChestName;
+exports.TRIUMPHAL_PACKAGE_POINTS = exports.TRIUMPHAL_CHEST_NAMES = exports.CHEST_TYPES = void 0;
+exports.declaredChestType = declaredChestType;
+exports.chestTypeFor = chestTypeFor;
 const enums_js_1 = require("../models/enums.js");
-const name_normalize_js_1 = require("../utils/name-normalize.js");
 /**
- * Canonical chest names from TBChestTracker + in-game observations.
- * Maps exact chest name → rarity type. This is the one place a chest's type
- * is set: syncChestTypes (database.ts) applies it to stored chests on every
- * boot. A crypt's own rarity still wins per record (getSourceRarity).
+ * The site's type for every chest it does not count as common. Anything not
+ * listed is common — including the bottom rung of each ladder below (Common
+ * Chest of Wealth, Wooden Chest).
+ *
+ * Chest NAMES are not listed anywhere any more: every chest arrives from the
+ * game under the game's own name (protocol-scan.ts), so the old hand catalog
+ * and its OCR spelling corrections went with the screenshot scanner (Nov 2026).
+ *
+ * The TYPE stays ours, because the game has no equivalent. Its only grade is
+ * the item quality (T8 f10, the forge's ladder 1 Poor … 8 Godlike), checked
+ * against all 97 chest names stored on prod on Nov 17 2026:
+ *  - It belongs to a gift type — a chest AND a source — and follows the crypt
+ *    or monster LEVEL: Barbarian Chest is grade 2 from a Level 5 Crypt and 6
+ *    from a Level 25 one. Read as common (1–2), uncommon (3), rare (4), epic
+ *    (5), legendary (6+), 50 of the 97 names span several types, so no one
+ *    type per name can be read off it.
+ *  - The other 46 still aren't this categorisation: 36 would change — the
+ *    event chests to legendary (grades 6–8), Gladiator's Chest to common
+ *    (grade 1), every Bank chest one step up (Wooden 3 … Magic 8). Only the
+ *    Chests of Wealth line up.
+ * The part of a type the game does state per record — which kind of crypt a
+ * chest came from — is already taken from the game's source name
+ * (getSourceRarity, v83), and outranks the chest's own type on every record.
+ *
+ * syncChestTypes (database.ts) applies this to stored chests on every boot;
+ * the scan uses it for a chest's first record. Types are display categories
+ * (badges, the by-type breakdowns) — points key on (source, chest name), never
+ * on the type.
  */
-exports.KNOWN_CHESTS = {
-    // Common crypt chests
-    'Elegant Chest': enums_js_1.ChestType.COMMON,
-    'Fire Chest': enums_js_1.ChestType.COMMON,
-    'Forgotten Chest': enums_js_1.ChestType.COMMON,
-    'Cobra Chest': enums_js_1.ChestType.COMMON,
-    'Orc Chest': enums_js_1.ChestType.COMMON,
-    'Barbarian Chest': enums_js_1.ChestType.COMMON,
-    'Infernal Chest': enums_js_1.ChestType.COMMON,
-    'Mayan Chest': enums_js_1.ChestType.COMMON,
-    'Sand Chest': enums_js_1.ChestType.COMMON,
-    'Stone Chest': enums_js_1.ChestType.COMMON,
-    'Gnome Workshop Chest': enums_js_1.ChestType.COMMON,
-    'Carrot Chest': enums_js_1.ChestType.COMMON,
-    'Bone Chest': enums_js_1.ChestType.COMMON,
-    'Ore Chest': enums_js_1.ChestType.COMMON, // OCR misread of Orc Chest, but keep as fallback
-    // Wealth chests (clan)
-    'Common Chest of Wealth': enums_js_1.ChestType.COMMON,
+exports.CHEST_TYPES = {
+    // Clan wealth: typed by the rarity in its own name.
     'Uncommon Chest of Wealth': enums_js_1.ChestType.UNCOMMON,
     'Rare Chest of Wealth': enums_js_1.ChestType.RARE,
     'Epic Chest of Wealth': enums_js_1.ChestType.EPIC,
-    // Typed by the rarity in its own name, like the four above.
     'Legendary Chest of Wealth': enums_js_1.ChestType.LEGENDARY,
-    // Rare crypt chests
+    // Rare crypts.
     'Rare Dragon Chest': enums_js_1.ChestType.RARE,
-    // Epic crypt chests
+    // Epic crypts.
     "Ancient Warrior's Chest": enums_js_1.ChestType.EPIC,
     'Harpy Chest': enums_js_1.ChestType.EPIC,
     'Trillium Chest': enums_js_1.ChestType.EPIC,
@@ -56,170 +60,28 @@ exports.KNOWN_CHESTS = {
     'Turtle Chest': enums_js_1.ChestType.EPIC,
     "Priest's Chest": enums_js_1.ChestType.EPIC,
     'Pacified Mimic Chest': enums_js_1.ChestType.EPIC,
-    // Citadel chests
+    // Citadels.
     'Elven Citadel Chest': enums_js_1.ChestType.EPIC,
     'Cursed Citadel Chest': enums_js_1.ChestType.EPIC,
-    // Arena
+    // Arena.
     "Gladiator's Chest": enums_js_1.ChestType.ARENA,
-    // Triumphal / Bank
-    'Wooden Chest': enums_js_1.ChestType.COMMON,
+    // Triumphal / Bank, by package size (Wooden is common).
     'Bronze Chest': enums_js_1.ChestType.UNCOMMON,
     'Silver Chest': enums_js_1.ChestType.RARE,
     'Golden Chest': enums_js_1.ChestType.EPIC,
     'Precious Chest': enums_js_1.ChestType.LEGENDARY,
     'Magic Chest': enums_js_1.ChestType.LEGENDARY,
-    // Event / reward chests (seeded from catalog export)
-    "Ancients' Chest": enums_js_1.ChestType.COMMON,
-    'Arachne Chest': enums_js_1.ChestType.COMMON,
-    'Arcane Chest': enums_js_1.ChestType.COMMON,
-    'Ascendant Ashen Chest': enums_js_1.ChestType.COMMON,
-    "Azada's Chest": enums_js_1.ChestType.COMMON,
-    'Basilisk Chest': enums_js_1.ChestType.COMMON,
-    'Briareus Chest': enums_js_1.ChestType.COMMON,
-    'Chest of Authority': enums_js_1.ChestType.COMMON,
-    'Chimera Chest': enums_js_1.ChestType.COMMON,
-    'Cursed Chest': enums_js_1.ChestType.COMMON,
-    'Dark Omens chest': enums_js_1.ChestType.COMMON,
-    'Dark Omens ranking chest': enums_js_1.ChestType.COMMON,
-    'Easter Chest': enums_js_1.ChestType.COMMON,
-    'Elven Chest': enums_js_1.ChestType.COMMON,
-    'Epic Monster Chest': enums_js_1.ChestType.COMMON,
-    'Epic Omen Chest': enums_js_1.ChestType.EPIC,
-    'Fallen King Chest': enums_js_1.ChestType.COMMON,
-    "Fenrir's Chest": enums_js_1.ChestType.COMMON,
-    'Fire Hydra Chest': enums_js_1.ChestType.COMMON,
-    // All three Golden Guardian tiers, so an OCR variant folds onto the canonical
-    // spelling instead of minting a second `chests` row — getOrCreateChestId has no
-    // spelling-fold reuse scan of its own, and cleanupChestNames can only fold a bad
-    // row back if the good name is in here. Legendary was missing since it shipped;
-    // that left it (and the new Ascendant) parked in the Needs Review queue forever
-    // while Epic was filtered out, which is the visible half of "not tracked the same".
-    'Golden Guardian Ascendant Chest': enums_js_1.ChestType.COMMON,
-    'Golden Guardian Epic Chest': enums_js_1.ChestType.COMMON,
-    'Golden Guardian Legendary Chest': enums_js_1.ChestType.COMMON,
-    "Governor's Chest": enums_js_1.ChestType.COMMON,
-    'Great Hunt chest': enums_js_1.ChestType.COMMON,
-    // Lowercase "chest" is the game's own spelling, as with "Dark Omens chest".
-    "Hell's Blacksmith's chest": enums_js_1.ChestType.COMMON,
-    'Hermes Chest': enums_js_1.ChestType.COMMON,
-    'Inferno Chest': enums_js_1.ChestType.COMMON,
-    // The game spells it with the umlaut. Both readings still land here — ocrNormalize folds
-    // the accent, so "Jormungandr's Chest" matches this entry — and cleanupChestNames renames
-    // any row already stored the plain way on the next boot.
-    'Jörmungandr\'s Chest': enums_js_1.ChestType.COMMON,
-    // Second tier of the Ashen squad's reward, alongside Ascendant above —
-    // same pattern as the Golden Guardian tiers.
-    'Legendary Ashen Chest': enums_js_1.ChestType.COMMON,
-    'Lotus Chest': enums_js_1.ChestType.COMMON,
+    // Dark Omens summons (Minor Omen Chest is common).
     'Major Omen Chest': enums_js_1.ChestType.UNCOMMON,
-    "Merchant's Chest": enums_js_1.ChestType.COMMON,
-    'Minor Omen Chest': enums_js_1.ChestType.COMMON,
-    'Olympus Chest': enums_js_1.ChestType.COMMON,
-    'Olympus Elite Chest': enums_js_1.ChestType.COMMON,
-    'Prepared alchemical cauldron': enums_js_1.ChestType.COMMON,
-    'Quick March Chest': enums_js_1.ChestType.COMMON,
-    'Runic Chest': enums_js_1.ChestType.COMMON,
-    // Declared ahead of its first scan: the Sacred Rituals tournament already
-    // has a point value seeded, and pre-declaring a chest is supported (see
-    // checkConfigIntegrity, which returns nothing for a name with no records).
-    'Sacred Rituals Chest': enums_js_1.ChestType.COMMON,
-    'Sakura of Plenty Chest': enums_js_1.ChestType.COMMON,
-    'Sapphire Chest': enums_js_1.ChestType.COMMON,
-    'Shadow Chest': enums_js_1.ChestType.COMMON,
-    'Spoils of Dread Chest': enums_js_1.ChestType.COMMON,
-    'Tartaros Chest': enums_js_1.ChestType.COMMON,
-    'Undead Chest': enums_js_1.ChestType.COMMON,
-    'Union Chest': enums_js_1.ChestType.COMMON,
+    'Epic Omen Chest': enums_js_1.ChestType.EPIC,
 };
-/**
- * Strip common OCR artifacts and fix well-known letter swaps in a chest
- * name, WITHOUT matching against the `KNOWN_CHESTS` catalog. This is the
- * cleaning half of `correctChestName`, factored out so callers that must
- * NOT map to the catalog (the triumphal path — a triumphal row can never
- * be stored as e.g. "Runic Chest") can still normalise OCR noise before
- * storing a brand-new chest name.
- */
-function cleanChestName(ocrName) {
-    // Strip common OCR artifacts
-    let cleaned = ocrName
-        .replace(/^[\d\W]*\]\s*/, '') // "7] Orc Chest" → "Orc Chest"
-        .replace(/^["|'™]+\s*/, '') // '™ Barbarian Chest' → "Barbarian Chest"
-        .replace(/^[|=]+\s*/, '') // "| Elegant Chest" → "Elegant Chest"
-        .replace(/\.\s*$/, '') // "Fire Chest." → "Fire Chest"
-        .replace(/\s+/g, ' ')
-        .trim();
-    // Fix common OCR letter swaps
-    cleaned = cleaned
-        .replace(/^[Ss]arbarian/i, 'Barbarian') // s→B
-        .replace(/^Ore Chest$/i, 'Orc Chest') // e↔c
-        .replace(/^Ore chest$/i, 'Orc Chest')
-        .replace(/eplc/gi, 'epic') // eplc → epic
-        .replace(/^infernal/i, 'Infernal') // fix case
-        .replace(/^stone/i, 'Stone')
-        .replace(/^common /i, 'Common ')
-        .replace(/^uncommon /i, 'Uncommon ')
-        .replace(/^rare /i, 'Rare ');
-    return cleaned;
+/** The type CHEST_TYPES declares for this exact name, if any. */
+function declaredChestType(chestName) {
+    return Object.prototype.hasOwnProperty.call(exports.CHEST_TYPES, chestName) ? exports.CHEST_TYPES[chestName] : undefined;
 }
-/**
- * Fix OCR chest name by matching against known canonical names.
- * Strips common OCR artifacts and fuzzy-matches.
- */
-function correctChestName(ocrName) {
-    const cleaned = cleanChestName(ocrName);
-    // Exact match
-    if (exports.KNOWN_CHESTS[cleaned])
-        return cleaned;
-    // Case-insensitive match
-    const lower = cleaned.toLowerCase();
-    for (const name of Object.keys(exports.KNOWN_CHESTS)) {
-        if (name.toLowerCase() === lower)
-            return name;
-    }
-    // Fuzzy: check if any known name is contained in the OCR text
-    for (const name of Object.keys(exports.KNOWN_CHESTS)) {
-        if (lower.includes(name.toLowerCase()))
-            return name;
-    }
-    // Same fuzzy match again, but with full OCR-character normalization.
-    // Handles digit↔letter confusions (0↔o, 5↔S, 1↔l, !↔I, 8↔B) and
-    // stripped apostrophes ("Priests Chest" → "Priest's Chest"). Both
-    // the OCR text and the canonical names get normalized so confusions
-    // in either direction are caught.
-    const ocrNorm = (0, name_normalize_js_1.ocrNormalize)(cleaned);
-    for (const name of Object.keys(exports.KNOWN_CHESTS)) {
-        if (ocrNorm.includes((0, name_normalize_js_1.ocrNormalize)(name)))
-            return name;
-    }
-    // Space-insensitive containment — final, most-lenient tier. PaddleOCR emits
-    // words without inter-word spaces ("RunicChest") and glues the "Clan" icon
-    // badge onto the name row ("Clan RunicChest"), neither of which the
-    // space-preserving tiers above catch. Match on a space-stripped copy and,
-    // to avoid a shorter name matching inside a longer one ("Common Chest of
-    // Wealth" inside "Uncommon Chest of Wealth"), keep the LONGEST canonical
-    // name that appears as a substring.
-    const ocrNormNoSpace = ocrNorm.replace(/ /g, '');
-    if (ocrNormNoSpace) {
-        let bestName = '';
-        let bestLen = 0;
-        for (const name of Object.keys(exports.KNOWN_CHESTS)) {
-            const nameNorm = (0, name_normalize_js_1.ocrNormalize)(name).replace(/ /g, '');
-            if (nameNorm && nameNorm.length > bestLen && ocrNormNoSpace.includes(nameNorm)) {
-                bestLen = nameNorm.length;
-                bestName = name;
-            }
-        }
-        if (bestName)
-            return bestName;
-    }
-    return cleaned;
-}
-/**
- * Get the rarity type for a chest name.
- */
-function getChestRarity(chestName) {
-    const corrected = correctChestName(chestName);
-    return exports.KNOWN_CHESTS[corrected] ?? enums_js_1.ChestType.COMMON;
+/** A chest's type: the declared one, else common. */
+function chestTypeFor(chestName) {
+    return declaredChestType(chestName) ?? enums_js_1.ChestType.COMMON;
 }
 /**
  * The seeded set of triumphal (Bank Gifts tab) chest names. Historically
@@ -264,13 +126,4 @@ exports.TRIUMPHAL_PACKAGE_POINTS = {
     'Wooden Chest': 5,
     "Conqueror's Chest": 10,
 };
-/**
- * True when the chest name is in our hardcoded `KNOWN_CHESTS` map —
- * i.e. its rarity is already understood and the operator doesn't need
- * to review it. Used by the admin "Needs Review" queue to skip items
- * that are already part of the seeded catalog.
- */
-function isHardcodedChestName(name) {
-    return Object.prototype.hasOwnProperty.call(exports.KNOWN_CHESTS, name);
-}
 //# sourceMappingURL=chest-names.js.map
