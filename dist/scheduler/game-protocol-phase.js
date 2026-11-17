@@ -29,6 +29,7 @@ const client_js_1 = require("../game-protocol/client.js");
 const session_health_js_1 = require("./session-health.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
+const game_clan_repo_js_1 = require("../data/repositories/game-clan-repo.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
 const game_day_js_1 = require("../utils/game-day.js");
@@ -151,6 +152,88 @@ async function collectCaptureExtras(clanId, data, clanFrame) {
         log.warn({ noAlert: true }, `Clan #${clanId} game collection failed: ${String(err)}`);
     }
 }
+/** Ranking kind of message 23 that is wealth points (verified against the in-game list). */
+const RANKING_WEALTH = 7;
+/**
+ * The clan itself, every scan (Clan page): the Clan Capital (research, treasury,
+ * position), might and wealth points (25), help points (14003), the medals
+ * (28001) and the kingdom's wealth ranking (23) — the read-only requests the
+ * game sends whenever its clan window opens. Each one is isolated; whatever was
+ * read is stored, a stats row per scan. Returns a summary for the log line.
+ */
+async function collectClan(clanId, d, now) {
+    const rec = d.record;
+    const notes = [];
+    const capitalId = rec.capitalId;
+    let position = null;
+    let techChanges = 0;
+    if (capitalId !== null) {
+        // The archive first: research read before this table existed becomes the
+        // baseline, dated to when it was read, so the live read below records
+        // anything that moved since as a change.
+        if (!(0, game_clan_repo_js_1.hasClanTechs)(clanId)) {
+            const raw = (0, game_clan_repo_js_1.latestArchivedClanObject)(clanId, capitalId);
+            const old = raw ? (0, messages_js_1.parseClanCapital)({ type: 601, seq: 0, head: [601, 0], body: raw.body, children: [], events: [] }) : null;
+            if (raw && old && Object.keys(old.techs).length) {
+                (0, game_clan_repo_js_1.saveClanTechs)(clanId, old.techs, raw.capturedAt);
+                notes.push('research filled from the archive');
+            }
+        }
+        try {
+            const capital = (0, messages_js_1.parseClanCapital)(await d.client.city(capitalId));
+            if (capital) {
+                position = capital.position;
+                if (Object.keys(capital.techs).length)
+                    techChanges = (0, game_clan_repo_js_1.saveClanTechs)(clanId, capital.techs, now);
+                if (Object.keys(capital.treasury).length)
+                    (0, game_clan_repo_js_1.saveClanTreasury)(clanId, d.gameDate, capital.treasury, now);
+            }
+        }
+        catch (err) {
+            notes.push(`capital unreadable: ${String(err instanceof Error ? err.message : err)}`);
+        }
+    }
+    (0, game_clan_repo_js_1.saveClanInfo)(clanId, {
+        gameClanId: rec.clanId,
+        tag: rec.tag,
+        name: rec.name,
+        foundedAt: rec.foundedAt,
+        language: rec.language,
+        capitalId,
+        position,
+    }, now);
+    const raw = { record: (0, messages_js_1.plainWire)(rec.extra) };
+    const ask = async (label, fn) => {
+        try {
+            return await fn();
+        }
+        catch (err) {
+            notes.push(`${label} unreadable: ${String(err instanceof Error ? err.message : err)}`);
+            return null;
+        }
+    };
+    const stats = await ask('clan stats', async () => (0, messages_js_1.parseClanStats)(await d.client.clanStats(rec.clanId)));
+    if (stats)
+        raw.stats = stats.raw;
+    const border = capitalId !== null ? await ask('help points', async () => (0, messages_js_1.parseCapitalBorder)(await d.client.capitalBorder(capitalId))) : null;
+    if (border)
+        raw.border = border.raw;
+    const medals = await ask('medals', async () => (0, messages_js_1.parseClanMedals)(await d.client.clanMedals(rec.clanId)));
+    if (medals?.length)
+        (0, game_clan_repo_js_1.saveClanMedals)(clanId, medals, now);
+    const ranking = await ask('wealth ranking', async () => (0, messages_js_1.parseClanRanking)(await d.client.clanRanking(RANKING_WEALTH)));
+    (0, game_clan_repo_js_1.saveClanStats)(clanId, d.gameDate, {
+        members: rec.members.length,
+        memberLimit: rec.memberLimit,
+        // The clan record's own figure; message 25 carries the same number.
+        might: rec.might ?? stats?.might ?? null,
+        wealth: stats?.wealth ?? null,
+        helpPoints: border?.helpPoints ?? null,
+        wealthRank: ranking?.length ? (0, messages_js_1.rankIn)(ranking, rec.clanId) : null,
+        raw,
+    }, now);
+    return `clan: ${techChanges} research changes${notes.length ? ` (${notes.join('; ')})` : ''}`;
+}
 /**
  * Collect what we don't display yet but want history of — each part isolated,
  * so one failing never costs the others or the capture:
@@ -185,6 +268,12 @@ async function collectExtras(clanId, d, clanFrame) {
     }
     catch (err) {
         parts.push(`clan archive failed: ${String(err)}`);
+    }
+    try {
+        parts.push(await collectClan(clanId, d, now));
+    }
+    catch (err) {
+        parts.push(`clan pass failed: ${String(err)}`);
     }
     try {
         // What was already read comes first: a member with an archived city reply

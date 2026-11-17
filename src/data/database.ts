@@ -1694,6 +1694,85 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // The clan itself, from the game (Clan page):
+    //   game_clan_info          what the in-game Information tab shows and
+    //                           rarely changes: tag, name, founded, language,
+    //                           the Clan Capital and where it stands;
+    //   game_clan_stats         one row per scan: members / member limit,
+    //                           might, wealth points (25), help points (14003),
+    //                           rank by wealth (23); `raw` keeps every number
+    //                           read but not decoded yet;
+    //   game_clan_techs (+ _history)  the clan's research — Clan Capital
+    //                           field 17 — history only on change;
+    //   game_clan_treasury      the capital's treasury (field 5), the day's
+    //                           latest read per resource;
+    //   game_clan_medals        the Information tab's medals (28001).
+    // IF NOT EXISTS: runMigrations may replay this.
+    version: 111,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS game_clan_info (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          game_clan_id INTEGER NOT NULL,
+          tag TEXT NOT NULL DEFAULT '',
+          name TEXT NOT NULL DEFAULT '',
+          founded_at TEXT,
+          language TEXT,
+          capital_id INTEGER,
+          realm INTEGER,
+          capital_x INTEGER,
+          capital_y INTEGER,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS game_clan_stats (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          captured_at TEXT NOT NULL,
+          game_date TEXT NOT NULL,
+          members INTEGER,
+          member_limit INTEGER,
+          might INTEGER,
+          wealth INTEGER,
+          help_points INTEGER,
+          wealth_rank INTEGER,
+          raw TEXT,
+          PRIMARY KEY (clan_id, captured_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_game_clan_stats_day ON game_clan_stats (clan_id, game_date);
+        CREATE TABLE IF NOT EXISTS game_clan_techs (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          tech_id INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, tech_id)
+        );
+        CREATE TABLE IF NOT EXISTS game_clan_tech_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          tech_id INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, tech_id, changed_at)
+        );
+        CREATE TABLE IF NOT EXISTS game_clan_treasury (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          game_date TEXT NOT NULL,
+          resource_id INTEGER NOT NULL,
+          amount INTEGER NOT NULL,
+          captured_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, game_date, resource_id)
+        );
+        CREATE TABLE IF NOT EXISTS game_clan_medals (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          medal_id INTEGER NOT NULL,
+          earned_at TEXT,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, medal_id)
+        );
+      `);
+    },
+  },
 ];
 
 /**

@@ -13,6 +13,7 @@ exports.createGameRouter = createGameRouter;
 const express_1 = require("express");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
+const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
@@ -128,6 +129,39 @@ function createGameRouter() {
                 const { name, iconUrl } = describe(c.captainId);
                 return { ...c, name, iconUrl };
             }),
+        });
+    });
+    /**
+     * The clan as the game's clan window shows it (Clan page): the Information
+     * tab (tag, name, members / limit, might, founded, kingdom, capital, leader,
+     * medals), wealth and help points with a daily history, the Clan Capital's
+     * treasury, and the clan's research levels with their recent changes. The
+     * trees themselves come from /tech-trees (kind 'clan').
+     */
+    router.get('/clan', async (req, res) => {
+        const clanId = req.clanId;
+        const info = (0, game_clan_repo_js_1.getClanInfo)(clanId);
+        if (!info) {
+            res.json({ linked: false });
+            return;
+        }
+        const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
+        const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
+        const treasury = (0, game_clan_repo_js_1.getClanTreasury)(clanId);
+        res.json({
+            linked: true,
+            info: { ...info, leader: (0, game_clan_repo_js_1.getClanLeader)(clanId) },
+            stats: (0, game_clan_repo_js_1.getLatestClanStats)(clanId),
+            history: (0, game_clan_repo_js_1.getDailyClanStats)(clanId, since.slice(0, 10)),
+            treasury: {
+                ...treasury,
+                rows: treasury.rows.map((r) => ({ ...r, name: names?.gifts?.[String(r.resourceId)]?.chest ?? '' })),
+            },
+            medals: (0, game_clan_repo_js_1.getClanMedals)(clanId).map((m) => {
+                const g = names?.medals?.[String(m.medalId)];
+                return { ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '' };
+            }),
+            techs: { ...(0, game_clan_repo_js_1.getClanTechs)(clanId), changes: (0, game_clan_repo_js_1.getClanTechChanges)(clanId, since) },
         });
     });
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */

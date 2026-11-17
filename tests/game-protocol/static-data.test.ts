@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { encodeValues, type Wire } from '../../src/game-protocol/codec.js';
 import {
   TABLE_CAPTAINS,
+  TABLE_CLAN_MEDALS,
   TABLE_GIFT_TYPES,
   TABLE_HEROES,
   TABLE_MAP_OBJECTS,
@@ -105,6 +106,29 @@ describe('game names from static data', () => {
     const t = new Map(tables);
     t.set(TABLE_CAPTAINS, { 28: [28, 2, 3, 0, 1, 7, 0, helenStrings.length - 1, [], [], {}, {}, {}, 0] });
     expect(buildNames('v1', helenStrings, vectors, t, helen).captains['28'].name).toBe('Helen');
+  });
+
+  it('reads clan medals (T62): name, unlock text, tier and its label, icon', () => {
+    // Medal 23's real layout: f1 icon, f2 inactive icon, f3 requirement vector, f4 unlock text vector,
+    // f5 name vector (shared by the medal's tiers), f6 tier, f7 group, f8 threshold.
+    const medalStrings: Wire[] = [...strings, 'clan_medals.name.capitals_competition_bronze', 'clan_medals.description_unlock.capitals_competition_bronze', 'achievement_capitals_competition_bronze'];
+    const base = strings.length;
+    const medalVectors: Wire[] = [...vectors, [base], [base + 1]];
+    const medalEn = new Map([
+      ...en,
+      ['clan_medals.name.capitals_competition_bronze', 'Medal of Prosperity'],
+      ['clan_medals.description_unlock.capitals_competition_bronze', 'Clan members earned at least 1B points over the course of one Capital Challenge tournament.'],
+      ['client_config.value.goblet_bronze', 'Bronze'],
+    ]);
+    const t = new Map(tables);
+    t.set(TABLE_CLAN_MEDALS, { 23: [23, base + 2, 0, 0, vectors.length + 1, vectors.length, 1, 5, 1000000000, [2747], 1] });
+    expect(buildNames('v1', medalStrings, medalVectors, t, medalEn).medals?.['23']).toEqual({
+      name: 'Medal of Prosperity',
+      description: 'Clan members earned at least 1B points over the course of one Capital Challenge tournament.',
+      tier: 1,
+      tierName: 'Bronze',
+      icon: 'achievement_capitals_competition_bronze',
+    });
   });
 
   it('drops names that resolve to a JSON fragment', () => {

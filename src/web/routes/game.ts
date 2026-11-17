@@ -19,6 +19,16 @@ import {
   getPlayerTechChanges,
   getPlayerTechs,
 } from '../../data/repositories/game-profile-repo.js';
+import {
+  getClanInfo,
+  getClanLeader,
+  getClanMedals,
+  getClanTechChanges,
+  getClanTechs,
+  getClanTreasury,
+  getDailyClanStats,
+  getLatestClanStats,
+} from '../../data/repositories/game-clan-repo.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
 import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
 import { loadGameNames } from '../../game-protocol/static-data.js';
@@ -139,6 +149,40 @@ export function createGameRouter(): Router {
         const { name, iconUrl } = describe(c.captainId);
         return { ...c, name, iconUrl };
       }),
+    });
+  });
+
+  /**
+   * The clan as the game's clan window shows it (Clan page): the Information
+   * tab (tag, name, members / limit, might, founded, kingdom, capital, leader,
+   * medals), wealth and help points with a daily history, the Clan Capital's
+   * treasury, and the clan's research levels with their recent changes. The
+   * trees themselves come from /tech-trees (kind 'clan').
+   */
+  router.get('/clan', async (req, res) => {
+    const clanId = req.clanId!;
+    const info = getClanInfo(clanId);
+    if (!info) {
+      res.json({ linked: false });
+      return;
+    }
+    const names = await loadGameNames().catch(() => null);
+    const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
+    const treasury = getClanTreasury(clanId);
+    res.json({
+      linked: true,
+      info: { ...info, leader: getClanLeader(clanId) },
+      stats: getLatestClanStats(clanId),
+      history: getDailyClanStats(clanId, since.slice(0, 10)),
+      treasury: {
+        ...treasury,
+        rows: treasury.rows.map((r) => ({ ...r, name: names?.gifts?.[String(r.resourceId)]?.chest ?? '' })),
+      },
+      medals: getClanMedals(clanId).map((m) => {
+        const g = names?.medals?.[String(m.medalId)];
+        return { ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '' };
+      }),
+      techs: { ...getClanTechs(clanId), changes: getClanTechChanges(clanId, since) },
     });
   });
 

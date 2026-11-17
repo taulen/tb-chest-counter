@@ -111,6 +111,11 @@
   },
   {
     "type": "index",
+    "name": "idx_game_clan_stats_day",
+    "sql": "CREATE INDEX idx_game_clan_stats_day ON game_clan_stats (clan_id, game_date)"
+  },
+  {
+    "type": "index",
     "name": "idx_game_gifts_arrived",
     "sql": "CREATE INDEX idx_game_gifts_arrived ON game_gifts (clan_id, arrived_at)"
   },
@@ -478,6 +483,36 @@
     "type": "table",
     "name": "game_claims",
     "sql": "CREATE TABLE game_claims ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), session_id INTEGER NOT NULL, gift_id INTEGER NOT NULL, gift_type INTEGER NOT NULL, tab INTEGER NOT NULL, rewards TEXT NOT NULL, claimed_at TEXT NOT NULL , batch_size INTEGER NOT NULL DEFAULT 1, gift_ids TEXT)"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_info",
+    "sql": "CREATE TABLE game_clan_info ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), game_clan_id INTEGER NOT NULL, tag TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', founded_at TEXT, language TEXT, capital_id INTEGER, realm INTEGER, capital_x INTEGER, capital_y INTEGER, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_medals",
+    "sql": "CREATE TABLE game_clan_medals ( clan_id INTEGER NOT NULL REFERENCES clans(id), medal_id INTEGER NOT NULL, earned_at TEXT, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, medal_id) )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_stats",
+    "sql": "CREATE TABLE game_clan_stats ( clan_id INTEGER NOT NULL REFERENCES clans(id), captured_at TEXT NOT NULL, game_date TEXT NOT NULL, members INTEGER, member_limit INTEGER, might INTEGER, wealth INTEGER, help_points INTEGER, wealth_rank INTEGER, raw TEXT, PRIMARY KEY (clan_id, captured_at) )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_tech_history",
+    "sql": "CREATE TABLE game_clan_tech_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), tech_id INTEGER NOT NULL, level INTEGER NOT NULL, changed_at TEXT NOT NULL, PRIMARY KEY (clan_id, tech_id, changed_at) )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_techs",
+    "sql": "CREATE TABLE game_clan_techs ( clan_id INTEGER NOT NULL REFERENCES clans(id), tech_id INTEGER NOT NULL, level INTEGER NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, tech_id) )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_treasury",
+    "sql": "CREATE TABLE game_clan_treasury ( clan_id INTEGER NOT NULL REFERENCES clans(id), game_date TEXT NOT NULL, resource_id INTEGER NOT NULL, amount INTEGER NOT NULL, captured_at TEXT NOT NULL, PRIMARY KEY (clan_id, game_date, resource_id) )"
   },
   {
     "type": "table",

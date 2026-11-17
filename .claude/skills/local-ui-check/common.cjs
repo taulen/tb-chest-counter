@@ -13,6 +13,7 @@ const PAGES = {
   analytics: '/#analytics',
   leaderboard: '/#leaderboard',
   performance: '/#performance',
+  clan: '/#clan',
   members: '/#members',
   might: '/#might',
   events: '/#events',
