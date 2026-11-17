@@ -11,7 +11,6 @@ dist/**/*.map
 config.json
 # Local scratch: underscore-prefixed debug / one-off extraction scripts and
 # their image outputs (the maintained tooling lives in scripts/).
-_paddle_row*.png
 _debug_*.png
 _debug_*.mjs
 _extract_*.mjs
