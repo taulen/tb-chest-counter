@@ -1,13 +1,12 @@
-# Levels from chat (Admin → Member Data)
+# Levels from chat (retired Nov 2026)
 
-Players post their levels in the in-game chat, e.g. `taulen: G8/M8/S7/E8/C35/D284`. The letters are G Guardsmen, M Monsters, S Specialists, E Engineering, C Crypting and D Dragon. An admin pastes the chat, checks who each name is, and saves. Code: [member-levels-parse.ts](../src/data/member-levels-parse.ts), [member-levels-repo.ts](../src/data/repositories/member-levels-repo.ts), [routes/member-levels.ts](../src/web/routes/member-levels.ts), [member-levels.js](../src/web/public/pages/member-levels.js).
+Players used to post their levels in the in-game chat, e.g. `taulen: G8/M8/S7/E8/C35/D284` (G Guardsmen, M Monsters, S Specialists, E Engineering, C Crypting, D Dragon). Admin → Member Data had an import for them: paste the chat, check who each name is, save.
 
-- **Parsing.** The name is everything before the first `:`. After it, each of G, M, S, E, C and D (or the word "dragon") followed by a number is one level; separators, case and stray marks don't matter.
-  - The last value of a letter on a line wins, and a repeated player is merged field by field, with later lines winning.
-  - Out-of-range or number-less tokens ("E -12", "C/", a bare "/215") are ignored, never guessed at.
-- **Matching** is [name-resolver.ts](../src/data/name-resolver.ts), shared with the Tin Man paste: merge rules first, exact on everyone, then fuzzy matching with active members first, one member per paste. Nothing is saved until the admin has seen the matches (preview, then import).
-- **Dating.** An import is dated the game day it is saved; there is no date picker on purpose.
-- **Storage** (v82, `member_level_reports`): one row per member per import, every letter as reported (NULL = not said). It no longer sets the guards level: since Nov 2026 that is the Guardsmen tier from the member's research, read from the game ([guards-and-gold-pass.md](guards-and-gold-pass.md)). Until then G was also written as an admin guards entry for the donation estimate.
-  - FK: member_id cascades on delete, and a player merge repoints it. Clan delete and restore handle the table.
-- **Profile.** Only the Dragon level shows, as a stat beside the guards level ("posted in chat <date>"). Research covers the other letters.
-- **Reading.** Each member's latest value per letter (a later post that leaves a letter out keeps the old one), next to their guards level from research.
+**The import is gone (Nov 2026).** Every letter now comes from the game, for every linked member, every day, with history:
+
+- G / M / S / E and the crypt level: the troop tiers from the member's own research ([guards-and-gold-pass.md](guards-and-gold-pass.md), [member-tiers.ts](../src/data/member-tiers.ts)).
+- D: the Dragon itself, city field 26 — level, XP, evolution and the name the player gave it ([game-protocol.md](game-protocol.md#the-dragon-city-field-26-profile--captains)). It shows on the profile as the Dragon stat and on the Captains tab as the Dragon card, and its level-ups are on the Timeline.
+
+Removed with it: the parser, its repository and route (`/api/member-levels`), the admin card, its strings, and the profile's "posted in chat" Dragon stat.
+
+**Kept: the `member_level_reports` table (v82) and every row in it**, as the record of what players said. Nothing reads it any more. Clan delete and restore still handle the table, and a player merge still repoints its `member_id`, so its rows stay consistent; the audit log's `member_levels_import` entries keep their label on the Users page. [name-resolver.ts](../src/data/name-resolver.ts), which the import shared with the event standings paste, stays for that paste.

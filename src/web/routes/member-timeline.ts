@@ -71,6 +71,10 @@ export function createMemberTimelineRouter(opts: { names?: () => Promise<GameNam
       itemIconUrl: (type) => art(mappings?.equipment, type),
       heroName: (id) => names?.heroes?.[String(id)]?.name ?? '',
       heroAvatarUrl: (id) => heroAvatarUrl(id),
+      dragonIconUrl: (stage) => {
+        const icon = stage !== null ? names?.dragon?.stages?.[String(stage)]?.icon : undefined;
+        return icon ? gameArtUrl(safeArtName(icon)) : null;
+      },
     };
 
     const timeline = buildTimeline(src, look, loadConfig().gameDayRolloverUtcHour);

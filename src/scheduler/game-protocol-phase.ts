@@ -75,6 +75,7 @@ import {
   finishCaptureRun,
   hasRawSnapshot,
   saveCitySnapshot,
+  updateCityDragon,
   saveGifts,
   saveLedger,
   saveCityStatuses,
@@ -240,7 +241,9 @@ const CITY_BATCH = 20;
 // heroEquipment (Nov 2026): the hero's gear — field 9's entry id 1 — was left
 // out; one re-read of the archive gives it history from the first archived read
 // without touching the captains' equipment history already stored.
-export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1 } as const;
+// dragon (Nov 2026): field 26's evolution stage and name — the archived days'
+// snapshots get them, so the profile and the timeline need no new read.
+export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1 } as const;
 type CityParser = keyof typeof CITY_PARSERS;
 
 const HERO_ONLY: ReadonlySet<number> = new Set([HERO_ENTRY_ID]);
@@ -518,6 +521,7 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
         const city = parseCityRecord({ type: 601, seq: 0, head: [601, 0], body: raw.body as Wire[], children: [], events: [] });
         if (!city) continue;
         rows += saveCityGear(clanId, raw.refId, city, d.names, raw.capturedAt, due);
+        if (due.has('dragon') && city.dragon.level !== null) updateCityDragon(clanId, raw.refId, raw.gameDate, city.dragon);
         replies++;
       }
       for (const p of due) setParseMarker(clanId, p, CITY_PARSERS[p]);

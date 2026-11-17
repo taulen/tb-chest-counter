@@ -1,8 +1,9 @@
 // Captains tab on the member profile: every captain the player owns, the way
 // the game's Captains screen shows them — portrait in its rarity frame, level
-// badge, star level, the active line-up, and what each captain wears — plus
-// the artifacts the line-up captains carry, like the game's artifact book. All
-// read from the member's city record (GET /api/game/members/:id/captains).
+// badge, star level, the active line-up, and what each captain wears — then
+// the player's Dragon, the Hall of Fame, and the artifacts the line-up
+// captains carry, like the game's artifact book. All read from the member's
+// city record (GET /api/game/members/:id/captains).
 // Hovering a captain or artifact (desktop) shows its details beside it; a click
 // or tap opens them in a dialog.
 
@@ -473,6 +474,61 @@ function hallOfFameCardHtml(hof) {
     </div>`;
 }
 
+/** The evolution as the game's Progress tab counts it: one pip per stage, filled up to the dragon's. */
+function evolutionPipsHtml(stage, max) {
+  let pips = '';
+  for (let i = 1; i <= max; i++) pips += `<span class="dragon-pip${i <= stage ? ' is-on' : ''}" aria-hidden="true"></span>`;
+  return `<span class="dragon-pips" role="img" aria-label="${esc(t('Evolution {n} of {max}', { n: stage, max }))}">${pips}</span>`;
+}
+
+/**
+ * The Dragon as the game's Dragon window shows it (city field 26 on the
+ * Dragons table, game-protocol/dragon.ts): its picture on the window's
+ * background, the name the player gave it, "Level 237/250" (its evolution's
+ * cap), the evolution, the XP to the next level — or, at the cap, the game's
+ * own note that it must evolve first — and what its level and evolution give,
+ * with the next one's value where it changes ("+10% › +11%").
+ */
+function dragonCardHtml(d) {
+  if (!d) return '';
+  const title = tGame(d.title || 'Dragon');
+  const progress = d.atCap
+    ? `<p class="dragon-note">${esc(tGame("Raise your Dragon's evolution to unlock access to new levels."))}</p>`
+    : d.xpNext == null
+      ? `<p class="dragon-note">${esc(tGame('Reached the maximum level of the Dragon.'))}</p>`
+      : xpBarHtml(d);
+  const picture = d.artUrl || d.iconUrl;
+  const levelGroup = `<div class="dragon-bonus-group">
+      <div class="hof-step">${d.nextLevel ? esc(t('Level {from} → {to}', { from: d.level, to: d.nextLevel.level })) : esc(tGame(`Level: ${d.level}`))}</div>
+      ${stepLinesHtml(d.levelLines || [], d.nextLevel)}
+    </div>`;
+  const stageGroup = d.stage ? `<div class="dragon-bonus-group">
+      <div class="hof-step">${d.nextStage ? esc(t('Evolution {from} → {to}', { from: d.stage, to: d.nextStage.stage })) : esc(t('Evolution {n} of {max}', { n: d.stage, max: d.maxStage }))}</div>
+      ${stepLinesHtml(d.stageLines || [], d.nextStage)}
+      ${d.nextStage ? '' : `<div class="hof-requires">${esc(tGame('Reached the maximum evolution of the Dragon.'))}</div>`}
+    </div>` : '';
+  return `<div class="card dragon-card">
+      <div class="card-header"><h2>${esc(title)}</h2></div>
+      <div class="card-body card-body-padded">
+        <div class="dragon-main">
+          <div class="dragon-art${d.artUrl ? '' : ' is-icon'}"${d.backUrl ? ` style="--dragon-back: url('${esc(d.backUrl)}')"` : ''}>
+            ${picture ? `<img src="${esc(picture)}" alt="" loading="lazy" decoding="async">` : ''}
+          </div>
+          <div class="dragon-body">
+            ${d.name ? `<div class="dragon-name">${esc(d.name)}</div>` : ''}
+            <div class="captain-detail-head">
+              <span class="captain-detail-level">${esc(t('Level {n}', { n: d.level }))}${d.levelCap ? `<span class="dragon-cap">/${esc(String(d.levelCap))}</span>` : ''}</span>
+              <span class="dragon-kind">${esc(title)}</span>
+            </div>
+            ${d.stage ? `<div class="dragon-evolution"><span class="dragon-evolution-label">${esc(tGame('Evolution'))}</span>${evolutionPipsHtml(d.stage, d.maxStage)}<span class="dragon-evolution-num">${d.stage}/${d.maxStage}</span></div>` : ''}
+            ${progress}
+          </div>
+        </div>
+        ${d.levelLines?.length || d.nextLevel?.lines?.length || d.stageLines?.length ? `<div class="dragon-bonuses">${levelGroup}${stageGroup}</div>` : ''}
+      </div>
+    </div>`;
+}
+
 function artifactsCardHtml(artifacts) {
   return `<div class="card">
       <div class="card-header"><h2>${t('Artifacts')}</h2>
@@ -565,6 +621,7 @@ export async function mountMemberCaptains(root, memberId) {
         <div class="captain-grid">${captains.map((c, i) => tileHtml(c, i)).join('')}</div>
       </div>
     </div>
+    ${dragonCardHtml(data.dragon)}
     ${hallOfFameCardHtml(data.hallOfFame)}
     ${artifactsCardHtml(artifacts)}
     ${changesTableHtml(t('Recent captain progress'), t('Captain'), recent)}

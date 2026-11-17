@@ -226,6 +226,18 @@ export function saveCitySnapshot(
 }
 
 /**
+ * Rewrite the dragon of a game day's city snapshot from an archived reply of
+ * that day — stage and name were parsed only from Nov 2026, and the archive
+ * holds them for every day it kept. A day without a snapshot row is left
+ * alone (the replay never invents a read). Returns whether a row changed.
+ */
+export function updateCityDragon(clanId: number, playerId: number, gameDate: string, dragon: unknown): boolean {
+  return getDb().prepare(
+    'UPDATE game_city_snapshots SET hero = ? WHERE clan_id = ? AND player_id = ? AND game_date = ? AND hero IS NOT ?',
+  ).run(JSON.stringify(dragon), clanId, playerId, gameDate, JSON.stringify(dragon)).changes > 0;
+}
+
+/**
  * Store a player's captains (city field 9); a history row only when a captain
  * is new or its level or star level moved. Returns the number of such changes.
  * The hero's entry (id 1) is stored for its current level and XP but writes no
@@ -394,7 +406,7 @@ export function setParseMarker(clanId: number, parser: string, version: number, 
  * Every archived raw reply of one kind for the clan, oldest read first, one at
  * a time (a clan's archive can be thousands of replies). Body as archived.
  */
-export function* rawSnapshotsOldestFirst(clanId: number, kind: string): Generator<{ refId: number; capturedAt: string; body: unknown }> {
+export function* rawSnapshotsOldestFirst(clanId: number, kind: string): Generator<{ refId: number; gameDate: string; capturedAt: string; body: unknown }> {
   // Keys first, then one payload at a time: the caller WRITES while it walks
   // (history rows), and better-sqlite3 refuses any statement while an
   // .iterate() cursor is open on the connection ("This database connection
@@ -408,7 +420,7 @@ export function* rawSnapshotsOldestFirst(clanId: number, kind: string): Generato
   const payloadOf = db.prepare('SELECT payload FROM game_raw_snapshots WHERE clan_id = ? AND kind = ? AND ref_id = ? AND game_date = ?');
   for (const k of keys) {
     const row = payloadOf.get(clanId, kind, k.refId, k.gameDate) as { payload: Buffer } | undefined;
-    if (row) yield { refId: k.refId, capturedAt: k.capturedAt, body: JSON.parse(gunzipSync(row.payload).toString('utf8')) };
+    if (row) yield { refId: k.refId, gameDate: k.gameDate, capturedAt: k.capturedAt, body: JSON.parse(gunzipSync(row.payload).toString('utf8')) };
   }
 }
 

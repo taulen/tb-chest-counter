@@ -862,11 +862,13 @@ const MIGRATIONS = [
     },
     {
         // Levels players post in the in-game chat ("taulen: G8/M8/S7/E8/C35/D284"),
-        // imported by an admin (data/repositories/member-levels-repo.ts). One row
-        // per member per import, each letter as reported (NULL = not said). The
-        // G value is ALSO written as a member_guards_reports entry so the guards
-        // estimator weighs it; this table is the full record of what was said.
-        // member_id cascades on a member delete; a player MERGE repoints it.
+        // imported by an admin. One row per member per import, each letter as
+        // reported (NULL = not said). The G value was ALSO written as a
+        // member_guards_reports entry so the guards estimator weighed it; this
+        // table is the full record of what was said. member_id cascades on a
+        // member delete; a player MERGE repoints it. The import was retired in
+        // Nov 2026 (the game gives research tiers and the dragon): the rows are
+        // kept, nothing reads them (docs/member-levels.md).
         version: 82,
         sql: `
       CREATE TABLE IF NOT EXISTS member_level_reports (

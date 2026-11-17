@@ -391,13 +391,15 @@ export interface CityRecord {
   /** Building slot → { type, level }. */
   buildings: Record<string, { type: number; level: number }>;
   /**
-   * Field 26: the player's DRAGON (level and experience), not the hero — its
-   * XP sits on T73 (Dragons) thresholds to the unit ("Salty", level 237;
-   * dragons capped at 100 / 150 hold exactly 1,404,294,900 / 17,020,294,900).
-   * The hero is field 9's entry id 1. Stored in game_city_snapshots' `hero`
-   * column, named before this was known (Nov 2026).
+   * Field 26: the player's DRAGON, not the hero — one entry
+   * `[1, [cityId], xp, level, stage, ?, name]`. Its XP sits on T73 (Dragons)
+   * thresholds to the unit ("Salty", level 237, evolution 6; dragons capped at
+   * 100 / 150 hold exactly 1,404,294,900 / 17,020,294,900); `stage` is the
+   * evolution (1–8, T73 f3) and `name` the one the player gave it. The hero is
+   * field 9's entry id 1. Stored in game_city_snapshots' `hero` column, named
+   * before this was known (Nov 2026).
    */
-  dragon: { level: number | null; xp: number | null };
+  dragon: { level: number | null; xp: number | null; stage: number | null; name: string | null };
   /**
    * Field 30: the city's army — `[unitId, count, 0]` per troop type (T9 ids:
    * Heavy arbalester VI 80, Vulture VII 36, Crystal Dragon 152, City Walls V
@@ -515,7 +517,12 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
     ownerId: id1(arr(r[1])[0]),
     techs: parseCityTechs(frame),
     buildings,
-    dragon: { level: num(dragonRow[3]), xp: num(dragonRow[2]) },
+    dragon: {
+      level: num(dragonRow[3]),
+      xp: num(dragonRow[2]),
+      stage: num(dragonRow[4]),
+      name: typeof dragonRow[6] === 'string' && dragonRow[6].trim() ? dragonRow[6].trim().slice(0, 64) : null,
+    },
     troops: arr(r[30])
       .map((e) => arr(e))
       .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')

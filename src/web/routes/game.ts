@@ -53,6 +53,7 @@ import { catalogKeyForEventTitle } from '../../game-protocol/event-mapping.js';
 import { getEventRun, getEventStandings, latestEventRuns, listEventRuns, type StoredEventRun } from '../../data/repositories/game-event-repo.js';
 import { heroLevelView } from '../../game-protocol/hero-levels.js';
 import { hallOfFameView } from '../../game-protocol/factions.js';
+import { dragonView } from '../../game-protocol/dragon.js';
 
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
@@ -178,7 +179,7 @@ export function createGameRouter(): Router {
     }
     const playerId = gamePlayerIdForMember(memberId, clanId);
     if (playerId === null) {
-      res.json({ linked: false, hero: null, hallOfFame: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
+      res.json({ linked: false, hero: null, dragon: null, hallOfFame: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
       return;
     }
     const names = await loadGameNames().catch(() => null);
@@ -250,9 +251,14 @@ export function createGameRouter(): Router {
     // The Hall of Fame: faction levels are city techs 800–803 (factions.ts).
     const techs = getPlayerTechs(clanId, playerId);
     const hallOfFame = hallOfFameView(names, techs.readAt ? techs.levels : null, (n) => gameArtUrl(safeArtName(n)));
+    // The dragon: city field 26 of the latest daily city snapshot, on the
+    // Dragons table's levels and evolutions (dragon.ts).
+    const city = getLatestCity(clanId, playerId);
+    const dragon = city ? dragonView(names, city.dragon, (n) => gameArtUrl(safeArtName(n))) : null;
     res.json({
       linked: true,
       hero,
+      dragon: dragon ? { ...dragon, readAt: city?.capturedAt ?? null } : null,
       hallOfFame,
       // Shared tile art: the level plate and the star sprites (null until extracted).
       tileArt: {

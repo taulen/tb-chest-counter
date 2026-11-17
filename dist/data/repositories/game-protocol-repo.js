@@ -7,6 +7,7 @@ exports.saveGifts = saveGifts;
 exports.saveLedger = saveLedger;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
+exports.updateCityDragon = updateCityDragon;
 exports.saveCaptains = saveCaptains;
 exports.saveArtifacts = saveArtifacts;
 exports.saveCaptainEquipment = saveCaptainEquipment;
@@ -170,6 +171,15 @@ function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toI
      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon));
 }
 /**
+ * Rewrite the dragon of a game day's city snapshot from an archived reply of
+ * that day — stage and name were parsed only from Nov 2026, and the archive
+ * holds them for every day it kept. A day without a snapshot row is left
+ * alone (the replay never invents a read). Returns whether a row changed.
+ */
+function updateCityDragon(clanId, playerId, gameDate, dragon) {
+    return (0, database_js_1.getDb)().prepare('UPDATE game_city_snapshots SET hero = ? WHERE clan_id = ? AND player_id = ? AND game_date = ? AND hero IS NOT ?').run(JSON.stringify(dragon), clanId, playerId, gameDate, JSON.stringify(dragon)).changes > 0;
+}
+/**
  * Store a player's captains (city field 9); a history row only when a captain
  * is new or its level or star level moved. Returns the number of such changes.
  * The hero's entry (id 1) is stored for its current level and XP but writes no
@@ -328,7 +338,7 @@ function* rawSnapshotsOldestFirst(clanId, kind) {
     for (const k of keys) {
         const row = payloadOf.get(clanId, kind, k.refId, k.gameDate);
         if (row)
-            yield { refId: k.refId, capturedAt: k.capturedAt, body: JSON.parse((0, zlib_1.gunzipSync)(row.payload).toString('utf8')) };
+            yield { refId: k.refId, gameDate: k.gameDate, capturedAt: k.capturedAt, body: JSON.parse((0, zlib_1.gunzipSync)(row.payload).toString('utf8')) };
     }
 }
 /** Players of this clan with any captain stored (v108) — the rest are read once more to backfill. */

@@ -19,11 +19,12 @@ const look: TimelineLookups = {
   itemIconUrl: () => null,
   heroName: (id) => `Hero ${id}`,
   heroAvatarUrl: () => null,
+  dragonIconUrl: (stage) => (stage === null ? null : `/art/icon_red_dragon_${stage}.png`),
 };
 
 const empty = (): TimelineSources => ({
   joinedAt: null, playerHistory: [], audit: [], techChanges: [], tierChanges: [], captainChanges: [],
-  artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays: [],
+  artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays: [], dragonDays: [],
 });
 
 const ph = (at: string, over: Partial<TimelineSources['playerHistory'][number]> = {}) => ({
@@ -90,6 +91,35 @@ describe('member timeline', () => {
     expect((gear.items as Array<Record<string, unknown>>).map((i) => [i.captainName, i.change])).toEqual([
       [`Captain 19`, 'put_on'], ['Carter', 'taken_off'], [null, 'reworked'],
     ]);
+  });
+
+  it('shows the dragon levelling and evolving day by day: the first read is the baseline, a day without a read is a gap', () => {
+    const src = empty();
+    src.dragonDays = [
+      // The baseline (an old read: no stage parsed yet).
+      { day: '2026-11-14', at: '2026-11-14T20:00:00Z', level: 236, stage: null },
+      { day: '2026-11-15', at: '2026-11-15T20:00:00Z', level: 236, stage: 5 }, // stage first seen: no entry
+      { day: '2026-11-16', at: '2026-11-16T20:00:00Z', level: null, stage: null }, // no dragon read that day
+      { day: '2026-11-17', at: '2026-11-17T20:00:00Z', level: 237, stage: 6 },
+      { day: '2026-11-18', at: '2026-11-18T20:00:00Z', level: 237, stage: 6 },
+    ];
+    const t = buildTimeline(src, look, 17);
+    expect(t.filter((e) => e.kind === 'dragon')).toEqual([expect.objectContaining({
+      group: 'growth', day: '2026-11-17', at: '2026-11-17T20:00:00Z',
+      from: 236, to: 237, stageFrom: 5, stageTo: 6, iconUrl: '/art/icon_red_dragon_6.png',
+    })]);
+
+    // A level-up alone carries no evolution fields (and the reverse).
+    src.dragonDays = [
+      { day: '2026-11-14', at: '2026-11-14T20:00:00Z', level: 100, stage: 3 },
+      { day: '2026-11-15', at: '2026-11-15T20:00:00Z', level: 100, stage: 4 },
+      { day: '2026-11-16', at: '2026-11-16T20:00:00Z', level: 104, stage: 4 },
+    ];
+    const [up, evolved] = buildTimeline(src, look, 17).filter((e) => e.kind === 'dragon');
+    expect(up).toMatchObject({ from: 100, to: 104 });
+    expect(up).not.toHaveProperty('stageTo');
+    expect(evolved).toMatchObject({ stageFrom: 3, stageTo: 4 });
+    expect(evolved).not.toHaveProperty('to');
   });
 
   it('shows the admin\'s manual renames and merges into the member, not the sync\'s own renames', () => {

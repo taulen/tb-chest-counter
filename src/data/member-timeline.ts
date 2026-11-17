@@ -7,8 +7,8 @@
  * nothing here is invented. The rule every source follows: the FIRST read of a
  * source is the baseline — when we started looking, not when the player got
  * there — so it is never shown as a change (the change readers already drop it
- * for research, captains, artifacts and equipment; player history and city
- * status drop their first row here).
+ * for research, captains, artifacts and equipment; player history, city
+ * status and the dragon drop their first row here).
  *
  * A day's many small changes of one kind fold into one entry with items
  * (research, talents, captains, gear); everything else is one entry each.
@@ -18,7 +18,7 @@ import { gameDateFor } from '../utils/game-day.js';
 
 export type TimelineKind =
   | 'joined' | 'left' | 'renamed' | 'merged' | 'rank'
-  | 'hero_level' | 'city_level' | 'vip' | 'gold_pass' | 'hero' | 'might' | 'tier'
+  | 'hero_level' | 'city_level' | 'vip' | 'gold_pass' | 'hero' | 'might' | 'tier' | 'dragon'
   | 'research' | 'talents' | 'captains' | 'artifact' | 'gear'
   | 'shield' | 'burning';
 
@@ -28,6 +28,7 @@ export type TimelineGroup = 'clan' | 'growth' | 'research' | 'captains' | 'city'
 export const TIMELINE_GROUPS: Record<TimelineKind, TimelineGroup> = {
   joined: 'clan', left: 'clan', renamed: 'clan', merged: 'clan', rank: 'clan',
   hero_level: 'growth', city_level: 'growth', vip: 'growth', gold_pass: 'growth', hero: 'growth', might: 'growth', tier: 'growth',
+  dragon: 'growth',
   research: 'research', talents: 'research',
   captains: 'captains', artifact: 'captains', gear: 'captains',
   shield: 'city', burning: 'city',
@@ -71,6 +72,12 @@ export interface TimelineSources {
   cityStatus: Array<{ at: string; shielded: number; burning: number }>;
   /** The member's daily might (member_snapshots), oldest first. */
   mightDays: Array<{ day: string; at: string; might: number }>;
+  /**
+   * The dragon (city field 26) of each daily city snapshot, oldest first; the
+   * first with a level is the baseline. `stage` is null on reads from before
+   * it was parsed.
+   */
+  dragonDays: Array<{ day: string; at: string; level: number | null; stage: number | null }>;
 }
 
 /** Names and pictures, resolved by the caller (game data and art are the route's business). */
@@ -87,6 +94,8 @@ export interface TimelineLookups {
   itemIconUrl(type: number): string | null;
   heroName(avatarId: number): string;
   heroAvatarUrl(avatarId: number): string | null;
+  /** The dragon's icon at an evolution stage (T73), null when unknown or not extracted. */
+  dragonIconUrl(stage: number | null): string | null;
 }
 
 const ms = (iso: string) => Date.parse(iso);
@@ -147,6 +156,27 @@ export function buildTimeline(src: TimelineSources, look: TimelineLookups, rollo
 
   // ── Troop tiers ──
   for (const t of src.tierChanges) add('tier', t.at, `${t.family}:${t.at}`, { family: t.family, from: t.from, to: t.to });
+
+  // ── The dragon: a level or an evolution moved since the last day read ──
+  // Compared with the last day that had a value: a day with no dragon read
+  // ({} in the snapshot) is a gap, not a drop. A stage first seen (reads from
+  // before it was parsed have none) is the stage's baseline.
+  let lastLevel: number | null = null;
+  let lastStage: number | null = null;
+  for (const d of src.dragonDays) {
+    if (d.level === null) continue;
+    const levelMoved = lastLevel !== null && d.level !== lastLevel;
+    const stageMoved = lastStage !== null && d.stage !== null && d.stage !== lastStage;
+    if (levelMoved || stageMoved) {
+      add('dragon', d.at, d.day, {
+        ...(levelMoved ? { from: lastLevel, to: d.level } : {}),
+        ...(stageMoved ? { stageFrom: lastStage, stageTo: d.stage } : {}),
+        iconUrl: look.dragonIconUrl(d.stage ?? lastStage),
+      });
+    }
+    lastLevel = d.level;
+    if (d.stage !== null) lastStage = d.stage;
+  }
 
   // ── Research and talents: one entry per game day and kind ──
   const fold = <T>(kind: TimelineKind, rows: Array<{ at: string; item: T }>) => {

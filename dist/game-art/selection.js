@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.CLAN_RANKING_ICONS = exports.SPINE_REGIONS = exports.FACTION_ART = exports.FACTION_WINDOWS = exports.STATUS_ART = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
+exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.CLAN_RANKING_ICONS = exports.SPINE_REGIONS = exports.DRAGON_ART = exports.FACTION_ART = exports.FACTION_WINDOWS = exports.STATUS_ART = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
 exports.isChestName = isChestName;
 exports.isResourceItem = isResourceItem;
 exports.staticIconsByCategory = staticIconsByCategory;
@@ -14,7 +14,7 @@ exports.safeArtName = safeArtName;
  * `items` last: every other item icon (T8) that no category above took — a
  * clan treasury or inventory row shows its item's own icon (by item id).
  */
-exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'ui', 'items'];
+exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'ui', 'items'];
 /**
  * Event pictures the app shows by key (Tools → Ancient planner), the game's
  * own art. With a `region`, the address is a Spine animation and the picture
@@ -66,6 +66,18 @@ exports.FACTION_ART = [
     new RegExp(`^(${Object.keys(exports.FACTION_WINDOWS).join('|')})$`),
     /^fraction_(red|green|blue)$/,
 ];
+/**
+ * The Dragon (profile → Captains), as the Dragons table (T73) names its art:
+ * per evolution stage the small icon (`icon_red_dragon_<s>`) and the full
+ * picture (`red_dragon_<s>`), plus the icon's frame and the window's
+ * background. Not the `widget_`, `_city` or march (`_pet_`) variants.
+ */
+exports.DRAGON_ART = [
+    /^icon_red_dragon_\d+$/,
+    /^red_dragon_\d+$/,
+    /^frame_icon_red_dragon$/,
+    /^red_dragon_back$/,
+];
 /** Address → the Spine atlas region its picture is cut from. */
 exports.SPINE_REGIONS = new Map([
     ...Object.values(exports.EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region]),
@@ -112,6 +124,7 @@ exports.ART_PATTERNS = {
     // Exactly the STATUS_ART addresses.
     status: Object.values(exports.STATUS_ART).map((a) => new RegExp(`^${a}$`)),
     factions: [...exports.FACTION_ART],
+    dragon: [...exports.DRAGON_ART],
     // From the client build, not the catalogue (see ART_CATEGORIES).
     ui: [],
     // Item icons come from the item table (T8) alone.

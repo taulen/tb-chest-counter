@@ -6,7 +6,7 @@
 //             the review queue (newly-discovered chest names / sources /
 //             members) and resource rows whose icon couldn't be
 //             identified (unresolved-resources.js).
-//   members — levels from chat, member rename + delete, player merge rules.
+//   members — member rename + delete, player merge rules.
 //   chests  — chest-name and chest-source merge rules.
 //   points  — the Chest Points board (points-board.js) and Triumphal Chest Points.
 //
@@ -27,7 +27,6 @@ import {
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { mountPointsBoard } from './points-board.js';
-import { mountMemberLevels } from './member-levels.js';
 import {
   loadUnresolvedResources, unresolvedResourcesSectionHtml, wireUnresolvedResources,
 } from './unresolved-resources.js';
@@ -173,7 +172,7 @@ function rosterFor(members, memberChestCounts) {
   };
 }
 
-/** Levels from chat, Edit Members and Merge Player Names. */
+/** Edit Members and Merge Player Names. */
 async function membersTab() {
   const [members, memberChestCounts, stats, playerRules] = await Promise.all([
     api('/members?include=inactive'),
@@ -189,9 +188,6 @@ async function membersTab() {
 
   const html = `
     <p class="page-section-intro">${t('Edit names, delete duplicates, and merge OCR misreads into the correct player.')}</p>
-
-    <!-- Levels from chat: self-contained, fills itself (pages/member-levels.js). -->
-    <div class="card" id="memberLevels"></div>
 
     <div class="card">
       <div class="card-header"><h2>${t('Edit Members ({count})', { count: activeMembers.length })}</h2></div>
@@ -277,13 +273,7 @@ async function membersTab() {
       </div>
     </div>
   `;
-  return {
-    html,
-    wire: (el) => {
-      const memberLevelsEl = el.querySelector('#memberLevels');
-      if (memberLevelsEl) mountMemberLevels(memberLevelsEl).catch(reportMountError);
-    },
-  };
+  return { html };
 }
 
 /** Merge Chest Names and Merge Chest Sources. */

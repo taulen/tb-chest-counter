@@ -125,6 +125,16 @@ describe('selectArt', () => {
     expect(SPINE_REGIONS.get('clandoom_icon_book_anim')).toBe('book');
   });
 
+  it("takes the Dragon's icons, frame, pictures and background — not its widget, city or march sprites", () => {
+    const sel = selectArt([
+      'icon_red_dragon_6', 'red_dragon_6', 'frame_icon_red_dragon', 'red_dragon_back',
+      'widget_red_dragon_6', 'red_dragon_6_city', 'red_dragon_six_pet_attack', 'dragon_6_interface_spine_animation',
+    ], st);
+    expect(Object.fromEntries(sel)).toEqual({
+      icon_red_dragon_6: 'dragon', red_dragon_6: 'dragon', frame_icon_red_dragon: 'dragon', red_dragon_back: 'dragon',
+    });
+  });
+
   it('a resource type name pulls in its item even past the currency id range', () => {
     // Not a resource: an item icon like any other.
     expect(selectArt(['booster_silver_72'], st).get('booster_silver_72')).toBe('items');

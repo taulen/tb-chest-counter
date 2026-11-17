@@ -2,7 +2,8 @@
  * The rows a member's timeline is built from (data/member-timeline.ts), all
  * already kept by other features: the player record's history, the site's
  * audit log, research / captain / artifact / equipment history, troop tier
- * changes, the city's shield / burning history and the daily might. Every
+ * changes, the city's shield / burning history, the daily might and the
+ * dragon of each daily city snapshot. Every
  * read is clan-scoped; a member without a linked game player gets only the
  * site's own entries (renames, merges, left / restored).
  */
@@ -52,7 +53,7 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
   if (playerId === null) {
     return {
       joinedAt: null, playerHistory: [], audit, techChanges: [], tierChanges: [], captainChanges: [],
-      artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays,
+      artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays, dragonDays: [],
     };
   }
 
@@ -89,6 +90,21 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
       WHERE clan_id = ? AND player_id = ? ORDER BY changed_at`,
   ).all(clanId, playerId) as TimelineSources['cityStatus'];
 
+  // The dragon: city field 26 as each game day's city snapshot kept it
+  // (column `hero`, named before field 26 was known to be the dragon).
+  const dragonDays: TimelineSources['dragonDays'] = [];
+  const cityDays = db.prepare(
+    `SELECT game_date AS day, captured_at AS at, hero FROM game_city_snapshots
+      WHERE clan_id = ? AND player_id = ? ORDER BY game_date`,
+  ).all(clanId, playerId) as Array<{ day: string; at: string; hero: string | null }>;
+  for (const r of cityDays) {
+    let d: { level?: unknown; stage?: unknown } = {};
+    try { d = JSON.parse(r.hero || '{}') as typeof d; } catch { /* unreadable: a gap */ }
+    const level = typeof d.level === 'number' ? d.level : null;
+    const stage = typeof d.stage === 'number' ? d.stage : null;
+    dragonDays.push({ day: r.day, at: r.at, level, stage });
+  }
+
   return {
     joinedAt: joined?.joinedAt ?? null,
     playerHistory,
@@ -100,5 +116,6 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
     equipmentChanges: getPlayerEquipmentChanges(clanId, playerId, ALL_TIME, NO_LIMIT),
     cityStatus,
     mightDays,
+    dragonDays,
   };
 }

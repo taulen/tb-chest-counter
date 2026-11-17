@@ -13,8 +13,8 @@
  * Never creates a member. Pasted text is not evidence that a player exists the
  * way a scan is; an unknown name stays unknown until an admin says who it is.
  *
- * Shared by the Tin Man standings (tinman-repo.ts) and the chat level import
- * (member-levels-repo.ts).
+ * Used by the event standings paste (tinman-repo.ts); the chat level import
+ * that shared it was retired in Nov 2026.
  */
 import { getAllMembers } from './repositories/member-repo.js';
 import { loadPlayerNameCanonicaliser } from './repositories/merge-repo.js';

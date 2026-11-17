@@ -8434,66 +8434,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 .tool-tier-toggle { margin: 12px 0 0; font-size: 12.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-/* ─── Admin → Levels from chat (pages/member-levels.js) ─────────────── */
-.levels-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
-.levels-preview { margin-top: 14px; }
-.levels-summary { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); }
-.levels-summary strong { color: var(--text-primary); }
-.levels-table { table-layout: fixed; }
-/* Room for a sort arrow beside the letter, and for an ISO date on one line
-   (at 110px "2026-10-23" broke after its second hyphen). */
-.levels-table .col-lvl { width: 60px; }
-.levels-table .col-assign { width: 240px; }
-.levels-table .col-date { width: 136px; }
-.levels-table .history-date {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-/* G can carry the guards estimate ("7 (est. 8)", "7 (оценка 8)"); at 60px it
-   broke over three lines and doubled the row. */
-.levels-latest .col-lvl-g { width: 116px; }
-.levels-latest td.levels-g { white-space: nowrap; }
-.levels-table th.num, .levels-table td.num { text-align: right; }
-.levels-table .levels-pick { max-width: 230px; }
-.levels-tag { display: inline-block; width: 1.3em; text-align: center; font-weight: 700; }
-.levels-tag.is-ok { color: var(--accent-green); }
-.levels-tag.is-fuzzy { color: var(--accent-amber-text); }
-.levels-tag.is-none { color: var(--text-muted); }
-.levels-table tr.levels-dupe td { background: var(--accent-red-bg); }
-.levels-save { margin-top: 12px; }
-/* Preview vs the member's latest report: changes read "old→new", the rest is muted. */
-/* Old value stacked above the new one, so a cell is never wider than "500". */
-.levels-diff .col-lvl { width: 64px; }
-.levels-diff td.num { padding-left: 8px; }
-.levels-diff td.levels-same { color: var(--text-muted); }
-.levels-diff td.levels-changed strong { display: block; }
-.levels-diff td.levels-changed.is-up strong { color: var(--accent-green); }
-.levels-diff td.levels-changed.is-down strong { color: var(--accent-red); }
-.levels-diff .levels-was { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.2; white-space: nowrap; }
-.levels-diff td.levels-new { font-weight: 600; color: var(--accent-gold); }
-.levels-status { display: block; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
-.levels-status.is-changed { color: var(--accent-green); font-weight: 600; }
-.levels-status.is-new { color: var(--accent-gold); font-weight: 600; }
-.levels-sub.is-changed { color: var(--accent-green); }
-.levels-sub.is-new { color: var(--accent-gold); }
-/* Phone compact rows carry the status on their summary line already. */
-@media (max-width: 640px) { .levels-status { display: none; } }
-
-/* Member profile: levels the member last posted in chat — a quiet chip row. */
-.reported-levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 12px; }
-.reported-levels-label { color: var(--text-muted); margin-right: 2px; }
-.reported-level {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 2px;
-  padding: 1px 7px;
-  border: 1px solid var(--border-light);
-  border-radius: 999px;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.reported-level-key { font-weight: 700; color: var(--accent-gold); font-size: 11px; }
-
 /* ─── Performance (pages/performance.js) ────────────────────────────── */
 .perf-note { margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
 .perf-dim { color: var(--text-secondary); }
@@ -9566,6 +9506,110 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .hof-window { width: 60px; }
   .hof-faction-name { justify-content: flex-start; text-align: left; }
   .hof-level { justify-self: start; }
+}
+
+/* The Dragon (pages/member-captains.js dragonCardHtml): the game's picture of
+   the dragon at its evolution on the Dragon window's background, beside its
+   name, level / cap, evolution pips and XP bar; below, what its level and its
+   evolution give, side by side (stacked on a phone). The pips are the
+   dragon's red, with the number beside them so colour is never the only cue. */
+.dragon-main {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+/* The background is a wide sky with a rock ledge at the bottom left; the
+   dragon stands over the ledge, as in the game's window. */
+.dragon-art {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background:
+    var(--dragon-back, none) center / cover no-repeat,
+    radial-gradient(ellipse 70% 60% at 50% 55%, color-mix(in srgb, var(--accent-red) 22%, transparent), transparent),
+    var(--subtle-bg);
+}
+.dragon-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding-top: 4%;
+  object-fit: contain;
+  object-position: 28% 100%;
+}
+.dragon-art.is-icon img { padding: 18%; object-position: center; }
+.dragon-body { min-width: 0; }
+.dragon-name {
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.dragon-cap {
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+.dragon-kind {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.dragon-evolution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.dragon-pips {
+  display: inline-flex;
+  gap: 5px;
+}
+.dragon-pip {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--accent-red);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.dragon-pip.is-on { background: var(--accent-red); }
+.dragon-evolution-num {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dragon-note {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.dragon-bonuses {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 28px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+.dragon-bonus-group {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .dragon-main { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .dragon-art { aspect-ratio: 16 / 9; }
+  .dragon-name { font-size: 17px; }
+  .dragon-bonuses { grid-template-columns: minmax(0, 1fr); }
 }
 
 

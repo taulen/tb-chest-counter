@@ -143,8 +143,8 @@ describe('archive replay bookkeeping', () => {
     saveRawSnapshot(CLAN, 'city', 1, '2026-11-16', ['a16'], '2026-11-16T04:00:00Z');
     saveRawSnapshot(CLAN, 'clan_record', 0, '2026-11-15', ['x'], '2026-11-15T04:00:00Z');
     expect([...rawSnapshotsOldestFirst(CLAN, 'city')]).toEqual([
-      { refId: 1, capturedAt: '2026-11-16T04:00:00Z', body: ['a16'] },
-      { refId: 2, capturedAt: '2026-11-17T04:00:00Z', body: ['b17'] },
+      { refId: 1, gameDate: '2026-11-16', capturedAt: '2026-11-16T04:00:00Z', body: ['a16'] },
+      { refId: 2, gameDate: '2026-11-17', capturedAt: '2026-11-17T04:00:00Z', body: ['b17'] },
     ]);
   });
 

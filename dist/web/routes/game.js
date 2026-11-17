@@ -29,6 +29,7 @@ const event_mapping_js_1 = require("../../game-protocol/event-mapping.js");
 const game_event_repo_js_1 = require("../../data/repositories/game-event-repo.js");
 const hero_levels_js_1 = require("../../game-protocol/hero-levels.js");
 const factions_js_1 = require("../../game-protocol/factions.js");
+const dragon_js_1 = require("../../game-protocol/dragon.js");
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
  * from the art pipeline), memoised per trees + art version.
@@ -146,7 +147,7 @@ function createGameRouter() {
         }
         const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clanId);
         if (playerId === null) {
-            res.json({ linked: false, hero: null, hallOfFame: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
+            res.json({ linked: false, hero: null, dragon: null, hallOfFame: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
             return;
         }
         const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
@@ -219,9 +220,14 @@ function createGameRouter() {
         // The Hall of Fame: faction levels are city techs 800–803 (factions.ts).
         const techs = (0, game_profile_repo_js_1.getPlayerTechs)(clanId, playerId);
         const hallOfFame = (0, factions_js_1.hallOfFameView)(names, techs.readAt ? techs.levels : null, (n) => (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(n)));
+        // The dragon: city field 26 of the latest daily city snapshot, on the
+        // Dragons table's levels and evolutions (dragon.ts).
+        const city = (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId);
+        const dragon = city ? (0, dragon_js_1.dragonView)(names, city.dragon, (n) => (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(n))) : null;
         res.json({
             linked: true,
             hero,
+            dragon: dragon ? { ...dragon, readAt: city?.capturedAt ?? null } : null,
             hallOfFame,
             // Shared tile art: the level plate and the star sprites (null until extracted).
             tileArt: {

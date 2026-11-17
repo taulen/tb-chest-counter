@@ -11,7 +11,6 @@ import { Router } from 'express';
 import * as guardsRepo from '../../data/repositories/guards-repo.js';
 import * as goldPassRepo from '../../data/repositories/gold-pass-repo.js';
 import { getAllMembers, getMemberById } from '../../data/repositories/member-repo.js';
-import { getLatestLevelsForMember } from '../../data/repositories/member-levels-repo.js';
 import { getGamePlayersByMember } from '../../data/repositories/game-profile-repo.js';
 import { loadConfig } from '../../config/index.js';
 import { GUARDS_STALE_DAYS } from '../../config/guards-levels.js';
@@ -98,9 +97,6 @@ export function createGuardsRouter(): Router {
       staleDays: GUARDS_STALE_DAYS,
       guards,
       summary: guards ? guardsRepo.summarizeGuards(guards, today) : null,
-      // What the member last posted in chat (Admin → Levels from chat), every
-      // letter; the profile keeps only what research can't tell (Dragon).
-      reportedLevels: getLatestLevelsForMember(clanId, memberId),
     });
   });
 

@@ -70,6 +70,10 @@ function createMemberTimelineRouter(opts = {}) {
             itemIconUrl: (type) => art(mappings?.equipment, type),
             heroName: (id) => names?.heroes?.[String(id)]?.name ?? '',
             heroAvatarUrl: (id) => (0, game_profile_repo_js_1.heroAvatarUrl)(id),
+            dragonIconUrl: (stage) => {
+                const icon = stage !== null ? names?.dragon?.stages?.[String(stage)]?.icon : undefined;
+                return icon ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(icon)) : null;
+            },
         };
         const timeline = (0, member_timeline_js_1.buildTimeline)(src, look, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
         const wanted = String(req.query.groups ?? '').split(',').filter((g) => GROUPS.has(g));
