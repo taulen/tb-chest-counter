@@ -8903,3 +8903,123 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
 }
 
+
+/* ─── My Clan (pages/clan.js) ─── */
+.clan-head-name {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.clan-head-tag { color: var(--accent-gold); }
+.clan-head-facts .member-link { color: inherit; font-weight: 600; }
+.clan-head-read {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* The medals the clan displays, coloured by tier (bronze, silver, gold,
+   platinum) — the tier's name is always written beside the colour. */
+.clan-medals {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+.clan-medal {
+  --medal: var(--border-strong);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--medal);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+.clan-medal.is-bronze { --medal: var(--rank-3); }
+.clan-medal.is-silver { --medal: var(--rank-2); }
+.clan-medal.is-gold { --medal: var(--rank-1); }
+.clan-medal.is-platinum { --medal: var(--accent-purple); }
+.clan-medal-icon { flex: none; }
+.clan-medal-glyph {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--medal);
+  box-shadow: inset 0 0 0 4px var(--bg-surface), 0 0 0 1px var(--medal);
+}
+.clan-medal-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.clan-medal-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clan-medal-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Research summary, treasury and history tables: locked column widths. */
+.clan-trees-table,
+.clan-treasury-table,
+.clan-history-table { table-layout: fixed; }
+.clan-trees-table col.col-n { width: 120px; }
+.clan-trees-table col.col-levels { width: 150px; }
+.clan-tree-cell,
+.clan-res-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.clan-tree-icon,
+.clan-res-icon { flex: none; }
+.clan-tree-cell .mrow-name,
+.clan-res-cell .mrow-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clan-tree-pct {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.clan-tree-levels {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.clan-treasury-table col.col-amount { width: 190px; }
+.clan-treasury-table col.col-change { width: 210px; }
+.clan-treasury-table td.is-up { color: var(--accent-green); }
+.clan-treasury-table td.is-down { color: var(--accent-red); }
+.clan-history-table col.col-date { width: 120px; }
+.clan-history-table col.col-members { width: 110px; }
+.clan-history-table col.col-rank { width: 140px; }
+
+@media (max-width: 640px) {
+  .clan-head-name { font-size: 19px; }
+  .clan-medals { grid-template-columns: 1fr; }
+  .clan-trees-table col.col-n,
+  .clan-trees-table col.col-levels,
+  .clan-treasury-table col.col-amount,
+  .clan-treasury-table col.col-change,
+  .clan-history-table col.col-date,
+  .clan-history-table col.col-members,
+  .clan-history-table col.col-rank { width: auto; }
+}

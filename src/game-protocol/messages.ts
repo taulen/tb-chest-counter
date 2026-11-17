@@ -39,6 +39,18 @@ export interface ClanRecord {
   gifts: ClanGift[];
   /** Clan-owned map objects (f5); each reads in full through 601 like a city. */
   objects: number[];
+  /** The Clan Capital's object id (f1[6]); its 601 reply holds the clan's research (f17) and treasury (f5). */
+  capitalId: number | null;
+  /** Member limit (f6): 60 + 10 per "Number of Clan members" tech the clan holds. */
+  memberLimit: number | null;
+  /** The clan's might (f7) — the in-game Information tab's figure; ≈ the members' might summed. */
+  might: number | null;
+  /** When the clan was founded (f1[8], unix s) — the Information tab's "Date founded". */
+  foundedAt: number | null;
+  /** The clan's language (f1[13], "en_US"). */
+  language: string;
+  /** Fields not decoded yet (f9, f11 move by the minute; f12 a `[1018,1] → [n]` pair) — stored raw. */
+  extra: { f9: number | null; f11: number | null; f12: Wire | null };
 }
 
 /** Message 15000. Only our own clan's record carries members and gifts. */
@@ -78,7 +90,151 @@ export function parseClanRecord(frame: Frame): ClanRecord | null {
     members,
     gifts,
     objects: arr(rec[5]).map(id1).filter((v): v is number => v !== null),
+    capitalId: id1(info[6]),
+    memberLimit: num(rec[6]),
+    might: num(rec[7]),
+    foundedAt: num(info[8]),
+    language: typeof info[13] === 'string' ? info[13] : '',
+    extra: { f9: num(rec[9]), f11: num(rec[11]), f12: rec[12] ?? null },
   };
+}
+
+/** Unwrap one-element arrays (the reply envelopes) down to the payload. */
+function unwrap(v: Wire | undefined): Wire | undefined {
+  let out = v;
+  while (Array.isArray(out) && out.length === 1) out = out[0];
+  return out;
+}
+
+const isPlainObject = (v: Wire | undefined): v is Record<string, Wire> =>
+  !!v && typeof v === 'object' && !Array.isArray(v) && !('$pairs' in v) && !('$bin' in v);
+
+/** Big game numbers decode as bigint past 2^53; anything we keep raw goes through this. */
+export function plainWire(v: unknown): unknown {
+  return JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x)));
+}
+
+export interface ClanCapital {
+  capitalId: number;
+  /** The clan's research: `{techId: level}` (f17, the same shape as a city's). */
+  techs: Record<string, number>;
+  /** The clan treasury (f5): `{resourceId: amount}` — ids name through the gift-type names. */
+  treasury: Record<string, number>;
+  /** Where the capital stands (f1[13]): [realm (= kingdom), x, y]. */
+  position: [number, number, number] | null;
+}
+
+/**
+ * 601 reply for the Clan Capital object: a 36-field record shaped like a
+ * city's. Its f17 is the clan's research (Clan territories / Allies /
+ * Fortifications), f5 the clan treasury.
+ */
+export function parseClanCapital(frame: Frame): ClanCapital | null {
+  const city = parseCityRecord(frame);
+  if (!city) return null;
+  let root: Wire = frame.body;
+  while (Array.isArray(root) && root.length === 1) root = root[0];
+  const r = arr(arr(arr(root)[0])[0]);
+  const treasury: Record<string, number> = {};
+  const t = r[5];
+  if (isPlainObject(t)) {
+    for (const [k, v] of Object.entries(t)) {
+      const row = arr(v);
+      if (typeof row[1] === 'number') treasury[k] = row[1];
+    }
+  }
+  const pos = arr(arr(r[1])[13]);
+  return {
+    capitalId: city.cityId,
+    techs: city.techs,
+    treasury,
+    position: pos.length >= 3 && pos.every((n) => typeof n === 'number') ? [pos[0] as number, pos[1] as number, pos[2] as number] : null,
+  };
+}
+
+export interface ClanStats {
+  /** Key 1: the clan's might. */
+  might: number | null;
+  /** Key 7: the in-game "Clan wealth points". */
+  wealth: number | null;
+  /** Every key as sent (3, 4, 5, 9 not decoded yet). */
+  raw: Record<string, unknown>;
+}
+
+/** Message 25 (`[[[clanId]]]`): `{1: might, 3: …, 4: …, 5: …, 7: wealth points, 9: …}`. */
+export function parseClanStats(frame: Frame): ClanStats | null {
+  const o = unwrap(frame.body);
+  if (!isPlainObject(o)) return null;
+  return { might: num(o['1']), wealth: num(o['7']), raw: plainWire(o) as Record<string, unknown> };
+}
+
+export interface CapitalBorder {
+  /** Key 30: the Border tab's "Help points". */
+  helpPoints: number | null;
+  /** Every `[[key], value]` pair of the first list (20, 21, 22, 29, 31, 37–40 not decoded yet). */
+  raw: Record<string, unknown>;
+}
+
+/** Message 14003 (`[[[capitalId]]]`): `[[ [[[key], value], …], …, … ]]`. */
+export function parseCapitalBorder(frame: Frame): CapitalBorder | null {
+  const lists = arr(arr(frame.body)[0]);
+  const first = arr(lists[0]);
+  const raw: Record<string, unknown> = {};
+  for (const e of first) {
+    const row = arr(e);
+    const key = id1(row[0]);
+    if (key !== null) raw[String(key)] = plainWire(row[1]);
+  }
+  if (!Object.keys(raw).length) return null;
+  const help = raw['30'];
+  return { helpPoints: typeof help === 'number' ? help : null, raw };
+}
+
+export interface ClanMedal {
+  medalId: number;
+  /** Unix s the medal was earned. */
+  earnedAt: number;
+}
+
+/** Message 28001 (`[[[clanId]]]`): the medals shown on the Information tab, `[[medalId, earnedAt], …]`. */
+export function parseClanMedals(frame: Frame): ClanMedal[] {
+  const out: ClanMedal[] = [];
+  const walk = (v: Wire | undefined, depth: number): void => {
+    if (!Array.isArray(v) || depth > 5) return;
+    if (v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[1] > 1_000_000_000) {
+      out.push({ medalId: v[0], earnedAt: v[1] });
+      return;
+    }
+    for (const x of v) walk(x, depth + 1);
+  };
+  walk(frame.body, 0);
+  return out;
+}
+
+/**
+ * Message 23 (`[[kind, count, [], false]]`): the kingdom's clan ranking,
+ * `[[clanId, value], …]` — NOT sorted by value. Kind 7 = wealth points
+ * (verified against the in-game list); other kinds unverified.
+ */
+export function parseClanRanking(frame: Frame): Array<{ clanId: number; value: number }> {
+  const out: Array<{ clanId: number; value: number }> = [];
+  const walk = (v: Wire | undefined, depth: number): void => {
+    if (!Array.isArray(v) || depth > 5) return;
+    if (v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[0] > 1_000_000) {
+      out.push({ clanId: v[0], value: v[1] });
+      return;
+    }
+    for (const x of v) walk(x, depth + 1);
+  };
+  walk(frame.body, 0);
+  return out;
+}
+
+/** 1-based rank of `clanId` by value (highest first), or null when it isn't in the list. */
+export function rankIn(list: Array<{ clanId: number; value: number }>, clanId: number): number | null {
+  const sorted = [...list].sort((a, b) => b.value - a.value);
+  const i = sorted.findIndex((e) => e.clanId === clanId);
+  return i < 0 ? null : i + 1;
 }
 
 export interface PlayerRecord {

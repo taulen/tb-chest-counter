@@ -203,6 +203,43 @@ Not read yet: the Stats screen's Leadership / Authority / Dominance / Might and
 "Features" block (probably built from the skills), and equipment / artifact
 bonuses (the city data only carries item instance ids).
 
+### The clan itself (v111, My Clan page)
+
+Every scan also reads the clan as the game's own clan window does — read-only
+requests the client sends whenever that window opens — and stores it
+([game-clan-repo.ts](../src/data/repositories/game-clan-repo.ts), `collectClan`
+in [game-protocol-phase.ts](../src/scheduler/game-protocol-phase.ts)):
+
+| Source | Field | Holds | Checked against |
+|---|---|---|---|
+| clan record (15000) | `[1][0]`, `[1][1]` | tag, name | Information tab |
+| | `[1][6]` | the **Clan Capital**'s object id (also one of `[5]`) | object type 10001 in all three clans |
+| | `[1][8]` | founded (unix s) | "Date founded 17 April 2026"; equals the capital's own creation time |
+| | `[1][13]` | language (`en_US`) | |
+| | `[2]` length / `[6]` | members / **member limit** | 69 / 100; limit = 60 + 10 per "Number of Clan members I–IV" the clan holds (SIN holds three → 90) |
+| | `[7]` | clan **might** | Information tab 8,325,969,188 exactly; ≈ the members' might summed |
+| | `[9]`, `[11]`, `[12]` | not decoded (`[9]`/`[11]` move by the minute; `[12]` `{[1018,1] → [n]}`) | stored raw |
+| Clan Capital (601) | `[17]` | the clan's **research** `{techId: [techId, level]}` — trees 12 Clan territories (10000–10033), 13 Allies (10100–10163), 22 Fortifications (30–36, …) | CWB 96 techs, SIK 121, SIN 69 |
+| | `[5]` | the **treasury** `{resourceId: [resourceId, amount]}` — ids name through the gift-type names (20 Scientific Tractates, 21–23 Boards/Steel/Cement, 24 Religious Tractates, 31 Dragon Coins, 9 Conquest points, 74284 Magic Seeds, clan fragments, tournament proofs) | |
+| | `[1][13]` | `[realm, x, y]` — kingdom and coordinates | "K:260 X:801 Y:171" |
+| 25 `[[[clanId]]]` | `{1, 3, 4, 5, 7, 9}` | key 1 might, key **7 wealth points** | "Clan wealth points"; 3/4/5/9 stored raw |
+| 14003 `[[[capitalId]]]` | `[[[[key], value], …], …]` | key **30 help points** (Clan Capital → Border) | 5,576,273 on screen; others raw (37 moves with wealth) |
+| 28001 `[[[clanId]]]` | `[[medalId, earnedAt], …]` | the (up to 4) medals the clan displays | Information tab |
+| 23 `[[7, 100, [], false]]` | `[[clanId, value], …]` | the kingdom's top 100 by **wealth** (kind 7), NOT sorted — the rank is computed | in-game Clan ranking; other kinds unverified |
+
+Tables: `game_clan_info` (current), `game_clan_stats` (a row per scan, with
+`raw` for everything read but not decoded), `game_clan_techs` +
+`game_clan_tech_history` (a history row only when a level moves; the first read
+is the baseline, so it never shows as a level-up), `game_clan_treasury` (the
+day's latest read per resource), `game_clan_medals`. A clan with no research
+stored yet is first filled from its archived capital reply (`clan_object`),
+dated to when that was read. Clan tree 17 (`clanTalentsTree17`, ids 7000/8000)
+is not in the capital and is not shown.
+
+Clan medals are T62 in the static data: f1 icon (`achievement_<group>_<tier>`),
+f4 unlock text, f5 name (shared by a medal's tiers: "Medal of Prosperity"), f6
+tier 1 bronze … 4 platinum (labels `client_config.value.goblet_<tier>`).
+
 v103 also adds the columns the protocol scan will use: `chest_records` /
 `triumphal_chest_records.game_gift_id`, `resource_transactions.game_entry_id`
 (unique) and `game_claims`.
@@ -289,6 +326,10 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
 | 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
 | 312 | `[[[tileIds], [versions], [], []]]` | per 20×20 tile `[tileId, version, …, [4] cities, [5] objects]`; `tile = floor(y/20)*50 + floor(x/20)` |
+| 25 | `[[[clanId]]]` | clan might (key 1) and wealth points (key 7) — see "The clan itself" |
+| 14003 | `[[[capitalId]]]` | the Clan Capital's Border counters; key 30 = help points |
+| 28001 | `[[[clanId]]]` | the clan's displayed medals `[[medalId, earnedAt], …]` |
+| 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kind 7 = wealth |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
 Triumphal; `count` is chests in the entry (Bank bundles 3 or 30). Gift ids are
@@ -314,6 +355,7 @@ Each table has its own id space:
 | 8 | gift types | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |
+| 62 | clan medals | f5 vector (f4 unlock text, f6 tier) |
 | 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
 
 Captains (T75): f1 kind, f2 rarity (1 rare, 2 epic, 3 legendary, 4 mythic;

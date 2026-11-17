@@ -2,6 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GIFT_LIFETIME_S = void 0;
 exports.parseClanRecord = parseClanRecord;
+exports.plainWire = plainWire;
+exports.parseClanCapital = parseClanCapital;
+exports.parseClanStats = parseClanStats;
+exports.parseCapitalBorder = parseCapitalBorder;
+exports.parseClanMedals = parseClanMedals;
+exports.parseClanRanking = parseClanRanking;
+exports.rankIn = rankIn;
 exports.parsePlayers = parsePlayers;
 exports.parseLedger = parseLedger;
 exports.parseClaimRewards = parseClaimRewards;
@@ -56,7 +63,120 @@ function parseClanRecord(frame) {
         members,
         gifts,
         objects: arr(rec[5]).map(id1).filter((v) => v !== null),
+        capitalId: id1(info[6]),
+        memberLimit: num(rec[6]),
+        might: num(rec[7]),
+        foundedAt: num(info[8]),
+        language: typeof info[13] === 'string' ? info[13] : '',
+        extra: { f9: num(rec[9]), f11: num(rec[11]), f12: rec[12] ?? null },
     };
+}
+/** Unwrap one-element arrays (the reply envelopes) down to the payload. */
+function unwrap(v) {
+    let out = v;
+    while (Array.isArray(out) && out.length === 1)
+        out = out[0];
+    return out;
+}
+const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && !('$pairs' in v) && !('$bin' in v);
+/** Big game numbers decode as bigint past 2^53; anything we keep raw goes through this. */
+function plainWire(v) {
+    return JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x)));
+}
+/**
+ * 601 reply for the Clan Capital object: a 36-field record shaped like a
+ * city's. Its f17 is the clan's research (Clan territories / Allies /
+ * Fortifications), f5 the clan treasury.
+ */
+function parseClanCapital(frame) {
+    const city = parseCityRecord(frame);
+    if (!city)
+        return null;
+    let root = frame.body;
+    while (Array.isArray(root) && root.length === 1)
+        root = root[0];
+    const r = arr(arr(arr(root)[0])[0]);
+    const treasury = {};
+    const t = r[5];
+    if (isPlainObject(t)) {
+        for (const [k, v] of Object.entries(t)) {
+            const row = arr(v);
+            if (typeof row[1] === 'number')
+                treasury[k] = row[1];
+        }
+    }
+    const pos = arr(arr(r[1])[13]);
+    return {
+        capitalId: city.cityId,
+        techs: city.techs,
+        treasury,
+        position: pos.length >= 3 && pos.every((n) => typeof n === 'number') ? [pos[0], pos[1], pos[2]] : null,
+    };
+}
+/** Message 25 (`[[[clanId]]]`): `{1: might, 3: …, 4: …, 5: …, 7: wealth points, 9: …}`. */
+function parseClanStats(frame) {
+    const o = unwrap(frame.body);
+    if (!isPlainObject(o))
+        return null;
+    return { might: num(o['1']), wealth: num(o['7']), raw: plainWire(o) };
+}
+/** Message 14003 (`[[[capitalId]]]`): `[[ [[[key], value], …], …, … ]]`. */
+function parseCapitalBorder(frame) {
+    const lists = arr(arr(frame.body)[0]);
+    const first = arr(lists[0]);
+    const raw = {};
+    for (const e of first) {
+        const row = arr(e);
+        const key = id1(row[0]);
+        if (key !== null)
+            raw[String(key)] = plainWire(row[1]);
+    }
+    if (!Object.keys(raw).length)
+        return null;
+    const help = raw['30'];
+    return { helpPoints: typeof help === 'number' ? help : null, raw };
+}
+/** Message 28001 (`[[[clanId]]]`): the medals shown on the Information tab, `[[medalId, earnedAt], …]`. */
+function parseClanMedals(frame) {
+    const out = [];
+    const walk = (v, depth) => {
+        if (!Array.isArray(v) || depth > 5)
+            return;
+        if (v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[1] > 1_000_000_000) {
+            out.push({ medalId: v[0], earnedAt: v[1] });
+            return;
+        }
+        for (const x of v)
+            walk(x, depth + 1);
+    };
+    walk(frame.body, 0);
+    return out;
+}
+/**
+ * Message 23 (`[[kind, count, [], false]]`): the kingdom's clan ranking,
+ * `[[clanId, value], …]` — NOT sorted by value. Kind 7 = wealth points
+ * (verified against the in-game list); other kinds unverified.
+ */
+function parseClanRanking(frame) {
+    const out = [];
+    const walk = (v, depth) => {
+        if (!Array.isArray(v) || depth > 5)
+            return;
+        if (v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[0] > 1_000_000) {
+            out.push({ clanId: v[0], value: v[1] });
+            return;
+        }
+        for (const x of v)
+            walk(x, depth + 1);
+    };
+    walk(frame.body, 0);
+    return out;
+}
+/** 1-based rank of `clanId` by value (highest first), or null when it isn't in the list. */
+function rankIn(list, clanId) {
+    const sorted = [...list].sort((a, b) => b.value - a.value);
+    const i = sorted.findIndex((e) => e.clanId === clanId);
+    return i < 0 ? null : i + 1;
 }
 /** Message 402: player records, wherever they sit in the reply. */
 function parsePlayers(frame) {

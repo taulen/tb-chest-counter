@@ -42,7 +42,9 @@ export const TABLE_HEROES = 13;
 export const TABLE_TECHS = 21;
 /** Captains (Hercules, Skadi, Aurora…): f1 kind, f2 rarity, f5 name, f7 JSON config with the sprite names. */
 export const TABLE_CAPTAINS = 75;
-const NEEDED_TABLES = [TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS];
+/** Clan medals (ids 1–40): f1 icon, f2 inactive icon, f4 unlock text vector, f5 name vector, f6 tier 1 bronze … 4 platinum. */
+export const TABLE_CLAN_MEDALS = 62;
+const NEEDED_TABLES = [TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CLAN_MEDALS];
 
 export interface GameNames {
   /** `${composite}:${translations}` — changes whenever either source does. */
@@ -54,8 +56,22 @@ export interface GameNames {
   heroes: Record<string, { name: string; icon: string }>;
   /** Captains by T75 id: name, rarity (T75 f2), and the sprite names from its config. */
   captains: Record<string, GameCaptain>;
+  /** Clan medals by T62 id (format ≥ 3). */
+  medals?: Record<string, GameMedal>;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
+}
+
+export interface GameMedal {
+  name: string;
+  /** What earned it ("Clan members earned at least 1B points over …"). */
+  description: string;
+  /** 1 bronze, 2 silver, 3 gold, 4 platinum. */
+  tier: number;
+  /** The game's label for the tier. */
+  tierName: string;
+  /** Sprite name (achievement_capitals_competition_gold). */
+  icon: string;
 }
 
 export interface GameCaptain {
@@ -76,9 +92,18 @@ export interface GameCaptain {
 
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
- * and rarity labels, Nov 2026); a cached file with an older format is rebuilt.
+ * and rarity labels; 3: clan medals — Nov 2026); a cached file with an older
+ * format is rebuilt.
  */
-export const NAMES_FORMAT = 2;
+export const NAMES_FORMAT = 3;
+
+/** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
+const MEDAL_TIER_KEYS: Record<number, string> = {
+  1: 'client_config.value.goblet_bronze',
+  2: 'client_config.value.goblet_silver',
+  3: 'client_config.value.goblet_gold',
+  4: 'client_config.value.goblet_platinum',
+};
 
 /** T75 f2 rarity → the game's own label key. */
 const CAPTAIN_RARITY_KEYS: Record<number, string> = {
@@ -315,7 +340,20 @@ export function buildNames(
       stars,
     };
   }
-  return { version, builtAt: new Date().toISOString(), format: NAMES_FORMAT, gifts, techs, objects, heroes, captains };
+  const medals: NonNullable<GameNames['medals']> = {};
+  for (const [id, row] of rows(TABLE_CLAN_MEDALS)) {
+    const name = vecText(row[5]);
+    if (!name) continue;
+    const tier = typeof row[6] === 'number' ? row[6] : 0;
+    medals[id] = {
+      name,
+      description: vecText(row[4]) ?? '',
+      tier,
+      tierName: en.get(MEDAL_TIER_KEYS[tier] ?? '') ?? '',
+      icon: str(row[1]) ?? '',
+    };
+  }
+  return { version, builtAt: new Date().toISOString(), format: NAMES_FORMAT, gifts, techs, objects, heroes, captains, medals };
 }
 
 // ---------------------------------------------------------------------------

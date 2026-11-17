@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
@@ -52,12 +52,22 @@ exports.TABLE_HEROES = 13;
 exports.TABLE_TECHS = 21;
 /** Captains (Hercules, Skadi, Aurora…): f1 kind, f2 rarity, f5 name, f7 JSON config with the sprite names. */
 exports.TABLE_CAPTAINS = 75;
-const NEEDED_TABLES = [exports.TABLE_MAP_OBJECTS, exports.TABLE_GIFT_TYPES, exports.TABLE_HEROES, exports.TABLE_TECHS, exports.TABLE_CAPTAINS];
+/** Clan medals (ids 1–40): f1 icon, f2 inactive icon, f4 unlock text vector, f5 name vector, f6 tier 1 bronze … 4 platinum. */
+exports.TABLE_CLAN_MEDALS = 62;
+const NEEDED_TABLES = [exports.TABLE_MAP_OBJECTS, exports.TABLE_GIFT_TYPES, exports.TABLE_HEROES, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_CLAN_MEDALS];
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
- * and rarity labels, Nov 2026); a cached file with an older format is rebuilt.
+ * and rarity labels; 3: clan medals — Nov 2026); a cached file with an older
+ * format is rebuilt.
  */
-exports.NAMES_FORMAT = 2;
+exports.NAMES_FORMAT = 3;
+/** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
+const MEDAL_TIER_KEYS = {
+    1: 'client_config.value.goblet_bronze',
+    2: 'client_config.value.goblet_silver',
+    3: 'client_config.value.goblet_gold',
+    4: 'client_config.value.goblet_platinum',
+};
 /** T75 f2 rarity → the game's own label key. */
 const CAPTAIN_RARITY_KEYS = {
     1: 'client.captain.info.rare_captain',
@@ -292,7 +302,21 @@ function buildNames(version, strings, vectors, tables, en) {
             stars,
         };
     }
-    return { version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT, gifts, techs, objects, heroes, captains };
+    const medals = {};
+    for (const [id, row] of rows(exports.TABLE_CLAN_MEDALS)) {
+        const name = vecText(row[5]);
+        if (!name)
+            continue;
+        const tier = typeof row[6] === 'number' ? row[6] : 0;
+        medals[id] = {
+            name,
+            description: vecText(row[4]) ?? '',
+            tier,
+            tierName: en.get(MEDAL_TIER_KEYS[tier] ?? '') ?? '',
+            icon: str(row[1]) ?? '',
+        };
+    }
+    return { version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT, gifts, techs, objects, heroes, captains, medals };
 }
 // ---------------------------------------------------------------------------
 // Cache on the data volume

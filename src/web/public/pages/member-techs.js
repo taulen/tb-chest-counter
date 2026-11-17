@@ -34,7 +34,7 @@ let treesPromise = null;
 /** The open tree per tab, kept across members so comparing players is one click. */
 const openTree = { research: null, talent: null };
 
-function loadTrees() {
+export function loadTrees() {
   if (!treesPromise) {
     treesPromise = api('/game/tech-trees').then((r) => {
       if (!r || r.error || !Array.isArray(r.trees)) throw new Error(r?.error || 'no trees');
@@ -76,7 +76,7 @@ export async function mountMemberTechs(root, memberId, kind, tiers) {
   render(el, kind, trees, techs, tiers);
 }
 
-function treeProgress(tree, levels) {
+export function treeProgress(tree, levels) {
   let done = 0;
   let total = 0;
   for (const n of tree.nodes) {
@@ -187,7 +187,7 @@ function talentSummaryHtml(list, levels) {
 }
 
 /** A node's state for this player: done, in progress, available (every unlock requirement met), or locked. */
-function nodeState(n, levels) {
+export function nodeState(n, levels) {
   const lvl = Math.min(levels[n.techId] ?? 0, n.maxLevel);
   if (lvl >= n.maxLevel) return 'done';
   if (lvl > 0) return 'progress';
@@ -209,7 +209,7 @@ function treeSummaryHtml(tree, levels) {
     </div>`;
 }
 
-function treeHtml(tree, levels, trees, phone = false) {
+export function treeHtml(tree, levels, trees, phone = false) {
   if (!tree) return '';
   const tall = phone;
   const NODE_W = tall ? PHONE_GRID.nodeW : DESK.nodeW;

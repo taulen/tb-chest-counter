@@ -85,6 +85,13 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_city_snapshots.clan_id',
     'game_city_status_history.clan_id',
     'game_claims.clan_id',
+    // The clan's own game data (v111).
+    'game_clan_info.clan_id',
+    'game_clan_medals.clan_id',
+    'game_clan_stats.clan_id',
+    'game_clan_tech_history.clan_id',
+    'game_clan_techs.clan_id',
+    'game_clan_treasury.clan_id',
     'game_gifts.clan_id',
     'game_ledger.clan_id',
     'game_map_objects.clan_id',
@@ -344,6 +351,24 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO chat_messages (clan_id, channel_url, message_id, created_at, captured_at) VALUES (?, 'triumph_clan_channel_1', 1, 1, ?)`,
   ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_clan_info (clan_id, game_clan_id, tag, name, updated_at) VALUES (?, 1297080123906, 'CWB', 'Chaos', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_clan_stats (clan_id, captured_at, game_date, members, member_limit, might) VALUES (?, ?, '2026-11-17', 69, 100, 1)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_clan_techs (clan_id, tech_id, level, first_seen, last_seen) VALUES (?, 10000, 10, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_clan_tech_history (clan_id, tech_id, level, changed_at) VALUES (?, 10000, 10, ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_clan_treasury (clan_id, game_date, resource_id, amount, captured_at) VALUES (?, '2026-11-17', 20, 5, ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_clan_medals (clan_id, medal_id, earned_at, first_seen, last_seen) VALUES (?, 27, ?, ?, ?)`,
+  ).run(clanId, now, now, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.
   db.prepare(

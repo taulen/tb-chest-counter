@@ -367,6 +367,32 @@ export class GameClient {
     return this.ask(15000, [[[[[clanId], ALL_FIELDS]]]]);
   }
 
+  /**
+   * The clan's headline numbers (25): might and wealth points — what the game
+   * asks for whenever its clan window opens. Read-only.
+   */
+  clanStats(clanId = this.clanId): Promise<Frame> {
+    return this.ask(25, [[[clanId]]]);
+  }
+
+  /** The Clan Capital's Border tab (14003): help points among other counters. Read-only. */
+  capitalBorder(capitalId: number): Promise<Frame> {
+    return this.ask(14003, [[[capitalId]]]);
+  }
+
+  /** The medals on the clan's Information tab (28001). Read-only. */
+  clanMedals(clanId = this.clanId): Promise<Frame> {
+    return this.ask(28001, [[[clanId]]]);
+  }
+
+  /**
+   * The kingdom's clan ranking (23) — the game's "Clan ranking" button. Kind 7
+   * = wealth points (verified); the reply is not sorted. Read-only.
+   */
+  clanRanking(kind: number, count = 100): Promise<Frame> {
+    return this.ask(23, [[kind, count, [], false]]);
+  }
+
   players(playerIds: number[]): Promise<Frame> {
     return this.ask(402, [[playerIds.map((id) => [id])]]);
   }

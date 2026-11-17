@@ -89,6 +89,12 @@ Every scan, per clan:
 - **Players** — might, hero level, city level, VIP level and Gold Pass.
 - **Clan Capital ledger** — every donation and payout, by member.
 - **Vaults of the Ancients** near members' cities, on the days they exist.
+- **The clan itself** (My Clan page) — tag and name, members against the
+  member limit, might, wealth points and the clan's rank by wealth in its
+  kingdom, help points, founding date, the medals it displays, the Clan
+  Capital's position and treasury, and the clan's research (Clan territories,
+  Allies, Fortifications) drawn as the game's trees — with a reading per scan
+  and a history of every research level-up.
 
 Every minute:
 
@@ -107,8 +113,8 @@ Once a day:
   — archived as received, so fields that are not decoded yet still have
   history once they are.
 
-Some of this is collected ahead of being shown: rewards and the Clan Capital
-are on the way to the dashboard.
+Some of this is collected ahead of being shown: chest rewards are on the way
+to the dashboard.
 
 Chest, item, research and hero names come from the game's public static data,
 which the server downloads and caches itself when the game publishes a new
