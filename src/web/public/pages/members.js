@@ -1207,11 +1207,11 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   const recordBadgesHtml = [
     singleDayBadges.bestChestDay ? `<span class="record-badge" title="${t('Personal record and one of the clan\'s top 3 best single days for chests')}">
       <span class="record-badge-medal">${badgeMedals[singleDayBadges.bestChestDay.rank - 1]}</span>
-      ${tn(singleDayBadges.bestChestDay.value, '#{rank} best chest day — <strong>{n}</strong> chests on {date}', '#{rank} best chest day — <strong>{n}</strong> chests on {date}', { rank: singleDayBadges.bestChestDay.rank, date: esc(singleDayBadges.bestChestDay.date || '') })}
+      <span class="record-badge-text">${tn(singleDayBadges.bestChestDay.value, '#{rank} best chest day — <strong>{n}</strong> chests on {date}', '#{rank} best chest day — <strong>{n}</strong> chests on {date}', { rank: singleDayBadges.bestChestDay.rank, date: esc(singleDayBadges.bestChestDay.date || '') })}</span>
     </span>` : '',
     singleDayBadges.bestPointDay ? `<span class="record-badge" title="${t('Personal record and one of the clan\'s top 3 best single days for points')}">
       <span class="record-badge-medal">${badgeMedals[singleDayBadges.bestPointDay.rank - 1]}</span>
-      ${t('#{rank} best point day — <strong>{value}</strong> pts on {date}', { rank: singleDayBadges.bestPointDay.rank, value: singleDayBadges.bestPointDay.value.toLocaleString(), date: esc(singleDayBadges.bestPointDay.date || '') })}
+      <span class="record-badge-text">${t('#{rank} best point day — <strong>{value}</strong> pts on {date}', { rank: singleDayBadges.bestPointDay.rank, value: singleDayBadges.bestPointDay.value.toLocaleString(), date: esc(singleDayBadges.bestPointDay.date || '') })}</span>
     </span>` : '',
   ].filter(Boolean).join('');
 
@@ -1267,7 +1267,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
 
   const headerHtml = `
     <div class="card">
-      <div class="card-header member-detail-header">
+      <div class="card-header member-detail-header is-profile">
         <div class="member-detail-title">
           ${heroAvatarHtml(currentMemberGame?.player, 72)}
           <h2>${esc(data.name)}</h2>

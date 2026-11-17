@@ -1668,6 +1668,15 @@ th.sortable:hover {
 .record-badge .record-badge-medal {
   font-size: 14px;
   line-height: 1;
+  flex: none;
+}
+
+/* The sentence is ONE flex item, so it wraps as text: as loose text runs the
+   dash, the number and the words stacked into columns on phones. */
+.record-badge-text { min-width: 0; line-height: 1.35; }
+
+@media (max-width: 640px) {
+  .record-badge { max-width: 100%; border-radius: 14px; margin-right: 0; }
 }
 
 /* ─── Forms & Inputs ─── */
@@ -2184,6 +2193,44 @@ label {
     align-items: flex-start;
     gap: 8px;
   }
+
+  /* The member profile: portrait left with the name and rank beside it, the
+     game facts across the width below, Back small at the top-right — not one
+     item per row (user, Nov 2026: "a lot of wasted space up top"). */
+  .member-detail-header.is-profile {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .member-detail-header.is-profile > .btn {
+    order: 2;
+    flex: none;
+    padding: 6px 10px;
+  }
+  .member-detail-header.is-profile .member-detail-title {
+    flex: 1 1 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 6px;
+    align-items: center;
+  }
+  .member-detail-header.is-profile .member-detail-title > .hero-framed,
+  .member-detail-header.is-profile .member-detail-title > .hero-avatar { grid-row: 1 / span 2; }
+  .member-detail-header.is-profile .member-detail-title > h2 {
+    margin: 0;
+    align-self: end;
+    overflow-wrap: anywhere;
+  }
+  .member-detail-header.is-profile .member-detail-title > .member-rank-badge { justify-self: start; align-self: start; }
+  .member-detail-header.is-profile .member-detail-title > .game-facts { grid-column: 1 / -1; }
+  /* No portrait (not linked to a game player yet): everything full width. */
+  .member-detail-header.is-profile .member-detail-title:not(:has(> .hero-framed, > .hero-avatar)) > * { grid-column: 1 / -1; }
+  /* A member profile on a phone: the "Members — Everyone in the clan" page
+     heading repeats nothing the card doesn't say — drop it (desktop keeps it). */
+  body:has(#content .member-detail-header.is-profile) #pageHead { display: none; }
 
   .stat-card .value.member-detail-date {
     font-size: 16px;
