@@ -138,7 +138,6 @@ import {
   handleResourcesTxSave,
   handleResourcesTxCancel,
 } from './pages/resources.js';
-import { saveUnresolvedResource, saveAllUnresolvedResources } from './pages/unresolved-resources.js';
 import { renderResourcesOverview } from './pages/resources-overview.js';
 import { renderResourcesTotals } from './pages/resources-totals.js';
 import { renderResourcesChestRewards } from './pages/resources-chest-rewards.js';
@@ -151,8 +150,6 @@ import {
   doMergeChest,
   doMergeSource,
   saveAllTriumphalPoints,
-  reassignUnknownRow,
-  reassignUnknownBulk,
   deleteRule,
   saveMemberName,
   deleteMemberById,
@@ -649,8 +646,6 @@ if (contentEl) {
     if (action === 'save-all-triumphal-points') return saveAllTriumphalPoints(loadPage);
     if (action === 'save-schedule-correction') return saveScheduleCorrection(loadPage);
     if (action === 'delete-schedule-correction') return deleteScheduleCorrection(Number.parseInt(target.dataset.correctionId || '0', 10), loadPage);
-    if (action === 'reassign-unknown-row') return reassignUnknownRow(Number.parseInt(target.dataset.chestId || '0', 10), loadPage);
-    if (action === 'reassign-unknown-bulk') return reassignUnknownBulk(Number.parseInt(target.dataset.sessionId || '0', 10), loadPage);
     if (action === 'change-password') return openChangePasswordModal();
     if (action === 'create-user') return createNewUser(loadPage);
     if (action === 'delete-user') return deleteUserById(Number.parseInt(target.dataset.userId || '0', 10), loadPage, target.dataset.username);
@@ -673,8 +668,6 @@ if (contentEl) {
     if (action === 'resources-tx-edit') return handleResourcesTxEdit(Number.parseInt(target.dataset.txId || '0', 10));
     if (action === 'resources-tx-save') return handleResourcesTxSave(Number.parseInt(target.dataset.txId || '0', 10), loadPage);
     if (action === 'resources-tx-cancel') return handleResourcesTxCancel(loadPage);
-    if (action === 'resolve-resource-row') return saveUnresolvedResource(Number.parseInt(target.dataset.txId || '0', 10), loadPage);
-    if (action === 'resolve-resource-all') return saveAllUnresolvedResources(target, loadPage);
   });
 
   // Hover preview + click-to-enlarge for any row that kept the screenshot it came
@@ -1329,12 +1322,7 @@ async function refreshNavDots() {
   }
   const adminDot = document.getElementById('navAdminDot');
   if (adminDot) {
-    const adminNeeds =
-      (status?.admin?.reviewQueueCount ?? 0) > 0 ||
-      (status?.admin?.unknownChestsCount ?? 0) > 0 ||
-      // Nobody watches the daily resource read finish, so without the dot these
-      // rows would sit unnoticed until someone happened to open the Admin page.
-      (status?.admin?.unresolvedResourceCount ?? 0) > 0;
+    const adminNeeds = (status?.admin?.reviewQueueCount ?? 0) > 0;
     adminDot.classList.toggle('is-hidden', !adminNeeds);
   }
   const systemDot = document.getElementById('navSystemDot');

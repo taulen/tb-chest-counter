@@ -13,7 +13,6 @@ exports.restoreMember = restoreMember;
 exports.getRecentlySeenMembers = getRecentlySeenMembers;
 exports.deleteMember = deleteMember;
 exports.getMemberCount = getMemberCount;
-exports.getMemberEvidenceCropPath = getMemberEvidenceCropPath;
 const database_js_1 = require("../database.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 const name_normalize_js_1 = require("../../utils/name-normalize.js");
@@ -54,7 +53,6 @@ function findByDespacedKey(db, clanId, key) {
  */
 function invalidateMemberDerivedCaches(clanId) {
     (0, ttl_cache_js_1.invalidate)(`reviewQueueCount:${clanId}`);
-    (0, ttl_cache_js_1.invalidate)(`unknownChestsCount:${clanId}`);
 }
 function rowToMember(row) {
     return {
@@ -274,37 +272,5 @@ function getMemberCount(clanId) {
     const db = (0, database_js_1.getDb)();
     const row = db.prepare('SELECT COUNT(*) as count FROM members WHERE clan_id = ? AND is_active = 1').get(clanId);
     return row.count;
-}
-/**
- * Path to a screenshot crop that shows where this member came from, or null.
- *
- * Members reach the review queue from three places, so evidence can live in any of
- * three tables. Preference order is tightest-crop first, because the whole point is
- * letting an admin read the name: a might capture keeps a single member-list row
- * (name, coordinates and power on one line — the most direct evidence of clan
- * membership there is), a resource import keeps a single outlined history row, and a
- * chest crop is a whole batch of gift cards. Within a source, the oldest row wins —
- * that's the one that introduced the member.
- *
- * Clan-scoped so an admin in clan A can't read clan B's crops by guessing member ids.
- * The caller must still confine the returned path to an allowed directory before
- * serving it; a stored path is untrusted input.
- */
-function getMemberEvidenceCropPath(memberId, clanId) {
-    const db = (0, database_js_1.getDb)();
-    const mightRow = db.prepare(`SELECT row_crop_path AS p FROM member_snapshots
-     WHERE member_id = ? AND clan_id = ? AND row_crop_path IS NOT NULL
-     ORDER BY id ASC LIMIT 1`).get(memberId, clanId);
-    if (mightRow)
-        return mightRow.p;
-    const resourceRow = db.prepare(`SELECT row_crop_path AS p FROM resource_transactions
-     WHERE member_id = ? AND clan_id = ? AND row_crop_path IS NOT NULL
-     ORDER BY id ASC LIMIT 1`).get(memberId, clanId);
-    if (resourceRow)
-        return resourceRow.p;
-    const chestRow = db.prepare(`SELECT debug_crop_path AS p FROM chest_records
-     WHERE member_id = ? AND clan_id = ? AND debug_crop_path IS NOT NULL
-     ORDER BY captured_at ASC LIMIT 1`).get(memberId, clanId);
-    return chestRow?.p ?? null;
 }
 //# sourceMappingURL=member-repo.js.map

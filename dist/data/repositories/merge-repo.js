@@ -38,7 +38,6 @@ const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
  */
 function invalidateMergeDerivedCaches(clanId) {
     (0, ttl_cache_js_1.invalidate)(`reviewQueueCount:${clanId}`);
-    (0, ttl_cache_js_1.invalidate)(`unknownChestsCount:${clanId}`);
     (0, ttl_cache_js_1.invalidate)(`might:${clanId}:`);
     (0, ttl_cache_js_1.invalidate)(`guards:${clanId}:`);
     (0, ttl_cache_js_1.invalidate)(`goldpass:${clanId}:`);

@@ -59,10 +59,6 @@ const EXEMPT: Record<string, string> = {
     'Defines upsertMember. A clan-scoped rule lookup does not belong in the repo '
     + 'primitive: it is also called with a hand-typed admin name and with the '
     + '"[Unknown]" sentinel, both of which must pass through verbatim.',
-  'web/routes/api.ts':
-    'The unknown-chest reassign route — an admin typing a destination name by hand. '
-    + 'Their intent is authoritative and a rule must never override it. A name that '
-    + 'IS a merged spelling still resolves, via the alias addMergeRule now writes.',
 };
 
 /**
@@ -96,7 +92,9 @@ describe('player merge rules are honoured wherever a read name creates a member'
   it('finds the member-creating paths at all', () => {
     // A guard on the guard: if upsertMember is ever renamed, the scan above quietly
     // matches nothing and this test passes while checking absolutely nothing.
-    expect(callers.length).toBeGreaterThanOrEqual(3);
+    // Since the OCR-era unknown-chest reassign route went (Nov 2026): the repo
+    // primitive and the game roster sync.
+    expect(callers.length).toBeGreaterThanOrEqual(2);
     expect(callers).toContain('game-protocol/member-sync.ts');
   });
 

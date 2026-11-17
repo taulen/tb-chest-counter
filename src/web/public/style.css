@@ -3552,8 +3552,8 @@ details > table {
   }
 }
 
-/* Hover-trigger for evidence crops ("OCR Missing Player Name" admin rows,
- * unresolved resource rows, first-seen members). Hover previews it, click opens
+/* Hover-trigger for evidence crops (the Resources ledger rows the retired
+ * screenshot reader kept a crop for). Hover previews it, click opens
  * the zoomable lightbox — hence zoom-in rather than a plain help cursor. */
 .unknown-crop-hover {
   cursor: zoom-in;
@@ -4734,109 +4734,6 @@ details > table {
 /* Wider variant of the shared .modal-card (contentModal's `wide`). */
 .modal-card-wide {
   max-width: 920px;
-}
-
-/* ─── Admin → Unresolved Resources (pages/unresolved-resources.js) ──────────
-   One row per unread icon: the crop of the original game row on the left —
-   the icon at its right end is the answer — and the picker beside it. */
-.unres-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.unres-row {
-  display: grid;
-  grid-template-columns: minmax(0, 560px) minmax(260px, 1fr);
-  gap: 20px;
-  align-items: center;
-  padding: 16px 20px;
-}
-.unres-row + .unres-row { border-top: 1px solid var(--border); }
-
-.unres-crop {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  background: var(--bg-input);
-  overflow: hidden;
-  cursor: zoom-in;
-  transition: border-color 0.15s;
-}
-.unres-crop img {
-  display: block;
-  width: 100%;
-  height: auto;
-  /* Keeps the row's height while the lazy image loads (crops are ~1000×73). */
-  aspect-ratio: 1000 / 73;
-}
-.unres-crop:hover { border-color: var(--accent-gold-border); }
-.unres-crop:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.unres-crop.is-empty {
-  cursor: default;
-  padding: 12px 14px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.unres-side {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.unres-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  font-size: 0.875rem;
-}
-.unres-name {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.unres-amount {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-}
-.unres-date {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-.unres-actions {
-  display: flex;
-  gap: 8px;
-}
-.unres-actions .input {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 280px;
-}
-.unres-actions .btn { flex-shrink: 0; }
-
-/* "Showing the newest 25 of N" on the left, Save all on the right. */
-.unres-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--border);
-}
-.unres-more { margin: 0; }
-.unres-footer .btn { margin-left: auto; }
-
-@media (max-width: 760px) {
-  .unres-row {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    padding: 14px;
-  }
-  .unres-actions .input { max-width: none; }
-  .unres-footer { padding: 12px 14px; }
-  .unres-footer .btn { width: 100%; }
 }
 
 .resource-direction {

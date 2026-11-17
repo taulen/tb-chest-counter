@@ -19,18 +19,6 @@ const log = childLogger('chest-repo');
 // scan completion and other chest-data mutations via the invalidation hooks.
 export const ANALYTICS_CACHE_TTL_MS = 15000;
 
-// The unknown-chest badge count is read by the polled nav-status endpoint.
-// The underlying query is sub-millisecond, but we memoize it per clan for
-// consistency with the other nav counts and to shield the event loop under
-// contention. Invalidated on scan completion, reassignment, and any
-// member-name edit that changes the [Unknown]/blank sentinel set.
-const UNKNOWN_CHESTS_COUNT_TTL_MS = 60000;
-
-/** Drop the cached unknown-chests count so the next nav-status read recomputes. */
-export function invalidateUnknownChestsCount(clanId?: number): void {
-  invalidate(clanId === undefined ? 'unknownChestsCount:' : `unknownChestsCount:${clanId}`);
-}
-
 // ─── captured_at + confidence storage conversions ───
 //
 // Post-v30 captured_at is stored as INTEGER ms-since-epoch (was a
@@ -1128,103 +1116,6 @@ export function getChestHistoryForSourceAndMember(
 }
 
 /**
- * Returns every chest record that needs manual player-name attribution:
- * rows where OCR failed to read the name, so the row was saved with an
- * empty/null player_name (legacy pre-fix data) or under the "[Unknown]"
- * sentinel (post-fix). Used by the admin "Needs Review" section.
- */
-export function getUnknownChests(clanId: number): Array<{
-  id: number;
-  sessionId: number;
-  capturedAt: string;
-  effectiveAt: string;
-  chestName: string;
-  chestSource: string;
-  chestType: string;
-  quantity: number;
-  pointValue: number;
-  memberId: number | null;
-  playerName: string;
-  hasCrop: boolean;
-}> {
-  const db = getDb();
-  // Push the sentinel predicate onto the members table and match by
-  // member_id (uses idx_chest_records_clan_member). member_id is NOT NULL
-  // and always joins, so this is equivalent to the old player_name TRIM/
-  // LOWER scan over the view but lets the chest_records side stay indexed.
-  const rows = db.prepare(`
-    SELECT id, session_id, captured_at, effective_at, chest_name, chest_source, chest_type,
-           quantity, point_value, member_id, player_name, debug_crop_path
-    FROM chest_records_v
-    WHERE clan_id = ?
-      AND member_id IN (
-        SELECT id FROM members
-        WHERE clan_id = ?
-          AND (name IS NULL OR name = '' OR TRIM(name) = ''
-               OR name = '[Unknown]' OR LOWER(TRIM(name)) = 'inactive player')
-      )
-    ORDER BY session_id DESC, captured_at DESC
-  `).all(clanId, clanId) as Record<string, unknown>[];
-  return rows.map((r) => ({
-    id: r.id as number,
-    sessionId: r.session_id as number,
-    capturedAt: msToIso(r.captured_at as number),
-    effectiveAt: msToIso((r.effective_at ?? r.captured_at) as number),
-    chestName: r.chest_name as string,
-    chestSource: (r.chest_source as string) || '',
-    chestType: r.chest_type as string,
-    quantity: r.quantity as number,
-    pointValue: r.point_value as number,
-    memberId: (r.member_id as number) ?? null,
-    playerName: (r.player_name as string) ?? '',
-    hasCrop: Boolean(r.debug_crop_path),
-  }));
-}
-
-/**
- * Count-only variant of getUnknownChests — same sentinel predicate, but
- * over the base chest_records table (no view join needed for a count).
- * Backs the nav-status unknown-chest dot (GET /api/admin/nav-status) so the
- * badge never materializes the full list. Memoized per clan with explicit
- * invalidation on scan completion, reassignment, and member-name edits.
- */
-export function countUnknownChests(clanId: number): number {
-  return cached(`unknownChestsCount:${clanId}`, UNKNOWN_CHESTS_COUNT_TTL_MS, () =>
-    computeUnknownChestsCount(clanId),
-  );
-}
-
-function computeUnknownChestsCount(clanId: number): number {
-  const db = getDb();
-  const row = db.prepare(`
-    SELECT COUNT(*) AS cnt
-    FROM chest_records
-    WHERE clan_id = ?
-      AND member_id IN (
-        SELECT id FROM members
-        WHERE clan_id = ?
-          AND (name IS NULL OR name = '' OR TRIM(name) = ''
-               OR name = '[Unknown]' OR LOWER(TRIM(name)) = 'inactive player')
-      )
-  `).get(clanId, clanId) as { cnt: number };
-  return row.cnt;
-}
-
-/**
- * Lookup the saved debug-crop path for a single chest. Returned by the
- * admin crop-image endpoint so the operator can hover a row and see the
- * screenshot that produced it. Scoped to the active clan so admins in
- * clan A can't enumerate clan B's crops by guessing chest IDs.
- */
-export function getDebugCropPathForChest(chestId: number, clanId: number): string | null {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT debug_crop_path FROM chest_records WHERE id = ? AND clan_id = ?',
-  ).get(chestId, clanId) as { debug_crop_path: string | null } | undefined;
-  return row?.debug_crop_path ?? null;
-}
-
-/**
  * Reassign a set of specific chest rows to a member. Updates member_id
  * only — post-D4 the chest_records table no longer carries a denormalized
  * player_name column, so the new member's name is reflected automatically
@@ -1251,39 +1142,10 @@ export function reassignChestsToMember(
   // [Unknown] sentinel member and can change which chest names/sources are
   // still in the review queue, so drop those nav/summary caches too.
   invalidateScanStats(clanId);
-  invalidateUnknownChestsCount(clanId);
   invalidateReviewQueueCount(clanId);
   invalidateSourceKeySummary();
   // Moving chests between members changes the per-(member, day) rollup.
   chestSummaryRepo.notifyChestDataChanged(clanId);
-  return result.changes;
-}
-
-/**
- * Clear the "Manual review needed" error banner from every scan session
- * in this clan that no longer has any unreadable-name rows. Post-D4 the
- * sentinel is detected via the member.name JOIN — every chest record
- * points at a real member row, and "[Unknown]" rows point at the
- * synthetic [Unknown] member.
- */
-export function clearResolvedManualReviewErrors(clanId: number): number {
-  const db = getDb();
-  const result = db.prepare(`
-    UPDATE scan_sessions
-       SET error_message = NULL, error_phase = NULL
-     WHERE clan_id = ?
-       AND error_phase = 'Manual review needed'
-       AND id NOT IN (
-         SELECT DISTINCT cr.session_id
-         FROM chest_records cr
-         JOIN members m ON m.id = cr.member_id
-         WHERE cr.clan_id = ?
-           AND (m.name = '[Unknown]'
-                OR m.name = ''
-                OR TRIM(m.name) = ''
-                OR LOWER(TRIM(m.name)) = 'inactive player')
-       )
-  `).run(clanId, clanId);
   return result.changes;
 }
 
@@ -1324,7 +1186,6 @@ export function deleteOrphanedEmptyMembers(clanId: number): number {
   // the unknown-chest sentinel set, so refresh those nav badges.
   if (result.changes > 0) {
     invalidateReviewQueueCount(clanId);
-    invalidateUnknownChestsCount(clanId);
   }
   return result.changes;
 }

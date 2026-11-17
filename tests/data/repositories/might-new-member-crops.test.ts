@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../../src/data/database.js';
 import * as mightRepo from '../../../src/data/repositories/might-repo.js';
-import { getMemberEvidenceCropPath, upsertMember } from '../../../src/data/repositories/member-repo.js';
+import { upsertMember } from '../../../src/data/repositories/member-repo.js';
 import { resolveAllowedCropPath, MIGHT_NEW_MEMBER_CROP_DIR } from '../../../src/utils/crop-dirs.js';
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import path from 'node:path';
@@ -11,9 +11,8 @@ import path from 'node:path';
  * might capture creates them rather than dropping the reading — and keeps a crop
  * of their member-list row as the evidence an admin acknowledges them against.
  *
- * These pin the three things that have to line up for that hover to work: the
- * path is stored and the resolver finds it (the review queue that advertised it
- * is gone: members come from the game roster now).
+ * These pin that the stored path survives and stays servable (the review queue
+ * that showed it is gone: members come from the game roster now, Nov 2026).
  */
 describe('might new-member evidence crops', () => {
   let cleanup: () => void;
@@ -27,7 +26,7 @@ describe('might new-member evidence crops', () => {
 
   const cropPath = (name: string): string => path.join(MIGHT_NEW_MEMBER_CROP_DIR, name);
 
-  it('stores the crop path and surfaces it as the member evidence', () => {
+  it('stores the crop path on the snapshot row', () => {
     const member = upsertMember('NewJoiner', 1);
     const p = cropPath('might_new_member_newjoiner.png');
 
@@ -35,9 +34,10 @@ describe('might new-member evidence crops', () => {
       { memberId: member.id, might: 12_345_678, cropPath: p },
     ]);
 
-    expect(getMemberEvidenceCropPath(member.id, 1)).toBe(p);
-    // Clan-scoped: another clan's admin must not reach it by guessing the id.
-    expect(getMemberEvidenceCropPath(member.id, 2)).toBeNull();
+    const row = getDb().prepare(
+      'SELECT row_crop_path AS p FROM member_snapshots WHERE member_id = ? AND clan_id = 1',
+    ).get(member.id) as { p: string | null };
+    expect(row.p).toBe(p);
   });
 
   it('does not blank an existing crop when the day is re-captured', () => {

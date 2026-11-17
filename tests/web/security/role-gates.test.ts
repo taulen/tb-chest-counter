@@ -302,11 +302,6 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'GET /admin/merge-rules', method: 'get', path: '/api/admin/merge-rules?type=player' },
       { name: 'GET /admin/source-points', method: 'get', path: '/api/admin/source-points' },
       { name: 'GET /admin/triumphal-points', method: 'get', path: '/api/admin/triumphal-points' },
-      // Review-evidence crops. Both stream clan screenshots, so they sit at admin
-      // tier even though they only read. A missing id yields 404 for an admin, which
-      // still proves the gate let them past.
-      { name: 'GET /admin/unknown-chests/:id/crop', method: 'get', path: '/api/admin/unknown-chests/999/crop' },
-      { name: 'GET /admin/members/:id/crop', method: 'get', path: '/api/admin/members/999/crop' },
     ];
 
     for (const ep of ADMIN_TIER) {

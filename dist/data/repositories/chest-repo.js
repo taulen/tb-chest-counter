@@ -34,7 +34,6 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ANALYTICS_CACHE_TTL_MS = void 0;
-exports.invalidateUnknownChestsCount = invalidateUnknownChestsCount;
 exports.slugifyChestName = slugifyChestName;
 exports.resolveChestName = resolveChestName;
 exports.getOrCreateChestId = getOrCreateChestId;
@@ -59,11 +58,7 @@ exports.getChestHistoryForChestAndMember = getChestHistoryForChestAndMember;
 exports.resolveSourceName = resolveSourceName;
 exports.getMembersBySource = getMembersBySource;
 exports.getChestHistoryForSourceAndMember = getChestHistoryForSourceAndMember;
-exports.getUnknownChests = getUnknownChests;
-exports.countUnknownChests = countUnknownChests;
-exports.getDebugCropPathForChest = getDebugCropPathForChest;
 exports.reassignChestsToMember = reassignChestsToMember;
-exports.clearResolvedManualReviewErrors = clearResolvedManualReviewErrors;
 exports.deleteOrphanedEmptyMembers = deleteOrphanedEmptyMembers;
 exports.getDistinctChestSources = getDistinctChestSources;
 exports.getChestCountsByMember = getChestCountsByMember;
@@ -88,16 +83,6 @@ const log = (0, logger_js_1.childLogger)('chest-repo');
 // (which is what pins the synchronous event loop). Dropped immediately on
 // scan completion and other chest-data mutations via the invalidation hooks.
 exports.ANALYTICS_CACHE_TTL_MS = 15000;
-// The unknown-chest badge count is read by the polled nav-status endpoint.
-// The underlying query is sub-millisecond, but we memoize it per clan for
-// consistency with the other nav counts and to shield the event loop under
-// contention. Invalidated on scan completion, reassignment, and any
-// member-name edit that changes the [Unknown]/blank sentinel set.
-const UNKNOWN_CHESTS_COUNT_TTL_MS = 60000;
-/** Drop the cached unknown-chests count so the next nav-status read recomputes. */
-function invalidateUnknownChestsCount(clanId) {
-    (0, ttl_cache_js_1.invalidate)(clanId === undefined ? 'unknownChestsCount:' : `unknownChestsCount:${clanId}`);
-}
 // ─── captured_at + confidence storage conversions ───
 //
 // Post-v30 captured_at is stored as INTEGER ms-since-epoch (was a
@@ -957,82 +942,6 @@ function getChestHistoryForSourceAndMember(source, memberId, playerName, clanId,
     }));
 }
 /**
- * Returns every chest record that needs manual player-name attribution:
- * rows where OCR failed to read the name, so the row was saved with an
- * empty/null player_name (legacy pre-fix data) or under the "[Unknown]"
- * sentinel (post-fix). Used by the admin "Needs Review" section.
- */
-function getUnknownChests(clanId) {
-    const db = (0, database_js_1.getDb)();
-    // Push the sentinel predicate onto the members table and match by
-    // member_id (uses idx_chest_records_clan_member). member_id is NOT NULL
-    // and always joins, so this is equivalent to the old player_name TRIM/
-    // LOWER scan over the view but lets the chest_records side stay indexed.
-    const rows = db.prepare(`
-    SELECT id, session_id, captured_at, effective_at, chest_name, chest_source, chest_type,
-           quantity, point_value, member_id, player_name, debug_crop_path
-    FROM chest_records_v
-    WHERE clan_id = ?
-      AND member_id IN (
-        SELECT id FROM members
-        WHERE clan_id = ?
-          AND (name IS NULL OR name = '' OR TRIM(name) = ''
-               OR name = '[Unknown]' OR LOWER(TRIM(name)) = 'inactive player')
-      )
-    ORDER BY session_id DESC, captured_at DESC
-  `).all(clanId, clanId);
-    return rows.map((r) => ({
-        id: r.id,
-        sessionId: r.session_id,
-        capturedAt: msToIso(r.captured_at),
-        effectiveAt: msToIso((r.effective_at ?? r.captured_at)),
-        chestName: r.chest_name,
-        chestSource: r.chest_source || '',
-        chestType: r.chest_type,
-        quantity: r.quantity,
-        pointValue: r.point_value,
-        memberId: r.member_id ?? null,
-        playerName: r.player_name ?? '',
-        hasCrop: Boolean(r.debug_crop_path),
-    }));
-}
-/**
- * Count-only variant of getUnknownChests — same sentinel predicate, but
- * over the base chest_records table (no view join needed for a count).
- * Backs the nav-status unknown-chest dot (GET /api/admin/nav-status) so the
- * badge never materializes the full list. Memoized per clan with explicit
- * invalidation on scan completion, reassignment, and member-name edits.
- */
-function countUnknownChests(clanId) {
-    return (0, ttl_cache_js_1.cached)(`unknownChestsCount:${clanId}`, UNKNOWN_CHESTS_COUNT_TTL_MS, () => computeUnknownChestsCount(clanId));
-}
-function computeUnknownChestsCount(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare(`
-    SELECT COUNT(*) AS cnt
-    FROM chest_records
-    WHERE clan_id = ?
-      AND member_id IN (
-        SELECT id FROM members
-        WHERE clan_id = ?
-          AND (name IS NULL OR name = '' OR TRIM(name) = ''
-               OR name = '[Unknown]' OR LOWER(TRIM(name)) = 'inactive player')
-      )
-  `).get(clanId, clanId);
-    return row.cnt;
-}
-/**
- * Lookup the saved debug-crop path for a single chest. Returned by the
- * admin crop-image endpoint so the operator can hover a row and see the
- * screenshot that produced it. Scoped to the active clan so admins in
- * clan A can't enumerate clan B's crops by guessing chest IDs.
- */
-function getDebugCropPathForChest(chestId, clanId) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare('SELECT debug_crop_path FROM chest_records WHERE id = ? AND clan_id = ?').get(chestId, clanId);
-    return row?.debug_crop_path ?? null;
-}
-/**
  * Reassign a set of specific chest rows to a member. Updates member_id
  * only — post-D4 the chest_records table no longer carries a denormalized
  * player_name column, so the new member's name is reflected automatically
@@ -1053,38 +962,10 @@ function reassignChestsToMember(chestIds, toMemberId, _toMemberName, clanId) {
     // [Unknown] sentinel member and can change which chest names/sources are
     // still in the review queue, so drop those nav/summary caches too.
     (0, session_repo_js_1.invalidateScanStats)(clanId);
-    invalidateUnknownChestsCount(clanId);
     (0, review_queue_repo_js_1.invalidateReviewQueueCount)(clanId);
     (0, source_points_repo_js_1.invalidateSourceKeySummary)();
     // Moving chests between members changes the per-(member, day) rollup.
     chestSummaryRepo.notifyChestDataChanged(clanId);
-    return result.changes;
-}
-/**
- * Clear the "Manual review needed" error banner from every scan session
- * in this clan that no longer has any unreadable-name rows. Post-D4 the
- * sentinel is detected via the member.name JOIN — every chest record
- * points at a real member row, and "[Unknown]" rows point at the
- * synthetic [Unknown] member.
- */
-function clearResolvedManualReviewErrors(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const result = db.prepare(`
-    UPDATE scan_sessions
-       SET error_message = NULL, error_phase = NULL
-     WHERE clan_id = ?
-       AND error_phase = 'Manual review needed'
-       AND id NOT IN (
-         SELECT DISTINCT cr.session_id
-         FROM chest_records cr
-         JOIN members m ON m.id = cr.member_id
-         WHERE cr.clan_id = ?
-           AND (m.name = '[Unknown]'
-                OR m.name = ''
-                OR TRIM(m.name) = ''
-                OR LOWER(TRIM(m.name)) = 'inactive player')
-       )
-  `).run(clanId, clanId);
     return result.changes;
 }
 /**
@@ -1123,7 +1004,6 @@ function deleteOrphanedEmptyMembers(clanId) {
     // the unknown-chest sentinel set, so refresh those nav badges.
     if (result.changes > 0) {
         (0, review_queue_repo_js_1.invalidateReviewQueueCount)(clanId);
-        invalidateUnknownChestsCount(clanId);
     }
     return result.changes;
 }

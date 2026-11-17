@@ -11,7 +11,7 @@ import {
   getRowCropPath,
   deleteBatch,
 } from '../../../src/data/repositories/resource-repo.js';
-import { upsertMember, getMemberEvidenceCropPath } from '../../../src/data/repositories/member-repo.js';
+import { upsertMember } from '../../../src/data/repositories/member-repo.js';
 
 /**
  * Row crops are the evidence an admin hovers while resolving an unresolved
@@ -151,76 +151,6 @@ describe('resource row crops', () => {
 
     expect(fs.existsSync(dropCrop)).toBe(false);
     expect(fs.existsSync(keepCrop)).toBe(true);
-  });
-
-  // ── member evidence crop: what the "New Members" review-queue hover resolves ──
-
-  it('prefers the resource row crop over a chest crop for the same member', () => {
-    const db = getDb();
-    const member = upsertMember('Taulen', 1);
-    const batch = newBatch(1);
-    const resourceCrop = makeCropFile('resource.png');
-    const chestCrop = makeCropFile('chest.png');
-
-    // A chest row for the same member, also carrying a crop.
-    const session = db.prepare(
-      `INSERT INTO scan_sessions (clan_id, started_at, status, trigger_source)
-       VALUES (1, '2026-07-27T00:00:00Z', 'COMPLETED', 'manual') RETURNING id`,
-    ).get() as { id: number };
-    const chest = db.prepare(
-      "INSERT INTO chests (name, chest_type) VALUES ('Runic Chest', 'common') RETURNING id",
-    ).get() as { id: number };
-    db.prepare(
-      `INSERT INTO chest_records (clan_id, session_id, member_id, chest_id, point_value, captured_at, confidence, debug_crop_path)
-       VALUES (1, ?, ?, ?, 0, 1000, 90, ?)`,
-    ).run(session.id, member.id, chest.id, chestCrop);
-
-    insertTransactions([{
-      clanId: 1, batchId: batch.id, memberId: member.id, resourceTypeId: null,
-      direction: 1, amount: 500, transactionDate: '2026-07-27',
-      rawPlayerName: 'Taulen', rowCropPath: resourceCrop,
-    }]);
-
-    // The resource crop is a single outlined row; the chest crop is a whole batch.
-    expect(getMemberEvidenceCropPath(member.id, 1)).toBe(resourceCrop);
-  });
-
-  it('falls back to the chest crop when the member has no resource crop', () => {
-    const db = getDb();
-    const member = upsertMember('Taulen', 1);
-    const chestCrop = makeCropFile('chest-only.png');
-    const session = db.prepare(
-      `INSERT INTO scan_sessions (clan_id, started_at, status, trigger_source)
-       VALUES (1, '2026-07-27T00:00:00Z', 'COMPLETED', 'manual') RETURNING id`,
-    ).get() as { id: number };
-    const chest = db.prepare(
-      "INSERT INTO chests (name, chest_type) VALUES ('Runic Chest', 'common') RETURNING id",
-    ).get() as { id: number };
-    db.prepare(
-      `INSERT INTO chest_records (clan_id, session_id, member_id, chest_id, point_value, captured_at, confidence, debug_crop_path)
-       VALUES (1, ?, ?, ?, 0, 1000, 90, ?)`,
-    ).run(session.id, member.id, chest.id, chestCrop);
-
-    expect(getMemberEvidenceCropPath(member.id, 1)).toBe(chestCrop);
-  });
-
-  it('reports no crop for a member with none, and is clan-scoped', () => {
-    const { clanIdB } = seedTwoClans();
-    const member = upsertMember('Taulen', 1);
-    const batch = newBatch(1);
-    const crop = makeCropFile('scoped-member.png');
-
-    insertTransactions([{
-      clanId: 1, batchId: batch.id, memberId: member.id, resourceTypeId: null,
-      direction: 1, amount: 500, transactionDate: '2026-07-27',
-      rawPlayerName: 'Taulen', rowCropPath: crop,
-    }]);
-
-    expect(getMemberEvidenceCropPath(member.id, 1)).toBe(crop);
-    expect(getMemberEvidenceCropPath(member.id, clanIdB)).toBeNull();
-
-    const other = upsertMember('NoEvidence', 1);
-    expect(getMemberEvidenceCropPath(other.id, 1)).toBeNull();
   });
 
   it('survives a crop file that is already gone', () => {

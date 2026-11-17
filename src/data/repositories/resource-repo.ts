@@ -271,16 +271,6 @@ export function listBatches(clanId: number): ResourceBatch[] {
   }));
 }
 
-/** How many rows in this clan are still missing a resource type — the standing
- *  "unresolved" count the admin card and nav dot read. */
-export function countUnresolvedTransactions(clanId: number): number {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT COUNT(*) AS n FROM resource_transactions WHERE clan_id = ? AND resource_type_id IS NULL',
-  ).get(clanId) as { n: number };
-  return row.n;
-}
-
 export function deleteBatch(batchId: number, clanId: number): void {
   const db = getDb();
   // Collect the row-crop files before the rows go, otherwise the paths are lost and

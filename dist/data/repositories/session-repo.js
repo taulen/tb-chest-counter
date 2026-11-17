@@ -129,7 +129,6 @@ function updateSession(id, clanId, updates) {
     if (updates.status === enums_js_1.ScanStatus.COMPLETED || updates.status === enums_js_1.ScanStatus.FAILED) {
         invalidateScanStats(clanId);
         (0, ttl_cache_js_1.invalidate)(`reviewQueueCount:${clanId}`);
-        (0, ttl_cache_js_1.invalidate)(`unknownChestsCount:${clanId}`);
         (0, ttl_cache_js_1.invalidate)(`sourceKeySummary:${clanId}`);
         // A finished (or failed-but-partial) scan changed this clan's chests:
         // mark the daily-summary rollup stale and drop the analytics/leaderboard

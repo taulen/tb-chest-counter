@@ -457,11 +457,5 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
       expect(Array.isArray(res.body)).toBe(false);
       for (const v of Object.values(res.body)) expect(typeof v).toBe('number');
     });
-
-    it('GET /api/admin/unknown-chests', async () => {
-      const res = await request(app).get('/api/admin/unknown-chests');
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-    });
   });
 });

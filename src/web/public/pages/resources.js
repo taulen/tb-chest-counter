@@ -2,8 +2,7 @@
 // import history (delete a bad batch). Data arrives from the Clan Capital
 // ledger every scan reads from the game. Older rows came from the retired
 // screenshot reader and the screenshot upload (removed Nov 2026); rows that
-// reader couldn't identify are resolved from the Admin page
-// (unresolved-resources.js).
+// reader couldn't identify stay as they are (no review any more).
 
 import { loadGameArt } from '../lib/game-art.js';
 import { api, apiPatch, apiDelete } from '../lib/api.js';

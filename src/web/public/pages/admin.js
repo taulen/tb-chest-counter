@@ -1,11 +1,8 @@
 // Admin — content-management page for admins/superadmins, split into tabs
 // (one route each, like Tools): #admin/<tab>.
 //
-//   review  — only while something needs attention: the OCR-missing-player-name
-//             reassignment workflow with hover-preview of the saved debug crops,
-//             the review queue (newly-discovered chest names / sources /
-//             members) and resource rows whose icon couldn't be
-//             identified (unresolved-resources.js).
+//   review  — only while something needs attention: triumphal chests without a
+//             package value (the OCR-era sections were retired in Nov 2026).
 //   members — member rename + delete, player merge rules.
 //   chests  — chest-name and chest-source merge rules.
 //   points  — the Chest Points board (points-board.js) and Triumphal Chest Points.
@@ -28,9 +25,6 @@ import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { mountPointsBoard } from './points-board.js';
-import {
-  loadUnresolvedResources, unresolvedResourcesSectionHtml, wireUnresolvedResources,
-} from './unresolved-resources.js';
 
 /**
  * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
@@ -58,7 +52,7 @@ const ADMIN_TABS = ['review', 'members', 'chests', 'points'];
 function attentionCount(navStatus) {
   const a = navStatus?.admin;
   if (!a) return null;
-  return (a.reviewQueueCount ?? 0) + (a.unknownChestsCount ?? 0) + (a.unresolvedResourceCount ?? 0);
+  return a.reviewQueueCount ?? 0;
 }
 
 /**
@@ -117,7 +111,7 @@ export async function renderAdmin(el, requested = '') {
   if (!tab) tab = attentionCount(await navStatusP) === 0 ? 'members' : 'review';
 
   let body;
-  if (tab === 'review') body = await reviewTab(navStatusP);
+  if (tab === 'review') body = await reviewTab();
   else if (tab === 'members') body = await membersTab();
   else if (tab === 'chests') body = await chestsTab();
   else body = await pointsTab(isSuperadmin);
@@ -126,33 +120,20 @@ export async function renderAdmin(el, requested = '') {
   body.wire?.(el);
 }
 
-/** OCR-missing player names, the review queue and unresolved resource rows. */
-async function reviewTab(navStatusP) {
-  const [reviewQueue, unknownChests, unresolvedResources] = await Promise.all([
+/**
+ * What still needs a person: triumphal chests without a package value. The
+ * OCR-era sections (unread player names, unresolved resource rows, new names
+ * to acknowledge) were retired in Nov 2026 — the scan reads the game itself.
+ */
+async function reviewTab() {
+  const [reviewQueue] = await Promise.all([
     api('/admin/review-queue'),
-    api('/admin/unknown-chests'),
-    // Rows + resource list only when the count says there is something to resolve.
-    navStatusP.then((s) => loadUnresolvedResources(s?.admin?.unresolvedResourceCount)),
-    // The new chests' pictures (never rejects).
+    // The chests' pictures (never rejects).
     loadGameArt(),
   ]);
-
-  // The reassign dropdowns need the roster and its chest counts, which only an
-  // unread name calls for — most visits have none, and skip both reads.
-  let unknownChestsHtml = '';
-  if (Array.isArray(unknownChests) && unknownChests.length > 0) {
-    const [members, memberChestCounts] = await Promise.all([
-      api('/members?include=inactive'),
-      api('/admin/member-chest-counts'),
-    ]);
-    const { activeMembers, chestCounts } = rosterFor(members, memberChestCounts);
-    unknownChestsHtml = renderUnknownChestsSection(unknownChests, activeMembers, chestCounts);
-  }
-
-  const html = `${unknownChestsHtml}${renderReviewQueueSection(reviewQueue)}${unresolvedResourcesSectionHtml(unresolvedResources)}`;
+  const html = renderReviewQueueSection(reviewQueue);
   return {
     html: html.trim() ? html : `<div class="empty-state"><p>${t('Nothing needs review right now.')}</p></div>`,
-    wire: (el) => wireUnresolvedResources(el),
   };
 }
 
@@ -626,112 +607,6 @@ function renderReviewQueueSection(queue) {
       </div>
     </div>
   `;
-}
-
-function renderUnknownChestsSection(chests, members, chestCounts) {
-  if (!Array.isArray(chests) || chests.length === 0) return '';
-
-  // Group by session so the operator can correlate with the debug crop
-  // screenshots saved to data/screenshots/ocr_missing_name/ (file names
-  // include the session id).
-  const bySession = new Map();
-  for (const c of chests) {
-    if (!bySession.has(c.sessionId)) bySession.set(c.sessionId, []);
-    bySession.get(c.sessionId).push(c);
-  }
-  const sessionIds = [...bySession.keys()].sort((a, b) => b - a);
-
-  const counts = chestCounts || {};
-  const memberOptions = members
-    .map((m) => countedOption(m.name, counts[m.id]))
-    .join('');
-
-  const sections = sessionIds.map((sid) => {
-    const rows = bySession.get(sid);
-    return `
-      <div class="card">
-        <div class="card-header">
-          <h2>${t('Session #{id}', { id: sid })} <span class="chest-type epic">${tn(rows.length, '{n} row', '{n} rows', { n: rows.length })}</span></h2>
-        </div>
-        <div class="card-body card-body-padded">
-          <p class="muted-copy mb-12">${t('Debug crops for this session were saved to {dir} — filenames contain {file}. Open them to see which player each row belongs to, then reassign below.', { dir: '<code>data/screenshots/ocr_missing_name/</code>', file: `<code>s${sid}</code>` })}</p>
-          <div class="inline-form-row mb-12">
-            <div>
-              <label>${t('Reassign ALL rows in this session to')}</label>
-              <select class="input" id="unknownBulkMember-${sid}">
-                <option value="">${t('Select member...')}</option>
-                ${memberOptions}
-              </select>
-            </div>
-            <button class="btn" data-action="reassign-unknown-bulk" data-session-id="${sid}">${t('Reassign All')}</button>
-          </div>
-          <table class="table-responsive">
-            <thead><tr><th>${t('Received')}</th><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Pts')}</th><th>${t('Crop')}</th><th class="col-edit">${t('Reassign To')}</th><th class="col-actions"></th></tr></thead>
-            <tbody>
-              ${rows.map((r) => `<tr id="unknown-row-${r.id}">
-                <td data-label="${t('Received')}" class="muted-copy">${formatDate(r.effectiveAt)}</td>
-                <td data-label="${t('Chest')}" data-role="primary"><span class="mrow-name">${chestLabelHtml(r.chestName, esc(tGame(r.chestName)))}</span><span class="mrow-sub">${formatDate(r.effectiveAt)}</span></td>
-                <td data-label="${t('Source')}" class="muted-copy">${esc(tGame(r.chestSource))}</td>
-                <td data-label="${t('Pts')}" data-role="metric">${r.pointValue}</td>
-                <td data-label="${t('Crop')}">${r.hasCrop
-                  ? `<span class="unknown-crop-hover" data-crop-url="/api/admin/unknown-chests/${r.id}/crop" tabindex="0" role="button" title="${t('Hover to preview — click to open a zoomable full-size view')}">🖼️ ${t('view')}</span>`
-                  : `<span class="muted-copy">—</span>`}</td>
-                <td data-label="${t('Reassign To')}">
-                  <select class="input" id="unknownMember-${r.id}">
-                    <option value="">${t('Select member...')}</option>
-                    ${memberOptions}
-                  </select>
-                </td>
-                <td class="col-actions nowrap">
-                  <button class="btn btn-tight" data-action="reassign-unknown-row" data-chest-id="${r.id}">${t('Save')}</button>
-                </td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  return `
-    <h2 class="page-section-title">${t('OCR Missing Player Name')} <span class="chest-type epic">${tn(chests.length, '{n} row', '{n} rows', { n: chests.length })}</span></h2>
-    <p class="page-section-intro">${t('These rows were saved with an empty or {unknown} player name because OCR couldn\'t read the name region. Reassign each row to the correct player — the row\'s <strong>Captured</strong> timestamp and the debug crop saved under {dir} for the matching session should tell you which player it belongs to.', { unknown: '<code>[Unknown]</code>', dir: '<code>data/screenshots/ocr_missing_name/</code>' })}</p>
-    ${sections}
-  `;
-}
-
-export async function reassignUnknownRow(chestId, rerender) {
-  const select = document.getElementById(`unknownMember-${chestId}`);
-  const memberName = (select?.value || '').trim();
-  if (!memberName) return notify(t('Select a member from the dropdown first'), t('No member selected'));
-  const result = await apiPost('/admin/unknown-chests/reassign', { chestIds: [chestId], memberName });
-  if (result?.error) return notify(result.error, t('Reassign failed'));
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
-}
-
-export async function reassignUnknownBulk(sessionId, rerender) {
-  const select = document.getElementById(`unknownBulkMember-${sessionId}`);
-  const memberName = (select?.value || '').trim();
-  if (!memberName) return notify(t('Select a member from the dropdown first'), t('No member selected'));
-  // Scope to the card containing the clicked dropdown so we only grab
-  // chest ids for this session, not every unknown row on the page.
-  const card = select.closest('.card');
-  const chestIds = [...(card?.querySelectorAll(`[data-action="reassign-unknown-row"]`) || [])]
-    .map((btn) => Number.parseInt(btn.dataset.chestId || '0', 10))
-    .filter((n) => n > 0);
-  if (chestIds.length === 0) return notify(t('No rows found to reassign'), t('Nothing to do'));
-  const ok = await confirmDialog(tn(chestIds.length, 'Reassign all {n} row in session #{session} to "{member}"?', 'Reassign all {n} rows in session #{session} to "{member}"?', { n: chestIds.length, session: sessionId, member: memberName }), {
-    title: t('Confirm bulk reassign'),
-    confirmLabel: t('Reassign'),
-  });
-  if (!ok) return;
-  const result = await apiPost('/admin/unknown-chests/reassign', { chestIds, memberName });
-  if (result?.error) return notify(result.error, t('Reassign failed'));
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
 }
 
 export async function deleteRule(id, rerender) {

@@ -130,7 +130,6 @@ export function updateSession(
   if (updates.status === ScanStatus.COMPLETED || updates.status === ScanStatus.FAILED) {
     invalidateScanStats(clanId);
     invalidate(`reviewQueueCount:${clanId}`);
-    invalidate(`unknownChestsCount:${clanId}`);
     invalidate(`sourceKeySummary:${clanId}`);
     // A finished (or failed-but-partial) scan changed this clan's chests:
     // mark the daily-summary rollup stale and drop the analytics/leaderboard

@@ -385,7 +385,7 @@ Pages are role-gated. Members see:
 - **ChestTracker** *(if enabled)* — chesttracker.com snapshots and deltas.
 
 Admins additionally get **Admin** (the Chest Points board, merge
-players/chests/sources, review queue, player levels imported from chat),
+players/chests/sources, triumphal chests still waiting for a value),
 **Clans** (Discord, share links, login bridge, clan settings), and **Users**
 (accounts + audit log). Superadmins get **System** (scan interval, event
 schedule corrections, backup/restore including single-clan restore, deleted

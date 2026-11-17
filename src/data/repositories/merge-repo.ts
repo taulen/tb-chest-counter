@@ -29,7 +29,6 @@ import { invalidate } from '../../utils/ttl-cache.js';
  */
 function invalidateMergeDerivedCaches(clanId: number): void {
   invalidate(`reviewQueueCount:${clanId}`);
-  invalidate(`unknownChestsCount:${clanId}`);
   invalidate(`might:${clanId}:`);
   invalidate(`guards:${clanId}:`);
   invalidate(`goldpass:${clanId}:`);

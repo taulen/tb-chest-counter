@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { resolveAllowedCropPath } from '../../utils/crop-dirs.js';
 import zlib from 'zlib';
 import * as chestRepo from '../../data/repositories/chest-repo.js';
 import * as triumphalChestRepo from '../../data/repositories/triumphal-chest-repo.js';
@@ -2089,109 +2088,6 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     }
   });
 
-  // GET /api/admin/unknown-chests — rows where the retired OCR scanner failed to read the
-  // player name. See chestRepo.getUnknownChests for the predicate.
-  // Also self-heals any stale "Manual review needed" banners on sessions
-  // whose unknown rows were already reassigned before the auto-clear
-  // behavior existed — one UPDATE, safe to run every load.
-  router.get('/admin/unknown-chests', requireAdmin, (req, res) => {
-    try {
-      const clanId = req.clanId ?? 1;
-      chestRepo.clearResolvedManualReviewErrors(clanId);
-      res.json(chestRepo.getUnknownChests(clanId));
-    } catch (err) {
-      res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-    }
-  });
-
-  // GET /api/admin/unknown-chests/:chestId/crop
-  // Streams the saved debug batch-crop PNG for a row that OCR failed on.
-  // Used by the admin UI hover preview. Path is resolved against the
-  // on-disk value, but we ONLY serve files inside the allowed screenshot
-  // directory to prevent path traversal via a maliciously stored path.
-  router.get('/admin/unknown-chests/:chestId/crop', requireAdmin, (req, res) => {
-    const chestId = parseBoundedInt(req.params.chestId, 0, { min: 1 });
-    const storedPath = chestRepo.getDebugCropPathForChest(chestId, req.clanId ?? 1);
-    if (!storedPath) {
-      return res.status(404).json({ error: 'No debug crop recorded for this chest' });
-    }
-    const resolved = resolveAllowedCropPath(storedPath);
-    if (!resolved) {
-      return res.status(403).json({ error: 'Crop path is outside the allowed directory' });
-    }
-    if (!fs.existsSync(resolved)) {
-      return res.status(404).json({ error: 'Debug crop file missing on disk' });
-    }
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    fs.createReadStream(resolved).pipe(res);
-  });
-
-  // GET /api/admin/members/:memberId/crop
-  // Streams a screenshot crop showing where a member came from, for the "New
-  // Members" review-queue hover. Evidence (kept by the retired screenshot
-  // reader) can sit on a member-list row, a resource-import row or a chest row —
-  // memberRepo.getMemberEvidenceCropPath picks the tightest one and scopes the
-  // lookup to this clan.
-  router.get('/admin/members/:memberId/crop', requireAdmin, (req, res) => {
-    const memberId = parseBoundedInt(req.params.memberId, 0, { min: 1 });
-    if (!memberId) {
-      return res.status(400).json({ error: 'Invalid memberId' });
-    }
-    const storedPath = memberRepo.getMemberEvidenceCropPath(memberId, req.clanId ?? 1);
-    if (!storedPath) {
-      return res.status(404).json({ error: 'No crop recorded for this member' });
-    }
-    const resolved = resolveAllowedCropPath(storedPath);
-    if (!resolved) {
-      return res.status(403).json({ error: 'Crop path is outside the allowed directory' });
-    }
-    if (!fs.existsSync(resolved)) {
-      return res.status(404).json({ error: 'Crop file missing on disk' });
-    }
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    fs.createReadStream(resolved).pipe(res);
-  });
-
-  // POST /api/admin/unknown-chests/reassign { chestIds: number[], memberName: string }
-  // Reassigns specific chest rows to the given member. Never uses a merge
-  // rule because "[Unknown]" is a generic sentinel — next OCR failure may
-  // belong to a different player, so forward-applied rules would be wrong.
-  router.post('/admin/unknown-chests/reassign', requireAdmin, (req, res) => {
-    const { chestIds, memberName } = req.body ?? {};
-    const ids = Array.isArray(chestIds)
-      ? chestIds.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0)
-      : [];
-    const name = typeof memberName === 'string' ? memberName.trim() : '';
-    if (ids.length === 0) {
-      return res.status(400).json({ error: 'chestIds required' });
-    }
-    if (!name) {
-      return res.status(400).json({ error: 'memberName required' });
-    }
-    if (name === '[Unknown]') {
-      return res.status(400).json({ error: 'cannot reassign to "[Unknown]" sentinel' });
-    }
-    try {
-      const clanId = req.clanId ?? 1;
-      const member = memberRepo.upsertMember(name, clanId);
-      const changes = chestRepo.reassignChestsToMember(ids, member.id, member.name, clanId);
-      const orphansRemoved = chestRepo.deleteOrphanedEmptyMembers(clanId);
-      const errorsCleared = chestRepo.clearResolvedManualReviewErrors(clanId);
-      logAction(req.user!.id, 'reassign_unknown_chests', {
-        chestIds: ids,
-        toMemberId: member.id,
-        toMemberName: member.name,
-        changes,
-        orphansRemoved,
-        errorsCleared,
-      });
-      res.json({ ok: true, changes, memberId: member.id, memberName: member.name, orphansRemoved, errorsCleared });
-    } catch (err) {
-      res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
-    }
-  });
 
   // GET /api/admin/nav-status — drives the "needs attention" dots on the
   // top nav. Cheap: counts only, no row payloads. Polled by app.js on
@@ -2202,29 +2098,16 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
   router.get('/admin/nav-status', requireAdmin, (req, res) => {
     try {
       const clanId = req.clanId ?? 1;
-      // Count-only paths: getReviewQueueCount / countUnknownChests return just
-      // the badge numbers instead of materializing (and discarding) the full
-      // entry/row arrays. Both are memoized per clan; the badge tolerates
-      // short staleness and is invalidated on every relevant mutation.
-      const counts = reviewQueueRepo.getReviewQueueCount(clanId);
-      const reviewQueueCount = counts.triumphalChests;
-      const unknownChestsCount = chestRepo.countUnknownChests(clanId);
-      // Resource rows the reader couldn't identify a resource for. The count is
-      // served from the partial index added in v59 so it stays cheap on this
-      // hot path.
-      const unresolvedResourceCount = resourceRepo.countUnresolvedTransactions(clanId);
-      // All three are Admin-page sections that only render while non-zero; the
-      // Admin page reads unresolvedResourceCount from here too, so its section
-      // and the dot can never disagree.
+      // What Admin → Review still asks a person for: triumphal chests with no
+      // package value (memoized count). The OCR-era unread-name chests and
+      // unresolved resource rows sections were retired in Nov 2026 — the scan
+      // reads names and resources from the game.
+      const reviewQueueCount = reviewQueueRepo.getReviewQueueCount(clanId).triumphalChests;
       const payload: {
-        admin: { reviewQueueCount: number; unknownChestsCount: number; unresolvedResourceCount: number };
+        admin: { reviewQueueCount: number };
         system?: { latestWarningAt: number | null };
       } = {
-        admin: {
-          reviewQueueCount,
-          unknownChestsCount,
-          unresolvedResourceCount,
-        },
+        admin: { reviewQueueCount },
       };
       if (req.user?.role === 'superadmin') {
         payload.system = { latestWarningAt: latestLogEntryAt() };

@@ -55,6 +55,8 @@ const CLAIM_BATCH_MAX = 100;
 const CLAIM_CHESTS_MAX = 100;
 /** Sender name used when the game gave us neither a member link nor a name. */
 const UNKNOWN_SENDER = '[Unknown]';
+/** Ledger items already reported as untracked in this process (one System note each). */
+const reportedUnmapped = new Set<string>();
 
 export interface ProtocolScanContext {
   clanId: number;
@@ -277,6 +279,15 @@ function importLedger(
   const unexpected = Object.entries(skipped).filter(([why]) => /unmapped|several|kind /.test(why));
   if (unexpected.length) {
     log.info(`Clan #${clanId} ledger: left out ${unexpected.map(([why, n]) => `${n}× ${why}`).join(', ')}`);
+  }
+  // A resource the game added that we don't track yet: just information, once
+  // per item per process, on the System page (no alert dot). It needs a
+  // resource type + icon (docs/game-protocol.md, "Adding a resource type").
+  // Replaces the OCR-era "unresolved resources" review, retired Nov 2026.
+  for (const [why, n] of Object.entries(skipped)) {
+    if (!why.startsWith('unmapped item ') || reportedUnmapped.has(why)) continue;
+    reportedUnmapped.add(why);
+    log.warn({ noAlert: true }, `The Clan Capital ledger has a resource we don't track yet (${why.slice('unmapped '.length)}, ${n}× in clan #${clanId}'s read) — its rows are left out until it is added as a resource type.`);
   }
   if (!fresh.length) return 0;
 

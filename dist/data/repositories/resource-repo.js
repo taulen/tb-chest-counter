@@ -9,7 +9,6 @@ exports.createBatch = createBatch;
 exports.insertTransactions = insertTransactions;
 exports.listTransactions = listTransactions;
 exports.listBatches = listBatches;
-exports.countUnresolvedTransactions = countUnresolvedTransactions;
 exports.deleteBatch = deleteBatch;
 exports.getRowCropPath = getRowCropPath;
 exports.updateTransaction = updateTransaction;
@@ -176,13 +175,6 @@ function listBatches(clanId) {
         notes: r.notes,
         source: (r.source ?? 'upload'),
     }));
-}
-/** How many rows in this clan are still missing a resource type — the standing
- *  "unresolved" count the admin card and nav dot read. */
-function countUnresolvedTransactions(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare('SELECT COUNT(*) AS n FROM resource_transactions WHERE clan_id = ? AND resource_type_id IS NULL').get(clanId);
-    return row.n;
 }
 function deleteBatch(batchId, clanId) {
     const db = (0, database_js_1.getDb)();
