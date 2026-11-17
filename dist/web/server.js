@@ -26,6 +26,7 @@ const clan_logo_js_1 = require("../game-art/clan-logo.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
 const game_js_1 = require("./routes/game.js");
+const member_timeline_js_1 = require("./routes/member-timeline.js");
 const chat_js_1 = require("./routes/chat.js");
 const guards_js_1 = require("./routes/guards.js");
 const tools_js_1 = require("./routes/tools.js");
@@ -486,6 +487,8 @@ function startWebServer(port, scanLoop, options = {}) {
     app.use('/api/might', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, might_js_1.createMightRouter)());
     // What the game protocol collects about players (profile, research, talents).
     app.use('/api/game', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, game_js_1.createGameRouter)());
+    // A member's timeline (profile → Timeline), same gate as the game routes.
+    app.use('/api/game', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, member_timeline_js_1.createMemberTimelineRouter)());
     // The stored clan chat (Chats page): any member of the active clan reads it;
     // private messages are never served (the router is pinned to clan channels).
     app.use('/api/chat', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, chat_js_1.createChatRouter)());

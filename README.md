@@ -131,6 +131,13 @@ Once a day:
   previous weeks are re-read for both, so history starts from the first
   archived read.
 - **Buildings and hero** for every member's city.
+- **A timeline per member** (profile → Timeline): everything above as one
+  list, newest first, by game day — joined / left / renamed / merged, rank
+  changes, hero and city level, VIP, Gold Pass, hero switches, big might
+  moves, troop tiers reached, a day's research, talents, captain and gear
+  changes folded into one line each, artifacts moving into the line-up, and
+  the city's shield and burning walls. The first read of each source is the
+  baseline (when we started looking), never shown as a change.
 - **Raw replies** — the clan record, the Clan Capital and every member's city
   — archived as received, so fields that are not decoded yet still have
   history once they are.

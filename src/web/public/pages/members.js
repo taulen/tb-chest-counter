@@ -31,6 +31,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
 import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
 import { memberCaptainsPanelHtml, mountMemberCaptains } from './member-captains.js';
+import { memberTimelinePanelHtml, mountMemberTimeline } from './member-timeline.js';
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
@@ -57,7 +58,7 @@ let currentMemberId = null;
 // stays on the user's current tab. Resets to 'chests' when the operator
 // opens a different member.
 let currentMemberChestsTab = 'chests';
-// Open view tab of the profile — 'overview' | 'events' | 'might' | 'history'.
+// Open view tab of the profile — 'overview' | 'events' | 'might' | 'research' | 'talents' | 'captains' | 'timeline' | 'history'.
 // Unlike the chest tab it carries over to the next member opened: someone
 // going through players' event runs stays on Events.
 const MEMBER_VIEW_GROUP = 'member-view';
@@ -1464,6 +1465,8 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       { key: 'talents', label: t('Talents'), html: memberTechPanelHtml('talent') },
       { key: 'captains', label: t('Captains'), html: memberCaptainsPanelHtml() },
     ] : []),
+    // Everything recorded about the member, newest first (member-timeline.js).
+    { key: 'timeline', label: t('Timeline'), html: memberTimelinePanelHtml() },
     { key: 'history', label: t('History'), html: historyCardHtml },
   ];
   const view = views.some((v) => v.key === currentMemberView) ? currentMemberView : 'overview';
@@ -1480,6 +1483,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       mountMemberTechs(content, data.id, key === 'research' ? 'research' : 'talent', currentMemberGame?.tiers ?? null);
     }
     if (key === 'captains') mountMemberCaptains(content, data.id);
+    if (key === 'timeline') mountMemberTimeline(content, data.id);
   };
   wireViewTabs(content, MEMBER_VIEW_GROUP, (key) => {
     currentMemberView = key;
