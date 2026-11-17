@@ -2100,6 +2100,21 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v118 — artifact history records line-up moves. Only artifacts on the
+    // three line-up captains are visible (city field 14), so "first seen"
+    // after a player's baseline means INTO the line-up, not a new artifact,
+    // and a drop means OUT of it (user, Nov 2026: Princess of Chaos swapped
+    // captains). in_lineup = 1 on every row so far; a 0 row marks it leaving.
+    // Guarded: runMigrations may replay this.
+    version: 118,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(game_player_artifact_history)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'in_lineup')) {
+        database.exec('ALTER TABLE game_player_artifact_history ADD COLUMN in_lineup INTEGER NOT NULL DEFAULT 1');
+      }
+    },
+  },
 ];
 
 /**

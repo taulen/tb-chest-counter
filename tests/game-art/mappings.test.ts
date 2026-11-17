@@ -16,7 +16,9 @@ import {
 } from '../../src/game-art/mappings.js';
 import {
   unitFrameArt, unitFrameTextures, clientUiTextures, HERO_LEVEL_BADGE, UNIT_TIER_COLOURS, TIER_NUMERALS,
+  CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF, captainTileArt,
 } from '../../src/game-art/unit-frames.js';
+import { captainScaledArt, captainFullArt } from '../../src/game-art/mappings.js';
 import type { Wire } from '../../src/game-protocol/codec.js';
 
 // String pool, vector pool and tables in the shape the game's static files use:
@@ -186,7 +188,29 @@ describe('mappings', () => {
     expect(partial['7']).toBeUndefined();
     expect(partial['6']).toEqual({ back: 'back_icon_units_72x72_red', frame: 'frame_icon_units_94x92_red', badge: null, numeral: null });
     expect(UNIT_TIER_COLOURS).toHaveLength(TIER_NUMERALS.length);
-    expect(clientUiTextures()).toEqual([...textures, HERO_LEVEL_BADGE]);
+    expect(clientUiTextures()).toEqual([...textures, HERO_LEVEL_BADGE, CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF]);
+  });
+
+  it('builds a captain tile from the unit icon sprites in its rarity colour, and picks the full-body art', () => {
+    const have = new Set(['back_icon_units_72x72_violet', 'frame_icon_units_94x92_violet', 'back_icon_units_72x72_gold',
+      'frame_icon_units_94x92_gold', 'icons_tir_shield_2', 'icons_star_up']);
+    expect(captainTileArt((n) => have.has(n))).toEqual({
+      backs: { 2: 'back_icon_units_72x72_violet', 3: 'back_icon_units_72x72_gold' },
+      frames: { 2: 'frame_icon_units_94x92_violet', 3: 'frame_icon_units_94x92_gold' },
+      levelPlate: 'icons_tir_shield_2',
+      starOn: 'icons_star_up',
+      starOff: null,
+    });
+    // carter_icon → carter_scaled (the captain screen's still); no _scaled → the level-up art.
+    expect(captainScaledArt('carter_icon')).toBe('carter_scaled');
+    expect(captainScaledArt('odd_name')).toBe('');
+    const art = captainFullArt({
+      captains: {
+        8: { name: 'Carter', icon: 'carter_icon', art: 'lvlup_carter' },
+        32: { name: 'Artemisia', icon: 'artemisia_icon', art: 'lvlup_artemisia' },
+      },
+    } as never, (n) => n === 'carter_scaled' || n === 'lvlup_carter' || n === 'lvlup_artemisia');
+    expect(art).toEqual({ 8: 'carter_scaled', 32: 'lvlup_artemisia' });
   });
 
   it('only maps to images that were extracted', () => {
