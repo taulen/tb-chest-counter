@@ -32,6 +32,24 @@ import { childLogger } from '../utils/logger.js';
 import type { ClanMember } from '../models/types.js';
 import type { ClanMember as GameClanMember, PlayerRecord } from './messages.js';
 
+/**
+ * Members whose name an admin set by hand: their latest rename_member entry is
+ * a manual one (the site's rename; the sync's own carry source "game") → the
+ * name it set. Member ids are unique across clans.
+ */
+export function manuallyNamedMembers(): Map<number, string> {
+  const rows = getDb().prepare(
+    `SELECT CAST(json_extract(details, '$.id') AS INTEGER) AS memberId, json_extract(details, '$.newName') AS name,
+            json_extract(details, '$.source') AS source
+       FROM audit_log WHERE action = 'rename_member' ORDER BY created_at, audit_log.id`,
+  ).all() as Array<{ memberId: number | null; name: string | null; source: string | null }>;
+  const latest = new Map<number, { name: string | null; source: string | null }>();
+  for (const r of rows) if (r.memberId) latest.set(r.memberId, { name: r.name, source: r.source });
+  const out = new Map<number, string>();
+  for (const [id, r] of latest) if (!r.source && r.name) out.set(id, r.name);
+  return out;
+}
+
 const log = childLogger('member-sync');
 
 const MIGHT_TOLERANCE = 0.15;
@@ -100,6 +118,7 @@ export function syncMembersFromGame(
   // A player merge rule is the admin saying "this name IS that member" — it
   // decides the match.
   const canonical = loadPlayerNameCanonicaliser(clanId);
+  const manualNames = manuallyNamedMembers();
 
   for (const rm of roster) {
     const p = byPlayer.get(rm.playerId);
@@ -157,18 +176,33 @@ export function syncMembersFromGame(
     result.memberIds.set(rm.playerId, memberId);
     owned.add(rm.playerId);
 
-    // The game's spelling is authoritative: rename, keep the old name as an alias.
+    // The name the site shows. The admins' choice wins over the game's
+    // spelling (user, Nov 2026: "use the merges done manually as the truth" —
+    // the sync had renamed Follador, Kadal, ShERKhAN… straight back to the
+    // Cyrillic game names an admin had just merged into them):
+    //   1. a player merge rule naming this game name → the rule's target;
+    //   2. else a name an admin set by hand (latest rename was manual) → kept;
+    //   3. else the game's spelling, the old name kept as an alias.
     const member = all.find((m) => m.id === memberId);
-    if (member && member.name !== p.name) {
+    const ruled = canonical(p.name);
+    const manual = manualNames.get(memberId);
+    const wanted = ruled !== p.name ? ruled
+      : manual !== undefined && member?.name === manual ? manual
+        : p.name;
+    if (member && member.name !== wanted) {
       try {
-        renameMember(memberId, p.name, clanId);
+        renameMember(memberId, wanted, clanId);
         addAlias(memberId, member.name, clanId);
-        logSystemAction(clanId, 'rename_member', { id: memberId, from: member.name, newName: p.name, source: 'game' });
-        member.name = p.name;
+        logSystemAction(clanId, 'rename_member', { id: memberId, from: member.name, newName: wanted, source: 'game', gameName: p.name });
+        member.name = wanted;
         result.renamed++;
       } catch (err) {
-        log.warn({ noAlert: true }, `Clan #${clanId}: kept "${member.name}" — renaming to the game's "${p.name}" collided: ${String(err)}`);
+        log.warn({ noAlert: true }, `Clan #${clanId}: kept "${member.name}" — renaming to "${wanted}" collided: ${String(err)}`);
       }
+    }
+    // The game's own spelling stays findable (search, gift senders) whatever the site shows.
+    if (member && member.name !== p.name) {
+      try { addAlias(memberId, p.name, clanId); } catch { /* already an alias */ }
     }
     getDb().prepare('UPDATE members SET clan_role = ? WHERE id = ? AND clan_id = ?').run(String(rm.role), memberId, clanId);
   }

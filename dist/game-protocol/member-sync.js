@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.manuallyNamedMembers = manuallyNamedMembers;
 exports.syncMembersFromGame = syncMembersFromGame;
 exports.makeMemberResolver = makeMemberResolver;
 /**
@@ -26,6 +27,25 @@ const might_repo_js_1 = require("../data/repositories/might-repo.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
 const fuzzy_js_1 = require("../utils/fuzzy.js");
 const logger_js_1 = require("../utils/logger.js");
+/**
+ * Members whose name an admin set by hand: their latest rename_member entry is
+ * a manual one (the site's rename; the sync's own carry source "game") → the
+ * name it set. Member ids are unique across clans.
+ */
+function manuallyNamedMembers() {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT CAST(json_extract(details, '$.id') AS INTEGER) AS memberId, json_extract(details, '$.newName') AS name,
+            json_extract(details, '$.source') AS source
+       FROM audit_log WHERE action = 'rename_member' ORDER BY created_at, audit_log.id`).all();
+    const latest = new Map();
+    for (const r of rows)
+        if (r.memberId)
+            latest.set(r.memberId, { name: r.name, source: r.source });
+    const out = new Map();
+    for (const [id, r] of latest)
+        if (!r.source && r.name)
+            out.set(id, r.name);
+    return out;
+}
 const log = (0, logger_js_1.childLogger)('member-sync');
 const MIGHT_TOLERANCE = 0.15;
 /** The scan's placeholder for unreadable senders; never a clan member to retire. */
@@ -64,6 +84,7 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
     // A player merge rule is the admin saying "this name IS that member" — it
     // decides the match.
     const canonical = (0, merge_repo_js_1.loadPlayerNameCanonicaliser)(clanId);
+    const manualNames = manuallyNamedMembers();
     for (const rm of roster) {
         const p = byPlayer.get(rm.playerId);
         if (!p)
@@ -125,19 +146,37 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
             continue;
         result.memberIds.set(rm.playerId, memberId);
         owned.add(rm.playerId);
-        // The game's spelling is authoritative: rename, keep the old name as an alias.
+        // The name the site shows. The admins' choice wins over the game's
+        // spelling (user, Nov 2026: "use the merges done manually as the truth" —
+        // the sync had renamed Follador, Kadal, ShERKhAN… straight back to the
+        // Cyrillic game names an admin had just merged into them):
+        //   1. a player merge rule naming this game name → the rule's target;
+        //   2. else a name an admin set by hand (latest rename was manual) → kept;
+        //   3. else the game's spelling, the old name kept as an alias.
         const member = all.find((m) => m.id === memberId);
-        if (member && member.name !== p.name) {
+        const ruled = canonical(p.name);
+        const manual = manualNames.get(memberId);
+        const wanted = ruled !== p.name ? ruled
+            : manual !== undefined && member?.name === manual ? manual
+                : p.name;
+        if (member && member.name !== wanted) {
             try {
-                (0, member_repo_js_1.renameMember)(memberId, p.name, clanId);
+                (0, member_repo_js_1.renameMember)(memberId, wanted, clanId);
                 (0, member_repo_js_1.addAlias)(memberId, member.name, clanId);
-                (0, user_repo_js_1.logSystemAction)(clanId, 'rename_member', { id: memberId, from: member.name, newName: p.name, source: 'game' });
-                member.name = p.name;
+                (0, user_repo_js_1.logSystemAction)(clanId, 'rename_member', { id: memberId, from: member.name, newName: wanted, source: 'game', gameName: p.name });
+                member.name = wanted;
                 result.renamed++;
             }
             catch (err) {
-                log.warn({ noAlert: true }, `Clan #${clanId}: kept "${member.name}" — renaming to the game's "${p.name}" collided: ${String(err)}`);
+                log.warn({ noAlert: true }, `Clan #${clanId}: kept "${member.name}" — renaming to "${wanted}" collided: ${String(err)}`);
             }
+        }
+        // The game's own spelling stays findable (search, gift senders) whatever the site shows.
+        if (member && member.name !== p.name) {
+            try {
+                (0, member_repo_js_1.addAlias)(memberId, p.name, clanId);
+            }
+            catch { /* already an alias */ }
         }
         (0, database_js_1.getDb)().prepare('UPDATE members SET clan_role = ? WHERE id = ? AND clan_id = ?').run(String(rm.role), memberId, clanId);
     }

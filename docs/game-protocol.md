@@ -240,7 +240,11 @@ Each capture also, every cycle:
   First link: exact name (after the clan's player merge rules), else a fuzzy
   name whose last might is within ±15 %, else a new member under the exact game
   name. Linked members take the game's spelling (old name kept as an alias,
-  `rename_member` audited with `source: 'game'`), get `clan_role`, are marked
+  `rename_member` audited with `source: 'game'`) — unless an admin chose the
+  name: a player merge rule naming the game name wins (its target is shown —
+  Cyrillic game names merged into readable ones stay readable), then a name
+  set by a manual rename; the game's spelling is always kept as an alias
+  (Nov 17 2026, after the sync renamed six merged members back). They get `clan_role`, are marked
   seen and get the day's might + hero-level snapshot. With a roster of ≥ 5,
   every ACTIVE member the roster does not account for is removed (soft delete,
   `member.left_clan` audited with `linked: true|false`): players who left,

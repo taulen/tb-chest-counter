@@ -79,6 +79,36 @@ describe('syncMembersFromGame', () => {
     expect(JSON.parse(row(id).aliases)).toContain('OldName');
   });
 
+  it('keeps the name an admin merged a Cyrillic game name into — the game spelling is only an alias', () => {
+    // The admin merged the game's "Кадал" into a readable "Kadal" (Nov 17 2026);
+    // the sync used to rename the member straight back to "Кадал".
+    addMergeRule('player', 'Кадал', 'Kadal', 1);
+    const p = player(404, 'Кадал', 2_000_000);
+    const r = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
+    const id = r.memberIds.get(404)!;
+    expect(row(id).name).toBe('Kadal');
+    expect(JSON.parse(row(id).aliases)).toContain('Кадал');
+    // And on every later scan.
+    const again = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
+    expect(again.renamed).toBe(0);
+    expect(row(id).name).toBe('Kadal');
+  });
+
+  it('keeps a name an admin set by hand, while an untouched member follows the game', () => {
+    const p = player(505, 'Нимдуен', 2_000_000);
+    const first = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
+    const id = first.memberIds.get(505)!;
+    // The admin renames the member on the site.
+    getDb().prepare('UPDATE members SET name = ?, normalized_name = ? WHERE id = ?').run('Nimduen', 'nimduen', id);
+    // As the site's rename logs it: the member id as a string, no source.
+    getDb().prepare("INSERT INTO audit_log (user_id, clan_id, action, details, created_at) VALUES (NULL, 1, 'rename_member', ?, ?)")
+      .run(JSON.stringify({ id: String(id), newName: 'Nimduen' }), '2026-11-17T01:52:48.608Z');
+    const r = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
+    expect(r.renamed).toBe(0);
+    expect(row(id).name).toBe('Nimduen');
+    expect(JSON.parse(row(id).aliases)).toContain('Нимдуен');
+  });
+
   it('honours an admin merge rule: an alt counts toward its main without touching the main’s link or might', () => {
     const main = player(401, 'MainPlayer', 30_000_000, 180);
     syncMembersFromGame(1, rosterOf([main]), [main], DAY, NOW);
