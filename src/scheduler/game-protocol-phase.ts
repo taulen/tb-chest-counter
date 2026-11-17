@@ -29,6 +29,7 @@ import {
   parseMapObjects,
   parsePlayers,
   tileOf,
+  type CityRecord,
   type ClanRecord,
   type LedgerEntry,
   type PlayerRecord,
@@ -38,8 +39,13 @@ import {
   cityChangedSinceRead,
   playersWithCaptains,
   rawCitiesMissingData,
+  rawSnapshotsOldestFirst,
   pruneRawSnapshots,
+  saveArtifacts,
+  saveCaptainEquipment,
   saveCaptains,
+  getParseMarker,
+  setParseMarker,
   finishCaptureRun,
   hasRawSnapshot,
   saveCitySnapshot,
@@ -54,6 +60,8 @@ import {
   type NamedGift,
 } from '../data/repositories/game-protocol-repo.js';
 import { syncMembersFromGame } from '../game-protocol/member-sync.js';
+import { artifactsFromEffects } from '../game-protocol/artifacts.js';
+import { captainEquipment } from '../game-protocol/equipment.js';
 import { currentGameDate } from '../utils/game-day.js';
 import { loadTechTrees } from '../game-protocol/tech-trees.js';
 
@@ -193,6 +201,29 @@ export async function runGameProtocolCapture(
 const MAX_CITIES_PER_CYCLE = 120;
 /** Game days of raw city replies kept (game_raw_snapshots kind 'city'). */
 const RAW_CITY_DAYS = 60;
+/**
+ * City-reply parsers added after replies were already archived, with their
+ * version. The archive of raw city replies is replayed through each once per
+ * version per clan (game_parse_markers) — bump a version when that parsing
+ * changes, and every archived read is re-parsed on the next scan.
+ */
+export const CITY_PARSERS = { artifacts: 1, equipment: 1 } as const;
+type CityParser = keyof typeof CITY_PARSERS;
+
+/** Artifacts (field 14) and captain equipment (fields 9 + 10) of one city read. */
+function saveCityGear(clanId: number, playerId: number, city: CityRecord, names: GameNames, at: string, only?: ReadonlySet<CityParser>): number {
+  let changed = 0;
+  // A reply without effects / items is malformed, not "nothing worn" — skip it
+  // rather than mark everything benched or undressed.
+  if ((!only || only.has('artifacts')) && city.effects.length && names.artifacts) {
+    changed += saveArtifacts(clanId, playerId, artifactsFromEffects(city.effects, names.artifacts), at);
+  }
+  if ((!only || only.has('equipment')) && city.items.length) {
+    const captains = city.captains.filter((c) => names.captains?.[String(c.id)]);
+    changed += saveCaptainEquipment(clanId, playerId, captainEquipment(captains, city.items), at);
+  }
+  return changed;
+}
 /** Map tiles per cycle (members' city tiles + their neighbours). */
 const MAX_TILES_PER_CYCLE = 60;
 const TILE_BATCH = 9;
@@ -248,6 +279,31 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
   }
 
   try {
+    // A parser added or changed since the replies were archived replays the
+    // whole archive once (oldest read first), so its history starts at the
+    // first archived read instead of today. Artifacts (city field 14) were in
+    // every archived city reply before they were parsed (Nov 2026). No request.
+    const due = new Set((Object.keys(CITY_PARSERS) as CityParser[])
+      .filter((p) => getParseMarker(clanId, p) < CITY_PARSERS[p]));
+    // Artifact names come with names.json format 3; without them, wait.
+    if (!d.names.artifacts) due.delete('artifacts');
+    if (due.size) {
+      let replies = 0;
+      let rows = 0;
+      for (const raw of rawSnapshotsOldestFirst(clanId, 'city')) {
+        const city = parseCityRecord({ type: 601, seq: 0, head: [601, 0], body: raw.body as Wire[], children: [], events: [] });
+        if (!city) continue;
+        rows += saveCityGear(clanId, raw.refId, city, d.names, raw.capturedAt, due);
+        replies++;
+      }
+      for (const p of due) setParseMarker(clanId, p, CITY_PARSERS[p]);
+      parts.push(`${[...due].join(' + ')} re-read from ${replies} archived city replies (${rows} history rows)`);
+    }
+  } catch (err) {
+    parts.push(`city archive replay failed: ${String(err)}`);
+  }
+
+  try {
     // What was already read comes first: a member with an archived city reply
     // but no research or captains stored (a parser fixed or added since — the
     // research parser missed players without tech 1215 until Nov 17 2026) is
@@ -259,6 +315,7 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
       if (Object.keys(city.techs).length) saveTechs(clanId, raw.playerId, city.techs, raw.capturedAt);
       const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
       if (captains.length) saveCaptains(clanId, raw.playerId, captains, raw.capturedAt);
+      saveCityGear(clanId, raw.playerId, city, d.names, raw.capturedAt);
       refilled++;
     }
     if (refilled) parts.push(`${refilled} filled from archived city replies`);
@@ -297,6 +354,9 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
           // Field 9 also holds the hero (id 1, no T75 row): keep named captains.
           const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
           if (captains.length) changed += saveCaptains(clanId, p.playerId, captains, now);
+          // The artifacts the line-up captains wear (field 14) and every
+          // captain's equipment (fields 9 + 10).
+          changed += saveCityGear(clanId, p.playerId, city, d.names, now);
         }
       } catch (err) {
         // One unreadable city never stops the rest; it is retried next cycle.
@@ -307,7 +367,7 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
       await pause(100);
     }
     if (todo.length) {
-      parts.push(`${todo.length} cities read (${changed} research/talent/captain changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
+      parts.push(`${todo.length} cities read (${changed} research/talent/captain/artifact changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
     }
     // ~5 KB per city per day: keep RAW_CITY_DAYS of them, not every day forever.
     const keepFrom = new Date(Date.parse(`${d.gameDate}T00:00:00Z`) - RAW_CITY_DAYS * 86_400_000).toISOString().slice(0, 10);

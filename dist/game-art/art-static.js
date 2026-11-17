@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
+exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACTS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
 exports.buildArtStatic = buildArtStatic;
 exports.staticKey = staticKey;
 exports.loadArtStatic = loadArtStatic;
@@ -17,6 +17,8 @@ exports.loadArtStatic = loadArtStatic;
  *   T9  units        f1 name vector, f4 icon, f10 strength, f12 health
  *   T13 hero avatars f1 name vector, f3 icon — a player's heroAvatar IS the T13 id
  *   T21 techs        f1 name vector, f3 icon (research and hero talents)
+ *   T110 artifacts   f7 JSON config {"icon": …}, f8 name vector
+ *   T11 equipment    f2 icon address, f3 name vector (gems/enchantments: T8 f1 8/9)
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -35,6 +37,10 @@ exports.TABLE_HERO_AVATARS = 13;
 exports.TABLE_TECHS = 21;
 /** Captains: f5 name vector, f7 JSON config naming the sprites (smallIcon, unitAltarArt). */
 exports.TABLE_CAPTAINS = 75;
+/** Artifact types: f7 JSON config {"icon": …}, f8 name vector. A `$pairs` table keyed [type]. */
+exports.TABLE_ARTIFACTS = 110;
+/** Equipment: f2 icon address ("arch_body"), f3 name vector. */
+exports.TABLE_EQUIPMENT = 11;
 async function fetchBuffer(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok)
@@ -124,7 +130,39 @@ function buildArtStatic(version, strings, vectors, tables, en) {
         if (n && (icon || art))
             captains[id] = { name: n, icon, art };
     }
-    return { version, heroes, units, techs, items, captains };
+    const artifacts = {};
+    for (const [id, row] of rows(exports.TABLE_ARTIFACTS)) {
+        let cfg = {};
+        try {
+            cfg = JSON.parse(str(row[7]) ?? '{}');
+        }
+        catch {
+            continue;
+        }
+        if (typeof cfg.icon === 'string' && cfg.icon)
+            artifacts[id] = { name: name(row[8]), icon: cfg.icon };
+    }
+    const equipment = {};
+    for (const [id, row] of rows(exports.TABLE_EQUIPMENT)) {
+        const icon = str(row[2]);
+        if (icon && /^[a-z0-9_]+$/i.test(icon))
+            equipment[id] = { name: name(row[3]), icon };
+    }
+    const inserts = {};
+    for (const [id, row] of rows(exports.TABLE_ITEMS)) {
+        if (row[1] !== 8 && row[1] !== 9)
+            continue;
+        let icon;
+        try {
+            icon = JSON.parse(str(row[6]) ?? '{}').icon;
+        }
+        catch {
+            continue;
+        }
+        if (typeof icon === 'string' && icon)
+            inserts[id] = { name: name(row[3]), icon };
+    }
+    return { version, heroes, units, techs, items, captains, artifacts, equipment, inserts };
 }
 function staticKey(v) {
     return `${v.composite.slice(0, 16)}-${v.translationsCatalog.replace(/\.json$/, '')}`;
@@ -152,8 +190,8 @@ async function loadArtStatic(dir) {
     const file = cacheFile(dir, key);
     if (fs_1.default.existsSync(file)) {
         const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
-        // A cache from before captains were read is rebuilt once.
-        if (cached.captains)
+        // A cache from before captains / artifacts / equipment were read is rebuilt once.
+        if (cached.captains && cached.artifacts && cached.equipment)
             return cached;
     }
     const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
@@ -162,7 +200,7 @@ async function loadArtStatic(dir) {
         fetchBuffer(STATIC_BASE + version.files.noDuplicates),
         fetchEnglish(version.translationsCatalog),
     ]);
-    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS]), en);
+    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_ARTIFACTS, exports.TABLE_EQUIPMENT]), en);
     fs_1.default.mkdirSync(dir, { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs_1.default.writeFileSync(tmp, JSON.stringify(data));

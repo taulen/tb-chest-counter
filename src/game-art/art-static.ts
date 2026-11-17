@@ -8,6 +8,8 @@
  *   T9  units        f1 name vector, f4 icon, f10 strength, f12 health
  *   T13 hero avatars f1 name vector, f3 icon — a player's heroAvatar IS the T13 id
  *   T21 techs        f1 name vector, f3 icon (research and hero talents)
+ *   T110 artifacts   f7 JSON config {"icon": …}, f8 name vector
+ *   T11 equipment    f2 icon address, f3 name vector (gems/enchantments: T8 f1 8/9)
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -59,7 +61,18 @@ export interface ArtStatic {
   items: ArtItem[];
   /** T75 id → { name, icon (smallIcon), art (unitAltarArt) }. */
   captains: Record<string, { name: string; icon: string; art: string }>;
+  /** T110 artifact type → { name, icon (config `icon`) }. Absent in caches built before Nov 2026's artifacts. */
+  artifacts?: Record<string, { name: string; icon: string }>;
+  /** T11 equipment item type → { name, icon (f2) }. Same age as `artifacts`. */
+  equipment?: Record<string, { name: string; icon: string }>;
+  /** T8 gems (f1 8) and enchantments (f1 9) → { name, icon }. Same age as `artifacts`. */
+  inserts?: Record<string, { name: string; icon: string }>;
 }
+
+/** Artifact types: f7 JSON config {"icon": …}, f8 name vector. A `$pairs` table keyed [type]. */
+export const TABLE_ARTIFACTS = 110;
+/** Equipment: f2 icon address ("arch_body"), f3 name vector. */
+export const TABLE_EQUIPMENT = 11;
 
 async function fetchBuffer(url: string): Promise<Buffer> {
   const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -146,7 +159,25 @@ export function buildArtStatic(
     const art = typeof cfg.unitAltarArt === 'string' ? cfg.unitAltarArt : '';
     if (n && (icon || art)) captains[id] = { name: n, icon, art };
   }
-  return { version, heroes, units, techs, items, captains };
+  const artifacts: NonNullable<ArtStatic['artifacts']> = {};
+  for (const [id, row] of rows(TABLE_ARTIFACTS)) {
+    let cfg: { icon?: unknown } = {};
+    try { cfg = JSON.parse(str(row[7]) ?? '{}'); } catch { continue; }
+    if (typeof cfg.icon === 'string' && cfg.icon) artifacts[id] = { name: name(row[8]), icon: cfg.icon };
+  }
+  const equipment: NonNullable<ArtStatic['equipment']> = {};
+  for (const [id, row] of rows(TABLE_EQUIPMENT)) {
+    const icon = str(row[2]);
+    if (icon && /^[a-z0-9_]+$/i.test(icon)) equipment[id] = { name: name(row[3]), icon };
+  }
+  const inserts: NonNullable<ArtStatic['inserts']> = {};
+  for (const [id, row] of rows(TABLE_ITEMS)) {
+    if (row[1] !== 8 && row[1] !== 9) continue;
+    let icon: unknown;
+    try { icon = (JSON.parse(str(row[6]) ?? '{}') as { icon?: unknown }).icon; } catch { continue; }
+    if (typeof icon === 'string' && icon) inserts[id] = { name: name(row[3]), icon };
+  }
+  return { version, heroes, units, techs, items, captains, artifacts, equipment, inserts };
 }
 
 export function staticKey(v: StaticVersion): string {
@@ -175,8 +206,8 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
   const file = cacheFile(dir, key);
   if (fs.existsSync(file)) {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as ArtStatic;
-    // A cache from before captains were read is rebuilt once.
-    if (cached.captains) return cached;
+    // A cache from before captains / artifacts / equipment were read is rebuilt once.
+    if (cached.captains && cached.artifacts && cached.equipment) return cached;
   }
   const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
     fetchBuffer(STATIC_BASE + version.files.strings),
@@ -188,7 +219,7 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
     key,
     readWrappedArray(stringsBuf),
     readWrappedArray(vectorsBuf),
-    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS]),
+    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS, TABLE_ARTIFACTS, TABLE_EQUIPMENT]),
     en,
   );
   fs.mkdirSync(dir, { recursive: true });

@@ -48,12 +48,13 @@ const log = (0, logger_js_1.childLogger)('game-art');
 const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 6 * 60 * 60 * 1000);
 /**
  * What we extract changes when we start using a new kind of image (2: captain
- * portraits; 3: the Ancients artifacts and boss, Nov 2026). Bump this with
+ * portraits; 3: the Ancients artifacts and boss; 5: captains' artifacts and
+ * equipment, Nov 2026 — 4 was the troop frames, built alongside). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-exports.ART_SELECTION_VERSION = 3;
+exports.ART_SELECTION_VERSION = 5;
 exports.VERSION_RE = /^[0-9a-f]{32}$/;
 exports.FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 function gameArtDir() {

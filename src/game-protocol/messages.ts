@@ -4,6 +4,7 @@
  * docs/game-protocol.md for the evidence behind each one.
  */
 import type { Frame, Wire } from './codec.js';
+import type { CityEffect } from './artifacts.js';
 
 const num = (v: Wire | undefined): number | null => (typeof v === 'number' ? v : null);
 const id1 = (v: Wire | undefined): number | null => (Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null);
@@ -193,6 +194,23 @@ export interface CityRecord {
    * (no T75 row); the caller keeps the ids T75 names.
    */
   captains: CityCaptain[];
+  /**
+   * Field 14: every effect active in the city, `[effectId, sourceBits, count]`
+   * (~600 for a developed city) — research, buildings, and the artifacts the
+   * line-up captains wear (see game-protocol/artifacts.ts). Read for ANY
+   * player's city.
+   */
+  effects: CityEffect[];
+  /**
+   * Field 10: the player's equipment item instances (hero and captains),
+   * `[uid, itemType, [cityId], 1000, a, b, c, enchantment, [gems], presetId]`.
+   * itemType is a T11 row and includes the quality grade; enchantment and gems
+   * are T8 items set into it (0 / [] = none); presetId is the captain preset
+   * (captain entry [14]) the item sits in, 0 = in the inventory. a, b and c
+   * are not decoded yet (a ∈ {0,1,3,6,10}, b mostly 0–40, c 0–31) and are
+   * kept raw. Read for ANY player's city.
+   */
+  items: CityItem[];
 }
 
 export interface CityCaptain {
@@ -202,6 +220,35 @@ export interface CityCaptain {
   xp: number | null;
   /** 1–3 = in the active line-up, 0 = not. */
   slot: number;
+  /**
+   * Captain entry [12]: the six equipment positions, `[captainId, slotId,
+   * itemUid, 100]` each — the item uid per position ('' = empty). Positions
+   * 0–2 are usually empty, 3–5 hold the worn gear (Nov 2026).
+   */
+  equipment?: string[];
+}
+
+export interface CityItem {
+  /** 64-bit instance id, as a decimal string. */
+  uid: string;
+  type: number;
+  /** T8 enchantment item set into it (0 = none). */
+  enchantment: number;
+  /** T8 gem items set into it. */
+  gems: number[];
+  presetId: number;
+  /** Undecoded instance fields [3], a, b, c — kept so a later decode can use them. */
+  raw: Array<number | null>;
+}
+
+/** A 64-bit id as the codec hands it over (number, or "123…n" past 2^53) → decimal string; '' for 0/none. */
+export function uidOf(v: Wire): string {
+  if (typeof v === 'number') return v > 0 ? String(v) : '';
+  if (typeof v === 'string') {
+    const s = v.replace(/n$/, '');
+    return /^\d+$/.test(s) && s !== '0' ? s : '';
+  }
+  return '';
 }
 
 /**
@@ -245,6 +292,22 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
         stars: num(e[18]) ?? 0,
         xp: num(e[9]),
         slot: num(e[1]) ?? 0,
+        equipment: arr(e[12]).map((s) => uidOf(arr(s)[2])),
+      })),
+    effects: arr(r[14])
+      .map((e) => arr(e))
+      .filter((e) => typeof e[0] === 'number')
+      .map((e) => ({ id: e[0] as number, source: num(e[1]) ?? 0, count: num(e[2]) ?? 1 })),
+    items: arr(r[10])
+      .map((e) => arr(e))
+      .filter((e) => uidOf(e[0]) && typeof e[1] === 'number')
+      .map((e) => ({
+        uid: uidOf(e[0]),
+        type: e[1] as number,
+        enchantment: num(e[7]) ?? 0,
+        gems: arr(e[8]).filter((g): g is number => typeof g === 'number' && g > 0),
+        presetId: num(e[9]) ?? 0,
+        raw: [num(e[3]), num(e[4]), num(e[5]), num(e[6])],
       })),
   };
 }

@@ -5,6 +5,7 @@ exports.parseClanRecord = parseClanRecord;
 exports.parsePlayers = parsePlayers;
 exports.parseLedger = parseLedger;
 exports.parseClaimRewards = parseClaimRewards;
+exports.uidOf = uidOf;
 exports.parseCityRecord = parseCityRecord;
 exports.parseMapObjects = parseMapObjects;
 exports.tileOf = tileOf;
@@ -120,6 +121,16 @@ function parseClaimRewards(frame) {
     }
     return out;
 }
+/** A 64-bit id as the codec hands it over (number, or "123…n" past 2^53) → decimal string; '' for 0/none. */
+function uidOf(v) {
+    if (typeof v === 'number')
+        return v > 0 ? String(v) : '';
+    if (typeof v === 'string') {
+        const s = v.replace(/n$/, '');
+        return /^\d+$/.test(s) && s !== '0' ? s : '';
+    }
+    return '';
+}
 /**
  * Message 601 for a player's city: [0] city id, [1][0] owner, [12] buildings
  * {slot: [slot, type, level, …]}, [17] techs, [26] hero {"1": [1, [heroId], xp,
@@ -164,6 +175,22 @@ function parseCityRecord(frame) {
             stars: num(e[18]) ?? 0,
             xp: num(e[9]),
             slot: num(e[1]) ?? 0,
+            equipment: arr(e[12]).map((s) => uidOf(arr(s)[2])),
+        })),
+        effects: arr(r[14])
+            .map((e) => arr(e))
+            .filter((e) => typeof e[0] === 'number')
+            .map((e) => ({ id: e[0], source: num(e[1]) ?? 0, count: num(e[2]) ?? 1 })),
+        items: arr(r[10])
+            .map((e) => arr(e))
+            .filter((e) => uidOf(e[0]) && typeof e[1] === 'number')
+            .map((e) => ({
+            uid: uidOf(e[0]),
+            type: e[1],
+            enchantment: num(e[7]) ?? 0,
+            gems: arr(e[8]).filter((g) => typeof g === 'number' && g > 0),
+            presetId: num(e[9]) ?? 0,
+            raw: [num(e[3]), num(e[4]), num(e[5]), num(e[6])],
         })),
     };
 }

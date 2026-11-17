@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.CITY_PARSERS = void 0;
 exports.runGameProtocolCapture = runGameProtocolCapture;
 exports.collectCaptureExtras = collectCaptureExtras;
 /**
@@ -31,6 +32,8 @@ const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
+const artifacts_js_1 = require("../game-protocol/artifacts.js");
+const equipment_js_1 = require("../game-protocol/equipment.js");
 const game_day_js_1 = require("../utils/game-day.js");
 const tech_trees_js_1 = require("../game-protocol/tech-trees.js");
 const log = (0, logger_js_1.childLogger)('game-protocol');
@@ -133,6 +136,27 @@ async function runGameProtocolCapture(clanId, opts) {
 const MAX_CITIES_PER_CYCLE = 120;
 /** Game days of raw city replies kept (game_raw_snapshots kind 'city'). */
 const RAW_CITY_DAYS = 60;
+/**
+ * City-reply parsers added after replies were already archived, with their
+ * version. The archive of raw city replies is replayed through each once per
+ * version per clan (game_parse_markers) — bump a version when that parsing
+ * changes, and every archived read is re-parsed on the next scan.
+ */
+exports.CITY_PARSERS = { artifacts: 1, equipment: 1 };
+/** Artifacts (field 14) and captain equipment (fields 9 + 10) of one city read. */
+function saveCityGear(clanId, playerId, city, names, at, only) {
+    let changed = 0;
+    // A reply without effects / items is malformed, not "nothing worn" — skip it
+    // rather than mark everything benched or undressed.
+    if ((!only || only.has('artifacts')) && city.effects.length && names.artifacts) {
+        changed += (0, game_protocol_repo_js_1.saveArtifacts)(clanId, playerId, (0, artifacts_js_1.artifactsFromEffects)(city.effects, names.artifacts), at);
+    }
+    if ((!only || only.has('equipment')) && city.items.length) {
+        const captains = city.captains.filter((c) => names.captains?.[String(c.id)]);
+        changed += (0, game_protocol_repo_js_1.saveCaptainEquipment)(clanId, playerId, (0, equipment_js_1.captainEquipment)(captains, city.items), at);
+    }
+    return changed;
+}
 /** Map tiles per cycle (members' city tiles + their neighbours). */
 const MAX_TILES_PER_CYCLE = 60;
 const TILE_BATCH = 9;
@@ -187,6 +211,34 @@ async function collectExtras(clanId, d, clanFrame) {
         parts.push(`clan archive failed: ${String(err)}`);
     }
     try {
+        // A parser added or changed since the replies were archived replays the
+        // whole archive once (oldest read first), so its history starts at the
+        // first archived read instead of today. Artifacts (city field 14) were in
+        // every archived city reply before they were parsed (Nov 2026). No request.
+        const due = new Set(Object.keys(exports.CITY_PARSERS)
+            .filter((p) => (0, game_protocol_repo_js_1.getParseMarker)(clanId, p) < exports.CITY_PARSERS[p]));
+        // Artifact names come with names.json format 3; without them, wait.
+        if (!d.names.artifacts)
+            due.delete('artifacts');
+        if (due.size) {
+            let replies = 0;
+            let rows = 0;
+            for (const raw of (0, game_protocol_repo_js_1.rawSnapshotsOldestFirst)(clanId, 'city')) {
+                const city = (0, messages_js_1.parseCityRecord)({ type: 601, seq: 0, head: [601, 0], body: raw.body, children: [], events: [] });
+                if (!city)
+                    continue;
+                rows += saveCityGear(clanId, raw.refId, city, d.names, raw.capturedAt, due);
+                replies++;
+            }
+            for (const p of due)
+                (0, game_protocol_repo_js_1.setParseMarker)(clanId, p, exports.CITY_PARSERS[p]);
+            parts.push(`${[...due].join(' + ')} re-read from ${replies} archived city replies (${rows} history rows)`);
+        }
+    }
+    catch (err) {
+        parts.push(`city archive replay failed: ${String(err)}`);
+    }
+    try {
         // What was already read comes first: a member with an archived city reply
         // but no research or captains stored (a parser fixed or added since — the
         // research parser missed players without tech 1215 until Nov 17 2026) is
@@ -201,6 +253,7 @@ async function collectExtras(clanId, d, clanFrame) {
             const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
             if (captains.length)
                 (0, game_protocol_repo_js_1.saveCaptains)(clanId, raw.playerId, captains, raw.capturedAt);
+            saveCityGear(clanId, raw.playerId, city, d.names, raw.capturedAt);
             refilled++;
         }
         if (refilled)
@@ -241,6 +294,9 @@ async function collectExtras(clanId, d, clanFrame) {
                     const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
                     if (captains.length)
                         changed += (0, game_protocol_repo_js_1.saveCaptains)(clanId, p.playerId, captains, now);
+                    // The artifacts the line-up captains wear (field 14) and every
+                    // captain's equipment (fields 9 + 10).
+                    changed += saveCityGear(clanId, p.playerId, city, d.names, now);
                 }
             }
             catch (err) {
@@ -253,7 +309,7 @@ async function collectExtras(clanId, d, clanFrame) {
             await pause(100);
         }
         if (todo.length) {
-            parts.push(`${todo.length} cities read (${changed} research/talent/captain changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
+            parts.push(`${todo.length} cities read (${changed} research/talent/captain/artifact changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
         }
         // ~5 KB per city per day: keep RAW_CITY_DAYS of them, not every day forever.
         const keepFrom = new Date(Date.parse(`${d.gameDate}T00:00:00Z`) - RAW_CITY_DAYS * 86_400_000).toISOString().slice(0, 10);

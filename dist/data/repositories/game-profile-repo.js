@@ -9,6 +9,10 @@ exports.getPlayerTechs = getPlayerTechs;
 exports.getPlayerTechChanges = getPlayerTechChanges;
 exports.getPlayerCaptains = getPlayerCaptains;
 exports.getPlayerCaptainChanges = getPlayerCaptainChanges;
+exports.getPlayerArtifacts = getPlayerArtifacts;
+exports.getPlayerArtifactChanges = getPlayerArtifactChanges;
+exports.getPlayerEquipment = getPlayerEquipment;
+exports.getPlayerEquipmentChanges = getPlayerEquipmentChanges;
 /**
  * Read side of the game-protocol tables for the member profile and member
  * lists: what the game says about a player (game_players), their city
@@ -115,5 +119,72 @@ function getPlayerCaptainChanges(clanId, playerId, sinceIso, limit = 100) {
       WHERE changed_at >= ?
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_captain_history WHERE clan_id = ? AND player_id = ?)
       ORDER BY changed_at DESC, level DESC LIMIT ?`).all(clanId, playerId, sinceIso, clanId, playerId, limit);
+}
+/** The artifacts a player has been seen wearing (v112): line-up ones first, then by level. */
+function getPlayerArtifacts(clanId, playerId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT artifact_type AS artifactType, level, star, bonuses, in_lineup AS inLineup, first_seen AS firstSeen, last_seen AS lastSeen
+       FROM game_player_artifacts WHERE clan_id = ? AND player_id = ?
+      ORDER BY in_lineup DESC, level DESC, star DESC, artifact_type`).all(clanId, playerId);
+    return rows.map((r) => ({ ...r, inLineup: r.inLineup === 1, bonuses: parseIds(r.bonuses) }));
+}
+function parseIds(json) {
+    try {
+        const v = JSON.parse(json);
+        return Array.isArray(v) ? v.filter((x) => typeof x === 'number') : [];
+    }
+    catch {
+        return [];
+    }
+}
+/**
+ * Artifact level / star level / roll changes since `sinceIso`, newest first.
+ * The first read's baseline is left out, as for captains.
+ */
+function getPlayerArtifactChanges(clanId, playerId, sinceIso, limit = 100) {
+    const rows = (0, database_js_1.getDb)().prepare(`WITH h AS (
+       SELECT artifact_type, level, star, bonuses, changed_at,
+              LAG(level) OVER w AS prev_level, LAG(star) OVER w AS prev_star, LAG(bonuses) OVER w AS prev_bonuses
+         FROM game_player_artifact_history
+        WHERE clan_id = ? AND player_id = ?
+       WINDOW w AS (PARTITION BY artifact_type ORDER BY changed_at)
+     )
+     SELECT artifact_type AS artifactType, level, star, prev_level AS prevLevel, prev_star AS prevStar,
+            (prev_bonuses IS NOT NULL AND prev_bonuses <> bonuses) AS rerolled, changed_at AS changedAt
+       FROM h
+      WHERE changed_at >= ?
+        AND changed_at > (SELECT MIN(changed_at) FROM game_player_artifact_history WHERE clan_id = ? AND player_id = ?)
+        -- An archive replay can leave a row equal to the one before it (the
+        -- live read, replayed past): not a change.
+        AND NOT (prev_level IS level AND prev_star IS star AND prev_bonuses IS bonuses)
+      ORDER BY changed_at DESC, level DESC, artifact_type LIMIT ?`).all(clanId, playerId, sinceIso, clanId, playerId, limit);
+    return rows.map((r) => ({ ...r, rerolled: r.rerolled === 1 }));
+}
+/** What every captain of a player wears (v112), by captain then position. */
+function getPlayerEquipment(clanId, playerId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, position, item_type AS itemType, enchantment, gems, first_seen AS firstSeen
+       FROM game_player_captain_equipment WHERE clan_id = ? AND player_id = ?
+      ORDER BY captain_id, position`).all(clanId, playerId);
+    return rows.map((r) => ({ ...r, gems: parseIds(r.gems) }));
+}
+/** Equipment changes since `sinceIso`, newest first; the first read's baseline is left out. */
+function getPlayerEquipmentChanges(clanId, playerId, sinceIso, limit = 100) {
+    const rows = (0, database_js_1.getDb)().prepare(`WITH h AS (
+       SELECT captain_id, position, item_uid, item_type, enchantment, gems, changed_at,
+              LAG(item_uid) OVER w AS prev_uid, LAG(item_type) OVER w AS prev_type,
+              LAG(enchantment) OVER w AS prev_enchantment, LAG(gems) OVER w AS prev_gems
+         FROM game_player_equipment_history
+        WHERE clan_id = ? AND player_id = ?
+       WINDOW w AS (PARTITION BY captain_id, position ORDER BY changed_at)
+     )
+     SELECT captain_id AS captainId, position, item_type AS itemType,
+            CASE WHEN prev_type = 0 THEN NULL ELSE prev_type END AS prevType,
+            (prev_uid IS NOT NULL AND prev_uid = item_uid) AS reworked, changed_at AS changedAt
+       FROM h
+      WHERE changed_at >= ?
+        AND changed_at > (SELECT MIN(changed_at) FROM game_player_equipment_history WHERE clan_id = ? AND player_id = ?)
+        -- A replayed read equal to the row before it is not a change.
+        AND NOT (prev_uid IS item_uid AND prev_type IS item_type AND prev_enchantment IS enchantment AND prev_gems IS gems)
+      ORDER BY changed_at DESC, captain_id, position LIMIT ?`).all(clanId, playerId, sinceIso, clanId, playerId, limit);
+    return rows.map((r) => ({ ...r, reworked: r.reworked === 1 }));
 }
 //# sourceMappingURL=game-profile-repo.js.map

@@ -18,6 +18,8 @@ const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_1 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
+const artifacts_js_1 = require("../../game-protocol/artifacts.js");
+const equipment_js_1 = require("../../game-protocol/equipment.js");
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
  * from the art pipeline), memoised per trees + art version.
@@ -98,11 +100,34 @@ function createGameRouter() {
         }
         const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clanId);
         if (playerId === null) {
-            res.json({ linked: false, captains: [], changes: [] });
+            res.json({ linked: false, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
             return;
         }
         const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
-        const portraits = (0, index_js_1.currentGameArt)()?.mappings?.captains ?? {};
+        const mappings = (0, index_js_1.currentGameArt)()?.mappings;
+        const portraits = mappings?.captains ?? {};
+        // Artifact / equipment / gem icons from the game's bundles, null until extracted.
+        const iconUrl = (map, id) => {
+            const img = map?.[String(id)];
+            return img ? (0, index_js_1.gameArtUrl)(img) : null;
+        };
+        const artifactIconUrl = (type) => iconUrl(mappings?.artifacts, type);
+        const itemView = (type, enchantment, gems) => {
+            const { icon: _icon, ...v } = (0, equipment_js_1.describeItem)(type, enchantment, gems, names);
+            return {
+                ...v,
+                iconUrl: iconUrl(mappings?.equipment, type),
+                enchantment: v.enchantment ? { ...v.enchantment, iconUrl: iconUrl(mappings?.inserts, v.enchantment.id) } : null,
+                gems: v.gems.map((g) => ({ ...g, iconUrl: iconUrl(mappings?.inserts, g.id) })),
+            };
+        };
+        // Every captain's worn items (city fields 9 + 10), by captain.
+        const gear = new Map();
+        for (const it of (0, game_profile_repo_js_1.getPlayerEquipment)(clanId, playerId)) {
+            if (!gear.has(it.captainId))
+                gear.set(it.captainId, []);
+            gear.get(it.captainId).push({ position: it.position, itemType: it.itemType, firstSeen: it.firstSeen, ...itemView(it.itemType, it.enchantment, it.gems) });
+        }
         const describe = (id) => {
             const c = names?.captains?.[String(id)];
             const portrait = portraits[String(id)];
@@ -123,11 +148,29 @@ function createGameRouter() {
                 ...c,
                 ...describe(c.captainId),
                 starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
+                equipment: gear.get(c.captainId) ?? [],
             })),
             changes: (0, game_profile_repo_js_1.getPlayerCaptainChanges)(clanId, playerId, since).map((c) => {
                 const { name, iconUrl } = describe(c.captainId);
                 return { ...c, name, iconUrl };
             }),
+            // The artifacts the line-up captains wear (city field 14): what the
+            // game's artifact book shows for each, at its level / star level / rolls.
+            artifacts: (0, game_profile_repo_js_1.getPlayerArtifacts)(clanId, playerId).map((a) => {
+                const { icon: _icon, ...view } = (0, artifacts_js_1.describeArtifact)(a.artifactType, a.level, a.star, a.bonuses, names?.artifacts);
+                return { ...a, ...view, iconUrl: artifactIconUrl(a.artifactType) };
+            }),
+            artifactChanges: (0, game_profile_repo_js_1.getPlayerArtifactChanges)(clanId, playerId, since).map((c) => {
+                const { name, rarity } = (0, artifacts_js_1.describeArtifact)(c.artifactType, c.level, c.star, [], names?.artifacts);
+                return { ...c, name, rarity, iconUrl: artifactIconUrl(c.artifactType) };
+            }),
+            equipmentChanges: (0, game_profile_repo_js_1.getPlayerEquipmentChanges)(clanId, playerId, since).map((c) => ({
+                ...c,
+                name: c.itemType ? (0, equipment_js_1.describeItem)(c.itemType, 0, [], names).name : '',
+                grade: c.itemType ? (0, equipment_js_1.describeItem)(c.itemType, 0, [], names).grade : 0,
+                prevName: c.prevType ? (0, equipment_js_1.describeItem)(c.prevType, 0, [], names).name : null,
+                iconUrl: c.itemType ? iconUrl(mappings?.equipment, c.itemType) : null,
+            })),
         });
     });
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */

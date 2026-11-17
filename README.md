@@ -102,6 +102,14 @@ Once a day:
 - **Captains** for every member — level, star level and the active line-up,
   with a history of each level and star — shown on the profile with the
   game's portraits, art and star bonuses.
+- **Captain equipment** for every member — the item each captain wears in
+  each position, its quality grade and bonuses, and the gems and enchantment
+  set into it, with a history of every change.
+- **Artifacts** for every member — the ones the three line-up captains wear
+  (Torch of Olympus, Ghostflame Lantern…), with level, star level and random
+  bonuses, and a history of each change. The archived city replies of the
+  previous weeks are re-read for both, so history starts from the first
+  archived read.
 - **Buildings and hero** for every member's city.
 - **Raw replies** — the clan record, the Clan Capital and every member's city
   — archived as received, so fields that are not decoded yet still have
