@@ -2100,6 +2100,59 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v120 — event standings from the game (Events page). Every scan reads the
+    // events the clan's account sees (24001) and, for each running one, its
+    // "Clan members" standings (38003). A run is (event_type, run, occurrence):
+    // the occurrence changes every time the event comes round, so a finished
+    // run keeps its standings.
+    //   game_event_runs               one row per run seen: the game's code and
+    //                                 English title (T44), start/end, last read;
+    //   game_event_standings          the latest points + rank per player;
+    //   game_event_standing_history   a row when a player's points move.
+    // IF NOT EXISTS: runMigrations may replay this.
+    version: 120,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS game_event_runs (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          code TEXT NOT NULL DEFAULT '',
+          title TEXT NOT NULL DEFAULT '',
+          starts_at INTEGER,
+          ends_at INTEGER,
+          first_seen TEXT NOT NULL,
+          last_read TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence)
+        );
+        CREATE TABLE IF NOT EXISTS game_event_standings (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          player_id INTEGER NOT NULL,
+          points INTEGER NOT NULL,
+          rank INTEGER NOT NULL,
+          first_seen TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence, player_id)
+        );
+        CREATE TABLE IF NOT EXISTS game_event_standing_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          player_id INTEGER NOT NULL,
+          points INTEGER NOT NULL,
+          rank INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence, player_id, changed_at)
+        );
+      `);
+    },
+  },
 ];
 
 /**

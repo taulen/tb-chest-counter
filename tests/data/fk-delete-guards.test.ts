@@ -97,6 +97,10 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_clan_tech_history.clan_id',
     'game_clan_techs.clan_id',
     'game_clan_treasury.clan_id',
+    // Event standings from the game (v120).
+    'game_event_runs.clan_id',
+    'game_event_standing_history.clan_id',
+    'game_event_standings.clan_id',
     'game_gifts.clan_id',
     'game_ledger.clan_id',
     'game_map_objects.clan_id',
@@ -409,6 +413,15 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO game_clan_ranking_lists (clan_id, kind, captured_at, entries) VALUES (?, 7, ?, '[]')`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_event_runs (clan_id, event_type, run, occurrence, code, title, first_seen, last_read) VALUES (?, 1024, 1, 242, 'clandoom_epic', 'Rise of the Ancients', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_event_standings (clan_id, event_type, run, occurrence, player_id, points, rank, first_seen, updated_at) VALUES (?, 1024, 1, 242, 1, 52586600, 1, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_event_standing_history (clan_id, event_type, run, occurrence, player_id, points, rank, changed_at) VALUES (?, 1024, 1, 242, 1, 52586600, 1, ?)`,
   ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.

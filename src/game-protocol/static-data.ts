@@ -49,6 +49,14 @@ export const TABLE_CAPTAINS = 75;
 /** Clan medals (ids 1–40): f1 icon, f2 inactive icon, f4 unlock text vector, f5 name vector, f6 tier 1 bronze … 4 platinum. */
 export const TABLE_CLAN_MEDALS = 62;
 /**
+ * Tournaments (events): $pairs keyed `[[type, run], stage]` → f10 the event's
+ * client config JSON, whose `info_title` is its title key
+ * ("global_tournament.client.value.clandoom_epic.info.title" → "Rise of the
+ * Ancients"). The `[type, run]` pair is what the event messages (24001 list,
+ * 38003 clan-member standings) carry. Found Nov 2026.
+ */
+export const TABLE_TOURNAMENTS = 44;
+/**
  * Artifacts, all keyed by the artifact TYPE (one per type per player):
  *   T110 types        f7 JSON config {"icon": …}, f8 name vector, f9 tooltip
  *                     vector, f11 rarity (4 epic, 5 legendary, 6 mythic)
@@ -77,7 +85,7 @@ export const TABLE_EQUIPMENT = 11;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
-  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS,
+  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS,
 ];
 
 export interface GameNames {
@@ -100,8 +108,20 @@ export interface GameNames {
   equipmentGrades?: Record<string, string>;
   /** Gems and enchantments (T8 id) that can be set into equipment. Format 3+. */
   inserts?: Record<string, GameInsert>;
+  /** Events (T44) by "type,run": the game's code, title key and English title. Format 5+. */
+  events?: Record<string, GameEvent>;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
+}
+
+/** An event as T44 names it. */
+export interface GameEvent {
+  /** "clandoom_epic" — from the title key. */
+  code: string;
+  /** The translation key of the title (every language has it). */
+  titleKey: string;
+  /** English title ("Rise of the Ancients"); empty when the key has no English text. */
+  title: string;
 }
 
 export interface GameMedal {
@@ -171,10 +191,11 @@ export interface GameCaptain {
 
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
- * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems — Nov 2026); a cached file with an older
+ * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: event
+ * titles (T44) — Nov 2026); a cached file with an older
  * format is rebuilt.
  */
-export const NAMES_FORMAT = 4;
+export const NAMES_FORMAT = 5;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -364,6 +385,11 @@ export function asIdRecord(t: Wire): Record<string, Wire> | null {
   for (const [k, v] of (t as { $pairs: Array<[Wire, Wire]> }).$pairs) {
     const id = Array.isArray(k) && k.length === 1 ? k[0] : k;
     if (typeof id === 'number' || typeof id === 'string') rec[String(id)] = v;
+    // A composite key ([[type, run], stage] in T44) joins its numbers: "1024,1,1".
+    else if (Array.isArray(id)) {
+      const flat = (id as Wire[]).flat(2);
+      if (flat.length && flat.every((x) => typeof x === 'number')) rec[flat.join(',')] = v;
+    }
   }
   return rec;
 }
@@ -501,7 +527,34 @@ export function buildNames(
   return {
     version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
     gifts, techs, objects, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+    events: buildEvents(tables.get(TABLE_TOURNAMENTS), str, en),
   };
+}
+
+/**
+ * T44 → "type,run" → code, title key and English title. Rows are keyed
+ * "type,run,stage" (asIdRecord joins the composite key); the first stage of a
+ * run names it. The title is the config's `info_title` key.
+ */
+export function buildEvents(
+  table: Record<string, Wire> | undefined,
+  str: (ref: Wire) => string | undefined,
+  en: Map<string, string>,
+): Record<string, GameEvent> {
+  const out: Record<string, GameEvent> = {};
+  for (const [key, row] of Object.entries(table ?? {})) {
+    const m = /^(\d+),(\d+)(?:,\d+)?$/.exec(key);
+    if (!m || !Array.isArray(row)) continue;
+    const id = `${m[1]},${m[2]}`;
+    if (out[id]) continue;
+    let cfg: { info_title?: unknown } = {};
+    try { cfg = JSON.parse(str(row[10]) ?? '{}'); } catch { continue; }
+    const titleKey = typeof cfg.info_title === 'string' ? cfg.info_title : '';
+    if (!titleKey) continue;
+    const code = /^global_tournament\.client\.value\.([a-z0-9_]+)\./.exec(titleKey)?.[1] ?? '';
+    out[id] = { code, titleKey, title: en.get(titleKey) ?? '' };
+  }
+  return out;
 }
 
 const isPlainObject = (v: Wire): v is Record<string, Wire> =>

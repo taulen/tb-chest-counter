@@ -9692,3 +9692,52 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .clan-rank-history-table col.col-date,
   .clan-rank-history-table col.col-rank { width: auto; }
 }
+
+/* ── Event standings from the game (pages/game-standings.js) ─────────────────
+   The event window's "Clan members" tab, read every scan. */
+.game-standings-card { margin-bottom: 16px; }
+.game-standings-table { table-layout: fixed; width: 100%; }
+.game-standings-table col.col-rank { width: 72px; }
+.game-standings-table col.col-points { width: 150px; }
+.game-standings-table col.col-change { width: 130px; }
+.game-run-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.game-run-badge.is-live { border-color: var(--accent-green); color: var(--accent-green); }
+.game-run-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.game-run {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.game-run-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: baseline; }
+.game-run-title { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; min-width: 0; }
+.game-run-title strong { color: var(--text-primary); overflow-wrap: anywhere; }
+.game-run-link { font-size: 12px; }
+.game-run-meta { font-size: 12px; color: var(--text-secondary); }
+.game-run-top { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
+.game-run-standings { margin-top: 8px; }
+/* The hand-pasted standings, folded while the game's are read. */
+.events-paste-fold { margin: 0 0 16px; }
+.events-paste-fold > summary {
+  cursor: pointer;
+  padding: 8px 4px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.events-paste-fold > summary .card-header-hint { font-weight: 400; }
+@media (max-width: 640px) {
+  .game-standings-table col.col-points { width: 110px; }
+}
