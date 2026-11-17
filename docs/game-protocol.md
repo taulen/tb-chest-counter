@@ -225,7 +225,9 @@ in [game-protocol-phase.ts](../src/scheduler/game-protocol-phase.ts)):
 | 25 `[[[clanId]]]` | `{1, 3, 4, 5, 7, 9}` | key 1 might, key **7 wealth points** | "Clan wealth points"; 3/4/5/9 stored raw |
 | 14003 `[[[capitalId]]]` | `[[[[key], value], …], …]` | key **30 help points** (Clan Capital → Border) | 5,576,273 on screen; others raw (37 moves with wealth) |
 | 28001 `[[[clanId]]]` | `[[medalId, earnedAt], …]` | the (up to 4) medals the clan displays | Information tab |
-| 23 `[[7, 100, [], false]]` | `[[clanId, value], …]` | the kingdom's top 100 by **wealth** (kind 7), NOT sorted — the rank is computed | in-game Clan ranking; other kinds unverified |
+| 23 `[[kind, 100, [], false]]` | `[[clanId, value], …]` | the kingdom's top 100 per ranking, NOT sorted — the rank is computed. Kinds (client config rating tabs, RATING_CLANS): **7 wealth**, **1 might**, **3 valor points gained**, **4 conquest points gained**, **5 crypt exploration**; 2 (gold bars) and 6 answer empty for clans | in-game Clan ranking; probed every kind from the throwaway account; kind 1 values = 15200's might |
+| 15200 `[[[clanId], …]]` | `[[[clanId], logo, tag, name, type, 0, 0, memberLimit, members, language, might, 1], {[1018,1] → [n]}]` per clan | any clans' headline — the ranking lists' names and logos (100 clans a request) | |
+| clan record `[1][2]` | logo code | background, frame and emblem ids, one byte each — see "Clan logo" below | CWB's axe emblem |
 
 Tables: `game_clan_info` (current), `game_clan_stats` (a row per scan, with
 `raw` for everything read but not decoded), `game_clan_techs` +
@@ -235,6 +237,34 @@ day's latest read per resource), `game_clan_medals`. A clan with no research
 stored yet is first filled from its archived capital reply (`clan_object`),
 dated to when that was read. Clan tree 17 (`clanTalentsTree17`, ids 7000/8000)
 is not in the capital and is not shown.
+
+Every scan stores the clan's rank and value in each ranking
+(`game_clan_rankings`, a row per kind per scan, rank null outside the top 100)
+and the latest list per kind with each clan's tag, name, logo and members
+(`game_clan_ranking_lists`, v116) — the My Clan page's Rankings tab.
+
+### Clan logo ([`clan-logo.ts`](../src/game-art/clan-logo.ts))
+
+One number, the clan record's `[1][2]` (and 15200's `[1]` for any clan), one
+byte per layer: `background << 16 | frame << 8 | emblem` — CWB 1118480 =
+0x11_11_10 = background 17, frame 17, emblem 16 (the axe); SIK 660741 =
+10/21/5; SIN 2168077 = 33/21/13. The client config `clan/logo` gives the
+ranges (numBacks 49, numFrames 37, numElblems 37; the last seven of each are
+NPC clans'). Every layer is a sprite of its own, small and `_lg` (87 px):
+`clan_background_<b>` (the coloured field), `clan_mask_<f>` (the frame's
+opening — only its alpha cuts the background), `clan_frame_<f>`,
+`clan_emblem_<e>`. Composed bottom to top — background cut by the mask, frame,
+emblem — all centred, by sharp on the server, cached per art version as
+`<art>/<version>/clan-logos/<code>.png` and served public and immutable at
+`/game-art/<version>/clan-logo/<code>.png`. No tint: the backgrounds carry
+their colour.
+
+Treasury and inventory rows show each item's own icon by item id (T8 f6
+visual `icon`; `game-art/item-icons.ts`): every item icon is extracted
+(category `items`), e.g. Clan Shield of Peace → `booster_piece_shield_blue_72`,
+Proof of Victory in the Trials of Olympus tournament →
+`icon_multistage_victory_points`, Proof of Glory in the Dark Omens tournament →
+`icon_sabotage_victory_points`.
 
 Clan medals are T62 in the static data: f1 icon (`achievement_<group>_<tier>`),
 f4 unlock text, f5 name (shared by a medal's tiers: "Medal of Prosperity"), f6
@@ -329,7 +359,8 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 25 | `[[[clanId]]]` | clan might (key 1) and wealth points (key 7) — see "The clan itself" |
 | 14003 | `[[[capitalId]]]` | the Clan Capital's Border counters; key 30 = help points |
 | 28001 | `[[[clanId]]]` | the clan's displayed medals `[[medalId, earnedAt], …]` |
-| 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kind 7 = wealth |
+| 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kinds 7 wealth, 1 might, 3 valor, 4 conquest, 5 crypts |
+| 15200 | `[[[clanId], …]]` | clans' headline: logo, tag, name, members / limit, might |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
 Triumphal; `count` is chests in the entry (Bank bundles 3 or 30). Gift ids are

@@ -77,6 +77,8 @@ describe('selectArt', () => {
       silver_72: 'resources',
       clan_frame_3_lg: 'clan',
       clan_emblem_12: 'clan',
+      // Every other item's icon, for rows listed by item id (Clan Capital treasury).
+      booster_silver_72: 'items',
     });
   });
 
@@ -86,7 +88,8 @@ describe('selectArt', () => {
   });
 
   it('a resource type name pulls in its item even past the currency id range', () => {
-    expect(selectArt(['booster_silver_72'], st).has('booster_silver_72')).toBe(false);
+    // Not a resource: an item icon like any other.
+    expect(selectArt(['booster_silver_72'], st).get('booster_silver_72')).toBe('items');
     const big = { ...st, items: [{ id: 703005, name: 'Omen Essence', icon: 'icon_sabotage_clan_resource' }] };
     expect(selectArt(['icon_sabotage_clan_resource'], big, new Set(['omen essence'])).get('icon_sabotage_clan_resource')).toBe('resources');
   });

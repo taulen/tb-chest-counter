@@ -15,6 +15,9 @@ exports.getClanTechChanges = getClanTechChanges;
 exports.getClanTreasury = getClanTreasury;
 exports.getClanMedals = getClanMedals;
 exports.getClanLeader = getClanLeader;
+exports.saveClanRanking = saveClanRanking;
+exports.getClanRankingLists = getClanRankingLists;
+exports.getClanRankHistory = getClanRankHistory;
 /**
  * The clan's own game data (v111): what the in-game clan window shows — the
  * Information tab (tag, name, members, might, founded, medals), wealth and
@@ -29,12 +32,13 @@ const zlib_1 = require("zlib");
 const database_js_1 = require("../database.js");
 function saveClanInfo(clanId, info, now = new Date().toISOString()) {
     (0, database_js_1.getDb)().prepare(`
-    INSERT INTO game_clan_info (clan_id, game_clan_id, tag, name, founded_at, language, capital_id, realm, capital_x, capital_y, updated_at)
-    VALUES (@clanId, @gameClanId, @tag, @name, @foundedAt, @language, @capitalId, @realm, @x, @y, @now)
+    INSERT INTO game_clan_info (clan_id, game_clan_id, tag, name, founded_at, language, capital_id, realm, capital_x, capital_y, logo, updated_at)
+    VALUES (@clanId, @gameClanId, @tag, @name, @foundedAt, @language, @capitalId, @realm, @x, @y, @logo, @now)
     ON CONFLICT (clan_id) DO UPDATE SET
       game_clan_id = excluded.game_clan_id, tag = excluded.tag, name = excluded.name,
       founded_at = COALESCE(excluded.founded_at, game_clan_info.founded_at),
       language = excluded.language,
+      logo = COALESCE(excluded.logo, game_clan_info.logo),
       capital_id = COALESCE(excluded.capital_id, game_clan_info.capital_id),
       realm = COALESCE(excluded.realm, game_clan_info.realm),
       capital_x = COALESCE(excluded.capital_x, game_clan_info.capital_x),
@@ -47,6 +51,7 @@ function saveClanInfo(clanId, info, now = new Date().toISOString()) {
         name: info.name,
         foundedAt: info.foundedAt ? new Date(info.foundedAt * 1000).toISOString() : null,
         language: info.language || null,
+        logo: info.logo ?? null,
         capitalId: info.capitalId,
         realm: info.position?.[0] ?? null,
         x: info.position?.[1] ?? null,
@@ -120,7 +125,7 @@ function saveClanMedals(clanId, medals, now = new Date().toISOString()) {
 }
 function getClanInfo(clanId) {
     const r = (0, database_js_1.getDb)().prepare(`
-    SELECT game_clan_id AS gameClanId, tag, name, founded_at AS foundedAt, language, capital_id AS capitalId,
+    SELECT game_clan_id AS gameClanId, tag, name, founded_at AS foundedAt, language, logo, capital_id AS capitalId,
            realm, capital_x AS capitalX, capital_y AS capitalY, updated_at AS updatedAt
       FROM game_clan_info WHERE clan_id = ?
   `).get(clanId);
@@ -204,5 +209,35 @@ function getClanLeader(clanId) {
      ORDER BY gp.last_seen DESC LIMIT 1
   `).get(clanId);
     return r ?? null;
+}
+/**
+ * Store one ranking as read: the full list (replacing the last one) and this
+ * clan's own rank and value (a history row per scan; rank null when the clan
+ * isn't in the list).
+ */
+function saveClanRanking(clanId, gameDate, kind, entries, own, now = new Date().toISOString()) {
+    const db = (0, database_js_1.getDb)();
+    db.transaction(() => {
+        db.prepare(`INSERT OR REPLACE INTO game_clan_ranking_lists (clan_id, kind, captured_at, entries) VALUES (?, ?, ?, ?)`)
+            .run(clanId, kind, now, JSON.stringify(entries));
+        db.prepare(`INSERT OR REPLACE INTO game_clan_rankings (clan_id, captured_at, game_date, kind, rank, value) VALUES (?, ?, ?, ?, ?, ?)`)
+            .run(clanId, now, gameDate, kind, own.rank, own.value);
+    })();
+}
+/** The latest list of every ranking kind read for the clan. */
+function getClanRankingLists(clanId) {
+    return (0, database_js_1.getDb)().prepare('SELECT kind, captured_at AS capturedAt, entries FROM game_clan_ranking_lists WHERE clan_id = ?')
+        .all(clanId)
+        .map((r) => ({ kind: r.kind, capturedAt: r.capturedAt, entries: JSON.parse(r.entries) }));
+}
+/** The clan's rank and value per kind, one row per game day (the day's last read), oldest first. */
+function getClanRankHistory(clanId, sinceGameDate) {
+    return (0, database_js_1.getDb)().prepare(`
+    SELECT kind, game_date AS gameDate, rank, value FROM game_clan_rankings r
+     WHERE clan_id = ? AND game_date >= ?
+       AND captured_at = (SELECT MAX(captured_at) FROM game_clan_rankings
+                           WHERE clan_id = r.clan_id AND kind = r.kind AND game_date = r.game_date)
+     ORDER BY kind, game_date
+  `).all(clanId, sinceGameDate);
 }
 //# sourceMappingURL=game-clan-repo.js.map

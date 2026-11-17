@@ -1,15 +1,20 @@
 // Clan page — the clan as the game's own clan window shows it, read by every
 // scan (game-protocol-phase.ts → collectClan, /api/game/clan):
 //
-//   header  [TAG] Name, kingdom, the Clan Capital's position, founded, leader,
-//           language, and the medals the clan displays (Information tab);
+//   header  the clan logo (composed from the game's layers, game-art/
+//           clan-logo.ts), [TAG] Name, kingdom, the Clan Capital's position,
+//           founded, leader, language, and the medals the clan displays;
 //   stats   members / member limit, might, wealth points, help points, rank by
-//           wealth in the kingdom — each with its change since the day before;
+//           wealth in the kingdom (opens Rankings) — each with its change
+//           since the day before;
 //   tabs    Research: the clan's three technology trees (Clan territories,
 //           Allies, Fortifications — Clan Capital field 17) drawn like the
 //           profile's research trees, with a per-tree summary and recent
-//           level-ups. Treasury: the capital's stock per resource.
-//           History: one row per game day.
+//           level-ups. Rankings: the game's "Clan ranking by Kingdom" — five
+//           categories, the top 100 with logos, this clan highlighted (pinned
+//           under the list when outside it), its rank by day; loaded when the
+//           tab opens (/api/game/clan/rankings). Treasury: the capital's stock
+//           per item, each with its own game icon. History: one row per game day.
 //
 // The trees come from /api/game/tech-trees (the same file the profile uses);
 // only the clan trees the game's clan research holds are shown — tree 17
@@ -18,7 +23,7 @@
 import { api } from '../lib/api.js';
 import { esc, formatDate, formatDateShort, formatGameDayShort, memberLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
-import { loadGameArt, gameArtUrl, resourceIconUrl } from '../lib/game-art.js';
+import { loadGameArt, resourceIconUrl } from '../lib/game-art.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js';
 
@@ -27,7 +32,7 @@ const CHANGES_SHOWN = 60;
 const HISTORY_SHOWN = 30;
 
 /** The open tab and tree, kept while navigating within the SPA. */
-const view = { tab: 'research', tree: null };
+const view = { tab: 'research', tree: null, rankKind: 7, rankPage: null };
 
 /** Medal tier → CSS modifier (colour) — the tier's name is always written next to it. */
 const TIER_CLASS = { 1: 'is-bronze', 2: 'is-silver', 3: 'is-gold', 4: 'is-platinum' };
@@ -65,7 +70,8 @@ function languageName(code) {
 }
 
 export async function renderClan(content) {
-  content.innerHTML = `<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div>`;
+  rankingsPromise = null;
+  content.innerHTML =`<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div>`;
   let data;
   let trees = null;
   try {
@@ -87,6 +93,7 @@ export async function renderClan(content) {
   const levels = data.techs?.levels || {};
   const tabs = [
     { key: 'research', label: esc(t('Research')) },
+    { key: 'rankings', label: esc(t('Rankings')) },
     { key: 'treasury', label: esc(t('Treasury')) },
     { key: 'history', label: esc(t('History')) },
   ];
@@ -98,12 +105,26 @@ export async function renderClan(content) {
       ${statsHtml(data)}
       ${viewTabsHtml('clan-view', tabs, view.tab)}
       ${viewPanelHtml('clan-view', 'research', view.tab, researchHtml(clanTrees, levels, data.techs))}
+      ${viewPanelHtml('clan-view', 'rankings', view.tab, '<div data-clan-rankings></div>')}
       ${viewPanelHtml('clan-view', 'treasury', view.tab, treasuryHtml(data.treasury))}
       ${viewPanelHtml('clan-view', 'history', view.tab, historyHtml(data.history || []))}
     </div>`;
 
-  wireViewTabs(content, 'clan-view', (key) => { view.tab = key; });
+  wireViewTabs(content, 'clan-view', (key) => {
+    view.tab = key;
+    if (key === 'rankings') mountRankings(content, data);
+  });
   wireTrees(content, clanTrees, levels, trees);
+  if (view.tab === 'rankings') mountRankings(content, data);
+  // The rank stat card opens the Rankings tab on that ranking.
+  content.querySelectorAll('[data-goto-ranking]').forEach((el) => el.addEventListener('click', () => {
+    view.rankKind = Number(el.dataset.gotoRanking);
+    view.rankPage = null;
+    const tab = content.querySelector('#clan-view-tab-rankings');
+    if (tab?.getAttribute('aria-selected') === 'true') mountRankings(content, data, true);
+    else tab?.click();
+    tab?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }));
 }
 
 // ─── Header ──────────────────────────────────────────────────────────────
@@ -127,8 +148,13 @@ function headerHtml(data) {
   return `
     <div class="card clan-head">
       <div class="card-body card-body-padded">
-        <h2 class="clan-head-name"><span class="clan-head-tag">[${esc(i.tag)}]</span> ${esc(i.name)}</h2>
-        <div class="game-facts clan-head-facts">${pills.join('')}</div>
+        <div class="clan-head-top">
+          ${i.logoUrl ? `<img class="clan-head-logo" src="${esc(i.logoUrl)}" alt="${esc(t('Clan logo'))}" width="87" height="87" decoding="async">` : ''}
+          <div class="clan-head-main">
+            <h2 class="clan-head-name"><span class="clan-head-tag">[${esc(i.tag)}]</span> ${esc(i.name)}</h2>
+            <div class="game-facts clan-head-facts">${pills.join('')}</div>
+          </div>
+        </div>
         ${medalsHtml(data.medals || [])}
         ${data.stats ? `<p class="clan-head-read" title="${esc(formatDate(data.stats.capturedAt))}">${t('Read from the game {date}', { date: esc(formatDate(data.stats.capturedAt)) })}</p>` : ''}
       </div>
@@ -139,7 +165,7 @@ function medalsHtml(medals) {
   if (!medals.length) return '';
   return `<ul class="clan-medals" aria-label="${esc(t('Medals'))}">
     ${medals.map((m) => {
-      const icon = gameArtUrl(m.icon || '');
+      const icon = m.iconUrl || '';
       const tierName = m.tierName ? tGame(m.tierName) : '';
       const title = [m.description, m.earnedAt ? t('Earned {date}', { date: formatDateShort(m.earnedAt) }) : ''].filter(Boolean).join('\n');
       return `<li class="clan-medal ${TIER_CLASS[m.tier] || ''}" title="${esc(title)}">
@@ -165,12 +191,16 @@ function statsHtml(data) {
     if (!prev || prev[key] === null || prev[key] === undefined || s[key] === null || s[key] === undefined) return '';
     return t('{change} since {date}', { change: signed(s[key] - prev[key], format), date: formatGameDayShort(prev.gameDate) });
   };
-  const card = (label, value, { title = '', sub = '' } = {}) => `
-    <div class="stat-card">
+  const card = (label, value, { title = '', sub = '', ranking = null } = {}) => {
+    const inner = `
       <div class="label">${label}</div>
       <div class="value"${title ? ` title="${esc(title)}"` : ''}>${value}</div>
-      ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
-    </div>`;
+      ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}`;
+    // A rank opens that ranking on the Rankings tab.
+    return ranking === null
+      ? `<div class="stat-card">${inner}</div>`
+      : `<button type="button" class="stat-card stat-card-link" data-goto-ranking="${ranking}" title="${esc(t('Open the clan rankings'))}">${inner}</button>`;
+  };
   const cards = [
     card(t('Members'), s.memberLimit ? `${fmt(s.members)} / ${fmt(s.memberLimit)}` : fmt(s.members), {
       sub: delta('members'),
@@ -182,6 +212,7 @@ function statsHtml(data) {
   if (s.wealthRank !== null) {
     cards.push(card(t('Rank by wealth'), `#${s.wealthRank}`, {
       sub: data.info.realm ? t('in kingdom #{n}', { n: data.info.realm }) : '',
+      ranking: 7,
     }));
   }
   return `<div class="stats-grid clan-stats">${cards.join('')}</div>`;
@@ -304,13 +335,166 @@ function changesHtml(clanTrees, changes) {
     </div>`;
 }
 
+// ─── Rankings ────────────────────────────────────────────────────────────
+
+/** The game's clan ranking categories, in its own order (message 23 kinds). */
+const RANKING_LABELS = {
+  7: t('Wealth'),
+  1: t('Might'),
+  3: t('Valor points gained'),
+  4: t('Conquest points gained'),
+  5: t('Crypt exploration'),
+};
+const RANK_HISTORY_SHOWN = 30;
+const RANK_PAGE_SIZE = 25;
+
+let rankingsPromise = null;
+
+/** Fill the Rankings panel (fetched the first time it opens; `redraw` re-renders the kept data). */
+async function mountRankings(root, data, redraw = false) {
+  const el = root.querySelector('[data-clan-rankings]');
+  if (!el) return;
+  if (el.dataset.mounted && !redraw) return;
+  el.dataset.mounted = '1';
+  if (!el.innerHTML) el.innerHTML = `<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div>`;
+  let r;
+  try {
+    rankingsPromise = rankingsPromise || api('/game/clan/rankings');
+    r = await rankingsPromise;
+  } catch {
+    rankingsPromise = null;
+    el.dataset.mounted = '';
+    el.innerHTML = noteCard(t("Couldn't load the clan rankings. Try again in a minute."));
+    return;
+  }
+  const kinds = (r.kinds || []).filter((k) => RANKING_LABELS[k.kind]);
+  if (!kinds.some((k) => k.entries.length)) {
+    el.innerHTML = noteCard(t("The clan rankings haven't been read from the game yet. The next scan reads them."));
+    return;
+  }
+  if (!kinds.some((k) => k.kind === view.rankKind)) view.rankKind = kinds[0].kind;
+  const draw = () => {
+    el.innerHTML = rankingsHtml(kinds, r, data);
+    el.querySelectorAll('[data-rank-kind]').forEach((btn) => btn.addEventListener('click', () => {
+      view.rankKind = Number(btn.dataset.rankKind);
+      view.rankPage = null;
+      draw();
+    }));
+    el.querySelectorAll('[data-rank-page]').forEach((btn) => btn.addEventListener('click', () => {
+      view.rankPage = Number(btn.dataset.rankPage);
+      draw();
+    }));
+  };
+  draw();
+}
+
+function rankingsHtml(kinds, r, data) {
+  const k = kinds.find((x) => x.kind === view.rankKind);
+  const own = r.gameClanId;
+  const picker = `<div class="tech-tree-picker clan-rank-picker" role="group" aria-label="${esc(t('Ranking'))}">
+    ${kinds.map((x) => {
+      const on = x.kind === view.rankKind;
+      return `<button type="button" class="tech-tree-btn${on ? ' is-active' : ''}" data-rank-kind="${x.kind}" aria-pressed="${on}">
+        ${x.iconUrl ? `<img class="clan-rank-kind-icon" src="${esc(x.iconUrl)}" alt="" width="22" height="22" decoding="async">` : ''}
+        <span class="tech-tree-btn-name">${esc(RANKING_LABELS[x.kind])}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+
+  const at = k.entries.findIndex((e) => e.clanId === own);
+  // 25 a page, opening on the page with this clan on it.
+  const pages = Math.max(1, Math.ceil(k.entries.length / RANK_PAGE_SIZE));
+  if (view.rankPage === null) view.rankPage = at < 0 ? 1 : Math.floor(at / RANK_PAGE_SIZE) + 1;
+  view.rankPage = Math.min(Math.max(1, view.rankPage), pages);
+  const first = (view.rankPage - 1) * RANK_PAGE_SIZE;
+  const shown = k.entries.slice(first, first + RANK_PAGE_SIZE);
+  const ownShown = at >= first && at < first + RANK_PAGE_SIZE;
+  // Outside the list: the clan pinned under it, with its own value where the scan knows it.
+  const ownValue = view.rankKind === 7 ? data.stats?.wealth : view.rankKind === 1 ? data.stats?.might : null;
+  // The clan's own row shows its own tag and logo even when 15200 left it out.
+  const fill = (e) => (e.clanId === own && !e.tag
+    ? { ...e, tag: data.info.tag, name: data.info.name, logoUrl: e.logoUrl || data.info.logoUrl, members: e.members ?? data.stats?.members ?? null, memberLimit: e.memberLimit ?? data.stats?.memberLimit ?? null }
+    : e);
+  const row = (raw, rank, extra = '') => { const e = fill(raw); return `<tr class="${e.clanId === own ? 'is-own' : ''}${extra}">
+      <td data-label="${esc(t('Rank'))}" data-role="lead" class="col-rank">${rank === null ? '—' : `#${rank}`}</td>
+      <td data-label="${esc(t('Clan'))}" data-role="primary">
+        <span class="clan-rank-cell">
+          ${e.logoUrl ? `<img class="clan-rank-logo" src="${esc(e.logoUrl)}" alt="" width="32" height="32" loading="lazy" decoding="async">` : '<span class="clan-rank-logo is-empty" aria-hidden="true"></span>'}
+          <span class="mrow-name"><span class="clan-rank-tag">[${esc(e.tag || '?')}]</span> ${esc(e.name || '')}</span>
+        </span>
+      </td>
+      <td data-label="${esc(t('Members'))}" class="num">${e.members !== null && e.members !== undefined ? `${fmt(e.members)} / ${fmt(e.memberLimit)}` : '—'}</td>
+      <td data-label="${esc(RANKING_LABELS[view.rankKind])}" data-role="metric" class="num" title="${esc(fmt(e.value))}">${fmt(e.value)}</td>
+    </tr>`; };
+  const rows = shown.map((e, i) => row(e, first + i + 1)).join('');
+  // Not on this page: the clan pinned under it; not in the list at all: with the value the scan knows.
+  const pinned = at >= 0 && !ownShown
+    ? row(k.entries[at], at + 1, ' is-pinned')
+    : at < 0
+    ? row({
+      clanId: own, tag: data.info.tag, name: data.info.name, logoUrl: data.info.logoUrl,
+      members: data.stats?.members ?? null, memberLimit: data.stats?.memberLimit ?? null, value: ownValue ?? null,
+    }, null, ' is-pinned')
+    : '';
+  const summary = at < 0
+    ? t('{clan} is not in the top {n}', { clan: `[${esc(data.info.tag)}]`, n: k.entries.length })
+    : t('{clan} is #{rank} of the top {n}', { clan: `[${esc(data.info.tag)}]`, rank: at + 1, n: k.entries.length });
+
+  return `
+    <div class="card">
+      <div class="card-header"><h2>${t('Clan ranking by Kingdom')}</h2>
+        ${k.capturedAt ? `<span class="card-header-hint" title="${esc(formatDate(k.capturedAt))}">${t('read from the game {date}', { date: esc(formatDateShort(k.capturedAt)) })}</span>` : ''}
+      </div>
+      <div class="card-body card-body-padded">
+        ${picker}
+        <p class="clan-rank-summary">${summary}</p>
+      </div>
+      <div class="card-body">
+        <table class="table-responsive clan-rank-table">
+          <colgroup><col class="col-rank"><col class="col-clan"><col class="col-members"><col class="col-value"></colgroup>
+          <thead><tr><th class="col-rank">${t('Rank')}</th><th>${t('Clan')}</th><th class="num">${t('Members')}</th><th class="num">${esc(RANKING_LABELS[view.rankKind])}</th></tr></thead>
+          <tbody>${rows}${pinned}</tbody>
+        </table>
+        ${pages > 1 ? `<div class="pagination">
+          <button class="btn btn-tight" type="button" data-rank-page="${view.rankPage - 1}" ${view.rankPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+          <span class="pagination-info">${t('Page {page} of {pages}', { page: view.rankPage, pages })}</span>
+          <button class="btn btn-tight" type="button" data-rank-page="${view.rankPage + 1}" ${view.rankPage >= pages ? 'disabled' : ''}>${t('Next →')}</button>
+        </div>` : ''}
+      </div>
+    </div>
+    ${rankHistoryHtml(r.history || [])}`;
+}
+
+function rankHistoryHtml(history) {
+  const days = history.filter((h) => h.kind === view.rankKind).reverse().slice(0, RANK_HISTORY_SHOWN);
+  if (!days.length) return '';
+  return `<div class="card">
+      <div class="card-header"><h2>${t('Our rank by day')}</h2>
+        <span class="card-header-hint">${t('The last read of each game day')}</span>
+      </div>
+      <div class="card-body">
+        <table class="table-responsive clan-rank-history-table">
+          <colgroup><col class="col-date"><col class="col-rank"><col class="col-value"></colgroup>
+          <thead><tr><th>${t('Date')}</th><th class="col-rank">${t('Rank')}</th><th class="num">${esc(RANKING_LABELS[view.rankKind])}</th></tr></thead>
+          <tbody>
+            ${days.map((d) => `<tr>
+              <td data-label="${esc(t('Date'))}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(d.gameDate))}</span></td>
+              <td data-label="${esc(t('Rank'))}" data-role="metric" class="col-rank">${d.rank === null ? esc(t('not in the top 100')) : `#${d.rank}`}</td>
+              <td data-label="${esc(RANKING_LABELS[view.rankKind])}" class="num">${fmt(d.value)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 // ─── Treasury ────────────────────────────────────────────────────────────
 
 function treasuryHtml(treasury) {
   const rows = (treasury?.rows || []).filter((r) => r.name);
   if (!rows.length) return noteCard(t("The Clan Capital's treasury hasn't been read from the game yet."));
   const body = rows.map((r) => {
-    const icon = resourceIconUrl(r.name);
+    const icon = r.iconUrl || resourceIconUrl(r.name);
     const change = r.previous === null || r.previous === undefined ? '' : signed(r.amount - r.previous);
     return `<tr>
       <td data-label="${esc(t('Resource'))}" data-role="primary">

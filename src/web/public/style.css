@@ -4803,12 +4803,14 @@ details > table {
      Captains) no longer fit one row: they wrap, each tab as wide as its label
      and the row's slack shared out, so every tab stays in view — never a
      sideways scroll, and never a long single word ("Исследования") cut by a
-     fixed quarter-width cell. */
-  .view-tabs:has(> .resources-tab:nth-child(5)) {
+     fixed quarter-width cell. My Clan's four ("Clasificaciones") wrap too. */
+  .view-tabs:has(> .resources-tab:nth-child(5)),
+  .clan-page .view-tabs {
     display: flex;
     flex-wrap: wrap;
   }
-  .view-tabs:has(> .resources-tab:nth-child(5)) > .resources-tab {
+  .view-tabs:has(> .resources-tab:nth-child(5)) > .resources-tab,
+  .clan-page .view-tabs > .resources-tab {
     flex: 1 1 auto;
     white-space: nowrap;
   }
@@ -9022,4 +9024,83 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .clan-history-table col.col-date,
   .clan-history-table col.col-members,
   .clan-history-table col.col-rank { width: auto; }
+}
+
+/* My Clan: the logo beside the name; the rank card that opens Rankings. */
+.clan-head-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.clan-head-logo {
+  flex: none;
+  width: 87px;
+  height: 87px;
+  object-fit: contain;
+}
+.clan-head-main { min-width: 0; }
+.stat-card.stat-card-link {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.stat-card.stat-card-link:hover,
+.stat-card.stat-card-link:focus-visible { border-color: var(--accent-gold-border); }
+
+/* My Clan → Rankings: the game's "Clan ranking by Kingdom". */
+.clan-rank-picker { margin-bottom: 4px; }
+.clan-rank-kind-icon { flex: none; width: 22px; height: 22px; object-fit: contain; }
+.clan-rank-summary {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.clan-rank-table { table-layout: fixed; }
+.clan-rank-table col.col-rank { width: 80px; }
+.clan-rank-table col.col-members { width: 130px; }
+.clan-rank-table col.col-value { width: 200px; }
+.clan-rank-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.clan-rank-cell .mrow-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clan-rank-logo {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.clan-rank-logo.is-empty {
+  display: inline-block;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+}
+.clan-rank-tag { color: var(--text-secondary); }
+.clan-rank-table tr.is-own td { background: var(--accent-gold-bg); }
+.clan-rank-table tr.is-own .clan-rank-tag,
+.clan-rank-table tr.is-own .mrow-name { color: var(--accent-gold); font-weight: 600; }
+.clan-rank-table tr.is-pinned td { border-top: 2px solid var(--accent-gold-border); }
+.clan-rank-history-table { table-layout: fixed; }
+.clan-rank-history-table col.col-date { width: 160px; }
+.clan-rank-history-table col.col-rank { width: 200px; }
+
+@media (max-width: 640px) {
+  .clan-head-top { gap: 12px; align-items: flex-start; }
+  .clan-head-logo { width: 64px; height: 64px; }
+  .clan-rank-table col.col-rank,
+  .clan-rank-table col.col-members,
+  .clan-rank-table col.col-value,
+  .clan-rank-history-table col.col-date,
+  .clan-rank-history-table col.col-rank { width: auto; }
 }

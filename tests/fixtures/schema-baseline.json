@@ -111,6 +111,11 @@
   },
   {
     "type": "index",
+    "name": "idx_game_clan_rankings_day",
+    "sql": "CREATE INDEX idx_game_clan_rankings_day ON game_clan_rankings (clan_id, kind, game_date)"
+  },
+  {
+    "type": "index",
     "name": "idx_game_clan_stats_day",
     "sql": "CREATE INDEX idx_game_clan_stats_day ON game_clan_stats (clan_id, game_date)"
   },
@@ -492,12 +497,22 @@
   {
     "type": "table",
     "name": "game_clan_info",
-    "sql": "CREATE TABLE game_clan_info ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), game_clan_id INTEGER NOT NULL, tag TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', founded_at TEXT, language TEXT, capital_id INTEGER, realm INTEGER, capital_x INTEGER, capital_y INTEGER, updated_at TEXT NOT NULL )"
+    "sql": "CREATE TABLE game_clan_info ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), game_clan_id INTEGER NOT NULL, tag TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', founded_at TEXT, language TEXT, capital_id INTEGER, realm INTEGER, capital_x INTEGER, capital_y INTEGER, updated_at TEXT NOT NULL , logo INTEGER)"
   },
   {
     "type": "table",
     "name": "game_clan_medals",
     "sql": "CREATE TABLE game_clan_medals ( clan_id INTEGER NOT NULL REFERENCES clans(id), medal_id INTEGER NOT NULL, earned_at TEXT, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, medal_id) )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_ranking_lists",
+    "sql": "CREATE TABLE game_clan_ranking_lists ( clan_id INTEGER NOT NULL REFERENCES clans(id), kind INTEGER NOT NULL, captured_at TEXT NOT NULL, entries TEXT NOT NULL, PRIMARY KEY (clan_id, kind) )"
+  },
+  {
+    "type": "table",
+    "name": "game_clan_rankings",
+    "sql": "CREATE TABLE game_clan_rankings ( clan_id INTEGER NOT NULL REFERENCES clans(id), captured_at TEXT NOT NULL, game_date TEXT NOT NULL, kind INTEGER NOT NULL, rank INTEGER, value INTEGER, PRIMARY KEY (clan_id, captured_at, kind) )"
   },
   {
     "type": "table",

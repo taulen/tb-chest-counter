@@ -12,7 +12,9 @@
  */
 import type { ArtStatic } from './art-static.js';
 
-export const ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan', 'events'] as const;
+// `items` last: every other item icon (T8) that no category above took — a
+// clan treasury or inventory row shows its item's own icon (by item id).
+export const ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'items'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
 
 /**
@@ -34,6 +36,18 @@ export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map(
   Object.values(EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region as string]),
 );
 
+/**
+ * The clan ranking window's categories by ranking kind (message 23), with the
+ * game's icon for each — the client config's rating tabs, RATING_CLANS.
+ */
+export const CLAN_RANKING_ICONS: Readonly<Record<number, string>> = {
+  7: 'options_clan_wealth_22',
+  1: '1_power_22',
+  3: 'pve_resource_22',
+  4: 'pvp_resource_22',
+  5: 'scorched_oil_28',
+};
+
 export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   // Hero avatar portraits come from the hero-avatar table (T13) alone.
   heroes: [],
@@ -45,10 +59,20 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   chests: [/^chest_[a-z0-9_]+_72$/],
   // Resources come from the item table (T8) alone.
   resources: [],
-  // Clan frames and emblems, small and large ("clan_frame_12_lg").
-  clan: [/^clan_(frame|emblem)_\d+(_lg)?$/],
+  clan: [
+    // Clan logo layers, small and large ("clan_frame_12_lg"): background, the
+    // frame's mask that clips it, frame, emblem — composed by clan-logo.ts.
+    /^clan_(frame|emblem|background|mask)_\d+(_lg)?$/,
+    // Clan medals (T62 f1, "achievement_capitals_competition_gold"), not
+    // their greyed "_inactive" twins.
+    /^achievement_[a-z0-9_]+_(bronze|silver|gold|platinum)$/,
+    // The clan ranking window's category icons.
+    new RegExp(`^(${Object.values(CLAN_RANKING_ICONS).join('|')})$`),
+  ],
   // Exactly the EVENT_ART addresses.
   events: Object.values(EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
+  // Item icons come from the item table (T8) alone.
+  items: [],
 };
 
 /** Items (T8) below this id are the game's currencies and base resources. */
@@ -81,6 +105,7 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
   for (const it of st.items) {
     if (isChestName(it.name)) out.chests.add(it.icon.toLowerCase());
     else if (isResourceItem(it, resourceNames)) out.resources.add(it.icon.toLowerCase());
+    else out.items.add(it.icon.toLowerCase());
   }
   return out;
 }

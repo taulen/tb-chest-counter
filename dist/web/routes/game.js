@@ -19,6 +19,9 @@ const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_1 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
+const clan_logo_js_1 = require("../../game-art/clan-logo.js");
+const item_icons_js_1 = require("../../game-art/item-icons.js");
+const messages_js_1 = require("../../game-protocol/messages.js");
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
  * from the art pipeline), memoised per trees + art version.
@@ -148,20 +151,50 @@ function createGameRouter() {
         const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
         const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
         const treasury = (0, game_clan_repo_js_1.getClanTreasury)(clanId);
+        const icons = await (0, item_icons_js_1.itemIconUrls)(treasury.rows.map((r) => r.resourceId));
         res.json({
             linked: true,
-            info: { ...info, leader: (0, game_clan_repo_js_1.getClanLeader)(clanId) },
+            info: { ...info, leader: (0, game_clan_repo_js_1.getClanLeader)(clanId), logoUrl: (0, clan_logo_js_1.clanLogoUrl)(info.logo) },
             stats: (0, game_clan_repo_js_1.getLatestClanStats)(clanId),
             history: (0, game_clan_repo_js_1.getDailyClanStats)(clanId, since.slice(0, 10)),
             treasury: {
                 ...treasury,
-                rows: treasury.rows.map((r) => ({ ...r, name: names?.gifts?.[String(r.resourceId)]?.chest ?? '' })),
+                // Each item's own icon, by id (Clan Shield of Peace, tournament proofs, …).
+                rows: treasury.rows.map((r) => ({ ...r, name: names?.gifts?.[String(r.resourceId)]?.chest ?? '', iconUrl: icons.get(r.resourceId) ?? null })),
             },
             medals: (0, game_clan_repo_js_1.getClanMedals)(clanId).map((m) => {
                 const g = names?.medals?.[String(m.medalId)];
-                return { ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '' };
+                return {
+                    ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '',
+                    iconUrl: g?.icon ? (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(g.icon)) : null,
+                };
             }),
             techs: { ...(0, game_clan_repo_js_1.getClanTechs)(clanId), changes: (0, game_clan_repo_js_1.getClanTechChanges)(clanId, since) },
+        });
+    });
+    /**
+     * The kingdom's clan rankings as the game's ranking window shows them: each
+     * kind with its icon, the latest top-100 list (clans with their logo, tag,
+     * name, members) and this clan's rank and value by game day. Loaded when the
+     * Rankings tab opens.
+     */
+    router.get('/clan/rankings', (req, res) => {
+        const clanId = req.clanId;
+        const info = (0, game_clan_repo_js_1.getClanInfo)(clanId);
+        const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString().slice(0, 10);
+        const lists = new Map((0, game_clan_repo_js_1.getClanRankingLists)(clanId).map((l) => [l.kind, l]));
+        res.json({
+            gameClanId: info?.gameClanId ?? null,
+            kinds: messages_js_1.CLAN_RANKING_KINDS.map((kind) => {
+                const l = lists.get(kind);
+                return {
+                    kind,
+                    iconUrl: (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(selection_js_1.CLAN_RANKING_ICONS[kind] ?? '')),
+                    capturedAt: l?.capturedAt ?? null,
+                    entries: (l?.entries ?? []).map((e) => ({ ...e, logoUrl: (0, clan_logo_js_1.clanLogoUrl)(e.logo) })),
+                };
+            }),
+            history: (0, game_clan_repo_js_1.getClanRankHistory)(clanId, since),
         });
     });
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */

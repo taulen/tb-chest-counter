@@ -792,6 +792,8 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM game_clan_techs WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_clan_treasury WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_clan_medals WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_clan_rankings WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_clan_ranking_lists WHERE clan_id = ?').run(id);
     // In-game chat (v104).
     db.prepare('DELETE FROM chat_messages WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM chat_channels WHERE clan_id = ?').run(id);

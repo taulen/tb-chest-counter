@@ -352,6 +352,10 @@ class GameClient {
     clanRanking(kind, count = 100) {
         return this.ask(23, [[kind, count, [], false]]);
     }
+    /** Any clans' headline (15200): logo, tag, name, members / limit, might — what the ranking list shows. Read-only. */
+    clanSummaries(clanIds) {
+        return this.ask(15200, [[clanIds.map((id) => [id])]]);
+    }
     players(playerIds) {
         return this.ask(402, [[playerIds.map((id) => [id])]]);
     }

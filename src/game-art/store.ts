@@ -48,12 +48,13 @@ export interface GameArtImage {
 
 /**
  * What we extract changes when we start using a new kind of image (2: captain
- * portraits; 3: the Ancients artifacts and boss, Nov 2026). Bump this with
- * every change to the selection or mappings: an index built with an older one
- * is re-extracted on the next run — reusing every image it already has, so only
- * the new bundles download — instead of waiting for a game patch.
+ * portraits; 3: the Ancients artifacts and boss; 4: clan logo backgrounds and
+ * masks — Nov 2026). Bump this with every change to the selection or mappings:
+ * an index built with an older one is re-extracted on the next run — reusing
+ * every image it already has, so only the new bundles download — instead of
+ * waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 3;
+export const ART_SELECTION_VERSION = 4;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */
