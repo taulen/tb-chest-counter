@@ -113,7 +113,10 @@ Every minute:
   good, also once the game stops serving it. The **Chats** page shows the
   clan chat (searchable, filter by writer, jump to a date, new lines live;
   shared map locations, raids, joins and reports shown as the game shows
-  them). Private messages are stored but never shown.
+  them). Each message has a **Translate** button: on a click, that one line
+  is sent to Google Translate's free web endpoint and shown in the reader's
+  site language underneath (nothing is translated unless asked; answers are
+  cached in memory). Private messages are stored but never shown.
 
 Once a day:
 

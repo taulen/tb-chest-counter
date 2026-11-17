@@ -20,6 +20,14 @@ const chat_repo_js_1 = require("../../data/repositories/chat-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const chat_text_js_1 = require("../../game-protocol/chat-text.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
+const translate_js_1 = require("../../external/translate.js");
+const logger_js_1 = require("../../utils/logger.js");
+const log_throttle_js_1 = require("../../utils/log-throttle.js");
+const log = (0, logger_js_1.childLogger)('chat');
+/** A refused or failed translation: informational, at most once an hour. */
+const translateWarner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 60 * 60_000);
+/** The site's languages: what a Translate click may ask for. */
+const SITE_LANGUAGES = new Set(['en', 'es', 'fr', 'ru', 'de']);
 /** The game's map-object and terrain names, refreshed at most every 10 minutes (the page polls). */
 let namesCache = { at: 0, names: null };
 async function chatNames() {
@@ -187,6 +195,48 @@ function createChatRouter() {
             terrains,
         };
     }
+    /**
+     * One message translated into the viewer's site language — the Translate
+     * button, on request only. `key` is the message's `<at>:<messageId>`; the
+     * text is read from the store (clan-scoped), never taken from the request.
+     * `same: true` when the message is already in that language.
+     */
+    router.post('/clan/translate', async (req, res) => {
+        const clanId = req.clanId;
+        const at = cursor(req.body?.key);
+        const lang = String(req.body?.lang ?? '');
+        if (!at || !SITE_LANGUAGES.has(lang)) {
+            res.status(400).json({ error: 'key and a site language are required' });
+            return;
+        }
+        const m = (0, chat_repo_js_1.readChatMessage)(clanId, (0, chat_repo_js_1.clanChatChannels)(clanId), at);
+        if (!m) {
+            res.status(404).json({ error: 'No such message' });
+            return;
+        }
+        if (!/\p{L}/u.test(m.message)) {
+            res.json({ from: null, text: m.message, same: true });
+            return;
+        }
+        // The game's own translation when it stored one (free, and the game's wording).
+        const game = parseTranslations(m.translations)?.[lang];
+        if (game) {
+            res.json({ from: null, text: game, same: game === m.message });
+            return;
+        }
+        try {
+            const tr = await (0, translate_js_1.translateChatLine)(`${m.id}:${m.updatedAt}`, m.message, lang);
+            const same = tr.from === lang || tr.text.trim() === m.message.trim();
+            res.json({ from: tr.from, text: tr.text, same });
+        }
+        catch (err) {
+            if (!(err instanceof translate_js_1.TranslateUnavailableError))
+                throw err;
+            if (err.message.startsWith('Translation failed'))
+                translateWarner.warn('translate', `Chat translation: ${err.message} — pausing translations for 5 minutes.`);
+            res.status(503).json({ error: 'Translation is not available right now. Try again later.' });
+        }
+    });
     /** Everyone who has written in the clan chat, busiest first (the sender filter). */
     router.get('/clan/senders', (req, res) => {
         const clanId = req.clanId;

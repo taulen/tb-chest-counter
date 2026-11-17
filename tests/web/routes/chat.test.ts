@@ -1,7 +1,7 @@
 // /api/chat with real auth: the stored CLAN chat for any member of the active
 // clan — never private messages, never another clan's chat.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { createChatRouter, resetChatNamesCache } from '../../../src/web/routes/chat.js';
@@ -12,6 +12,7 @@ import { getDb } from '../../../src/data/database.js';
 import { saveChatMessages, upsertChatChannel } from '../../../src/data/repositories/chat-repo.js';
 import type { ChatMessage } from '../../../src/game-protocol/chat.js';
 import type { GameNames } from '../../../src/game-protocol/static-data.js';
+import { resetTranslateForTests } from '../../../src/external/translate.js';
 
 const T0 = 1_794_900_000_000;
 const CLAN1 = 'triumph_clan_channel_111';
@@ -55,11 +56,13 @@ describe('/api/chat', () => {
     resetChatNamesCache({ objects: { 4: 'Portal' } } as unknown as GameNames);
 
     app = express();
+    app.use(express.json());
     app.use('/api/chat', requireAuth, requireClanContext, createChatRouter());
   });
 
   afterEach(() => {
     resetChatNamesCache();
+    resetTranslateForTests();
     cleanup();
   });
 
@@ -142,6 +145,63 @@ describe('/api/chat', () => {
     const other = await get(`/api/chat/clan/context?around=${T0}:5`, 'user1');
     expect(JSON.stringify(other.body.messages)).not.toContain('clan two');
     expect(other.body.focus).toBeNull();
+  });
+
+  describe('POST /clan/translate (one message, on request)', () => {
+    const post = (body: object, who: keyof typeof cookies) =>
+      request(app).post('/api/chat/clan/translate').set('Accept', 'application/json').set('Cookie', cookies[who]).send(body);
+
+    /** The endpoint's fake: every text "translated" to `[text]`, detected as `lang`. */
+    function endpoint(lang: string) {
+      const sent: string[] = [];
+      const f = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const qs = new URLSearchParams(String(init?.body ?? '')).getAll('q');
+        sent.push(...qs);
+        return new Response(JSON.stringify(qs.map((q) => [`[${q}]`, lang])), { status: 200 });
+      });
+      resetTranslateForTests(f as unknown as typeof fetch);
+      return sent;
+    }
+
+    it('translates the stored text of the clan\'s own message into the viewer\'s language', async () => {
+      const sent = endpoint('de');
+      const r = await post({ key: `${T0 + 2000}:3`, lang: 'en' }, 'user1');
+      expect(r.status).toBe(200);
+      expect(r.body).toEqual({ from: 'de', text: '[raid at 18]', same: false });
+      expect(sent).toEqual(['raid at 18']);
+    });
+
+    it('says when the message is already in that language', async () => {
+      endpoint('en');
+      const r = await post({ key: `${T0}:1`, lang: 'en' }, 'user1');
+      expect(r.body).toMatchObject({ from: 'en', same: true });
+    });
+
+    it('never reaches another clan\'s message or a private one, and sends nothing for them', async () => {
+      const sent = endpoint('de');
+      expect((await post({ key: `${T0}:5`, lang: 'en' }, 'user1')).status).toBe(404);
+      expect((await post({ key: `${T0 + 3000}:4`, lang: 'en' }, 'user1')).status).toBe(404);
+      expect(sent).toEqual([]);
+    });
+
+    it('takes only a site language and a message key', async () => {
+      endpoint('de');
+      expect((await post({ key: `${T0}:1`, lang: 'xx' }, 'user1')).status).toBe(400);
+      expect((await post({ key: 'nope', lang: 'en' }, 'user1')).status).toBe(400);
+      expect((await post({ text: 'translate me', lang: 'en' }, 'user1')).status).toBe(400);
+    });
+
+    it('does not send a line without letters (a lone chip)', async () => {
+      const sent = endpoint('de');
+      const r = await post({ key: `${T0 + 1000}:2`, lang: 'en' }, 'user1');
+      expect(r.body).toMatchObject({ same: true });
+      expect(sent).toEqual([]);
+    });
+
+    it('answers 503 while the endpoint refuses', async () => {
+      resetTranslateForTests((async () => new Response('', { status: 429 })) as unknown as typeof fetch);
+      expect((await post({ key: `${T0}:1`, lang: 'en' }, 'user1')).status).toBe(503);
+    });
   });
 
   it('lists who wrote in the clan chat, without private-message senders', async () => {

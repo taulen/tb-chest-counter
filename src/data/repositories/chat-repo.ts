@@ -259,6 +259,13 @@ export function readChatAround(
   };
 }
 
+/** One stored message at a position, or null. Clan- and channel-scoped like every read here. */
+export function readChatMessage(clanId: number, channels: string[], at: ChatCursor): StoredChatMessage | null {
+  // `after` is exclusive: one id below the position reads the message itself first.
+  const [m] = readChatPage(clanId, channels, { after: { at: at.at, id: at.id - 1 }, limit: 1 });
+  return m && m.createdAt === at.at && m.messageId === at.id ? m : null;
+}
+
 export interface ChatSender { playerId: number; name: string; messages: number; lastAt: number }
 
 /** Everyone who wrote in these channels: their latest name and message count, busiest first. */

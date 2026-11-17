@@ -12,6 +12,7 @@ exports.readChatPage = readChatPage;
 exports.countChatMatches = countChatMatches;
 exports.chatAnchorAt = chatAnchorAt;
 exports.readChatAround = readChatAround;
+exports.readChatMessage = readChatMessage;
 exports.chatSenders = chatSenders;
 exports.chatHistoryInfo = chatHistoryInfo;
 /**
@@ -224,6 +225,12 @@ function readChatAround(clanId, channels, at, side = 50) {
         hasOlder: older.length === side,
         hasNewer: newer.length === side + 1,
     };
+}
+/** One stored message at a position, or null. Clan- and channel-scoped like every read here. */
+function readChatMessage(clanId, channels, at) {
+    // `after` is exclusive: one id below the position reads the message itself first.
+    const [m] = readChatPage(clanId, channels, { after: { at: at.at, id: at.id - 1 }, limit: 1 });
+    return m && m.createdAt === at.at && m.messageId === at.id ? m : null;
 }
 /** Everyone who wrote in these channels: their latest name and message count, busiest first. */
 function chatSenders(clanId, channels) {

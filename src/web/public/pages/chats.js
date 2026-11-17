@@ -20,7 +20,7 @@
 // Only the clan chat is shown; CHANNELS is the list the left column renders,
 // so the clan's group chats can be added later without reshaping the page.
 
-import { api } from '../lib/api.js';
+import { api, apiPost } from '../lib/api.js';
 import { esc, memberLink, localDateKey, copyTextToClipboard, prefersReducedMotion } from '../lib/ui.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 import { gameRankName, heroAvatarHtml } from '../lib/game-facts.js';
@@ -60,6 +60,8 @@ function freshState() {
     available: true,
     senders: null,
     newBelow: 0,
+    /** Translations asked for, by message key: { status, shown, from, text, same }. */
+    tr: new Map(),
   };
 }
 
@@ -218,15 +220,93 @@ function messageHtml(m, { hit = false } = {}) {
     : '<span class="chat-avatar is-empty" aria-hidden="true"></span>';
   const nameHtml = who?.memberId ? memberLink(who.memberId, m.sender.name) : esc(m.sender.name || t('Unknown player'));
   const nameMarked = terms().length && !who?.memberId ? marked(m.sender.name || '') : nameHtml;
-  const lang = getLanguage();
-  const translated = m.translations && m.translations[lang] && m.translations[lang] !== m.text
-    ? `<p class="chat-translation">${esc(t('Translated ({lang})', { lang }))}: ${textHtml(m.translations[lang])}</p>` : '';
   const edited = m.edited
     ? ` <span class="chat-edited" title="${esc(t('Earlier text: {text}', { text: m.previousText ?? '' }))}">${esc(t('(edited)'))}</span>` : '';
   return `<li class="chat-msg role-${role ?? 0}${hit ? ' is-hit' : ''}${focus}" data-key="${esc(m.key)}">${time}<div class="chat-card">
-    <div class="chat-head">${avatar}${rank ? `<span class="chat-rank">${esc(rank)}</span>` : ''}<span class="chat-name">${nameMarked}</span>${edited}${open}</div>
-    <div class="chat-text">${bodyHtml(m)}</div>${translated}
+    <div class="chat-head">${avatar}${rank ? `<span class="chat-rank">${esc(rank)}</span>` : ''}<span class="chat-name">${nameMarked}</span>${edited}${translateButtonHtml(m)}${open}</div>
+    <div class="chat-text">${bodyHtml(m)}</div>${translationHtml(m)}
   </div></li>`;
+}
+
+// ── Translation: on request, one message at a time ─────────────────────────
+
+/** A language's name in the viewer's language ("Russian", "russe"), else its code. */
+function languageName(code) {
+  try {
+    return new Intl.DisplayNames([getLanguage()], { type: 'language' }).of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+const translatable = (m) => m.kind === 'user' && /\p{L}/u.test(m.text ?? '');
+
+function translateButtonHtml(m) {
+  if (!translatable(m)) return '';
+  const tr = state.tr.get(m.key);
+  const pressed = tr?.shown && tr.status === 'done';
+  return `<button type="button" class="chat-translate" data-chat-action="translate" data-key="${esc(m.key)}" aria-pressed="${pressed ? 'true' : 'false'}"${tr?.status === 'loading' ? ' aria-busy="true"' : ''}>${esc(t('Translate'))}</button>`;
+}
+
+function translationHtml(m) {
+  const tr = state.tr.get(m.key);
+  if (!tr?.shown || tr.status === 'loading') return '';
+  if (tr.status === 'error') {
+    return `<p class="chat-translation is-error" role="status">${esc(t('Translation is not available right now. Try again later.'))}</p>`;
+  }
+  if (tr.same) {
+    return `<p class="chat-translation" role="status">${esc(t('Already in {language}.', { language: languageName(tr.from ?? getLanguage()) }))}</p>`;
+  }
+  const from = tr.from ? t('Translated from {language}', { language: languageName(tr.from) }) : t('Translated');
+  return `<div class="chat-translation" role="status"><span class="chat-tr-from">${esc(from)}</span><div class="chat-text" lang="${esc(getLanguage())}">${bodyHtml({ ...m, text: tr.text })}</div></div>`;
+}
+
+function findMessage(key) {
+  return state.items.find((m) => m.key === key) ?? state.results?.items?.find((m) => m.key === key) ?? null;
+}
+
+/** Redraw one message's button and translation in place (focus stays on the button). */
+function refreshTranslation(root, m) {
+  for (const node of root.querySelectorAll(`.chat-msg[data-key="${m.key}"]`)) {
+    const tr = state.tr.get(m.key);
+    const btn = node.querySelector('.chat-translate');
+    if (btn) {
+      // A toggle keeps its label; aria-pressed (and its look) says whether it is on.
+      btn.setAttribute('aria-pressed', tr?.shown && tr.status === 'done' ? 'true' : 'false');
+      if (tr?.status === 'loading') btn.setAttribute('aria-busy', 'true');
+      else btn.removeAttribute('aria-busy');
+    }
+    node.querySelector('.chat-translation')?.remove();
+    node.querySelector('.chat-card > .chat-text')?.insertAdjacentHTML('afterend', translationHtml(m));
+  }
+}
+
+/** The Translate button: fetch this one message's translation, or show / hide it. */
+async function toggleTranslation(root, key) {
+  const s = state;
+  const m = findMessage(key);
+  if (!m) return;
+  const tr = s.tr.get(key);
+  if (tr?.status === 'loading') return;
+  if (tr?.status === 'done') {
+    tr.shown = !tr.shown;
+    refreshTranslation(root, m);
+    return;
+  }
+  // First click, or a retry after a failure.
+  s.tr.set(key, { status: 'loading', shown: true });
+  refreshTranslation(root, m);
+  let next;
+  try {
+    const res = await apiPost(`${s.channel.endpoint}/translate`, { key, lang: getLanguage() });
+    next = res && !res.error
+      ? { status: 'done', shown: true, from: res.from ?? null, text: res.text ?? '', same: !!res.same }
+      : { status: 'error', shown: true };
+  } catch {
+    next = { status: 'error', shown: true };
+  }
+  s.tr.set(key, next);
+  if (s === state) refreshTranslation(root, m);
 }
 
 const dayOf = (m) => localDateKey(new Date(m.at));
@@ -725,6 +805,7 @@ export async function renderChats(el) {
     else if (action === 'newer') await loadNewer(root);
     else if (action === 'more-results') await moreResults(root);
     else if (action === 'open') await openContext(root, { around: btn.dataset.key }, { fromResults: true });
+    else if (action === 'translate') await toggleTranslation(root, btn.dataset.key);
     else if (action === 'back') {
       state.mode = 'results';
       state.focusKey = null;

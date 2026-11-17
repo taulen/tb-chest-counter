@@ -10238,7 +10238,34 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   overflow-wrap: anywhere;
 }
 .chat-text a { color: var(--accent-blue); text-decoration: underline; overflow-wrap: anywhere; }
-.chat-translation { margin: 4px 0 0; font-size: 13px; font-style: italic; color: var(--text-secondary); }
+/* Translate: one message, on request — quiet until wanted. */
+.chat-translate {
+  margin-left: auto;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-translate:hover { color: var(--accent-blue); }
+.chat-translate[aria-pressed="true"] { color: var(--accent-blue); background: var(--subtle-bg); font-weight: 600; }
+.chat-translate:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 1px; }
+.chat-translate[aria-busy="true"] { cursor: progress; opacity: 0.6; }
+.chat-translate + .chat-open { margin-left: 0; }
+.chat-translation {
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-light);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.chat-translation .chat-text { color: var(--text-secondary); }
+.chat-tr-from { display: block; font-size: 11px; color: var(--text-muted); }
+.chat-translation.is-error { color: var(--accent-red); }
 .chat-empty { font-style: italic; color: var(--text-muted); }
 .chat-msg.is-service .chat-card {
   border-style: dashed;
