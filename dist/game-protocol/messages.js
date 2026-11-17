@@ -343,7 +343,12 @@ function parseCityRecord(frame) {
         ownerId: id1(arr(r[1])[0]),
         techs: parseCityTechs(frame),
         buildings,
-        dragon: { level: num(dragonRow[3]), xp: num(dragonRow[2]) },
+        dragon: {
+            level: num(dragonRow[3]),
+            xp: num(dragonRow[2]),
+            stage: num(dragonRow[4]),
+            name: typeof dragonRow[6] === 'string' && dragonRow[6].trim() ? dragonRow[6].trim().slice(0, 64) : null,
+        },
         troops: arr(r[30])
             .map((e) => arr(e))
             .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')

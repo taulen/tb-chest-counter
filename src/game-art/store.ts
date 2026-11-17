@@ -64,12 +64,12 @@ export interface GameArtImage {
  * WebGL client; 5: captains' artifacts and equipment; 6: clan logo layers,
  * medal and ranking icons, every item icon; 7: captains' full-body art
  * (`_scaled`) and their tile pieces; 8: the Hall of Fame's faction windows
- * and crests — Nov 2026). Bump this with
+ * and crests; 9: the Dragon's icons, frame and pictures — Nov 2026). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 8;
+export const ART_SELECTION_VERSION = 9;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */

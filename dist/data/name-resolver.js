@@ -16,8 +16,8 @@ exports.resolveNamesToMembers = resolveNamesToMembers;
  * Never creates a member. Pasted text is not evidence that a player exists the
  * way a scan is; an unknown name stays unknown until an admin says who it is.
  *
- * Shared by the Tin Man standings (tinman-repo.ts) and the chat level import
- * (member-levels-repo.ts).
+ * Used by the event standings paste (tinman-repo.ts); the chat level import
+ * that shared it was retired in Nov 2026.
  */
 const member_repo_js_1 = require("./repositories/member-repo.js");
 const merge_repo_js_1 = require("./repositories/merge-repo.js");

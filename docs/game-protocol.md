@@ -394,7 +394,8 @@ prod rows at `{"level":100,"xp":1404294900}` and `{"level":150,"xp":17020294900}
 are dragons parked at exactly the level-100 / 150 threshold (an evolution cap),
 the user's "Salty" is level 237 with 1,258,975,435,937 (T73 L237 1.2157T ≤ xp <
 L238 1.2699T), while `game_players.hero_level` disagrees with it everywhere.
-`CityRecord.dragon` now; the snapshot column keeps its old name `hero`.
+`CityRecord.dragon` now; the snapshot column keeps its old name `hero`. See
+[The Dragon](#the-dragon-city-field-26-profile--captains).
 
 **Captain pictures** (user, Nov 2026: "very different from what I see
 in-game"). T75's config names four: `smallIcon` (carter_icon, the 72 px head
@@ -506,6 +507,65 @@ are items — captains' star levels grant them — and are not stored.
 card (game order Wolves, Lions, Eagles; current bonuses, the next level's
 values and requirement); the art is selection v8's `factions` category — the
 stained-glass windows are Spine stills (regions `redv` / `greenv` / `bluev`).
+
+### The Dragon (city field 26, profile → Captains)
+
+City field 26 holds one entry `[1, [cityId], xp, level, stage, ?, name]` —
+`{"1":[1,[1297100544969],1258975435937,237,6,false,"Salty"]}`: XP, level, the
+**evolution stage** (1–8) and the **name the player gave it**
+(`CityRecord.dragon`; stage and name parsed since Nov 2026). Nothing new is
+requested: the daily city snapshot stores it (`game_city_snapshots.hero`, named
+before the field was known to be the dragon), so there is one reading per
+member per game day — the history the Timeline uses. No migration.
+
+**T73 (Dragons)** is one row (key 1):
+
+| Field | |
+|---|---|
+| f2 | 300 levels `{level: [level, xpRequired (cumulative), effectId, textRef, 0]}`; L237 starts at 1,215,710,294,900, L300 at 21,332,810,294,900 |
+| f3 | 8 evolution stages `{stage: [stage, levelCap, cost, effectId, textRef, n]}`, caps 20 / 50 / 100 / 150 / 200 / 250 / 300 / 300 |
+| f4 | the Dragon window's config JSON: `icon_frame_linkage` `frame_icon_red_dragon`, `background_linkage` `red_dragon_back`, title keys `client_config.value.feature_dragon.*` |
+
+A level's text is `{"effect_strings":[{id, text, value}]}`, the bonuses AT that
+level, ids 0–9: Army strength, Army health, Strength / Health against players,
+Leadership, Authority, Dominance, Experience / Valor / Conquest points
+(`client_config.value.feature_dragon.army_power_bonus` …); `value` is a percent
+(L237: 114, 114, 99, 99, 15, 15, 15, 10, 8, 13; L300: 160 … 20). A stage's text
+has the same ten lines — what that evolution gives (stage 6: +15% against
+players, +5% for the other six non-army lines) — plus its sprites:
+`icon_linkage` `icon_red_dragon_<s>`, `full_dragon_linkage` `red_dragon_<s>`
+(also `_city`, `widget_` and march `_pet_` variants, not taken).
+
+**A dragon at its evolution's cap gains no XP until it evolves**: prod holds
+capped dragons at exactly the cap level's threshold (L100 1,404,294,900, L150
+17,020,294,900). The game says so in its own words
+("Raise your Dragon's evolution to unlock access to new levels.").
+
+`names.dragon` (NAMES_FORMAT 9, [static-data.ts](../src/game-protocol/static-data.ts)
+`buildDragon`) keeps the thresholds, the per-level and per-stage bonus values in
+one fixed line order, the stage caps and sprite names (~14 KB).
+[dragon.ts](../src/game-protocol/dragon.ts) `dragonView` builds the Captains
+tab's Dragon card (below the Captains card): the picture on the window's
+background, the name, "Level 237/250" (out of the evolution's cap, as the
+game's "Lvl. 237/250"), evolution N of 8, the XP bar to the next level (or the
+cap note, or "Reached the maximum level of the Dragon."), and the level's and
+evolution's bonuses — a next value only on the lines it changes (one level up
+moves one or two of the ten). The art is selection v9's `dragon` category. The
+profile's Dragon stat (level + name) reads the same snapshot through
+`/api/game/members/:id`.
+
+Old snapshots carry level and XP only. The `dragon` city parser
+(`CITY_PARSERS`, marker v1) replays the archived city replies once per clan
+and rewrites each archived day's snapshot with stage and name
+(`updateCityDragon`; a day without a snapshot row is never created).
+
+**Timeline**: a `dragon` entry (group Growth) whenever a day's level or
+evolution differs from the last day read — "Dragon level 236 → 237",
+"Dragon evolution 5 → 6". The first reading is the baseline; a day with no
+dragon read is a gap; a stage first seen on an old read is the stage's baseline.
+
+The chat-level import that used to supply the Dragon level is retired
+([member-levels.md](member-levels.md)).
 
 ### The clan itself (v111, My Clan page)
 
@@ -760,7 +820,7 @@ Each table has its own id space:
 | 52 | customizations: f1 kind (1 portrait frame, 2 city look) | f2 name vector, f4 visual JSON |
 | 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
 | 10 | heroes: the hero (row 1) and every captain (row = T75 id) | — f7 their 600 levels: XP thresholds, Stats, Might (see Captains above) |
-| 73 | dragons (city field 26) | f2 their 300 levels `[level, xp, …]` |
+| 73 | the Dragon (city field 26) | f2 its 300 levels `[level, xp, …, textRef]`, f3 its 8 evolutions, f4 the window config (see The Dragon above) |
 | 11 | equipment, one row per item type AND quality grade | f3 vector |
 | 110–113 | artifacts (`$pairs` tables keyed `[type]`) | T110 f8 vector |
 

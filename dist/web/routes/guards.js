@@ -47,7 +47,6 @@ const express_1 = require("express");
 const guardsRepo = __importStar(require("../../data/repositories/guards-repo.js"));
 const goldPassRepo = __importStar(require("../../data/repositories/gold-pass-repo.js"));
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
-const member_levels_repo_js_1 = require("../../data/repositories/member-levels-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const index_js_1 = require("../../config/index.js");
 const guards_levels_js_1 = require("../../config/guards-levels.js");
@@ -130,9 +129,6 @@ function createGuardsRouter() {
             staleDays: guards_levels_js_1.GUARDS_STALE_DAYS,
             guards,
             summary: guards ? guardsRepo.summarizeGuards(guards, today) : null,
-            // What the member last posted in chat (Admin → Levels from chat), every
-            // letter; the profile keeps only what research can't tell (Dragon).
-            reportedLevels: (0, member_levels_repo_js_1.getLatestLevelsForMember)(clanId, memberId),
         });
     });
     return router;

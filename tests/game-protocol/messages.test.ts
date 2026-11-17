@@ -77,13 +77,14 @@ describe('game messages', () => {
     expect(parseClanRecord(frame(15000, [[[rec]]]))?.objects).toEqual([4599917580066, 4599917593293]);
   });
 
-  it('reads a city (601): owner, buildings, techs and hero', () => {
+  it('reads a city (601): owner, buildings, techs, captains and the dragon', () => {
     const city: Wire[] = [];
     city[0] = [4599917580129];
     city[1] = [[4599909974644]];
     city[12] = { 3: [3, 41, 25, 0], 7: [7, 12, 30, 0] };
     city[17] = { 1215: [1215, 2], 29006: [29006, 20] };
-    city[26] = { 1: [1, [5], 98765, 116] };
+    // Field 26 is the dragon: [1, [cityId], xp, level, evolution stage, ?, its name].
+    city[26] = { 1: [1, [5], 98765, 116, 4, false, 'Salty'] };
     city[30] = [[27, 1211, 0], [30, 1705, 0]];
     // Captains: the real entry layout (equipment/skills trimmed); id 1 is the hero.
     city[9] = [
@@ -98,7 +99,7 @@ describe('game messages', () => {
       ownerId: 4599909974644,
       techs: { 1215: 2, 29006: 20 },
       buildings: { 3: { type: 41, level: 25 }, 7: { type: 12, level: 30 } },
-      dragon: { level: 116, xp: 98765 },
+      dragon: { level: 116, xp: 98765, stage: 4, name: 'Salty' },
       troops: [{ id: 27, count: 1211 }, { id: 30, count: 1705 }],
       captains: [
         { id: 1, level: 214, stars: 0, xp: 2295854228842, slot: 0, equipment: [] },

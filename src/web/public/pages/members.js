@@ -665,19 +665,18 @@ function memberGuardsStatHtml(guards) {
 }
 
 /**
- * The Dragon level the member last posted in chat (Admin → Levels from chat) —
- * the one level research doesn't show. Absent when they never posted one.
+ * The member's Dragon level from the game (city field 26, the latest daily
+ * city read) with the name they gave it; the Captains tab has the rest.
+ * Absent until a city read saw a dragon.
  */
-function memberDragonStatHtml(guards) {
-  const r = guards?.reportedLevels;
-  const d = r?.levels?.d;
-  if (d == null) return '';
-  const date = r.asOf?.d ?? r.lastReported;
+function memberDragonStatHtml(game) {
+  const d = game?.city?.dragon;
+  if (d?.level == null) return '';
   return `
     <div class="stat-card">
       <div class="label">${t('Dragon')}</div>
-      <div class="value">${esc(String(d))}</div>
-      <div class="sub">${esc(t('posted in chat {date}', { date: formatGameDayShort(date) }))}</div>
+      <div class="value">${esc(String(d.level))}</div>
+      ${d.name ? `<div class="sub">${esc(d.name)}</div>` : ''}
     </div>`;
 }
 
@@ -1308,7 +1307,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
                 entirely when might tracking has never run for this clan. */''}
           ${mightStatsHtml}
           ${memberGuardsStatHtml(guards)}
-          ${memberDragonStatHtml(guards)}
+          ${memberDragonStatHtml(currentMemberGame)}
         </div>
       </div>
     </div>`;

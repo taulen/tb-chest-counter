@@ -46,8 +46,12 @@ export interface GameCitySnapshot {
   capturedAt: string;
   techCount: number;
   buildings: Record<string, { type: number; level: number }>;
-  /** City field 26 — the player's dragon, not the hero (column `hero`, named before that was known). */
-  dragon: { level: number | null; xp: number | null };
+  /**
+   * City field 26 — the player's dragon, not the hero (column `hero`, named
+   * before that was known). Stage and name are stored since Nov 2026; older
+   * snapshots have level and XP only (`{}` when no dragon was read).
+   */
+  dragon: { level?: number | null; xp?: number | null; stage?: number | null; name?: string | null };
 }
 
 type PlayerRow = {

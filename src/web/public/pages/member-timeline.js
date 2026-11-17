@@ -82,6 +82,13 @@ function entryParts(e) {
       return [glyph(pct >= 0 ? '▲' : '▼', pct >= 0 ? 'is-good' : 'is-bad'),
         `${t('Might')} ${esc(formatCompact(e.from))} → ${strong(formatCompact(e.to))} (${pct >= 0 ? '+' : ''}${pct}%)`, ''];
     }
+    case 'dragon': {
+      // "Dragon level 236 → 237", "Dragon evolution 5 → 6", or both.
+      const bits = [];
+      if (e.to != null) bits.push(`${t('Dragon level')} ${change(e.from, e.to)}`);
+      if (e.stageTo != null) bits.push(`${t('Dragon evolution')} ${change(e.stageFrom, e.stageTo)}`);
+      return [img(e.iconUrl) || glyph('⬆', 'is-good'), bits.join(' · '), ''];
+    }
     case 'tier': return [glyph('⚔', 'is-good'), e.family === 'crypts'
       ? t('Crypt level {n} reached', { n: strong(String(e.to)) })
       : t('{family} tier {n} reached', { family: esc(tGame(FAMILY[e.family] || e.family)), n: strong(String(e.to)) }), ''];

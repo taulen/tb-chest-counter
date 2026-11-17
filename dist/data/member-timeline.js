@@ -13,8 +13,8 @@ exports.pageTimeline = pageTimeline;
  * nothing here is invented. The rule every source follows: the FIRST read of a
  * source is the baseline — when we started looking, not when the player got
  * there — so it is never shown as a change (the change readers already drop it
- * for research, captains, artifacts and equipment; player history and city
- * status drop their first row here).
+ * for research, captains, artifacts and equipment; player history, city
+ * status and the dragon drop their first row here).
  *
  * A day's many small changes of one kind fold into one entry with items
  * (research, talents, captains, gear); everything else is one entry each.
@@ -24,6 +24,7 @@ const game_day_js_1 = require("../utils/game-day.js");
 exports.TIMELINE_GROUPS = {
     joined: 'clan', left: 'clan', renamed: 'clan', merged: 'clan', rank: 'clan',
     hero_level: 'growth', city_level: 'growth', vip: 'growth', gold_pass: 'growth', hero: 'growth', might: 'growth', tier: 'growth',
+    dragon: 'growth',
     research: 'research', talents: 'research',
     captains: 'captains', artifact: 'captains', gear: 'captains',
     shield: 'city', burning: 'city',
@@ -92,6 +93,28 @@ function buildTimeline(src, look, rolloverUtcHour) {
     // ── Troop tiers ──
     for (const t of src.tierChanges)
         add('tier', t.at, `${t.family}:${t.at}`, { family: t.family, from: t.from, to: t.to });
+    // ── The dragon: a level or an evolution moved since the last day read ──
+    // Compared with the last day that had a value: a day with no dragon read
+    // ({} in the snapshot) is a gap, not a drop. A stage first seen (reads from
+    // before it was parsed have none) is the stage's baseline.
+    let lastLevel = null;
+    let lastStage = null;
+    for (const d of src.dragonDays) {
+        if (d.level === null)
+            continue;
+        const levelMoved = lastLevel !== null && d.level !== lastLevel;
+        const stageMoved = lastStage !== null && d.stage !== null && d.stage !== lastStage;
+        if (levelMoved || stageMoved) {
+            add('dragon', d.at, d.day, {
+                ...(levelMoved ? { from: lastLevel, to: d.level } : {}),
+                ...(stageMoved ? { stageFrom: lastStage, stageTo: d.stage } : {}),
+                iconUrl: look.dragonIconUrl(d.stage ?? lastStage),
+            });
+        }
+        lastLevel = d.level;
+        if (d.stage !== null)
+            lastStage = d.stage;
+    }
     // ── Research and talents: one entry per game day and kind ──
     const fold = (kind, rows) => {
         const byDay = new Map();

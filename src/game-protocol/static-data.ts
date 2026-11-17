@@ -105,10 +105,28 @@ export const TABLE_HERO_LEVELS = 10;
  * carry them, so the levels are in game_player_techs like research.
  */
 export const TABLE_FACTIONS = 78;
+/**
+ * The Dragon (city field 26), one row (key 1):
+ *   f2 its 300 levels `{level: [level, xpRequired (cumulative), effectId,
+ *      textRef, 0]}` — the text is JSON `{"effect_strings": [{id, text, value}]}`,
+ *      the bonuses AT that level (ids 0–9: Army strength, Army health,
+ *      Strength / Health against players, Leadership, Authority, Dominance,
+ *      Experience / Valor / Conquest points; `value` in percent);
+ *   f3 its 8 evolution stages `{stage: [stage, levelCap, cost, effectId,
+ *      textRef, …]}` (caps 20 / 50 / 100 / 150 / 200 / 250 / 300 / 300) — the
+ *      text adds the stage's sprites: `icon_linkage` (icon_red_dragon_<s>),
+ *      `full_dragon_linkage` (red_dragon_<s>);
+ *   f4 the window's config JSON: `icon_frame_linkage` (frame_icon_red_dragon),
+ *      `background_linkage` (red_dragon_back) and its title keys.
+ * A dragon at its stage's cap gains no XP until it evolves: prod holds them at
+ * exactly the cap level's threshold (L100 1,404,294,900). See docs/game-protocol.md.
+ */
+export const TABLE_DRAGONS = 73;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
   TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS, TABLE_FACTIONS,
+  TABLE_DRAGONS,
 ];
 
 export interface GameNames {
@@ -141,8 +159,40 @@ export interface GameNames {
   factions?: Record<string, GameFaction>;
   /** The Hall of Fame itself (tech 803): its levels, bonuses and requirements. Format 5+. */
   hallOfFame?: GameLevelledTech;
+  /** The Dragon (T73): XP per level, bonuses per level and evolution stage, sprite names. Format 9+. */
+  dragon?: GameDragon;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
+}
+
+/**
+ * The Dragon as T73 defines it. Bonuses are stored as one value per bonus
+ * line (`bonusNames` order, the game's effect_strings ids 0–9) so 300 levels
+ * stay small; a value is a percent ("+114%").
+ */
+export interface GameDragon {
+  /** The game's name for it ("Dragon"). */
+  name: string;
+  /** The game's names of the bonus lines, English ("Army strength", …). */
+  bonusNames: string[];
+  /** Cumulative XP each level starts at, index = level − 1 (level 1 = 0). */
+  xp: number[];
+  /** The bonuses AT each level, index = level − 1; each in `bonusNames` order. */
+  levelBonuses: number[][];
+  /** Evolution stages by number ("1" … "8"). */
+  stages: Record<string, GameDragonStage>;
+  /** Sprites from the window's config: the icon frame and the picture's background. */
+  art: { frame: string; back: string };
+}
+
+export interface GameDragonStage {
+  /** The highest level the dragon reaches at this stage. */
+  levelCap: number;
+  /** The stage's own bonuses, in `bonusNames` order (what this evolution gives in total). */
+  bonuses: number[];
+  /** icon_red_dragon_<s> (the small icon) and red_dragon_<s> (the full picture). */
+  icon: string;
+  art: string;
 }
 
 /** An event as T44 names it. */
@@ -280,9 +330,10 @@ export interface HeroLevelSeries {
  * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: event
  * titles (T44); 6: terrain names; 7: hero and captain levels — XP thresholds,
  * Stats, Might; 8: the Hall of Fame's factions and the real names of techs
- * 800–803 — Nov 2026); a cached file with an older format is rebuilt.
+ * 800–803; 9: the Dragon (T73) — Nov 2026); a cached file with an older
+ * format is rebuilt.
  */
-export const NAMES_FORMAT = 8;
+export const NAMES_FORMAT = 9;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -597,6 +648,7 @@ export function buildNames(
     };
   }
   const artifacts = buildArtifacts(tables, str, vecText, en);
+  const dragon = buildDragon(tables.get(TABLE_DRAGONS), str, en);
   const equipment: Record<string, GameEquipment> = {};
   for (const [id, row] of rows(TABLE_EQUIPMENT)) {
     const name = vecText(row[3]);
@@ -632,6 +684,79 @@ export function buildNames(
     events: buildEvents(tables.get(TABLE_TOURNAMENTS), str, en),
     heroLevels: buildHeroLevels(rows(TABLE_HERO_LEVELS)),
     factions, ...(hallOfFame ? { hallOfFame } : {}),
+    ...(dragon ? { dragon } : {}),
+  };
+}
+
+/** A T73 text's effect_strings → [translation key, value] in id order; [] when it has none. */
+function effectStrings(json: string | undefined): Array<[string, number]> {
+  let parsed: { effect_strings?: Array<{ id?: unknown; text?: unknown; value?: unknown }> } = {};
+  try { parsed = JSON.parse(json ?? '{}'); } catch { return []; }
+  return (parsed.effect_strings ?? [])
+    .filter((e) => typeof e.text === 'string' && typeof e.value === 'number')
+    .sort((a, b) => Number(a.id) - Number(b.id))
+    .map((e) => [e.text as string, e.value as number]);
+}
+
+/**
+ * T73 → the Dragon: XP thresholds and bonuses per level, the evolution stages
+ * with their caps, bonuses and sprites. Null when the table lacks a usable row
+ * (levels must run 1…N without a gap, or the index-by-level arrays would lie).
+ * Pure; unit-tested.
+ */
+export function buildDragon(
+  table: Record<string, Wire> | undefined,
+  str: (ref: Wire) => string | undefined,
+  en: Map<string, string>,
+): GameDragon | null {
+  const row = table?.['1'];
+  if (!Array.isArray(row) || !isPlainObject(row[2])) return null;
+  const levels = Object.values(row[2])
+    .filter((e): e is Wire[] => Array.isArray(e) && typeof e[0] === 'number')
+    .sort((a, b) => (a[0] as number) - (b[0] as number));
+  if (!levels.length || levels.some((e, i) => e[0] !== i + 1)) return null;
+
+  // The bonus lines are named by the first level's effect_strings; every
+  // level and stage lists the same ten keys in the same order.
+  const keys = effectStrings(str(levels[0][3])).map(([k]) => k);
+  const valuesOf = (json: string | undefined): number[] => {
+    const byKey = new Map(effectStrings(json));
+    return keys.map((k) => byKey.get(k) ?? 0);
+  };
+  const xp: number[] = [];
+  const levelBonuses: number[][] = [];
+  for (const e of levels) {
+    xp.push(wireNumber(e[1]) ?? 0);
+    levelBonuses.push(valuesOf(str(e[3])));
+  }
+
+  const stages: Record<string, GameDragonStage> = {};
+  for (const [stage, s] of Object.entries(isPlainObject(row[3]) ? row[3] : {})) {
+    if (!Array.isArray(s) || typeof s[1] !== 'number') continue;
+    const json = str(s[4]);
+    let sprites: { icon_linkage?: unknown; full_dragon_linkage?: unknown } = {};
+    try { sprites = JSON.parse(json ?? '{}'); } catch { /* no sprites */ }
+    stages[stage] = {
+      levelCap: s[1],
+      bonuses: valuesOf(json),
+      icon: typeof sprites.icon_linkage === 'string' ? sprites.icon_linkage : '',
+      art: typeof sprites.full_dragon_linkage === 'string' ? sprites.full_dragon_linkage : '',
+    };
+  }
+
+  let cfg: { icon_frame_linkage?: unknown; background_linkage?: unknown; dragon_name_title?: unknown } = {};
+  try { cfg = JSON.parse(str(row[4]) ?? '{}'); } catch { /* no config */ }
+  const nameKey = typeof cfg.dragon_name_title === 'string' ? cfg.dragon_name_title : '';
+  return {
+    name: (nameKey && en.get(nameKey)) || 'Dragon',
+    bonusNames: keys.map((k) => en.get(k) ?? k),
+    xp,
+    levelBonuses,
+    stages,
+    art: {
+      frame: typeof cfg.icon_frame_linkage === 'string' ? cfg.icon_frame_linkage : '',
+      back: typeof cfg.background_linkage === 'string' ? cfg.background_linkage : '',
+    },
   };
 }
 

@@ -20,7 +20,7 @@ import type { ArtStatic } from './art-static.js';
  * `items` last: every other item icon (T8) that no category above took — a
  * clan treasury or inventory row shows its item's own icon (by item id).
  */
-export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'ui', 'items'] as const;
+export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'ui', 'items'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
 
 /**
@@ -77,6 +77,19 @@ export const FACTION_ART: readonly RegExp[] = [
   /^fraction_(red|green|blue)$/,
 ];
 
+/**
+ * The Dragon (profile → Captains), as the Dragons table (T73) names its art:
+ * per evolution stage the small icon (`icon_red_dragon_<s>`) and the full
+ * picture (`red_dragon_<s>`), plus the icon's frame and the window's
+ * background. Not the `widget_`, `_city` or march (`_pet_`) variants.
+ */
+export const DRAGON_ART: readonly RegExp[] = [
+  /^icon_red_dragon_\d+$/,
+  /^red_dragon_\d+$/,
+  /^frame_icon_red_dragon$/,
+  /^red_dragon_back$/,
+];
+
 /** Address → the Spine atlas region its picture is cut from. */
 export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map([
   ...Object.values(EVENT_ART).filter((e) => e.region).map((e): [string, string] => [e.address, e.region as string]),
@@ -125,6 +138,7 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   // Exactly the STATUS_ART addresses.
   status: Object.values(STATUS_ART).map((a) => new RegExp(`^${a}$`)),
   factions: [...FACTION_ART],
+  dragon: [...DRAGON_ART],
   // From the client build, not the catalogue (see ART_CATEGORIES).
   ui: [],
   // Item icons come from the item table (T8) alone.

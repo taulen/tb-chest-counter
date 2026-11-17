@@ -26,7 +26,6 @@ import { createChatRouter } from './routes/chat.js';
 import { createGuardsRouter } from './routes/guards.js';
 import { createToolsRouter } from './routes/tools.js';
 import { createTinmanRouter } from './routes/tinman.js';
-import { createMemberLevelsRouter } from './routes/member-levels.js';
 import { createPerformanceRouter } from './routes/performance.js';
 import { denyCaching, requireAdmin, requireAuth, requireClanContext, SESSION_COOKIE_NAME } from './middleware/auth.js';
 import { firstSuperadmin, logAction } from '../data/repositories/user-repo.js';
@@ -557,10 +556,6 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   for (const key of ['olympus', 'ragnarok', 'dark-omens'] as const) {
     app.use(`/api/event-scores/${key}`, requireAuth, requireClanContext, createTinmanRouter(key));
   }
-
-  // Player levels posted in chat (Admin → Levels from chat). Reads for any
-  // member; preview and import are admin-only inside.
-  app.use('/api/member-levels', requireAuth, requireClanContext, createMemberLevelsRouter());
 
   // Performance page: over- and underachievers. Admins only, enforced inside
   // with requireAdmin (the active clan's role).
