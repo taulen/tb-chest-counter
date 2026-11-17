@@ -2728,6 +2728,10 @@ export const ui = {
   "Sands of Eternity — Ascendant and Legendary Ashen Chests from Epic Ashen squads.": "Sands of Eternity — Ascendant y Legendary Ashen Chests de los Epic Ashen squads.",
   "Ascendant Ashen": "Ascendant Ashen",
   "Legendary Ashen": "Legendary Ashen",
+  "{n} now · since {date}": "{n} ahora · desde {date}",
+  "{n} now": "{n} ahora",
+  "One reading per game day is kept from {date}; the line appears from the second day.": "Se guarda una lectura por día de juego desde {date}; la línea aparece a partir del segundo día.",
+  "This member's Gold Ingots per game day": "Lingotes de oro de este miembro por día de juego",
 };
 
 export const game = {

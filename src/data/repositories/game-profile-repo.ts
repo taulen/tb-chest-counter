@@ -166,6 +166,27 @@ export interface PlayerCaptain {
   lastSeen: string;
 }
 
+/**
+ * A player's Gold Ingots per game day (game_player_daily, v110: the day's
+ * latest reading), oldest first, plus the newest reading. Ingots tick up every
+ * few minutes, so the day's last value is what a history needs.
+ */
+export function getPlayerGoldIngotsDaily(clanId: number, playerId: number, sinceGameDate = ''): {
+  current: number | null;
+  readAt: string | null;
+  points: Array<{ gameDate: string; goldIngots: number }>;
+} {
+  const db = getDb();
+  const points = db.prepare(
+    `SELECT game_date AS gameDate, gold_ingots AS goldIngots FROM game_player_daily
+      WHERE clan_id = ? AND player_id = ? AND gold_ingots IS NOT NULL AND game_date >= ?
+      ORDER BY game_date`,
+  ).all(clanId, playerId, sinceGameDate) as Array<{ gameDate: string; goldIngots: number }>;
+  const now = db.prepare('SELECT gold_ingots AS v, last_seen AS at FROM game_players WHERE clan_id = ? AND player_id = ?')
+    .get(clanId, playerId) as { v: number | null; at: string } | undefined;
+  return { current: now?.v ?? null, readAt: now?.at ?? null, points };
+}
+
 /** A player's captains as last read, highest level first (the game's own order). */
 export function getPlayerCaptains(clanId: number, playerId: number): PlayerCaptain[] {
   return getDb().prepare(

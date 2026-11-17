@@ -36,7 +36,7 @@ import {
 // Charts tracked individually so a redraw destroys only the one it replaces —
 // Chart.js snapshots colours at construction, so they're rebuilt (not restyled)
 // on themechange, same as analytics.js.
-const charts = { totals: null, compare: null, member: null };
+const charts = { totals: null, compare: null, member: null, ingots: null };
 
 function destroyChart(key) {
   try { charts[key]?.destroy(); } catch (_) { /* already destroyed */ }
@@ -967,6 +967,80 @@ export async function buildMemberMightCard(memberId) {
     }
   };
   return { statsHtml, html, draw };
+}
+
+/**
+ * Gold Ingots on the member's Might tab: the current value (public in the game,
+ * player record field 17) and the game day's last reading per day. Storage
+ * began on 2026-11-17 (v110), so until a second day exists the card is the
+ * figure and a note — a one-point line says nothing. Null when the member is
+ * not linked to a game player or no value has been read.
+ */
+export async function buildMemberIngotsCard(memberId) {
+  let res;
+  try {
+    res = await api(`/game/members/${memberId}/gold-ingots`);
+  } catch {
+    return null;
+  }
+  if (!res?.linked || res.current === null || res.current === undefined) return null;
+  const points = Array.isArray(res.points) ? res.points : [];
+  const first = points[0];
+  const last = points[points.length - 1];
+  const changed = points.length >= 2 ? last.goldIngots - first.goldIngots : null;
+  const d = formatDelta(changed);
+  const name = tGame('Gold Ingots');
+  const hint = points.length >= 2
+    ? t('{n} now · since {date}', { n: formatMight(res.current), date: esc(first.gameDate) })
+    : t('{n} now', { n: formatMight(res.current) });
+
+  const html = `<div class="card" id="memberIngotsCard">
+    <div class="card-header">
+      <h2>${esc(name)}</h2>
+      <div class="might-trend">
+        ${changed !== null ? `<span class="might-trend-pill ${d.cls}" title="${esc(t('{change} from {from} to {to}', { change: d.text, from: first.gameDate, to: last.gameDate }))}">
+          <span class="might-trend-arrow">${d.arrow}</span><span class="might-trend-amount">${d.text}</span></span>` : ''}
+        <span class="card-header-hint">${hint}</span>
+      </div>
+    </div>
+    <div class="card-body card-body-padded">
+      ${points.length >= 2
+        ? '<div class="chart-container chart-container--compact"><canvas id="memberIngotsChart"></canvas></div>'
+        : `<p class="muted-copy">${esc(t('One reading per game day is kept from {date}; the line appears from the second day.', { date: points[0]?.gameDate ?? '2026-11-17' }))}</p>`}
+    </div>
+  </div>`;
+
+  const draw = () => {
+    const canvas = $('#memberIngotsChart');
+    if (!canvas || points.length < 2) return;
+    const tok = chartTokens();
+    const opts = baseLineOptions(tok, '');
+    opts.plugins.tooltip.callbacks.label = (ctx) => `${name}: ${formatMight(ctx.parsed.y)}`;
+    // Ingots are tens of thousands, not billions: the might axis's "12k" rounds
+    // 11,500 and 12,000 to the same label. Whole numbers up to a million.
+    opts.scales.y.ticks.callback = (v) => (Math.abs(v) >= 1e6 ? formatMightShort(v) : Number(v).toLocaleString('en-US'));
+    opts.scales.y.ticks.precision = 0;
+    destroyChart('ingots');
+    charts.ingots = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: points.map((p) => p.gameDate),
+        datasets: [{
+          label: name,
+          data: points.map((p) => p.goldIngots),
+          borderColor: tok.accentGold,
+          backgroundColor: tok.accentGold,
+          borderWidth: 2,
+          pointRadius: points.length > 60 ? 0 : 2,
+          tension: 0.2,
+          fill: false,
+        }],
+      },
+      options: opts,
+    });
+    describeChart(charts.ingots, { caption: t("This member's Gold Ingots per game day") });
+  };
+  return { html, draw };
 }
 
 /** One member's history for a window. `days` of 0 asks for everything. */

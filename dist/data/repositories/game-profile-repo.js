@@ -8,6 +8,7 @@ exports.getGamePlayersByMember = getGamePlayersByMember;
 exports.getLatestCity = getLatestCity;
 exports.getPlayerTechs = getPlayerTechs;
 exports.getPlayerTechChanges = getPlayerTechChanges;
+exports.getPlayerGoldIngotsDaily = getPlayerGoldIngotsDaily;
 exports.getPlayerCaptains = getPlayerCaptains;
 exports.getPlayerCaptainChanges = getPlayerCaptainChanges;
 exports.getPlayerArtifacts = getPlayerArtifacts;
@@ -107,6 +108,20 @@ function getPlayerTechChanges(clanId, playerId, sinceIso, limit = 200) {
       WHERE clan_id = ? AND player_id = ? AND changed_at >= ?
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_tech_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
       ORDER BY changed_at DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
+}
+/**
+ * A player's Gold Ingots per game day (game_player_daily, v110: the day's
+ * latest reading), oldest first, plus the newest reading. Ingots tick up every
+ * few minutes, so the day's last value is what a history needs.
+ */
+function getPlayerGoldIngotsDaily(clanId, playerId, sinceGameDate = '') {
+    const db = (0, database_js_1.getDb)();
+    const points = db.prepare(`SELECT game_date AS gameDate, gold_ingots AS goldIngots FROM game_player_daily
+      WHERE clan_id = ? AND player_id = ? AND gold_ingots IS NOT NULL AND game_date >= ?
+      ORDER BY game_date`).all(clanId, playerId, sinceGameDate);
+    const now = db.prepare('SELECT gold_ingots AS v, last_seen AS at FROM game_players WHERE clan_id = ? AND player_id = ?')
+        .get(clanId, playerId);
+    return { current: now?.v ?? null, readAt: now?.at ?? null, points };
 }
 /** A player's captains as last read, highest level first (the game's own order). */
 function getPlayerCaptains(clanId, playerId) {
