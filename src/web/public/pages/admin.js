@@ -4,7 +4,7 @@
 //   review  — only while something needs attention: the OCR-missing-player-name
 //             reassignment workflow with hover-preview of the saved debug crops,
 //             the review queue (newly-discovered chest names / sources /
-//             members, likely renames) and resource rows whose icon couldn't be
+//             members) and resource rows whose icon couldn't be
 //             identified (unresolved-resources.js).
 //   members — levels from chat, member rename + delete, player merge rules.
 //   chests  — chest-name and chest-source merge rules.
@@ -21,7 +21,7 @@
 
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
 import {
-  $, esc, formatDate, formatGameDayShort, memberLink, memberHash,
+  $, esc, formatDate, memberLink, memberHash,
   notify, confirmDialog, contentModal,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
@@ -613,14 +613,12 @@ function renderReviewQueueSection(queue) {
     { key: 'triumphal', label: t('New Triumphal Chests'), entries: queue.triumphalChests?.entries || [], ack: null, valueHeader: t('Chest Name'), noAck: true },
   ];
   const activeGroups = groups.filter((g) => g.entries.length > 0);
-  const renames = queue.renames?.entries || [];
-  const totalNew = activeGroups.reduce((sum, g) => sum + g.entries.length, 0) + renames.length;
+  const totalNew = activeGroups.reduce((sum, g) => sum + g.entries.length, 0);
   if (totalNew === 0) return '';
 
   return `
     <h2 class="page-section-title">${t('Review Queue')} <span class="chest-type epic">${tn(totalNew, '{n} new', '{n} new', { n: totalNew })}</span></h2>
     <p class="page-section-intro">${t('Recently-discovered chest names, sources, and members. Skim for OCR misspellings or unknown source types that need a point value. Click <strong>Acknowledge</strong> once reviewed to clear the list.')}</p>
-    ${renderRenameSuggestions(renames)}
     ${activeGroups.map((g) => `
       <div class="card">
         <div class="card-header">
@@ -656,71 +654,6 @@ function renderReviewQueueSection(queue) {
       </div>
     `).join('')}
   `;
-}
-
-/**
- * Likely in-game renames: one member's might readings stop and another's start the
- * next day, under the same name with a tag added or dropped or at the same level and
- * might (rename-suggestions-repo.ts). Each pair is
- * resolved on its own — merged, or marked as two different players — so there is no
- * Acknowledge here.
- */
-function renderRenameSuggestions(entries) {
-  if (entries.length === 0) return '';
-  // One decimal of millions is what the comparison needs (488.2M → 490.4M); the
-  // exact readings sit in the tooltip.
-  const might = (side) => `<span class="nowrap" title="${Number(side.power).toLocaleString()}">${t('Lv {level}', { level: side.level })} · ${(side.power / 1e6).toFixed(1)}M</span>`;
-  // No bulk merge: each pair is merged on its own, by a person. A "Merge all" here
-  // once folded 41 hand-set names into misread twins (Nov 2026) — a merge keeps the
-  // NEW name, and a batch of near-identical pairs is as likely a read defect as a
-  // rename.
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Likely Renames')} (${entries.length})</h2>
-      </div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('One name stopped being read the day before a new one appeared: the same name with a tag added or dropped, or a different name at the same level and might. That is usually an in-game rename, which splits a player\'s chest history across two names. Merge to fold the old name into the new one.')}</p>
-        <table class="table-responsive">
-          <thead><tr>
-            <th>${t('Old Name')}</th><th>${t('New Name')}</th><th>${t('Switched')}</th><th>${t('Might (last → first)')}</th><th>${t('Chests')}</th><th class="col-actions"></th>
-          </tr></thead>
-          <tbody>
-            ${entries.map((r) => `<tr>
-              <td data-label="${t('Old Name')}" data-role="primary"><span class="mrow-name">${memberLink(r.from.memberId, r.from.name)}</span><span class="mrow-sub">→ ${memberLink(r.to.memberId, r.to.name)}</span></td>
-              <td data-label="${t('New Name')}" data-role="hidden">${memberLink(r.to.memberId, r.to.name)}</td>
-              <td data-label="${t('Switched')}" class="muted-copy nowrap">${formatGameDayShort(r.from.gameDate)} → ${formatGameDayShort(r.to.gameDate)}</td>
-              <td data-label="${t('Might (last → first)')}" class="muted-copy"><span>${might(r.from)} → ${might(r.to)} <span class="nowrap">(${r.powerChangePct >= 0 ? '+' : ''}${r.powerChangePct}%)</span></span></td>
-              <td data-label="${t('Chests')}" data-role="metric" class="nowrap">${r.from.chests} + ${r.to.chests}</td>
-              <td class="col-actions nowrap">
-                <button class="btn btn-tight btn-primary" data-action="merge-rename" data-from-name="${esc(r.from.name)}" data-to-name="${esc(r.to.name)}" data-from-chests="${r.from.chests}">${t('Merge')}</button>
-                <button class="btn btn-tight ml-4" data-action="dismiss-rename" data-from-id="${r.from.memberId}" data-to-id="${r.to.memberId}">${t('Not the same player')}</button>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-export async function mergeRenameSuggestion(fromName, toName, fromChests, rerender) {
-  const ok = await confirmDialog(
-    tn(fromChests, 'Merge "{from}" into "{to}"? Its {n} chest, might history and resources move to "{to}", and future scans that read "{from}" count for "{to}".', 'Merge "{from}" into "{to}"? Its {n} chests, might history and resources move to "{to}", and future scans that read "{from}" count for "{to}".', { from: esc(fromName), to: esc(toName), n: fromChests }),
-    { title: t('Merge renamed player'), confirmLabel: t('Merge') },
-  );
-  if (!ok) return;
-  const scrollY = window.scrollY;
-  await submitPlayerMerge(fromName, toName, async () => {
-    if (typeof rerender === 'function') await rerender();
-    window.scrollTo(0, scrollY);
-  });
-}
-
-export async function dismissRenameSuggestion(fromMemberId, toMemberId, rerender) {
-  if (!await mustOk(apiPost('/admin/rename-suggestions/dismiss', { fromMemberId, toMemberId }), t('Dismiss failed'))) return;
-  const scrollY = window.scrollY;
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
 }
 
 export async function acknowledgeReviewQueue(category, rerender) {

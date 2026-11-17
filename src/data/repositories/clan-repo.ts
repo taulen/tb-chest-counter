@@ -723,7 +723,6 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM chest_daily_summary WHERE clan_id = ?').run(id);
     // Same: no FK (see migration v92), keyed by member ids a reused clan id would
     // hand to unrelated players.
-    db.prepare('DELETE FROM rename_suggestion_dismissals WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ?').run(id);
 
     // The ChestTracker ingest tables carry a clan_id with NO foreign key to
