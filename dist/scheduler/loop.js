@@ -54,6 +54,7 @@ const auth_check_js_1 = require("./auth-check.js");
 const member_capture_phase_js_1 = require("./member-capture-phase.js");
 const scan_finalize_js_1 = require("./scan-finalize.js");
 const clan_scan_schedule_js_1 = require("./clan-scan-schedule.js");
+const enabled_js_1 = require("../game-protocol/enabled.js");
 const log = (0, logger_js_1.childLogger)('scanner');
 const MAINTENANCE_UNTIL_KEY = 'MAINTENANCE_BLOCKED_UNTIL';
 /**
@@ -1145,7 +1146,7 @@ class ScanLoop {
             await this.captureResourcesBestEffort(scanResult);
             // Parallel run: this scan's OCR rows vs the gift list the game reported
             // just before it (docs/game-protocol.md). Read-only, never throws.
-            if (this.config.gameProtocolCaptureEnabled && scanResult.success && scanResult.sessionId !== undefined) {
+            if ((0, enabled_js_1.captureEnabledFor)(this.config.gameProtocolCaptureClans, this.clanId) && scanResult.success && scanResult.sessionId !== undefined) {
                 const { compareScanWithGameCapture } = await import('./game-protocol-phase.js');
                 compareScanWithGameCapture(this.clanId, scanResult.sessionId);
             }
@@ -1241,7 +1242,7 @@ class ScanLoop {
      * failures and this wrapper swallows anything that still escapes.
      */
     async captureGameProtocolBestEffort(clanId) {
-        if (!this.config.gameProtocolCaptureEnabled)
+        if (!(0, enabled_js_1.captureEnabledFor)(this.config.gameProtocolCaptureClans, clanId))
             return;
         try {
             this.reportProgress('scan', 'Reading clan data from the game server…');

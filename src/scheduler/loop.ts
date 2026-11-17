@@ -31,6 +31,7 @@ import {
 } from './scan-finalize.js';
 import type { ScanResult } from './scan-result.js';
 import { resolveClanScanSchedule, type ClanScanSchedule } from './clan-scan-schedule.js';
+import { captureEnabledFor } from '../game-protocol/enabled.js';
 export type { ScanResult } from './scan-result.js';
 
 // Re-export so existing consumers that imported these types from
@@ -1244,7 +1245,7 @@ export class ScanLoop {
       await this.captureResourcesBestEffort(scanResult);
       // Parallel run: this scan's OCR rows vs the gift list the game reported
       // just before it (docs/game-protocol.md). Read-only, never throws.
-      if (this.config.gameProtocolCaptureEnabled && scanResult.success && scanResult.sessionId !== undefined) {
+      if (captureEnabledFor(this.config.gameProtocolCaptureClans, this.clanId) && scanResult.success && scanResult.sessionId !== undefined) {
         const { compareScanWithGameCapture } = await import('./game-protocol-phase.js');
         compareScanWithGameCapture(this.clanId, scanResult.sessionId);
       }
@@ -1350,7 +1351,7 @@ export class ScanLoop {
    * failures and this wrapper swallows anything that still escapes.
    */
   private async captureGameProtocolBestEffort(clanId: number): Promise<void> {
-    if (!this.config.gameProtocolCaptureEnabled) return;
+    if (!captureEnabledFor(this.config.gameProtocolCaptureClans, clanId)) return;
     try {
       this.reportProgress('scan', 'Reading clan data from the game server…');
       const { runGameProtocolCapture } = await import('./game-protocol-phase.js');

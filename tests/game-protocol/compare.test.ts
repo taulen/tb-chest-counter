@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { compareGifts, normalizeGiftText } from '../../src/game-protocol/compare.js';
+import { captureEnabledFor } from '../../src/game-protocol/enabled.js';
+
+describe('per-clan capture setting', () => {
+  it('reads ids, "all" and empty', () => {
+    expect(captureEnabledFor('2', 2)).toBe(true);
+    expect(captureEnabledFor('2', 5)).toBe(false);
+    expect(captureEnabledFor(' 2, 5 ', 5)).toBe(true);
+    expect(captureEnabledFor('all', 9)).toBe(true);
+    expect(captureEnabledFor('', 2)).toBe(false);
+  });
+});
 
 describe('game vs OCR gift comparison', () => {
   it('normalises the spellings OCR and the game differ on', () => {

@@ -60,10 +60,11 @@ exports.configSchema = zod_1.z.object({
     resourceCaptureEnabled: zod_1.z.preprocess((v) => v === 'true' || v === true, zod_1.z.boolean().default(true)),
     // Game protocol capture (src/game-protocol): before each clan's scan, read
     // the clan record, player records and Capital ledger straight from the game
-    // server. OFF by default until the direct login preserves the website session
-    // the way the browser does (bytokenoauth + cookie write-back): two direct
-    // logins in a row ended CWB's session on Nov 17 2026. See docs/game-protocol.md.
-    gameProtocolCaptureEnabled: zod_1.z.preprocess((v) => (v === undefined || v === '' ? undefined : v === 'true' || v === true), zod_1.z.boolean().default(false)),
+    // server. Per clan: comma-separated clan ids, "all", or "" for none. Trial on
+    // CWB (clan 2) first — the client was verified on a throwaway account (Nov 17
+    // 2026), but CWB lost its login once during development, so it is widened
+    // clan by clan while the 30-minute session check watches. docs/game-protocol.md.
+    gameProtocolCaptureClans: zod_1.z.string().default('2'),
     // Hard ceiling on how many chests one sweep of a tab may open. Exists
     // purely as a runaway-loop guard: a healthy sweep stops when the Gifts
     // tab runs dry, never on this. It is rounded UP to a whole batch of 4

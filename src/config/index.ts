@@ -45,7 +45,7 @@ function envToConfigInput(): Record<string, unknown> {
     scanNonLatinFallback: process.env.SCAN_NON_LATIN_FALLBACK,
     mightTrackingEnabled: process.env.MIGHT_TRACKING_ENABLED,
     resourceCaptureEnabled: process.env.RESOURCE_CAPTURE_ENABLED,
-    gameProtocolCaptureEnabled: process.env.GAME_PROTOCOL_CAPTURE_ENABLED,
+    gameProtocolCaptureClans: process.env.GAME_PROTOCOL_CAPTURE_CLANS,
 
     scanMaxChests: process.env.SCAN_MAX_CHESTS,
     scanDebugFirstN: process.env.SCAN_DEBUG_FIRST_N,

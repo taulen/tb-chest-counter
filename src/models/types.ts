@@ -152,8 +152,11 @@ export interface AppConfig {
    *  after the might snapshot, instead of relying on manual screenshot uploads.
    *  Default false — see the schema comment for why it ships dark. */
   resourceCaptureEnabled: boolean;
-  /** Read clan/players/ledger from the game server before each scan (docs/game-protocol.md). */
-  gameProtocolCaptureEnabled: boolean;
+  /**
+   * Which clans get the game protocol capture before their scan: comma-separated
+   * clan ids, "all", or "" for none (docs/game-protocol.md). See captureEnabledFor.
+   */
+  gameProtocolCaptureClans: string;
 
   /** Hard ceiling on how many chests a single sweep of a tab may open,
    *  as a runaway-loop guard — a healthy sweep ends when the tab runs

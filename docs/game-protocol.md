@@ -8,11 +8,17 @@ any player's city (research + hero talents). Code: [`src/game-protocol/`](../src
 Status (Nov 2026): **parallel run.** [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts)
 runs before each clan's OCR scan and stores what the game says in the `game_*`
 tables (migration v102). Nothing reads them for scoring yet; the OCR pipeline is
-unchanged. Toggle: `GAME_PROTOCOL_CAPTURE_ENABLED` — **default OFF** since Nov
-17 2026: two direct logins in a row (GetGameStartData without the browser's
-follow-up `bytokenoauth`, and without writing rotated cookies back) ended CWB's
-website session. Re-enable only once the client completes the browser's flow
-and persists cookies, and that is verified on a disposable session.
+unchanged. Setting: `GAME_PROTOCOL_CAPTURE_CLANS` — comma-separated clan ids,
+`all`, or empty for none; **default `2` (CWB only)**.
+
+Why one clan: CWB's website session ended during development (Nov 17 2026)
+after a burst of direct logins, local browser windows on copies of its session
+and new device identities. The client now follows the browser's full sequence
+(`/en/` → `GetGameStartData` → `bytokenoauth`) and writes rotated cookies back
+([`site-session.ts`](../src/game-protocol/site-session.ts)); on a throwaway
+account five such logins in a row, plus four replays of the old flow, all left
+the session alive — so the client alone did not end CWB's session. It is
+widened clan by clan while the session check below watches.
 
 After each scan, `compareScanWithGameCapture` matches that scan's OCR rows
 against the gift list the capture saw just before it (per tab, by sender +
