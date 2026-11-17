@@ -73,6 +73,7 @@ document.addEventListener('themechange', () => {
  * actually acts on; the rest are there for the long view.
  */
 const MEMBER_WINDOW_OPTIONS = [
+  { days: 1, label: t('24h') },
   { days: 7, label: t('7d') },
   { days: 30, label: t('30d') },
   { days: 90, label: t('90d') },
@@ -949,7 +950,7 @@ export async function buildMemberMightCard(memberId) {
     <div class="stat-card">
       <div class="label">${t('Hero Level')}</div>
       <div class="value">${current.heroLevel.toLocaleString('en-US')}</div>
-      <div class="sub">${t('from the member list')}</div>
+      <div class="sub">${t('read from the game')}</div>
     </div>` : ''}`;
   const statsOnly = { statsHtml, html: '', draw: () => {} };
 
@@ -1155,10 +1156,21 @@ function drawMemberMightChart(points) {
   destroyChart('member');
   charts.member = new Chart(canvas, {
     type: 'line',
-    data: { labels: points.map((p) => p.gameDate), datasets },
+    data: { labels: points.map(memberPointLabel), datasets },
     options: opts,
   });
   describeChart(charts.member, { caption: t("This member's might and hero level over time") });
+}
+
+/**
+ * Axis label for one reading: per-scan readings from the game (they carry `at`)
+ * show the local date and time, daily snapshots their game day. ISO, year-first.
+ */
+function memberPointLabel(p) {
+  if (!p.at) return p.gameDate;
+  const d = new Date(p.at);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Swap the card's contents for another window. One fetch, one redraw — the

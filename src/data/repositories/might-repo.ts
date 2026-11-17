@@ -21,6 +21,7 @@
 import { getDb } from '../database.js';
 import { saneHeroLevel } from '../hero-level.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
+import { gameDateFor } from '../../utils/game-day.js';
 
 /** Charts are read-mostly and the underlying data changes once a day. */
 const CHART_CACHE_TTL_MS = 60_000;
@@ -57,6 +58,8 @@ export interface MightPoint {
    * day the crop happened to clip the avatars.
    */
   heroLevel: number | null;
+  /** Set on per-scan readings (getMemberHistoryDetailed): when it was read, ISO. */
+  at?: string;
 }
 
 export interface MemberMightRow {
@@ -515,6 +518,40 @@ export function getMemberHistory(memberId: number, clanId: number, days = 0): Mi
   // near the window's left edge is only judgeable against what came before it.
   const trusted = trustedHeroLevels(clanId, [memberId]).get(memberId);
   return rows.map((r) => ({ ...r, heroLevel: trusted?.get(r.gameDate) ?? null }));
+}
+
+/**
+ * A member's history at scan resolution where the game protocol has it, daily
+ * before that. game_player_history (v102) holds a row per player whenever any
+ * of its values changed — in practice every scan — keyed on the game's player
+ * id, which `members.game_player_id` links to.
+ *
+ * The daily snapshots stay the series up to the game day the per-scan readings
+ * begin; from that day on each reading is its own point and carries `at` (ISO),
+ * so the chart can label it with a time. Hero level from the game is exact, so
+ * those points take it as read.
+ */
+export function getMemberHistoryDetailed(
+  memberId: number,
+  clanId: number,
+  days: number,
+  rolloverUtcHour: number,
+): MightPoint[] {
+  const daily = getMemberHistory(memberId, clanId, days);
+  const sinceMs = days > 0 ? Date.now() - days * 86_400_000 : 0;
+  const fine = (getDb().prepare(`
+    SELECT h.captured_at AS at, h.might, h.hero_level AS heroLevel
+      FROM game_player_history h
+      JOIN members m ON m.game_player_id = h.player_id AND m.clan_id = h.clan_id
+     WHERE m.id = ? AND h.clan_id = ? AND h.might IS NOT NULL AND h.captured_at >= ?
+     ORDER BY h.captured_at ASC
+  `).all(memberId, clanId, new Date(sinceMs).toISOString()) as Array<{ at: string; might: number; heroLevel: number | null }>);
+  if (!fine.length) return daily;
+  const firstDay = gameDateFor(Date.parse(fine[0].at), rolloverUtcHour);
+  return [
+    ...daily.filter((p) => p.gameDate < firstDay),
+    ...fine.map((f) => ({ gameDate: gameDateFor(Date.parse(f.at), rolloverUtcHour), might: f.might, heroLevel: f.heroLevel, at: f.at })),
+  ];
 }
 
 /**

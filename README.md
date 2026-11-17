@@ -363,38 +363,6 @@ can also be DM'd to up to 20 members as plain text ready to paste into in-game
 chat. Leaderboard tables are sent as plain-message **code blocks**, not embeds,
 because embeds are too narrow.
 
-## Configuration
-
-Config comes from two layers, loaded in order (later wins):
-
-1. **`.env`** — boot-time operator config. Copy [.env.example](.env.example),
-   which is the accurate, up-to-date template.
-2. **`data/app.env`** — runtime settings the app writes itself (on the mounted
-   volume). Anything you change in the dashboard (scan interval and other
-   toggles) is persisted here, never to `.env`, and applies without a restart.
-
-The authoritative list of variables is [.env.example](.env.example) and
-[src/config/schema.ts](src/config/schema.ts). Most-used:
-
-```env
-SCAN_INTERVAL_MS=7200000        # 120 min (runtime-adjustable in the UI)
-WEB_PORT=3000                   # container port; host maps 3010 -> 3000
-GAME_DAY_ROLLOVER_UTC_HOUR=17   # in-game day boundary (see below)
-DB_PATH=./data/tb-chests.db
-LOG_LEVEL=info
-# Events schedule source (public iCal feed). Override only to self-host a mirror.
-EVENT_CALENDAR_ICS_URL=https://tbclanportal.com/calendar/feed.ics
-```
-
-Compose-level knobs: `HOST_WEB_PORT` (default `3010`), `NODE_MAX_OLD_SPACE_MB`
-(`1536`), `MEMORY_LIMIT` (`5g`), `CPU_RESERVATION` (`2`), plus `INSTANCE_NAME`
-(`tb-chest-counter`) and `DATA_VOLUME` (`tb-chest-data`) for running a second
-instance alongside the live one (see Deployment above). Environment variables
-only reach the container if they are listed in `docker-compose.yml`'s
-`environment:` block.
-
-Discord and scoring are configured in-app, not via env vars.
-
 ## Scoring & game day
 
 - **Points are per clan.** Each clan has its own scoring table on the Chest

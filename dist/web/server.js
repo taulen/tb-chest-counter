@@ -23,6 +23,7 @@ const asset_versioning_js_1 = require("./asset-versioning.js");
 const frontend_assets_js_1 = require("./frontend-assets.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
+const game_js_1 = require("./routes/game.js");
 const guards_js_1 = require("./routes/guards.js");
 const tools_js_1 = require("./routes/tools.js");
 const tinman_js_1 = require("./routes/tinman.js");
@@ -476,6 +477,8 @@ function startWebServer(port, scanLoop, options = {}) {
     // guards with requireSuperAdmin. Kept as its own mount so the feature can be
     // disabled or removed without touching the chest-data routes.
     app.use('/api/might', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, might_js_1.createMightRouter)(scanLoop));
+    // What the game protocol collects about players (profile, research, talents).
+    app.use('/api/game', auth_js_2.requireAuth, auth_js_2.requireClanContext, (0, game_js_1.createGameRouter)());
     // Guards levels and Gold Pass holders — both inferred from resource and chest
     // data, so the reads are visible to any clan member; the one write (an admin
     // entering a member's level) guards with requireAdmin inside the router.

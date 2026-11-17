@@ -1514,6 +1514,7 @@ export const ui = {
   "Might & guards": "Могущество и гвардия",
   "History": "История",
   // pages/might.js
+  "24h": "24 ч",
   "7d": "7 д",
   "30d": "30 дн.",
   "90d": "90 дн.",
@@ -1550,7 +1551,7 @@ export const ui = {
   "Events this day:": { one: "Событие в этот день:", few: "События в этот день:", many: "События в этот день:", other: "События в этот день:" },
   "Might of the selected members over time": "Могущество выбранных участников во времени",
   "{might} · game day {date}": "{might} · игровой день {date}",
-  "from the member list": "из списка участников",
+  "read from the game": "данные из игры",
   "No readings in this window": "Нет данных за этот период",
   "{change} from {from} to {to}": "{change} с {from} по {to}",
   "no readings in this window": "нет данных за этот период",

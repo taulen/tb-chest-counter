@@ -1514,6 +1514,7 @@ export const ui = {
   "Might & guards": "Macht & Gardisten",
   "History": "Verlauf",
   // pages/might.js
+  "24h": "24 Std.",
   "7d": "7T",
   "30d": "30 T",
   "90d": "90 T",
@@ -1550,7 +1551,7 @@ export const ui = {
   "Events this day:": { one: "Event an diesem Tag:", other: "Events an diesem Tag:" },
   "Might of the selected members over time": "Macht der ausgewählten Mitglieder im Verlauf",
   "{might} · game day {date}": "{might} · Spieltag {date}",
-  "from the member list": "aus der Mitgliederliste",
+  "read from the game": "aus dem Spiel gelesen",
   "No readings in this window": "Keine Werte in diesem Zeitraum",
   "{change} from {from} to {to}": "{change} von {from} bis {to}",
   "no readings in this window": "keine Werte in diesem Zeitraum",

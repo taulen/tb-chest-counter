@@ -154,7 +154,8 @@ function createMightRouter(scanLoop) {
             // hero level as headline stats, which is worth doing from the very first
             // capture even though a single point can't be charted.
             latest: mightRepo.getLatestForMember(memberId, clanId),
-            points: mightRepo.getMemberHistory(memberId, clanId, days),
+            // Per-scan readings from the game where they exist, daily before that.
+            points: mightRepo.getMemberHistoryDetailed(memberId, clanId, days, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour),
         });
     });
     /** Clan-wide might per game day, with the headcount behind each total. */
