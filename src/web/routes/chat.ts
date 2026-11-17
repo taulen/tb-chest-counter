@@ -13,7 +13,7 @@
 import { Router, type Request } from 'express';
 import { getDb } from '../../data/database.js';
 import {
-  chatHistoryInfo, chatSenders, clanChatChannels, readChatPage,
+  chatAnchorAt, chatHistoryInfo, chatSenders, clanChatChannels, countChatMatches, readChatAround, readChatPage,
   type ChatCursor, type StoredChatMessage,
 } from '../../data/repositories/chat-repo.js';
 import { heroAvatarUrl } from '../../data/repositories/game-profile-repo.js';
@@ -118,16 +118,54 @@ export function createChatRouter(): Router {
     const channels = clanChatChannels(clanId);
     const limit = Math.min(positiveInt(req.query.limit) ?? 100, 200);
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
+    const senderPlayerId = positiveInt(req.query.sender);
+    const before = cursor(req.query.before);
+    const after = cursor(req.query.after);
     const rows = readChatPage(clanId, channels, {
-      before: cursor(req.query.before),
-      after: cursor(req.query.after),
-      q,
-      senderPlayerId: positiveInt(req.query.sender),
+      before, after, q, senderPlayerId,
       fromMs: positiveInt(req.query.from),
       toMs: positiveInt(req.query.to),
       limit,
     });
     const messages = rows.map(toApi);
+    res.json({
+      ...(await pageExtras(clanId, channels, messages)),
+      messages,
+      hasMore: rows.length === limit,
+      // A search / writer filter's size over the WHOLE stored history, on its first page.
+      matches: (q || senderPlayerId) && !before && !after ? countChatMatches(clanId, channels, q, senderPlayerId) : null,
+    });
+  });
+
+  /**
+   * The conversation at one message (`around=<at>:<messageId>`, a search hit)
+   * or at a time (`at=<ms>`: the first message at or after it — a date jump):
+   * up to 50 messages either side, oldest first, unfiltered. `focus` is the
+   * message it opened at.
+   */
+  router.get('/clan/context', async (req: Request, res) => {
+    const clanId = req.clanId!;
+    const channels = clanChatChannels(clanId);
+    const atMs = positiveInt(req.query.at);
+    const anchor = cursor(req.query.around) ?? (atMs ? chatAnchorAt(clanId, channels, atMs) : null);
+    if (!anchor) {
+      res.json({ ...(await pageExtras(clanId, channels, [])), messages: [], hasOlder: false, hasNewer: false, focus: null });
+      return;
+    }
+    const around = readChatAround(clanId, channels, anchor, 50);
+    const messages = around.messages.map(toApi);
+    const focus = messages.find((m) => m.at === anchor.at && m.key.endsWith(`:${anchor.id}`))?.key ?? null;
+    res.json({
+      ...(await pageExtras(clanId, channels, messages)),
+      messages,
+      hasOlder: around.hasOlder,
+      hasNewer: around.hasNewer,
+      focus,
+    });
+  });
+
+  /** What every page of messages carries: senders, object names, the history's extent. */
+  async function pageExtras(clanId: number, channels: string[], messages: ReturnType<typeof toApi>[]) {
     const objects: Record<number, string> = {};
     const names = await objectNames();
     for (const m of messages) {
@@ -135,15 +173,13 @@ export function createChatRouter(): Router {
         for (const id of subStaticIds(sub)) if (names[id]) objects[id] = names[id];
       }
     }
-    res.json({
+    return {
       available: channels.length > 0,
       history: chatHistoryInfo(clanId, channels),
-      messages,
-      hasMore: rows.length === limit,
       people: people(clanId, messages.map((m) => m.sender.playerId).filter((p): p is number => p !== null)),
       objects,
-    });
-  });
+    };
+  }
 
   /** Everyone who has written in the clan chat, busiest first (the sender filter). */
   router.get('/clan/senders', (req: Request, res) => {
