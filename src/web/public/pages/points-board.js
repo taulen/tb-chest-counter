@@ -107,7 +107,7 @@ async function refresh() {
   for (const [k, v] of state.dirty) {
     const [sourceKey, chestName] = k.split('\t');
     const cur = currentValue(sourceKey, chestName);
-    if (cur === null || String(cur) === v) state.dirty.delete(k);
+    if (cur === null || (String(cur) === v && !needsValue(sourceKey, chestName))) state.dirty.delete(k);
   }
   for (const id of [...state.groupDirty.keys()]) {
     const members = board.sources.filter((s) => s.group === id);
@@ -140,6 +140,21 @@ function currentValue(sourceKey, chestName) {
   const chest = src.chests.find((c) => c.name === chestName);
   return chest ? chest.points : null;
 }
+
+/**
+ * True when the box holds no value yet: it scores 0, but 0 is also a value a
+ * clan may choose. Such a box starts empty, and any number typed in — 0
+ * included — is an edit, so saving it clears "Needs a value".
+ */
+function needsValue(sourceKey, chestName) {
+  const src = findSource(sourceKey);
+  if (!src) return false;
+  if (chestName === '') return src.unset && src.points === 0;
+  return src.chests.find((c) => c.name === chestName)?.unset === true;
+}
+
+/** "was 0" would read as a value; a box that had none was "—". */
+const wasPoints = (points, unset) => (unset ? '—' : fmt(points));
 
 function shellHtml() {
   return `
@@ -366,7 +381,7 @@ function groupHtml(g) {
           ${unset ? `<span class="badge-warn">⚠ ${t('Needs a value')}</span>` : ''}
           <span class="pb-meta">${meta.join(' · ')}</span>
         </div>
-        <div class="pb-control">${groupControl(g, base)}</div>
+        <div class="pb-control">${groupControl(g, base, unset && base === 0)}</div>
         <button type="button" class="pb-expand" data-pb="expand" data-source-key="${esc(GROUP_PREFIX + g.id)}" aria-expanded="${open}" aria-label="${open ? t('Hide levels for {name}', { name: esc(tGame(g.label)) }) : t('Show levels for {name}', { name: esc(tGame(g.label)) })}"><span aria-hidden="true">${open ? '▾' : '▸'}</span></button>
       </div>
       ${open ? `<div class="pb-members">${members.map(sourceHtml).join('')}</div>` : ''}
@@ -374,18 +389,18 @@ function groupHtml(g) {
   `;
 }
 
-function groupControl(g, base) {
-  if (!canEdit) return `<span class="pb-value-static">${fmt(base)}</span>`;
+function groupControl(g, base, unset) {
+  if (!canEdit) return `<span class="pb-value-static">${wasPoints(base, unset)}</span>`;
   const raw = state.groupDirty.get(g.id);
   const edited = raw !== undefined;
   return `
     <label class="pb-value${edited ? ' is-edited' : ''}">
       <input type="number" class="input pb-input" min="0" step="1" inputmode="numeric"
-        value="${esc(edited ? raw : String(base))}" data-pb="group-value" data-pb-key="${esc(GROUP_PREFIX + g.id)}"
+        value="${esc(edited ? raw : unset ? '' : String(base))}" data-pb="group-value" data-pb-key="${esc(GROUP_PREFIX + g.id)}"
         data-group-id="${esc(g.id)}" aria-label="${t('Points for every level of {name}', { name: esc(tGame(g.label)) })}">
       <span class="pb-unit" aria-hidden="true">${t('pts')}</span>
     </label>
-    ${edited ? `<span class="pb-was">${t('not saved · was {points}', { points: fmt(base) })}</span>` : ''}
+    ${edited ? `<span class="pb-was">${t('not saved · was {points}', { points: wasPoints(base, unset) })}</span>` : ''}
   `;
 }
 
@@ -398,8 +413,9 @@ function onGroupInput(input) {
   const id = input.dataset.groupId;
   const members = groupMembers(id);
   const base = groupBase(members);
+  const unset = base === 0 && members.some((m) => m.unset);
   const raw = input.value.trim();
-  const reset = raw === '' || raw === String(base);
+  const reset = raw === '' || (raw === String(base) && !unset);
   if (reset) state.groupDirty.delete(id);
   else state.groupDirty.set(id, raw);
   for (const m of members) {
@@ -414,7 +430,7 @@ function onGroupInput(input) {
     input.closest('.pb-value')?.classList.toggle('is-edited', !reset);
     const control = input.closest('.pb-control');
     control?.querySelector('.pb-was')?.remove();
-    if (!reset && control) control.insertAdjacentHTML('beforeend', `<span class="pb-was">${t('not saved · was {points}', { points: fmt(base) })}</span>`);
+    if (!reset && control) control.insertAdjacentHTML('beforeend', `<span class="pb-was">${t('not saved · was {points}', { points: wasPoints(base, unset) })}</span>`);
     // Redraw the open member rows so they show the values they now carry.
     for (const m of members) rerenderRow(m.key, { fallback: false });
   }
@@ -424,8 +440,9 @@ function onGroupInput(input) {
 function valueControl(sourceKey, chestName, value, label) {
   const k = dirtyKey(sourceKey, chestName);
   const edited = state.dirty.has(k);
-  const shown = edited ? state.dirty.get(k) : String(value);
-  if (!canEdit) return `<span class="pb-value-static">${fmt(value)}</span>`;
+  const unset = needsValue(sourceKey, chestName);
+  const shown = edited ? state.dirty.get(k) : unset ? '' : String(value);
+  if (!canEdit) return `<span class="pb-value-static">${wasPoints(value, unset)}</span>`;
   return `
     <label class="pb-value${edited ? ' is-edited' : ''}">
       <input type="number" class="input pb-input" min="0" step="1" inputmode="numeric"
@@ -434,7 +451,7 @@ function valueControl(sourceKey, chestName, value, label) {
         aria-label="${t('Points for {name}', { name: esc(label) })}">
       <span class="pb-unit" aria-hidden="true">${t('pts')}</span>
     </label>
-    ${edited ? `<span class="pb-was">${t('not saved · was {points}', { points: fmt(value) })}</span>` : ''}
+    ${edited ? `<span class="pb-was">${t('not saved · was {points}', { points: wasPoints(value, unset) })}</span>` : ''}
   `;
 }
 
@@ -539,7 +556,10 @@ function updateEditChrome(input) {
     control.appendChild(was);
   }
   if (was) {
-    if (edited) was.textContent = t('not saved · was {points}', { points: fmt(currentValue(input.dataset.sourceKey, input.dataset.chestName)) });
+    if (edited) {
+      const { sourceKey, chestName } = input.dataset;
+      was.textContent = t('not saved · was {points}', { points: wasPoints(currentValue(sourceKey, chestName), needsValue(sourceKey, chestName)) });
+    }
     else was.remove();
   }
   const row = input.closest('.pb-row');
@@ -829,7 +849,7 @@ function wire() {
       const raw = t.value.trim();
       const cur = currentValue(sourceKey, chestName);
       const k = dirtyKey(sourceKey, chestName);
-      if (raw === '' || raw === String(cur)) state.dirty.delete(k);
+      if (raw === '' || (raw === String(cur) && !needsValue(sourceKey, chestName))) state.dirty.delete(k);
       else state.dirty.set(k, raw);
       updateEditChrome(t);
     }
@@ -956,7 +976,7 @@ function editsListHtml(edits) {
   return `<ul class="pb-impact-list">
     ${edits.map((e) => `<li>
       <span class="pb-impact-name">${editNameHtml(e)}</span>
-      <span class="pb-impact-move">${fmt(e.from)} → <strong>${fmt(e.to)}</strong></span>
+      <span class="pb-impact-move">${e.from === e.to ? '—' : fmt(e.from)} → <strong>${fmt(e.to)}</strong></span>
     </li>`).join('')}
   </ul>`;
 }

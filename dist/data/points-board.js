@@ -477,7 +477,15 @@ function planChanges(board, overrides, changes) {
         const src = byCanon.get(canon);
         const current = new Map(src.chests.map((c) => [c.name, c.points]));
         const whole = list.find((c) => c.chestName === '');
-        const wholeChanged = whole !== undefined && whole.points !== src.points;
+        // 0 is a value a clan may choose. A source with no value yet scores 0
+        // anyway, so typing 0 for it must still save — as a value, which clears
+        // "Needs a value" — instead of reading as "unchanged".
+        const wholeChanged = whole !== undefined
+            && (whole.points !== src.points || (src.unset && src.points === 0));
+        // Likewise a chest with no value of its own that was typed in.
+        const confirmed = new Set(list
+            .filter((c) => c.chestName !== '' && src.chests.some((s) => s.name === c.chestName && s.unset))
+            .map((c) => c.chestName));
         const target = new Map(current);
         if (wholeChanged) {
             for (const c of src.chests)
@@ -492,7 +500,7 @@ function planChanges(board, overrides, changes) {
             }
             target.set(c.chestName, c.points);
         }
-        const changedChests = src.chests.filter((c) => target.get(c.name) !== c.points);
+        const changedChests = src.chests.filter((c) => target.get(c.name) !== c.points || confirmed.has(c.name));
         if (!wholeChanged && changedChests.length === 0)
             continue;
         canonKeys.add(canon);
@@ -505,7 +513,10 @@ function planChanges(board, overrides, changes) {
         // re-checked; otherwise only the ones asked about.
         for (const c of wholeChanged ? src.chests : changedChests) {
             const to = target.get(c.name);
-            const fallback = wildcard ?? (0, source_names_js_1.getDefaultPointsFor)(src.key, c.name);
+            // With no source value and no built-in default the chest has nothing to
+            // fall back on (it would read "Needs a value"), so even 0 is written.
+            const fallback = wildcard
+                ?? ((0, source_names_js_1.hasDefaultPointsFor)(src.key, c.name) ? (0, source_names_js_1.getDefaultPointsFor)(src.key, c.name) : null);
             const hasExact = overrides.has((0, point_timeline_js_1.makeCacheKey)(src.key, c.name));
             if (to === fallback) {
                 if (hasExact)
@@ -517,7 +528,7 @@ function planChanges(board, overrides, changes) {
             // A chest swept along by the source's new value is covered by the
             // source line; only a chest moved on its own gets a line of its own.
             const sweptByWhole = wholeChanged && c.points === src.points && to === whole.points;
-            if (to !== c.points && !sweptByWhole) {
+            if ((to !== c.points || confirmed.has(c.name)) && !sweptByWhole) {
                 edits.push({ key: src.key, label: src.label, chestName: c.name, from: c.points, to });
             }
         }

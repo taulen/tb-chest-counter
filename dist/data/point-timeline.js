@@ -151,10 +151,14 @@ const SEEDED_PER_CHEST = new Set(Object.keys(source_names_js_1.SOURCE_CHEST_POIN
  * What "no entry" means for a key, as a number when that is exact: a
  * source-wide value with no per-chest defaults under it falls back to the one
  * source default. Anything else falls through to layers that can change on
- * their own, so "no entry" is only equal to itself (null).
+ * their own, so "no entry" is only equal to itself (null). A source with no
+ * default at all has no value, not 0 — it reads "Needs a value" — so a dated
+ * 0 for it is a real change and stays.
  */
 function implicitValue(sourceKey, chestName) {
     if (chestName !== '' || SEEDED_PER_CHEST.has((0, source_names_js_1.canonicalSourceKey)(sourceKey)))
+        return null;
+    if (!(0, source_names_js_1.hasDefaultPointsFor)(sourceKey, ''))
         return null;
     return (0, source_names_js_1.getDefaultPointsForKey)(sourceKey);
 }

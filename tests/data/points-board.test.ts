@@ -177,6 +177,48 @@ describe('board', () => {
     expect(source('brand new thing').unset).toBe(false);
   });
 
+  // 0 is a value a clan may choose (VRG, Nov 2026). A source with no value
+  // already scores 0, so typing 0 used to read as "no change" — on the page
+  // and here — and the source stayed "Needs a value" for good.
+  it('saving 0 for a source with no value yet sets it', () => {
+    record('Brand new thing', 'Mystery Chest', 2, 0);
+    const change = [{ sourceKey: 'brand new thing', chestName: '', points: 0 }];
+    expect(previewPointChanges(1, change).edits).toEqual([
+      { key: 'brand new thing', label: expect.any(String), chestName: '', from: 0, to: 0 },
+    ]);
+    applyPointChanges(1, change, HISTORY);
+    expect(source('brand new thing').unset).toBe(false);
+    expect(overrideRows()).toEqual([{ source_key: 'brand new thing', chest_name: '', point_value: 0 }]);
+  });
+
+  it('saving 0 for a source with no value yet sets it from today on too', () => {
+    record('Brand new thing', 'Mystery Chest', 2, 0);
+    applyPointChanges(1, [{ sourceKey: 'brand new thing', chestName: '', points: 0 }], { mode: 'forward' });
+    expect(source('brand new thing').unset).toBe(false);
+  });
+
+  it('saving 0 for one chest with no value sets that chest', () => {
+    record('Brand new thing', 'Mystery Chest', 2, 0);
+    record('Brand new thing', 'Odd Chest', 1, 0);
+    applyPointChanges(1, [{ sourceKey: 'brand new thing', chestName: 'Odd Chest', points: 0 }], HISTORY);
+    const s = source('brand new thing');
+    expect(s.chests.find((c) => c.name === 'Odd Chest')?.unset).toBe(false);
+    expect(s.chests.find((c) => c.name === 'Mystery Chest')?.unset).toBe(true);
+  });
+
+  it('a chest with no fallback moved to 0 keeps 0 as its value, not "no value"', () => {
+    record('Brand new thing', 'Mystery Chest', 2, 0);
+    override('brand new thing', 'Mystery Chest', 50);
+    applyPointChanges(1, [{ sourceKey: 'brand new thing', chestName: 'Mystery Chest', points: 0 }], HISTORY);
+    expect(source('brand new thing').chests[0]).toMatchObject({ points: 0, unset: false });
+  });
+
+  it('typing a value that is already set is still no change', () => {
+    record('Brand new thing', 'Mystery Chest', 2, 0);
+    override('brand new thing', '', 0);
+    expect(previewPointChanges(1, [{ sourceKey: 'brand new thing', chestName: '', points: 0 }]).edits).toEqual([]);
+  });
+
   it('counts records whose stored value is out of date', () => {
     record('Level 10 Crypt', 'Barbarian Chest', 4, 3);
     expect(source('common 10').staleRecords).toBe(4);

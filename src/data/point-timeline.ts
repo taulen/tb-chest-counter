@@ -13,7 +13,7 @@
  * from a date never moves a record from before that date.
  */
 import {
-  canonicalSourceKey, getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, SOURCE_CHEST_POINTS,
+  canonicalSourceKey, getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, hasDefaultPointsFor, SOURCE_CHEST_POINTS,
 } from './source-names.js';
 
 export interface PointEntry {
@@ -175,10 +175,13 @@ const SEEDED_PER_CHEST = new Set(Object.keys(SOURCE_CHEST_POINTS).map(canonicalS
  * What "no entry" means for a key, as a number when that is exact: a
  * source-wide value with no per-chest defaults under it falls back to the one
  * source default. Anything else falls through to layers that can change on
- * their own, so "no entry" is only equal to itself (null).
+ * their own, so "no entry" is only equal to itself (null). A source with no
+ * default at all has no value, not 0 — it reads "Needs a value" — so a dated
+ * 0 for it is a real change and stays.
  */
 function implicitValue(sourceKey: string, chestName: string): number | null {
   if (chestName !== '' || SEEDED_PER_CHEST.has(canonicalSourceKey(sourceKey))) return null;
+  if (!hasDefaultPointsFor(sourceKey, '')) return null;
   return getDefaultPointsForKey(sourceKey);
 }
 
