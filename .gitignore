@@ -15,6 +15,10 @@ _debug_*.png
 _debug_*.mjs
 _extract_*.mjs
 
+# Machine-local game-protocol research scripts (recording window, field dumpers,
+# static-data readers). Kept out of the public repo; never put captures here.
+/research/
+
 # Scratch files used to hand a multi-line message to `git commit -F`.
 *.tmp
 *.tmp.mjs

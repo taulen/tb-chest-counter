@@ -1863,6 +1863,21 @@ th.sortable:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Phones: a tap on the row expands it, and only the name opens the profile —
+   a small target. The name link reaches over the row's left part at full row
+   height (positioned against the row, so the cell's ellipsis clip doesn't cut
+   it); the value and chevron on the right still expand the row. */
+@media (max-width: 640px) {
+  .members-table td[data-role="primary"] a.member-link::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 40%;
+    /* The collapsed row (~60px with its MIGHT label), short of the panel an open row shows. */
+    height: 52px;
+  }
+}
 
 .input:focus {
   outline: none;
