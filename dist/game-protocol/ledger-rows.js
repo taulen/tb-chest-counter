@@ -1,12 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SPEEDUP_HOURS = void 0;
+exports.LEADER_KINDS = exports.SPEEDUP_HOURS = void 0;
 exports.ledgerToRows = ledgerToRows;
 const game_day_js_1 = require("../utils/game-day.js");
 /** Clan Speedup item → hours per item. */
 exports.SPEEDUP_HOURS = { 2050: 1, 2051: 3, 2052: 8, 2053: 15, 2054: 24, 2055: 72 };
 const SPEEDUP_SLUG = 'clan-speedup';
 const DIRECTION_BY_KIND = { 1: -1, 2: 1, 3: 1, 4: 1, 7: 1 };
+/** Kinds known and deliberately not imported (leader-side treasury entries). */
+exports.LEADER_KINDS = new Set([5, 8]);
 function ledgerToRows(entries, names, types, opts) {
     const byName = new Map(types.map((t) => [t.name.toLowerCase(), t]));
     const speedup = types.find((t) => t.slug === SPEEDUP_SLUG);
@@ -16,7 +18,7 @@ function ledgerToRows(entries, names, types, opts) {
     for (const e of entries) {
         const direction = DIRECTION_BY_KIND[e.kind];
         if (!direction) {
-            skip(`kind ${e.kind}`);
+            skip(exports.LEADER_KINDS.has(e.kind) ? 'leader entry' : `kind ${e.kind}`);
             continue;
         }
         const transactionDate = (0, game_day_js_1.gameDateFor)(e.occurredAt * 1000, opts.rolloverUtcHour);

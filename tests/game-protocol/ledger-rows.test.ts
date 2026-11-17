@@ -51,16 +51,18 @@ describe('ledgerToRows', () => {
     expect(rows.map((r) => [r.resourceTypeId, r.amount])).toEqual([[7, 54], [7, 62], [7, 59]]);
   });
 
-  it('books clan payouts (kind 1) as received, and leaves out kind 8 and untracked resources', () => {
+  it('books clan payouts (kind 1) as received, and leaves out leader entries and untracked resources', () => {
     const { rows, skipped } = ledgerToRows([
       entry(1, 1, { 31: 540000 }, '2026-11-10T12:00:00Z'),
-      entry(2, 8, { 20: 440000000 }, '2026-11-06T18:00:19Z'),
+      entry(2, 8, { 20: 440000000 }, '2026-11-06T18:00:19Z'), // SIK's leader
       entry(3, 1, { 703022: 6 }, '2026-11-16T19:20:27Z'),
+      entry(4, 5, { 20: 27500000 }, '2026-11-16T17:00:10Z'), // SK7's leader, at the reset
+      entry(5, 6, { 20: 1 }, '2026-11-16T18:00:00Z'),        // a kind never seen: reported
     ], names, types, opts);
     expect(rows).toEqual([
       { entryId: 1, playerId: 101, resourceTypeId: 4, direction: -1, amount: 540000, transactionDate: '2026-11-09' },
     ]);
-    expect(skipped).toEqual({ 'kind 8': 1, 'untracked seal-of-suppression': 1 });
+    expect(skipped).toEqual({ 'leader entry': 2, 'untracked seal-of-suppression': 1, 'kind 6': 1 });
   });
 
   it('never re-imports a day the OCR capture already covered', () => {

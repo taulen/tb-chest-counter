@@ -206,7 +206,7 @@ function importLedger(clanId, d, memberFor, rolloverUtcHour) {
         untrackedSlugs: resource_repo_js_1.UNTRACKED_RESOURCE_SLUGS,
     });
     const fresh = rows.filter((r) => !have.has(r.entryId));
-    const unexpected = Object.entries(skipped).filter(([why]) => /unmapped|several|kind (?!8)/.test(why));
+    const unexpected = Object.entries(skipped).filter(([why]) => /unmapped|several|kind /.test(why));
     if (unexpected.length) {
         log.info(`Clan #${clanId} ledger: left out ${unexpected.map(([why, n]) => `${n}× ${why}`).join(', ')}`);
     }

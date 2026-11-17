@@ -8,8 +8,9 @@
  * Mapping, verified against the OCR rows on prod (Nov 2026):
  *   - kind 1 = clan → member payout (Dragon Coins, clan fragments): direction −1;
  *     kinds 2, 3, 4, 7 = member → clan donation: direction +1;
- *     kind 8 = a leader-side burst the in-game history never showed (OCR has
- *     none of it) — kept in game_ledger, not imported.
+ *     kinds 5 and 8 = leader-side treasury entries (only ever the clan leader,
+ *     at the reset; the in-game history never showed them and OCR has none) —
+ *     kept in game_ledger, not imported.
  *   - the item id resolves to its resource type BY NAME (static data names ==
  *     resource_types.name), so a new resource needs no code;
  *   - Clan Speedup items are counted in hours, like the OCR rows
@@ -25,6 +26,8 @@ export const SPEEDUP_HOURS: Readonly<Record<string, number>> = { 2050: 1, 2051: 
 const SPEEDUP_SLUG = 'clan-speedup';
 
 const DIRECTION_BY_KIND: Readonly<Record<number, 1 | -1>> = { 1: -1, 2: 1, 3: 1, 4: 1, 7: 1 };
+/** Kinds known and deliberately not imported (leader-side treasury entries). */
+export const LEADER_KINDS: ReadonlySet<number> = new Set([5, 8]);
 
 export interface LedgerRow {
   entryId: number;
@@ -60,7 +63,7 @@ export function ledgerToRows(
 
   for (const e of entries) {
     const direction = DIRECTION_BY_KIND[e.kind];
-    if (!direction) { skip(`kind ${e.kind}`); continue; }
+    if (!direction) { skip(LEADER_KINDS.has(e.kind) ? 'leader entry' : `kind ${e.kind}`); continue; }
     const transactionDate = gameDateFor(e.occurredAt * 1000, opts.rolloverUtcHour);
     if (opts.afterDate && transactionDate <= opts.afterDate) { skip('covered by OCR rows'); continue; }
 

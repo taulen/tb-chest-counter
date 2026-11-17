@@ -29,8 +29,9 @@ the same names.
 
 Ledger → `resource_transactions` ([`ledger-rows.ts`](../src/game-protocol/ledger-rows.ts)):
 one row per entry (`game_entry_id` unique); kind 1 = clan payout (direction −1),
-kinds 2/3/4/7 = donation (+1), kind 8 (a leader-side burst the in-game history
-never showed) is not imported; item → resource type by name; Clan Speedups in
+kinds 2/3/4/7 = donation (+1), kinds 5 and 8 (leader-side treasury entries:
+only ever the clan leader, at the reset, never in the in-game history) are not
+imported; item → resource type by name; Clan Speedups in
 hours. Only entries on game days AFTER the clan's newest OCR-captured row are
 imported, so the switch-over day is never counted twice.
 
