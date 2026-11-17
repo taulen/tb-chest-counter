@@ -90,11 +90,12 @@ export const configSchema = z.object({
 
   // Game protocol capture (src/game-protocol): before each clan's scan, read
   // the clan record, player records and Capital ledger straight from the game
-  // server. Parallel run alongside OCR — it writes only its own game_* tables
-  // and can never fail a scan, so it defaults on. See docs/game-protocol.md.
+  // server. OFF by default until the direct login preserves the website session
+  // the way the browser does (bytokenoauth + cookie write-back): two direct
+  // logins in a row ended CWB's session on Nov 17 2026. See docs/game-protocol.md.
   gameProtocolCaptureEnabled: z.preprocess(
     (v) => (v === undefined || v === '' ? undefined : v === 'true' || v === true),
-    z.boolean().default(true),
+    z.boolean().default(false),
   ),
 
   // Hard ceiling on how many chests one sweep of a tab may open. Exists

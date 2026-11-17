@@ -428,11 +428,13 @@ export class ScanLoop {
   /**
    * Check every active clan's saved login without a browser, every 30 min and
    * once shortly after start, so "Authenticated" on the Clans page is true even
-   * while scans are paused (session-check.ts). Rides the game-protocol toggle:
-   * it is the same direct talk to totalbattle.com. Never throws, never blocks.
+   * while scans are paused (session-check.ts). Independent of the game-protocol
+   * capture toggle: it is only a page load with the stored cookies — what the
+   * scanner's browser does at every scan — and never presents a token.
+   * Never throws, never blocks.
    */
   private armSessionChecks(): void {
-    if (!this.config.gameProtocolCaptureEnabled || this.sessionCheckTimer) return;
+    if (this.sessionCheckTimer) return;
     const run = (): void => {
       void import('./session-check.js')
         .then(({ checkClanSessions }) => checkClanSessions())

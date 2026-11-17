@@ -8,7 +8,11 @@ any player's city (research + hero talents). Code: [`src/game-protocol/`](../src
 Status (Nov 2026): **parallel run.** [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts)
 runs before each clan's OCR scan and stores what the game says in the `game_*`
 tables (migration v102). Nothing reads them for scoring yet; the OCR pipeline is
-unchanged. Toggle: `GAME_PROTOCOL_CAPTURE_ENABLED` (default on).
+unchanged. Toggle: `GAME_PROTOCOL_CAPTURE_ENABLED` — **default OFF** since Nov
+17 2026: two direct logins in a row (GetGameStartData without the browser's
+follow-up `bytokenoauth`, and without writing rotated cookies back) ended CWB's
+website session. Re-enable only once the client completes the browser's flow
+and persists cookies, and that is verified on a disposable session.
 
 After each scan, `compareScanWithGameCapture` matches that scan's OCR rows
 against the gift list the capture saw just before it (per tab, by sender +

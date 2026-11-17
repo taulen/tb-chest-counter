@@ -35,7 +35,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   // "runs as soon as it can", not "runs now".
   mightTrackingEnabled: true,
   resourceCaptureEnabled: true,
-  gameProtocolCaptureEnabled: true,
+  gameProtocolCaptureEnabled: false,
 
   scanMaxChests: 2000,
   scanDebugFirstN: 10,
