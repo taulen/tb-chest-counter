@@ -1102,7 +1102,7 @@ const MIGRATIONS: Migration[] = [
   },
   {
     // Likely-rename merge suggestions an admin marked "not the same player"
-    // (rename-suggestions-repo.ts). Member ids carry no FK on purpose: a row only
+    // (Likely Renames; retired Nov 2026, the table dropped by v120). Member ids carry no FK on purpose: a row only
     // hides a suggestion, so one outliving its member is inert, and an FK would
     // make every member delete path account for it. deleteClan clears the clan's.
     version: 92,
@@ -2134,6 +2134,15 @@ const MIGRATIONS: Migration[] = [
         );
       `);
     },
+  },
+  {
+    // v120 — Likely Renames retired (Nov 2026): the Admin review queue's
+    // might/level rename guesser had no job left once the game reports renames
+    // through the permanent player id (member-sync.ts). Its "not the same
+    // player" dismissals go with it; audit_log keeps their history.
+    // IF EXISTS: replay-safe.
+    version: 120,
+    sql: 'DROP TABLE IF EXISTS rename_suggestion_dismissals;',
   },
 ];
 

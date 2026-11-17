@@ -245,7 +245,9 @@ Each capture also, every cycle:
   name: a player merge rule naming the game name wins (its target is shown —
   Cyrillic game names merged into readable ones stay readable), then a name
   set by a manual rename; the game's spelling is always kept as an alias
-  (Nov 17 2026, after the sync renamed six merged members back). They get `clan_role`, are marked
+  (Nov 17 2026, after the sync renamed six merged members back). The Admin
+  review queue's "Likely Renames" (a might/level guesser, v92) was retired in
+  Nov 2026 (v120 drops its table): the game reports renames through the player id. They get `clan_role`, are marked
   seen and get the day's might + hero-level snapshot. With a roster of ≥ 5,
   every ACTIVE member the roster does not account for is removed (soft delete,
   `member.left_clan` audited with `linked: true|false`): players who left,
