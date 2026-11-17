@@ -8,6 +8,7 @@ import {
 } from '../lib/ui.js';
 import { computeGameWindow } from '../lib/period.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 
 const CHEST_TYPE_LABELS = {
   common: t('common'),
@@ -38,6 +39,8 @@ export async function renderDashboard(el) {
     api('/chests?limit=10'),
     api(weeklyQuery),
     api('/analytics/single-day-records'),
+    // The chests' pictures in Recent Chests (never rejects).
+    loadGameArt(),
   ]);
   // The manual scan buttons used to sit at the foot of this page; they live
   // in the shell next to the scan status now (index.html, app.js).
@@ -78,8 +81,8 @@ export async function renderDashboard(el) {
         <div class="card-body">
           ${recent.length > 0 ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Type')}</th></tr></thead><tbody>
             ${recent.map((c) => `<tr>
-              <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
-              <td data-label="${t('Chest')}"><div class="cell-stacked"><a class="member-link cell-stacked-primary" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a><span class="cell-stacked-sub">${sourceLink(c.chestSource)}</span></div></td>
+              <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)), { size: 16 })}</span></td>
+              <td data-label="${t('Chest')}">${chestLabelHtml(c.chestName, `<span class="cell-stacked"><a class="member-link cell-stacked-primary" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a><span class="cell-stacked-sub">${sourceLink(c.chestSource)}</span></span>`, { size: 28, cls: 'is-block' })}</td>
               <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABELS[c.chestType] ?? c.chestType}</span></td>
             </tr>`).join('')}
           </tbody></table>` : `<div class="empty-state"><p>${t('No chests yet.')}</p></div>`}

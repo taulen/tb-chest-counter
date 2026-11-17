@@ -81,6 +81,11 @@ export interface EventColumn {
    */
   infoCard?: boolean;
   /**
+   * The chest an info card shows the game's picture of: the rule's first
+   * chest name (chestName, else chestNames[0]). Info cards only.
+   */
+  chestName?: string;
+  /**
    * For a column that aggregates several chests into one (a chestNames rule),
    * the component chest names in catalog order — so the UI can show the split
    * (e.g. Minor/Major/Epic) as a hover tooltip. Absent for single-chest columns.
@@ -700,11 +705,13 @@ export function getEventBreakdown(
       const key = columnKeyForRule(r, i);
       const parts = columnParts.get(key);
       const dead = resolved.deadColumns.get(key);
+      const cardChest = r.infoCard ? (r.chestName || r.chestNames?.[0]) : undefined;
       return {
         key,
         label: columnLabelForRule(r, i),
         countInTotal: r.countInTotal !== false && !r.infoCard,
         ...(r.infoCard ? { infoCard: true } : {}),
+        ...(cardChest ? { chestName: cardChest } : {}),
         ...(parts ? { parts } : {}),
         ...(dead ? { unresolved: true, unresolvedReason: dead } : {}),
       };

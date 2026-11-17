@@ -511,11 +511,13 @@ function getEventBreakdown(eventKey, clanId, from, to) {
             const key = columnKeyForRule(r, i);
             const parts = columnParts.get(key);
             const dead = resolved.deadColumns.get(key);
+            const cardChest = r.infoCard ? (r.chestName || r.chestNames?.[0]) : undefined;
             return {
                 key,
                 label: columnLabelForRule(r, i),
                 countInTotal: r.countInTotal !== false && !r.infoCard,
                 ...(r.infoCard ? { infoCard: true } : {}),
+                ...(cardChest ? { chestName: cardChest } : {}),
                 ...(parts ? { parts } : {}),
                 ...(dead ? { unresolved: true, unresolvedReason: dead } : {}),
             };

@@ -9,6 +9,8 @@
 let art = null;
 /** art.names as a Set: an index holds thousands of names and a page asks for hundreds. */
 let artNames = new Set();
+/** Whether the index maps any chest to a picture (chestLabelHtml). */
+let chestArt = false;
 let loading = null;
 
 /** Start (or reuse) the one fetch of the art index. Resolves to the index or null. */
@@ -19,6 +21,7 @@ export function loadGameArt() {
       .then((j) => {
         art = j && j.base ? j : null;
         artNames = new Set(art?.names ?? []);
+        chestArt = Object.keys(art?.mappings?.chests ?? {}).length > 0;
         return art;
       })
       .catch(() => { loading = null; return null; });
@@ -167,6 +170,36 @@ export function chestIconHtml(chestName, { size = 40, url = null, quality = 0, f
   return itemIconHtml(url || chestIconUrl(chestName), {
     size, quality, framed, badge, name: name || chestName, cls: ['game-chest', cls].filter(Boolean).join(' '),
   });
+}
+
+/** Whether the art index has loaded with chest pictures (chestLabelHtml draws them). */
+export function hasChestArt() {
+  return chestArt;
+}
+
+/**
+ * A chest's name with the game's picture of it in front: how every page lists
+ * a chest (tables, breakdowns, the points guide). The bare icon, no tile — at
+ * table sizes a frame is noise, and only the Chest rewards tab knows a chest's
+ * quality grade — then `labelHtml`, the name exactly as the caller rendered it
+ * before (escaped text, a link, or a name-over-source stack), so links,
+ * ellipsis and wrapping stay the page's own. Geometry: style.css .chest-label.
+ *
+ * Decorative: the name stays the text. Until the art index has answered, or on
+ * an install without chest art, it is the label alone — the plain name, as
+ * before; a chest the art lacks gets the neutral letter tile, so a column of
+ * names still lines up. Pages await loadGameArt() before their first render.
+ *
+ * @param {string} chestName  the English chest name the art maps
+ * @param {string} labelHtml  the name as HTML, already escaped
+ * @param {{ size?: number, name?: string, cls?: string }} [opts]
+ *   size: px (22 in a table row, 28 beside a two-line name, 16 in a phone
+ *   row's summary line); name: the translated name, for the placeholder letter
+ */
+export function chestLabelHtml(chestName, labelHtml, { size = 22, name = '', cls = '' } = {}) {
+  if (!chestArt) return labelHtml;
+  const icon = chestIconHtml(chestName, { size, framed: false, name });
+  return `<span class="chest-label${cls ? ` ${attr(cls)}` : ''}">${icon}<span class="chest-label-text">${labelHtml}</span></span>`;
 }
 
 /**

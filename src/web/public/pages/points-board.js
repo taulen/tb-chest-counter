@@ -17,6 +17,7 @@
 import { api, apiPost } from '../lib/api.js';
 import { esc, notify, contentModal, selectDialog, formatDate, formatGameDayShort } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt, chestIconHtml, chestLabelHtml, hasChestArt } from '../lib/game-art.js';
 
 const CATEGORY_STORE_KEY = 'pointsBoard.category';
 const NEEDS_VALUE = 'needs-value';
@@ -82,7 +83,8 @@ export async function mountPointsBoard(el, { isSuperadmin }) {
 }
 
 async function refresh() {
-  const board = await api('/admin/source-points');
+  // The chests' pictures in the expanded rows (loadGameArt never rejects).
+  const [board] = await Promise.all([api('/admin/source-points'), loadGameArt()]);
   if (!root?.isConnected) return;
   if (!board || board.error || !Array.isArray(board.sources)) {
     root.querySelector('.pb-body').innerHTML = `<p class="muted-copy">${board?.error ? t('Couldn\'t load chest points: {error}.', { error: esc(board.error) }) : t('Couldn\'t load chest points.')}</p>`;
@@ -449,7 +451,9 @@ function sourceHtml(s) {
   const anyEdited = [...state.dirty.keys()].some((k) => k.startsWith(`${s.key}\t`));
   const meta = [
     chestCount(s.records),
-    s.chests.length > 1 ? tn(s.chests.length, '{n} kind', '{n} kinds', { n: fmt(s.chests.length) }) : esc(tGame(s.chests[0]?.name || '')),
+    s.chests.length > 1
+      ? tn(s.chests.length, '{n} kind', '{n} kinds', { n: fmt(s.chests.length) })
+      : (s.chests[0]?.name ? chestLabelHtml(s.chests[0].name, esc(tGame(s.chests[0].name)), { size: 16 }) : ''),
   ].filter(Boolean);
   if (exceptions.length > 0) meta.push(`<span class="pb-meta-exc">${tn(exceptions.length, '{n} exception', '{n} exceptions', { n: fmt(exceptions.length) })}</span>`);
   if (s.staleRecords > 0) meta.push(`<span class="pb-flag">⟳ ${tn(s.staleRecords, '{n} out of date', '{n} out of date', { n: fmt(s.staleRecords) })}</span>`);
@@ -480,7 +484,7 @@ function detailHtml(s, exceptions, followers) {
     .map((c) => `
       <div class="pb-exc">
         <div class="pb-name">
-          <span class="pb-chest-name">${esc(tGame(c.name))}</span>
+          ${chestLabelHtml(c.name, `<span class="pb-chest-name">${esc(tGame(c.name))}</span>`)}
           ${c.unset ? `<span class="badge-warn">⚠ ${t('Needs a value')}</span>` : ''}
           <span class="pb-meta">${chestCount(c.records)}</span>
         </div>
@@ -488,12 +492,14 @@ function detailHtml(s, exceptions, followers) {
         ${canEdit ? `<button type="button" class="pb-reset" data-pb="follow" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="${t('Pay the source\'s value instead')}" aria-label="${t('{chest}: pay the source\'s value instead', { chest: esc(tGame(c.name)) })}">↺</button>` : '<span class="pb-expand-spacer"></span>'}
       </div>`).join('');
 
+  // The chest's picture leads each chip (decorative; the name is the text).
+  const chipArt = (c) => (hasChestArt() ? chestIconHtml(c.name, { size: 16, framed: false }) : '');
   const chips = followers
     .slice()
     .sort((a, b) => b.records - a.records)
     .map((c) => canEdit
-      ? `<button type="button" class="pb-follower" data-pb="split" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="${t('Give {chest} its own value', { chest: esc(tGame(c.name)) })}">${esc(tGame(c.name))} <span class="pb-chip-count">${fmt(c.records)}</span></button>`
-      : `<span class="pb-follower">${esc(tGame(c.name))} <span class="pb-chip-count">${fmt(c.records)}</span></span>`)
+      ? `<button type="button" class="pb-follower" data-pb="split" data-source-key="${esc(s.key)}" data-chest-name="${esc(c.name)}" title="${t('Give {chest} its own value', { chest: esc(tGame(c.name)) })}">${chipArt(c)}${esc(tGame(c.name))} <span class="pb-chip-count">${fmt(c.records)}</span></button>`
+      : `<span class="pb-follower">${chipArt(c)}${esc(tGame(c.name))} <span class="pb-chip-count">${fmt(c.records)}</span></span>`)
     .join('');
 
   return `

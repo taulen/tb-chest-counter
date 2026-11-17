@@ -17,6 +17,7 @@
 import { escapeHtml, esc, contentModal } from './ui.js';
 import { t, tn, tGame } from './i18n.js';
 import { isTinmanWeek, weekLengthDays } from './period.js';
+import { loadGameArt, chestLabelHtml } from './game-art.js';
 
 const REPO_URL = 'https://github.com/taulen/tb-chest-counter';
 
@@ -96,10 +97,10 @@ function renderChests(section) {
     <table class="faq-table">
       <thead><tr><th scope="col">${t('Chest')}</th><th class="num" scope="col">${t('Points')}</th></tr></thead>
       <tbody>${section.rows.map((r) => `<tr>
-        <td><div class="cell-stacked">
+        <td>${chestLabelHtml(r.chest, `<span class="cell-stacked">
           <span class="cell-stacked-primary">${escapeHtml(tGame(r.chest))}</span>
           <span class="cell-stacked-sub">${escapeHtml(tGame(r.source))}</span>
-        </div></td>
+        </span>`, { size: 28, cls: 'is-block' })}</td>
         <td class="num">${fmt(r.points)}</td>
       </tr>`).join('')}</tbody>
     </table>
@@ -328,7 +329,8 @@ export async function openLeaderboardFaq({
 
   let data;
   try {
-    data = await load();
+    // The chests' pictures in the points table (loadGameArt never rejects).
+    [data] = await Promise.all([load(), loadGameArt()]);
   } catch {
     modal.setHtml(`<p class="faq-lead">${t('Couldn\'t load the FAQ. Close this and try again in a moment.')}</p>`);
     return;

@@ -4820,6 +4820,14 @@ details > table {
   flex-shrink: 0;
 }
 
+/* The selected resource's icon leading a card heading (Resources overview). */
+.resource-head-icon {
+  display: inline-flex;
+  vertical-align: -5px;
+  margin-right: 8px;
+}
+.resource-head-icon > .resource-icon-img { width: 22px; height: 22px; }
+
 .empty-state-cell {
   text-align: center;
   color: var(--text-secondary);
@@ -8068,6 +8076,43 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .reward-grid .reward-chip,
   .reward-grid .game-item { --gi-size: 54px !important; }
 }
+/* A chest's name with its picture in front (chestLabelHtml), wherever a page
+   lists chests. The label is whatever the cell held before — text, a link or
+   a name-over-source stack — in a flex item that can shrink, so a locked
+   column still ellipsises (the cell's nowrap is inherited) or wraps the name
+   beside the icon, never under it, and the icon never widens the column. */
+.chest-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+.chest-label > .game-item { flex: none; }
+.chest-label > .game-item.is-bare > .game-item-art { border-radius: 4px; }
+.chest-label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Where a whole block is the label (the dashboard's name-over-source stack, a
+   breakdown line), the label takes the cell's width. */
+.chest-label.is-block { display: flex; }
+.chest-label.is-block > .chest-label-text { flex: 1; }
+/* In a baseline-aligned row (Chest Points' exception lines) the label centres
+   on the line: an icon has no text baseline of its own to offer. */
+.pb-name > .chest-label { align-self: center; }
+/* The chest drill page (#chest/<name>): the picture beside the title. On a
+   phone the title block stacks, so the picture spans the name and the type
+   badge instead of taking a row of its own. */
+@media (max-width: 640px) {
+  .member-detail-title:has(> .chest-drill-art) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 4px;
+    align-items: center;
+  }
+  .member-detail-title > .chest-drill-art { grid-row: 1 / span 2; }
+  .member-detail-title:has(> .chest-drill-art) > .chest-type { justify-self: start; }
+}
 .citadel-troop-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .citadel-field { display: block; min-width: 0; }
 .citadel-num { width: 100%; padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; }
@@ -8446,7 +8491,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 .rewards-pots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 .rewards-pot { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.rewards-pot-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+/* min-height: the pot with an icon (Dragon Coins) and the one without line up. */
+.rewards-pot-label { display: flex; align-items: center; gap: 6px; min-height: 20px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .rewards-pot-input {
   width: 100%;
   max-width: none;

@@ -8,6 +8,7 @@ import {
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 
 const CHEST_TYPE_LABELS = {
   common: t('common'),
@@ -92,7 +93,8 @@ export async function viewSession(id, navigate) {
     window.location.hash = sessionHash(id);
     return;
   }
-  const data = await api(`/sessions/${id}`);
+  // The chests' pictures in the tables (loadGameArt never rejects).
+  const [data] = await Promise.all([api(`/sessions/${id}`), loadGameArt()]);
   if (!data || data.error) {
     // The session belongs to another clan (or was deleted): the API answers
     // 404 { error }. This happens to a superadmin who switches the active
@@ -115,8 +117,8 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
   const chestRows = chests.length > 0
     ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Type')}</th><th>${t('Source')}</th><th>${t('Points')}</th><th>${t('Received')}</th></tr></thead><tbody>
         ${chests.map((c) => `<tr>
-          <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
-          <td data-label="${t('Chest')}"><a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a></td>
+          <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)), { size: 16 })}</span></td>
+          <td data-label="${t('Chest')}">${chestLabelHtml(c.chestName, `<a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a>`)}</td>
           <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABELS[c.chestType] ?? c.chestType}</span></td>
           <td data-label="${t('Source')}">${sourceLink(c.chestSource)}</td>
           <td data-label="${t('Points')}" data-role="metric">${c.pointValue}</td>
@@ -128,8 +130,8 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
   const triumphalRows = triumphals.length > 0
     ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Received')}</th></tr></thead><tbody>
         ${triumphals.map((c) => `<tr>
-          <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${esc(tGame(c.chestName))}</span></td>
-          <td data-label="${t('Chest')}">${esc(tGame(c.chestName))}</td>
+          <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)), { size: 16 })}</span></td>
+          <td data-label="${t('Chest')}">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)))}</td>
           <td data-label="${t('Source')}">${esc(tGame(c.chestSource || ''))}</td>
           <td data-label="${t('Received')}" data-role="metric">${formatDate(c.effectiveAt)}</td>
         </tr>`).join('')}

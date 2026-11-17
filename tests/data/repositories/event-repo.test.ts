@@ -513,6 +513,12 @@ describe('Dark Omens combined summon column', () => {
     expect(omens?.parts).toEqual(['Minor Omen Chest', 'Major Omen Chest', 'Epic Omen Chest']);
     expect(arcane?.parts).toBeUndefined();
 
+    // The Finish Reward info card names its chest, for the game's picture of
+    // it; matrix columns don't carry one.
+    const finish = b.columns.find((c) => c.infoCard);
+    expect(finish?.chestName).toBe('Dark Omens ranking chest');
+    expect(arcane?.chestName).toBeUndefined();
+
     // Per-player split for the tooltip.
     expect(row?.breakdown['Omens (M/M/E)']).toEqual({
       'Minor Omen Chest': 2,

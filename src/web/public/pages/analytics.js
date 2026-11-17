@@ -45,6 +45,7 @@ import {
 import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
 import { readToken } from '../lib/theme.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
+import { loadGameArt, chestIconHtml, chestLabelHtml, hasChestArt } from '../lib/game-art.js';
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
 
@@ -194,6 +195,8 @@ export async function renderAnalytics(el) {
     // Guards levels and Gold Pass holders: from the game, not period-scoped, and
     // optional — the card is simply absent if this fails.
     api('/guards/overview').catch(() => null),
+    // The chests' pictures in the Chest breakdown (never rejects).
+    loadGameArt(),
   ]);
   goalInfo = goal && !goal.error ? goal : null;
 
@@ -399,6 +402,8 @@ function breakdownRows(current) {
   if (breakdownDim === 'chest') {
     return (current.byName || []).map((r) => ({
       label: tGame(r.chest_name),
+      // The chest's picture takes the dot's place: its bar keeps the type colour.
+      chestName: r.chest_name,
       count: r.count,
       points: r.points || 0,
       typeClass: r.chest_type || 'unknown',
@@ -451,9 +456,12 @@ function breakdownCardHtml(current) {
         const name = r.href
           ? `<a class="member-link" href="${r.href}">${esc(r.label)}</a>`
           : esc(r.label);
+        const nameHtml = r.chestName && hasChestArt()
+          ? chestLabelHtml(r.chestName, name, { size: 24 })
+          : `<span class="type-row-dot"></span>${name}`;
         return `<div class="type-row type-${esc(r.typeClass)}">
           <div class="type-row-main">
-            <span class="type-row-name"><span class="type-row-dot"></span>${name}</span>
+            <span class="type-row-name">${nameHtml}</span>
             <span class="type-row-value">${r.count.toLocaleString()}</span>
           </div>
           <div class="type-row-bar"><span style="width: ${barWidth}%"></span></div>
@@ -1589,7 +1597,11 @@ async function viewDrill(kind, name, navigate) {
     return;
   }
 
-  const data = await api(`/chests/${spec.api}/${encodeURIComponent(name)}/members?period=${currentChestDrillPeriod}`);
+  const [data] = await Promise.all([
+    api(`/chests/${spec.api}/${encodeURIComponent(name)}/members?period=${currentChestDrillPeriod}`),
+    // The chest's picture beside its name (never rejects).
+    loadGameArt(),
+  ]);
   if (!data || data.error) {
     // The name doesn't resolve in the active clan (e.g. a superadmin
     // switched the active clan while sitting on #chest/<name> for a chest
@@ -1630,6 +1642,10 @@ function renderChestDetail(data) {
     ? `<span class="chest-type ${data.chestType}">${esc(CHEST_TYPE_LABELS[data.chestType] ?? data.chestType)}</span>`
     : '';
   const drillName = DRILL_KINDS[currentDrillKind].canonical(data) || currentChestDrillName;
+  // The chest page is about one chest: its picture, large, beside the name.
+  const drillArt = currentDrillKind === 'chest' && hasChestArt()
+    ? chestIconHtml(drillName, { size: 44, framed: false, name: tGame(drillName), cls: 'chest-drill-art' })
+    : '';
 
   // Stamp every member with its canonical points-desc rank (1-indexed) so
   // the Rank column stays stable even when the user sorts the table by
@@ -1681,6 +1697,7 @@ function renderChestDetail(data) {
     <div class="card">
       <div class="card-header member-detail-header">
         <div class="member-detail-title">
+          ${drillArt}
           <h2>${esc(tGame(drillName))}</h2>
           ${chestTypeBadge}
         </div>
@@ -1848,7 +1865,7 @@ export async function toggleChestCollectorRow(row) {
     <td class="history-date" title="${esc(formatDate(r.effectiveAt))}">${esc(formatDate(r.effectiveAt))}</td>
     <td><span class="chest-type ${esc(r.chestType)}">${esc(CHEST_TYPE_LABELS[r.chestType] ?? (r.chestType || '-'))}</span></td>
     <td>${isSource
-      ? (r.chestName ? `<a class="member-link" href="${chestHash(r.chestName, period)}">${esc(tGame(r.chestName))}</a>` : '-')
+      ? (r.chestName ? chestLabelHtml(r.chestName, `<a class="member-link" href="${chestHash(r.chestName, period)}">${esc(tGame(r.chestName))}</a>`, { size: 20 }) : '-')
       : (r.chestSource ? sourceLink(r.chestSource, { period }) : '-')}</td>
     <td class="num">${(r.quantity || 0).toLocaleString()}</td>
     <td class="num">${(r.pointValue || 0).toLocaleString()}</td>
