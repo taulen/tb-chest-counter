@@ -67,9 +67,51 @@ export function unitFrameTextures(): string[] {
  */
 export const HERO_LEVEL_BADGE = 'icons_tir_shield_4';
 
+/**
+ * A captain's tile, as the game's line-up draws it (user's screenshot, Nov
+ * 2026: Carter purple = epic, Helen gold = legendary, Farhad red = mythic):
+ * the unit icon's back and frame in the captain's RARITY colour (T75 f2:
+ * 1 rare → blue, 2 epic → violet, 3 legendary → gold, 4 mythic → red — the
+ * same back_icon_units / frame_icon_units sprites a unit icon uses), the
+ * captain's head shot (T75 smallIcon) between them, the level on a dark
+ * shield plate at the top-right, and the stars along the bottom edge.
+ */
+export const CAPTAIN_RARITY_COLOURS: Record<number, (typeof UNIT_TIER_COLOURS)[number]> = {
+  1: 'blue', 2: 'violet', 3: 'gold', 4: 'red',
+};
+export const CAPTAIN_LEVEL_PLATE = 'icons_tir_shield_2';
+export const CAPTAIN_STAR_ON = 'icons_star_up';
+export const CAPTAIN_STAR_OFF = 'icons_star_down';
+
+export interface CaptainTileArt {
+  /** Rarity (1–4) → back / frame image (safeArtName), for the rarities extracted. */
+  backs: Record<string, string>;
+  frames: Record<string, string>;
+  levelPlate: string | null;
+  starOn: string | null;
+  starOff: string | null;
+}
+
+export function captainTileArt(available: (name: string) => boolean): CaptainTileArt {
+  const out: CaptainTileArt = { backs: {}, frames: {}, levelPlate: null, starOn: null, starOff: null };
+  for (const [rarity, colour] of Object.entries(CAPTAIN_RARITY_COLOURS)) {
+    const back = safeArtName(backName(colour));
+    const frame = safeArtName(frameName(colour));
+    if (available(back) && available(frame)) {
+      out.backs[rarity] = back;
+      out.frames[rarity] = frame;
+    }
+  }
+  const pick = (n: string): string | null => (available(safeArtName(n)) ? safeArtName(n) : null);
+  out.levelPlate = pick(CAPTAIN_LEVEL_PLATE);
+  out.starOn = pick(CAPTAIN_STAR_ON);
+  out.starOff = pick(CAPTAIN_STAR_OFF);
+  return out;
+}
+
 /** Every texture we take from the client build. */
 export function clientUiTextures(): string[] {
-  return [...new Set([...unitFrameTextures(), HERO_LEVEL_BADGE])];
+  return [...new Set([...unitFrameTextures(), HERO_LEVEL_BADGE, CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF])];
 }
 
 export interface UnitFrameArt {

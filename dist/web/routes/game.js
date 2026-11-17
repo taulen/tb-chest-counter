@@ -104,7 +104,7 @@ function createGameRouter() {
         }
         const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clanId);
         if (playerId === null) {
-            res.json({ linked: false, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
+            res.json({ linked: false, hero: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
             return;
         }
         const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
@@ -132,22 +132,52 @@ function createGameRouter() {
                 gear.set(it.captainId, []);
             gear.get(it.captainId).push({ position: it.position, itemType: it.itemType, firstSeen: it.firstSeen, ...itemView(it.itemType, it.enchantment, it.gems) });
         }
+        // The game's captain tile pieces (rarity back + frame, level plate, stars)
+        // and the captain screen's full-body art (carter_scaled), when extracted.
+        const tile = mappings?.captainTile;
+        const fullArt = mappings?.captainArt ?? {};
         const describe = (id) => {
             const c = names?.captains?.[String(id)];
             const portrait = portraits[String(id)];
             const starLevels = Object.keys(c?.stars ?? {}).map(Number).filter(Number.isFinite);
+            const rarity = c?.rarity ?? 0;
+            const full = fullArt[String(id)];
             return {
                 name: c?.name ?? `#${id}`,
-                rarity: c?.rarity ?? 0,
+                rarity,
                 rarityName: c?.rarityName ?? '',
                 maxStars: starLevels.length ? Math.max(...starLevels) : 0,
                 iconUrl: portrait ? (0, index_js_1.gameArtUrl)(portrait) : null,
-                artUrl: c?.art ? (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(c.art)) : null,
+                artUrl: full ? (0, index_js_1.gameArtUrl)(full) : c?.art ? (0, index_js_1.gameArtUrl)((0, selection_js_1.safeArtName)(c.art)) : null,
+                tileBackUrl: tile?.backs?.[String(rarity)] ? (0, index_js_1.gameArtUrl)(tile.backs[String(rarity)]) : null,
+                tileFrameUrl: tile?.frames?.[String(rarity)] ? (0, index_js_1.gameArtUrl)(tile.frames[String(rarity)]) : null,
             };
         };
         const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
+        // The hero leads the tab: its portrait in the player's frame with the
+        // level plate, its level / XP (the city's hero record) and what it wears
+        // (city field 9's entry id 1 — gear tracked since Nov 2026).
+        const player = (0, game_profile_repo_js_1.getGamePlayer)(clanId, playerId);
+        const cityHero = (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId)?.hero;
+        const heroLevel = cityHero?.level ?? player?.heroLevel ?? null;
+        const hero = player ? {
+            name: names?.heroes?.[String(player.heroAvatar)]?.name || null,
+            level: heroLevel,
+            heroLevel,
+            xp: cityHero?.xp ?? null,
+            avatarUrl: player.avatarUrl,
+            frameUrl: player.frameUrl,
+            equipment: gear.get(equipment_js_1.HERO_ENTRY_ID) ?? [],
+        } : null;
         res.json({
             linked: true,
+            hero,
+            // Shared tile art: the level plate and the star sprites (null until extracted).
+            tileArt: {
+                levelPlateUrl: tile?.levelPlate ? (0, index_js_1.gameArtUrl)(tile.levelPlate) : null,
+                starOnUrl: tile?.starOn ? (0, index_js_1.gameArtUrl)(tile.starOn) : null,
+                starOffUrl: tile?.starOff ? (0, index_js_1.gameArtUrl)(tile.starOff) : null,
+            },
             captains: (0, game_profile_repo_js_1.getPlayerCaptains)(clanId, playerId).map((c) => ({
                 ...c,
                 ...describe(c.captainId),

@@ -38,7 +38,7 @@ import fs from 'fs';
 import path from 'path';
 import type { ArtItem, ArtStatic, ArtUnit } from './art-static.js';
 import { EVENT_ART, STATUS_ART, isChestName, isResourceItem, safeArtName } from './selection.js';
-import { HERO_LEVEL_BADGE, unitFrameArt, type UnitFrameArt } from './unit-frames.js';
+import { HERO_LEVEL_BADGE, captainTileArt, unitFrameArt, type CaptainTileArt, type UnitFrameArt } from './unit-frames.js';
 
 export interface TroopStats {
   id: string;
@@ -64,6 +64,14 @@ export interface ArtMappings {
   techs: Record<string, string>;
   /** T75 captain id → portrait image (smallIcon, else the level-up art). */
   captains: Record<string, string>;
+  /**
+   * T75 captain id → the full-body picture the game's captain screen shows
+   * (`<smallIcon base>_scaled`: carter_icon → carter_scaled), else the
+   * level-up art. Absent in an index built before Nov 2026.
+   */
+  captainArt?: Record<string, string>;
+  /** The pieces of a captain's tile (unit-frames.ts). Absent before Nov 2026. */
+  captainTile?: CaptainTileArt;
   /** EVENT_ART key (tome, figurine, clock, tinman) → image. */
   ancients: Record<string, string>;
   /** T52 city look id (game_players.city_appearance) → lowest city level → icon. */
@@ -81,7 +89,7 @@ export interface ArtMappings {
 export function emptyMappings(): ArtMappings {
   return {
     heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
-    chests: {}, resources: {}, techs: {}, captains: {}, ancients: {}, cityLooks: {}, status: {},
+    chests: {}, resources: {}, techs: {}, captains: {}, captainArt: {}, ancients: {}, cityLooks: {}, status: {},
     artifacts: {}, equipment: {}, inserts: {},
   };
 }
@@ -226,6 +234,26 @@ export function techIcons(st: ArtStatic, available: (name: string) => boolean): 
   return out;
 }
 
+/**
+ * The full-body art for a captain's smallIcon: carter_icon → carter_scaled —
+ * the still of the captain screen's art (carter_artbundle's front image); the
+ * client derives the name, nothing in the static data spells it out. '' when
+ * the icon doesn't end in _icon.
+ */
+export function captainScaledArt(icon: string): string {
+  return /_icon$/i.test(icon) ? `${icon.replace(/_icon$/i, '')}_scaled` : '';
+}
+
+/** Captain → full-body art (`_scaled`), else the level-up art, for those extracted. */
+export function captainFullArt(st: ArtStatic, available: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, c] of Object.entries(st.captains ?? {})) {
+    const pick = [captainScaledArt(c.icon), c.art].map((n) => (n ? safeArtName(n) : '')).find((n) => n && available(n));
+    if (pick) out[id] = pick;
+  }
+  return out;
+}
+
 export function captainIcons(st: ArtStatic, available: (name: string) => boolean): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [id, c] of Object.entries(st.captains ?? {})) {
@@ -286,6 +314,8 @@ export function buildMappings(
     resources: resourceIcons(st.items, resourceNames, available),
     techs: techIcons(st, available),
     captains: captainIcons(st, available),
+    captainArt: captainFullArt(st, available),
+    captainTile: captainTileArt(available),
     ancients: eventIcons(available),
     cityLooks: cityLookIcons(st, available),
     status: statusIcons(available),

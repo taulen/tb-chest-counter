@@ -135,6 +135,9 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
   for (const c of Object.values(st.captains ?? {})) {
     if (c.icon) out.heroes.add(c.icon.toLowerCase());
     if (c.art) out.heroes.add(c.art.toLowerCase());
+    // The captain screen's full-body picture: carter_icon → carter_scaled (the
+    // client derives the name; nothing in the static data spells it out).
+    if (/_icon$/i.test(c.icon)) out.heroes.add(`${c.icon.replace(/_icon$/i, '')}_scaled`.toLowerCase());
   }
   for (const f of Object.values(st.frames ?? {})) out.frames.add(f.visual.toLowerCase());
   for (const c of Object.values(st.cityLooks ?? {})) for (const icon of Object.values(c.icons)) out.cities.add(icon.toLowerCase());
