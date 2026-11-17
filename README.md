@@ -40,8 +40,10 @@ runs in one container.
   that haven't dropped yet. Values have a history: a change applies from today
   on or to all of history. Triumphal chests score separately, from their
   package value.
-- **Members kept in sync** — the roster, clan roles, join dates, departures and
-  in-game renames come from the game every scan.
+- **Members kept in sync** — the roster, clan roles, join dates and in-game
+  renames come from the game every scan. Anyone no longer in the clan is
+  removed automatically (kept in history, restorable), and comes back as the
+  same member if they rejoin.
 - **Might tracking** — every member's might and hero level each scan, with
   per-member history and a clan-wide trend.
 - **Resource tracking** — the Clan Capital ledger is read every scan: what each
@@ -87,6 +89,11 @@ Every scan, per clan:
 - **Players** — might, hero level, city level, VIP level and Gold Pass.
 - **Clan Capital ledger** — every donation and payout, by member.
 - **Vaults of the Ancients** near members' cities, on the days they exist.
+
+Every minute:
+
+- **Chat** — the clan chat and the scanner account's private messages, with
+  months of history read on the first sync.
 
 Once a day:
 
@@ -279,11 +286,6 @@ account nobody plays on at scan time, or lengthen the scan interval.
 If you put a CDN in front of this, check the edge before re-reading the code —
 `curl -sD - <url> | grep -iE 'cf-cache|age|cache-control'`. An `Age` larger than
 the time since deploy means you are not talking to the app.
-
-**The container is being OOM-killed but its memory use looks fine.**
-`memory.events`' `oom_kill` counts kills by *any* OOM killer. A rising count
-next to a healthy `memory.current` means the host is starved, not the
-container, and raising `MEMORY_LIMIT` cannot help.
 
 ## Multi-clan model
 

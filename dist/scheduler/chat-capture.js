@@ -1,0 +1,95 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.refreshChatSession = refreshChatSession;
+exports.startChatPoller = startChatPoller;
+exports.stopChatPoller = stopChatPoller;
+const chat_js_1 = require("../game-protocol/chat.js");
+const chat_repo_js_1 = require("../data/repositories/chat-repo.js");
+const logger_js_1 = require("../utils/logger.js");
+const log_throttle_js_1 = require("../utils/log-throttle.js");
+const log = (0, logger_js_1.childLogger)('chat');
+const pollWarner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 60 * 60_000);
+/** Channel kinds we keep: the clan chat and private messages. */
+const KEPT_TYPES = ['clanGroup', 'whisper'];
+/** How far back the first sync of a channel reads. */
+const BACKFILL = { clanGroup: 20_000, whisper: 2_000 };
+const POLL_MS = 60_000;
+const sessions = new Map();
+let pollTimer = null;
+let polling = false;
+async function sync(clanId, chat) {
+    const listed = await (0, chat_js_1.listChannels)(chat.session, KEPT_TYPES);
+    const clanUrl = `triumph_clan_channel_${chat.gameClanId}`;
+    const channels = listed.some((c) => c.url === clanUrl) || !chat.gameClanId
+        ? listed
+        : [...listed, { url: clanUrl, customType: 'clanGroup', name: '', memberCount: 0, members: [], lastMessageAt: null }];
+    let added = 0;
+    const now = new Date().toISOString();
+    for (const c of channels) {
+        const after = (0, chat_repo_js_1.newestChatMessageAt)(clanId, c.url);
+        // Nothing new since what we hold: skip the request.
+        if (after && c.lastMessageAt !== null && c.lastMessageAt <= after) {
+            (0, chat_repo_js_1.upsertChatChannel)(clanId, c, now);
+            continue;
+        }
+        const messages = await (0, chat_js_1.readMessages)(chat.session, c.url, after, after ? 2_000 : (BACKFILL[c.customType] ?? 2_000));
+        (0, chat_repo_js_1.upsertChatChannel)(clanId, c, now);
+        added += (0, chat_repo_js_1.saveChatMessages)(clanId, messages, now);
+    }
+    return { channels: channels.length, added };
+}
+/**
+ * After a scan's game sign-in: fresh chat token → chat session → sync.
+ * Returns a short summary for the scan log, never throws.
+ */
+async function refreshChatSession(clanId, client, gameClanId) {
+    try {
+        if (!client.suid)
+            return 'chat skipped (no website user id)';
+        const session = await (0, chat_js_1.chatLogin)(client.suid, await client.chatToken());
+        const chat = { session, gameClanId };
+        sessions.set(clanId, chat);
+        const r = await sync(clanId, chat);
+        return `chat: ${r.channels} channels, ${r.added} new messages`;
+    }
+    catch (err) {
+        sessions.delete(clanId);
+        log.warn({ noAlert: true }, `Clan #${clanId} chat sync failed (the scan is unaffected): ${String(err)}`);
+        return 'chat failed';
+    }
+}
+/** Start the between-scans poller (idempotent). */
+function startChatPoller() {
+    if (pollTimer)
+        return;
+    pollTimer = setInterval(() => { void pollOnce(); }, POLL_MS);
+    pollTimer.unref?.();
+}
+function stopChatPoller() {
+    if (pollTimer)
+        clearInterval(pollTimer);
+    pollTimer = null;
+}
+async function pollOnce() {
+    if (polling)
+        return;
+    polling = true;
+    try {
+        for (const [clanId, chat] of sessions) {
+            try {
+                const r = await sync(clanId, chat);
+                if (r.added)
+                    log.debug(`Clan #${clanId} chat: ${r.added} new messages`);
+            }
+            catch (err) {
+                // A rejected key (or any failure) waits for the next scan's fresh session.
+                sessions.delete(clanId);
+                pollWarner.warn(`poll:${clanId}`, `Chat polling paused for clan #${clanId} until its next scan: ${String(err)}`);
+            }
+        }
+    }
+    finally {
+        polling = false;
+    }
+}
+//# sourceMappingURL=chat-capture.js.map

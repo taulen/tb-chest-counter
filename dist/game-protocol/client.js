@@ -274,14 +274,18 @@ class GameClient {
     clanId;
     nickname;
     session;
+    suid;
     seq = 1;
-    constructor(url, playerId, realmId, clanId, nickname, session) {
+    constructor(url, playerId, realmId, clanId, nickname, session, 
+    /** The website user id (`tb:<n>`), which is also the chat (Sendbird) user id. */
+    suid = '') {
         this.url = url;
         this.playerId = playerId;
         this.realmId = realmId;
         this.clanId = clanId;
         this.nickname = nickname;
         this.session = session;
+        this.suid = suid;
     }
     static async connect(opts) {
         siteCookieHeader(opts.storageStatePath); // throws early when no session is stored at all
@@ -308,7 +312,7 @@ class GameClient {
         const profile = Array.isArray(root) && Array.isArray(root[6]) ? root[6][2] : undefined;
         const nickname = Array.isArray(profile) && typeof profile[0] === 'string' ? profile[0] : '';
         const clanId = Array.isArray(profile) && Array.isArray(profile[1]) && typeof profile[1][0] === 'number' ? profile[1][0] : 0;
-        return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session);
+        return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session, boot.suid);
     }
     /** Send one message and return every message in the reply. */
     async request(type, body) {
@@ -345,6 +349,14 @@ class GameClient {
      * at once. The reply's rewards are SUMMED across everything claimed, so claim
      * one gift per request to keep rewards per chest. IRREVERSIBLE.
      */
+    /** A chat access token for this account (Sendbird; see game-protocol/chat.ts). */
+    async chatToken() {
+        const reply = await this.ask(414, [[]]);
+        const token = Array.isArray(reply.body[0]) ? reply.body[0][0] : undefined;
+        if (typeof token !== 'string' || !/^[0-9a-f]{40}$/i.test(token))
+            throw new GameProtocolError('no chat token in the 414 reply');
+        return token;
+    }
     claim(gifts) {
         const body = {};
         for (const [id, n] of Object.entries(gifts))

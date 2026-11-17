@@ -112,4 +112,16 @@ describe('syncMembersFromGame', () => {
     syncMembersFromGame(1, rosterOf(players), players, DAY, NOW);
     expect(row(gone).is_active).toBe(1);
   });
+
+  it('retires an active member the roster does not account for, but never the [Unknown] placeholder', () => {
+    const players = [1, 2, 3, 4, 5].map((n) => player(n, `Member${n}`, 1_000_000 * n));
+    const ghost = upsertMember('OldOcrSpelling', 1).id;
+    const unknown = upsertMember('[Unknown]', 1).id;
+    const r = syncMembersFromGame(1, rosterOf(players), players, DAY, NOW);
+    expect(r.departed).toBe(1);
+    expect(row(ghost).is_active).toBe(0);
+    expect(row(unknown).is_active).toBe(1);
+    const audit = getDb().prepare("SELECT details FROM audit_log WHERE action = 'member.left_clan'").all() as Array<{ details: string }>;
+    expect(JSON.parse(audit[0].details)).toMatchObject({ name: 'OldOcrSpelling', source: 'game', linked: false });
+  });
 });

@@ -318,6 +318,8 @@ export class GameClient {
     readonly clanId: number,
     readonly nickname: string,
     private readonly session: BinValue,
+    /** The website user id (`tb:<n>`), which is also the chat (Sendbird) user id. */
+    readonly suid: string = '',
   ) {}
 
   static async connect(opts: ConnectOptions): Promise<GameClient> {
@@ -344,7 +346,7 @@ export class GameClient {
     const profile = Array.isArray(root) && Array.isArray(root[6]) ? (root[6][2] as Wire[] | undefined) : undefined;
     const nickname = Array.isArray(profile) && typeof profile[0] === 'string' ? profile[0] : '';
     const clanId = Array.isArray(profile) && Array.isArray(profile[1]) && typeof profile[1][0] === 'number' ? profile[1][0] : 0;
-    return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session as BinValue);
+    return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session as BinValue, boot.suid);
   }
 
   /** Send one message and return every message in the reply. */
@@ -388,6 +390,14 @@ export class GameClient {
    * at once. The reply's rewards are SUMMED across everything claimed, so claim
    * one gift per request to keep rewards per chest. IRREVERSIBLE.
    */
+  /** A chat access token for this account (Sendbird; see game-protocol/chat.ts). */
+  async chatToken(): Promise<string> {
+    const reply = await this.ask(414, [[]]);
+    const token = Array.isArray(reply.body[0]) ? reply.body[0][0] : undefined;
+    if (typeof token !== 'string' || !/^[0-9a-f]{40}$/i.test(token)) throw new GameProtocolError('no chat token in the 414 reply');
+    return token;
+  }
+
   claim(gifts: Record<number, number>): Promise<Frame> {
     const body: Record<string, number> = {};
     for (const [id, n] of Object.entries(gifts)) body[id] = n;

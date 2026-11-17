@@ -153,7 +153,9 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     tally.warnings.push(`gift types without a name in the game data: ${[...unnamed].join(', ')}`);
   }
 
-  // 2. Claim, one gift entry per request so each reward set is attributable.
+  // 2. Claim exactly as the game's Open button does: one chest per request
+  //    (a 3× Triumphal bundle is three requests with the same id), so each
+  //    reward set is attributable and no request asks for more than one.
   const saveClaim = getDb().prepare(
     'INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   );
@@ -161,15 +163,20 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
   for (const g of d.gifts) {
     i++;
     if (i % 10 === 1) ctx.reportProgress(`Opening chests (${i}/${d.gifts.length})…`);
-    try {
-      const rewards = parseClaimRewards(await d.client.claim({ [g.giftId]: g.count }));
-      saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString());
-      tally.claimed++;
-    } catch (err) {
-      tally.claimFailures++;
-      if (tally.claimFailures <= 3) log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${g.giftId} failed (recorded; retried next cycle): ${String(err)}`);
+    let opened = 0;
+    for (let n = 0; n < g.count; n++) {
+      try {
+        const rewards = parseClaimRewards(await d.client.claim({ [g.giftId]: 1 }));
+        saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString());
+        opened++;
+      } catch (err) {
+        if (tally.claimFailures === 0) log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${g.giftId} failed (recorded; retried next cycle): ${String(err)}`);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
     }
-    await new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
+    if (opened === g.count) tally.claimed++;
+    else tally.claimFailures++;
   }
   if (tally.claimFailures) {
     tally.warnings.push(`${tally.claimFailures} of ${d.gifts.length} chest(s) could not be opened; they are recorded and the next scan opens them`);

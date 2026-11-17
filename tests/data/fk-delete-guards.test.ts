@@ -75,6 +75,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   ],
   clans: [
     'audit_log.clan_id',
+    // In-game chat (v104).
+    'chat_channels.clan_id',
+    'chat_messages.clan_id',
     'clan_goal_history.clan_id',
     'discord_member_links.clan_id',
     // Game protocol capture (v102, v103).
@@ -318,6 +321,12 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now, now);
   db.prepare(
     `INSERT INTO game_raw_snapshots (clan_id, kind, ref_id, game_date, captured_at, payload) VALUES (?, 'clan_record', 0, '2026-11-17', ?, x'00')`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO chat_channels (clan_id, channel_url, custom_type, first_seen, last_seen) VALUES (?, 'triumph_clan_channel_1', 'clanGroup', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO chat_messages (clan_id, channel_url, message_id, created_at, captured_at) VALUES (?, 'triumph_clan_channel_1', 1, 1, ?)`,
   ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.

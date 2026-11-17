@@ -47,6 +47,26 @@ writes rotated cookies back ([`site-session.ts`](../src/game-protocol/site-sessi
 on a throwaway account five such logins in a row, plus four replays of the old
 flow, all left the session alive.
 
+## Chat (v104)
+
+[`chat.ts`](../src/game-protocol/chat.ts) + [`chat-capture.ts`](../src/scheduler/chat-capture.ts):
+the game's chat is Sendbird (app `1CA99C8C-…`). Message 414 (body `[[]]`) on
+the game session returns a 40-hex chat token; a WebSocket to
+`ws-<app>.sendbird.com` with subprotocol `{"token": "<hex>"}` (URL-encoded,
+spaces as `+`) answers `LOGI{…key…}`; the REST API
+(`api-<app>.sendbird.com/v3`, header `Session-Key`) lists the user's channels
+(`/users/tb:<n>/my_group_channels`) and pages history
+(`/group_channels/<url>/messages?message_ts=…&prev_limit|next_limit`). The chat
+user is the website account (`tb:<n>`), so clans scanned through one website
+account share private messages.
+
+Kept: `clanGroup` (`triumph_clan_channel_<gameClanId>`, always included even if
+unlisted) and `whisper` (1:1 private messages) — not realm or public channels.
+Each scan refreshes the session key and syncs; a poller reads new messages every
+minute on the cached key (no game or website traffic). The first sync of a
+channel backfills (history reaches months back: a realm channel returned 600
+messages from three months). Tables `chat_channels` / `chat_messages`.
+
 ## Members and collection (v103)
 
 Each capture also, every cycle:
@@ -58,7 +78,11 @@ Each capture also, every cycle:
   name. Linked members take the game's spelling (old name kept as an alias,
   `rename_member` audited with `source: 'game'`), get `clan_role`, are marked
   seen and get the day's might + hero-level snapshot (so the OCR might phase
-  skips the day). A linked player missing from a roster of ≥ 5 is marked left.
+  skips the day). With a roster of ≥ 5, every ACTIVE member the roster does
+  not account for is removed (soft delete, `member.left_clan` audited with
+  `linked: true|false`): players who left, and unlinked OCR rows/old spellings.
+  `[Unknown]` is exempt. Gift senders and ledger players outside the roster are
+  credited through `makeMemberResolver`, which never reactivates anyone.
   An alt that a merge rule folds into a member another player owns is only
   marked seen there — never linked, renamed or snapshotted from the alt.
 - **reads map objects** on the tiles around members' cities (3×3 tiles each,

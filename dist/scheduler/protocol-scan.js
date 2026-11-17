@@ -158,24 +158,33 @@ async function recordAndClaim(ctx, d) {
     if (unnamed.size) {
         tally.warnings.push(`gift types without a name in the game data: ${[...unnamed].join(', ')}`);
     }
-    // 2. Claim, one gift entry per request so each reward set is attributable.
+    // 2. Claim exactly as the game's Open button does: one chest per request
+    //    (a 3× Triumphal bundle is three requests with the same id), so each
+    //    reward set is attributable and no request asks for more than one.
     const saveClaim = (0, database_js_1.getDb)().prepare('INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     let i = 0;
     for (const g of d.gifts) {
         i++;
         if (i % 10 === 1)
             ctx.reportProgress(`Opening chests (${i}/${d.gifts.length})…`);
-        try {
-            const rewards = (0, messages_js_1.parseClaimRewards)(await d.client.claim({ [g.giftId]: g.count }));
-            saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString());
+        let opened = 0;
+        for (let n = 0; n < g.count; n++) {
+            try {
+                const rewards = (0, messages_js_1.parseClaimRewards)(await d.client.claim({ [g.giftId]: 1 }));
+                saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString());
+                opened++;
+            }
+            catch (err) {
+                if (tally.claimFailures === 0)
+                    log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${g.giftId} failed (recorded; retried next cycle): ${String(err)}`);
+                break;
+            }
+            await new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
+        }
+        if (opened === g.count)
             tally.claimed++;
-        }
-        catch (err) {
+        else
             tally.claimFailures++;
-            if (tally.claimFailures <= 3)
-                log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${g.giftId} failed (recorded; retried next cycle): ${String(err)}`);
-        }
-        await new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
     }
     if (tally.claimFailures) {
         tally.warnings.push(`${tally.claimFailures} of ${d.gifts.length} chest(s) could not be opened; they are recorded and the next scan opens them`);

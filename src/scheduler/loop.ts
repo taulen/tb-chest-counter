@@ -331,6 +331,9 @@ export class ScanLoop {
     this.running = true;
     log.info(`Scan loop started (interval: ${this.config.scanIntervalMs / 1000}s)`);
     this.armSessionChecks();
+    // New chat messages every minute between scans, on the chat session key
+    // each scan refreshes (never touches the game or website login).
+    void import('./chat-capture.js').then((m) => m.startChatPoller()).catch(() => {});
 
     // If we previously detected maintenance and stored a "blocked until"
     // timestamp, defer the first cycle until that time. Survives redeploys
@@ -1173,10 +1176,16 @@ export class ScanLoop {
           unknownNames: 0,
           stallReason: null,
         };
-        return await finalizeScanSuccess(
+        const done = await finalizeScanSuccess(
           this.buildScanFinalizeContext(), result, scanSession.id, tab, null,
           tally.warnings.length ? tally.warnings.join('\n') : null,
         );
+        // Chat (clan chat + the account's private messages), on the same game
+        // session, after the scan is final. Never throws.
+        this.reportProgress('scan', 'Reading chat…');
+        const { refreshChatSession } = await import('./chat-capture.js');
+        log.info(`Clan #${clanId} ${await refreshChatSession(clanId, capture.data.client, capture.data.record.clanId)}`);
+        return done;
       } catch (err) {
         const outcome = finalizeScanFailure(err, this.buildScanFinalizeContext(), result, scanSession.id);
         if (outcome.action === 'rethrow') throw err;

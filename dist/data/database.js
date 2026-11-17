@@ -1528,6 +1528,45 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // In-game chat (Nov 2026), read through the game's own chat service with
+        // the scanner account's token (src/game-protocol/chat.ts): the clan chat and
+        // the account's private (1:1) messages. Stored per clan; two clans scanned
+        // through one website account each keep their own copy of its private
+        // messages. Message ids are Sendbird's, unique per channel.
+        version: 104,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS chat_channels (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          channel_url TEXT NOT NULL,
+          custom_type TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          member_count INTEGER NOT NULL DEFAULT 0,
+          members TEXT NOT NULL DEFAULT '[]',
+          last_message_at INTEGER,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, channel_url)
+        );
+        CREATE TABLE IF NOT EXISTS chat_messages (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          channel_url TEXT NOT NULL,
+          message_id INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          custom_type TEXT NOT NULL DEFAULT '',
+          sender_id TEXT NOT NULL DEFAULT '',
+          sender_name TEXT NOT NULL DEFAULT '',
+          sender_info TEXT NOT NULL DEFAULT '',
+          message TEXT NOT NULL DEFAULT '',
+          data TEXT NOT NULL DEFAULT '',
+          captured_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, channel_url, message_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_time ON chat_messages (clan_id, channel_url, created_at);
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

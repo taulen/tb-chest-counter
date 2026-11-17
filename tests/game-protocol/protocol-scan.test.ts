@@ -89,9 +89,13 @@ describe('recordAndClaim', () => {
     ]);
     // A triumphal bundle of 3 is three bookkeeping rows, never points.
     expect(rows('triumphal_chest_records').map((r) => [r.gift, r.chest, r.points])).toEqual([[11, 'Silver Chest', 0], [11, 'Silver Chest', 0], [11, 'Silver Chest', 0]]);
-    expect(client.claims).toEqual([{ 10: 1 }, { 11: 3 }]);
+    // One chest per request, like the game's Open button: the bundle is three.
+    expect(client.claims).toEqual([{ 10: 1 }, { 11: 1 }, { 11: 1 }, { 11: 1 }]);
     const claims = getDb().prepare('SELECT gift_id, rewards FROM game_claims ORDER BY id').all();
-    expect(claims).toEqual([{ gift_id: 10, rewards: '{"2050":1}' }, { gift_id: 11, rewards: '{"2050":1}' }]);
+    expect(claims).toEqual([
+      { gift_id: 10, rewards: '{"2050":1}' },
+      { gift_id: 11, rewards: '{"2050":1}' }, { gift_id: 11, rewards: '{"2050":1}' }, { gift_id: 11, rewards: '{"2050":1}' },
+    ]);
   });
 
   it('keeps a chest whose claim failed, and a re-run neither loses nor doubles it', async () => {

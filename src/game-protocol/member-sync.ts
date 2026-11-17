@@ -39,6 +39,8 @@ import type { ClanMember as GameClanMember, PlayerRecord } from './messages.js';
 const log = childLogger('member-sync');
 
 const MIGHT_TOLERANCE = 0.15;
+/** The scan's placeholder for unreadable senders; never a clan member to retire. */
+const UNKNOWN_MEMBER_NAME = '[Unknown]';
 /** Never treat a member list this short as the whole clan (a bad read must not retire everyone). */
 const MIN_ROSTER_FOR_DEPARTURES = 5;
 
@@ -188,17 +190,20 @@ export function syncMembersFromGame(
       .map((x) => ({ memberId: x.id as number, might: x.p!.might as number, level: x.p!.heroLevel ?? null })),
   );
 
-  // Departures: linked members whose player is no longer in the clan record.
+  // Departures. The game's roster is the whole clan, so every active member it
+  // does not account for is removed (soft delete: is_active = 0, left_at set,
+  // history kept, restorable): a linked player who left, and an unlinked row —
+  // a name OCR read off a gift from someone who has since gone, or an old
+  // spelling. Rejoining reactivates the same member through the link.
   if (roster.length >= MIN_ROSTER_FOR_DEPARTURES) {
-    const inClan = new Set(roster.map((r) => r.playerId));
-    for (const [playerId, memberId] of linked) {
-      if (inClan.has(playerId)) continue;
-      const m = all.find((x) => x.id === memberId);
-      if (m?.isActive) {
-        removeMember(memberId, clanId);
-        logSystemAction(clanId, 'member.left_clan', { id: memberId, name: m.name, source: 'game' });
-        result.departed++;
-      }
+    const present = new Set(result.memberIds.values());
+    for (const m of all) {
+      if (!m.isActive || present.has(m.id) || m.name === UNKNOWN_MEMBER_NAME) continue;
+      removeMember(m.id, clanId);
+      const wasLinked = linkedIds.has(m.id);
+      logSystemAction(clanId, 'member.left_clan', { id: m.id, name: m.name, source: 'game', linked: wasLinked });
+      m.isActive = false;
+      result.departed++;
     }
   }
   return result;
