@@ -45,11 +45,14 @@ import type { NamedGift } from '../data/repositories/game-protocol-repo.js';
 import type { ChestRecord, GiftEntry } from '../models/types.js';
 import { childLogger } from '../utils/logger.js';
 import { CLAIM_GAP, requestGap } from '../utils/request-gap.js';
+import { planGiftClaims } from '../game-protocol/claim-plan.js';
 
 const log = childLogger('protocol-scan');
 
 /** Most gifts in one claim request (the game's own "Claim chests" sends the whole tab). */
 const CLAIM_BATCH_MAX = 100;
+/** Chests per claim request: a bigger stack is split across requests (claim-plan.ts). */
+const CLAIM_CHESTS_MAX = 100;
 /** Sender name used when the game gave us neither a member link nor a name. */
 const UNKNOWN_SENDER = '[Unknown]';
 
@@ -157,13 +160,15 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     tally.warnings.push(`gift types without a name in the game data: ${[...unnamed].join(', ')}`);
   }
 
-  // 2. Claim. Single Gifts-tab chests go a chest TYPE at a time: one request
-  //    holding every gift of that type, the way the game's own "Claim chests"
-  //    asks for the whole tab — a few requests instead of one per chest, and
-  //    rewards still known per type (the game sums a request's rewards). A
-  //    refused batch is retried a chest at a time, so one bad gift never holds
-  //    the rest. Triumphal chests and bundles (count > 1) go exactly as the
-  //    Open button does: one chest per request, a 3× bundle three requests.
+  // 2. Claim. Gifts-tab chests go a chest TYPE at a time: one request holding
+  //    every entry of that type, each asked for with its chest count — the way
+  //    the game's own "Claim chests" asks for the whole tab — capped at
+  //    CLAIM_BATCH_MAX entries / CLAIM_CHESTS_MAX chests (claim-plan.ts). A
+  //    summon's 293-chest stack is three requests, not 293. Rewards stay known
+  //    per type (the game sums a request's rewards; batch_size = chests). A
+  //    refused request is retried a chest at a time, so one bad gift never
+  //    holds the rest. Triumphal chests go exactly as the game's Open button
+  //    does: one chest per request, a 3× bundle three requests.
   const saveClaim = getDb().prepare(
     `INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at, batch_size, gift_ids)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -171,70 +176,64 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
   // A varied gap between claims, quicker than a player clicks Open by hand.
   const gap = () => requestGap(CLAIM_GAP[0], CLAIM_GAP[1]);
   let warned = false;
+  const failed = new Set<number>();
   const claimFailed = (giftId: number, err: unknown) => {
+    failed.add(giftId);
     if (!warned) log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${giftId} failed (recorded; retried next cycle): ${String(err)}`);
     warned = true;
   };
-  /** One gift, one chest per request; true when every chest of it opened. */
-  const claimSingly = async (g: NamedGift): Promise<boolean> => {
-    for (let n = 0; n < g.count; n++) {
+  // Progress in CHESTS, not gift entries: a bundle or a summon's drop is one
+  // entry holding many chests. Counting entries showed SIK's 473 chests as
+  // "Opening chests (11/44)…" for a minute and a half, which looked stuck.
+  const totalChests = d.gifts.reduce((n, g) => n + g.count, 0);
+  let openedChests = 0;
+  let shownAt = -Infinity;
+  const progress = (force = false): void => {
+    if (!force && openedChests - shownAt < 10 && openedChests < totalChests) return;
+    shownAt = openedChests;
+    ctx.reportProgress(`Opening chests (${openedChests}/${totalChests})…`);
+  };
+  /** `n` chests of one gift, one chest per request; stops at the first refusal. */
+  const claimChests = async (g: NamedGift, n: number): Promise<void> => {
+    for (let i = 0; i < n; i++) {
       try {
         const rewards = parseClaimRewards(await d.client.claim({ [g.giftId]: 1 }));
         saveClaim.run(clanId, sessionId, g.giftId, g.giftType, g.tab, JSON.stringify(rewards), new Date().toISOString(), 1, null);
       } catch (err) {
         claimFailed(g.giftId, err);
-        return false;
+        openedChests += n - i; // skipped: recorded, the next scan opens them
+        progress();
+        return;
       }
+      openedChests++;
+      progress();
       await gap();
     }
-    return true;
   };
 
-  const batches = new Map<number, NamedGift[]>();
-  const singles: NamedGift[] = [];
-  for (const g of d.gifts) {
-    if (g.tab === 1 && g.count === 1) {
-      const list = batches.get(g.giftType) ?? [];
-      list.push(g);
-      batches.set(g.giftType, list);
-    } else {
-      singles.push(g);
+  progress(true);
+  for (const req of planGiftClaims(d.gifts.filter((g) => g.tab === 1), CLAIM_BATCH_MAX, CLAIM_CHESTS_MAX)) {
+    try {
+      const ask: Record<number, number> = {};
+      for (const p of req.parts) ask[p.gift.giftId] = p.n;
+      const rewards = parseClaimRewards(await d.client.claim(ask));
+      saveClaim.run(
+        clanId, sessionId, req.parts[0].gift.giftId, req.giftType, 1, JSON.stringify(rewards), new Date().toISOString(),
+        req.chests, req.parts.length > 1 ? JSON.stringify(req.parts.map((p) => p.gift.giftId)) : null,
+      );
+      openedChests += req.chests;
+      progress(true);
+      await gap();
+    } catch {
+      await gap();
+      for (const p of req.parts) await claimChests(p.gift, p.n);
     }
   }
-  let done = 0;
-  const progress = () => ctx.reportProgress(`Opening chests (${done}/${d.gifts.length})…`);
-  for (const all of batches.values()) {
-    for (let at = 0; at < all.length; at += CLAIM_BATCH_MAX) {
-      const group = all.slice(at, at + CLAIM_BATCH_MAX);
-      progress();
-      try {
-        const ask: Record<number, number> = {};
-        for (const g of group) ask[g.giftId] = 1;
-        const rewards = parseClaimRewards(await d.client.claim(ask));
-        saveClaim.run(
-          clanId, sessionId, group[0].giftId, group[0].giftType, 1, JSON.stringify(rewards), new Date().toISOString(),
-          group.length, group.length > 1 ? JSON.stringify(group.map((g) => g.giftId)) : null,
-        );
-        tally.claimed += group.length;
-        await gap();
-      } catch {
-        await gap();
-        for (const g of group) {
-          if (await claimSingly(g)) tally.claimed++;
-          else tally.claimFailures++;
-        }
-      }
-      done += group.length;
-    }
-  }
-  for (const g of singles) {
-    if (done % 10 === 0) progress();
-    if (await claimSingly(g)) tally.claimed++;
-    else tally.claimFailures++;
-    done++;
-  }
+  for (const g of d.gifts.filter((x) => x.tab !== 1)) await claimChests(g, g.count);
+  tally.claimFailures = failed.size;
+  tally.claimed = d.gifts.length - failed.size;
   if (tally.claimFailures) {
-    tally.warnings.push(`${tally.claimFailures} of ${d.gifts.length} chest(s) could not be opened; they are recorded and the next scan opens them`);
+    tally.warnings.push(`${tally.claimFailures} of ${d.gifts.length} gift entries could not be opened in full; their chests are recorded and the next scan opens them`);
   }
 
   // 3. Ledger → resource rows.

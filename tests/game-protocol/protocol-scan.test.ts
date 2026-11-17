@@ -117,12 +117,55 @@ describe('recordAndClaim', () => {
     ]);
   });
 
+  it('opens Gifts-tab stacks with their chest count, a type per request, at most 100 chests a request', async () => {
+    const miana = upsertMember('Miana', 1).id;
+    const client = fakeClient();
+    const guardian = { giftType: 9001, chestName: 'Golden Guardian Ascendant Chest', sourceName: 'Rise of the Ancients' };
+    const ancients = { giftType: 9002, chestName: "Ancients' Chest", sourceName: 'Rise of the Ancients' };
+    const tally = await recordAndClaim(ctx(sessionRepo.createSession('manual', 1).id), capture([
+      gift(40, 501, 'Miana', { ...guardian, count: 293 }),
+      gift(41, 501, 'Miana', { ...ancients, count: 8 }),
+      gift(42, 501, 'Miana', { ...ancients, count: 4 }),
+    ], new Map([[501, miana]]), client));
+
+    expect(tally).toMatchObject({ claimed: 3, claimFailures: 0 });
+    // SIK's 473 chests took 462 requests one by one (Nov 17 2026); now: four.
+    expect(client.claims).toEqual([{ 40: 100 }, { 40: 100 }, { 40: 93 }, { 41: 8, 42: 4 }]);
+    expect(getDb().prepare('SELECT gift_id, batch_size, gift_ids FROM game_claims ORDER BY id').all()).toEqual([
+      { gift_id: 40, batch_size: 100, gift_ids: null },
+      { gift_id: 40, batch_size: 100, gift_ids: null },
+      { gift_id: 40, batch_size: 93, gift_ids: null },
+      { gift_id: 41, batch_size: 12, gift_ids: '[41,42]' },
+    ]);
+  });
+
+  it('opens a refused stack a chest at a time', async () => {
+    const miana = upsertMember('Miana', 1).id;
+    let refused = false;
+    const client = fakeClient();
+    const claim = client.claim.bind(client);
+    // The game refuses the stacked ask once; single chests go through.
+    client.claim = async (gifts: Record<number, number>) => {
+      if (!refused && Object.values(gifts).some((n) => n > 1)) {
+        refused = true;
+        client.claims.push(gifts);
+        throw new Error('claim refused');
+      }
+      return claim(gifts);
+    };
+    const tally = await recordAndClaim(ctx(sessionRepo.createSession('manual', 1).id), capture([
+      gift(50, 501, 'Miana', { count: 3 }),
+    ], new Map([[501, miana]]), client));
+    expect(tally).toMatchObject({ claimed: 1, claimFailures: 0 });
+    expect(client.claims).toEqual([{ 50: 3 }, { 50: 1 }, { 50: 1 }, { 50: 1 }]);
+  });
+
   it('keeps a chest whose claim failed, and a re-run neither loses nor doubles it', async () => {
     const miana = upsertMember('Miana', 1).id;
     const gifts = [gift(20, 501, 'Miana'), gift(21, 501, 'Miana')];
     const first = await recordAndClaim(ctx(sessionRepo.createSession('manual', 1).id), capture(gifts, new Map([[501, miana]]), fakeClient({ failIds: [21] })));
     expect(first).toMatchObject({ claimed: 1, claimFailures: 1 });
-    expect(first.warnings[0]).toMatch(/1 of 2 chest\(s\) could not be opened/);
+    expect(first.warnings[0]).toMatch(/1 of 2 gift entries could not be opened in full/);
     expect(rows('chest_records').map((r) => r.gift)).toEqual([20, 21]);
 
     // Next cycle: gift 21 is still in the game.

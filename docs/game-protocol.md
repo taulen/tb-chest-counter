@@ -14,11 +14,16 @@ the same time (see [Scan lanes](#scan-lanes)):
    members, and returns its live session and data;
 2. [`protocol-scan.ts`](../src/scheduler/protocol-scan.ts) records every gift —
    `count − rows already carrying its game_gift_id`, so re-runs never double —
-   THEN claims them (15013): single Gifts-tab chests one request per chest
-   TYPE (every gift of that type, like the game's own "Claim chests" — SIK's 49
-   took ~15 s one by one), Triumphal chests and bundles one chest per request
-   like the Open button; a refused batch is retried chest by chest; each
-   request's (summed) rewards → `game_claims` with `batch_size` / `gift_ids` (v109),
+   THEN claims them (15013, `{giftId: n}` — n chests of that entry): Gifts-tab
+   chests one request per chest TYPE, every entry of that type asked for with
+   its chest count, like the game's own "Claim chests" — at most 100 entries /
+   100 chests a request, a bigger stack split across requests
+   ([claim-plan.ts](../src/game-protocol/claim-plan.ts); SIK's 49 singles took
+   ~15 s one by one, its 473 stacked summon chests 462 requests / ~100 s until
+   Nov 17 2026); Triumphal chests one chest per request like the Open button
+   (a 3× bundle is three, as captured); a refused request is retried chest by
+   chest; each request's (summed) rewards → `game_claims` with `batch_size`
+   (chests) / `gift_ids` (v109) — the scan card counts chests, not entries —
    THEN imports the ledger;
 3. the session is finalised like any scan (`finalizeScanSuccess`, Discord report).
 4. then, on the same session, the slower collection (`collectCaptureExtras`:
