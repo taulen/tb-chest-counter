@@ -145,7 +145,7 @@ function cardHtml(ctx, { data = null, state = 'ready', twoColumns = false } = {}
   // The portrait and the game's facts arrive with the data; the name and rank
   // are known before it, so the card opens at once and fills in.
   const head = `<div class="lbb-head">
-      <div class="lbb-who">${heroAvatarHtml(data?.game, 36)}${rankHtml(ctx.rank)}<span class="lbb-name">${escapeHtml(ctx.memberName || '')}</span></div>
+      <div class="lbb-who">${heroAvatarHtml(data?.game, 48)}${rankHtml(ctx.rank)}<span class="lbb-name">${escapeHtml(ctx.memberName || '')}</span></div>
       ${ctx.windowLabel ? `<div class="lbb-when">${escapeHtml(ctx.windowLabel)}</div>` : ''}
     </div>`;
   if (state === 'loading') return `${head}<p class="lbb-empty">${t('Loading…')}</p>`;
@@ -159,7 +159,7 @@ function cardHtml(ctx, { data = null, state = 'ready', twoColumns = false } = {}
 
 /** The modal's content: the title already names the member. */
 function sheetHtml(ctx, data, twoColumns) {
-  return `<div class="lbb-sheet-meta">${heroAvatarHtml(data.game, 36)}${rankHtml(ctx.rank)}${ctx.windowLabel ? `<span class="lbb-when">${escapeHtml(ctx.windowLabel)}</span>` : ''}</div>
+  return `<div class="lbb-sheet-meta">${heroAvatarHtml(data.game, 48)}${rankHtml(ctx.rank)}${ctx.windowLabel ? `<span class="lbb-when">${escapeHtml(ctx.windowLabel)}</span>` : ''}</div>
     <div class="lbb-facts">${gameFactsHtml(data.game, { heroLevel: true })}</div>
     ${totalsHtml(data)}
     <div class="lbb-body">${bodyHtml(data, twoColumns)}</div>`;

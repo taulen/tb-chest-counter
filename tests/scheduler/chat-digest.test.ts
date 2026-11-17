@@ -13,6 +13,7 @@ import {
   digestDayLabel,
   digestSchedule,
   formatChatDigest,
+  POST_LATE_LIMIT_MS,
   runChatDigest,
   type DigestRow,
 } from '../../src/scheduler/chat-digest.js';
@@ -206,6 +207,24 @@ describe('chat digest — at most one message a day', () => {
     await run(at(40), send);
     expect(send).toHaveBeenCalledTimes(1);
     expect(getChatDigestSettings(CLAN).testRequestedAt).toBeNull();
+  });
+
+  it('never posts a stale day: enabled long after the post time, it waits for the next day', async () => {
+    const send = vi.fn<SocketSender>(async () => ({ status: 'sent', messageId: 7 }));
+    // 15 Nov posts with the first scan after the 16 Nov 17:00 reset (at 24). Switched on at 17 Nov
+    // 09:00 (at 40): the day closed long ago — the leaders posted it by hand.
+    expect(await run(at(40), send)).toBe('');
+    expect(send).not.toHaveBeenCalled();
+    // Just inside the limit it still goes.
+    expect(await run(at(24) + POST_LATE_LIMIT_MS - 60_000, send)).toMatch(/posted/);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('a test post may send the latest closed day however late it is', async () => {
+    const send = vi.fn<SocketSender>(async () => ({ status: 'sent', messageId: 8 }));
+    requestTestPost(CLAN, 1, new Date(at(40)).toISOString());
+    expect(await run(at(40), send)).toMatch(/posted/);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it('a test post uses the day\'s one message — the scheduled post does not follow it', async () => {

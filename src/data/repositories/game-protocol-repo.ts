@@ -369,11 +369,21 @@ export function setParseMarker(clanId: number, parser: string, version: number, 
  * a time (a clan's archive can be thousands of replies). Body as archived.
  */
 export function* rawSnapshotsOldestFirst(clanId: number, kind: string): Generator<{ refId: number; capturedAt: string; body: unknown }> {
-  const rows = getDb().prepare(
-    `SELECT ref_id AS refId, captured_at AS capturedAt, payload FROM game_raw_snapshots
+  // Keys first, then one payload at a time: the caller WRITES while it walks
+  // (history rows), and better-sqlite3 refuses any statement while an
+  // .iterate() cursor is open on the connection ("This database connection
+  // is busy executing a query" — the artifacts replay failed on prod with it,
+  // Nov 2026). The payloads stay out of memory together.
+  const db = getDb();
+  const keys = db.prepare(
+    `SELECT ref_id AS refId, game_date AS gameDate, captured_at AS capturedAt FROM game_raw_snapshots
       WHERE clan_id = ? AND kind = ? ORDER BY captured_at, ref_id`,
-  ).iterate(clanId, kind) as IterableIterator<{ refId: number; capturedAt: string; payload: Buffer }>;
-  for (const r of rows) yield { refId: r.refId, capturedAt: r.capturedAt, body: JSON.parse(gunzipSync(r.payload).toString('utf8')) };
+  ).all(clanId, kind) as Array<{ refId: number; gameDate: string; capturedAt: string }>;
+  const payloadOf = db.prepare('SELECT payload FROM game_raw_snapshots WHERE clan_id = ? AND kind = ? AND ref_id = ? AND game_date = ?');
+  for (const k of keys) {
+    const row = payloadOf.get(clanId, kind, k.refId, k.gameDate) as { payload: Buffer } | undefined;
+    if (row) yield { refId: k.refId, capturedAt: k.capturedAt, body: JSON.parse(gunzipSync(row.payload).toString('utf8')) };
+  }
 }
 
 /** Players of this clan with any captain stored (v108) — the rest are read once more to backfill. */

@@ -1269,7 +1269,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     <div class="card">
       <div class="card-header member-detail-header">
         <div class="member-detail-title">
-          ${heroAvatarHtml(currentMemberGame?.player, 44)}
+          ${heroAvatarHtml(currentMemberGame?.player, 72)}
           <h2>${esc(data.name)}</h2>
           ${rankBadge}
           ${gameFactsHtml(currentMemberGame?.player)}

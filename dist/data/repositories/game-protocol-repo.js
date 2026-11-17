@@ -292,10 +292,20 @@ function setParseMarker(clanId, parser, version, now = new Date().toISOString())
  * a time (a clan's archive can be thousands of replies). Body as archived.
  */
 function* rawSnapshotsOldestFirst(clanId, kind) {
-    const rows = (0, database_js_1.getDb)().prepare(`SELECT ref_id AS refId, captured_at AS capturedAt, payload FROM game_raw_snapshots
-      WHERE clan_id = ? AND kind = ? ORDER BY captured_at, ref_id`).iterate(clanId, kind);
-    for (const r of rows)
-        yield { refId: r.refId, capturedAt: r.capturedAt, body: JSON.parse((0, zlib_1.gunzipSync)(r.payload).toString('utf8')) };
+    // Keys first, then one payload at a time: the caller WRITES while it walks
+    // (history rows), and better-sqlite3 refuses any statement while an
+    // .iterate() cursor is open on the connection ("This database connection
+    // is busy executing a query" — the artifacts replay failed on prod with it,
+    // Nov 2026). The payloads stay out of memory together.
+    const db = (0, database_js_1.getDb)();
+    const keys = db.prepare(`SELECT ref_id AS refId, game_date AS gameDate, captured_at AS capturedAt FROM game_raw_snapshots
+      WHERE clan_id = ? AND kind = ? ORDER BY captured_at, ref_id`).all(clanId, kind);
+    const payloadOf = db.prepare('SELECT payload FROM game_raw_snapshots WHERE clan_id = ? AND kind = ? AND ref_id = ? AND game_date = ?');
+    for (const k of keys) {
+        const row = payloadOf.get(clanId, kind, k.refId, k.gameDate);
+        if (row)
+            yield { refId: k.refId, capturedAt: k.capturedAt, body: JSON.parse((0, zlib_1.gunzipSync)(row.payload).toString('utf8')) };
+    }
 }
 /** Players of this clan with any captain stored (v108) — the rest are read once more to backfill. */
 function playersWithCaptains(clanId) {

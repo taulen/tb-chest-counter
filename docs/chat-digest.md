@@ -44,10 +44,14 @@ send), [chat-digest-repo.ts](../src/data/repositories/chat-digest-repo.ts),
 ## When
 
 At the end of a scan (it needs the scan's game session for a chat token): the
-first scan after the clan's post time (default **17:30 UTC**, 30 min after the
-17:00 UTC rollover) posts the game day that closed at the rollover. "Send test
-post now" queues the same post (latest closed day) for the clan's next scan —
-it uses that day's one message, so the scheduled one doesn't follow.
+first scan after the daily reset (17:00 UTC rollover) posts the game day that
+just closed — no time to set (user, Nov 2026). A day is only posted within
+**6 h** of the reset (): switching the digest on later in
+the day, or a long outage, skips it rather than posting a stale list the
+leaders already posted by hand (enabling it at midday on Nov 17 posted the
+15 November list). "Send test post now" queues the latest closed day for the
+clan's next scan, however late — it uses that day's one message, so the
+scheduled one doesn't follow.
 
 ## What
 

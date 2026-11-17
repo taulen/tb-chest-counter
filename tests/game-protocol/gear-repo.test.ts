@@ -114,4 +114,17 @@ describe('archive replay bookkeeping', () => {
       { refId: 2, capturedAt: '2026-11-17T04:00:00Z', body: ['b17'] },
     ]);
   });
+
+  it('lets the caller write while it walks the archive (no open cursor)', () => {
+    saveRawSnapshot(CLAN, 'city', 1, '2026-11-16', ['a'], '2026-11-16T04:00:00Z');
+    saveRawSnapshot(CLAN, 'city', 2, '2026-11-17', ['b'], '2026-11-17T04:00:00Z');
+    let walked = 0;
+    // On prod this threw "This database connection is busy executing a query".
+    for (const raw of rawSnapshotsOldestFirst(CLAN, 'city')) {
+      setParseMarker(CLAN, 'artifacts', raw.refId);
+      walked++;
+    }
+    expect(walked).toBe(2);
+    expect(getParseMarker(CLAN, 'artifacts')).toBe(2);
+  });
 });

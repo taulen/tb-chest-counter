@@ -9445,15 +9445,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-size: 13px;
   min-width: 0;
 }
-.chat-avatar {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid var(--border);
-}
-.chat-avatar.is-empty { display: inline-block; background: var(--subtle-bg); }
+/* The sender's framed portrait (lib/game-facts.js heroAvatarHtml). */
+.chat-avatar { display: inline-flex; flex: none; line-height: 0; }
+.chat-avatar.is-empty { width: 30px; height: 30px; border-radius: 50%; background: var(--subtle-bg); }
 .chat-rank { color: var(--accent-blue); font-weight: 600; }
 .chat-name { color: var(--text-secondary); font-weight: 600; overflow-wrap: anywhere; }
 .chat-name .member-link { color: inherit; }

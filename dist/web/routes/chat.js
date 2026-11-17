@@ -80,10 +80,6 @@ function toApi(m) {
         previousText: m.previousMessage,
     };
 }
-/**
- * Who the senders are on the site: their member (for the profile link), hero
- * portrait and current clan rank. Clan-scoped.
- */
 function people(clanId, playerIds) {
     const out = {};
     const ids = [...new Set(playerIds)];
@@ -92,11 +88,14 @@ function people(clanId, playerIds) {
     const db = (0, database_js_1.getDb)();
     const ph = ids.map(() => '?').join(',');
     for (const id of ids)
-        out[id] = { memberId: null, avatarUrl: null, role: null };
-    const players = db.prepare(`SELECT player_id, hero_avatar, role FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
+        out[id] = { memberId: null, avatarUrl: null, frameUrl: null, heroLevel: null, role: null };
+    const players = db.prepare(`SELECT player_id, hero_avatar, avatar_frame, hero_level, role FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
         .all(clanId, ...ids);
     for (const p of players)
-        Object.assign(out[p.player_id], { avatarUrl: (0, game_profile_repo_js_1.heroAvatarUrl)(p.hero_avatar), role: p.role });
+        Object.assign(out[p.player_id], {
+            // The portrait the game draws: hero art in the player's own frame, with the hero level.
+            avatarUrl: (0, game_profile_repo_js_1.heroAvatarUrl)(p.hero_avatar), frameUrl: (0, game_profile_repo_js_1.avatarFrameUrl)(p.avatar_frame), heroLevel: p.hero_level, role: p.role,
+        });
     const members = db.prepare(`SELECT id, game_player_id FROM members WHERE clan_id = ? AND game_player_id IN (${ph})`)
         .all(clanId, ...ids);
     for (const m of members)

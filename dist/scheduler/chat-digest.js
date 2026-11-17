@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.digestWarningKey = exports.COVERAGE_MAX_GAP_H = void 0;
+exports.digestWarningKey = exports.POST_LATE_LIMIT_MS = exports.COVERAGE_MAX_GAP_H = void 0;
 exports.digestDayLabel = digestDayLabel;
 exports.formatChatDigest = formatChatDigest;
 exports.digestSchedule = digestSchedule;
@@ -22,6 +22,12 @@ const chat_capture_js_1 = require("./chat-capture.js");
 const log = (0, logger_js_1.childLogger)('chat-digest');
 /** A scan gap longer than this inside the digest's day means the day may be incomplete: no post. */
 exports.COVERAGE_MAX_GAP_H = 3;
+/**
+ * How late after its post time a day's digest may still go out (the first scan
+ * after 17:30 normally posts it within the hour). Past this the day is skipped:
+ * the leaders have likely posted it by hand, or the clan has moved on.
+ */
+exports.POST_LATE_LIMIT_MS = 6 * 3600_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -193,8 +199,16 @@ async function runChatDigestInner(clanId, opts) {
     catch (err) {
         log.warn({ noAlert: true }, `Clan #${clanId} chat digest: could not list the account's group chats: ${String(err)}`);
     }
-    const sch = digestSchedule(now, opts.rolloverUtcHour, settings.postUtcMinute);
+    // Posts with the first scan after the daily reset (user, Nov 2026: no
+    // user-set time) — coverage below waits for that closing scan.
+    const sch = digestSchedule(now, opts.rolloverUtcHour, opts.rolloverUtcHour * 60);
     if (!test && now < sch.postAtMs)
+        return '';
+    // Too late for this day: switching the digest on (or a long outage) must
+    // never post a stale day — on Nov 17 2026, enabling it at midday posted the
+    // 15 November digest the leaders had already posted by hand the evening
+    // before. The next day posts on time. An admin's test post is exempt.
+    if (!test && now > sch.postAtMs + exports.POST_LATE_LIMIT_MS)
         return '';
     const blocked = (0, chat_digest_repo_js_1.attemptBlocker)(clanId, sch.gameDate, sch.sentGameDate);
     if (blocked)
@@ -262,7 +276,7 @@ async function runChatDigestInner(clanId, opts) {
 /** What the next post would say, for the settings page (never sends). */
 function previewChatDigest(clanId, rolloverUtcHour, now = Date.now()) {
     const settings = (0, chat_digest_repo_js_1.getChatDigestSettings)(clanId);
-    const sch = digestSchedule(now, rolloverUtcHour, settings.postUtcMinute);
+    const sch = digestSchedule(now, rolloverUtcHour, rolloverUtcHour * 60);
     const { text, shown } = formatChatDigest(digestRows(clanId, sch.dayStartMs, sch.dayEndMs), sch.gameDate, settings.entries);
     return {
         gameDate: sch.gameDate,

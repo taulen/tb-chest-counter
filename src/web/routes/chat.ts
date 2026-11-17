@@ -16,7 +16,7 @@ import {
   chatAnchorAt, chatHistoryInfo, chatSenders, clanChatChannels, countChatMatches, readChatAround, readChatPage,
   type ChatCursor, type StoredChatMessage,
 } from '../../data/repositories/chat-repo.js';
-import { heroAvatarUrl } from '../../data/repositories/game-profile-repo.js';
+import { avatarFrameUrl, heroAvatarUrl } from '../../data/repositories/game-profile-repo.js';
 import { chatSenderRank, chatSenderTag, parseChatSubs, type ChatSub } from '../../game-protocol/chat-text.js';
 import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
 
@@ -88,16 +88,20 @@ function toApi(m: StoredChatMessage) {
  * Who the senders are on the site: their member (for the profile link), hero
  * portrait and current clan rank. Clan-scoped.
  */
-function people(clanId: number, playerIds: number[]): Record<number, { memberId: number | null; avatarUrl: string | null; role: number | null }> {
-  const out: Record<number, { memberId: number | null; avatarUrl: string | null; role: number | null }> = {};
+type ChatPerson = { memberId: number | null; avatarUrl: string | null; frameUrl: string | null; heroLevel: number | null; role: number | null };
+function people(clanId: number, playerIds: number[]): Record<number, ChatPerson> {
+  const out: Record<number, ChatPerson> = {};
   const ids = [...new Set(playerIds)];
   if (!ids.length) return out;
   const db = getDb();
   const ph = ids.map(() => '?').join(',');
-  for (const id of ids) out[id] = { memberId: null, avatarUrl: null, role: null };
-  const players = db.prepare(`SELECT player_id, hero_avatar, role FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
-    .all(clanId, ...ids) as Array<{ player_id: number; hero_avatar: number | null; role: number | null }>;
-  for (const p of players) Object.assign(out[p.player_id], { avatarUrl: heroAvatarUrl(p.hero_avatar), role: p.role });
+  for (const id of ids) out[id] = { memberId: null, avatarUrl: null, frameUrl: null, heroLevel: null, role: null };
+  const players = db.prepare(`SELECT player_id, hero_avatar, avatar_frame, hero_level, role FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
+    .all(clanId, ...ids) as Array<{ player_id: number; hero_avatar: number | null; avatar_frame: number | null; hero_level: number | null; role: number | null }>;
+  for (const p of players) Object.assign(out[p.player_id], {
+    // The portrait the game draws: hero art in the player's own frame, with the hero level.
+    avatarUrl: heroAvatarUrl(p.hero_avatar), frameUrl: avatarFrameUrl(p.avatar_frame), heroLevel: p.hero_level, role: p.role,
+  });
   const members = db.prepare(`SELECT id, game_player_id FROM members WHERE clan_id = ? AND game_player_id IN (${ph})`)
     .all(clanId, ...ids) as Array<{ id: number; game_player_id: number }>;
   for (const m of members) out[m.game_player_id].memberId = m.id;

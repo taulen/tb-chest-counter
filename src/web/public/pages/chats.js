@@ -23,7 +23,7 @@
 import { api } from '../lib/api.js';
 import { esc, memberLink, localDateKey, copyTextToClipboard, prefersReducedMotion } from '../lib/ui.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
-import { gameRankName } from '../lib/game-facts.js';
+import { gameRankName, heroAvatarHtml } from '../lib/game-facts.js';
 
 const CHANNELS = [{ key: 'clan', label: () => t('Clan chat'), endpoint: '/chat/clan' }];
 const PAGE = 100;
@@ -201,8 +201,9 @@ function messageHtml(m, { hit = false } = {}) {
   const who = m.sender.playerId ? state.people[m.sender.playerId] : null;
   const role = m.sender.rank ?? who?.role ?? null;
   const rank = role ? gameRankName(role) : '';
+  // The portrait as the game draws it: in the player's frame, hero level on its plate.
   const avatar = who?.avatarUrl
-    ? `<img class="chat-avatar" src="${esc(who.avatarUrl)}" alt="" width="24" height="24" loading="lazy" decoding="async">`
+    ? `<span class="chat-avatar">${heroAvatarHtml(who, 30)}</span>`
     : '<span class="chat-avatar is-empty" aria-hidden="true"></span>';
   const nameHtml = who?.memberId ? memberLink(who.memberId, m.sender.name) : esc(m.sender.name || t('Unknown player'));
   const nameMarked = terms().length && !who?.memberId ? marked(m.sender.name || '') : nameHtml;

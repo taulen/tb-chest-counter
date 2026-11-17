@@ -51,6 +51,12 @@ const log = childLogger('chat-digest');
 
 /** A scan gap longer than this inside the digest's day means the day may be incomplete: no post. */
 export const COVERAGE_MAX_GAP_H = 3;
+/**
+ * How late after its post time a day's digest may still go out (the first scan
+ * after 17:30 normally posts it within the hour). Past this the day is skipped:
+ * the leaders have likely posted it by hand, or the clan has moved on.
+ */
+export const POST_LATE_LIMIT_MS = 6 * 3600_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -245,8 +251,15 @@ async function runChatDigestInner(clanId: number, opts: ChatDigestRunOptions): P
     log.warn({ noAlert: true }, `Clan #${clanId} chat digest: could not list the account's group chats: ${String(err)}`);
   }
 
-  const sch = digestSchedule(now, opts.rolloverUtcHour, settings.postUtcMinute);
+  // Posts with the first scan after the daily reset (user, Nov 2026: no
+  // user-set time) — coverage below waits for that closing scan.
+  const sch = digestSchedule(now, opts.rolloverUtcHour, opts.rolloverUtcHour * 60);
   if (!test && now < sch.postAtMs) return '';
+  // Too late for this day: switching the digest on (or a long outage) must
+  // never post a stale day — on Nov 17 2026, enabling it at midday posted the
+  // 15 November digest the leaders had already posted by hand the evening
+  // before. The next day posts on time. An admin's test post is exempt.
+  if (!test && now > sch.postAtMs + POST_LATE_LIMIT_MS) return '';
 
   const blocked = attemptBlocker(clanId, sch.gameDate, sch.sentGameDate);
   if (blocked) return test ? done(`chat digest test not sent: ${blocked.message}`) : '';
@@ -317,7 +330,7 @@ export function previewChatDigest(clanId: number, rolloverUtcHour: number, now =
   maxChars: number; maxBytes: number; blocked: ReturnType<typeof attemptBlocker>; coverage: ReturnType<typeof coverageOf>;
 } {
   const settings = getChatDigestSettings(clanId);
-  const sch = digestSchedule(now, rolloverUtcHour, settings.postUtcMinute);
+  const sch = digestSchedule(now, rolloverUtcHour, rolloverUtcHour * 60);
   const { text, shown } = formatChatDigest(digestRows(clanId, sch.dayStartMs, sch.dayEndMs), sch.gameDate, settings.entries);
   return {
     gameDate: sch.gameDate,

@@ -37,13 +37,6 @@ async function loadChatDigest(root, clanId) {
   }
 }
 
-const pad2 = (n) => String(n).padStart(2, '0');
-const minuteToTime = (m) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
-const timeToMinute = (v) => {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-};
-
 function blockerText(b) {
   if (!b) return '';
   if (b.code === 'posted') return t("Today's message has gone out.");
@@ -101,11 +94,9 @@ function renderChatDigest(root, box, clanId, data) {
       </div>
       <div><label for="clan-chat-digest-entries-${clanId}">${t('Entries')}</label>
         <input id="clan-chat-digest-entries-${clanId}" class="input" type="number" min="${data.limits.entriesMin}" max="${data.limits.entriesMax}" step="1" value="${s.entries}"></div>
-      <div><label for="clan-chat-digest-time-${clanId}">${t('Post after (UTC)')}</label>
-        <input id="clan-chat-digest-time-${clanId}" class="input" type="time" step="60" lang="sv" value="${minuteToTime(s.postUtcMinute)}"></div>
       <button class="btn btn-primary" type="button" data-chat-digest-save>${t('Save')}</button>
     </div>
-    <p class="muted-copy mt-4 hint-text">${t("Only the clan's named group chats the scanner account is in are listed. The post goes out with the first scan after this time, once the game day has closed; saving never posts.")}</p>
+    <p class="muted-copy mt-4 hint-text">${t("Only the clan's named group chats the scanner account is in are listed. The post goes out with the first scan after the daily reset, once the game day has closed; saving never posts.")}</p>
     <h4 class="mt-12">${t('Preview — {date}', { date: escapeHtml(p.gameDate) })}</h4>
     ${p.text
       ? `<pre class="chat-digest-preview">${escapeHtml(p.text)}</pre>
@@ -134,12 +125,10 @@ function renderChatDigest(root, box, clanId, data) {
   `;
 
   box.querySelector('[data-chat-digest-save]')?.addEventListener('click', async () => {
-    const postUtcMinute = timeToMinute(box.querySelector(`#clan-chat-digest-time-${clanId}`)?.value);
     const body = {
       enabled: !!box.querySelector(`#clan-chat-digest-enabled-${clanId}`)?.checked,
       channelUrl: box.querySelector(`#clan-chat-digest-channel-${clanId}`)?.value || null,
       entries: Number.parseInt(box.querySelector(`#clan-chat-digest-entries-${clanId}`)?.value || '', 10),
-      postUtcMinute: postUtcMinute ?? s.postUtcMinute,
     };
     try {
       const r = await fetch(`/api/clans/${clanId}/chat-digest`, {
