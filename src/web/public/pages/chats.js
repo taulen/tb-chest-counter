@@ -246,6 +246,7 @@ function endOfDay(dateKey) {
 
 async function loadInitial(root) {
   state.loading = true;
+  wantsMore = false;
   const to = state.date ? endOfDay(state.date) : null;
   const res = await api(query({ to }));
   absorb(res);
@@ -356,24 +357,37 @@ function paint(root, { toBottom = false } = {}) {
       : '';
   }
   if (toBottom) log.scrollTop = log.scrollHeight;
-  observeEdges(root);
 }
 
-let observer = null;
-function observeEdges(root) {
-  if (observer) observer.disconnect();
-  if (typeof IntersectionObserver !== 'function') return;
+// Pages load only when a PERSON asks: a click on "Load older/newer", or
+// scrolling into an edge by wheel, touch or keyboard. The first version
+// loaded on visibility (IntersectionObserver), and on prod (20,000+ lines)
+// each page landed with the edge still in range, so the whole history
+// streamed in and repainted without end. One gesture = at most one page.
+let wantsMore = false;
+
+function wireEdgePaging(root) {
   const log = root.querySelector('.chat-log');
-  observer = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      const action = e.target.dataset.chatAction;
-      if (action === 'older') loadOlder(root).catch(() => {});
-      if (action === 'newer') loadNewer(root).catch(() => {});
+  const intent = () => { wantsMore = true; };
+  log.addEventListener('wheel', intent, { passive: true });
+  log.addEventListener('touchmove', intent, { passive: true });
+  log.addEventListener('keydown', (e) => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) intent();
+  });
+  log.addEventListener('scroll', () => {
+    if (!wantsMore || state.loading) return;
+    const nearTop = log.scrollTop < EDGE_PX;
+    const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < EDGE_PX;
+    if (nearTop && state.hasOlder) {
+      wantsMore = false;
+      loadOlder(root).catch(() => {});
+    } else if (nearBottom && state.hasNewer) {
+      wantsMore = false;
+      loadNewer(root).catch(() => {});
     }
-  }, { root: log, rootMargin: '200px 0px' });
-  log.querySelectorAll('[data-chat-action="older"], [data-chat-action="newer"]').forEach((b) => observer.observe(b));
+  }, { passive: true });
 }
+const EDGE_PX = 80;
 
 async function loadSenders(root) {
   if (state.senders) return;
@@ -488,6 +502,7 @@ export async function renderChats(el) {
     }
   }, { passive: true });
 
+  wireEdgePaging(root);
   await loadInitial(root);
   loadSenders(root).catch(() => {});
   startPolling(root);
