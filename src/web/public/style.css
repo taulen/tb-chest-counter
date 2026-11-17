@@ -9539,9 +9539,11 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   /* One channel today: its name is the card's heading, so the list folds away. */
   .chat-channels { display: none; }
   .chat-main { padding: 12px 10px 10px; }
-  /* Search on its own row; writer and date share the next. */
-  .chat-tools > .chat-search { flex: 1 1 100%; }
-  .chat-tools > .chat-filter { flex: 1 1 40%; min-width: 0; }
+  /* Rows: search · writer + Clear · date (its label runs long in ru/de). */
+  .chat-tools > .chat-search { flex: 1 1 100%; order: 0; }
+  .chat-tools > .chat-filter { flex: 1 1 0; min-width: 0; order: 1; }
+  .chat-tools > [data-chat-action="clear"] { order: 2; }
+  .chat-tools > .chat-date { flex: 1 1 100%; order: 3; }
   .chat-filter .input { width: 100%; max-width: none; }
   .chat-date .input { flex: 1 1 auto; min-width: 0; width: 100%; }
   .chat-log { height: calc(100dvh - 330px); min-height: 320px; padding: 4px 6px 4px 2px; }

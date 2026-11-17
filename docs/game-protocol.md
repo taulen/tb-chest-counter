@@ -227,7 +227,7 @@ the conversation at a message (`around=<ms>:<id>`, a search hit) or a time
 side, unfiltered, oldest first, with `focus`; and `GET /api/chat/clan/senders`
 the writers. Private (whisper) channels are never reachable through any of
 them. The page never loads the whole history: every request is one bounded
-page, and at most 600 messages stay loaded (the far end is dropped and loads
+page, and at most 2,000 messages stay loaded (the far end is dropped and loads
 again when scrolled to); the live poll runs only while the conversation shows
 its newest end.
 

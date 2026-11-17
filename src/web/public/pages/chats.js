@@ -27,7 +27,7 @@ import { gameRankName } from '../lib/game-facts.js';
 
 const CHANNELS = [{ key: 'clan', label: () => t('Clan chat'), endpoint: '/chat/clan' }];
 const PAGE = 100;
-const MAX_ITEMS = 600;
+const MAX_ITEMS = 2000;
 const POLL_MS = 45_000;
 /** Close enough to the bottom to follow new messages as they arrive. */
 const FOLLOW_PX = 120;

@@ -116,16 +116,52 @@ function createChatRouter() {
         const channels = (0, chat_repo_js_1.clanChatChannels)(clanId);
         const limit = Math.min(positiveInt(req.query.limit) ?? 100, 200);
         const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
+        const senderPlayerId = positiveInt(req.query.sender);
+        const before = cursor(req.query.before);
+        const after = cursor(req.query.after);
         const rows = (0, chat_repo_js_1.readChatPage)(clanId, channels, {
-            before: cursor(req.query.before),
-            after: cursor(req.query.after),
-            q,
-            senderPlayerId: positiveInt(req.query.sender),
+            before, after, q, senderPlayerId,
             fromMs: positiveInt(req.query.from),
             toMs: positiveInt(req.query.to),
             limit,
         });
         const messages = rows.map(toApi);
+        res.json({
+            ...(await pageExtras(clanId, channels, messages)),
+            messages,
+            hasMore: rows.length === limit,
+            // A search / writer filter's size over the WHOLE stored history, on its first page.
+            matches: (q || senderPlayerId) && !before && !after ? (0, chat_repo_js_1.countChatMatches)(clanId, channels, q, senderPlayerId) : null,
+        });
+    });
+    /**
+     * The conversation at one message (`around=<at>:<messageId>`, a search hit)
+     * or at a time (`at=<ms>`: the first message at or after it — a date jump):
+     * up to 50 messages either side, oldest first, unfiltered. `focus` is the
+     * message it opened at.
+     */
+    router.get('/clan/context', async (req, res) => {
+        const clanId = req.clanId;
+        const channels = (0, chat_repo_js_1.clanChatChannels)(clanId);
+        const atMs = positiveInt(req.query.at);
+        const anchor = cursor(req.query.around) ?? (atMs ? (0, chat_repo_js_1.chatAnchorAt)(clanId, channels, atMs) : null);
+        if (!anchor) {
+            res.json({ ...(await pageExtras(clanId, channels, [])), messages: [], hasOlder: false, hasNewer: false, focus: null });
+            return;
+        }
+        const around = (0, chat_repo_js_1.readChatAround)(clanId, channels, anchor, 50);
+        const messages = around.messages.map(toApi);
+        const focus = messages.find((m) => m.at === anchor.at && m.key.endsWith(`:${anchor.id}`))?.key ?? null;
+        res.json({
+            ...(await pageExtras(clanId, channels, messages)),
+            messages,
+            hasOlder: around.hasOlder,
+            hasNewer: around.hasNewer,
+            focus,
+        });
+    });
+    /** What every page of messages carries: senders, object names, the history's extent. */
+    async function pageExtras(clanId, channels, messages) {
         const objects = {};
         const names = await objectNames();
         for (const m of messages) {
@@ -135,15 +171,13 @@ function createChatRouter() {
                         objects[id] = names[id];
             }
         }
-        res.json({
+        return {
             available: channels.length > 0,
             history: (0, chat_repo_js_1.chatHistoryInfo)(clanId, channels),
-            messages,
-            hasMore: rows.length === limit,
             people: people(clanId, messages.map((m) => m.sender.playerId).filter((p) => p !== null)),
             objects,
-        });
-    });
+        };
+    }
     /** Everyone who has written in the clan chat, busiest first (the sender filter). */
     router.get('/clan/senders', (req, res) => {
         const clanId = req.clanId;

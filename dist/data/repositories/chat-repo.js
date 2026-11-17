@@ -9,6 +9,9 @@ exports.saveChatMessages = saveChatMessages;
 exports.clanChatChannels = clanChatChannels;
 exports.ftsQuery = ftsQuery;
 exports.readChatPage = readChatPage;
+exports.countChatMatches = countChatMatches;
+exports.chatAnchorAt = chatAnchorAt;
+exports.readChatAround = readChatAround;
 exports.chatSenders = chatSenders;
 exports.chatHistoryInfo = chatHistoryInfo;
 /**
@@ -126,21 +129,9 @@ function readChatPage(clanId, channels, query) {
     if (!channels.length)
         return [];
     const limit = Math.min(Math.max(query.limit ?? 100, 1), 200);
-    const where = ['m.clan_id = ?', `m.channel_url IN (${channels.map(() => '?').join(',')})`];
-    const args = [clanId, ...channels];
-    let from = 'chat_messages m';
-    const fts = query.q ? ftsQuery(query.q) : '';
-    if (query.q && !fts)
+    const { from, where, args, empty } = filterSql(clanId, channels, query.q, query.senderPlayerId);
+    if (empty)
         return [];
-    if (fts) {
-        from = 'chat_messages_fts f JOIN chat_messages m ON m.id = f.rowid';
-        where.push('chat_messages_fts MATCH ?');
-        args.push(fts);
-    }
-    if (query.senderPlayerId) {
-        where.push('m.sender_player_id = ?');
-        args.push(query.senderPlayerId);
-    }
     if (query.fromMs) {
         where.push('m.created_at >= ?');
         args.push(query.fromMs);
@@ -168,6 +159,71 @@ function readChatPage(clanId, channels, query) {
       ORDER BY ${order}
       LIMIT ${limit}`).all(...args);
     return rows;
+}
+/** WHERE clause + args for a search/filter over the channels (shared by the count). */
+function filterSql(clanId, channels, q, senderPlayerId) {
+    const where = ['m.clan_id = ?', `m.channel_url IN (${channels.map(() => '?').join(',')})`];
+    const args = [clanId, ...channels];
+    let from = 'chat_messages m';
+    const fts = q ? ftsQuery(q) : '';
+    if (fts) {
+        from = 'chat_messages_fts f JOIN chat_messages m ON m.id = f.rowid';
+        where.push('chat_messages_fts MATCH ?');
+        args.push(fts);
+    }
+    if (senderPlayerId) {
+        where.push('m.sender_player_id = ?');
+        args.push(senderPlayerId);
+    }
+    return { from, where, args, empty: !!q && !fts };
+}
+/**
+ * How many stored messages a search / writer filter matches across the WHOLE
+ * stored history (not just what a page loaded), and the oldest one's time.
+ */
+function countChatMatches(clanId, channels, q, senderPlayerId) {
+    if (!channels.length)
+        return { total: 0, oldestAt: null };
+    const f = filterSql(clanId, channels, q, senderPlayerId);
+    if (f.empty)
+        return { total: 0, oldestAt: null };
+    return (0, database_js_1.getDb)().prepare(`SELECT COUNT(*) AS total, MIN(m.created_at) AS oldestAt FROM ${f.from} WHERE ${f.where.join(' AND ')}`)
+        .get(...f.args);
+}
+/**
+ * The message a conversation opens at for a time: the first one at or after
+ * `ms`, else the last one before it (a date after the newest line), or null
+ * when the channels hold nothing.
+ */
+function chatAnchorAt(clanId, channels, ms) {
+    if (!channels.length)
+        return null;
+    const ph = channels.map(() => '?').join(',');
+    const db = (0, database_js_1.getDb)();
+    const next = db.prepare(`SELECT created_at AS at, message_id AS id FROM chat_messages
+      WHERE clan_id = ? AND channel_url IN (${ph}) AND created_at >= ?
+      ORDER BY created_at ASC, message_id ASC LIMIT 1`).get(clanId, ...channels, ms);
+    if (next)
+        return next;
+    const prev = db.prepare(`SELECT created_at AS at, message_id AS id FROM chat_messages
+      WHERE clan_id = ? AND channel_url IN (${ph})
+      ORDER BY created_at DESC, message_id DESC LIMIT 1`).get(clanId, ...channels);
+    return prev ?? null;
+}
+/**
+ * The conversation around one message: up to `side` before it, the message
+ * itself, and up to `side` after it — oldest first. Unfiltered: opening a
+ * search hit shows what was said around it, not only other hits.
+ */
+function readChatAround(clanId, channels, at, side = 50) {
+    const older = readChatPage(clanId, channels, { before: at, limit: side });
+    // `after` is exclusive: one id below the anchor's includes the anchor itself.
+    const newer = readChatPage(clanId, channels, { after: { at: at.at, id: at.id - 1 }, limit: side + 1 });
+    return {
+        messages: [...older.reverse(), ...newer],
+        hasOlder: older.length === side,
+        hasNewer: newer.length === side + 1,
+    };
 }
 /** Everyone who wrote in these channels: their latest name and message count, busiest first. */
 function chatSenders(clanId, channels) {
