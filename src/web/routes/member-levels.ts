@@ -22,7 +22,7 @@ export function createMemberLevelsRouter(): Router {
   const router = Router();
   const today = () => currentGameDate(loadConfig().gameDayRolloverUtcHour);
 
-  /** Each member's latest reported levels, next to the guards estimate. */
+  /** Each member's latest reported levels, next to the guards level from research. */
   router.get('/', (req, res) => {
     const clanId = req.clanId!;
     const guards = getGuardsSummaries(clanId, today());

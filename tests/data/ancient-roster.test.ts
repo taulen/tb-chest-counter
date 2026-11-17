@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import * as mightRepo from '../../src/data/repositories/might-repo.js';
-import { addGuardsReport } from '../../src/data/repositories/guards-repo.js';
+import { linkPlayer, readResearch, useResearchTrees } from '../helpers/research-tiers.js';
 import { getAncientRoster, MAX_ROSTER } from '../../src/data/ancient-roster.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 
@@ -20,12 +20,18 @@ function addMember(clanId: number, name: string, lastSeenMs = NOW, active = 1): 
   return row.id;
 }
 
+let undoTrees: () => void;
+
 beforeEach(() => {
   ({ cleanup } = makeTestDb());
   seedTwoClans();
+  undoTrees = useResearchTrees();
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  undoTrees();
+  cleanup();
+});
 
 describe('getAncientRoster', () => {
   it('uses the newest might capture when it is fresh, with guards levels', () => {
@@ -36,7 +42,8 @@ describe('getAncientRoster', () => {
       { memberId: a, might: 500 },
       { memberId: b, might: 900 },
     ]);
-    addGuardsReport({ clanId: 1, memberId: a, level: 8, observedDate: '2026-10-01', note: '', createdBy: null });
+    linkPlayer(a, 101);
+    readResearch(1, 101, 8, '2026-10-21T18:00:00.000Z', '2026-10-21');
 
     const r = getAncientRoster(1, TODAY, NOW);
     expect(r.source).toBe('might');

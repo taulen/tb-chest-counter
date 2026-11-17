@@ -5,7 +5,7 @@
 // The Ancient planner is a replica of totalcalculator.org/summons.php with the
 // clan's own roster filled in: who the newest might capture saw (or, when that
 // is missing or old, who any scan saw this week — never more than 100), each
-// counted at their estimated guards level. The arithmetic lives in
+// counted at their guards level (from research). The arithmetic lives in
 // lib/ancient-planner.js; this file is inputs, sliders and tables.
 //
 // Inputs and results render separately: dragging a slider repaints only the
@@ -270,7 +270,7 @@ function rosterListHtml() {
   const sorted = [...members].sort((a, b) => (b.guardsLevel ?? 0) - (a.guardsLevel ?? 0) || a.name.localeCompare(b.name));
   const items = sorted.map((m) => {
     const lvl = m.guardsLevel ? `G${m.guardsLevel}` : '?';
-    const stale = m.guardsStale ? ` <span class="tool-muted" title="${t('No new donation evidence for a while — the level may have risen')}">${t('(old)')}</span>` : '';
+    const stale = m.guardsStale ? ` <span class="tool-muted" title="${t('Their research has not been read for a while — the level may have risen')}">${t('(old)')}</span>` : '';
     return `<li><span class="tool-roster-level">${lvl}</span> ${esc(m.name)}${stale}</li>`;
   }).join('');
   return `

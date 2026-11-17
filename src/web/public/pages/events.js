@@ -701,18 +701,19 @@ function paint() {
       </div>`
     : '';
 
-  // Triumphal only: who held a Gold Pass in the cycle on screen (the API sends
-  // it only for that event). Counted over the same Union Chests as the table.
+  // Triumphal only: who held a Gold Pass in the cycle on screen, as the game
+  // reported it (the API sends it only for that event). A cycle from before the
+  // game history starts has no answer, so no count rather than a zero.
   const goldPassIds = new Set(Array.isArray(cache.goldPass?.memberIds) ? cache.goldPass.memberIds : []);
-  const goldPassCard = cache.goldPass
-    ? `<div class="stat-card" title="${esc(cache.goldPass.basis === 'union-only'
-      ? t('Members with Union Chests from the pass track. This clan does not capture resources, so the 250k donation each pass chest makes cannot be checked.')
-      : t('Members with Union Chests from the pass track AND the exact 250k {resource} each pass chest donates', { resource: tGame('Scientific Tractates') }))}">
+  const goldPassCard = cache.goldPass && cache.goldPass.basis !== 'none'
+    ? `<div class="stat-card" title="${esc(cache.goldPass.basis === 'partial'
+      ? t('Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it')
+      : t('Members the game showed with the Gold Pass at some point in this cycle'))}">
         <div class="label">${t('Gold Pass')}</div><div class="value">${goldPassIds.size.toLocaleString()}</div>
         <div class="sub">${tn(cache.uniqueParticipants || 0, 'of {n} participant', 'of {n} participants')}</div>
       </div>`
     : '';
-  const goldPassTitle = t('Gold Pass in the cycle shown — Union Chests from the pass track plus the 250k {resource} each one donates', { resource: tGame('Scientific Tractates') });
+  const goldPassTitle = t('Gold Pass in the cycle shown, as the game reported it');
 
   const statCards = `
     ${configWarnHtml}

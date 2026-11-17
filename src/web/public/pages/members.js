@@ -2,14 +2,14 @@
 // sortable columns; per-member detail view with rank badge, weekly
 // progress, chest type breakdown, and paginated chest history.
 
-import { api, apiPost, apiDelete, mustOk } from '../lib/api.js';
+import { api } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatGameDayShort, formatRelativeTime,
-  memberHash, memberLink, chestHash, sourceLink, parseHashRoute, confirmDialog,
+  memberHash, memberLink, chestHash, sourceLink, parseHashRoute,
 } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import {
-  guardsCellHtml, guardsTitle, goldPassBadgeHtml, nameWithGoldPassHtml,
+  guardsCellHtml, guardsTitle, nameWithGoldPassHtml,
 } from '../lib/guards-format.js';
 import {
   computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor, gameWeekStartOf,
@@ -41,8 +41,8 @@ let cachedMembers = [];
 // memberId → { might, delta, gameDate }. Empty when might tracking is off or
 // has never captured, which is what hides the two columns.
 let cachedMightByMember = new Map();
-// memberId → { guards, goldPass } from /guards/overview. Empty when nothing has
-// been inferred yet, which hides the Guards column.
+// memberId → { guards, goldPass } from /guards/overview. Empty when no research
+// has been read yet, which hides the Guards column.
 let cachedGuardsByMember = new Map();
 let membersFilter = '';
 let membersSort = { key: 'name', dir: 'asc' };
@@ -79,10 +79,6 @@ const CHEST_TYPE_LABEL = {
   common: t('common'), uncommon: t('uncommon'), rare: t('rare'), epic: t('epic'),
   legendary: t('legendary'), arena: t('arena'), event: t('event'), unknown: t('unknown'),
 };
-const CONFIDENCE_WORD = { high: t('high'), medium: t('medium'), low: t('low') };
-const CONFIDENCE_PHRASE = {
-  high: t('high confidence'), medium: t('medium confidence'), low: t('low confidence'),
-};
 let currentMemberOffset = 0;
 // The clan's goal and its earlier values (/leaderboard/goal), or null.
 let memberGoalInfo = null;
@@ -112,7 +108,7 @@ export async function renderMembers(el) {
 }
 
 /**
- * memberId → { guards, goldPass }. Inferred data, fetched separately for the
+ * memberId → { guards, goldPass }. Game data, fetched separately for the
  * same reason as might: a failure leaves the column out, never the roster.
  */
 async function fetchGuardsMap() {
@@ -197,7 +193,7 @@ export function renderMembersTable(el) {
             ${isAdmin ? '<col class="col-actions">' : ''}
           </colgroup><thead><tr>
             ${th('name', t('Name'))}
-            ${showGuards ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })) : ''}
+            ${showGuards ? th('guards', t('Guards'), 'num', t('{guardsmen} tier from their research, as the game reports it — hover a value for when it was read', { guardsmen: tGame('Guardsmen') })) : ''}
             ${showMight ? `
               ${th('might', t('Might'), 'num')}
               ${th('mightDelta', t('Change'), 'num', tn(mightDays, 'Change measured over ~{n} days', 'Change measured over ~{n} days', { n: mightDays }))}
@@ -611,198 +607,42 @@ function memberEventRunsCardHtml(events) {
     </div>`;
 }
 
-// ─── Guards level + Gold Pass on the profile ───
+// ─── Guards level on the profile ───
+// The Guardsmen tier from the member's research, as the game reports it. The
+// tiers themselves (G/S/E/M/C, each with when it was reached) are on the
+// Research tab; the Gold Pass is a pill in the header.
 
-const EVIDENCE_LABEL = {
-  essence: tGame('Omen Essence'),
-  tractate: tGame('Scientific Tractates'),
-  report: t('Admin entry'),
-  research: t('Research (from the game)'),
-};
-
-/** Headline stat: the estimated level, with the Gold Pass marker beside it. */
+/** Headline stat: the level, and its newest level-up or when it was read. */
 function memberGuardsStatHtml(guards) {
-  if (!guards) return '';
-  const s = guards.summary;
-  const current = guards.goldPass?.[0];
-  const previous = guards.goldPass?.[1];
-  const pass = current?.goldPass ? 'current' : previous?.goldPass ? 'previous' : null;
-  const confidence = CONFIDENCE_WORD[s?.confidence] ?? s?.confidence;
-  const sub = s
-    ? (s.stale
-      ? t('as of {date} · {confidence} · old', { date: formatGameDayShort(s.asOf), confidence })
-      : t('as of {date} · {confidence}', { date: formatGameDayShort(s.asOf), confidence }))
-    : t('not revealed yet');
+  const s = guards?.summary;
+  if (!s) return '';
+  const up = s.lastLevelUp;
+  const sub = up
+    ? t('G{from} → G{to} by {date}', { from: up.from, to: up.to, date: formatGameDayShort(up.by) })
+    : t('from research · read {date}', { date: formatGameDayShort(s.asOf) });
   return `
     <div class="stat-card">
       <div class="label">${t('Guards')}</div>
-      <div class="value guards-stat-value">${guardsCellHtml(s)}${goldPassBadgeHtml(pass)}</div>
+      <div class="value guards-stat-value">${guardsCellHtml(s)}</div>
       <div class="sub" title="${esc(guardsTitle(s))}">${esc(sub)}</div>
     </div>`;
 }
 
-function evidenceVerdict(row) {
-  if (row.superseded) {
-    return `<span class="guards-fit is-partial" title="${t('A newer donation revealed the level, so this entry no longer counts')}">${t('replaced')}</span>`;
-  }
-  if (row.kind === 'tractate' && row.belowLevel) {
-    return `<span class="guards-fit is-partial" title="${t('A lower tier than their level — they donated less than they could')}">${t('below level')}</span>`;
-  }
-  if (row.agrees) return `<span class="guards-fit is-ok">${t('fits')}</span>`;
-  return `<span class="guards-fit is-miss" title="${t('Fits no level on the path — most likely a misread, or another player\'s row filed under this one')}">${t('ignored')}</span>`;
-}
-
-function memberGuardsCardHtml(guards, memberId, isAdmin) {
-  if (!guards) return '';
-  const e = guards.estimate;
-  const s = guards.summary;
-  const reports = Array.isArray(guards.reports) ? guards.reports : [];
-
-  let headline;
-  if (!e) {
-    headline = `<p class="muted-copy">${t('No donation yet that reveals this member\'s level. {essence} ({omens}) and {tractates} ({ragnarok}) donations give it away — the next one will fill this in.', {
-      essence: tGame('Omen Essence'), omens: tGame('Dark Omens'),
-      tractates: tGame('Scientific Tractates'), ragnarok: tGame('Ragnarok'),
-    })}</p>`;
-  } else {
-    const lastUp = e.levelUps.length > 0 ? e.levelUps[e.levelUps.length - 1] : null;
-    const upLine = lastUp
-      ? t('Reached G{to} between {after} and {by} (was G{from}).', {
-        to: lastUp.to, after: esc(formatGameDayShort(lastUp.after)), by: esc(formatGameDayShort(lastUp.by)), from: lastUp.from,
-      })
-      : t('G{level} since the first donation on record, {date}.', { level: e.level, date: esc(formatGameDayShort(e.firstSeen)) });
-    const confidence = CONFIDENCE_PHRASE[e.confidence] ?? t('{confidence} confidence', { confidence: esc(e.confidence) });
-    headline = `
-      <p class="guards-headline">${guardsCellHtml(s)}
-        <span>${t('as of {date} · {confidence}', { date: esc(formatGameDayShort(e.asOf)), confidence })}</span></p>
-      <p class="muted-copy">${upLine}${s?.stale ? ` ${tn(guards.staleDays, 'No new donations for over {n} days, so it may be higher by now.', 'No new donations for over {n} days, so it may be higher by now.', { n: guards.staleDays })}` : ''}</p>`;
-  }
-
-  const evidence = e ? [...e.evidence].reverse() : [];
-  const evidenceHtml = evidence.length > 0 ? `
-    <details class="guards-details" data-section-key="member-guards-evidence">
-      <summary>${t('What it is based on ({count})', { count: evidence.length })}</summary>
-      <table class="table-responsive guards-evidence-table">
-        <colgroup><col class="col-date"><col class="col-donation"><col class="col-reads"><col class="col-fit"></colgroup>
-        <thead><tr><th>${t('Date')}</th><th>${t('Donation')}</th><th>${t('Reads as')}</th><th>${t('Verdict')}</th></tr></thead><tbody>
-        ${evidence.map((r) => `<tr>
-          <td data-label="${t('Date')}">${esc(formatGameDayShort(r.date))}</td>
-          <td data-label="${t('Donation')}" data-role="primary"><span class="mrow-name">${esc(EVIDENCE_LABEL[r.kind] || r.kind)}${r.amount != null ? ` ${Number(r.amount).toLocaleString('en-US')}` : ''}</span><span class="mrow-sub">${esc(formatGameDayShort(r.date))}</span></td>
-          <td data-label="${t('Reads as')}">${r.levels.map((l) => `G${l}`).join(' / ')}${r.boosted ? ` <span class="muted-copy" title="${t('Donated on the G9 essence unit that is 20% above the usual one — cause unknown, counted as G9')}">${t('(+20% rate)')}</span>` : ''}</td>
-          <td data-label="${t('Verdict')}" data-role="metric">${evidenceVerdict(r)}</td>
-        </tr>`).join('')}
-        </tbody></table>
-    </details>` : '';
-
-  const reportRows = reports.map((r) => `<li class="guards-report">
-      <span>${t('<strong>G{level}</strong> on {date}', { level: r.level, date: esc(formatGameDayShort(r.observedDate)) })}${r.note ? ` — ${esc(r.note)}` : ''}
-        <span class="muted-copy">· ${esc(r.createdByName || t('deleted user'))}</span></span>
-      ${isAdmin ? `<button class="btn btn-tight" data-guards-report-delete="${r.id}">${t('Remove')}</button>` : ''}
-    </li>`).join('');
-
-  const adminHtml = isAdmin || reports.length > 0 ? `
-    <details class="guards-details" data-section-key="member-guards-entries"${reports.length > 0 ? ' open' : ''}>
-      <summary>${t('Admin entries ({count})', { count: reports.length })}</summary>
-      <p class="muted-copy">${t('For a member who never donates, or one the donations get wrong. An entry pins the level on its date until a newer donation reveals the level — then the donation wins. Later donations can always carry the member higher.')}</p>
-      ${reports.length > 0 ? `<ul class="guards-report-list">${reportRows}</ul>` : ''}
-      ${isAdmin ? `<form class="guards-report-form" id="guardsReportForm" data-member-id="${memberId}">
-        <label>${t('Level')} <select class="input" name="level">
-          ${[9, 8, 7, 6, 5, 4, 3, 2, 1].map((l) => `<option value="${l}"${s?.level === l ? ' selected' : ''}>G${l}</option>`).join('')}
-        </select></label>
-        <label>${t('On')} <input class="input" type="date" name="observedDate" lang="sv" value="${esc(guards.today || '')}" max="${esc(guards.today || '')}"></label>
-        <label class="guards-report-note">${t('Note')} <input class="input" type="text" name="note" maxlength="200" placeholder="${t('e.g. told us in clan chat')}"></label>
-        <button class="btn btn-primary btn-tight" type="submit">${t('Save')}</button>
-      </form>` : ''}
-    </details>` : '';
-
+/**
+ * The Dragon level the member last posted in chat (Admin → Levels from chat) —
+ * the one level research doesn't show. Absent when they never posted one.
+ */
+function memberDragonStatHtml(guards) {
+  const r = guards?.reportedLevels;
+  const d = r?.levels?.d;
+  if (d == null) return '';
+  const date = r.asOf?.d ?? r.lastReported;
   return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Guardsmen')}</h2>
-        <span class="card-header-hint">${t('Estimated from donations — the game never shows it')}</span>
-      </div>
-      <div class="card-body card-body-padded">
-        ${headline}
-        ${reportedLevelsHtml(guards.reportedLevels)}
-        ${evidenceHtml}
-        ${adminHtml}
-      </div>
+    <div class="stat-card">
+      <div class="label">${t('Dragon')}</div>
+      <div class="value">${esc(String(d))}</div>
+      <div class="sub">${esc(t('posted in chat {date}', { date: formatGameDayShort(date) }))}</div>
     </div>`;
-}
-
-// What the member last posted in chat (Admin → Levels from chat). Minor detail,
-// so a single quiet line of small chips — each letter with its name on hover.
-const LEVEL_LABELS = [
-  ['g', 'G', t('Guardsmen')],
-  ['m', 'M', t('Monsters')],
-  ['s', 'S', t('Specialists')],
-  ['e', 'E', t('Engineering')],
-  ['c', 'C', t('Crypting')],
-  ['d', 'D', t('Dragon')],
-];
-
-function reportedLevelsHtml(r) {
-  if (!r || !r.levels) return '';
-  const chips = LEVEL_LABELS
-    .filter(([k]) => r.levels[k] != null)
-    .map(([k, short, name]) => `<span class="reported-level" title="${esc(r.asOf?.[k]
-      ? t('{skill} {level} — posted {date}', { skill: name, level: r.levels[k], date: r.asOf[k] })
-      : `${name} ${r.levels[k]}`)}"><span class="reported-level-key">${short}</span>${r.levels[k]}</span>`)
-    .join('');
-  if (!chips) return '';
-  return `<p class="reported-levels"><span class="reported-levels-label">${t('Posted in chat')}</span>${chips}<span class="muted-copy">${esc(formatGameDayShort(r.lastReported))}</span></p>`;
-}
-
-function memberGoldPassCardHtml(guards) {
-  const cycles = Array.isArray(guards?.goldPass) ? guards.goldPass : [];
-  if (cycles.length === 0) return '';
-  // Nothing in any cycle shown — skip the card rather than print a column of "no".
-  if (!cycles.some((c) => c.unionChests > 0 || c.passDonations > 0)) return '';
-  const unionOnly = cycles.some((c) => c.basis === 'union-only');
-  const rows = cycles.map((c) => `<tr>
-      <td data-label="${t('Cycle')}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(c.firstDay))} – ${esc(formatGameDayShort(c.lastDay))}${c.isCurrent ? ` <span class="muted-copy gp-now-inline">${t('(now)')}</span>` : ''}</span>${c.isCurrent ? `<span class="mrow-sub">${t('Current cycle')}</span>` : ''}</td>
-      <td data-label="${t('Union Chests')}" class="num">${c.unionChests.toLocaleString()}</td>
-      <td data-label="${t('250k lines')}" class="num">${c.basis === 'union-only' ? '—' : c.passDonations.toLocaleString()}</td>
-      <td data-label="${t('Gold Pass')}" data-role="metric">${c.goldPass ? goldPassBadgeHtml(c.isCurrent ? 'current' : 'previous') : `<span class="muted-copy">${t('no')}</span>`}</td>
-    </tr>`).join('');
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Gold Pass')}</h2>
-        <span class="card-header-hint">${t('Per Triumphal cycle')}</span>
-      </div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('A cycle counts when the member got Union Chests from the pass track <em>and</em> the exact 250k {tractates} each pass chest donates.', { tractates: tGame('Scientific Tractates') })}${unionOnly ? ` ${t('This clan does not capture resources, so the Union Chests alone decide it.')}` : ''}</p>
-        <table class="table-responsive gold-pass-table">
-          <colgroup><col class="col-cycle"><col class="col-num"><col class="col-num"><col class="col-pass"></colgroup>
-          <thead><tr><th>${t('Triumphal cycle')}</th><th class="num">${t('Union Chests')}</th><th class="num">${t('250k lines')}</th><th>${t('Gold Pass')}</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-function wireMemberGuards(memberId) {
-  const form = document.getElementById('guardsReportForm');
-  form?.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const fd = new FormData(form);
-    const ok = await mustOk(apiPost(`/guards/member/${memberId}/reports`, {
-      level: Number(fd.get('level')),
-      observedDate: String(fd.get('observedDate') || ''),
-      note: String(fd.get('note') || ''),
-    }), t('Could not save the level'));
-    if (ok) await reloadMemberDetail();
-  });
-  document.querySelectorAll('[data-guards-report-delete]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!await confirmDialog(t('Remove this entry? The level goes back to what the donations say.'), {
-        title: t('Remove guards entry'), confirmLabel: t('Remove'), danger: true,
-      })) return;
-      const ok = await mustOk(apiDelete(`/guards/reports/${btn.dataset.guardsReportDelete}`), t('Could not remove the entry'));
-      if (ok) await reloadMemberDetail();
-    });
-  });
 }
 
 // Per-member "Resources donated" card — one row per resource type the member
@@ -1272,7 +1112,6 @@ function wireMemberPeriodControls() {
 
 function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total: 0 }, resourceCardHtml = '', mightCardHtml = '', mightStatsHtml = '', resourcePage = { rows: [], total: 0 }, guards = null) {
   const content = $('#content');
-  const isAdmin = ['admin', 'superadmin'].includes(getCurrentUser()?.role);
   const chests = chestPage.chests || [];
   const total = chestPage.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / MEMBER_CHESTS_PAGE_SIZE));
@@ -1433,19 +1272,15 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
                 entirely when might tracking has never run for this clan. */''}
           ${mightStatsHtml}
           ${memberGuardsStatHtml(guards)}
+          ${memberDragonStatHtml(guards)}
         </div>
       </div>
     </div>`;
 
-  // Might & guards: the might chart, then the donations the guards level is
-  // inferred from, then the level and Gold Pass themselves.
+  // Might: the might chart, then the resources the member donated.
   const mightPanelHtml = `
     ${mightCardHtml}
-    ${resourceCardHtml}
-    ${guards ? `<div class="two-col-grid guards-cards">
-      ${memberGuardsCardHtml(guards, data.id, isAdmin)}
-      ${memberGoldPassCardHtml(guards)}
-    </div>` : ''}`;
+    ${resourceCardHtml}`;
 
   // Filled in place when the (slow) event overview lands — see
   // loadAndRenderMemberDetail.
@@ -1590,12 +1425,12 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     })();
 
   // The profile is four view tabs under the header (lib/view-tabs.js), so no
-  // section has to be scrolled past to reach another. Might & guards only
-  // exists when one of its cards does; the open tab carries across members.
+  // section has to be scrolled past to reach another. Might only exists when
+  // one of its cards does; the open tab carries across members.
   const views = [
     { key: 'overview', label: t('Overview'), html: overviewPanelHtml },
     { key: 'events', label: t('Events'), html: eventsPanelHtml },
-    ...(mightPanelHtml.trim() ? [{ key: 'might', label: t('Might & guards'), html: mightPanelHtml }] : []),
+    ...(mightPanelHtml.trim() ? [{ key: 'might', label: t('Might'), html: mightPanelHtml }] : []),
     // Read from the game: only for members linked to a game player.
     ...(currentMemberGame ? [
       { key: 'research', label: t('Research'), html: memberTechPanelHtml('research') },
@@ -1646,7 +1481,6 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   }
 
   wireMemberPeriodControls();
-  wireMemberGuards(data.id);
 
   // Chart.js needs a live canvas, so this runs after the HTML is mounted — on
   // the first render and again after every tab flip's re-render. Only when

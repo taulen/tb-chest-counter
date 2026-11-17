@@ -283,7 +283,7 @@ const chestCountLabel = (n) => tn(n, '{n} chest', '{n} chests');
  *    have no snapshot yet.
  *  - `goalWeeklyPoints` colours the Points cell against the clan's target for
  *    the selected period, and prints that target above the table.
- *  - `showGuards` adds the estimated Guards level column, decided across the
+ *  - `showGuards` adds the Guards level column (from research), decided across the
  *    whole roster for the same reason as `showMight`.
  *
  * The Gold Pass marker needs no flag: it rides after the name only on rows that
@@ -390,7 +390,7 @@ export function renderLeaderboardCardHtml({
   // Unmarked for the same reason as Level/Might: on a phone it belongs in the
   // tap-to-expand panel, not in the collapsed row.
   const guardsHeadHtml = showGuards
-    ? th('guards', t('Guards'), 'num', t('Guardsmen level, estimated from {essence} and {tractates} donations — hover a value for how sure and how recent', { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') }))
+    ? th('guards', t('Guards'), 'num', t('{guardsmen} tier from their research, as the game reports it — hover a value for when it was read', { guardsmen: tGame('Guardsmen') }))
     : '';
   const guardsCellsHtml = (e) => showGuards
     ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`

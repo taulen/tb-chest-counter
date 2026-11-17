@@ -110,7 +110,7 @@ function requiredPresentDays(windowDays, minCoverage, config) {
     return Math.max(share, floor);
 }
 /**
- * Guards level on `day`, from the estimate's current level and its level-ups:
+ * Guards level on `day`, from the current level and its level-ups:
  * before a level-up was first seen, the member was still at the old level.
  */
 function guardsLevelOn(day, current, levelUps) {

@@ -12,6 +12,7 @@
 import { api } from '../lib/api.js';
 import { esc, formatDate, formatGameDayShort } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { gameDayKeyFor } from '../lib/period.js';
 
 // Layout grids, in CSS px. Desktop: a step per game column and per game row.
 // Phone (turned): node size, the gap between the three columns, and the step
@@ -94,7 +95,7 @@ function render(el, kind, trees, techs, tiers) {
   }
   if (!list.some((tr) => tr.id === openTree[kind])) openTree[kind] = list[0].id;
 
-  const head = kind === 'research' ? tiersHtml(tiers?.tiers) : talentSummaryHtml(list, levels);
+  const head = kind === 'research' ? tiersHtml(tiers) : talentSummaryHtml(list, levels);
   // Research trees are grouped the way the game's academy groups them.
   const groups = kind === 'research'
     ? [...new Set(list.map((tr) => tr.tab || ''))].map((tab) => ({ tab, trees: list.filter((tr) => (tr.tab || '') === tab) }))
@@ -147,13 +148,30 @@ function render(el, kind, trees, techs, tiers) {
   }));
 }
 
-function tiersHtml(tiers) {
+/**
+ * The member's troop tiers, each with when it was reached: the read that first
+ * saw it, or — held already at the first read — "before" that date.
+ * `m` is the tiers entry from /api/game/members/:id ({ tiers, firstReadAt, changes }).
+ */
+function tiersHtml(m) {
+  const tiers = m?.tiers;
   if (!tiers) return '';
-  const cards = TIER_STATS.filter((s) => tiers[s.key]).map((s) => `
+  const day = (iso) => formatGameDayShort(gameDayKeyFor(Date.parse(iso)));
+  const cards = TIER_STATS.filter((s) => tiers[s.key]).map((s) => {
+    const changes = m.changes?.[s.key] || [];
+    const last = changes.length ? changes[changes.length - 1] : null;
+    const sub = last
+      ? (last.from
+        ? t('{from} → {to} by {date}', { from: `${s.letter}${last.from}`, to: `${s.letter}${last.to}`, date: day(last.at) })
+        : t('reached {date}', { date: day(last.at) }))
+      : (m.firstReadAt ? t('since before {date}', { date: day(m.firstReadAt) }) : '');
+    return `
     <div class="stat-card">
       <div class="label">${esc(tGame(s.label))}</div>
       <div class="value">${s.letter}${tiers[s.key]}</div>
-    </div>`).join('');
+      ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
+    </div>`;
+  }).join('');
   return cards ? `<div class="stats-grid tech-tiers">${cards}</div>` : '';
 }
 

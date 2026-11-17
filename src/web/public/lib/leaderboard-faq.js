@@ -192,10 +192,10 @@ function renderHowTab({ mode, rolloverHr, board, notCounted }) {
     )}</p>`));
   }
   if (guards) {
-    items.push(qa(t('What is the Guards column?'), `<p>${t("An estimate of each member's Guardsmen level, worked out from their {essence} and {tractates} donations — it isn't read from the game. Hover a value to see how sure it is and how recent; a <strong>?</strong> means a single ambiguous donation is all it rests on.", { essence: tGame('Omen Essence'), tractates: tGame('Scientific Tractates') })}</p>`));
+    items.push(qa(t('What is the Guards column?'), `<p>${t("Each member's {guardsmen} tier, read from their research in the game — the highest {guardsmen} unit they have unlocked. Hover a value to see when it was read.", { guardsmen: tGame('Guardsmen') })}</p>`));
   }
   if (goldPass) {
-    items.push(qa(t('What does GP mean?'), `<p>${t('A Gold Pass holder this Triumphal cycle, spotted from a pass-reward {chest} plus the 250k {tractates} that come with it. A faded GP was seen last cycle but not yet this one.', { chest: tGame('Union Chest'), tractates: tGame('Scientific Tractates') })}</p>`));
+    items.push(qa(t('What does GP mean?'), `<p>${t('The member has the Gold Pass, as the game reports it. A faded GP had it last {event} cycle but not now.', { event: tGame('Triumphal') })}</p>`));
   }
   if (might) {
     items.push(qa(t('Where do Level and Might come from?'), `<p>${t("The hero level and Might on each member's in-game profile, as of the latest daily snapshot.")}</p>`));

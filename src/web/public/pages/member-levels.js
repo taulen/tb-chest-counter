@@ -1,7 +1,7 @@
 // Admin → Levels from chat. Paste the levels players post in the in-game chat
 // ("taulen: G8/M8/S7/E8/C35/D284"), check who each name is, and save. Every
-// letter is stored; the G value also becomes an admin guards entry, so the
-// guards estimate picks it up. Server: routes/member-levels.ts.
+// letter is stored as what the player said; the guards level itself comes from
+// their research in the game. Server: routes/member-levels.ts.
 //
 // Two steps on purpose: names in chat are hand-typed and often off by a letter,
 // so nothing is saved until an admin has seen who each one was matched to.
@@ -58,7 +58,7 @@ function paint() {
   el.innerHTML = `
     <div class="card-header">
       <h2>${t('Levels from chat')}</h2>
-      <span class="card-header-hint">${t('Paste what players post — G also feeds their guards level')}</span>
+      <span class="card-header-hint">${t('Paste what players post — research sets the guards level, chat fills in the rest')}</span>
     </div>
     <div class="card-body card-body-padded">
       <label class="visually-hidden" for="levelsText">${t('Chat lines')}</label>
@@ -217,7 +217,7 @@ function latestHtml() {
     const est = r.guardsEstimate;
     const gCell = g === undefined
       ? '<span class="events-zero">—</span>'
-      : `${g}${est !== null && est !== g ? ` <span class="muted-copy" title="${t('Guards estimate from donations + entries')}">${t('(est. {estimate})', { estimate: est })}</span>` : ''}`;
+      : `${g}${est !== null && est !== g ? ` <span class="muted-copy" title="${t('{guardsmen} tier from their research', { guardsmen: tGame('Guardsmen') })}">${t('(research {level})', { level: est })}</span>` : ''}`;
     // The phone's compact row shows only the name, so the report date rides on
     // its sub-line — with newest-first that is what makes the order legible.
     return `<tr>
@@ -313,7 +313,7 @@ async function save(btn) {
     const r = res.result;
     message = {
       error: false,
-      html: `${tn(r.saved, '<strong>Saved {n} player</strong> for {date}', '<strong>Saved {n} players</strong> for {date}', { n: r.saved, date: esc(today) })} · ${tn(r.guardsReports, '{n} guards level entered', '{n} guards levels entered', { n: r.guardsReports })}${r.rejected ? ` · ${tn(r.rejected, '{n} skipped', '{n} skipped', { n: r.rejected })}` : ''}.`,
+      html: `${tn(r.saved, '<strong>Saved {n} player</strong> for {date}', '<strong>Saved {n} players</strong> for {date}', { n: r.saved, date: esc(today) })}${r.rejected ? ` · ${tn(r.rejected, '{n} skipped', '{n} skipped', { n: r.rejected })}` : ''}.`,
     };
     preview = null;
     text = '';

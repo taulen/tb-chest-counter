@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { parseLevelReports } from '../../src/data/member-levels-parse.js';
 import * as levels from '../../src/data/repositories/member-levels-repo.js';
-import { getGuardsEstimates, getClanGuardsOverview } from '../../src/data/repositories/guards-repo.js';
+import { getGuardsLevels } from '../../src/data/repositories/guards-repo.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 
 // Lines from a real chat paste (2026-10-23), every format it used.
@@ -89,19 +89,14 @@ describe('member levels import', () => {
     expect(rows[0].memberId).toBe(taulen);
   });
 
-  it('stores every letter, feeds G to the guards estimate, and never doubles the guards entry', () => {
+  it('stores every letter, and never sets the guards level — research does', () => {
     const taulen = addMember('taulen');
     const entry = { memberId: taulen, levels: { g: 8, m: 8, s: 7, e: 8, c: 35, d: 284 } };
     const first = levels.importLevelReports({ clanId: 1, date: TODAY, entries: [entry], createdBy: 'a1', createdByUserId: null });
-    expect(first).toEqual({ saved: 1, guardsReports: 1, rejected: 0 });
-    const again = levels.importLevelReports({ clanId: 1, date: TODAY, entries: [entry], createdBy: 'a1', createdByUserId: null });
-    expect(again.guardsReports).toBe(0);
-    expect(getGuardsEstimates(1).get(taulen)?.level).toBe(8);
-
-    // A first-ever level from an entry is news: "learned", not a level-up.
-    const overview = getClanGuardsOverview(1, TODAY);
-    expect(overview.recentlyLearned).toEqual([{ memberId: taulen, name: 'taulen', level: 8, date: TODAY }]);
-    expect(overview.recentLevelUps).toEqual([]);
+    expect(first).toEqual({ saved: 1, rejected: 0 });
+    expect(levels.getLatestLevels(1)[0]).toMatchObject({ levels: { g: 8, m: 8, s: 7, e: 8, c: 35, d: 284 } });
+    expect(getGuardsLevels(1).has(taulen)).toBe(false);
+    expect(getDb().prepare('SELECT COUNT(*) AS n FROM member_guards_reports').get()).toEqual({ n: 0 });
   });
 
   it('keeps the latest value per letter — a later post leaving a letter out does not blank it', () => {
@@ -143,7 +138,7 @@ describe('member levels import', () => {
       clanId: 1, date: TODAY, createdBy: 'a', createdByUserId: null,
       entries: [{ memberId: other, levels: { g: 8 } }],
     });
-    expect(r).toEqual({ saved: 0, guardsReports: 0, rejected: 1 });
+    expect(r).toEqual({ saved: 0, rejected: 1 });
     expect(levels.cleanLevels({ g: 12, d: 250, m: 7.5, s: '7' })).toEqual({ d: 250 });
   });
 });

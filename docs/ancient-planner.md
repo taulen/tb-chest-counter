@@ -16,11 +16,11 @@ The reference computes on the server and publishes no source. Its form is a plai
 
 - **Figurine 7 and 8 summons** cost 185k / 278k here (ladder levels 22 / 24). TB Clan Portal documents 153k / 230k (levels 21 / 23). Neither has been checked in game.
 - **Tier weights** are the reference author's convention ("chosen somewhat arbitrarily"), not game data.
-- **T9 can't be inferred.** The guards estimator only knows G levels, so prefilled T9 is always 0 and those members land in G9.
+- **T9 isn't prefilled.** The roster carries only the G level (the Guardsmen tier from research), so prefilled T9 is always 0 and those members land in G9. Research has S/E/M too (member-tiers.ts), so this could now be computed.
 
 ## Roster rules
 
-The roster prefers the newest might capture if it is at most 2 game days old, strongest first, capped at 100. Otherwise it uses active members seen in the last 7 days, most recent first, capped at 100. Members with no guards estimate count at the clan default's "unknown as" tier (G7 built in); the page lets the user change that or leave them out.
+The roster prefers the newest might capture if it is at most 2 game days old, strongest first, capped at 100. Otherwise it uses active members seen in the last 7 days, most recent first, capped at 100. Members with no guards level (research not read yet) count at the clan default's "unknown as" tier (G7 built in); the page lets the user change that or leave them out.
 
 ## Clan defaults
 
