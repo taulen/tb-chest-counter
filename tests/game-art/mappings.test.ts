@@ -9,6 +9,7 @@ import {
   resourceIcons,
   buildMappings,
   heroAvatarImageFrom,
+  loadTroopList,
 } from '../../src/game-art/mappings.js';
 import type { Wire } from '../../src/game-protocol/codec.js';
 
@@ -79,6 +80,11 @@ describe('selectArt', () => {
     });
   });
 
+  it('takes exactly the event art the Ancient planner shows', () => {
+    const sel = selectArt(['clandoom_icon_book_anim', 'map_clan_doomsday_boss_scaled', 'clandoom_icon_book_anim_old'], st);
+    expect(Object.fromEntries(sel)).toEqual({ clandoom_icon_book_anim: 'events', map_clan_doomsday_boss_scaled: 'events' });
+  });
+
   it('a resource type name pulls in its item even past the currency id range', () => {
     expect(selectArt(['booster_silver_72'], st).has('booster_silver_72')).toBe(false);
     const big = { ...st, items: [{ id: 703005, name: 'Omen Essence', icon: 'icon_sabotage_clan_resource' }] };
@@ -130,10 +136,28 @@ describe('mappings', () => {
     const m = buildMappings(st, [{ id: 'wyvern', name: 'Wyvern', strength: 690000, health: 2070000 }], new Set(), all);
     expect(m.heroAvatars).toEqual({ '2': 'icon_alpha_72' });
     expect(m.techs).toEqual({ '7': 'tech_thing_72' });
-    expect(m.mercenaries).toEqual({ wyvern: 'map_wyvern_icon_72' });
+    expect(m.troops).toEqual({ wyvern: 'map_wyvern_icon_72' });
+    expect(m.ancients).toEqual({
+      tome: 'clandoom_icon_book_anim', figurine: 'clandoom_icons_statue_anim',
+      clock: 'clandoom_icons_hourglass_anim', tinman: 'map_clan_doomsday_boss_scaled',
+    });
+    expect(buildMappings(st, [], new Set(), () => false).ancients).toEqual({});
     expect(heroAvatarImageFrom(m, 2)).toBe('icon_alpha_72');
     expect(heroAvatarImageFrom(m, 3)).toBeNull();
     expect(heroAvatarImageFrom(m, null)).toBeNull();
     expect(heroAvatarImageFrom(null, 2)).toBeNull();
+  });
+});
+
+describe('loadTroopList', () => {
+  it('lists every Tools troop and citadel defender once, from the frontend troop file', async () => {
+    const list = await loadTroopList();
+    const ids = list.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(list.length).toBeGreaterThan(146);
+    // Groups the old mercenary-only list left out, and defenders.
+    expect(ids).toEqual(expect.arrayContaining(['corax-1', 'kraken-2', 'josephine-1', 'wyvern', 'dwarf', 'walls']));
+    // The game's own name (the wiki said "Many-Armed Giant"), so it matches T9.
+    expect(list.find((t) => t.id === 'many-armed-giant')?.name).toBe('Many-Armed Guardian');
   });
 });

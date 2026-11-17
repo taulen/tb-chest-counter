@@ -16,7 +16,7 @@
 // Bonuses change with every captain, artifact or research swap, so nothing
 // ships with any; the page says when they were typed or saved.
 
-import { loadGameArt, troopIconUrl } from '../lib/game-art.js';
+import { loadGameArt, troopIconHtml } from '../lib/game-art.js';
 import { api, apiPut, apiDelete } from '../lib/api.js';
 import { esc, notify, confirmDialog, promptDialog, choiceDialog, contentModal, copyTextToClipboard, formatRelativeTime } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -49,9 +49,9 @@ const DRAFT_KEY = 'tbcc.citadel.draft.v1';
 /** Bonuses older than this get an amber "check them" nudge. */
 const STALE_MS = 6 * 3600 * 1000;
 
-// The game's own icon for the troop when the extracted art has it, else the bundled picture.
-const icon = (troopId) => troopIconUrl(troopId, new URL(`../img/troops/${troopId}.webp`, import.meta.url).href);
 const troopName = (id) => tGame(troopById(id)?.name ?? id);
+// The game's own icon for the troop (lib/game-art.js), never a bundled picture.
+const icon = (troopId, size, cls) => troopIconHtml(troopId, troopName(troopId), { size, cls });
 
 const GROUP_LABELS = {
   guardsmen: t('Guardsmen'),
@@ -549,7 +549,7 @@ function rowHtml(r, i, role, a) {
       ${role !== undefined ? `<span class="citadel-role ${role ? `is-${role}` : ''}" title="${esc(roleLong)}">${esc(roleShort)}</span>` : ''}
       <span class="citadel-troop">
         <button type="button" class="citadel-troop-btn" data-pick="${i}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('{troop}: change troop', { troop: name }))}">
-          <img class="citadel-icon" src="${icon(r.troopId)}" alt="" width="36" height="36" decoding="async">
+          ${icon(r.troopId, 36, 'citadel-icon')}
           <span class="citadel-troop-text"><span class="citadel-troop-name">${esc(name)}</span><span class="citadel-troop-note" data-note-row="${i}">${troopNote(i, a)}</span></span>
           <span class="citadel-caret" aria-hidden="true"></span>
         </button>
@@ -659,7 +659,7 @@ function outcomeHtml(r, title, opener) {
     : `<div class="citadel-headline">${tn(total, '{n} troop lost', '{n} troops lost', { n: total.toLocaleString() })}</div>`;
   const list = lostRows.map((s) => {
     const wall = s.lostInSiege > 0 ? ` <span class="muted-copy">${t('({n} to the walls)', { n: s.lostInSiege.toLocaleString() })}</span>` : '';
-    return `<li><img class="citadel-icon-sm" src="${icon(s.troopId)}" alt="" width="22" height="22"><span class="citadel-loss-name">${esc(troopName(s.troopId))}</span><span class="citadel-loss-num">−${s.lost.toLocaleString()}</span><span class="citadel-loss-of">${t('of {n}', { n: s.count.toLocaleString() })}</span>${wall}</li>`;
+    return `<li>${icon(s.troopId, 22, 'citadel-icon-sm')}<span class="citadel-loss-name">${esc(troopName(s.troopId))}</span><span class="citadel-loss-num">−${s.lost.toLocaleString()}</span><span class="citadel-loss-of">${t('of {n}', { n: s.count.toLocaleString() })}</span>${wall}</li>`;
   }).join('');
   let why = '';
   if (r.reason === 'walls') why = t('Nothing you sent can bring the walls down in time. Siege engines strike before the walls.');
@@ -690,7 +690,7 @@ function nameOf(id, side) {
 function logUnitHtml(id, side) {
   const name = esc(nameOf(id, side));
   return side === 'you'
-    ? `<img class="citadel-icon-sm" src="${icon(id)}" alt="" width="22" height="22"><span>${name}</span>`
+    ? `${icon(id, 22, 'citadel-icon-sm')}<span>${name}</span>`
     : `<span>${name}</span>`;
 }
 
@@ -768,7 +768,7 @@ function howItWorksHtml() {
           <li>${t('<strong>Losses.</strong> Wounds stay through the battle: a stack loses a troop for every full troop\'s health of damage it takes in total.')}</li>
           <li>${t('<strong>game01master counts</strong> (Elven 25 and 30) follow its calculator: first, second and third striker, cleanups, and a siege engine for the walls, in the order of your rows.')}</li>
         </ul>
-        <p class="muted-copy">${t('Every rule was measured from real battle reports and replays them strike for strike. Troop icons and the sizing method: {gm} (non-commercial licence). Unit data: {wiki} and in-game cards.', {
+        <p class="muted-copy">${t('Every rule was measured from real battle reports and replays them strike for strike. Sizing method: {gm} (non-commercial licence). Unit data: {wiki} and in-game cards; troop icons from the game itself.', {
           gm: '<a href="https://github.com/game01master/tb-citadel-calculator" target="_blank" rel="noopener">game01master</a>',
           wiki: '<a href="https://totalbattlewiki.com/citadels/elven/" target="_blank" rel="noopener">totalbattlewiki.com</a>',
         })}</p>
@@ -922,7 +922,7 @@ function openMarchList(root) {
     ${winsBoth ? '' : `<p class="citadel-march-warn">${esc(t('This army does not win in both coin flips. Check the result before you march.'))}</p>`}
     <ol class="citadel-march">
       ${list.map((r) => `<li>
-        <img src="${icon(r.troopId)}" alt="" width="36" height="36">
+        ${icon(r.troopId, 36)}
         <span class="citadel-march-name">${esc(troopName(r.troopId))}</span>
         <span class="citadel-march-count">${r.count.toLocaleString()}</span>
       </li>`).join('')}

@@ -118,7 +118,7 @@ export const TROOPS = [
   troop('desert-vanquisher', 'Desert Vanquisher', 'monsters', 5, 42000, 126000, ['dragon', 'monster', 'mounted'], { elemental: 324, ranged: 253 }),
   troop('ice-phoenix', 'Ice Phoenix', 'monsters', 4, 17000, 51000, ['elemental', 'flying', 'monster'], { dragon: 162, flying: 223 }),
   troop('magic-dragon', 'Magic Dragon', 'monsters', 4, 15000, 45000, ['dragon', 'monster', 'ranged'], { ranged: 216, melee: 169 }),
-  troop('many-armed-giant', 'Many-Armed Giant', 'monsters', 4, 13000, 39000, ['giant', 'melee', 'monster'], { elemental: 270, mounted: 115 }),
+  troop('many-armed-giant', 'Many-Armed Guardian', 'monsters', 4, 13000, 39000, ['giant', 'melee', 'monster'], { elemental: 270, mounted: 115 }),
   troop('gorgon-medusa', 'Gorgon Medusa', 'monsters', 4, 12000, 36000, ['beast', 'monster', 'ranged'], { melee: 277, flying: 108 }),
   troop('stone-gargoyle', 'Stone Gargoyle', 'monsters', 3, 5200, 15600, ['flying', 'giant', 'monster'], { beast: 72, melee: 185 }),
   troop('emerald-dragon', 'Emerald Dragon', 'monsters', 3, 4500, 13500, ['dragon', 'flying', 'monster'], { giant: 72, mounted: 185 }),

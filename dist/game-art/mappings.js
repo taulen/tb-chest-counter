@@ -11,24 +11,28 @@ exports.chestIcons = chestIcons;
 exports.resourceIcons = resourceIcons;
 exports.techIcons = techIcons;
 exports.captainIcons = captainIcons;
+exports.eventIcons = eventIcons;
 exports.buildMappings = buildMappings;
 exports.heroAvatarImageFrom = heroAvatarImageFrom;
-exports.loadMercenaryList = loadMercenaryList;
+exports.loadTroopList = loadTroopList;
 /**
  * Game data → image name, computed from the game's static data (never hand-typed):
  *
  *   heroAvatars  a player's heroAvatar (game_players.hero_avatar, message 402
  *                field [4]) is the id of a T13 hero-avatar row; that row's icon
  *                is the portrait ("icon_garvel_72").
- *   mercenaries  each Tools → Stacks/Citadel mercenary (TROOPS in
- *                web/public/lib/citadel-sim.js) is matched to a T9 unit by its
- *                English name AND its strength/health, which the game has many
- *                rows for (one per event realm) but all with the same icon.
+ *   troops       every Tools → Citadel/Stacks troop and citadel defender
+ *                (TROOPS + DEFENDERS in web/public/lib/citadel-sim.js) is
+ *                matched to a T9 unit by its English name AND its
+ *                strength/health, which the game has many rows for (one per
+ *                event realm) but all with the same icon.
  *   chests       English chest name → the icon most of the T8 items of that
  *                name use (one name can be several items, e.g. per source).
  *   resources    English resource name → the icon of the lowest-id T8 item of
  *                that name (the base resource; later ids are boosters/packs).
  *   techs        T21 tech/talent id → icon.
+ *   ancients     the Ancient planner's pictures by key (EVENT_ART in
+ *                selection.ts): tome, figurine, clock, tinman.
  *
  * Every mapping only names images that were actually extracted.
  */
@@ -36,7 +40,7 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const selection_js_1 = require("./selection.js");
 function emptyMappings() {
-    return { heroAvatars: {}, mercenaries: {}, chests: {}, resources: {}, techs: {}, captains: {} };
+    return { heroAvatars: {}, troops: {}, chests: {}, resources: {}, techs: {}, captains: {}, ancients: {} };
 }
 function normalizeGameName(s) {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -139,14 +143,25 @@ function captainIcons(st, available) {
     }
     return out;
 }
-function buildMappings(st, mercenaries, resourceNames, available) {
+/** EVENT_ART key → its image, for the ones that were extracted. */
+function eventIcons(available) {
+    const out = {};
+    for (const [key, e] of Object.entries(selection_js_1.EVENT_ART)) {
+        const name = (0, selection_js_1.safeArtName)(e.address);
+        if (available(name))
+            out[key] = name;
+    }
+    return out;
+}
+function buildMappings(st, troops, resourceNames, available) {
     return {
         heroAvatars: heroAvatarIcons(st, available),
-        mercenaries: matchTroopIcons(mercenaries, st.units, available),
+        troops: matchTroopIcons(troops, st.units, available),
         chests: chestIcons(st.items, available),
         resources: resourceIcons(st.items, resourceNames, available),
         techs: techIcons(st, available),
         captains: captainIcons(st, available),
+        ancients: eventIcons(available),
     };
 }
 /** The image for a heroAvatar value, or null (unknown avatar, art not extracted yet). */
@@ -157,16 +172,20 @@ function heroAvatarImageFrom(mappings, heroAvatar) {
 }
 const TROOP_FILE = path_1.default.resolve('src', 'web', 'public', 'lib', 'citadel-sim.js');
 /**
- * The mercenaries Tools → Stacks sizes, straight from the frontend's own troop
- * list (a plain ES module with no imports), so the two can never disagree.
+ * Every troop Tools → Citadel and → Stacks show, and the citadels' defenders,
+ * straight from the frontend's own troop list (a plain ES module with no
+ * imports), so the two can never disagree. A defender sharing a troop's id is
+ * that troop.
  */
-async function loadMercenaryList(file = TROOP_FILE) {
+async function loadTroopList(file = TROOP_FILE) {
     const src = await fs_1.default.promises.readFile(file, 'utf8');
     const mod = (await import(`data:text/javascript;base64,${Buffer.from(src).toString('base64')}`));
     if (!Array.isArray(mod.TROOPS))
         throw new Error(`${file} exports no TROOPS`);
-    return mod.TROOPS
-        .filter((t) => t.group === 'mercenaries')
+    const rows = [...mod.TROOPS, ...Object.values(mod.DEFENDERS ?? {})];
+    const seen = new Set();
+    return rows
+        .filter((t) => !seen.has(t.id) && !!seen.add(t.id))
         .map((t) => ({ id: t.id, name: t.name, strength: t.str, health: t.hp }));
 }
 //# sourceMappingURL=mappings.js.map

@@ -35,7 +35,7 @@ The arithmetic follows Kaiculator's exactly: it multiplies by `1 / (1 + bonus)` 
 
 - Against Kaiculator's table, 49 match exactly. **Scorpion**: Kaiculator has 3,200 health, the wiki 32,000; 32,000 fits siege health = 6× strength, so Kaiculator's is a typo. **Sphynx and Shedu**: the wiki has one at tier VI, 75.6k/226.8k (authority 40). Kaiculator has a VI at 18.9k/56.7k (authority 10) and a VII at 136k/408k (authority 40). We use the wiki's, **unconfirmed**; an in-game card would settle it.
 - Left out, with no art anywhere: Kaiculator's tier-VII Legionary/Arbalester/Chariot/Knight/Rhino Rider/Trailseeker, the bounty hunters, and the swarm mercs (Grim Stalker, Wasp-Man, Chitinous Defender, Combat Anteater, and their Leaders).
-- Icons are built in the game's own mercenary style, to sit beside game01master's five in-game merc icons. The parchment frame, folded corner and green badge are lifted from its Wyvern icon. Parchment-coloured pixels connected to the icon's edge form the frame, and the badge's "II" is smoothed into a blank gem, because which numeral the game shows on other mercs is unknown. Inside the frame is a close-up (face or head) cut from the wiki's card art (900×1736). The crop box is hand-picked per merc: `{ top, left, size }` as fractions of the card, chosen on gridded contact sheets. The first, scenic crops (whole card, attention crop) looked nothing like the in-game icons the user knows.
+- Icons: the game's own (T9 unit icons from its asset bundles, see [citadel-simulator.md](citadel-simulator.md) and [game-protocol.md](game-protocol.md#game-art-srcgame-art)). The hand-built merc icons (wiki card crops in a parchment frame) were removed in Nov 2026.
 
 ## The page
 

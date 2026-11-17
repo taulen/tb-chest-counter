@@ -5,12 +5,10 @@
 // list and never the page (a page scroll would close it). On phones it is a
 // bottom sheet (CSS) and stays open while the keyboard resizes the page.
 
-import { troopIconUrl } from './game-art.js';
+import { troopIconHtml } from './game-art.js';
 import { esc } from './ui.js';
 import { t, tGame } from './i18n.js';
 
-// The game's own icon for the troop when the extracted art has it, else the bundled picture.
-const icon = (troopId) => troopIconUrl(troopId, new URL(`../img/troops/${troopId}.webp`, import.meta.url).href);
 
 let picker = null; // { pop, trigger, opts, items: [], active }
 
@@ -123,7 +121,7 @@ function renderList(filter) {
     return `<div class="citadel-pop-group" role="presentation">${esc(label)}</div>${opts.map((x) => {
       items.push(x.id);
       return `<div class="citadel-pop-opt ${x.id === current ? 'is-current' : ''}" role="option" id="citadel-opt-${x.id}" data-troop="${x.id}" aria-selected="false">
-        <img src="${icon(x.id)}" alt="" width="28" height="28" decoding="async"><span>${esc(tGame(x.name))}</span>${tagHtml ? tagHtml(x.id) : ''}${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
+        ${troopIconHtml(x.id, tGame(x.name), { size: 28 })}<span>${esc(tGame(x.name))}</span>${tagHtml ? tagHtml(x.id) : ''}${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
     }).join('')}`;
   }).join('');
   picker.items = items;

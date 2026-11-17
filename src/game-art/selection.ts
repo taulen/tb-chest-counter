@@ -12,8 +12,27 @@
  */
 import type { ArtStatic } from './art-static.js';
 
-export const ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan'] as const;
+export const ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan', 'events'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
+
+/**
+ * Event pictures the app shows by key (Tools → Ancient planner), the game's
+ * own art. With a `region`, the address is a Spine animation and the picture
+ * is that region of its atlas (spine.ts): the Ancients artifacts exist in the
+ * game only as animated icons. Without one, the plain image.
+ */
+export const EVENT_ART: Record<string, { address: string; region?: string }> = {
+  tome: { address: 'clandoom_icon_book_anim', region: 'book' },
+  figurine: { address: 'clandoom_icons_statue_anim', region: 'Layer 107' },
+  clock: { address: 'clandoom_icons_hourglass_anim', region: 'hourglass' },
+  // The Ancients boss as the event map shows it.
+  tinman: { address: 'map_clan_doomsday_boss_scaled' },
+};
+
+/** Address → the Spine atlas region its picture is cut from. */
+export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map(
+  Object.values(EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region as string]),
+);
 
 export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   // Hero avatar portraits come from the hero-avatar table (T13) alone.
@@ -28,6 +47,8 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   resources: [],
   // Clan frames and emblems, small and large ("clan_frame_12_lg").
   clan: [/^clan_(frame|emblem)_\d+(_lg)?$/],
+  // Exactly the EVENT_ART addresses.
+  events: Object.values(EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
 };
 
 /** Items (T8) below this id are the game's currencies and base resources. */

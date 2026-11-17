@@ -74,7 +74,8 @@ the repo. `versions.totalbattle.com/config` → `unity_catalog_version.webgl` na
 the asset catalogue at `assets-unity.totalbattle.dev/webgl/<hash>` (custom
 binary: per bundle a name, group, content hash, bundle hash and the lower-cased
 asset addresses inside). Only bundles holding images we use are downloaded
-(heroes, troops/mercenaries, research/talent icons, chests, resources, clan),
+(heroes, troops/mercenaries, research/talent icons, chests, resources, clan,
+events),
 decoded (UnityFS + LZ4 → SerializedFile type trees → Texture2D RGBA32 / RGB24 /
 RGB565 / DXT1 / DXT5, Sprites cut from their atlas — pixel-identical to UnityPy
 on 2188 references) and written as PNG to `data/game-art/<catalog>/` with an
@@ -84,10 +85,29 @@ re-downloads only changed bundles; current + previous version are kept.
 Served public and path-versioned (`/game-art/<catalog>/<name>.png`, immutable)
 per [cloudflare-caching.md](cloudflare-caching.md); `GET /api/game-art` gives the
 names and mappings. Mappings: hero portrait by `game_players.hero_avatar` (= T13
-row id), the Tools mercenaries by name + exact strength/health against T9, tech
-and talent icons from T21 f3, chests and resources by name. Used by the member
-profile (portrait, research/talent tree icons), the public board card and the
-Tools troop pictures (`lib/game-art.js`, falling back to the bundled pictures).
+row id), every Tools troop and citadel defender (`troops`: TROOPS + DEFENDERS of
+`lib/citadel-sim.js`, by name + exact strength/health against T9 — all 162 match
+since the one named from the wiki, "Many-Armed Giant", took the game's
+"Many-Armed Guardian"), tech and talent icons from T21 f3, chests and resources by name,
+captain portraits from T75, and the Ancient planner's pictures (`ancients`,
+`EVENT_ART` in [selection.ts](../src/game-art/selection.ts)).
+
+**Only the game's own art is shown** — no game, wiki or third-party picture is
+committed (the troop webps and Ancient cut-outs were removed in Nov 2026). A
+troop the art lacks shows a neutral tile with its initial (`troopIconHtml` in
+`lib/game-art.js`); an Ancient picture the art lacks is left out.
+
+**Spine stills** ([spine.ts](../src/game-art/spine.ts)): the Ancients artifacts
+(Tome of Knowledge, Enchanted Figurine, Mysterious Clock) exist in the game only
+as animated icons (`clandoom_icon_book_anim`, `clandoom_icons_statue_anim`,
+`clandoom_icons_hourglass_anim`, linked from the `clandoom_artifacts` config).
+Such a bundle holds one texture with every animation part packed in, plus a
+TextAsset `<name>.atlas` (Spine 4 text atlas) naming each part's rectangle; the
+picture is the region holding the whole object (`book`, `Layer 107`,
+`hourglass`), cut out and un-premultiplied (`pma: true`). The Tin Man is the
+plain `map_clan_doomsday_boss_scaled` (the event map's boss art).
+`ART_SELECTION_VERSION` (store.ts) is bumped whenever the selection or the
+mappings change, so an install re-extracts without waiting for a game patch.
 `GAME_ART_DIR` / `GAME_STATIC_DIR` override the caches for local runs only.
 
 ## Chat (v104)

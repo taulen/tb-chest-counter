@@ -20,14 +20,15 @@ import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
 import { parseCatalog, catalogVersionFromConfig, VERSIONS_URL, UNITY_BASE, type CatalogEntry } from './catalog.js';
 import { isUnityFs } from './unityfs.js';
-import { extractImages, pickImages } from './extract.js';
+import { extractImages, extractTexts, pickImages } from './extract.js';
+import { cutAtlasRegion, parseSpineAtlas } from './spine.js';
 import { encodePng } from './png.js';
-import { selectArt, safeArtName, ART_CATEGORIES, type ArtCategory } from './selection.js';
+import { selectArt, safeArtName, ART_CATEGORIES, SPINE_REGIONS, type ArtCategory } from './selection.js';
 import { loadArtStatic, type ArtStatic } from './art-static.js';
 import {
   buildMappings,
   heroAvatarImageFrom,
-  loadMercenaryList,
+  loadTroopList,
   type ArtMappings,
   type TroopStats,
 } from './mappings.js';
@@ -46,12 +47,13 @@ export interface GameArtImage {
 }
 
 /**
- * What we extract changes when we start using a new kind of image (captains,
- * Nov 2026). Bump this with every change to the selection: an index built with
- * an older one is re-extracted on the next run — reusing every image it already
- * has, so only the new bundles download — instead of waiting for a game patch.
+ * What we extract changes when we start using a new kind of image (2: captain
+ * portraits; 3: the Ancients artifacts and boss, Nov 2026). Bump this with
+ * every change to the selection or mappings: an index built with an older one
+ * is re-extracted on the next run — reusing every image it already has, so only
+ * the new bundles download — instead of waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 2;
+export const ART_SELECTION_VERSION = 3;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */
@@ -166,7 +168,7 @@ export interface EnsureGameArtOptions {
   dir?: string;
   fetchImpl?: typeof fetch;
   loadStatic?: (dir: string) => Promise<ArtStatic>;
-  loadMercenaries?: () => Promise<TroopStats[]>;
+  loadTroops?: () => Promise<TroopStats[]>;
   /** Names of the app's resource types (resource_types.name). */
   resourceNames?: () => string[];
   concurrency?: number;
@@ -255,9 +257,9 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
       st = null;
     }
     if (!st || st.version === existing.staticVersion) return { status: 'unchanged', version };
-    const mercs = await loadMercs(opts);
+    const troops = await loadTroops(opts);
     const has = (n: string): boolean => n in existing.images;
-    const updated: GameArtIndex = { ...existing, staticVersion: st.version, mappings: buildMappings(st, mercs, resourceNames, has) };
+    const updated: GameArtIndex = { ...existing, staticVersion: st.version, mappings: buildMappings(st, troops, resourceNames, has) };
     writeJsonAtomic(path.join(dir, version, 'index.json'), updated);
     resetGameArtMemo();
     log.info(`Game art ${version}: mappings recomputed for static data ${st.version}`);
@@ -267,7 +269,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   const catalogBuf = await fetchBuffer(fetchImpl, UNITY_BASE + version, CATALOG_TIMEOUT_MS);
   const catalog = parseCatalog(catalogBuf);
   const st = await loadStatic(dir);
-  const mercs = await loadMercs(opts);
+  const troops = await loadTroops(opts);
   const addresses: string[] = [];
   for (const e of catalog) addresses.push(...e.addresses);
   const selected = selectArt(addresses, st, resourceNames);
@@ -316,14 +318,30 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     const { images: found, errors } = extractImages(buf, (n) => wanted.has(n.toLowerCase()));
     const picked = pickImages(found);
     if (!picked.length) throw new Error(errors[0] ?? 'no matching image in bundle');
+    // A Spine animation's picture is one region of its texture (spine.ts).
+    const spine = [...wanted.keys()].filter((a) => SPINE_REGIONS.has(a));
+    const atlases = spine.length
+      ? extractTexts(buf, (n) => spine.includes(n.toLowerCase().replace(/\.atlas$/, '')) && /\.atlas$/i.test(n))
+      : new Map<string, string>();
     for (const img of picked) {
       const addr = img.name.toLowerCase();
       const cat = wanted.get(addr);
       const name = safeArtName(addr);
       if (!cat || images[name]) continue;
+      let pixels = img.image;
+      const region = SPINE_REGIONS.get(addr);
+      if (region) {
+        const text = [...atlases].find(([n]) => n.toLowerCase() === `${addr}.atlas`)?.[1];
+        const cut = text ? cutAtlasRegion(img.image, parseSpineAtlas(text), region) : null;
+        if (!cut) {
+          failures.push(`${bundle}: no "${region}" region in ${addr}.atlas`);
+          continue;
+        }
+        pixels = cut;
+      }
       const file = `${name}.png`;
-      fs.writeFileSync(path.join(tmp, file), await encodePng(img.image));
-      images[name] = { w: img.image.width, h: img.image.height, file, category: cat, bundle };
+      fs.writeFileSync(path.join(tmp, file), await encodePng(pixels));
+      images[name] = { w: pixels.width, h: pixels.height, file, category: cat, bundle };
     }
   };
 
@@ -353,7 +371,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     builtAt: new Date().toISOString(),
     staticVersion: st.version,
     images: Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),
-    mappings: buildMappings(st, mercs, resourceNames, has),
+    mappings: buildMappings(st, troops, resourceNames, has),
     stats: { bundles: total, downloaded, reused, bytes, failed: failures.length, seconds },
   };
   writeJsonAtomic(path.join(tmp, 'index.json'), index);
@@ -367,11 +385,11 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   pruneVersions(dir, new Set([version, previous].filter((v): v is string => !!v)));
 
   const perCat = ART_CATEGORIES.map((c) => `${c} ${Object.values(images).filter((i) => i.category === c).length}`).join(', ');
-  const mercs53 = Object.values(index.mappings.mercenaries);
+  const troopIcons = Object.values(index.mappings.troops);
   log.info(
     `Game art ${version}: ${Object.keys(images).length} images (${perCat}) from ${total} bundles ` +
     `(${downloaded} downloaded, ${reused} reused), ${(bytes / 1048576).toFixed(1)} MB in ${seconds}s; ` +
-    `${failures.length} failed; mercenary icons ${mercs53.filter(Boolean).length}/${mercs53.length}`,
+    `${failures.length} failed; troop icons ${troopIcons.filter(Boolean).length}/${troopIcons.length}`,
   );
   if (failures.length) {
     warner.warn('bundles', `Game art ${version}: ${failures.length} bundle(s) failed, e.g. ${failures.slice(0, 3).join('; ')}`);
@@ -379,11 +397,11 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   return { status: 'updated', version, images: Object.keys(images).length };
 }
 
-async function loadMercs(opts: EnsureGameArtOptions): Promise<TroopStats[]> {
+async function loadTroops(opts: EnsureGameArtOptions): Promise<TroopStats[]> {
   try {
-    return await (opts.loadMercenaries ?? loadMercenaryList)();
+    return await (opts.loadTroops ?? loadTroopList)();
   } catch (err) {
-    warner.warn('mercs', `Game art: mercenary list unavailable, no merc icon mapping (${String(err)})`);
+    warner.warn('troops', `Game art: troop list unavailable, no troop icon mapping (${String(err)})`);
     return [];
   }
 }

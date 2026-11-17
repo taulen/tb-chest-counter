@@ -3,7 +3,8 @@
 //
 // GET /api/game-art is public and small (names + mappings); it is fetched once
 // per page load. Until it answers — or on an install whose art has not been
-// extracted yet — every helper falls back to what the page used before.
+// extracted yet — the helpers give no image (troops get a neutral tile): only
+// the game's own art is ever shown, nothing bundled in the repo.
 
 let art = null;
 let loading = null;
@@ -25,12 +26,34 @@ export function gameArtUrl(name) {
 }
 
 /**
- * Picture for a troop of the Tools pages (Citadel, Stacks): the game's own icon
- * for that troop when the art has it, else the bundled picture.
+ * The game's own icon for a troop of the Tools pages (Citadel, Stacks), or null.
+ * `troops` covers every troop and defender; an index extracted before Nov 2026
+ * has only `mercenaries`.
  */
-export function troopIconUrl(troopId, fallback) {
-  const name = art?.mappings?.mercenaries?.[troopId];
-  return (name && gameArtUrl(name)) || fallback;
+export function troopIconUrl(troopId) {
+  const name = art?.mappings?.troops?.[troopId] ?? art?.mappings?.mercenaries?.[troopId];
+  return name ? gameArtUrl(name) : null;
+}
+
+const attr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+/**
+ * A troop's picture: the game's own icon, or — when the art has none (not
+ * extracted yet, or no unit matched) — a neutral tile with the name's first
+ * letter. Only the game's art is ever shown; decorative, the name is beside it.
+ */
+export function troopIconHtml(troopId, name, { size = 36, cls = '' } = {}) {
+  const url = troopIconUrl(troopId);
+  if (url) {
+    return `<img${cls ? ` class="${attr(cls)}"` : ''} src="${attr(url)}" alt="" width="${size}" height="${size}" decoding="async">`;
+  }
+  const letter = (String(name ?? '').trim()[0] ?? '?').toUpperCase();
+  return `<span class="troop-icon-ph${cls ? ` ${attr(cls)}` : ''}" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px" aria-hidden="true">${attr(letter)}</span>`;
+}
+
+/** The game's picture for an Ancient planner key (tome, figurine, clock, tinman), or null. */
+export function ancientArtUrl(key) {
+  return gameArtUrl(art?.mappings?.ancients?.[key]);
 }
 
 /** The game's icon for a chest by its name, or null. */
