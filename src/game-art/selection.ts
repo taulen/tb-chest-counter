@@ -113,6 +113,11 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
   }
   for (const f of Object.values(st.frames ?? {})) out.frames.add(f.visual.toLowerCase());
   for (const c of Object.values(st.cityLooks ?? {})) for (const icon of Object.values(c.icons)) out.cities.add(icon.toLowerCase());
+  // Captains' artifacts (T110), equipment (T11) and the gems / enchantments
+  // set into it (T8) sit with the captain portraits.
+  for (const a of Object.values(st.artifacts ?? {})) if (a.icon) out.heroes.add(a.icon.toLowerCase());
+  for (const e of Object.values(st.equipment ?? {})) if (e.icon) out.heroes.add(e.icon.toLowerCase());
+  for (const g of Object.values(st.inserts ?? {})) if (g.icon) out.heroes.add(g.icon.toLowerCase());
   for (const u of st.units) out.troops.add(u.icon.toLowerCase());
   for (const t of Object.values(st.techs)) out.research.add(t.icon.toLowerCase());
   for (const it of st.items) {

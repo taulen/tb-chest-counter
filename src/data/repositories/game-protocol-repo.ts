@@ -8,6 +8,8 @@
 import { gunzipSync, gzipSync } from 'zlib';
 import { getDb } from '../database.js';
 import type { CityCaptain, ClanMember, PlayerRecord, LedgerEntry } from '../../game-protocol/messages.js';
+import type { WornArtifact } from '../../game-protocol/artifacts.js';
+import type { WornItem } from '../../game-protocol/equipment.js';
 
 export interface NamedGift {
   giftId: number;
@@ -250,6 +252,128 @@ export function saveCaptains(clanId: number, playerId: number, captains: CityCap
     }
   })();
   return changed;
+}
+
+/**
+ * The artifacts a player's line-up captains wear, as one city read showed
+ * them (v112). Every artifact in the read is upserted and marked in the
+ * line-up; any other stored artifact of the player is marked out of it (it
+ * moved to a benched captain — still owned, just not in the city data). A
+ * history row is written when an artifact is new or its level, star level or
+ * rolls changed. Reads may be replayed from the archive oldest first (each
+ * replayed read lands in history at its own time; replaying the same read
+ * twice is a no-op). Returns the history rows written.
+ */
+export function saveArtifacts(clanId: number, playerId: number, artifacts: WornArtifact[], at = new Date().toISOString()): number {
+  const db = getDb();
+  const prev = new Map((db.prepare('SELECT artifact_type, level, star, bonuses FROM game_player_artifacts WHERE clan_id = ? AND player_id = ?')
+    .all(clanId, playerId) as Array<{ artifact_type: number; level: number; star: number; bonuses: string }>).map((r) => [r.artifact_type, r]));
+  const upsert = db.prepare(
+    `INSERT INTO game_player_artifacts (clan_id, player_id, artifact_type, level, star, bonuses, in_lineup, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+     ON CONFLICT (clan_id, player_id, artifact_type) DO UPDATE SET
+       level = excluded.level, star = excluded.star, bonuses = excluded.bonuses, in_lineup = 1,
+       first_seen = MIN(first_seen, excluded.first_seen), last_seen = excluded.last_seen`,
+  );
+  const hist = db.prepare(
+    `INSERT OR IGNORE INTO game_player_artifact_history (clan_id, player_id, artifact_type, level, star, bonuses, changed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const benched = db.prepare('UPDATE game_player_artifacts SET in_lineup = 0 WHERE clan_id = ? AND player_id = ? AND artifact_type = ?');
+  let changed = 0;
+  db.transaction(() => {
+    const seen = new Set<number>();
+    for (const a of artifacts) {
+      const bonuses = JSON.stringify(a.bonuses);
+      seen.add(a.type);
+      upsert.run(clanId, playerId, a.type, a.level, a.star, bonuses, at, at);
+      const p = prev.get(a.type);
+      if (!p || p.level !== a.level || p.star !== a.star || p.bonuses !== bonuses) {
+        changed += hist.run(clanId, playerId, a.type, a.level, a.star, bonuses, at).changes;
+      }
+    }
+    for (const type of prev.keys()) if (!seen.has(type)) benched.run(clanId, playerId, type);
+  })();
+  return changed;
+}
+
+/**
+ * What every captain of a player wears, as one city read showed it (v112):
+ * one row per filled position. A history row is written when a position gets
+ * a different item (by instance uid), a different enchantment or gems, or is
+ * emptied (item_type 0). Replayable oldest-first like saveArtifacts. Only call
+ * it with a read that carried the item list — an empty read would look like
+ * every captain undressed. Returns the history rows written.
+ */
+export function saveCaptainEquipment(clanId: number, playerId: number, worn: WornItem[], at = new Date().toISOString()): number {
+  const db = getDb();
+  type Row = { captain_id: number; position: number; item_uid: string; item_type: number; enchantment: number; gems: string };
+  const key = (captainId: number, position: number) => `${captainId}:${position}`;
+  const prev = new Map((db.prepare(
+    'SELECT captain_id, position, item_uid, item_type, enchantment, gems FROM game_player_captain_equipment WHERE clan_id = ? AND player_id = ?',
+  ).all(clanId, playerId) as Row[]).map((r) => [key(r.captain_id, r.position), r]));
+  const upsert = db.prepare(
+    `INSERT INTO game_player_captain_equipment
+       (clan_id, player_id, captain_id, position, item_uid, item_type, enchantment, gems, raw, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, captain_id, position) DO UPDATE SET
+       item_uid = excluded.item_uid, item_type = excluded.item_type, enchantment = excluded.enchantment,
+       gems = excluded.gems, raw = excluded.raw, last_seen = excluded.last_seen,
+       first_seen = CASE WHEN game_player_captain_equipment.item_uid = excluded.item_uid
+                         THEN MIN(game_player_captain_equipment.first_seen, excluded.first_seen) ELSE excluded.first_seen END`,
+  );
+  const hist = db.prepare(
+    `INSERT OR IGNORE INTO game_player_equipment_history
+       (clan_id, player_id, captain_id, position, item_uid, item_type, enchantment, gems, changed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const remove = db.prepare('DELETE FROM game_player_captain_equipment WHERE clan_id = ? AND player_id = ? AND captain_id = ? AND position = ?');
+  let changed = 0;
+  db.transaction(() => {
+    const seen = new Set<string>();
+    for (const w of worn) {
+      const k = key(w.captainId, w.position);
+      seen.add(k);
+      const gems = JSON.stringify(w.gems);
+      upsert.run(clanId, playerId, w.captainId, w.position, w.uid, w.type, w.enchantment, gems, JSON.stringify(w.raw), at, at);
+      const p = prev.get(k);
+      if (!p || p.item_uid !== w.uid || p.item_type !== w.type || p.enchantment !== w.enchantment || p.gems !== gems) {
+        changed += hist.run(clanId, playerId, w.captainId, w.position, w.uid, w.type, w.enchantment, gems, at).changes;
+      }
+    }
+    for (const [k, p] of prev) {
+      if (seen.has(k)) continue;
+      remove.run(clanId, playerId, p.captain_id, p.position);
+      changed += hist.run(clanId, playerId, p.captain_id, p.position, '', 0, 0, '[]', at).changes;
+    }
+  })();
+  return changed;
+}
+
+/** The archive version a parser last replayed for this clan (0 = never). */
+export function getParseMarker(clanId: number, parser: string): number {
+  const row = getDb().prepare('SELECT version FROM game_parse_markers WHERE clan_id = ? AND parser = ?').get(clanId, parser) as
+    { version: number } | undefined;
+  return row?.version ?? 0;
+}
+
+export function setParseMarker(clanId: number, parser: string, version: number, now = new Date().toISOString()): void {
+  getDb().prepare(
+    `INSERT INTO game_parse_markers (clan_id, parser, version, done_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (clan_id, parser) DO UPDATE SET version = excluded.version, done_at = excluded.done_at`,
+  ).run(clanId, parser, version, now);
+}
+
+/**
+ * Every archived raw reply of one kind for the clan, oldest read first, one at
+ * a time (a clan's archive can be thousands of replies). Body as archived.
+ */
+export function* rawSnapshotsOldestFirst(clanId: number, kind: string): Generator<{ refId: number; capturedAt: string; body: unknown }> {
+  const rows = getDb().prepare(
+    `SELECT ref_id AS refId, captured_at AS capturedAt, payload FROM game_raw_snapshots
+      WHERE clan_id = ? AND kind = ? ORDER BY captured_at, ref_id`,
+  ).iterate(clanId, kind) as IterableIterator<{ refId: number; capturedAt: string; payload: Buffer }>;
+  for (const r of rows) yield { refId: r.refId, capturedAt: r.capturedAt, body: JSON.parse(gunzipSync(r.payload).toString('utf8')) };
 }
 
 /** Players of this clan with any captain stored (v108) — the rest are read once more to backfill. */

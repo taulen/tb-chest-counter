@@ -95,9 +95,14 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_gifts.clan_id',
     'game_ledger.clan_id',
     'game_map_objects.clan_id',
+    'game_parse_markers.clan_id',
+    'game_player_artifact_history.clan_id',
+    'game_player_artifacts.clan_id',
+    'game_player_captain_equipment.clan_id',
     'game_player_captain_history.clan_id',
     'game_player_captains.clan_id',
     'game_player_daily.clan_id',
+    'game_player_equipment_history.clan_id',
     'game_player_history.clan_id',
     'game_player_tech_history.clan_id',
     'game_player_techs.clan_id',
@@ -342,6 +347,22 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO game_player_captain_history (clan_id, player_id, captain_id, level, stars, changed_at) VALUES (?, 1, 28, 164, 4, ?)`,
   ).run(clanId, now);
+  // Artifacts, captain equipment and archive re-parse markers (v112).
+  db.prepare(
+    `INSERT INTO game_player_artifacts (clan_id, player_id, artifact_type, level, star, bonuses, in_lineup, first_seen, last_seen) VALUES (?, 1, 16, 50, 21, '[9681]', 1, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_artifact_history (clan_id, player_id, artifact_type, level, star, bonuses, changed_at) VALUES (?, 1, 16, 50, 21, '[9681]', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_player_captain_equipment (clan_id, player_id, captain_id, position, item_uid, item_type, enchantment, gems, raw, first_seen, last_seen)
+     VALUES (?, 1, 8, 3, '90000000000000001', 4423, 8408, '[257]', '[]', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_equipment_history (clan_id, player_id, captain_id, position, item_uid, item_type, enchantment, gems, changed_at)
+     VALUES (?, 1, 8, 3, '90000000000000001', 4423, 8408, '[257]', ?)`,
+  ).run(clanId, now);
+  db.prepare(`INSERT INTO game_parse_markers (clan_id, parser, version, done_at) VALUES (?, 'artifacts', 1, ?)`).run(clanId, now);
   db.prepare(
     `INSERT INTO game_player_daily (clan_id, player_id, game_date, gold_ingots, captured_at) VALUES (?, 1, '2026-11-17', 12169, ?)`,
   ).run(clanId, now);

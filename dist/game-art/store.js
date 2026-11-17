@@ -58,12 +58,12 @@ const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ no
 /**
  * What we extract changes when we start using a new kind of image (2: captain
  * portraits; 3: the Ancients artifacts and boss; 4: unit-icon frames from the
- * WebGL client, Nov 2026). Bump this with
+ * WebGL client; 5: captains' artifacts and equipment, Nov 2026). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-exports.ART_SELECTION_VERSION = 4;
+exports.ART_SELECTION_VERSION = 5;
 exports.VERSION_RE = /^[0-9a-f]{32}$/;
 exports.FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 function gameArtDir() {

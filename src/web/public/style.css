@@ -8968,11 +8968,217 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   align-items: center;
 }
 
+/* Who wears the item and what it replaced: shown on desktop too, unlike a plain .mrow-sub. */
+.captain-changes-table .captain-change-sub {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .captain-change-icon {
   width: 28px;
   height: 28px;
   border-radius: 6px;
   object-fit: cover;
+}
+
+.captain-section-note {
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+/* Artifacts: round icons in a rarity ring, like the game's artifact book. */
+.artifact-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  border: 2px solid var(--rarity);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--rarity) 55%, transparent), transparent 70%),
+    color-mix(in srgb, var(--rarity) 16%, var(--bg-card));
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.artifact-tile:hover .artifact-frame,
+.artifact-tile:focus-visible .artifact-frame {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rarity) 45%, transparent);
+}
+
+.artifact-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 10%;
+  object-fit: contain;
+}
+
+.artifact-icon.is-empty { border-radius: 50%; }
+
+.artifact-frame .captain-level {
+  top: -2px;
+  right: -2px;
+  border-radius: 999px;
+}
+
+.artifact-tile.is-benched { opacity: 0.6; }
+
+/* Artifact names run long ("Fan of the Five Winds"): two lines, then the ellipsis. */
+.artifact-tile .captain-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.captain-star.is-part {
+  color: color-mix(in srgb, var(--accent-gold) 45%, var(--text-muted));
+}
+
+.artifact-art { border-radius: 50%; }
+.artifact-art img { object-fit: contain; padding: 10%; }
+
+/* Random-bonus rolls coloured by quality, best (5) on top as the game lists them. */
+.artifact-rolls li {
+  padding: 3px 8px;
+  border-left: 3px solid var(--roll, var(--border-strong));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--roll, var(--border-strong)) 14%, transparent);
+}
+
+.artifact-roll.quality-1 { --roll: var(--text-muted); }
+.artifact-roll.quality-2 { --roll: var(--accent-green); }
+.artifact-roll.quality-3 { --roll: var(--accent-blue); }
+.artifact-roll.quality-4 { --roll: var(--accent-purple); }
+.artifact-roll.quality-5 { --roll: var(--accent-amber); }
+
+/* Captain equipment: item icon in its quality colour (Poor … Godlike). */
+.gear-item { --grade: var(--border-strong); }
+.gear-item.grade-1 { --grade: var(--text-muted); }
+.gear-item.grade-2 { --grade: var(--text-secondary); }
+.gear-item.grade-3 { --grade: var(--accent-green); }
+.gear-item.grade-4 { --grade: var(--accent-blue); }
+.gear-item.grade-5 { --grade: var(--accent-purple); }
+.gear-item.grade-6 { --grade: var(--accent-amber); }
+.gear-item.grade-7 { --grade: var(--accent-red); }
+.gear-item.grade-8 { --grade: var(--accent-gold); }
+
+.gear-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gear-list.is-compact { gap: 6px; }
+
+/* In the dialog: every worn item as a card, side by side across its width. */
+.captain-gear .captain-detail-section { margin-top: 18px; }
+
+.gear-list.is-full {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.gear-list.is-full .gear-item {
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.gear-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.gear-list.is-compact .gear-item {
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+}
+
+.gear-icon {
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 2px solid var(--grade);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--grade) 40%, transparent), transparent 70%),
+    color-mix(in srgb, var(--grade) 12%, var(--bg-card));
+}
+
+.gear-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.gear-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.gear-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gear-grade {
+  color: var(--grade);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.gear-list.is-compact .gear-body {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+
+.gear-body .captain-bonus-list { font-size: 12.5px; }
+
+.gear-inserts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.gear-insert {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 1px 8px 1px 3px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.gear-insert img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 @media (max-width: 640px) {
@@ -9108,6 +9314,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .clan-history-table col.col-date,
   .clan-history-table col.col-members,
   .clan-history-table col.col-rank { width: auto; }
+}
+
 /* ── Chats (pages/chats.js) ────────────────────────────────────────────────
    The clan chat laid out like the game's: a time gutter, then a card per
    message headed "<rank> <name>". Theme tokens only. The left column lists

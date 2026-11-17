@@ -14,8 +14,12 @@ import {
   getGamePlayer,
   getGamePlayersByMember,
   getLatestCity,
+  getPlayerArtifactChanges,
+  getPlayerArtifacts,
   getPlayerCaptainChanges,
   getPlayerCaptains,
+  getPlayerEquipment,
+  getPlayerEquipmentChanges,
   getPlayerTechChanges,
   getPlayerTechs,
 } from '../../data/repositories/game-profile-repo.js';
@@ -34,6 +38,8 @@ import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js
 import { loadGameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
 import { safeArtName } from '../../game-art/selection.js';
+import { describeArtifact } from '../../game-protocol/artifacts.js';
+import { describeItem } from '../../game-protocol/equipment.js';
 
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
@@ -119,11 +125,33 @@ export function createGameRouter(): Router {
     }
     const playerId = gamePlayerIdForMember(memberId, clanId);
     if (playerId === null) {
-      res.json({ linked: false, captains: [], changes: [] });
+      res.json({ linked: false, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
       return;
     }
     const names = await loadGameNames().catch(() => null);
-    const portraits = currentGameArt()?.mappings?.captains ?? {};
+    const mappings = currentGameArt()?.mappings;
+    const portraits = mappings?.captains ?? {};
+    // Artifact / equipment / gem icons from the game's bundles, null until extracted.
+    const iconUrl = (map: Record<string, string> | undefined, id: number): string | null => {
+      const img = map?.[String(id)];
+      return img ? gameArtUrl(img) : null;
+    };
+    const artifactIconUrl = (type: number) => iconUrl(mappings?.artifacts, type);
+    const itemView = (type: number, enchantment: number, gems: number[]) => {
+      const { icon: _icon, ...v } = describeItem(type, enchantment, gems, names);
+      return {
+        ...v,
+        iconUrl: iconUrl(mappings?.equipment, type),
+        enchantment: v.enchantment ? { ...v.enchantment, iconUrl: iconUrl(mappings?.inserts, v.enchantment.id) } : null,
+        gems: v.gems.map((g) => ({ ...g, iconUrl: iconUrl(mappings?.inserts, g.id) })),
+      };
+    };
+    // Every captain's worn items (city fields 9 + 10), by captain.
+    const gear = new Map<number, unknown[]>();
+    for (const it of getPlayerEquipment(clanId, playerId)) {
+      if (!gear.has(it.captainId)) gear.set(it.captainId, []);
+      gear.get(it.captainId)!.push({ position: it.position, itemType: it.itemType, firstSeen: it.firstSeen, ...itemView(it.itemType, it.enchantment, it.gems) });
+    }
     const describe = (id: number) => {
       const c = names?.captains?.[String(id)];
       const portrait = portraits[String(id)];
@@ -144,11 +172,29 @@ export function createGameRouter(): Router {
         ...c,
         ...describe(c.captainId),
         starBonuses: names?.captains?.[String(c.captainId)]?.stars?.[String(c.stars)] ?? [],
+        equipment: gear.get(c.captainId) ?? [],
       })),
       changes: getPlayerCaptainChanges(clanId, playerId, since).map((c) => {
         const { name, iconUrl } = describe(c.captainId);
         return { ...c, name, iconUrl };
       }),
+      // The artifacts the line-up captains wear (city field 14): what the
+      // game's artifact book shows for each, at its level / star level / rolls.
+      artifacts: getPlayerArtifacts(clanId, playerId).map((a) => {
+        const { icon: _icon, ...view } = describeArtifact(a.artifactType, a.level, a.star, a.bonuses, names?.artifacts);
+        return { ...a, ...view, iconUrl: artifactIconUrl(a.artifactType) };
+      }),
+      artifactChanges: getPlayerArtifactChanges(clanId, playerId, since).map((c) => {
+        const { name, rarity } = describeArtifact(c.artifactType, c.level, c.star, [], names?.artifacts);
+        return { ...c, name, rarity, iconUrl: artifactIconUrl(c.artifactType) };
+      }),
+      equipmentChanges: getPlayerEquipmentChanges(clanId, playerId, since).map((c) => ({
+        ...c,
+        name: c.itemType ? describeItem(c.itemType, 0, [], names).name : '',
+        grade: c.itemType ? describeItem(c.itemType, 0, [], names).grade : 0,
+        prevName: c.prevType ? describeItem(c.prevType, 0, [], names).name : null,
+        iconUrl: c.itemType ? iconUrl(mappings?.equipment, c.itemType) : null,
+      })),
     });
   });
 

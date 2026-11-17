@@ -135,6 +135,10 @@ Image sprite references), which is where the geometry below comes from:
   the number centred. The view picks among `icons_tir_1` / `icons_tir_shield_1…6`
   in code; we use the sprite the prefab is saved with, `icons_tir_shield_4`
   (`heroLevelBadge`).
+captain portraits from T75, artifact icons from T110's config (`artifacts`),
+equipment icons from T11 f2 (`equipment`) and gem / enchantment icons from T8
+(`inserts`), and the Ancient planner's pictures (`ancients`,
+`EVENT_ART` in [selection.ts](../src/game-art/selection.ts)).
 
 **Only the game's own art is shown** — no game, wiki or third-party picture is
 committed (the troop webps and Ancient cut-outs were removed in Nov 2026). A
@@ -296,9 +300,66 @@ Field 30 is NOT captains: it is the signed-in account's own **army** —
 `[unitId, count, 0]` per troop type, T9 ids that merely overlap T75 (v106
 stored it as captains; v107 cleared it).
 
+### Captain equipment (city fields 9 + 10)
+
+A captain entry's `[12]` is its six equipment positions,
+`[captainId, slotId, itemUid, 100]` (positions 0–2 are usually empty, 3–5
+hold the worn gear; slot ids are per captain, 129–134 for Carter). The uid is
+an item instance in **field 10**, the player's item list (hero and captains,
+~20–110 per player):
+
+| Index | Holds |
+|---|---|
+| 0 | instance uid (64-bit; past 2^53 the codec hands it over as `"…n"`) |
+| 1 | item type — a **T11** row, which already includes the quality grade |
+| 2 | `[cityId]` |
+| 3, 4, 5, 6 | 1000, a ∈ {0,1,3,6,10}, b mostly 0–40, c 0–31 — not decoded, stored raw |
+| 7 | enchantment set into it (T8 item, f1 9), 0 = none |
+| 8 | gems set into it (T8 items, f1 8) |
+| 9 | the preset (captain entry `[14]` `[presetId, captainId, [six uids]]`) it sits in, 0 = inventory |
+
+`game_player_captain_equipment` keeps what each captain wears per position;
+`game_player_equipment_history` a row when a position gets a different item
+(by uid), a different enchantment or gems, or is emptied (`item_type` 0).
+Checked on the signed-in account's own city (Carter: Cursed Claw Coat, Godlike,
+Pioneer Enchantment + Amber) and archived member cities (Nov 2026).
+
+### Artifacts (city field 14)
+
+**Field 14** is every effect active in the city, `[effectId, sourceBits,
+count]` (~600 for a developed city): research, buildings, shop offers (sources
+2048/4096 are T19 offers) — and the artifacts the **three line-up captains**
+wear. Each such artifact adds one level effect (source 16384), one star-level
+effect (8192) and its rolled random bonuses (1; count 2 = the same roll twice).
+Every one of those effect ids belongs to exactly one artifact type in the
+static tables (T111/T112/T113 below), so the effects say which artifact, at
+what level and star level, with which rolls
+([artifacts.ts](../src/game-protocol/artifacts.ts)). Artifacts on benched
+captains are not in the city data at all: `game_player_artifacts.in_lineup`
+marks one that dropped out instead of deleting it; history
+(`game_player_artifact_history`) gets a row when an artifact is new or its
+level, star level or rolls change. Checked against the game's artifact book
+(Nov 2026): Torch of Olympus, Legendary, level 50/60 "Crypt exploration
+efficiency 130%", star level 21 (four stars and a partial fifth) "136%",
+random bonuses Epic Crypt +100%, Common / Rare / Epic +50%.
+
+**Message 61000** (sent at login, body `[[]]`) lists the signed-in account's
+own artifacts, worn or not: `[[{$pairs: [[type], [[type], [cityId],
+[starLevel], [level, xp], [{slot: [bonusEffectId]}, null]]]…}, {$pairs:
+[[type], [captainId, 1] | null]}]]`. It ignores any argument (a city or player
+id still returns the caller's own), so it cannot read another player — field
+14 is the way.
+
+**Re-reading the archive.** Artifacts and equipment were in every archived
+city reply before they were parsed. `game_parse_markers` remembers, per clan,
+which version of each city parser has replayed the archive (`CITY_PARSERS` in
+[game-protocol-phase.ts](../src/scheduler/game-protocol-phase.ts)); a parser
+added or changed is replayed over every archived reply, oldest read first, on
+the next scan — bump its version to re-run it.
+
 Not read yet: the Stats screen's Leadership / Authority / Dominance / Might and
-"Features" block (probably built from the skills), and equipment / artifact
-bonuses (the city data only carries item instance ids).
+"Features" block (probably built from the skills), and the instance fields a,
+b, c of an item.
 
 ### The clan itself (v111, My Clan page)
 
@@ -427,6 +488,9 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 14003 | `[[[capitalId]]]` | the Clan Capital's Border counters; key 30 = help points |
 | 28001 | `[[[clanId]]]` | the clan's displayed medals `[[medalId, earnedAt], …]` |
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kind 7 = wealth |
+| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[10]` item instances, `[12]` buildings, `[14]` active effects (artifacts), `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army |
+| 61000 | `[[]]` | the signed-in account's own artifacts (ignores any argument) |
+| 312 | `[[[tileIds], [versions], [], []]]` | map objects per 20×20 tile; `tile = floor(y/20)*50 + floor(x/20)` |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
 Triumphal; `count` is chests in the entry (Bank bundles 3 or 30). Gift ids are
@@ -456,6 +520,28 @@ Each table has its own id space:
 | 62 | clan medals | f5 vector (f4 unlock text, f6 tier) |
 | 52 | customizations: f1 kind (1 portrait frame, 2 city look) | f2 name vector, f4 visual JSON |
 | 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
+| 11 | equipment, one row per item type AND quality grade | f3 vector |
+| 110–113 | artifacts (`$pairs` tables keyed `[type]`) | T110 f8 vector |
+
+Equipment (T11): f1 set, f2 icon address (`arch_body`: set prefix + slot
+weapon / head / torso / body / legs / trinket1 / trinket2), f3 name, f5
+**quality grade** 1–8 (Poor, Common, Uncommon, Rare, Epic, Legendary,
+Ascendant, Godlike — `client.craft.<gray|white|green|blue|violet|orange|red|gold>_item_title`),
+f7 durability, f9 props JSON = the item's bonuses at that grade
+(`equipment.client_info.n0001` is Durability). "Cursed Claw Coat" exists once
+per grade: +3 % Crypt exploration at Poor, +50 % at Godlike. Gems (T8 f1 8)
+and enchantments (T8 f1 9) are T8 items: f3 name, f6 `{"icon": …}`.
+
+Artifacts: **T110** types (27): f7 `{"icon": …, "animation": …}`, f8 name, f9
+tooltip, f11 rarity 4 Epic / 5 Legendary / 6 Mythic
+(`client.artifact.window.artifact.<epic|legendary|mythical>_rarity`).
+**T111** `[[type], {star: [star, bigStar, effectId, cost, propsRef, …]}]` —
+25 star levels, five per displayed star. **T112** `[[type], xpItem, {level:
+[level, effectId, cond, xp, propsRef, …]}]` — 60 levels. **T113** `[[type],
+{effectId: [weight, propTextRef, valueTextRef, quality 1–5]}, unlocks]` — the
+random-bonus pool. **T20** effects: f3 `[[kind, propertyId, [], [2747], 0,
+value, 0]]`, value a multiplier ×10000 (20000 = +100 %). `readTables` re-keys
+`$pairs` tables by their id so they read like the others.
 
 Captains (T75): f1 kind, f2 rarity (1 rare, 2 epic, 3 legendary, 4 mythic;
 labels `client.captain.info.<rarity>_captain`), f7 JSON config (`smallIcon`
