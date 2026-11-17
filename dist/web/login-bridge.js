@@ -116,16 +116,6 @@ const ADAPT_DOWN_DROP_RATE = 0.2;
 // Step up only after this many consecutive drop-free windows, so we probe for
 // headroom without oscillating on a link that is marginal at the better rung.
 const ADAPT_UP_CLEAN_WINDOWS = 3;
-/**
- * Coordinator for the in-app login bridge: spawns a virtual display +
- * persistent-profile Chromium, screencasts the page over a WebSocket
- * to the admin browser, relays input back, and saves the resulting
- * cookies as the per-clan storage-state.json.
- *
- * Lifecycle pieces (Xvfb, message relay, screencast) live in their own
- * sibling modules under `./login-bridge/`. This file owns the state
- * machine that ties them together.
- */
 class LoginBridge {
     context = null;
     page = null;
@@ -908,8 +898,21 @@ class LoginBridge {
             log.warn('Could not seed login bridge from storage-state.json: ' + String(err));
         }
     }
-    /** Capture cookies, write storage-state.json (per-clan), tear down the browser. */
-    async save(adminUserId) {
+    /**
+     * Capture cookies, write storage-state.json (per-clan), tear down the browser.
+     * A second save while one runs (a double click) gets the same result: it
+     * used to start over on a browser the first save was closing, and reported
+     * "Cannot read properties of null (reading 'storageState')" although the
+     * login had been saved (Nov 17 2026).
+     */
+    save(adminUserId) {
+        if (this.saving)
+            return this.saving;
+        this.saving = this.saveNow(adminUserId).finally(() => { this.saving = null; });
+        return this.saving;
+    }
+    saving = null;
+    async saveNow(adminUserId) {
         if (!this.context) {
             throw new Error('Login session not active.');
         }

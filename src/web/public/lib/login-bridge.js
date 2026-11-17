@@ -601,7 +601,13 @@ function attachLoginSessionSocket(width, height) {
   loginSessionState.pasteHelper = tryPasteFromClipboard;
 }
 
+// A save takes a few seconds (it checks which account the login is); a second
+// click meanwhile is ignored rather than sent as a second save.
+let savingLoginSession = false;
+
 export async function saveLoginSession() {
+  if (savingLoginSession) return;
+  savingLoginSession = true;
   setLoginSessionStatus(t('Saving session…'));
   try {
     const res = await apiPost('/admin/login-session/save', {});
@@ -617,6 +623,8 @@ export async function saveLoginSession() {
     }
   } catch (err) {
     setLoginSessionStatus('❌ ' + String(err));
+  } finally {
+    savingLoginSession = false;
   }
 }
 

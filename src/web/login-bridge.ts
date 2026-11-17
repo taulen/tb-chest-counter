@@ -168,6 +168,16 @@ const ADAPT_UP_CLEAN_WINDOWS = 3;
  * sibling modules under `./login-bridge/`. This file owns the state
  * machine that ties them together.
  */
+export interface BridgeSaveResult {
+  ok: boolean;
+  cookies: number;
+  hasTbAuth: boolean;
+  hasSessionCookie: boolean;
+  storageStatePath: string;
+  /** The website account the saved login signs in as (null when the check could not tell). */
+  account: string | null;
+}
+
 class LoginBridge {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
@@ -1000,16 +1010,22 @@ class LoginBridge {
     }
   }
 
-  /** Capture cookies, write storage-state.json (per-clan), tear down the browser. */
-  async save(adminUserId: number | null): Promise<{
-    ok: boolean;
-    cookies: number;
-    hasTbAuth: boolean;
-    hasSessionCookie: boolean;
-    storageStatePath: string;
-    /** The website account the saved login signs in as (null when the check could not tell). */
-    account: string | null;
-  }> {
+  /**
+   * Capture cookies, write storage-state.json (per-clan), tear down the browser.
+   * A second save while one runs (a double click) gets the same result: it
+   * used to start over on a browser the first save was closing, and reported
+   * "Cannot read properties of null (reading 'storageState')" although the
+   * login had been saved (Nov 17 2026).
+   */
+  save(adminUserId: number | null): Promise<BridgeSaveResult> {
+    if (this.saving) return this.saving;
+    this.saving = this.saveNow(adminUserId).finally(() => { this.saving = null; });
+    return this.saving;
+  }
+
+  private saving: Promise<BridgeSaveResult> | null = null;
+
+  private async saveNow(adminUserId: number | null): Promise<BridgeSaveResult> {
     if (!this.context) {
       throw new Error('Login session not active.');
     }
