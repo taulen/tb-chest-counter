@@ -7,16 +7,27 @@
 // locations, raids, joins and reports arrive as placeholders plus a payload
 // (chat-text.ts) and render as chips.
 //
+// Two views, both paged — the page never loads the whole history:
+//   - the conversation: the newest end (live, polled), or opened AT a search
+//     hit or a date (`/context`: ~50 messages either side), with older/newer
+//     pages loaded as you scroll. At most MAX_ITEMS stay loaded; the far end
+//     is dropped (and can be loaded again) as you go.
+//   - search results: a search / writer filter runs over the WHOLE stored
+//     history on the server, says how many messages match, and lists them 100
+//     at a time; each hit opens the conversation at that message, with a way
+//     back to the results.
+//
 // Only the clan chat is shown; CHANNELS is the list the left column renders,
 // so the clan's group chats can be added later without reshaping the page.
 
 import { api } from '../lib/api.js';
-import { esc, memberLink, localDateKey, copyTextToClipboard } from '../lib/ui.js';
+import { esc, memberLink, localDateKey, copyTextToClipboard, prefersReducedMotion } from '../lib/ui.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 
 const CHANNELS = [{ key: 'clan', label: () => t('Clan chat'), endpoint: '/chat/clan' }];
 const PAGE = 100;
+const MAX_ITEMS = 2000;
 const POLL_MS = 45_000;
 /** Close enough to the bottom to follow new messages as they arrive. */
 const FOLLOW_PX = 120;
@@ -30,11 +41,19 @@ function freshState() {
     q: '',
     sender: '',
     date: '',
-    items: [], // oldest first
-    people: {},
-    objects: {},
+    /** 'chat' (the conversation) or 'results' (search / writer filter). */
+    mode: 'chat',
+    // The conversation, oldest first.
+    items: [],
     hasOlder: false,
     hasNewer: false,
+    focusKey: null,
+    /** The conversation was opened from the results (offer the way back). */
+    fromResults: false,
+    // Search results, newest first.
+    results: null,
+    people: {},
+    objects: {},
     loading: false,
     history: null,
     available: true,
@@ -42,6 +61,8 @@ function freshState() {
     newBelow: 0,
   };
 }
+
+const filtering = () => !!(state.q || state.sender);
 
 // ── Rendering one message ───────────────────────────────────────────────────
 
@@ -168,10 +189,14 @@ function bodyHtml(m) {
   return out + textHtml(text.slice(last));
 }
 
-function messageHtml(m) {
+/** One message. A search hit (`hit`) carries the button that opens it in the conversation. */
+function messageHtml(m, { hit = false } = {}) {
   const time = `<time class="chat-time" datetime="${new Date(m.at).toISOString()}" title="${esc(fullTimeOf(m.at))}">${timeOf(m.at)}</time>`;
+  const focus = m.key === state.focusKey && !hit ? ' is-focus' : '';
+  const open = hit
+    ? `<button type="button" class="btn btn-sm chat-open" data-chat-action="open" data-key="${esc(m.key)}">${esc(t('Show in chat'))}</button>` : '';
   if (m.kind === 'service') {
-    return `<li class="chat-msg is-service" data-key="${esc(m.key)}">${time}<div class="chat-card">${bodyHtml(m)}</div></li>`;
+    return `<li class="chat-msg is-service${hit ? ' is-hit' : ''}${focus}" data-key="${esc(m.key)}">${time}<div class="chat-card">${bodyHtml(m)}${open ? `<div class="chat-hit-actions">${open}</div>` : ''}</div></li>`;
   }
   const who = m.sender.playerId ? state.people[m.sender.playerId] : null;
   const role = m.sender.rank ?? who?.role ?? null;
@@ -186,30 +211,38 @@ function messageHtml(m) {
     ? `<p class="chat-translation">${esc(t('Translated ({lang})', { lang }))}: ${textHtml(m.translations[lang])}</p>` : '';
   const edited = m.edited
     ? ` <span class="chat-edited" title="${esc(t('Earlier text: {text}', { text: m.previousText ?? '' }))}">${esc(t('(edited)'))}</span>` : '';
-  return `<li class="chat-msg role-${role ?? 0}" data-key="${esc(m.key)}">${time}<div class="chat-card">
-    <div class="chat-head">${avatar}${rank ? `<span class="chat-rank">${esc(rank)}</span>` : ''}<span class="chat-name">${nameMarked}</span>${edited}</div>
+  return `<li class="chat-msg role-${role ?? 0}${hit ? ' is-hit' : ''}${focus}" data-key="${esc(m.key)}">${time}<div class="chat-card">
+    <div class="chat-head">${avatar}${rank ? `<span class="chat-rank">${esc(rank)}</span>` : ''}<span class="chat-name">${nameMarked}</span>${edited}${open}</div>
     <div class="chat-text">${bodyHtml(m)}</div>${translated}
   </div></li>`;
 }
 
-function logHtml() {
-  if (!state.items.length) {
-    const empty = state.q || state.sender
-      ? t('No messages match.')
-      : state.available ? t('No clan chat stored yet. It is collected with every scan.') : t('The clan chat has not been read yet. It is collected with every scan.');
-    return `<p class="chat-none">${esc(empty)}</p>`;
-  }
+const dayOf = (m) => localDateKey(new Date(m.at));
+
+/**
+ * Messages with a separator wherever the local day changes (either order).
+ * `prevDay` is the day of the message the chunk continues from, so an
+ * appended page does not repeat the separator of a day already open.
+ */
+function chunkHtml(items, opts, prevDay = '') {
   let html = '';
-  let day = '';
-  for (const m of state.items) {
-    const d = localDateKey(new Date(m.at));
+  let day = prevDay;
+  for (const m of items) {
+    const d = dayOf(m);
     if (d !== day) {
       day = d;
       html += `<li class="chat-day" role="separator"><span>${esc(d)}</span></li>`;
     }
-    html += messageHtml(m);
+    html += messageHtml(m, opts);
   }
-  return `<ol class="chat-list">${html}</ol>`;
+  return html;
+}
+
+function emptyHtml() {
+  const empty = filtering()
+    ? t('No messages match.')
+    : state.available ? t('No clan chat stored yet. It is collected with every scan.') : t('The clan chat has not been read yet. It is collected with every scan.');
+  return `<p class="chat-none">${esc(empty)}</p>`;
 }
 
 function statusHtml() {
@@ -223,7 +256,15 @@ function statusHtml() {
 
 // ── Loading ────────────────────────────────────────────────────────────────
 
-function query(extra) {
+/** A conversation request: never filtered (the conversation is the whole chat). */
+function chatQuery(extra) {
+  const p = new URLSearchParams({ limit: String(PAGE) });
+  for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
+  return `${state.channel.endpoint}?${p}`;
+}
+
+/** A results request: the search and writer filter. */
+function resultsQuery(extra) {
   const p = new URLSearchParams({ limit: String(PAGE) });
   if (state.q) p.set('q', state.q);
   if (state.sender) p.set('sender', state.sender);
@@ -238,133 +279,310 @@ function absorb(res) {
   state.available = res.available !== false;
 }
 
-/** End of a local calendar day (exclusive), for "jump to date". */
-function endOfDay(dateKey) {
+/** Start of a local calendar day, for "open the chat on this date". */
+function startOfDay(dateKey) {
   const [y, m, d] = dateKey.split('-').map(Number);
-  return new Date(y, m - 1, d + 1).getTime();
+  return new Date(y, m - 1, d).getTime();
 }
 
-async function loadInitial(root) {
-  state.loading = true;
+/** One request at a time; a newer view request wins over an older one still running. */
+let generation = 0;
+async function guarded(fn) {
+  const mine = ++generation;
+  // Whatever scroll gesture led here is used up: the scrolls this request
+  // causes itself (restoring the view, opening at a message) never page.
   wantsMore = false;
-  const to = state.date ? endOfDay(state.date) : null;
-  const res = await api(query({ to }));
-  absorb(res);
-  state.items = (res.messages ?? []).slice().reverse();
-  state.hasOlder = !!res.hasMore;
-  state.hasNewer = !!to && to < Date.now();
-  state.newBelow = 0;
-  state.loading = false;
-  paint(root, { toBottom: true });
+  state.loading = true;
+  try {
+    return await fn(() => mine === generation);
+  } finally {
+    if (mine === generation) state.loading = false;
+  }
+}
+
+/** The newest end of the conversation (live). */
+async function openLive(root) {
+  await guarded(async (current) => {
+    const res = await api(chatQuery({}));
+    if (!current()) return;
+    absorb(res);
+    Object.assign(state, {
+      mode: 'chat', items: (res.messages ?? []).slice().reverse(), hasOlder: !!res.hasMore, hasNewer: false,
+      focusKey: null, newBelow: 0,
+    });
+    paint(root, { toBottom: true });
+  });
+}
+
+/** The conversation at a message (`around`) or at a time (`at`). */
+async function openContext(root, params, { fromResults = false } = {}) {
+  if (fromResults && state.mode === 'results' && state.results) {
+    state.results.scrollTop = root.querySelector('.chat-log').scrollTop;
+  }
+  await guarded(async (current) => {
+    const p = new URLSearchParams(params);
+    const res = await api(`${state.channel.endpoint}/context?${p}`);
+    if (!current()) return;
+    absorb(res);
+    Object.assign(state, {
+      mode: 'chat', items: res.messages ?? [], hasOlder: !!res.hasOlder, hasNewer: !!res.hasNewer,
+      focusKey: res.focus ?? null, newBelow: 0, fromResults: fromResults || (state.fromResults && filtering()),
+    });
+    paint(root);
+    revealFocus(root);
+  });
+}
+
+/** Scroll the focused message into the middle of the log and flash it. */
+function revealFocus(root) {
+  const log = root.querySelector('.chat-log');
+  const el = state.focusKey ? log.querySelector(`.chat-msg[data-key="${CSS.escape(state.focusKey)}"]`) : null;
+  if (!el) { log.scrollTop = log.scrollHeight; return; }
+  log.scrollTop = el.offsetTop - log.clientHeight / 2 + el.offsetHeight / 2;
+  el.classList.add(prefersReducedMotion() ? 'is-focus-still' : 'is-focus-flash');
+  el.setAttribute('tabindex', '-1');
+  el.focus({ preventScroll: true });
+}
+
+/** Search results over the whole stored history (first page). */
+async function openResults(root) {
+  await guarded(async (current) => {
+    const res = await api(resultsQuery({}));
+    if (!current()) return;
+    absorb(res);
+    state.results = {
+      items: res.messages ?? [],
+      hasMore: !!res.hasMore,
+      total: res.matches?.total ?? (res.messages ?? []).length,
+      oldestAt: res.matches?.oldestAt ?? null,
+      scrollTop: 0,
+    };
+    state.mode = 'results';
+    state.focusKey = null;
+    paint(root, { toTop: true });
+    announce(root, resultsSummary());
+  });
+}
+
+async function moreResults(root) {
+  const r = state.results;
+  if (state.loading || state.mode !== 'results' || !r?.hasMore || !r.items.length) return;
+  await guarded(async (current) => {
+    const res = await api(resultsQuery({ before: r.items[r.items.length - 1].key }));
+    if (!current()) return;
+    absorb(res);
+    const more = res.messages ?? [];
+    const prevDay = dayOf(r.items[r.items.length - 1]);
+    r.items = r.items.concat(more);
+    r.hasMore = !!res.hasMore;
+    // Appended below: nothing on screen moves.
+    listEl(root)?.insertAdjacentHTML('beforeend', chunkHtml(more, { hit: true }, prevDay));
+    paintEdges(root);
+    paintChrome(root);
+  });
+}
+
+/**
+ * Change the list without moving what is on screen: the first visible message
+ * stays where it was, whatever was added above or dropped at either end.
+ */
+function keepingView(root, change) {
+  const log = root.querySelector('.chat-log');
+  const anchor = [...log.querySelectorAll('.chat-msg')].find((el) => el.offsetTop + el.offsetHeight > log.scrollTop);
+  const key = anchor?.dataset.key;
+  const offset = anchor ? anchor.offsetTop - log.scrollTop : 0;
+  change();
+  const again = key ? log.querySelector(`.chat-msg[data-key="${CSS.escape(key)}"]`) : null;
+  if (again) log.scrollTop = again.offsetTop - offset;
+}
+
+const listEl = (root) => root.querySelector('.chat-log .chat-list');
+
+/** Remove the nodes of dropped messages, then any day separator left heading nothing. */
+function dropNodes(root, dropped) {
+  const list = listEl(root);
+  if (!list || !dropped.length) return;
+  for (const m of dropped) list.querySelector(`.chat-msg[data-key="${CSS.escape(m.key)}"]`)?.remove();
+  for (const sep of [...list.querySelectorAll('.chat-day')]) {
+    const next = sep.nextElementSibling;
+    if (!next || next.classList.contains('chat-day')) sep.remove();
+  }
 }
 
 async function loadOlder(root) {
-  if (state.loading || !state.hasOlder || !state.items.length) return;
-  state.loading = true;
-  const log = root.querySelector('.chat-log');
-  const before = state.items[0].key;
-  try {
-    const res = await api(query({ before }));
+  if (state.loading || state.mode !== 'chat' || !state.hasOlder || !state.items.length) return;
+  await guarded(async (current) => {
+    const res = await api(chatQuery({ before: state.items[0].key }));
+    if (!current()) return;
     absorb(res);
     const older = (res.messages ?? []).slice().reverse();
-    state.items = older.concat(state.items);
-    state.hasOlder = !!res.hasMore;
-    const prevHeight = log.scrollHeight;
-    const prevTop = log.scrollTop;
-    paint(root);
-    log.scrollTop = log.scrollHeight - prevHeight + prevTop;
-  } finally {
-    state.loading = false;
-  }
+    keepingView(root, () => {
+      const list = listEl(root);
+      const firstDay = dayOf(state.items[0]);
+      const headSep = list?.querySelector('.chat-day');
+      state.items = older.concat(state.items);
+      state.hasOlder = !!res.hasMore;
+      if (list && older.length) {
+        list.insertAdjacentHTML('afterbegin', chunkHtml(older));
+        // The day that was at the top continues from the new page: one separator.
+        if (dayOf(older[older.length - 1]) === firstDay) headSep?.remove();
+      }
+      // Bounded: drop the far (newest) end; it loads again when scrolled to.
+      if (state.items.length > MAX_ITEMS) {
+        dropNodes(root, state.items.slice(MAX_ITEMS));
+        state.items = state.items.slice(0, MAX_ITEMS);
+        state.hasNewer = true;
+      }
+      paintEdges(root);
+    });
+    paintChrome(root);
+  });
 }
 
 async function loadNewer(root, { live = false } = {}) {
-  if (state.loading || !state.items.length) return;
+  if (state.loading || state.mode !== 'chat' || !state.items.length) return;
   if (!live && !state.hasNewer) return;
-  state.loading = true;
-  const log = root.querySelector('.chat-log');
-  const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_PX;
-  try {
-    const res = await api(query({ after: state.items[state.items.length - 1].key }));
+  await guarded(async (current) => {
+    const log = root.querySelector('.chat-log');
+    const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_PX;
+    const res = await api(chatQuery({ after: state.items[state.items.length - 1].key }));
+    if (!current()) return;
     absorb(res);
     const newer = res.messages ?? [];
-    if (!newer.length) {
-      if (!live) state.hasNewer = false;
-      paintStatus(root);
-      return;
-    }
-    state.items = state.items.concat(newer);
     if (!live) state.hasNewer = !!res.hasMore;
-    const prevTop = log.scrollTop;
-    paint(root);
-    if (live) announce(root, tn(newer.length, '{n} new message', '{n} new messages'));
-    if (live && nearBottom) log.scrollTop = log.scrollHeight;
-    else {
-      log.scrollTop = prevTop;
-      if (live) state.newBelow += newer.length;
-      paintJump(root);
+    if (newer.length) {
+      keepingView(root, () => {
+        const prevDay = dayOf(state.items[state.items.length - 1]);
+        state.items = state.items.concat(newer);
+        listEl(root)?.insertAdjacentHTML('beforeend', chunkHtml(newer, {}, prevDay));
+        // Bounded: drop the far (oldest) end; it loads again when scrolled to.
+        if (state.items.length > MAX_ITEMS) {
+          dropNodes(root, state.items.slice(0, state.items.length - MAX_ITEMS));
+          state.items = state.items.slice(state.items.length - MAX_ITEMS);
+          state.hasOlder = true;
+        }
+        paintEdges(root);
+      });
+    } else if (!live) {
+      paintEdges(root); // the "newer" button goes: this is the newest end
     }
-  } finally {
-    state.loading = false;
-  }
+    if (live && newer.length) {
+      announce(root, tn(newer.length, '{n} new message', '{n} new messages'));
+      if (nearBottom) log.scrollTop = log.scrollHeight;
+      else state.newBelow += newer.length;
+    }
+    paintChrome(root);
+  });
 }
 
-/** Live: new lines while the page is visible and the view sits at the live end. */
+/** Live: new lines while the page is visible and the conversation sits at its newest end. */
 function startPolling(root) {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
     if (!root.isConnected) { clearInterval(pollTimer); pollTimer = null; return; }
-    if (document.visibilityState !== 'visible' || state.hasNewer || state.loading) return;
+    if (document.visibilityState !== 'visible' || state.mode !== 'chat' || state.hasNewer || state.loading) return;
     loadNewer(root, { live: true }).catch(() => {});
   }, POLL_MS);
 }
 
 // ── Painting ───────────────────────────────────────────────────────────────
 
-function paintStatus(root) {
-  const el = root.querySelector('.chat-status');
-  if (el) el.innerHTML = statusHtml();
-}
-
-/** Say it to screen readers (the log itself is repainted whole, so it is not a live region). */
+/** Say it to screen readers (the log is not a live region: a new view replaces it whole). */
 function announce(root, text) {
   const el = root.querySelector('#chatLive');
   if (el) el.textContent = text;
 }
 
-function paintJump(root) {
-  const btn = root.querySelector('.chat-jump');
-  if (!btn) return;
-  const show = state.hasNewer || state.newBelow > 0;
-  btn.hidden = !show;
-  btn.textContent = state.newBelow > 0
-    ? tn(state.newBelow, '{n} new message ↓', '{n} new messages ↓')
-    : t('Jump to the latest ↓');
+function resultsSummary() {
+  const r = state.results;
+  if (!r) return '';
+  if (!r.total) return t('No messages match.');
+  const since = r.oldestAt ? localDateKey(new Date(r.oldestAt)) : '';
+  return tn(r.total, '{n} match since {date}', '{n} matches since {date}', { date: since });
 }
 
-function paint(root, { toBottom = false } = {}) {
-  const log = root.querySelector('.chat-log');
-  log.innerHTML = `
-    <div class="chat-edge">${state.hasOlder ? `<button type="button" class="btn btn-sm" data-chat-action="older">${esc(t('Load older messages'))}</button>` : state.items.length && state.history?.complete && !state.q && !state.sender ? `<span class="chat-start">${esc(t('Start of the stored history'))}</span>` : ''}</div>
-    ${logHtml()}
-    <div class="chat-edge">${state.hasNewer ? `<button type="button" class="btn btn-sm" data-chat-action="newer">${esc(t('Load newer messages'))}</button>` : ''}</div>`;
-  paintStatus(root);
-  paintJump(root);
-  const count = root.querySelector('.chat-results');
-  if (count) {
-    count.textContent = state.q || state.sender
-      ? (state.hasOlder ? t('Showing the newest matches; scroll up for more.') : tn(state.items.length, '{n} match', '{n} matches'))
-      : '';
+/** Everything around the log: status, the results line, back / latest buttons. */
+function paintChrome(root) {
+  const status = root.querySelector('.chat-status');
+  if (status) status.innerHTML = statusHtml();
+  const line = root.querySelector('.chat-results');
+  if (line) {
+    if (state.mode === 'results') {
+      const r = state.results;
+      line.textContent = r?.total
+        ? `${resultsSummary()} · ${t('Showing {shown}', { shown: r.items.length.toLocaleString() })}`
+        : '';
+    } else if (state.focusKey && !state.fromResults && state.date) {
+      line.textContent = t('The chat from {date} on.', { date: state.date });
+    } else {
+      line.textContent = '';
+    }
   }
-  if (toBottom) log.scrollTop = log.scrollHeight;
+  const back = root.querySelector('[data-chat-action="back"]');
+  if (back) back.hidden = !(state.mode === 'chat' && state.fromResults && filtering() && state.results);
+  const jump = root.querySelector('.chat-jump');
+  if (jump) {
+    const show = state.mode === 'chat' && (state.hasNewer || state.newBelow > 0);
+    jump.hidden = !show;
+    jump.textContent = state.newBelow > 0 && !state.hasNewer
+      ? tn(state.newBelow, '{n} new message ↓', '{n} new messages ↓')
+      : t('Jump to the latest ↓');
+  }
 }
 
-// Pages load only when a PERSON asks: a click on "Load older/newer", or
-// scrolling into an edge by wheel, touch or keyboard. The first version
-// loaded on visibility (IntersectionObserver), and on prod (20,000+ lines)
-// each page landed with the edge still in range, so the whole history
-// streamed in and repainted without end. One gesture = at most one page.
+/** The buttons / markers at the two ends of the log. */
+function paintEdges(root) {
+  const top = root.querySelector('.chat-log .chat-edge.is-top');
+  const bottom = root.querySelector('.chat-log .chat-edge.is-bottom');
+  if (state.mode === 'results') {
+    if (top) top.innerHTML = '';
+    if (bottom) {
+      bottom.innerHTML = state.results?.hasMore
+        ? `<button type="button" class="btn btn-sm" data-chat-action="more-results">${esc(t('Load more results'))}</button>` : '';
+    }
+    return;
+  }
+  if (top) {
+    top.innerHTML = state.hasOlder
+      ? `<button type="button" class="btn btn-sm" data-chat-action="older">${esc(t('Load older messages'))}</button>`
+      : state.items.length && state.history?.complete ? `<span class="chat-start">${esc(t('Start of the stored history'))}</span>` : '';
+  }
+  if (bottom) {
+    bottom.innerHTML = state.hasNewer
+      ? `<button type="button" class="btn btn-sm" data-chat-action="newer">${esc(t('Load newer messages'))}</button>` : '';
+  }
+}
+
+/**
+ * A whole new view (live end, a conversation opened at a message or date,
+ * search results). Paging within a view never comes here: it adds or drops
+ * only the nodes of the page concerned (loadOlder / loadNewer / moreResults).
+ */
+function paint(root, { toBottom = false, toTop = false } = {}) {
+  const log = root.querySelector('.chat-log');
+  const results = state.mode === 'results';
+  const items = results ? state.results.items : state.items;
+  log.setAttribute('aria-label', results ? t('Search results') : t('Clan chat messages'));
+  log.innerHTML = items.length
+    ? `<div class="chat-edge is-top"></div><ol class="chat-list">${chunkHtml(items, { hit: results })}</ol><div class="chat-edge is-bottom"></div>`
+    : emptyHtml();
+  paintEdges(root);
+  paintChrome(root);
+  if (toBottom) log.scrollTop = log.scrollHeight;
+  if (toTop) log.scrollTop = 0;
+}
+
+/**
+ * Pages load only when a PERSON asks: a click on "Load older / newer / more",
+ * or scrolling into an edge by wheel, touch or keyboard — one gesture, at most
+ * one page. Never on visibility: the first version paged on an
+ * IntersectionObserver, and with prod's 20,000+ lines each page landed with
+ * the edge still in range, so the whole history streamed in and repainted
+ * without end. Scroll positions the page sets itself (restoring the view
+ * after a page, opening at a message) are not gestures and load nothing.
+ */
 let wantsMore = false;
+const EDGE_PX = 80;
 
 function wireEdgePaging(root) {
   const log = root.querySelector('.chat-log');
@@ -378,6 +596,10 @@ function wireEdgePaging(root) {
     if (!wantsMore || state.loading) return;
     const nearTop = log.scrollTop < EDGE_PX;
     const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < EDGE_PX;
+    if (state.mode === 'results') {
+      if (nearBottom && state.results?.hasMore) { wantsMore = false; moreResults(root).catch(() => {}); }
+      return;
+    }
     if (nearTop && state.hasOlder) {
       wantsMore = false;
       loadOlder(root).catch(() => {});
@@ -387,7 +609,6 @@ function wireEdgePaging(root) {
     }
   }, { passive: true });
 }
-const EDGE_PX = 80;
 
 async function loadSenders(root) {
   if (state.senders) return;
@@ -416,7 +637,7 @@ export async function renderChats(el) {
       <section class="chat-main card" aria-labelledby="chatTitle">
         <div class="chat-top">
           <h2 id="chatTitle">${esc(state.channel.label())}</h2>
-          <p class="chat-status muted"></p>
+          <p class="chat-status"></p>
         </div>
         <form class="chat-tools" role="search">
           <label class="chat-search">
@@ -428,15 +649,18 @@ export async function renderChats(el) {
             <select class="input" id="chatSender"><option value="">${esc(t('Everyone'))}</option></select>
           </label>
           <label class="chat-filter chat-date">
-            <span class="chat-date-label">${esc(t('Up to'))}</span>
+            <span class="chat-date-label">${esc(t('Go to'))}</span>
             <input type="date" class="input" id="chatDate" lang="sv" max="${today}">
           </label>
           <button type="button" class="btn btn-sm" data-chat-action="clear" hidden>${esc(t('Clear'))}</button>
         </form>
-        <p class="chat-results muted" aria-live="polite"></p>
+        <div class="chat-results-row">
+          <button type="button" class="chat-back" data-chat-action="back" hidden>${esc(t('← Back to results'))}</button>
+          <p class="chat-results" aria-live="polite"></p>
+        </div>
         <div class="chat-log" role="region" tabindex="0" aria-label="${esc(t('Clan chat messages'))}"></div>
         <button type="button" class="btn btn-sm btn-primary chat-jump" data-chat-action="latest" hidden></button>
-        <p class="chat-note muted">${esc(t('Every message is kept here, even after the game no longer shows it.'))}</p>
+        <p class="chat-note">${esc(t('Every message is kept here, even after the game no longer shows it.'))}</p>
         <span class="visually-hidden" aria-live="polite" id="chatLive"></span>
       </section>
     </div>`;
@@ -444,48 +668,72 @@ export async function renderChats(el) {
   const root = el.querySelector('.chat-page');
   root.querySelector('.chat-tools').addEventListener('submit', (e) => e.preventDefault());
   const clearBtn = root.querySelector('[data-chat-action="clear"]');
+  const searchInput = root.querySelector('#chatSearch');
+  const senderSel = root.querySelector('#chatSender');
+  const dateInput = root.querySelector('#chatDate');
   const syncClear = () => { clearBtn.hidden = !(state.q || state.sender || state.date); };
+  /** A search / writer filter shows its results; none shows the live conversation. */
+  const refilter = () => {
+    syncClear();
+    state.fromResults = false;
+    state.results = null;
+    return (filtering() ? openResults(root) : openLive(root)).catch(() => {});
+  };
 
   let searchTimer = null;
-  root.querySelector('#chatSearch').addEventListener('input', (e) => {
+  searchInput.addEventListener('input', (e) => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       state.q = e.target.value.trim();
-      syncClear();
-      loadInitial(root).catch(() => {});
+      refilter();
     }, 300);
   });
-  const senderSel = root.querySelector('#chatSender');
   senderSel.addEventListener('change', (e) => {
     state.sender = e.target.value;
-    syncClear();
-    loadInitial(root).catch(() => {});
+    refilter();
   });
-  root.querySelector('#chatDate').addEventListener('change', (e) => {
+  dateInput.addEventListener('change', (e) => {
     state.date = e.target.value;
     syncClear();
-    loadInitial(root).catch(() => {});
+    if (state.date) openContext(root, { at: String(startOfDay(state.date)) }, { fromResults: state.mode === 'results' }).catch(() => {});
+    else (filtering() ? openResults(root) : openLive(root)).catch(() => {});
   });
 
   root.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-chat-action]');
-    if (!btn) return;
+    // A click anywhere on a search hit's card (not on a link or chip) opens it too.
+    if (!btn) {
+      const hit = e.target.closest('.chat-msg.is-hit');
+      if (hit && !e.target.closest('a, button')) await openContext(root, { around: hit.dataset.key }, { fromResults: true });
+      return;
+    }
     const action = btn.dataset.chatAction;
     if (action === 'older') await loadOlder(root);
     else if (action === 'newer') await loadNewer(root);
-    else if (action === 'latest') {
-      if (state.hasNewer) { state.date = ''; root.querySelector('#chatDate').value = ''; syncClear(); await loadInitial(root); }
+    else if (action === 'more-results') await moreResults(root);
+    else if (action === 'open') await openContext(root, { around: btn.dataset.key }, { fromResults: true });
+    else if (action === 'back') {
+      state.mode = 'results';
+      state.focusKey = null;
+      paint(root);
+      root.querySelector('.chat-log').scrollTop = state.results?.scrollTop ?? 0;
+    } else if (action === 'latest') {
+      if (state.hasNewer) {
+        state.date = '';
+        dateInput.value = '';
+        syncClear();
+        await openLive(root);
+      }
       const log = root.querySelector('.chat-log');
       log.scrollTop = log.scrollHeight;
       state.newBelow = 0;
-      paintJump(root);
+      paintChrome(root);
     } else if (action === 'clear') {
       state.q = ''; state.sender = ''; state.date = '';
-      root.querySelector('#chatSearch').value = '';
+      searchInput.value = '';
       senderSel.value = '';
-      root.querySelector('#chatDate').value = '';
-      syncClear();
-      await loadInitial(root);
+      dateInput.value = '';
+      await refilter();
     } else if (action === 'copy-coords') {
       await copyTextToClipboard(btn.dataset.coords);
       btn.classList.add('is-copied');
@@ -498,12 +746,12 @@ export async function renderChats(el) {
   log.addEventListener('scroll', () => {
     if (state.newBelow && log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_PX) {
       state.newBelow = 0;
-      paintJump(root);
+      paintChrome(root);
     }
   }, { passive: true });
 
   wireEdgePaging(root);
-  await loadInitial(root);
+  await openLive(root);
   loadSenders(root).catch(() => {});
   startPolling(root);
 }

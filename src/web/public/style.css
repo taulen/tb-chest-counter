@@ -9369,8 +9369,42 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .chat-date .input { width: auto; }
 .chat-date { display: flex; align-items: center; gap: 6px; }
 .chat-date-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
-.chat-results { margin: 4px 0 6px; font-size: 12px; color: var(--text-muted); min-height: 1em; }
+.chat-results-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-height: 18px;
+  margin: 4px 0 6px;
+}
+.chat-results { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.chat-back {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-gold);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-back:hover { text-decoration: underline; }
+.chat-back:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* Search hits: the whole card opens the conversation at that message. */
+.chat-msg.is-hit .chat-card { cursor: pointer; }
+.chat-msg.is-hit .chat-card:hover { border-color: var(--border-strong); }
+.chat-open { margin-left: auto; }
+.chat-hit-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+/* The message a search hit or a date opened the conversation at. */
+.chat-msg.is-focus .chat-card { border-color: var(--accent-gold); box-shadow: 0 0 0 2px var(--accent-gold-bg-strong); }
+.chat-msg.is-focus-flash .chat-card { animation: chat-focus-flash 2.4s ease-out; }
+.chat-msg[tabindex="-1"]:focus { outline: none; }
+@keyframes chat-focus-flash {
+  0%, 35% { background: var(--accent-gold-bg-strong); }
+  100% { background: var(--bg-card); }
+}
 .chat-log {
+  position: relative; /* offsetTop of a message is measured from the log */
   height: calc(100dvh - 340px);
   min-height: 360px;
   overflow-y: auto;
@@ -9507,9 +9541,11 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   /* One channel today: its name is the card's heading, so the list folds away. */
   .chat-channels { display: none; }
   .chat-main { padding: 12px 10px 10px; }
-  /* Search on its own row; writer and date share the next. */
-  .chat-tools > .chat-search { flex: 1 1 100%; }
-  .chat-tools > .chat-filter { flex: 1 1 40%; min-width: 0; }
+  /* Rows: search · writer + Clear · date (its label runs long in ru/de). */
+  .chat-tools > .chat-search { flex: 1 1 100%; order: 0; }
+  .chat-tools > .chat-filter { flex: 1 1 0; min-width: 0; order: 1; }
+  .chat-tools > [data-chat-action="clear"] { order: 2; }
+  .chat-tools > .chat-date { flex: 1 1 100%; order: 3; }
   .chat-filter .input { width: 100%; max-width: none; }
   .chat-date .input { flex: 1 1 auto; min-width: 0; width: 100%; }
   .chat-log { height: calc(100dvh - 330px); min-height: 320px; padding: 4px 6px 4px 2px; }

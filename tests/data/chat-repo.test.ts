@@ -7,8 +7,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import {
-  chatHistoryInfo, chatSenders, clanChatChannels, ftsQuery, isChatHistoryComplete, markChatHistoryComplete,
-  oldestChatMessageAt, readChatPage, saveChatMessages, upsertChatChannel,
+  chatAnchorAt, chatHistoryInfo, chatSenders, clanChatChannels, countChatMatches, ftsQuery, isChatHistoryComplete,
+  markChatHistoryComplete, oldestChatMessageAt, readChatAround, readChatPage, saveChatMessages, upsertChatChannel,
 } from '../../src/data/repositories/chat-repo.js';
 import type { ChatMessage } from '../../src/game-protocol/chat.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
@@ -130,6 +130,38 @@ describe('reading the clan chat', () => {
       { playerId: 0x12e00000c87, name: 'taulen302', messages: 2, lastAt: T0 + 1000 },
       { playerId: 0x12e000003e8, name: 'Рили', messages: 1, lastAt: T0 + 1000 },
     ]);
+  });
+
+  it('counts a search over the whole stored history, not just a page', () => {
+    const channels = clanChatChannels(1);
+    const many = Array.from({ length: 250 }, (_, i) => msg(1000 + i, T0 + 10_000 + i * 1000, `raid ${i}`));
+    saveChatMessages(1, many);
+    expect(readChatPage(1, channels, { q: 'raid', limit: 100 })).toHaveLength(100);
+    expect(countChatMatches(1, channels, 'raid')).toEqual({ total: 250, oldestAt: T0 + 10_000 });
+    expect(countChatMatches(1, channels, undefined, 0x12e000003e8)).toEqual({ total: 1, oldestAt: T0 + 1000 });
+    expect(countChatMatches(1, channels, '"*')).toEqual({ total: 0, oldestAt: null });
+    // Never another clan's or a private line in the count either.
+    expect(countChatMatches(1, channels, 'secret').total).toBe(0);
+  });
+
+  it('opens the conversation around a message: up to N either side, the message itself included', () => {
+    const channels = clanChatChannels(1);
+    const many = Array.from({ length: 30 }, (_, i) => msg(2000 + i, T0 + 100_000 + i * 1000, `line ${i}`));
+    saveChatMessages(1, many);
+    const at = { at: T0 + 100_000 + 15 * 1000, id: 2015 };
+    const around = readChatAround(1, channels, at, 5);
+    expect(around.messages.map((m) => m.messageId)).toEqual([2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]);
+    expect(around).toMatchObject({ hasOlder: true, hasNewer: true });
+    const end = readChatAround(1, channels, { at: T0 + 100_000 + 29 * 1000, id: 2029 }, 5);
+    expect(end.messages.at(-1)?.messageId).toBe(2029);
+    expect(end.hasNewer).toBe(false);
+  });
+
+  it('a date opens at its first message, or at the last one when nothing came after', () => {
+    const channels = clanChatChannels(1);
+    expect(chatAnchorAt(1, channels, T0 + 500)).toEqual({ at: T0 + 1000, id: 11 });
+    expect(chatAnchorAt(1, channels, T0 + 10_000_000)).toEqual({ at: T0 + 1000, id: 12 });
+    expect(chatAnchorAt(1, [], T0)).toBeNull();
   });
 
   it('deleting the clan clears its chat and the search index with it', () => {

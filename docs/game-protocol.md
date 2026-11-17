@@ -219,9 +219,17 @@ and coordinates; `chat_messages_fts` (FTS5, external content on
 `chat_messages.id`, unicode61 without diacritics, kept by triggers) indexes it
 with `sender_name`. `GET /api/chat/clan` (any member of the active clan) serves
 only the clan's own `clanGroup` channel — newest first, `before`/`after`
-cursors `<ms>:<messageId>`, `q` (every word as a prefix), `sender`, `from`/`to`
-— and `GET /api/chat/clan/senders` the writers; private (whisper) channels are
-never reachable through it.
+cursors `<ms>:<messageId>`, `q` (every word as a prefix), `sender`, `from`/`to`;
+a search's first page also carries `matches` = how many messages match in the
+WHOLE stored history and the oldest one's time —, `GET /api/chat/clan/context`
+the conversation at a message (`around=<ms>:<id>`, a search hit) or a time
+(`at=<ms>`, the first message at or after it: a date jump), 50 messages either
+side, unfiltered, oldest first, with `focus`; and `GET /api/chat/clan/senders`
+the writers. Private (whisper) channels are never reachable through any of
+them. The page never loads the whole history: every request is one bounded
+page, and at most 2,000 messages stay loaded (the far end is dropped and loads
+again when scrolled to); the live poll runs only while the conversation shows
+its newest end.
 
 ## Members and collection (v103)
 

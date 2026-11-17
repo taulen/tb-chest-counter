@@ -109,6 +109,31 @@ describe('/api/chat', () => {
     expect(window.body.messages.map((m: { text: string }) => m.text)).toEqual(['/%0%/']);
   });
 
+  it('says how many messages a search matches in the whole history, on its first page', async () => {
+    const r = await get('/api/chat/clan?q=morning', 'user1');
+    expect(r.body.matches).toEqual({ total: 1, oldestAt: T0 });
+    const unfiltered = await get('/api/chat/clan', 'user1');
+    expect(unfiltered.body.matches).toBeNull();
+    const page2 = await get(`/api/chat/clan?q=morning&before=${T0}:1`, 'user1');
+    expect(page2.body.matches).toBeNull();
+  });
+
+  it('opens the conversation at a message or at a time — unfiltered, and only this clan\'s', async () => {
+    const at = await get(`/api/chat/clan/context?around=${T0 + 1000}:2`, 'user1');
+    expect(at.status).toBe(200);
+    expect(at.body.messages.map((m: { text: string }) => m.text)).toEqual(['morning all', '/%0%/', 'raid at 18']);
+    expect(at.body).toMatchObject({ focus: `${T0 + 1000}:2`, hasOlder: false, hasNewer: false });
+    expect(JSON.stringify(at.body)).not.toContain('private hello');
+
+    const day = await get(`/api/chat/clan/context?at=${T0 + 1500}`, 'user1');
+    expect(day.body.focus).toBe(`${T0 + 2000}:3`);
+
+    // Another clan's message id opens nothing of theirs.
+    const other = await get(`/api/chat/clan/context?around=${T0}:5`, 'user1');
+    expect(JSON.stringify(other.body.messages)).not.toContain('clan two');
+    expect(other.body.focus).toBeNull();
+  });
+
   it('lists who wrote in the clan chat, without private-message senders', async () => {
     saveChatMessages(1, [msg(WHISPER, 9, T0, 'psst', { senderInfo: '104,c8,6f,0,5,CWB', senderName: 'Bob' })]);
     const r = await get('/api/chat/clan/senders', 'user1');
