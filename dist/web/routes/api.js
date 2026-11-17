@@ -2119,12 +2119,13 @@ function createApiRouter(scanLoop) {
     // about the clan's numbers.
     router.get('/admin/scan-health', auth_js_1.requireSuperAdmin, (req, res) => {
         const limit = (0, parse_int_js_1.parseBoundedInt)(req.query.limit, 60, { min: 5, max: 500 });
-        const clanId = req.clanId ?? 1;
+        // Every clan's scans: this is the scanner's health, not one clan's.
         // The scheduler, not the DB, knows whether the newest open session is live
         // or a leftover — without this the scan in progress reads "never completed".
-        const scanRunning = (scanLoop?.isScanInProgress() ?? false)
-            && scanLoop?.getActiveClanId() === clanId;
-        res.json({ scans: sessionRepo.getScanHealthSeries(clanId, limit, { scanRunning }) });
+        const runningClanId = (scanLoop?.isScanInProgress() ?? false) ? (scanLoop?.getActiveClanId() ?? null) : null;
+        // ?clanId narrows to one clan (the card's clan picker); default is all.
+        const only = (0, parse_int_js_1.parseBoundedInt)(req.query.clanId, 0, { min: 0 }) || null;
+        res.json({ scans: sessionRepo.getScanHealthSeries(only, limit, { runningClanId }) });
     });
     router.get('/admin/log-buffer', auth_js_1.requireSuperAdmin, (_req, res) => {
         try {

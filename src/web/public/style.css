@@ -5766,6 +5766,15 @@ details > table {
   background: var(--text-secondary);
   opacity: 0.7;
 }
+/* Capture Health's clan picker: all clans by default, one to narrow. */
+.scanhealth-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .scanhealth-legend {
   display: flex;
   gap: 16px;

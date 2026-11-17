@@ -65,17 +65,25 @@ let clanRestore = {
  * far enough that every normal scan afterwards looks fast by comparison, which
  * is precisely backwards.
  */
-function scanHealthCardHtml(scans) {
-  if (!Array.isArray(scans) || scans.length < 3) {
-    return `
-      <details class="card card-collapsible" data-section-key="capture-health">
-        <summary class="card-header"><h2>${t('Capture Health')}</h2></summary>
-        <div class="card-body card-body-padded">
-          <div class="empty-state"><p>${t('Not enough scans recorded yet to show a trend.')}</p></div>
-        </div>
-      </details>`;
-  }
+/** The clans present in an all-clans series, for the card's filter. */
+function scanHealthClans(scans) {
+  const seen = new Map();
+  for (const s of Array.isArray(scans) ? scans : []) if (s.clanId && !seen.has(s.clanId)) seen.set(s.clanId, s.clanName || `#${s.clanId}`);
+  return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
 
+// Scans read from the game take seconds; older browser scans took minutes.
+function fmtScanDuration(ms) {
+  return ms < 60_000
+    ? t('{seconds}s', { seconds: Math.max(1, Math.round(ms / 1000)) })
+    : t('{minutes}m', { minutes: Math.round(ms / 60000) });
+}
+
+/** Chart + legend for a series; `allClans` adds the clan to each bar's tooltip. Returns { html, median }. */
+function scanHealthBody(scans, allClans) {
+  if (!Array.isArray(scans) || scans.length < 3) {
+    return { html: `<div class="empty-state"><p>${t('Not enough scans recorded yet to show a trend.')}</p></div>`, median: null };
+  }
   const durations = scans.map((s) => s.durationMs).filter((d) => d !== null);
   const sorted = [...durations].sort((a, b) => a - b);
   const median = sorted.length
@@ -87,8 +95,7 @@ function scanHealthCardHtml(scans) {
   const errorScans = scans.filter((s) => s.errors > 0).length;
   const unfinished = scans.filter((s) => s.durationMs === null && !s.running).length;
   const live = scans.find((s) => s.running) ?? null;
-
-  const fmtMin = (ms) => t('{minutes}m', { minutes: Math.round(ms / 60000) });
+  const who = (s) => (allClans && s.clanName ? `${esc(s.clanName)} · ` : '');
 
   const bars = scans.map((s) => {
     // The scan running right now: its height is the time so far, capped at the
@@ -100,41 +107,76 @@ function scanHealthCardHtml(scans) {
       const h = Math.min(100, Math.max(2, Math.round((elapsed / peak) * 100)));
       const slow = median > 0 && elapsed > median * 3;
       return `<span class="scanhealth-bar is-running${slow ? ' is-slow' : ''}" style="height: ${h}%"
-                title="${s.startedAt} · ${t('Scan in progress')} · ${t('{duration} so far', { duration: fmtMin(elapsed) })}"></span>`;
+                title="${who(s)}${s.startedAt} · ${t('Scan in progress')} · ${t('{duration} so far', { duration: fmtScanDuration(elapsed) })}"></span>`;
     }
     // An unfinished scan is drawn as a full-height marked bar. Plotting it as
     // zero would render the worst outcome as the fastest one.
     if (s.durationMs === null) {
       return `<span class="scanhealth-bar is-unfinished" style="height: 100%"
-                title="${s.startedAt} · ${SCAN_STATUS_LABELS[s.status] ?? s.status} · ${t('never completed')}"></span>`;
+                title="${who(s)}${s.startedAt} · ${SCAN_STATUS_LABELS[s.status] ?? s.status} · ${t('never completed')}"></span>`;
     }
     const h = Math.max(2, Math.round((s.durationMs / peak) * 100));
     const slow = median > 0 && s.durationMs > median * 3;
     return `<span class="scanhealth-bar${slow ? ' is-slow' : ''}${s.errors > 0 ? ' has-errors' : ''}"
               style="height: ${h}%"
-              title="${s.startedAt} · ${fmtMin(s.durationMs)} · ${tn(s.chests, '{n} chest', '{n} chests', { n: s.chests })} · ${tn(s.errors, '{n} error(s)', '{n} error(s)', { n: s.errors })}"></span>`;
+              title="${who(s)}${s.startedAt} · ${fmtScanDuration(s.durationMs)} · ${tn(s.chests, '{n} chest', '{n} chests', { n: s.chests })} · ${tn(s.errors, '{n} error(s)', '{n} error(s)', { n: s.errors })}"></span>`;
   }).join('');
 
   const medianPct = peak > 0 ? Math.round((median / peak) * 100) : 0;
-
-  return `
-    <details class="card card-collapsible" data-section-key="capture-health">
-      <summary class="card-header"><h2>${t('Capture Health')} <span class="muted-copy">· ${t('median {duration}', { duration: fmtMin(median) })}</span></h2></summary>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">
-          ${tn(scans.length, 'Duration of the last {n} scans for this clan, oldest first. The line is the median; a bar more than three times it is marked, and a scan that never finished is drawn full height rather than as zero.', 'Duration of the last {n} scans for this clan, oldest first. The line is the median; a bar more than three times it is marked, and a scan that never finished is drawn full height rather than as zero.', { n: scans.length })}
-        </p>
+  const intro = allClans
+    ? tn(scans.length, 'Duration of the last {n} scans across all clans, oldest first (hover a bar for its clan). The line is the median; a bar more than three times it is marked, and a scan that never finished is drawn full height rather than as zero.', 'Duration of the last {n} scans across all clans, oldest first (hover a bar for its clan). The line is the median; a bar more than three times it is marked, and a scan that never finished is drawn full height rather than as zero.', { n: scans.length })
+    : tn(scans.length, 'Duration of the last {n} scans for this clan, oldest first. The line is the median; a bar more than three times it is marked, and a scan that never finished is drawn full height rather than as zero.', 'Duration of the last {n} scans for this clan, oldest first. The line is the median; a bar more than three times it is marked, and a scan that never finished is drawn full height rather than as zero.', { n: scans.length });
+  return {
+    median,
+    html: `
+        <p class="muted-copy mb-12">${intro}</p>
         <div class="scanhealth-chart">
           <span class="scanhealth-median" style="bottom: ${medianPct}%"></span>
           ${bars}
         </div>
         <div class="scanhealth-legend">
           <span>${tn(errorScans, '{n} of {total} logged an error', '{n} of {total} logged an error', { n: errorScans, total: scans.length })}</span>
-          ${live ? `<span class="scanhealth-running">${t('Scan in progress')} · ${t('{duration} so far', { duration: fmtMin(live.elapsedMs ?? 0) })}</span>` : ''}
+          ${live ? `<span class="scanhealth-running">${t('Scan in progress')} · ${t('{duration} so far', { duration: fmtScanDuration(live.elapsedMs ?? 0) })}</span>` : ''}
           ${unfinished > 0 ? `<span class="scanhealth-warn">${tn(unfinished, '{n} never completed', '{n} never completed', { n: unfinished })}</span>` : ''}
-        </div>
+        </div>`,
+  };
+}
+
+/**
+ * Capture Health: every clan's scans by default (the scanner is one thing),
+ * narrowed to one clan with the picker. The picker lists the clans present in
+ * the all-clans series; picking one reloads just the chart (wireScanHealthFilter).
+ */
+function scanHealthCardHtml(scans) {
+  const clans = scanHealthClans(scans);
+  const body = scanHealthBody(scans, true);
+  return `
+    <details class="card card-collapsible" data-section-key="capture-health">
+      <summary class="card-header"><h2>${t('Capture Health')} <span class="muted-copy" id="scanHealthMedian">${body.median !== null ? `· ${t('median {duration}', { duration: fmtScanDuration(body.median) })}` : ''}</span></h2></summary>
+      <div class="card-body card-body-padded">
+        ${clans.length > 1 ? `<div class="scanhealth-filter mb-12">
+          <label for="scanHealthClan">${t('Clan')}</label>
+          <select id="scanHealthClan" class="input input-sm">
+            <option value="">${t('All clans')}</option>
+            ${clans.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>` : ''}
+        <div id="scanHealthBody">${body.html}</div>
       </div>
     </details>`;
+}
+
+function wireScanHealthFilter(root) {
+  const select = root.querySelector('#scanHealthClan');
+  select?.addEventListener('change', async () => {
+    const v = select.value;
+    const res = await api(`/admin/scan-health${v ? `?clanId=${encodeURIComponent(v)}` : ''}`).catch(() => ({ scans: [] }));
+    const body = scanHealthBody(res?.scans, !v);
+    const target = root.querySelector('#scanHealthBody');
+    if (target) target.innerHTML = body.html;
+    const med = root.querySelector('#scanHealthMedian');
+    if (med) med.textContent = body.median !== null ? `· ${t('median {duration}', { duration: fmtScanDuration(body.median) })}` : '';
+  });
 }
 
 // Event Schedule — corrections for runs the tbclanportal calendar feed has on
@@ -380,6 +422,7 @@ export async function renderSystem(el) {
     ${clanRestoreCardHtml(backups)}
   `;
 
+  wireScanHealthFilter(el);
   // Repaint any in-flight import status into the freshly-rendered DOM.
   renderTransferStatus();
 }

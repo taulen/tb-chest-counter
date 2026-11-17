@@ -73,3 +73,30 @@ describe('getScanHealthSeries — the scan in progress', () => {
     expect(series.some((s) => s.running)).toBe(false);
   });
 });
+
+describe('getScanHealthSeries — every clan (System is instance-wide)', () => {
+  let cleanup: () => void;
+  beforeEach(() => { cleanup = makeTestDb().cleanup; });
+  afterEach(() => cleanup());
+
+  it('lists every clan’s scans oldest first, each with its clan, and marks the live one of the running clan', () => {
+    const { clanIdA, clanIdB } = seedTwoClans();
+    const make = (clan: number, startIso: string, minutes: number | null) => {
+      const id = createSession('scheduled', clan).id;
+      getDb().prepare('UPDATE scan_sessions SET started_at = ? WHERE id = ?').run(startIso, id);
+      if (minutes !== null) {
+        updateSession(id, clan, { status: ScanStatus.COMPLETED, completedAt: new Date(Date.parse(startIso) + minutes * 60_000).toISOString() });
+      }
+      return id;
+    };
+    make(clanIdA, '2026-11-17T01:00:00.000Z', 1);
+    make(clanIdB, '2026-11-17T01:01:00.000Z', 1);
+    const live = make(clanIdB, '2026-11-17T02:00:00.000Z', null);
+
+    const series = getScanHealthSeries(null, 10, { runningClanId: clanIdB, now: Date.parse('2026-11-17T02:00:30.000Z') });
+    expect(series.map((s) => s.clanId)).toEqual([clanIdA, clanIdB, clanIdB]);
+    expect(series.every((s) => typeof s.clanName === 'string' && s.clanName.length > 0)).toBe(true);
+    expect(series.find((s) => s.running)?.id).toBe(live);
+  });
+});
+
