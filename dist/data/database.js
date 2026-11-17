@@ -2246,6 +2246,45 @@ const MIGRATIONS = [
             (0, clan_short_code_js_1.splitClanShortCodes)(database);
         },
     },
+    {
+        // v125 — players' titles (Nov 2026; game-protocol/titles.ts): the player
+        // record (402 field 19, every scan) and the city (601 field 21, daily and
+        // archived) list the titles a player holds, each with when it was received.
+        //   game_player_titles        one row per grant — (title, assigned_at): a
+        //                             title received again is a new row — with
+        //                             first_seen / last_seen and gone_at, the first
+        //                             read without it (it ran out, or was taken);
+        //                             event_id from the city reply (null otherwise).
+        //   game_player_title_counts  how many times the player received each
+        //                             title in all (402 field 20), held or not.
+        // Names, bonus texts and durations come from the static data at read time.
+        // IF NOT EXISTS: runMigrations may replay this.
+        version: 125,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_player_titles (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          title_id INTEGER NOT NULL,
+          assigned_at INTEGER NOT NULL,
+          event_id INTEGER,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          gone_at TEXT,
+          PRIMARY KEY (clan_id, player_id, title_id, assigned_at)
+        );
+        CREATE TABLE IF NOT EXISTS game_player_title_counts (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          title_id INTEGER NOT NULL,
+          times INTEGER NOT NULL,
+          first_seen TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, title_id)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

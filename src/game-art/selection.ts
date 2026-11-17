@@ -20,7 +20,7 @@ import type { ArtStatic } from './art-static.js';
  * `items` last: every other item icon (T8) that no category above took — a
  * clan treasury or inventory row shows its item's own icon (by item id).
  */
-export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'ui', 'items'] as const;
+export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
 
 /**
@@ -139,6 +139,8 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   status: Object.values(STATUS_ART).map((a) => new RegExp(`^${a}$`)),
   factions: [...FACTION_ART],
   dragon: [...DRAGON_ART],
+  // A player's titles (profile header): the titles table (T29) alone.
+  titles: [],
   // From the client build, not the catalogue (see ART_CATEGORIES).
   ui: [],
   // Item icons come from the item table (T8) alone.
@@ -180,6 +182,12 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
   for (const a of Object.values(st.artifacts ?? {})) if (a.icon) out.heroes.add(a.icon.toLowerCase());
   for (const e of Object.values(st.equipment ?? {})) if (e.icon) out.heroes.add(e.icon.toLowerCase());
   for (const g of Object.values(st.inserts ?? {})) if (g.icon) out.heroes.add(g.icon.toLowerCase());
+  // Titles: the round icon (a sprite of the `icons_title_small` atlas) and the
+  // 72 px picture the hover card shows.
+  for (const tt of Object.values(st.titles ?? {})) {
+    if (tt.icon) out.titles.add(tt.icon.toLowerCase());
+    if (tt.art) out.titles.add(tt.art.toLowerCase());
+  }
   for (const u of st.units) out.troops.add(u.icon.toLowerCase());
   for (const t of Object.values(st.techs)) out.research.add(t.icon.toLowerCase());
   for (const it of st.items) {

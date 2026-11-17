@@ -5,6 +5,7 @@
  */
 import type { Frame, Wire } from './codec.js';
 import type { CityEffect } from './artifacts.js';
+import { parseCityTitles, parsePlayerTitles, parseTitleCounts, type HeldTitle } from './titles.js';
 
 const num = (v: Wire | undefined): number | null => (typeof v === 'number' ? v : null);
 const id1 = (v: Wire | undefined): number | null => (Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null);
@@ -308,6 +309,10 @@ export interface PlayerRecord {
   avatarFrame?: number | null;
   /** f5: their city's appearance (T52 customization, type 2; 9 = "Player's City"). */
   cityAppearance?: number | null;
+  /** f19: the titles they hold, `[[titleId, assignedAt]]` (titles.ts); null when the field is missing. */
+  titles?: HeldTitle[] | null;
+  /** f20: how many times they received each title, held or not; null when missing. */
+  titleCounts?: Record<string, number> | null;
 }
 
 /** Message 402: player records, wherever they sit in the reply. */
@@ -333,6 +338,8 @@ export function parsePlayers(frame: Frame): PlayerRecord[] {
         goldIngots: num(v[17]),
         avatarFrame: num(v[6]),
         cityAppearance: num(v[5]),
+        titles: parsePlayerTitles(v[19]),
+        titleCounts: parseTitleCounts(v[20]),
       });
       return;
     }
@@ -434,6 +441,12 @@ export interface CityRecord {
    * kept raw. Read for ANY player's city.
    */
   items: CityItem[];
+  /**
+   * Field 21: the titles the player holds, `{titleId: [titleId, eventId,
+   * assignedAt]}` — the same titles as the player record's field 19, plus the
+   * grant's event id (titles.ts). Null when the field is not a map.
+   */
+  titles: HeldTitle[] | null;
 }
 
 export interface CityCaptain {
@@ -553,6 +566,7 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
         presetId: num(e[9]) ?? 0,
         raw: [num(e[3]), num(e[4]), num(e[5]), num(e[6])],
       })),
+    titles: parseCityTitles(r[21]),
   };
 }
 

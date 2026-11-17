@@ -1946,6 +1946,13 @@ label {
   flex-wrap: wrap;
 }
 
+/* The profile's title block takes the room beside Back and wraps inside it:
+   a long row of game facts or titles pushed Back onto a line of its own. */
+.member-detail-header.is-profile .member-detail-title {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .member-rank-badge {
   display: inline-flex;
   align-items: center;
@@ -2017,6 +2024,73 @@ label {
 
 .game-fact-pill.is-unshielded {
   border-style: dashed;
+}
+
+/* A player's titles (pages/member-titles.js): the game's small round title
+   icons after the game facts — the member profile only, never a list. Each
+   icon is a button: hover shows the title's card, a click or tap its dialog. */
+.member-titles {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.member-titles-label {
+  margin-right: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.member-title {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.member-title img {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  transition: transform 0.12s ease;
+}
+
+.member-title:hover img,
+.member-title:focus-visible img {
+  transform: scale(1.15);
+}
+
+.member-title:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 0;
+}
+
+/* No icon extracted (yet): the title's initial on a neutral disc. */
+.member-title-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-light);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 /* The player's hero portrait from the game's own art. */
@@ -2249,6 +2323,10 @@ label {
   }
   .member-detail-header.is-profile .member-detail-title > .member-rank-badge { justify-self: start; align-self: start; }
   .member-detail-header.is-profile .member-detail-title > .game-facts { grid-column: 1 / -1; }
+  .member-detail-header.is-profile .member-detail-title > .member-titles { grid-column: 1 / -1; margin-top: -2px; gap: 1px; }
+  /* Smaller on a phone (still a 26 px target): an SK player's 19 titles take two rows, not three. */
+  .member-title { width: 26px; height: 26px; }
+  .member-title img { width: 22px; height: 22px; }
   /* No portrait (not linked to a game player yet): everything full width. */
   .member-detail-header.is-profile .member-detail-title:not(:has(> .hero-framed, > .hero-avatar)) > * { grid-column: 1 / -1; }
   /* A member profile on a phone: the "Members — Everyone in the clan" page
@@ -9427,6 +9505,86 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 
 .captain-hovercard .captain-detail { grid-template-columns: 150px minmax(0, 1fr); }
+
+/* A title's card (pages/member-titles.js), in the hover card and the dialog:
+   the game's picture in an item tile, time left, its bonus lines, its source. */
+.captain-hovercard:has(> .title-detail) { width: 360px; }
+
+.title-detail {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.title-detail-name {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.title-detail-time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  margin: 2px 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.title-detail-time strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.title-detail-bonus {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  list-style: none;
+}
+
+.title-detail-source {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.title-detail-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-light);
+}
+
+.title-detail-facts dt {
+  color: var(--text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.title-detail-facts dd {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.title-detail-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
 
 .captain-changes-table col.col-change { width: 240px; }
 .captain-changes-table col.col-date { width: 190px; }

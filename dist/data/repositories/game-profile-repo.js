@@ -17,6 +17,7 @@ exports.getPlayerArtifacts = getPlayerArtifacts;
 exports.getPlayerArtifactChanges = getPlayerArtifactChanges;
 exports.getPlayerEquipment = getPlayerEquipment;
 exports.getPlayerEquipmentChanges = getPlayerEquipmentChanges;
+exports.getPlayerTitles = getPlayerTitles;
 /**
  * Read side of the game-protocol tables for the member profile and member
  * lists: what the game says about a player (game_players), their city
@@ -248,5 +249,19 @@ function getPlayerEquipmentChanges(clanId, playerId, sinceIso, limit = 100) {
         AND NOT (prev_uid IS item_uid AND prev_type IS item_type AND prev_enchantment IS enchantment AND prev_gems IS gems)
       ORDER BY changed_at DESC, captain_id, position LIMIT ?`).all(clanId, playerId, sinceIso, clanId, playerId, limit);
     return rows.map((r) => ({ ...r, reworked: r.reworked === 1 }));
+}
+/**
+ * The titles a player held at their latest read (gone_at unset). Whether a
+ * title has run out since is the caller's call (titles.ts titleViews): its
+ * duration is static data.
+ */
+function getPlayerTitles(clanId, playerId) {
+    return (0, database_js_1.getDb)().prepare(`SELECT t.title_id AS titleId, t.assigned_at AS assignedAt, t.event_id AS eventId,
+            t.first_seen AS firstSeen, t.last_seen AS lastSeen, c.times AS times
+       FROM game_player_titles t
+       LEFT JOIN game_player_title_counts c
+         ON c.clan_id = t.clan_id AND c.player_id = t.player_id AND c.title_id = t.title_id
+      WHERE t.clan_id = ? AND t.player_id = ? AND t.gone_at IS NULL
+      ORDER BY t.assigned_at DESC, t.title_id`).all(clanId, playerId);
 }
 //# sourceMappingURL=game-profile-repo.js.map

@@ -66,12 +66,13 @@ export interface GameArtImage {
  * (`_scaled`) and their tile pieces; 8: the Hall of Fame's faction windows
  * and crests; 9: the Dragon's icons, frame and pictures; 10: item tiles — the
  * quality-coloured item backs and the item frame from the WebGL client, for
- * the chest rewards — Nov 2026). Bump this with
+ * the chest rewards; 11: titles' round icons and pictures (T29), for the
+ * profile header — Nov 2026). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 10;
+export const ART_SELECTION_VERSION = 11;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */

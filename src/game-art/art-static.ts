@@ -17,6 +17,8 @@
  *                    icon per city level: {"icon": {"1": …, "5": …}})
  *   T110 artifacts   f7 JSON config {"icon": …}, f8 name vector
  *   T11 equipment    f2 icon address, f3 name vector (gems/enchantments: T8 f1 8/9)
+ *   T29 titles       f1 name vector, f3 visual JSON {"smallIcon": <round 28 px,
+ *                    an atlas sprite>, "mobileIcon": <72 px>, …}
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -60,8 +62,8 @@ export interface ArtUnit {
   icon: string;
 }
 
-/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames). */
-export const ART_STATIC_FORMAT = 3;
+/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames; 4: titles). */
+export const ART_STATIC_FORMAT = 4;
 
 export interface ArtItem {
   id: number;
@@ -91,7 +93,12 @@ export interface ArtStatic {
   equipment?: Record<string, { name: string; icon: string }>;
   /** T8 gems (f1 8) and enchantments (f1 9) → { name, icon }. Same age as `artifacts`. */
   inserts?: Record<string, { name: string; icon: string }>;
+  /** T29 title id → { name, icon (round smallIcon), art (72 px mobileIcon, else rewardIcon) }. Format 4+. */
+  titles?: Record<string, { name: string; icon: string; art: string }>;
 }
+
+/** Titles: f1 name vector, f3 visual JSON. */
+export const TABLE_TITLES = 29;
 
 /** Artifact types: f7 JSON config {"icon": …}, f8 name vector. A `$pairs` table keyed [type]. */
 export const TABLE_ARTIFACTS = 110;
@@ -223,7 +230,15 @@ export function buildArtStatic(
     try { icon = (JSON.parse(str(row[6]) ?? '{}') as { icon?: unknown }).icon; } catch { continue; }
     if (typeof icon === 'string' && icon) inserts[id] = { name: name(row[3]), icon };
   }
-  return { version, format: ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts };
+  const titles: NonNullable<ArtStatic['titles']> = {};
+  for (const [id, row] of rows(TABLE_TITLES)) {
+    let v: { smallIcon?: unknown; mobileIcon?: unknown; rewardIcon?: unknown } = {};
+    try { v = JSON.parse(str(row[3]) ?? '{}'); } catch { continue; }
+    const icon = typeof v.smallIcon === 'string' ? v.smallIcon : '';
+    const art = typeof v.mobileIcon === 'string' && v.mobileIcon ? v.mobileIcon : typeof v.rewardIcon === 'string' ? v.rewardIcon : '';
+    if (icon || art) titles[id] = { name: name(row[1]), icon, art };
+  }
+  return { version, format: ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts, titles };
 }
 
 export function staticKey(v: StaticVersion): string {
@@ -266,7 +281,7 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
     key,
     readWrappedArray(stringsBuf),
     readWrappedArray(vectorsBuf),
-    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CUSTOMIZATIONS, TABLE_ARTIFACTS, TABLE_EQUIPMENT]),
+    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CUSTOMIZATIONS, TABLE_ARTIFACTS, TABLE_EQUIPMENT, TABLE_TITLES]),
     en,
   );
   fs.mkdirSync(dir, { recursive: true });

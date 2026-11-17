@@ -681,6 +681,16 @@
   },
   {
     "type": "table",
+    "name": "game_player_title_counts",
+    "sql": "CREATE TABLE game_player_title_counts ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, title_id INTEGER NOT NULL, times INTEGER NOT NULL, first_seen TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, title_id) )"
+  },
+  {
+    "type": "table",
+    "name": "game_player_titles",
+    "sql": "CREATE TABLE game_player_titles ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, title_id INTEGER NOT NULL, assigned_at INTEGER NOT NULL, event_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, gone_at TEXT, PRIMARY KEY (clan_id, player_id, title_id, assigned_at) )"
+  },
+  {
+    "type": "table",
     "name": "game_players",
     "sql": "CREATE TABLE game_players ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, name TEXT NOT NULL, role INTEGER, joined_at INTEGER, in_clan INTEGER NOT NULL DEFAULT 1, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, city_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, gold_ingots INTEGER, shielded INTEGER, burning INTEGER, map_seen_at TEXT, avatar_frame INTEGER, city_appearance INTEGER, PRIMARY KEY (clan_id, player_id) )"
   },

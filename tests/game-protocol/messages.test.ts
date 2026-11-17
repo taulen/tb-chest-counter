@@ -51,6 +51,8 @@ describe('game messages', () => {
       might: 29724600, clanId: 4599909974038, clanTag: 'SIN', cityId: 4599917580129, goldPass: true, goldIngots: 3126,
       // f6 a portrait frame (T52 kind 1), f5 a city look (kind 2)
       avatarFrame: 10000095, cityAppearance: 10000096,
+      // f19 no title held now; f20 Great Archaeologist (T29 160) received 15 times.
+      titles: [], titleCounts: { 160: 15 },
     });
   });
 
@@ -86,6 +88,8 @@ describe('game messages', () => {
     // Field 26 is the dragon: [1, [cityId], xp, level, evolution stage, ?, its name].
     city[26] = { 1: [1, [5], 98765, 116, 4, false, 'Salty'] };
     city[30] = [[27, 1211, 0], [30, 1705, 0]];
+    // Field 21: the titles held, {titleId: [titleId, eventId, assignedAt]} (Prefect, Loyalty Bonus).
+    city[21] = { 29: [29, 0, 1794392169] };
     // Captains: the real entry layout (equipment/skills trimmed); id 1 is the hero.
     city[9] = [
       [1, 0, 9, [4599917580129], 1, 0, 0, 0, 0, 2295854228842, 214, 0, [], 1, [], [1, 12, 2, 9, 5], 1794234013, 0, 0, []],
@@ -108,6 +112,7 @@ describe('game messages', () => {
       ],
       effects: [],
       items: [],
+      titles: [{ titleId: 29, assignedAt: 1794392169, eventId: 0 }],
     });
   });
 

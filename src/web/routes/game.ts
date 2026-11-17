@@ -27,7 +27,9 @@ import {
   getPlayerGoldIngotsDaily,
   getPlayerTechChanges,
   getPlayerTechs,
+  getPlayerTitles,
 } from '../../data/repositories/game-profile-repo.js';
+import { titleViews } from '../../game-protocol/titles.js';
 import {
   getClanInfo,
   getClanRankHistory,
@@ -42,7 +44,7 @@ import {
 } from '../../data/repositories/game-clan-repo.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
 import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
-import { loadGameNames } from '../../game-protocol/static-data.js';
+import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
 import { CLAN_RANKING_ICONS, safeArtName } from '../../game-art/selection.js';
 import { clanLogoUrl } from '../../game-art/clan-logo.js';
@@ -102,11 +104,30 @@ function eventRunApi(r: StoredEventRun, nowSec: number) {
 /** game player id → the name the site shows (the linked member's) and the member id, for event standings. */
 const playerNames = gamePlayerNames;
 
+/**
+ * names.json for the profile header (its titles). loadGameNames asks the
+ * game's versions endpoint every call, and the header is on every profile
+ * view: once names are in hand they are served at once and refreshed in the
+ * background at most every 10 minutes. Only the very first call waits.
+ */
+const HEADER_NAMES_TTL_MS = 10 * 60_000;
+let headerNamesCache: { at: number; names: GameNames | null; refreshing: Promise<GameNames | null> | null } = { at: 0, names: null, refreshing: null };
+async function headerGameNames(): Promise<GameNames | null> {
+  const c = headerNamesCache;
+  if (c.names && Date.now() - c.at < HEADER_NAMES_TTL_MS) return c.names;
+  if (!c.refreshing) {
+    c.refreshing = loadGameNames()
+      .then((n) => { headerNamesCache = { at: Date.now(), names: n, refreshing: null }; return n; })
+      .catch(() => { headerNamesCache = { ...headerNamesCache, at: Date.now(), refreshing: null }; return headerNamesCache.names; });
+  }
+  return c.names ?? c.refreshing;
+}
+
 export function createGameRouter(): Router {
   const router = Router();
 
   /** Profile header data for one member. */
-  router.get('/members/:memberId', (req, res) => {
+  router.get('/members/:memberId', async (req, res) => {
     const clanId = req.clanId!;
     const memberId = Number.parseInt(String(req.params.memberId), 10);
     if (!Number.isFinite(memberId) || !getMemberById(memberId, clanId)) {
@@ -118,12 +139,25 @@ export function createGameRouter(): Router {
       res.json({ linked: false });
       return;
     }
+    // The titles they hold (402 field 19 / city field 21), still running:
+    // names, bonus texts and durations from the titles table (T29), the
+    // game's round icon and picture when extracted.
+    const names = await headerGameNames();
+    const art = currentGameArt()?.mappings;
+    const titleUrl = (map: Record<string, string> | undefined) => (id: number): string | null => {
+      const img = map?.[String(id)];
+      return img ? gameArtUrl(img) : null;
+    };
     res.json({
       linked: true,
       player: getGamePlayer(clanId, playerId),
       city: getLatestCity(clanId, playerId),
       // G/S/E/M tiers and crypt level from the member's research (null until read).
       tiers: getMemberTiers(clanId).get(memberId) ?? null,
+      titles: titleViews(names, getPlayerTitles(clanId, playerId), Math.floor(Date.now() / 1000), {
+        icon: titleUrl(art?.titles),
+        art: titleUrl(art?.titleArt),
+      }),
     });
   });
 

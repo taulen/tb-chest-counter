@@ -435,9 +435,11 @@ function showHoverCard(tile, html) {
 
 /**
  * Hover + click for every tile in `el`. `views[kind](index)` returns
- * `{ title, html, hoverHtml, wide }` for a tile, or null.
+ * `{ title, html, hoverHtml, wide }` for a tile, or null. A tile is any
+ * element with `data-tile="<kind>"` and `data-index`; the profile header's
+ * titles (member-titles.js) use it too.
  */
-function wireTiles(el, views) {
+export function wireTiles(el, views) {
   const fine = window.matchMedia(FINE_HOVER);
   const viewOf = (tile) => views[tile.dataset.tile]?.(Number(tile.dataset.index)) ?? null;
   el.addEventListener('click', (ev) => {

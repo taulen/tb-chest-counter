@@ -3,13 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_TITLES = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
 exports.readTables = readTables;
 exports.asIdRecord = asIdRecord;
 exports.buildNames = buildNames;
+exports.textLines = textLines;
+exports.buildTitles = buildTitles;
 exports.fixedResourceGrants = fixedResourceGrants;
 exports.readItem = readItem;
 exports.buildDragon = buildDragon;
@@ -42,6 +44,7 @@ exports.resetGameNamesMemo = resetGameNamesMemo;
  *   T75 captains      see TABLE_CAPTAINS
  *   T110–T113         artifacts (types, star levels, levels, random-bonus pools)
  *                     — `$pairs` tables keyed `[type]`, see TABLE_ARTIFACTS
+ *   T29 titles        see TABLE_TITLES
  *
  * The raw files are ~67 MB, so a rebuild happens only when the game ships new
  * static data: the result is a small names.json cached under
@@ -142,6 +145,20 @@ exports.TABLE_FACTIONS = 78;
  * exactly the cap level's threshold (L100 1,404,294,900). See docs/game-protocol.md.
  */
 exports.TABLE_DRAGONS = 73;
+/**
+ * Titles (TitleStatic, 244 rows; a player's 402 field 19 / city field 21 hold
+ * their ids — game-protocol/titles.ts):
+ *   f0 id, f1 name vector, f2 description vector (the bonus lines, `\n`
+ *   between them), f3 visual JSON {smallIcon (round, 28 px, an atlas sprite),
+ *   bigIcon, mobileIcon / rewardIcon (72 px)}, f4 effect, f5 hidden in the
+ *   palace, f6 max owners, f7 timeActive (seconds; 0 = no set end), f8
+ *   unassignable on voting, f9 client config JSON, f10 main tournament title,
+ *   f11 palace cooldown, f12 source vector ("Received from the Loyalty
+ *   Bonus"), f13 blocked by title, f14 city visual.
+ * Id 29 is the Loyalty Bonus's "Prefect": +50% Valor, Conquest and Experience
+ * points for 7 days (604800).
+ */
+exports.TABLE_TITLES = 29;
 const NEEDED_TABLES = [
     exports.TABLE_MAP_OBJECTS,
     exports.TABLE_GIFT_TYPES,
@@ -159,6 +176,7 @@ const NEEDED_TABLES = [
     exports.TABLE_HERO_LEVELS,
     exports.TABLE_FACTIONS,
     exports.TABLE_DRAGONS,
+    exports.TABLE_TITLES,
 ];
 /** Item kinds (T8 f1) whose f8 is a duration in seconds: Speedup, Clan Speedup. */
 exports.SPEEDUP_ITEM_KINDS = new Set([3, 11]);
@@ -177,10 +195,10 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * titles (T44); 6: terrain names; 7: hero and captain levels — XP thresholds,
  * Stats, Might; 8: the Hall of Fame's factions and the real names of techs
  * 800–803; 9: the Dragon (T73); 10: items — kind, quality grade, resource pack
- * amounts and speedup durations, for the chest rewards — Nov 2026); a cached
- * file with an older format is rebuilt.
+ * amounts and speedup durations, for the chest rewards; 11: titles (T29) —
+ * Nov 2026); a cached file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 10;
+exports.NAMES_FORMAT = 11;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -549,7 +567,59 @@ function buildNames(version, strings, vectors, tables, en) {
         heroLevels: buildHeroLevels(rows(exports.TABLE_HERO_LEVELS)),
         factions, ...(hallOfFame ? { hallOfFame } : {}),
         ...(dragon ? { dragon } : {}),
+        titles: buildTitles(tables.get(exports.TABLE_TITLES), str, vec, en),
     };
+}
+/**
+ * The game's text of a localised vector with its line breaks kept: the
+ * translation files write a break as the two characters `\n`. Each line's
+ * spaces collapse; empty lines go. Placeholders are filled like a name's.
+ */
+function textLines(v, str, en) {
+    if (!v?.length)
+        return '';
+    const key = str(v[0]);
+    let out = key === undefined ? '' : (en.get(key) ?? '');
+    for (let i = 1; i + 1 < v.length; i += 2)
+        out = out.replace(str(v[i]) ?? '\u0000', str(v[i + 1]) ?? '');
+    return out
+        .split(/\\n|\r?\n/)
+        .map((l) => l.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\n');
+}
+/**
+ * Titles (T29, see TABLE_TITLES): every row whose name has English text — the
+ * few without one are test rows ("test_pvp_a").
+ */
+function buildTitles(table, str, vec, en) {
+    const out = {};
+    for (const [id, row] of Object.entries(table ?? {})) {
+        if (!Array.isArray(row))
+            continue;
+        const nameKey = str(vec(row[1])?.[0] ?? -1);
+        if (!nameKey || !en.get(nameKey))
+            continue;
+        const name = textLines(vec(row[1]), str, en).replace(/\n/g, ' ');
+        let visual = {};
+        try {
+            visual = JSON.parse(str(row[3]) ?? '{}');
+        }
+        catch { /* no visual */ }
+        const icon = typeof visual.smallIcon === 'string' ? visual.smallIcon : '';
+        const art = typeof visual.mobileIcon === 'string' && visual.mobileIcon
+            ? visual.mobileIcon
+            : typeof visual.rewardIcon === 'string' ? visual.rewardIcon : '';
+        out[id] = {
+            name,
+            description: textLines(vec(row[2]), str, en),
+            source: textLines(vec(row[12]), str, en).replace(/\n/g, ' '),
+            seconds: typeof row[7] === 'number' && row[7] > 0 ? row[7] : 0,
+            icon,
+            art,
+        };
+    }
+    return out;
 }
 const isPositive = (v) => typeof v === 'number' && v > 0;
 /** An empty map or list — or no container at all (a number, a string, nothing). */
