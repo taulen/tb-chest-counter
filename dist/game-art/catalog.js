@@ -21,6 +21,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UNITY_BASE = exports.VERSIONS_URL = void 0;
 exports.parseCatalog = parseCatalog;
 exports.addressIndex = addressIndex;
+exports.nameIndex = nameIndex;
 exports.catalogVersionFromConfig = catalogVersionFromConfig;
 exports.isBundleHash = isBundleHash;
 exports.VERSIONS_URL = 'https://versions.totalbattle.com/config?branch=current&simple=true';
@@ -75,6 +76,20 @@ function addressIndex(entries) {
     const out = new Map();
     for (const e of entries) {
         for (const a of e.addresses)
+            if (!out.has(a))
+                out.set(a, e.bundle);
+    }
+    return out;
+}
+/**
+ * Lower-cased bundle name OR address → bundle hash; the first entry naming it
+ * wins. For an asset looked up by its own name — the tech trees' layout
+ * TextAssets ("guardtree"), whose bundles are named like the asset.
+ */
+function nameIndex(entries) {
+    const out = new Map();
+    for (const e of entries) {
+        for (const a of [e.name.toLowerCase(), ...e.addresses])
             if (!out.has(a))
                 out.set(a, e.bundle);
     }

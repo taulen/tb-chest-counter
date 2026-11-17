@@ -23,6 +23,7 @@ const asset_versioning_js_1 = require("./asset-versioning.js");
 const frontend_assets_js_1 = require("./frontend-assets.js");
 const routes_js_1 = require("../game-art/routes.js");
 const clan_logo_js_1 = require("../game-art/clan-logo.js");
+const game_texts_js_1 = require("./routes/game-texts.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
 const game_js_1 = require("./routes/game.js");
@@ -396,6 +397,10 @@ function startWebServer(port, scanLoop, options = {}) {
     app.use((0, routes_js_1.createGameArtRouter)());
     // Clan logos composed from those layers: /game-art/<version>/clan-logo/<code>.png.
     app.use((0, clan_logo_js_1.createClanLogoRouter)());
+    // The game's own names in the site's other languages, for tGame() on every
+    // page — the login and public share pages included, so public like the art.
+    // Ahead of the /api no-store middleware: it sets its own Cache-Control + ETag.
+    app.use((0, game_texts_js_1.createGameTextsRouter)());
     // robots.txt — disallow the public-share API namespace. The /<token>
     // page itself is short-form and unenumerable, so it relies on the
     // X-Robots-Tag header set by publicShareTokenHandler instead of a

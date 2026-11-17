@@ -28,4 +28,4 @@ The season opened on 2026-11-11 at 09:00 UTC and runs to 2027-02-08 09:00. Its f
 
 These are seeded in `resource_types`; their icons come from the game's own bundles by name (`forest_event_bonus_currency_72`, `forest_event_build_currency_72`), like every resource's. Their rows arrive from the Clan Capital ledger every scan reads, mapped by name like every other resource (Magic Seeds = ledger resource 74284, Forest Essence = 74285; [game-protocol.md](game-protocol.md)).
 
-`tGame()` has no official es/fr/ru/de names for them yet, so they display in English (docs/i18n.md: a guessed name is worse than English).
+Their es/fr/ru/de names are the game's own, like every game name `tGame()` shows (they are T8 items: [i18n.md](i18n.md#game-names-tgame-the-games-own-text)).

@@ -40,6 +40,6 @@ The arithmetic follows Kaiculator's exactly: it multiplies by `1 / (1 + bonus)` 
 ## The page
 
 - Three steps: troops (rows always in the troop list's order, under a heading per kind like the picker's, no dragging), size and limits (base count Fill/Manual, leadership/authority/dominance, Temple, Fine-tuning folded away), and the stacks in loss order, with the leadership/authority/dominance used against your limits and the revival cost.
-- Leadership, Authority, Dominance and Temple are the game's words and go through `tGame()`, so they stay English until an official name is in a dictionary.
+- Leadership, Authority, Dominance and Temple are the game's words and go through `tGame()`, which shows the game's own text for them in each language ([i18n.md](i18n.md#game-names-tgame-the-games-own-text)).
 - The troop picker is [troop-picker.js](../src/web/public/lib/troop-picker.js), shared with Citadel; the March list reuses `marchList` from citadel-sim.js.
 - The draft is kept in this browser (`tbcc.stacks.draft.v1`). Saved armies live on the server: at most 50 per account and 200 troops per army (`MAX_PRESET_ROWS`, above the whole troop list; it was 30, which refused real stack armies), with the same name rules as the citadel presets (`parsePresetName`).

@@ -121,6 +121,14 @@ on 2188 references) and written as PNG to `data/game-art/<catalog>/` with an
 `index.json` (images + mappings). Runs at startup and daily; a new catalogue
 re-downloads only changed bundles; current + previous version are kept.
 
+This is the one Unity reader: the research and talent trees' layouts (JSON
+TextAssets, "guardtree" …, [tech-trees.ts](../src/game-protocol/tech-trees.ts))
+are read with it too — `nameIndex` finds the bundle by the asset's name,
+`extractTexts` the TextAsset through the SerializedFile's type tree. A second,
+heuristic reader (`game-protocol/unity-assets.ts`, which scanned the raw
+payload for length-prefixed JSON) was removed in Nov 2026 after both gave the
+same 24 live layouts.
+
 Served public and path-versioned (`/game-art/<catalog>/<name>.png`, immutable)
 per [cloudflare-caching.md](cloudflare-caching.md); `GET /api/game-art` gives the
 names and mappings. Mappings: hero portrait by `game_players.hero_avatar` (= T13
@@ -719,9 +727,9 @@ the 72 px picture in an item tile, time left ("6 days left", "3 h left"), how
 long it lasts, the bonus lines, the source, received / ends, and "Received N
 times in all" from field 20 ([member-titles.js](../src/web/public/pages/member-titles.js),
 reusing the Captains tab's hover card). Names, bonus texts and sources go
-through tGame; their official es/fr/ru/de texts come from the game's CSVs
-(`titles.title_name.*`, `titles.description.*`, `titles.title_source.*`; a
-text holding `"` stays English). The art is selection v11's `titles` category
+through tGame; their es/fr/ru/de texts are the game's own, built with the
+names like every game name ([i18n.md](i18n.md#game-names-tgame-the-games-own-text);
+the game's plain quotes become the language's own). The art is selection v11's `titles` category
 (mappings `titles` = round icon, `titleArt` = 72 px picture).
 
 ### The clan itself (v111, My Clan page)
@@ -1108,6 +1116,7 @@ Each table has its own id space:
 | 11 | equipment, one row per item type AND quality grade | f3 vector |
 | 110–113 | artifacts (`$pairs` tables keyed `[type]`) | T110 f8 vector |
 | 29 | titles (402 field 19, city field 21; format 11) | f1 vector, f2 bonus text, f12 source, f7 seconds (see Titles above) |
+| 1 | the client config, an array of `[keyRef, jsonRef]` rows (format 12) | the tech trees' and Academy tabs' name keys (`academy/branches`, `hero_info`, `clan`) — for the translations only |
 
 Equipment (T11): f1 set, f2 icon address (`arch_body`: set prefix + slot
 weapon / head / torso / body / legs / trinket1 / trinket2), f3 name, f5
@@ -1145,8 +1154,24 @@ every level's bonuses and requirement texts (NAMES_FORMAT 5) — see
 `names.json` carries a `format` (NAMES_FORMAT); a cached file with an older
 one is rebuilt once.
 
-A rebuild downloads ~67 MB and decodes only the tables it needs (the rest are
-skipped unbuilt), about 7 s.
+**The names in the site's other languages** (NAMES_FORMAT 12,
+[game-texts.ts](../src/game-protocol/game-texts.ts)): the same rebuild fetches
+`csv_de_DE`, `csv_es_ES`, `csv_fr_FR` and `csv_ru_RU` from the translations
+index (~0.6 MB zipped each), runs the build again per language — keeping only
+the translation keys the English build read, ~4,000 of each CSV's ~25,000 —
+and writes `texts-<lang>.json` (English → the game's own text, `{n}` patterns
+for names with numbers) beside names.json, for tGame on the site
+([i18n.md](i18n.md#game-names-tgame-the-games-own-text)). T1, the client
+config, is decoded too, for the tech trees' and Academy tabs' names
+([client-config.ts](../src/game-protocol/client-config.ts)). `names.textLanguages`
+lists the languages written; a language whose CSV could not be fetched makes
+the next load rebuild, at most every 6 hours, and its names stay English
+meanwhile.
+
+A rebuild downloads ~70 MB and decodes only the tables it needs (the rest are
+skipped unbuilt), about 7 s. The decoded tables hold ~700 MB of heap at the
+peak; the four language passes add under a second and ~150 MB of short-lived
+heap (measured Nov 2026), inside the container's 1,536 MB.
 
 The game's source text differs from what the OCR era stored in places ("Level
 25–29 Vault of the Ancients" vs our "Lvl 25-29 …"); the protocol scan maps each

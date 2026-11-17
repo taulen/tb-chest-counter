@@ -1,7 +1,7 @@
 // Catalogue parsing and LZ4 block decoding, on synthetic data only.
 
 import { describe, expect, it } from 'vitest';
-import { parseCatalog, addressIndex, catalogVersionFromConfig } from '../../src/game-art/catalog.js';
+import { parseCatalog, addressIndex, nameIndex, catalogVersionFromConfig } from '../../src/game-art/catalog.js';
 import { lz4BlockDecompress } from '../../src/game-art/lz4.js';
 import { lz4Encode, lz4Literal } from './synthetic-bundle.js';
 
@@ -43,6 +43,18 @@ describe('parseCatalog', () => {
     expect(idx.get('sprite_two')).toBe(H3);
     expect(idx.get('icon_test_72')).toBe(H2);
     expect(idx.has('missing')).toBe(false);
+  });
+
+  it('indexes bundle names too, lower-cased, the first entry naming one winning (lookups by asset name)', () => {
+    const twice = catalogBytes([
+      { name: 'GuardTree', group: 4, content: H1, bundle: H2, addresses: ['layout_a'] },
+      { name: 'other', group: 4, content: H1, bundle: H3, addresses: ['guardtree', 'layout_a'] },
+    ]);
+    const idx = nameIndex(parseCatalog(twice));
+    expect(idx.get('guardtree')).toBe(H2);
+    expect(idx.get('layout_a')).toBe(H2);
+    expect(idx.get('other')).toBe(H3);
+    expect(idx.has('GuardTree')).toBe(false);
   });
 
   it('refuses a wrong header and a truncated file', () => {

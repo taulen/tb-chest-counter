@@ -62,6 +62,10 @@ export const SPRITE_TREE: NodeSpec = t.cls('Sprite', 'Base', [
   ]),
 ]);
 
+/** A TextAsset (class 49): its name and text. */
+export const TEXT_ASSET_TREE: NodeSpec = t.cls('TextAsset', 'Base', [t.string('m_Name'), t.string('m_Script')]);
+export const CLASS_TEXT_ASSET = 49;
+
 class Writer {
   parts: Buffer[] = [];
   length = 0;

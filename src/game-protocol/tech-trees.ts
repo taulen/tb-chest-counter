@@ -13,13 +13,10 @@
  *                 minLevel, _) on ANOTHER tech is a prerequisite (the third
  *                 argument varies by tree and isn't needed); on the tech itself
  *                 it's just "own previous level".
- *     T1  client config, rows [keyRef, jsonRef]:
- *       "academy/branches"  branches [{id, name, description, tree, type, visual}],
- *                           tabs [{name, branches}] ("Unlock" / "Boost"), order
- *       "hero_info"         branches [18,19,20,21] = the hero's talent trees,
- *                           branch = the retired single "Talents" tree (14)
- *       type: "tech" research · "heroAbility" talents · "clanTalents" clan
- *   Unity client assets (see unity-assets.ts)
+ *     T1  client config (client-config.ts): which trees exist, their Academy
+ *         tabs ("Unlock" / "Boost") and order, the hero's talent trees
+ *   Unity client assets (the art pipeline's reader, src/game-art: catalog,
+ *   UnityFS + LZ4, SerializedFile type trees)
  *     a JSON TextAsset per tree, named after the branch's `tree` ("guardTree"
  *     → asset "guardtree"): {name, techs: [{id, x, y, linkType, …}]}. x grows
  *     to the right in steps of 390, y runs 0 → −330 downward in steps of 165
@@ -37,21 +34,23 @@ import fs from 'fs';
 import path from 'path';
 import { WireReader, type Wire } from './codec.js';
 import { TABLE_TECHS, parseTranslationsCsv, unzipFirst } from './static-data.js';
-import { jsonTextAssets, parseAssetCatalog } from './unity-assets.js';
+import { TABLE_CLIENT_CONFIG, academyTabs, clientConfig, readBranchDefs, type BranchDef, type TextLookup } from './client-config.js';
+import { UNITY_BASE, nameIndex, parseCatalog } from '../game-art/catalog.js';
+import { extractTexts } from '../game-art/extract.js';
 import { childLogger } from '../utils/logger.js';
+
+export { TABLE_CLIENT_CONFIG, type BranchDef };
 
 const log = childLogger('tech-trees');
 
 const VERSIONS_URL = 'https://versions.totalbattle.com/config/?branch=current&simple=true';
 const STATIC_BASE = 'https://assets-client-static.totalbattle.dev/';
 const TRANSLATIONS_BASE = 'https://assets-translations.totalbattle.dev//';
-const UNITY_BASE = 'https://assets-unity.totalbattle.dev/webgl/';
 const STATIC_BRANCH = 'production';
 const UNITY_PLATFORM = 'webgl';
 const ENGLISH = 'csv_en_US';
 const FETCH_TIMEOUT_MS = 120_000;
 
-export const TABLE_CLIENT_CONFIG = 1;
 const NEEDED_TABLES = [TABLE_CLIENT_CONFIG, TABLE_TECHS];
 
 /** The client's node pitch in layout units: one column, one row. */
@@ -111,22 +110,12 @@ export interface TreeLayout {
   techs: Array<{ id: number; x: number; y: number }>;
 }
 
-/** A tree as the client config declares it. */
-export interface BranchDef {
-  id: number;
-  name: string;
-  description: string;
-  tree: string;
-  type: string;
-  visual: string;
-}
-
 export interface TreeSources {
   strings: Wire[];
   vectors: Wire[];
   /** At least T1 (client config, an array table) and T21 (techs). */
   tables: Map<number, Wire>;
-  en: Map<string, string>;
+  en: TextLookup;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,47 +145,11 @@ function resolver(src: TreeSources) {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-/** Parsed JSON of one client-config key (T1 rows are [keyRef, jsonRef]). */
-function clientConfig(src: TreeSources, key: string): Record<string, unknown> | null {
-  const { str } = resolver(src);
-  const t1 = src.tables.get(TABLE_CLIENT_CONFIG);
-  const rows: Wire[] = Array.isArray(t1) ? t1 : isRecord(t1) ? Object.values(t1 as Record<string, Wire>) : [];
-  for (const row of rows) {
-    if (!Array.isArray(row) || str(row[0]) !== key) continue;
-    try {
-      const v: unknown = JSON.parse(str(row[1]) ?? '');
-      return isRecord(v) ? v : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
 const numList = (v: unknown): number[] => (Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []);
 
 /** Every tree the client config declares, in-game English names resolved. */
 export function readBranches(src: TreeSources): BranchDef[] {
-  const english = (k: unknown): string => (typeof k === 'string' ? (src.en.get(k) ?? '') : '');
-  const out = new Map<number, BranchDef>();
-  const walk = (v: unknown, depth: number): void => {
-    if (depth > 4) return;
-    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1));
-    if (!isRecord(v)) return;
-    if (typeof v.id === 'number' && typeof v.tree === 'string' && typeof v.type === 'string' && !out.has(v.id)) {
-      out.set(v.id, {
-        id: v.id,
-        name: english(v.name),
-        description: english(v.description),
-        tree: v.tree,
-        type: v.type,
-        visual: typeof v.visual === 'string' ? v.visual : '',
-      });
-    }
-    for (const x of Object.values(v)) walk(x, depth + 1);
-  };
-  for (const key of ['academy/branches', 'hero_info', 'clan']) walk(clientConfig(src, key), 0);
-  return [...out.values()];
+  return readBranchDefs(src.tables.get(TABLE_CLIENT_CONFIG), resolver(src).str, src.en);
 }
 
 /** Prerequisites on other techs, from each level's condition strings. */
@@ -225,15 +178,11 @@ export function buildTechTrees(version: string, src: TreeSources, layouts: TreeL
   const t21 = src.tables.get(TABLE_TECHS);
   const techs: Record<string, Wire> = isRecord(t21) ? (t21 as Record<string, Wire>) : {};
 
-  const academy = clientConfig(src, 'academy/branches');
-  const heroInfo = clientConfig(src, 'hero_info');
+  const t1 = src.tables.get(TABLE_CLIENT_CONFIG);
+  const academy = clientConfig(t1, str, 'academy/branches');
+  const heroInfo = clientConfig(t1, str, 'hero_info');
   const talentIds = numList(heroInfo?.branches);
-  const tabOf = new Map<number, string>();
-  for (const tab of Array.isArray(academy?.tabs) ? academy.tabs : []) {
-    if (!isRecord(tab)) continue;
-    const name = typeof tab.name === 'string' ? (src.en.get(tab.name) ?? '') : '';
-    for (const id of numList(tab.branches)) if (!tabOf.has(id)) tabOf.set(id, name);
-  }
+  const tabOf = academyTabs(t1, str, src.en);
   const rank = new Map<number, number>();
   for (const id of [...numList(academy?.order), ...talentIds]) if (!rank.has(id)) rank.set(id, rank.size);
 
@@ -291,6 +240,25 @@ export function asTreeLayout(v: unknown): TreeLayout | null {
     .filter((n) => typeof n.id === 'number' && typeof n.x === 'number' && typeof n.y === 'number')
     .map((n) => ({ id: n.id as number, x: n.x as number, y: n.y as number }));
   return { name: v.name, techs };
+}
+
+/**
+ * The tree layout a layout bundle holds: its first TextAsset whose text is a
+ * layout's JSON (a leading BOM allowed). Read with the art pipeline's Unity
+ * reader — the bundle's SerializedFile, by its type tree.
+ */
+export function layoutFromBundle(bundle: Buffer): TreeLayout | null {
+  for (const text of extractTexts(bundle, () => true).values()) {
+    let json: unknown;
+    try {
+      json = JSON.parse(text.replace(/^﻿/, ''));
+    } catch {
+      continue;
+    }
+    const layout = asTreeLayout(json);
+    if (layout) return layout;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,18 +337,16 @@ async function fetchEnglish(catalog: string): Promise<Map<string, string>> {
 }
 
 async function fetchLayouts(unityCatalog: string, names: string[]): Promise<{ layouts: TreeLayout[]; missing: string[] }> {
-  const catalog = parseAssetCatalog(await fetchBuffer(UNITY_BASE + unityCatalog));
+  const bundleOf = nameIndex(parseCatalog(await fetchBuffer(UNITY_BASE + unityCatalog)));
   const layouts: TreeLayout[] = [];
   const missing: string[] = [];
   const queue = [...new Set(names)];
   const worker = async (): Promise<void> => {
     for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
-      const entry = catalog.get(name.toLowerCase());
+      const bundle = bundleOf.get(name.toLowerCase());
       try {
-        if (!entry) throw new Error('not in the asset catalog');
-        const layout = jsonTextAssets(await fetchBuffer(UNITY_BASE + entry.bundle))
-          .map(asTreeLayout)
-          .find((l): l is TreeLayout => l !== null);
+        if (!bundle) throw new Error('not in the asset catalog');
+        const layout = layoutFromBundle(await fetchBuffer(UNITY_BASE + bundle));
         if (!layout) throw new Error('bundle holds no tree layout');
         layouts.push({ ...layout, name });
       } catch (err) {
