@@ -702,6 +702,17 @@ Discord ping per streak). Anything ambiguous (HTTP error, maintenance page)
 changes nothing. Before this, "Authenticated" only meant "a session file
 exists", so a dead login looked fine for as long as scans were paused.
 
+**A login that signs in to another clan is never scanned.** Right after the clan
+record, [`runGameProtocolCapture`](../src/scheduler/game-protocol-phase.ts)
+compares its game clan id with the one `game_clan_info` holds for the clan (a
+clan's game id never changes). A mismatch throws `WrongClanLoginError` before
+anything is written and flags the clan for a new login, naming both clans and
+the account. Nov 17 2026: SK7's saved login signed in as SIK's scanner account
+(15:18–15:31 UTC) and two scans wrote SIK's members, chats, research and event
+standings into SK7 (cleaned by a one-time startup repair). How that login
+changed accounts is not known yet; nothing in the app writes one clan's login
+into another's file.
+
 ## Rules that bite
 
 - **Never present an old website token.** The site rotates its JWT on every

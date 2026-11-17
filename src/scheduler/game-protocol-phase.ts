@@ -50,6 +50,7 @@ import {
 } from '../game-protocol/messages.js';
 import { readEventStandings } from './event-read.js';
 import {
+  getClanInfo,
   hasClanTechs,
   latestArchivedClanObject,
   saveClanInfo,
@@ -96,6 +97,14 @@ import { READ_GAP, requestGap } from '../utils/request-gap.js';
 import { loadTechTrees } from '../game-protocol/tech-trees.js';
 
 const log = childLogger('game-protocol');
+
+/** The saved login signed in to a different game clan than the one this clan was read as before. */
+export class WrongClanLoginError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WrongClanLoginError';
+  }
+}
 
 /** Player lookups per request; the game client itself asks for ~90 at a time. */
 const PLAYER_BATCH = 100;
@@ -148,6 +157,17 @@ export async function runGameProtocolCapture(
     const record = parseClanRecord(clanFrame);
     if (!record || !record.members.length) {
       throw new Error(`the game returned no member list for clan ${client.clanId} — is the account still in the clan?`);
+    }
+    // A login that signs in to ANOTHER game clan is never scanned as this one:
+    // nothing is written, the clan is flagged for a new login. A clan's game id
+    // never changes. Nov 17 2026: SK7's saved login signed in as SIK's account
+    // and two scans wrote SIK's members, chats and research into SK7.
+    const known = getClanInfo(clanId);
+    if (known && known.gameClanId !== record.clanId) {
+      throw new WrongClanLoginError(
+        `the saved login signs in to [${record.tag}] ${record.name} (game clan ${record.clanId}, account ${client.suid || 'unknown'}), `
+        + `not this clan's [${known.tag}] ${known.name} (game clan ${known.gameClanId}) — log in again with this clan's account`,
+      );
     }
 
     const players: PlayerRecord[] = [];
@@ -220,6 +240,9 @@ export async function runGameProtocolCapture(
     if (err instanceof SessionLoggedOutError) {
       // A definite logout is the same signal the scan's auth check acts on.
       noteSessionLoggedOut(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
+    } else if (err instanceof WrongClanLoginError) {
+      // Same remedy as a logout: a fresh login with the right account.
+      noteSessionLoggedOut(clanId, error);
     } else {
       log.warn({ noAlert: true }, `Clan #${clanId} game capture failed: ${error}`);
     }

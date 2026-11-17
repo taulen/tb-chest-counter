@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CITY_PARSERS = void 0;
+exports.CITY_PARSERS = exports.WrongClanLoginError = void 0;
 exports.runGameProtocolCapture = runGameProtocolCapture;
 exports.collectCaptureExtras = collectCaptureExtras;
 /**
@@ -40,6 +40,14 @@ const game_day_js_1 = require("../utils/game-day.js");
 const request_gap_js_1 = require("../utils/request-gap.js");
 const tech_trees_js_1 = require("../game-protocol/tech-trees.js");
 const log = (0, logger_js_1.childLogger)('game-protocol');
+/** The saved login signed in to a different game clan than the one this clan was read as before. */
+class WrongClanLoginError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'WrongClanLoginError';
+    }
+}
+exports.WrongClanLoginError = WrongClanLoginError;
 /** Player lookups per request; the game client itself asks for ~90 at a time. */
 const PLAYER_BATCH = 100;
 /**
@@ -63,6 +71,15 @@ async function runGameProtocolCapture(clanId, opts) {
         const record = (0, messages_js_1.parseClanRecord)(clanFrame);
         if (!record || !record.members.length) {
             throw new Error(`the game returned no member list for clan ${client.clanId} — is the account still in the clan?`);
+        }
+        // A login that signs in to ANOTHER game clan is never scanned as this one:
+        // nothing is written, the clan is flagged for a new login. A clan's game id
+        // never changes. Nov 17 2026: SK7's saved login signed in as SIK's account
+        // and two scans wrote SIK's members, chats and research into SK7.
+        const known = (0, game_clan_repo_js_1.getClanInfo)(clanId);
+        if (known && known.gameClanId !== record.clanId) {
+            throw new WrongClanLoginError(`the saved login signs in to [${record.tag}] ${record.name} (game clan ${record.clanId}, account ${client.suid || 'unknown'}), `
+                + `not this clan's [${known.tag}] ${known.name} (game clan ${known.gameClanId}) — log in again with this clan's account`);
         }
         const players = [];
         const ids = record.members.map((m) => m.playerId);
@@ -128,6 +145,10 @@ async function runGameProtocolCapture(clanId, opts) {
         if (err instanceof client_js_1.SessionLoggedOutError) {
             // A definite logout is the same signal the scan's auth check acts on.
             (0, session_health_js_1.noteSessionLoggedOut)(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
+        }
+        else if (err instanceof WrongClanLoginError) {
+            // Same remedy as a logout: a fresh login with the right account.
+            (0, session_health_js_1.noteSessionLoggedOut)(clanId, error);
         }
         else {
             log.warn({ noAlert: true }, `Clan #${clanId} game capture failed: ${error}`);
