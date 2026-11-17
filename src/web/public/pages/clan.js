@@ -26,6 +26,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, resourceIconUrl } from '../lib/game-art.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js';
+import { renderTriumphal } from './triumphal.js';
 
 const PHONE = '(max-width: 640px)';
 const CHANGES_SHOWN = 60;
@@ -35,8 +36,9 @@ const HISTORY_SHOWN = 30;
 const view = { tab: 'research', tree: null, rankKind: 7, rankPage: null };
 
 // My Clan's sections. Triumphal Chests is a tab here too (Nov 2026: it left the
-// main menu), but a page of its own (#triumphal): its period selector lives in
-// the address, so it can't be an in-page panel.
+// main menu). Every tab has an address (#clan/<tab>, #triumphal — Triumphal's
+// period selector lives in it), and switching tabs while My Clan is on screen
+// changes only the panel: the header and stats stay put (switchClanTab).
 const CLAN_TABS = [
   { key: 'research', label: () => t('Research') },
   { key: 'rankings', label: () => t('Rankings') },
@@ -45,9 +47,30 @@ const CLAN_TABS = [
   { key: 'triumphal', label: () => t('Triumphal Chests') },
 ];
 
-/** Open My Clan on a section (#clan/<tab>). */
+/** Open My Clan on a section (#clan/<tab>, #triumphal). */
 export function setClanTab(key) {
-  if (CLAN_TABS.some((tb) => tb.key === key && key !== 'triumphal')) view.tab = key;
+  if (CLAN_TABS.some((tb) => tb.key === key)) view.tab = key;
+}
+
+const tabHash = (key) => (key === 'triumphal' ? '#triumphal' : `#clan/${key}`);
+
+/** Fill the Triumphal Chests panel (or container) in place. */
+async function mountTriumphal(content) {
+  const box = content.querySelector('[data-clan-triumphal]');
+  if (box) await renderTriumphal(box);
+}
+
+/**
+ * Switch to a tab while My Clan is already on screen: only the panel changes,
+ * nothing above it moves. False when My Clan isn't mounted (render it then).
+ */
+export async function switchClanTab(content, key) {
+  if (!CLAN_TABS.some((tb) => tb.key === key) || !content.querySelector('[data-clan-page]')) return false;
+  view.tab = key;
+  const tab = content.querySelector(`#clan-view-tab-${key}`);
+  if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
+  if (key === 'triumphal') await mountTriumphal(content);
+  return true;
 }
 
 /** My Clan's tab strip as links, for the Triumphal Chests page (#triumphal). */
@@ -105,22 +128,26 @@ export async function renderClan(content) {
       loadGameArt(),
     ]);
   } catch {
-    // The strip stays, so Triumphal Chests is reachable whatever the game data.
-    content.innerHTML = clanTabLinksHtml(view.tab) + noteCard(t("Couldn't load the clan. Try again in a minute."));
-    return;
+    data = null;
   }
   if (!data?.linked) {
-    content.innerHTML = clanTabLinksHtml(view.tab) + noteCard(t("The clan hasn't been read from the game yet. The next scan reads it."));
+    // No game data (yet): the strip stays, so Triumphal Chests is reachable.
+    const note = data === null
+      ? t("Couldn't load the clan. Try again in a minute.")
+      : t("The clan hasn't been read from the game yet. The next scan reads it.");
+    content.innerHTML = clanTabLinksHtml(view.tab)
+      + (view.tab === 'triumphal' ? '<div data-clan-triumphal></div>' : noteCard(note));
+    if (view.tab === 'triumphal') await mountTriumphal(content);
     return;
   }
 
   const clanTrees = (trees?.trees || []).filter((tr) => tr.kind === 'clan' && tr.nodes.length && !/talents/i.test(tr.layout || ''));
   const levels = data.techs?.levels || {};
   const tabs = CLAN_TABS.map((tb) => ({ key: tb.key, label: esc(tb.label()) }));
-  if (!tabs.some((tb) => tb.key === view.tab) || view.tab === 'triumphal') view.tab = 'research';
+  if (!tabs.some((tb) => tb.key === view.tab)) view.tab = 'research';
 
   content.innerHTML = `
-    <div class="clan-page">
+    <div class="clan-page" data-clan-page>
       ${headerHtml(data)}
       ${statsHtml(data)}
       ${viewTabsHtml('clan-view', tabs, view.tab)}
@@ -128,18 +155,19 @@ export async function renderClan(content) {
       ${viewPanelHtml('clan-view', 'rankings', view.tab, '<div data-clan-rankings></div>')}
       ${viewPanelHtml('clan-view', 'treasury', view.tab, treasuryHtml(data.treasury))}
       ${viewPanelHtml('clan-view', 'history', view.tab, historyHtml(data.history || []))}
+      ${viewPanelHtml('clan-view', 'triumphal', view.tab, '<div data-clan-triumphal></div>')}
     </div>`;
 
   wireViewTabs(content, 'clan-view', (key) => {
-    if (key === 'triumphal') {
-      window.location.hash = '#triumphal';
-      return;
-    }
     view.tab = key;
     if (key === 'rankings') mountRankings(content, data);
+    // The tab's address, so a reload or a shared link lands on it; the router
+    // sees My Clan mounted and changes only the panel (switchClanTab).
+    if (window.location.hash !== tabHash(key)) window.location.hash = tabHash(key);
   });
   wireTrees(content, clanTrees, levels, trees);
   if (view.tab === 'rankings') mountRankings(content, data);
+  if (view.tab === 'triumphal') await mountTriumphal(content);
   // The rank stat card opens the Rankings tab on that ranking.
   content.querySelectorAll('[data-goto-ranking]').forEach((el) => el.addEventListener('click', () => {
     view.rankKind = Number(el.dataset.gotoRanking);

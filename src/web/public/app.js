@@ -45,7 +45,6 @@ import { renderExternal } from './external.js';
 // re-render without importing `loadPage` from app.js (which would
 // create a circular import).
 import {
-  renderTriumphal,
   changeTriumphalPage,
   changeTriumphalRecentPage,
   setTriumphalSort,
@@ -94,7 +93,7 @@ import {
   changeMemberResourcesPage,
 } from './pages/members.js';
 import { renderMight } from './pages/might.js';
-import { renderClan, setClanTab, clanTabLinksHtml } from './pages/clan.js';
+import { renderClan, setClanTab, switchClanTab } from './pages/clan.js';
 import { renderChats } from './pages/chats.js';
 import { renderPerformance } from './pages/performance.js';
 import {
@@ -799,7 +798,10 @@ window.addEventListener('hashchange', () => {
   void checkLiveBuild();
   const previousPage = currentPage;
   syncRouteFromHash();
-  if (currentPage !== previousPage) {
+  // My Clan's tabs have their own addresses (#clan/<tab>, #triumphal) but are
+  // one page: moving between them keeps the scroll position.
+  const pageGroup = (p) => (p === 'clan' || p === 'triumphal' || p.startsWith('clan/') ? 'clan' : p);
+  if (pageGroup(currentPage) !== pageGroup(previousPage)) {
     // Twice, deliberately. Now, so the outgoing page doesn't sit at its old
     // offset for however long the new page's fetches take; and again once the
     // render has written to #content, because the document is at its old
@@ -959,8 +961,12 @@ async function renderRoute(page, content) {
   }
   // My Clan on a section: #clan/research, #clan/rankings, …
   if (page.startsWith('clan/')) {
-    setClanTab(decodeURIComponent(page.slice('clan/'.length)));
-    await renderClan(content);
+    const tab = decodeURIComponent(page.slice('clan/'.length));
+    // My Clan already on screen (a tab click): switch the panel in place.
+    if (!(await switchClanTab(content, tab))) {
+      setClanTab(tab);
+      await renderClan(content);
+    }
     return;
   }
   if (page === 'chest-rewards' || page === 'resources/chests') {
@@ -995,10 +1001,12 @@ async function renderRoute(page, content) {
     case 'analytics': await renderAnalytics(content); break;
     case 'leaderboard': await renderLeaderboard(content); break;
     case 'triumphal': {
-      // A tab of My Clan (its strip on top), but its own page: the period
-      // selector lives in the address (#triumphal?period=…).
-      content.innerHTML = `${clanTabLinksHtml('triumphal')}<div data-triumphal-body></div>`;
-      await renderTriumphal(content.querySelector('[data-triumphal-body]'));
+      // A tab of My Clan with its own address (the period selector lives in
+      // it): with My Clan on screen only the tab's panel changes.
+      if (!(await switchClanTab(content, 'triumphal'))) {
+        setClanTab('triumphal');
+        await renderClan(content);
+      }
       break;
     }
     case 'members': await renderMembers(content); break;
