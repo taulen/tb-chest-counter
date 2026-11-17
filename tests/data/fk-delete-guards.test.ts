@@ -77,6 +77,13 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'audit_log.clan_id',
     'clan_goal_history.clan_id',
     'discord_member_links.clan_id',
+    // Game protocol capture (v102).
+    'game_capture_runs.clan_id',
+    'game_gifts.clan_id',
+    'game_ledger.clan_id',
+    'game_player_history.clan_id',
+    'game_players.clan_id',
+    'game_scan_comparisons.clan_id',
     'member_guards_reports.clan_id',
     'member_level_reports.clan_id',
     'members.clan_id',
@@ -268,6 +275,26 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO user_sessions (user_id, token, expires_at, created_at, active_clan_id)
      VALUES (2, 'guard-session', ?, ?, ?)`,
   ).run(now, now, clanId);
+  // Game protocol capture (v102).
+  db.prepare(
+    `INSERT INTO game_players (clan_id, player_id, name, first_seen, last_seen) VALUES (?, 77, 'Guard', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_history (clan_id, player_id, captured_at, name) VALUES (?, 77, ?, 'Guard')`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_gifts (clan_id, gift_id, sender_id, gift_type, arrived_at, expires_at, first_seen, last_seen)
+     VALUES (?, 1, 77, 5622, 1, 2, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_ledger (clan_id, entry_id, player_id, kind, resource, amounts, occurred_at, captured_at)
+     VALUES (?, 1, 77, 4, 20, '{}', 1, ?)`,
+  ).run(clanId, now);
+  db.prepare('INSERT INTO game_capture_runs (clan_id, started_at) VALUES (?, ?)').run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_scan_comparisons (clan_id, session_id, capture_run_id, created_at, tab, game, ocr, matched, misreads, ocr_only, ocr_late, game_only, details)
+     VALUES (?, 1, 1, ?, 1, 0, 0, 0, 0, 0, 0, 0, '{}')`,
+  ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.
   db.prepare(

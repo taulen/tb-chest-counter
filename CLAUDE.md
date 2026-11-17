@@ -38,6 +38,8 @@
 
 ## Read before changing that area
 
+- Game protocol / direct client (src/game-protocol; parallel run before each scan, game_* tables v102; never present an old website token — it ends the account's session): [docs/game-protocol.md](docs/game-protocol.md)
+
 - Resource-history capture (cursor, open game day, date-floor backstop, adding a resource type): [docs/resource-capture.md](docs/resource-capture.md)
 - Guards levels and Gold Pass (inferred, never stored): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)
 - Chest identity and name-keyed config (renames): [docs/chest-identity.md](docs/chest-identity.md)

@@ -1308,6 +1308,119 @@ const MIGRATIONS = [
             database.transaction(() => (0, repair_cut_names_2026_11_js_1.repairCutNames)(database))();
         },
     },
+    {
+        // Game protocol capture (Nov 2026): what the game server itself says, read
+        // by the direct client in src/game-protocol before each clan's scan. Runs in
+        // parallel with the OCR pipeline first; see docs/game-protocol.md.
+        //
+        //   game_players        one row per game player per clan, keyed on the game's
+        //                       permanent player id (names can change, ids can't)
+        //   game_player_history a row only when a player's stats changed
+        //   game_gifts          every Gifts / Triumphal entry seen, keyed on the
+        //                       game's own gift id, so re-reading never duplicates
+        //   game_ledger         Clan Capital ledger entries, keyed on entry id
+        //   game_capture_runs   one row per capture, for health and comparison
+        //   game_scan_comparisons per scan and tab: the game's gift list vs the
+        //                       OCR rows of that scan (src/game-protocol/compare.ts)
+        //
+        // IF NOT EXISTS throughout: runMigrations replays everything above a
+        // rewound MAX(version), so this has to be a no-op the second time.
+        version: 102,
+        sql: `
+      CREATE TABLE IF NOT EXISTS game_players (
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        player_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        role INTEGER,
+        joined_at INTEGER,
+        in_clan INTEGER NOT NULL DEFAULT 1,
+        might INTEGER,
+        hero_level INTEGER,
+        city_level INTEGER,
+        vip INTEGER,
+        gold_pass INTEGER,
+        hero_avatar INTEGER,
+        city_id INTEGER,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        PRIMARY KEY (clan_id, player_id)
+      );
+      CREATE TABLE IF NOT EXISTS game_player_history (
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        player_id INTEGER NOT NULL,
+        captured_at TEXT NOT NULL,
+        name TEXT NOT NULL,
+        might INTEGER,
+        hero_level INTEGER,
+        city_level INTEGER,
+        vip INTEGER,
+        gold_pass INTEGER,
+        PRIMARY KEY (clan_id, player_id, captured_at)
+      );
+      CREATE TABLE IF NOT EXISTS game_gifts (
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        gift_id INTEGER NOT NULL,
+        sender_id INTEGER NOT NULL,
+        sender_name TEXT NOT NULL DEFAULT '',
+        gift_type INTEGER NOT NULL,
+        chest_name TEXT NOT NULL DEFAULT '',
+        source_name TEXT NOT NULL DEFAULT '',
+        chest_count INTEGER NOT NULL DEFAULT 1,
+        tab INTEGER NOT NULL DEFAULT 1,
+        arrived_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        PRIMARY KEY (clan_id, gift_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_game_gifts_arrived ON game_gifts (clan_id, arrived_at);
+      CREATE TABLE IF NOT EXISTS game_ledger (
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        entry_id INTEGER NOT NULL,
+        player_id INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        resource INTEGER NOT NULL,
+        amounts TEXT NOT NULL,
+        occurred_at INTEGER NOT NULL,
+        captured_at TEXT NOT NULL,
+        PRIMARY KEY (clan_id, entry_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_game_ledger_time ON game_ledger (clan_id, occurred_at);
+      CREATE TABLE IF NOT EXISTS game_capture_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        ok INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        game_clan_id INTEGER,
+        members INTEGER,
+        gift_entries INTEGER,
+        new_gifts INTEGER,
+        ledger_new INTEGER,
+        names_version TEXT,
+        duration_ms INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_game_capture_runs_clan ON game_capture_runs (clan_id, started_at);
+      CREATE TABLE IF NOT EXISTS game_scan_comparisons (
+        clan_id INTEGER NOT NULL REFERENCES clans(id),
+        -- no FK: a comparison must never block deleting a scan session
+        session_id INTEGER NOT NULL,
+        capture_run_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        tab INTEGER NOT NULL,
+        game INTEGER NOT NULL,
+        ocr INTEGER NOT NULL,
+        matched INTEGER NOT NULL,
+        misreads INTEGER NOT NULL,
+        ocr_only INTEGER NOT NULL,
+        ocr_late INTEGER NOT NULL,
+        game_only INTEGER NOT NULL,
+        details TEXT NOT NULL,
+        PRIMARY KEY (session_id, tab)
+      );
+    `,
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

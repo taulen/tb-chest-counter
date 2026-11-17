@@ -58,6 +58,11 @@ exports.configSchema = zod_1.z.object({
     // that clan must not be excluded from the daily read. An uncalibrated install
     // skips with a noAlert warning instead of clicking empty pixels.
     resourceCaptureEnabled: zod_1.z.preprocess((v) => v === 'true' || v === true, zod_1.z.boolean().default(true)),
+    // Game protocol capture (src/game-protocol): before each clan's scan, read
+    // the clan record, player records and Capital ledger straight from the game
+    // server. Parallel run alongside OCR — it writes only its own game_* tables
+    // and can never fail a scan, so it defaults on. See docs/game-protocol.md.
+    gameProtocolCaptureEnabled: zod_1.z.preprocess((v) => (v === undefined || v === '' ? undefined : v === 'true' || v === true), zod_1.z.boolean().default(true)),
     // Hard ceiling on how many chests one sweep of a tab may open. Exists
     // purely as a runaway-loop guard: a healthy sweep stops when the Gifts
     // tab runs dry, never on this. It is rounded UP to a whole batch of 4

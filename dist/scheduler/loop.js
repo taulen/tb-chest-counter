@@ -990,6 +990,10 @@ class ScanLoop {
                 log.info(`Clan #${clan.id}: skipping scan — member list not yet captured (operator must run Clans → Capture members).`);
                 continue;
             }
+            // Parallel run: read the clan straight from the game server before the
+            // browser touches it, so the gift list is the one this scan is about to
+            // claim. Never throws; a failure is logged and the scan goes ahead.
+            await this.captureGameProtocolBestEffort(clan.id);
             // Hot-swap browser to the clan's storage state AND profile dir.
             // Both are per-clan so cookies / localStorage / IndexedDB /
             // service workers from a different clan never leak in. Skip the
@@ -1112,6 +1116,12 @@ class ScanLoop {
             // The capital history keeps ~14 days, so a run this loses is picked up
             // tomorrow at no cost.
             await this.captureResourcesBestEffort(scanResult);
+            // Parallel run: this scan's OCR rows vs the gift list the game reported
+            // just before it (docs/game-protocol.md). Read-only, never throws.
+            if (this.config.gameProtocolCaptureEnabled && scanResult.success && scanResult.sessionId !== undefined) {
+                const { compareScanWithGameCapture } = await import('./game-protocol-phase.js');
+                compareScanWithGameCapture(this.clanId, scanResult.sessionId);
+            }
             return scanResult;
         }
         finally {
@@ -1196,6 +1206,29 @@ class ScanLoop {
      * history keeps about 14 days, so a skipped or failed run costs a delay rather
      * than a hole. That's why this phase is the LAST thing the scan cycle does.
      */
+    /**
+     * Game protocol capture for one clan (docs/game-protocol.md). Runs before
+     * the clan's browser is launched because a direct login takes over the
+     * account's game session; the scan's fresh navigation then takes it back.
+     * Same isolation contract as the post-scan phases: the phase records its own
+     * failures and this wrapper swallows anything that still escapes.
+     */
+    async captureGameProtocolBestEffort(clanId) {
+        if (!this.config.gameProtocolCaptureEnabled)
+            return;
+        try {
+            this.reportProgress('scan', 'Reading clan data from the game server…');
+            const { runGameProtocolCapture } = await import('./game-protocol-phase.js');
+            await runGameProtocolCapture(clanId);
+        }
+        catch (err) {
+            log.warn({ noAlert: true }, 'Game protocol capture threw and was ignored (the chest scan is unaffected): '
+                + String(err instanceof Error ? err.message : err));
+        }
+        finally {
+            this.progressMessage = '';
+        }
+    }
     async captureResourcesBestEffort(scanResult) {
         // Silent when off, for the same reason might is: a line per clan per cycle on
         // every deployment not using the feature is noise. Every skip below this

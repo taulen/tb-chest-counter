@@ -827,6 +827,13 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM resource_upload_batches WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM resource_icon_templates WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM resource_capture_cursor WHERE clan_id = ?').run(id);
+    // Game protocol capture (v102): keyed on game ids, no member FKs.
+    db.prepare('DELETE FROM game_player_history WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_players WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_gifts WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_ledger WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_capture_runs WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_scan_comparisons WHERE clan_id = ?').run(id);
     // share_link_daily rows hang off share_links; drop them first, then the
     // ledger rows themselves, so the clans delete doesn't hit the
     // share_links.clan_id FK.
