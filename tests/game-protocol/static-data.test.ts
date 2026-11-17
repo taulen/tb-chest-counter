@@ -4,6 +4,7 @@ import { encodeValues, type Wire } from '../../src/game-protocol/codec.js';
 import {
   TABLE_CAPTAINS,
   TABLE_CLAN_MEDALS,
+  TABLE_TERRAINS,
   TABLE_GIFT_TYPES,
   TABLE_HEROES,
   TABLE_MAP_OBJECTS,
@@ -129,6 +130,16 @@ describe('game names from static data', () => {
       tierName: 'Bronze',
       icon: 'achievement_capitals_competition_bronze',
     });
+  });
+
+  it('reads terrain names (T4 f2) for chat tile shares', () => {
+    // T4 113's real layout: [id, …, f2 name vector, …].
+    const terrainStrings: Wire[] = [...strings, 'terrain_type.name.n0004'];
+    const terrainVectors: Wire[] = [...vectors, [strings.length]];
+    const t = new Map(tables);
+    t.set(TABLE_TERRAINS, { 113: [113, 9004, terrainVectors.length - 1, 40, 1545, 1489] });
+    const n = buildNames('v1', terrainStrings, terrainVectors, t, new Map([...en, ['terrain_type.name.n0004', 'Forested hills']]));
+    expect(n.terrains?.['113']).toBe('Forested hills');
   });
 
   it('drops names that resolve to a JSON fragment', () => {

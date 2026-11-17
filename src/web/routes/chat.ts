@@ -20,13 +20,13 @@ import { avatarFrameUrl, heroAvatarUrl } from '../../data/repositories/game-prof
 import { chatSenderRank, chatSenderTag, parseChatSubs, type ChatSub } from '../../game-protocol/chat-text.js';
 import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
 
-/** The game's map-object names, refreshed at most every 10 minutes (the page polls). */
+/** The game's map-object and terrain names, refreshed at most every 10 minutes (the page polls). */
 let namesCache: { at: number; names: GameNames | null } = { at: 0, names: null };
-async function objectNames(): Promise<GameNames['objects']> {
+async function chatNames(): Promise<{ objects: GameNames['objects']; terrains: Record<string, string> }> {
   if (Date.now() - namesCache.at > 10 * 60_000) {
     namesCache = { at: Date.now(), names: await loadGameNames().catch(() => namesCache.names) };
   }
-  return namesCache.names?.objects ?? {};
+  return { objects: namesCache.names?.objects ?? {}, terrains: namesCache.names?.terrains ?? {} };
 }
 
 /** Test seam. */
@@ -168,13 +168,21 @@ export function createChatRouter(): Router {
     });
   });
 
-  /** What every page of messages carries: senders, object names, the history's extent. */
+  /** What every page of messages carries: senders, object and terrain names, the history's extent. */
   async function pageExtras(clanId: number, channels: string[], messages: ReturnType<typeof toApi>[]) {
     const objects: Record<number, string> = {};
-    const names = await objectNames();
+    // A shared map TILE's staticId is a terrain type (T4: "Dense forest"), not a
+    // map object — the two id spaces overlap (2 = Grasslands / Player's City).
+    const terrains: Record<number, string> = {};
+    const names = await chatNames();
     for (const m of messages) {
       for (const sub of Object.values(m.subs)) {
-        for (const id of subStaticIds(sub)) if (names[id]) objects[id] = names[id];
+        if (sub.type === 'coord' && sub.entryType === 'tile') {
+          const id = sub.staticId;
+          if (typeof id === 'number' && names.terrains[id]) terrains[id] = names.terrains[id];
+          continue;
+        }
+        for (const id of subStaticIds(sub)) if (names.objects[id]) objects[id] = names.objects[id];
       }
     }
     return {
@@ -182,6 +190,7 @@ export function createChatRouter(): Router {
       history: chatHistoryInfo(clanId, channels),
       people: people(clanId, messages.map((m) => m.sender.playerId).filter((p): p is number => p !== null)),
       objects,
+      terrains,
     };
   }
 

@@ -20,13 +20,13 @@ const chat_repo_js_1 = require("../../data/repositories/chat-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const chat_text_js_1 = require("../../game-protocol/chat-text.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
-/** The game's map-object names, refreshed at most every 10 minutes (the page polls). */
+/** The game's map-object and terrain names, refreshed at most every 10 minutes (the page polls). */
 let namesCache = { at: 0, names: null };
-async function objectNames() {
+async function chatNames() {
     if (Date.now() - namesCache.at > 10 * 60_000) {
         namesCache = { at: Date.now(), names: await (0, static_data_js_1.loadGameNames)().catch(() => namesCache.names) };
     }
-    return namesCache.names?.objects ?? {};
+    return { objects: namesCache.names?.objects ?? {}, terrains: namesCache.names?.terrains ?? {} };
 }
 /** Test seam. */
 function resetChatNamesCache(names = null) {
@@ -159,15 +159,24 @@ function createChatRouter() {
             focus,
         });
     });
-    /** What every page of messages carries: senders, object names, the history's extent. */
+    /** What every page of messages carries: senders, object and terrain names, the history's extent. */
     async function pageExtras(clanId, channels, messages) {
         const objects = {};
-        const names = await objectNames();
+        // A shared map TILE's staticId is a terrain type (T4: "Dense forest"), not a
+        // map object — the two id spaces overlap (2 = Grasslands / Player's City).
+        const terrains = {};
+        const names = await chatNames();
         for (const m of messages) {
             for (const sub of Object.values(m.subs)) {
+                if (sub.type === 'coord' && sub.entryType === 'tile') {
+                    const id = sub.staticId;
+                    if (typeof id === 'number' && names.terrains[id])
+                        terrains[id] = names.terrains[id];
+                    continue;
+                }
                 for (const id of subStaticIds(sub))
-                    if (names[id])
-                        objects[id] = names[id];
+                    if (names.objects[id])
+                        objects[id] = names.objects[id];
             }
         }
         return {
@@ -175,6 +184,7 @@ function createChatRouter() {
             history: (0, chat_repo_js_1.chatHistoryInfo)(clanId, channels),
             people: people(clanId, messages.map((m) => m.sender.playerId).filter((p) => p !== null)),
             objects,
+            terrains,
         };
     }
     /** Everyone who has written in the clan chat, busiest first (the sender filter). */
