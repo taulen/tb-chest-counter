@@ -7,6 +7,7 @@ exports.saveGifts = saveGifts;
 exports.saveLedger = saveLedger;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
+exports.saveCaptains = saveCaptains;
 exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
@@ -139,6 +140,29 @@ function saveTechs(clanId, playerId, techs, now = new Date().toISOString()) {
 function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toISOString()) {
     (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero)
      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.hero));
+}
+/**
+ * Store a player's captains; a history row only when a captain is new or its
+ * value changed. Returns the number of such changes.
+ */
+function saveCaptains(clanId, playerId, captains, now = new Date().toISOString()) {
+    const db = (0, database_js_1.getDb)();
+    const prev = new Map(db.prepare('SELECT captain_id, value FROM game_player_captains WHERE clan_id = ? AND player_id = ?')
+        .all(clanId, playerId).map((r) => [r.captain_id, r.value]));
+    const upsert = db.prepare(`INSERT INTO game_player_captains (clan_id, player_id, captain_id, value, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, captain_id) DO UPDATE SET value = excluded.value, last_seen = excluded.last_seen`);
+    const hist = db.prepare('INSERT OR IGNORE INTO game_player_captain_history (clan_id, player_id, captain_id, value, changed_at) VALUES (?, ?, ?, ?, ?)');
+    let changed = 0;
+    db.transaction(() => {
+        for (const c of captains) {
+            upsert.run(clanId, playerId, c.id, c.value, now, now);
+            if (prev.get(c.id) !== c.value) {
+                hist.run(clanId, playerId, c.id, c.value, now);
+                changed++;
+            }
+        }
+    })();
+    return changed;
 }
 /** Players of this clan whose city was already captured for the game day. */
 function citySnapshotPlayers(clanId, gameDate) {

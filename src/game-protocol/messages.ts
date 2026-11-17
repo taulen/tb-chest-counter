@@ -176,6 +176,12 @@ export interface CityRecord {
   buildings: Record<string, { type: number; level: number }>;
   /** Hero summary: level and experience, when present. */
   hero: { level: number | null; xp: number | null };
+  /**
+   * Field 30: `[id, value, 0]` per battler the player owns — captains (T75 ids:
+   * Hercules 27, Skadi 30, …) and other battlers; the caller keeps the captains.
+   * `value` is the game's own number for it (likely experience; Nov 2026).
+   */
+  captains: Array<{ id: number; value: number }>;
 }
 
 /**
@@ -206,6 +212,10 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
     techs: parseCityTechs(frame),
     buildings,
     hero: { level: num(heroRow[3]), xp: num(heroRow[2]) },
+    captains: arr(r[30])
+      .map((e) => arr(e))
+      .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')
+      .map((e) => ({ id: e[0] as number, value: e[1] as number })),
   };
 }
 

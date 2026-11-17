@@ -179,6 +179,10 @@ async function collectExtras(clanId, d, clanFrame) {
                 const city = (0, messages_js_1.parseCityRecord)(await d.client.city(p.cityId));
                 if (city) {
                     changed += (0, game_protocol_repo_js_1.saveTechs)(clanId, p.playerId, city.techs, now);
+                    // Captains only (T75 ids); the list also holds other battlers.
+                    const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
+                    if (captains.length)
+                        (0, game_protocol_repo_js_1.saveCaptains)(clanId, p.playerId, captains, now);
                     (0, game_protocol_repo_js_1.saveCitySnapshot)(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, hero: city.hero }, now);
                 }
             }

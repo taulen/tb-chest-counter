@@ -7,6 +7,8 @@ exports.getGamePlayersByMember = getGamePlayersByMember;
 exports.getLatestCity = getLatestCity;
 exports.getPlayerTechs = getPlayerTechs;
 exports.getPlayerTechChanges = getPlayerTechChanges;
+exports.getPlayerCaptains = getPlayerCaptains;
+exports.getPlayerCaptainChanges = getPlayerCaptainChanges;
 /**
  * Read side of the game-protocol tables for the member profile and member
  * lists: what the game says about a player (game_players), their city
@@ -87,6 +89,18 @@ function getPlayerTechChanges(clanId, playerId, sinceIso, limit = 200) {
     return (0, database_js_1.getDb)().prepare(`SELECT tech_id AS techId, level, changed_at AS changedAt FROM game_player_tech_history h
       WHERE clan_id = ? AND player_id = ? AND changed_at >= ?
         AND changed_at > (SELECT MIN(changed_at) FROM game_player_tech_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
+      ORDER BY changed_at DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
+}
+/** A player's captains as last read: captain id, the game's value for it, when first and last seen. */
+function getPlayerCaptains(clanId, playerId) {
+    return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, value, first_seen AS firstSeen, last_seen AS lastSeen
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ? ORDER BY value DESC`).all(clanId, playerId);
+}
+/** Captain changes since `sinceIso`, newest first — the first read's baseline left out. */
+function getPlayerCaptainChanges(clanId, playerId, sinceIso, limit = 100) {
+    return (0, database_js_1.getDb)().prepare(`SELECT captain_id AS captainId, value, changed_at AS changedAt FROM game_player_captain_history h
+      WHERE clan_id = ? AND player_id = ? AND changed_at >= ?
+        AND changed_at > (SELECT MIN(changed_at) FROM game_player_captain_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
       ORDER BY changed_at DESC LIMIT ?`).all(clanId, playerId, sinceIso, limit);
 }
 //# sourceMappingURL=game-profile-repo.js.map

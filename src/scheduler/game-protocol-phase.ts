@@ -39,6 +39,7 @@ import {
   finishCaptureRun,
   hasRawSnapshot,
   saveCitySnapshot,
+  saveCaptains,
   saveGifts,
   saveLedger,
   saveMapObjects,
@@ -237,6 +238,9 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
         const city = parseCityRecord(await d.client.city(p.cityId as number));
         if (city) {
           changed += saveTechs(clanId, p.playerId, city.techs, now);
+          // Captains only (T75 ids); the list also holds other battlers.
+          const captains = city.captains.filter((c) => d.names.captains?.[String(c.id)]);
+          if (captains.length) saveCaptains(clanId, p.playerId, captains, now);
           saveCitySnapshot(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, hero: city.hero }, now);
         }
       } catch {

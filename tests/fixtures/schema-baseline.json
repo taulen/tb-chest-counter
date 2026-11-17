@@ -496,6 +496,16 @@
   },
   {
     "type": "table",
+    "name": "game_player_captain_history",
+    "sql": "CREATE TABLE game_player_captain_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captain_id INTEGER NOT NULL, value INTEGER NOT NULL, changed_at TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, captain_id, changed_at) )"
+  },
+  {
+    "type": "table",
+    "name": "game_player_captains",
+    "sql": "CREATE TABLE game_player_captains ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captain_id INTEGER NOT NULL, value INTEGER NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, captain_id) )"
+  },
+  {
+    "type": "table",
     "name": "game_player_history",
     "sql": "CREATE TABLE game_player_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captured_at TEXT NOT NULL, name TEXT NOT NULL, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, role INTEGER, PRIMARY KEY (clan_id, player_id, captured_at) )"
   },

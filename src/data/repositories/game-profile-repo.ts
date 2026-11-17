@@ -125,3 +125,21 @@ export function getPlayerTechChanges(clanId: number, playerId: number, sinceIso:
       ORDER BY changed_at DESC LIMIT ?`,
   ).all(clanId, playerId, sinceIso, limit) as Array<{ techId: number; level: number; changedAt: string }>;
 }
+
+/** A player's captains as last read: captain id, the game's value for it, when first and last seen. */
+export function getPlayerCaptains(clanId: number, playerId: number): Array<{ captainId: number; value: number; firstSeen: string; lastSeen: string }> {
+  return getDb().prepare(
+    `SELECT captain_id AS captainId, value, first_seen AS firstSeen, last_seen AS lastSeen
+       FROM game_player_captains WHERE clan_id = ? AND player_id = ? ORDER BY value DESC`,
+  ).all(clanId, playerId) as Array<{ captainId: number; value: number; firstSeen: string; lastSeen: string }>;
+}
+
+/** Captain changes since `sinceIso`, newest first — the first read's baseline left out. */
+export function getPlayerCaptainChanges(clanId: number, playerId: number, sinceIso: string, limit = 100): Array<{ captainId: number; value: number; changedAt: string }> {
+  return getDb().prepare(
+    `SELECT captain_id AS captainId, value, changed_at AS changedAt FROM game_player_captain_history h
+      WHERE clan_id = ? AND player_id = ? AND changed_at >= ?
+        AND changed_at > (SELECT MIN(changed_at) FROM game_player_captain_history WHERE clan_id = h.clan_id AND player_id = h.player_id)
+      ORDER BY changed_at DESC LIMIT ?`,
+  ).all(clanId, playerId, sinceIso, limit) as Array<{ captainId: number; value: number; changedAt: string }>;
+}

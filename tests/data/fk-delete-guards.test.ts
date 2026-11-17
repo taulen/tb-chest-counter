@@ -87,6 +87,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_gifts.clan_id',
     'game_ledger.clan_id',
     'game_map_objects.clan_id',
+    'game_player_captain_history.clan_id',
+    'game_player_captains.clan_id',
     'game_player_history.clan_id',
     'game_player_tech_history.clan_id',
     'game_player_techs.clan_id',
@@ -325,6 +327,12 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO chat_channels (clan_id, channel_url, custom_type, first_seen, last_seen) VALUES (?, 'triumph_clan_channel_1', 'clanGroup', ?, ?)`,
   ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_captains (clan_id, player_id, captain_id, value, first_seen, last_seen) VALUES (?, 1, 27, 1211, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_captain_history (clan_id, player_id, captain_id, value, changed_at) VALUES (?, 1, 27, 1211, ?)`,
+  ).run(clanId, now);
   db.prepare(
     `INSERT INTO chat_messages (clan_id, channel_url, message_id, created_at, captured_at) VALUES (?, 'triumph_clan_channel_1', 1, 1, ?)`,
   ).run(clanId, now);

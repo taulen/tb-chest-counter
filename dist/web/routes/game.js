@@ -13,6 +13,7 @@ exports.createGameRouter = createGameRouter;
 const express_1 = require("express");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
+const static_data_js_1 = require("../../game-protocol/static-data.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const index_js_1 = require("../../game-art/index.js");
@@ -81,6 +82,33 @@ function createGameRouter() {
         const { levels, readAt } = (0, game_profile_repo_js_1.getPlayerTechs)(clanId, playerId);
         const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
         res.json({ linked: true, levels, readAt, changes: (0, game_profile_repo_js_1.getPlayerTechChanges)(clanId, playerId, since) });
+    });
+    /** A member's captains (name, rarity, portrait, the game's value) and their recent changes. */
+    router.get('/members/:memberId/captains', async (req, res) => {
+        const clanId = req.clanId;
+        const memberId = Number.parseInt(String(req.params.memberId), 10);
+        if (!Number.isFinite(memberId) || !(0, member_repo_js_1.getMemberById)(memberId, clanId)) {
+            res.status(404).json({ error: 'Member not found' });
+            return;
+        }
+        const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clanId);
+        if (playerId === null) {
+            res.json({ linked: false, captains: [], changes: [] });
+            return;
+        }
+        const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
+        const portraits = (0, index_js_1.currentGameArt)()?.mappings?.captains ?? {};
+        const describe = (id) => {
+            const n = names?.captains?.[String(id)];
+            const img = portraits[String(id)];
+            return { name: n?.name ?? `#${id}`, rarity: n?.rarity ?? 0, iconUrl: img ? (0, index_js_1.gameArtUrl)(img) : null };
+        };
+        const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
+        res.json({
+            linked: true,
+            captains: (0, game_profile_repo_js_1.getPlayerCaptains)(clanId, playerId).map((c) => ({ ...c, ...describe(c.captainId) })),
+            changes: (0, game_profile_repo_js_1.getPlayerCaptainChanges)(clanId, playerId, since).map((c) => ({ ...c, ...describe(c.captainId) })),
+        });
     });
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */
     router.get('/roster', (req, res) => {

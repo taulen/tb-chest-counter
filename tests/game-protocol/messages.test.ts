@@ -80,6 +80,7 @@ describe('game messages', () => {
     city[12] = { 3: [3, 41, 25, 0], 7: [7, 12, 30, 0] };
     city[17] = { 1215: [1215, 2], 29006: [29006, 20] };
     city[26] = { 1: [1, [5], 98765, 116] };
+    city[30] = [[27, 1211, 0], [30, 1705, 0]];
     // Real reply nesting: [[[city], []]].
     const r = parseCityRecord(frame(601, [[[city], []]]));
     expect(r).toEqual({
@@ -88,6 +89,7 @@ describe('game messages', () => {
       techs: { 1215: 2, 29006: 20 },
       buildings: { 3: { type: 41, level: 25 }, 7: { type: 12, level: 30 } },
       hero: { level: 116, xp: 98765 },
+      captains: [{ id: 27, value: 1211 }, { id: 30, value: 1705 }],
     });
   });
 

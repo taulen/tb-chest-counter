@@ -8526,3 +8526,55 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tech-changes-table col.col-date {
   width: 170px;
 }
+
+/* ─── Member profile: Captains (pages/member-captains.js) ─── */
+.captain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.captain-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  text-align: center;
+}
+
+/* Rarity by the game's own number (T75 f2): the border carries it, the name says who. */
+.captain-card.rarity-2 { border-color: var(--accent-blue); }
+.captain-card.rarity-3 { border-color: var(--accent-purple, var(--accent-blue)); }
+.captain-card.rarity-4 { border-color: var(--accent-gold-border); background: var(--accent-gold-bg); }
+
+.captain-portrait {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.captain-portrait.is-empty {
+  display: block;
+  border-radius: 50%;
+  background: var(--bg-card);
+}
+
+.captain-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.captain-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.captain-changes-table col.col-value { width: 110px; }
+.captain-changes-table col.col-date { width: 170px; }
+

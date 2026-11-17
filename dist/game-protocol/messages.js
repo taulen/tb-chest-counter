@@ -151,6 +151,10 @@ function parseCityRecord(frame) {
         techs: parseCityTechs(frame),
         buildings,
         hero: { level: num(heroRow[3]), xp: num(heroRow[2]) },
+        captains: arr(r[30])
+            .map((e) => arr(e))
+            .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')
+            .map((e) => ({ id: e[0], value: e[1] })),
     };
 }
 /** Message 312 (map tiles): `[[id], type, …, level@5, …, [realm,x,y]@8, [owner]@9, expiresAt@10, …]`. */

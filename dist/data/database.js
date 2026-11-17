@@ -1586,6 +1586,33 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // Each player's captains (Hercules, Skadi, …), from field 30 of the city
+        // record the daily city pass already reads: the current value per captain,
+        // and a history row whenever it changes (a new captain or progress).
+        version: 106,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_player_captains (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          captain_id INTEGER NOT NULL,
+          value INTEGER NOT NULL,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, captain_id)
+        );
+        CREATE TABLE IF NOT EXISTS game_player_captain_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          captain_id INTEGER NOT NULL,
+          value INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, captain_id, changed_at)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted
