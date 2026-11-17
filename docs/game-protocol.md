@@ -9,12 +9,18 @@ Status (Nov 17 2026): **this is the scan.** Each clan in a cycle (and each
 manual scan) is `ScanLoop.runProtocolClanScan`:
 
 1. [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts) signs in,
-   reads everything (below) and returns its live session and data;
+   reads the clan record (members, gifts), player records and the ledger, syncs
+   members, and returns its live session and data;
 2. [`protocol-scan.ts`](../src/scheduler/protocol-scan.ts) records every gift —
    `count − rows already carrying its game_gift_id`, so re-runs never double —
    THEN claims each gift entry (one 15013 per entry; rewards → `game_claims`),
    THEN imports the ledger;
 3. the session is finalised like any scan (`finalizeScanSuccess`, Discord report).
+4. then, on the same session, the slower collection (`collectCaptureExtras`:
+   member cities, map tiles, raw archive) and chat. It used to run inside step
+   1, so the daily city pass (~0.4 s a member) held the chests up: SIK's first
+   captains scan read 99 cities for 42 s before opening 49 chests. The scanner
+   stays busy until it is done, so deploys still wait.
 
 A capture that cannot sign in creates no session row and records nothing.
 The browser-driven OCR scanner this replaced (with its calibration wizard,

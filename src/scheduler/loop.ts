@@ -588,8 +588,8 @@ export class ScanLoop {
 
   /**
    * One clan's scan, straight from the game (docs/game-protocol.md):
-   * capture (members, gifts, ledger, cities…) → record every gift → claim →
-   * ledger rows → chat. Owns the single-flight flags. No session row when
+   * capture (members, gifts, ledger) → record every gift → claim → ledger
+   * rows → finalize → cities, map tiles, raw archive → chat. Owns the single-flight flags. No session row when
    * the capture cannot even sign in; once one exists, a throw keeps whatever
    * was recorded (finalizeScanFailure decides from the DB row count).
    */
@@ -605,7 +605,7 @@ export class ScanLoop {
     try {
       this.stateMachine.transition(AppState.SCANNING);
       this.reportProgress('Reading clan data from the game server…');
-      const { runGameProtocolCapture } = await import('./game-protocol-phase.js');
+      const { runGameProtocolCapture, collectCaptureExtras } = await import('./game-protocol-phase.js');
       const capture = await runGameProtocolCapture(clanId, { rolloverUtcHour: this.config.gameDayRolloverUtcHour });
       if (!capture.ok || !capture.data) {
         // Nothing was recorded or claimed. A logged-out session has already been
@@ -640,8 +640,15 @@ export class ScanLoop {
           this.buildScanFinalizeContext(), result, scanSession.id,
           tally.warnings.length ? tally.warnings.join('\n') : null,
         );
-        // Chat (clan chat + the account's private messages), on the same game
-        // session, after the scan is final. Never throws.
+        // After the scan is final, on the same game session: the slower
+        // collection (member cities, map tiles, raw archive) — kept out of
+        // the way of opening chests — then chat (clan chat + the account's
+        // private messages). Neither throws. scanInProgress stays set, so a
+        // deploy still waits for them.
+        if (capture.clanFrame) {
+          this.reportProgress('Reading member cities…');
+          await collectCaptureExtras(clanId, capture.data, capture.clanFrame);
+        }
         this.reportProgress('Reading chat…');
         const { refreshChatSession } = await import('./chat-capture.js');
         log.info(`Clan #${clanId} ${await refreshChatSession(clanId, capture.data.client, capture.data.record.clanId)}`);

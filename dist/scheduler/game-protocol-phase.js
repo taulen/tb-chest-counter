@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runGameProtocolCapture = runGameProtocolCapture;
+exports.collectCaptureExtras = collectCaptureExtras;
 /**
  * Game protocol capture — the first half of every clan's scan.
  *
@@ -35,6 +36,13 @@ const tech_trees_js_1 = require("../game-protocol/tech-trees.js");
 const log = (0, logger_js_1.childLogger)('game-protocol');
 /** Player lookups per request; the game client itself asks for ~90 at a time. */
 const PLAYER_BATCH = 100;
+/**
+ * The part of a scan that has to come before claiming: sign in, the clan
+ * record (members + gifts), player records, the ledger, member sync. The
+ * slower collection (cities, map tiles, raw archive — collectCaptureExtras)
+ * runs after the chests are opened, so a daily city pass or a backfill never
+ * holds them up.
+ */
 async function runGameProtocolCapture(clanId, opts) {
     const started = Date.now();
     const runId = (0, game_protocol_repo_js_1.startCaptureRun)(clanId);
@@ -95,7 +103,6 @@ async function runGameProtocolCapture(clanId, opts) {
             log.warn({ noAlert: true }, `Clan #${clanId} member sync failed (capture data kept): ${String(err)}`);
         }
         const data = { client, names, record, byId, gifts, ledger, gameDate, memberIds };
-        const extras = await collectExtras(clanId, data, clanFrame);
         const outcome = {
             ok: true,
             members: record.members.length,
@@ -106,8 +113,8 @@ async function runGameProtocolCapture(clanId, opts) {
         (0, game_protocol_repo_js_1.finishCaptureRun)(runId, { ...outcome, gameClanId: record.clanId, namesVersion: names.version, durationMs: Date.now() - started });
         log.info(`Clan #${clanId} game capture: ${record.members.length} members, ${gifts.length} gift entries ` +
             `(${newGifts} new${unnamed ? `, ${unnamed} with no name yet` : ''}), ${ledgerNew} new ledger entries; ` +
-            `${syncNote}; ${extras} — in ${Date.now() - started} ms`);
-        return { ...outcome, data };
+            `${syncNote} — in ${Date.now() - started} ms`);
+        return { ...outcome, data, clanFrame };
     }
     catch (err) {
         const error = String(err instanceof Error ? err.message : err);
@@ -130,6 +137,20 @@ const RAW_CITY_DAYS = 60;
 const MAX_TILES_PER_CYCLE = 60;
 const TILE_BATCH = 9;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * The collection a scan does after its chests are opened, on the same game
+ * session: cities, map tiles, the raw archive. Never throws; logs one line.
+ */
+async function collectCaptureExtras(clanId, data, clanFrame) {
+    const started = Date.now();
+    try {
+        const extras = await collectExtras(clanId, data, clanFrame);
+        log.info(`Clan #${clanId} game collection: ${extras} — in ${Date.now() - started} ms`);
+    }
+    catch (err) {
+        log.warn({ noAlert: true }, `Clan #${clanId} game collection failed: ${String(err)}`);
+    }
+}
 /**
  * Collect what we don't display yet but want history of — each part isolated,
  * so one failing never costs the others or the capture:

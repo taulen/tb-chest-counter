@@ -85,10 +85,17 @@ export interface CaptureData {
   memberIds: Map<number, number>;
 }
 
+/**
+ * The part of a scan that has to come before claiming: sign in, the clan
+ * record (members + gifts), player records, the ledger, member sync. The
+ * slower collection (cities, map tiles, raw archive — collectCaptureExtras)
+ * runs after the chests are opened, so a daily city pass or a backfill never
+ * holds them up.
+ */
 export async function runGameProtocolCapture(
   clanId: number,
   opts: { rolloverUtcHour: number },
-): Promise<GameProtocolOutcome & { data?: CaptureData }> {
+): Promise<GameProtocolOutcome & { data?: CaptureData; clanFrame?: Frame }> {
   const started = Date.now();
   const runId = startCaptureRun(clanId);
   try {
@@ -153,7 +160,6 @@ export async function runGameProtocolCapture(
     }
 
     const data: CaptureData = { client, names, record, byId, gifts, ledger, gameDate, memberIds };
-    const extras = await collectExtras(clanId, data, clanFrame);
 
     const outcome = {
       ok: true,
@@ -166,9 +172,9 @@ export async function runGameProtocolCapture(
     log.info(
       `Clan #${clanId} game capture: ${record.members.length} members, ${gifts.length} gift entries ` +
       `(${newGifts} new${unnamed ? `, ${unnamed} with no name yet` : ''}), ${ledgerNew} new ledger entries; ` +
-      `${syncNote}; ${extras} — in ${Date.now() - started} ms`,
+      `${syncNote} — in ${Date.now() - started} ms`,
     );
-    return { ...outcome, data };
+    return { ...outcome, data, clanFrame };
   } catch (err) {
     const error = String(err instanceof Error ? err.message : err);
     finishCaptureRun(runId, { ok: false, error, durationMs: Date.now() - started });
@@ -190,6 +196,20 @@ const RAW_CITY_DAYS = 60;
 const MAX_TILES_PER_CYCLE = 60;
 const TILE_BATCH = 9;
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The collection a scan does after its chests are opened, on the same game
+ * session: cities, map tiles, the raw archive. Never throws; logs one line.
+ */
+export async function collectCaptureExtras(clanId: number, data: CaptureData, clanFrame: Frame): Promise<void> {
+  const started = Date.now();
+  try {
+    const extras = await collectExtras(clanId, data, clanFrame);
+    log.info(`Clan #${clanId} game collection: ${extras} — in ${Date.now() - started} ms`);
+  } catch (err) {
+    log.warn({ noAlert: true }, `Clan #${clanId} game collection failed: ${String(err)}`);
+  }
+}
 
 /**
  * Collect what we don't display yet but want history of — each part isolated,
