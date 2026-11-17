@@ -73,16 +73,6 @@ async function main() {
     if (staleCount > 0) {
         log.warn(`Marked ${staleCount} stale pending scan session(s) as failed`);
     }
-    // One-time repair (Nov 17 2026): SK7 scanned with SIK's login. REMOVE once it
-    // has run on prod; a no-op on any other database and after it ran once.
-    try {
-        const { repairWrongAccountScan } = await import('./data/repair-wrong-account-2026-11-17.js');
-        const { getDb } = await import('./data/database.js');
-        repairWrongAccountScan(getDb());
-    }
-    catch (err) {
-        log.error(`Wrong-account repair failed (nothing changed): ${String(err)}`);
-    }
     // Ensure at least one super admin exists. The web /setup flow normally
     // creates this during first-run setup; if we land here with zero users
     // it means the env file exists but the database was wiped or never had

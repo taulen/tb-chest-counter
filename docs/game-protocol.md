@@ -709,7 +709,8 @@ clan's game id never changes). A mismatch throws `WrongClanLoginError` before
 anything is written and flags the clan for a new login, naming both clans and
 the account. Nov 17 2026: SK7's saved login signed in as SIK's scanner account
 (15:18–15:31 UTC) and two scans wrote SIK's members, chats, research and event
-standings into SK7 (cleaned by a one-time startup repair). How that login
+standings into SK7 (cleaned by a one-time startup repair, 02aeb48: 188,802
+rows; removed once it had run). How that login
 changed accounts is not known yet; nothing in the app writes one clan's login
 into another's file.
 
