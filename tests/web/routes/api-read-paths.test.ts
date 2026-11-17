@@ -38,6 +38,10 @@ vi.mock('../../../src/scheduler/loop.js', () => ({
     getLiveChestCount() { return 0; }
     getLastScanError() { return null; }
     getActiveClanId() { return 1; }
+    getRunningClanIds() { return []; }
+    getScanOverview() { return null; }
+    isClanScanQueuedOrRunning() { return false; }
+    isCycleRunning() { return false; }
     getState() { return 'IDLE'; }
     getScanIntervalMs() { return 60_000; }
   },

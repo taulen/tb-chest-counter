@@ -4,11 +4,13 @@
  * foot (a strip in the tablet top bar), another at the top of the phone menu;
  * every [data-scan-card] gets the same content.
  *
- * Fed from /api/status's `activity` block every 2 s. The skeleton is built
+ * Clans on different game accounts scan at the same time: `activity.clans`
+ * lists every one, shown as "CWB · SIK" with one current segment each on the
+ * track. Fed from /api/status's `activity` block every 2 s. The skeleton is built
  * once and only its text changes between polls: re-rendering the markup would
  * restart the pulse and shimmer animations every two seconds.
  */
-import { t } from './i18n.js';
+import { t, tn } from './i18n.js';
 import { formatCountdown } from './ui.js';
 
 const PHASE_LABELS = {
@@ -51,12 +53,22 @@ export function renderScanCards(activity, { detail = '' } = {}) {
     ? { ms: activity.elapsedMs, at: Date.now() }
     : null;
 
-  const inCycle = Number.isFinite(activity.cyclePosition) && Number.isFinite(activity.cycleTotal)
-    && activity.cycleTotal > 1;
-  const clanName = activity.clanName || t('Clan #{id}', { id: activity.clanId });
-  // One segment per clan of the cycle: done, current, still to come. Outside
-  // a cycle the single segment is just the "working" shimmer.
-  const trackKey = inCycle ? `${activity.cyclePosition}/${activity.cycleTotal}` : '1/1';
+  const clans = Array.isArray(activity.clans) && activity.clans.length ? activity.clans : [activity];
+  const several = clans.length > 1;
+  const inCycle = Number.isFinite(activity.cycleTotal) && activity.cycleTotal > 1
+    && (Number.isFinite(activity.cycleDone) || Number.isFinite(activity.cyclePosition));
+  const done = Number.isFinite(activity.cycleDone) ? activity.cycleDone : (activity.cyclePosition ?? 1) - 1;
+  const nameOf = (c) => c.clanName || t('Clan #{id}', { id: c.clanId });
+  const clanName = clans.map(nameOf).join(' · ');
+  // One segment per clan of the cycle: done, current (one per clan scanning
+  // now), still to come. Outside a cycle the single segment is just the
+  // "working" shimmer.
+  const trackKey = inCycle ? `${done}+${clans.length}/${activity.cycleTotal}` : '0+1/1';
+  const stepText = !inCycle ? '' : several ? `${done}/${activity.cycleTotal}` : `${done + 1}/${activity.cycleTotal}`;
+  const stepTitle = !inCycle ? ''
+    : several ? t('{done} of {total} clans done', { done, total: activity.cycleTotal })
+      : t('Clan {position} of {total}', { position: done + 1, total: activity.cycleTotal });
+  const detailText = several ? tn(clans.length, '{n} clan scanning at once', '{n} clans scanning at once') : detail;
 
   for (const card of document.querySelectorAll('[data-scan-card]')) {
     if (!card.querySelector('.scan-card-head')) card.innerHTML = SKELETON;
@@ -66,23 +78,23 @@ export function renderScanCards(activity, { detail = '' } = {}) {
     setText(clanEl, clanName);
     if (clanEl) clanEl.title = clanName;
     const detailEl = card.querySelector('.scan-card-detail');
-    setText(detailEl, detail);
-    if (detailEl) detailEl.title = detail;
+    setText(detailEl, detailText);
+    if (detailEl) detailEl.title = several ? clans.map((c) => `${nameOf(c)}: ${c.progressMessage || ''}`).join('\n') : detailText;
 
     const track = card.querySelector('.scan-card-track');
     if (track && track.dataset.key !== trackKey) {
-      const [pos, total] = trackKey.split('/').map(Number);
+      const [head, totalStr] = trackKey.split('/');
+      const [doneN, runningN] = head.split('+').map(Number);
+      const total = Number(totalStr);
       track.innerHTML = Array.from({ length: total }, (_, i) => {
-        const cls = i + 1 < pos ? ' is-done' : (i + 1 === pos ? ' is-current' : '');
+        const cls = i < doneN ? ' is-done' : (i < doneN + runningN ? ' is-current' : '');
         return `<span class="scan-card-seg${cls}"></span>`;
       }).join('');
       track.dataset.key = trackKey;
     }
     const stepEl = card.querySelector('.scan-card-step');
-    setText(stepEl, inCycle ? `${activity.cyclePosition}/${activity.cycleTotal}` : '');
-    if (stepEl) {
-      stepEl.title = inCycle ? t('Clan {position} of {total}', { position: activity.cyclePosition, total: activity.cycleTotal }) : '';
-    }
+    setText(stepEl, stepText);
+    if (stepEl) stepEl.title = stepTitle;
   }
   tickScanCards();
 }

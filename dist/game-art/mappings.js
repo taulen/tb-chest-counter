@@ -14,6 +14,8 @@ exports.avatarFrameIcons = avatarFrameIcons;
 exports.chestIcons = chestIcons;
 exports.resourceIcons = resourceIcons;
 exports.techIcons = techIcons;
+exports.captainScaledArt = captainScaledArt;
+exports.captainFullArt = captainFullArt;
 exports.captainIcons = captainIcons;
 exports.cityLookIcons = cityLookIcons;
 exports.statusIcons = statusIcons;
@@ -66,7 +68,7 @@ const unit_frames_js_1 = require("./unit-frames.js");
 function emptyMappings() {
     return {
         heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
-        chests: {}, resources: {}, techs: {}, captains: {}, ancients: {}, cityLooks: {}, status: {},
+        chests: {}, resources: {}, techs: {}, captains: {}, captainArt: {}, ancients: {}, cityLooks: {}, status: {},
         artifacts: {}, equipment: {}, inserts: {},
     };
 }
@@ -210,6 +212,25 @@ function techIcons(st, available) {
     }
     return out;
 }
+/**
+ * The full-body art for a captain's smallIcon: carter_icon → carter_scaled —
+ * the still of the captain screen's art (carter_artbundle's front image); the
+ * client derives the name, nothing in the static data spells it out. '' when
+ * the icon doesn't end in _icon.
+ */
+function captainScaledArt(icon) {
+    return /_icon$/i.test(icon) ? `${icon.replace(/_icon$/i, '')}_scaled` : '';
+}
+/** Captain → full-body art (`_scaled`), else the level-up art, for those extracted. */
+function captainFullArt(st, available) {
+    const out = {};
+    for (const [id, c] of Object.entries(st.captains ?? {})) {
+        const pick = [captainScaledArt(c.icon), c.art].map((n) => (n ? (0, selection_js_1.safeArtName)(n) : '')).find((n) => n && available(n));
+        if (pick)
+            out[id] = pick;
+    }
+    return out;
+}
 function captainIcons(st, available) {
     const out = {};
     for (const [id, c] of Object.entries(st.captains ?? {})) {
@@ -266,6 +287,8 @@ function buildMappings(st, troops, resourceNames, available) {
         resources: resourceIcons(st.items, resourceNames, available),
         techs: techIcons(st, available),
         captains: captainIcons(st, available),
+        captainArt: captainFullArt(st, available),
+        captainTile: (0, unit_frames_js_1.captainTileArt)(available),
         ancients: eventIcons(available),
         cityLooks: cityLookIcons(st, available),
         status: statusIcons(available),

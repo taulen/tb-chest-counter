@@ -41,7 +41,7 @@ function whoCell(row) {
 
 function runStatusHtml(run) {
   if (run.live) {
-    return `<span class="game-run-badge is-live">${esc(t('Live now'))}</span>${run.endsAt ? ` <span class="muted-copy">${esc(t('Ends {date}', { date: formatDate(run.endsAt) }))}</span>` : ''}`;
+    return `<span class="game-run-badge is-live">${esc(t('Live now'))}</span>${run.endsAt ? ` <span class="muted-copy">${esc(t('Ends {date}', { date: formatDate(run.endsAt).slice(0, 16) }))}</span>` : ''}`;
   }
   return `<span class="game-run-badge">${esc(t('Ended {date}', { date: run.endsAt ? formatDateShort(run.endsAt) : '—' }))}</span>`;
 }

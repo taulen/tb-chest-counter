@@ -259,15 +259,17 @@ export function saveCaptains(clanId: number, playerId: number, captains: CityCap
  * them (v112). Every artifact in the read is upserted and marked in the
  * line-up; any other stored artifact of the player is marked out of it (it
  * moved to a benched captain — still owned, just not in the city data). A
- * history row is written when an artifact is new or its level, star level or
- * rolls changed. Reads may be replayed from the archive oldest first (each
- * replayed read lands in history at its own time; replaying the same read
- * twice is a no-op). Returns the history rows written.
+ * history row is written when an artifact comes into the line-up (first seen,
+ * or back), when its level, star level or rolls changed, and — with
+ * in_lineup 0 (v118) — when it leaves the line-up. Reads may be replayed from
+ * the archive oldest first (each replayed read lands in history at its own
+ * time; replaying the same read twice is a no-op). Returns the history rows
+ * written.
  */
 export function saveArtifacts(clanId: number, playerId: number, artifacts: WornArtifact[], at = new Date().toISOString()): number {
   const db = getDb();
-  const prev = new Map((db.prepare('SELECT artifact_type, level, star, bonuses FROM game_player_artifacts WHERE clan_id = ? AND player_id = ?')
-    .all(clanId, playerId) as Array<{ artifact_type: number; level: number; star: number; bonuses: string }>).map((r) => [r.artifact_type, r]));
+  const prev = new Map((db.prepare('SELECT artifact_type, level, star, bonuses, in_lineup FROM game_player_artifacts WHERE clan_id = ? AND player_id = ?')
+    .all(clanId, playerId) as Array<{ artifact_type: number; level: number; star: number; bonuses: string; in_lineup: number }>).map((r) => [r.artifact_type, r]));
   const upsert = db.prepare(
     `INSERT INTO game_player_artifacts (clan_id, player_id, artifact_type, level, star, bonuses, in_lineup, first_seen, last_seen)
      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
@@ -276,8 +278,8 @@ export function saveArtifacts(clanId: number, playerId: number, artifacts: WornA
        first_seen = MIN(first_seen, excluded.first_seen), last_seen = excluded.last_seen`,
   );
   const hist = db.prepare(
-    `INSERT OR IGNORE INTO game_player_artifact_history (clan_id, player_id, artifact_type, level, star, bonuses, changed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO game_player_artifact_history (clan_id, player_id, artifact_type, level, star, bonuses, in_lineup, changed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const benched = db.prepare('UPDATE game_player_artifacts SET in_lineup = 0 WHERE clan_id = ? AND player_id = ? AND artifact_type = ?');
   let changed = 0;
@@ -288,11 +290,17 @@ export function saveArtifacts(clanId: number, playerId: number, artifacts: WornA
       seen.add(a.type);
       upsert.run(clanId, playerId, a.type, a.level, a.star, bonuses, at, at);
       const p = prev.get(a.type);
-      if (!p || p.level !== a.level || p.star !== a.star || p.bonuses !== bonuses) {
-        changed += hist.run(clanId, playerId, a.type, a.level, a.star, bonuses, at).changes;
+      // New, back in the line-up, or moved on: a row (in the line-up).
+      if (!p || p.in_lineup === 0 || p.level !== a.level || p.star !== a.star || p.bonuses !== bonuses) {
+        changed += hist.run(clanId, playerId, a.type, a.level, a.star, bonuses, 1, at).changes;
       }
     }
-    for (const type of prev.keys()) if (!seen.has(type)) benched.run(clanId, playerId, type);
+    for (const [type, p] of prev) {
+      if (seen.has(type)) continue;
+      benched.run(clanId, playerId, type);
+      // Left the line-up (its captain was benched or it moved to one): a row, once.
+      if (p.in_lineup !== 0) changed += hist.run(clanId, playerId, type, p.level, p.star, p.bonuses, 0, at).changes;
+    }
   })();
   return changed;
 }
@@ -305,13 +313,25 @@ export function saveArtifacts(clanId: number, playerId: number, artifacts: WornA
  * it with a read that carried the item list — an empty read would look like
  * every captain undressed. Returns the history rows written.
  */
-export function saveCaptainEquipment(clanId: number, playerId: number, worn: WornItem[], at = new Date().toISOString()): number {
+export function saveCaptainEquipment(
+  clanId: number,
+  playerId: number,
+  worn: WornItem[],
+  at = new Date().toISOString(),
+  /**
+   * Only these captains are compared (and only their positions can empty):
+   * a one-time archive re-read for one wearer — the hero, added Nov 2026 —
+   * must not touch the history of captains already stored.
+   */
+  onlyCaptains?: ReadonlySet<number>,
+): number {
   const db = getDb();
   type Row = { captain_id: number; position: number; item_uid: string; item_type: number; enchantment: number; gems: string };
   const key = (captainId: number, position: number) => `${captainId}:${position}`;
+  if (onlyCaptains) worn = worn.filter((w) => onlyCaptains.has(w.captainId));
   const prev = new Map((db.prepare(
     'SELECT captain_id, position, item_uid, item_type, enchantment, gems FROM game_player_captain_equipment WHERE clan_id = ? AND player_id = ?',
-  ).all(clanId, playerId) as Row[]).map((r) => [key(r.captain_id, r.position), r]));
+  ).all(clanId, playerId) as Row[]).filter((r) => !onlyCaptains || onlyCaptains.has(r.captain_id)).map((r) => [key(r.captain_id, r.position), r]));
   const upsert = db.prepare(
     `INSERT INTO game_player_captain_equipment
        (clan_id, player_id, captain_id, position, item_uid, item_type, enchantment, gems, raw, first_seen, last_seen)

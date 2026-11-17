@@ -8,7 +8,11 @@
 
 import { api } from '../lib/api.js';
 import { contentModal, esc, formatDate, formatDateShort } from '../lib/ui.js';
-import { t, tn, tGame } from '../lib/i18n.js';
+import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
+import { heroAvatarHtml } from '../lib/game-facts.js';
+
+// City field 9's entry for the hero (gear is stored under this "captain" id).
+const HERO_ID = 1;
 
 const FINE_HOVER = '(hover: hover) and (pointer: fine)';
 // Hover intent: a pointer crossing the grid on its way elsewhere opens nothing.
@@ -19,6 +23,14 @@ const HISTORY_LINES = 8;
 const STAR_STEPS = 5;
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+/** XP runs to the hundreds of billions: compact in the viewer's language (430.2B, 430,2 млрд), the full number on hover. */
+const fmtCompact = (n) => {
+  try {
+    return new Intl.NumberFormat(getLanguage() || 'en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(n || 0));
+  } catch {
+    return fmt(n);
+  }
+};
 
 /** The panel placeholder; mountMemberCaptains fills it the first time its tab opens. */
 export function memberCaptainsPanelHtml() {
@@ -58,15 +70,78 @@ function portraitHtml(c, cls = 'captain-portrait') {
     : `<span class="${cls} is-empty" aria-hidden="true"></span>`;
 }
 
+// The game's shared tile art (level plate, star sprites) from the last load.
+let tileArt = {};
+
+/**
+ * A captain's tile as the game's line-up draws it: the back and frame in the
+ * captain's rarity colour (blue rare, violet epic, gold legendary, red
+ * mythic — the unit icon's own sprites), the head shot between them, the
+ * level on a dark shield plate at the top-right and the stars along the
+ * bottom (src/game-art/unit-frames.ts). Null until that art is extracted —
+ * then the plain tile below stands in.
+ */
+function gameTileHtml(c) {
+  if (!c.tileBackUrl || !c.tileFrameUrl || !c.iconUrl) return null;
+  const plate = tileArt.levelPlateUrl;
+  const star = tileArt.starOnUrl;
+  const stars = c.stars > 0
+    ? `<span class="captain-gt-stars">${(star ? `<img src="${esc(star)}" alt="" decoding="async">` : '<span class="captain-star is-on">★</span>').repeat(c.stars)}</span>`
+    : '';
+  return `<span class="captain-gt">
+      <span class="captain-gt-box" aria-hidden="true">
+        <img class="captain-gt-back" src="${esc(c.tileBackUrl)}" alt="" decoding="async">
+        <img class="captain-gt-face" src="${esc(c.iconUrl)}" alt="" loading="lazy" decoding="async">
+        <img class="captain-gt-frame" src="${esc(c.tileFrameUrl)}" alt="" decoding="async">
+        <span class="captain-gt-level${plate ? '' : ' is-plain'}">${plate ? `<img src="${esc(plate)}" alt="" decoding="async">` : ''}<span class="captain-gt-num${c.level >= 100 ? ' is-3' : ''}">${c.level}</span></span>
+        ${stars}
+      </span>
+      <span class="visually-hidden">${esc(t('Level {n}', { n: c.level }))}, ${esc(tn(c.stars, '{n} star', '{n} stars', { n: c.stars }))}</span>
+    </span>`;
+}
+
 function tileHtml(c, i) {
+  const game = gameTileHtml(c);
   return `<button type="button" class="captain-tile rarity-${Number(c.rarity) || 0}" data-tile="captain" data-index="${i}" aria-haspopup="dialog">
-      <span class="captain-frame">
+      ${game ?? `<span class="captain-frame">
         ${portraitHtml(c)}
         <span class="captain-level">${c.level}</span>
         ${c.stars ? starsHtml(c.stars) : ''}
-      </span>
+      </span>`}
       <span class="captain-name">${esc(tGame(c.name))}</span>
     </button>`;
+}
+
+/** The hero's name: the game's own for its portrait (T13), else "Hero". */
+const heroName = (hero) => (hero?.name ? tGame(hero.name) : t('Hero'));
+
+/** The hero leads the line-up, as in the game: its portrait in the player's frame with the level plate. */
+function heroTileHtml(hero) {
+  const portrait = heroAvatarHtml(hero, 72);
+  return `<button type="button" class="captain-tile is-hero" data-tile="hero" data-index="0" aria-haspopup="dialog">
+      <span class="captain-hero-portrait">${portrait || '<span class="captain-portrait is-empty" aria-hidden="true"></span>'}</span>
+      <span class="visually-hidden">${esc(t('Level {n}', { n: hero.level ?? '—' }))}</span>
+      <span class="captain-name">${esc(heroName(hero))}</span>
+    </button>`;
+}
+
+/** The hero's details: portrait, level, XP and what it wears (in full in the dialog). */
+function heroDetailHtml(hero, { withName = false } = {}) {
+  return `<div class="captain-detail is-hero">
+      <div class="captain-detail-art is-portrait captain-hero-art">${heroAvatarHtml(hero, 120)}</div>
+      <div class="captain-detail-body">
+        ${withName ? `<div class="captain-detail-name">${esc(heroName(hero))}</div>` : ''}
+        <div class="captain-detail-head">
+          ${hero.level != null ? `<span class="captain-detail-level">${t('Level {n}', { n: hero.level })}</span>` : ''}
+          <span class="captain-detail-rarity">${esc(t('Hero'))}</span>
+        </div>
+        <dl class="captain-detail-facts">
+          ${hero.xp != null ? `<div><dt>${t('XP')}</dt><dd title="${esc(fmt(hero.xp))}">${esc(fmtCompact(hero.xp))}</dd></div>` : ''}
+        </dl>
+        ${withName ? equipmentHtml(hero, { full: false }) : ''}
+      </div>
+    </div>
+    ${withName ? '' : `<div class="captain-gear">${equipmentHtml(hero, { full: true })}</div>`}`;
 }
 
 /** Artifact rarity (4 epic, 5 legendary, 6 mythic) → the captain colour scale (2 purple, 3 gold, 4 red). */
@@ -92,7 +167,16 @@ function changeText(ch) {
 }
 
 function artifactChangeText(ch) {
-  if (ch.prevLevel === null) return t('New artifact');
+  // Only the three line-up captains' artifacts are visible, so a first
+  // sighting is an artifact moved INTO the line-up, never a new one; it
+  // leaving shows as OUT of it (history rows from v118 on).
+  if (ch.lineup === 'out') return t('Out of the line-up');
+  if (ch.lineup === 'in' || ch.prevLevel === null) {
+    const moved = ch.prevLevel !== null && (ch.prevLevel !== ch.level || ch.prevStar !== ch.star);
+    return moved
+      ? [t('Into the line-up'), ...(ch.prevLevel !== ch.level ? [t('Level {from} → {to}', { from: ch.prevLevel, to: ch.level })] : [])].join(' · ')
+      : t('Into the line-up');
+  }
   const parts = [];
   if (ch.prevLevel !== ch.level) parts.push(t('Level {from} → {to}', { from: ch.prevLevel, to: ch.level }));
   if (ch.prevStar !== ch.star) parts.push(t('Star level {from} → {to}', { from: ch.prevStar, to: ch.star }));
@@ -165,7 +249,7 @@ function detailHtml(c, changes, { withName = false } = {}) {
         </div>
         ${starsHtml(c.stars, c.maxStars)}
         <dl class="captain-detail-facts">
-          ${c.xp != null ? `<div><dt>${t('XP')}</dt><dd>${fmt(c.xp)}</dd></div>` : ''}
+          ${c.xp != null ? `<div><dt>${t('XP')}</dt><dd title="${esc(fmt(c.xp))}">${esc(fmtCompact(c.xp))}</dd></div>` : ''}
           ${c.slot ? `<div><dt>${t('Active line-up')}</dt><dd>${t('Slot {n}', { n: c.slot })}</dd></div>` : ''}
           <div><dt>${t('Tracked since')}</dt><dd title="${esc(formatDate(c.firstSeen))}">${esc(formatDateShort(c.firstSeen))}</dd></div>
         </dl>
@@ -360,10 +444,14 @@ export async function mountMemberCaptains(root, memberId) {
     return;
   }
   const captains = data.captains;
+  tileArt = data.tileArt || {};
   const changes = data.changes || [];
   const artifacts = data.artifacts || [];
   const artifactChanges = data.artifactChanges || [];
+  const hero = data.hero || null;
   const captainNames = new Map(captains.map((c) => [c.captainId, c.name]));
+  // The hero's gear is stored under field 9's entry id 1: name it as the hero.
+  if (hero) captainNames.set(HERO_ID, heroName(hero));
   // The game's own order: highest level first (the server sorts it so).
   const lineup = captains
     .map((c, i) => ({ c, i }))
@@ -376,9 +464,9 @@ export async function mountMemberCaptains(root, memberId) {
         <span class="card-header-hint">${tn(captains.length, '{n} captain', '{n} captains', { n: captains.length })}</span>
       </div>
       <div class="card-body card-body-padded">
-        ${lineup.length ? `
+        ${hero || lineup.length ? `
           <div class="captain-group-label">${t('Active line-up')}</div>
-          <div class="captain-grid is-lineup">${lineup.map(({ c, i }) => tileHtml(c, i)).join('')}</div>
+          <div class="captain-grid is-lineup">${hero ? heroTileHtml(hero) : ''}${lineup.map(({ c, i }) => tileHtml(c, i)).join('')}</div>
           <div class="captain-group-label">${t('All captains')}</div>` : ''}
         <div class="captain-grid">${captains.map((c, i) => tileHtml(c, i)).join('')}</div>
       </div>
@@ -387,6 +475,12 @@ export async function mountMemberCaptains(root, memberId) {
     ${changesTableHtml(t('Recent captain progress'), t('Captain'), recent)}
     ${changesTableHtml(t('Recent artifact and equipment changes'), t('Item'), gearChangeRows(data, captainNames))}`;
   wireTiles(el, {
+    hero: () => hero && {
+      title: heroName(hero),
+      html: heroDetailHtml(hero),
+      hoverHtml: heroDetailHtml(hero, { withName: true }),
+      wide: (hero.equipment?.length ?? 0) > 0,
+    },
     captain: (i) => {
       const c = captains[i];
       return c && {

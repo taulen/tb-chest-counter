@@ -30,6 +30,7 @@ const client_js_1 = require("../game-protocol/client.js");
 const session_health_js_1 = require("./session-health.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
+const game_event_repo_js_1 = require("../data/repositories/game-event-repo.js");
 const game_clan_repo_js_1 = require("../data/repositories/game-clan-repo.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
@@ -146,8 +147,12 @@ const CITY_BATCH = 20;
  * version per clan (game_parse_markers) — bump a version when that parsing
  * changes, and every archived read is re-parsed on the next scan.
  */
-exports.CITY_PARSERS = { artifacts: 1, equipment: 1 };
-/** Artifacts (field 14) and captain equipment (fields 9 + 10) of one city read. */
+// heroEquipment (Nov 2026): the hero's gear — field 9's entry id 1 — was left
+// out; one re-read of the archive gives it history from the first archived read
+// without touching the captains' equipment history already stored.
+exports.CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1 };
+const HERO_ONLY = new Set([equipment_js_1.HERO_ENTRY_ID]);
+/** Artifacts (field 14) and the hero's and captains' equipment (fields 9 + 10) of one city read. */
 function saveCityGear(clanId, playerId, city, names, at, only) {
     let changed = 0;
     // A reply without effects / items is malformed, not "nothing worn" — skip it
@@ -155,9 +160,10 @@ function saveCityGear(clanId, playerId, city, names, at, only) {
     if ((!only || only.has('artifacts')) && city.effects.length && names.artifacts) {
         changed += (0, game_protocol_repo_js_1.saveArtifacts)(clanId, playerId, (0, artifacts_js_1.artifactsFromEffects)(city.effects, names.artifacts), at);
     }
-    if ((!only || only.has('equipment')) && city.items.length) {
-        const captains = city.captains.filter((c) => names.captains?.[String(c.id)]);
-        changed += (0, game_protocol_repo_js_1.saveCaptainEquipment)(clanId, playerId, (0, equipment_js_1.captainEquipment)(captains, city.items), at);
+    const allGear = !only || only.has('equipment');
+    if ((allGear || only?.has('heroEquipment')) && city.items.length) {
+        const wearers = city.captains.filter((c) => c.id === equipment_js_1.HERO_ENTRY_ID || names.captains?.[String(c.id)]);
+        changed += (0, game_protocol_repo_js_1.saveCaptainEquipment)(clanId, playerId, (0, equipment_js_1.captainEquipment)(wearers, city.items), at, allGear ? undefined : HERO_ONLY);
     }
     return changed;
 }
@@ -233,6 +239,43 @@ async function collectRankings(clanId, d, now, ask) {
  * game sends whenever its clan window opens. Each one is isolated; whatever was
  * read is stored, a stats row per scan. Returns a summary for the log line.
  */
+/**
+ * Event standings, every scan: the events the account's realm runs (24001)
+ * and, for each running one, its "Clan members" tab (38003) — the requests
+ * the client sends when the event window opens, read-only. No per-event code:
+ * whatever runs is read and stored per run (type, run, occurrence), titled
+ * from T44. An event without a clan-members tab answers nothing or empty and
+ * is skipped. Raw replies are archived (kind 'event', one per run per game
+ * day) so a field decoded later can be re-read.
+ */
+async function collectEvents(clanId, d, now) {
+    const listFrame = await d.client.eventList(d.client.clanId || d.record.clanId, d.client.realmId);
+    (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'event_list', 0, d.gameDate, listFrame.body, now);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const running = (0, messages_js_1.parseEventList)(listFrame).filter((e) => (0, messages_js_1.isEventRunning)(e, nowSec));
+    let read = 0;
+    let rows = 0;
+    let moved = 0;
+    for (const e of running) {
+        const meta = d.names.events?.[`${e.type},${e.run}`];
+        try {
+            const frame = await d.client.eventStandings(e.type, e.run);
+            const standings = (0, messages_js_1.parseEventStandings)(frame);
+            read++;
+            if (standings.length) {
+                (0, game_event_repo_js_1.saveEventRun)(clanId, e, { code: meta?.code ?? '', title: meta?.title ?? '' }, now);
+                moved += (0, game_event_repo_js_1.saveEventStandings)(clanId, { eventType: e.type, run: e.run, occurrence: e.occurrence }, standings, now);
+                (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'event', e.type * 1000 + e.run, d.gameDate, frame.body, now);
+                rows += standings.length;
+            }
+        }
+        catch {
+            // Not every event has a clan-members tab; nothing to keep.
+        }
+        await pause();
+    }
+    return `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)`;
+}
 async function collectClan(clanId, d, now) {
     const rec = d.record;
     const notes = [];
@@ -351,6 +394,12 @@ async function collectExtras(clanId, d, clanFrame) {
     }
     catch (err) {
         parts.push(`clan pass failed: ${String(err)}`);
+    }
+    try {
+        parts.push(await collectEvents(clanId, d, now));
+    }
+    catch (err) {
+        parts.push(`events failed: ${String(err)}`);
     }
     try {
         // A parser added or changed since the replies were archived replays the

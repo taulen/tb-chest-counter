@@ -2087,6 +2087,94 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v118 — artifact history records line-up moves. Only artifacts on the
+        // three line-up captains are visible (city field 14), so "first seen"
+        // after a player's baseline means INTO the line-up, not a new artifact,
+        // and a drop means OUT of it (user, Nov 2026: Princess of Chaos swapped
+        // captains). in_lineup = 1 on every row so far; a 0 row marks it leaving.
+        // Guarded: runMigrations may replay this.
+        version: 118,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(game_player_artifact_history)').all();
+            if (!cols.some((c) => c.name === 'in_lineup')) {
+                database.exec('ALTER TABLE game_player_artifact_history ADD COLUMN in_lineup INTEGER NOT NULL DEFAULT 1');
+            }
+        },
+    },
+    {
+        // v119 — the Total Battle account each clan's scanner signs in with (the
+        // website user id `tb:<n>`, and the game player id once a scan saw it).
+        // Clans on different accounts scan in parallel; clans on one account stay
+        // in one lane (scheduler/scan-lanes.ts). Learned by the 30-minute session
+        // check from the stored login and by every scan; cleared when a new login
+        // is saved, until it is learned again. IF NOT EXISTS: replay-safe.
+        version: 119,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS clan_scan_accounts (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          account TEXT NOT NULL,
+          player_id INTEGER,
+          source TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+        },
+    },
+    {
+        // v120 — event standings from the game (Events page). Every scan reads the
+        // events the clan's account sees (24001) and, for each running one, its
+        // "Clan members" standings (38003). A run is (event_type, run, occurrence):
+        // the occurrence changes every time the event comes round, so a finished
+        // run keeps its standings.
+        //   game_event_runs               one row per run seen: the game's code and
+        //                                 English title (T44), start/end, last read;
+        //   game_event_standings          the latest points + rank per player;
+        //   game_event_standing_history   a row when a player's points move.
+        // IF NOT EXISTS: runMigrations may replay this.
+        version: 120,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_event_runs (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          code TEXT NOT NULL DEFAULT '',
+          title TEXT NOT NULL DEFAULT '',
+          starts_at INTEGER,
+          ends_at INTEGER,
+          first_seen TEXT NOT NULL,
+          last_read TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence)
+        );
+        CREATE TABLE IF NOT EXISTS game_event_standings (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          player_id INTEGER NOT NULL,
+          points INTEGER NOT NULL,
+          rank INTEGER NOT NULL,
+          first_seen TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence, player_id)
+        );
+        CREATE TABLE IF NOT EXISTS game_event_standing_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          player_id INTEGER NOT NULL,
+          points INTEGER NOT NULL,
+          rank INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence, player_id, changed_at)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

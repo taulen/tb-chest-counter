@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.HERO_ENTRY_ID = void 0;
 exports.describeItem = describeItem;
 exports.captainEquipment = captainEquipment;
 /** What the game's item card shows for one worn item. Pure. */
@@ -16,7 +17,9 @@ function describeItem(type, enchantment, gems, names) {
         gems: gems.map(insert),
     };
 }
-/** Every item the given captains wear, by captain then position. Pure. */
+/** City field 9's entry for the hero: it wears gear like a captain but has no T75 row. */
+exports.HERO_ENTRY_ID = 1;
+/** Every item the given captains (and the hero, entry id 1) wear, by wearer then position. Pure. */
 function captainEquipment(captains, items) {
     const byUid = new Map(items.map((it) => [it.uid, it]));
     const out = [];

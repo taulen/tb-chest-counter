@@ -24,6 +24,7 @@ const PAGES = {
   darkomens: '/#events/dark-omens',
   doomsday: '/#events/doomsday',
   hellforge: '/#events/hell-forge',
+  ingame: '/#events/in-game',
   tools: '/#tools',
   citadel: '/#tools/citadel',
   stacks: '/#tools/stacks',
@@ -129,6 +130,16 @@ async function fakeScannerStatus(ctx) {
           cycleTotal: 3,
         },
       });
+      // TB_UI_SCANNING=2: two clans on different accounts at once (scan lanes),
+      // one of three done.
+      if (process.env.TB_UI_SCANNING === '2') {
+        json.activity.cyclePosition = 2;
+        json.activity.cycleDone = 1;
+        json.activity.clans = [
+          { clanId: 1, clanName: json.activity.clanName, phase: 'scan', elapsedMs: 754e3, progressMessage: 'Opening chests (21/40)…' },
+          { clanId: 3, clanName: 'SIK - SINful Knights', phase: 'scan', elapsedMs: 312e3, progressMessage: 'Reading member cities…' },
+        ];
+      }
     }
     return route.fulfill({ response: res, json });
   });

@@ -70,20 +70,31 @@ export function classifySitePage(status: number, html: string): SiteSessionState
  * we like. Network errors and odd pages answer 'unknown'.
  */
 export async function checkSiteSession(storageStatePath: string): Promise<SiteSessionState> {
+  return (await checkSiteSessionAccount(storageStatePath)).state;
+}
+
+/**
+ * checkSiteSession, plus the website user id (`tb:<n>`) the stored login
+ * belongs to when it is signed in — the same page carries it. The scan
+ * scheduler keys its lanes on it: two clans on one account never scan at once.
+ */
+export async function checkSiteSessionAccount(storageStatePath: string): Promise<{ state: SiteSessionState; suid: string | null }> {
   let cookies: string;
   try {
     cookies = siteCookieHeader(storageStatePath);
   } catch {
-    return 'logged-out';
+    return { state: 'logged-out', suid: null };
   }
   try {
     const res = await fetch(`${SITE}/en/`, {
       headers: { cookie: cookies, 'user-agent': USER_AGENT, accept: 'text/html' },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    return classifySitePage(res.status, await res.text());
+    const html = await res.text();
+    const state = classifySitePage(res.status, html);
+    return { state, suid: state === 'ok' ? parseSitePage(html).suid : null };
   } catch {
-    return 'unknown';
+    return { state: 'unknown', suid: null };
   }
 }
 

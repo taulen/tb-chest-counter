@@ -89,7 +89,7 @@ import {
 } from '../data/repositories/game-protocol-repo.js';
 import { syncMembersFromGame } from '../game-protocol/member-sync.js';
 import { artifactsFromEffects } from '../game-protocol/artifacts.js';
-import { captainEquipment } from '../game-protocol/equipment.js';
+import { captainEquipment, HERO_ENTRY_ID } from '../game-protocol/equipment.js';
 import { currentGameDate } from '../utils/game-day.js';
 import { READ_GAP, requestGap } from '../utils/request-gap.js';
 import { loadTechTrees } from '../game-protocol/tech-trees.js';
@@ -238,10 +238,15 @@ const CITY_BATCH = 20;
  * version per clan (game_parse_markers) — bump a version when that parsing
  * changes, and every archived read is re-parsed on the next scan.
  */
-export const CITY_PARSERS = { artifacts: 1, equipment: 1 } as const;
+// heroEquipment (Nov 2026): the hero's gear — field 9's entry id 1 — was left
+// out; one re-read of the archive gives it history from the first archived read
+// without touching the captains' equipment history already stored.
+export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1 } as const;
 type CityParser = keyof typeof CITY_PARSERS;
 
-/** Artifacts (field 14) and captain equipment (fields 9 + 10) of one city read. */
+const HERO_ONLY: ReadonlySet<number> = new Set([HERO_ENTRY_ID]);
+
+/** Artifacts (field 14) and the hero's and captains' equipment (fields 9 + 10) of one city read. */
 function saveCityGear(clanId: number, playerId: number, city: CityRecord, names: GameNames, at: string, only?: ReadonlySet<CityParser>): number {
   let changed = 0;
   // A reply without effects / items is malformed, not "nothing worn" — skip it
@@ -249,9 +254,10 @@ function saveCityGear(clanId: number, playerId: number, city: CityRecord, names:
   if ((!only || only.has('artifacts')) && city.effects.length && names.artifacts) {
     changed += saveArtifacts(clanId, playerId, artifactsFromEffects(city.effects, names.artifacts), at);
   }
-  if ((!only || only.has('equipment')) && city.items.length) {
-    const captains = city.captains.filter((c) => names.captains?.[String(c.id)]);
-    changed += saveCaptainEquipment(clanId, playerId, captainEquipment(captains, city.items), at);
+  const allGear = !only || only.has('equipment');
+  if ((allGear || only?.has('heroEquipment')) && city.items.length) {
+    const wearers = city.captains.filter((c) => c.id === HERO_ENTRY_ID || names.captains?.[String(c.id)]);
+    changed += saveCaptainEquipment(clanId, playerId, captainEquipment(wearers, city.items), at, allGear ? undefined : HERO_ONLY);
   }
   return changed;
 }

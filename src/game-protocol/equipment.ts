@@ -62,7 +62,10 @@ export interface WornItem {
   raw: Array<number | null>;
 }
 
-/** Every item the given captains wear, by captain then position. Pure. */
+/** City field 9's entry for the hero: it wears gear like a captain but has no T75 row. */
+export const HERO_ENTRY_ID = 1;
+
+/** Every item the given captains (and the hero, entry id 1) wear, by wearer then position. Pure. */
 export function captainEquipment(captains: CityCaptain[], items: CityItem[]): WornItem[] {
   const byUid = new Map(items.map((it) => [it.uid, it]));
   const out: WornItem[] = [];

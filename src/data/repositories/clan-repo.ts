@@ -809,6 +809,8 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM game_event_standing_history WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_event_standings WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_event_runs WHERE clan_id = ?').run(id);
+    // The scanner account (v118).
+    db.prepare('DELETE FROM clan_scan_accounts WHERE clan_id = ?').run(id);
     // In-game chat (v104).
     db.prepare('DELETE FROM chat_messages WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM chat_channels WHERE clan_id = ?').run(id);

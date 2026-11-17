@@ -650,6 +650,12 @@ function versionKey(v: StaticVersion): string {
 }
 
 let memo: GameNames | null = null;
+/**
+ * A rebuild in flight: clans on different accounts scan at the same time
+ * (scan-lanes.ts), and after a game patch each would otherwise download and
+ * decode the ~67 MB of static data on its own.
+ */
+let building: { key: string; promise: Promise<GameNames> } | null = null;
 
 /**
  * Names for the live game version: from memory, else from the on-disk cache,
@@ -679,6 +685,17 @@ export async function loadGameNames(): Promise<GameNames> {
       return memo;
     }
   }
+  if (building?.key === key) return building.promise;
+  const promise = buildAndCacheNames(version, key, file);
+  building = { key, promise };
+  try {
+    return await promise;
+  } finally {
+    if (building?.promise === promise) building = null;
+  }
+}
+
+async function buildAndCacheNames(version: StaticVersion, key: string, file: string): Promise<GameNames> {
   log.info(`Building game names for static data ${key} (downloads ~67 MB once per game patch)`);
   const started = Date.now();
   const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
