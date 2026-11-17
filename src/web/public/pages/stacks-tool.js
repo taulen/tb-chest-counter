@@ -7,7 +7,7 @@
 // kept per ACCOUNT on the server (/api/tools/stack-presets). Troop levels are
 // the same per-account levels the Citadel tab uses.
 
-import { loadGameArt, troopIconUrl } from '../lib/game-art.js';
+import { loadGameArt, troopIconHtml } from '../lib/game-art.js';
 import { api, apiPut, apiDelete } from '../lib/api.js';
 import { esc, notify, confirmDialog, promptDialog, choiceDialog, contentModal, copyTextToClipboard } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -28,9 +28,9 @@ import { parseBonus, nextFreeName } from './citadel-tool.js';
 
 const DRAFT_KEY = 'tbcc.stacks.draft.v1';
 
-// The game's own icon for the troop when the extracted art has it, else the bundled picture.
-const icon = (troopId) => troopIconUrl(troopId, new URL(`../img/troops/${troopId}.webp`, import.meta.url).href);
 const troopName = (id) => tGame(troopById(id)?.name ?? id);
+// The game's own icon for the troop (lib/game-art.js), never a bundled picture.
+const icon = (troopId, size, cls) => troopIconHtml(troopId, troopName(troopId), { size, cls });
 
 const GROUP_LABELS = {
   guardsmen: t('Guardsmen'),
@@ -311,7 +311,7 @@ function rowHtml(r, i, plan) {
     <div class="citadel-row ${plan.ok && plan.baseTroopId === r.troopId ? 'is-base' : ''}" role="listitem" data-row="${i}">
       <span class="citadel-troop">
         <button type="button" class="citadel-troop-btn" data-pick="${i}" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('{troop}: change troop', { troop: name }))}">
-          <img class="citadel-icon" src="${icon(r.troopId)}" alt="" width="36" height="36" decoding="async">
+          ${icon(r.troopId, 36, 'citadel-icon')}
           <span class="citadel-troop-text"><span class="citadel-troop-name">${esc(name)}</span><span class="citadel-troop-note" data-note-row="${i}">${troopNote(i, plan)}</span></span>
           <span class="citadel-caret" aria-hidden="true"></span>
         </button>
@@ -498,7 +498,7 @@ function paintResults(root, plan) {
     return `
       <tr class="${isBase ? 'is-base' : ''} stacks-kind-${q.kind}">
         <td data-role="lead" class="stacks-order"><span class="stacks-order-badge" title="${esc(q.lossFrom === q.lossTo ? t('Falls as stack {n}', { n: q.lossFrom }) : t('Falls together as stacks {from} to {to}', { from: q.lossFrom, to: q.lossTo }))}">${order}</span></td>
-        <td data-role="primary"><span class="stacks-troop"><img class="citadel-icon-sm" src="${icon(q.troopId)}" alt="" width="22" height="22"><span class="mrow-name">${esc(troopName(q.troopId))}</span></span><span class="mrow-sub">${esc(kindText(q))}${isBase ? ` · <strong>${t('base stack')}</strong>` : ''}</span></td>
+        <td data-role="primary"><span class="stacks-troop">${icon(q.troopId, 22, 'citadel-icon-sm')}<span class="mrow-name">${esc(troopName(q.troopId))}</span></span><span class="mrow-sub">${esc(kindText(q))}${isBase ? ` · <strong>${t('base stack')}</strong>` : ''}</span></td>
         <td data-role="metric" class="num stacks-count" data-label="${esc(t('Count'))}">${fmt(q.count)}</td>
         <td class="num" data-label="${esc(t('Stack health'))}"><span title="${esc(fmt(q.stackHealth))}">${formatCompact(q.stackHealth)}</span>${bonus ? `<span class="stacks-cell-sub">${esc(bonus)}</span>` : ''}</td>
         <td class="num" data-label="${esc(t('Less than the one before'))}">${gap}</td>
@@ -748,7 +748,7 @@ function openMarchList() {
     ${over.length ? `<p class="citadel-march-warn">${esc(t('Over your limit: {limits}. The game won\'t let all of this march.', { limits: over.join(', ') }))}</p>` : ''}
     <ol class="citadel-march">
       ${list.map((r) => `<li>
-        <img src="${icon(r.troopId)}" alt="" width="36" height="36">
+        ${icon(r.troopId, 36)}
         <span class="citadel-march-name">${esc(troopName(r.troopId))}</span>
         <span class="citadel-march-count">${r.count.toLocaleString()}</span>
       </li>`).join('')}

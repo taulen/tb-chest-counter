@@ -7349,17 +7349,25 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 .ancient-artifacts { display: flex; gap: 22px; flex-wrap: wrap; }
 .ancient-artifact { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; }
-.ancient-medallion { position: relative; width: 100px; line-height: 0; }
-.ancient-medallion img { width: 100%; height: auto; }
-/* Sits exactly over the game's own badge in the cut-out (measured: 53.5%
-   across, ~89% down, ~12% of the width in radius). */
+/* The game's stills (Tome, Figurine, Clock) differ in shape: each sits centred
+   in the same box, the level in a badge on its corner like the game's. */
+.ancient-medallion {
+  position: relative;
+  width: 100px;
+  height: 112px;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Absolute, so the still's own size can never stretch the box. */
+.ancient-medallion img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .ancient-badge {
   position: absolute;
-  left: 53.5%;
-  top: var(--badge-y, 88.7%);
-  width: 27%;
+  right: 0;
+  bottom: 0;
+  width: 30px;
   aspect-ratio: 1;
-  transform: translate(-50%, -50%);
   border-radius: 50%;
   background: var(--ancient-badge-bg);
   border: 2px solid var(--ancient-badge-ring);
@@ -7371,8 +7379,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   place-items: center;
   font-variant-numeric: tabular-nums;
 }
-.ancient-artifact-figurine .ancient-badge { --badge-y: 89.5%; }
-.ancient-artifact-tome .ancient-badge { --badge-y: 88.6%; }
 .ancient-artifact figcaption { display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1.25; }
 .ancient-artifact-name { font-size: 11px; color: var(--text-secondary); font-weight: 600; letter-spacing: 0.02em; }
 .ancient-artifact-value { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
@@ -7641,6 +7647,19 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .citadel-row-head span:nth-child(n+2):not(.citadel-head-troop) { text-align: center; }
 .citadel-troop { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .citadel-icon { width: 36px; height: 36px; border-radius: 6px; flex-shrink: 0; }
+/* A troop the game's art has no icon for (or before it is extracted): a
+   neutral tile with the name's first letter, never a bundled picture. */
+.troop-icon-ph {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--subtle-bg);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  font-weight: 700;
+  line-height: 1;
+}
 .citadel-troop-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .citadel-field { display: block; min-width: 0; }
 .citadel-num { width: 100%; padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; }

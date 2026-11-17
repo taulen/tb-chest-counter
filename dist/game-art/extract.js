@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractImages = extractImages;
 exports.extractFromBundle = extractFromBundle;
+exports.extractTexts = extractTexts;
 exports.decodeTextureObject = decodeTextureObject;
 exports.cutSprite = cutSprite;
 exports.pickImages = pickImages;
@@ -163,6 +164,44 @@ function extractFromBundle(bundle, wanted) {
         }
     }
     return { images, errors };
+}
+const CLASS_TEXT_ASSET = 49;
+/**
+ * The TextAssets of a bundle whose name the caller wants, as text — e.g. a
+ * Spine animation's "<name>.atlas" (see spine.ts). Unreadable ones are skipped.
+ */
+function extractTexts(bundleBuf, wanted) {
+    const bundle = (0, unityfs_js_1.readUnityBundle)(bundleBuf);
+    const out = new Map();
+    for (const n of bundle.nodes) {
+        if (/\.(resS|resource)$/i.test(n.path))
+            continue;
+        let file;
+        try {
+            file = (0, serialized_file_js_1.readSerializedFile)((0, unityfs_js_1.nodeData)(bundle, n));
+        }
+        catch {
+            continue;
+        }
+        for (const info of file.objects) {
+            if (info.classId !== CLASS_TEXT_ASSET)
+                continue;
+            const name = (0, serialized_file_js_1.peekName)(file, info);
+            if (name === null || !wanted(name))
+                continue;
+            try {
+                const script = (0, serialized_file_js_1.readObject)(file, info).m_Script;
+                if (typeof script === 'string')
+                    out.set(name, script);
+                else if (Buffer.isBuffer(script))
+                    out.set(name, script.toString('utf8'));
+            }
+            catch {
+                // Not a text we can read: no still from it.
+            }
+        }
+    }
+    return out;
 }
 /** Decode a parsed Texture2D (inline image data or a .resS stream). Raw row order. */
 function decodeTextureObject(tex, nodesByBase) {

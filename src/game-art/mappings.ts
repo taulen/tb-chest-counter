@@ -4,22 +4,25 @@
  *   heroAvatars  a player's heroAvatar (game_players.hero_avatar, message 402
  *                field [4]) is the id of a T13 hero-avatar row; that row's icon
  *                is the portrait ("icon_garvel_72").
- *   mercenaries  each Tools → Stacks/Citadel mercenary (TROOPS in
- *                web/public/lib/citadel-sim.js) is matched to a T9 unit by its
- *                English name AND its strength/health, which the game has many
- *                rows for (one per event realm) but all with the same icon.
+ *   troops       every Tools → Citadel/Stacks troop and citadel defender
+ *                (TROOPS + DEFENDERS in web/public/lib/citadel-sim.js) is
+ *                matched to a T9 unit by its English name AND its
+ *                strength/health, which the game has many rows for (one per
+ *                event realm) but all with the same icon.
  *   chests       English chest name → the icon most of the T8 items of that
  *                name use (one name can be several items, e.g. per source).
  *   resources    English resource name → the icon of the lowest-id T8 item of
  *                that name (the base resource; later ids are boosters/packs).
  *   techs        T21 tech/talent id → icon.
+ *   ancients     the Ancient planner's pictures by key (EVENT_ART in
+ *                selection.ts): tome, figurine, clock, tinman.
  *
  * Every mapping only names images that were actually extracted.
  */
 import fs from 'fs';
 import path from 'path';
 import type { ArtItem, ArtStatic, ArtUnit } from './art-static.js';
-import { isChestName, isResourceItem, safeArtName } from './selection.js';
+import { EVENT_ART, isChestName, isResourceItem, safeArtName } from './selection.js';
 
 export interface TroopStats {
   id: string;
@@ -30,16 +33,19 @@ export interface TroopStats {
 
 export interface ArtMappings {
   heroAvatars: Record<string, string>;
-  mercenaries: Record<string, string | null>;
+  /** Tools troop/defender id → icon (null: no T9 unit matched). Was `mercenaries` (mercs only) before Nov 2026. */
+  troops: Record<string, string | null>;
   chests: Record<string, string>;
   resources: Record<string, string>;
   techs: Record<string, string>;
   /** T75 captain id → portrait image (smallIcon, else the level-up art). */
   captains: Record<string, string>;
+  /** EVENT_ART key (tome, figurine, clock, tinman) → image. */
+  ancients: Record<string, string>;
 }
 
 export function emptyMappings(): ArtMappings {
-  return { heroAvatars: {}, mercenaries: {}, chests: {}, resources: {}, techs: {}, captains: {} };
+  return { heroAvatars: {}, troops: {}, chests: {}, resources: {}, techs: {}, captains: {}, ancients: {} };
 }
 
 export function normalizeGameName(s: string): string {
@@ -146,19 +152,30 @@ export function captainIcons(st: ArtStatic, available: (name: string) => boolean
   return out;
 }
 
+/** EVENT_ART key → its image, for the ones that were extracted. */
+export function eventIcons(available: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, e] of Object.entries(EVENT_ART)) {
+    const name = safeArtName(e.address);
+    if (available(name)) out[key] = name;
+  }
+  return out;
+}
+
 export function buildMappings(
   st: ArtStatic,
-  mercenaries: TroopStats[],
+  troops: TroopStats[],
   resourceNames: ReadonlySet<string>,
   available: (name: string) => boolean,
 ): ArtMappings {
   return {
     heroAvatars: heroAvatarIcons(st, available),
-    mercenaries: matchTroopIcons(mercenaries, st.units, available),
+    troops: matchTroopIcons(troops, st.units, available),
     chests: chestIcons(st.items, available),
     resources: resourceIcons(st.items, resourceNames, available),
     techs: techIcons(st, available),
     captains: captainIcons(st, available),
+    ancients: eventIcons(available),
   };
 }
 
@@ -171,16 +188,22 @@ export function heroAvatarImageFrom(mappings: ArtMappings | null, heroAvatar: nu
 const TROOP_FILE = path.resolve('src', 'web', 'public', 'lib', 'citadel-sim.js');
 
 /**
- * The mercenaries Tools → Stacks sizes, straight from the frontend's own troop
- * list (a plain ES module with no imports), so the two can never disagree.
+ * Every troop Tools → Citadel and → Stacks show, and the citadels' defenders,
+ * straight from the frontend's own troop list (a plain ES module with no
+ * imports), so the two can never disagree. A defender sharing a troop's id is
+ * that troop.
  */
-export async function loadMercenaryList(file: string = TROOP_FILE): Promise<TroopStats[]> {
+export async function loadTroopList(file: string = TROOP_FILE): Promise<TroopStats[]> {
   const src = await fs.promises.readFile(file, 'utf8');
+  type Row = { id: string; name: string; str: number; hp: number };
   const mod = (await import(`data:text/javascript;base64,${Buffer.from(src).toString('base64')}`)) as {
-    TROOPS?: Array<{ id: string; name: string; group: string; str: number; hp: number }>;
+    TROOPS?: Row[];
+    DEFENDERS?: Record<string, Row>;
   };
   if (!Array.isArray(mod.TROOPS)) throw new Error(`${file} exports no TROOPS`);
-  return mod.TROOPS
-    .filter((t) => t.group === 'mercenaries')
+  const rows = [...mod.TROOPS, ...Object.values(mod.DEFENDERS ?? {})];
+  const seen = new Set<string>();
+  return rows
+    .filter((t) => !seen.has(t.id) && !!seen.add(t.id))
     .map((t) => ({ id: t.id, name: t.name, strength: t.str, health: t.hp }));
 }

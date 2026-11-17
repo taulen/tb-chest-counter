@@ -25,6 +25,7 @@ import {
   planAncients,
   formatCompact,
 } from '../lib/ancient-planner.js';
+import { ancientArtUrl, loadGameArt } from '../lib/game-art.js';
 import { renderCitadelTool } from './citadel-tool.js';
 import { renderStacksTool } from './stacks-tool.js';
 import { renderCostsTool } from './costs-tool.js';
@@ -59,7 +60,6 @@ function toolTabsHtml(activeKey) {
 
 // ─── Ancient planner ─────────────────────────────────────────────
 
-const img = (name) => new URL(`../img/ancients/${name}.webp`, import.meta.url).href;
 
 /** Slider + number-box settings. `tomeLevel` is the Tome of Knowledge level
  *  (1–28); the bonus % it carries is what the arithmetic uses. */
@@ -126,6 +126,8 @@ function rosterCounts(roster, unknownAs) {
 
 async function renderAncientPlanner(mount) {
   let roster;
+  // The artifact and Tin Man pictures are the game's own (lib/game-art.js).
+  await loadGameArt();
   try {
     roster = await api('/tools/ancient-roster');
   } catch (err) {
@@ -497,15 +499,19 @@ const fmtInt = (n) => Math.round(n).toLocaleString();
 const summonsText = (n) => tn(n, '{n} summon', '{n} summons', { n });
 const killsText = (n) => tn(n, '{n} kill', '{n} kills', { n });
 
-/** Intrinsic sizes of the cut-outs, so the box is right before the image loads. */
-const MEDALLION_SIZE = { tome: [210, 228], figurine: [210, 247], clock: [211, 230] };
+/**
+ * Intrinsic sizes of the game's stills (the artifact's region of its Spine
+ * atlas, see src/game-art/spine.ts), so the box is right before they load.
+ */
+const MEDALLION_SIZE = { tome: [146, 156], figurine: [126, 184], clock: [135, 163] };
 
 function medallionHtml(name, title, level, caption) {
   const [w, h] = MEDALLION_SIZE[name];
+  const src = ancientArtUrl(name);
   return `
     <figure class="ancient-artifact ancient-artifact-${name}">
       <div class="ancient-medallion">
-        <img src="${img(name)}" alt="" width="${w}" height="${h}" decoding="async">
+        ${src ? `<img src="${esc(src)}" alt="" width="${w}" height="${h}" decoding="async">` : ''}
         <span class="ancient-badge" aria-hidden="true">${level ?? '—'}</span>
       </div>
       <figcaption>
@@ -543,7 +549,7 @@ function heroHtml(plan, opt) {
             <div class="stat-card"><div class="label">${esc(tGame('Tin Man'))}</div><div class="value">${plan.level} → ${opt.endLevel}</div><div class="sub">${t('level before → after')}</div></div>
           </div>
         </div>
-        <img class="ancient-tinman" src="${img('tinman')}" alt="" width="425" height="405" decoding="async">
+        ${ancientArtUrl('tinman') ? `<img class="ancient-tinman" src="${esc(ancientArtUrl('tinman'))}" alt="" width="707" height="650" decoding="async">` : ''}
       </div>
     </div>`;
 }

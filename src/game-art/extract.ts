@@ -191,6 +191,39 @@ export function extractFromBundle(bundle: UnityBundle, wanted: (name: string) =>
   return { images, errors };
 }
 
+const CLASS_TEXT_ASSET = 49;
+
+/**
+ * The TextAssets of a bundle whose name the caller wants, as text — e.g. a
+ * Spine animation's "<name>.atlas" (see spine.ts). Unreadable ones are skipped.
+ */
+export function extractTexts(bundleBuf: Buffer, wanted: (name: string) => boolean): Map<string, string> {
+  const bundle = readUnityBundle(bundleBuf);
+  const out = new Map<string, string>();
+  for (const n of bundle.nodes) {
+    if (/\.(resS|resource)$/i.test(n.path)) continue;
+    let file: SerializedFile;
+    try {
+      file = readSerializedFile(nodeData(bundle, n));
+    } catch {
+      continue;
+    }
+    for (const info of file.objects) {
+      if (info.classId !== CLASS_TEXT_ASSET) continue;
+      const name = peekName(file, info);
+      if (name === null || !wanted(name)) continue;
+      try {
+        const script = readObject(file, info).m_Script;
+        if (typeof script === 'string') out.set(name, script);
+        else if (Buffer.isBuffer(script)) out.set(name, script.toString('utf8'));
+      } catch {
+        // Not a text we can read: no still from it.
+      }
+    }
+  }
+  return out;
+}
+
 /** Decode a parsed Texture2D (inline image data or a .resS stream). Raw row order. */
 export function decodeTextureObject(tex: UObject, nodesByBase: Map<string, Buffer>): { image: RgbaImage; format: number } {
   const width = num(tex.m_Width);

@@ -38,6 +38,7 @@ const log_throttle_js_1 = require("../utils/log-throttle.js");
 const catalog_js_1 = require("./catalog.js");
 const unityfs_js_1 = require("./unityfs.js");
 const extract_js_1 = require("./extract.js");
+const spine_js_1 = require("./spine.js");
 const png_js_1 = require("./png.js");
 const selection_js_1 = require("./selection.js");
 const art_static_js_1 = require("./art-static.js");
@@ -46,12 +47,13 @@ const log = (0, logger_js_1.childLogger)('game-art');
 /** Daily check failures repeat with the same cause; one line per 6 h is plenty. */
 const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 6 * 60 * 60 * 1000);
 /**
- * What we extract changes when we start using a new kind of image (captains,
- * Nov 2026). Bump this with every change to the selection: an index built with
- * an older one is re-extracted on the next run — reusing every image it already
- * has, so only the new bundles download — instead of waiting for a game patch.
+ * What we extract changes when we start using a new kind of image (2: captain
+ * portraits; 3: the Ancients artifacts and boss, Nov 2026). Bump this with
+ * every change to the selection or mappings: an index built with an older one
+ * is re-extracted on the next run — reusing every image it already has, so only
+ * the new bundles download — instead of waiting for a game patch.
  */
-exports.ART_SELECTION_VERSION = 2;
+exports.ART_SELECTION_VERSION = 3;
 exports.VERSION_RE = /^[0-9a-f]{32}$/;
 exports.FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 function gameArtDir() {
@@ -210,9 +212,9 @@ async function runEnsure(opts) {
         }
         if (!st || st.version === existing.staticVersion)
             return { status: 'unchanged', version };
-        const mercs = await loadMercs(opts);
+        const troops = await loadTroops(opts);
         const has = (n) => n in existing.images;
-        const updated = { ...existing, staticVersion: st.version, mappings: (0, mappings_js_1.buildMappings)(st, mercs, resourceNames, has) };
+        const updated = { ...existing, staticVersion: st.version, mappings: (0, mappings_js_1.buildMappings)(st, troops, resourceNames, has) };
         writeJsonAtomic(path_1.default.join(dir, version, 'index.json'), updated);
         resetGameArtMemo();
         log.info(`Game art ${version}: mappings recomputed for static data ${st.version}`);
@@ -221,7 +223,7 @@ async function runEnsure(opts) {
     const catalogBuf = await fetchBuffer(fetchImpl, catalog_js_1.UNITY_BASE + version, CATALOG_TIMEOUT_MS);
     const catalog = (0, catalog_js_1.parseCatalog)(catalogBuf);
     const st = await loadStatic(dir);
-    const mercs = await loadMercs(opts);
+    const troops = await loadTroops(opts);
     const addresses = [];
     for (const e of catalog)
         addresses.push(...e.addresses);
@@ -274,15 +276,31 @@ async function runEnsure(opts) {
         const picked = (0, extract_js_1.pickImages)(found);
         if (!picked.length)
             throw new Error(errors[0] ?? 'no matching image in bundle');
+        // A Spine animation's picture is one region of its texture (spine.ts).
+        const spine = [...wanted.keys()].filter((a) => selection_js_1.SPINE_REGIONS.has(a));
+        const atlases = spine.length
+            ? (0, extract_js_1.extractTexts)(buf, (n) => spine.includes(n.toLowerCase().replace(/\.atlas$/, '')) && /\.atlas$/i.test(n))
+            : new Map();
         for (const img of picked) {
             const addr = img.name.toLowerCase();
             const cat = wanted.get(addr);
             const name = (0, selection_js_1.safeArtName)(addr);
             if (!cat || images[name])
                 continue;
+            let pixels = img.image;
+            const region = selection_js_1.SPINE_REGIONS.get(addr);
+            if (region) {
+                const text = [...atlases].find(([n]) => n.toLowerCase() === `${addr}.atlas`)?.[1];
+                const cut = text ? (0, spine_js_1.cutAtlasRegion)(img.image, (0, spine_js_1.parseSpineAtlas)(text), region) : null;
+                if (!cut) {
+                    failures.push(`${bundle}: no "${region}" region in ${addr}.atlas`);
+                    continue;
+                }
+                pixels = cut;
+            }
             const file = `${name}.png`;
-            fs_1.default.writeFileSync(path_1.default.join(tmp, file), await (0, png_js_1.encodePng)(img.image));
-            images[name] = { w: img.image.width, h: img.image.height, file, category: cat, bundle };
+            fs_1.default.writeFileSync(path_1.default.join(tmp, file), await (0, png_js_1.encodePng)(pixels));
+            images[name] = { w: pixels.width, h: pixels.height, file, category: cat, bundle };
         }
     };
     const queue = [...work.entries()];
@@ -310,7 +328,7 @@ async function runEnsure(opts) {
         builtAt: new Date().toISOString(),
         staticVersion: st.version,
         images: Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),
-        mappings: (0, mappings_js_1.buildMappings)(st, mercs, resourceNames, has),
+        mappings: (0, mappings_js_1.buildMappings)(st, troops, resourceNames, has),
         stats: { bundles: total, downloaded, reused, bytes, failed: failures.length, seconds },
     };
     writeJsonAtomic(path_1.default.join(tmp, 'index.json'), index);
@@ -322,21 +340,21 @@ async function runEnsure(opts) {
     resetGameArtMemo();
     pruneVersions(dir, new Set([version, previous].filter((v) => !!v)));
     const perCat = selection_js_1.ART_CATEGORIES.map((c) => `${c} ${Object.values(images).filter((i) => i.category === c).length}`).join(', ');
-    const mercs53 = Object.values(index.mappings.mercenaries);
+    const troopIcons = Object.values(index.mappings.troops);
     log.info(`Game art ${version}: ${Object.keys(images).length} images (${perCat}) from ${total} bundles ` +
         `(${downloaded} downloaded, ${reused} reused), ${(bytes / 1048576).toFixed(1)} MB in ${seconds}s; ` +
-        `${failures.length} failed; mercenary icons ${mercs53.filter(Boolean).length}/${mercs53.length}`);
+        `${failures.length} failed; troop icons ${troopIcons.filter(Boolean).length}/${troopIcons.length}`);
     if (failures.length) {
         warner.warn('bundles', `Game art ${version}: ${failures.length} bundle(s) failed, e.g. ${failures.slice(0, 3).join('; ')}`);
     }
     return { status: 'updated', version, images: Object.keys(images).length };
 }
-async function loadMercs(opts) {
+async function loadTroops(opts) {
     try {
-        return await (opts.loadMercenaries ?? mappings_js_1.loadMercenaryList)();
+        return await (opts.loadTroops ?? mappings_js_1.loadTroopList)();
     }
     catch (err) {
-        warner.warn('mercs', `Game art: mercenary list unavailable, no merc icon mapping (${String(err)})`);
+        warner.warn('troops', `Game art: troop list unavailable, no troop icon mapping (${String(err)})`);
         return [];
     }
 }

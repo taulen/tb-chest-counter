@@ -1,12 +1,27 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.ART_CATEGORIES = void 0;
+exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.SPINE_REGIONS = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
 exports.isChestName = isChestName;
 exports.isResourceItem = isResourceItem;
 exports.staticIconsByCategory = staticIconsByCategory;
 exports.selectArt = selectArt;
 exports.safeArtName = safeArtName;
-exports.ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan'];
+exports.ART_CATEGORIES = ['heroes', 'troops', 'research', 'chests', 'resources', 'clan', 'events'];
+/**
+ * Event pictures the app shows by key (Tools → Ancient planner), the game's
+ * own art. With a `region`, the address is a Spine animation and the picture
+ * is that region of its atlas (spine.ts): the Ancients artifacts exist in the
+ * game only as animated icons. Without one, the plain image.
+ */
+exports.EVENT_ART = {
+    tome: { address: 'clandoom_icon_book_anim', region: 'book' },
+    figurine: { address: 'clandoom_icons_statue_anim', region: 'Layer 107' },
+    clock: { address: 'clandoom_icons_hourglass_anim', region: 'hourglass' },
+    // The Ancients boss as the event map shows it.
+    tinman: { address: 'map_clan_doomsday_boss_scaled' },
+};
+/** Address → the Spine atlas region its picture is cut from. */
+exports.SPINE_REGIONS = new Map(Object.values(exports.EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region]));
 exports.ART_PATTERNS = {
     // Hero avatar portraits come from the hero-avatar table (T13) alone.
     heroes: [],
@@ -20,6 +35,8 @@ exports.ART_PATTERNS = {
     resources: [],
     // Clan frames and emblems, small and large ("clan_frame_12_lg").
     clan: [/^clan_(frame|emblem)_\d+(_lg)?$/],
+    // Exactly the EVENT_ART addresses.
+    events: Object.values(exports.EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
 };
 /** Items (T8) below this id are the game's currencies and base resources. */
 exports.RESOURCE_ITEM_MAX_ID = 100;
