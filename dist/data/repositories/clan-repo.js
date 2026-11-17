@@ -584,6 +584,7 @@ function deleteClan(id) {
         db.prepare('DELETE FROM game_clan_rankings WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_clan_ranking_lists WHERE clan_id = ?').run(id);
         // Event standings from the game (v120).
+        db.prepare('DELETE FROM game_event_reads WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_event_standing_history WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_event_standings WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_event_runs WHERE clan_id = ?').run(id);

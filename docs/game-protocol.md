@@ -701,7 +701,7 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kinds 7 wealth, 1 might, 3 valor, 4 conquest, 5 crypts |
 | 24001 | `[[[[playerId], [clanId], realm], []]]` | every event (tournament) the realm knows: body[0][0] `[[type, run], occurrence, state, endsAt, …, startsAt]` (state 1 = running; endsAt 4294967295 = open-ended; occurrence = which time the event came round, e.g. Rise of the Ancients #242). body[0][1] lists `[type, run]` only |
 | 38003 | `[[[type, run]]]` | the event window's **Clan members** tab for the account's clan: body[0][0] `[[playerId], points, rank]` per member. Verified Nov 17 2026 against the game (SIK's Rise of the Ancients: Mr Freeze 52,586,600 #1, Daigor 50,047,641 #2, Fiin SK 2 49,899,136 #3) |
-| 38000 | `[[[type, run]]]` | the account's own event state: `[[occurrence, …], {tier: [n, points]}]` — not decoded further |
+| 38000 | `[[[type, run]]]` | the event window's header for the clan (asked as the window opens, before 38003). Rise of the Ancients: body[0] `[[occurrence, bossId, summonsLeft, 0, [0], [0,0,0]], {artifactId: [level, points]}]` — bossId is the clan's Ancient (T44 f9 `clanBossAtoms` 6000–6249), summonsLeft the window's "Summons left" (CWB 2, SIK 1 on Nov 17 2026, as the game showed), the map the clan's artifacts (1 Tome of Knowledge, 2 — 4 in the Seasonal Kingdom run — Enchanted Figurine, 3 Mysterious Clock; SIK's Tome 26 / Clock 16 match its screen). Fields 3–5 not decoded |
 | 15200 | `[[[clanId], …]]` | clans' headline: logo, tag, name, members / limit, might |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
@@ -734,7 +734,49 @@ Prime Arena, …) is stored and shown under the game's own title.
 
 Shown: a "Standings from the game" card on the event's page (the run the
 selected timeframe covers; the hand-pasted standings card folds away under it),
-and **Events → In-game rankings** — the latest run of every event read.
+and **Events → In-game rankings** — the latest run of every event read. On
+**Events → Ancients** the Tin Man card itself is the game's per-summon table
+(below).
+
+### Rise of the Ancients per summon (v123)
+
+Rise of the Ancients is read with its window header (38000) right before its
+standings, every time ([event-read.ts](../src/scheduler/event-read.ts)), and
+every read — scan or poll, any event — gets a `game_event_reads` row: when,
+members, total points, `changed` (members whose points moved since the run's
+previous read; 0 = flat), summons left, the Figurine's summons, used (= max −
+left: the read's summon tag), boss. A member's points at a read are their newest
+`game_event_standing_history` row at or before it (both carry the read's
+timestamp).
+
+- **"of 2" is the Enchanted Figurine.** The game's label is "Summons left:
+  %num%/%max%"; artifact 2's effect is "Number of summons". Its level is the
+  summon count, not a step on the 28-level cost ladder the Tome and Clock share:
+  CWB's Figurine had 6,156 points in (ladder level 4) yet reported level 2, and
+  both CWB and SIK showed "of 2" at level 2 ([ancients.ts](../src/game-protocol/ancients.ts)).
+  T44 f9 `attempts` is 1 here and 5 in the Seasonal Kingdom run ("Increased
+  starting summons!"), which no read has checked yet, so the total shown is
+  never less than used + left.
+- **Summons are windows** ([summon-windows.ts](../src/data/summon-windows.ts)):
+  points grow only while a summon runs (1–50 min). One starts when summons left
+  drops between two reads (with no summons left to go by: points moving after a
+  flat read), and ends on a flat read, 50 minutes after it started, or at the
+  next start. Its points = at its end − at the read before the drop. Back-to-back
+  summons are split only when the reads separate them (a flat read, or 50
+  minutes, between the first one's start and the read before the second drop);
+  otherwise — or when two drops fall between the same two reads — they are one
+  column, "S2–3", the total of both, as the leaders pasted it. Never an
+  invented split.
+- **Between scans** ([event-poller.ts](../src/scheduler/event-poller.ts)):
+  while a clan's Rise of the Ancients runs, 38000 + 38003 again every ~10 min
+  (~5 while a summon scores), on the game session the clan's last scan signed
+  in with, kept in memory. Never a login: a failed or empty read drops the
+  session until the next scan, and a scan drops the kept sessions of every clan
+  on its account (its login supersedes them). Never while the clan's lane has a
+  scan queued or running, the read itself queued on the lane; nothing while the
+  login bridge has scanning paused (which drops every session). Ticks once a
+  minute and reads on the last tick before the interval would pass, so reads
+  are never further apart than the interval while the session lives.
 
 ## Names (static data)
 

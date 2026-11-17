@@ -34,7 +34,6 @@ import {
   parseClanRecord,
   parseClanStats,
   parseEventList,
-  parseEventStandings,
   isEventRunning,
   parseLedger,
   parseMapCities,
@@ -49,7 +48,7 @@ import {
   type LedgerEntry,
   type PlayerRecord,
 } from '../game-protocol/messages.js';
-import { saveEventRun, saveEventStandings } from '../data/repositories/game-event-repo.js';
+import { readEventStandings } from './event-read.js';
 import {
   hasClanTechs,
   latestArchivedClanObject,
@@ -344,8 +343,11 @@ async function collectRankings(
  * the client sends when the event window opens, read-only. No per-event code:
  * whatever runs is read and stored per run (type, run, occurrence), titled
  * from T44. An event without a clan-members tab answers nothing or empty and
- * is skipped. Raw replies are archived (kind 'event', one per run per game
- * day) so a field decoded later can be re-read.
+ * is skipped. Rise of the Ancients also reads its window header (38000:
+ * summons left), and every read gets a row (v123) — event-read.ts. Raw replies
+ * are archived (kinds 'event' / 'event_progress', one per run per game day) so
+ * a field decoded later can be re-read. Between scans, event-poller.ts reads
+ * a running Rise of the Ancients again on the session this scan leaves.
  */
 async function collectEvents(clanId: number, d: CaptureData, now: string): Promise<string> {
   const listFrame = await d.client.eventList(d.client.clanId || d.record.clanId, d.client.realmId);
@@ -355,24 +357,26 @@ async function collectEvents(clanId: number, d: CaptureData, now: string): Promi
   let read = 0;
   let rows = 0;
   let moved = 0;
+  let summons = '';
   for (const e of running) {
     const meta = d.names.events?.[`${e.type},${e.run}`];
     try {
-      const frame = await d.client.eventStandings(e.type, e.run);
-      const standings = parseEventStandings(frame);
+      const got = await readEventStandings(clanId, d.client, { eventType: e.type, run: e.run, occurrence: e.occurrence }, {
+        now, gameDate: d.gameDate, source: 'scan', pause,
+        entry: { e, code: meta?.code ?? '', title: meta?.title ?? '' },
+      });
       read++;
-      if (standings.length) {
-        saveEventRun(clanId, e, { code: meta?.code ?? '', title: meta?.title ?? '' }, now);
-        moved += saveEventStandings(clanId, { eventType: e.type, run: e.run, occurrence: e.occurrence }, standings, now);
-        saveRawSnapshot(clanId, 'event', e.type * 1000 + e.run, d.gameDate, frame.body, now);
-        rows += standings.length;
+      if (got) {
+        rows += got.rows;
+        moved += got.moved;
+        if (got.summonsLeft !== null) summons = `, Tin Man summons left ${got.summonsLeft}${got.summonsMax !== null ? ` of ${got.summonsMax}` : ''}`;
       }
     } catch {
       // Not every event has a clan-members tab; nothing to keep.
     }
     await pause();
   }
-  return `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)`;
+  return `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)${summons}`;
 }
 
 async function collectClan(clanId: number, d: CaptureData, now: string): Promise<string> {

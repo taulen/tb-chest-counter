@@ -16,6 +16,7 @@ import { requireAuth, requireClanContext, SESSION_COOKIE_NAME } from '../../../s
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import * as userRepo from '../../../src/data/repositories/user-repo.js';
 import { getDb } from '../../../src/data/database.js';
+import { saveEventRead, saveEventRun, saveEventStandings } from '../../../src/data/repositories/game-event-repo.js';
 
 const DATE = '2026-10-23';
 const PASTE = '| Rank | Name | Points |\n| :--- | :--- | :--- |\n| 1 | Frostbite | 59,878,655 |\n| 2 | Stranger | 10 |';
@@ -135,6 +136,70 @@ describe('/api/tinman', () => {
     expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(200);
     const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
     expect(get.body.summons).toEqual([]);
+  });
+
+  describe('from the game', () => {
+    // Rise of the Ancients #242 on the game's side: 2026-10-23 17:00 → 10-24 17:00 UTC (Tinman day 10-23).
+    const RUN = { eventType: 1024, run: 1, occurrence: 242 };
+    const read = (at: string, left: number, points: Record<number, number>) => {
+      const rows = Object.entries(points).sort((a, b) => b[1] - a[1])
+        .map(([id, p], i) => ({ playerId: Number(id), points: p, rank: i + 1 }));
+      const saved = saveEventStandings(1, RUN, rows, at);
+      saveEventRead(1, RUN, {
+        readAt: at, source: 'poll', members: rows.length, totalPoints: rows.reduce((s, r) => s + r.points, 0),
+        changed: saved.changed, summonsLeft: left, summonsMax: 2, summonsUsed: 2 - left, bossId: 6053,
+      });
+    };
+    beforeEach(() => {
+      saveEventRun(1, {
+        type: 1024, run: 1, occurrence: 242, state: 1,
+        startsAt: Date.parse('2026-10-23T17:00:00Z') / 1000, endsAt: Date.parse('2026-10-24T17:00:00Z') / 1000,
+      }, { code: 'clandoom_epic', title: 'Rise of the Ancients' }, '2026-10-23T18:00:00.000Z');
+      getDb().prepare('UPDATE members SET game_player_id = 100 WHERE id = ?').run(frost);
+    });
+
+    it('splits the run into summons from the game, instead of the paste', async () => {
+      await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
+      read('2026-10-23T18:00:00.000Z', 2, { 100: 0, 101: 0 });
+      read('2026-10-23T18:10:00.000Z', 1, { 100: 400, 101: 100 }); // summon 1 scoring
+      read('2026-10-23T18:20:00.000Z', 1, { 100: 400, 101: 100 }); // flat: it ended
+      read('2026-10-23T19:00:00.000Z', 0, { 100: 1000, 101: 100 }); // summon 2
+      read('2026-10-23T19:10:00.000Z', 0, { 100: 1000, 101: 100 });
+
+      const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
+      expect(get.status).toBe(200);
+      expect(get.body.summons).toEqual([]); // the paste is not what shows
+      expect(get.body.game).toMatchObject({
+        // The run is still on (it ends at 17:00); both summons are over.
+        summonsLeft: 0, summonsMax: 2, summonsUsed: 2, reads: 5, live: true,
+        columns: [{ first: 1, last: 1, live: false }, { first: 2, last: 2, live: false }],
+      });
+      expect(get.body.players[0]).toMatchObject({ memberId: frost, name: 'Frostbite', perSummon: { 1: 400, 2: 600 }, total: 1000, played: 2, rank: 1 });
+      expect(get.body.players[1]).toMatchObject({ memberId: null, perSummon: { 1: 100, 2: 0 }, total: 100, played: 1 });
+    });
+
+    it('shows back-to-back summons the reads cannot split as one column', async () => {
+      read('2026-10-23T18:00:00.000Z', 2, { 100: 0 });
+      read('2026-10-23T18:10:00.000Z', 1, { 100: 400 });
+      read('2026-10-23T18:20:00.000Z', 0, { 100: 900 }); // summon 2 began while 1 was still scoring
+      read('2026-10-23T18:30:00.000Z', 0, { 100: 900 });
+      const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
+      expect(get.body.game.columns).toEqual([{ first: 1, last: 2, live: false }]);
+      expect(get.body.players[0].perSummon).toEqual({ 1: 900 });
+    });
+
+    it('keeps a run pasted by hand before reads were kept, and shows game totals when nothing was pasted', async () => {
+      // Standings only (read before v123): no reads.
+      saveEventStandings(1, RUN, [{ playerId: 100, points: 700, rank: 1 }], '2026-10-23T20:00:00.000Z');
+      const bare = await send('get', `/api/tinman?date=${DATE}`, 'user1');
+      expect(bare.body.game).toMatchObject({ reads: 0, columns: [] });
+      expect(bare.body.players[0]).toMatchObject({ memberId: frost, total: 700 });
+
+      await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
+      const pasted = await send('get', `/api/tinman?date=${DATE}`, 'user1');
+      expect(pasted.body.game).toBeNull();
+      expect(pasted.body.summons).toHaveLength(1);
+    });
   });
 
   describe('Olympus (per day)', () => {

@@ -723,3 +723,39 @@ export function parseEventStandings(frame: Frame): GameEventStanding[] {
   }
   return out;
 }
+
+/** The clan's state in an event, from its window's header (38000). */
+export interface GameEventProgress {
+  occurrence: number | null;
+  /** Rise of the Ancients: the clan's Ancient (an id from T44's clanBossAtoms 6000–6249). */
+  bossId: number | null;
+  /** Rise of the Ancients: "Summons left" — CWB 2 and SIK 1 on Nov 17 2026, as the game showed. */
+  summonsLeft: number | null;
+  /** The clan's event artifacts: artifact id → [level, points put in]. */
+  artifacts: Record<number, { level: number; points: number }>;
+}
+
+/**
+ * Message 38000 (ask `[[[type, run]]]`, what the client sends as the event
+ * window opens): `body[0]` = `[[occurrence, bossId, summonsLeft, 0, [0],
+ * [0,0,0]], {artifactId: [level, points]}]`. Read for Rise of the Ancients;
+ * fields 3–5 are not decoded. The artifacts map is T44 f9's `artifactIds`
+ * (`clandoom_artifacts` config: 1 Tome of Knowledge, 2/4 Enchanted Figurine,
+ * 3 Mysterious Clock) — SIK's Tome 26 / Clock 16 match its in-game screen.
+ */
+export function parseEventProgress(frame: Frame): GameEventProgress | null {
+  const root = arr(arr(frame.body)[0]);
+  const head = arr(root[0]);
+  if (!head.length) return null;
+  const artifacts: Record<number, { level: number; points: number }> = {};
+  const map = root[1];
+  if (map && typeof map === 'object' && !Array.isArray(map) && !('$pairs' in map) && !('$bin' in map)) {
+    for (const [k, v] of Object.entries(map as Record<string, Wire>)) {
+      const id = Number(k);
+      const level = num(arr(v)[0]);
+      if (!Number.isInteger(id) || level === null) continue;
+      artifacts[id] = { level, points: num(arr(v)[1]) ?? 0 };
+    }
+  }
+  return { occurrence: num(head[0]), bossId: num(head[1]), summonsLeft: num(head[2]), artifacts };
+}

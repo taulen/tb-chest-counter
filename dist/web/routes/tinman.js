@@ -59,6 +59,7 @@ const index_js_1 = require("../../config/index.js");
 const game_day_js_1 = require("../../utils/game-day.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
+const ancients_game_js_1 = require("../../data/ancients-game.js");
 const MAX_TEXT_LENGTH = 200_000;
 /** A real YYYY-MM-DD day, or null. */
 function parseDate(raw) {
@@ -141,10 +142,22 @@ function createTinmanRouter(eventKey = 'ancients') {
         }
         // Each matched player's guards level (from research), so the page can hold their
         // total against their tier's target. Null = unknown (the page assumes G7).
-        const standings = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
+        const pasted = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
         const guards = ancients ? (0, guards_repo_js_1.getGuardsSummaries)(clanId, t) : null;
+        // The game's own standings, split into summons (data/ancients-game.ts),
+        // replace the pasted ones for a run the game covers: one read since reads
+        // were kept (v123), or game standings and nothing pasted. A run pasted by
+        // hand before that keeps its pasted per-summon table.
+        const gameRun = ancients ? (0, ancients_game_js_1.ancientsRunForDay)(clanId, date, (0, index_js_1.loadConfig)().gameDayRolloverUtcHour) : null;
+        const gameTable = gameRun ? (0, ancients_game_js_1.buildGameTinman)(clanId, gameRun) : null;
+        const game = gameTable && (gameTable.reads > 0 || !pasted.summons.length) ? gameTable : null;
+        const standings = game
+            ? { date, summons: [], players: game.players, review: [] }
+            : pasted;
+        const { players: _gamePlayers, ...gameMeta } = game ?? { players: null };
         res.json({
             ...standings,
+            game: game ? gameMeta : null,
             players: standings.players.map((p) => ({
                 ...p,
                 guardsLevel: p.memberId ? guards?.get(p.memberId)?.level ?? null : null,

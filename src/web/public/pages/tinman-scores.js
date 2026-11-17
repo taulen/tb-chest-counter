@@ -15,7 +15,7 @@
 // doesn't refetch it.
 
 import { api, apiPut, apiDelete } from '../lib/api.js';
-import { esc, memberLink, notify, confirmDialog, formatDate } from '../lib/ui.js';
+import { esc, memberLink, notify, confirmDialog, formatDate, formatRelativeTime } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { getCurrentUser } from '../lib/state.js';
 import { formatCompact } from '../lib/ancient-planner.js';
@@ -225,7 +225,8 @@ let prefetched = null; // { event, date, promise }
 export async function prefetchTinmanScores(event, date) {
   const ev = EVENTS[event] ? event : 'ancients';
   if (date === 'all') return false;
-  const hasRounds = (res) => (res ? (res.summons || []).length > 0 : null);
+  // A run the game covers counts as scored: its table comes from the game.
+  const hasRounds = (res) => (res ? (res.summons || []).length > 0 || !!res.game : null);
   // The card already holds this run (the mount won't refetch it either).
   if (ev === eventKey && loadedFor === date && data) return hasRounds(data);
   const mine = { event: ev, date, promise: fetchRun(ev, date) };
@@ -246,11 +247,14 @@ async function load() {
 
 function cardHtml(body, actions) {
   const date = data && loadedFor === requested ? data.date : (requested && requested !== 'all' ? requested : '');
+  const fromGame = data && loadedFor === requested && data.game
+    ? ` <span class="tinman-game-badge" title="${t('Read from the game every few minutes while the event runs — nothing to paste.')}">${t('From the game')}</span>`
+    : '';
   return `
     <div class="card tinman-card">
       <div class="card-header">
         <div class="events-title">
-          <h2>${L.title()}</h2>
+          <h2>${L.title()}${fromGame}</h2>
           <span class="card-header-hint">${L.eventName()}${date ? ` · ${esc(date)}` : ''} · ${L.perRound()}</span>
         </div>
         ${actions}
@@ -261,8 +265,15 @@ function cardHtml(body, actions) {
 
 // ─── Painting ────────────────────────────────────────────────────
 
-/** Summon columns: 1 … the highest uploaded, gaps included so a missed summon shows. */
+/**
+ * Summon columns: 1 … the highest uploaded, gaps included so a missed summon
+ * shows. From the game: one column per summon the reads split, or one for
+ * back-to-back summons they can't ("S2–3"), keyed by its first summon.
+ */
 function summonColumns() {
+  if (data?.game) {
+    return (data.game.columns || []).map((c) => ({ summon: c.first, last: c.last, live: c.live, uploaded: true, covers: [], game: true }));
+  }
   const uploaded = new Map((data?.summons || []).map((s) => [s.summon, s]));
   const highest = Math.max(0, ...uploaded.keys());
   const cols = [];
@@ -316,10 +327,12 @@ function paint() {
     return;
   }
   const admin = isAdmin();
-  const actions = admin
+  // A run the game covers has nothing to paste: its scores come from the game.
+  const paste = !data.game;
+  const actions = admin && (paste || L.hasTargets)
     ? `<div class="tinman-actions">
         ${L.hasTargets ? `<button type="button" class="btn btn-sm ${targetsOpen ? 'active' : ''}" data-tinman="toggle-targets">${targetsOpen ? t('Close targets') : t('Targets')}</button>` : ''}
-        <button type="button" class="btn btn-sm ${uploadOpen ? 'active' : 'btn-primary'}" data-tinman="toggle-upload">${uploadOpen ? t('Close') : L.addButton()}</button>
+        ${paste ? `<button type="button" class="btn btn-sm ${uploadOpen ? 'active' : 'btn-primary'}" data-tinman="toggle-upload">${uploadOpen ? t('Close') : L.addButton()}</button>` : ''}
       </div>`
     : '';
 
@@ -329,8 +342,8 @@ function paint() {
       ? t('{date} isn\'t a Tinman day on the Seasonal Kingdom calendar.', { date: esc(data.date) })
       : t('{date} isn\'t a Tinman day on the usual 6-day cadence.', { date: esc(data.date) })}</p>` : ''}
     ${targetsOpen && admin && L.hasTargets ? targetsPanelHtml() : ''}
-    ${uploadOpen && admin ? uploadPanelHtml() : ''}
-    ${summonsStripHtml(admin)}
+    ${uploadOpen && admin && paste ? uploadPanelHtml() : ''}
+    ${paste ? summonsStripHtml(admin) : gameStripHtml()}
     ${L.hasTargets ? targetsStripHtml(admin) : ''}
     ${data.players.length ? tableHtml(cols) : `<p class="muted-copy tinman-note">${admin ? L.emptyAdmin() : L.emptyMember()}</p>`}
     ${reviewHtml(admin)}`;
@@ -483,6 +496,21 @@ function tierBadgeHtml(tier) {
     : `<span class="tool-tier-badge">${tier.key.toUpperCase()}</span>`;
 }
 
+/** A run the game covers: where it comes from, summons left, a summon scoring now, when it was read. */
+function gameStripHtml() {
+  const g = data.game;
+  const parts = [];
+  if (g.summonsLeft !== null && g.summonsMax) {
+    parts.push(`<span class="tinman-chip tinman-chip-plain"><strong>${t('Summons left: {left} of {max}', { left: g.summonsLeft, max: g.summonsMax })}</strong></span>`);
+  }
+  if ((g.columns || []).some((c) => c.live)) parts.push(`<span class="game-run-badge is-live">● ${t('Summon in progress')}</span>`);
+  parts.push(`<span class="tinman-chip-meta">${t('Read {time}', { time: esc(formatRelativeTime(g.readAt)) })}</span>`);
+  const note = !g.reads
+    ? t('This run was read before summons were tracked — totals only.')
+    : !(g.columns || []).length ? t('No summons yet this run.') : '';
+  return `<div class="tinman-chips tinman-game-strip">${parts.join('')}</div>${note ? `<p class="muted-copy tinman-note">${note}</p>` : ''}`;
+}
+
 function summonsStripHtml(admin) {
   const summons = data.summons || [];
   if (!summons.length) return '';
@@ -536,7 +564,16 @@ function tableHtml(cols) {
     className: [className, sort.key === key ? 'is-sorted' : ''].filter(Boolean).join(' '),
   });
   const sLabel = L.short;
+  // A game column the reads couldn't split covers several summons: "S2–3".
+  const colLabel = (c) => (c.game && c.last > c.summon ? t('S{first}–{last}', { first: c.summon, last: c.last }) : sLabel(c.summon));
   const summonHeads = cols.map((c) => {
+    if (c.game) {
+      const sub = c.live ? `<span class="tinman-col-sub tinman-col-live">${t('in progress')}</span>` : '';
+      const title = c.last > c.summon
+        ? t('Points scored in summons {first}–{last}: they ran back to back, so the reads can\'t split them', { first: c.summon, last: c.last })
+        : c.live ? t('Points scored so far in summon {summon} — it is still running', { summon: c.summon }) : L.scoredIn(c.summon);
+      return th(`s:${c.summon}`, `${colLabel(c)}${sub}`, 'num', title);
+    }
     if (!c.uploaded) {
       return `<th class="num tinman-missing-col" title="${L.notPasted(c.summon)}">${sLabel(c.summon)}<span class="tinman-col-sub">${t('not uploaded')}</span></th>`;
     }
@@ -548,20 +585,25 @@ function tableHtml(cols) {
   }).join('');
 
   const body = rows.map((p) => {
+    // A game player with no member yet is still a real player, not an unread paste.
     const nameHtml = p.memberId
       ? memberLink(p.memberId, p.name)
-      : `<span class="tinman-raw">${esc(p.rawName)}</span>`;
-    const tag = !p.memberId
+      : data.game ? esc(p.name) : `<span class="tinman-raw">${esc(p.rawName)}</span>`;
+    // Game rows are the game's own players: nothing to match.
+    const tag = data.game ? ''
+      : !p.memberId
       ? ` <span class="tinman-tag" title="${t('Not matched to a clan member yet')}">${t('not matched')}</span>`
       : p.matchKind === 'fuzzy' && p.rawName !== p.name
         ? ` <span class="tinman-tag tinman-tag-fuzzy" title="${t('Pasted as “{name}” — matched by spelling', { name: esc(p.rawName) })}">≈</span>`
         : '';
     const cells = cols.map((c) => {
       if (!c.uploaded) return `<td class="num tinman-missing-col" data-label="${sLabel(c.summon)}"><span class="events-zero">·</span></td>`;
+      const label = colLabel(c);
+      const live = c.live ? ' tinman-live-cell' : '';
       const v = p.perSummon[c.summon];
-      if (v === undefined) return `<td class="num" data-label="${sLabel(c.summon)}"><span class="events-zero" title="${L.notInRanking()}">–</span></td>`;
-      if (v === 0) return `<td class="num" data-label="${sLabel(c.summon)}"><span class="events-zero" title="${L.noPoints()}">—</span></td>`;
-      return `<td class="num${v < 0 ? ' tool-short' : ''}" data-label="${sLabel(c.summon)}" title="${v.toLocaleString()}">${formatCompact(v)}</td>`;
+      if (v === undefined) return `<td class="num${live}" data-label="${label}"><span class="events-zero" title="${L.notInRanking()}">–</span></td>`;
+      if (v === 0) return `<td class="num${live}" data-label="${label}"><span class="events-zero" title="${L.noPoints()}">—</span></td>`;
+      return `<td class="num${v < 0 ? ' tool-short' : ''}${live}" data-label="${label}" title="${v.toLocaleString()}">${formatCompact(v)}</td>`;
     }).join('');
     const tier = tierOf(p);
     const expected = expectedFor(p);
@@ -571,7 +613,10 @@ function tableHtml(cols) {
       ? `<td class="num" data-label="${t('Target')}" title="${esc(t('{points} for the run', { points: Math.round(full).toLocaleString() }))}">${formatCompact(expected)}</td>`
       : `<td class="num" data-label="${t('Target')}"><span class="events-zero">—</span></td>`;
     const pastedCount = cols.filter((c) => c.uploaded).length;
-    const playedText = L.played(p.played, pastedCount);
+    const playedText = !data.game ? L.played(p.played, pastedCount)
+      : cols.some((c) => c.last > c.summon)
+        ? tn(pastedCount, '{played} of {n} column', '{played} of {n} columns', { n: pastedCount, played: p.played })
+        : tn(pastedCount, '{played} of {n} summon', '{played} of {n} summons', { n: pastedCount, played: p.played });
     return `<tr class="${expected !== null ? goalRowClassFor(p.total, expected) : ''}">
       <td data-role="lead">${p._rank}</td>
       <td data-role="primary"><span class="mrow-name">${nameHtml}${tag}</span><span class="mrow-sub">${L.hasTargets ? `${tierLabel(tier)} · ${playedText}` : playedText}</span></td>

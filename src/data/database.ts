@@ -2209,6 +2209,40 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v123 — every read of an event's standings (scan or between-scans poll), so the
+    // Tin Man view can split a run into summons (data/summon-windows.ts):
+    //   changed       members whose points moved since the run's previous read
+    //                 (0 = a flat read: nothing scoring);
+    //   summons_left  Rise of the Ancients' "Summons left" (38000 [0][2]);
+    //   summons_max   the Enchanted Figurine's summons (38000 [1][2|4][0]);
+    //   summons_used  max − left at this read (the read's summon tag);
+    //   boss_id       the clan's Ancient (38000 [0][1], T44 clanBossAtoms).
+    // A member's points at a read are their newest standing-history row at or
+    // before read_at (both carry the read's timestamp).
+    // IF NOT EXISTS: runMigrations may replay this.
+    version: 123,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS game_event_reads (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          read_at TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'scan',
+          members INTEGER NOT NULL,
+          total_points INTEGER NOT NULL,
+          changed INTEGER NOT NULL,
+          summons_left INTEGER,
+          summons_max INTEGER,
+          summons_used INTEGER,
+          boss_id INTEGER,
+          PRIMARY KEY (clan_id, event_type, run, occurrence, read_at)
+        );
+      `);
+    },
+  },
 ];
 
 /**

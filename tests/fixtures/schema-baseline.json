@@ -591,6 +591,11 @@
   },
   {
     "type": "table",
+    "name": "game_event_reads",
+    "sql": "CREATE TABLE game_event_reads ( clan_id INTEGER NOT NULL REFERENCES clans(id), event_type INTEGER NOT NULL, run INTEGER NOT NULL, occurrence INTEGER NOT NULL, read_at TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'scan', members INTEGER NOT NULL, total_points INTEGER NOT NULL, changed INTEGER NOT NULL, summons_left INTEGER, summons_max INTEGER, summons_used INTEGER, boss_id INTEGER, PRIMARY KEY (clan_id, event_type, run, occurrence, read_at) )"
+  },
+  {
+    "type": "table",
     "name": "game_event_runs",
     "sql": "CREATE TABLE game_event_runs ( clan_id INTEGER NOT NULL REFERENCES clans(id), event_type INTEGER NOT NULL, run INTEGER NOT NULL, occurrence INTEGER NOT NULL, code TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', starts_at INTEGER, ends_at INTEGER, first_seen TEXT NOT NULL, last_read TEXT NOT NULL, PRIMARY KEY (clan_id, event_type, run, occurrence) )"
   },

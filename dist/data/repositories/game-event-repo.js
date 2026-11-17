@@ -1,7 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.saveEventRun = saveEventRun;
+exports.touchEventRun = touchEventRun;
 exports.saveEventStandings = saveEventStandings;
+exports.saveEventRead = saveEventRead;
+exports.listEventReads = listEventReads;
+exports.listStandingHistory = listStandingHistory;
+exports.liveEventRun = liveEventRun;
+exports.listRunsOfType = listRunsOfType;
 exports.listEventRuns = listEventRuns;
 exports.latestEventRuns = latestEventRuns;
 exports.getEventStandings = getEventStandings;
@@ -24,10 +30,13 @@ function saveEventRun(clanId, e, meta, now = new Date().toISOString()) {
        title = CASE WHEN excluded.title != '' THEN excluded.title ELSE game_event_runs.title END,
        starts_at = excluded.starts_at, ends_at = excluded.ends_at, last_read = excluded.last_read`).run(clanId, e.type, e.run, e.occurrence, meta.code, meta.title, e.startsAt, e.endsAt === OPEN_ENDED ? null : e.endsAt, now, now);
 }
+/** A run read again between scans: only its last-read time moves. */
+function touchEventRun(clanId, key, now = new Date().toISOString()) {
+    (0, database_js_1.getDb)().prepare('UPDATE game_event_runs SET last_read = ? WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?').run(now, clanId, key.eventType, key.run, key.occurrence);
+}
 /**
  * The run's standings as read now. Upserts every player's latest points/rank;
  * a history row when the player is new to the run or the points moved.
- * Returns how many players' points moved (new players not counted).
  */
 function saveEventStandings(clanId, key, rows, now = new Date().toISOString()) {
     const db = (0, database_js_1.getDb)();
@@ -41,6 +50,7 @@ function saveEventStandings(clanId, key, rows, now = new Date().toISOString()) {
     const hist = db.prepare(`INSERT OR IGNORE INTO game_event_standing_history (clan_id, event_type, run, occurrence, player_id, points, rank, changed_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
     let moved = 0;
+    let changed = 0;
     db.transaction(() => {
         for (const r of rows) {
             upsert.run(clanId, key.eventType, key.run, key.occurrence, r.playerId, r.points, r.rank, now, now);
@@ -49,10 +59,61 @@ function saveEventStandings(clanId, key, rows, now = new Date().toISOString()) {
                 hist.run(clanId, key.eventType, key.run, key.occurrence, r.playerId, r.points, r.rank, now);
                 if (before !== undefined)
                     moved++;
+                if (r.points !== (before ?? 0))
+                    changed++;
             }
         }
     })();
-    return moved;
+    return { moved, changed };
+}
+/** One read of a run's standings (v123), scan or poll. */
+function saveEventRead(clanId, key, read) {
+    (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_event_reads
+       (clan_id, event_type, run, occurrence, read_at, source, members, total_points, changed,
+        summons_left, summons_max, summons_used, boss_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(clanId, key.eventType, key.run, key.occurrence, read.readAt, read.source, read.members, read.totalPoints, read.changed, read.summonsLeft, read.summonsMax, read.summonsUsed, read.bossId);
+}
+/** Every read of a run, oldest first. */
+function listEventReads(clanId, key) {
+    return (0, database_js_1.getDb)().prepare(`SELECT read_at, source, members, total_points, changed, summons_left, summons_max, summons_used, boss_id
+       FROM game_event_reads
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?
+      ORDER BY read_at`).all(clanId, key.eventType, key.run, key.occurrence).map((r) => ({
+        readAt: r.read_at,
+        source: r.source === 'poll' ? 'poll' : 'scan',
+        members: r.members,
+        totalPoints: r.total_points,
+        changed: r.changed,
+        summonsLeft: r.summons_left,
+        summonsMax: r.summons_max,
+        summonsUsed: r.summons_used,
+        bossId: r.boss_id,
+    }));
+}
+/** Every points change of a run, per player in time order — a player's points at a read are their newest row at or before it. */
+function listStandingHistory(clanId, key) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT player_id, points, changed_at FROM game_event_standing_history
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?
+      ORDER BY player_id, changed_at`).all(clanId, key.eventType, key.run, key.occurrence);
+    const out = new Map();
+    for (const r of rows) {
+        const list = out.get(r.player_id) ?? [];
+        list.push({ points: r.points, at: r.changed_at });
+        out.set(r.player_id, list);
+    }
+    return out;
+}
+/** The clan's run of an event type that is on now (started, not ended), newest first; null when none. */
+function liveEventRun(clanId, eventType, nowSec = Math.floor(Date.now() / 1000)) {
+    const r = (0, database_js_1.getDb)().prepare(`SELECT * FROM game_event_runs
+      WHERE clan_id = ? AND event_type = ? AND COALESCE(starts_at, 0) <= ? AND (ends_at IS NULL OR ends_at > ?)
+      ORDER BY COALESCE(starts_at, 0) DESC, last_read DESC LIMIT 1`).get(clanId, eventType, nowSec, nowSec);
+    return r ? rowToRun(r) : null;
+}
+/** Every run of one event type the clan has, newest first. */
+function listRunsOfType(clanId, eventType) {
+    return (0, database_js_1.getDb)().prepare(`SELECT * FROM game_event_runs WHERE clan_id = ? AND event_type = ?
+      ORDER BY COALESCE(starts_at, 0) DESC, last_read DESC`).all(clanId, eventType).map(rowToRun);
 }
 const rowToRun = (r) => ({
     eventType: r.event_type, run: r.run, occurrence: r.occurrence, code: r.code, title: r.title,

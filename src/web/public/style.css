@@ -8347,6 +8347,24 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tinman-table th.num, .tinman-table td.num { text-align: right; }
 .tinman-col-sub { display: block; font-size: 9.5px; font-weight: 500; letter-spacing: 0.02em; text-transform: none; color: var(--text-muted); }
 .tinman-missing-col { background: var(--subtle-bg); }
+/* Read from the game (data/ancients-game.ts): the badge, the strip, a summon still scoring. */
+.tinman-game-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-gold);
+  color: var(--accent-gold);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.tinman-game-strip { align-items: center; }
+.tinman-game-strip .tinman-chip-meta { font-size: 12.5px; }
+.tinman-chip.tinman-chip-plain { padding: 5px 12px; }
+.tinman-col-sub.tinman-col-live { color: var(--accent-green); }
+.tinman-table td.tinman-live-cell { background: var(--accent-green-bg); }
 .tinman-raw { color: var(--text-secondary); font-style: italic; }
 .tinman-tag {
   display: inline-block;

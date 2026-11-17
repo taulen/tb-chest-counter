@@ -29,6 +29,7 @@ import {
 } from '../../utils/game-day.js';
 import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
 import { getEventOccurrences } from '../../external/event-calendar.js';
+import { ancientsRunForDay, buildGameTinman } from '../../data/ancients-game.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 
@@ -114,10 +115,22 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
     }
     // Each matched player's guards level (from research), so the page can hold their
     // total against their tier's target. Null = unknown (the page assumes G7).
-    const standings = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
+    const pasted = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
     const guards = ancients ? getGuardsSummaries(clanId, t) : null;
+    // The game's own standings, split into summons (data/ancients-game.ts),
+    // replace the pasted ones for a run the game covers: one read since reads
+    // were kept (v123), or game standings and nothing pasted. A run pasted by
+    // hand before that keeps its pasted per-summon table.
+    const gameRun = ancients ? ancientsRunForDay(clanId, date, loadConfig().gameDayRolloverUtcHour) : null;
+    const gameTable = gameRun ? buildGameTinman(clanId, gameRun) : null;
+    const game = gameTable && (gameTable.reads > 0 || !pasted.summons.length) ? gameTable : null;
+    const standings = game
+      ? { date, summons: [], players: game.players, review: [] }
+      : pasted;
+    const { players: _gamePlayers, ...gameMeta } = game ?? { players: null };
     res.json({
       ...standings,
+      game: game ? gameMeta : null,
       players: standings.players.map((p) => ({
         ...p,
         guardsLevel: p.memberId ? guards?.get(p.memberId)?.level ?? null : null,

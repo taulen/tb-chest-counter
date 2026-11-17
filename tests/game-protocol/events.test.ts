@@ -6,7 +6,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Frame, Wire } from '../../src/game-protocol/codec.js';
-import { isEventRunning, parseEventList, parseEventStandings } from '../../src/game-protocol/messages.js';
+import { isEventRunning, parseEventList, parseEventProgress, parseEventStandings } from '../../src/game-protocol/messages.js';
+import { figurineSummons } from '../../src/game-protocol/ancients.js';
 import { asIdRecord, buildEvents } from '../../src/game-protocol/static-data.js';
 import { catalogKeyForEventTitle } from '../../src/game-protocol/event-mapping.js';
 import {
@@ -48,6 +49,24 @@ describe('event messages', () => {
       { playerId: 4522600562952, points: 49899136, rank: 3 },
     ]);
     expect(parseEventStandings(frame(38003, [[[]]]))).toEqual([]);
+  });
+
+  it('reads Rise of the Ancients\' window header (38000): summons left and the Figurine\'s summons', () => {
+    // As the game sent them on Nov 17 2026: CWB "2 of 2 left", SIK "1 of 2 left".
+    const cwb = parseEventProgress(frame(38000, [[[242, 6053, 2, 0, [0], [0, 0, 0]], { 1: [17, 80015], 2: [2, 6156], 3: [12, 40235] }]]));
+    const sik = parseEventProgress(frame(38000, [[[242, 6130, 1, 0, [0], [0, 0, 0]], { 1: [26, 408240], 2: [2, 1800], 3: [16, 73760] }]]));
+    expect(cwb).toEqual({
+      occurrence: 242, bossId: 6053, summonsLeft: 2,
+      artifacts: { 1: { level: 17, points: 80015 }, 2: { level: 2, points: 6156 }, 3: { level: 12, points: 40235 } },
+    });
+    expect([sik?.summonsLeft, sik?.artifacts[1].level, sik?.artifacts[3].level]).toEqual([1, 26, 16]); // Tome 26, Clock 16 as in game
+    // The Figurine's level is the summon count, though CWB's 6,156 points would be ladder level 4.
+    expect(figurineSummons(cwb)).toBe(2);
+    expect(figurineSummons(sik)).toBe(2);
+    // The Seasonal Kingdom run lists the Figurine as artifact 4.
+    expect(figurineSummons(parseEventProgress(frame(38000, [[[7, 7039, 5, 0, [0], [0, 0, 0]], { 1: [1, 0], 4: [3, 0], 3: [1, 0] }]])))).toBe(3);
+    expect(figurineSummons(null)).toBeNull();
+    expect(parseEventProgress(frame(38000, [[]]))).toBeNull();
   });
 });
 
@@ -95,17 +114,19 @@ describe('event standings storage', () => {
 
   it('keeps the first read as the baseline and a history row only when points move', () => {
     saveEventRun(CLAN, entry, { code: 'clandoom_epic', title: 'Rise of the Ancients' }, '2026-11-17T12:00:00Z');
+    // The baseline: nobody "moved", but a newcomer with points counts as changed
+    // (from nothing); one with 0 doesn't.
     expect(saveEventStandings(CLAN, RUN, [
       { playerId: 1, points: 100, rank: 1 }, { playerId: 2, points: 0, rank: 2 },
-    ], '2026-11-17T12:00:00Z')).toBe(0);
-    // Unchanged: no history.
+    ], '2026-11-17T12:00:00Z')).toEqual({ moved: 0, changed: 1 });
+    // Unchanged: no history, a flat read.
     expect(saveEventStandings(CLAN, RUN, [
       { playerId: 1, points: 100, rank: 1 }, { playerId: 2, points: 0, rank: 2 },
-    ], '2026-11-17T13:00:00Z')).toBe(0);
+    ], '2026-11-17T13:00:00Z')).toEqual({ moved: 0, changed: 0 });
     // Player 2 scores and overtakes.
     expect(saveEventStandings(CLAN, RUN, [
       { playerId: 2, points: 500, rank: 1 }, { playerId: 1, points: 100, rank: 2 },
-    ], '2026-11-17T14:00:00Z')).toBe(1);
+    ], '2026-11-17T14:00:00Z')).toEqual({ moved: 1, changed: 1 });
 
     const rows = getEventStandings(CLAN, RUN);
     expect(rows.map((r) => [r.playerId, r.rank, r.points, r.previousPoints, r.changedAt])).toEqual([
