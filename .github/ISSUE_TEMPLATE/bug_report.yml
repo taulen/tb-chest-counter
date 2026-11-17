@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Most failures here are the game showing something unexpected rather than
-        the code being wrong about what it saw — so logs and a screenshot are
-        usually worth more than a description.
+        Most failures here are the game answering something unexpected rather
+        than the code being wrong about what it saw — so logs are usually worth
+        more than a description.
 
         For anything exploitable, please use a
         [private security advisory](https://github.com/taulen/tb-chest-counter/security/advisories/new)
@@ -44,8 +44,7 @@ body:
     attributes:
       label: Where
       options:
-        - Scanning / OCR
-        - Calibration
+        - Scanning
         - Login bridge
         - Dashboard
         - Discord bot
@@ -59,6 +58,5 @@ body:
     attributes:
       label: Screenshot
       description: >
-        If it is a scanning or calibration problem, a picture of what the game
-        looked like at the time usually answers it outright. `data/screenshots/`
-        holds the scanner's own debug captures.
+        For a dashboard problem, a picture of the page; for a login bridge
+        problem, what the bridge showed.

@@ -26,13 +26,6 @@ The season opened on 2026-11-11 at 09:00 UTC and runs to 2027-02-08 09:00. Its f
 
 ## SK resources: Forest Essence and Magic Seeds (v100)
 
-These are seeded in `resource_types` and ship as `assets/resource-icons/forest-essence.png` and `magic-seeds.png`. Both templates are **provisional**. The only images available were the history page's resource dropdown (two screenshots from the user, Nov 13 2026), not history rows, so they were cut as follows:
-
-- **Segmented off the panel and recomposited.** The dropdown panel is dark brown. Each icon was separated by colour distance from the local panel colour, with alpha 15→45, then placed on the history row's tan (224,197,157) using `pixel + (1−α)(tan − panel)`.
-- **Framed by the larger dimension.** Both icons are taller than wide (23×27 and 21×28 in the dropdown), at the 0.92 fill used by the rest of the family. The matcher treats a contour taller than 1.1× its width as a vertical merge and sizes crops from the width, and its sweep (width −4 … +16) reaches a frame that holds the whole icon.
-- **The method was validated on known icons first.** The same pipeline was run on the 17 known icons in the same screenshots and scored against the shipped templates: all 17 resolved to the right resource, with a mean margin of 0.32.
-- **No theft of existing rows.** Replaying the 2,754-row local corpus (`scripts/diagnose-resource-icons.mjs data/resource_test_screenshots`), neither new template won a row or reached any row's top three.
-
-What that cannot prove is how well they match **real SK history rows**, because none existed yet. After the SK clan's first resource reads, check its Forest Essence / Magic Seeds rows. If they land unresolved or with thin margins, cut `-2` variants from the unresolved-row evidence crops with [extract-icon-from-row-crop.mjs](../scripts/extract-icon-from-row-crop.mjs). That is additive and can only raise these two resources; see [resource-capture.md](resource-capture.md).
+These are seeded in `resource_types` and ship as `assets/resource-icons/forest-essence.png` and `magic-seeds.png` (the icons the UI shows; they were cut from the history page's resource dropdown, Nov 13 2026). Their rows arrive from the Clan Capital ledger every scan reads, mapped by name like every other resource (Magic Seeds = ledger resource 74284, Forest Essence = 74285; [game-protocol.md](game-protocol.md)).
 
 `tGame()` has no official es/fr/ru/de names for them yet, so they display in English (docs/i18n.md: a guessed name is worse than English).

@@ -1,7 +1,7 @@
 # Game protocol (direct client)
 
 Total Battle's web client talks to its servers over plain HTTPS with a binary
-MessagePack format. We speak it directly — no browser, no OCR — to read the clan
+MessagePack format. We speak it directly — no browser — to read the clan
 record (members + both gift tabs), player records, the Clan Capital ledger and
 any player's city (research + hero talents). Code: [`src/game-protocol/`](../src/game-protocol/).
 
@@ -17,27 +17,36 @@ manual scan) is `ScanLoop.runProtocolClanScan`:
 3. the session is finalised like any scan (`finalizeScanSuccess`, Discord report).
 
 A capture that cannot sign in creates no session row and records nothing.
-Calibration, the member-capture onboarding gate, the browser and OCR are not
-involved; that code is unused, pending removal. The browser is still used by the
-login bridge.
+The browser-driven OCR scanner this replaced (with its calibration wizard,
+member-capture onboarding and OCR might / Clan Capital captures) was removed in
+Nov 2026; the only browser left is the login bridge's.
 
-Names: game names are exact, so no OCR correction runs. Each resolves to the
-spelling already stored for it when `normalizeGiftText` matches (the OCR stored
-"Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), then the
-clan's chest/source merge rules apply as before, so point values keep keying on
-the same names.
+Names: game names are exact, so no correction runs. Each resolves to the
+spelling already stored for it when `normalizeGiftText`
+([`gift-text.ts`](../src/game-protocol/gift-text.ts)) matches (the OCR era
+stored "Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), then
+the clan's chest/source merge rules apply as before, so point values keep keying
+on the same names.
 
 Ledger → `resource_transactions` ([`ledger-rows.ts`](../src/game-protocol/ledger-rows.ts)):
 one row per entry (`game_entry_id` unique); kind 1 = clan payout (direction −1),
 kinds 2/3/4/7 = donation (+1), kinds 5 and 8 (leader-side treasury entries:
 only ever the clan leader, at the reset, never in the in-game history) are not
 imported; item → resource type by name; Clan Speedups in
-hours. Only entries on game days AFTER the clan's newest OCR-captured row are
-imported, so the switch-over day is never counted twice.
+hours. Only entries on game days AFTER the clan's newest row from the retired
+OCR capture are imported, so the switch-over day is never counted twice.
+Deleting a ledger batch is recoverable: the next scan re-imports any entry the
+game still lists (about two weeks), keyed on its entry id.
+
+**Adding a resource type** the game introduces is two halves: a migration
+seeding `resource_types` (name + slug — the ledger maps an item to its type by
+name, and an unmapped item is left out with a log line), and
+`assets/resource-icons/<slug>.png` for the icon the UI shows.
 
 Before the switch, a parallel run compared every OCR scan with the game's gift
 list (`game_scan_comparisons`, `[game-vs-ocr]` log lines): 100% matched, no
-misreads, across all clans.
+misreads, across all clans. The comparison code went with the OCR scanner; the
+table keeps its rows.
 
 Why the client copies the browser's sign-in exactly: CWB's website session
 ended during development after a burst of direct logins, local browser windows
@@ -77,10 +86,10 @@ Each capture also, every cycle:
   name whose last might is within ±15 %, else a new member under the exact game
   name. Linked members take the game's spelling (old name kept as an alias,
   `rename_member` audited with `source: 'game'`), get `clan_role`, are marked
-  seen and get the day's might + hero-level snapshot (so the OCR might phase
-  skips the day). With a roster of ≥ 5, every ACTIVE member the roster does
-  not account for is removed (soft delete, `member.left_clan` audited with
-  `linked: true|false`): players who left, and unlinked OCR rows/old spellings.
+  seen and get the day's might + hero-level snapshot. With a roster of ≥ 5,
+  every ACTIVE member the roster does not account for is removed (soft delete,
+  `member.left_clan` audited with `linked: true|false`): players who left,
+  and unlinked rows from the OCR era/old spellings.
   `[Unknown]` is exempt. Gift senders and ledger players outside the roster are
   credited through `makeMemberResolver`, which never reactivates anyone.
   An alt that a merge rule folds into a member another player owns is only
@@ -106,7 +115,7 @@ active clan's stored cookies every 30 minutes (and the capture does the same
 before each scan). It presents no token, so it is safe to run often. A logged-in
 page clears "Needs re-authentication"; the site's own logged-out page sets it,
 through [`session-health.ts`](../src/scheduler/session-health.ts) — the same
-path as the scan's auth check (System warning keyed for auto-resolve, one
+path the scan's game capture uses (System warning keyed for auto-resolve, one
 Discord ping per streak). Anything ambiguous (HTTP error, maintenance page)
 changes nothing. Before this, "Authenticated" only meant "a session file
 exists", so a dead login looked fine for as long as scans were paused.
@@ -119,10 +128,10 @@ exists", so a dead login looked fine for as long as scans were paused.
   the scanner needs re-authentication). The client therefore always takes a
   fresh token from `GET /en/` and never stores one. This happened once to SK7
   during development (Nov 17 2026).
-- **A direct login takes over the account's game session.** The phase runs
-  before the clan's browser is launched; the scan's own fresh navigation then
-  takes the session back. Never run the client while a browser for the same
-  account is mid-scan.
+- **A direct login takes over the account's game session** — including one an
+  admin has open in the login bridge, which is why the scan loop pauses while
+  the bridge is open. Never run the client while someone is driving the same
+  account through the bridge.
 - **The game server gets no cookies.** Its only auth is the session id from
   the login reply. The website cookies are only for steps 1–2 below.
 - Only our own clan's record carries members and gifts; records of other clans
@@ -201,6 +210,7 @@ Each table has its own id space:
 A rebuild downloads ~67 MB and decodes only these four tables (the rest are
 skipped unbuilt), about 7 s.
 
-The game's source text differs from what OCR stored in places ("Level 25–29
-Vault of the Ancients" vs our "Lvl 25-29 …"); switching sources over needs a
-mapping onto existing names so history stays continuous.
+The game's source text differs from what the OCR era stored in places ("Level
+25–29 Vault of the Ancients" vs our "Lvl 25-29 …"); the protocol scan maps each
+game name onto the stored spelling (`normalizeGiftText`) so history stays
+continuous.

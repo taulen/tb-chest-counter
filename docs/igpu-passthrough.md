@@ -1,11 +1,13 @@
 # Intel iGPU passthrough (Proxmox → LXC → Docker)
 
-Let the scanner render Total Battle's WebGL canvas on the host Intel iGPU
-instead of the CPU (SwiftShader), which is the dominant CPU cost of a scan.
+Let the login bridge render Total Battle's WebGL canvas on the host Intel iGPU
+instead of the CPU (SwiftShader), which is the hard ceiling on its framerate
+and its dominant CPU cost. (Scans need no browser at all — they talk to the
+game's servers directly.)
 **Validated** on an Intel UHD 770 (Alder Lake) → WebGL renderer reports
 `ANGLE (Intel, Vulkan 1.3.x (Intel(R) UHD Graphics 770 …), Intel open-source Mesa driver)`.
 
-The code + image side (mesa/Vulkan drivers, the `SCANNER_GPU` toggle, the
+The code + image side (mesa/Vulkan drivers, the `LOGIN_BRIDGE_GPU` toggle, the
 `/dev/dri` mapping, the new-headless + ANGLE-Vulkan launch, the WebGL self-check)
 is already in this repo. This file is the **host-side** setup.
 
@@ -65,11 +67,15 @@ pct exec <VMID> -- ls -l /dev/dri/renderD128    # expect crw-rw-rw- (owner may s
 ## Step 4 — Docker: enable it
 
 The compose file already declares `devices: /dev/dri:/dev/dri` and reads
-`SCANNER_GPU`. Set in the stack env and redeploy:
+`LOGIN_BRIDGE_GPU`. Set in the stack env and redeploy:
 
 ```env
-SCANNER_GPU=1
+LOGIN_BRIDGE_GPU=1
 ```
+
+(`SCANNER_GPU`, which the bridge used to follow when `LOGIN_BRIDGE_GPU` was
+unset, went with the browser scanner. A stack that only sets `SCANNER_GPU=1`
+now renders the bridge in software until `LOGIN_BRIDGE_GPU=1` is set.)
 
 Deploying via a Portainer Git stack (or `docker compose up -d --build`) rebuilds
 the image with the mesa/Vulkan drivers.
@@ -77,7 +83,7 @@ the image with the mesa/Vulkan drivers.
 ## Step 5 — Verify the iGPU engaged
 
 Chromium fails **soft** (silently drops to SwiftShader), so check the log the app
-prints at every browser launch when `SCANNER_GPU=1`:
+prints at every bridge launch when `LOGIN_BRIDGE_GPU=1`:
 
 ```sh
 docker logs tb-chest-counter 2>&1 | grep -iE 'WebGL renderer|NOT on the iGPU'
@@ -86,7 +92,7 @@ docker logs tb-chest-counter 2>&1 | grep -iE 'WebGL renderer|NOT on the iGPU'
 - ✅ `GPU mode ON — WebGL renderer: "ANGLE (Intel, Vulkan … UHD Graphics 770 …)"`
 - ❌ `GPU mode ON but WebGL is NOT on the iGPU: "… SwiftShader …"` → troubleshoot below.
 
-Then confirm the CPU dropped: run a scan and watch `docker stats tb-chest-counter`.
+Then confirm the CPU dropped: open the login bridge and watch `docker stats tb-chest-counter`.
 
 ---
 
@@ -112,13 +118,13 @@ saturate the box.
 
 | Symptom | Fix |
 | --- | --- |
-| `NOT on the iGPU: … SwiftShader` | Device not reaching Chromium: `docker exec tb-chest-counter ls -l /dev/dri` (renderD128 present, `crw-rw-rw-`?), `SCANNER_GPU=1` set, image rebuilt with the Vulkan drivers. |
+| `NOT on the iGPU: … SwiftShader` | Device not reaching Chromium: `docker exec tb-chest-counter ls -l /dev/dri` (renderD128 present, `crw-rw-rw-`?), `LOGIN_BRIDGE_GPU=1` set, image rebuilt with the Vulkan drivers. |
 | `… llvmpipe` / `no-webgl` | Wrong backend — must be `--use-angle=vulkan` (the app sets this). GL/EGL need X and won't work headless. |
 | Container won't start (device error) | `/dev/dri` missing in the LXC. Redo Steps 2–3, `pct stop/start`, confirm with `ls /dev/dri` inside the LXC. |
-| GPU works but CPU still a concern on a shared host | The compose `deploy.resources.limits.cpus` cap (default 4) coexists fine — a GPU-rendering scanner uses far less CPU anyway. |
+| GPU works but CPU still a concern on a shared host | The compose `deploy.resources.limits.cpus` cap (default 4) coexists fine — a GPU-rendering bridge uses far less CPU anyway. |
 
 ## Rolling back
 
-Set `SCANNER_GPU=0` and redeploy → headless software path, instantly. To remove
+Set `LOGIN_BRIDGE_GPU=0` and redeploy → headless software path, instantly. To remove
 passthrough entirely, drop the compose `devices:` block and the `lxc.*` lines
 (the udev rule is inert on its own).

@@ -3,7 +3,7 @@
 Chest *records* are keyed properly: `chest_records.chest_id` → `chests.id`, so a rename never loses data. What is keyed by **name** is the configuration layer, and that is where renames bite:
 
 - `src/config/event-catalog.ts` literals, `source_point_overrides.chest_name` / `.source_key`, `chest_type_overrides.chest_name`, `triumphal_chest_points.chest_name`, `merge_rules.from_value` / `.to_value`.
-- The game exposes **no chest id** — everything arrives as an OCR'd string — and `chests.id` is a per-install autoincrement that a committed source file can't reference. So a name is the only possible entry point; the fix is never "use ids in the catalog", it's that a stranded name must not be silent.
+- Chests are stored by **name** (the game's gift types are mapped to a chest name and a source name; rows from the OCR era arrived as read strings), and `chests.id` is a per-install autoincrement that a committed source file can't reference. So a name is the only possible entry point; the fix is never "use ids in the catalog", it's that a stranded name must not be silent.
 - Every one of those surfaces fails identically: **a zero that reads like a result.** That is why the Ragnarok/Jörmungandr rename went unnoticed for weeks.
 
 Three things now stand in the way, in order of when they fire:
