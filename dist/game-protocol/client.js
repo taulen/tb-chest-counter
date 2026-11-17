@@ -341,6 +341,14 @@ class GameClient {
     clanRecord(clanId = this.clanId) {
         return this.ask(15000, [[[[[clanId], ALL_FIELDS]]]]);
     }
+    /** Every event the account's realm knows, with which run is live (24001 — what the client asks at login). */
+    eventList(clanId = this.clanId, realmId = this.realmId) {
+        return this.ask(24001, [[[[this.playerId], [clanId], realmId], []]]);
+    }
+    /** An event's "Clan members" standings for the account's clan (38003 — the event window's first tab). */
+    eventStandings(type, run) {
+        return this.ask(38003, [[[type, run]]]);
+    }
     /**
      * The clan's headline numbers (25): might and wealth points — what the game
      * asks for whenever its clan window opens. Read-only.

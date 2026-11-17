@@ -1,6 +1,6 @@
 # Tin Man scores (Events → Ancients)
 
-Rise of the Ancients standings, pasted in by an admin after each summon. The card sits on the Ancients tab and follows the selected run. Code: [tinman-repo.ts](../src/data/repositories/tinman-repo.ts), [tinman-parse.ts](../src/data/tinman-parse.ts), [routes/tinman.ts](../src/web/routes/tinman.ts), [tinman-scores.js](../src/web/public/pages/tinman-scores.js).
+Rise of the Ancients standings, pasted in by an admin after each summon. **Since Nov 2026 the game's own standings are read every scan** (message 38003, the event window's Clan members tab — see [game-protocol.md](game-protocol.md#event-standings-v120)) and shown above this card, which then folds away; it stays for runs the game didn't give us. The card sits on the Ancients tab and follows the selected run. Code: [tinman-repo.ts](../src/data/repositories/tinman-repo.ts), [tinman-parse.ts](../src/data/tinman-parse.ts), [routes/tinman.ts](../src/web/routes/tinman.ts), [tinman-scores.js](../src/web/public/pages/tinman-scores.js).
 
 - **The in-game ranking is cumulative.** It never resets between summons, so each paste is a full snapshot. A player's points in a summon are the step from their previous pasted snapshot. Someone missing from a later snapshot keeps their last total.
 - **A missed summon is fine.** If summon 2 is never pasted, its points land on summon 3. The table shows S2 as "not uploaded" and S3 as "incl. S2". Re-pasting a summon replaces it, and deleting one moves its points to the next pasted summon.

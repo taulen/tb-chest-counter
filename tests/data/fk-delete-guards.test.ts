@@ -98,6 +98,10 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_clan_tech_history.clan_id',
     'game_clan_techs.clan_id',
     'game_clan_treasury.clan_id',
+    // Event standings from the game (v120).
+    'game_event_runs.clan_id',
+    'game_event_standing_history.clan_id',
+    'game_event_standings.clan_id',
     'game_gifts.clan_id',
     'game_ledger.clan_id',
     'game_map_objects.clan_id',
@@ -223,10 +227,6 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     'INSERT INTO chest_daily_summary (clan_id, member_id, game_day, chests, points) VALUES (?, ?, ?, 1, 5)',
   ).run(clanId, member.id, '2026-07-20');
-  db.prepare(
-    `INSERT INTO rename_suggestion_dismissals (clan_id, from_member_id, to_member_id, dismissed_at)
-     VALUES (?, ?, ?, ?)`,
-  ).run(clanId, member.id, member.id + 1000, now);
   db.prepare(
     `INSERT INTO member_guards_reports (clan_id, member_id, level, observed_date, created_by, created_at)
      VALUES (?, ?, 8, '2026-07-20', 2, ?)`,
@@ -412,6 +412,15 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
     `INSERT INTO game_clan_ranking_lists (clan_id, kind, captured_at, entries) VALUES (?, 7, ?, '[]')`,
   ).run(clanId, now);
   db.prepare(
+    `INSERT INTO game_event_runs (clan_id, event_type, run, occurrence, code, title, first_seen, last_read) VALUES (?, 1024, 1, 242, 'clandoom_epic', 'Rise of the Ancients', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_event_standings (clan_id, event_type, run, occurrence, player_id, points, rank, first_seen, updated_at) VALUES (?, 1024, 1, 242, 1, 52586600, 1, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_event_standing_history (clan_id, event_type, run, occurrence, player_id, points, rank, changed_at) VALUES (?, 1024, 1, 242, 1, 52586600, 1, ?)`,
+  ).run(clanId, now);
+  db.prepare(
     `INSERT INTO clan_scan_accounts (clan_id, account, player_id, source, updated_at) VALUES (?, 'tb:85164216', 1297080171719, 'scan', ?)`,
   ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
@@ -526,7 +535,6 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     // orphaned rows would then read as that clan's history.
     const residue: Record<string, string> = {
       chest_daily_summary: 'SELECT COUNT(*) c FROM chest_daily_summary WHERE clan_id = ?',
-      rename_suggestion_dismissals: 'SELECT COUNT(*) c FROM rename_suggestion_dismissals WHERE clan_id = ?',
       ct_player_ref: 'SELECT COUNT(*) c FROM ct_player_ref WHERE clan_id = ?',
       snapshot: 'SELECT COUNT(*) c FROM snapshot WHERE clan_id = ?',
       player_snapshot: 'SELECT COUNT(*) c FROM player_snapshot WHERE clan_id = ?',

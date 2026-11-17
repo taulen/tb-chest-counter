@@ -252,7 +252,9 @@ Each capture also, every cycle:
   name: a player merge rule naming the game name wins (its target is shown —
   Cyrillic game names merged into readable ones stay readable), then a name
   set by a manual rename; the game's spelling is always kept as an alias
-  (Nov 17 2026, after the sync renamed six merged members back). They get `clan_role`, are marked
+  (Nov 17 2026, after the sync renamed six merged members back). The Admin
+  review queue's "Likely Renames" (a might/level guesser, v92) was retired in
+  Nov 2026 (v120 drops its table): the game reports renames through the player id. They get `clan_role`, are marked
   seen and get the day's might + hero-level snapshot. With a roster of ≥ 5,
   every ACTIVE member the roster does not account for is removed (soft delete,
   `member.left_clan` audited with `linked: true|false`): players who left,
@@ -608,6 +610,9 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 61000 | `[[]]` | the signed-in account's own artifacts (ignores any argument) |
 | 312 | `[[[tileIds], [versions], [], []]]` | map objects per 20×20 tile; `tile = floor(y/20)*50 + floor(x/20)` |
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kinds 7 wealth, 1 might, 3 valor, 4 conquest, 5 crypts |
+| 24001 | `[[[[playerId], [clanId], realm], []]]` | every event (tournament) the realm knows: body[0][0] `[[type, run], occurrence, state, endsAt, …, startsAt]` (state 1 = running; endsAt 4294967295 = open-ended; occurrence = which time the event came round, e.g. Rise of the Ancients #242). body[0][1] lists `[type, run]` only |
+| 38003 | `[[[type, run]]]` | the event window's **Clan members** tab for the account's clan: body[0][0] `[[playerId], points, rank]` per member. Verified Nov 17 2026 against the game (SIK's Rise of the Ancients: Mr Freeze 52,586,600 #1, Daigor 50,047,641 #2, Fiin SK 2 49,899,136 #3) |
+| 38000 | `[[[type, run]]]` | the account's own event state: `[[occurrence, …], {tier: [n, points]}]` — not decoded further |
 | 15200 | `[[[clanId], …]]` | clans' headline: logo, tag, name, members / limit, might |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
@@ -616,6 +621,31 @@ sequential per clan, so gaps are losses. Ledger kinds seen: 4 donation (res 20
 Scientific Tractates, 31 Dragon Coins, 21–23 Boards/Cement/Steel, 74284 Magic
 Seeds), 7 Forest Essence (74285), 3 basic resources (2–6), 2 speed-up with item
 counts (2050 1h, 2051 3h, 2052 8h, 2053 15h, 2054 24h, 2055 72h).
+
+## Event standings (v121)
+
+Every scan, per clan ([`collectEvents`](../src/scheduler/game-protocol-phase.ts)):
+24001 lists the events the clan's account sees; each **running** one (state 1,
+not past its end) is asked for its Clan members tab (38003) — the requests the
+client sends when an event window opens, read-only, one per running event
+(~10 on a normal day). No per-event code: whatever runs is stored per run
+(`game_event_runs`, keyed type + run + occurrence, so a finished run keeps its
+standings), each player's latest points and rank (`game_event_standings`) and a
+`game_event_standing_history` row only when the points move (the first read is
+the baseline). An event without a clan-members tab answers nothing and is
+skipped. Raw replies are archived (`event_list`, `event`).
+
+Titles come from T44 (`names.json` `events`, "type,run" → code, title key,
+English title). A run maps onto the site's events by its English title against
+the catalog's `calendarNames` / name, case- and accent-insensitive
+([event-mapping.ts](../src/game-protocol/event-mapping.ts)): Rise of the Ancients
+and Ancients' Treasure → ancients, TRIALS OF OLYMPUS → olympus, DARK OMENS →
+dark-omens, Ragnarök → ragnarok. Anything else (Trade Routes, Summon Mastery,
+Prime Arena, …) is stored and shown under the game's own title.
+
+Shown: a "Standings from the game" card on the event's page (the run the
+selected timeframe covers; the hand-pasted standings card folds away under it),
+and **Events → In-game rankings** — the latest run of every event read.
 
 ## Names (static data)
 
@@ -637,6 +667,7 @@ Each table has its own id space:
 | 9 | units | f1 name, f2 tier (0–10), f4 icon, f10 strength, f12 health |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |
 | 62 | clan medals | f5 vector (f4 unlock text, f6 tier) |
+| 44 | events (tournaments), `$pairs` keyed `[[type, run], stage]` (asIdRecord joins it: "1024,1,1") | f10 config JSON → `info_title` ("global_tournament.client.value.clandoom_epic.info.title" = Rise of the Ancients) |
 | 52 | customizations: f1 kind (1 portrait frame, 2 city look) | f2 name vector, f4 visual JSON |
 | 75 | captains | `battler_unit.name.<key>` from f7's `animationLinkage` (`battler_<key>_unit`), else the f5 vector |
 | 11 | equipment, one row per item type AND quality grade | f3 vector |

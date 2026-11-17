@@ -11,6 +11,7 @@ exports.createGameRouter = createGameRouter;
  * not linked to a game player yet answers `{ linked: false }`, not an error.
  */
 const express_1 = require("express");
+const database_js_1 = require("../../data/database.js");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
@@ -24,6 +25,8 @@ const item_icons_js_1 = require("../../game-art/item-icons.js");
 const messages_js_1 = require("../../game-protocol/messages.js");
 const artifacts_js_1 = require("../../game-protocol/artifacts.js");
 const equipment_js_1 = require("../../game-protocol/equipment.js");
+const event_mapping_js_1 = require("../../game-protocol/event-mapping.js");
+const game_event_repo_js_1 = require("../../data/repositories/game-event-repo.js");
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
  * from the art pipeline), memoised per trees + art version.
@@ -50,6 +53,40 @@ function treesWithIcons(trees) {
     return value;
 }
 const CHANGES_DAYS = 90;
+/** A stored event run as the API sends it: the site's event key when the catalog knows the title. */
+function eventRunApi(r, nowSec) {
+    return {
+        type: r.eventType,
+        run: r.run,
+        occurrence: r.occurrence,
+        code: r.code,
+        title: r.title,
+        eventKey: (0, event_mapping_js_1.catalogKeyForEventTitle)(r.title),
+        startsAt: r.startsAt ? new Date(r.startsAt * 1000).toISOString() : null,
+        endsAt: r.endsAt ? new Date(r.endsAt * 1000).toISOString() : null,
+        live: (r.startsAt ?? 0) <= nowSec && (r.endsAt === null || r.endsAt > nowSec),
+        readAt: r.lastRead,
+    };
+}
+/** game player id → the name the site shows (the linked member's) and the member id, for event standings. */
+function playerNames(clanId, playerIds) {
+    const out = new Map();
+    if (!playerIds.length)
+        return out;
+    const db = (0, database_js_1.getDb)();
+    const ph = playerIds.map(() => '?').join(',');
+    const players = db.prepare(`SELECT player_id, name FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
+        .all(clanId, ...playerIds);
+    const members = db.prepare(`SELECT id, name, game_player_id FROM members WHERE clan_id = ? AND game_player_id IN (${ph})`)
+        .all(clanId, ...playerIds);
+    for (const id of playerIds)
+        out.set(id, { name: '', memberId: null });
+    for (const p of players)
+        out.set(p.player_id, { name: p.name, memberId: null });
+    for (const m of members)
+        out.set(m.game_player_id, { name: m.name, memberId: m.id });
+    return out;
+}
 function createGameRouter() {
     const router = (0, express_1.Router)();
     /** Profile header data for one member. */
@@ -224,6 +261,67 @@ function createGameRouter() {
                 grade: c.itemType ? (0, equipment_js_1.describeItem)(c.itemType, 0, [], names).grade : 0,
                 prevName: c.prevType ? (0, equipment_js_1.describeItem)(c.prevType, 0, [], names).name : null,
                 iconUrl: c.itemType ? iconUrl(mappings?.equipment, c.itemType) : null,
+            })),
+        });
+    });
+    /**
+     * Event standings read from the game (Events page): the latest run of every
+     * event the scans saw, with the site's event key where the catalog knows it,
+     * its window and its top three.
+     */
+    router.get('/events', (req, res) => {
+        const clanId = req.clanId;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const runs = (0, game_event_repo_js_1.latestEventRuns)(clanId).map((r) => {
+            const standings = (0, game_event_repo_js_1.getEventStandings)(clanId, r);
+            const names = playerNames(clanId, standings.slice(0, 3).map((s) => s.playerId));
+            return {
+                ...eventRunApi(r, nowSec),
+                members: standings.length,
+                withPoints: standings.filter((s) => s.points > 0).length,
+                top: standings.slice(0, 3).map((s) => ({ rank: s.rank, points: s.points, ...names.get(s.playerId) })),
+            };
+        });
+        res.json({ runs });
+    });
+    /**
+     * One run's standings: `?type=&run=&occurrence=`, or `?event=<catalog key>`
+     * (+ optional `from`/`to` ISO window: the run overlapping it; else the
+     * newest run of that event). Each row carries the member it links to and
+     * the points before its last change (null on the run's first read).
+     */
+    router.get('/events/standings', (req, res) => {
+        const clanId = req.clanId;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const q = req.query;
+        let run = null;
+        if (q.type && q.run && q.occurrence) {
+            const key = { eventType: Number(q.type), run: Number(q.run), occurrence: Number(q.occurrence) };
+            if ([key.eventType, key.run, key.occurrence].every(Number.isInteger))
+                run = (0, game_event_repo_js_1.getEventRun)(clanId, key);
+        }
+        else if (q.event) {
+            const from = q.from ? Date.parse(q.from) / 1000 : NaN;
+            const to = q.to ? Date.parse(q.to) / 1000 : NaN;
+            const candidates = (0, game_event_repo_js_1.listEventRuns)(clanId).filter((r) => (0, event_mapping_js_1.catalogKeyForEventTitle)(r.title) === q.event);
+            run = (Number.isFinite(from) && Number.isFinite(to)
+                ? candidates.find((r) => (r.startsAt ?? 0) < to && (r.endsAt ?? Number.MAX_SAFE_INTEGER) > from)
+                : candidates[0]) ?? null;
+        }
+        if (!run) {
+            res.json({ run: null, standings: [] });
+            return;
+        }
+        const standings = (0, game_event_repo_js_1.getEventStandings)(clanId, run);
+        const names = playerNames(clanId, standings.map((s) => s.playerId));
+        res.json({
+            run: eventRunApi(run, nowSec),
+            standings: standings.map((s) => ({
+                rank: s.rank,
+                points: s.points,
+                previousPoints: s.previousPoints,
+                changedAt: s.changedAt,
+                ...names.get(s.playerId),
             })),
         });
     });

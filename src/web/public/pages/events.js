@@ -37,6 +37,7 @@ import {
 import { renderPeriodNav } from '../lib/period-nav.js';
 import { formatResourceAmount, formatResourceCompact } from '../lib/resource-format.js';
 import { mountTinmanScores, prefetchTinmanScores } from './tinman-scores.js';
+import { fetchGameStandings, mountGameStandings, renderGameRankings } from './game-standings.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
@@ -83,6 +84,13 @@ let sort = { key: 'points', dir: 'desc' };
 let currentEventKey = null;
 let catalog = null;      // [{ key, name, order, description }]
 let cache = null;        // current EventBreakdown from the API
+// The run's standings read from the game (message 38003, every scan) for the
+// selected window — { run, standings } or null. When present they come first
+// and the pasted-standings card folds away (it stays for runs the game
+// didn't give us).
+let gameStandings = null;
+// The pseudo-tab listing every event the game reported (Events → In-game rankings).
+const IN_GAME_KEY = 'in-game';
 // Separate breakdown for the info-card (Finish Reward) recipients. Finish
 // rewards are awarded at day-end and scanned AFTER the occurrence's clamped
 // window, so the card is computed over a WIDER window — this run's start up to
@@ -126,6 +134,12 @@ export async function renderEvents(el, navigate, eventKey) {
   // catalog event flagged `live` by the calendar feed — so the page opens on the
   // event people are actually playing. Nothing live (rare quiet days, or a feed
   // outage) falls back to the first event in catalog order (Ancients).
+  if (wanted === IN_GAME_KEY) {
+    currentEventKey = IN_GAME_KEY;
+    el.innerHTML = `${eventTabsHtml(IN_GAME_KEY)}<div class="game-rankings-mount"></div>`;
+    await renderGameRankings(el.querySelector('.game-rankings-mount'));
+    return;
+  }
   const match = catalog.find((e) => e.key === wanted);
   currentEventKey = match ? match.key : defaultEventKey();
 
@@ -218,7 +232,7 @@ function eventTabsHtml(activeKey) {
       const active = e.key === activeKey ? 'is-active' : '';
       return `<a class="resources-tab ${active}" href="${href}"><span class="event-tab-name">${esc(tGame(e.name))}</span>${eventScheduleTag(e)}</a>`;
     })
-    .join('')}</div>`;
+    .join('')}<a class="resources-tab ${activeKey === IN_GAME_KEY ? 'is-active' : ''}" href="#events/${IN_GAME_KEY}"><span class="event-tab-name">${esc(t('In-game rankings'))}</span></a></div>`;
 }
 
 // Small schedule sub-line under an event tab: "Live now" while a run is in
@@ -287,6 +301,7 @@ async function reload() {
   if (to) qs.set('to', to);
   // Whether this run has pasted scores picks the tab it opens on. Read
   // alongside the breakdown; the scores card reuses the response.
+  const gamePending = fetchGameStandings(currentEventKey, from, to);
   const scoresPending = SCORES_EVENT_KEYS.has(currentEventKey)
     ? prefetchTinmanScores(currentEventKey, scoresDateForSelection()).catch(() => null)
     : Promise.resolve(null);
@@ -302,7 +317,8 @@ async function reload() {
   }
   // null (couldn't tell) keeps the pick: the card shows its own load error.
   const hasScores = await scoresPending;
-  eventsView = eventsViewPick === 'scores' && hasScores === false ? 'participants' : eventsViewPick;
+  gameStandings = await gamePending;
+  eventsView = eventsViewPick === 'scores' && hasScores === false && !gameStandings ? 'participants' : eventsViewPick;
   await loadFinishReward(from, to);
   await loadEssence(from, to);
   // Run-over-run history. Independent of the selected occurrence — it is
@@ -893,9 +909,11 @@ function paint() {
         { key: 'scores', label: currentEventKey === 'dark-omens' ? t('Damage') : t('Scores') },
         { key: 'participants', label: t('Participants ({count})', { count: cache.uniqueParticipants || 0 }) },
       ], eventsView)}
-      ${viewPanelHtml(VIEW_GROUP, 'scores', eventsView, '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>')}
+      ${viewPanelHtml(VIEW_GROUP, 'scores', eventsView, `<div class="game-standings-mount"></div>${gameStandings
+        ? `<details class="card-collapsible events-paste-fold" data-section-key="events-paste"><summary>${esc(t('Standings pasted by hand'))}<span class="card-header-hint">${esc(t('Not needed while the game\'s standings are read every scan.'))}</span></summary><div class="tinman-mount"></div></details><div class="tinman-below-mount"></div>`
+        : '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'}`)}
       ${viewPanelHtml(VIEW_GROUP, 'participants', eventsView, participantsHtml)}`
-    : participantsHtml;
+    : `<div class="game-standings-mount"></div>${participantsHtml}`;
 
   el.innerHTML = `
     ${eventTabsHtml(currentEventKey)}
@@ -913,6 +931,7 @@ function paint() {
 
   wire(el);
   wireViewTabs(el, VIEW_GROUP, (key) => { eventsView = key; eventsViewPick = key; });
+  mountGameStandings(el.querySelector('.game-standings-mount'), gameStandings);
   if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
       event: currentEventKey,

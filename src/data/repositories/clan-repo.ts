@@ -723,7 +723,6 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM chest_daily_summary WHERE clan_id = ?').run(id);
     // Same: no FK (see migration v92), keyed by member ids a reused clan id would
     // hand to unrelated players.
-    db.prepare('DELETE FROM rename_suggestion_dismissals WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM clan_goal_history WHERE clan_id = ?').run(id);
 
     // The ChestTracker ingest tables carry a clan_id with NO foreign key to
@@ -805,6 +804,10 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     // The clan's logo and rankings (v117).
     db.prepare('DELETE FROM game_clan_rankings WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_clan_ranking_lists WHERE clan_id = ?').run(id);
+    // Event standings from the game (v120).
+    db.prepare('DELETE FROM game_event_standing_history WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_event_standings WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_event_runs WHERE clan_id = ?').run(id);
     // The scanner account (v118).
     db.prepare('DELETE FROM clan_scan_accounts WHERE clan_id = ?').run(id);
     // In-game chat (v104).

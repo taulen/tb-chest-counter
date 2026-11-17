@@ -30,6 +30,7 @@ const client_js_1 = require("../game-protocol/client.js");
 const session_health_js_1 = require("./session-health.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
+const game_event_repo_js_1 = require("../data/repositories/game-event-repo.js");
 const game_clan_repo_js_1 = require("../data/repositories/game-clan-repo.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
@@ -238,6 +239,43 @@ async function collectRankings(clanId, d, now, ask) {
  * game sends whenever its clan window opens. Each one is isolated; whatever was
  * read is stored, a stats row per scan. Returns a summary for the log line.
  */
+/**
+ * Event standings, every scan: the events the account's realm runs (24001)
+ * and, for each running one, its "Clan members" tab (38003) — the requests
+ * the client sends when the event window opens, read-only. No per-event code:
+ * whatever runs is read and stored per run (type, run, occurrence), titled
+ * from T44. An event without a clan-members tab answers nothing or empty and
+ * is skipped. Raw replies are archived (kind 'event', one per run per game
+ * day) so a field decoded later can be re-read.
+ */
+async function collectEvents(clanId, d, now) {
+    const listFrame = await d.client.eventList(d.client.clanId || d.record.clanId, d.client.realmId);
+    (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'event_list', 0, d.gameDate, listFrame.body, now);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const running = (0, messages_js_1.parseEventList)(listFrame).filter((e) => (0, messages_js_1.isEventRunning)(e, nowSec));
+    let read = 0;
+    let rows = 0;
+    let moved = 0;
+    for (const e of running) {
+        const meta = d.names.events?.[`${e.type},${e.run}`];
+        try {
+            const frame = await d.client.eventStandings(e.type, e.run);
+            const standings = (0, messages_js_1.parseEventStandings)(frame);
+            read++;
+            if (standings.length) {
+                (0, game_event_repo_js_1.saveEventRun)(clanId, e, { code: meta?.code ?? '', title: meta?.title ?? '' }, now);
+                moved += (0, game_event_repo_js_1.saveEventStandings)(clanId, { eventType: e.type, run: e.run, occurrence: e.occurrence }, standings, now);
+                (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'event', e.type * 1000 + e.run, d.gameDate, frame.body, now);
+                rows += standings.length;
+            }
+        }
+        catch {
+            // Not every event has a clan-members tab; nothing to keep.
+        }
+        await pause();
+    }
+    return `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)`;
+}
 async function collectClan(clanId, d, now) {
     const rec = d.record;
     const notes = [];
@@ -356,6 +394,12 @@ async function collectExtras(clanId, d, clanFrame) {
     }
     catch (err) {
         parts.push(`clan pass failed: ${String(err)}`);
+    }
+    try {
+        parts.push(await collectEvents(clanId, d, now));
+    }
+    catch (err) {
+        parts.push(`events failed: ${String(err)}`);
     }
     try {
         // A parser added or changed since the replies were archived replays the
