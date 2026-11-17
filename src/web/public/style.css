@@ -10477,3 +10477,27 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .tl-list { padding: 2px 10px 6px; }
   .tl-entry { grid-template-columns: 36px 24px minmax(0, 1fr); gap: 6px; font-size: 12.5px; }
 }
+
+/* ── My Clan → Joins & leaves (pages/clan-roster.js) ─────────────────────────
+   The Timeline's rows with the player's framed portrait between the glyph and
+   the line. Theme tokens only. */
+.rc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px 4px; }
+.rc-tools .tl-chips { padding: 0; }
+.rc-search { flex: 1 1 200px; max-width: 280px; margin-left: auto; }
+.rc-entry { grid-template-columns: 42px 26px 34px minmax(0, 1fr); align-items: center; }
+.rc-entry .tl-time { padding-top: 0; }
+.rc-avatar { display: flex; align-items: center; justify-content: center; min-height: 26px; line-height: 0; }
+.rc-avatar.is-empty::before { content: ''; width: 24px; height: 24px; border-radius: 50%; background: var(--subtle-bg-strong); }
+.rc-entry.is-site .tl-body { color: var(--text-secondary); }
+.rc-as,
+.rc-note { color: var(--text-muted); font-size: 12px; }
+.rc-source { margin: 0; padding: 0 16px 14px; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.rc-source:empty { display: none; }
+
+@media (max-width: 640px) {
+  .rc-tools { padding: 10px 10px 2px; gap: 6px; }
+  .rc-search { flex-basis: 100%; max-width: none; margin-left: 0; }
+  .rc-entry { grid-template-columns: 36px 20px 34px minmax(0, 1fr); }
+  .rc-entry .tl-glyph { width: 20px; height: 20px; font-size: 11px; }
+  .rc-source { padding: 0 10px 12px; }
+}

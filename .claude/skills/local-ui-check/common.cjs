@@ -14,6 +14,7 @@ const PAGES = {
   leaderboard: '/#leaderboard',
   performance: '/#performance',
   clan: '/#clan',
+  clanroster: '/#clan/roster',
   members: '/#members',
   chats: '/#chats',
   might: '/#might',

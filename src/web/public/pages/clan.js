@@ -15,6 +15,8 @@
 //           under the list when outside it), its rank by day; loaded when the
 //           tab opens (/api/game/clan/rankings). Treasury: the capital's stock
 //           per item, each with its own game icon. History: one row per game day.
+//           Joins & leaves: who joined, left or came back, newest first by game
+//           day (pages/clan-roster.js, loaded when the tab opens).
 //
 // The trees come from /api/game/tech-trees (the same file the profile uses);
 // only the clan trees the game's clan research holds are shown — tree 17
@@ -27,6 +29,7 @@ import { loadGameArt, resourceIconUrl } from '../lib/game-art.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js';
 import { renderTriumphal } from './triumphal.js';
+import { mountRoster, rosterPanelHtml } from './clan-roster.js';
 
 const PHONE = '(max-width: 640px)';
 const CHANGES_SHOWN = 60;
@@ -44,6 +47,7 @@ const CLAN_TABS = [
   { key: 'rankings', label: () => t('Rankings') },
   { key: 'treasury', label: () => t('Treasury') },
   { key: 'history', label: () => t('History') },
+  { key: 'roster', label: () => t('Joins & leaves') },
   { key: 'triumphal', label: () => t('Triumphal Chests') },
 ];
 
@@ -60,6 +64,22 @@ async function mountTriumphal(content) {
   if (box) await renderTriumphal(box);
 }
 
+/** The clan data My Clan is showing (the Rankings panel pins this clan from it). */
+let clanData = null;
+
+/**
+ * Fill the panels that load their own data when they first show. Run from
+ * the router's switch (switchClanTab) or the render, never straight from a
+ * tab click: the click changes the address, and the router's navigation then
+ * aborts every read started before it — a panel fetched from the click itself
+ * came back "Couldn't load".
+ */
+async function mountPanel(content, key) {
+  if (key === 'rankings' && clanData) await mountRankings(content, clanData);
+  else if (key === 'roster') await mountRoster(content);
+  else if (key === 'triumphal') await mountTriumphal(content);
+}
+
 /**
  * Switch to a tab while My Clan is already on screen: only the panel changes,
  * nothing above it moves. False when My Clan isn't mounted (render it then).
@@ -69,7 +89,7 @@ export async function switchClanTab(content, key) {
   view.tab = key;
   const tab = content.querySelector(`#clan-view-tab-${key}`);
   if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
-  if (key === 'triumphal') await mountTriumphal(content);
+  await mountPanel(content, key);
   return true;
 }
 
@@ -118,6 +138,7 @@ function languageName(code) {
 
 export async function renderClan(content) {
   rankingsPromise = null;
+  clanData = null;
   content.innerHTML =`<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div>`;
   let data;
   let trees = null;
@@ -155,26 +176,29 @@ export async function renderClan(content) {
       ${viewPanelHtml('clan-view', 'rankings', view.tab, '<div data-clan-rankings></div>')}
       ${viewPanelHtml('clan-view', 'treasury', view.tab, treasuryHtml(data.treasury))}
       ${viewPanelHtml('clan-view', 'history', view.tab, historyHtml(data.history || []))}
+      ${viewPanelHtml('clan-view', 'roster', view.tab, rosterPanelHtml())}
       ${viewPanelHtml('clan-view', 'triumphal', view.tab, '<div data-clan-triumphal></div>')}
     </div>`;
 
+  clanData = data;
   wireViewTabs(content, 'clan-view', (key) => {
     view.tab = key;
-    if (key === 'rankings') mountRankings(content, data);
     // The tab's address, so a reload or a shared link lands on it; the router
-    // sees My Clan mounted and changes only the panel (switchClanTab).
+    // sees My Clan mounted, changes only the panel and fills it (switchClanTab).
     if (window.location.hash !== tabHash(key)) window.location.hash = tabHash(key);
   });
   wireTrees(content, clanTrees, levels, trees);
-  if (view.tab === 'rankings') mountRankings(content, data);
   if (view.tab === 'triumphal') await mountTriumphal(content);
+  else mountPanel(content, view.tab);
   // The rank stat card opens the Rankings tab on that ranking.
   content.querySelectorAll('[data-goto-ranking]').forEach((el) => el.addEventListener('click', () => {
     view.rankKind = Number(el.dataset.gotoRanking);
     view.rankPage = null;
     const tab = content.querySelector('#clan-view-tab-rankings');
-    if (tab?.getAttribute('aria-selected') === 'true') mountRankings(content, data, true);
-    else tab?.click();
+    // Already loaded: redraw on that ranking now (no fetch); else the router's
+    // switch loads it, on that ranking.
+    if (content.querySelector('[data-clan-rankings]')?.dataset.mounted) mountRankings(content, data, true);
+    if (tab?.getAttribute('aria-selected') !== 'true') tab?.click();
     tab?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }));
 }

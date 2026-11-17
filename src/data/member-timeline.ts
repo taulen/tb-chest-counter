@@ -15,6 +15,7 @@
  * Pure: the repo gathers the rows, the route adds the URLs it needs.
  */
 import { gameDateFor } from '../utils/game-day.js';
+import type { RosterChange } from './roster-changes.js';
 
 export type TimelineKind =
   | 'joined' | 'left' | 'renamed' | 'merged' | 'rank'
@@ -55,11 +56,14 @@ export interface PlayerHistoryRow {
 }
 
 export interface TimelineSources {
-  /** The game's join time (unix seconds), or null. */
-  joinedAt: number | null;
+  /**
+   * The member's joins, returns, restores and leaves, as My Clan → Joins &
+   * leaves derives them (roster-changes.ts) — one rule set for both views.
+   */
+  moves: RosterChange[];
   /** game_player_history, oldest first (the first row is the baseline). */
   playerHistory: PlayerHistoryRow[];
-  /** Site actions about this member (manual renames, merges into it, left / restored). */
+  /** Site actions about this member (manual renames, merges into it). */
   audit: Array<{ at: string; action: string; details: Record<string, unknown> }>;
   /** Research / talent level changes, baseline already left out. */
   techChanges: Array<{ at: string; techId: number; level: number; prevLevel: number | null }>;
@@ -108,10 +112,12 @@ export function buildTimeline(src: TimelineSources, look: TimelineLookups, rollo
     out.push({ key: `${kind}:${id}`, kind, group: TIMELINE_GROUPS[kind], at, day: dayOf(at), ...fields });
   };
 
-  // ── The clan ──
-  if (src.joinedAt) {
-    const at = new Date(src.joinedAt * 1000).toISOString();
-    add('joined', at, String(src.joinedAt));
+  // ── The clan: joins and leaves the way My Clan → Joins & leaves has them ──
+  for (const m of src.moves) {
+    const fields = { asName: m.asName };
+    if (m.kind === 'left') add('left', m.at, m.key, { ...fields, site: m.source === 'site' });
+    else if (m.kind === 'restored') add('joined', m.at, m.key, { ...fields, restored: true });
+    else add('joined', m.at, m.key, { ...fields, returned: m.kind === 'returned', prevLeftAt: m.prevLeftAt, seenSince: m.seenSince });
   }
   for (const a of src.audit) {
     const d = a.details;
@@ -119,10 +125,6 @@ export function buildTimeline(src: TimelineSources, look: TimelineLookups, rollo
       add('renamed', a.at, `admin:${a.at}`, { by: 'admin', from: typeof d.from === 'string' ? d.from : null, to: d.newName });
     } else if (a.action === 'merge_player' && typeof d.from === 'string') {
       add('merged', a.at, `${a.at}:${d.from}`, { from: d.from });
-    } else if (a.action === 'member.left_clan') {
-      add('left', a.at, a.at);
-    } else if (a.action === 'restore_member') {
-      add('joined', a.at, `restored:${a.at}`, { restored: true });
     }
   }
 
@@ -247,8 +249,31 @@ function byNewest(a: TimelineEntry, b: TimelineEntry): number {
 }
 
 /** The cursor of an entry: the next page starts after it. */
-export function timelineCursor(e: TimelineEntry): string {
+export function timelineCursor(e: { at: string; key: string }): string {
   return `${e.at}|${e.key}`;
+}
+
+/**
+ * One page of a newest-first list (by time, then key): entries after `before`
+ * (a cursor from the previous page), at most `limit`. `next` is the cursor to
+ * ask with for the page after, or null at the start. Entries arriving at the
+ * top never shift what the next page returns. Also pages My Clan → Joins &
+ * leaves (roster-changes.ts).
+ */
+export function pageNewestFirst<T extends { at: string; key: string }>(
+  list: T[],
+  opts: { before?: string | null; limit: number },
+): { entries: T[]; next: string | null } {
+  let rest = list;
+  if (opts.before) {
+    const sep = opts.before.indexOf('|');
+    const at = sep < 0 ? opts.before : opts.before.slice(0, sep);
+    const key = sep < 0 ? '' : opts.before.slice(sep + 1);
+    rest = list.filter((e) => e.at < at || (e.at === at && e.key > key));
+  }
+  const page = rest.slice(0, Math.max(1, opts.limit));
+  const next = rest.length > page.length ? timelineCursor(page[page.length - 1]) : null;
+  return { entries: page, next };
 }
 
 /**
@@ -260,15 +285,6 @@ export function pageTimeline(
   entries: TimelineEntry[],
   opts: { before?: string | null; groups?: ReadonlySet<TimelineGroup> | null; limit: number },
 ): { entries: TimelineEntry[]; next: string | null; total: number } {
-  let list = opts.groups?.size ? entries.filter((e) => opts.groups!.has(e.group)) : entries;
-  const total = list.length;
-  if (opts.before) {
-    const sep = opts.before.indexOf('|');
-    const at = sep < 0 ? opts.before : opts.before.slice(0, sep);
-    const key = sep < 0 ? '' : opts.before.slice(sep + 1);
-    list = list.filter((e) => e.at < at || (e.at === at && e.key > key));
-  }
-  const page = list.slice(0, Math.max(1, opts.limit));
-  const next = list.length > page.length ? timelineCursor(page[page.length - 1]) : null;
-  return { entries: page, next, total };
+  const list = opts.groups?.size ? entries.filter((e) => opts.groups!.has(e.group)) : entries;
+  return { ...pageNewestFirst(list, opts), total: list.length };
 }

@@ -38,6 +38,8 @@ const img = (url, cls = 'tl-img') => (url ? `<img class="${cls}" src="${esc(url)
 const glyph = (g, cls = '') => `<span class="tl-glyph ${cls}" aria-hidden="true">${g}</span>`;
 const strong = (s) => `<strong>${esc(s)}</strong>`;
 const change = (from, to) => `${esc(String(from))} → ${strong(String(to))}`;
+/** " (as Endless Sky ツ)": the name on the record when it isn't the member's own. */
+const asNameHtml = (e) => (e.asName ? ` <span class="rc-as">${esc(t('as {name}', { name: e.asName }))}</span>` : '');
 
 /** One sub-line of a folded entry. */
 function itemHtml(kind, it) {
@@ -64,8 +66,10 @@ function itemHtml(kind, it) {
 /** [icon html, text html, folded items html] for an entry. */
 function entryParts(e) {
   switch (e.kind) {
-    case 'joined': return [glyph('↪', 'is-good'), e.restored ? t('Restored on the site') : t('Joined the clan'), ''];
-    case 'left': return [glyph('↩', 'is-bad'), t('Left the clan'), ''];
+    // The clan's Joins & leaves list, this member's part of it (same rules).
+    case 'joined': return [glyph(e.returned || e.restored ? '↻' : '↪', e.restored ? '' : e.returned ? 'is-gold' : 'is-good'),
+      (e.restored ? t('Restored on the site') : e.returned ? t('Came back to the clan') : t('Joined the clan')) + asNameHtml(e), ''];
+    case 'left': return [glyph('↩', 'is-bad'), (e.site ? t('Marked as left on the site') : t('Left the clan')) + asNameHtml(e), ''];
     case 'renamed': return [glyph('✎'), e.by === 'game'
       ? t('Renamed in the game: {from} → {to}', { from: esc(e.from), to: strong(e.to) })
       : t('Renamed on the site to {to}', { to: strong(e.to) }), ''];

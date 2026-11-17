@@ -41,6 +41,10 @@ import {
   getLatestClanStats,
 } from '../../data/repositories/game-clan-repo.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
+import { buildRosterChanges, countRosterChanges, filterRosterChanges } from '../../data/roster-changes.js';
+import { loadRosterSources, rosterReadSince } from '../../data/repositories/roster-changes-repo.js';
+import { pageNewestFirst } from '../../data/member-timeline.js';
+import { loadConfig } from '../../config/index.js';
 import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
 import { loadGameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
@@ -82,6 +86,10 @@ function treesWithIcons(trees: TechTrees): unknown {
 }
 
 const CHANGES_DAYS = 90;
+/** Joins & leaves: a page, the most one request may ask for, and the header's window. */
+const ROSTER_PAGE_DEFAULT = 50;
+const ROSTER_PAGE_MAX = 200;
+const ROSTER_COUNT_DAYS = 30;
 
 /** A stored event run as the API sends it: the site's event key when the catalog knows the title. */
 function eventRunApi(r: StoredEventRun, nowSec: number) {
@@ -442,6 +450,42 @@ export function createGameRouter(): Router {
         };
       }),
       history: getClanRankHistory(clanId, since),
+    });
+  });
+
+  /**
+   * Joins & leaves (My Clan): who joined the clan, who left, who came back,
+   * newest first — the rules are data/roster-changes.ts's. `?filter=joined|left`,
+   * `?q=` part of a name, `?before=` the cursor of the last entry shown,
+   * `?limit=`. `counts` are the last 30 days' whatever the filter, and
+   * `readSince` is the game's first read of the roster (join times exist for
+   * everyone in the clan from then on). Each entry carries the player's
+   * portrait and frame when the game has them.
+   */
+  router.get('/clan/roster-changes', (req, res) => {
+    const clanId = req.clanId!;
+    const all = buildRosterChanges(loadRosterSources(clanId), loadConfig().gameDayRolloverUtcHour);
+    const filter = req.query.filter === 'joined' || req.query.filter === 'left' ? req.query.filter : null;
+    const query = typeof req.query.q === 'string' ? req.query.q.slice(0, 80) : '';
+    const list = filterRosterChanges(all, { filter, query });
+    const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit ?? ''), 10) || ROSTER_PAGE_DEFAULT, 1), ROSTER_PAGE_MAX);
+    const page = pageNewestFirst(list, { before: typeof req.query.before === 'string' ? req.query.before.slice(0, 200) : null, limit });
+    // The portrait: a join's own player (an alt's is its own), else the member's.
+    const byMember = getGamePlayersByMember(clanId);
+    const byPlayer = new Map([...byMember.values()].map((p) => [p.playerId, p]));
+    const profileOf = (e: (typeof page.entries)[number]) => (e.playerId !== null
+      ? byPlayer.get(e.playerId) ?? getGamePlayer(clanId, e.playerId)
+      : e.memberId !== null ? byMember.get(e.memberId) ?? null : null);
+    const since = new Date(Date.now() - ROSTER_COUNT_DAYS * 86_400_000).toISOString();
+    res.json({
+      entries: page.entries.map((e) => {
+        const p = profileOf(e);
+        return { ...e, avatarUrl: p?.avatarUrl ?? null, frameUrl: p?.frameUrl ?? null, heroLevel: p?.heroLevel ?? null };
+      }),
+      next: page.next,
+      total: list.length,
+      counts: { days: ROSTER_COUNT_DAYS, ...countRosterChanges(all, since) },
+      readSince: rosterReadSince(clanId),
     });
   });
 

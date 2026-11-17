@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIGHT_MOVE_RATIO = exports.TIMELINE_GROUPS = void 0;
 exports.buildTimeline = buildTimeline;
 exports.timelineCursor = timelineCursor;
+exports.pageNewestFirst = pageNewestFirst;
 exports.pageTimeline = pageTimeline;
 /**
  * A member's history as one timeline (profile → Timeline): everything the
@@ -39,10 +40,15 @@ function buildTimeline(src, look, rolloverUtcHour) {
     const add = (kind, at, id, fields = {}) => {
         out.push({ key: `${kind}:${id}`, kind, group: exports.TIMELINE_GROUPS[kind], at, day: dayOf(at), ...fields });
     };
-    // ── The clan ──
-    if (src.joinedAt) {
-        const at = new Date(src.joinedAt * 1000).toISOString();
-        add('joined', at, String(src.joinedAt));
+    // ── The clan: joins and leaves the way My Clan → Joins & leaves has them ──
+    for (const m of src.moves) {
+        const fields = { asName: m.asName };
+        if (m.kind === 'left')
+            add('left', m.at, m.key, { ...fields, site: m.source === 'site' });
+        else if (m.kind === 'restored')
+            add('joined', m.at, m.key, { ...fields, restored: true });
+        else
+            add('joined', m.at, m.key, { ...fields, returned: m.kind === 'returned', prevLeftAt: m.prevLeftAt, seenSince: m.seenSince });
     }
     for (const a of src.audit) {
         const d = a.details;
@@ -51,12 +57,6 @@ function buildTimeline(src, look, rolloverUtcHour) {
         }
         else if (a.action === 'merge_player' && typeof d.from === 'string') {
             add('merged', a.at, `${a.at}:${d.from}`, { from: d.from });
-        }
-        else if (a.action === 'member.left_clan') {
-            add('left', a.at, a.at);
-        }
-        else if (a.action === 'restore_member') {
-            add('joined', a.at, `restored:${a.at}`, { restored: true });
         }
     }
     // ── The player record (402), first row = baseline ──
@@ -189,21 +189,31 @@ function timelineCursor(e) {
     return `${e.at}|${e.key}`;
 }
 /**
+ * One page of a newest-first list (by time, then key): entries after `before`
+ * (a cursor from the previous page), at most `limit`. `next` is the cursor to
+ * ask with for the page after, or null at the start. Entries arriving at the
+ * top never shift what the next page returns. Also pages My Clan → Joins &
+ * leaves (roster-changes.ts).
+ */
+function pageNewestFirst(list, opts) {
+    let rest = list;
+    if (opts.before) {
+        const sep = opts.before.indexOf('|');
+        const at = sep < 0 ? opts.before : opts.before.slice(0, sep);
+        const key = sep < 0 ? '' : opts.before.slice(sep + 1);
+        rest = list.filter((e) => e.at < at || (e.at === at && e.key > key));
+    }
+    const page = rest.slice(0, Math.max(1, opts.limit));
+    const next = rest.length > page.length ? timelineCursor(page[page.length - 1]) : null;
+    return { entries: page, next };
+}
+/**
  * One page of a built timeline: entries after `before` (a cursor from the
  * previous page), only the given groups, at most `limit`. `next` is the
  * cursor to ask with for the page after, or null at the start.
  */
 function pageTimeline(entries, opts) {
-    let list = opts.groups?.size ? entries.filter((e) => opts.groups.has(e.group)) : entries;
-    const total = list.length;
-    if (opts.before) {
-        const sep = opts.before.indexOf('|');
-        const at = sep < 0 ? opts.before : opts.before.slice(0, sep);
-        const key = sep < 0 ? '' : opts.before.slice(sep + 1);
-        list = list.filter((e) => e.at < at || (e.at === at && e.key > key));
-    }
-    const page = list.slice(0, Math.max(1, opts.limit));
-    const next = list.length > page.length ? timelineCursor(page[page.length - 1]) : null;
-    return { entries: page, next, total };
+    const list = opts.groups?.size ? entries.filter((e) => opts.groups.has(e.group)) : entries;
+    return { ...pageNewestFirst(list, opts), total: list.length };
 }
 //# sourceMappingURL=member-timeline.js.map
