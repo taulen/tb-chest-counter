@@ -2,8 +2,8 @@
  * The two primitives behind the Movers card.
  *
  * Both exist to stop a watchlist crying wolf. getMemberWindowComparison has to
- * include people the leaderboard deliberately hides (a member swept for
- * inactivity is the single largest drop on any board, and getLeaderboard filters
+ * include people the leaderboard deliberately hides (a member who has left the
+ * clan is the single largest drop on any board, and getLeaderboard filters
  * them out) and has to carry enough context to exclude people whose "drop" is an
  * artefact (someone who joined mid-window has an empty previous window because
  * they weren't there). getScanCoverage answers the question that invalidates the
@@ -82,7 +82,7 @@ describe('getMemberWindowComparison', () => {
     expect(row).toMatchObject({ name: 'Vanished', points: 0, prevPoints: 500 });
   });
 
-  it('includes a member the inactivity sweep has already removed', () => {
+  it('includes a member who has already left the clan (is_active = 0)', () => {
     // getLeaderboard filters is_active = 1 even with includeAllMembers, so this
     // member would be absent from both windows there.
     const id = member('Swept', BASE - 90 * DAY, 0);

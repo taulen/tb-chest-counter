@@ -10,7 +10,6 @@ exports.DEFAULT_CONFIG = {
     webEnabled: true,
     webExternalUrl: '',
     gameDayRolloverUtcHour: 17, // Game's fixed global day boundary (17:00 UTC)
-    memberInactivityDays: 7, // Soft-remove members unseen for this many days (0 = disabled)
     chestPointValues: {
         [enums_js_1.ChestType.COMMON]: 1,
         [enums_js_1.ChestType.UNCOMMON]: 2,

@@ -35,8 +35,6 @@ function envToConfigInput(): Record<string, unknown> {
 
     gameDayRolloverUtcHour: process.env.GAME_DAY_ROLLOVER_UTC_HOUR,
 
-    memberInactivityDays: process.env.MEMBER_INACTIVITY_DAYS,
-
     chestPointValues: process.env.CHEST_POINT_VALUES,
 
     logLevel: process.env.LOG_LEVEL,

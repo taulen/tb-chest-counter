@@ -16,7 +16,6 @@ import { computeGameWindowDates } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   formatResourceAmount, formatResourceCompact, resourceIconOnly, resourceTabsHtml,
-  isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
 
 const PAGE_SIZE = 25;
@@ -45,13 +44,8 @@ let periodOffset = 0;    // 0 = current period, 1 = previous, …
 let cache = null;        // { columns: [{id,name,slug}], rows: [{memberId,name,sent:Map}] }
 let mountedEl = null;
 
-export async function renderResourcesTotals(el, navigate) {
+export async function renderResourcesTotals(el) {
   // Read-only dashboard — visible to any authenticated clan member.
-  if (!(await isResourcesEnabledForActiveClan())) {
-    if (typeof navigate === 'function') navigate('dashboard');
-    return;
-  }
-
   mountedEl = el;
   el.innerHTML = `${resourceTabsHtml('totals')}<div class="empty-state"><p>${t('Loading totals…')}</p></div>`;
   await reload();

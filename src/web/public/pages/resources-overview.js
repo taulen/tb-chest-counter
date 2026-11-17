@@ -23,7 +23,7 @@ import { computeGameWindowDates, gameWeekStartOf, weekLengthDays } from '../lib/
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   formatResourceAmount, resourceIconOnly, resourceTabsHtml,
-  resourceSparklineSvg, isResourcesEnabledForActiveClan,
+  resourceSparklineSvg,
 } from '../lib/resource-format.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 
@@ -281,17 +281,9 @@ async function fetchData() {
 
 // ─── Render entry point ─────────────────────────────────────────────────────
 
-export async function renderResourcesOverview(el, navigate) {
+export async function renderResourcesOverview(el) {
   // Read-only dashboard — visible to any authenticated clan member. Admin-only
   // controls (edit / delete) live on the separate Admin tab.
-
-  // Bounce to the dashboard if the active clan doesn't use resources (a
-  // superadmin can land here with a stale hash after switching clans).
-  if (!(await isResourcesEnabledForActiveClan())) {
-    if (typeof navigate === 'function') navigate('dashboard');
-    return;
-  }
-
   mountedEl = el;
   el.innerHTML = `${resourceTabsHtml('overview')}<div class="empty-state"><p>${t('Loading resources…')}</p></div>`;
 

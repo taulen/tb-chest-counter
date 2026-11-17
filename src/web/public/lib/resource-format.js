@@ -1,4 +1,4 @@
-// Shared resource formatting + feature-guard helpers.
+// Shared resource formatting helpers.
 //
 // Lifted out of pages/resources.js so the Overview dashboard, the Admin
 // ledger, and the member-detail resources section all format amounts,
@@ -6,7 +6,6 @@
 // `clan-speedup` amounts are stored in HOURS and render as `Xd Yh`.
 
 import { esc } from './ui.js';
-import { api } from './api.js';
 import { getCurrentUser } from './state.js';
 import { t, tGame } from './i18n.js';
 
@@ -123,26 +122,4 @@ export function resourceSparklineSvg(values) {
     <polygon class="resource-spark-area" points="0,28 ${pts} 100,28"></polygon>
     <polyline class="resource-spark-line" points="${pts}"></polyline>
   </svg>`;
-}
-
-/**
- * Whether the currently-active clan has resource tracking enabled.
- *
- * A superadmin can switch the header clan-picker to a clan that has
- * resources disabled while sitting on the Resources page; the switch
- * reloads with the stale #resources hash. The render functions call this
- * and bounce to the dashboard when it returns false, mirroring how the
- * ChestTracker tab guards itself (external.js). Any failure resolves to
- * false so we never strand the user on a feature the clan doesn't use.
- */
-export async function isResourcesEnabledForActiveClan() {
-  try {
-    const data = await api('/clans');
-    const clans = Array.isArray(data?.clans) ? data.clans : [];
-    const activeId = data?.activeClanId ?? null;
-    const activeClan = clans.find((c) => c.id === activeId) ?? clans[0] ?? null;
-    return activeClan?.resourcesEnabled === true;
-  } catch {
-    return false;
-  }
 }

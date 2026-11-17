@@ -13,8 +13,6 @@ export const DEFAULT_CONFIG: AppConfig = {
 
   gameDayRolloverUtcHour: 17, // Game's fixed global day boundary (17:00 UTC)
 
-  memberInactivityDays: 7, // Soft-remove members unseen for this many days (0 = disabled)
-
   chestPointValues: {
     [ChestType.COMMON]: 1,
     [ChestType.UNCOMMON]: 2,

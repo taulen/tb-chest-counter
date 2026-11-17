@@ -574,7 +574,7 @@ function paceBandHtml(current) {
   // points for every member who earned anything in either window. Present
   // exactly when pace is (compare && windowed), so no extra request.
   const all = Array.isArray(windowData?.movers) ? windowData.movers : [];
-  // Someone the sweep has removed is not "going to finish short" — they are
+  // Someone who has left the clan is not "going to finish short" — they are
   // gone, and counting them makes the clan look worse than it is every week.
   const rows = all.filter((r) => r.isActive);
   const roster = staticData?.stats?.totalMembers ?? rows.length;

@@ -93,16 +93,6 @@ export interface AppConfig {
    *  because the game itself uses a fixed UTC instant. */
   gameDayRolloverUtcHour: number;
 
-  /** Global DEFAULT for how many days a member can go unseen (no scan
-   *  sighting) before the daily inactivity sweep soft-removes them
-   *  (is_active = 0). Non-destructive: the row and its chest history are
-   *  kept, and the next scan that sees the name reactivates it via
-   *  upsertMember. Default 7. Each clan has its own on/off toggle
-   *  (clans.inactivitySweepEnabled) and may override this threshold via
-   *  clans.inactivityDays (clan settings page); this value is the fallback
-   *  threshold. 0 acts as a global kill switch for clans on the default. */
-  memberInactivityDays: number;
-
   // Chest point values
   chestPointValues: Record<ChestType, number>;
 

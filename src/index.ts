@@ -3,7 +3,6 @@ import { createLogger } from './utils/logger.js';
 import { initDatabase, closeDb } from './data/database.js';
 import { ScanLoop } from './scheduler/loop.js';
 import { MultiClanExternalLoop } from './scheduler/external-loop.js';
-import { startInactiveSweep, stopInactiveSweep } from './scheduler/inactive-sweep.js';
 import { startWebServer } from './web/server.js';
 import {
   startAllClanBots,
@@ -149,11 +148,6 @@ async function main(): Promise<void> {
     // clan behavior automatically.
     await startAllClanBots(config.gameDayRolloverUtcHour);
 
-    // Start the daily member-inactivity sweep (soft-removes members unseen
-    // for config.memberInactivityDays days; returning players are auto-
-    // reactivated on their next scan sighting via upsertMember).
-    startInactiveSweep(config.gameDayRolloverUtcHour, config.memberInactivityDays);
-
     // Start scanning
     await scanLoop.start();
 
@@ -171,7 +165,6 @@ async function main(): Promise<void> {
     log.info('Shutting down...');
     scanLoop?.stop();
     externalLoop.stop();
-    stopInactiveSweep();
     await stopAllDiscordBots();
     closeDb();
     log.info('Goodbye!');

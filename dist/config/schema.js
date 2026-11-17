@@ -24,7 +24,6 @@ exports.configSchema = zod_1.z.object({
     webExternalUrl: zod_1.z.string().default(''),
     webEnabled: zod_1.z.preprocess((v) => v === 'true' || v === true || v === undefined, zod_1.z.boolean().default(true)),
     gameDayRolloverUtcHour: zod_1.z.coerce.number().int().min(0).max(23).default(17),
-    memberInactivityDays: zod_1.z.coerce.number().int().min(0).default(7),
     chestPointValues: zod_1.z.preprocess((v) => typeof v === 'string' ? JSON.parse(v) : v, chestPointValuesSchema),
     logLevel: zod_1.z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 });

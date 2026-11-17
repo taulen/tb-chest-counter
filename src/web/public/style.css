@@ -5474,7 +5474,7 @@ details > table {
   font-variant-numeric: tabular-nums;
 }
 
-/* Movers: the change column and the badge for someone the sweep has removed. */
+/* Movers: the change column and the badge for someone who has left the clan. */
 .mover-delta { font-variant-numeric: tabular-nums; }
 .mover-delta.is-up { color: var(--accent-green); }
 .mover-delta.is-down { color: var(--accent-red); }

@@ -432,8 +432,8 @@ export interface MemberWindowComparison {
  *
  * Two things it does that the leaderboard deliberately does not:
  *
- * - It ignores is_active. A member who faded and was then swept by the daily
- *   inactivity job is absent from getLeaderboard entirely (includeAllMembers
+ * - It ignores is_active. A member who faded and then left the clan (marked
+ *   left by the game member sync) is absent from getLeaderboard entirely (includeAllMembers
  *   still filters is_active = 1), and they are the single largest drop on the
  *   board. Their row comes back with is_active so the caller can badge it.
  * - It returns first_seen, so a caller can exclude someone who JOINED inside

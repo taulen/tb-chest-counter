@@ -23,7 +23,6 @@ import { esc, memberLink, copyTextToClipboard } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { formatCompact } from '../lib/ancient-planner.js';
-import { isResourcesEnabledForActiveClan } from '../lib/resource-format.js';
 import { distributeRewards, scoreAfterDay, parsePot } from '../lib/rewards-split.js';
 
 const PAGE_SIZE = 25;
@@ -250,12 +249,11 @@ async function loadPasted(pastedApi, r) {
 async function loadEssence(r) {
   if (!r.from || !r.to) return { kind: 'no-window' };
   try {
-    if (!(await isResourcesEnabledForActiveClan())) return { kind: 'no-resources' };
     const qs = new URLSearchParams({ from: r.from.slice(0, 10), to: r.to.slice(0, 10) });
     const [typesRes, summaryRes] = await Promise.all([api('/resources/types'), api(`/resources/summary?${qs}`)]);
     const types = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
     const essence = types.find((type) => type.slug === ESSENCE_SLUG);
-    if (!essence) return { kind: 'no-resources' };
+    if (!essence) return { kind: 'no-essence', from: qs.get('from'), to: qs.get('to') };
     const byMember = new Map();
     for (const row of Array.isArray(summaryRes?.rows) ? summaryRes.rows : []) {
       if (row.resourceTypeId !== essence.id || !(row.sentAmount > 0)) continue;
@@ -345,10 +343,6 @@ function statusHtml() {
       return t('Nothing pasted for this run yet — an admin adds the ranking on {link} after each day.', { link: eventsLink() });
     case 'no-essence':
       return t('Nobody donated {resource} between {from} and {to}.', { resource: esc(tGame('Omen Essence')), from: esc(src.from), to: esc(src.to) });
-    case 'no-resources':
-      return t('This clan doesn\'t track resources, so {resource} can\'t be read. Split by {damage} instead.', {
-        resource: esc(tGame('Omen Essence')), damage: BASES.damage.label(),
-      });
     case 'no-window':
       return t('The event calendar is unavailable, so this run\'s dates aren\'t known.');
     case 'no-runs':

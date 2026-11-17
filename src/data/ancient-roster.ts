@@ -8,7 +8,7 @@
  *     thing to "the clan as it is today" — and it is capped by the game at 100.
  *  2. Otherwise the members any scan has seen in the last RECENT_WINDOW_DAYS,
  *     most recently seen first, capped at MAX_ROSTER — a clan never holds more,
- *     so anything past 100 is a departure the inactivity sweep hasn't caught.
+ *     so anything past 100 is a departure the game member sync hasn't caught.
  *
  * Guards levels are the estimator's (guards-repo), never stored. A member with
  * no usable donation evidence comes back with a null level; the planner decides

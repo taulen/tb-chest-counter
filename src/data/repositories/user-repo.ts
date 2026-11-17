@@ -670,8 +670,8 @@ export function logAction(userId: number, action: string, details?: object): voi
 /**
  * Log an audit entry for a system-initiated action (no acting user), scoped
  * to a clan so the clan-admin audit view can surface it. Used by background
- * jobs like the daily member-inactivity sweep. Rendered with a "System"
- * actor in the audit log.
+ * work like the game member sync (renames, departures). Rendered with a
+ * "System" actor in the audit log.
  */
 export function logSystemAction(clanId: number, action: string, details?: object): void {
   const db = getDb();
@@ -705,8 +705,8 @@ const CLAN_VISIBLE_GLOBAL_ACTIONS = [
  * - viewerClanId === null/undefined → superadmin view: every audit row.
  * - viewerClanId === number → clan-admin view: user rows filed under that
  *   clan (superadmin rows hidden), plus system rows (no actor) tagged
- *   with that clan_id — so the daily inactivity sweep shows up for the clan
- *   it acted on.
+ *   with that clan_id — so the game member sync's departures show up for
+ *   the clan they happened in.
  *
  * A user row names its clan in audit_log.clan_id — the clan the request was
  * scoped to (logAction). That is what keeps a multi-clan account's work in

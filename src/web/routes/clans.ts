@@ -2,8 +2,6 @@ import { Router } from 'express';
 import { createCrudRouter } from './clans/crud.js';
 import { createDiscordRouter } from './clans/discord.js';
 import { createChestTrackerRouter } from './clans/chesttracker.js';
-import { createResourcesRouter } from './clans/resources.js';
-import { createInactivityRouter } from './clans/inactivity.js';
 import { createLeaderboardGoalRouter } from './clans/leaderboard-goal.js';
 import { createWeekStartRouter } from './clans/week-start.js';
 import { createSeasonalKingdomRouter } from './clans/seasonal-kingdom.js';
@@ -21,8 +19,6 @@ export function createClansRouter(): Router {
   router.use(createCrudRouter());
   router.use(createDiscordRouter());
   router.use(createChestTrackerRouter());
-  router.use(createResourcesRouter());
-  router.use(createInactivityRouter());
   router.use(createLeaderboardGoalRouter());
   router.use(createWeekStartRouter());
   router.use(createSeasonalKingdomRouter());

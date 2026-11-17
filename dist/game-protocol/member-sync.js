@@ -18,9 +18,6 @@ exports.makeMemberResolver = makeMemberResolver;
  * Then: the member takes the game's exact name (old name kept as an alias,
  * rename audited), is marked seen, gets the day's might/hero snapshot, and
  * members linked to players no longer in the clan record are marked as left.
- *
- * markMembersSeen + snapshots also keep the inactivity sweeps working (they key
- * on both).
  */
 const database_js_1 = require("../data/database.js");
 const member_repo_js_1 = require("../data/repositories/member-repo.js");
