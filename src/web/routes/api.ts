@@ -33,7 +33,7 @@ import { getDb, closeDb, initDatabase } from '../../data/database.js';
 import type { ScanLoop } from '../../scheduler/loop.js';
 import { loadConfig, resetConfig } from '../../config/index.js';
 import { getClanById, getClanWeekStart } from '../../data/repositories/clan-repo.js';
-import { clearClanScanAccount } from '../../data/repositories/scan-account-repo.js';
+import { clearClanScanAccount, setClanScanAccount } from '../../data/repositories/scan-account-repo.js';
 import * as resourceRepo from '../../data/repositories/resource-repo.js';
 import { updateEnvValue } from '../../config/persistent-env.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
@@ -293,10 +293,13 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     try {
       const savedClanId = loginBridge.getActiveClanId();
       const result = await loginBridge.save(req.user!.id);
-      // A new login may be another account: the clan scans alone (its own
-      // lane, overlapping no other) until the session check or its next scan
-      // learns which account it is (scan-lanes.ts).
-      if (savedClanId !== null) clearClanScanAccount(savedClanId);
+      // A new login sets the clan's account (the save checked it on the site
+      // page); scans and the session check then only verify it. When the check
+      // could not tell, the clan scans alone until it is learned (scan-lanes.ts).
+      if (savedClanId !== null) {
+        if (result.account) setClanScanAccount(savedClanId, result.account, null, 'login');
+        else clearClanScanAccount(savedClanId);
+      }
       scanLoop?.resume();
       return res.json({
         ok: true,

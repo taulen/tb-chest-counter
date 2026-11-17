@@ -24,6 +24,8 @@ const relay_js_1 = require("./login-bridge/relay.js");
 const screencast_js_1 = require("./login-bridge/screencast.js");
 const nav_guard_js_1 = require("./login-bridge/nav-guard.js");
 const deadline_js_1 = require("../utils/deadline.js");
+const client_js_1 = require("../game-protocol/client.js");
+const site_session_js_1 = require("../game-protocol/site-session.js");
 const link_quality_js_1 = require("./login-bridge/link-quality.js");
 const rtt_js_1 = require("./login-bridge/rtt.js");
 const gpu_js_1 = require("./login-bridge/gpu.js");
@@ -969,15 +971,46 @@ class LoginBridge {
             fs_1.default.copyFileSync(targetStorageState, targetStorageState + '.bak');
         }
         fs_1.default.writeFileSync(targetStorageState, JSON.stringify(state, null, 2));
+        // Which account this login is — and no sign-in token for any other. The
+        // browser profile (seeded from the previous save) can keep a token from an
+        // earlier login, and the site signs in with it once the session ends: SK7's
+        // login flipped to SIK's account that way (Nov 17 2026). The check is the
+        // session check's page load; nothing is presented to the game.
+        let account = null;
+        let droppedTokens = [];
+        try {
+            const check = await (0, client_js_1.checkSiteSessionAccount)(targetStorageState);
+            account = check.state === 'ok' ? check.suid : null;
+            if (account) {
+                droppedTokens = [...new Set(check.tokenAccounts.filter((s) => s !== account))];
+                if (droppedTokens.length) {
+                    const keep = cookies.filter((c) => !(c.name === site_session_js_1.AUTH_TOKEN_COOKIE && (0, site_session_js_1.authTokenAccounts)([c]).some((s) => s !== account)));
+                    fs_1.default.writeFileSync(targetStorageState, JSON.stringify({ ...state, cookies: keep }, null, 2));
+                    // And out of the profile, so the next session can't bring it back.
+                    const cleared = await (0, deadline_js_1.settleWithDeadline)(this.context.clearCookies({ name: site_session_js_1.AUTH_TOKEN_COOKIE }), 5_000, 'clearing the leftover sign-in token');
+                    if (cleared !== 'done')
+                        log.warn('Could not clear the leftover sign-in token from the login profile; the next save drops it again.');
+                    log.warn(`Login saved for clan #${clanId} as ${account}: dropped a leftover sign-in token for ${droppedTokens.join(', ')}.`);
+                }
+                else {
+                    log.info(`Login saved for clan #${clanId} as ${account}.`);
+                }
+            }
+        }
+        catch (err) {
+            log.warn(`Could not check which account the saved login for clan #${clanId} is: ${String(err).split('\n')[0]}`);
+        }
         if (adminUserId !== null) {
-            (0, user_repo_js_1.logAction)(adminUserId, 'login_session_save', { cookies: cookies.length, hasTbAuth, clanId });
+            (0, user_repo_js_1.logAction)(adminUserId, 'login_session_save', {
+                cookies: cookies.length, hasTbAuth, clanId, account, ...(droppedTokens.length ? { droppedTokens } : {}),
+            });
         }
         // Fresh storage-state on disk — the next scan can sign in again, so
         // drop the "needs re-auth" badge and re-arm the Discord notice for the
         // next time cookies expire.
         (0, clan_repo_js_1.clearClanNeedsReauth)(clanId);
         await this.teardown();
-        return { ok: true, cookies: cookies.length, hasTbAuth, hasSessionCookie, storageStatePath: targetStorageState };
+        return { ok: true, cookies: cookies.length, hasTbAuth, hasSessionCookie, storageStatePath: targetStorageState, account };
     }
     async cancel() {
         await this.teardown();

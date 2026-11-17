@@ -304,11 +304,15 @@ function createApiRouter(scanLoop) {
         try {
             const savedClanId = login_bridge_js_1.loginBridge.getActiveClanId();
             const result = await login_bridge_js_1.loginBridge.save(req.user.id);
-            // A new login may be another account: the clan scans alone (its own
-            // lane, overlapping no other) until the session check or its next scan
-            // learns which account it is (scan-lanes.ts).
-            if (savedClanId !== null)
-                (0, scan_account_repo_js_1.clearClanScanAccount)(savedClanId);
+            // A new login sets the clan's account (the save checked it on the site
+            // page); scans and the session check then only verify it. When the check
+            // could not tell, the clan scans alone until it is learned (scan-lanes.ts).
+            if (savedClanId !== null) {
+                if (result.account)
+                    (0, scan_account_repo_js_1.setClanScanAccount)(savedClanId, result.account, null, 'login');
+                else
+                    (0, scan_account_repo_js_1.clearClanScanAccount)(savedClanId);
+            }
             scanLoop?.resume();
             return res.json({
                 ok: true,

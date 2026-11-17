@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SiteCookieJar, parseSetCookie } from '../../src/game-protocol/site-session.js';
+import { SiteCookieJar, authTokenAccounts, parseSetCookie } from '../../src/game-protocol/site-session.js';
 
 const tmpFiles: string[] = [];
 afterEach(() => {
@@ -70,5 +70,19 @@ describe('site cookie jar', () => {
     const jar = SiteCookieJar.load(f);
     jar.apply(['PTBHSSID=same; Path=/; HttpOnly; Secure']);
     expect(jar.save()).toBe('unchanged');
+  });
+});
+
+describe('sign-in token accounts', () => {
+  // A JWT the way the site issues it: header.payload.signature, base64url.
+  const jwt = (payload: object) => ['e30', Buffer.from(JSON.stringify(payload)).toString('base64url'), 'sig'].join('.');
+
+  it('names the account each stored sign-in token is for, and nothing else', () => {
+    expect(authTokenAccounts([
+      cookie('__Host-user_auth_token', encodeURIComponent(jwt({ suid: 'tb:74858156', account_id: 84522508 }))),
+      cookie('PTBHSSID', 'abc'),
+      cookie('__Host-user_auth_token', 'not-a-jwt'),
+      cookie('__Host-user_auth_token', jwt({ sub: 'x' })),
+    ])).toEqual(['tb:74858156']);
   });
 });

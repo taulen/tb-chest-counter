@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameClient = exports.SessionLoggedOutError = exports.GameProtocolError = exports.DEFAULT_CLIENT_VERSION = exports.USER_AGENT = void 0;
+exports.GameClient = exports.WrongAccountError = exports.SessionLoggedOutError = exports.GameProtocolError = exports.DEFAULT_CLIENT_VERSION = exports.USER_AGENT = void 0;
 exports.classifySitePage = classifySitePage;
 exports.checkSiteSession = checkSiteSession;
 exports.checkSiteSessionAccount = checkSiteSessionAccount;
+exports.storedTokenAccounts = storedTokenAccounts;
 exports.siteCookieHeader = siteCookieHeader;
 exports.loadOrCreateDevice = loadOrCreateDevice;
 exports.parseSitePage = parseSitePage;
@@ -91,11 +92,13 @@ async function checkSiteSession(storageStatePath) {
  */
 async function checkSiteSessionAccount(storageStatePath) {
     let cookies;
+    let tokenAccounts = [];
     try {
         cookies = siteCookieHeader(storageStatePath);
+        tokenAccounts = storedTokenAccounts(storageStatePath);
     }
     catch {
-        return { state: 'logged-out', suid: null };
+        return { state: 'logged-out', suid: null, tokenAccounts };
     }
     try {
         const res = await fetch(`${SITE}/en/`, {
@@ -104,12 +107,26 @@ async function checkSiteSessionAccount(storageStatePath) {
         });
         const html = await res.text();
         const state = classifySitePage(res.status, html);
-        return { state, suid: state === 'ok' ? parseSitePage(html).suid : null };
+        return { state, suid: state === 'ok' ? parseSitePage(html).suid : null, tokenAccounts };
     }
     catch {
-        return { state: 'unknown', suid: null };
+        return { state: 'unknown', suid: null, tokenAccounts };
     }
 }
+/** The accounts the stored sign-in token(s) name, read from the file (local, nothing sent). */
+function storedTokenAccounts(storageStatePath) {
+    const raw = fs_1.default.readFileSync(storageStatePath, 'utf8').replace(/^﻿/, '').trim();
+    const state = JSON.parse(raw);
+    return (0, site_session_js_1.authTokenAccounts)((state.cookies ?? []).filter((c) => /^\.?totalbattle\.com$/.test(c.domain)));
+}
+/** The saved login signs in to a different website account than the clan's known one. */
+class WrongAccountError extends GameProtocolError {
+    constructor(message) {
+        super(message);
+        this.name = 'WrongAccountError';
+    }
+}
+exports.WrongAccountError = WrongAccountError;
 /** Cookies the browser would send to totalbattle.com, from a Playwright storage state. */
 function siteCookieHeader(storageStatePath) {
     const raw = fs_1.default.readFileSync(storageStatePath, 'utf8').replace(/^﻿/, '').trim();
@@ -320,6 +337,9 @@ class GameClient {
         // Exactly the browser's sequence, with every Set-Cookie kept: page → token
         // rotation → re-login with the rotated token → cookies written back.
         const boot = await fetchSiteBootstrap(jar);
+        if (opts.expectSuid && boot.suid !== opts.expectSuid) {
+            throw new WrongAccountError(`the saved login now signs in as ${boot.suid}, not this clan's account ${opts.expectSuid} — nothing was sent to the game; log in again with this clan's account`);
+        }
         const start = await getGameStartData(boot, jar, device);
         if (start.newToken)
             await confirmRotatedToken(jar, start.newToken);

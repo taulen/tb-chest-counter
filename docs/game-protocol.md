@@ -667,9 +667,10 @@ account one after another**, in one lane — a game login takes over the
 account's session, so two scans on one account at once would knock each other
 out (SIK and SK7 share a website account). The account is the website user id
 (`tb:<n>`, the `suid` on the site page) in `clan_scan_accounts` (v119),
-learned by the 30-minute session check from the stored login (the same page it
-already loads) and by every scan (`GameClient.suid` / `playerId`), and
-forgotten when a new login is saved. A clan whose account is not known yet runs
+set when a login is saved through the bridge (its save checks the site page),
+learned by the 30-minute session check or a scan only while unknown, and from
+then on only CHECKED: a login that signs in as another account is flagged for a
+new login, never adopted (see "Session check"). A clan whose account is not known yet runs
 **alone** — after every lane queued before it, before anything queued after it —
 since it might share an account with any clan.
 
@@ -702,6 +703,26 @@ Discord ping per streak). Anything ambiguous (HTTP error, maintenance page)
 changes nothing. Before this, "Authenticated" only meant "a session file
 exists", so a dead login looked fine for as long as scans were paused.
 
+**A login that signs in as another account is never used.** Three checks, none of
+which presents a token:
+
+- `GameClient.connect({ expectSuid })`: the site page's account must be the
+  clan's known one (`clan_scan_accounts`) before GetGameStartData; otherwise
+  `WrongAccountError`, nothing sent to the game, the jar not saved, the clan
+  flagged for a new login.
+- The session check flags a changed account instead of adopting it, and warns
+  (System page, resolves on a clean save) when the saved login carries a
+  sign-in token (`__Host-user_auth_token`, a JWT whose payload names the
+  account — `authTokenAccounts`, decoded locally) for another account than its
+  session. That leftover is how SK7 flipped: a token for SIK's account from the
+  clan's first login (Nov 13) sat next to the session of the account it was
+  later re-saved with; once that session ended, the site signed in with the
+  token.
+- The login bridge's save checks which account it saved (audit
+  `login_session_save` → `account`), sets it as the clan's account, and drops
+  any sign-in token for another account from the file and from the bridge's
+  browser profile (`droppedTokens`).
+
 **A login that signs in to another clan is never scanned.** Right after the clan
 record, [`runGameProtocolCapture`](../src/scheduler/game-protocol-phase.ts)
 compares its game clan id with the one `game_clan_info` holds for the clan (a
@@ -710,9 +731,10 @@ anything is written and flags the clan for a new login, naming both clans and
 the account. Nov 17 2026: SK7's saved login signed in as SIK's scanner account
 (15:18–15:31 UTC) and two scans wrote SIK's members, chats, research and event
 standings into SK7 (cleaned by a one-time startup repair, 02aeb48: 188,802
-rows; removed once it had run). How that login
-changed accounts is not known yet; nothing in the app writes one clan's login
-into another's file.
+rows; removed once it had run). The likely cause is the leftover sign-in token
+above (a copy of SK7's login from Nov 16 23:00 held SIK's token while its
+session was the SK7 player's account); nothing in the app writes one clan's
+login into another's file.
 
 ## Rules that bite
 

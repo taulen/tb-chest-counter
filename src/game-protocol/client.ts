@@ -20,7 +20,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { decodeFrames, encodeFrame, messages, type Frame, type Wire, type BinValue } from './codec.js';
-import { SiteCookieJar } from './site-session.js';
+import { SiteCookieJar, authTokenAccounts } from './site-session.js';
 
 const SITE = 'https://totalbattle.com';
 const RPC_URL = `${SITE}/restapi/totalbattle/web/`;
@@ -78,12 +78,16 @@ export async function checkSiteSession(storageStatePath: string): Promise<SiteSe
  * belongs to when it is signed in — the same page carries it. The scan
  * scheduler keys its lanes on it: two clans on one account never scan at once.
  */
-export async function checkSiteSessionAccount(storageStatePath: string): Promise<{ state: SiteSessionState; suid: string | null }> {
+export async function checkSiteSessionAccount(
+  storageStatePath: string,
+): Promise<{ state: SiteSessionState; suid: string | null; tokenAccounts: string[] }> {
   let cookies: string;
+  let tokenAccounts: string[] = [];
   try {
     cookies = siteCookieHeader(storageStatePath);
+    tokenAccounts = storedTokenAccounts(storageStatePath);
   } catch {
-    return { state: 'logged-out', suid: null };
+    return { state: 'logged-out', suid: null, tokenAccounts };
   }
   try {
     const res = await fetch(`${SITE}/en/`, {
@@ -92,9 +96,24 @@ export async function checkSiteSessionAccount(storageStatePath: string): Promise
     });
     const html = await res.text();
     const state = classifySitePage(res.status, html);
-    return { state, suid: state === 'ok' ? parseSitePage(html).suid : null };
+    return { state, suid: state === 'ok' ? parseSitePage(html).suid : null, tokenAccounts };
   } catch {
-    return { state: 'unknown', suid: null };
+    return { state: 'unknown', suid: null, tokenAccounts };
+  }
+}
+
+/** The accounts the stored sign-in token(s) name, read from the file (local, nothing sent). */
+export function storedTokenAccounts(storageStatePath: string): string[] {
+  const raw = fs.readFileSync(storageStatePath, 'utf8').replace(/^﻿/, '').trim();
+  const state = JSON.parse(raw) as { cookies?: Array<{ name: string; value: string; domain: string }> };
+  return authTokenAccounts((state.cookies ?? []).filter((c) => /^\.?totalbattle\.com$/.test(c.domain)));
+}
+
+/** The saved login signs in to a different website account than the clan's known one. */
+export class WrongAccountError extends GameProtocolError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WrongAccountError';
   }
 }
 
@@ -330,6 +349,12 @@ export interface ConnectOptions {
   storageStatePath: string;
   deviceFile: string;
   clientVersion?: string;
+  /**
+   * The website account (`tb:<n>`) this login must be. Checked on the site
+   * page BEFORE any token is presented: a different account throws
+   * WrongAccountError, nothing is sent to the game, the jar is not saved.
+   */
+  expectSuid?: string | null;
 }
 
 const ZERO_SESSION: BinValue = { $bin: 12, hex: '000000000000000000000000' };
@@ -357,6 +382,11 @@ export class GameClient {
     // Exactly the browser's sequence, with every Set-Cookie kept: page → token
     // rotation → re-login with the rotated token → cookies written back.
     const boot = await fetchSiteBootstrap(jar);
+    if (opts.expectSuid && boot.suid !== opts.expectSuid) {
+      throw new WrongAccountError(
+        `the saved login now signs in as ${boot.suid}, not this clan's account ${opts.expectSuid} — nothing was sent to the game; log in again with this clan's account`,
+      );
+    }
     const start = await getGameStartData(boot, jar, device);
     if (start.newToken) await confirmRotatedToken(jar, start.newToken);
     jar.save();

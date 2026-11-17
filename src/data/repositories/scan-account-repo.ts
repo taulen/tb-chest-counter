@@ -6,7 +6,7 @@
  */
 import { getDb } from '../database.js';
 
-export type ScanAccountSource = 'session-check' | 'scan';
+export type ScanAccountSource = 'session-check' | 'scan' | 'login';
 
 /** The clan's scanner account, or null while unknown. */
 export function getClanScanAccount(clanId: number): string | null {

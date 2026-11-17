@@ -37,6 +37,34 @@ interface StorageState {
 
 const SITE_DOMAIN = /^\.?totalbattle\.com$/;
 
+/** The site's sign-in token cookie: a JWT naming the website account (`suid`). */
+export const AUTH_TOKEN_COOKIE = '__Host-user_auth_token';
+
+/**
+ * Which website account(s) the stored sign-in token(s) belong to, decoded
+ * locally from the JWT payload (no request, nothing presented). Pure.
+ *
+ * Why it matters (Nov 17 2026): SK7's saved login held a site session for one
+ * account and, left over from an earlier login in the same browser profile, a
+ * sign-in token for ANOTHER (SIK's). When the session ended, the site signed
+ * in with the leftover token — as SIK's account — and two scans read SIK as SK7.
+ */
+export function authTokenAccounts(cookies: ReadonlyArray<{ name: string; value: string }>): string[] {
+  const out: string[] = [];
+  for (const c of cookies) {
+    if (c.name !== AUTH_TOKEN_COOKIE) continue;
+    const parts = decodeURIComponent(c.value ?? '').split('.');
+    if (parts.length !== 3) continue;
+    try {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as { suid?: unknown };
+      if (typeof payload.suid === 'string' && /^[a-z]+:\d+$/.test(payload.suid)) out.push(payload.suid);
+    } catch {
+      // Not a JWT we can read: says nothing about the account.
+    }
+  }
+  return out;
+}
+
 /** Parse one Set-Cookie header into a stored cookie (or a deletion). Pure; unit-tested. */
 export function parseSetCookie(header: string, nowSec = Math.floor(Date.now() / 1000)): { cookie: StoredCookie; deleted: boolean } | null {
   const [pair, ...attrs] = header.split(';');

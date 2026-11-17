@@ -27,6 +27,7 @@ const path_1 = __importDefault(require("path"));
 const logger_js_1 = require("../utils/logger.js");
 const clan_paths_js_1 = require("../config/clan-paths.js");
 const client_js_1 = require("../game-protocol/client.js");
+const scan_account_repo_js_1 = require("../data/repositories/scan-account-repo.js");
 const session_health_js_1 = require("./session-health.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
@@ -64,6 +65,9 @@ async function runGameProtocolCapture(clanId, opts) {
         const names = await (0, static_data_js_1.loadGameNames)();
         const client = await client_js_1.GameClient.connect({
             storageStatePath: (0, clan_paths_js_1.clanStorageStatePath)(clanId),
+            // The account this clan is scanned with: a login that now signs in as
+            // another one stops before any token is presented (client.ts).
+            expectSuid: (0, scan_account_repo_js_1.getClanScanAccount)(clanId),
             deviceFile: path_1.default.join((0, clan_paths_js_1.clanDataDir)(clanId), 'game-device.json'),
         });
         (0, session_health_js_1.noteSessionHealthy)(clanId, 'the game capture signed in with the saved session');
@@ -146,7 +150,7 @@ async function runGameProtocolCapture(clanId, opts) {
             // A definite logout is the same signal the scan's auth check acts on.
             (0, session_health_js_1.noteSessionLoggedOut)(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
         }
-        else if (err instanceof WrongClanLoginError) {
+        else if (err instanceof WrongClanLoginError || err instanceof client_js_1.WrongAccountError) {
             // Same remedy as a logout: a fresh login with the right account.
             (0, session_health_js_1.noteSessionLoggedOut)(clanId, error);
         }
