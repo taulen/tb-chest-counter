@@ -9,7 +9,7 @@ Status (Nov 2026): **parallel run.** [`game-protocol-phase.ts`](../src/scheduler
 runs before each clan's OCR scan and stores what the game says in the `game_*`
 tables (migration v102). Nothing reads them for scoring yet; the OCR pipeline is
 unchanged. Setting: `GAME_PROTOCOL_CAPTURE_CLANS` — comma-separated clan ids,
-`all`, or empty for none; **default `2` (CWB only)**.
+`all`, or empty for none; **default `all`** (trialled on CWB first, widened to all clans the same night with the session check watching).
 
 Why one clan: CWB's website session ended during development (Nov 17 2026)
 after a burst of direct logins, local browser windows on copies of its session

@@ -90,11 +90,11 @@ export const configSchema = z.object({
 
   // Game protocol capture (src/game-protocol): before each clan's scan, read
   // the clan record, player records and Capital ledger straight from the game
-  // server. Per clan: comma-separated clan ids, "all", or "" for none. Trial on
-  // CWB (clan 2) first — the client was verified on a throwaway account (Nov 17
-  // 2026), but CWB lost its login once during development, so it is widened
-  // clan by clan while the 30-minute session check watches. docs/game-protocol.md.
-  gameProtocolCaptureClans: z.string().default('2'),
+  // server. Per clan: comma-separated clan ids, "all", or "" for none. The
+  // client was verified on a throwaway account (Nov 17 2026); the 30-minute
+  // session check flags any lost login. Narrow it to ids if one misbehaves.
+  // docs/game-protocol.md.
+  gameProtocolCaptureClans: z.string().default('all'),
 
   // Hard ceiling on how many chests one sweep of a tab may open. Exists
   // purely as a runaway-loop guard: a healthy sweep stops when the Gifts
