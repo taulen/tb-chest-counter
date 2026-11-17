@@ -15,7 +15,24 @@
  * admin saved a fresh login through the login bridge meanwhile), the jar does
  * not overwrite it — the newer login wins. The write itself is atomic.
  */
+import crypto from 'crypto';
 import fs from 'fs';
+
+/**
+ * A stored login's totalbattle.com cookies as one-way fingerprints: name →
+ * the first 12 hex of sha256(value). For comparing two clans' logins (do they
+ * share a session or device cookie?) without ever reading a value out.
+ */
+export function siteCookieFingerprints(file: string): Map<string, string> {
+  const raw = fs.readFileSync(file, 'utf8').replace(/^﻿/, '').trim();
+  const state = JSON.parse(raw) as { cookies?: Array<{ name: string; value: string; domain: string }> };
+  const out = new Map<string, string>();
+  for (const c of state.cookies ?? []) {
+    if (!/^\.?totalbattle\.com$/.test(c.domain) || !c.value) continue;
+    out.set(c.name, crypto.createHash('sha256').update(c.value).digest('hex').slice(0, 12));
+  }
+  return out;
+}
 
 export interface StoredCookie {
   name: string;

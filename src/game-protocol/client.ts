@@ -78,7 +78,35 @@ export async function checkSiteSession(storageStatePath: string): Promise<SiteSe
  * belongs to when it is signed in — the same page carries it. The scan
  * scheduler keys its lanes on it: two clans on one account never scan at once.
  */
-export async function checkSiteSessionAccount(
+/**
+ * Calls that present a clan's site cookies — a sign-in, a session check — go
+ * one at a time, process-wide, with a short settle after each. Whenever SIK
+ * and SK7 scanned in parallel lanes and so signed in at the same moment from
+ * this server, SK7's saved login came out signed in as SIK's account (Nov 17
+ * 2026: after the 14:37 and 16:18 cycles; never when SK7 ran alone). The scans
+ * themselves stay parallel: a sign-in takes 1–2 s.
+ */
+const SITE_CALL_SETTLE_MS = 3_000;
+let siteCallChain: Promise<void> = Promise.resolve();
+export async function oneSiteCallAtATime<T>(fn: () => Promise<T>): Promise<T> {
+  const before = siteCallChain;
+  let release!: () => void;
+  siteCallChain = new Promise<void>((resolve) => { release = resolve; });
+  await before;
+  try {
+    return await fn();
+  } finally {
+    setTimeout(release, SITE_CALL_SETTLE_MS).unref?.();
+  }
+}
+
+export function checkSiteSessionAccount(
+  storageStatePath: string,
+): Promise<{ state: SiteSessionState; suid: string | null; tokenAccounts: string[] }> {
+  return oneSiteCallAtATime(() => checkSiteSessionAccountNow(storageStatePath));
+}
+
+async function checkSiteSessionAccountNow(
   storageStatePath: string,
 ): Promise<{ state: SiteSessionState; suid: string | null; tokenAccounts: string[] }> {
   let cookies: string;
@@ -375,7 +403,11 @@ export class GameClient {
     readonly ratingUrl: string | null = null,
   ) {}
 
-  static async connect(opts: ConnectOptions): Promise<GameClient> {
+  static connect(opts: ConnectOptions): Promise<GameClient> {
+    return oneSiteCallAtATime(() => GameClient.connectNow(opts));
+  }
+
+  private static async connectNow(opts: ConnectOptions): Promise<GameClient> {
     siteCookieHeader(opts.storageStatePath); // throws early when no session is stored at all
     const jar = SiteCookieJar.load(opts.storageStatePath);
     const device = loadOrCreateDevice(opts.deviceFile);

@@ -689,6 +689,15 @@ since it might share an account with any clan.
   card shows them together ("CWB · SIK"). `scanner.busy` in `/api/health` holds
   while any lane has work queued or running, so
   [`deploy-when-idle.mjs`](../scripts/deploy-when-idle.mjs) still waits.
+- **Sign-ins never overlap**, even across lanes: every call that presents a
+  clan's site cookies (`GameClient.connect`, the session check) goes through
+  `oneSiteCallAtATime` in client.ts, with a 3 s settle after each. Whenever
+  SIK and SK7 signed in at the same moment, SK7's saved login came out signed
+  in as SIK's account (Nov 17 2026, after the 14:37 and 16:18 cycles; never
+  when SK7 ran alone). Only the sign-in is serial; claims and reads stay
+  parallel. The session check also reports which site cookies two clans'
+  saved logins share (by fingerprint, never value) — a shared session or
+  device cookie makes two logins one browser identity to the site.
 - The login bridge still pauses scanning globally.
 - A shared rebuild (game names after a patch) runs once even when two lanes
   ask for it.

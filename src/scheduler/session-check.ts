@@ -24,6 +24,7 @@ import { resolveEntries } from '../utils/log-buffer.js';
 import { listClans } from '../data/repositories/clan-repo.js';
 import { clanStorageStatePath } from '../config/clan-paths.js';
 import { checkSiteSessionAccount } from '../game-protocol/client.js';
+import { siteCookieFingerprints } from '../game-protocol/site-session.js';
 import { getClanScanAccount, setClanScanAccount } from '../data/repositories/scan-account-repo.js';
 import { noteSessionHealthy, noteSessionLoggedOut } from './session-health.js';
 
@@ -64,6 +65,41 @@ export async function checkClanSessions(): Promise<void> {
       );
     } else {
       resolveEntries(staleTokenWarningKey(clan.id));
+    }
+  }
+  reportSharedSiteCookies();
+}
+
+/**
+ * Which site cookies two clans' saved logins share, compared by one-way
+ * fingerprint (siteCookieFingerprints), never by value. Two logins that share
+ * a session or device cookie are one browser identity to the site; SK7's login
+ * — first created on SIK's account — flipped to SIK whenever both signed in at
+ * once (Nov 17 2026). Diagnostic: it names the cookies, it changes nothing.
+ */
+function reportSharedSiteCookies(): void {
+  const prints = new Map<number, Map<string, string>>();
+  for (const clan of listClans({ activeOnly: true })) {
+    const file = clanStorageStatePath(clan.id);
+    if (!fs.existsSync(file)) continue;
+    try {
+      prints.set(clan.id, siteCookieFingerprints(file));
+    } catch {
+      // An unreadable file is the session check's business, not this one's.
+    }
+  }
+  const ids = [...prints.keys()].sort((a, b) => a - b);
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = prints.get(ids[i])!;
+      const b = prints.get(ids[j])!;
+      const shared = [...a.entries()].filter(([name, fp]) => b.get(name) === fp).map(([name]) => name);
+      const key = `shared-site-cookies:${ids[i]}:${ids[j]}`;
+      if (shared.length) {
+        log.warn({ noAlert: true, resolveKey: key }, `Clans #${ids[i]} and #${ids[j]}'s saved logins share site cookies: ${shared.join(', ')}`);
+      } else {
+        resolveEntries(key);
+      }
     }
   }
 }

@@ -31,6 +31,7 @@ const log_buffer_js_1 = require("../utils/log-buffer.js");
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
 const clan_paths_js_1 = require("../config/clan-paths.js");
 const client_js_1 = require("../game-protocol/client.js");
+const site_session_js_1 = require("../game-protocol/site-session.js");
 const scan_account_repo_js_1 = require("../data/repositories/scan-account-repo.js");
 const session_health_js_1 = require("./session-health.js");
 const log = (0, logger_js_1.childLogger)('session-check');
@@ -68,6 +69,43 @@ async function checkClanSessions() {
         }
         else {
             (0, log_buffer_js_1.resolveEntries)((0, exports.staleTokenWarningKey)(clan.id));
+        }
+    }
+    reportSharedSiteCookies();
+}
+/**
+ * Which site cookies two clans' saved logins share, compared by one-way
+ * fingerprint (siteCookieFingerprints), never by value. Two logins that share
+ * a session or device cookie are one browser identity to the site; SK7's login
+ * — first created on SIK's account — flipped to SIK whenever both signed in at
+ * once (Nov 17 2026). Diagnostic: it names the cookies, it changes nothing.
+ */
+function reportSharedSiteCookies() {
+    const prints = new Map();
+    for (const clan of (0, clan_repo_js_1.listClans)({ activeOnly: true })) {
+        const file = (0, clan_paths_js_1.clanStorageStatePath)(clan.id);
+        if (!fs_1.default.existsSync(file))
+            continue;
+        try {
+            prints.set(clan.id, (0, site_session_js_1.siteCookieFingerprints)(file));
+        }
+        catch {
+            // An unreadable file is the session check's business, not this one's.
+        }
+    }
+    const ids = [...prints.keys()].sort((a, b) => a - b);
+    for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+            const a = prints.get(ids[i]);
+            const b = prints.get(ids[j]);
+            const shared = [...a.entries()].filter(([name, fp]) => b.get(name) === fp).map(([name]) => name);
+            const key = `shared-site-cookies:${ids[i]}:${ids[j]}`;
+            if (shared.length) {
+                log.warn({ noAlert: true, resolveKey: key }, `Clans #${ids[i]} and #${ids[j]}'s saved logins share site cookies: ${shared.join(', ')}`);
+            }
+            else {
+                (0, log_buffer_js_1.resolveEntries)(key);
+            }
         }
     }
 }

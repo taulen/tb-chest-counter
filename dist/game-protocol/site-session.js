@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SiteCookieJar = exports.AUTH_TOKEN_COOKIE = void 0;
+exports.siteCookieFingerprints = siteCookieFingerprints;
 exports.authTokenAccounts = authTokenAccounts;
 exports.parseSetCookie = parseSetCookie;
 /**
@@ -23,7 +24,24 @@ exports.parseSetCookie = parseSetCookie;
  * admin saved a fresh login through the login bridge meanwhile), the jar does
  * not overwrite it — the newer login wins. The write itself is atomic.
  */
+const crypto_1 = __importDefault(require("crypto"));
 const fs_1 = __importDefault(require("fs"));
+/**
+ * A stored login's totalbattle.com cookies as one-way fingerprints: name →
+ * the first 12 hex of sha256(value). For comparing two clans' logins (do they
+ * share a session or device cookie?) without ever reading a value out.
+ */
+function siteCookieFingerprints(file) {
+    const raw = fs_1.default.readFileSync(file, 'utf8').replace(/^﻿/, '').trim();
+    const state = JSON.parse(raw);
+    const out = new Map();
+    for (const c of state.cookies ?? []) {
+        if (!/^\.?totalbattle\.com$/.test(c.domain) || !c.value)
+            continue;
+        out.set(c.name, crypto_1.default.createHash('sha256').update(c.value).digest('hex').slice(0, 12));
+    }
+    return out;
+}
 const SITE_DOMAIN = /^\.?totalbattle\.com$/;
 /** The site's sign-in token cookie: a JWT naming the website account (`suid`). */
 exports.AUTH_TOKEN_COOKIE = '__Host-user_auth_token';
