@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GameClient = exports.SessionLoggedOutError = exports.GameProtocolError = exports.DEFAULT_CLIENT_VERSION = exports.USER_AGENT = void 0;
 exports.classifySitePage = classifySitePage;
 exports.checkSiteSession = checkSiteSession;
+exports.checkSiteSessionAccount = checkSiteSessionAccount;
 exports.siteCookieHeader = siteCookieHeader;
 exports.loadOrCreateDevice = loadOrCreateDevice;
 exports.parseSitePage = parseSitePage;
@@ -81,22 +82,32 @@ function classifySitePage(status, html) {
  * we like. Network errors and odd pages answer 'unknown'.
  */
 async function checkSiteSession(storageStatePath) {
+    return (await checkSiteSessionAccount(storageStatePath)).state;
+}
+/**
+ * checkSiteSession, plus the website user id (`tb:<n>`) the stored login
+ * belongs to when it is signed in — the same page carries it. The scan
+ * scheduler keys its lanes on it: two clans on one account never scan at once.
+ */
+async function checkSiteSessionAccount(storageStatePath) {
     let cookies;
     try {
         cookies = siteCookieHeader(storageStatePath);
     }
     catch {
-        return 'logged-out';
+        return { state: 'logged-out', suid: null };
     }
     try {
         const res = await fetch(`${SITE}/en/`, {
             headers: { cookie: cookies, 'user-agent': exports.USER_AGENT, accept: 'text/html' },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
-        return classifySitePage(res.status, await res.text());
+        const html = await res.text();
+        const state = classifySitePage(res.status, html);
+        return { state, suid: state === 'ok' ? parseSitePage(html).suid : null };
     }
     catch {
-        return 'unknown';
+        return { state: 'unknown', suid: null };
     }
 }
 /** Cookies the browser would send to totalbattle.com, from a Playwright storage state. */

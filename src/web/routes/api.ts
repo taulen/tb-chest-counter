@@ -34,6 +34,7 @@ import { getDb, closeDb, initDatabase } from '../../data/database.js';
 import type { ScanLoop } from '../../scheduler/loop.js';
 import { loadConfig, resetConfig } from '../../config/index.js';
 import { getClanById, getClanWeekStart } from '../../data/repositories/clan-repo.js';
+import { clearClanScanAccount } from '../../data/repositories/scan-account-repo.js';
 import * as resourceRepo from '../../data/repositories/resource-repo.js';
 import { updateEnvValue } from '../../config/persistent-env.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
@@ -141,11 +142,13 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     // in progress · 47 chests" from a different clan's session.
     // Superadmins see the global view since they manage the rotation.
     const rawState = scanLoop?.getState() ?? 'unknown';
-    const rawScanInProgress = scanLoop?.isScanInProgress() ?? false;
     const rawError = scanLoop?.getLastScanError() ?? null;
-    const activeClanId = scanLoop?.getActiveClanId() ?? null;
-    const isMyScan = isSuperadmin
-      || (req.clanId !== undefined && activeClanId !== null && activeClanId === req.clanId);
+    // Clans on different accounts scan at the same time (scan-lanes.ts): a
+    // clan admin sees their own clan's scan, a superadmin every one.
+    const runningClanIds = scanLoop?.getRunningClanIds() ?? [];
+    const myRunning = isSuperadmin
+      ? runningClanIds
+      : runningClanIds.filter((id) => req.clanId !== undefined && id === req.clanId);
     const isMyError = isAdminish && (isSuperadmin
       || (rawError !== null && req.clanId !== undefined && rawError.clanId === req.clanId));
 
@@ -153,32 +156,46 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     // 'scanning'/'processing'/'error' to 'idle' for this admin so the
     // status dot/text don't imply something is happening for them.
     let state = rawState;
-    if (!isMyScan && (rawState === 'scanning' || rawState === 'processing')) state = 'idle';
+    if (myRunning.length === 0 && (rawState === 'scanning' || rawState === 'processing')) state = 'idle';
     if (!isMyError && rawState === 'error') state = 'idle';
 
-    // The sidebar's scan card: which clan, which phase, how long, and where
-    // in the cycle. Same visibility rule as the progress fields, applied to
-    // the activity's own clan so the gap between two clans of a cycle (when
-    // the next one is already the active clan) counts too. The cycle
-    // position stays superadmin-only: it would tell a clan admin how many
-    // other clans share the instance.
-    const rawActivity = scanLoop?.getScanActivity() ?? null;
-    const activity = rawActivity && (isSuperadmin || rawActivity.clanId === req.clanId)
+    // The sidebar's scan card: which clans, which phase, how long, and how far
+    // the cycle is. Same visibility rule as the progress fields, applied to
+    // each clan, so the gap between two clans of a cycle (the next one shown
+    // as 'starting') counts too. The cycle progress stays superadmin-only: it
+    // would tell a clan admin how many other clans share the instance.
+    const overview = scanLoop?.getScanOverview() ?? null;
+    const visible = (overview?.clans ?? []).filter((c) => isSuperadmin || c.clanId === req.clanId);
+    const clans = visible.map((c) => ({
+      clanId: c.clanId,
+      clanName: getClanById(c.clanId)?.name ?? null,
+      phase: c.phase,
+      elapsedMs: c.elapsedMs,
+      progressMessage: c.progressMessage,
+    }));
+    const first = clans[0];
+    const activity = first && overview
       ? {
-        clanId: rawActivity.clanId,
-        clanName: getClanById(rawActivity.clanId)?.name ?? null,
-        phase: rawActivity.phase,
-        elapsedMs: rawActivity.elapsedMs,
-        cyclePosition: isSuperadmin ? rawActivity.cyclePosition : null,
-        cycleTotal: isSuperadmin ? rawActivity.cycleTotal : null,
+        // The oldest visible scan, for one-clan readers.
+        clanId: first.clanId,
+        clanName: first.clanName,
+        phase: first.phase,
+        elapsedMs: first.elapsedMs,
+        cyclePosition: isSuperadmin && overview.cycleDone !== null ? overview.cycleDone + 1 : null,
+        cycleTotal: isSuperadmin ? overview.cycleTotal : null,
+        // Every visible clan scanning now, and how many of the cycle are done.
+        clans,
+        cycleDone: isSuperadmin ? overview.cycleDone : null,
       }
       : null;
 
     res.json({
       state,
-      scanInProgress: isMyScan ? rawScanInProgress : false,
-      liveChestCount: isMyScan ? (scanLoop?.getLiveChestCount() ?? 0) : 0,
-      progressMessage: isMyScan ? (scanLoop?.getProgressMessage() ?? '') : '',
+      scanInProgress: myRunning.length > 0,
+      liveChestCount: isSuperadmin
+        ? (scanLoop?.getLiveChestCount() ?? 0)
+        : myRunning.reduce((n, id) => n + (scanLoop?.getLiveChestCount(id) ?? 0), 0),
+      progressMessage: myRunning.length > 0 ? (scanLoop?.getProgressMessage(myRunning[0]) ?? '') : '',
       activity,
       lastScanError: isMyError ? rawError : null,
       nextScanAt: nextScanAt ? new Date(nextScanAt).toISOString() : null,
@@ -275,7 +292,12 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
       }
     }
     try {
+      const savedClanId = loginBridge.getActiveClanId();
       const result = await loginBridge.save(req.user!.id);
+      // A new login may be another account: the clan scans alone (its own
+      // lane, overlapping no other) until the session check or its next scan
+      // learns which account it is (scan-lanes.ts).
+      if (savedClanId !== null) clearClanScanAccount(savedClanId);
       scanLoop?.resume();
       return res.json({
         ok: true,
@@ -1020,10 +1042,6 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     if (!scanLoop) {
       return res.status(503).json({ error: 'Scanner not available' });
     }
-    if (scanLoop.isScanInProgress()) {
-      return res.status(409).json({ error: 'A scan is already in progress', alreadyRunning: true });
-    }
-
     // Two manual-scan modes:
     //   - default: scope to the clan the superadmin currently has selected
     //     in the dropdown (req.clanId resolves via the session's active
@@ -1033,6 +1051,13 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     //     every clan outside the normal interval.
     const allClans = req.body?.allClans === true;
     const targetClanId = req.clanId ?? undefined;
+
+    // Clans scan in lanes (scan-lanes.ts): a clan already scanning or queued
+    // is refused; any other clan queues on its account's lane and starts as
+    // soon as that lane is free. "Scan All Clans" is refused while a cycle runs.
+    if (allClans ? scanLoop.isCycleRunning() : (targetClanId !== undefined && scanLoop.isClanScanQueuedOrRunning(targetClanId))) {
+      return res.status(409).json({ error: 'A scan is already in progress', alreadyRunning: true });
+    }
 
     logAction(req.user!.id, 'trigger_manual_scan', {
       username: req.user!.username,
@@ -2256,10 +2281,11 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     // Every clan's scans: this is the scanner's health, not one clan's.
     // The scheduler, not the DB, knows whether the newest open session is live
     // or a leftover — without this the scan in progress reads "never completed".
-    const runningClanId = (scanLoop?.isScanInProgress() ?? false) ? (scanLoop?.getActiveClanId() ?? null) : null;
+    // Several clans scan at once on different accounts (scan-lanes.ts).
+    const runningClanIds = scanLoop?.getRunningClanIds() ?? [];
     // ?clanId narrows to one clan (the card's clan picker); default is all.
     const only = parseBoundedInt(req.query.clanId, 0, { min: 0 }) || null;
-    res.json({ scans: sessionRepo.getScanHealthSeries(only, limit, { runningClanId }) });
+    res.json({ scans: sessionRepo.getScanHealthSeries(only, limit, { runningClanIds }) });
   });
 
   router.get('/admin/log-buffer', requireSuperAdmin, (_req, res) => {

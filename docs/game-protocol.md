@@ -6,7 +6,8 @@ record (members + both gift tabs), player records, the Clan Capital ledger and
 any player's city (research + hero talents). Code: [`src/game-protocol/`](../src/game-protocol/).
 
 Status (Nov 17 2026): **this is the scan.** Each clan in a cycle (and each
-manual scan) is `ScanLoop.runProtocolClanScan`:
+manual scan) is `ScanLoop.runProtocolClanScan` — clans on different accounts at
+the same time (see [Scan lanes](#scan-lanes)):
 
 1. [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts) signs in,
    reads the clan record (members, gifts), player records and the ledger, syncs
@@ -445,11 +446,42 @@ manages under 100 ms), 30–90 ms between batched reads (cities, tiles, clan
 objects). Reads are batched the way the client batches them: 100 players per
 402, 20 cities per 601, 9 tiles per 312.
 
+## Scan lanes
+
+[`scan-lanes.ts`](../src/scheduler/scan-lanes.ts): a cycle scans clans on
+**different Total Battle accounts at the same time** and clans on **one
+account one after another**, in one lane — a game login takes over the
+account's session, so two scans on one account at once would knock each other
+out (SIK and SK7 share a website account). The account is the website user id
+(`tb:<n>`, the `suid` on the site page) in `clan_scan_accounts` (v118),
+learned by the 30-minute session check from the stored login (the same page it
+already loads) and by every scan (`GameClient.suid` / `playerId`), and
+forgotten when a new login is saved. A clan whose account is not known yet runs
+**alone** — after every lane queued before it, before anything queued after it —
+since it might share an account with any clan.
+
+- A cycle queues each lane's clans in cycle order; lanes run side by side; it
+  ends (and arms the next timer) when every lane is done.
+- "Scan This Clan" queues on the clan's lane — straight away if the lane is
+  free, right after the lane's current scan if not; a clan already scanning or
+  queued is refused. "Scan All Clans" is refused while a cycle runs.
+- Per-scan state (progress line, live chest count, start time) is per clan;
+  `/api/status` lists every clan scanning (`activity.clans`) and the sidebar
+  card shows them together ("CWB · SIK"). `scanner.busy` in `/api/health` holds
+  while any lane has work queued or running, so
+  [`deploy-when-idle.mjs`](../scripts/deploy-when-idle.mjs) still waits.
+- The login bridge still pauses scanning globally.
+- A shared rebuild (game names after a patch) runs once even when two lanes
+  ask for it.
+- `SCAN_PARALLEL=0` (docker-compose) puts every clan in one lane: the old
+  serial scan.
+
 ## Session check
 
 [`session-check.ts`](../src/scheduler/session-check.ts) GETs `/en/` with each
 active clan's stored cookies every 30 minutes (and the capture does the same
-before each scan). It presents no token, so it is safe to run often. A logged-in
+before each scan). It presents no token, so it is safe to run often. A signed-in
+page also names the account (`suid`), which keys the clan's scan lane. A logged-in
 page clears "Needs re-authentication"; the site's own logged-out page sets it,
 through [`session-health.ts`](../src/scheduler/session-health.ts) — the same
 path the scan's game capture uses (System warning keyed for auto-resolve, one

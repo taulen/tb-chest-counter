@@ -437,6 +437,8 @@ export const ui = {
   "Scanning": "Сканирование",
   "Clan #{id}": "Клан #{id}",
   "Clan {position} of {total}": "Клан {position} из {total}",
+  "{done} of {total} clans done": "Готово кланов: {done} из {total}",
+  "{n} clans scanning at once": { one: "{n} клан сканируется одновременно", few: "{n} клана сканируются одновременно", many: "{n} кланов сканируются одновременно", other: "{n} клана сканируются одновременно" },
   // lib/troop-levels.js
   "Guardsmen": "Гвардейцы",
   "Specialists": "Специалисты",

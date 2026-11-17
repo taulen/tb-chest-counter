@@ -85,7 +85,9 @@ runs in one container.
 
 ## What it collects
 
-Every scan, per clan:
+Every scan, per clan. Clans whose scanner accounts differ scan at the same
+time; clans that share one account scan one after another (a game login takes
+that account's session over); `SCAN_PARALLEL=0` scans every clan in turn.
 
 - **Chests** — every gift on both tabs: sender, chest, source, how many, and
   when it arrived; then the rewards each one gave when opened.

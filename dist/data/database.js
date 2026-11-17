@@ -2087,6 +2087,26 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v118 — the Total Battle account each clan's scanner signs in with (the
+        // website user id `tb:<n>`, and the game player id once a scan saw it).
+        // Clans on different accounts scan in parallel; clans on one account stay
+        // in one lane (scheduler/scan-lanes.ts). Learned by the 30-minute session
+        // check from the stored login and by every scan; cleared when a new login
+        // is saved, until it is learned again. IF NOT EXISTS: replay-safe.
+        version: 118,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS clan_scan_accounts (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          account TEXT NOT NULL,
+          player_id INTEGER,
+          source TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

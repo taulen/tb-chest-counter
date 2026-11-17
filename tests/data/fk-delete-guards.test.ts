@@ -82,6 +82,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'chat_messages.clan_id',
     'chat_post_channels.clan_id',
     'clan_goal_history.clan_id',
+    'clan_scan_accounts.clan_id',
     'discord_member_links.clan_id',
     // Game protocol capture (v102, v103).
     'game_capture_runs.clan_id',
@@ -409,6 +410,9 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO game_clan_ranking_lists (clan_id, kind, captured_at, entries) VALUES (?, 7, ?, '[]')`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO clan_scan_accounts (clan_id, account, player_id, source, updated_at) VALUES (?, 'tb:85164216', 1297080171719, 'scan', ?)`,
   ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.
