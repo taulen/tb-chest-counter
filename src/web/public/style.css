@@ -3173,7 +3173,10 @@ details > table {
     transform: rotate(-45deg);
     transition: transform var(--transition);
   }
-  .table-responsive tr.is-open::after { transform: rotate(45deg); }
+  /* Same selector as the chevron above plus .is-open: the bare
+     `tr.is-open::after` lost to its :has() specificity, so an opened row
+     kept pointing right. */
+  .table-responsive tr.is-open:has(td[data-role="primary"]):has(td:not([data-role]):not(:empty))::after { transform: rotate(45deg); }
 
   /* Cells hidden by default; roles opt specific ones back in. */
   .table-responsive td {
