@@ -20,7 +20,7 @@ import type { ArtStatic } from './art-static.js';
  * `items` last: every other item icon (T8) that no category above took — a
  * clan treasury or inventory row shows its item's own icon (by item id).
  */
-export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'ui', 'items'] as const;
+export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'ui', 'items'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
 
 /**
@@ -59,10 +59,29 @@ export const STATUS_ART: Record<string, string> = {
   goldIngots: 'gold_bar_72',
 };
 
+/**
+ * The Hall of Fame's factions (profile → Captains). The faction table (T78)
+ * names each faction's art by colour — red Lions of Courage, green Eagles of
+ * Resolve, blue Wolves of Tenacity — and the server hands the names out
+ * (game-protocol/factions.ts). A window (`stainedglass_*`) is a Spine
+ * animation whose atlas packs the still window with its glow frames: the
+ * picture is the window's region. The crest (`fraction_*`) is a plain icon.
+ */
+export const FACTION_WINDOWS: Readonly<Record<string, string>> = {
+  stainedglass_red: 'redv',
+  stainedglass_green: 'greenv',
+  stainedglass_blue: 'bluev',
+};
+export const FACTION_ART: readonly RegExp[] = [
+  new RegExp(`^(${Object.keys(FACTION_WINDOWS).join('|')})$`),
+  /^fraction_(red|green|blue)$/,
+];
+
 /** Address → the Spine atlas region its picture is cut from. */
-export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map(
-  Object.values(EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region as string]),
-);
+export const SPINE_REGIONS: ReadonlyMap<string, string> = new Map([
+  ...Object.values(EVENT_ART).filter((e) => e.region).map((e): [string, string] => [e.address, e.region as string]),
+  ...Object.entries(FACTION_WINDOWS),
+]);
 
 /**
  * The clan ranking window's categories by ranking kind (message 23), with the
@@ -105,6 +124,7 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   events: Object.values(EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
   // Exactly the STATUS_ART addresses.
   status: Object.values(STATUS_ART).map((a) => new RegExp(`^${a}$`)),
+  factions: [...FACTION_ART],
   // From the client build, not the catalogue (see ART_CATEGORIES).
   ui: [],
   // Item icons come from the item table (T8) alone.

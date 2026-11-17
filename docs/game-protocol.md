@@ -156,7 +156,10 @@ Such a bundle holds one texture with every animation part packed in, plus a
 TextAsset `<name>.atlas` (Spine 4 text atlas) naming each part's rectangle; the
 picture is the region holding the whole object (`book`, `Layer 107`,
 `hourglass`), cut out and un-premultiplied (`pma: true`). The Tin Man is the
-plain `map_clan_doomsday_boss_scaled` (the event map's boss art).
+plain `map_clan_doomsday_boss_scaled` (the event map's boss art). The Hall of
+Fame's faction windows (`stainedglass_red|green|blue`, `FACTION_WINDOWS`) are
+the same kind of still: the window is region `redv` / `greenv` / `bluev`, the
+rest of the atlas its glow frames.
 `ART_SELECTION_VERSION` (store.ts) is bumped whenever the selection or the
 mappings change, so an install re-extracts without waiting for a game patch.
 `GAME_ART_DIR` / `GAME_STATIC_DIR` override the caches for local runs only.
@@ -463,6 +466,47 @@ machine-local reader lives under the gitignored `research/`.
 Not read yet: the level "Features" (above) and the instance fields a, b, c of
 an item.
 
+### Hall of Fame (techs 800–803, profile → Captains)
+
+Nothing new is read: **a faction's level is a city tech** (field 17, already in
+`game_player_techs` with `game_player_tech_history` rows on change) —
+
+| Tech | | Levels |
+|---|---|---|
+| 800 | Lions of Courage (T78 id 1, `courage`, red) | 180 |
+| 801 | Wolves of Tenacity (T78 id 3, `tenacity`, blue) | 180 |
+| 802 | Eagles of Resolve (T78 id 2, `resolve`, green) | 180 |
+| 803 | Hall of Fame | 150 |
+
+T78 is the faction table: `[id, …, f4 visual JSON, f5 tech id]`, the JSON naming
+the art (`stainedGlass`, `icon`, `banner`, `frameIcon`) and the faction's text
+key (`tooltipDescription` `battler_fraction.tooltip.<key>`; its name is
+`battler_fraction.description.<key>`). T75 f1 is a captain's faction by the
+same ids. Each tech level row in T21 (`[level, effect, …, [3] condition refs,
+[4] props JSON]`) carries the level's bonuses (the same props JSON as captains'
+star levels: "Army strength +41,25%", "Strength against players", "Authority"
+for the Lions; Army health / Health against players / Dominance for the Wolves;
+Construction speed / Research speed / Leadership for the Eagles; Conquest /
+Valor / Experience points for the hall) and what reaching it takes:
+`HasCaptainFractionRarityLevel(lvl, faction, rarity, count)` (rarity 2 = epic
+and up, 3 = legendary and up; worded by
+`client_config.value.conditions.has_captain_fraction_rarity_level.{epic,legendary}`)
+and, for the hall, `HasFractionLevel(800,801,802,N)` (`client.conditions.has_fraction_level`,
+"Required level of all factions: N"). The hall is found as the tech whose levels
+require `HasFractionLevel`. T21's own names for 800–803 are placeholders
+("Ranged units' strength I" …), so `buildNames` overwrites them with the real
+ones — the Timeline names faction upgrades right (with the crest as icon; the
+techs have no icon of their own), and the Research tab never lists them (not in
+any tree). Verified against the game's screens (Nov 2026): Lions 55 → 56 is
+"+41,25% > +42,0%" and needs 2 level-150 epic+ Lions captains; Hall of Fame
+6 → 7 needs every faction at 46. Faction points (`item.name.courage_points` …)
+are items — captains' star levels grant them — and are not stored.
+
+[factions.ts](../src/game-protocol/factions.ts) `hallOfFameView` builds the
+card (game order Wolves, Lions, Eagles; current bonuses, the next level's
+values and requirement); the art is selection v8's `factions` category — the
+stained-glass windows are Spine stills (regions `redv` / `greenv` / `bluev`).
+
 ### The clan itself (v111, My Clan page)
 
 Every scan also reads the clan as the game's own clan window does — read-only
@@ -748,6 +792,10 @@ Stats screen's "Star level N" lines (`{"props":[{"propText": key, "propValue":
 "+50,0%"}]}`). f5 is wrong for some rows: id 28 is Helen (her sprites and
 battler) but its f5 vector says "Hercules", so the battler name wins. Their
 es/fr/ru/de names and bonus texts come from the game's own CSVs (tGame).
+
+Factions (T78) and the Hall of Fame: `names.factions` / `names.hallOfFame`,
+every level's bonuses and requirement texts (NAMES_FORMAT 5) — see
+[Hall of Fame](#hall-of-fame-techs-800803-profile--captains).
 
 `names.json` carries a `format` (NAMES_FORMAT); a cached file with an older
 one is rebuilt once.

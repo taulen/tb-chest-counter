@@ -22,6 +22,7 @@ const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const artifacts_js_1 = require("../../game-protocol/artifacts.js");
 const equipment_js_1 = require("../../game-protocol/equipment.js");
 const index_js_2 = require("../../game-art/index.js");
+const selection_js_1 = require("../../game-art/selection.js");
 const PAGE_DEFAULT = 60;
 const PAGE_MAX = 200;
 const GROUPS = new Set(Object.values(member_timeline_js_1.TIMELINE_GROUPS));
@@ -55,9 +56,11 @@ function createMemberTimelineRouter(opts = {}) {
                 for (const n of tree.nodes)
                     talentIds.add(n.techId);
         }
+        // A faction's level is a tech (800–802) with no tech icon: its crest stands in.
+        const factionCrests = new Map(Object.values(names?.factions ?? {}).map((f) => [f.techId, f.art.icon]));
         const look = {
             techName: (id) => names?.techs?.[String(id)]?.name ?? `#${id}`,
-            techIconUrl: (id) => art(mappings?.techs, id),
+            techIconUrl: (id) => art(mappings?.techs, id) ?? (factionCrests.get(id) ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(factionCrests.get(id))) : null),
             techKind: (id) => (talentIds.has(id) ? 'talent' : 'research'),
             captainName: (id) => names?.captains?.[String(id)]?.name ?? `#${id}`,
             captainIconUrl: (id) => art(mappings?.captains, id),
