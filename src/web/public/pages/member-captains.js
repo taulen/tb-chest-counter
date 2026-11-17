@@ -223,10 +223,15 @@ let hideTimer = 0;
 
 function hideHoverCard() {
   clearTimeout(showTimer);
+  clearTimeout(hideTimer);
   hoverCard?.classList.remove('is-visible');
 }
 
 function showHoverCard(tile, html) {
+  // The tile may be gone by the time the delay runs: navigating away keeps the
+  // old page on screen until the next one has loaded, and a card shown then
+  // floated over the Dashboard with nothing left to hide it (Nov 2026).
+  if (!tile.isConnected) return;
   if (!hoverCard) {
     hoverCard = document.createElement('div');
     hoverCard.className = 'captain-hovercard';
@@ -234,6 +239,15 @@ function showHoverCard(tile, html) {
     document.body.appendChild(hoverCard);
     window.addEventListener('hashchange', hideHoverCard);
     window.addEventListener('scroll', hideHoverCard, { passive: true, capture: true });
+    // Anywhere but a tile: hide (also covers a tile removed under the pointer,
+    // which never sends mouseout).
+    document.addEventListener('pointermove', (ev) => {
+      if (!hoverCard?.classList.contains('is-visible')) return;
+      const over = ev.target instanceof Element ? ev.target.closest('[data-tile]') : null;
+      if (over && over.isConnected) return;
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(hideHoverCard, HIDE_DELAY_MS);
+    }, { passive: true });
   }
   hoverCard.innerHTML = html;
   hoverCard.classList.add('is-visible');
