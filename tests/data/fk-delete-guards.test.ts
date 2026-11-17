@@ -91,6 +91,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     // The clan's own game data (v111).
     'game_clan_info.clan_id',
     'game_clan_medals.clan_id',
+    'game_clan_ranking_lists.clan_id',
+    'game_clan_rankings.clan_id',
     'game_clan_stats.clan_id',
     'game_clan_tech_history.clan_id',
     'game_clan_techs.clan_id',
@@ -402,6 +404,12 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO game_clan_medals (clan_id, medal_id, earned_at, first_seen, last_seen) VALUES (?, 27, ?, ?, ?)`,
   ).run(clanId, now, now, now);
+  db.prepare(
+    `INSERT INTO game_clan_rankings (clan_id, captured_at, game_date, kind, rank, value) VALUES (?, ?, '2026-11-17', 7, 17, 297852373)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_clan_ranking_lists (clan_id, kind, captured_at, entries) VALUES (?, 7, ?, '[]')`,
+  ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.
   db.prepare(

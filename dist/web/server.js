@@ -22,6 +22,7 @@ const setup_mode_assets_js_1 = require("./setup-mode-assets.js");
 const asset_versioning_js_1 = require("./asset-versioning.js");
 const frontend_assets_js_1 = require("./frontend-assets.js");
 const routes_js_1 = require("../game-art/routes.js");
+const clan_logo_js_1 = require("../game-art/clan-logo.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
 const game_js_1 = require("./routes/game.js");
@@ -393,6 +394,8 @@ function startWebServer(port, scanLoop, options = {}) {
     // Game art extracted from the game's own bundles: /game-art/<version>/<name>.png
     // (public and immutable, like every static file) and /api/game-art (the index).
     app.use((0, routes_js_1.createGameArtRouter)());
+    // Clan logos composed from those layers: /game-art/<version>/clan-logo/<code>.png.
+    app.use((0, clan_logo_js_1.createClanLogoRouter)());
     // robots.txt — disallow the public-share API namespace. The /<token>
     // page itself is short-form and unenumerable, so it relies on the
     // X-Robots-Tag header set by publicShareTokenHandler instead of a

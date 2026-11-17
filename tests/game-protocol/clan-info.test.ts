@@ -16,10 +16,13 @@ import {
   parseClanRanking,
   parseClanRecord,
   parseClanStats,
+  parseClanSummaries,
   rankIn,
 } from '../../src/game-protocol/messages.js';
 import {
   getClanInfo,
+  getClanRankHistory,
+  getClanRankingLists,
   getClanTechChanges,
   getClanTechs,
   getClanTreasury,
@@ -28,6 +31,7 @@ import {
   hasClanTechs,
   latestArchivedClanObject,
   saveClanInfo,
+  saveClanRanking,
   saveClanStats,
   saveClanTechs,
   saveClanTreasury,
@@ -62,6 +66,7 @@ describe('clan messages', () => {
       might: 8325969188,
       foundedAt: 1776412294,
       language: 'en_US',
+      logo: 1118480,
       extra: { f9: 6004, f11: 5011, f12: { $pairs: [[[1018, 1], [16]]] } },
     });
   });
@@ -108,6 +113,16 @@ describe('clan messages', () => {
     expect(rankIn(ranking, 1297080123906)).toBe(3);
     expect(rankIn(ranking, 983547510798)).toBe(2);
     expect(rankIn(ranking, 1)).toBeNull();
+  });
+
+  it('reads the listed clans of a ranking (15200): logo, tag, name, members, might', () => {
+    const row = (id: number, logo: number, tag: string, name: string, max: number, n: number, might: number): Wire =>
+      [[[id], logo, tag, name, 3, 0, 0, max, n, 'en_US', might, 1], { $pairs: [[[1018, 1], [0]]] }];
+    const out = parseClanSummaries(frame(15200, [[[[row(1529008357388, 1513752, 'LWR', 'Last War', 60, 50, 802787), row(1297080123906, 1118480, 'CWB', 'ChaosWithoutBorders', 100, 69, 8325969188)]]]]));
+    expect(out).toEqual([
+      { clanId: 1529008357388, logo: 1513752, tag: 'LWR', name: 'Last War', memberLimit: 60, members: 50, language: 'en_US', might: 802787 },
+      { clanId: 1297080123906, logo: 1118480, tag: 'CWB', name: 'ChaosWithoutBorders', memberLimit: 100, members: 69, language: 'en_US', might: 8325969188 },
+    ]);
   });
 });
 
@@ -162,5 +177,23 @@ describe('clan repository', () => {
     expect(latestArchivedClanObject(clanId, 1297120550815)).toBeNull();
     saveRawSnapshot(clanId, 'clan_object', 1297120550815, '2026-11-16', [[[['x']]]], '2026-11-16T20:00:00Z');
     expect(latestArchivedClanObject(clanId, 1297120550815)).toEqual({ capturedAt: '2026-11-16T20:00:00Z', body: [[[['x']]]] });
+  });
+
+  it("keeps the latest list per ranking and this clan's rank per scan", () => {
+    const clanId = 1;
+    const e = (id: number, value: number) => ({ clanId: id, value, tag: 'T', name: 'N', logo: null, members: 1, memberLimit: 100 });
+    saveClanRanking(clanId, '2026-11-16', 7, [e(1, 30), e(2, 20)], { rank: 2, value: 20 }, '2026-11-16T20:00:00Z');
+    saveClanRanking(clanId, '2026-11-17', 7, [e(2, 40), e(1, 30)], { rank: 1, value: 40 }, '2026-11-17T18:00:00Z');
+    saveClanRanking(clanId, '2026-11-17', 3, [e(1, 9)], { rank: null, value: null }, '2026-11-17T18:00:00Z');
+    const lists = getClanRankingLists(clanId).sort((a, b) => a.kind - b.kind);
+    expect(lists.map((l) => [l.kind, l.capturedAt, l.entries.map((x) => x.clanId)])).toEqual([
+      [3, '2026-11-17T18:00:00Z', [1]],
+      [7, '2026-11-17T18:00:00Z', [2, 1]],
+    ]);
+    expect(getClanRankHistory(clanId, '2026-11-01')).toEqual([
+      { kind: 3, gameDate: '2026-11-17', rank: null, value: null },
+      { kind: 7, gameDate: '2026-11-16', rank: 2, value: 20 },
+      { kind: 7, gameDate: '2026-11-17', rank: 1, value: 40 },
+    ]);
   });
 });

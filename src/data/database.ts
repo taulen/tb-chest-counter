@@ -2063,6 +2063,43 @@ const MIGRATIONS: Migration[] = [
       ).run('CWB • Carter', new Date().toISOString());
     },
   },
+  {
+    // v117 — the clan's logo and its place in the kingdom's clan rankings (My Clan):
+    //   game_clan_info.logo           the logo code (clan record f1[2]):
+    //                                 background << 16 | frame << 8 | emblem;
+    //   game_clan_rankings            the clan's rank and value in each ranking
+    //                                 (message 23 kinds 7 wealth, 1 might,
+    //                                 3 valor, 4 conquest, 5 crypt) per scan —
+    //                                 rank null when outside the top 100;
+    //   game_clan_ranking_lists       the latest top-100 list per kind, every
+    //                                 clan with its tag, name, logo and members
+    //                                 (15200), as JSON — replaced each scan.
+    // Guarded / IF NOT EXISTS: runMigrations may replay this.
+    version: 117,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(game_clan_info)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'logo')) database.exec('ALTER TABLE game_clan_info ADD COLUMN logo INTEGER');
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS game_clan_rankings (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          captured_at TEXT NOT NULL,
+          game_date TEXT NOT NULL,
+          kind INTEGER NOT NULL,
+          rank INTEGER,
+          value INTEGER,
+          PRIMARY KEY (clan_id, captured_at, kind)
+        );
+        CREATE INDEX IF NOT EXISTS idx_game_clan_rankings_day ON game_clan_rankings (clan_id, kind, game_date);
+        CREATE TABLE IF NOT EXISTS game_clan_ranking_lists (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          kind INTEGER NOT NULL,
+          captured_at TEXT NOT NULL,
+          entries TEXT NOT NULL,
+          PRIMARY KEY (clan_id, kind)
+        );
+      `);
+    },
+  },
 ];
 
 /**

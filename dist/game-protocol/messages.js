@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GIFT_LIFETIME_S = void 0;
+exports.CLAN_RANKING_KINDS = exports.GIFT_LIFETIME_S = void 0;
 exports.parseClanRecord = parseClanRecord;
 exports.plainWire = plainWire;
 exports.parseClanCapital = parseClanCapital;
@@ -8,6 +8,7 @@ exports.parseClanStats = parseClanStats;
 exports.parseCapitalBorder = parseCapitalBorder;
 exports.parseClanMedals = parseClanMedals;
 exports.parseClanRanking = parseClanRanking;
+exports.parseClanSummaries = parseClanSummaries;
 exports.rankIn = rankIn;
 exports.parsePlayers = parsePlayers;
 exports.parseLedger = parseLedger;
@@ -69,6 +70,7 @@ function parseClanRecord(frame) {
         might: num(rec[7]),
         foundedAt: num(info[8]),
         language: typeof info[13] === 'string' ? info[13] : '',
+        logo: num(info[2]),
         extra: { f9: num(rec[9]), f11: num(rec[11]), f12: rec[12] ?? null },
     };
 }
@@ -165,6 +167,41 @@ function parseClanRanking(frame) {
             return;
         if (v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[0] > 1_000_000) {
             out.push({ clanId: v[0], value: v[1] });
+            return;
+        }
+        for (const x of v)
+            walk(x, depth + 1);
+    };
+    walk(frame.body, 0);
+    return out;
+}
+/**
+ * The clan ranking window's categories (message 23 kinds), in the game's
+ * order: the client config's rating tabs (RATING_CLANS); each probed — 2 and 6
+ * answer empty for clans.
+ */
+exports.CLAN_RANKING_KINDS = [7, 1, 3, 4, 5];
+/**
+ * Message 15200 (`[[[[clanId], …]]]`): any clans' headline — what the game's
+ * ranking list shows per clan: `[[clanId], logo, tag, name, type, 0, 0,
+ * memberLimit, members, language, might, 1]` (then a `{[1018,1] → [n]}` pair).
+ */
+function parseClanSummaries(frame) {
+    const out = [];
+    const walk = (v, depth) => {
+        if (!Array.isArray(v) || depth > 6)
+            return;
+        if (v.length >= 11 && id1(v[0]) !== null && typeof v[2] === 'string' && typeof v[3] === 'string') {
+            out.push({
+                clanId: id1(v[0]),
+                logo: num(v[1]),
+                tag: v[2],
+                name: v[3],
+                memberLimit: num(v[7]),
+                members: num(v[8]),
+                language: typeof v[9] === 'string' ? v[9] : '',
+                might: num(v[10]),
+            });
             return;
         }
         for (const x of v)

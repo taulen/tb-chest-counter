@@ -50,6 +50,8 @@ export interface ClanRecord {
   foundedAt: number | null;
   /** The clan's language (f1[13], "en_US"). */
   language: string;
+  /** The clan logo (f1[2]): background << 16 | frame << 8 | emblem — see game-art/clan-logo.ts. */
+  logo: number | null;
   /** Fields not decoded yet (f9, f11 move by the minute; f12 a `[1018,1] → [n]` pair) — stored raw. */
   extra: { f9: number | null; f11: number | null; f12: Wire | null };
 }
@@ -96,6 +98,7 @@ export function parseClanRecord(frame: Frame): ClanRecord | null {
     might: num(rec[7]),
     foundedAt: num(info[8]),
     language: typeof info[13] === 'string' ? info[13] : '',
+    logo: num(info[2]),
     extra: { f9: num(rec[9]), f11: num(rec[11]), f12: rec[12] ?? null },
   };
 }
@@ -223,6 +226,53 @@ export function parseClanRanking(frame: Frame): Array<{ clanId: number; value: n
     if (!Array.isArray(v) || depth > 5) return;
     if (v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' && v[0] > 1_000_000) {
       out.push({ clanId: v[0], value: v[1] });
+      return;
+    }
+    for (const x of v) walk(x, depth + 1);
+  };
+  walk(frame.body, 0);
+  return out;
+}
+
+/**
+ * The clan ranking window's categories (message 23 kinds), in the game's
+ * order: the client config's rating tabs (RATING_CLANS); each probed — 2 and 6
+ * answer empty for clans.
+ */
+export const CLAN_RANKING_KINDS = [7, 1, 3, 4, 5] as const;
+
+export interface ClanSummary {
+  clanId: number;
+  /** Logo code (see ClanRecord.logo). */
+  logo: number | null;
+  tag: string;
+  name: string;
+  memberLimit: number | null;
+  members: number | null;
+  language: string;
+  might: number | null;
+}
+
+/**
+ * Message 15200 (`[[[[clanId], …]]]`): any clans' headline — what the game's
+ * ranking list shows per clan: `[[clanId], logo, tag, name, type, 0, 0,
+ * memberLimit, members, language, might, 1]` (then a `{[1018,1] → [n]}` pair).
+ */
+export function parseClanSummaries(frame: Frame): ClanSummary[] {
+  const out: ClanSummary[] = [];
+  const walk = (v: Wire | undefined, depth: number): void => {
+    if (!Array.isArray(v) || depth > 6) return;
+    if (v.length >= 11 && id1(v[0]) !== null && typeof v[2] === 'string' && typeof v[3] === 'string') {
+      out.push({
+        clanId: id1(v[0]) as number,
+        logo: num(v[1]),
+        tag: v[2],
+        name: v[3],
+        memberLimit: num(v[7]),
+        members: num(v[8]),
+        language: typeof v[9] === 'string' ? v[9] : '',
+        might: num(v[10]),
+      });
       return;
     }
     for (const x of v) walk(x, depth + 1);

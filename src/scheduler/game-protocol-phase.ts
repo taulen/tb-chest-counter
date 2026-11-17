@@ -28,6 +28,9 @@ import {
   parseClanCapital,
   parseClanMedals,
   parseClanRanking,
+  parseClanSummaries,
+  CLAN_RANKING_KINDS,
+  type ClanSummary,
   parseClanRecord,
   parseClanStats,
   parseLedger,
@@ -51,6 +54,8 @@ import {
   saveClanStats,
   saveClanTechs,
   saveClanTreasury,
+  saveClanRanking,
+  type RankingEntry,
 } from '../data/repositories/game-clan-repo.js';
 import {
   citySnapshotPlayers,
@@ -268,11 +273,58 @@ export async function collectCaptureExtras(clanId: number, data: CaptureData, cl
 
 /** Ranking kind of message 23 that is wealth points (verified against the in-game list). */
 const RANKING_WEALTH = 7;
+/** Clans per 15200 request (the game itself asks for a ranking list's 100 at once). */
+const SUMMARY_BATCH = 100;
+
+/**
+ * Every clan ranking of the kingdom (23, each kind of CLAN_RANKING_KINDS), the
+ * listed clans' tag, name, logo and members (15200, one request per 100 clans
+ * across all lists), stored as the latest list per kind plus this clan's rank
+ * and value. Returns the lists read, by kind.
+ */
+async function collectRankings(
+  clanId: number,
+  d: CaptureData,
+  now: string,
+  ask: <T>(label: string, fn: () => Promise<T>) => Promise<T | null>,
+): Promise<Map<number, Array<{ clanId: number; value: number }>>> {
+  const lists = new Map<number, Array<{ clanId: number; value: number }>>();
+  for (const kind of CLAN_RANKING_KINDS) {
+    const list = await ask(`ranking ${kind}`, async () => parseClanRanking(await d.client.clanRanking(kind)));
+    if (list?.length) lists.set(kind, [...list].sort((a, b) => b.value - a.value));
+  }
+  if (!lists.size) return lists;
+  const ids = [...new Set([...lists.values()].flatMap((l) => l.map((e) => e.clanId)))];
+  const summaries = new Map<number, ClanSummary>();
+  for (let i = 0; i < ids.length; i += SUMMARY_BATCH) {
+    const batch = await ask('clan names', async () => parseClanSummaries(await d.client.clanSummaries(ids.slice(i, i + SUMMARY_BATCH))));
+    for (const s of batch ?? []) summaries.set(s.clanId, s);
+  }
+  const own = d.record.clanId;
+  for (const [kind, list] of lists) {
+    const entries: RankingEntry[] = list.map((e) => {
+      const s = summaries.get(e.clanId);
+      return {
+        clanId: e.clanId,
+        value: e.value,
+        tag: s?.tag ?? '',
+        name: s?.name ?? '',
+        logo: s?.logo ?? null,
+        members: s?.members ?? null,
+        memberLimit: s?.memberLimit ?? null,
+      };
+    });
+    const at = list.findIndex((e) => e.clanId === own);
+    saveClanRanking(clanId, d.gameDate, kind, entries, { rank: at < 0 ? null : at + 1, value: at < 0 ? null : list[at].value }, now);
+  }
+  return lists;
+}
 
 /**
  * The clan itself, every scan (Clan page): the Clan Capital (research, treasury,
  * position), might and wealth points (25), help points (14003), the medals
- * (28001) and the kingdom's wealth ranking (23) — the read-only requests the
+ * (28001), the kingdom's clan rankings (23, every kind, with the listed
+ * clans' names and logos from 15200) — the read-only requests the
  * game sends whenever its clan window opens. Each one is isolated; whatever was
  * read is stored, a stats row per scan. Returns a summary for the log line.
  */
@@ -314,6 +366,7 @@ async function collectClan(clanId: number, d: CaptureData, now: string): Promise
     language: rec.language,
     capitalId,
     position,
+    logo: rec.logo,
   }, now);
 
   const raw: Record<string, unknown> = { record: plainWire(rec.extra) };
@@ -331,7 +384,8 @@ async function collectClan(clanId: number, d: CaptureData, now: string): Promise
   if (border) raw.border = border.raw;
   const medals = await ask('medals', async () => parseClanMedals(await d.client.clanMedals(rec.clanId)));
   if (medals?.length) saveClanMedals(clanId, medals, now);
-  const ranking = await ask('wealth ranking', async () => parseClanRanking(await d.client.clanRanking(RANKING_WEALTH)));
+  const rankings = await collectRankings(clanId, d, now, ask);
+  const wealthList = rankings.get(RANKING_WEALTH);
 
   saveClanStats(clanId, d.gameDate, {
     members: rec.members.length,
@@ -340,10 +394,10 @@ async function collectClan(clanId: number, d: CaptureData, now: string): Promise
     might: rec.might ?? stats?.might ?? null,
     wealth: stats?.wealth ?? null,
     helpPoints: border?.helpPoints ?? null,
-    wealthRank: ranking?.length ? rankIn(ranking, rec.clanId) : null,
+    wealthRank: wealthList?.length ? rankIn(wealthList, rec.clanId) : null,
     raw,
   }, now);
-  return `clan: ${techChanges} research changes${notes.length ? ` (${notes.join('; ')})` : ''}`;
+  return `clan: ${techChanges} research changes, ${rankings.size} rankings${notes.length ? ` (${notes.join('; ')})` : ''}`;
 }
 
 /**

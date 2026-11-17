@@ -50,7 +50,7 @@ function capture(gifts: NamedGift[], memberIds: Map<number, number>, client = fa
     names: { version: 't', builtAt: '', gifts: { 2: { chest: 'Silver', source: '' } }, techs: {}, objects: {}, heroes: {} } as unknown as CaptureData['names'],
     record: {
       clanId: 77, tag: 'T', name: 'Test', members: [], gifts: [], objects: [],
-      capitalId: null, memberLimit: null, might: null, foundedAt: null, language: '', extra: { f9: null, f11: null, f12: null },
+      capitalId: null, memberLimit: null, might: null, foundedAt: null, language: '', logo: null, extra: { f9: null, f11: null, f12: null },
     },
     byId: new Map(),
     gifts,

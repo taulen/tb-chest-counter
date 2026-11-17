@@ -25,6 +25,8 @@ import {
 } from '../../data/repositories/game-profile-repo.js';
 import {
   getClanInfo,
+  getClanRankHistory,
+  getClanRankingLists,
   getClanLeader,
   getClanMedals,
   getClanTechChanges,
@@ -37,7 +39,10 @@ import { getMemberTiers } from '../../data/member-tiers.js';
 import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
 import { loadGameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
-import { safeArtName } from '../../game-art/selection.js';
+import { CLAN_RANKING_ICONS, safeArtName } from '../../game-art/selection.js';
+import { clanLogoUrl } from '../../game-art/clan-logo.js';
+import { itemIconUrls } from '../../game-art/item-icons.js';
+import { CLAN_RANKING_KINDS } from '../../game-protocol/messages.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
 import { describeItem } from '../../game-protocol/equipment.js';
 
@@ -215,20 +220,51 @@ export function createGameRouter(): Router {
     const names = await loadGameNames().catch(() => null);
     const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
     const treasury = getClanTreasury(clanId);
+    const icons = await itemIconUrls(treasury.rows.map((r) => r.resourceId));
     res.json({
       linked: true,
-      info: { ...info, leader: getClanLeader(clanId) },
+      info: { ...info, leader: getClanLeader(clanId), logoUrl: clanLogoUrl(info.logo) },
       stats: getLatestClanStats(clanId),
       history: getDailyClanStats(clanId, since.slice(0, 10)),
       treasury: {
         ...treasury,
-        rows: treasury.rows.map((r) => ({ ...r, name: names?.gifts?.[String(r.resourceId)]?.chest ?? '' })),
+        // Each item's own icon, by id (Clan Shield of Peace, tournament proofs, …).
+        rows: treasury.rows.map((r) => ({ ...r, name: names?.gifts?.[String(r.resourceId)]?.chest ?? '', iconUrl: icons.get(r.resourceId) ?? null })),
       },
       medals: getClanMedals(clanId).map((m) => {
         const g = names?.medals?.[String(m.medalId)];
-        return { ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '' };
+        return {
+          ...m, name: g?.name ?? '', description: g?.description ?? '', tier: g?.tier ?? 0, tierName: g?.tierName ?? '',
+          iconUrl: g?.icon ? gameArtUrl(safeArtName(g.icon)) : null,
+        };
       }),
       techs: { ...getClanTechs(clanId), changes: getClanTechChanges(clanId, since) },
+    });
+  });
+
+  /**
+   * The kingdom's clan rankings as the game's ranking window shows them: each
+   * kind with its icon, the latest top-100 list (clans with their logo, tag,
+   * name, members) and this clan's rank and value by game day. Loaded when the
+   * Rankings tab opens.
+   */
+  router.get('/clan/rankings', (req, res) => {
+    const clanId = req.clanId!;
+    const info = getClanInfo(clanId);
+    const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString().slice(0, 10);
+    const lists = new Map(getClanRankingLists(clanId).map((l) => [l.kind, l]));
+    res.json({
+      gameClanId: info?.gameClanId ?? null,
+      kinds: CLAN_RANKING_KINDS.map((kind) => {
+        const l = lists.get(kind);
+        return {
+          kind,
+          iconUrl: gameArtUrl(safeArtName(CLAN_RANKING_ICONS[kind] ?? '')),
+          capturedAt: l?.capturedAt ?? null,
+          entries: (l?.entries ?? []).map((e) => ({ ...e, logoUrl: clanLogoUrl(e.logo) })),
+        };
+      }),
+      history: getClanRankHistory(clanId, since),
     });
   });
 

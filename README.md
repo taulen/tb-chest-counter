@@ -94,12 +94,14 @@ Every scan, per clan:
 - **Players** — might, hero level, city level, VIP level and Gold Pass.
 - **Clan Capital ledger** — every donation and payout, by member.
 - **Vaults of the Ancients** near members' cities, on the days they exist.
-- **The clan itself** (My Clan page) — tag and name, members against the
-  member limit, might, wealth points and the clan's rank by wealth in its
-  kingdom, help points, founding date, the medals it displays, the Clan
-  Capital's position and treasury, and the clan's research (Clan territories,
-  Allies, Fortifications) drawn as the game's trees — with a reading per scan
-  and a history of every research level-up.
+- **The clan itself** (My Clan page) — its logo drawn from the game's own
+  layers, tag and name, members against the member limit, might, wealth
+  points, help points, founding date, the medals it displays, the Clan
+  Capital's position and treasury (each item with its game icon), the clan's
+  research (Clan territories, Allies, Fortifications) drawn as the game's
+  trees, and the kingdom's clan rankings — wealth, might, valor, conquest and
+  crypts, the top 100 with logos and the clan's own rank by day — with a
+  reading per scan and a history of every research level-up.
 
 Every minute:
 
