@@ -265,7 +265,6 @@ async function checkAuth() {
     // enabled flag, not by user role — any logged-in user sees it when
     // it's on, nobody sees it when it's off.
     refreshExternalNavVisibility();
-    refreshResourcesNavVisibility();
     refreshMightNavVisibility();
 
     // Render the build SHA in the footer so the operator can verify
@@ -400,32 +399,6 @@ async function refreshExternalNavVisibility() {
   }
 }
 window.refreshExternalNavVisibility = refreshExternalNavVisibility;
-
-/**
- * Show or hide the Resources nav link. Visible to any signed-in clan member
- * when the active clan has resourcesEnabled = true. The section's Admin
- * sub-tab is hidden separately (resourceTabsHtml) for non-admins.
- */
-async function refreshResourcesNavVisibility() {
-  const link = $('#navResources');
-  if (!link) return;
-  try {
-    if (!currentUser) {
-      link.classList.add('is-hidden');
-      return;
-    }
-    const res = await fetch('/api/clans');
-    if (!res.ok) { link.classList.add('is-hidden'); return; }
-    const data = await res.json();
-    const clans = Array.isArray(data.clans) ? data.clans : [];
-    const activeId = data.activeClanId ?? null;
-    const activeClan = clans.find((c) => c.id === activeId) ?? clans[0] ?? null;
-    link.classList.toggle('is-hidden', activeClan?.resourcesEnabled !== true);
-  } catch {
-    link.classList.add('is-hidden');
-  }
-}
-window.refreshResourcesNavVisibility = refreshResourcesNavVisibility;
 
 /**
  * Show or hide the Might nav link.
@@ -965,15 +938,14 @@ async function renderRoute(page, content) {
       return;
     }
   }
-  // Resources is a two-tab page: #resources = Overview (landing),
-  // #resources/admin = the ledger. Both bounce to the dashboard
-  // when the active clan doesn't have resources enabled.
+  // Resources is a three-tab page: #resources = Overview (landing),
+  // #resources/totals = per-member totals, #resources/admin = the ledger.
   if (page === 'resources/admin') {
-    await renderResourcesAdmin(content, navigateTo);
+    await renderResourcesAdmin(content);
     return;
   }
   if (page === 'resources/totals') {
-    await renderResourcesTotals(content, navigateTo);
+    await renderResourcesTotals(content);
     return;
   }
   // Events is a multi-sub-tab page: #events = the currently live event (or the
@@ -1011,7 +983,7 @@ async function renderRoute(page, content) {
     case 'external':
       await renderExternal(content, navigateTo);
       break;
-    case 'resources': await renderResourcesOverview(content, navigateTo); break;
+    case 'resources': await renderResourcesOverview(content); break;
     case 'users': await renderUsers(content); break;
     case 'clans': await renderClans(content, refreshClanIndicator); break;
     case 'system': await renderSystem(content); break;

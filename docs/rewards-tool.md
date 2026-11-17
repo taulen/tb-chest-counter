@@ -12,7 +12,7 @@ Shares a clan reward pot (Dragon Coins and clan fragments) over the players of o
 
 - **Runs** are `/api/events/<event>/occurrences`, newest first, capped at 12. If the calendar feed is down, a pasted basis falls back to the pasted run dates. Essence then has no window and says so.
 - **A pasted ranking is cumulative**, so "Scores after day N" reads each player's newest snapshot at or before day N (`scoreAfterDay`), carrying a missed day forward the way the Events card does. The default is the latest pasted day.
-- **Essence needs resource tracking.** A clan without it is told to split by damage instead.
+- **Essence comes from the Clan Capital ledger**, which every scan reads for every clan. A run with no Omen Essence donated in its window says so ("Nobody donated…"); split by damage instead.
 
 ## The split
 

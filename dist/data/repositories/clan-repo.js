@@ -13,7 +13,6 @@ exports.setClanActive = setClanActive;
 exports.setClanScanIntervalMinutes = setClanScanIntervalMinutes;
 exports.setClanPublicUrl = setClanPublicUrl;
 exports.clanPublicUrl = clanPublicUrl;
-exports.setClanInactivitySettings = setClanInactivitySettings;
 exports.setClanLeaderboardGoal = setClanLeaderboardGoal;
 exports.listGoalHistory = listGoalHistory;
 exports.setClanWeekStart = setClanWeekStart;
@@ -31,7 +30,6 @@ exports.clearClanNeedsReauth = clearClanNeedsReauth;
 exports.reauthWarningKey = reauthWarningKey;
 exports.reauthLegacyMatcher = reauthLegacyMatcher;
 exports.setClanChestTrackerSettings = setClanChestTrackerSettings;
-exports.setClanResourcesEnabled = setClanResourcesEnabled;
 exports.softDeleteClan = softDeleteClan;
 exports.restoreDeletedClan = restoreDeletedClan;
 exports.deleteClan = deleteClan;
@@ -87,9 +85,6 @@ function rowToClan(row) {
         lastWeeklyDigestError: row.last_weekly_digest_error || '',
         needsReauth: !!row.needs_reauth,
         reauthFailedAt: row.reauth_failed_at || '',
-        resourcesEnabled: !!row.resources_enabled,
-        inactivitySweepEnabled: !!row.inactivity_sweep_enabled,
-        inactivityDays: row.inactivity_days ?? null,
         leaderboardGoalEnabled: !!row.leaderboard_goal_enabled,
         leaderboardWeeklyGoalPoints: row.leaderboard_weekly_goal_points ?? null,
         leaderboardGoalAmberPct: row.leaderboard_goal_amber_pct ?? null,
@@ -164,17 +159,10 @@ function createClan(input) {
     // game_url is a vestigial NOT NULL column from migration v16; it's
     // populated with the global TB constant for backward-compat but
     // isn't surfaced anywhere in the UI or repos.
-    // resources_enabled = 1 for a NEW clan: resource tracking is part of what
-    // the app does now, so a clan created today shows its Resources tab from
-    // the first scan. The column's own DEFAULT stays 0 on purpose — that governs
-    // EXISTING rows a migration adds the column to, and turning a feature on
-    // under a running deployment is not a migration's call. Per-clan opt-out is
-    // on the Clans page.
     const result = db.prepare(`
     INSERT INTO clans (
-      name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by,
-      resources_enabled
-    ) VALUES (?, ?, ?, ?, 1, ?, ?, 1)
+      name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by
+    ) VALUES (?, ?, ?, ?, 1, ?, ?)
   `).run(input.name.trim(), slug, 'https://totalbattle.com', input.scanIntervalMinutes ?? null, now, input.createdBy ?? null);
     log.info(`Created clan #${result.lastInsertRowid} "${input.name}" (slug=${slug})`);
     const created = getClanById(result.lastInsertRowid);
@@ -205,16 +193,6 @@ function setClanPublicUrl(id, url) {
  *  global WEB_EXTERNAL_URL. '' when neither is set (= emit no links). */
 function clanPublicUrl(clan, globalUrl) {
     return (clan?.publicUrl || globalUrl || '').replace(/\/+$/, '');
-}
-/**
- * Set a clan's member-inactivity-sweep settings. `enabled` is the on/off
- * toggle; `days` is the threshold — null to fall back to the global
- * MEMBER_INACTIVITY_DAYS default, or a positive integer for a custom cutoff
- * (ignored while the sweep is disabled).
- */
-function setClanInactivitySettings(id, settings) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('UPDATE clans SET inactivity_sweep_enabled = ?, inactivity_days = ? WHERE id = ?').run(settings.enabled ? 1 : 0, settings.days, id);
 }
 /**
  * Set this clan's leaderboard goal. `weeklyPoints` is null when the admin
@@ -431,10 +409,6 @@ function setClanChestTrackerSettings(id, s) {
       ct_backfill_weeks = ?
     WHERE id = ?
   `).run(s.shareCode, s.pollIntervalHours, s.backfillWeeks, id);
-}
-function setClanResourcesEnabled(id, enabled) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('UPDATE clans SET resources_enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
 }
 /**
  * Hide a clan and everything it owns, without destroying a single row.

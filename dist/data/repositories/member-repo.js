@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ROSTER_READ_FRESH_HOURS = void 0;
 exports.upsertMember = upsertMember;
 exports.markMembersSeen = markMembersSeen;
 exports.findMemberByName = findMemberByName;
@@ -11,8 +10,6 @@ exports.addAlias = addAlias;
 exports.renameMember = renameMember;
 exports.removeMember = removeMember;
 exports.restoreMember = restoreMember;
-exports.deactivateStaleMembers = deactivateStaleMembers;
-exports.retireOffRosterMembers = retireOffRosterMembers;
 exports.getRecentlySeenMembers = getRecentlySeenMembers;
 exports.deleteMember = deleteMember;
 exports.getMemberCount = getMemberCount;
@@ -113,17 +110,10 @@ function upsertMember(name, clanId) {
  *
  * The batch, id-addressed counterpart to what `upsertMember` does when it
  * recognises a name: refresh `last_seen` and flip `is_active` back on. Needed
- * because a sighting doesn't always arrive as an exact name — the might capture
- * resolves an OCR'd name to a member through the fuzzy matcher, and feeding that
- * read back through `upsertMember` would create a near-duplicate member instead of
- * updating the one it matched.
- *
- * Why a member-list sighting counts at all: the inactivity sweep soft-removes
- * anyone not seen for their clan's threshold, and until now "seen" meant "appeared
- * in a chest or gift scan". A player can easily go a week without earning a chest
- * while plainly still being in the clan — the in-game member list says so, and that
- * list is the authoritative roster. So reading a name off it is a sighting, and
- * without this the sweep kept removing members the game still lists.
+ * because a sighting doesn't always arrive as an exact name — the game member
+ * sync (game-protocol/member-sync.ts) resolves each roster entry to a member by
+ * game player id or a match, and feeding that back through `upsertMember` could
+ * create a near-duplicate member instead of updating the one it matched.
  *
  * Reactivation matches `upsertMember`'s long-standing behaviour deliberately: a
  * member who shows up again resumes their original identity (and chest history)
@@ -254,71 +244,6 @@ function restoreMember(id, clanId) {
     const now = new Date().toISOString();
     db.prepare('UPDATE members SET is_active = 1, last_seen = ?, left_at = NULL WHERE id = ? AND clan_id = ?').run(now, id, clanId);
     invalidateMemberDerivedCaches(clanId);
-}
-/**
- * Soft-remove every active member of a clan whose last sighting is older
- * than `cutoffIso` (an ISO timestamp). This is the batch form of
- * `removeMember` used by the daily inactivity sweep: it flips
- * `is_active = 0` but leaves the row (and chest history) intact, so the
- * next scan that finds the player in the clan reactivates it.
- *
- * Returns the members that were deactivated (id + name) so the caller can
- * log exactly who was affected. Only touches rows that were still active,
- * so it's idempotent — running it twice in a row deactivates nothing the
- * second time.
- */
-function deactivateStaleMembers(clanId, cutoffIso) {
-    const db = (0, database_js_1.getDb)();
-    const stale = db.prepare('SELECT id, name FROM members WHERE clan_id = ? AND is_active = 1 AND last_seen < ?').all(clanId, cutoffIso);
-    if (stale.length === 0)
-        return [];
-    db.prepare('UPDATE members SET is_active = 0, left_at = ? WHERE clan_id = ? AND is_active = 1 AND last_seen < ?').run(new Date().toISOString(), clanId, cutoffIso);
-    invalidateMemberDerivedCaches(clanId);
-    return stale;
-}
-/** How recent this clan's last member-list read must be for "not on it" to mean anything. */
-exports.ROSTER_READ_FRESH_HOURS = 36;
-/**
- * Soft-remove members known ONLY from Clan Capital resource history — never on any
- * in-game member list we read (no might snapshot, ever), never sent a gift — while
- * this clan's member list IS being read. That list is the authoritative roster, so a
- * name absent from every read of it is a former member, not one of today's players.
- *
- * The resource history reaches back days, and a clan's first read reaches back to
- * before the app tracked it at all. Every donor not on the roster used to be created
- * as an ACTIVE member with last_seen = now: SK7's first read (Nov 13 2026) added 10
- * ex-members to an 80-player roster, and the time-based sweep would only have retired
- * them a week later because "now" was their last sighting.
- *
- * Nothing is lost: the row and its donations stay (resource totals don't filter on
- * is_active) and it still sits in the New Members review queue for a merge if it is
- * really a misread of a current player. If the player IS in the clan — joined after
- * today's read, or a read that missed their row — the next member-list read matches
- * inactive members too and reactivates them (`markMembersSeen`).
- *
- * Chest senders are left to the time-based sweep: narrower on purpose, and a gift is
- * a sighting in its own right.
- */
-function retireOffRosterMembers(clanId, nowMs = Date.now()) {
-    const db = (0, database_js_1.getDb)();
-    const latest = db.prepare('SELECT MAX(captured_at) AS at FROM member_snapshots WHERE clan_id = ?').get(clanId).at;
-    if (!latest || Date.parse(latest) < nowMs - exports.ROSTER_READ_FRESH_HOURS * 60 * 60 * 1000)
-        return [];
-    const offRoster = db.prepare(`
-    SELECT m.id, m.name FROM members m
-     WHERE m.clan_id = ? AND m.is_active = 1
-       AND NOT EXISTS (SELECT 1 FROM member_snapshots s WHERE s.member_id = m.id)
-       AND NOT EXISTS (SELECT 1 FROM chest_records c WHERE c.member_id = m.id)
-       AND NOT EXISTS (SELECT 1 FROM triumphal_chest_records t WHERE t.member_id = m.id)
-  `).all(clanId);
-    if (offRoster.length === 0)
-        return [];
-    const leftAt = new Date(nowMs).toISOString();
-    const retire = db.prepare('UPDATE members SET is_active = 0, left_at = ? WHERE id = ? AND is_active = 1');
-    db.transaction(() => { for (const m of offRoster)
-        retire.run(leftAt, m.id); })();
-    invalidateMemberDerivedCaches(clanId);
-    return offRoster;
 }
 /**
  * Active members last seen at or after `sinceIso` (any scan that read their

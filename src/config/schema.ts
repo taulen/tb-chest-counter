@@ -33,8 +33,6 @@ export const configSchema = z.object({
 
   gameDayRolloverUtcHour: z.coerce.number().int().min(0).max(23).default(17),
 
-  memberInactivityDays: z.coerce.number().int().min(0).default(7),
-
   chestPointValues: z.preprocess(
     (v) => typeof v === 'string' ? JSON.parse(v) : v,
     chestPointValuesSchema,

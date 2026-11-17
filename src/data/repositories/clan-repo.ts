@@ -82,17 +82,10 @@ export interface Clan {
   needsReauth: boolean;
   reauthFailedAt: string;
 
-  // Resource tracking feature toggle. Off by default; admins enable it
-  // per-clan from the Clan settings page to surface the Resources tab.
-  resourcesEnabled: boolean;
-
-  // Daily member-inactivity sweep, per clan. inactivitySweepEnabled is the
-  // on/off toggle (defaults on). inactivityDays is the threshold — days a
-  // member can go unseen before being soft-removed — where null inherits the
-  // global MEMBER_INACTIVITY_DAYS default and a positive number is a custom
-  // cutoff. The days value is ignored when the sweep is disabled.
-  inactivitySweepEnabled: boolean;
-  inactivityDays: number | null;
+  // The clans table still carries resources_enabled, inactivity_sweep_enabled
+  // and inactivity_days (Nov 2026: retired settings, columns kept and unread).
+  // Resources are read every scan for every clan, and departures follow the
+  // game's roster each scan (game-protocol/member-sync.ts).
 
   /**
    * Leaderboard points goal. `leaderboardGoalEnabled` turns the per-row
@@ -188,9 +181,6 @@ function rowToClan(row: Record<string, unknown>): Clan {
     lastWeeklyDigestError: (row.last_weekly_digest_error as string) || '',
     needsReauth: !!(row.needs_reauth as number),
     reauthFailedAt: (row.reauth_failed_at as string) || '',
-    resourcesEnabled: !!(row.resources_enabled as number),
-    inactivitySweepEnabled: !!(row.inactivity_sweep_enabled as number),
-    inactivityDays: (row.inactivity_days as number | null) ?? null,
     leaderboardGoalEnabled: !!(row.leaderboard_goal_enabled as number),
     leaderboardWeeklyGoalPoints: (row.leaderboard_weekly_goal_points as number | null) ?? null,
     leaderboardGoalAmberPct: (row.leaderboard_goal_amber_pct as number | null | undefined) ?? null,
@@ -288,17 +278,10 @@ export function createClan(input: CreateClanInput): Clan {
   // game_url is a vestigial NOT NULL column from migration v16; it's
   // populated with the global TB constant for backward-compat but
   // isn't surfaced anywhere in the UI or repos.
-  // resources_enabled = 1 for a NEW clan: resource tracking is part of what
-  // the app does now, so a clan created today shows its Resources tab from
-  // the first scan. The column's own DEFAULT stays 0 on purpose — that governs
-  // EXISTING rows a migration adds the column to, and turning a feature on
-  // under a running deployment is not a migration's call. Per-clan opt-out is
-  // on the Clans page.
   const result = db.prepare(`
     INSERT INTO clans (
-      name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by,
-      resources_enabled
-    ) VALUES (?, ?, ?, ?, 1, ?, ?, 1)
+      name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by
+    ) VALUES (?, ?, ?, ?, 1, ?, ?)
   `).run(
     input.name.trim(),
     slug,
@@ -339,22 +322,6 @@ export function setClanPublicUrl(id: number, url: string): void {
  *  global WEB_EXTERNAL_URL. '' when neither is set (= emit no links). */
 export function clanPublicUrl(clan: Pick<Clan, 'publicUrl'> | null | undefined, globalUrl: string): string {
   return (clan?.publicUrl || globalUrl || '').replace(/\/+$/, '');
-}
-
-/**
- * Set a clan's member-inactivity-sweep settings. `enabled` is the on/off
- * toggle; `days` is the threshold — null to fall back to the global
- * MEMBER_INACTIVITY_DAYS default, or a positive integer for a custom cutoff
- * (ignored while the sweep is disabled).
- */
-export function setClanInactivitySettings(
-  id: number,
-  settings: { enabled: boolean; days: number | null },
-): void {
-  const db = getDb();
-  db.prepare(
-    'UPDATE clans SET inactivity_sweep_enabled = ?, inactivity_days = ? WHERE id = ?',
-  ).run(settings.enabled ? 1 : 0, settings.days, id);
 }
 
 /**
@@ -640,11 +607,6 @@ export function setClanChestTrackerSettings(id: number, s: ChestTrackerSettings)
       ct_backfill_weeks = ?
     WHERE id = ?
   `).run(s.shareCode, s.pollIntervalHours, s.backfillWeeks, id);
-}
-
-export function setClanResourcesEnabled(id: number, enabled: boolean): void {
-  const db = getDb();
-  db.prepare('UPDATE clans SET resources_enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
 }
 
 /**

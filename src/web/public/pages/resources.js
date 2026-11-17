@@ -11,7 +11,7 @@ import { sortableThHtml } from '../lib/sort-headers.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
   formatResourceAmount, resourceIconHtml, directionPillHtml, resourceCropHoverHtml,
-  resourceTabsHtml, isResourcesEnabledForActiveClan,
+  resourceTabsHtml,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 
@@ -184,17 +184,10 @@ export function handleResourcesTxCancel(reload) {
 
 // ─── Main render ─────────────────────────────────────────────────────────────
 
-export async function renderResourcesAdmin(el, navigate) {
+export async function renderResourcesAdmin(el) {
   const user = getCurrentUser();
   if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
     el.innerHTML = `<div class="card"><div class="card-body"><p>${t('Admin access required.')}</p></div></div>`;
-    return;
-  }
-
-  // Bounce to the dashboard if the active clan doesn't use resources — a
-  // superadmin can land here with a stale hash after switching clans.
-  if (!(await isResourcesEnabledForActiveClan())) {
-    if (typeof navigate === 'function') navigate('dashboard');
     return;
   }
 

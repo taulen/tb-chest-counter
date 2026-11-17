@@ -58,12 +58,9 @@ export function createCrudRouter(): Router {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    // Global fallback threshold for the member-inactivity sweep, so the
-    // per-clan settings input can show it as its "blank = default" hint.
-    // Same for the public URL a clan without its own domain links with.
-    const config = loadConfig();
-    const defaultInactivityDays = config.memberInactivityDays;
-    const defaultPublicUrl = clanPublicUrl(null, config.webExternalUrl);
+    // The public URL a clan without its own domain links with, so the
+    // per-clan input can show it as its "blank = default" hint.
+    const defaultPublicUrl = clanPublicUrl(null, loadConfig().webExternalUrl);
     if (req.user.role === 'superadmin') {
       res.json({
         clans: listClans().map((c) => ({
@@ -72,7 +69,6 @@ export function createCrudRouter(): Router {
           goalHistory: listGoalHistory(c.id),
         })),
         activeClanId: req.clanId ?? null,
-        defaultInactivityDays,
         defaultPublicUrl,
       });
       return;
@@ -99,7 +95,7 @@ export function createCrudRouter(): Router {
     const activeClanId = req.clanId !== undefined && clans.some((c) => c.id === req.clanId)
       ? req.clanId
       : (clans[0]?.id as number | undefined) ?? null;
-    res.json({ clans, activeClanId, defaultInactivityDays, defaultPublicUrl });
+    res.json({ clans, activeClanId, defaultPublicUrl });
   });
 
   /**

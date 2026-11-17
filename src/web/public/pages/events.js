@@ -35,10 +35,7 @@ import {
   computeGameWindow, gameDaysUntil, gameDayKeyFor, periodOffsetFromAnchor,
 } from '../lib/period.js';
 import { renderPeriodNav } from '../lib/period-nav.js';
-import {
-  formatResourceAmount, formatResourceCompact,
-  isResourcesEnabledForActiveClan,
-} from '../lib/resource-format.js';
+import { formatResourceAmount, formatResourceCompact } from '../lib/resource-format.js';
 import { mountTinmanScores, prefetchTinmanScores } from './tinman-scores.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -351,14 +348,14 @@ async function loadFinishReward(from, to) {
 // Dark Omens' informational Essence column. Pulls each member's Omen Essence
 // donated (Sent) for the current window from the Resources tab and keys it by
 // memberId. Leaves essenceByMember null (→ no column) for other events, when
-// the clan doesn't track resources, or on any error — it's a nice-to-have that
-// must never break the event table. Resource dates are day-granular, so the
-// event window's ISO bounds are sliced to YYYY-MM-DD (same as Resources Totals).
+// the clan has no Omen Essence resource type, or on any error — it's a
+// nice-to-have that must never break the event table. Resource dates are
+// day-granular, so the event window's ISO bounds are sliced to YYYY-MM-DD
+// (same as Resources Totals).
 async function loadEssence(from, to) {
   essenceByMember = null;
   if (currentEventKey !== ESSENCE_EVENT_KEY) return;
   try {
-    if (!(await isResourcesEnabledForActiveClan())) return;
     const eqs = new URLSearchParams();
     if (from) eqs.set('from', from.slice(0, 10));
     if (to) eqs.set('to', to.slice(0, 10));

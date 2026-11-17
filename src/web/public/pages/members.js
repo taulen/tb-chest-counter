@@ -24,7 +24,7 @@ import { formatCompact } from '../lib/ancient-planner.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
   formatResourceAmount, resourceIconOnly, resourceIconHtml, resourceSparklineSvg,
-  directionPillHtml, isResourcesEnabledForActiveClan,
+  directionPillHtml,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
@@ -388,12 +388,10 @@ async function loadAndRenderMemberDetail(data) {
     fetchMemberChests(data.id),
     fetchMemberTriumphals(data.id),
   ]);
-  // One feature check for both resource surfaces (the donated-totals card and
-  // the Resources history tab) so a member view makes a single /clans call.
-  const resourcesEnabled = await isResourcesEnabledForActiveClan().catch(() => false);
+  // Both resource surfaces: the donated-totals card and the Resources history tab.
   const [resourceCardHtml, resourcePage] = await Promise.all([
-    buildMemberResourcesCard(data.id, resourcesEnabled),
-    fetchMemberResources(data.id, resourcesEnabled),
+    buildMemberResourcesCard(data.id),
+    fetchMemberResources(data.id),
   ]);
   // Might history card. Returns null when the member has fewer than two
   // readings (or the feature is off), in which case the card is simply absent.
@@ -810,12 +808,10 @@ function wireMemberGuards(memberId) {
 
 // Per-member "Resources donated" card — one row per resource type the member
 // has sent, each with its own-unit total and a weekly sparkline. Read-only, so
-// visible to any clan member; shown only when the active clan has resource
-// tracking enabled. Any failure silently drops the card so a member view never
-// breaks over it.
-async function buildMemberResourcesCard(memberId, resourcesEnabled) {
+// visible to any clan member. Any failure silently drops the card so a member
+// view never breaks over it.
+async function buildMemberResourcesCard(memberId) {
   try {
-    if (!resourcesEnabled) return '';
     const [dailyRes, typesRes] = await Promise.all([
       api(`/resources/daily?memberId=${memberId}`),
       api('/resources/types'),
@@ -908,11 +904,10 @@ async function fetchMemberTriumphals(memberId) {
 /**
  * One page of this member's resource ledger — the same rows the Resources
  * Admin table shows, filtered to this player and stripped of the edit column
- * (read-only, so every clan member can see it). Returns an empty page when the
- * clan doesn't track resources, which is what hides the tab.
+ * (read-only, so every clan member can see it). An empty page (no rows, or a
+ * failed read) is what hides the tab.
  */
-async function fetchMemberResources(memberId, resourcesEnabled) {
-  if (!resourcesEnabled) return { rows: [], total: 0 };
+async function fetchMemberResources(memberId) {
   const offset = (currentMemberResourcesPage - 1) * MEMBER_CHESTS_PAGE_SIZE;
   try {
     const res = await api(

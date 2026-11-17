@@ -117,9 +117,6 @@ export async function renderClans(el, refreshClanIndicator) {
   // instead and show just the active clan's card — switching clans up
   // top swaps the card here, mirroring how every other tab behaves.
   const activeClanId = clansData.activeClanId ?? allClans[0]?.id ?? null;
-  const defaultInactivityDays = Number.isFinite(clansData.defaultInactivityDays)
-    ? clansData.defaultInactivityDays
-    : null;
   const defaultPublicUrl = typeof clansData.defaultPublicUrl === 'string' ? clansData.defaultPublicUrl : '';
   for (const c of allClans) clanOrigins.set(c.id, c.publicUrl || defaultPublicUrl);
   // An admin with extra clans also gets one card — the active clan's, the
@@ -167,7 +164,7 @@ export async function renderClans(el, refreshClanIndicator) {
     </div>
     ` : ''}
 
-    ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays, defaultPublicUrl)).join('')}
+    ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl)).join('')}
   `;
 
   // Wire up create + per-clan controls. These actions are clan-page-
@@ -320,39 +317,6 @@ export async function renderClans(el, refreshClanIndicator) {
         notify(t('ChestTracker settings saved.'), t('ChestTracker'));
       } catch {
         notify(t('ChestTracker save failed.'), t('ChestTracker'));
-      }
-    } else if (action === 'clan-resources-save' && clanId) {
-      const enabled = !!el.querySelector(`#clan-resources-enabled-${clanId}`)?.checked;
-      try {
-        const r = await fetch(`/api/clans/${clanId}/resources`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled }),
-        });
-        const j = await r.json();
-        if (!r.ok) return notify(j.error || t('Save failed'), t('Resource Tracking'));
-        notify(t('Resource Tracking settings saved.'), t('Resource Tracking'));
-        if (typeof window.refreshResourcesNavVisibility === 'function') {
-          window.refreshResourcesNavVisibility();
-        }
-      } catch {
-        notify(t('Save failed.'), t('Resource Tracking'));
-      }
-    } else if (action === 'clan-inactivity-save' && clanId) {
-      const enabled = !!el.querySelector(`#clan-inactivity-enabled-${clanId}`)?.checked;
-      const raw = el.querySelector(`#clan-inactivity-${clanId}`).value.trim();
-      const body = { enabled, inactivityDays: raw === '' ? null : Number(raw) };
-      try {
-        const r = await fetch(`/api/clans/${clanId}/inactivity`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const j = await r.json();
-        if (!r.ok) return notify(j.error || t('Save failed'), t('Member management'));
-        notify(t('Member management settings saved.'), t('Member management'));
-      } catch {
-        notify(t('Save failed.'), t('Member management'));
       }
     } else if (action === 'clan-week-start-save' && clanId) {
       const weekStart = el.querySelector(`#clan-week-start-${clanId}`)?.value;
@@ -1030,13 +994,10 @@ async function loadDiscordDirectory(el, clanId, guildId) {
   }
 }
 
-function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultInactivityDays, defaultPublicUrl) {
+function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl) {
   const intervalVal = clan.scanIntervalMinutes ?? '';
   const intervalPlaceholder = Number.isFinite(defaultScanIntervalMinutes)
     ? t('default: {value}', { value: defaultScanIntervalMinutes })
-    : t('blank = global default');
-  const inactivityPlaceholder = Number.isFinite(defaultInactivityDays)
-    ? t('blank = global default ({days})', { days: defaultInactivityDays })
     : t('blank = global default');
   // discordTokenSet: `true` when the server has a token on file. We
   // never round-trip the actual token to the browser; the input is
@@ -1157,36 +1118,6 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultI
           <div><label>${t('Poll interval (h)')}</label><input id="clan-ct-interval-${clan.id}" class="input" type="number" min="0.083" step="0.083" value="${clan.ctPollIntervalHours ?? ''}" placeholder="3"></div>
           <div><label>${t('Backfill weeks')}</label><input id="clan-ct-backfill-${clan.id}" class="input" type="number" min="0" max="52" value="${clan.ctBackfillWeeks ?? ''}" placeholder="4"></div>
           <button class="btn btn-primary" data-action="clan-ct-save" data-clan-id="${clan.id}">${t('Save')}</button>
-        </div>
-        </div>
-        </details>
-
-        <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Resource Tracking')}</h3></summary>
-        <div class="mt-12">
-        <p class="muted-copy mb-8">${t("Tracks what members send to and take from the Clan Capital. Turning this on adds the <strong>Resources</strong> tab to the navigation for this clan's admins.")}</p>
-        <p class="muted-copy mb-8">${t('Contributions are read straight from the game: every scan reads the Clan Capital ledger and matches each entry to its clan member for you.')}</p>
-        <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-resources-enabled-${clan.id}" ${clan.resourcesEnabled ? 'checked' : ''}> ${t('Track resources for this clan')}</label>
-        </div>
-        <div class="actions mt-8">
-          <button class="btn btn-primary" data-action="clan-resources-save" data-clan-id="${clan.id}">${t('Save')}</button>
-        </div>
-        </div>
-        </details>
-
-        <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Member management')}</h3></summary>
-        <div class="mt-12">
-        <p class="muted-copy mb-8">${t('When enabled, members not seen in a scan for the threshold below are automatically marked inactive. This is non-destructive — a member is restored automatically the next time a scan sees them.')} ${Number.isFinite(defaultInactivityDays) ? tn(defaultInactivityDays, 'Leave the threshold blank to use the global default of {n} day.', 'Leave the threshold blank to use the global default of {n} days.') : t('Leave the threshold blank to use the global default.')}</p>
-        <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-inactivity-enabled-${clan.id}" ${clan.inactivitySweepEnabled ? 'checked' : ''}> ${t('Auto-mark inactive members')}</label>
-        </div>
-        <div class="inline-form-row mt-8">
-          <div><label>${t('Inactivity threshold (days; blank = global)')}</label><input id="clan-inactivity-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.inactivityDays ?? ''}" placeholder="${inactivityPlaceholder}"></div>
-          <button class="btn btn-primary" data-action="clan-inactivity-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         </div>
         </details>

@@ -2086,12 +2086,10 @@ function createApiRouter(scanLoop) {
             const reviewQueueCount = counts.chestNames + counts.chestSources + counts.members
                 + counts.triumphalChests + counts.renames;
             const unknownChestsCount = chestRepo.countUnknownChests(clanId);
-            // Resource rows the reader couldn't identify a resource for. Only relevant
-            // when the clan actually tracks resources, and the count is served from the
-            // partial index added in v59 so it stays cheap on this hot path.
-            const unresolvedResourceCount = (0, clan_repo_js_1.getClanById)(clanId)?.resourcesEnabled
-                ? resourceRepo.countUnresolvedTransactions(clanId)
-                : 0;
+            // Resource rows the reader couldn't identify a resource for. The count is
+            // served from the partial index added in v59 so it stays cheap on this
+            // hot path.
+            const unresolvedResourceCount = resourceRepo.countUnresolvedTransactions(clanId);
             // All three are Admin-page sections that only render while non-zero; the
             // Admin page reads unresolvedResourceCount from here too, so its section
             // and the dot can never disagree.

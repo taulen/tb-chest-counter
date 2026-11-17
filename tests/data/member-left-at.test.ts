@@ -15,7 +15,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import {
-  deactivateStaleMembers,
   markMembersSeen,
   removeMember,
   restoreMember,
@@ -51,14 +50,6 @@ describe('members.left_at', () => {
     const id = seedMember('Removed');
     removeMember(id, 1);
     expect(isActive(id)).toBe(0);
-    expect(leftAt(id)).toBeTruthy();
-  });
-
-  it('is stamped by the inactivity sweep', () => {
-    const id = seedMember('Stale');
-    getDb().prepare("UPDATE members SET last_seen = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(id);
-    const removed = deactivateStaleMembers(1, '2026-01-01T00:00:00.000Z');
-    expect(removed.map((r) => r.id)).toContain(id);
     expect(leftAt(id)).toBeTruthy();
   });
 

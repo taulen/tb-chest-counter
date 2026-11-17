@@ -14,9 +14,6 @@
  * Then: the member takes the game's exact name (old name kept as an alias,
  * rename audited), is marked seen, gets the day's might/hero snapshot, and
  * members linked to players no longer in the clan record are marked as left.
- *
- * markMembersSeen + snapshots also keep the inactivity sweeps working (they key
- * on both).
  */
 import { getDb } from '../data/database.js';
 import {

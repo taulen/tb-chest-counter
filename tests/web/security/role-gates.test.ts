@@ -337,8 +337,6 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'POST /clans/1/discord/test', method: 'post', path: '/api/clans/1/discord/test', body: {} },
       { name: 'POST /clans/1/discord/digest-dm-test', method: 'post', path: '/api/clans/1/discord/digest-dm-test', body: {} },
       { name: 'PUT /clans/1/chesttracker', method: 'put', path: '/api/clans/1/chesttracker', body: { shareCode: '' } },
-      { name: 'PUT /clans/1/resources', method: 'put', path: '/api/clans/1/resources', body: { enabled: true } },
-      { name: 'PUT /clans/1/inactivity', method: 'put', path: '/api/clans/1/inactivity', body: { enabled: true } },
       { name: 'PUT /clans/1/leaderboard-goal', method: 'put', path: '/api/clans/1/leaderboard-goal', body: { enabled: true, weeklyPoints: 25000 } },
       { name: 'GET /clans/1/share-links', method: 'get', path: '/api/clans/1/share-links' },
       { name: 'POST /clans/1/share-links', method: 'post', path: '/api/clans/1/share-links', body: {} },

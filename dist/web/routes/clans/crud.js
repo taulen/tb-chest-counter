@@ -33,12 +33,9 @@ function createCrudRouter() {
             res.status(401).json({ error: 'Authentication required' });
             return;
         }
-        // Global fallback threshold for the member-inactivity sweep, so the
-        // per-clan settings input can show it as its "blank = default" hint.
-        // Same for the public URL a clan without its own domain links with.
-        const config = (0, index_js_1.loadConfig)();
-        const defaultInactivityDays = config.memberInactivityDays;
-        const defaultPublicUrl = (0, clan_repo_js_1.clanPublicUrl)(null, config.webExternalUrl);
+        // The public URL a clan without its own domain links with, so the
+        // per-clan input can show it as its "blank = default" hint.
+        const defaultPublicUrl = (0, clan_repo_js_1.clanPublicUrl)(null, (0, index_js_1.loadConfig)().webExternalUrl);
         if (req.user.role === 'superadmin') {
             res.json({
                 clans: (0, clan_repo_js_1.listClans)().map((c) => ({
@@ -47,7 +44,6 @@ function createCrudRouter() {
                     goalHistory: (0, clan_repo_js_1.listGoalHistory)(c.id),
                 })),
                 activeClanId: req.clanId ?? null,
-                defaultInactivityDays,
                 defaultPublicUrl,
             });
             return;
@@ -75,7 +71,7 @@ function createCrudRouter() {
         const activeClanId = req.clanId !== undefined && clans.some((c) => c.id === req.clanId)
             ? req.clanId
             : clans[0]?.id ?? null;
-        res.json({ clans, activeClanId, defaultInactivityDays, defaultPublicUrl });
+        res.json({ clans, activeClanId, defaultPublicUrl });
     });
     /**
      * Clans that have been soft-deleted, with the row counts they still hold —

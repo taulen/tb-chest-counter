@@ -5,7 +5,6 @@ const logger_js_1 = require("./utils/logger.js");
 const database_js_1 = require("./data/database.js");
 const loop_js_1 = require("./scheduler/loop.js");
 const external_loop_js_1 = require("./scheduler/external-loop.js");
-const inactive_sweep_js_1 = require("./scheduler/inactive-sweep.js");
 const server_js_1 = require("./web/server.js");
 const bot_js_1 = require("./discord/bot.js");
 const console_report_js_1 = require("./output/console-report.js");
@@ -128,10 +127,6 @@ async function main() {
         // env-configured token+channel, so this preserves the prior single-
         // clan behavior automatically.
         await (0, bot_js_1.startAllClanBots)(config.gameDayRolloverUtcHour);
-        // Start the daily member-inactivity sweep (soft-removes members unseen
-        // for config.memberInactivityDays days; returning players are auto-
-        // reactivated on their next scan sighting via upsertMember).
-        (0, inactive_sweep_js_1.startInactiveSweep)(config.gameDayRolloverUtcHour, config.memberInactivityDays);
         // Start scanning
         await scanLoop.start();
         log.info('TB Chest Counter is running');
@@ -147,7 +142,6 @@ async function main() {
         log.info('Shutting down...');
         scanLoop?.stop();
         externalLoop.stop();
-        (0, inactive_sweep_js_1.stopInactiveSweep)();
         await (0, bot_js_1.stopAllBots)();
         (0, database_js_1.closeDb)();
         log.info('Goodbye!');
