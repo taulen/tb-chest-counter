@@ -10,6 +10,7 @@ export {
   currentGameArt,
   gameArtUrl,
   heroAvatarImage,
+  avatarFrameImage,
   gameArtDir,
   type GameArtIndex,
   type GameArtImage,
@@ -17,4 +18,4 @@ export {
 } from './store.js';
 export { createGameArtRouter } from './routes.js';
 export { ART_CATEGORIES, ART_PATTERNS, type ArtCategory } from './selection.js';
-export { matchTroopIcons, heroAvatarImageFrom, type ArtMappings, type TroopStats } from './mappings.js';
+export { matchTroopIcons, heroAvatarImageFrom, avatarFrameImageFrom, type ArtMappings, type TroopStats } from './mappings.js';

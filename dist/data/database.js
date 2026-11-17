@@ -1679,6 +1679,21 @@ const MIGRATIONS = [
             }
         },
     },
+    {
+        // The player's cosmetics from their 402 record: avatar_frame (field 6) is
+        // the frame the game draws their hero portrait in, city_appearance
+        // (field 5) their city's look — both ids of the customizations table
+        // (static T52: type 1 frames, 1 = "Standard"; type 2 city looks, 9 =
+        // "Player's City"). Guarded: runMigrations may replay this.
+        version: 113,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(game_players)').all();
+            if (!cols.some((c) => c.name === 'avatar_frame'))
+                database.exec('ALTER TABLE game_players ADD COLUMN avatar_frame INTEGER');
+            if (!cols.some((c) => c.name === 'city_appearance'))
+                database.exec('ALTER TABLE game_players ADD COLUMN city_appearance INTEGER');
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

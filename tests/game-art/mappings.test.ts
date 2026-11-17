@@ -1,16 +1,22 @@
 // Selection and the static-data mappings, on synthetic tables.
 
 import { describe, expect, it } from 'vitest';
-import { buildArtStatic, type ArtStatic } from '../../src/game-art/art-static.js';
+import { buildArtStatic, ART_STATIC_FORMAT, type ArtStatic, type ArtUnit } from '../../src/game-art/art-static.js';
 import { selectArt, safeArtName, ART_PATTERNS } from '../../src/game-art/selection.js';
 import {
   matchTroopIcons,
+  matchTroopTiers,
   chestIcons,
   resourceIcons,
   buildMappings,
   heroAvatarImageFrom,
+  avatarFrameImageFrom,
+  cityLookImageFrom,
   loadTroopList,
 } from '../../src/game-art/mappings.js';
+import {
+  unitFrameArt, unitFrameTextures, clientUiTextures, HERO_LEVEL_BADGE, UNIT_TIER_COLOURS, TIER_NUMERALS,
+} from '../../src/game-art/unit-frames.js';
 import type { Wire } from '../../src/game-protocol/codec.js';
 
 // String pool, vector pool and tables in the shape the game's static files use:
@@ -20,18 +26,27 @@ const strings: Wire[] = [
   'hero.name.a', 'icon_alpha_72', 'unit.name.w', 'map_wyvern_icon_72', 'tech.name.t', 'tech_thing_72',
   'item.name.silver', '{"icon":"silver_72"}', 'item.name.chest', '{"icon":"stock_wood_chest_72"}',
   '{"icon":"tutor_chest_72"}', '{"icon":"booster_silver_72"}', 'not json',
+  // 13–17: customizations (portrait frames and a city look)
+  'custom.name.std', '{"visual":"custom_frame_default","mobileCircle":""}', 'custom.name.vip', '{"visual":"vip_frame"}',
+  JSON.stringify({ visual: JSON.stringify({ visual: {}, icon: { 1: 'player_city_lv1_icon', 20: 'player_city_lv5_icon' } }) }),
 ];
-const vectors: Wire[] = [[0], [2], [4], [6], [8]];
+const vectors: Wire[] = [[0], [2], [4], [6], [8], [13], [15]];
 const en = new Map([
   ['hero.name.a', 'Alpha'], ['unit.name.w', 'Wyvern'], ['tech.name.t', 'Thing I'],
   ['item.name.silver', 'Silver'], ['item.name.chest', 'Wooden Chest'],
+  ['custom.name.std', 'Standard'], ['custom.name.vip', 'VIP'],
 ]);
 const row = (cells: Record<number, Wire>, len: number): Wire[] => Array.from({ length: len }, (_, i) => cells[i] ?? 0);
 const tables = new Map<number, Record<string, Wire>>([
   [13, { '2': row({ 1: 0, 3: 1 }, 9) }],
   [9, {
-    '3089': row({ 1: 1, 4: 3, 10: 690000, 12: 2070000 }, 13),
-    '6075': row({ 1: 1, 4: 3, 10: 690000, 12: 2070000 }, 13),
+    '3089': row({ 1: 1, 2: 9, 4: 3, 10: 690000, 12: 2070000 }, 13),
+    '6075': row({ 1: 1, 2: 9, 4: 3, 10: 690000, 12: 2070000 }, 13),
+  }],
+  [52, {
+    '1': row({ 0: 1, 1: 1, 2: 5, 4: 14 }, 11),
+    '26': row({ 0: 26, 1: 1, 2: 6, 4: 16 }, 11),
+    '9': row({ 0: 9, 1: 2, 2: 6, 4: 17 }, 11), // a city look, not a frame
   }],
   [21, { '7': row({ 1: 2, 3: 5 }, 6) }],
   [8, {
@@ -50,9 +65,10 @@ describe('buildArtStatic', () => {
   it('reads hero, unit, tech and item icons with English names', () => {
     expect(st.heroes).toEqual({ '2': { name: 'Alpha', icon: 'icon_alpha_72' } });
     expect(st.units).toEqual([
-      { id: 3089, name: 'Wyvern', strength: 690000, health: 2070000, icon: 'map_wyvern_icon_72' },
-      { id: 6075, name: 'Wyvern', strength: 690000, health: 2070000, icon: 'map_wyvern_icon_72' },
+      { id: 3089, name: 'Wyvern', tier: 9, strength: 690000, health: 2070000, icon: 'map_wyvern_icon_72' },
+      { id: 6075, name: 'Wyvern', tier: 9, strength: 690000, health: 2070000, icon: 'map_wyvern_icon_72' },
     ]);
+    expect(st.format).toBe(ART_STATIC_FORMAT);
     expect(st.techs).toEqual({ '7': { name: 'Thing I', icon: 'tech_thing_72' } });
     // item 62's visual is not JSON and is skipped
     expect(st.items.map((i) => `${i.id}:${i.name}:${i.icon}`)).toEqual([
@@ -60,15 +76,28 @@ describe('buildArtStatic', () => {
       '61:Wooden Chest:stock_wood_chest_72', '1028:Silver:booster_silver_72',
     ]);
   });
+
+  it('reads portrait frames and city looks (icon per city level) from the customizations table', () => {
+    expect(st.frames).toEqual({
+      '1': { name: 'Standard', visual: 'custom_frame_default' },
+      '26': { name: 'VIP', visual: 'vip_frame' },
+    });
+    expect(st.cityLooks).toEqual({
+      '9': { name: 'VIP', icons: { '1': 'player_city_lv1_icon', '20': 'player_city_lv5_icon' } },
+    });
+  });
 });
 
 describe('selectArt', () => {
   it('takes static icons and pattern matches the catalogue lists, first category wins', () => {
     const addresses = ['icon_alpha_72', 'map_wyvern_icon_72', 'tech_thing_72', 'tech_other_72', 'silver_72',
       'stock_wood_chest_72', 'clan_frame_3_lg', 'clan_emblem_12', 'unit_knight_72', 'random_banner', 'booster_silver_72'];
-    const sel = selectArt(addresses, st);
+    const sel = selectArt([...addresses, 'vip_frame', 'player_city_lv5_icon', 'fire_in_the_fort_72', 'player_feiry_city_72'], st);
     expect(Object.fromEntries(sel)).toEqual({
       icon_alpha_72: 'heroes',
+      vip_frame: 'frames',
+      player_city_lv5_icon: 'cities',
+      fire_in_the_fort_72: 'status',
       map_wyvern_icon_72: 'troops',
       unit_knight_72: 'troops',
       tech_thing_72: 'research',
@@ -106,11 +135,11 @@ describe('mappings', () => {
   it('matches troops on name AND stats, falling back to a single shared icon', () => {
     const units = [
       ...st.units,
-      { id: 1, name: 'Sandworm', strength: 1, health: 3, icon: 'monster_sandworm_72' },
-      { id: 2, name: 'Sandworm', strength: 430000, health: 1290000, icon: 'icon_sandworm_72' },
-      { id: 3, name: 'Bear', strength: 5, health: 15, icon: 'icon_bear_72' },
-      { id: 4, name: 'Twin', strength: 1, health: 1, icon: 'twin_a' },
-      { id: 5, name: 'Twin', strength: 2, health: 2, icon: 'twin_b' },
+      { id: 1, name: 'Sandworm', tier: 3, strength: 1, health: 3, icon: 'monster_sandworm_72' },
+      { id: 2, name: 'Sandworm', tier: 5, strength: 430000, health: 1290000, icon: 'icon_sandworm_72' },
+      { id: 3, name: 'Bear', tier: 4, strength: 5, health: 15, icon: 'icon_bear_72' },
+      { id: 4, name: 'Twin', tier: 1, strength: 1, health: 1, icon: 'twin_a' },
+      { id: 5, name: 'Twin', tier: 2, strength: 2, health: 2, icon: 'twin_b' },
     ];
     const got = matchTroopIcons([
       { id: 'wyvern', name: 'Wyvern', strength: 690000, health: 2070000 },
@@ -120,6 +149,41 @@ describe('mappings', () => {
       { id: 'ghost', name: 'Ghost', strength: 1, health: 1 },
     ], units, all);
     expect(got).toEqual({ wyvern: 'map_wyvern_icon_72', sandworm: 'icon_sandworm_72', bear: 'icon_bear_72', twin: null, ghost: null });
+    // The tier follows the same rows: exact stats first, else one shared tier.
+    expect(matchTroopTiers([
+      { id: 'wyvern', name: 'Wyvern', strength: 690000, health: 2070000 },
+      { id: 'sandworm', name: 'Sandworm', strength: 430000, health: 1290000 },
+      { id: 'bear', name: 'bear', strength: 22000, health: 66000 },
+      { id: 'twin', name: 'Twin', strength: 9, health: 9 }, // rows disagree → null, never a guess
+      { id: 'ghost', name: 'Ghost', strength: 1, health: 1 },
+    ], units)).toEqual({ wyvern: 9, sandworm: 5, bear: 4, twin: null, ghost: null });
+    // A static cache from before tiers were read has none to give.
+    const old = [{ id: 9, name: 'Ent', strength: 1, health: 1, icon: 'ent' }] as unknown as ArtUnit[];
+    expect(matchTroopTiers([{ id: 'ent', name: 'Ent', strength: 1, health: 1 }], old)).toEqual({ ent: null });
+  });
+
+  it('frames a unit icon by tier on the game ladder; VIII–X get a numeral on a plain disc', () => {
+    const textures = unitFrameTextures();
+    expect(textures).toEqual(expect.arrayContaining([
+      'back_icon_units_72x72_grey', 'frame_icon_units_94x92_whiteII', 'icons_tir_VII_1', 'icons_tir_0_3', 'icons_tir_II_3',
+    ]));
+    expect(textures).not.toContain('icons_tir_VIII_1'); // the game has no such sprite
+    const names = new Set(textures.map((n) => safeArtName(n)));
+    const frames = unitFrameArt((n) => names.has(n));
+    expect(Object.keys(frames)).toHaveLength(11);
+    expect(frames['5']).toEqual({
+      back: 'back_icon_units_72x72_orange', frame: 'frame_icon_units_94x92_orange', badge: 'icons_tir_v_1', numeral: null,
+    });
+    expect(frames['0'].badge).toBe('icons_tir_0_3');
+    expect(frames['9']).toEqual({
+      back: 'back_icon_units_72x72_greenii', frame: 'frame_icon_units_94x92_greenii', badge: 'icons_tir_ii_3', numeral: 'IX',
+    });
+    // No back or frame → no entry; no badge → framed without one.
+    const partial = unitFrameArt((n) => n !== 'frame_icon_units_94x92_gold' && n !== 'icons_tir_vi_1' && names.has(n));
+    expect(partial['7']).toBeUndefined();
+    expect(partial['6']).toEqual({ back: 'back_icon_units_72x72_red', frame: 'frame_icon_units_94x92_red', badge: null, numeral: null });
+    expect(UNIT_TIER_COLOURS).toHaveLength(TIER_NUMERALS.length);
+    expect(clientUiTextures()).toEqual([...textures, HERO_LEVEL_BADGE]);
   });
 
   it('only maps to images that were extracted', () => {
@@ -137,6 +201,28 @@ describe('mappings', () => {
     expect(m.heroAvatars).toEqual({ '2': 'icon_alpha_72' });
     expect(m.techs).toEqual({ '7': 'tech_thing_72' });
     expect(m.troops).toEqual({ wyvern: 'map_wyvern_icon_72' });
+    expect(m.troopTiers).toEqual({ wyvern: 9 });
+    expect(m.unitFrames['9']?.numeral).toBe('IX');
+    expect(m.avatarFrames).toEqual({ '1': 'custom_frame_default', '26': 'vip_frame' });
+    // A player's own frame, else the game's default "Standard".
+    expect(avatarFrameImageFrom(m, 26)).toBe('vip_frame');
+    expect(avatarFrameImageFrom(m, 777)).toBe('custom_frame_default');
+    expect(avatarFrameImageFrom(m, null)).toBe('custom_frame_default');
+    expect(avatarFrameImageFrom({ ...m, avatarFrames: {} }, 26)).toBeNull();
+    expect(avatarFrameImageFrom(null, 26)).toBeNull();
+    // The hero-level plate comes from the client build, like the unit frames.
+    expect(m.heroLevelBadge).toBe('icons_tir_shield_4');
+    expect(buildMappings(st, [], new Set(), (n) => n !== 'icons_tir_shield_4').heroLevelBadge).toBeNull();
+    // City looks: the step the city level has reached; the default look when unknown.
+    expect(m.cityLooks).toEqual({ '9': { '1': 'player_city_lv1_icon', '20': 'player_city_lv5_icon' } });
+    expect(cityLookImageFrom(m, 9, 19)).toBe('player_city_lv1_icon');
+    expect(cityLookImageFrom(m, 9, 44)).toBe('player_city_lv5_icon');
+    expect(cityLookImageFrom(m, 10000090, 25)).toBe('player_city_lv5_icon');
+    expect(cityLookImageFrom(m, null, null)).toBe('player_city_lv1_icon');
+    expect(cityLookImageFrom(null, 9, 20)).toBeNull();
+    // Status icons by key, only the extracted ones.
+    expect(m.status).toMatchObject({ shield: 'booster_piece_shield_orange_72', burning: 'fire_in_the_fort_72', goldIngots: 'gold_bar_72' });
+    expect(buildMappings(st, [], new Set(), (n) => n === 'gold_bar_72').status).toEqual({ goldIngots: 'gold_bar_72' });
     expect(m.ancients).toEqual({
       tome: 'clandoom_icon_book_anim', figurine: 'clandoom_icons_statue_anim',
       clock: 'clandoom_icons_hourglass_anim', tinman: 'map_clan_doomsday_boss_scaled',

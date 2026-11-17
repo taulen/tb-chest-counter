@@ -95,6 +95,10 @@ export interface PlayerRecord {
   clanTag: string;
   cityId: number | null;
   goldPass: boolean;
+  /** f6: the frame around their hero portrait (static T52 customization, type 1; 1 = "Standard"). */
+  avatarFrame?: number | null;
+  /** f5: their city's appearance (T52 customization, type 2; 9 = "Player's City"). */
+  cityAppearance?: number | null;
 }
 
 /** Message 402: player records, wherever they sit in the reply. */
@@ -117,6 +121,8 @@ export function parsePlayers(frame: Frame): PlayerRecord[] {
         clanTag: typeof v[13] === 'string' ? v[13] : '',
         cityId: id1(v[16]),
         goldPass: Array.isArray(v[22]) && v[22][0] === 1,
+        avatarFrame: num(v[6]),
+        cityAppearance: num(v[5]),
       });
       return;
     }

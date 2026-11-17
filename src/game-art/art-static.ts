@@ -5,9 +5,16 @@
  * module's exports and cache stay as they are; it reuses its parsers.
  *
  *   T8  items        f3 name vector, f6 visual JSON {"icon": "<72px icon>"}
- *   T9  units        f1 name vector, f4 icon, f10 strength, f12 health
+ *   T9  units        f1 name vector, f2 tier (0–10: Archer I = 1, Corax II = 9;
+ *                    picks the icon's frame colour, unit-frames.ts), f4 icon,
+ *                    f10 strength, f12 health
  *   T13 hero avatars f1 name vector, f3 icon — a player's heroAvatar IS the T13 id
  *   T21 techs        f1 name vector, f3 icon (research and hero talents)
+ *   T52 customizations f1 kind (1 portrait frame, 2 city look, 3 …), f2 name
+ *                    vector, f4 visual JSON {"visual": "<frame sprite>", …} —
+ *                    a player's 402 field 6 IS the id of their frame, field 5
+ *                    of their city look (whose visual is JSON again, with an
+ *                    icon per city level: {"icon": {"1": …, "5": …}})
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -34,14 +41,25 @@ export const TABLE_HERO_AVATARS = 13;
 export const TABLE_TECHS = 21;
 /** Captains: f5 name vector, f7 JSON config naming the sprites (smallIcon, unitAltarArt). */
 export const TABLE_CAPTAINS = 75;
+/** Customizations (portrait frames, city looks): f1 kind, f2 name vector, f4 visual JSON. */
+export const TABLE_CUSTOMIZATIONS = 52;
+/** T52 kind of a hero-portrait frame. */
+const CUSTOMIZATION_FRAME = 1;
+/** T52 kind of a city look; its visual JSON holds another JSON with {"icon": {minCityLevel: icon}}. */
+const CUSTOMIZATION_CITY = 2;
 
 export interface ArtUnit {
   id: number;
   name: string;
+  /** T9 f2: the tier the game frames the icon by (0 = Dwarf-like, 1–10 = I–X). */
+  tier: number;
   strength: number;
   health: number;
   icon: string;
 }
+
+/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames). */
+export const ART_STATIC_FORMAT = 2;
 
 export interface ArtItem {
   id: number;
@@ -51,6 +69,8 @@ export interface ArtItem {
 
 export interface ArtStatic {
   version: string;
+  /** ART_STATIC_FORMAT it was built with (absent = 1). */
+  format?: number;
   /** T13 id (= a player's heroAvatar) → { name, icon }. */
   heroes: Record<string, { name: string; icon: string }>;
   units: ArtUnit[];
@@ -59,6 +79,10 @@ export interface ArtStatic {
   items: ArtItem[];
   /** T75 id → { name, icon (smallIcon), art (unitAltarArt) }. */
   captains: Record<string, { name: string; icon: string; art: string }>;
+  /** T52 id of a portrait frame → { name, visual (the frame sprite) }. */
+  frames?: Record<string, { name: string; visual: string }>;
+  /** T52 id of a city look → { name, icons: lowest city level → icon }. 9 = the default "Player's City". */
+  cityLooks?: Record<string, { name: string; icons: Record<string, string> }>;
 }
 
 async function fetchBuffer(url: string): Promise<Buffer> {
@@ -117,7 +141,7 @@ export function buildArtStatic(
   for (const [id, row] of rows(TABLE_UNITS)) {
     const icon = str(row[4]);
     const n = name(row[1]);
-    if (icon && n) units.push({ id, name: n, strength: num(row[10]), health: num(row[12]), icon });
+    if (icon && n) units.push({ id, name: n, tier: num(row[2]), strength: num(row[10]), health: num(row[12]), icon });
   }
   const techs: ArtStatic['techs'] = {};
   for (const [id, row] of rows(TABLE_TECHS)) {
@@ -146,7 +170,29 @@ export function buildArtStatic(
     const art = typeof cfg.unitAltarArt === 'string' ? cfg.unitAltarArt : '';
     if (n && (icon || art)) captains[id] = { name: n, icon, art };
   }
-  return { version, heroes, units, techs, items, captains };
+  const frames: NonNullable<ArtStatic['frames']> = {};
+  const cityLooks: NonNullable<ArtStatic['cityLooks']> = {};
+  for (const [id, row] of rows(TABLE_CUSTOMIZATIONS)) {
+    if (row[1] !== CUSTOMIZATION_FRAME && row[1] !== CUSTOMIZATION_CITY) continue;
+    let cfg: { visual?: unknown } = {};
+    try { cfg = JSON.parse(str(row[4]) ?? '{}'); } catch { continue; }
+    if (typeof cfg.visual !== 'string' || !cfg.visual) continue;
+    if (row[1] === CUSTOMIZATION_FRAME) {
+      // Animated frames name a Spine animation separately; `visual` is their still.
+      frames[id] = { name: name(row[2]), visual: cfg.visual };
+      continue;
+    }
+    let look: { icon?: unknown } = {};
+    try { look = JSON.parse(cfg.visual); } catch { continue; }
+    const icons: Record<string, string> = {};
+    if (look.icon && typeof look.icon === 'object') {
+      for (const [lvl, icon] of Object.entries(look.icon as Record<string, unknown>)) {
+        if (/^\d+$/.test(lvl) && typeof icon === 'string' && icon) icons[lvl] = icon;
+      }
+    }
+    if (Object.keys(icons).length) cityLooks[id] = { name: name(row[2]), icons };
+  }
+  return { version, format: ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks };
 }
 
 export function staticKey(v: StaticVersion): string {
@@ -175,8 +221,8 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
   const file = cacheFile(dir, key);
   if (fs.existsSync(file)) {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as ArtStatic;
-    // A cache from before captains were read is rebuilt once.
-    if (cached.captains) return cached;
+    // A cache from an older format (no captains, no unit tiers) is rebuilt once.
+    if (cached.captains && cached.format === ART_STATIC_FORMAT) return cached;
   }
   const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
     fetchBuffer(STATIC_BASE + version.files.strings),
@@ -188,7 +234,7 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
     key,
     readWrappedArray(stringsBuf),
     readWrappedArray(vectorsBuf),
-    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS]),
+    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CUSTOMIZATIONS]),
     en,
   );
   fs.mkdirSync(dir, { recursive: true });

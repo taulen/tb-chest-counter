@@ -6,7 +6,7 @@
  * members.game_player_id (v103).
  */
 import { getDb } from '../database.js';
-import { gameArtUrl, heroAvatarImage } from '../../game-art/index.js';
+import { avatarFrameImage, gameArtUrl, heroAvatarImage } from '../../game-art/index.js';
 
 export interface GamePlayerProfile {
   playerId: number;
@@ -23,6 +23,12 @@ export interface GamePlayerProfile {
   heroAvatar: number | null;
   /** The hero's portrait from the game's art (/game-art/…), or null before the art is extracted. */
   avatarUrl: string | null;
+  /** The player's portrait frame (402 f6, a T52 customization id); null before it was read. */
+  avatarFrame: number | null;
+  /** The frame the game draws the portrait in (theirs, else the game's default), or null. */
+  frameUrl: string | null;
+  /** Their city look (402 f5, a T52 customization id; lib/game-art.js cityLookUrl); null before it was read. */
+  cityAppearance: number | null;
   lastSeen: string;
 }
 
@@ -37,7 +43,8 @@ export interface GameCitySnapshot {
 type PlayerRow = {
   player_id: number; name: string; role: number | null; joined_at: number | null; in_clan: number;
   might: number | null; hero_level: number | null; city_level: number | null; vip: number | null;
-  gold_pass: number | null; hero_avatar: number | null; last_seen: string;
+  gold_pass: number | null; hero_avatar: number | null; avatar_frame?: number | null; city_appearance?: number | null;
+  last_seen: string;
 };
 
 const toProfile = (r: PlayerRow): GamePlayerProfile => ({
@@ -53,12 +60,21 @@ const toProfile = (r: PlayerRow): GamePlayerProfile => ({
   goldPass: r.gold_pass === 1,
   heroAvatar: r.hero_avatar,
   avatarUrl: heroAvatarUrl(r.hero_avatar),
+  avatarFrame: r.avatar_frame ?? null,
+  frameUrl: avatarFrameUrl(r.avatar_frame),
+  cityAppearance: r.city_appearance ?? null,
   lastSeen: r.last_seen,
 });
 
 /** URL of a hero portrait by the game's avatar id, or null. */
 export function heroAvatarUrl(heroAvatar: number | null | undefined): string | null {
   const name = heroAvatarImage(heroAvatar);
+  return name ? gameArtUrl(name) : null;
+}
+
+/** URL of the frame a portrait is drawn in, by the player's frame id (the game's default when unknown), or null. */
+export function avatarFrameUrl(frameId: number | null | undefined): string | null {
+  const name = avatarFrameImage(frameId);
   return name ? gameArtUrl(name) : null;
 }
 

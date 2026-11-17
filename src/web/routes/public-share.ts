@@ -357,6 +357,7 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
     const game = p ? {
       role: p.role, joinedAt: p.joinedAt, inClan: p.inClan, cityLevel: p.cityLevel, vip: p.vip,
       goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl,
+      frameUrl: p.frameUrl,
     } : null;
     res.json({ ...breakdown, game });
   });

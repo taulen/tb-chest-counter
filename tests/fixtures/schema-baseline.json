@@ -522,7 +522,7 @@
   {
     "type": "table",
     "name": "game_players",
-    "sql": "CREATE TABLE game_players ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, name TEXT NOT NULL, role INTEGER, joined_at INTEGER, in_clan INTEGER NOT NULL DEFAULT 1, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, city_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id) )"
+    "sql": "CREATE TABLE game_players ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, name TEXT NOT NULL, role INTEGER, joined_at INTEGER, in_clan INTEGER NOT NULL DEFAULT 1, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, city_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, avatar_frame INTEGER, city_appearance INTEGER, PRIMARY KEY (clan_id, player_id) )"
   },
   {
     "type": "table",

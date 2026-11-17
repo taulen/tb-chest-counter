@@ -9,6 +9,7 @@
 
 import { esc, formatDate, formatDateShort } from './ui.js';
 import { t, tGame } from './i18n.js';
+import { heroLevelBadgeUrl } from './game-art.js';
 
 /** The game's clan ranks by number — official names, translated by tGame. */
 export const GAME_CLAN_RANKS = { 1: 'Leader', 2: 'Superior', 3: 'Officer', 4: 'Veteran', 5: 'Soldier' };
@@ -39,9 +40,31 @@ export function gameFactsHtml(player, { joined = true, heroLevel = false } = {})
   return pills.length ? `<div class="game-facts">${pills.join('')}</div>` : '';
 }
 
-/** The hero portrait, or nothing when there is no image for it. Decorative: the name is beside it. */
+/**
+ * The hero portrait, drawn as the game draws it: inside the player's chosen
+ * frame (`frameUrl`: theirs, else the game's default "Standard"), with the
+ * hero level written on the game's level plate at its top-right (the plate is
+ * the game's sprite; until the art index is in, a plate of ours in the same
+ * place). `size` is the portrait; the frame reaches past it on every side, so
+ * the picture is about a third wider (98 × 95 game pixels around the
+ * 72-pixel portrait). Without a frame image, the plain round portrait;
+ * nothing when there is no portrait. Decorative: the name and the hero level
+ * are beside it in words.
+ */
 export function heroAvatarHtml(player, size = 40) {
   const url = player?.avatarUrl;
   if (!url) return '';
+  const frame = player?.frameUrl;
+  if (frame) {
+    const box = Math.round((size * 98) / 72);
+    const level = Number(player?.heroLevel) > 0 ? Math.floor(Number(player.heroLevel)) : null;
+    const plate = heroLevelBadgeUrl();
+    const badge = level === null ? ''
+      : `<span class="hero-framed-level${plate ? '' : ' is-plain'}">${plate ? `<img src="${esc(plate)}" alt="" decoding="async">` : ''}`
+        + `<span class="hero-framed-level-num${level >= 100 ? ' is-3' : ''}">${level}</span></span>`;
+    return `<span class="hero-framed" style="--hero-box:${box}px;width:${box}px;height:${box}px" aria-hidden="true">`
+      + `<img class="hero-framed-art" src="${esc(url)}" alt="" loading="lazy" decoding="async">`
+      + `<img class="hero-framed-frame" src="${esc(frame)}" alt="" loading="lazy" decoding="async">${badge}</span>`;
+  }
   return `<img class="hero-avatar" src="${esc(url)}" alt="" width="${size}" height="${size}" loading="lazy" decoding="async">`;
 }

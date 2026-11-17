@@ -38,7 +38,7 @@ describe('game messages', () => {
     ]);
   });
 
-  it('reads player records (402), including the Gold Pass flag', () => {
+  it('reads player records (402), including the Gold Pass flag and the portrait frame', () => {
     const p: Wire = [
       [4599909974644], 'tb:117395457', 'baron SP K260 sk', '', 2, 10000096, 10000095, 116, 30, 12, 29724600,
       [4599909974038], 2168077, 'SIN', 0, [1071, 549, 527], [4599917580129], 3126, 63730, [], [[160, 15]], '', [1],
@@ -47,6 +47,8 @@ describe('game messages', () => {
     expect(r).toEqual({
       playerId: 4599909974644, name: 'baron SP K260 sk', position: [1071, 549, 527], heroAvatar: 2, heroLevel: 116, cityLevel: 30, vip: 12,
       might: 29724600, clanId: 4599909974038, clanTag: 'SIN', cityId: 4599917580129, goldPass: true,
+      // f6 a portrait frame (T52 kind 1), f5 a city look (kind 2)
+      avatarFrame: 10000095, cityAppearance: 10000096,
     });
   });
 

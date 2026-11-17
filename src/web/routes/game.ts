@@ -149,7 +149,7 @@ export function createGameRouter(): Router {
     const out: Record<number, object> = {};
     for (const [memberId, p] of getGamePlayersByMember(clanId)) {
       out[memberId] = {
-        heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
+        heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, frameUrl: p.frameUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
         tiers: tiers.get(memberId)?.tiers ?? null,
       };
     }

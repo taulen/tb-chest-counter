@@ -74,12 +74,15 @@ export function savePlayers(clanId: number, members: ClanMember[], players: Play
   const roles = new Map(members.map((m) => [m.playerId, m]));
   const upsert = db.prepare(
     `INSERT INTO game_players
-       (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar, city_id, first_seen, last_seen)
-     VALUES (@clanId, @playerId, @name, @role, @joinedAt, 1, @might, @heroLevel, @cityLevel, @vip, @goldPass, @heroAvatar, @cityId, @now, @now)
+       (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar,
+        avatar_frame, city_appearance, city_id, first_seen, last_seen)
+     VALUES (@clanId, @playerId, @name, @role, @joinedAt, 1, @might, @heroLevel, @cityLevel, @vip, @goldPass, @heroAvatar,
+        @avatarFrame, @cityAppearance, @cityId, @now, @now)
      ON CONFLICT (clan_id, player_id) DO UPDATE SET
        name = excluded.name, role = excluded.role, joined_at = excluded.joined_at, in_clan = 1,
        might = excluded.might, hero_level = excluded.hero_level, city_level = excluded.city_level,
        vip = excluded.vip, gold_pass = excluded.gold_pass, hero_avatar = excluded.hero_avatar,
+       avatar_frame = excluded.avatar_frame, city_appearance = excluded.city_appearance,
        city_id = excluded.city_id, last_seen = excluded.last_seen`,
   );
   const lastHistory = db.prepare(
@@ -100,6 +103,7 @@ export function savePlayers(clanId: number, members: ClanMember[], players: Play
         clanId, playerId: p.playerId, name: p.name, role: m.role, joinedAt: m.joinedAt,
         might: p.might, heroLevel: p.heroLevel, cityLevel: p.cityLevel, vip: p.vip,
         goldPass: p.goldPass ? 1 : 0, heroAvatar: p.heroAvatar, cityId: p.cityId, now,
+        avatarFrame: p.avatarFrame ?? null, cityAppearance: p.cityAppearance ?? null,
       };
       upsert.run(row);
       const prev = lastHistory.get(clanId, p.playerId) as
