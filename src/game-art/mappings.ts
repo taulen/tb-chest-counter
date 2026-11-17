@@ -34,10 +34,12 @@ export interface ArtMappings {
   chests: Record<string, string>;
   resources: Record<string, string>;
   techs: Record<string, string>;
+  /** T75 captain id → portrait image (smallIcon, else the level-up art). */
+  captains: Record<string, string>;
 }
 
 export function emptyMappings(): ArtMappings {
-  return { heroAvatars: {}, mercenaries: {}, chests: {}, resources: {}, techs: {} };
+  return { heroAvatars: {}, mercenaries: {}, chests: {}, resources: {}, techs: {}, captains: {} };
 }
 
 export function normalizeGameName(s: string): string {
@@ -135,6 +137,15 @@ export function techIcons(st: ArtStatic, available: (name: string) => boolean): 
   return out;
 }
 
+export function captainIcons(st: ArtStatic, available: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, c] of Object.entries(st.captains ?? {})) {
+    const pick = [c.icon, c.art].map((n) => (n ? safeArtName(n) : '')).find((n) => n && available(n));
+    if (pick) out[id] = pick;
+  }
+  return out;
+}
+
 export function buildMappings(
   st: ArtStatic,
   mercenaries: TroopStats[],
@@ -147,6 +158,7 @@ export function buildMappings(
     chests: chestIcons(st.items, available),
     resources: resourceIcons(st.items, resourceNames, available),
     techs: techIcons(st, available),
+    captains: captainIcons(st, available),
   };
 }
 

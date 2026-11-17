@@ -41,6 +41,13 @@ function staticIconsByCategory(st, resourceNames) {
         return out;
     for (const h of Object.values(st.heroes))
         out.heroes.add(h.icon.toLowerCase());
+    // Captain portraits sit with the hero portraits.
+    for (const c of Object.values(st.captains ?? {})) {
+        if (c.icon)
+            out.heroes.add(c.icon.toLowerCase());
+        if (c.art)
+            out.heroes.add(c.art.toLowerCase());
+    }
     for (const u of st.units)
         out.troops.add(u.icon.toLowerCase());
     for (const t of Object.values(st.techs))

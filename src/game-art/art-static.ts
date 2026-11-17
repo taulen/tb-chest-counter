@@ -32,6 +32,8 @@ export const TABLE_ITEMS = 8;
 export const TABLE_UNITS = 9;
 export const TABLE_HERO_AVATARS = 13;
 export const TABLE_TECHS = 21;
+/** Captains: f5 name vector, f7 JSON config naming the sprites (smallIcon, unitAltarArt). */
+export const TABLE_CAPTAINS = 75;
 
 export interface ArtUnit {
   id: number;
@@ -55,6 +57,8 @@ export interface ArtStatic {
   /** T21 id → { name, icon }. */
   techs: Record<string, { name: string; icon: string }>;
   items: ArtItem[];
+  /** T75 id → { name, icon (smallIcon), art (unitAltarArt) }. */
+  captains: Record<string, { name: string; icon: string; art: string }>;
 }
 
 async function fetchBuffer(url: string): Promise<Buffer> {
@@ -133,7 +137,16 @@ export function buildArtStatic(
     const n = name(row[3]);
     if (typeof icon === 'string' && icon && n) items.push({ id, name: n, icon });
   }
-  return { version, heroes, units, techs, items };
+  const captains: ArtStatic['captains'] = {};
+  for (const [id, row] of rows(TABLE_CAPTAINS)) {
+    const n = name(row[5]);
+    let cfg: { smallIcon?: unknown; unitAltarArt?: unknown } = {};
+    try { cfg = JSON.parse(str(row[7]) ?? '{}'); } catch { continue; }
+    const icon = typeof cfg.smallIcon === 'string' ? cfg.smallIcon : '';
+    const art = typeof cfg.unitAltarArt === 'string' ? cfg.unitAltarArt : '';
+    if (n && (icon || art)) captains[id] = { name: n, icon, art };
+  }
+  return { version, heroes, units, techs, items, captains };
 }
 
 export function staticKey(v: StaticVersion): string {
@@ -160,7 +173,11 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
   }
   const key = staticKey(version);
   const file = cacheFile(dir, key);
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')) as ArtStatic;
+  if (fs.existsSync(file)) {
+    const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as ArtStatic;
+    // A cache from before captains were read is rebuilt once.
+    if (cached.captains) return cached;
+  }
   const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
     fetchBuffer(STATIC_BASE + version.files.strings),
     fetchBuffer(STATIC_BASE + version.files.vectors),
@@ -171,7 +188,7 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
     key,
     readWrappedArray(stringsBuf),
     readWrappedArray(vectorsBuf),
-    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS]),
+    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS]),
     en,
   );
   fs.mkdirSync(dir, { recursive: true });

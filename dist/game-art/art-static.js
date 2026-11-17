@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
+exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
 exports.buildArtStatic = buildArtStatic;
 exports.staticKey = staticKey;
 exports.loadArtStatic = loadArtStatic;
@@ -33,6 +33,8 @@ exports.TABLE_ITEMS = 8;
 exports.TABLE_UNITS = 9;
 exports.TABLE_HERO_AVATARS = 13;
 exports.TABLE_TECHS = 21;
+/** Captains: f5 name vector, f7 JSON config naming the sprites (smallIcon, unitAltarArt). */
+exports.TABLE_CAPTAINS = 75;
 async function fetchBuffer(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok)
@@ -107,7 +109,22 @@ function buildArtStatic(version, strings, vectors, tables, en) {
         if (typeof icon === 'string' && icon && n)
             items.push({ id, name: n, icon });
     }
-    return { version, heroes, units, techs, items };
+    const captains = {};
+    for (const [id, row] of rows(exports.TABLE_CAPTAINS)) {
+        const n = name(row[5]);
+        let cfg = {};
+        try {
+            cfg = JSON.parse(str(row[7]) ?? '{}');
+        }
+        catch {
+            continue;
+        }
+        const icon = typeof cfg.smallIcon === 'string' ? cfg.smallIcon : '';
+        const art = typeof cfg.unitAltarArt === 'string' ? cfg.unitAltarArt : '';
+        if (n && (icon || art))
+            captains[id] = { name: n, icon, art };
+    }
+    return { version, heroes, units, techs, items, captains };
 }
 function staticKey(v) {
     return `${v.composite.slice(0, 16)}-${v.translationsCatalog.replace(/\.json$/, '')}`;
@@ -133,15 +150,19 @@ async function loadArtStatic(dir) {
     }
     const key = staticKey(version);
     const file = cacheFile(dir, key);
-    if (fs_1.default.existsSync(file))
-        return JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
+    if (fs_1.default.existsSync(file)) {
+        const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
+        // A cache from before captains were read is rebuilt once.
+        if (cached.captains)
+            return cached;
+    }
     const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
         fetchBuffer(STATIC_BASE + version.files.strings),
         fetchBuffer(STATIC_BASE + version.files.vectors),
         fetchBuffer(STATIC_BASE + version.files.noDuplicates),
         fetchEnglish(version.translationsCatalog),
     ]);
-    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS]), en);
+    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS]), en);
     fs_1.default.mkdirSync(dir, { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs_1.default.writeFileSync(tmp, JSON.stringify(data));

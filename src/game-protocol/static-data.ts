@@ -40,7 +40,9 @@ export const TABLE_MAP_OBJECTS = 7;
 export const TABLE_GIFT_TYPES = 8;
 export const TABLE_HEROES = 13;
 export const TABLE_TECHS = 21;
-const NEEDED_TABLES = [TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS];
+/** Captains (Hercules, Skadi, Aurora…): f1 kind, f2 rarity, f5 name, f7 JSON config with the sprite names. */
+export const TABLE_CAPTAINS = 75;
+const NEEDED_TABLES = [TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS];
 
 export interface GameNames {
   /** `${composite}:${translations}` — changes whenever either source does. */
@@ -50,6 +52,8 @@ export interface GameNames {
   techs: Record<string, { name: string; maxLevel: number }>;
   objects: Record<string, string>;
   heroes: Record<string, { name: string; icon: string }>;
+  /** Captains by T75 id: name, rarity (T75 f2), and the sprite names from its config. */
+  captains: Record<string, { name: string; rarity: number; icon: string; art: string }>;
 }
 
 export interface StaticVersion {
@@ -246,7 +250,20 @@ export function buildNames(
     const name = vecText(row[1]);
     if (name) heroes[id] = { name, icon: str(row[3]) ?? '' };
   }
-  return { version, builtAt: new Date().toISOString(), gifts, techs, objects, heroes };
+  const captains: GameNames['captains'] = {};
+  for (const [id, row] of rows(TABLE_CAPTAINS)) {
+    const name = vecText(row[5]);
+    if (!name) continue;
+    let cfg: { smallIcon?: string; unitAltarArt?: string } = {};
+    try { cfg = JSON.parse(str(row[7]) ?? '{}'); } catch { /* not a config */ }
+    captains[id] = {
+      name,
+      rarity: typeof row[2] === 'number' ? row[2] : 0,
+      icon: cfg.smallIcon ?? '',
+      art: cfg.unitAltarArt ?? '',
+    };
+  }
+  return { version, builtAt: new Date().toISOString(), gifts, techs, objects, heroes, captains };
 }
 
 // ---------------------------------------------------------------------------
@@ -285,8 +302,12 @@ export async function loadGameNames(): Promise<GameNames> {
   if (memo?.version === key) return memo;
   const file = path.join(staticDir(), key, 'names.json');
   if (fs.existsSync(file)) {
-    memo = JSON.parse(fs.readFileSync(file, 'utf8')) as GameNames;
-    return memo;
+    const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as GameNames;
+    // A names.json from before a table was added (captains) is rebuilt once.
+    if (cached.captains) {
+      memo = cached;
+      return memo;
+    }
   }
   log.info(`Building game names for static data ${key} (downloads ~67 MB once per game patch)`);
   const started = Date.now();

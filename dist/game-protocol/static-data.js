@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
+exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
@@ -50,7 +50,9 @@ exports.TABLE_MAP_OBJECTS = 7;
 exports.TABLE_GIFT_TYPES = 8;
 exports.TABLE_HEROES = 13;
 exports.TABLE_TECHS = 21;
-const NEEDED_TABLES = [exports.TABLE_MAP_OBJECTS, exports.TABLE_GIFT_TYPES, exports.TABLE_HEROES, exports.TABLE_TECHS];
+/** Captains (Hercules, Skadi, Aurora…): f1 kind, f2 rarity, f5 name, f7 JSON config with the sprite names. */
+exports.TABLE_CAPTAINS = 75;
+const NEEDED_TABLES = [exports.TABLE_MAP_OBJECTS, exports.TABLE_GIFT_TYPES, exports.TABLE_HEROES, exports.TABLE_TECHS, exports.TABLE_CAPTAINS];
 const FETCH_TIMEOUT_MS = 120_000;
 async function fetchBuffer(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -236,7 +238,24 @@ function buildNames(version, strings, vectors, tables, en) {
         if (name)
             heroes[id] = { name, icon: str(row[3]) ?? '' };
     }
-    return { version, builtAt: new Date().toISOString(), gifts, techs, objects, heroes };
+    const captains = {};
+    for (const [id, row] of rows(exports.TABLE_CAPTAINS)) {
+        const name = vecText(row[5]);
+        if (!name)
+            continue;
+        let cfg = {};
+        try {
+            cfg = JSON.parse(str(row[7]) ?? '{}');
+        }
+        catch { /* not a config */ }
+        captains[id] = {
+            name,
+            rarity: typeof row[2] === 'number' ? row[2] : 0,
+            icon: cfg.smallIcon ?? '',
+            art: cfg.unitAltarArt ?? '',
+        };
+    }
+    return { version, builtAt: new Date().toISOString(), gifts, techs, objects, heroes, captains };
 }
 // ---------------------------------------------------------------------------
 // Cache on the data volume
@@ -272,8 +291,12 @@ async function loadGameNames() {
         return memo;
     const file = path_1.default.join(staticDir(), key, 'names.json');
     if (fs_1.default.existsSync(file)) {
-        memo = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
-        return memo;
+        const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
+        // A names.json from before a table was added (captains) is rebuilt once.
+        if (cached.captains) {
+            memo = cached;
+            return memo;
+        }
     }
     log.info(`Building game names for static data ${key} (downloads ~67 MB once per game patch)`);
     const started = Date.now();

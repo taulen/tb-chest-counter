@@ -10,6 +10,7 @@ exports.heroAvatarIcons = heroAvatarIcons;
 exports.chestIcons = chestIcons;
 exports.resourceIcons = resourceIcons;
 exports.techIcons = techIcons;
+exports.captainIcons = captainIcons;
 exports.buildMappings = buildMappings;
 exports.heroAvatarImageFrom = heroAvatarImageFrom;
 exports.loadMercenaryList = loadMercenaryList;
@@ -35,7 +36,7 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const selection_js_1 = require("./selection.js");
 function emptyMappings() {
-    return { heroAvatars: {}, mercenaries: {}, chests: {}, resources: {}, techs: {} };
+    return { heroAvatars: {}, mercenaries: {}, chests: {}, resources: {}, techs: {}, captains: {} };
 }
 function normalizeGameName(s) {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -129,6 +130,15 @@ function techIcons(st, available) {
     }
     return out;
 }
+function captainIcons(st, available) {
+    const out = {};
+    for (const [id, c] of Object.entries(st.captains ?? {})) {
+        const pick = [c.icon, c.art].map((n) => (n ? (0, selection_js_1.safeArtName)(n) : '')).find((n) => n && available(n));
+        if (pick)
+            out[id] = pick;
+    }
+    return out;
+}
 function buildMappings(st, mercenaries, resourceNames, available) {
     return {
         heroAvatars: heroAvatarIcons(st, available),
@@ -136,6 +146,7 @@ function buildMappings(st, mercenaries, resourceNames, available) {
         chests: chestIcons(st.items, available),
         resources: resourceIcons(st.items, resourceNames, available),
         techs: techIcons(st, available),
+        captains: captainIcons(st, available),
     };
 }
 /** The image for a heroAvatar value, or null (unknown avatar, art not extracted yet). */
