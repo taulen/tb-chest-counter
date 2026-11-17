@@ -1,9 +1,32 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.refreshChatSession = refreshChatSession;
 exports.chatSessionFor = chatSessionFor;
 exports.startChatPoller = startChatPoller;
 exports.stopChatPoller = stopChatPoller;
+/**
+ * Keeps each clan's chat stored: the clan chat and the scanner account's
+ * private (1:1) messages (game-protocol/chat.ts, migration v104).
+ *
+ *   - Every scan, on the game session it just signed in with, asks the game for
+ *     a chat token, signs in to the chat service and syncs (refreshChatSession).
+ *   - Between scans, a poller reads new messages every minute with the cached
+ *     chat session key. That never touches the game or the website login, so it
+ *     cannot disturb the account; a rejected key is dropped and the next scan
+ *     issues a fresh one.
+ *
+ * The first sync of a channel backfills its history (the service keeps months);
+ * every later sync reads another slice further back until the service has
+ * nothing older. Stored messages are permanent (chat-repo.ts): a line the
+ * service no longer serves stays on the site.
+ * Nothing here may ever fail a scan: every entry point swallows and logs.
+ */
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const clan_paths_js_1 = require("../config/clan-paths.js");
 const chat_js_1 = require("../game-protocol/chat.js");
 const chat_repo_js_1 = require("../data/repositories/chat-repo.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -14,8 +37,8 @@ const pollWarner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn(
 const KEPT_TYPES = ['clanGroup', 'whisper'];
 /** How far back the first sync of a channel reads. */
 const BACKFILL = { clanGroup: 20_000, whisper: 2_000 };
-/** Older history read per sync after that, until the service has nothing older (5 requests). */
-const OLDER_PER_SYNC = 1_000;
+/** Older history read per sync after that, until the service has nothing older (15 requests). One-time per channel: a complete channel is never asked again. */
+const OLDER_PER_SYNC = 3_000;
 /**
  * New channels backfilled per sync (the rest wait for the next minute). Until
  * Nov 2026 the channel list asked for "clanGroup%2Cwhisper" and matched
@@ -25,6 +48,53 @@ const OLDER_PER_SYNC = 1_000;
 const FIRST_READS_PER_SYNC = 3;
 const POLL_MS = 60_000;
 const sessions = new Map();
+// The chat session survives a restart: before, every deploy emptied the map
+// and polling (new lines AND the one-time history backfill) stopped until each
+// clan's next scan, up to an hour later (user, Nov 2026: "stuck"). Kept next to
+// the clan's saved game login; deleted when the service rejects it.
+const SESSION_FILE = 'chat-session.json';
+function keepSession(clanId, chat) {
+    sessions.set(clanId, chat);
+    try {
+        fs_1.default.mkdirSync((0, clan_paths_js_1.clanDataDir)(clanId), { recursive: true });
+        fs_1.default.writeFileSync(path_1.default.join((0, clan_paths_js_1.clanDataDir)(clanId), SESSION_FILE), JSON.stringify(chat), { mode: 0o600 });
+    }
+    catch (err) {
+        log.warn({ noAlert: true }, `Clan #${clanId}: could not save the chat session (polling still runs): ${String(err)}`);
+    }
+}
+function dropSession(clanId) {
+    sessions.delete(clanId);
+    try {
+        fs_1.default.rmSync(path_1.default.join((0, clan_paths_js_1.clanDataDir)(clanId), SESSION_FILE), { force: true });
+    }
+    catch { /* gone already */ }
+}
+/** Sessions saved before a restart, so polling resumes without waiting for a scan. */
+function restoreSessions() {
+    let n = 0;
+    let dirs = [];
+    try {
+        dirs = fs_1.default.readdirSync(path_1.default.resolve('data', 'clans'));
+    }
+    catch {
+        return 0;
+    }
+    for (const d of dirs) {
+        const clanId = Number(d);
+        if (!Number.isInteger(clanId) || clanId <= 0 || sessions.has(clanId))
+            continue;
+        try {
+            const chat = JSON.parse(fs_1.default.readFileSync(path_1.default.join((0, clan_paths_js_1.clanDataDir)(clanId), SESSION_FILE), 'utf8'));
+            if (chat?.session?.key && chat.session.userId) {
+                sessions.set(clanId, chat);
+                n++;
+            }
+        }
+        catch { /* none saved */ }
+    }
+    return n;
+}
 let pollTimer = null;
 let polling = false;
 async function sync(clanId, chat) {
@@ -77,12 +147,12 @@ async function refreshChatSession(clanId, client, gameClanId) {
             return 'chat skipped (no website user id)';
         const session = await (0, chat_js_1.chatLogin)(client.suid, await client.chatToken());
         const chat = { session, gameClanId };
-        sessions.set(clanId, chat);
+        keepSession(clanId, chat);
         const r = await sync(clanId, chat);
         return `chat: ${r.channels} channels, ${r.added} new messages`;
     }
     catch (err) {
-        sessions.delete(clanId);
+        dropSession(clanId);
         log.warn({ noAlert: true }, `Clan #${clanId} chat sync failed (the scan is unaffected): ${String(err)}`);
         return 'chat failed';
     }
@@ -95,6 +165,9 @@ function chatSessionFor(clanId) {
 function startChatPoller() {
     if (pollTimer)
         return;
+    const restored = restoreSessions();
+    if (restored)
+        log.info(`Chat polling resumed for ${restored} clan(s) from saved sessions`);
     pollTimer = setInterval(() => { void pollOnce(); }, POLL_MS);
     pollTimer.unref?.();
 }
@@ -116,7 +189,7 @@ async function pollOnce() {
             }
             catch (err) {
                 // A rejected key (or any failure) waits for the next scan's fresh session.
-                sessions.delete(clanId);
+                dropSession(clanId);
                 pollWarner.warn(`poll:${clanId}`, `Chat polling paused for clan #${clanId} until its next scan: ${String(err)}`);
             }
         }

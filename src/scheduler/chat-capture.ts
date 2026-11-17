@@ -15,6 +15,9 @@
  * service no longer serves stays on the site.
  * Nothing here may ever fail a scan: every entry point swallows and logs.
  */
+import fs from 'fs';
+import path from 'path';
+import { clanDataDir } from '../config/clan-paths.js';
 import type { GameClient } from '../game-protocol/client.js';
 import { chatLogin, listChannels, readMessages, readMessagesBefore, type ChatChannel, type ChatSession } from '../game-protocol/chat.js';
 import {
@@ -30,8 +33,8 @@ const pollWarner = createCoalescedWarner((m) => log.warn({ noAlert: true }, m), 
 const KEPT_TYPES = ['clanGroup', 'whisper'];
 /** How far back the first sync of a channel reads. */
 const BACKFILL = { clanGroup: 20_000, whisper: 2_000 } as Record<string, number>;
-/** Older history read per sync after that, until the service has nothing older (5 requests). */
-const OLDER_PER_SYNC = 1_000;
+/** Older history read per sync after that, until the service has nothing older (15 requests). One-time per channel: a complete channel is never asked again. */
+const OLDER_PER_SYNC = 3_000;
 /**
  * New channels backfilled per sync (the rest wait for the next minute). Until
  * Nov 2026 the channel list asked for "clanGroup%2Cwhisper" and matched
@@ -47,6 +50,40 @@ interface ClanChat {
   gameClanId: number;
 }
 const sessions = new Map<number, ClanChat>();
+
+// The chat session survives a restart: before, every deploy emptied the map
+// and polling (new lines AND the one-time history backfill) stopped until each
+// clan's next scan, up to an hour later (user, Nov 2026: "stuck"). Kept next to
+// the clan's saved game login; deleted when the service rejects it.
+const SESSION_FILE = 'chat-session.json';
+function keepSession(clanId: number, chat: ClanChat): void {
+  sessions.set(clanId, chat);
+  try {
+    fs.mkdirSync(clanDataDir(clanId), { recursive: true });
+    fs.writeFileSync(path.join(clanDataDir(clanId), SESSION_FILE), JSON.stringify(chat), { mode: 0o600 });
+  } catch (err) {
+    log.warn({ noAlert: true }, `Clan #${clanId}: could not save the chat session (polling still runs): ${String(err)}`);
+  }
+}
+function dropSession(clanId: number): void {
+  sessions.delete(clanId);
+  try { fs.rmSync(path.join(clanDataDir(clanId), SESSION_FILE), { force: true }); } catch { /* gone already */ }
+}
+/** Sessions saved before a restart, so polling resumes without waiting for a scan. */
+function restoreSessions(): number {
+  let n = 0;
+  let dirs: string[] = [];
+  try { dirs = fs.readdirSync(path.resolve('data', 'clans')); } catch { return 0; }
+  for (const d of dirs) {
+    const clanId = Number(d);
+    if (!Number.isInteger(clanId) || clanId <= 0 || sessions.has(clanId)) continue;
+    try {
+      const chat = JSON.parse(fs.readFileSync(path.join(clanDataDir(clanId), SESSION_FILE), 'utf8')) as ClanChat;
+      if (chat?.session?.key && chat.session.userId) { sessions.set(clanId, chat); n++; }
+    } catch { /* none saved */ }
+  }
+  return n;
+}
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let polling = false;
 
@@ -97,11 +134,11 @@ export async function refreshChatSession(clanId: number, client: GameClient, gam
     if (!client.suid) return 'chat skipped (no website user id)';
     const session = await chatLogin(client.suid, await client.chatToken());
     const chat = { session, gameClanId };
-    sessions.set(clanId, chat);
+    keepSession(clanId, chat);
     const r = await sync(clanId, chat);
     return `chat: ${r.channels} channels, ${r.added} new messages`;
   } catch (err) {
-    sessions.delete(clanId);
+    dropSession(clanId);
     log.warn({ noAlert: true }, `Clan #${clanId} chat sync failed (the scan is unaffected): ${String(err)}`);
     return 'chat failed';
   }
@@ -115,6 +152,8 @@ export function chatSessionFor(clanId: number): ChatSession | null {
 /** Start the between-scans poller (idempotent). */
 export function startChatPoller(): void {
   if (pollTimer) return;
+  const restored = restoreSessions();
+  if (restored) log.info(`Chat polling resumed for ${restored} clan(s) from saved sessions`);
   pollTimer = setInterval(() => { void pollOnce(); }, POLL_MS);
   pollTimer.unref?.();
 }
@@ -134,7 +173,7 @@ async function pollOnce(): Promise<void> {
         if (r.added) log.debug(`Clan #${clanId} chat: ${r.added} new messages`);
       } catch (err) {
         // A rejected key (or any failure) waits for the next scan's fresh session.
-        sessions.delete(clanId);
+        dropSession(clanId);
         pollWarner.warn(`poll:${clanId}`, `Chat polling paused for clan #${clanId} until its next scan: ${String(err)}`);
       }
     }
