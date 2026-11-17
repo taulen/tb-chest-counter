@@ -24,23 +24,15 @@ function publicClan(c) {
     return { ...rest, discordTokenSet: discordToken.length > 0 };
 }
 /**
- * Enriches the public clan with onboarding-state counts so the frontend
- * can hide the "Capture members" / "Run first scan" buttons once the
- * clan has any members or any scan history. `authenticated` is a quick
- * "has the operator ever signed this clan into Total Battle" indicator —
- * purely a presence check on the storage-state file. The `needsReauth`
- * flag, on the other hand, reflects the most recent scan attempt: the
- * auth-check phase flips it on when the saved cookies stop loading the
- * canvas and off again as soon as they load it, and the login bridge also
- * clears it when the operator saves a fresh session. So
- * `authenticated && !needsReauth` is the combined "everything's fine"
- * state the UI cares about.
- *
- * That the auth-check phase clears it is load-bearing, not a nicety: while
- * only the login bridge could, one transient failure (a canvas timing out
- * under memory pressure) pinned a clan to "Needs re-authentication" until
- * an operator manually re-signed in, no matter how many scans succeeded
- * afterwards.
+ * Enriches the public clan with member and scan counts. `authenticated`
+ * is a quick "has the operator ever signed this clan into Total Battle"
+ * indicator — purely a presence check on the storage-state file. The
+ * `needsReauth` flag, on the other hand, reflects the latest observation:
+ * a scan's game capture or the 30-minute session check flips it on when the
+ * saved session is logged out and off again as soon as it signs in
+ * (scheduler/session-health.ts), and the login bridge also clears it when the
+ * operator saves a fresh session. So `authenticated && !needsReauth` is the
+ * combined "everything's fine" state the UI cares about.
  */
 function publicClanWithCounts(c) {
     return {

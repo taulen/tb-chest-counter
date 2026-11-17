@@ -35,8 +35,8 @@ const clan_reward_chests_js_1 = require("./clan-reward-chests.js");
 const clan_repo_js_1 = require("./repositories/clan-repo.js");
 const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
 const source_categories_js_1 = require("./source-categories.js");
-const source_names_js_1 = require("../vision/source-names.js");
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+const source_names_js_1 = require("./source-names.js");
+const name_normalize_js_1 = require("../utils/name-normalize.js");
 const MATRIX_ROWS = [
     { id: 'common', label: 'Common Crypt' },
     { id: 'rare', label: 'Rare Crypt' },
@@ -93,7 +93,7 @@ function rangeFromSource(source, fallback) {
  */
 function placeChest(key, source, chest) {
     const canon = (0, source_names_js_1.canonicalSourceKey)(key);
-    const foldedChest = (0, ocr_normalize_js_1.foldDiacritics)(chest).toLowerCase();
+    const foldedChest = (0, name_normalize_js_1.foldDiacritics)(chest).toLowerCase();
     let m = /^(common|rare|epic|tartaros) (\d+)$/.exec(key);
     if (m) {
         return { section: 'crypts', row: m[1], level: Number(m[2]) };

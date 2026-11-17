@@ -51,7 +51,7 @@ function parseLeaderboardQuery(req) {
  * Each row is then decorated with the member's latest might + hero level. That
  * happens HERE rather than inside getLeaderboard() on purpose: the chest query is
  * about chests, its result is cached under a chest-shaped key, and might data
- * changes on a completely different schedule (once a day, from the OCR snapshot).
+ * changes on a completely different schedule (per scan, from the game's player records).
  * Joining them in SQL would tie one cache's lifetime to the other's and put a
  * might read on the Discord digest and CSV export paths that never asked for it.
  *

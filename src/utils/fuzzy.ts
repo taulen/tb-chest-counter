@@ -1,7 +1,7 @@
 import type { ClanMember } from '../models/types.js';
 import {
   foldDiacritics, despace, despaceKeepingCase, namesDifferByAltSuffix,
-} from '../vision/ocr-normalize.js';
+} from './name-normalize.js';
 
 export function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -55,14 +55,16 @@ function prepareKeyKeepingCase(raw: string): string {
 
 /**
  * Edit-distance budget for a fuzzy name match: 2 for names of 6+ characters, 1 below
- * that. Deliberately identical to the budget matchKnownPlayer uses on the scan side,
- * so a name behaves the same whether it arrives from a gift scan or a resource import.
+ * that. It was kept identical to the budget the retired OCR gift scan used, so a name
+ * behaved the same whichever path it arrived on.
  *
  * This was `max(len) / 3` — up to 4 edits on a 12-character name. That was set for
  * Tesseract (937dcc9), and one of the three edits it budgeted for was a missing space
  * ("Morarn II" → "Morarnll"), which was a dictionary bug in the OCR setup, not real
  * name damage; PP-OCRv6 preserves spaces since the dict gained its trailing space
- * entry. Tesseract itself is gone — the vision factory only builds PaddleOcrProvider.
+ * entry. Both OCR engines are gone now; scans read exact names from the game, so
+ * this budget only matters for names typed or pasted by people and for matching
+ * them against the OCR-era spellings still stored.
  *
  * Spaces now cost nothing at all: both sides are despaced before they reach here (see
  * prepareKey), so the entire budget is available for character damage instead of being

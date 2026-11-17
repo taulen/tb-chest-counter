@@ -33,19 +33,6 @@ export interface TriumphalChestPointRow {
   isNew: boolean;
 }
 
-/**
- * Names with a configured package value — the live "known triumphal
- * chests" set the scan resolves OCR against (passed to
- * correctTriumphalChestName). Seeded with the built-in defaults at v54.
- */
-export function getKnownChestNames(): string[] {
-  const db = getDb();
-  const rows = db.prepare(
-    'SELECT chest_name FROM triumphal_chest_points ORDER BY chest_name',
-  ).all() as { chest_name: string }[];
-  return rows.map((r) => r.chest_name);
-}
-
 export function getAll(): TriumphalChestPoint[] {
   const db = getDb();
   const rows = db.prepare(

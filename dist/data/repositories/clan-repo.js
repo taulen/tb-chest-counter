@@ -32,7 +32,6 @@ exports.reauthWarningKey = reauthWarningKey;
 exports.reauthLegacyMatcher = reauthLegacyMatcher;
 exports.setClanChestTrackerSettings = setClanChestTrackerSettings;
 exports.setClanResourcesEnabled = setClanResourcesEnabled;
-exports.setClanResourceAutoCapture = setClanResourceAutoCapture;
 exports.softDeleteClan = softDeleteClan;
 exports.restoreDeletedClan = restoreDeletedClan;
 exports.deleteClan = deleteClan;
@@ -89,11 +88,6 @@ function rowToClan(row) {
         needsReauth: !!row.needs_reauth,
         reauthFailedAt: row.reauth_failed_at || '',
         resourcesEnabled: !!row.resources_enabled,
-        // Defaults to true for rows written before the column existed — see migration
-        // v60: adding it must not silently stop reading a clan that was being read.
-        resourceAutoCapture: row.resource_auto_capture === undefined
-            ? true
-            : !!row.resource_auto_capture,
         inactivitySweepEnabled: !!row.inactivity_sweep_enabled,
         inactivityDays: row.inactivity_days ?? null,
         leaderboardGoalEnabled: !!row.leaderboard_goal_enabled,
@@ -171,12 +165,11 @@ function createClan(input) {
     // populated with the global TB constant for backward-compat but
     // isn't surfaced anywhere in the UI or repos.
     // resources_enabled = 1 for a NEW clan: resource tracking is part of what
-    // the app does now, and the instance-wide switch defaults on too, so a clan
-    // created today starts collecting as soon as Stages 5+6 are calibrated. The
-    // column's own DEFAULT stays 0 on purpose — that governs EXISTING rows a
-    // migration adds the column to, and turning a feature on under a running
-    // deployment is not a migration's call. Per-clan opt-out is on the Clans
-    // page, and resource_auto_capture (the daily-read switch) already defaults 1.
+    // the app does now, so a clan created today shows its Resources tab from
+    // the first scan. The column's own DEFAULT stays 0 on purpose — that governs
+    // EXISTING rows a migration adds the column to, and turning a feature on
+    // under a running deployment is not a migration's call. Per-clan opt-out is
+    // on the Clans page.
     const result = db.prepare(`
     INSERT INTO clans (
       name, slug, game_url, scan_interval_minutes, is_active, created_at, created_by,
@@ -390,12 +383,11 @@ function markClanNeedsReauth(id) {
  * callers can announce a recovery exactly once instead of every cycle.
  *
  * Two callers, and the second is the one that makes the flag trustworthy:
- * the login bridge after it writes a fresh storage-state.json, and the
- * auth-check phase whenever it verifies the saved session still loads the
- * game. Without the latter the flag was effectively write-once — a single
- * bad cycle (a canvas that timed out under memory pressure, say) left the
- * clan reading "Needs re-authentication" forever, while every scan after it
- * signed in perfectly well. The badge even claimed to mean "the most recent
+ * the login bridge after it writes a fresh storage-state.json, and
+ * session-health.ts whenever a scan or session check sees the saved session
+ * signed in. Without the latter the flag was effectively write-once — a single
+ * bad cycle left the clan reading "Needs re-authentication" forever, while
+ * every scan after it signed in perfectly well. The badge even claimed to mean "the most recent
  * scan was able to load the game", which nothing enforced.
  *
  * The `needs_reauth = 1` guard also keeps the happy path write-free: a
@@ -443,11 +435,6 @@ function setClanChestTrackerSettings(id, s) {
 function setClanResourcesEnabled(id, enabled) {
     const db = (0, database_js_1.getDb)();
     db.prepare('UPDATE clans SET resources_enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
-}
-/** Include or exclude this clan from the daily automated history read. */
-function setClanResourceAutoCapture(id, enabled) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('UPDATE clans SET resource_auto_capture = ? WHERE id = ?').run(enabled ? 1 : 0, id);
 }
 /**
  * Hide a clan and everything it owns, without destroying a single row.

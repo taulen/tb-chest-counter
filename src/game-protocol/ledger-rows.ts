@@ -1,7 +1,7 @@
 /**
  * Clan Capital ledger entries (15031) → resource_transactions rows.
  *
- * The ledger is the same history the OCR resource capture read off the screen,
+ * The ledger is the same history the retired OCR resource capture read off the screen,
  * one entry per line, so each entry becomes exactly one row keyed by its
  * entry id (resource_transactions.game_entry_id, unique per clan).
  *

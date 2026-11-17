@@ -36,8 +36,8 @@ exports.clanRewardChestIds = clanRewardChestIds;
 exports.clanRewardExclusionSql = clanRewardExclusionSql;
 const database_js_1 = require("./database.js");
 const event_catalog_js_1 = require("../config/event-catalog.js");
-const chest_names_js_1 = require("../vision/chest-names.js");
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
+const chest_names_js_1 = require("./chest-names.js");
+const name_normalize_js_1 = require("../utils/name-normalize.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('clan-rewards');
 // One line per bad name for the life of the process. NOT log-throttle: this is
@@ -55,7 +55,7 @@ function warnOnce(key, message, noAlert = false) {
 }
 /** Accent-, case- and punctuation-insensitive identity of a chest name. */
 function foldKey(s) {
-    return (0, ocr_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+    return (0, name_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 /**
  * Every chest name the catalog declares as a clan reward. Derived from

@@ -49,7 +49,7 @@ import {
 import {
   canonicalSourceKey, getSourceKey, getDefaultPointsFor, hasDefaultPointsFor, parseSourceLevelRange,
   SOURCE_CHEST_POINTS, SOURCE_POINT_KEYS,
-} from '../vision/source-names.js';
+} from './source-names.js';
 import { SOURCE_CATEGORIES, sourceCategory, sourceSortRank, type SourceCategory } from './source-categories.js';
 
 /** Largest value a save accepts — the biggest real one is 10,000. */

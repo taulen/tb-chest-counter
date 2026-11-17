@@ -5,20 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UNTRACKED_RESOURCE_SLUGS = void 0;
 exports.listResourceTypes = listResourceTypes;
-exports.getIconTemplate = getIconTemplate;
-exports.setIconTemplate = setIconTemplate;
-exports.deleteIconTemplate = deleteIconTemplate;
-exports.listIconTemplateStatus = listIconTemplateStatus;
 exports.createBatch = createBatch;
-exports.updateBatchCounts = updateBatchCounts;
 exports.insertTransactions = insertTransactions;
 exports.listTransactions = listTransactions;
 exports.listBatches = listBatches;
-exports.getCaptureCursor = getCaptureCursor;
-exports.saveCaptureCursor = saveCaptureCursor;
-exports.listRecordedScanRows = listRecordedScanRows;
-exports.clearCaptureCursor = clearCaptureCursor;
-exports.getBatchSource = getBatchSource;
 exports.countUnresolvedTransactions = countUnresolvedTransactions;
 exports.deleteBatch = deleteBatch;
 exports.getRowCropPath = getRowCropPath;
@@ -44,45 +34,13 @@ function dropDerivedCaches(clanId) {
 /**
  * Resource types that exist in the game but are NOT tracked per member —
  * they're clan-wide, so attributing them to individual members is noise.
- * Kept in resource_types (so OCR can still recognise and skip them, and
- * historical rows resolve their name), but hidden from the /types endpoint
- * and dropped during OCR extraction.
+ * Kept in resource_types (so historical rows resolve their name), but hidden
+ * from the /types endpoint and skipped by the ledger import.
  */
 exports.UNTRACKED_RESOURCE_SLUGS = new Set(['seal-of-suppression']);
 function listResourceTypes() {
     const db = (0, database_js_1.getDb)();
     return db.prepare('SELECT id, name, slug FROM resource_types ORDER BY id').all();
-}
-function getIconTemplate(clanId, resourceTypeId) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare('SELECT template_data FROM resource_icon_templates WHERE clan_id = ? AND resource_type_id = ?').get(clanId, resourceTypeId);
-    return row ? row.template_data : null;
-}
-function setIconTemplate(clanId, resourceTypeId, templateData) {
-    const db = (0, database_js_1.getDb)();
-    const now = new Date().toISOString();
-    db.prepare(`
-    INSERT INTO resource_icon_templates (clan_id, resource_type_id, template_data, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(clan_id, resource_type_id) DO UPDATE SET
-      template_data = excluded.template_data,
-      updated_at = excluded.updated_at
-  `).run(clanId, resourceTypeId, templateData, now);
-}
-function deleteIconTemplate(clanId, resourceTypeId) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare('DELETE FROM resource_icon_templates WHERE clan_id = ? AND resource_type_id = ?').run(clanId, resourceTypeId);
-}
-function listIconTemplateStatus(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const types = listResourceTypes();
-    const existing = db.prepare('SELECT resource_type_id, updated_at FROM resource_icon_templates WHERE clan_id = ?').all(clanId);
-    const existingMap = new Map(existing.map((r) => [r.resource_type_id, r.updated_at]));
-    return types.map((t) => ({
-        resourceTypeId: t.id,
-        hasTemplate: existingMap.has(t.id),
-        updatedAt: existingMap.get(t.id) ?? null,
-    }));
 }
 function createBatch(opts) {
     const db = (0, database_js_1.getDb)();
@@ -106,17 +64,6 @@ function createBatch(opts) {
         notes: opts.notes,
         source,
     };
-}
-/** Update a batch's counters after the fact. The automated capture creates its
- *  batch up front (rows need a batch_id to reference) and only knows the final
- *  totals once every scroll page has been read. */
-function updateBatchCounts(batchId, counts) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare(`
-    UPDATE resource_upload_batches
-    SET file_count = ?, row_count = ?, error_count = ?, notes = ?
-    WHERE id = ?
-  `).run(counts.fileCount, counts.rowCount, counts.errorCount, counts.notes, batchId);
 }
 function insertTransactions(rows) {
     if (rows.length === 0)
@@ -243,96 +190,6 @@ function listBatches(clanId) {
         notes: r.notes,
         source: (r.source ?? 'upload'),
     }));
-}
-function getCaptureCursor(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare('SELECT * FROM resource_capture_cursor WHERE clan_id = ?').get(clanId);
-    if (!row)
-        return null;
-    let topRows = [];
-    try {
-        const parsed = JSON.parse(row.top_rows);
-        if (Array.isArray(parsed))
-            topRows = parsed.filter((v) => typeof v === 'string');
-    }
-    catch {
-        // A corrupt cursor must not wedge the capture: an empty marker degrades to
-        // "read the whole window", which is the safe direction (it re-reads rather
-        // than skipping) and the caller reports it as a lost cursor.
-        log.warn(`resource-repo: capture cursor for clan #${clanId} is not valid JSON; ignoring it.`);
-    }
-    return {
-        clanId,
-        topRows,
-        gameDate: row.game_date,
-        capturedAt: row.captured_at,
-        newestDate: row.newest_date ?? '',
-        rowsInserted: row.rows_inserted ?? 0,
-    };
-}
-function saveCaptureCursor(cursor) {
-    const db = (0, database_js_1.getDb)();
-    db.prepare(`
-    INSERT INTO resource_capture_cursor
-      (clan_id, top_rows, game_date, captured_at, newest_date, rows_inserted)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(clan_id) DO UPDATE SET
-      top_rows      = excluded.top_rows,
-      game_date     = excluded.game_date,
-      captured_at   = excluded.captured_at,
-      newest_date   = excluded.newest_date,
-      rows_inserted = excluded.rows_inserted
-  `).run(cursor.clanId, JSON.stringify(cursor.topRows), cursor.gameDate, new Date().toISOString(), cursor.newestDate, cursor.rowsInserted);
-}
-/**
- * Every scan-written row for this clan from `fromDate` onwards, as identity fields.
- *
- * Feeds the capture's write-side withhold: rows read again that this clan already
- * holds are declined rather than inserted, so losing the sweep's marker costs a
- * re-read instead of a duplicate batch an admin has to find and delete.
- *
- * `source = 'scan'` is a hard boundary, not an optimisation: a manual upload must
- * never suppress a scan read. Uploads were removed in Nov 2026 and the last one is
- * from Jul 2026, far outside any read window, so in practice the boundary only
- * keeps the withhold's meaning exact.
- *
- * Keys are built in JS rather than SQL because they despace and lowercase the name,
- * and SQLite's LOWER is ASCII-only — v66 made a despaced key the identity everywhere.
- * Served by idx_resource_transactions_date(clan_id, transaction_date); a 14-day
- * window is a couple of thousand rows.
- */
-function listRecordedScanRows(clanId, fromDate) {
-    const db = (0, database_js_1.getDb)();
-    return db.prepare(`
-    SELECT rt.raw_player_name  AS rawPlayerName,
-           rt.direction        AS direction,
-           rt.amount           AS amount,
-           rt.transaction_date AS transactionDate,
-           rt.resource_type_id AS resourceTypeId
-      FROM resource_transactions rt
-      JOIN resource_upload_batches b ON b.id = rt.batch_id
-     WHERE rt.clan_id = ? AND rt.transaction_date >= ? AND b.source = 'scan'
-  `).all(clanId, fromDate);
-}
-/**
- * Forget where the capture got to, so the next run reads the whole visible list.
- *
- * The recovery move after a capture batch is deleted. The marker points at rows that
- * ARE in the game but are no longer in the database, so leaving it would make the
- * next run stop there and treat the deleted rows as already recorded — losing them
- * from the database while they sit readable in the game for another fortnight.
- *
- * Safe to call at any time: a missing cursor means "read everything, no date backstop
- * armed", which re-reads rather than skips, and the write-side withhold stops that
- * re-read duplicating anything still held.
- */
-function clearCaptureCursor(clanId) {
-    (0, database_js_1.getDb)().prepare('DELETE FROM resource_capture_cursor WHERE clan_id = ?').run(clanId);
-}
-/** The `source` of one batch, or null when it isn't this clan's. */
-function getBatchSource(batchId, clanId) {
-    const row = (0, database_js_1.getDb)().prepare('SELECT source FROM resource_upload_batches WHERE id = ? AND clan_id = ?').get(batchId, clanId);
-    return row?.source ?? null;
 }
 /** How many rows in this clan are still missing a resource type — the standing
  *  "unresolved" count the admin card and nav dot read. */

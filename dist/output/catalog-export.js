@@ -38,7 +38,7 @@ const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
 const mergeRepo = __importStar(require("../data/repositories/merge-repo.js"));
 const sourcePointsRepo = __importStar(require("../data/repositories/source-points-repo.js"));
 const database_js_1 = require("../data/database.js");
-const source_names_js_1 = require("../vision/source-names.js");
+const source_names_js_1 = require("../data/source-names.js");
 // v1: flat sourceKeys entries with a single pointValue per key.
 // v2: sourceKeys gained a tiers[] array keyed on chest_type.
 // v3: tiers[] renamed to chestNames[] and keyed on chest_name instead of

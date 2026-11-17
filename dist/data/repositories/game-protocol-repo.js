@@ -5,8 +5,6 @@ exports.finishCaptureRun = finishCaptureRun;
 exports.savePlayers = savePlayers;
 exports.saveGifts = saveGifts;
 exports.saveLedger = saveLedger;
-exports.loadScanComparisonInputs = loadScanComparisonInputs;
-exports.saveScanComparison = saveScanComparison;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
 exports.citySnapshotPlayers = citySnapshotPlayers;
@@ -19,8 +17,7 @@ exports.recentCaptureRuns = recentCaptureRuns;
  *
  * Everything is keyed on the game's own permanent ids — player id, gift id,
  * ledger entry id — so re-reading the same data is always an update, never a
- * duplicate. Nothing here touches the OCR tables; during the parallel run the
- * two sides are compared, not merged. See docs/game-protocol.md.
+ * duplicate. See docs/game-protocol.md.
  */
 const zlib_1 = require("zlib");
 const database_js_1 = require("../database.js");
@@ -112,50 +109,6 @@ function saveLedger(clanId, entries, now = new Date().toISOString()) {
         }
     })();
     return added;
-}
-/**
- * Inputs for comparing one scan with the game capture that preceded it: the
- * capture's gift list (entries present in that capture) and the scan's OCR rows
- * for both tabs. Null when no successful capture ran before the scan.
- */
-function loadScanComparisonInputs(clanId, sessionId) {
-    const db = (0, database_js_1.getDb)();
-    const session = db.prepare('SELECT started_at FROM scan_sessions WHERE id = ? AND clan_id = ?').get(sessionId, clanId);
-    if (!session)
-        return null;
-    const run = db.prepare(`SELECT id, started_at, finished_at FROM game_capture_runs
-      WHERE clan_id = ? AND ok = 1 AND started_at <= ? ORDER BY id DESC LIMIT 1`).get(clanId, session.started_at);
-    if (!run)
-        return null;
-    const gifts = db.prepare(`SELECT sender_name, chest_name, source_name, chest_count, tab FROM game_gifts
-      WHERE clan_id = ? AND last_seen >= ? AND first_seen <= ?`).all(clanId, run.started_at, run.finished_at).map((g) => ({
-        sender: String(g.sender_name),
-        chest: String(g.chest_name),
-        source: String(g.source_name),
-        count: Number(g.chest_count) || 1,
-        tab: Number(g.tab),
-    }));
-    const ocr = (table) => db.prepare(`SELECT m.name AS sender, ch.name AS chest, COALESCE(cs.source, '') AS source,
-              COALESCE(r.earned_at, r.captured_at) AS at
-         FROM ${table} r JOIN members m ON m.id = r.member_id JOIN chests ch ON ch.id = r.chest_id
-         LEFT JOIN chest_sources cs ON cs.id = r.chest_source_id
-        WHERE r.session_id = ?`).all(sessionId).map((r) => ({
-        ...r,
-        // captured_at/earned_at are epoch ms; the game speaks seconds.
-        at: Math.floor(Number(r.at) / (Number(r.at) > 1e12 ? 1000 : 1)),
-    }));
-    return {
-        runId: run.id,
-        captureEpoch: Math.floor(Date.parse(run.started_at) / 1000),
-        gifts,
-        chestRows: ocr('chest_records'),
-        triumphalRows: ocr('triumphal_chest_records'),
-    };
-}
-function saveScanComparison(clanId, sessionId, runId, tab, c) {
-    (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_scan_comparisons
-       (clan_id, session_id, capture_run_id, created_at, tab, game, ocr, matched, misreads, ocr_only, ocr_late, game_only, details)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(clanId, sessionId, runId, new Date().toISOString(), tab, c.game, c.ocr, c.matched, c.misreads, c.ocrOnly, c.ocrLate, c.gameOnly, JSON.stringify(c.details));
 }
 /**
  * Research + hero talent levels for one player. Upserts the current level and

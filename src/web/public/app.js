@@ -104,18 +104,7 @@ import {
 import {
   renderSystem,
   saveScanIntervalSetting,
-  saveScannerSettings,
-  toggleRawOcrCapture,
-  toggleMightTracking,
-  toggleResourceCapture,
-  requestMightRecapture,
   restartContainer,
-  startCalibrationStage,
-  captureCalibrationScreenshot,
-  selectCalibrationTarget,
-  saveCalibration,
-  cancelCalibration,
-  resetCalibrationStage,
   runDbBackupImportFromFile,
   restoreServerBackup,
   createManualBackup,
@@ -193,8 +182,8 @@ let nextScanInProgress = false; // true while a scan is running — suppress the
 // Analytics page state (chest types pagination, chest drill-down sort &
 // cache, current period/name) moved into ./pages/analytics.js.
 // Members page state moved into ./pages/members.js.
-// System page state (importPreviewState, transferStatus, calibration
-// schema + in-progress state) moved into ./pages/system.js.
+// System page state (importPreviewState, transferStatus) moved into
+// ./pages/system.js.
 
 // ─── Auth ───
 async function checkAuth() {
@@ -671,21 +660,7 @@ if (contentEl) {
     if (action === 'login-session-reload') return reloadLoginSession();
     if (action === 'login-session-paste') return pasteIntoLoginSession();
     if (action === 'restart-container') return restartContainer();
-    if (action === 'save-scanner-settings') return saveScannerSettings(loadPage);
-    if (action === 'raw-ocr-capture-enable') return toggleRawOcrCapture(true, loadPage);
-    if (action === 'raw-ocr-capture-disable') return toggleRawOcrCapture(false, loadPage);
-    if (action === 'resource-capture-enable') return toggleResourceCapture(true, loadPage);
-    if (action === 'resource-capture-disable') return toggleResourceCapture(false, loadPage);
-    if (action === 'might-tracking-enable') return toggleMightTracking(true, loadPage);
-    if (action === 'might-tracking-disable') return toggleMightTracking(false, loadPage);
-    if (action === 'might-recapture') return requestMightRecapture();
-    if (action === 'calibrate-stage') return startCalibrationStage(target.dataset.stage);
-    if (action === 'capture-calibration-screenshot') return captureCalibrationScreenshot();
-    if (action === 'save-calibration') return saveCalibration(loadPage);
-    if (action === 'cancel-calibration') return cancelCalibration();
-    if (action === 'reset-calibration-stage') return resetCalibrationStage(loadPage);
     if (action === 'refresh-log-buffer') return refreshLogBuffer(loadPage);
-    if (action === 'select-calibration-target') return selectCalibrationTarget(target.dataset.target);
     if (action === 'prompt-merge-member') return promptMergePlayerById(Number.parseInt(target.dataset.memberId || '0', 10), loadPage);
     if (action === 'save-member') return saveMemberName(Number.parseInt(target.dataset.memberId || '0', 10));
     if (action === 'delete-member') return deleteMemberById(Number.parseInt(target.dataset.memberId || '0', 10), target.dataset.memberName, loadPage);
@@ -729,8 +704,8 @@ if (contentEl) {
   });
 
   // Hover preview + click-to-enlarge for any row that kept the screenshot it came
-  // from: unreadable chest player names, unresolved resource-import rows and
-  // first-seen members. The trigger carries the image URL in data-crop-url, so this
+  // from (rows recorded by the retired screenshot reader): unreadable chest
+  // player names, unresolved resource rows and first-seen members. The trigger carries the image URL in data-crop-url, so this
   // stays agnostic about which page it serves.
   attachCropPreviews(contentEl);
 
@@ -747,7 +722,7 @@ if (contentEl) {
       return changeRole(userId, select.value, loadPage);
     }
 
-    // When picking an OCR misread on any of the merge forms, prefill
+    // When picking a misread on any of the merge forms, prefill
     // the "or type custom" field with the same value so the user only
     // needs to edit the casing/typo instead of retyping it.
     // For players the text field is also what gets merged (see
@@ -1040,7 +1015,6 @@ async function renderRoute(page, content) {
     case 'users': await renderUsers(content); break;
     case 'clans': await renderClans(content, refreshClanIndicator); break;
     case 'system': await renderSystem(content); break;
-    case 'system/calibration': await renderSystem(content, { focus: 'calibration' }); break;
     default:
       // Try as a member name
       if (page && page !== 'undefined') {
@@ -1396,8 +1370,6 @@ let statusFailures = 0;
 // The scanner's state names, as the header shows them.
 const STATUS_STATE_LABELS = {
   idle: t('idle'),
-  checking_auth: t('checking_auth'),
-  navigating: t('navigating'),
   scanning: t('scanning'),
   processing: t('processing'),
   exporting: t('exporting'),
@@ -1419,17 +1391,10 @@ async function updateStatus() {
     const text = $('#statusText');
     const errBtn = $('#statusErrorBtn');
     const errPanel = $('#statusErrorDetails');
-    // The might snapshot and the resource-history capture both run AFTER the scan
-    // is finalised, so the state machine already reads 'idle' while the browser is
-    // still working — 20-40s for might, up to half an hour for a full resource
-    // backfill. Treat both as busy, or the header claims "idle" through all of it
-    // and throws away the progress messages those phases are producing.
-    // `activity` also covers the half minute between two clans of a cycle,
-    // where nothing is "in progress" but the next clan's browser is launching.
+    // `activity` also covers the moment between two clans of a cycle, where
+    // nothing is "in progress" but the cycle is still running.
     const activity = status.activity ?? null;
     const isScanning = status.state === 'scanning' || status.state === 'processing'
-      || status.mightInProgress === true
-      || status.resourceInProgress === true
       || activity !== null;
     // The placeholder's italic "loading" look must not outlive the first poll.
     text.classList.remove('is-loading');
@@ -1450,7 +1415,6 @@ async function updateStatus() {
 
     renderScanCards(activity, {
       detail: status.progressMessage
-        || (activity?.phase === 'starting' ? t('Launching browser…') : '')
         || (activity?.phase === 'scan' ? statusStateLabel(status.state) : ''),
     });
 
@@ -1476,8 +1440,6 @@ async function updateStatus() {
     nextScanClanInactive = !!status.clanInactive;
     nextScanInProgress = !!status.scanInProgress || activity !== null;
     renderNextScanCountdown();
-
-    renderOnboardingBanner(status.onboarding);
 
     // Disable the manual scan buttons (Scan This Clan / Scan All Clans)
     // while a scan is running. They live in the shell next to this status
@@ -1510,64 +1472,6 @@ async function updateStatus() {
       renderScanCards(null);
     }
   }
-}
-
-/**
- * Render the top-of-page onboarding banner from /api/status's
- * `onboarding` block. Visible whenever the next step isn't 'ready':
- *   - calibrate: link to /system (the calibration wizard)
- *   - capture-members: link to /clans (the per-clan onboard buttons)
- * Hidden once the instance is fully provisioned.
- */
-function renderOnboardingBanner(onboarding) {
-  const el = $('#onboardingBanner');
-  if (!el) return;
-  if (!onboarding || onboarding.nextStep === 'ready') {
-    el.classList.add('is-hidden');
-    el.innerHTML = '';
-    return;
-  }
-  if (onboarding.nextStep === 'calibrate') {
-    el.classList.remove('is-hidden');
-    // Say how far along they are and which stage is next — "not calibrated" on
-    // its own sent people to a System page where the wizard is one collapsed
-    // card among many, with nothing marking the stage to run.
-    const progress = onboarding.calibrationProgress;
-    const done = Number.isFinite(progress?.done) ? progress.done : 0;
-    const total = Number.isFinite(progress?.total) ? progress.total : 4;
-    const stageNumber = done + 1;
-    el.innerHTML = `
-      <div class="onboarding-banner-icon">⚙</div>
-      <div class="onboarding-banner-body">
-        <div class="onboarding-banner-title">${t('Calibrate the scanner — step {step} of {total}', { step: stageNumber, total })}</div>
-        <div class="onboarding-banner-text">
-          ${t('Scans stay paused until the scanner knows where to click on your game UI.')}
-          ${done > 0 ? tn(total, '{done} of {n} stages done.', '{done} of {n} stages done.', { done, n: total }) : t('Four short stages, once per install.')}
-        </div>
-        <div class="onboarding-banner-progress" role="img" aria-label="${tn(total, '{done} of {n} stages complete', '{done} of {n} stages complete', { done, n: total })}">
-          ${Array.from({ length: total }, (_, i) => `<span class="onboarding-pip${i < done ? ' is-done' : (i === done ? ' is-next' : '')}"></span>`).join('')}
-        </div>
-      </div>
-      <a class="btn btn-primary" href="#system/calibration">${done > 0 ? t('Continue calibration') : t('Start calibration')}</a>
-    `;
-    return;
-  }
-  if (onboarding.nextStep === 'capture-members') {
-    el.classList.remove('is-hidden');
-    el.innerHTML = `
-      <div class="onboarding-banner-icon">👥</div>
-      <div class="onboarding-banner-body">
-        <div class="onboarding-banner-title">${t('Capture the clan member list')}</div>
-        <div class="onboarding-banner-text">
-          ${t("Calibration is done. Now the scanner needs to learn who's in your clan before it can attribute chests to members.")}
-        </div>
-      </div>
-      <a class="btn btn-primary" href="#clans">${t('Open Clans page')}</a>
-    `;
-    return;
-  }
-  el.classList.add('is-hidden');
-  el.innerHTML = '';
 }
 
 function renderNextScanCountdown() {

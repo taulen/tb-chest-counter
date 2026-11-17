@@ -54,14 +54,15 @@ export async function renderSessions(el) {
     ${pageSessions.length > 0 ? `<table class="table-responsive"><thead><tr><th>${t('Started')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Status')}</th><th>${t('Chests')}</th><th>${t('Triumphal')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead><tbody>
       ${pageSessions.map((s) => {
         // Status tooltip carries everything we used to surface as columns:
-        // the screenshot count, plus (for failed scans) the error phase
-        // and message. Hover-only so the row stays compact.
-        const screenshotsLine = t('Screenshots: {count}', { count: s.screenshotsTaken });
+        // the screenshot count of scans recorded by the retired screenshot
+        // reader, plus (for failed scans) the error phase and message.
+        // Hover-only so the row stays compact.
+        const screenshotsLine = s.screenshotsTaken > 0 ? t('Screenshots: {count}', { count: s.screenshotsTaken }) : '';
         const failureLines = s.errorMessage
           ? (s.errorPhase ? `${s.errorPhase}\n\n${s.errorMessage}` : s.errorMessage)
           : '';
-        const tipText = failureLines ? `${screenshotsLine}\n\n${failureLines}` : screenshotsLine;
-        const statusTip = ` title="${esc(tipText)}"`;
+        const tipText = [screenshotsLine, failureLines].filter(Boolean).join('\n\n');
+        const statusTip = tipText ? ` title="${esc(tipText)}"` : '';
         const failureBadge = s.errorMessage
           ? ` <span class="failure-phase-badge"${statusTip}>${esc(s.errorPhase || t('see details'))}</span>`
           : '';
@@ -135,21 +136,6 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
       </tbody></table>`
     : '';
 
-  // Subtle, non-blocking hint: if this scan recorded a healthy batch of chests
-  // but none got a real receive-time (all "Received" == scan time), the gift
-  // crop is probably clipping the "Time left" countdown. Purely informative —
-  // the scan itself is fine (earned_at gracefully falls back to scan time).
-  // Only on RECENT scans: pre-earn-time rows also have effectiveAt==capturedAt
-  // (earned_at was NULL), and we don't want to nag on months-old history.
-  const withEarnTime = chests.filter(
-    (c) => c.effectiveAt && c.capturedAt && Date.parse(c.effectiveAt) < Date.parse(c.capturedAt),
-  ).length;
-  const sessionTs = Date.parse(session.completedAt || session.startedAt || '');
-  const isRecentScan = Number.isFinite(sessionTs) && Date.now() - sessionTs < 2 * 24 * 3600 * 1000;
-  const earnTimeNote = isRecentScan && chests.length >= 4 && withEarnTime === 0
-    ? `<p class="session-earntime-note">${t('⏱ No receive-times captured — "Received" fell back to the scan time. If you want accurate times, check the Gifts {calibration} crop includes the "Time left" countdown.', { calibration: `<a href="#system">${t('calibration')}</a>` })}</p>`
-    : '';
-
   const hasTriumphals = triumphals.length > 0;
   const chestsCard = hasTriumphals
     ? `<div class="card" id="sessionChestsCard">
@@ -160,7 +146,6 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
           </div>
         </div>
         <div class="card-body">
-          ${earnTimeNote}
           <div data-session-panel="chests">${chestRows}</div>
           <div data-session-panel="triumphals" class="is-hidden">${triumphalRows}</div>
         </div>
@@ -168,7 +153,6 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
     : `<div class="card">
         <div class="card-header"><h2>${t('Chests Captured ({count})', { count: chests.length })}</h2></div>
         <div class="card-body">
-          ${earnTimeNote}
           ${chestRows}
         </div>
       </div>`;
@@ -223,10 +207,10 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
             <div class="label">${t('Duration')}</div>
             <div class="value">${formatDuration(session.startedAt, session.completedAt)}</div>
           </div>
-          <div class="stat-card">
+          ${(session.screenshotsTaken ?? 0) > 0 ? `<div class="stat-card">
             <div class="label">${t('Screenshots')}</div>
-            <div class="value">${session.screenshotsTaken ?? 0}</div>
-          </div>
+            <div class="value">${session.screenshotsTaken}</div>
+          </div>` : ''}
         </div>
       </div>
     </div>

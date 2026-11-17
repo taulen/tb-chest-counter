@@ -10,8 +10,8 @@ exports.applyMergeRulesCached = applyMergeRulesCached;
 exports.loadPlayerNameCanonicaliser = loadPlayerNameCanonicaliser;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
-const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
-const source_names_js_1 = require("../../vision/source-names.js");
+const name_normalize_js_1 = require("../../utils/name-normalize.js");
+const source_names_js_1 = require("../source-names.js");
 const chest_summary_repo_js_1 = require("./chest-summary-repo.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 /**
@@ -275,13 +275,13 @@ function addMergeRule(type, fromValue, toValue, clanId) {
                     // mints the duplicate the merge just removed. Whitespace runs are collapsed
                     // here as well — normalized_name is compared against normalizeName's output,
                     // which does collapse them.
-                    db.prepare('UPDATE members SET name = ?, normalized_name = ?, despaced_name = ? WHERE id = ?').run(toValue.trim(), toValue.trim().toLowerCase().replace(/\s+/g, ' '), (0, ocr_normalize_js_1.despace)(toValue), fromMember.id);
+                    db.prepare('UPDATE members SET name = ?, normalized_name = ?, despaced_name = ? WHERE id = ?').run(toValue.trim(), toValue.trim().toLowerCase().replace(/\s+/g, ' '), (0, name_normalize_js_1.despace)(toValue), fromMember.id);
                 }
             }
             // Record the misread spelling as an ALIAS of the destination member.
             //
             // This is what makes a player merge rule stick. The rule table itself is
-            // consulted in exactly ONE place — the gift scan (scan-pipeline.ts) — while
+            // consulted in exactly ONE place — the OCR gift scan (since retired) — while
             // FOUR other paths turn an OCR'd name into a members row: the daily might
             // capture, the roster build, the automated resource-history read and the
             // manual resource upload. Those resolve names through fuzzy.ts and
@@ -455,7 +455,7 @@ function deleteMergeRule(id, clanId) {
  * unfolded normalizer left after v61/v62 fixed the same defect elsewhere.
  */
 function normalize(s) {
-    return (0, ocr_normalize_js_1.foldDiacritics)((0, ocr_normalize_js_1.transliterateCyrillicHomoglyphs)(s))
+    return (0, name_normalize_js_1.foldDiacritics)((0, name_normalize_js_1.transliterateCyrillicHomoglyphs)(s))
         .replace(/^[\d\W]*\]\s*/, '')
         .replace(/^["|'™|=]+\s*/, '')
         .replace(/[.'",|]+$/, '')
@@ -522,7 +522,7 @@ function applyMergeRulesCached(cache, value) {
  * run its readings through, before matching and before creating anything.
  *
  * A player merge rule is the admin saying "this string IS that player". For years
- * only the gift scan honoured that (scan-pipeline.ts), while the daily might
+ * only the OCR gift scan (since retired) honoured that, while the daily might
  * capture, the roster build, the automated resource-history read and the manual
  * resource upload each resolved names on their own — so a rule an admin had
  * already written was ignored by every one of them and the duplicate member it

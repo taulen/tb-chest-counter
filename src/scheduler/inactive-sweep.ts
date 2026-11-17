@@ -9,8 +9,8 @@ const log = childLogger('inactive-sweep');
 /**
  * Daily "inactivity sweep": soft-removes members that haven't been seen
  * in a scan for their clan's threshold (is_active = 0). Non-destructive —
- * the member row and chest history stay, and the next scan that OCRs the
- * name reactivates it via memberRepo.upsertMember. This is the batch
+ * the member row and chest history stay, and the next scan that finds the
+ * player in the clan reactivates it (game-protocol/member-sync.ts). This is the batch
  * counterpart to the manual Admin → Remove member action.
  *
  * "Seen" has two sources, and the second matters here. A chest or gift scan

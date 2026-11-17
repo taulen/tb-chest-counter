@@ -25,8 +25,8 @@ import {
   canonicalSourceKey,
   getDefaultPointsFor,
   getDefaultPointsForKey,
-} from '../../src/vision/source-names.js';
-import { correctChestName } from '../../src/vision/chest-names.js';
+} from '../../src/data/source-names.js';
+import { correctChestName } from '../../src/data/chest-names.js';
 
 describe('seeded source point values', () => {
   it('spells every chest the way correctChestName does', () => {

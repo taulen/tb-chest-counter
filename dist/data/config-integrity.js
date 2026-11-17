@@ -26,12 +26,12 @@ exports.checkConfigIntegrity = checkConfigIntegrity;
 exports.reportConfigIntegrity = reportConfigIntegrity;
 const logger_js_1 = require("../utils/logger.js");
 const event_catalog_js_1 = require("../config/event-catalog.js");
-const chest_names_js_1 = require("../vision/chest-names.js");
-const ocr_normalize_js_1 = require("../vision/ocr-normalize.js");
-const source_names_js_1 = require("../vision/source-names.js");
+const chest_names_js_1 = require("./chest-names.js");
+const name_normalize_js_1 = require("../utils/name-normalize.js");
+const source_names_js_1 = require("./source-names.js");
 const log = (0, logger_js_1.childLogger)('config-integrity');
 function foldKey(s) {
-    return (0, ocr_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+    return (0, name_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 /**
  * Every name-keyed reference that no longer resolves.
@@ -58,7 +58,7 @@ function checkConfigIntegrity(database) {
             chestByFold.set(k, c.name);
     }
     const sources = database.prepare('SELECT id, source FROM chest_sources').all();
-    const sourceTexts = sources.map((s) => (0, ocr_normalize_js_1.foldDiacritics)(s.source || '').toLowerCase());
+    const sourceTexts = sources.map((s) => (0, name_normalize_js_1.foldDiacritics)(s.source || '').toLowerCase());
     // ── Event catalog ────────────────────────────────────────────────────
     for (const def of event_catalog_js_1.EVENT_CATALOG) {
         for (const rule of def.rules) {
@@ -92,7 +92,7 @@ function checkConfigIntegrity(database) {
                 }
             }
             if (rule.sourceContains) {
-                const needle = (0, ocr_normalize_js_1.foldDiacritics)(rule.sourceContains).toLowerCase();
+                const needle = (0, name_normalize_js_1.foldDiacritics)(rule.sourceContains).toLowerCase();
                 if (!sourceTexts.some((s) => s.includes(needle))) {
                     // Kills the whole rule, chest half included.
                     add({

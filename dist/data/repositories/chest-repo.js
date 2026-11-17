@@ -40,9 +40,6 @@ exports.resolveChestName = resolveChestName;
 exports.getOrCreateChestId = getOrCreateChestId;
 exports.getOrCreateChestSourceId = getOrCreateChestSourceId;
 exports.insertChest = insertChest;
-exports.getRawPlayerOcrForMember = getRawPlayerOcrForMember;
-exports.purgeRawPlayerOcr = purgeRawPlayerOcr;
-exports.getRawPlayerOcrCounts = getRawPlayerOcrCounts;
 exports.deleteChestsBySession = deleteChestsBySession;
 exports.countChestsBySession = countChestsBySession;
 exports.getChestsBySession = getChestsBySession;
@@ -81,7 +78,7 @@ const chestSummaryRepo = __importStar(require("./chest-summary-repo.js"));
 const session_repo_js_1 = require("./session-repo.js");
 const review_queue_repo_js_1 = require("./review-queue-repo.js");
 const source_points_repo_js_1 = require("./source-points-repo.js");
-const source_names_js_1 = require("../../vision/source-names.js");
+const source_names_js_1 = require("../source-names.js");
 const logger_js_1 = require("../../utils/logger.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 const log = (0, logger_js_1.childLogger)('chest-repo');
@@ -280,9 +277,9 @@ function insertChest(chest) {
     try {
         const result = db.prepare(`
       INSERT INTO chest_records
-        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at, game_gift_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), confFloatToInt(chest.confidence), chest.debugCropPath ?? null, chest.rawPlayerOcr ?? null, chest.earnedAt ?? null, chest.gameGiftId ?? null);
+        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), confFloatToInt(chest.confidence), chest.earnedAt ?? null, chest.gameGiftId ?? null);
         return { id: result.lastInsertRowid, ...chest };
     }
     catch (err) {
@@ -298,40 +295,6 @@ function insertChest(chest) {
         }
         throw err;
     }
-}
-/**
- * Forensic helpers for the toggleable raw-OCR capture feature.
- *
- * `getRawPlayerOcrForMember` returns the last N raw OCR strings ever
- * resolved to a given member (with the timestamp), used by the member-
- * detail page to surface the strings that landed there.
- *
- * `purgeRawPlayerOcr` runs an UPDATE setting the column to NULL on every
- * row that has one; invoked by the System-page toggle when the operator
- * disables capture so the TEXT column doesn't keep eating space.
- */
-function getRawPlayerOcrForMember(memberId, clanId, limit) {
-    const db = (0, database_js_1.getDb)();
-    const rows = db.prepare(`SELECT raw_player_ocr AS rawPlayerOcr, captured_at AS capturedAt, session_id AS sessionId
-     FROM chest_records
-     WHERE member_id = ? AND clan_id = ? AND raw_player_ocr IS NOT NULL
-     ORDER BY captured_at DESC LIMIT ?`).all(memberId, clanId, limit);
-    return rows;
-}
-function purgeRawPlayerOcr() {
-    const db = (0, database_js_1.getDb)();
-    const a = db.prepare('UPDATE chest_records SET raw_player_ocr = NULL WHERE raw_player_ocr IS NOT NULL').run();
-    const b = db.prepare('UPDATE triumphal_chest_records SET raw_player_ocr = NULL WHERE raw_player_ocr IS NOT NULL').run();
-    return { chestRecords: a.changes, triumphalChestRecords: b.changes };
-}
-/** Count of rows currently carrying a captured raw OCR value. Surfaced
- *  on the System-page toggle so the operator knows how much data is
- *  about to be purged when they disable the feature. */
-function getRawPlayerOcrCounts() {
-    const db = (0, database_js_1.getDb)();
-    const a = db.prepare('SELECT COUNT(*) AS c FROM chest_records WHERE raw_player_ocr IS NOT NULL').get();
-    const b = db.prepare('SELECT COUNT(*) AS c FROM triumphal_chest_records WHERE raw_player_ocr IS NOT NULL').get();
-    return { chestRecords: a.c, triumphalChestRecords: b.c };
 }
 /**
  * Delete all chest records for a given scan session.
@@ -1337,18 +1300,17 @@ function foldChestTypeGroups(groups) {
  * it is the minute the chest was actually claimed.
  *
  * THE PREDICATE IS LOAD-BEARING. `earned_at IS NOT NULL` alone is not enough:
- * when the countdown can't be read, giftEarnedAtMs falls back to the scan clock
- * and stores earned_at == captured_at (see src/utils/gift-time.ts). Those rows
+ * the retired screenshot reader stored earned_at == captured_at whenever it
+ * could not read a card's countdown (see src/utils/gift-time.ts). Those rows
  * are scan times wearing an earn-time column, and including them renders the
- * scanner's 120-minute schedule as spikes — a clan that appears to play in
- * eight sharp bursts a day, every day, forever. Requiring earned_at <
- * captured_at keeps only rows where a countdown genuinely parsed.
+ * scan schedule as spikes — a clan that appears to play in eight sharp bursts
+ * a day, every day, forever. Requiring earned_at < captured_at keeps only rows
+ * with a genuine earn time (every row the protocol scan writes has one).
  *
  * `timed` and `total` come back so the caller can print what share of the
  * window this is based on, and refuse to draw when it is too thin. That is not
- * decoration: if the Stage-3 calibration crop excludes the "Time left" text,
- * every row falls back and `timed` is zero — the chart having nothing to say is
- * the symptom that tells an operator to recalibrate.
+ * decoration: a window made only of rows without an earn time has `timed` at
+ * zero, and the chart must say so rather than draw an empty grid.
  *
  * Weekday and hour are UTC. The caller draws the game-day rollover as a rule
  * rather than rotating the axis, so the hours stay the ones a person reads off

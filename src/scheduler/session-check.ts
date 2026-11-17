@@ -7,7 +7,7 @@
  * the site page with the stored cookies answers it in about a second
  * (client.checkSiteSession), presents no token, and is run every 30 minutes by
  * the scan loop. Definite answers go through session-health.ts — the same path
- * the scan's auth check uses — and 'unknown' (network error, odd page) changes
+ * the scan's game capture uses — and 'unknown' (network error, odd page) changes
  * nothing.
  */
 import fs from 'fs';

@@ -64,7 +64,7 @@ import path from 'path';
 import zlib from 'zlib';
 import Database from 'better-sqlite3';
 import { getDb, syncSourceRarities } from './database.js';
-import { correctChestName, getChestRarity } from '../vision/chest-names.js';
+import { correctChestName, getChestRarity } from './chest-names.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('clan-restore');

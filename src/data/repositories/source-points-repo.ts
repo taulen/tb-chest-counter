@@ -1,7 +1,7 @@
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
-import { getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, isKnownSourceKey, canonicalSourceKey } from '../../vision/source-names.js';
+import { getDefaultPointsFor, getDefaultPointsForKey, getSourceKey, isKnownSourceKey, canonicalSourceKey } from '../source-names.js';
 import { loadConfig } from '../../config/index.js';
 import { currentGameDate } from '../../utils/game-day.js';
 import { notifyChestDataChanged } from './chest-summary-repo.js';

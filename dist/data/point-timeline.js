@@ -28,7 +28,7 @@ exports.applyWrites = applyWrites;
  * (`effective_at`, the clock every ranking buckets by), so changing a value
  * from a date never moves a record from before that date.
  */
-const source_names_js_1 = require("../vision/source-names.js");
+const source_names_js_1 = require("./source-names.js");
 /**
  * Build a cache-map key for (source_key, chest_name). Using a tab separator
  * keeps the composite unambiguous without colliding with either column's

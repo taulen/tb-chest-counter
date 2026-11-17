@@ -1,20 +1,18 @@
-// The scan is pipelined: clicking a gift card CLAIMS that chest in-game and
-// the row is written to the DB immediately. So a chest row is not a cache of
-// something we can go back and re-read — the gift is gone from the Gifts tab
-// the instant we clicked it, and the row is the only remaining record.
+// Every gift is recorded before it is claimed, and a claim takes the chest out
+// of the game for good. So a chest row is not a cache of something we can go
+// back and re-read — once claimed, the row is the only remaining record.
 //
 // That makes deleting rows on an aborted scan uniquely destructive, and it is
-// exactly what happened: `result.newChests` is assigned only when a sweep
-// RETURNS, so a browser crash mid-sweep unwound the stack with the tally still
+// exactly what once happened: `result.newChests` is assigned only when the
+// record step RETURNS, so a crash mid-way unwound the stack with the tally still
 // inside it. finalizeScanFailure read the resulting 0 as "nothing to keep" and
 // called deleteChestsBySession on rows that were already on disk.
 //
 // These tests drive finalizeScanFailure with a ScanResult whose counters say
-// zero while the database says otherwise — the shape of a mid-sweep crash.
+// zero while the database says otherwise — the shape of a mid-scan crash.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { finalizeScanFailure } from '../../src/scheduler/scan-finalize.js';
-import { MaintenanceModeError, SessionKickedError } from '../../src/browser/navigator.js';
 import * as chestRepo from '../../src/data/repositories/chest-repo.js';
 import * as triumphalChestRepo from '../../src/data/repositories/triumphal-chest-repo.js';
 import { upsertMember } from '../../src/data/repositories/member-repo.js';
@@ -27,24 +25,17 @@ import type { ScanFinalizeContext } from '../../src/scheduler/scan-finalize.js';
 function makeContext(clanId: number): ScanFinalizeContext {
   return {
     clanId,
-    isRunning: true,
     stateMachine: { transition: vi.fn() } as unknown as ScanFinalizeContext['stateMachine'],
-    progressMessage: 'Scanning Gifts list',
     recordScanError: vi.fn(),
-    getLastScanError: () => ({ message: 'mouse.click: Target crashed', phase: 'Scanning Gifts list' }),
+    getLastScanError: () => ({ message: 'socket hang up', phase: 'Opening chests (11/40)…' }),
     clearLastScanError: vi.fn(),
-    setMaintenanceBlock: vi.fn(),
-    clearMaintenanceBlock: vi.fn(),
-    scheduleNextCycle: vi.fn(),
-    flagSkipNextScheduling: vi.fn(),
     reportProgress: vi.fn(),
-    config: { screenshotRetentionDays: 3 },
   };
 }
 
-/** A ScanResult as it looks when a sweep threw before returning: the tallies
- *  never got assigned, so every counter still reads zero. */
-function crashedMidSweepResult(): ScanResult {
+/** A ScanResult as it looks when the record step threw before returning: the
+ *  tallies never got assigned, so every counter still reads zero. */
+function crashedMidScanResult(): ScanResult {
   return {
     success: false,
     chestsFound: 0,
@@ -105,13 +96,13 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
     });
   }
 
-  it('keeps gift chests already on disk when the browser crashes mid-sweep', () => {
+  it('keeps gift chests already on disk when the scan throws mid-way', () => {
     insertGiftChest('Common Chest');
     insertGiftChest('Rare Chest');
-    const result = crashedMidSweepResult();
+    const result = crashedMidScanResult();
 
     const outcome = finalizeScanFailure(
-      new Error('mouse.click: Target crashed'),
+      new Error('socket hang up'),
       makeContext(clanId),
       result,
       sessionId,
@@ -133,9 +124,9 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
     insertTriumphalChest('Champion Chest');
 
     finalizeScanFailure(
-      new Error('mouse.click: Target crashed'),
+      new Error('socket hang up'),
       makeContext(clanId),
-      crashedMidSweepResult(),
+      crashedMidScanResult(),
       sessionId,
     );
 
@@ -150,8 +141,8 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
     insertGiftChest();
     insertTriumphalChest();
 
-    const result = crashedMidSweepResult();
-    finalizeScanFailure(new Error('page crashed'), makeContext(clanId), result, sessionId);
+    const result = crashedMidScanResult();
+    finalizeScanFailure(new Error('connection reset'), makeContext(clanId), result, sessionId);
 
     expect(chestRepo.countChestsBySession(sessionId, clanId)).toBe(1);
     expect(triumphalChestRepo.countBySession(sessionId, clanId)).toBe(1);
@@ -159,40 +150,11 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
     expect(getSessionById(sessionId, clanId)?.chestsFound).toBe(1);
   });
 
-  it('keeps chests claimed before a maintenance abort', () => {
-    insertGiftChest();
-
-    const outcome = finalizeScanFailure(
-      new MaintenanceModeError('Server maintenance', 15 * 60_000),
-      makeContext(clanId),
-      crashedMidSweepResult(),
-      sessionId,
-    );
-
-    expect(chestRepo.countChestsBySession(sessionId, clanId)).toBe(1);
-    expect(getSessionById(sessionId, clanId)?.status).toBe(ScanStatus.COMPLETED);
-    expect(outcome.action).toBe('return');
-  });
-
-  it('keeps chests claimed before a session kick', () => {
-    insertGiftChest();
-
-    finalizeScanFailure(
-      new SessionKickedError('Another device logged in'),
-      makeContext(clanId),
-      crashedMidSweepResult(),
-      sessionId,
-    );
-
-    expect(chestRepo.countChestsBySession(sessionId, clanId)).toBe(1);
-    expect(getSessionById(sessionId, clanId)?.status).toBe(ScanStatus.COMPLETED);
-  });
-
   it('still fails the session cleanly when nothing was claimed', () => {
     const outcome = finalizeScanFailure(
-      new Error('Navigation timeout'),
+      new Error('game server timeout'),
       makeContext(clanId),
-      crashedMidSweepResult(),
+      crashedMidScanResult(),
       sessionId,
     );
 
@@ -208,9 +170,9 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
     insertGiftChest('Common Chest', otherSession, otherClanId);
 
     const outcome = finalizeScanFailure(
-      new Error('mouse.click: Target crashed'),
+      new Error('socket hang up'),
       makeContext(clanId),
-      crashedMidSweepResult(),
+      crashedMidScanResult(),
       sessionId,
     );
 

@@ -20,7 +20,7 @@ import { getDb } from './database.js';
 import { getMemberChestsBySource } from './repositories/chest-repo.js';
 import { getSourceKeySummary } from './repositories/source-points-repo.js';
 import { sourceCategory, sourceSortRank, SOURCE_CATEGORIES, type SourceCategory } from './source-categories.js';
-import { canonicalSourceKey, getSourceKey, parseSourceLevel } from '../vision/source-names.js';
+import { canonicalSourceKey, getSourceKey, parseSourceLevel } from './source-names.js';
 
 /** The FAQ points table's sections: crypts and citadels share one, as there. */
 export type BreakdownSectionKey =

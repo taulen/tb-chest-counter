@@ -3,9 +3,8 @@
  * Physical sanity bounds on a hero-level reading, judged against the might read off
  * the same row.
  *
- * Shared by the capture (browser/might-capture.ts), so a fresh misread is never
- * stored, and by the read side (might-repo's trustedHeroLevels), so the rows already
- * in the database get the same judgement. The read side's longest-non-decreasing
+ * Used by the read side (might-repo's trustedHeroLevels), so the rows the retired
+ * OCR might capture stored get the judgement that capture also applied on write. The read side's longest-non-decreasing
  * chain cannot do this on its own: it only knows a member's history, and a member
  * with two days of it — every member of a newly added clan — has no history to
  * outvote a bad reading with. Measured on the Oct 23 2026 backup:

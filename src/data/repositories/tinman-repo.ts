@@ -31,7 +31,7 @@
 import { getDb } from '../database.js';
 import { addAlias, getMemberById } from './member-repo.js';
 import { resolveNamesToMembers } from '../name-resolver.js';
-import { despace } from '../../vision/ocr-normalize.js';
+import { despace } from '../../utils/name-normalize.js';
 import { missingRanks, TARGET_TIERS, type TargetTier, type TinmanRow } from '../tinman-parse.js';
 import type { ClanMember } from '../../models/types.js';
 import { invalidate } from '../../utils/ttl-cache.js';

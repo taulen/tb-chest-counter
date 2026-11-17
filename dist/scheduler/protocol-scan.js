@@ -36,9 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordAndClaim = recordAndClaim;
 /**
  * The protocol scan: a clan's chests recorded from the game's own gift list
- * and opened with the game's own claim request — no browser, no OCR, no
- * calibration (docs/game-protocol.md). Runs on the session and data that
- * runGameProtocolCapture just read.
+ * and opened with the game's own claim request (docs/game-protocol.md). Runs
+ * on the session and data that runGameProtocolCapture just read.
  *
  * Order, chosen so tracking can never be lost:
  *   1. Every gift on both tabs is RECORDED first, keyed by game_gift_id. A gift
@@ -49,14 +48,15 @@ exports.recordAndClaim = recordAndClaim;
  *      game_claims. A failed claim leaves the gift in the game; the next cycle
  *      records nothing new for it and claims it again.
  *   3. The Clan Capital ledger becomes resource_transactions rows (one per entry,
- *      game_entry_id unique), from the day after the newest OCR-captured row on,
- *      so the switch-over never double-counts a day.
+ *      game_entry_id unique), from the day after the newest row the retired
+ *      screenshot reader captured, so the switch-over never double-counts a day.
  *
- * Names: the game's names are exact, so no OCR correction runs. Each resolves to
- * the spelling already stored for it when one normalises the same (the OCR read
- * "Lvl 25-29 Vault of the Ancients" where the game says "Level 25–29 …"), so
- * points, merge rules and history keep keying on the names they always had;
- * the clan's chest/source merge rules then apply exactly as on the OCR path.
+ * Names: the game's names are exact, so no correction runs. Each resolves to
+ * the spelling already stored for it when one normalises the same (rows the
+ * retired screenshot reader wrote say "Lvl 25-29 Vault of the Ancients" where
+ * the game says "Level 25–29 …"), so points, merge rules and history keep
+ * keying on the names they always had; the clan's chest/source merge rules
+ * then apply as they always did.
  */
 const database_js_1 = require("../data/database.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
@@ -64,8 +64,8 @@ const triumphalChestRepo = __importStar(require("../data/repositories/triumphal-
 const merge_repo_js_1 = require("../data/repositories/merge-repo.js");
 const source_points_repo_js_1 = require("../data/repositories/source-points-repo.js");
 const resource_repo_js_1 = require("../data/repositories/resource-repo.js");
-const chest_names_js_1 = require("../vision/chest-names.js");
-const compare_js_1 = require("../game-protocol/compare.js");
+const chest_names_js_1 = require("../data/chest-names.js");
+const gift_text_js_1 = require("../game-protocol/gift-text.js");
 const messages_js_1 = require("../game-protocol/messages.js");
 const ledger_rows_js_1 = require("../game-protocol/ledger-rows.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
@@ -79,7 +79,7 @@ const UNKNOWN_SENDER = '[Unknown]';
 function storedNames(sql) {
     const out = new Map();
     for (const r of (0, database_js_1.getDb)().prepare(sql).all()) {
-        const k = (0, compare_js_1.normalizeGiftText)(r.v);
+        const k = (0, gift_text_js_1.normalizeGiftText)(r.v);
         if (!out.has(k))
             out.set(k, r.v);
     }
@@ -94,7 +94,7 @@ async function recordAndClaim(ctx, d) {
     const schedule = (0, source_points_repo_js_1.loadPointSchedule)(clanId);
     const chestNames = storedNames('SELECT name AS v FROM chests ORDER BY id');
     const sourceNames = storedNames('SELECT source AS v FROM chest_sources ORDER BY id');
-    const stored = (names, name) => names.get((0, compare_js_1.normalizeGiftText)(name)) ?? name;
+    const stored = (names, name) => names.get((0, gift_text_js_1.normalizeGiftText)(name)) ?? name;
     const countGift = {
         1: (0, database_js_1.getDb)().prepare('SELECT COUNT(*) AS n FROM chest_records WHERE clan_id = ? AND game_gift_id = ?'),
         2: (0, database_js_1.getDb)().prepare('SELECT COUNT(*) AS n FROM triumphal_chest_records WHERE clan_id = ? AND game_gift_id = ?'),
@@ -201,7 +201,7 @@ async function recordAndClaim(ctx, d) {
         `${tally.resourceRows} resource rows`);
     return tally;
 }
-/** Ledger entries newer than the clan's OCR-captured rows → resource_transactions. Returns rows written. */
+/** Ledger entries newer than the clan's screenshot-read rows → resource_transactions. Returns rows written. */
 function importLedger(clanId, d, memberFor, rolloverUtcHour) {
     if (!d.ledger.length)
         return 0;

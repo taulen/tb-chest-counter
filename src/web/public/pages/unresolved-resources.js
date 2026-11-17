@@ -1,5 +1,5 @@
 // Unresolved Resources — the Admin page section for Clan Capital history rows
-// whose resource the icon matcher couldn't identify.
+// whose resource the retired screenshot reader's icon matcher couldn't identify.
 //
 // Like the Review Queue it only appears while there is something to address,
 // and it is driven by the same count as the Admin nav dot (/admin/nav-status),

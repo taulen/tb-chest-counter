@@ -7,8 +7,8 @@ exports.acknowledge = acknowledge;
 const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
-const chest_names_js_1 = require("../../vision/chest-names.js");
-const source_names_js_1 = require("../../vision/source-names.js");
+const chest_names_js_1 = require("../chest-names.js");
+const source_names_js_1 = require("../source-names.js");
 const rename_suggestions_repo_js_1 = require("./rename-suggestions-repo.js");
 const log = (0, logger_js_1.childLogger)('review-queue-repo');
 // The nav-status review badge only needs the three counts, not the full

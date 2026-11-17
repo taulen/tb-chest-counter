@@ -907,14 +907,13 @@ const CLOCK_DAYS = [t('Sun'), t('Mon'), t('Tue'), t('Wed'), t('Thu'), t('Fri'), 
  *
  * The one view here no rival tool can produce: everyone else's scan frequency
  * is gated at 30–60 minutes by their pricing, so their timestamps are scan
- * clocks. Ours is the minute the chest was claimed, read off the gift card's
- * countdown.
+ * clocks. Ours is the minute the gift arrived, as the game reports it.
  *
- * Which means the empty state matters as much as the chart. If the Stage-3
- * calibration crop excludes the "Time left" text, every row falls back to the
- * scan clock, the server's predicate excludes all of them, and this card has
- * nothing to draw — so it says exactly that, and what to do about it, rather
- * than rendering an empty grid that reads as "the clan never plays".
+ * Which means the empty state matters as much as the chart. Chests recorded
+ * before receive times were captured only carry the scan clock, the server's
+ * predicate excludes them, and a window made only of those has nothing to
+ * draw — so the card says exactly that rather than rendering an empty grid
+ * that reads as "the clan never plays".
  */
 function activityClockCardHtml(current) {
   const clock = current.activityClock;
@@ -927,7 +926,7 @@ function activityClockCardHtml(current) {
     const why = total === 0
       ? t('No chests in this timeframe yet.')
       : (timed === 0
-        ? tn(total, 'None of the {n} chests in this timeframe carry a real earn time, so there is nothing to place on a clock. Every one fell back to the scan clock, which usually means the calibrated gift-card crop is cutting off the "Time left" countdown — re-running Stage 3 of calibration with the countdown inside the rectangle fixes it.', 'None of the {n} chests in this timeframe carry a real earn time, so there is nothing to place on a clock. Every one fell back to the scan clock, which usually means the calibrated gift-card crop is cutting off the "Time left" countdown — re-running Stage 3 of calibration with the countdown inside the rectangle fixes it.')
+        ? tn(total, 'None of the {n} chests in this timeframe carry a real earn time, so there is nothing to place on a clock. They were recorded before receive times were captured and only have their scan time.', 'None of the {n} chests in this timeframe carry a real earn time, so there is nothing to place on a clock. They were recorded before receive times were captured and only have their scan time.')
         : tn(total, 'Only {count} of {n} chests in this timeframe carry a real earn time — too few to read a pattern from without inventing one.', 'Only {count} of {n} chests in this timeframe carry a real earn time — too few to read a pattern from without inventing one.', { count: timed.toLocaleString() }));
     return `
       <div class="card mt-24">

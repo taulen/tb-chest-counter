@@ -23,7 +23,7 @@ const database_js_1 = require("./database.js");
 const chest_repo_js_1 = require("./repositories/chest-repo.js");
 const source_points_repo_js_1 = require("./repositories/source-points-repo.js");
 const source_categories_js_1 = require("./source-categories.js");
-const source_names_js_1 = require("../vision/source-names.js");
+const source_names_js_1 = require("./source-names.js");
 const SECTION_ORDER = [
     'crypts', 'heroic', 'squads', 'runic', 'vault', 'events', 'tournaments', 'shops', 'other',
 ];

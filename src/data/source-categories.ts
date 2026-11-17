@@ -10,7 +10,7 @@
  * "other": the failure mode of a new source is a row in the wrong box, never a
  * missing one.
  */
-import { canonicalSourceKey } from '../vision/source-names.js';
+import { canonicalSourceKey } from './source-names.js';
 
 export type SourceCategory =
   | 'crypts' | 'citadels' | 'heroic' | 'squads' | 'runic' | 'vault'

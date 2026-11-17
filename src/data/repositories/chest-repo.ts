@@ -4,7 +4,7 @@ import * as chestSummaryRepo from './chest-summary-repo.js';
 import { invalidateScanStats } from './session-repo.js';
 import { invalidateReviewQueueCount } from './review-queue-repo.js';
 import { invalidateSourceKeySummary } from './source-points-repo.js';
-import { getSourceRarity, sourceSpellingKey } from '../../vision/source-names.js';
+import { getSourceRarity, sourceSpellingKey } from '../source-names.js';
 import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import type { ChestRecord, MemberStats, LeaderboardEntry } from '../../models/types.js';
@@ -209,17 +209,12 @@ export function getOrCreateChestSourceId(source: string): number | null {
 
 export function insertChest(
   chest: Omit<ChestRecord, 'id'> & {
-    debugCropPath?: string | null;
     clanId: number;
-    /** Raw OCR'd player name BEFORE matchKnownPlayer rewriting.
-     *  Forensic-only: set by the scan pipeline when ENABLE_RAW_OCR_CAPTURE
-     *  is on, NULL otherwise. */
-    rawPlayerOcr?: string | null;
-    /** Best-effort in-game received time (epoch ms) from the gift's "time
-     *  left" countdown; see src/utils/gift-time.ts. NULL for non-scan insert
-     *  paths (imports/backfills) and historical rows. */
+    /** In-game received time (epoch ms): the gift's arrival time as the game
+     *  reports it. NULL for import paths. */
     earnedAt?: number | null;
-    /** The game gift this row came from (protocol scan, v103); NULL for OCR rows. */
+    /** The game gift this row came from (protocol scan, v103); NULL for rows
+     *  recorded before the switch to the game protocol. */
     gameGiftId?: number | null;
   },
 ): ChestRecord | null {
@@ -233,8 +228,8 @@ export function insertChest(
   try {
     const result = db.prepare(`
       INSERT INTO chest_records
-        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at, game_gift_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       chest.clanId,
       chest.sessionId,
@@ -244,8 +239,6 @@ export function insertChest(
       chest.pointValue,
       isoToMs(chest.capturedAt),
       confFloatToInt(chest.confidence),
-      chest.debugCropPath ?? null,
-      chest.rawPlayerOcr ?? null,
       chest.earnedAt ?? null,
       chest.gameGiftId ?? null,
     );
@@ -266,49 +259,6 @@ export function insertChest(
     }
     throw err;
   }
-}
-
-/**
- * Forensic helpers for the toggleable raw-OCR capture feature.
- *
- * `getRawPlayerOcrForMember` returns the last N raw OCR strings ever
- * resolved to a given member (with the timestamp), used by the member-
- * detail page to surface the strings that landed there.
- *
- * `purgeRawPlayerOcr` runs an UPDATE setting the column to NULL on every
- * row that has one; invoked by the System-page toggle when the operator
- * disables capture so the TEXT column doesn't keep eating space.
- */
-export function getRawPlayerOcrForMember(
-  memberId: number,
-  clanId: number,
-  limit: number,
-): Array<{ rawPlayerOcr: string; capturedAt: number; sessionId: number }> {
-  const db = getDb();
-  const rows = db.prepare(
-    `SELECT raw_player_ocr AS rawPlayerOcr, captured_at AS capturedAt, session_id AS sessionId
-     FROM chest_records
-     WHERE member_id = ? AND clan_id = ? AND raw_player_ocr IS NOT NULL
-     ORDER BY captured_at DESC LIMIT ?`,
-  ).all(memberId, clanId, limit) as Array<{ rawPlayerOcr: string; capturedAt: number; sessionId: number }>;
-  return rows;
-}
-
-export function purgeRawPlayerOcr(): { chestRecords: number; triumphalChestRecords: number } {
-  const db = getDb();
-  const a = db.prepare('UPDATE chest_records SET raw_player_ocr = NULL WHERE raw_player_ocr IS NOT NULL').run();
-  const b = db.prepare('UPDATE triumphal_chest_records SET raw_player_ocr = NULL WHERE raw_player_ocr IS NOT NULL').run();
-  return { chestRecords: a.changes, triumphalChestRecords: b.changes };
-}
-
-/** Count of rows currently carrying a captured raw OCR value. Surfaced
- *  on the System-page toggle so the operator knows how much data is
- *  about to be purged when they disable the feature. */
-export function getRawPlayerOcrCounts(): { chestRecords: number; triumphalChestRecords: number } {
-  const db = getDb();
-  const a = db.prepare('SELECT COUNT(*) AS c FROM chest_records WHERE raw_player_ocr IS NOT NULL').get() as { c: number };
-  const b = db.prepare('SELECT COUNT(*) AS c FROM triumphal_chest_records WHERE raw_player_ocr IS NOT NULL').get() as { c: number };
-  return { chestRecords: a.c, triumphalChestRecords: b.c };
 }
 
 /**
@@ -1578,18 +1528,17 @@ export interface ActivityClock {
  * it is the minute the chest was actually claimed.
  *
  * THE PREDICATE IS LOAD-BEARING. `earned_at IS NOT NULL` alone is not enough:
- * when the countdown can't be read, giftEarnedAtMs falls back to the scan clock
- * and stores earned_at == captured_at (see src/utils/gift-time.ts). Those rows
+ * the retired screenshot reader stored earned_at == captured_at whenever it
+ * could not read a card's countdown (see src/utils/gift-time.ts). Those rows
  * are scan times wearing an earn-time column, and including them renders the
- * scanner's 120-minute schedule as spikes — a clan that appears to play in
- * eight sharp bursts a day, every day, forever. Requiring earned_at <
- * captured_at keeps only rows where a countdown genuinely parsed.
+ * scan schedule as spikes — a clan that appears to play in eight sharp bursts
+ * a day, every day, forever. Requiring earned_at < captured_at keeps only rows
+ * with a genuine earn time (every row the protocol scan writes has one).
  *
  * `timed` and `total` come back so the caller can print what share of the
  * window this is based on, and refuse to draw when it is too thin. That is not
- * decoration: if the Stage-3 calibration crop excludes the "Time left" text,
- * every row falls back and `timed` is zero — the chart having nothing to say is
- * the symptom that tells an operator to recalibrate.
+ * decoration: a window made only of rows without an earn time has `timed` at
+ * zero, and the chart must say so rather than draw an empty grid.
  *
  * Weekday and hour are UTC. The caller draws the game-day rollover as a rule
  * rather than rotating the axis, so the hours stay the ones a person reads off

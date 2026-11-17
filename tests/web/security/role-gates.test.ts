@@ -32,11 +32,6 @@ vi.mock('../../../src/discord/bot.js', () => ({
   isClanBotConnected: vi.fn(() => false),
 }));
 
-vi.mock('../../../src/browser/launcher.js', () => ({
-  launchBrowser: vi.fn(),
-  closeBrowser: vi.fn(async () => {}),
-}));
-
 vi.mock('../../../src/scheduler/loop.js', () => ({
   ScanLoop: class {
     getNextScanAt() { return null; }
@@ -239,15 +234,11 @@ describe('role-gate enforcement (real auth + real routes)', () => {
   describe('superadmin-only endpoints reject everyone else', () => {
     const SUPER_ONLY: Array<{ name: string; method: 'get' | 'post' | 'put' | 'delete'; path: string; body?: object }> = [
       { name: 'PUT /admin/settings/scan-interval', method: 'put', path: '/api/admin/settings/scan-interval', body: { scanIntervalMinutes: 30 } },
-      { name: 'PUT /admin/settings/raw-ocr-capture', method: 'put', path: '/api/admin/settings/raw-ocr-capture', body: { enabled: false } },
-      { name: 'GET /admin/settings/raw-ocr-capture', method: 'get', path: '/api/admin/settings/raw-ocr-capture' },
       { name: 'POST /admin/clear-last-scan-error', method: 'post', path: '/api/admin/clear-last-scan-error', body: {} },
-      { name: 'PUT /admin/scanner-settings', method: 'put', path: '/api/admin/scanner-settings', body: { scanDebugFirstN: 5 } },
       { name: 'PUT /auth/users/:id/clan', method: 'put', path: '/api/auth/users/__ID__/clan', body: { clanId: 2 } },
       { name: 'POST /clans', method: 'post', path: '/api/clans', body: { name: 'TestClan' } },
       { name: 'GET /clans/deleted', method: 'get', path: '/api/clans/deleted' },
       { name: 'POST /clans/:id/restore', method: 'post', path: '/api/clans/2/restore', body: {} },
-      { name: 'GET /members/:id/raw-ocr', method: 'get', path: '/api/members/__M1__/raw-ocr' },
       // Source point values (per clan since v86) — reads are admin-tier
       // (see ADMIN_TIER below), but every write is superadmin-only.
       // The dry runs too: a preview reads the clan's record volumes.
@@ -336,8 +327,7 @@ describe('role-gate enforcement (real auth + real routes)', () => {
   // each route's inline guard is its only gate. They used to gate with
   // requireClanAccess, which checks clan MEMBERSHIP but not ROLE — so a
   // plain role='user' member of the clan could reconfigure the clan's
-  // Discord bot token, ChestTracker share code, launch onboarding scans,
-  // toggle features, and mint/revoke the public share link. The gate must
+  // Discord bot token, ChestTracker share code, toggle features, and mint/revoke the public share link. The gate must
   // now reject a same-clan regular user while still admitting that clan's
   // admins. (The cross-clan admin case is covered in the suite below.)
 
@@ -347,9 +337,6 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'POST /clans/1/discord/test', method: 'post', path: '/api/clans/1/discord/test', body: {} },
       { name: 'POST /clans/1/discord/digest-dm-test', method: 'post', path: '/api/clans/1/discord/digest-dm-test', body: {} },
       { name: 'PUT /clans/1/chesttracker', method: 'put', path: '/api/clans/1/chesttracker', body: { shareCode: '' } },
-      { name: 'GET /clans/1/onboard/status', method: 'get', path: '/api/clans/1/onboard/status' },
-      { name: 'POST /clans/1/onboard/capture-members', method: 'post', path: '/api/clans/1/onboard/capture-members', body: {} },
-      { name: 'POST /clans/1/onboard/first-scan', method: 'post', path: '/api/clans/1/onboard/first-scan', body: {} },
       { name: 'PUT /clans/1/resources', method: 'put', path: '/api/clans/1/resources', body: { enabled: true } },
       { name: 'PUT /clans/1/inactivity', method: 'put', path: '/api/clans/1/inactivity', body: { enabled: true } },
       { name: 'PUT /clans/1/leaderboard-goal', method: 'put', path: '/api/clans/1/leaderboard-goal', body: { enabled: true, weeklyPoints: 25000 } },

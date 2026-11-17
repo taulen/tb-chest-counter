@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../../src/data/database.js';
 import { getLeaderboardForClan, getMemberStats } from '../../../src/data/repositories/triumphal-chest-repo.js';
 import {
-  getKnownChestNames,
   getAll,
   getManagementList,
   getNewChestNames,
@@ -61,7 +60,7 @@ const points = (memberId: number): number | undefined =>
 describe('triumphal_chest_points migration seed', () => {
   it('seeds the built-in defaults including Conqueror\'s Chest', () => {
     ({ cleanup } = makeTestDb());
-    const names = getKnownChestNames();
+    const names = getAll().map((r) => r.chestName);
     expect(names).toContain('Magic Chest');
     expect(names).toContain('Wooden Chest');
     expect(names).toContain("Conqueror's Chest");

@@ -17,8 +17,8 @@ import express from 'express';
 import request from 'supertest';
 
 // Same neighbour-stub strategy as clans.test.ts. None of the
-// /api/* GET routes we care about reach into Discord, the browser
-// launcher, or the scan loop, but the api.ts file does import them
+// /api/* GET routes we care about reach into Discord or the scan loop,
+// but the api.ts file does import them
 // at module top-level so the mocks have to exist before
 // createApiRouter is loaded.
 vi.mock('../../../src/discord/bot.js', () => ({
@@ -26,11 +26,6 @@ vi.mock('../../../src/discord/bot.js', () => ({
   stopClanBot: vi.fn(),
   sendClanTestMessage: vi.fn(async () => ({ ok: true })),
   isClanBotConnected: vi.fn(() => false),
-}));
-
-vi.mock('../../../src/browser/launcher.js', () => ({
-  launchBrowser: vi.fn(),
-  closeBrowser: vi.fn(async () => {}),
 }));
 
 vi.mock('../../../src/scheduler/loop.js', () => ({

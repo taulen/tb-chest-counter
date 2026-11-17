@@ -206,21 +206,10 @@ describe('saveSnapshots', () => {
 
   it('writes nothing for an empty batch', () => {
     expect(mightRepo.saveSnapshots(1, '2026-07-30', '2026-07-30T18:00:00.000Z', [])).toBe(0);
-    expect(mightRepo.hasSnapshotForGameDate(1, '2026-07-30')).toBe(false);
+    expect(mightRepo.getSnapshotDates(1)).toEqual([]);
   });
 });
 
-describe('hasSnapshotForGameDate', () => {
-  it('is the per-clan once-a-day gate', () => {
-    const alice = addMember(1, 'Alice');
-    mightRepo.saveSnapshots(1, '2026-07-30', '2026-07-30T18:00:00.000Z', [{ memberId: alice, might: 5_000 }]);
-
-    expect(mightRepo.hasSnapshotForGameDate(1, '2026-07-30')).toBe(true);
-    expect(mightRepo.hasSnapshotForGameDate(1, '2026-07-31')).toBe(false);
-    // Clan #2 has its own schedule — clan #1 capturing must not gate it out.
-    expect(mightRepo.hasSnapshotForGameDate(2, '2026-07-30')).toBe(false);
-  });
-});
 
 describe('getMightWithDelta', () => {
   it('measures against the newest snapshot at or before the cutoff', () => {

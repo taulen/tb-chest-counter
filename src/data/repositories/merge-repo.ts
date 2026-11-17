@@ -1,7 +1,7 @@
 import { getDb } from '../database.js';
 import { childLogger } from '../../utils/logger.js';
-import { transliterateCyrillicHomoglyphs, foldDiacritics, despace } from '../../vision/ocr-normalize.js';
-import { getSourceRarity } from '../../vision/source-names.js';
+import { transliterateCyrillicHomoglyphs, foldDiacritics, despace } from '../../utils/name-normalize.js';
+import { getSourceRarity } from '../source-names.js';
 import { notifyChestDataChanged } from './chest-summary-repo.js';
 import { invalidate } from '../../utils/ttl-cache.js';
 
@@ -342,7 +342,7 @@ export function addMergeRule(
       // Record the misread spelling as an ALIAS of the destination member.
       //
       // This is what makes a player merge rule stick. The rule table itself is
-      // consulted in exactly ONE place — the gift scan (scan-pipeline.ts) — while
+      // consulted in exactly ONE place — the OCR gift scan (since retired) — while
       // FOUR other paths turn an OCR'd name into a members row: the daily might
       // capture, the roster build, the automated resource-history read and the
       // manual resource upload. Those resolve names through fuzzy.ts and
@@ -632,7 +632,7 @@ export function applyMergeRulesCached(cache: MergeRulesCache, value: string): st
  * run its readings through, before matching and before creating anything.
  *
  * A player merge rule is the admin saying "this string IS that player". For years
- * only the gift scan honoured that (scan-pipeline.ts), while the daily might
+ * only the OCR gift scan (since retired) honoured that, while the daily might
  * capture, the roster build, the automated resource-history read and the manual
  * resource upload each resolved names on their own — so a rule an admin had
  * already written was ignored by every one of them and the duplicate member it

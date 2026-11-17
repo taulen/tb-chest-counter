@@ -1,6 +1,6 @@
 import { getDb } from '../database.js';
 import { invalidate } from '../../utils/ttl-cache.js';
-import { despace } from '../../vision/ocr-normalize.js';
+import { despace } from '../../utils/name-normalize.js';
 import type { ClanMember } from '../../models/types.js';
 
 function normalizeName(name: string): string {
@@ -297,7 +297,7 @@ export function restoreMember(id: number, clanId: number): void {
  * than `cutoffIso` (an ISO timestamp). This is the batch form of
  * `removeMember` used by the daily inactivity sweep: it flips
  * `is_active = 0` but leaves the row (and chest history) intact, so the
- * next scan that OCRs the name reactivates it via `upsertMember`.
+ * next scan that finds the player in the clan reactivates it.
  *
  * Returns the members that were deactivated (id + name) so the caller can
  * log exactly who was affected. Only touches rows that were still active,

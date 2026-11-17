@@ -32,8 +32,8 @@
 
 import { getDb } from './database.js';
 import { EVENT_CATALOG } from '../config/event-catalog.js';
-import { correctChestName } from '../vision/chest-names.js';
-import { foldDiacritics } from '../vision/ocr-normalize.js';
+import { correctChestName } from './chest-names.js';
+import { foldDiacritics } from '../utils/name-normalize.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('clan-rewards');

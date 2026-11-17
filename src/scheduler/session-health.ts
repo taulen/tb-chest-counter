@@ -2,15 +2,16 @@
  * One place that decides what a clan's saved Total Battle login is worth.
  *
  * Two independent observers report into it:
- *   - the scan's auth check (auth-check.ts), which loads the game in a browser;
- *   - the browser-free session check (session-check.ts), one GET of the site
- *     page with the stored cookies, every 30 minutes and before each capture.
+ *   - the scan's game capture (game-protocol-phase.ts), which signs in to the
+ *     game with the stored session;
+ *   - the session check (session-check.ts), one GET of the site page with the
+ *     stored cookies, every 30 minutes.
  *
  * Both must behave identically: a definite "logged out" flips the clan to
  * "Needs re-authentication" (System warning keyed for auto-resolve, one
  * Discord ping per streak); a definite "logged in" clears it and announces the
- * recovery once. Anything ambiguous (network error, odd page, browser crash)
- * must go through neither.
+ * recovery once. Anything ambiguous (network error, odd page) must go through
+ * neither.
  */
 import { childLogger } from '../utils/logger.js';
 import { clearClanNeedsReauth, markClanNeedsReauth, reauthWarningKey } from '../data/repositories/clan-repo.js';

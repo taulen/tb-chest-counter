@@ -93,60 +93,14 @@ export interface InsertTransactionRow {
 /**
  * Resource types that exist in the game but are NOT tracked per member —
  * they're clan-wide, so attributing them to individual members is noise.
- * Kept in resource_types (so OCR can still recognise and skip them, and
- * historical rows resolve their name), but hidden from the /types endpoint
- * and dropped during OCR extraction.
+ * Kept in resource_types (so historical rows resolve their name), but hidden
+ * from the /types endpoint and skipped by the ledger import.
  */
 export const UNTRACKED_RESOURCE_SLUGS = new Set<string>(['seal-of-suppression']);
 
 export function listResourceTypes(): ResourceType[] {
   const db = getDb();
   return db.prepare('SELECT id, name, slug FROM resource_types ORDER BY id').all() as ResourceType[];
-}
-
-export function getIconTemplate(clanId: number, resourceTypeId: number): Buffer | null {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT template_data FROM resource_icon_templates WHERE clan_id = ? AND resource_type_id = ?',
-  ).get(clanId, resourceTypeId) as { template_data: Buffer } | undefined;
-  return row ? row.template_data : null;
-}
-
-export function setIconTemplate(
-  clanId: number,
-  resourceTypeId: number,
-  templateData: Buffer,
-): void {
-  const db = getDb();
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO resource_icon_templates (clan_id, resource_type_id, template_data, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(clan_id, resource_type_id) DO UPDATE SET
-      template_data = excluded.template_data,
-      updated_at = excluded.updated_at
-  `).run(clanId, resourceTypeId, templateData, now);
-}
-
-export function deleteIconTemplate(clanId: number, resourceTypeId: number): void {
-  const db = getDb();
-  db.prepare(
-    'DELETE FROM resource_icon_templates WHERE clan_id = ? AND resource_type_id = ?',
-  ).run(clanId, resourceTypeId);
-}
-
-export function listIconTemplateStatus(clanId: number): Array<{ resourceTypeId: number; hasTemplate: boolean; updatedAt: string | null }> {
-  const db = getDb();
-  const types = listResourceTypes();
-  const existing = db.prepare(
-    'SELECT resource_type_id, updated_at FROM resource_icon_templates WHERE clan_id = ?',
-  ).all(clanId) as Array<{ resource_type_id: number; updated_at: string }>;
-  const existingMap = new Map(existing.map((r) => [r.resource_type_id, r.updated_at]));
-  return types.map((t) => ({
-    resourceTypeId: t.id,
-    hasTemplate: existingMap.has(t.id),
-    updatedAt: existingMap.get(t.id) ?? null,
-  }));
 }
 
 export function createBatch(opts: {
@@ -195,21 +149,6 @@ export function createBatch(opts: {
   };
 }
 
-/** Update a batch's counters after the fact. The automated capture creates its
- *  batch up front (rows need a batch_id to reference) and only knows the final
- *  totals once every scroll page has been read. */
-export function updateBatchCounts(
-  batchId: number,
-  counts: { fileCount: number; rowCount: number; errorCount: number; notes: string },
-): void {
-  const db = getDb();
-  db.prepare(`
-    UPDATE resource_upload_batches
-    SET file_count = ?, row_count = ?, error_count = ?, notes = ?
-    WHERE id = ?
-  `).run(counts.fileCount, counts.rowCount, counts.errorCount, counts.notes, batchId);
-}
-
 export function insertTransactions(rows: InsertTransactionRow[]): { inserted: number; skipped: number } {
   if (rows.length === 0) return { inserted: 0, skipped: 0 };
   const db = getDb();
@@ -240,7 +179,7 @@ export interface ListTransactionsOpts {
   /** Restrict to a single upload batch (used by the post-import "resolve unknowns" modal). */
   batchId?: number;
   resourceTypeId?: number;
-  /** When true, match only rows whose resource_type_id IS NULL (unmatched OCR). */
+  /** When true, match only rows whose resource_type_id IS NULL (rows the old screenshot reader could not match). */
   resourceTypeIsNull?: boolean;
   direction?: 1 | -1;
   from?: string;
@@ -344,139 +283,6 @@ export function listBatches(clanId: number): ResourceBatch[] {
     notes: r.notes as string,
     source: ((r.source as string | null) ?? 'upload') as ResourceBatchSource,
   }));
-}
-
-// ── Automated capture: cursor + overlap reporting ────────────────────────────
-
-export interface ResourceCaptureCursor {
-  clanId: number;
-  /** Ordered row fingerprints from the top of the history list, newest first. */
-  topRows: string[];
-  gameDate: string;
-  capturedAt: string;
-  newestDate: string;
-  rowsInserted: number;
-}
-
-export function getCaptureCursor(clanId: number): ResourceCaptureCursor | null {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT * FROM resource_capture_cursor WHERE clan_id = ?',
-  ).get(clanId) as Record<string, unknown> | undefined;
-  if (!row) return null;
-  let topRows: string[] = [];
-  try {
-    const parsed = JSON.parse(row.top_rows as string);
-    if (Array.isArray(parsed)) topRows = parsed.filter((v): v is string => typeof v === 'string');
-  } catch {
-    // A corrupt cursor must not wedge the capture: an empty marker degrades to
-    // "read the whole window", which is the safe direction (it re-reads rather
-    // than skipping) and the caller reports it as a lost cursor.
-    log.warn(`resource-repo: capture cursor for clan #${clanId} is not valid JSON; ignoring it.`);
-  }
-  return {
-    clanId,
-    topRows,
-    gameDate: row.game_date as string,
-    capturedAt: row.captured_at as string,
-    newestDate: (row.newest_date as string | null) ?? '',
-    rowsInserted: (row.rows_inserted as number | null) ?? 0,
-  };
-}
-
-export function saveCaptureCursor(cursor: {
-  clanId: number;
-  topRows: string[];
-  gameDate: string;
-  newestDate: string;
-  rowsInserted: number;
-}): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO resource_capture_cursor
-      (clan_id, top_rows, game_date, captured_at, newest_date, rows_inserted)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(clan_id) DO UPDATE SET
-      top_rows      = excluded.top_rows,
-      game_date     = excluded.game_date,
-      captured_at   = excluded.captured_at,
-      newest_date   = excluded.newest_date,
-      rows_inserted = excluded.rows_inserted
-  `).run(
-    cursor.clanId,
-    JSON.stringify(cursor.topRows),
-    cursor.gameDate,
-    new Date().toISOString(),
-    cursor.newestDate,
-    cursor.rowsInserted,
-  );
-}
-
-/**
- * Every scan-written row for this clan from `fromDate` onwards, as identity fields.
- *
- * Feeds the capture's write-side withhold: rows read again that this clan already
- * holds are declined rather than inserted, so losing the sweep's marker costs a
- * re-read instead of a duplicate batch an admin has to find and delete.
- *
- * `source = 'scan'` is a hard boundary, not an optimisation: a manual upload must
- * never suppress a scan read. Uploads were removed in Nov 2026 and the last one is
- * from Jul 2026, far outside any read window, so in practice the boundary only
- * keeps the withhold's meaning exact.
- *
- * Keys are built in JS rather than SQL because they despace and lowercase the name,
- * and SQLite's LOWER is ASCII-only — v66 made a despaced key the identity everywhere.
- * Served by idx_resource_transactions_date(clan_id, transaction_date); a 14-day
- * window is a couple of thousand rows.
- */
-export function listRecordedScanRows(clanId: number, fromDate: string): Array<{
-  rawPlayerName: string;
-  direction: number;
-  amount: number;
-  transactionDate: string;
-  resourceTypeId: number | null;
-}> {
-  const db = getDb();
-  return db.prepare(`
-    SELECT rt.raw_player_name  AS rawPlayerName,
-           rt.direction        AS direction,
-           rt.amount           AS amount,
-           rt.transaction_date AS transactionDate,
-           rt.resource_type_id AS resourceTypeId
-      FROM resource_transactions rt
-      JOIN resource_upload_batches b ON b.id = rt.batch_id
-     WHERE rt.clan_id = ? AND rt.transaction_date >= ? AND b.source = 'scan'
-  `).all(clanId, fromDate) as Array<{
-    rawPlayerName: string;
-    direction: number;
-    amount: number;
-    transactionDate: string;
-    resourceTypeId: number | null;
-  }>;
-}
-
-/**
- * Forget where the capture got to, so the next run reads the whole visible list.
- *
- * The recovery move after a capture batch is deleted. The marker points at rows that
- * ARE in the game but are no longer in the database, so leaving it would make the
- * next run stop there and treat the deleted rows as already recorded — losing them
- * from the database while they sit readable in the game for another fortnight.
- *
- * Safe to call at any time: a missing cursor means "read everything, no date backstop
- * armed", which re-reads rather than skips, and the write-side withhold stops that
- * re-read duplicating anything still held.
- */
-export function clearCaptureCursor(clanId: number): void {
-  getDb().prepare('DELETE FROM resource_capture_cursor WHERE clan_id = ?').run(clanId);
-}
-
-/** The `source` of one batch, or null when it isn't this clan's. */
-export function getBatchSource(batchId: number, clanId: number): string | null {
-  const row = getDb().prepare(
-    'SELECT source FROM resource_upload_batches WHERE id = ? AND clan_id = ?',
-  ).get(batchId, clanId) as { source: string } | undefined;
-  return row?.source ?? null;
 }
 
 /** How many rows in this clan are still missing a resource type — the standing

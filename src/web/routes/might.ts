@@ -1,10 +1,9 @@
 /**
- * Read API for member might (power level) tracking, plus the superadmin toggle.
+ * Read API for member might (power level) history. Every scan records each
+ * member's might and hero level from the game (game-protocol/member-sync.ts).
  *
  * Everything might-related lives in this one router rather than being threaded
- * into api.ts: the feature is new, can only be validated against the live game,
- * and must be removable or disableable without touching the routes that serve
- * chest data.
+ * into api.ts, so it stays separate from the routes that serve chest data.
  *
  * Deliberately unrelated to the ChestTracker import routes (/api/external) —
  * different source, different tables, no shared queries. Do not join these
@@ -16,19 +15,9 @@
 import { Router } from 'express';
 import * as mightRepo from '../../data/repositories/might-repo.js';
 import { getAllMembers, getMemberById } from '../../data/repositories/member-repo.js';
-import { listClans } from '../../data/repositories/clan-repo.js';
-import { logAction } from '../../data/repositories/user-repo.js';
-import { requireSuperAdmin } from '../middleware/auth.js';
-import { loadConfig, resetConfig } from '../../config/index.js';
-import { updateEnvValue } from '../../config/persistent-env.js';
-import {
-  getMemberListCropRevision,
-  isMemberListCropRecalibrated,
-  isMemberListCropSet,
-} from '../../config/calibration.js';
+import { loadConfig } from '../../config/index.js';
 import { gameDateFor } from '../../utils/game-day.js';
 import { childLogger } from '../../utils/logger.js';
-import type { ScanLoop } from '../../scheduler/loop.js';
 
 const log = childLogger('might-route');
 
@@ -48,13 +37,12 @@ function clampDays(raw: unknown, fallback = DEFAULT_DAYS): number {
   return Math.min(MAX_DAYS, n);
 }
 
-export function createMightRouter(scanLoop?: ScanLoop): Router {
+export function createMightRouter(): Router {
   const router = Router();
 
   /**
    * Everything the Members page needs in one call: latest might per active
-   * member with its delta, plus enough status for the UI to explain itself when
-   * there's no data yet (feature off? not calibrated? just never run?).
+   * member with its delta, plus when the last reading was taken.
    *
    * Members with no snapshot are included with `might: null` rather than
    * omitted, so the table shows the whole roster and marks the gaps instead of
@@ -93,11 +81,6 @@ export function createMightRouter(scanLoop?: ScanLoop): Router {
     res.json({
       rows,
       deltaDays,
-      enabled: cfg.mightTrackingEnabled,
-      calibrated: isMemberListCropSet(),
-      // False when the Stage 4 rectangle predates might tracking. Capture is
-      // hard-gated on this, so the UI must be able to say so.
-      cropIncludesMight: isMemberListCropRecalibrated(),
       lastCapture: mightRepo.getLastCaptureAt(clanId),
       daysCollected: mightRepo.getSnapshotDates(clanId).length,
       rolloverUtcHour: cfg.gameDayRolloverUtcHour,
@@ -236,76 +219,6 @@ export function createMightRouter(scanLoop?: ScanLoop): Router {
       );
       res.json({ days, windows: [], unavailable: true });
     }
-  });
-
-  /**
-   * Arm a one-shot re-capture, overwriting today's readings on the next scan.
-   *
-   * Deliberately does NOT start a scan itself — driving the browser is the
-   * scheduler's job and a manual scan is already a button. This only clears the
-   * once-a-day gate, so "Re-capture now" then "Trigger Manual Scan" gives a
-   * complete test loop without waiting for the 17:00 UTC rollover.
-   */
-  router.post('/recapture', requireSuperAdmin, (req, res) => {
-    if (!scanLoop) {
-      res.status(503).json({ error: 'Scanner is not running in this process.' });
-      return;
-    }
-    // Every active clan, not just the caller's. This button is on the instance-wide
-    // System page, a cycle sweeps all clans anyway, and getting a clean first day for
-    // one clan while the others sit on yesterday's data is never what's wanted.
-    const clanIds = listClans({ activeOnly: true }).map((c) => c.id);
-    const armed = scanLoop.requestMightRecapture(clanIds);
-    if (armed === 0) {
-      res.status(400).json({
-        error: clanIds.length === 0
-          ? 'No active clans to re-capture.'
-          : 'Might tracking is disabled — enable it first.',
-      });
-      return;
-    }
-    logAction(req.user!.id, 'might_recapture_requested', { clanIds });
-    res.json({ ok: true, armed, clanIds });
-  });
-
-  /** Current toggle state + why it might not be doing anything. */
-  router.get('/settings', requireSuperAdmin, (req, res) => {
-    const cfg = loadConfig();
-    res.json({
-      enabled: cfg.mightTrackingEnabled,
-      calibrated: isMemberListCropSet(),
-      cropIncludesMight: isMemberListCropRecalibrated(),
-      cropRevision: getMemberListCropRevision(),
-      lastCapture: mightRepo.getLastCaptureAt(req.clanId!),
-    });
-  });
-
-  /**
-   * Flip might tracking on or off.
-   *
-   * Persists to data/app.env (survives a container recreate, unlike .env) and
-   * pushes the value into the running ScanLoop so it takes effect on the next
-   * cycle without a restart — same pattern as the raw-OCR-capture toggle.
-   *
-   * Turning it off is purely a stop to further capture; existing snapshots are
-   * kept, because the whole value of this data is its history and a toggle
-   * should not be able to destroy months of it.
-   */
-  router.put('/settings', requireSuperAdmin, (req, res) => {
-    const enabled = req.body?.enabled === true || req.body?.enabled === 'true';
-    updateEnvValue('MIGHT_TRACKING_ENABLED', enabled ? 'true' : 'false');
-    resetConfig();
-    scanLoop?.setScannerSettings({ mightTrackingEnabled: enabled });
-    logAction(req.user!.id, 'update_might_tracking', { enabled });
-    // Report the calibration gate back so the UI can immediately say "on, but
-    // waiting for a Stage 4 re-calibration" instead of implying it's collecting.
-    const cfg = loadConfig();
-    res.json({
-      ok: true,
-      enabled,
-      calibrated: isMemberListCropSet(),
-      cropIncludesMight: isMemberListCropRecalibrated(),
-    });
   });
 
   return router;

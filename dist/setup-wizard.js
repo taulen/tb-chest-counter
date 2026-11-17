@@ -33,7 +33,6 @@ function buildEnvLines(answers) {
         '',
         '# Scan settings (game URL is hardcoded to totalbattle.com)',
         `SCAN_INTERVAL_MS=${answers.scanInterval * 60 * 1000}`,
-        'HEADLESS=true',
         '',
         '# Web Dashboard',
         'WEB_ENABLED=true',
@@ -45,7 +44,6 @@ function buildEnvLines(answers) {
         '# Storage',
         `DB_PATH=${answers.dbPath}`,
         'STORAGE_STATE_PATH=./data/auth/storage-state.json',
-        'SCREENSHOT_RETENTION_DAYS=3',
     ];
 }
 /**

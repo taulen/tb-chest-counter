@@ -14,9 +14,6 @@ import { formatCountdown } from './ui.js';
 const PHASE_LABELS = {
   starting: t('Starting'),
   scan: t('Scanning'),
-  might: t('Reading might'),
-  resources: t('Reading resources'),
-  calibration: t('Calibrating'),
 };
 
 const SKELETON = `

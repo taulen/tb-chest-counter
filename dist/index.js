@@ -3,18 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const index_js_1 = require("./config/index.js");
 const logger_js_1 = require("./utils/logger.js");
 const database_js_1 = require("./data/database.js");
-const factory_js_1 = require("./vision/factory.js");
-const launcher_js_1 = require("./browser/launcher.js");
 const loop_js_1 = require("./scheduler/loop.js");
 const external_loop_js_1 = require("./scheduler/external-loop.js");
 const inactive_sweep_js_1 = require("./scheduler/inactive-sweep.js");
 const server_js_1 = require("./web/server.js");
 const bot_js_1 = require("./discord/bot.js");
 const console_report_js_1 = require("./output/console-report.js");
-const screenshotter_js_1 = require("./browser/screenshotter.js");
 const setup_wizard_js_1 = require("./setup-wizard.js");
 const defaults_js_1 = require("./config/defaults.js");
-const clan_paths_js_1 = require("./config/clan-paths.js");
 const build_info_js_1 = require("./utils/build-info.js");
 /**
  * Two-line startup banner sized to fit whichever of the title /
@@ -100,32 +96,16 @@ async function main() {
     const externalLoop = new external_loop_js_1.MultiClanExternalLoop();
     externalLoop.start();
     if (dashboardOnly) {
-        // Dashboard-only mode: no browser, no scanning. startWebServer
+        // Dashboard-only mode: no scanning. startWebServer
         // already logs "Web dashboard running at http://localhost:..." so
         // we don't need a second "Dashboard: ..." line here.
         log.info('Dashboard-only mode');
         (0, server_js_1.startWebServer)(config.webPort, undefined, { externalLoop, externalUrl: config.webExternalUrl });
         return;
     }
-    // Spin up the local OCR pipeline (PaddleOCR — PP-OCRv6_small via ONNX).
-    // Member-list capture (member-capture.ts) uses the same shared service.
-    const vision = (0, factory_js_1.createVisionProvider)();
-    await vision.initialize(config);
-    // Clean old screenshots
-    await (0, screenshotter_js_1.cleanOldScreenshots)('./data/screenshots', config.screenshotRetentionDays);
-    // Launch browser
-    let browserSession;
     let scanLoop;
     try {
-        // Boot launch hydrates from clan #1's per-clan paths. The first
-        // scheduled scan will iterate active clans and re-launch with the
-        // matching clan's paths if there are more than one active.
-        browserSession = await (0, launcher_js_1.launchBrowser)(config, {
-            storageStatePath: (0, clan_paths_js_1.clanStorageStatePath)(1),
-            userDataDir: (0, clan_paths_js_1.clanBrowserProfileDir)(1),
-        });
-        // Create scan loop
-        scanLoop = new loop_js_1.ScanLoop(config, browserSession, vision, (result, clanId) => {
+        scanLoop = new loop_js_1.ScanLoop(config, (result, clanId) => {
             // Called after each scan completes for one clan. Routes the report
             // to that clan's Discord bot — a no-op when the clan has Discord
             // disabled, no token, or the bot isn't yet running.
@@ -164,16 +144,6 @@ async function main() {
         scanLoop?.stop();
         externalLoop.stop();
         (0, inactive_sweep_js_1.stopInactiveSweep)();
-        if (browserSession)
-            await (0, launcher_js_1.closeBrowser)(browserSession);
-        if (vision.teardown) {
-            try {
-                await vision.teardown();
-            }
-            catch (err) {
-                log.warn('Vision teardown during shutdown failed: ' + String(err));
-            }
-        }
         await (0, bot_js_1.stopAllBots)();
         (0, database_js_1.closeDb)();
         log.info('Goodbye!');

@@ -19,7 +19,7 @@ exports.getMemberCount = getMemberCount;
 exports.getMemberEvidenceCropPath = getMemberEvidenceCropPath;
 const database_js_1 = require("../database.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
-const ocr_normalize_js_1 = require("../../vision/ocr-normalize.js");
+const name_normalize_js_1 = require("../../utils/name-normalize.js");
 function normalizeName(name) {
     return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -73,7 +73,7 @@ function rowToMember(row) {
 function upsertMember(name, clanId) {
     const db = (0, database_js_1.getDb)();
     const normalized = normalizeName(name);
-    const despaced = (0, ocr_normalize_js_1.despace)(name);
+    const despaced = (0, name_normalize_js_1.despace)(name);
     const now = new Date().toISOString();
     const existing = db.prepare('SELECT * FROM members WHERE clan_id = ? AND normalized_name = ?').get(clanId, normalized)
         ?? findByDespacedKey(db, clanId, despaced);
@@ -159,7 +159,7 @@ function findMemberByName(name, clanId) {
     const db = (0, database_js_1.getDb)();
     const normalized = normalizeName(name);
     const row = db.prepare('SELECT * FROM members WHERE clan_id = ? AND normalized_name = ?').get(clanId, normalized)
-        ?? findByDespacedKey(db, clanId, (0, ocr_normalize_js_1.despace)(name));
+        ?? findByDespacedKey(db, clanId, (0, name_normalize_js_1.despace)(name));
     return row ? rowToMember(row) : null;
 }
 function getAllMembers(activeOnly, clanId) {
@@ -208,7 +208,7 @@ function renameMember(id, newName, clanId) {
     // key and the very next scan that reads the corrected spelling walks straight
     // past it. That would make the one manual fix an admin is asked to do — set the
     // spelling right once — the one thing that doesn't stick.
-    db.prepare('UPDATE members SET name = ?, normalized_name = ?, despaced_name = ? WHERE id = ? AND clan_id = ?').run(newName.trim(), normalized, (0, ocr_normalize_js_1.despace)(newName), id, clanId);
+    db.prepare('UPDATE members SET name = ?, normalized_name = ?, despaced_name = ? WHERE id = ? AND clan_id = ?').run(newName.trim(), normalized, (0, name_normalize_js_1.despace)(newName), id, clanId);
     // Post-D4 there is no player_name column on chest_records — every
     // read resolves the display name via JOIN to members, so a rename
     // here propagates to every record that points at this member_id
@@ -260,7 +260,7 @@ function restoreMember(id, clanId) {
  * than `cutoffIso` (an ISO timestamp). This is the batch form of
  * `removeMember` used by the daily inactivity sweep: it flips
  * `is_active = 0` but leaves the row (and chest history) intact, so the
- * next scan that OCRs the name reactivates it via `upsertMember`.
+ * next scan that finds the player in the clan reactivates it.
  *
  * Returns the members that were deactivated (id + name) so the caller can
  * log exactly who was affected. Only touches rows that were still active,

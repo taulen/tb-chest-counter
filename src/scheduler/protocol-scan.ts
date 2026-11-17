@@ -1,8 +1,7 @@
 /**
  * The protocol scan: a clan's chests recorded from the game's own gift list
- * and opened with the game's own claim request — no browser, no OCR, no
- * calibration (docs/game-protocol.md). Runs on the session and data that
- * runGameProtocolCapture just read.
+ * and opened with the game's own claim request (docs/game-protocol.md). Runs
+ * on the session and data that runGameProtocolCapture just read.
  *
  * Order, chosen so tracking can never be lost:
  *   1. Every gift on both tabs is RECORDED first, keyed by game_gift_id. A gift
@@ -13,14 +12,15 @@
  *      game_claims. A failed claim leaves the gift in the game; the next cycle
  *      records nothing new for it and claims it again.
  *   3. The Clan Capital ledger becomes resource_transactions rows (one per entry,
- *      game_entry_id unique), from the day after the newest OCR-captured row on,
- *      so the switch-over never double-counts a day.
+ *      game_entry_id unique), from the day after the newest row the retired
+ *      screenshot reader captured, so the switch-over never double-counts a day.
  *
- * Names: the game's names are exact, so no OCR correction runs. Each resolves to
- * the spelling already stored for it when one normalises the same (the OCR read
- * "Lvl 25-29 Vault of the Ancients" where the game says "Level 25–29 …"), so
- * points, merge rules and history keep keying on the names they always had;
- * the clan's chest/source merge rules then apply exactly as on the OCR path.
+ * Names: the game's names are exact, so no correction runs. Each resolves to
+ * the spelling already stored for it when one normalises the same (rows the
+ * retired screenshot reader wrote say "Lvl 25-29 Vault of the Ancients" where
+ * the game says "Level 25–29 …"), so points, merge rules and history keep
+ * keying on the names they always had; the clan's chest/source merge rules
+ * then apply as they always did.
  */
 import { getDb } from '../data/database.js';
 import * as chestRepo from '../data/repositories/chest-repo.js';
@@ -33,8 +33,8 @@ import {
   listResourceTypes,
   UNTRACKED_RESOURCE_SLUGS,
 } from '../data/repositories/resource-repo.js';
-import { getChestRarity } from '../vision/chest-names.js';
-import { normalizeGiftText } from '../game-protocol/compare.js';
+import { getChestRarity } from '../data/chest-names.js';
+import { normalizeGiftText } from '../game-protocol/gift-text.js';
 import { parseClaimRewards } from '../game-protocol/messages.js';
 import { ledgerToRows } from '../game-protocol/ledger-rows.js';
 import { makeMemberResolver } from '../game-protocol/member-sync.js';
@@ -197,7 +197,7 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
   return tally;
 }
 
-/** Ledger entries newer than the clan's OCR-captured rows → resource_transactions. Returns rows written. */
+/** Ledger entries newer than the clan's screenshot-read rows → resource_transactions. Returns rows written. */
 function importLedger(
   clanId: number,
   d: CaptureData,

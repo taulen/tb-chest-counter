@@ -490,10 +490,10 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Multi-clan management. Superadmin CRUD + clan switcher (activate
   // endpoint) live here. Mounted before the catch-all /api router so
   // /api/clans doesn't collide with anything in api.ts.
-  app.use('/api/clans', createClansRouter(scanLoop));
+  app.use('/api/clans', createClansRouter());
 
-  // The login bridge pauses the scan loop while it's open (a second headed
-  // Chromium would fight the scanner for RAM). Wire its teardown hook so the
+  // The login bridge pauses the scan loop while it's open (a scan's direct
+  // game login would take over the session being signed in). Wire its teardown hook so the
   // scanner resumes whenever the bridge ends — crucially including the
   // internal idle-teardown / max-session paths that never hit the
   // save/cancel routes. Without this, an abandoned login session left the
@@ -519,10 +519,9 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   app.use('/api/resources', requireAuth, requireClanContext, createResourcesDataRouter());
 
   // Member might (power level) history. All reads are clan-scoped clan data,
-  // visible to any authenticated member; the on/off toggle inside the router
-  // guards with requireSuperAdmin. Kept as its own mount so the feature can be
-  // disabled or removed without touching the chest-data routes.
-  app.use('/api/might', requireAuth, requireClanContext, createMightRouter(scanLoop));
+  // visible to any authenticated member. Kept as its own mount, apart from the
+  // chest-data routes.
+  app.use('/api/might', requireAuth, requireClanContext, createMightRouter());
   // What the game protocol collects about players (profile, research, talents).
   app.use('/api/game', requireAuth, requireClanContext, createGameRouter());
 
@@ -551,11 +550,6 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Performance page: over- and underachievers. Admins only, enforced inside
   // with requireAdmin (the active clan's role).
   app.use('/api/performance', requireAuth, requireClanContext, createPerformanceRouter());
-
-  // The rest of assets/ (OCR models, reference crops) stays behind a session —
-  // nothing a page loads lives there. resource-icons/ and calibration-examples/
-  // are served publicly by the frontend asset router above.
-  app.use('/assets', requireAuth, express.static(path.resolve('assets'), { maxAge: '86400000' }));
 
   // SPA fallback - protected. Serves a freshly-rewritten index.html with
   // ?v=BUILD_VERSION on JS/CSS references.

@@ -15,7 +15,7 @@
 // argument — so the router redraws whichever tab is showing.
 //
 // Per-clan settings (Discord, ChestTracker, login bridge) live on the
-// Clans page; instance-wide settings (scan interval, calibration,
+// Clans page; instance-wide settings (scan interval, event dates,
 // container restart, backups) live on the System page. This page is
 // pure data-correction.
 
