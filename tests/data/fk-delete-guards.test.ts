@@ -83,6 +83,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     // Game protocol capture (v102, v103).
     'game_capture_runs.clan_id',
     'game_city_snapshots.clan_id',
+    'game_city_status_history.clan_id',
     'game_claims.clan_id',
     'game_gifts.clan_id',
     'game_ledger.clan_id',
@@ -336,6 +337,9 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO game_player_daily (clan_id, player_id, game_date, gold_ingots, captured_at) VALUES (?, 1, '2026-11-17', 12169, ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_city_status_history (clan_id, player_id, changed_at, shielded, burning) VALUES (?, 1, ?, 1, 0)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO chat_messages (clan_id, channel_url, message_id, created_at, captured_at) VALUES (?, 'triumph_clan_channel_1', 1, 1, ?)`,

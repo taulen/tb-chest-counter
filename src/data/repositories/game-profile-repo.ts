@@ -22,6 +22,12 @@ export interface GamePlayerProfile {
   goldPass: boolean;
   /** Gold Ingots (402 field 17, public in the game); null before v110 read it. */
   goldIngots: number | null;
+  /** The city's shield bubble on the map (v112); null until the map was read. */
+  shielded: boolean | null;
+  /** Walls down: the city burns on the map (v112); null until the map was read. */
+  burning: boolean | null;
+  /** When the map last showed the city. */
+  mapSeenAt: string | null;
   heroAvatar: number | null;
   /** The hero's portrait from the game's art (/game-art/…), or null before the art is extracted. */
   avatarUrl: string | null;
@@ -39,7 +45,8 @@ export interface GameCitySnapshot {
 type PlayerRow = {
   player_id: number; name: string; role: number | null; joined_at: number | null; in_clan: number;
   might: number | null; hero_level: number | null; city_level: number | null; vip: number | null;
-  gold_pass: number | null; hero_avatar: number | null; gold_ingots?: number | null; last_seen: string;
+  gold_pass: number | null; hero_avatar: number | null; gold_ingots?: number | null;
+  shielded?: number | null; burning?: number | null; map_seen_at?: string | null; last_seen: string;
 };
 
 const toProfile = (r: PlayerRow): GamePlayerProfile => ({
@@ -54,6 +61,9 @@ const toProfile = (r: PlayerRow): GamePlayerProfile => ({
   vip: r.vip,
   goldPass: r.gold_pass === 1,
   goldIngots: r.gold_ingots ?? null,
+  shielded: r.shielded == null ? null : r.shielded === 1,
+  burning: r.burning == null ? null : r.burning === 1,
+  mapSeenAt: r.map_seen_at ?? null,
   heroAvatar: r.hero_avatar,
   avatarUrl: heroAvatarUrl(r.hero_avatar),
   lastSeen: r.last_seen,

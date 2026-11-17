@@ -347,7 +347,7 @@ describe('public share surface (anonymous, token-gated)', () => {
       const r = await request(app).get(`/api/public/aAaA11/leaderboard/${alice}/breakdown`);
       expect(r.status).toBe(200);
       // Never the game's internal ids (player, city) — only what the card shows.
-      expect(Object.keys(r.body.game).sort()).toEqual(['avatarUrl', 'cityLevel', 'goldIngots', 'goldPass', 'heroAvatar', 'heroLevel', 'inClan', 'joinedAt', 'role', 'vip']);
+      expect(Object.keys(r.body.game).sort()).toEqual(['avatarUrl', 'burning', 'cityLevel', 'goldIngots', 'goldPass', 'heroAvatar', 'heroLevel', 'inClan', 'joinedAt', 'role', 'shielded', 'vip']);
       expect(r.body.game).toMatchObject({ role: 3, cityLevel: 30, vip: 12, goldPass: true, heroLevel: 150 });
     });
 

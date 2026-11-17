@@ -72,9 +72,8 @@ const messages_js_1 = require("../game-protocol/messages.js");
 const ledger_rows_js_1 = require("../game-protocol/ledger-rows.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
 const logger_js_1 = require("../utils/logger.js");
+const request_gap_js_1 = require("../utils/request-gap.js");
 const log = (0, logger_js_1.childLogger)('protocol-scan');
-/** Pause between claim requests; the game client itself spaces its requests. */
-const CLAIM_GAP_MS = 150;
 /** Most gifts in one claim request (the game's own "Claim chests" sends the whole tab). */
 const CLAIM_BATCH_MAX = 100;
 /** Sender name used when the game gave us neither a member link nor a name. */
@@ -171,7 +170,8 @@ async function recordAndClaim(ctx, d) {
     //    Open button does: one chest per request, a 3× bundle three requests.
     const saveClaim = (0, database_js_1.getDb)().prepare(`INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at, batch_size, gift_ids)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const gap = () => new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
+    // A varied gap between claims, quicker than a player clicks Open by hand.
+    const gap = () => (0, request_gap_js_1.requestGap)(request_gap_js_1.CLAIM_GAP[0], request_gap_js_1.CLAIM_GAP[1]);
     let warned = false;
     const claimFailed = (giftId, err) => {
         if (!warned)

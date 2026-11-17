@@ -32,6 +32,7 @@ const messages_js_1 = require("../game-protocol/messages.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
 const game_day_js_1 = require("../utils/game-day.js");
+const request_gap_js_1 = require("../utils/request-gap.js");
 const tech_trees_js_1 = require("../game-protocol/tech-trees.js");
 const log = (0, logger_js_1.childLogger)('game-protocol');
 /** Player lookups per request; the game client itself asks for ~90 at a time. */
@@ -133,10 +134,13 @@ async function runGameProtocolCapture(clanId, opts) {
 const MAX_CITIES_PER_CYCLE = 120;
 /** Game days of raw city replies kept (game_raw_snapshots kind 'city'). */
 const RAW_CITY_DAYS = 60;
+/** Cities (or clan objects) per 601 request; the game client itself asks for 19 in one. */
+const CITY_BATCH = 20;
 /** Map tiles per cycle (members' city tiles + their neighbours). */
 const MAX_TILES_PER_CYCLE = 60;
 const TILE_BATCH = 9;
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+// Varied, short gaps between reads (utils/request-gap.ts), never one fixed tick.
+const pause = () => (0, request_gap_js_1.requestGap)(request_gap_js_1.READ_GAP[0], request_gap_js_1.READ_GAP[1]);
 /**
  * The collection a scan does after its chests are opened, on the same game
  * session: cities, map tiles, the raw archive. Never throws; logs one line.
@@ -173,12 +177,15 @@ async function collectExtras(clanId, d, clanFrame) {
         if (!(0, game_protocol_repo_js_1.hasRawSnapshot)(clanId, 'clan_record', 0, d.gameDate)) {
             (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'clan_record', 0, d.gameDate, clanFrame.body, now);
             let objects = 0;
-            for (const id of d.record.objects) {
-                if ((0, game_protocol_repo_js_1.hasRawSnapshot)(clanId, 'clan_object', id, d.gameDate))
-                    continue;
-                (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'clan_object', id, d.gameDate, (await d.client.city(id)).body, now);
-                objects++;
-                await pause(100);
+            // All of the clan's objects in one request (two past CITY_BATCH), the way
+            // the game client reads them.
+            const wanted = d.record.objects.filter((id) => !(0, game_protocol_repo_js_1.hasRawSnapshot)(clanId, 'clan_object', id, d.gameDate));
+            for (let i = 0; i < wanted.length; i += CITY_BATCH) {
+                for (const c of (0, messages_js_1.splitCityReply)(await d.client.cities(wanted.slice(i, i + CITY_BATCH)))) {
+                    (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'clan_object', c.cityId, d.gameDate, c.body, now);
+                    objects++;
+                }
+                await pause();
             }
             parts.push(`clan record + ${objects} clan objects archived`);
         }
@@ -225,16 +232,58 @@ async function collectExtras(clanId, d, clanFrame) {
             .slice(0, MAX_CITIES_PER_CYCLE);
         let changed = 0;
         let failed = 0;
+        let requests = 0;
         let firstError = '';
-        for (const p of todo) {
+        const fail = (err) => {
+            // One unreadable city never stops the rest; it is retried next cycle.
+            // Counted in the log line — a silent skip hid missing data before.
+            failed++;
+            if (!firstError)
+                firstError = String(err instanceof Error ? err.message : err);
+        };
+        // CITY_BATCH cities per 601 request, as the game client asks for a clan's
+        // objects — 120 cities used to be 120 requests.
+        for (let i = 0; i < todo.length; i += CITY_BATCH) {
+            const batch = todo.slice(i, i + CITY_BATCH);
+            const bodies = new Map();
+            const singleFailed = new Set();
             try {
-                const cityFrame = await d.client.city(p.cityId);
-                const city = (0, messages_js_1.parseCityRecord)(cityFrame);
-                if (city) {
+                requests++;
+                for (const c of (0, messages_js_1.splitCityReply)(await d.client.cities(batch.map((p) => p.cityId))))
+                    bodies.set(c.cityId, c.body);
+            }
+            catch {
+                // The batch as a whole failed: read its cities one by one, so one bad
+                // city costs only itself.
+                for (const p of batch) {
+                    try {
+                        requests++;
+                        bodies.set(p.cityId, (await d.client.city(p.cityId)).body);
+                    }
+                    catch (err) {
+                        singleFailed.add(p.cityId);
+                        fail(err);
+                    }
+                    await pause();
+                }
+            }
+            for (const p of batch) {
+                const body = bodies.get(p.cityId);
+                if (!body) {
+                    if (!singleFailed.has(p.cityId))
+                        fail(`city ${p.cityId} missing from the reply`);
+                    continue;
+                }
+                try {
+                    const city = (0, messages_js_1.parseCityRecord)({ type: 601, seq: 0, head: [601, 0], body, children: [], events: [] });
+                    if (!city) {
+                        fail(`city ${p.cityId} unreadable`);
+                        continue;
+                    }
                     // The whole reply too (the day's latest read): a field decoded later
                     // — captains were in it all along — can be re-parsed from this
                     // instead of waiting for every city to be read again.
-                    (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'city', p.playerId, d.gameDate, cityFrame.body, now);
+                    (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'city', p.playerId, d.gameDate, body, now);
                     changed += (0, game_protocol_repo_js_1.saveTechs)(clanId, p.playerId, city.techs, now);
                     (0, game_protocol_repo_js_1.saveCitySnapshot)(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, hero: city.hero }, now);
                     // Field 9 also holds the hero (id 1, no T75 row): keep named captains.
@@ -242,18 +291,14 @@ async function collectExtras(clanId, d, clanFrame) {
                     if (captains.length)
                         changed += (0, game_protocol_repo_js_1.saveCaptains)(clanId, p.playerId, captains, now);
                 }
+                catch (err) {
+                    fail(err);
+                }
             }
-            catch (err) {
-                // One unreadable city never stops the rest; it is retried next cycle.
-                // Counted in the log line — a silent skip hid missing data before.
-                failed++;
-                if (!firstError)
-                    firstError = String(err instanceof Error ? err.message : err);
-            }
-            await pause(100);
+            await pause();
         }
         if (todo.length) {
-            parts.push(`${todo.length} cities read (${changed} research/talent/captain changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
+            parts.push(`${todo.length} cities read in ${requests} requests (${changed} research/talent/captain changes${failed ? `; ${failed} failed: ${firstError}` : ''})`);
         }
         // ~5 KB per city per day: keep RAW_CITY_DAYS of them, not every day forever.
         const keepFrom = new Date(Date.parse(`${d.gameDate}T00:00:00Z`) - RAW_CITY_DAYS * 86_400_000).toISOString().slice(0, 10);
@@ -263,29 +308,43 @@ async function collectExtras(clanId, d, clanFrame) {
         parts.push(`city pass failed: ${String(err)}`);
     }
     try {
-        const tiles = new Set();
+        // Every member's own tile first, so the cap never drops a member's city
+        // (its shield and burning state come from it), then the tiles around.
+        const own = new Set();
+        const around = new Set();
         for (const m of d.record.members) {
             const pos = d.byId.get(m.playerId)?.position;
             if (!pos || pos[0] !== d.client.realmId)
                 continue;
+            own.add((0, messages_js_1.tileOf)(pos[1], pos[2]));
             for (const dx of [-20, 0, 20])
                 for (const dy of [-20, 0, 20])
-                    tiles.add((0, messages_js_1.tileOf)(pos[1] + dx, pos[2] + dy));
+                    around.add((0, messages_js_1.tileOf)(pos[1] + dx, pos[2] + dy));
         }
-        const list = [...tiles].filter((t) => t >= 0).slice(0, MAX_TILES_PER_CYCLE);
+        const list = [...new Set([...own, ...around])].filter((t) => t >= 0).slice(0, Math.max(MAX_TILES_PER_CYCLE, own.size));
         const memberIds = new Set(d.record.members.map((m) => m.playerId));
         const rows = [];
+        const cities = new Map();
         for (let i = 0; i < list.length; i += TILE_BATCH) {
-            for (const o of (0, messages_js_1.parseMapObjects)(await d.client.mapTiles(list.slice(i, i + TILE_BATCH)))) {
+            const frame = await d.client.mapTiles(list.slice(i, i + TILE_BATCH));
+            for (const o of (0, messages_js_1.parseMapObjects)(frame)) {
                 const name = d.names.objects[String(o.type)] ?? '';
                 if (!/vault/i.test(name) && !(o.ownerId !== null && memberIds.has(o.ownerId)))
                     continue;
                 rows.push({ objectId: o.objectId, type: o.type, name, level: o.level, realm: o.realm, x: o.x, y: o.y, ownerId: o.ownerId, expiresAt: o.expiresAt });
             }
-            await pause(100);
+            for (const c of (0, messages_js_1.parseMapCities)(frame)) {
+                if (memberIds.has(c.ownerId))
+                    cities.set(c.ownerId, { playerId: c.ownerId, shielded: c.shielded, burning: c.burning });
+            }
+            await pause();
         }
         const fresh = (0, game_protocol_repo_js_1.saveMapObjects)(clanId, rows, now);
-        parts.push(`${rows.length} vaults/member objects on ${list.length} tiles (${fresh} new)`);
+        const statusChanges = (0, game_protocol_repo_js_1.saveCityStatuses)(clanId, [...cities.values()], now);
+        const shielded = [...cities.values()].filter((c) => c.shielded).length;
+        const burning = [...cities.values()].filter((c) => c.burning).length;
+        parts.push(`${rows.length} vaults/member objects on ${list.length} tiles (${fresh} new); ` +
+            `${cities.size} member cities: ${shielded} shielded, ${burning} burning (${statusChanges} changed)`);
     }
     catch (err) {
         parts.push(`map pass failed: ${String(err)}`);

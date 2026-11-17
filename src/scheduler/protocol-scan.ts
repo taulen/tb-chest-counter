@@ -44,11 +44,10 @@ import type { CaptureData } from './game-protocol-phase.js';
 import type { NamedGift } from '../data/repositories/game-protocol-repo.js';
 import type { ChestRecord, GiftEntry } from '../models/types.js';
 import { childLogger } from '../utils/logger.js';
+import { CLAIM_GAP, requestGap } from '../utils/request-gap.js';
 
 const log = childLogger('protocol-scan');
 
-/** Pause between claim requests; the game client itself spaces its requests. */
-const CLAIM_GAP_MS = 150;
 /** Most gifts in one claim request (the game's own "Claim chests" sends the whole tab). */
 const CLAIM_BATCH_MAX = 100;
 /** Sender name used when the game gave us neither a member link nor a name. */
@@ -169,7 +168,8 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     `INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at, batch_size, gift_ids)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  const gap = () => new Promise((r) => setTimeout(r, CLAIM_GAP_MS));
+  // A varied gap between claims, quicker than a player clicks Open by hand.
+  const gap = () => requestGap(CLAIM_GAP[0], CLAIM_GAP[1]);
   let warned = false;
   const claimFailed = (giftId: number, err: unknown) => {
     if (!warned) log.warn({ noAlert: true }, `Clan #${clanId}: claiming gift ${giftId} failed (recorded; retried next cycle): ${String(err)}`);

@@ -350,14 +350,16 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
       return;
     }
     // What the game reports about the player, for the card's header: rank,
-    // city level, VIP, Gold Pass, Gold Ingots (public in the game too), hero
+    // city level, VIP, Gold Pass, Gold Ingots, shield / burning (all public in
+    // the game too — the map shows them), hero
     // level and portrait. Null when the
     // member is not linked to a game player.
     const playerId = gamePlayerIdForMember(memberId, clan.id);
     const p = playerId === null ? null : getGamePlayer(clan.id, playerId);
     const game = p ? {
       role: p.role, joinedAt: p.joinedAt, inClan: p.inClan, cityLevel: p.cityLevel, vip: p.vip,
-      goldPass: p.goldPass, goldIngots: p.goldIngots, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl,
+      goldPass: p.goldPass, goldIngots: p.goldIngots, shielded: p.shielded, burning: p.burning,
+      heroLevel: p.heroLevel, heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl,
     } : null;
     res.json({ ...breakdown, game });
   });

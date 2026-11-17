@@ -48,6 +48,7 @@ const guardsRepo = __importStar(require("../../data/repositories/guards-repo.js"
 const goldPassRepo = __importStar(require("../../data/repositories/gold-pass-repo.js"));
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const member_levels_repo_js_1 = require("../../data/repositories/member-levels-repo.js");
+const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const index_js_1 = require("../../config/index.js");
 const guards_levels_js_1 = require("../../config/guards-levels.js");
 const game_day_js_1 = require("../../utils/game-day.js");
@@ -67,6 +68,8 @@ function createGuardsRouter() {
         const today = (0, game_day_js_1.currentGameDate)(rolloverHr);
         const summaries = guardsRepo.getGuardsSummaries(clanId, today);
         const goldPass = goldPassRepo.getGoldPassStatuses(clanId, nowMs, rolloverHr);
+        // Shield / burning as the map shows the city (v112) — for the list's marks.
+        const players = (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId);
         const active = (0, member_repo_js_1.getAllMembers)(true, clanId);
         const activeIds = new Set(active.map((m) => m.id));
         const countActive = (ids) => {
@@ -87,6 +90,8 @@ function createGuardsRouter() {
                 name: m.name,
                 guards: summaries.get(m.id) ?? null,
                 goldPass: goldPass.get(m.id) ?? null,
+                shielded: players.get(m.id)?.shielded ?? null,
+                burning: players.get(m.id)?.burning ?? null,
             })),
             today,
             staleDays: guards_levels_js_1.GUARDS_STALE_DAYS,

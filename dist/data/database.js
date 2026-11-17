@@ -1703,6 +1703,33 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v112 — shield and burning (walls down) per member city, from the map
+        // tiles (312) the scan already reads: tile [4] lists each tile's cities,
+        // field 39 = shield bubble, field 25 = burning. game_players holds the
+        // current state, game_city_status_history a row whenever it changes (so
+        // "shield dropped at", "burning since" are answerable).
+        version: 112,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(game_players)').all();
+            if (!cols.some((c) => c.name === 'shielded'))
+                database.exec('ALTER TABLE game_players ADD COLUMN shielded INTEGER');
+            if (!cols.some((c) => c.name === 'burning'))
+                database.exec('ALTER TABLE game_players ADD COLUMN burning INTEGER');
+            if (!cols.some((c) => c.name === 'map_seen_at'))
+                database.exec('ALTER TABLE game_players ADD COLUMN map_seen_at TEXT');
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_city_status_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          shielded INTEGER NOT NULL,
+          burning INTEGER NOT NULL,
+          PRIMARY KEY (clan_id, player_id, changed_at)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

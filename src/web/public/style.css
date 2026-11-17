@@ -1972,6 +1972,22 @@ label {
   color: var(--accent-red);
 }
 
+/* The city as the map shows it: shield bubble, burning (walls down). */
+.game-fact-pill.is-shielded {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.game-fact-pill.is-burning {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+.game-fact-pill.is-unshielded {
+  border-style: dashed;
+}
+
 /* The player's hero portrait from the game's own art. */
 .hero-avatar {
   flex: none;
@@ -5898,6 +5914,13 @@ details > table {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* City marks after a member's name (map state: burning, shield). */
+.city-mark {
+  flex: none;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .leaderboard-table .col-guards { width: 84px; }

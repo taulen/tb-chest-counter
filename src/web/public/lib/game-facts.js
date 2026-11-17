@@ -1,11 +1,11 @@
 // What the game itself reports about a player — clan rank, when they joined,
-// city level, VIP, Gold Pass, Gold Ingots, hero level — as a row of pills, plus the hero
+// city level, VIP, Gold Pass, Gold Ingots, shield / burning, hero level — as a row of pills, plus the hero
 // portrait. Shared by the member profile and the public board's hover card, so
 // it imports only what the public page can load (no session, no router).
 //
 // `player` is the shape served by /api/game/members/:id and the public
 // breakdown's `game` field: { role, joinedAt, inClan, cityLevel, vip,
-// goldPass, goldIngots, heroLevel, avatarUrl }.
+// goldPass, goldIngots, shielded, burning, heroLevel, avatarUrl }.
 
 import { esc, formatDate, formatDateShort } from './ui.js';
 import { t, tGame } from './i18n.js';
@@ -28,6 +28,16 @@ export function gameFactsHtml(player, { joined = true, heroLevel = false } = {})
   const rank = gameRankName(p.role);
   if (rank) pills.push(`<span class="game-fact-pill is-rank">${esc(rank)}</span>`);
   if (p.inClan === false) pills.push(`<span class="game-fact-pill is-left">${t('Not in the clan')}</span>`);
+  // What the map shows of the city (null = not read yet: no pill). Burning
+  // first — walls down is the one that needs someone to act.
+  if (p.burning === true) {
+    pills.push(`<span class="game-fact-pill is-burning" title="${esc(t('Walls down: the city is burning on the map'))}"><span aria-hidden="true">🔥</span> ${t('Burning')}</span>`);
+  }
+  if (p.shielded === true) {
+    pills.push(`<span class="game-fact-pill is-shielded" title="${esc(t('The city has a shield on the map'))}"><span aria-hidden="true">🛡</span> ${t('Shielded')}</span>`);
+  } else if (p.shielded === false) {
+    pills.push(`<span class="game-fact-pill is-unshielded" title="${esc(t('The city has no shield on the map'))}">${t('No shield')}</span>`);
+  }
   if (joined && p.joinedAt) {
     const iso = new Date(p.joinedAt * 1000).toISOString();
     pills.push(`<span class="game-fact-pill" title="${esc(formatDate(iso))}">${t('Joined {date}', { date: formatDateShort(iso) })}</span>`);

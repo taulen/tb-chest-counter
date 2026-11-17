@@ -339,6 +339,15 @@ class GameClient {
     city(cityId) {
         return this.ask(601, [[[[[cityId], 0, ALL_FIELDS]]]]);
     }
+    /**
+     * Several cities / map objects in ONE request — what the game client itself
+     * sends for a clan's objects (19 in one 601 ask, Nov 2026). The reply lists
+     * every record in body[0][0]; splitCityReply() cuts it into single-city
+     * bodies.
+     */
+    cities(cityIds) {
+        return this.ask(601, [[cityIds.map((id) => [[id], 0, ALL_FIELDS])]]);
+    }
     /** Map objects in the given tiles (what the client loads as the view moves). */
     mapTiles(tileIds) {
         return this.ask(312, [[tileIds, tileIds.map(() => 0), [], []]]);

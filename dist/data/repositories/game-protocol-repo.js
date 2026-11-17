@@ -12,6 +12,7 @@ exports.playersWithCaptains = playersWithCaptains;
 exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
+exports.saveCityStatuses = saveCityStatuses;
 exports.saveRawSnapshot = saveRawSnapshot;
 exports.rawCitiesMissingData = rawCitiesMissingData;
 exports.pruneRawSnapshots = pruneRawSnapshots;
@@ -219,6 +220,34 @@ function saveMapObjects(clanId, objects, now = new Date().toISOString()) {
         }
     })();
     return fresh;
+}
+/**
+ * Shield and burning state of member cities, as the map shows them (v112).
+ * Only players already in game_players for this clan are updated; a history
+ * row is written when the state is first seen or changes. Returns how many
+ * players changed state.
+ */
+function saveCityStatuses(clanId, statuses, now = new Date().toISOString()) {
+    const db = (0, database_js_1.getDb)();
+    const prevOf = db.prepare('SELECT shielded, burning FROM game_players WHERE clan_id = ? AND player_id = ?');
+    const update = db.prepare('UPDATE game_players SET shielded = ?, burning = ?, map_seen_at = ? WHERE clan_id = ? AND player_id = ?');
+    const hist = db.prepare('INSERT OR IGNORE INTO game_city_status_history (clan_id, player_id, changed_at, shielded, burning) VALUES (?, ?, ?, ?, ?)');
+    let changed = 0;
+    db.transaction(() => {
+        for (const s of statuses) {
+            const prev = prevOf.get(clanId, s.playerId);
+            if (!prev)
+                continue; // not a member we track
+            const sh = s.shielded ? 1 : 0;
+            const bu = s.burning ? 1 : 0;
+            update.run(sh, bu, now, clanId, s.playerId);
+            if (prev.shielded !== sh || prev.burning !== bu) {
+                hist.run(clanId, s.playerId, now, sh, bu);
+                changed++;
+            }
+        }
+    })();
+    return changed;
 }
 /** Keep a raw game reply (gzip of its decoded JSON) once per game day. */
 function saveRawSnapshot(clanId, kind, refId, gameDate, value, now = new Date().toISOString()) {

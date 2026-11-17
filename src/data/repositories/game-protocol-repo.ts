@@ -313,6 +313,40 @@ export function saveMapObjects(clanId: number, objects: MapObjectRow[], now = ne
   return fresh;
 }
 
+/**
+ * Shield and burning state of member cities, as the map shows them (v112).
+ * Only players already in game_players for this clan are updated; a history
+ * row is written when the state is first seen or changes. Returns how many
+ * players changed state.
+ */
+export function saveCityStatuses(
+  clanId: number,
+  statuses: Array<{ playerId: number; shielded: boolean; burning: boolean }>,
+  now = new Date().toISOString(),
+): number {
+  const db = getDb();
+  const prevOf = db.prepare('SELECT shielded, burning FROM game_players WHERE clan_id = ? AND player_id = ?');
+  const update = db.prepare('UPDATE game_players SET shielded = ?, burning = ?, map_seen_at = ? WHERE clan_id = ? AND player_id = ?');
+  const hist = db.prepare(
+    'INSERT OR IGNORE INTO game_city_status_history (clan_id, player_id, changed_at, shielded, burning) VALUES (?, ?, ?, ?, ?)',
+  );
+  let changed = 0;
+  db.transaction(() => {
+    for (const s of statuses) {
+      const prev = prevOf.get(clanId, s.playerId) as { shielded: number | null; burning: number | null } | undefined;
+      if (!prev) continue; // not a member we track
+      const sh = s.shielded ? 1 : 0;
+      const bu = s.burning ? 1 : 0;
+      update.run(sh, bu, now, clanId, s.playerId);
+      if (prev.shielded !== sh || prev.burning !== bu) {
+        hist.run(clanId, s.playerId, now, sh, bu);
+        changed++;
+      }
+    }
+  })();
+  return changed;
+}
+
 /** Keep a raw game reply (gzip of its decoded JSON) once per game day. */
 export function saveRawSnapshot(clanId: number, kind: string, refId: number, gameDate: string, value: unknown, now = new Date().toISOString()): void {
   getDb().prepare(

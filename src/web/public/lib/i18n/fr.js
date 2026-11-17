@@ -237,6 +237,12 @@ export const ui = {
   "Snapshot has no players.": "L'instantané ne contient aucun joueur.",
   // lib/game-facts.js
   "Not in the clan": "Hors du clan",
+  "Walls down: the city is burning on the map": "Murailles tombées : la ville brûle sur la carte",
+  "Burning": "En feu",
+  "The city has a shield on the map": "La ville a un bouclier sur la carte",
+  "Shielded": "Bouclier",
+  "The city has no shield on the map": "La ville n'a pas de bouclier sur la carte",
+  "No shield": "Sans bouclier",
   "Joined {date}": "Arrivée {date}",
   "Hero level {n}": "Niveau du héros {n}",
   "City level {n}": "Niveau de ville {n}",

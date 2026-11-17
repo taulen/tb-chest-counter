@@ -12,6 +12,7 @@ import * as guardsRepo from '../../data/repositories/guards-repo.js';
 import * as goldPassRepo from '../../data/repositories/gold-pass-repo.js';
 import { getAllMembers, getMemberById } from '../../data/repositories/member-repo.js';
 import { getLatestLevelsForMember } from '../../data/repositories/member-levels-repo.js';
+import { getGamePlayersByMember } from '../../data/repositories/game-profile-repo.js';
 import { loadConfig } from '../../config/index.js';
 import { GUARDS_STALE_DAYS } from '../../config/guards-levels.js';
 import { currentGameDate } from '../../utils/game-day.js';
@@ -34,6 +35,8 @@ export function createGuardsRouter(): Router {
 
     const summaries = guardsRepo.getGuardsSummaries(clanId, today);
     const goldPass = goldPassRepo.getGoldPassStatuses(clanId, nowMs, rolloverHr);
+    // Shield / burning as the map shows the city (v112) — for the list's marks.
+    const players = getGamePlayersByMember(clanId);
     const active = getAllMembers(true, clanId);
     const activeIds = new Set(active.map((m) => m.id));
     const countActive = (ids: Iterable<number>): number => {
@@ -54,6 +57,8 @@ export function createGuardsRouter(): Router {
         name: m.name,
         guards: summaries.get(m.id) ?? null,
         goldPass: goldPass.get(m.id) ?? null,
+        shielded: players.get(m.id)?.shielded ?? null,
+        burning: players.get(m.id)?.burning ?? null,
       })),
       today,
       staleDays: GUARDS_STALE_DAYS,

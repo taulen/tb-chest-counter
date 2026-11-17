@@ -148,13 +148,23 @@ Each capture also, every cycle:
   credited through `makeMemberResolver`, which never reactivates anyone.
   An alt that a merge rule folds into a member another player owns is only
   marked seen there — never linked, renamed or snapshotted from the alt.
-- **reads map objects** on the tiles around members' cities (3×3 tiles each,
-  capped at 60) and keeps vaults plus member-owned objects (`game_map_objects`).
+- **reads map tiles** around members' cities (every member's own tile first,
+  then 3×3 around, capped at 60) and keeps vaults plus member-owned objects
+  (`game_map_objects`). Each tile's `[4]` lists its **cities** (43-field
+  records: `[0]` city id, `[2]` owner, `[3]` 2, `[4]` clan, `[13]` level,
+  `[17]` `[realm,x,y]`, **`[25]` 1 = burning (walls down)**, **`[39]` true =
+  shield**), confirmed by the user against the map (Nov 2026). Members' state
+  goes to `game_players.shielded/burning/map_seen_at` with a
+  `game_city_status_history` row whenever it flips (v112); the profile, the
+  public card and the Members list show it.
 
 Once per game day: every member's city (601: research + talents into
 `game_player_techs`, with `game_player_tech_history` rows only on change;
 captains into `game_player_captains` (v108); buildings + hero into
-`game_city_snapshots`; ≤ 120 cities a cycle), and a gzipped raw copy of the
+`game_city_snapshots`; ≤ 120 cities a cycle, **20 per 601 request** — the game
+client itself asks for a clan's 19 objects in one — split back into
+single-city bodies by `splitCityReply`; a failed batch falls back to one
+request per city), and a gzipped raw copy of the
 clan record and each clan-owned object (record f5, Clan Capital) in
 `game_raw_snapshots` — kept raw so fields we have not mapped yet still have
 history. Each city reply is archived raw too (kind `city`, one per player per
@@ -196,6 +206,15 @@ bonuses (the city data only carries item instance ids).
 v103 also adds the columns the protocol scan will use: `chest_records` /
 `triumphal_chest_records.game_gift_id`, `resource_transactions.game_entry_id`
 (unique) and `game_claims`.
+
+## Request pacing
+
+No rate limit has ever been seen. Gaps between requests vary
+([`utils/request-gap.ts`](../src/utils/request-gap.ts)) instead of one fixed
+tick, and are short: 25–75 ms between chest claims (a player clicking Open
+manages under 100 ms), 30–90 ms between batched reads (cities, tiles, clan
+objects). Reads are batched the way the client batches them: 100 players per
+402, 20 cities per 601, 9 tiles per 312.
 
 ## Session check
 
@@ -268,8 +287,8 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 15000 | `[[[[clanId], 2147483647]]]` | clan record: `[0]` clan id, `[1]` tag/name/description, `[2]` members `[[id], role, joinedAt]`, `[3]` ~860 `[[id], ts, 0]` (departures), `[13]` gifts `[giftId, [senderId], giftType, expiresAt, count, tab]` |
 | 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[22]` `[1]` = Gold Pass |
 | 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
-| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
-| 312 | `[[[tileIds], [versions], [], []]]` | map objects per 20×20 tile; `tile = floor(y/20)*50 + floor(x/20)` |
+| 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` hero, `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
+| 312 | `[[[tileIds], [versions], [], []]]` | per 20×20 tile `[tileId, version, …, [4] cities, [5] objects]`; `tile = floor(y/20)*50 + floor(x/20)` |
 
 Gifts: lifetime 20 h (arrival = expiry − 72000 s). `tab` 1 = Gifts, 2 =
 Triumphal; `count` is chests in the entry (Bank bundles 3 or 30). Gift ids are

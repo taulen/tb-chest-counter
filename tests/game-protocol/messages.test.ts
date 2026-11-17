@@ -7,8 +7,10 @@ import {
   parseClaimRewards,
   parseClanRecord,
   parseLedger,
+  parseMapCities,
   parseMapObjects,
   parsePlayers,
+  splitCityReply,
   tileOf,
 } from '../../src/game-protocol/messages.js';
 import { buildLoginBody, classifySitePage, loginHumanArray, parseSitePage } from '../../src/game-protocol/client.js';
@@ -112,6 +114,42 @@ describe('game messages', () => {
     ]);
     expect(tileOf(549, 527)).toBe(26 * 50 + 27);
     expect(tileOf(0, 0)).toBe(0);
+  });
+
+  it('reads cities from map tiles (312 tile [4]): shield = field 39, burning = field 25', () => {
+    // A 43-field city record: [[cityId], [0], [owner], 2, [clan], …, level@13, avatar@14, [realm,x,y]@17, …
+    const city = (id: number, owner: number, burning: 0 | 1, shielded: boolean): Wire => {
+      const r: Wire[] = new Array(43).fill(0);
+      r[0] = [id]; r[1] = [0]; r[2] = [owner]; r[3] = 2; r[4] = [1297080123906];
+      r[13] = 44; r[14] = 9; r[17] = [260, 803, 165]; r[18] = [260, 803, 165];
+      r[25] = burning; r[39] = shielded; r[40] = 1790014008;
+      return r;
+    };
+    const tile: Wire = [440, 23014, { $bin: 12, hex: '00' }, 22367, [city(11, 101, 0, true), city(12, 102, 1, false)], []];
+    const cities = parseMapCities(frame(312, [[[tile], [], [], []]]));
+    expect(cities).toEqual([
+      { cityId: 11, ownerId: 101, clanId: 1297080123906, level: 44, position: [260, 803, 165], shielded: true, burning: false },
+      { cityId: 12, ownerId: 102, clanId: 1297080123906, level: 44, position: [260, 803, 165], shielded: false, burning: true },
+    ]);
+    // The vault parser never mistakes a city for a map object.
+    expect(parseMapObjects(frame(312, [[[tile], [], [], []]]))).toEqual([]);
+  });
+
+  it('cuts a several-city 601 reply into single-city bodies the city parser reads as before', () => {
+    const rec = (id: number): Wire[] => {
+      const r: Wire[] = new Array(36).fill(0);
+      r[0] = [id]; r[1] = [[700 + id]]; r[17] = { 1001: [1001, id] };
+      return r;
+    };
+    const parts = splitCityReply(frame(601, [[[rec(1), rec(2), rec(3)], []]]));
+    expect(parts.map((p) => p.cityId)).toEqual([1, 2, 3]);
+    for (const p of parts) {
+      const city = parseCityRecord(frame(601, p.body));
+      expect(city?.cityId).toBe(p.cityId);
+      expect(city?.techs).toEqual({ 1001: p.cityId });
+    }
+    // A single-city reply splits into itself.
+    expect(splitCityReply(frame(601, [[[rec(9)], []]])).map((p) => p.cityId)).toEqual([9]);
   });
 
   it('reads the tech map (research + talents) from city field 17 (601)', () => {

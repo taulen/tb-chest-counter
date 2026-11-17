@@ -5,8 +5,10 @@ exports.parseClanRecord = parseClanRecord;
 exports.parsePlayers = parsePlayers;
 exports.parseLedger = parseLedger;
 exports.parseClaimRewards = parseClaimRewards;
+exports.splitCityReply = splitCityReply;
 exports.parseCityRecord = parseCityRecord;
 exports.parseMapObjects = parseMapObjects;
+exports.parseMapCities = parseMapCities;
 exports.tileOf = tileOf;
 exports.parseCityTechs = parseCityTechs;
 const num = (v) => (typeof v === 'number' ? v : null);
@@ -122,6 +124,23 @@ function parseClaimRewards(frame) {
     return out;
 }
 /**
+ * A 601 reply for several cities (GameClient.cities) cut into one body per
+ * city, each in exactly the shape a single-city reply has (`[[[record], []]]`),
+ * so parseCityRecord and the raw archive treat them the same as before.
+ */
+function splitCityReply(frame) {
+    let root = frame.body;
+    while (Array.isArray(root) && root.length === 1)
+        root = root[0];
+    const out = [];
+    for (const rec of arr(arr(root)[0])) {
+        const cityId = id1(arr(rec)[0]);
+        if (cityId !== null)
+            out.push({ cityId, body: [[[rec], []]] });
+    }
+    return out;
+}
+/**
  * Message 601 for a player's city: [0] city id, [1][0] owner, [12] buildings
  * {slot: [slot, type, level, …]}, [17] techs, [26] hero {"1": [1, [heroId], xp,
  * level, …]}. Verified against Miana's and Kordobrek's cities (Nov 2026).
@@ -185,6 +204,36 @@ function parseMapObjects(frame) {
                 y: num(pos[2]),
                 ownerId: id1(v[9]),
                 expiresAt: num(v[10]),
+            });
+            return;
+        }
+        v.forEach(walk);
+    };
+    frame.body.forEach(walk);
+    return out;
+}
+/**
+ * Cities on the map tiles of a 312 reply: each tile's [4] lists the cities on
+ * it as 43-field records `[[cityId], [0], [ownerId], 2, [clanId], …,
+ * level@13, avatar@14, [realm,x,y]@17, …, burning@25 (1/0), …, shielded@39
+ * (true/false), …]`. Confirmed by the user against the map (Nov 2026): 54 of
+ * CWB's 68 cities shielded, field 25 = 1 the burning ones.
+ */
+function parseMapCities(frame) {
+    const out = [];
+    const walk = (v) => {
+        if (!Array.isArray(v))
+            return;
+        const pos = arr(v[17]);
+        if (v.length >= 40 && v[3] === 2 && id1(v[0]) !== null && Array.isArray(v[0]) && v[0].length === 1 && id1(v[2]) !== null && typeof v[39] === 'boolean') {
+            out.push({
+                cityId: id1(v[0]),
+                ownerId: id1(v[2]),
+                clanId: id1(v[4]),
+                level: num(v[13]),
+                position: pos.length === 3 && pos.every((p) => typeof p === 'number') ? pos : null,
+                shielded: v[39] === true,
+                burning: v[25] === 1,
             });
             return;
         }

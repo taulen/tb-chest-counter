@@ -10,7 +10,7 @@ import {
 } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import {
-  guardsCellHtml, guardsTitle, nameWithGoldPassHtml,
+  guardsCellHtml, guardsTitle, goldPassBadgeHtml,
 } from '../lib/guards-format.js';
 import {
   computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor, gameWeekStartOf,
@@ -110,14 +110,14 @@ export async function renderMembers(el) {
 }
 
 /**
- * memberId → { guards, goldPass }. Game data, fetched separately for the
+ * memberId → { guards, goldPass, shielded, burning }. Game data, fetched separately for the
  * same reason as might: a failure leaves the column out, never the roster.
  */
 async function fetchGuardsMap() {
   try {
     const res = await api('/guards/overview');
     const rows = Array.isArray(res?.rows) ? res.rows : [];
-    return new Map(rows.map((r) => [r.memberId, { guards: r.guards, goldPass: r.goldPass }]));
+    return new Map(rows.map((r) => [r.memberId, { guards: r.guards, goldPass: r.goldPass, shielded: r.shielded, burning: r.burning }]));
   } catch {
     return new Map();
   }
@@ -148,6 +148,29 @@ function formatMightDelta(delta) {
   return delta > 0
     ? { text: `+${abs}`, cls: 'progress-up', arrow: '▲' }
     : { text: `-${abs}`, cls: 'progress-down', arrow: '▼' };
+}
+
+/**
+ * What the map shows of a member's city, as marks after the name: 🔥 walls
+ * down (burning), 🛡 shield. Glyph + words (the words for screen readers and
+ * the tooltip), never colour alone. Nothing before the map was read.
+ */
+function cityStatusMarksHtml(g) {
+  const marks = [];
+  if (g?.burning === true) {
+    marks.push(`<span class="city-mark is-burning" title="${esc(t('Walls down: the city is burning on the map'))}"><span aria-hidden="true">🔥</span><span class="visually-hidden">${t('Burning')}</span></span>`);
+  }
+  if (g?.shielded === true) {
+    marks.push(`<span class="city-mark is-shielded" title="${esc(t('The city has a shield on the map'))}"><span aria-hidden="true">🛡</span><span class="visually-hidden">${t('Shielded')}</span></span>`);
+  }
+  return marks.join('');
+}
+
+/** The name, then the Gold Pass badge and the city marks; the NAME is what ellipsizes. */
+function memberNameHtml(m, g) {
+  const markers = goldPassBadgeHtml(g?.goldPass) + cityStatusMarksHtml(g);
+  const name = memberLink(m.id, m.name);
+  return markers ? `<span class="name-badged"><span class="name-badged-text">${name}</span>${markers}</span>` : name;
 }
 
 export function renderMembersTable(el) {
@@ -209,7 +232,7 @@ export function renderMembersTable(el) {
               const d = formatMightDelta(might?.delta);
               const g = cachedGuardsByMember.get(m.id);
               return `<tr>
-              <td data-label="${t('Name')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(memberLink(m.id, m.name), g?.goldPass)}</span></td>
+              <td data-label="${t('Name')}" data-role="primary"><span class="mrow-name">${memberNameHtml(m, g)}</span></td>
               ${showGuards ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(g?.guards)}</td>` : ''}
               ${showMight ? `
                 <td data-label="${t('Might')}" data-role="metric" class="num">${might?.might != null ? Number(might.might).toLocaleString('en-US') : '—'}</td>
