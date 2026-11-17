@@ -16,6 +16,7 @@ import { createPublicShareApiRouter, publicShareTokenHandler } from './routes/pu
 import { SETUP_MODE_ASSETS } from './setup-mode-assets.js';
 import { versionHtmlAssets } from './asset-versioning.js';
 import { createFrontendAssetRouter } from './frontend-assets.js';
+import { createGameArtRouter } from '../game-art/routes.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
 import { createGuardsRouter } from './routes/guards.js';
@@ -420,6 +421,10 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // one behind requireAuth: Cloudflare stores the redirect against the asset
   // URL whatever our headers say — see ./frontend-assets.ts for the outage.
   app.use(createFrontendAssetRouter(PUBLIC_DIR, path.resolve('assets')));
+
+  // Game art extracted from the game's own bundles: /game-art/<version>/<name>.png
+  // (public and immutable, like every static file) and /api/game-art (the index).
+  app.use(createGameArtRouter());
 
   // robots.txt — disallow the public-share API namespace. The /<token>
   // page itself is short-form and unenumerable, so it relies on the

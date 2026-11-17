@@ -19,6 +19,7 @@ import { needsSetup } from './setup-wizard.js';
 import { DEFAULT_CONFIG } from './config/defaults.js';
 import { clanStorageStatePath, clanBrowserProfileDir } from './config/clan-paths.js';
 import { BUILD_INFO } from './utils/build-info.js';
+import { startGameArtSchedule } from './game-art/store.js';
 
 /**
  * Two-line startup banner sized to fit whichever of the title /
@@ -113,6 +114,10 @@ async function main(): Promise<void> {
   // and the Discord bot, and no-ops if no share code is configured.
   const externalLoop = new MultiClanExternalLoop();
   externalLoop.start();
+
+  // Game art from the game's CDN: checked 30 s after startup, then daily.
+  // Non-blocking and never throws; a failed check keeps the served version.
+  startGameArtSchedule();
 
   if (dashboardOnly) {
     // Dashboard-only mode: no browser, no scanning. startWebServer

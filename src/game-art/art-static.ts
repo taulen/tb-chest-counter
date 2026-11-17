@@ -1,0 +1,206 @@
+/**
+ * The slice of the game's static data the art pipeline needs: which icon each
+ * hero avatar, unit, tech and item uses. A separate loader from
+ * game-protocol/static-data.ts (which keeps its own small names.json) so that
+ * module's exports and cache stay as they are; it reuses its parsers.
+ *
+ *   T8  items        f3 name vector, f6 visual JSON {"icon": "<72px icon>"}
+ *   T9  units        f1 name vector, f4 icon, f10 strength, f12 health
+ *   T13 hero avatars f1 name vector, f3 icon — a player's heroAvatar IS the T13 id
+ *   T21 techs        f1 name vector, f3 icon (research and hero talents)
+ *
+ * The raw files are ~67 MB and only held in memory; the result is cached as
+ * data/game-art/static-<version>.json, rebuilt once per game patch.
+ */
+import fs from 'fs';
+import path from 'path';
+import { WireReader, type Wire } from '../game-protocol/codec.js';
+import {
+  fetchStaticVersion,
+  readTables,
+  parseTranslationsCsv,
+  unzipFirst,
+  type StaticVersion,
+} from '../game-protocol/static-data.js';
+
+const STATIC_BASE = 'https://assets-client-static.totalbattle.dev/';
+const TRANSLATIONS_BASE = 'https://assets-translations.totalbattle.dev//';
+const ENGLISH = 'csv_en_US';
+const FETCH_TIMEOUT_MS = 120_000;
+
+export const TABLE_ITEMS = 8;
+export const TABLE_UNITS = 9;
+export const TABLE_HERO_AVATARS = 13;
+export const TABLE_TECHS = 21;
+
+export interface ArtUnit {
+  id: number;
+  name: string;
+  strength: number;
+  health: number;
+  icon: string;
+}
+
+export interface ArtItem {
+  id: number;
+  name: string;
+  icon: string;
+}
+
+export interface ArtStatic {
+  version: string;
+  /** T13 id (= a player's heroAvatar) → { name, icon }. */
+  heroes: Record<string, { name: string; icon: string }>;
+  units: ArtUnit[];
+  /** T21 id → { name, icon }. */
+  techs: Record<string, { name: string; icon: string }>;
+  items: ArtItem[];
+}
+
+async function fetchBuffer(url: string): Promise<Buffer> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`GET ${url} → HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+function readWrappedArray(buf: Buffer): Wire[] {
+  const r = new WireReader(buf);
+  if (r.arrayLength() !== 1) throw new Error('expected a wrapped array');
+  const n = r.arrayLength();
+  const out: Wire[] = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = r.value();
+  return out;
+}
+
+async function fetchEnglish(catalog: string): Promise<Map<string, string>> {
+  const index = JSON.parse((await fetchBuffer(TRANSLATIONS_BASE + catalog)).toString('utf8')) as {
+    files?: Array<{ name: string; fileName: string }>;
+  };
+  const entry = index.files?.find((f) => f.name === ENGLISH);
+  if (!entry) throw new Error(`translations index has no ${ENGLISH}`);
+  return parseTranslationsCsv(unzipFirst(await fetchBuffer(TRANSLATIONS_BASE + entry.fileName)).toString('utf8'));
+}
+
+/** Pure: pools + tables + English → the icon slice. Unit-tested with synthetic tables. */
+export function buildArtStatic(
+  version: string,
+  strings: Wire[],
+  vectors: Wire[],
+  tables: Map<number, Record<string, Wire>>,
+  en: Map<string, string>,
+): ArtStatic {
+  const str = (ref: Wire): string | undefined => (typeof ref === 'number' && typeof strings[ref] === 'string' ? (strings[ref] as string) : undefined);
+  const name = (vref: Wire): string => {
+    const v = typeof vref === 'number' ? vectors[vref] : undefined;
+    if (!Array.isArray(v) || !v.length) return '';
+    const key = str(v[0]);
+    const text = key === undefined ? '' : (en.get(key) ?? '');
+    return text.replace(/\s+/g, ' ').trim();
+  };
+  const rows = (t: number): Array<[number, Wire[]]> =>
+    Object.entries(tables.get(t) ?? {})
+      .filter((e): e is [string, Wire[]] => Array.isArray(e[1]))
+      .map(([id, row]) => [Number(id), row] as [number, Wire[]])
+      .sort((a, b) => a[0] - b[0]);
+  const num = (v: Wire): number => (typeof v === 'number' ? v : 0);
+
+  const heroes: ArtStatic['heroes'] = {};
+  for (const [id, row] of rows(TABLE_HERO_AVATARS)) {
+    const icon = str(row[3]);
+    if (icon) heroes[id] = { name: name(row[1]), icon };
+  }
+  const units: ArtUnit[] = [];
+  for (const [id, row] of rows(TABLE_UNITS)) {
+    const icon = str(row[4]);
+    const n = name(row[1]);
+    if (icon && n) units.push({ id, name: n, strength: num(row[10]), health: num(row[12]), icon });
+  }
+  const techs: ArtStatic['techs'] = {};
+  for (const [id, row] of rows(TABLE_TECHS)) {
+    const icon = str(row[3]);
+    if (icon) techs[id] = { name: name(row[1]), icon };
+  }
+  const items: ArtItem[] = [];
+  for (const [id, row] of rows(TABLE_ITEMS)) {
+    const visual = str(row[6]);
+    if (!visual || !visual.startsWith('{')) continue;
+    let icon: unknown;
+    try {
+      icon = (JSON.parse(visual) as { icon?: unknown }).icon;
+    } catch {
+      continue;
+    }
+    const n = name(row[3]);
+    if (typeof icon === 'string' && icon && n) items.push({ id, name: n, icon });
+  }
+  return { version, heroes, units, techs, items };
+}
+
+export function staticKey(v: StaticVersion): string {
+  return `${v.composite.slice(0, 16)}-${v.translationsCatalog.replace(/\.json$/, '')}`;
+}
+
+function cacheFile(dir: string, key: string): string {
+  return path.join(dir, `static-${key}.json`);
+}
+
+/**
+ * The icon slice for the live static data: from the on-disk cache, else
+ * rebuilt from the CDN. Falls back to the newest cache when the versions
+ * endpoint is unreachable. Keeps the two newest cache files.
+ */
+export async function loadArtStatic(dir: string): Promise<ArtStatic> {
+  let version: StaticVersion;
+  try {
+    version = await fetchStaticVersion();
+  } catch (err) {
+    const cached = newestCache(dir);
+    if (cached) return cached;
+    throw err;
+  }
+  const key = staticKey(version);
+  const file = cacheFile(dir, key);
+  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')) as ArtStatic;
+  const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
+    fetchBuffer(STATIC_BASE + version.files.strings),
+    fetchBuffer(STATIC_BASE + version.files.vectors),
+    fetchBuffer(STATIC_BASE + version.files.noDuplicates),
+    fetchEnglish(version.translationsCatalog),
+  ]);
+  const data = buildArtStatic(
+    key,
+    readWrappedArray(stringsBuf),
+    readWrappedArray(vectorsBuf),
+    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS]),
+    en,
+  );
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.renameSync(tmp, file);
+  pruneCaches(dir, 2);
+  return data;
+}
+
+function cacheFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => /^static-.+\.json$/.test(f))
+    .map((f) => path.join(dir, f))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+}
+
+function newestCache(dir: string): ArtStatic | null {
+  const f = cacheFiles(dir)[0];
+  return f ? (JSON.parse(fs.readFileSync(f, 'utf8')) as ArtStatic) : null;
+}
+
+function pruneCaches(dir: string, keep: number): void {
+  for (const f of cacheFiles(dir).slice(keep)) {
+    try {
+      fs.unlinkSync(f);
+    } catch {
+      // another process may have removed it; nothing to do
+    }
+  }
+}

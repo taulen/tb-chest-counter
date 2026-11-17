@@ -21,6 +21,7 @@ const public_share_js_1 = require("./routes/public-share.js");
 const setup_mode_assets_js_1 = require("./setup-mode-assets.js");
 const asset_versioning_js_1 = require("./asset-versioning.js");
 const frontend_assets_js_1 = require("./frontend-assets.js");
+const routes_js_1 = require("../game-art/routes.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
 const guards_js_1 = require("./routes/guards.js");
@@ -387,6 +388,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // one behind requireAuth: Cloudflare stores the redirect against the asset
     // URL whatever our headers say — see ./frontend-assets.ts for the outage.
     app.use((0, frontend_assets_js_1.createFrontendAssetRouter)(PUBLIC_DIR, path_1.default.resolve('assets')));
+    // Game art extracted from the game's own bundles: /game-art/<version>/<name>.png
+    // (public and immutable, like every static file) and /api/game-art (the index).
+    app.use((0, routes_js_1.createGameArtRouter)());
     // robots.txt — disallow the public-share API namespace. The /<token>
     // page itself is short-form and unenumerable, so it relies on the
     // X-Robots-Tag header set by publicShareTokenHandler instead of a

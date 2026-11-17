@@ -16,6 +16,7 @@ const setup_wizard_js_1 = require("./setup-wizard.js");
 const defaults_js_1 = require("./config/defaults.js");
 const clan_paths_js_1 = require("./config/clan-paths.js");
 const build_info_js_1 = require("./utils/build-info.js");
+const store_js_1 = require("./game-art/store.js");
 /**
  * Two-line startup banner sized to fit whichever of the title /
  * build-info subtitle is wider. The subtitle pulls from BUILD_INFO so
@@ -99,6 +100,9 @@ async function main() {
     // and the Discord bot, and no-ops if no share code is configured.
     const externalLoop = new external_loop_js_1.MultiClanExternalLoop();
     externalLoop.start();
+    // Game art from the game's CDN: checked 30 s after startup, then daily.
+    // Non-blocking and never throws; a failed check keeps the served version.
+    (0, store_js_1.startGameArtSchedule)();
     if (dashboardOnly) {
         // Dashboard-only mode: no browser, no scanning. startWebServer
         // already logs "Web dashboard running at http://localhost:..." so
