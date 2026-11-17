@@ -2,8 +2,8 @@
  * The rows a member's timeline is built from (data/member-timeline.ts), all
  * already kept by other features: the player record's history, the site's
  * audit log, research / captain / artifact / equipment history, troop tier
- * changes, the city's shield / burning history, the daily might and the
- * dragon of each daily city snapshot — and the clan's joins & leaves
+ * changes, the city's shield / burning history, the daily might, the
+ * dragon of each daily city snapshot, the player's title grants (v125) — and the clan's joins & leaves
  * (roster-changes-repo.ts), this member's part of them. Every read is
  * clan-scoped; a member without a linked game player gets only the site's own
  * entries (renames, merges, left / restored) and the might.
@@ -15,7 +15,7 @@ import { getMemberTiers } from '../member-tiers.js';
 import { buildRosterChanges } from '../roster-changes.js';
 import { loadRosterSources } from './roster-changes-repo.js';
 import { loadConfig } from '../../config/index.js';
-import type { TimelineSources, PlayerHistoryRow } from '../member-timeline.js';
+import { isScreenshotSpelling, type KnownNames, type TimelineSources, type PlayerHistoryRow } from '../member-timeline.js';
 
 const ALL_TIME = '0000';
 const NO_LIMIT = 1_000_000;
@@ -50,6 +50,14 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
       (r.action === 'merge_player' && typeof d.to === 'string' && names.includes(d.to) && (d.clanId === undefined || Number(d.clanId) === clanId));
     if (forMember) audit.push({ at: r.at, action: r.action, details: d });
   }
+  // Which merged-in names are screenshot-era spellings (isScreenshotSpelling).
+  const mergedFrom = [...new Set(audit.flatMap((a) => (a.action === 'merge_player' && typeof a.details.from === 'string' ? [a.details.from] : [])))];
+  if (mergedFrom.length) {
+    const known = knownNames(mergedFrom);
+    for (const a of audit) {
+      if (a.action === 'merge_player' && typeof a.details.from === 'string') a.screenshotSpelling = isScreenshotSpelling(a.details.from, known);
+    }
+  }
 
   const mightDays = db.prepare(
     `SELECT game_date AS day, captured_at AS at, power AS might FROM member_snapshots
@@ -58,10 +66,16 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
 
   if (playerId === null) {
     return {
-      moves, playerHistory: [], audit, techChanges: [], tierChanges: [], captainChanges: [],
+      moves, playerHistory: [], audit, titles: [], techChanges: [], tierChanges: [], captainChanges: [],
       artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays, dragonDays: [],
     };
   }
+
+  // Every grant of every title (a title received again is a row of its own).
+  const titles = db.prepare(
+    `SELECT title_id AS titleId, assigned_at AS assignedAt, first_seen AS firstSeen, gone_at AS goneAt
+       FROM game_player_titles WHERE clan_id = ? AND player_id = ? ORDER BY assigned_at, title_id`,
+  ).all(clanId, playerId) as TimelineSources['titles'];
 
   const playerHistory = db.prepare(
     `SELECT captured_at AS at, name, hero_level AS heroLevel, city_level AS cityLevel, vip, gold_pass AS goldPass,
@@ -112,6 +126,7 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
     moves,
     playerHistory,
     audit,
+    titles,
     techChanges,
     tierChanges,
     captainChanges: getPlayerCaptainChanges(clanId, playerId, ALL_TIME, NO_LIMIT),
@@ -121,4 +136,34 @@ export function loadTimelineSources(clanId: number, memberId: number, playerId: 
     mightDays,
     dragonDays,
   };
+}
+
+/**
+ * Of `names`, the ones the game reported for any player (any clan, now or in
+ * the player history), plus every name a person typed in a manual rename —
+ * what isScreenshotSpelling checks a merged-in name against.
+ */
+export function knownNames(names: string[]): KnownNames {
+  const db = getDb();
+  const gameNames = new Set<string>();
+  // Chunked: a bound list stays far below SQLite's variable limit.
+  for (let i = 0; i < names.length; i += 400) {
+    const part = names.slice(i, i + 400);
+    const ph = part.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT name FROM game_players WHERE name IN (${ph})
+       UNION SELECT name FROM game_player_history WHERE name IN (${ph})`,
+    ).all(...part, ...part) as Array<{ name: string }>;
+    for (const r of rows) gameNames.add(r.name);
+  }
+  const typedNames = new Set<string>();
+  const renames = db.prepare(`SELECT details FROM audit_log WHERE action = 'rename_member'`).all() as Array<{ details: string | null }>;
+  for (const r of renames) {
+    try {
+      const d = r.details ? JSON.parse(r.details) as Record<string, unknown> : {};
+      // The sync's own renames carry source "game": those are the game's names.
+      if (!d.source && typeof d.newName === 'string') typedNames.add(d.newName);
+    } catch { /* unreadable row: not a typed name */ }
+  }
+  return { gameNames, typedNames };
 }

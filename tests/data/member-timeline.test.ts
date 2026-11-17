@@ -5,8 +5,22 @@
  * paging is by cursor, so entries added at the top never shift older pages.
  */
 import { describe, expect, it } from 'vitest';
-import { buildTimeline, pageTimeline, timelineCursor, type TimelineLookups, type TimelineSources } from '../../src/data/member-timeline.js';
+import {
+  buildTimeline, isScreenshotSpelling, pageTimeline, timelineCursor,
+  type TimelineLookups, type TimelineSources, type TimelineTitleInfo,
+} from '../../src/data/member-timeline.js';
 import { buildRosterChanges, type RosterMember, type RosterSources } from '../../src/data/roster-changes.js';
+
+const PREMIUM = 'Can be obtained by activating Premium.';
+/** T29 as prod's names.json has it (Nov 2026), the ids these tests use. */
+const TITLES: Record<number, Omit<TimelineTitleInfo, 'iconUrl'>> = {
+  29: { name: 'Prefect', seconds: 604_800, source: 'Received from the Loyalty Bonus' },
+  137: { name: 'Healer', seconds: 604_800, source: 'Can be obtained from the Blessing of the Gods tournament.' },
+  160: { name: 'Great Archaeologist', seconds: 0, source: PREMIUM },
+  161: { name: 'Great Marshal', seconds: 0, source: PREMIUM },
+  162: { name: 'Great Ruler', seconds: 0, source: PREMIUM },
+  2: { name: 'Senator', seconds: 0, source: 'Can be obtained from the Clash for the Throne tournament.' },
+};
 
 const look: TimelineLookups = {
   techName: (id) => `Tech ${id}`,
@@ -21,10 +35,11 @@ const look: TimelineLookups = {
   heroName: (id) => `Hero ${id}`,
   heroAvatarUrl: () => null,
   dragonIconUrl: (stage) => (stage === null ? null : `/art/icon_red_dragon_${stage}.png`),
+  title: (id) => ({ ...(TITLES[id] ?? { name: `#${id}`, seconds: 0, source: '' }), iconUrl: `/art/title_${id}.png` }),
 };
 
 const empty = (): TimelineSources => ({
-  moves: [], playerHistory: [], audit: [], techChanges: [], tierChanges: [], captainChanges: [],
+  moves: [], playerHistory: [], audit: [], titles: [], techChanges: [], tierChanges: [], captainChanges: [],
   artifactChanges: [], equipmentChanges: [], cityStatus: [], mightDays: [], dragonDays: [],
 });
 
@@ -187,5 +202,134 @@ describe('member timeline', () => {
     // Groups: every entry here is the city's; none is the clan's.
     expect(pageTimeline(later, { groups: new Set(['clan']), limit: 10 }).entries).toEqual([]);
     expect(pageTimeline(later, { groups: new Set(['city']), limit: 100 }).total).toBe(10);
+  });
+});
+
+const unix = (iso: string) => Date.parse(iso) / 1000;
+const grant = (titleId: number, assigned: string, firstSeen: string, goneAt: string | null = null) =>
+  ({ titleId, assignedAt: unix(assigned), firstSeen, goneAt });
+type Item = { titleId: number; name: string; change: string; at: string; iconUrl: string | null };
+const titleDays = (src: TimelineSources, nowIso: string) =>
+  buildTimeline(src, look, 17, Date.parse(nowIso)).filter((e) => e.kind === 'titles').reverse()
+    .map((e) => [e.day, (e.items as Item[]).map((i) => `${i.name} ${i.change} ${i.at.slice(5, 16)}`)]);
+
+describe('member timeline: titles', () => {
+  it('says when a timed title was received (the game\'s own time), received again, ran out or was taken; a running one has no end', () => {
+    const src = empty();
+    src.titles = [
+      // Prefect: ran out after its 7 days, the next claimed 20 minutes later.
+      grant(29, '2026-11-01T10:00:00Z', '2026-11-02T04:00:00Z', '2026-11-08T10:34:00Z'),
+      grant(29, '2026-11-08T10:20:00Z', '2026-11-08T10:34:00Z'),
+      // Healer won again before the first ran out: "again", no end in between.
+      grant(137, '2026-11-10T00:30:00Z', '2026-11-10T01:00:00Z', '2026-11-11T20:34:00Z'),
+      grant(137, '2026-11-11T20:00:00Z', '2026-11-11T20:34:00Z'),
+      // A Healer gone well before its end: taken, dated by the read without it.
+      grant(137, '2026-10-01T00:30:00Z', '2026-10-01T01:00:00Z', '2026-10-03T08:00:00Z'),
+      // Read a few minutes early by our clock: still "ran out" at the game's end.
+      grant(29, '2026-10-20T10:00:00Z', '2026-10-20T11:00:00Z', '2026-10-27T09:58:00Z'),
+    ];
+    expect(titleDays(src, '2026-11-12T12:00:00Z')).toEqual([
+      ['2026-09-30', ['Healer received 10-01T00:30']],
+      ['2026-10-02', ['Healer gone 10-03T08:00']],
+      ['2026-10-19', ['Prefect received 10-20T10:00']],
+      ['2026-10-26', ['Prefect ran_out 10-27T10:00']],
+      ['2026-10-31', ['Prefect received 11-01T10:00']],
+      // One game day: the old one ran out, the new one came — one entry.
+      ['2026-11-07', ['Prefect ran_out 11-08T10:00', 'Prefect received 11-08T10:20']],
+      ['2026-11-09', ['Healer received 11-10T00:30']],
+      ['2026-11-11', ['Healer again 11-11T20:00']],
+      // Prefect (ends 11-15) and the second Healer (11-18) still run: no end.
+    ]);
+    const t = buildTimeline(src, look, 17, Date.parse('2026-11-12T12:00:00Z'));
+    const day = t.find((e) => e.kind === 'titles' && e.day === '2026-11-07')!;
+    expect(day).toMatchObject({ group: 'titles', at: '2026-11-08T10:20:00.000Z' });
+    expect((day.items as Item[])[1]).toMatchObject({ titleId: 29, iconUrl: '/art/title_29.png' });
+    // Later, both have run out.
+    expect(titleDays(src, '2026-11-20T00:00:00Z').slice(-2)).toEqual([
+      ['2026-11-14', ['Prefect ran_out 11-15T10:20']],
+      ['2026-11-18', ['Healer ran_out 11-18T20:00']],
+    ]);
+  });
+
+  it('counts Premium\'s three as one holding by the reads: re-grants and switches are not news, the end is the first read with none', () => {
+    const src = empty();
+    // Prod, Nov 17 2026: the game re-grants and swaps these every hour or two.
+    src.titles = [
+      grant(162, '2026-11-17T15:16:41Z', '2026-11-17T16:19:04Z', '2026-11-17T18:34:28Z'),
+      grant(161, '2026-11-17T18:10:31Z', '2026-11-17T18:34:28Z', '2026-11-17T19:34:53Z'),
+      grant(162, '2026-11-17T19:25:10Z', '2026-11-17T19:34:39Z', '2026-11-17T20:34:56Z'),
+      grant(162, '2026-11-17T20:27:22Z', '2026-11-17T20:34:56Z'),
+    ];
+    expect(titleDays(src, '2026-11-17T21:00:00Z')).toEqual([['2026-11-16', ['Great Ruler received 11-17T15:16']]]);
+
+    // Premium lapsed: gone at the first read with none of the three, named by the last held.
+    src.titles[3].goneAt = '2026-11-18T09:00:00Z';
+    // A Premium title back after a read without any: a new holding.
+    src.titles.push(grant(160, '2026-11-18T09:30:00Z', '2026-11-18T10:00:00Z'));
+    // A title of another source is its own holding (Senator, no set end).
+    src.titles.push(grant(2, '2026-11-05T12:00:00Z', '2026-11-17T16:19:04Z', '2026-11-18T09:00:00Z'));
+    expect(titleDays(src, '2026-11-18T12:00:00Z')).toEqual([
+      ['2026-11-04', ['Senator received 11-05T12:00']],
+      ['2026-11-16', ['Great Ruler received 11-17T15:16']],
+      ['2026-11-17', ['Great Ruler gone 11-18T09:00', 'Senator gone 11-18T09:00', 'Great Archaeologist received 11-18T09:30']],
+    ]);
+  });
+});
+
+describe('member timeline: screenshot-era spellings', () => {
+  const known = { gameNames: new Set(['Нимдуен', 'FELI']), typedNames: new Set(['Tigger K260 SK']) };
+
+  it('calls a merged-in name a screenshot-era spelling only when neither the game nor a person ever gave it', () => {
+    expect(isScreenshotSpelling('lg 5 5S pw', known)).toBe(true);
+    expect(isScreenshotSpelling('Mκam from Chaos', known)).toBe(true);
+    // The game's own spelling folded into the site's member: a real merge.
+    expect(isScreenshotSpelling('Нимдуен', known)).toBe(false);
+    // An admin's manual rename is a person's name, never the reader's.
+    expect(isScreenshotSpelling('Tigger K260 SK', known)).toBe(false);
+    // Exact: the reader's lower-case "Feli" is not the game's "FELI".
+    expect(isScreenshotSpelling('Feli', known)).toBe(true);
+  });
+
+  it('tags those merges and folds each run of them (nothing else between) into one entry, every spelling kept with its dates', () => {
+    const src = empty();
+    const merge = (at: string, from: string) => ({
+      at, action: 'merge_player', details: { from, to: 'أوزيريس', clanId: 1 }, screenshotSpelling: isScreenshotSpelling(from, known),
+    });
+    src.audit = [
+      merge('2026-04-28T16:42:02.908Z', 'lg 5 5S pw'),
+      merge('2026-04-29T03:27:04.071Z', 'lo;u8 Sw'),
+      merge('2026-04-29T03:27:14.452Z', 'lg'),
+      // The game's own spelling: a real merge, and it splits the runs.
+      merge('2026-04-29T03:27:22.079Z', 'Нимдуен'),
+      merge('2026-04-30T08:05:34.470Z', 'lg'),
+      merge('2026-05-01T11:10:58.131Z', 'lg 5'),
+      merge('2026-05-02T09:27:00.000Z', 'lg'),
+    ];
+    // A big might move between two merges splits a run too.
+    src.mightDays = [
+      { day: '2026-05-03', at: '2026-05-03T20:00:00.000Z', might: 100 },
+      { day: '2026-05-04', at: '2026-05-04T20:00:00.000Z', might: 150 },
+    ];
+    src.audit.push(merge('2026-05-09T18:31:00.000Z', 'lo 388 uw'));
+    const t = buildTimeline(src, look, 17);
+    expect(t.map((e) => [e.kind, e.day, e.ocr, e.kind === 'merged' ? e.items ?? e.from : null])).toEqual([
+      // A run of one: still the folded shape, the page shows it as one line.
+      ['merged', '2026-05-09', true, [{ name: 'lo 388 uw', ats: ['2026-05-09T18:31:00.000Z'] }]],
+      ['might', '2026-05-04', undefined, null],
+      ['merged', '2026-05-01', true, [
+        { name: 'lg', ats: ['2026-04-30T08:05:34.470Z', '2026-05-02T09:27:00.000Z'] },
+        { name: 'lg 5', ats: ['2026-05-01T11:10:58.131Z'] },
+      ]],
+      ['merged', '2026-04-28', false, 'Нимдуен'],
+      ['merged', '2026-04-28', true, [
+        { name: 'lg 5 5S pw', ats: ['2026-04-28T16:42:02.908Z'] },
+        { name: 'lo;u8 Sw', ats: ['2026-04-29T03:27:04.071Z'] },
+        { name: 'lg', ats: ['2026-04-29T03:27:14.452Z'] },
+      ]],
+    ]);
+    expect(t.filter((e) => e.kind === 'merged').every((e) => e.group === 'clan')).toBe(true);
+    // Dated by the run's newest merge; keyed by its oldest, so keys stay unique.
+    expect(t[2]).toMatchObject({ at: '2026-05-02T09:27:00.000Z', key: 'merged:ocr:2026-04-30T08:05:34.470Z' });
+    expect(new Set(t.map((e) => e.key)).size).toBe(t.length);
   });
 });
