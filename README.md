@@ -70,6 +70,11 @@ runs in one container.
 - **Discord bot** — per-clan `/leaderboard`, `/me` and `/status` commands, scan
   reports, and daily and weekly digests, optionally DM'd to chosen members as
   text ready to paste into in-game chat.
+- **In-game chat digest** (opt-in per clan) — the clan's scanner account posts
+  the daily "Daily Digest — Our top 20 crypters" message straight into a group
+  chat the admins pick: at most one message a day, never split, never into the
+  clan chat, kingdom chat or a private chat; `CHAT_SEND_DISABLED=1` switches all
+  sending off. See [docs/chat-digest.md](docs/chat-digest.md).
 - **ChestTracker integration** — optionally ingest snapshots from
   chesttracker.com per clan.
 - **Safe to administer** — deleting a clan hides it rather than destroying it

@@ -70,6 +70,10 @@ services:
       # per-pixel work. 960x600 is ~45% fewer pixels than the 1280x800 default
       # and renders correspondingly faster, at the cost of a softer picture.
       - LOGIN_BRIDGE_VIEWPORT=${LOGIN_BRIDGE_VIEWPORT:-1280x800}
+      # Kill switch for every message the app posts into the game's chat (the
+      # opt-in daily digest, Clans → In-game chat digest). 1 = nothing is ever
+      # sent; reading chat is unaffected. See docs/chat-digest.md.
+      - CHAT_SEND_DISABLED=${CHAT_SEND_DISABLED:-0}
     ports:
       - "${HOST_WEB_PORT:-3010}:3000"
     # iGPU passthrough for the login bridge's GPU rendering. Requires /dev/dri

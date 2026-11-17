@@ -77,7 +77,10 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'audit_log.clan_id',
     // In-game chat (v104).
     'chat_channels.clan_id',
+    'chat_digest_posts.clan_id',
+    'chat_digest_settings.clan_id',
     'chat_messages.clan_id',
+    'chat_post_channels.clan_id',
     'clan_goal_history.clan_id',
     'discord_member_links.clan_id',
     // Game protocol capture (v102, v103).
@@ -340,6 +343,15 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO chat_channels (clan_id, channel_url, custom_type, first_seen, last_seen) VALUES (?, 'triumph_clan_channel_1', 'clanGroup', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO chat_digest_settings (clan_id, enabled, channel_name, updated_at) VALUES (?, 1, 'CWB • Carter', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO chat_post_channels (clan_id, channel_url, custom_type, name, seen_at) VALUES (?, 'sendbird_group_channel_1', 'publicGroup', 'CWB • Carter', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO chat_digest_posts (clan_id, game_date, sent_game_date, channel_url, status, text, created_at, updated_at) VALUES (?, '2026-11-15', '2026-11-16', 'sendbird_group_channel_1', 'sent', 'x', ?, ?)`,
   ).run(clanId, now, now);
   db.prepare(
     `INSERT INTO game_player_captains (clan_id, player_id, captain_id, level, stars, xp, slot, first_seen, last_seen) VALUES (?, 1, 28, 164, 4, 198223137312, 2, ?, ?)`,

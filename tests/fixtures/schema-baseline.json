@@ -6,6 +6,11 @@
   },
   {
     "type": "index",
+    "name": "idx_chat_digest_posts_sent_day",
+    "sql": "CREATE INDEX idx_chat_digest_posts_sent_day ON chat_digest_posts (clan_id, sent_game_date)"
+  },
+  {
+    "type": "index",
     "name": "idx_chat_messages_sender",
     "sql": "CREATE INDEX idx_chat_messages_sender ON chat_messages (clan_id, sender_player_id, created_at)"
   },
@@ -401,6 +406,16 @@
   },
   {
     "type": "table",
+    "name": "chat_digest_posts",
+    "sql": "CREATE TABLE chat_digest_posts ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), game_date TEXT NOT NULL, sent_game_date TEXT NOT NULL, channel_url TEXT NOT NULL, channel_name TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, message_id INTEGER, text TEXT NOT NULL, error TEXT, trigger TEXT NOT NULL DEFAULT 'scheduled', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (clan_id, game_date) )"
+  },
+  {
+    "type": "table",
+    "name": "chat_digest_settings",
+    "sql": "CREATE TABLE chat_digest_settings ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), enabled INTEGER NOT NULL DEFAULT 0, channel_url TEXT, channel_name TEXT NOT NULL DEFAULT '', entries INTEGER NOT NULL DEFAULT 20, post_utc_minute INTEGER NOT NULL DEFAULT 1050, test_requested_at TEXT, test_requested_by INTEGER, poster_user_id TEXT, poster_name TEXT, channels_checked_at TEXT, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
     "name": "chat_messages",
     "sql": "CREATE TABLE chat_messages ( id INTEGER PRIMARY KEY, clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, message_id INTEGER NOT NULL, created_at INTEGER NOT NULL, custom_type TEXT NOT NULL DEFAULT '', sender_id TEXT NOT NULL DEFAULT '', sender_name TEXT NOT NULL DEFAULT '', sender_info TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '', captured_at TEXT NOT NULL, sender_player_id INTEGER, search_text TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0, previous_message TEXT, translations TEXT NOT NULL DEFAULT '', UNIQUE (clan_id, channel_url, message_id) )"
   },
@@ -428,6 +443,11 @@
     "type": "table",
     "name": "chat_messages_fts_idx",
     "sql": "CREATE TABLE 'chat_messages_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+    "type": "table",
+    "name": "chat_post_channels",
+    "sql": "CREATE TABLE chat_post_channels ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, custom_type TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', member_count INTEGER NOT NULL DEFAULT 0, seen_at TEXT NOT NULL, PRIMARY KEY (clan_id, channel_url) )"
   },
   {
     "type": "table",

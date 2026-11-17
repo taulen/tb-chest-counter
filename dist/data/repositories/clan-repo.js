@@ -577,6 +577,10 @@ function deleteClan(id) {
         db.prepare('DELETE FROM game_player_equipment_history WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_player_captain_equipment WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_parse_markers WHERE clan_id = ?').run(id);
+        // In-game chat digest (v115).
+        db.prepare('DELETE FROM chat_digest_posts WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM chat_post_channels WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM chat_digest_settings WHERE clan_id = ?').run(id);
         // In-game chat (v104).
         db.prepare('DELETE FROM chat_messages WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM chat_channels WHERE clan_id = ?').run(id);
