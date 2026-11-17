@@ -24,6 +24,7 @@ exports.parseEventList = parseEventList;
 exports.isEventRunning = isEventRunning;
 exports.parseEventStandings = parseEventStandings;
 exports.parseEventProgress = parseEventProgress;
+const titles_js_1 = require("./titles.js");
 const num = (v) => (typeof v === 'number' ? v : null);
 const id1 = (v) => (Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null);
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -244,6 +245,8 @@ function parsePlayers(frame) {
                 goldIngots: num(v[17]),
                 avatarFrame: num(v[6]),
                 cityAppearance: num(v[5]),
+                titles: (0, titles_js_1.parsePlayerTitles)(v[19]),
+                titleCounts: (0, titles_js_1.parseTitleCounts)(v[20]),
             });
             return;
         }
@@ -380,6 +383,7 @@ function parseCityRecord(frame) {
             presetId: num(e[9]) ?? 0,
             raw: [num(e[3]), num(e[4]), num(e[5]), num(e[6])],
         })),
+        titles: (0, titles_js_1.parseCityTitles)(r[21]),
     };
 }
 /** Message 312 (map tiles): `[[id], type, …, level@5, …, [realm,x,y]@8, [owner]@9, expiresAt@10, …]`. */

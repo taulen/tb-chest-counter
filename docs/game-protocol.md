@@ -190,7 +190,9 @@ Image sprite references), which is where the geometry below comes from:
   letter tile, a missing frame the bare icon.
 captain portraits from T75, artifact icons from T110's config (`artifacts`),
 equipment icons from T11 f2 (`equipment`) and gem / enchantment icons from T8
-(`inserts`), and the Ancient planner's pictures (`ancients`,
+(`inserts`), titles' round icons (`titles`, T29 smallIcon — sprites of the
+`icons_title_small` atlas) and 72 px pictures (`titleArt`, mobileIcon;
+selection 11), and the Ancient planner's pictures (`ancients`,
 `EVENT_ART` in [selection.ts](../src/game-art/selection.ts)).
 
 **Chest art across the site** (by chest name, `mappings.chests`; ~99% of
@@ -658,6 +660,70 @@ dragon read is a gap; a stage first seen on an old read is the stage's baseline.
 The chat-level import that used to supply the Dragon level is retired
 ([member-levels.md](member-levels.md)).
 
+### Titles (v125, profile header)
+
+The small round icons the game (and tbclanportal) shows beside a player —
+"Prefect" from the Loyalty Bonus, tournament titles like "Blademaster",
+Premium's "Great Marshal" — are **titles**. Nothing new is requested: two
+replies the scan already reads carry the same entries
+([titles.ts](../src/game-protocol/titles.ts); the client metadata names both
+shapes — `UserShortInfo.Titles` / `TitleHistory`, `AtomClientDyn.Titles` /
+`AtomTitleDyn`):
+
+| Where | Field | Holds |
+|---|---|---|
+| player record (402), every scan | `[19]` | `[[titleId, assignedAt], …]` — the titles held now (`[]` = none) |
+| | `[20]` | `[[titleId, count], …]` — how many times each title was ever received, held or not (`UserTitlePair`) |
+| city (601), daily + archive | `[21]` | `{titleId: [titleId, eventId, assignedAt]}` — the same titles; `eventId` 51–54 on the normal realm, 0 in SK7, not decoded further |
+
+`assignedAt` is when the player received it (unix s); it ends at `assignedAt` +
+the title's `timeActive` (T29 f7) — Prefect 7 days, tournament titles 7–30,
+the preseason's 89; 0 = no set end (the kingdom's palace titles, Premium's
+three, which the game re-grants every few hours with a new `assignedAt`).
+**The server drops a title once it runs out**: none of prod's 517 archived
+city replies (Nov 16–17 2026) held an expired one, and 757 player records read
+the same set as the city reply of the same player (the 368 that differed were
+read hours apart: a Premium title had been re-granted).
+
+**T29 (Titles, `TitleStatic`)**, 244 rows: f1 name vector, f2 the bonus text
+(the game's own `\n` between lines: "+50% to Valor, Conquest, and Experience
+point gain.\nThe title is active for 7 days after being acquired."), f3 visual
+JSON (`smallIcon` — the round 28 px icon, a sprite of the `icons_title_small`
+atlas — `bigIcon`, `mobileIcon` / `rewardIcon` 72 px), f4 effect, f5 hidden in
+the palace, f6 max owners, f7 `timeActive` (s), f8 unassignable on voting, f9
+client config JSON (`hideInTitlesHistory`, `hideInBoostersWhenInactive`,
+`palaceSortIndex`), f10 main tournament title, f11 palace cooldown, f12 source
+vector ("Received from the Loyalty Bonus", "Can be obtained from the Wargames
+tournament."), f13 blocked by, f14 city visual. Id 29 is the Loyalty Bonus's
+Prefect (604,800 s); id 28 an older "Prefect". `names.titles` (NAMES_FORMAT 11,
+`buildTitles`) keeps name, bonus text, source, seconds and both icon names;
+rows without English text (test rows) are left out.
+
+Stored: `game_player_titles` — one row per **grant** `(title, assigned_at)`
+(a title received again is a new row, so the table is the history), with
+`first_seen` / `last_seen` and `gone_at`, the first read without it (it ran out
+or was taken); `event_id` from the city reply. `game_player_title_counts` keeps
+field 20's lifetime counts. `saveTitles` is replayable in any order: a read
+older than a grant's last sighting, or from before it was received, never marks
+it gone; first_seen only widens; a sighting after `gone_at` clears it. The
+player record writes every scan (`savePlayers`), the daily city read adds the
+event id, and the `titles` city parser (`CITY_PARSERS`, v1) replays the
+archive once so history starts at the first archived read.
+
+Shown **only on the member profile** — never in a list or table (user, Nov
+2026): `GET /api/game/members/:id` → `titles` (`titleViews`: only titles still
+running at read time, newest received first), a row of the game's round icons
+after the game facts in the header (26 px; 22 px in a full row of its own on a phone),
+each a button whose hover card (desktop) / dialog (click, tap, keyboard) shows
+the 72 px picture in an item tile, time left ("6 days left", "3 h left"), how
+long it lasts, the bonus lines, the source, received / ends, and "Received N
+times in all" from field 20 ([member-titles.js](../src/web/public/pages/member-titles.js),
+reusing the Captains tab's hover card). Names, bonus texts and sources go
+through tGame; their official es/fr/ru/de texts come from the game's CSVs
+(`titles.title_name.*`, `titles.description.*`, `titles.title_source.*`; a
+text holding `"` stays English). The art is selection v11's `titles` category
+(mappings `titles` = round icon, `titleArt` = 72 px picture).
+
 ### The clan itself (v111, My Clan page)
 
 Every scan also reads the clan as the game's own clan window does — read-only
@@ -915,7 +981,7 @@ form for each value — 181 captured requests re-encode byte-identical.
 | Type | Ask (body) | Reply |
 |---|---|---|
 | 15000 | `[[[[clanId], 2147483647]]]` | clan record: `[0]` clan id, `[1]` tag/name/description, `[2]` members `[[id], role, joinedAt]`, `[3]` ~860 `[[id], ts, 0]` (departures), `[13]` gifts `[giftId, [senderId], giftType, expiresAt, count, tab]` |
-| 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[5]` city look and `[6]` portrait frame (T52 customizations; v114), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[22]` `[1]` = Gold Pass |
+| 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[5]` city look and `[6]` portrait frame (T52 customizations; v114), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[19]` titles held `[[titleId, assignedAt]]` and `[20]` how often each was received `[[titleId, count]]` (v125, see Titles), `[22]` `[1]` = Gold Pass |
 | 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
 | 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` the player's dragon (not the hero), `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
 | 312 | `[[[tileIds], [versions], [], []]]` | per 20×20 tile `[tileId, version, …, [4] cities, [5] objects]`; `tile = floor(y/20)*50 + floor(x/20)` |
@@ -923,7 +989,7 @@ form for each value — 181 captured requests re-encode byte-identical.
 | 14003 | `[[[capitalId]]]` | the Clan Capital's Border counters; key 30 = help points |
 | 28001 | `[[[clanId]]]` | the clan's displayed medals `[[medalId, earnedAt], …]` |
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kind 7 = wealth |
-| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[10]` item instances, `[12]` buildings, `[14]` active effects (artifacts), `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` the player's dragon (not the hero), `[30]` own army |
+| 601 | `[[[[[cityId], 0, 2147483647]]]]` | city details: `[1][0]` owner, `[9]` captains (see above), `[10]` item instances, `[12]` buildings, `[14]` active effects (artifacts), `[17]` `{techId: [techId, level]}` research and hero talents, `[21]` titles held `{titleId: [titleId, eventId, assignedAt]}`, `[26]` the player's dragon (not the hero), `[30]` own army |
 | 61000 | `[[]]` | the signed-in account's own artifacts (ignores any argument) |
 | 312 | `[[[tileIds], [versions], [], []]]` | map objects per 20×20 tile; `tile = floor(y/20)*50 + floor(x/20)` |
 | 23 | `[[kind, count, [], false]]` | the kingdom's clan ranking `[[clanId, value], …]`, unsorted; kinds 7 wealth, 1 might, 3 valor, 4 conquest, 5 crypts |
@@ -1041,6 +1107,7 @@ Each table has its own id space:
 | 73 | the Dragon (city field 26) | f2 its 300 levels `[level, xp, …, textRef]`, f3 its 8 evolutions, f4 the window config (see The Dragon above) |
 | 11 | equipment, one row per item type AND quality grade | f3 vector |
 | 110–113 | artifacts (`$pairs` tables keyed `[type]`) | T110 f8 vector |
+| 29 | titles (402 field 19, city field 21; format 11) | f1 vector, f2 bonus text, f12 source, f7 seconds (see Titles above) |
 
 Equipment (T11): f1 set, f2 icon address (`arch_body`: set prefix + slot
 weapon / head / torso / body / legs / trinket1 / trinket2), f3 name, f5

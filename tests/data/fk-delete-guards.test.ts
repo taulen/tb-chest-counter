@@ -117,6 +117,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_player_history.clan_id',
     'game_player_tech_history.clan_id',
     'game_player_techs.clan_id',
+    // Players' titles (v125).
+    'game_player_title_counts.clan_id',
+    'game_player_titles.clan_id',
     'game_players.clan_id',
     'game_raw_snapshots.clan_id',
     'game_scan_comparisons.clan_id',
@@ -379,6 +382,13 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
      VALUES (?, 1, 8, 3, '90000000000000001', 4423, 8408, '[257]', ?)`,
   ).run(clanId, now);
   db.prepare(`INSERT INTO game_parse_markers (clan_id, parser, version, done_at) VALUES (?, 'artifacts', 1, ?)`).run(clanId, now);
+  // Players' titles (v125).
+  db.prepare(
+    `INSERT INTO game_player_titles (clan_id, player_id, title_id, assigned_at, event_id, first_seen, last_seen) VALUES (?, 1, 29, 1794392169, 0, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_title_counts (clan_id, player_id, title_id, times, first_seen, updated_at) VALUES (?, 1, 29, 2, ?, ?)`,
+  ).run(clanId, now, now);
   db.prepare(
     `INSERT INTO game_player_daily (clan_id, player_id, game_date, gold_ingots, captured_at) VALUES (?, 1, '2026-11-17', 12169, ?)`,
   ).run(clanId, now);

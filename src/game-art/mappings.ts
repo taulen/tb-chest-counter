@@ -31,6 +31,8 @@
  *   artifacts    T110 artifact type → its icon (the type's config `icon`).
  *   equipment    T11 equipment item type → its icon (f2 address, "arch_body").
  *   inserts      T8 gem / enchantment id → its icon (f6 visual).
+ *   titles       T29 title id → its round icon (visual smallIcon, 28 px).
+ *   titleArt     T29 title id → its 72 px picture (visual mobileIcon).
  *   itemFrames   item quality grade → the back an item tile is drawn on, the
  *                plain back of an ungraded item, and the item frame
  *                (unit-frames.ts; from the WebGL client). Item icons
@@ -96,6 +98,10 @@ export interface ArtMappings {
   equipment?: Record<string, string>;
   /** T8 gem / enchantment id → icon. Same age as `artifacts`. */
   inserts?: Record<string, string>;
+  /** T29 title id → its round icon. Absent in an index built before selection 11. */
+  titles?: Record<string, string>;
+  /** T29 title id → its 72 px picture. Same age as `titles`. */
+  titleArt?: Record<string, string>;
   /** The pieces of an item tile (unit-frames.ts). Absent in an index built before the chest rewards (selection 10). */
   itemFrames?: ItemFrameArt;
 }
@@ -104,7 +110,7 @@ export function emptyMappings(): ArtMappings {
   return {
     heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
     chests: {}, resources: {}, techs: {}, captains: {}, captainArt: {}, ancients: {}, cityLooks: {}, status: {},
-    artifacts: {}, equipment: {}, inserts: {}, itemFrames: { backs: {}, plainBack: null, frame: null },
+    artifacts: {}, equipment: {}, inserts: {}, titles: {}, titleArt: {}, itemFrames: { backs: {}, plainBack: null, frame: null },
   };
 }
 
@@ -336,6 +342,11 @@ export function buildMappings(
     artifacts: iconsById(st.artifacts, available),
     equipment: iconsById(st.equipment, available),
     inserts: iconsById(st.inserts, available),
+    titles: iconsById(st.titles, available),
+    titleArt: iconsById(
+      Object.fromEntries(Object.entries(st.titles ?? {}).map(([id, tt]) => [id, { icon: tt.art }])),
+      available,
+    ),
     itemFrames: itemFrameArt(available),
   };
 }

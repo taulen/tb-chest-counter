@@ -86,6 +86,7 @@ import {
   savePlayers,
   saveRawSnapshot,
   saveTechs,
+  saveTitles,
   startCaptureRun,
   type MapObjectRow,
   type NamedGift,
@@ -274,7 +275,10 @@ const CITY_BATCH = 20;
 // heroEntry (Nov 2026): the hero's own field-9 entry (level, XP) was stored only
 // from live reads, so most heroes had no XP bar until their next daily read; the
 // archive fills it now, newest read winning, first archived read as first seen.
-export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1, heroEntry: 1 } as const;
+// titles (Nov 2026): field 21, the titles a player holds (game-protocol/titles.ts)
+// — the player record carries them every scan from now on; the archive gives
+// them history from the first archived read, with each grant's event id.
+export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1, heroEntry: 1, titles: 1 } as const;
 type CityParser = keyof typeof CITY_PARSERS;
 
 const HERO_ONLY: ReadonlySet<number> = new Set([HERO_ENTRY_ID]);
@@ -557,6 +561,7 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
           const hero = city.captains.find((c) => c.id === HERO_ENTRY_ID);
           if (hero) rows += saveHeroEntryFromArchive(clanId, raw.refId, hero, raw.capturedAt);
         }
+        if (due.has('titles') && city.titles) rows += saveTitles(clanId, raw.refId, city.titles, raw.capturedAt);
         replies++;
       }
       for (const p of due) setParseMarker(clanId, p, CITY_PARSERS[p]);
@@ -658,6 +663,9 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
           // The artifacts the line-up captains wear (field 14) and every
           // captain's equipment (fields 9 + 10).
           changed += saveCityGear(clanId, p.playerId, city, d.names, now);
+          // Its titles (field 21): the player record gave them this scan
+          // already; this adds each grant's event id.
+          if (city.titles) saveTitles(clanId, p.playerId, city.titles, now);
         } catch (err) {
           fail(err);
         }

@@ -14,6 +14,7 @@ const express_1 = require("express");
 const game_player_names_js_1 = require("../../data/game-player-names.js");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
+const titles_js_1 = require("../../game-protocol/titles.js");
 const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
 const roster_changes_js_1 = require("../../data/roster-changes.js");
@@ -81,10 +82,29 @@ function eventRunApi(r, nowSec) {
 }
 /** game player id → the name the site shows (the linked member's) and the member id, for event standings. */
 const playerNames = game_player_names_js_1.gamePlayerNames;
+/**
+ * names.json for the profile header (its titles). loadGameNames asks the
+ * game's versions endpoint every call, and the header is on every profile
+ * view: once names are in hand they are served at once and refreshed in the
+ * background at most every 10 minutes. Only the very first call waits.
+ */
+const HEADER_NAMES_TTL_MS = 10 * 60_000;
+let headerNamesCache = { at: 0, names: null, refreshing: null };
+async function headerGameNames() {
+    const c = headerNamesCache;
+    if (c.names && Date.now() - c.at < HEADER_NAMES_TTL_MS)
+        return c.names;
+    if (!c.refreshing) {
+        c.refreshing = (0, static_data_js_1.loadGameNames)()
+            .then((n) => { headerNamesCache = { at: Date.now(), names: n, refreshing: null }; return n; })
+            .catch(() => { headerNamesCache = { ...headerNamesCache, at: Date.now(), refreshing: null }; return headerNamesCache.names; });
+    }
+    return c.names ?? c.refreshing;
+}
 function createGameRouter() {
     const router = (0, express_1.Router)();
     /** Profile header data for one member. */
-    router.get('/members/:memberId', (req, res) => {
+    router.get('/members/:memberId', async (req, res) => {
         const clanId = req.clanId;
         const memberId = Number.parseInt(String(req.params.memberId), 10);
         if (!Number.isFinite(memberId) || !(0, member_repo_js_1.getMemberById)(memberId, clanId)) {
@@ -96,12 +116,25 @@ function createGameRouter() {
             res.json({ linked: false });
             return;
         }
+        // The titles they hold (402 field 19 / city field 21), still running:
+        // names, bonus texts and durations from the titles table (T29), the
+        // game's round icon and picture when extracted.
+        const names = await headerGameNames();
+        const art = (0, index_js_2.currentGameArt)()?.mappings;
+        const titleUrl = (map) => (id) => {
+            const img = map?.[String(id)];
+            return img ? (0, index_js_2.gameArtUrl)(img) : null;
+        };
         res.json({
             linked: true,
             player: (0, game_profile_repo_js_1.getGamePlayer)(clanId, playerId),
             city: (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId),
             // G/S/E/M tiers and crypt level from the member's research (null until read).
             tiers: (0, member_tiers_js_1.getMemberTiers)(clanId).get(memberId) ?? null,
+            titles: (0, titles_js_1.titleViews)(names, (0, game_profile_repo_js_1.getPlayerTitles)(clanId, playerId), Math.floor(Date.now() / 1000), {
+                icon: titleUrl(art?.titles),
+                art: titleUrl(art?.titleArt),
+            }),
         });
     });
     /**

@@ -136,6 +136,26 @@ describe('selectArt', () => {
     });
   });
 
+  it("takes the titles' round icons and pictures from the titles table (T29)", () => {
+    const titled = buildArtStatic('v-test', [
+      'titles.title_name.loyalty_bonus',
+      '{"bigIcon":"perfect_50","mobileIcon":"bonus_perfect_72","rewardIcon":"bonus_perfect_72","smallIcon":"perfect_28"}',
+      '{"rewardIcon":"bonus_great_marshal_72","smallIcon":"titul_great_marshal_28"}',
+    ], [[0]], new Map([[29, {
+      29: row({ 0: 29, 1: 0, 3: 1 }, 15),
+      161: row({ 0: 161, 1: 0, 3: 2 }, 15),
+    }]]), new Map([['titles.title_name.loyalty_bonus', 'Prefect']]));
+    expect(titled.titles).toEqual({
+      29: { name: 'Prefect', icon: 'perfect_28', art: 'bonus_perfect_72' },
+      161: { name: 'Prefect', icon: 'titul_great_marshal_28', art: 'bonus_great_marshal_72' },
+    });
+    const sel = selectArt(['perfect_28', 'bonus_perfect_72', 'perfect_50', 'titul_great_marshal_28'], titled);
+    expect(Object.fromEntries(sel)).toEqual({ perfect_28: 'titles', bonus_perfect_72: 'titles', titul_great_marshal_28: 'titles' });
+    const m = buildMappings(titled, [], new Set(), (n) => n !== 'bonus_great_marshal_72');
+    expect(m.titles).toEqual({ 29: 'perfect_28', 161: 'titul_great_marshal_28' });
+    expect(m.titleArt).toEqual({ 29: 'bonus_perfect_72' });
+  });
+
   it('a resource type name pulls in its item even past the currency id range', () => {
     // Not a resource: an item icon like any other.
     expect(selectArt(['booster_silver_72'], st).get('booster_silver_72')).toBe('items');

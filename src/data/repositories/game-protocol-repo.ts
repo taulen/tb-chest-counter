@@ -10,6 +10,7 @@ import { getDb } from '../database.js';
 import type { CityCaptain, ClanMember, PlayerRecord, LedgerEntry } from '../../game-protocol/messages.js';
 import type { WornArtifact } from '../../game-protocol/artifacts.js';
 import { HERO_ENTRY_ID, type WornItem } from '../../game-protocol/equipment.js';
+import type { HeldTitle } from '../../game-protocol/titles.js';
 
 export interface NamedGift {
   giftId: number;
@@ -135,8 +136,78 @@ export function savePlayers(
         || prev.city_level !== p.cityLevel || prev.vip !== p.vip || prev.gold_pass !== row.goldPass
         || prev.hero_avatar !== p.heroAvatar || prev.role !== m.role;
       if (changed) addHistory.run(clanId, p.playerId, now, p.name, p.might, p.heroLevel, p.cityLevel, p.vip, row.goldPass, p.heroAvatar, m.role);
+      // The titles they hold (field 19) and how often they received each (field 20).
+      if (p.titles) saveTitles(clanId, p.playerId, p.titles, now);
+      if (p.titleCounts) saveTitleCounts(clanId, p.playerId, p.titleCounts, now);
     }
     markGone.run(clanId, now);
+  })();
+}
+
+/**
+ * The titles one read showed a player holding (v125): the player record's
+ * field 19 (every scan) or the city's field 21 (daily, and the archive). One
+ * row per grant, keyed (title, assigned_at): a title received again is a new
+ * row, so the table is the history. A stored grant the read lacks gets
+ * `gone_at` — when the read is newer than its last sighting and the grant
+ * already existed at the read (an archived read from before it was received
+ * says nothing about it). Replayable in any order: first_seen / last_seen only
+ * widen, gone_at only moves earlier, and a sighting after gone_at clears it.
+ * Returns the rows that changed (new grants + newly gone).
+ */
+export function saveTitles(clanId: number, playerId: number, titles: HeldTitle[], at = new Date().toISOString()): number {
+  const db = getDb();
+  const atSec = Math.floor(Date.parse(at) / 1000);
+  type Row = { title_id: number; assigned_at: number; last_seen: string; gone_at: string | null };
+  const key = (titleId: number, assignedAt: number) => `${titleId}:${assignedAt}`;
+  const prev = new Map((db.prepare(
+    'SELECT title_id, assigned_at, last_seen, gone_at FROM game_player_titles WHERE clan_id = ? AND player_id = ?',
+  ).all(clanId, playerId) as Row[]).map((r) => [key(r.title_id, r.assigned_at), r]));
+  const upsert = db.prepare(
+    `INSERT INTO game_player_titles (clan_id, player_id, title_id, assigned_at, event_id, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, title_id, assigned_at) DO UPDATE SET
+       event_id = COALESCE(excluded.event_id, game_player_titles.event_id),
+       first_seen = MIN(game_player_titles.first_seen, excluded.first_seen),
+       last_seen = MAX(game_player_titles.last_seen, excluded.last_seen),
+       gone_at = CASE WHEN game_player_titles.gone_at <= excluded.last_seen THEN NULL ELSE game_player_titles.gone_at END`,
+  );
+  const gone = db.prepare(
+    'UPDATE game_player_titles SET gone_at = ? WHERE clan_id = ? AND player_id = ? AND title_id = ? AND assigned_at = ?',
+  );
+  let changed = 0;
+  db.transaction(() => {
+    const seen = new Set<string>();
+    for (const t of titles) {
+      const k = key(t.titleId, t.assignedAt);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      upsert.run(clanId, playerId, t.titleId, t.assignedAt, t.eventId, at, at);
+      if (!prev.has(k)) changed++;
+    }
+    for (const [k, r] of prev) {
+      if (seen.has(k) || r.last_seen >= at || r.assigned_at > atSec) continue;
+      if (r.gone_at !== null && r.gone_at <= at) continue;
+      if (r.gone_at === null) changed++;
+      gone.run(at, clanId, playerId, r.title_id, r.assigned_at);
+    }
+  })();
+  return changed;
+}
+
+/** How many times a player received each title in all (402 field 20): the latest count per title. */
+export function saveTitleCounts(clanId: number, playerId: number, counts: Record<string, number>, at = new Date().toISOString()): void {
+  const db = getDb();
+  const upsert = db.prepare(
+    `INSERT INTO game_player_title_counts (clan_id, player_id, title_id, times, first_seen, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, title_id) DO UPDATE SET
+       times = excluded.times,
+       updated_at = CASE WHEN game_player_title_counts.times = excluded.times
+                         THEN game_player_title_counts.updated_at ELSE excluded.updated_at END`,
+  );
+  db.transaction(() => {
+    for (const [titleId, times] of Object.entries(counts)) upsert.run(clanId, playerId, Number(titleId), times, at, at);
   })();
 }
 

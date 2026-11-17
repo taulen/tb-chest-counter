@@ -409,3 +409,32 @@ export function getPlayerEquipmentChanges(clanId: number, playerId: number, sinc
   ).all(clanId, playerId, sinceIso, clanId, playerId, limit) as Array<Omit<EquipmentChange, 'reworked'> & { reworked: number }>;
   return rows.map((r) => ({ ...r, reworked: r.reworked === 1 }));
 }
+
+/** A title grant a player holds as stored (v125), with how often they received the title in all. */
+export interface PlayerTitle {
+  titleId: number;
+  /** When the player received it (unix s, the game's own). */
+  assignedAt: number;
+  eventId: number | null;
+  firstSeen: string;
+  lastSeen: string;
+  /** 402 field 20; null when no count was read. */
+  times: number | null;
+}
+
+/**
+ * The titles a player held at their latest read (gone_at unset). Whether a
+ * title has run out since is the caller's call (titles.ts titleViews): its
+ * duration is static data.
+ */
+export function getPlayerTitles(clanId: number, playerId: number): PlayerTitle[] {
+  return getDb().prepare(
+    `SELECT t.title_id AS titleId, t.assigned_at AS assignedAt, t.event_id AS eventId,
+            t.first_seen AS firstSeen, t.last_seen AS lastSeen, c.times AS times
+       FROM game_player_titles t
+       LEFT JOIN game_player_title_counts c
+         ON c.clan_id = t.clan_id AND c.player_id = t.player_id AND c.title_id = t.title_id
+      WHERE t.clan_id = ? AND t.player_id = ? AND t.gone_at IS NULL
+      ORDER BY t.assigned_at DESC, t.title_id`,
+  ).all(clanId, playerId) as PlayerTitle[];
+}

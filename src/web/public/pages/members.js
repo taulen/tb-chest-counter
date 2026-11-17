@@ -31,6 +31,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
 import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
 import { memberCaptainsPanelHtml, mountMemberCaptains } from './member-captains.js';
+import { memberTitlesHtml, wireMemberTitles } from './member-titles.js';
 import { memberTimelinePanelHtml, mountMemberTimeline } from './member-timeline.js';
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
@@ -1291,6 +1292,8 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
           <h2>${esc(data.name)}</h2>
           ${rankBadge}
           ${gameFactsHtml(currentMemberGame?.player)}
+          ${/* The titles they hold, small: the profile only, never a list. */''}
+          ${memberTitlesHtml(currentMemberGame?.titles)}
         </div>
         <button class="btn" data-action="member-back">${t('← Back')}</button>
       </div>
@@ -1491,6 +1494,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     ${headerHtml}
     ${viewTabsHtml(MEMBER_VIEW_GROUP, views, view)}
     ${views.map((v) => viewPanelHtml(MEMBER_VIEW_GROUP, v.key, view, v.html)).join('')}`;
+  wireMemberTitles(content, currentMemberGame?.titles);
   // The might chart is sized from its box, which a hidden panel doesn't have,
   // so it is drawn the first time its tab is open. Once per render: draw()
   // also wires the card's window buttons, and a second call would stack them.
