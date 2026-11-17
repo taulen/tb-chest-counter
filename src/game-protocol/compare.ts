@@ -34,6 +34,12 @@ export function normalizeGiftText(s: string): string {
 }
 
 const DETAIL_LIMIT = 30;
+/**
+ * OCR's earn time comes from the card's "time left", which shows minutes, so a
+ * gift that arrived seconds after the capture can read as up to a minute
+ * before it. Anything within this window of the capture counts as late.
+ */
+const LATE_TOLERANCE_S = 120;
 
 export function compareGifts(game: GiftKey[], ocr: GiftKey[], captureEpoch: number): GiftComparison {
   const key = (g: GiftKey) => `${normalizeGiftText(g.sender)}|${normalizeGiftText(g.chest)}|${normalizeGiftText(g.source)}`;
@@ -52,8 +58,9 @@ export function compareGifts(game: GiftKey[], ocr: GiftKey[], captureEpoch: numb
     }
   }
   const gameOnly = [...pool.values()].flat();
-  const late = unmatched.filter((r) => r.at !== undefined && r.at > captureEpoch);
-  let ocrOnly = unmatched.filter((r) => !(r.at !== undefined && r.at > captureEpoch));
+  const isLate = (r: GiftKey) => r.at !== undefined && r.at > captureEpoch - LATE_TOLERANCE_S;
+  const late = unmatched.filter(isLate);
+  let ocrOnly = unmatched.filter((r) => !isLate(r));
 
   const misreads: string[] = [];
   const stillOcrOnly: GiftKey[] = [];
