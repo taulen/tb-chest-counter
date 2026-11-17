@@ -23,11 +23,10 @@ import { createFrontendAssetRouter } from '../../../src/web/frontend-assets.js';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const PUBLIC_DIR = path.join(ROOT, 'src/web/public');
-const ASSETS_DIR = path.join(ROOT, 'assets');
 
 function makeApp() {
   const app = express();
-  app.use(createFrontendAssetRouter(PUBLIC_DIR, ASSETS_DIR));
+  app.use(createFrontendAssetRouter(PUBLIC_DIR));
   app.use((_req, res) => res.redirect('/login'));
   return app;
 }
@@ -74,15 +73,6 @@ describe('frontend assets are served without a session', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/javascript/);
   });
-
-  it('serves the resource icons the pages reference', async () => {
-    const app = makeApp();
-    for (const dir of ['resource-icons']) {
-      const [first] = fs.readdirSync(path.join(ASSETS_DIR, dir));
-      const res = await request(app).get(`/assets/${dir}/${first}`);
-      expect(res.status, `${dir}/${first}`).toBe(200);
-    }
-  });
 });
 
 describe('what the asset router leaves to the gated routes', () => {
@@ -101,7 +91,7 @@ describe('what the asset router leaves to the gated routes', () => {
     expect((await request(app).get('/')).headers.location).toBe('/login');
   });
 
-  it('serves nothing from assets/ outside the listed directories', async () => {
-    expect((await request(makeApp()).get('/assets/other/file.png')).status).toBe(302);
+  it('serves nothing under /assets — game art comes only from /game-art', async () => {
+    expect((await request(makeApp()).get('/assets/resource-icons/silver.png')).status).toBe(302);
   });
 });

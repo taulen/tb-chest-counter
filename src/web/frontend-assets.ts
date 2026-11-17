@@ -30,16 +30,13 @@ import type { RequestHandler } from 'express';
  * as does anything that isn't a file here (a directory, a missing path).
  */
 
-/** The /assets subdirectories the frontend references (resource-format.js). */
-const PUBLIC_ASSET_DIRS = ['resource-icons'] as const;
-
 function skipHtml(handler: RequestHandler): RequestHandler {
   return (req, res, next) => (
     path.extname(req.path).toLowerCase() === '.html' ? next() : handler(req, res, next)
   );
 }
 
-export function createFrontendAssetRouter(publicDir: string, assetsDir: string): Router {
+export function createFrontendAssetRouter(publicDir: string): Router {
   const router = Router();
 
   // Chart.js from the dependency that is already installed, rather than a CDN.
@@ -75,12 +72,9 @@ export function createFrontendAssetRouter(publicDir: string, assetsDir: string):
     },
   })));
 
-  for (const dir of PUBLIC_ASSET_DIRS) {
-    router.use(`/assets/${dir}`, express.static(path.join(assetsDir, dir), {
-      maxAge: 86_400_000,
-      redirect: false,
-    }));
-  }
+  // No /assets route: the resource icons it served were game images cut from
+  // screenshots. Game art comes only from the game's own bundles, extracted
+  // on the server (src/game-art, /game-art/<version>/…).
 
   return router;
 }

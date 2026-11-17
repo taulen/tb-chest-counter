@@ -26,6 +26,6 @@ The season opened on 2026-11-11 at 09:00 UTC and runs to 2027-02-08 09:00. Its f
 
 ## SK resources: Forest Essence and Magic Seeds (v100)
 
-These are seeded in `resource_types` and ship as `assets/resource-icons/forest-essence.png` and `magic-seeds.png` (the icons the UI shows; they were cut from the history page's resource dropdown, Nov 13 2026). Their rows arrive from the Clan Capital ledger every scan reads, mapped by name like every other resource (Magic Seeds = ledger resource 74284, Forest Essence = 74285; [game-protocol.md](game-protocol.md)).
+These are seeded in `resource_types`; their icons come from the game's own bundles by name (`forest_event_bonus_currency_72`, `forest_event_build_currency_72`), like every resource's. Their rows arrive from the Clan Capital ledger every scan reads, mapped by name like every other resource (Magic Seeds = ledger resource 74284, Forest Essence = 74285; [game-protocol.md](game-protocol.md)).
 
 `tGame()` has no official es/fr/ru/de names for them yet, so they display in English (docs/i18n.md: a guessed name is worse than English).

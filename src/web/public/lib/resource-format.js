@@ -8,6 +8,7 @@
 import { esc } from './ui.js';
 import { getCurrentUser } from './state.js';
 import { t, tGame } from './i18n.js';
+import { resourceIconUrl } from './game-art.js';
 
 /**
  * Format a resource amount for display. Speedups are stored in hours and
@@ -42,6 +43,16 @@ export function formatResourceCompact(slug, amount) {
   return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 }
 
+/**
+ * The game's own icon for a resource, by its (English) name, from the art the
+ * server extracts out of the game's bundles — never an image of ours. Empty
+ * when there is none yet (art not extracted, or a name the game lacks).
+ */
+function iconImg(name) {
+  const url = name ? resourceIconUrl(name) : null;
+  return url ? `<img src="${esc(url)}" class="resource-icon-img" alt="">` : '';
+}
+
 /** Inline icon + name for a resource. `slug` may be null (Unknown). */
 export function resourceIconHtml(slug, name) {
   const label = esc(name != null ? tGame(name) : t('Unknown'));
@@ -50,7 +61,7 @@ export function resourceIconHtml(slug, name) {
   // inside the fixed-width Resource column (long event names like "Torch
   // of Olympus Clan Fragment" would otherwise wrap to two lines). The
   // title carries the full name for hover.
-  return `<span class="resource-type-cell"><img src="/assets/resource-icons/${esc(slug)}.png" class="resource-icon-img" alt=""><span class="resource-type-name" title="${label}">${label}</span></span>`;
+  return `<span class="resource-type-cell">${iconImg(name)}<span class="resource-type-name" title="${label}">${label}</span></span>`;
 }
 
 /**
@@ -65,10 +76,9 @@ export function resourceCropHoverHtml(tx) {
     + ` title="${t('Hover to preview the screenshot row this came from — click to enlarge')}">🖼️</span>`;
 }
 
-/** Just the icon (no label) — for compact cells/cards. */
-export function resourceIconOnly(slug) {
-  if (!slug) return '';
-  return `<img src="/assets/resource-icons/${esc(slug)}.png" class="resource-icon-img" alt="">`;
+/** Just the icon (no label) — for compact cells/cards. Takes the resource's name. */
+export function resourceIconOnly(name) {
+  return iconImg(name);
 }
 
 /**

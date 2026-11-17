@@ -5,6 +5,7 @@
 // reader couldn't identify are resolved from the Admin page
 // (unresolved-resources.js).
 
+import { loadGameArt } from '../lib/game-art.js';
 import { api, apiPatch, apiDelete } from '../lib/api.js';
 import { esc, formatDate, formatGameDayShort, notify, confirmDialog } from '../lib/ui.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
@@ -191,9 +192,11 @@ export async function renderResourcesAdmin(el) {
     return;
   }
 
+  // The game's resource icons (lib/game-art.js) are in before the first paint.
   const [typesRes, membersRes] = await Promise.all([
     api('/resources/types'),
     api('/members'),
+    loadGameArt(),
   ]);
 
   const allTypes = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);

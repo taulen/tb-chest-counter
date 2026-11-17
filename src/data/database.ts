@@ -1284,7 +1284,7 @@ const MIGRATIONS: Migration[] = [
     //    Triumphal reset on 2026-11-21), so without it one feed's archive would
     //    overwrite the other's. Every existing row is the normal feed's.
     //  - Forest Essence and Magic Seeds are SK clan-capital resources; their
-    //    icon templates ship as assets/resource-icons/<slug>.png.
+    //    icons come from the game's bundles by name (src/game-art).
     //
     // All three halves are guarded, so a replay is a no-op.
     version: 100,

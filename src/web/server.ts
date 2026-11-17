@@ -421,7 +421,7 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Every script, stylesheet and image the pages load, to anyone. Never put
   // one behind requireAuth: Cloudflare stores the redirect against the asset
   // URL whatever our headers say — see ./frontend-assets.ts for the outage.
-  app.use(createFrontendAssetRouter(PUBLIC_DIR, path.resolve('assets')));
+  app.use(createFrontendAssetRouter(PUBLIC_DIR));
 
   // Game art extracted from the game's own bundles: /game-art/<version>/<name>.png
   // (public and immutable, like every static file) and /api/game-art (the index).

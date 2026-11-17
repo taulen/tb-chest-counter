@@ -8,6 +8,7 @@
 // too granular for a totals matrix. A few fragment/special resources are
 // excluded — see EXCLUDED_SLUGS. Built client-side from /resources/summary.
 
+import { loadGameArt } from '../lib/game-art.js';
 import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -48,6 +49,8 @@ export async function renderResourcesTotals(el) {
   // Read-only dashboard — visible to any authenticated clan member.
   mountedEl = el;
   el.innerHTML = `${resourceTabsHtml('totals')}<div class="empty-state"><p>${t('Loading totals…')}</p></div>`;
+  // The game's resource icons (lib/game-art.js) are in before the first paint.
+  await loadGameArt();
   await reload();
 }
 
@@ -131,7 +134,7 @@ function paint() {
       title: tGame(c.name),
       arrowHtml: '',
       labelHtml: `<span class="rtype-head">
-        ${resourceIconOnly(c.slug)}
+        ${resourceIconOnly(c.name)}
         <span class="rtype-head-name">${esc(tGame(c.name))}</span>
         <span class="rtype-head-arrow" aria-hidden="true">${arrowFor(`type-${c.id}`)}</span>
       </span>`,

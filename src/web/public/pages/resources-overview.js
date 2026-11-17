@@ -15,6 +15,7 @@
 // resource / bucket / donors page repaints from cached data with no
 // refetch; only changing scope (clan vs member) or the date range refetches.
 
+import { loadGameArt } from '../lib/game-art.js';
 import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
 import { readToken } from '../lib/theme.js';
@@ -287,7 +288,8 @@ export async function renderResourcesOverview(el) {
   mountedEl = el;
   el.innerHTML = `${resourceTabsHtml('overview')}<div class="empty-state"><p>${t('Loading resources…')}</p></div>`;
 
-  await fetchData();
+  // The game's resource icons (lib/game-art.js) are in before the first paint.
+  await Promise.all([fetchData(), loadGameArt()]);
   ensureSelection();
   paint();
 }
@@ -422,7 +424,7 @@ function resourceGridHtml(cardTypes) {
     return `
       <button class="resource-card ${isActive ? 'is-selected' : ''}" data-resource-id="${id}" type="button">
         <div class="resource-card-head">
-          ${resourceIconOnly(type.slug)}
+          ${resourceIconOnly(type.name)}
           <span class="resource-card-name">${esc(tGame(type.name))}</span>
         </div>
         <div class="resource-card-amount">${esc(formatResourceAmount(type.slug, tot.sent))}</div>

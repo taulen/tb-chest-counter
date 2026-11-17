@@ -50,8 +50,9 @@ game still lists (about two weeks), keyed on its entry id.
 
 **Adding a resource type** the game introduces is two halves: a migration
 seeding `resource_types` (name + slug — the ledger maps an item to its type by
-name, and an unmapped item is left out with a log line), and
-`assets/resource-icons/<slug>.png` for the icon the UI shows.
+name, and an unmapped item is left out with a log line). Its icon comes from
+the game's own bundles, matched by name (game-art `resources` mapping) — no
+image is ever added to the repo.
 
 Before the switch, a parallel run compared every OCR scan with the game's gift
 list (`game_scan_comparisons`, `[game-vs-ocr]` log lines): 100% matched, no

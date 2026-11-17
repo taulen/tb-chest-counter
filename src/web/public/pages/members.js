@@ -2,6 +2,7 @@
 // sortable columns; per-member detail view with rank badge, weekly
 // progress, chest type breakdown, and paginated chest history.
 
+import { loadGameArt } from '../lib/game-art.js';
 import { api } from '../lib/api.js';
 import {
   $, esc, formatDate, formatDateShort, formatGameDayShort, formatRelativeTime,
@@ -400,6 +401,8 @@ async function loadAndRenderMemberDetail(data) {
   const [guards, game] = await Promise.all([
     api(`/guards/member/${data.id}`).catch(() => null),
     api(`/game/members/${data.id}`).catch(() => null),
+    // The game's resource icons for the resource card (never rejects).
+    loadGameArt(),
   ]);
   currentMemberGame = game && game.linked && game.player ? game : null;
   renderMemberDetail(
@@ -682,7 +685,7 @@ async function buildMemberResourcesCard(memberId) {
     const cards = rows.map((r) => `
       <div class="resource-member-card">
         <div class="resource-card-head">
-          ${resourceIconOnly(r.type.slug)}
+          ${resourceIconOnly(r.type.name)}
           <span class="resource-card-name">${esc(tGame(r.type.name))}</span>
         </div>
         <div class="resource-card-amount">${esc(formatResourceAmount(r.type.slug, r.sent))}</div>

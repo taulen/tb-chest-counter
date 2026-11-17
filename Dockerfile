@@ -48,7 +48,6 @@ RUN npx playwright install --with-deps chromium \
 # Copy only what the runtime actually needs
 COPY dist/ ./dist/
 COPY src/web/public/ ./src/web/public/
-COPY assets/ ./assets/
 # The one script an operator has to be able to run INSIDE the container:
 # putting an install back into first-run state, which needs the files on the
 # mounted volume. Node builtins only, so it costs nothing. The rest of
