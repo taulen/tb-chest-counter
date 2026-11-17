@@ -101,11 +101,42 @@ describe('game messages', () => {
       hero: { level: 116, xp: 98765 },
       troops: [{ id: 27, count: 1211 }, { id: 30, count: 1705 }],
       captains: [
-        { id: 1, level: 214, stars: 0, xp: 2295854228842, slot: 0 },
-        { id: 20, level: 278, stars: 5, xp: 14939681299178, slot: 0 },
-        { id: 8, level: 200, stars: 6, xp: 633274738935, slot: 1 },
+        { id: 1, level: 214, stars: 0, xp: 2295854228842, slot: 0, equipment: [] },
+        { id: 20, level: 278, stars: 5, xp: 14939681299178, slot: 0, equipment: [] },
+        { id: 8, level: 200, stars: 6, xp: 633274738935, slot: 1, equipment: [] },
       ],
+      effects: [],
+      items: [],
     });
+  });
+
+  it('reads active effects (field 14), item instances (field 10) and captain equipment (field 9 [12])', () => {
+    const city: Wire[] = [];
+    city[0] = [77];
+    // Layout as the game sends it (Nov 2026); ids made up. Uids past 2^53 come
+    // through the codec as "<digits>n" strings, small ones as numbers.
+    city[9] = [
+      [8, 1, 0, [77], 1, 0, 0, 0, 0, 1000, 200, 0,
+        [[8, 129, 0, 100], [8, 130, 0, 100], [8, 131, 0, 100], [8, 132, '90000000000000001n', 100], [8, 133, 5005, 100], [8, 134, 0, 100]],
+        0, [], [], 0, 0, 6, []],
+    ];
+    city[10] = [
+      ['90000000000000001n', 4423, [77], 1000, 10, 40, 0, 8408, [257], 128],
+      [5005, 4430, [77], 1000, 6, 36, 0, 0, [], 128],
+      [0, 1, [77], 1000, 0, 0, 0, 0, [], 0], // no uid: not an item
+    ];
+    city[14] = [[308949, 16384, 1], [309681, 1, 1], [509522, 1, 2]];
+    const r = parseCityRecord(frame(601, [[[city], []]]));
+    expect(r?.captains[0].equipment).toEqual(['', '', '', '90000000000000001', '5005', '']);
+    expect(r?.items).toEqual([
+      { uid: '90000000000000001', type: 4423, enchantment: 8408, gems: [257], presetId: 128, raw: [1000, 10, 40, 0] },
+      { uid: '5005', type: 4430, enchantment: 0, gems: [], presetId: 128, raw: [1000, 6, 36, 0] },
+    ]);
+    expect(r?.effects).toEqual([
+      { id: 308949, source: 16384, count: 1 },
+      { id: 309681, source: 1, count: 1 },
+      { id: 509522, source: 1, count: 2 },
+    ]);
   });
 
   it('reads map objects (312) wherever they sit in the tile reply, and maps coordinates to tiles', () => {

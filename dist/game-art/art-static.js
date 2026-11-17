@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ART_STATIC_FORMAT = exports.TABLE_CUSTOMIZATIONS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
+exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACTS = exports.ART_STATIC_FORMAT = exports.TABLE_CUSTOMIZATIONS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HERO_AVATARS = exports.TABLE_UNITS = exports.TABLE_ITEMS = void 0;
 exports.buildArtStatic = buildArtStatic;
 exports.staticKey = staticKey;
 exports.loadArtStatic = loadArtStatic;
@@ -24,6 +24,8 @@ exports.loadArtStatic = loadArtStatic;
  *                    a player's 402 field 6 IS the id of their frame, field 5
  *                    of their city look (whose visual is JSON again, with an
  *                    icon per city level: {"icon": {"1": …, "5": …}})
+ *   T110 artifacts   f7 JSON config {"icon": …}, f8 name vector
+ *   T11 equipment    f2 icon address, f3 name vector (gems/enchantments: T8 f1 8/9)
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -49,7 +51,11 @@ const CUSTOMIZATION_FRAME = 1;
 /** T52 kind of a city look; its visual JSON holds another JSON with {"icon": {minCityLevel: icon}}. */
 const CUSTOMIZATION_CITY = 2;
 /** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames). */
-exports.ART_STATIC_FORMAT = 2;
+exports.ART_STATIC_FORMAT = 3;
+/** Artifact types: f7 JSON config {"icon": …}, f8 name vector. A `$pairs` table keyed [type]. */
+exports.TABLE_ARTIFACTS = 110;
+/** Equipment: f2 icon address ("arch_body"), f3 name vector. */
+exports.TABLE_EQUIPMENT = 11;
 async function fetchBuffer(url) {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok)
@@ -175,7 +181,39 @@ function buildArtStatic(version, strings, vectors, tables, en) {
         if (Object.keys(icons).length)
             cityLooks[id] = { name: name(row[2]), icons };
     }
-    return { version, format: exports.ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks };
+    const artifacts = {};
+    for (const [id, row] of rows(exports.TABLE_ARTIFACTS)) {
+        let cfg = {};
+        try {
+            cfg = JSON.parse(str(row[7]) ?? '{}');
+        }
+        catch {
+            continue;
+        }
+        if (typeof cfg.icon === 'string' && cfg.icon)
+            artifacts[id] = { name: name(row[8]), icon: cfg.icon };
+    }
+    const equipment = {};
+    for (const [id, row] of rows(exports.TABLE_EQUIPMENT)) {
+        const icon = str(row[2]);
+        if (icon && /^[a-z0-9_]+$/i.test(icon))
+            equipment[id] = { name: name(row[3]), icon };
+    }
+    const inserts = {};
+    for (const [id, row] of rows(exports.TABLE_ITEMS)) {
+        if (row[1] !== 8 && row[1] !== 9)
+            continue;
+        let icon;
+        try {
+            icon = JSON.parse(str(row[6]) ?? '{}').icon;
+        }
+        catch {
+            continue;
+        }
+        if (typeof icon === 'string' && icon)
+            inserts[id] = { name: name(row[3]), icon };
+    }
+    return { version, format: exports.ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts };
 }
 function staticKey(v) {
     return `${v.composite.slice(0, 16)}-${v.translationsCatalog.replace(/\.json$/, '')}`;
@@ -203,8 +241,9 @@ async function loadArtStatic(dir) {
     const file = cacheFile(dir, key);
     if (fs_1.default.existsSync(file)) {
         const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
-        // A cache from an older format (no captains, no unit tiers) is rebuilt once.
-        if (cached.captains && cached.format === exports.ART_STATIC_FORMAT)
+        // A cache from an older format (no captains, no unit tiers, no artifacts or
+        // equipment) is rebuilt once.
+        if (cached.captains && cached.format === exports.ART_STATIC_FORMAT && cached.artifacts && cached.equipment)
             return cached;
     }
     const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
@@ -213,7 +252,7 @@ async function loadArtStatic(dir) {
         fetchBuffer(STATIC_BASE + version.files.noDuplicates),
         fetchEnglish(version.translationsCatalog),
     ]);
-    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_CUSTOMIZATIONS]), en);
+    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_CUSTOMIZATIONS, exports.TABLE_ARTIFACTS, exports.TABLE_EQUIPMENT]), en);
     fs_1.default.mkdirSync(dir, { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs_1.default.writeFileSync(tmp, JSON.stringify(data));

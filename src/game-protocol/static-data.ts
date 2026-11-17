@@ -15,6 +15,10 @@
  *   T8  gift types    f3 chest name vector, f14 source template vector
  *   T13 hero avatars  f1 name vector, f3 icon string
  *   T21 techs         f1 name vector, f5 levels (research + hero talents)
+ *   T11 equipment     see TABLE_EQUIPMENT (gems/enchantments are T8 items)
+ *   T75 captains      see TABLE_CAPTAINS
+ *   T110–T113         artifacts (types, star levels, levels, random-bonus pools)
+ *                     — `$pairs` tables keyed `[type]`, see TABLE_ARTIFACTS
  *
  * The raw files are ~67 MB, so a rebuild happens only when the game ships new
  * static data: the result is a small names.json cached under
@@ -44,7 +48,37 @@ export const TABLE_TECHS = 21;
 export const TABLE_CAPTAINS = 75;
 /** Clan medals (ids 1–40): f1 icon, f2 inactive icon, f4 unlock text vector, f5 name vector, f6 tier 1 bronze … 4 platinum. */
 export const TABLE_CLAN_MEDALS = 62;
-const NEEDED_TABLES = [TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CLAN_MEDALS];
+/**
+ * Artifacts, all keyed by the artifact TYPE (one per type per player):
+ *   T110 types        f7 JSON config {"icon": …}, f8 name vector, f9 tooltip
+ *                     vector, f11 rarity (4 epic, 5 legendary, 6 mythic)
+ *   T111 star levels  [[type], {star: [star, bigStar, effectId, cost, propsRef, …]}]
+ *   T112 levels       [[type], xpItem, {level: [level, effectId, cond, xp, propsRef, …]}]
+ *   T113 bonus pool   [[type], {effectId: [weight, propTextRef, valueTextRef, quality]}, unlocks]
+ * An effect id (T20) names exactly one level, star level or random bonus of
+ * one type, so a city's active effects (601 field 14) say which artifacts the
+ * line-up captains wear, at what level and star level, with which rolls.
+ */
+export const TABLE_ARTIFACTS = 110;
+export const TABLE_ARTIFACT_STARS = 111;
+export const TABLE_ARTIFACT_LEVELS = 112;
+export const TABLE_ARTIFACT_BONUSES = 113;
+/**
+ * Equipment (hero and captain gear), one row per item TYPE — and the type
+ * includes the quality grade: "Cursed Claw Coat" exists once per grade.
+ *   f1 set, f2 icon address ("arch_body": set prefix + slot), f3 name vector,
+ *   f5 quality grade 1–8 (Poor … Godlike), f7 durability,
+ *   f9 props JSON — the item's bonuses at that grade ("Crypt exploration
+ *   efficiency +50,0%"); `equipment.client_info.n0001` is Durability.
+ * Gems (T8 f1 8) and enchantments (T8 f1 9) set into an item are T8 items:
+ * f3 name vector, f6 visual JSON {"icon": …}.
+ */
+export const TABLE_EQUIPMENT = 11;
+const NEEDED_TABLES = [
+  TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
+  TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
+  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS,
+];
 
 export interface GameNames {
   /** `${composite}:${translations}` — changes whenever either source does. */
@@ -58,6 +92,14 @@ export interface GameNames {
   captains: Record<string, GameCaptain>;
   /** Clan medals by T62 id (format ≥ 3). */
   medals?: Record<string, GameMedal>;
+  /** Artifacts by type (T110 id). Absent in names.json older than format 3. */
+  artifacts?: Record<string, GameArtifact>;
+  /** Equipment by item type (T11 id; the type includes the quality grade). Format 3+. */
+  equipment?: Record<string, GameEquipment>;
+  /** Equipment quality grade 1–8 → the game's label ("Poor" … "Godlike"). Format 3+. */
+  equipmentGrades?: Record<string, string>;
+  /** Gems and enchantments (T8 id) that can be set into equipment. Format 3+. */
+  inserts?: Record<string, GameInsert>;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
 }
@@ -72,6 +114,43 @@ export interface GameMedal {
   tierName: string;
   /** Sprite name (achievement_capitals_competition_gold). */
   icon: string;
+}
+
+/** A text line as the game's artifact book prints it: [text, value] ("Crypt exploration efficiency", "+130.0%"). */
+export type GameTextLine = [string, string];
+
+export interface GameEquipment {
+  name: string;
+  /** Icon address (T11 f2, e.g. "arch_body"). */
+  icon: string;
+  /** Quality grade 1–8 (Poor, Common, Uncommon, Rare, Epic, Legendary, Ascendant, Godlike). */
+  grade: number;
+  /** The item's bonuses at its grade, Durability left out. */
+  lines: GameTextLine[];
+}
+
+export interface GameInsert {
+  name: string;
+  icon: string;
+  kind: 'gem' | 'enchantment';
+}
+
+export interface GameArtifact {
+  name: string;
+  /** T110 f11: 4 epic, 5 legendary, 6 mythic. */
+  rarity: number;
+  /** The game's label for the rarity ("Legendary"). */
+  rarityName: string;
+  /** Icon sprite (T110 config `icon`). */
+  icon: string;
+  maxLevel: number;
+  maxStar: number;
+  /** Level effect id → [level, the level's lines]. */
+  levels: Record<string, [number, GameTextLine[]]>;
+  /** Star-level effect id → [star level 1–25, the star level's lines]. */
+  stars: Record<string, [number, GameTextLine[]]>;
+  /** Random-bonus effect id → [text, value, quality 1–5 (5 = best roll)]. */
+  bonuses: Record<string, [string, string, number]>;
 }
 
 export interface GameCaptain {
@@ -92,10 +171,10 @@ export interface GameCaptain {
 
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
- * and rarity labels; 3: clan medals — Nov 2026); a cached file with an older
+ * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems — Nov 2026); a cached file with an older
  * format is rebuilt.
  */
-export const NAMES_FORMAT = 3;
+export const NAMES_FORMAT = 4;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -103,6 +182,27 @@ const MEDAL_TIER_KEYS: Record<number, string> = {
   2: 'client_config.value.goblet_silver',
   3: 'client_config.value.goblet_gold',
   4: 'client_config.value.goblet_platinum',
+};
+
+/** T11 f5 equipment quality grade → the forge's own label key. */
+const EQUIPMENT_GRADE_KEYS: Record<number, string> = {
+  1: 'client.craft.gray_item_title',
+  2: 'client.craft.white_item_title',
+  3: 'client.craft.green_item_title',
+  4: 'client.craft.blue_item_title',
+  5: 'client.craft.violet_item_title',
+  6: 'client.craft.orange_item_title',
+  7: 'client.craft.red_item_title',
+  8: 'client.craft.gold_item_title',
+};
+/** The props line that is the item's durability, not a bonus. */
+const DURABILITY_PROP = 'equipment.client_info.n0001';
+
+/** T110 f11 rarity → the artifact book's own label key. */
+const ARTIFACT_RARITY_KEYS: Record<number, string> = {
+  4: 'client.artifact.window.artifact.epic_rarity',
+  5: 'client.artifact.window.artifact.legendary_rarity',
+  6: 'client.artifact.window.artifact.mythical_rarity',
 };
 
 /** T75 f2 rarity → the game's own label key. */
@@ -234,7 +334,12 @@ function readWrappedArray(buf: Buffer): Wire[] {
   return out;
 }
 
-/** Decode only the requested tables of no_duplicates; the rest are skipped unbuilt. */
+/**
+ * Decode only the requested tables of no_duplicates; the rest are skipped
+ * unbuilt. Most tables are maps keyed by a plain id; some (the artifact tables)
+ * are `$pairs` keyed by a one-element array `[id]` — those come back keyed by
+ * that id, the same shape as the others.
+ */
 export function readTables(buf: Buffer, wanted: number[]): Map<number, Record<string, Wire>> {
   const r = new WireReader(buf);
   const count = r.arrayLength();
@@ -245,12 +350,22 @@ export function readTables(buf: Buffer, wanted: number[]): Map<number, Record<st
       r.skip();
       continue;
     }
-    const t = r.value();
-    if (t && typeof t === 'object' && !Array.isArray(t) && !('$pairs' in t) && !('$bin' in t)) {
-      out.set(i, t as Record<string, Wire>);
-    }
+    const t = asIdRecord(r.value());
+    if (t) out.set(i, t);
   }
   return out;
+}
+
+/** A table as `id → row`: a plain map as is, `$pairs` keyed `[id]` (or `id`) re-keyed; anything else null. */
+export function asIdRecord(t: Wire): Record<string, Wire> | null {
+  if (!t || typeof t !== 'object' || Array.isArray(t) || '$bin' in t) return null;
+  if (!('$pairs' in t)) return t as Record<string, Wire>;
+  const rec: Record<string, Wire> = {};
+  for (const [k, v] of (t as { $pairs: Array<[Wire, Wire]> }).$pairs) {
+    const id = Array.isArray(k) && k.length === 1 ? k[0] : k;
+    if (typeof id === 'number' || typeof id === 'string') rec[String(id)] = v;
+  }
+  return rec;
 }
 
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */
@@ -353,7 +468,119 @@ export function buildNames(
       icon: str(row[1]) ?? '',
     };
   }
-  return { version, builtAt: new Date().toISOString(), format: NAMES_FORMAT, gifts, techs, objects, heroes, captains, medals };
+  const artifacts = buildArtifacts(tables, str, vecText, en);
+  const equipment: Record<string, GameEquipment> = {};
+  for (const [id, row] of rows(TABLE_EQUIPMENT)) {
+    const name = vecText(row[3]);
+    const icon = str(row[2]);
+    if (!name || !icon) continue;
+    let props: Array<{ propText?: string; propValue?: unknown }> = [];
+    try { props = (JSON.parse(str(row[9]) ?? '{}') as { props?: typeof props }).props ?? []; } catch { /* no props */ }
+    const lines = props
+      .filter((p) => typeof p.propText === 'string' && p.propText && p.propText !== DURABILITY_PROP)
+      .map((p): GameTextLine => [en.get(p.propText as string) ?? (p.propText as string), String(p.propValue ?? '')]);
+    equipment[id] = { name, icon, grade: typeof row[5] === 'number' ? row[5] : 0, lines };
+  }
+  const equipmentGrades: Record<string, string> = {};
+  for (const [grade, key] of Object.entries(EQUIPMENT_GRADE_KEYS)) {
+    const label = en.get(key);
+    if (label) equipmentGrades[grade] = label;
+  }
+  const inserts: Record<string, GameInsert> = {};
+  for (const [id, row] of rows(TABLE_GIFT_TYPES)) {
+    if (row[1] !== 8 && row[1] !== 9) continue;
+    const name = vecText(row[3]);
+    if (!name) continue;
+    let icon = '';
+    try {
+      const v = JSON.parse(str(row[6]) ?? '{}') as { icon?: unknown };
+      if (typeof v.icon === 'string') icon = v.icon;
+    } catch { /* no visual */ }
+    inserts[id] = { name, icon, kind: row[1] === 8 ? 'gem' : 'enchantment' };
+  }
+  return {
+    version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
+    gifts, techs, objects, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+  };
+}
+
+const isPlainObject = (v: Wire): v is Record<string, Wire> =>
+  !!v && typeof v === 'object' && !Array.isArray(v) && !('$bin' in v) && !('$pairs' in v);
+
+/**
+ * T110–T113 → per artifact type: name, rarity, icon, and every level, star
+ * level and random bonus by the effect id the game puts in a city's active
+ * effects. Lines are the game's own text ("Crypt exploration efficiency",
+ * "+130.0%"), from the props JSON a level or star level carries.
+ */
+function buildArtifacts(
+  tables: Map<number, Record<string, Wire>>,
+  str: (ref: Wire) => string | undefined,
+  vecText: (ref: Wire) => string | undefined,
+  en: Map<string, string>,
+): Record<string, GameArtifact> {
+  const propLines = (ref: Wire): GameTextLine[] => {
+    let props: Array<{ propText?: string; propValue?: unknown }> = [];
+    try { props = (JSON.parse(str(ref) ?? '{}') as { props?: typeof props }).props ?? []; } catch { /* no props */ }
+    return props
+      .filter((p) => typeof p.propText === 'string' && p.propText)
+      .map((p): GameTextLine => [en.get(p.propText as string) ?? (p.propText as string), String(p.propValue ?? '')]);
+  };
+  const out: Record<string, GameArtifact> = {};
+  const types = tables.get(TABLE_ARTIFACTS) ?? {};
+  for (const [id, row] of Object.entries(types)) {
+    if (!Array.isArray(row)) continue;
+    const name = vecText(row[8]);
+    if (!name) continue;
+    let icon = '';
+    try {
+      const cfg = JSON.parse(str(row[7]) ?? '{}') as { icon?: unknown };
+      if (typeof cfg.icon === 'string') icon = cfg.icon;
+    } catch { /* no config */ }
+    const rarity = typeof row[11] === 'number' ? row[11] : 0;
+
+    const levels: GameArtifact['levels'] = {};
+    const lv = tables.get(TABLE_ARTIFACT_LEVELS)?.[id];
+    const lvRows = Array.isArray(lv) ? lv[2] : undefined;
+    if (lvRows && isPlainObject(lvRows)) {
+      for (const r of Object.values(lvRows)) {
+        if (Array.isArray(r) && typeof r[0] === 'number' && typeof r[1] === 'number') levels[String(r[1])] = [r[0], propLines(r[4])];
+      }
+    }
+    const stars: GameArtifact['stars'] = {};
+    const st = tables.get(TABLE_ARTIFACT_STARS)?.[id];
+    const stRows = Array.isArray(st) ? st[1] : undefined;
+    if (stRows && isPlainObject(stRows)) {
+      for (const r of Object.values(stRows)) {
+        if (Array.isArray(r) && typeof r[0] === 'number' && typeof r[2] === 'number') stars[String(r[2])] = [r[0], propLines(r[4])];
+      }
+    }
+    const bonuses: GameArtifact['bonuses'] = {};
+    const bp = tables.get(TABLE_ARTIFACT_BONUSES)?.[id];
+    const bpRows = Array.isArray(bp) ? bp[1] : undefined;
+    if (bpRows && isPlainObject(bpRows)) {
+      for (const [effectId, r] of Object.entries(bpRows)) {
+        if (!Array.isArray(r)) continue;
+        const key = str(r[1]);
+        if (!key) continue;
+        bonuses[effectId] = [en.get(key) ?? key, str(r[2]) ?? '', typeof r[3] === 'number' ? r[3] : 0];
+      }
+    }
+    const levelNums = Object.values(levels).map(([n]) => n);
+    const starNums = Object.values(stars).map(([n]) => n);
+    out[id] = {
+      name,
+      rarity,
+      rarityName: en.get(ARTIFACT_RARITY_KEYS[rarity] ?? '') ?? '',
+      icon,
+      maxLevel: levelNums.length ? Math.max(...levelNums) : 0,
+      maxStar: starNums.length ? Math.max(...starNums) : 0,
+      levels,
+      stars,
+      bonuses,
+    };
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +640,8 @@ export async function loadGameNames(): Promise<GameNames> {
   log.info(
     `Game names ${key} built in ${Math.round((Date.now() - started) / 1000)}s: ` +
     `${Object.keys(names.gifts).length} gift types, ${Object.keys(names.techs).length} techs, ` +
-    `${Object.keys(names.objects).length} map objects, ${Object.keys(names.heroes).length} heroes`,
+    `${Object.keys(names.objects).length} map objects, ${Object.keys(names.heroes).length} heroes, ` +
+    `${Object.keys(names.captains).length} captains, ${Object.keys(names.artifacts ?? {}).length} artifacts`,
   );
   memo = names;
   return names;

@@ -1,8 +1,10 @@
 // Captains tab on the member profile: every captain the player owns, the way
 // the game's Captains screen shows them — portrait in its rarity frame, level
-// badge, star level, the active line-up — read from the member's city record
-// (GET /api/game/members/:id/captains). Hovering a captain (desktop) shows its
-// details beside it; a click or tap opens them in a dialog.
+// badge, star level, the active line-up, and what each captain wears — plus
+// the artifacts the line-up captains carry, like the game's artifact book. All
+// read from the member's city record (GET /api/game/members/:id/captains).
+// Hovering a captain or artifact (desktop) shows its details beside it; a click
+// or tap opens them in a dialog.
 
 import { api } from '../lib/api.js';
 import { contentModal, esc, formatDate, formatDateShort } from '../lib/ui.js';
@@ -13,6 +15,8 @@ const FINE_HOVER = '(hover: hover) and (pointer: fine)';
 const SHOW_DELAY_MS = 200;
 const HIDE_DELAY_MS = 100;
 const HISTORY_LINES = 8;
+// An artifact's star level runs 1–25: five steps fill one of five stars.
+const STAR_STEPS = 5;
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 
@@ -32,6 +36,22 @@ function starsHtml(n, max = 0) {
   return `<span class="captain-stars" role="img" aria-label="${esc(tn(n, '{n} star', '{n} stars', { n }))}">${on}${off}</span>`;
 }
 
+/**
+ * An artifact's five stars as the game draws them: star level 21 of 25 is four
+ * full stars and the fifth one started.
+ */
+function artifactStarsHtml(star, maxStar) {
+  const stars = Math.max(1, Math.round((maxStar || 25) / STAR_STEPS));
+  const full = Math.min(stars, Math.floor(star / STAR_STEPS));
+  const part = full < stars && star % STAR_STEPS > 0;
+  let html = '';
+  for (let i = 0; i < stars; i++) {
+    const cls = i < full ? ' is-on' : i === full && part ? ' is-part' : '';
+    html += `<span class="captain-star${cls}" aria-hidden="true">★</span>`;
+  }
+  return `<span class="captain-stars artifact-stars" role="img" aria-label="${esc(t('Star level {n} of {max}', { n: star, max: maxStar || 25 }))}">${html}</span>`;
+}
+
 function portraitHtml(c, cls = 'captain-portrait') {
   return c.iconUrl
     ? `<img class="${cls}" src="${esc(c.iconUrl)}" alt="" loading="lazy" decoding="async">`
@@ -39,13 +59,27 @@ function portraitHtml(c, cls = 'captain-portrait') {
 }
 
 function tileHtml(c, i) {
-  return `<button type="button" class="captain-tile rarity-${Number(c.rarity) || 0}" data-captain-index="${i}" aria-haspopup="dialog">
+  return `<button type="button" class="captain-tile rarity-${Number(c.rarity) || 0}" data-tile="captain" data-index="${i}" aria-haspopup="dialog">
       <span class="captain-frame">
         ${portraitHtml(c)}
         <span class="captain-level">${c.level}</span>
         ${c.stars ? starsHtml(c.stars) : ''}
       </span>
       <span class="captain-name">${esc(tGame(c.name))}</span>
+    </button>`;
+}
+
+/** Artifact rarity (4 epic, 5 legendary, 6 mythic) → the captain colour scale (2 purple, 3 gold, 4 red). */
+const artifactRarityClass = (r) => ({ 4: 2, 5: 3, 6: 4 })[Number(r)] ?? 0;
+
+function artifactTileHtml(a, i) {
+  return `<button type="button" class="captain-tile artifact-tile rarity-${artifactRarityClass(a.rarity)}${a.inLineup ? '' : ' is-benched'}" data-tile="artifact" data-index="${i}" aria-haspopup="dialog">
+      <span class="artifact-frame">
+        ${portraitHtml(a, 'artifact-icon')}
+        <span class="captain-level">${a.level}</span>
+      </span>
+      ${artifactStarsHtml(a.star, a.maxStar)}
+      <span class="captain-name">${esc(tGame(a.name))}</span>
     </button>`;
 }
 
@@ -57,11 +91,70 @@ function changeText(ch) {
   return parts.join(' · ');
 }
 
-/** The captain's details: art, rarity, level, stars, XP, line-up, star bonuses, history. */
+function artifactChangeText(ch) {
+  if (ch.prevLevel === null) return t('New artifact');
+  const parts = [];
+  if (ch.prevLevel !== ch.level) parts.push(t('Level {from} → {to}', { from: ch.prevLevel, to: ch.level }));
+  if (ch.prevStar !== ch.star) parts.push(t('Star level {from} → {to}', { from: ch.prevStar, to: ch.star }));
+  if (ch.rerolled) parts.push(t('Bonuses rerolled'));
+  return parts.join(' · ');
+}
+
+/** The short change (the table's metric) for one equipment history row. */
+function equipmentChangeText(ch) {
+  if (!ch.itemType) return t('Item taken off');
+  if (ch.reworked) return t('Gems or enchantment changed');
+  return t('Put on');
+}
+
+/** Who wears it, and what it replaced — the sub-line under the item's name. */
+function equipmentChangeSub(ch, captainName) {
+  const parts = [];
+  if (captainName) parts.push(tGame(captainName));
+  if (ch.itemType && !ch.reworked && ch.prevName) parts.push(t('Replaced {item}', { item: tGame(ch.prevName) }));
+  return parts.join(' · ');
+}
+
+const linesHtml = (lines) => `<ul class="captain-bonus-list">${lines.map(([text, value]) => `<li><span>${esc(tGame(text))}</span><span class="captain-bonus-value">${esc(value)}</span></li>`).join('')}</ul>`;
+
+/** One worn item: icon in its quality frame, name, grade, and (in full) its bonuses and inserts. */
+function gearItemHtml(it, { full }) {
+  const inserts = [...(it.enchantment ? [it.enchantment] : []), ...(it.gems || [])];
+  return `<li class="gear-item grade-${Number(it.grade) || 0}">
+      <span class="gear-icon">${it.iconUrl ? `<img src="${esc(it.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}</span>
+      <span class="gear-body">
+        <span class="gear-name">${esc(tGame(it.name))}</span>
+        ${it.gradeName ? `<span class="gear-grade">${esc(tGame(it.gradeName))}</span>` : ''}
+        ${full && it.lines?.length ? linesHtml(it.lines) : ''}
+        ${full && inserts.length ? `<span class="gear-inserts">${inserts.map((g) => `<span class="gear-insert">${g.iconUrl ? `<img src="${esc(g.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}${esc(tGame(g.name))}</span>`).join('')}</span>` : ''}
+      </span>
+    </li>`;
+}
+
+function equipmentHtml(c, { full }) {
+  const items = Array.isArray(c.equipment) ? c.equipment : [];
+  if (!items.length) return '';
+  return `<div class="captain-detail-section">${t('Equipment')}</div>
+    <ul class="gear-list${full ? ' is-full' : ' is-compact'}">${items.map((it) => gearItemHtml(it, { full })).join('')}</ul>`;
+}
+
+/** History lines with something to say (a replayed read can repeat the one before). */
+const historyLines = (rows, text) => rows
+  .map((ch) => ({ ch, text: text(ch) }))
+  .filter((r) => r.text)
+  .slice(0, HISTORY_LINES)
+  .map(({ ch, text: s }) => `<li><span>${esc(s)}</span><span class="muted-copy">${esc(formatDateShort(ch.changedAt))}</span></li>`)
+  .join('');
+
+/**
+ * The captain's details: art, rarity, level, stars, XP, line-up, star bonuses,
+ * history — and what it wears: in the hover card a compact list beside the art,
+ * in the dialog every item in full across the dialog's width.
+ */
 function detailHtml(c, changes, { withName = false } = {}) {
   const art = c.artUrl || c.iconUrl;
   const bonuses = Array.isArray(c.starBonuses) ? c.starBonuses : [];
-  const history = changes.filter((ch) => ch.captainId === c.captainId).slice(0, HISTORY_LINES);
+  const history = historyLines(changes.filter((ch) => ch.captainId === c.captainId), changeText);
   return `<div class="captain-detail rarity-${Number(c.rarity) || 0}">
       <div class="captain-detail-art${c.artUrl ? '' : ' is-portrait'}">${art ? `<img src="${esc(art)}" alt="" decoding="async">` : ''}</div>
       <div class="captain-detail-body">
@@ -78,11 +171,43 @@ function detailHtml(c, changes, { withName = false } = {}) {
         </dl>
         ${bonuses.length ? `
           <div class="captain-detail-section">${t('Star level {n}', { n: c.stars })}</div>
-          <ul class="captain-bonus-list">${bonuses.map(([text, value]) => `<li><span>${esc(tGame(text))}</span><span class="captain-bonus-value">${esc(value)}</span></li>`).join('')}</ul>` : ''}
-        ${history.length ? `
+          ${linesHtml(bonuses)}` : ''}
+        ${withName ? equipmentHtml(c, { full: false }) : ''}
+        ${history ? `
           <div class="captain-detail-section">${t('Level history')}</div>
-          <ul class="captain-history">${history.map((ch) => `<li><span>${esc(changeText(ch))}</span><span class="muted-copy">${esc(formatDateShort(ch.changedAt))}</span></li>`).join('')}</ul>` : ''}
-        <p class="captain-detail-note">${t("Equipment, artifact and skill bonuses aren't read yet.")}</p>
+          <ul class="captain-history">${history}</ul>` : ''}
+        <p class="captain-detail-note">${t("Skill bonuses aren't read yet.")}</p>
+      </div>
+    </div>
+    ${withName ? '' : `<div class="captain-gear">${equipmentHtml(c, { full: true })}</div>`}`;
+}
+
+/** An artifact as the game's artifact book shows it: level line, star line, random bonuses. */
+function artifactDetailHtml(a, changes, { withName = false } = {}) {
+  const history = historyLines(changes.filter((ch) => ch.artifactType === a.artifactType), artifactChangeText);
+  const bonus = (b) => `<li class="artifact-roll quality-${Number(b.quality) || 0}"><span>${esc(tGame(b.text))}</span><span class="captain-bonus-value">${esc(b.value)}</span></li>`;
+  return `<div class="captain-detail artifact-detail rarity-${artifactRarityClass(a.rarity)}">
+      <div class="captain-detail-art is-portrait artifact-art">${a.iconUrl ? `<img src="${esc(a.iconUrl)}" alt="" decoding="async">` : ''}</div>
+      <div class="captain-detail-body">
+        ${withName ? `<div class="captain-detail-name">${esc(tGame(a.name))}</div>` : ''}
+        <div class="captain-detail-head">
+          <span class="captain-detail-level">${t('Level {n}/{max}', { n: a.level, max: a.maxLevel || a.level })}</span>
+          ${a.rarityName ? `<span class="captain-detail-rarity">${esc(tGame(a.rarityName))}</span>` : ''}
+        </div>
+        ${a.levelLines?.length ? linesHtml(a.levelLines) : ''}
+        <div class="captain-detail-section">${t('Star level {n}/{max}', { n: a.star, max: a.maxStar || a.star })}</div>
+        ${artifactStarsHtml(a.star, a.maxStar)}
+        ${a.starLines?.length ? linesHtml(a.starLines) : ''}
+        ${a.bonusLines?.length ? `
+          <div class="captain-detail-section">${t('Random bonuses')}</div>
+          <ul class="captain-bonus-list artifact-rolls">${a.bonusLines.map(bonus).join('')}</ul>` : ''}
+        <dl class="captain-detail-facts">
+          <div><dt>${t('Tracked since')}</dt><dd title="${esc(formatDate(a.firstSeen))}">${esc(formatDateShort(a.firstSeen))}</dd></div>
+          ${a.inLineup ? '' : `<div><dt>${t('Active line-up')}</dt><dd>${t('Not at the last read')}</dd></div>`}
+        </dl>
+        ${history ? `
+          <div class="captain-detail-section">${t('Level history')}</div>
+          <ul class="captain-history">${history}</ul>` : ''}
       </div>
     </div>`;
 }
@@ -122,34 +247,87 @@ function showHoverCard(tile, html) {
   hoverCard.style.top = `${Math.round(Math.max(8, top))}px`;
 }
 
-function wireTiles(el, captains, changes) {
+/**
+ * Hover + click for every tile in `el`. `views[kind](index)` returns
+ * `{ title, html, hoverHtml, wide }` for a tile, or null.
+ */
+function wireTiles(el, views) {
   const fine = window.matchMedia(FINE_HOVER);
+  const viewOf = (tile) => views[tile.dataset.tile]?.(Number(tile.dataset.index)) ?? null;
   el.addEventListener('click', (ev) => {
-    const tile = ev.target.closest('[data-captain-index]');
-    if (!tile) return;
-    const c = captains[Number(tile.dataset.captainIndex)];
-    if (!c) return;
+    const tile = ev.target.closest('[data-tile]');
+    const v = tile && viewOf(tile);
+    if (!v) return;
     hideHoverCard();
-    contentModal({ title: tGame(c.name), html: detailHtml(c, changes), className: 'captain-modal' });
+    contentModal({ title: v.title, html: v.html, wide: !!v.wide, className: 'captain-modal' });
   });
   el.addEventListener('mouseover', (ev) => {
     if (!fine.matches) return;
-    const tile = ev.target.closest('[data-captain-index]');
+    const tile = ev.target.closest('[data-tile]');
     if (!tile || tile.contains(ev.relatedTarget)) return;
-    const c = captains[Number(tile.dataset.captainIndex)];
-    if (!c) return;
+    const v = viewOf(tile);
+    if (!v) return;
     clearTimeout(hideTimer);
     clearTimeout(showTimer);
     // Already showing a card: swap straight to this one.
     const delay = hoverCard?.classList.contains('is-visible') ? 0 : SHOW_DELAY_MS;
-    showTimer = setTimeout(() => showHoverCard(tile, detailHtml(c, changes, { withName: true })), delay);
+    showTimer = setTimeout(() => showHoverCard(tile, v.hoverHtml), delay);
   });
   el.addEventListener('mouseout', (ev) => {
-    const tile = ev.target.closest('[data-captain-index]');
+    const tile = ev.target.closest('[data-tile]');
     if (!tile || tile.contains(ev.relatedTarget)) return;
     clearTimeout(showTimer);
     hideTimer = setTimeout(hideHoverCard, HIDE_DELAY_MS);
   });
+}
+
+function artifactsCardHtml(artifacts) {
+  return `<div class="card">
+      <div class="card-header"><h2>${t('Artifacts')}</h2>
+        <span class="card-header-hint">${tn(artifacts.length, '{n} artifact', '{n} artifacts', { n: artifacts.length })}</span>
+      </div>
+      <div class="card-body card-body-padded">
+        <p class="captain-section-note">${t('Only the artifacts the three line-up captains wear show in the game data.')}</p>
+        ${artifacts.length
+          ? `<div class="captain-grid artifact-grid">${artifacts.map((a, i) => artifactTileHtml(a, i)).join('')}</div>`
+          : `<p class="muted-copy">${t('No artifacts on the line-up captains at the last read.')}</p>`}
+      </div>
+    </div>`;
+}
+
+/** Artifact and equipment changes, newest first, as one list. */
+function gearChangeRows(data, captainNames) {
+  const rows = [
+    ...(data.artifactChanges || []).map((ch) => ({ name: ch.name, iconUrl: ch.iconUrl, text: artifactChangeText(ch), changedAt: ch.changedAt })),
+    ...(data.equipmentChanges || []).map((ch) => ({
+      name: ch.itemType ? ch.name : (ch.prevName || ''),
+      sub: equipmentChangeSub(ch, captainNames.get(ch.captainId)),
+      iconUrl: ch.iconUrl,
+      text: equipmentChangeText(ch),
+      changedAt: ch.changedAt,
+    })),
+  ];
+  return rows.sort((a, b) => String(b.changedAt).localeCompare(String(a.changedAt))).slice(0, 40);
+}
+
+function changesTableHtml(title, firstColumn, allRows) {
+  // A replayed read can repeat the one before it: nothing to list.
+  const rows = allRows.filter((r) => r.text);
+  if (!rows.length) return '';
+  return `<div class="card">
+      <div class="card-header"><h2>${title}</h2></div>
+      <div class="card-body">
+        <table class="table-responsive captain-changes-table">
+          <colgroup><col class="col-captain"><col class="col-change"><col class="col-date"></colgroup>
+          <thead><tr><th>${firstColumn}</th><th>${t('Change')}</th><th>${t('Date')}</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr>
+            <td data-label="${firstColumn}" data-role="primary"><span class="mrow-name captain-change-name">${r.iconUrl ? `<img class="captain-change-icon" src="${esc(r.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}${esc(tGame(r.name))}</span>${r.sub ? `<span class="mrow-sub captain-change-sub">${esc(r.sub)}</span>` : ''}</td>
+            <td data-label="${t('Change')}" data-role="metric">${esc(r.text)}</td>
+            <td data-label="${t('Date')}">${esc(formatDate(r.changedAt))}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 export async function mountMemberCaptains(root, memberId) {
@@ -169,12 +347,15 @@ export async function mountMemberCaptains(root, memberId) {
   }
   const captains = data.captains;
   const changes = data.changes || [];
+  const artifacts = data.artifacts || [];
+  const artifactChanges = data.artifactChanges || [];
+  const captainNames = new Map(captains.map((c) => [c.captainId, c.name]));
   // The game's own order: highest level first (the server sorts it so).
   const lineup = captains
     .map((c, i) => ({ c, i }))
     .filter(({ c }) => c.slot > 0)
     .sort((a, b) => a.c.slot - b.c.slot);
-  const recent = changes.slice(0, 40);
+  const recent = changes.slice(0, 40).map((ch) => ({ name: ch.name, iconUrl: ch.iconUrl, text: changeText(ch), changedAt: ch.changedAt }));
   el.innerHTML = `
     <div class="card">
       <div class="card-header"><h2>${t('Captains')}</h2>
@@ -188,19 +369,23 @@ export async function mountMemberCaptains(root, memberId) {
         <div class="captain-grid">${captains.map((c, i) => tileHtml(c, i)).join('')}</div>
       </div>
     </div>
-    ${recent.length ? `<div class="card">
-      <div class="card-header"><h2>${t('Recent captain progress')}</h2></div>
-      <div class="card-body">
-        <table class="table-responsive captain-changes-table">
-          <colgroup><col class="col-captain"><col class="col-change"><col class="col-date"></colgroup>
-          <thead><tr><th>${t('Captain')}</th><th>${t('Change')}</th><th>${t('Date')}</th></tr></thead>
-          <tbody>${recent.map((ch) => `<tr>
-            <td data-label="${t('Captain')}" data-role="primary"><span class="mrow-name captain-change-name">${ch.iconUrl ? `<img class="captain-change-icon" src="${esc(ch.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}${esc(tGame(ch.name))}</span></td>
-            <td data-label="${t('Change')}" data-role="metric">${esc(changeText(ch))}</td>
-            <td data-label="${t('Date')}">${esc(formatDate(ch.changedAt))}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>
-    </div>` : ''}`;
-  wireTiles(el, captains, changes);
+    ${artifactsCardHtml(artifacts)}
+    ${changesTableHtml(t('Recent captain progress'), t('Captain'), recent)}
+    ${changesTableHtml(t('Recent artifact and equipment changes'), t('Item'), gearChangeRows(data, captainNames))}`;
+  wireTiles(el, {
+    captain: (i) => {
+      const c = captains[i];
+      return c && {
+        title: tGame(c.name),
+        html: detailHtml(c, changes),
+        hoverHtml: detailHtml(c, changes, { withName: true }),
+        // Room for the equipment cards side by side.
+        wide: (c.equipment?.length ?? 0) > 0,
+      };
+    },
+    artifact: (i) => {
+      const a = artifacts[i];
+      return a && { title: tGame(a.name), html: artifactDetailHtml(a, artifactChanges), hoverHtml: artifactDetailHtml(a, artifactChanges, { withName: true }) };
+    },
+  });
 }

@@ -28,6 +28,9 @@
  *                9 = "Player's City", the default.
  *   status       city state and holdings by key (STATUS_ART in selection.ts):
  *                shield, burning, wallsDown, flame, city, goldIngots.
+ *   artifacts    T110 artifact type → its icon (the type's config `icon`).
+ *   equipment    T11 equipment item type → its icon (f2 address, "arch_body").
+ *   inserts      T8 gem / enchantment id → its icon (f6 visual).
  *
  * Every mapping only names images that were actually extracted.
  */
@@ -67,13 +70,30 @@ export interface ArtMappings {
   cityLooks: Record<string, Record<string, string>>;
   /** STATUS_ART key (shield, burning, wallsDown, flame, city, goldIngots) → image. */
   status: Record<string, string>;
+  /** T110 artifact type → icon. Absent in an index built before Nov 2026's artifacts. */
+  artifacts?: Record<string, string>;
+  /** T11 equipment item type → icon. Same age as `artifacts`. */
+  equipment?: Record<string, string>;
+  /** T8 gem / enchantment id → icon. Same age as `artifacts`. */
+  inserts?: Record<string, string>;
 }
 
 export function emptyMappings(): ArtMappings {
   return {
     heroAvatars: {}, avatarFrames: {}, heroLevelBadge: null, troops: {}, troopTiers: {}, unitFrames: {},
     chests: {}, resources: {}, techs: {}, captains: {}, ancients: {}, cityLooks: {}, status: {},
+    artifacts: {}, equipment: {}, inserts: {},
   };
+}
+
+/** id → its icon, for the ones that were extracted (artifacts, equipment, gems). */
+export function iconsById(rows: Record<string, { icon: string }> | undefined, available: (name: string) => boolean): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, r] of Object.entries(rows ?? {})) {
+    const icon = r.icon ? safeArtName(r.icon) : '';
+    if (icon && available(icon)) out[id] = icon;
+  }
+  return out;
 }
 
 export function normalizeGameName(s: string): string {
@@ -269,6 +289,9 @@ export function buildMappings(
     ancients: eventIcons(available),
     cityLooks: cityLookIcons(st, available),
     status: statusIcons(available),
+    artifacts: iconsById(st.artifacts, available),
+    equipment: iconsById(st.equipment, available),
+    inserts: iconsById(st.inserts, available),
   };
 }
 

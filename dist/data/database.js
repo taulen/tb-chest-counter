@@ -1907,6 +1907,87 @@ const MIGRATIONS = [
                 database.exec('ALTER TABLE game_players ADD COLUMN city_appearance INTEGER');
         },
     },
+    {
+        // Artifacts for every member (city field 14 = active effects; the artifacts
+        // the three line-up captains wear show up there with their level, star
+        // level and random bonuses — game-protocol/artifacts.ts). One row per
+        // artifact type a player has been seen wearing; in_lineup says whether the
+        // latest city read still showed it (an artifact moved to a benched captain
+        // drops out of the city data, it is not gone). History keeps a row when an
+        // artifact is first seen or its level, star level or rolls change.
+        //
+        // Captain equipment (city field 9 [12] → field 10 item instances,
+        // game-protocol/equipment.ts): one row per worn item per captain position;
+        // history when a position gets a different item, a different enchantment or
+        // gems, or is emptied (item_type 0, item_uid '').
+        //
+        // game_parse_markers: "this parser has re-read the archived raw replies up
+        // to version N" — so a parser added or fixed later replays the archive
+        // (game_raw_snapshots) once, not on every scan.
+        //
+        // v115 (built in parallel as v112; renumbered at merge). IF NOT EXISTS:
+        // runMigrations may replay this.
+        version: 115,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_player_artifacts (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          artifact_type INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          star INTEGER NOT NULL,
+          bonuses TEXT NOT NULL DEFAULT '[]',
+          in_lineup INTEGER NOT NULL DEFAULT 1,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, artifact_type)
+        );
+        CREATE TABLE IF NOT EXISTS game_player_artifact_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          artifact_type INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          star INTEGER NOT NULL,
+          bonuses TEXT NOT NULL DEFAULT '[]',
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, artifact_type, changed_at)
+        );
+        CREATE TABLE IF NOT EXISTS game_player_captain_equipment (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          captain_id INTEGER NOT NULL,
+          position INTEGER NOT NULL,
+          item_uid TEXT NOT NULL,
+          item_type INTEGER NOT NULL,
+          enchantment INTEGER NOT NULL DEFAULT 0,
+          gems TEXT NOT NULL DEFAULT '[]',
+          raw TEXT NOT NULL DEFAULT '[]',
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, captain_id, position)
+        );
+        CREATE TABLE IF NOT EXISTS game_player_equipment_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          captain_id INTEGER NOT NULL,
+          position INTEGER NOT NULL,
+          item_uid TEXT NOT NULL,
+          item_type INTEGER NOT NULL,
+          enchantment INTEGER NOT NULL DEFAULT 0,
+          gems TEXT NOT NULL DEFAULT '[]',
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, captain_id, position, changed_at)
+        );
+        CREATE TABLE IF NOT EXISTS game_parse_markers (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          parser TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          done_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, parser)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted
