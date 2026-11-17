@@ -8,8 +8,14 @@ const express_1 = require("express");
 const fs_1 = __importDefault(require("fs"));
 const resource_repo_js_1 = require("../../data/repositories/resource-repo.js");
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
+const chest_rewards_js_1 = require("../../data/chest-rewards.js");
+const static_data_js_1 = require("../../game-protocol/static-data.js");
+const item_icons_js_1 = require("../../game-art/item-icons.js");
+const index_js_1 = require("../../config/index.js");
 const crop_dirs_js_1 = require("../../utils/crop-dirs.js");
 const auth_js_1 = require("../middleware/auth.js");
+/** The longest window Resources → Chest rewards reads at once (a month plus a Daily trend's reach). */
+const CHEST_REWARDS_MAX_DAYS = 62;
 function createResourcesDataRouter() {
     const router = (0, express_1.Router)();
     // The GET routes below are read-only clan resource data and are available to
@@ -98,6 +104,63 @@ function createResourcesDataRouter() {
     /** List upload batches for this clan (most recent first). */
     router.get('/batches', (req, res) => {
         res.json({ batches: (0, resource_repo_js_1.listBatches)(req.clanId) });
+    });
+    /**
+     * Resources → Chest rewards: what the clan's opened chests paid out over
+     * [from, to) — totals per reward and per chest type — plus a per-game-day
+     * trend over [trendFrom, to) (data/chest-rewards.ts). Query: from, to,
+     * trendFrom (ISO timestamps; trendFrom defaults to from). Every item and
+     * chest type in the answer comes with its game name (shown through tGame),
+     * quality grade and icon URL.
+     */
+    router.get('/chest-rewards', async (req, res) => {
+        const clanId = req.clanId;
+        const q = req.query;
+        const iso = (s) => {
+            const ms = s ? Date.parse(s) : NaN;
+            return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+        };
+        const from = iso(q.from);
+        const to = iso(q.to);
+        const trendFrom = iso(q.trendFrom) ?? from;
+        if (!from || !to || !trendFrom || from >= to || trendFrom > from
+            || Date.parse(to) - Date.parse(trendFrom) > CHEST_REWARDS_MAX_DAYS * 86_400_000) {
+            res.status(400).json({ error: `from < to required, trendFrom ≤ from, at most ${CHEST_REWARDS_MAX_DAYS} days` });
+            return;
+        }
+        const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
+        const items = names?.items ?? {};
+        const rows = (0, chest_rewards_js_1.loadChestClaims)(clanId, trendFrom, to);
+        const income = (0, chest_rewards_js_1.buildIncome)(rows, items, { from, to, trendFrom, rolloverUtcHour: (0, index_js_1.loadConfig)().gameDayRolloverUtcHour });
+        const byChest = (0, chest_rewards_js_1.buildByChest)(rows.filter((r) => r.claimedAt >= from), items);
+        const itemIds = new Set();
+        for (const tot of [...income.totals, ...byChest.flatMap((c) => c.rewards)]) {
+            itemIds.add(tot.itemId);
+            for (const id of Object.keys(tot.items))
+                itemIds.add(Number(id));
+        }
+        const giftTypes = byChest.map((c) => c.giftType);
+        const icons = await (0, item_icons_js_1.itemIconUrls)([...itemIds, ...giftTypes]);
+        const describe = (id) => {
+            const it = items[String(id)];
+            return {
+                name: names?.gifts?.[String(id)]?.chest ?? '',
+                kind: it?.kind ?? 0,
+                quality: it?.quality ?? 0,
+                seconds: it?.seconds ?? 0,
+                iconUrl: icons.get(id) ?? null,
+            };
+        };
+        res.json({
+            from, to, trendFrom,
+            income,
+            byChest,
+            items: Object.fromEntries([...itemIds].map((id) => [id, describe(id)])),
+            chestTypes: Object.fromEntries(giftTypes.map((id) => [id, {
+                    ...describe(id),
+                    source: names?.gifts?.[String(id)]?.source ?? '',
+                }])),
+        });
     });
     /**
      * Update a single transaction's editable fields.

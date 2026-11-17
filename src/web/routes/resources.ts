@@ -12,8 +12,15 @@ import {
   getRowCropPath,
 } from '../../data/repositories/resource-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
+import { buildByChest, buildIncome, loadChestClaims } from '../../data/chest-rewards.js';
+import { loadGameNames } from '../../game-protocol/static-data.js';
+import { itemIconUrls } from '../../game-art/item-icons.js';
+import { loadConfig } from '../../config/index.js';
 import { resolveAllowedCropPath } from '../../utils/crop-dirs.js';
 import { requireAdmin } from '../middleware/auth.js';
+
+/** The longest window Resources → Chest rewards reads at once (a month plus a Daily trend's reach). */
+const CHEST_REWARDS_MAX_DAYS = 62;
 
 export function createResourcesDataRouter(): Router {
   const router = Router();
@@ -112,6 +119,64 @@ export function createResourcesDataRouter(): Router {
   /** List upload batches for this clan (most recent first). */
   router.get('/batches', (req, res) => {
     res.json({ batches: listBatches(req.clanId!) });
+  });
+
+  /**
+   * Resources → Chest rewards: what the clan's opened chests paid out over
+   * [from, to) — totals per reward and per chest type — plus a per-game-day
+   * trend over [trendFrom, to) (data/chest-rewards.ts). Query: from, to,
+   * trendFrom (ISO timestamps; trendFrom defaults to from). Every item and
+   * chest type in the answer comes with its game name (shown through tGame),
+   * quality grade and icon URL.
+   */
+  router.get('/chest-rewards', async (req, res) => {
+    const clanId = req.clanId!;
+    const q = req.query as Record<string, string>;
+    const iso = (s: string | undefined): string | null => {
+      const ms = s ? Date.parse(s) : NaN;
+      return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+    };
+    const from = iso(q.from);
+    const to = iso(q.to);
+    const trendFrom = iso(q.trendFrom) ?? from;
+    if (!from || !to || !trendFrom || from >= to || trendFrom > from
+      || Date.parse(to) - Date.parse(trendFrom) > CHEST_REWARDS_MAX_DAYS * 86_400_000) {
+      res.status(400).json({ error: `from < to required, trendFrom ≤ from, at most ${CHEST_REWARDS_MAX_DAYS} days` });
+      return;
+    }
+    const names = await loadGameNames().catch(() => null);
+    const items = names?.items ?? {};
+    const rows = loadChestClaims(clanId, trendFrom, to);
+    const income = buildIncome(rows, items, { from, to, trendFrom, rolloverUtcHour: loadConfig().gameDayRolloverUtcHour });
+    const byChest = buildByChest(rows.filter((r) => r.claimedAt >= from), items);
+
+    const itemIds = new Set<number>();
+    for (const tot of [...income.totals, ...byChest.flatMap((c) => c.rewards)]) {
+      itemIds.add(tot.itemId);
+      for (const id of Object.keys(tot.items)) itemIds.add(Number(id));
+    }
+    const giftTypes = byChest.map((c) => c.giftType);
+    const icons = await itemIconUrls([...itemIds, ...giftTypes]);
+    const describe = (id: number) => {
+      const it = items[String(id)];
+      return {
+        name: names?.gifts?.[String(id)]?.chest ?? '',
+        kind: it?.kind ?? 0,
+        quality: it?.quality ?? 0,
+        seconds: it?.seconds ?? 0,
+        iconUrl: icons.get(id) ?? null,
+      };
+    };
+    res.json({
+      from, to, trendFrom,
+      income,
+      byChest,
+      items: Object.fromEntries([...itemIds].map((id) => [id, describe(id)])),
+      chestTypes: Object.fromEntries(giftTypes.map((id) => [id, {
+        ...describe(id),
+        source: names?.gifts?.[String(id)]?.source ?? '',
+      }])),
+    });
   });
 
   /**

@@ -17,6 +17,7 @@ import {
 import {
   unitFrameArt, unitFrameTextures, clientUiTextures, HERO_LEVEL_BADGE, UNIT_TIER_COLOURS, TIER_NUMERALS,
   CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF, captainTileArt,
+  itemFrameArt, itemFrameTextures, ITEM_FRAME, ITEM_PLAIN_BACK, ITEM_QUALITY_COLOURS,
 } from '../../src/game-art/unit-frames.js';
 import { captainScaledArt, captainFullArt } from '../../src/game-art/mappings.js';
 import type { Wire } from '../../src/game-protocol/codec.js';
@@ -205,7 +206,29 @@ describe('mappings', () => {
     expect(partial['7']).toBeUndefined();
     expect(partial['6']).toEqual({ back: 'back_icon_units_72x72_red', frame: 'frame_icon_units_94x92_red', badge: null, numeral: null });
     expect(UNIT_TIER_COLOURS).toHaveLength(TIER_NUMERALS.length);
-    expect(clientUiTextures()).toEqual([...textures, HERO_LEVEL_BADGE, CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF]);
+    expect(clientUiTextures()).toEqual([
+      ...textures, HERO_LEVEL_BADGE, CAPTAIN_LEVEL_PLATE, CAPTAIN_STAR_ON, CAPTAIN_STAR_OFF, ...itemFrameTextures(),
+    ]);
+  });
+
+  it('draws an item tile on the back of its quality grade, the plain back without one, in the item frame', () => {
+    const textures = itemFrameTextures();
+    expect(textures).toEqual([
+      'back_icon_subject_72x72_grey', 'back_icon_subject_72x72_white', 'back_icon_subject_72x72_green',
+      'back_icon_subject_72x72_blue', 'back_icon_subject_72x72_violet', 'back_icon_subject_72x72_orange',
+      'back_icon_subject_72x72_red', 'back_icon_subject_72x72_gold', ITEM_PLAIN_BACK, ITEM_FRAME,
+    ]);
+    expect(Object.keys(ITEM_QUALITY_COLOURS)).toHaveLength(8);
+    const all = new Set(textures.map((n) => safeArtName(n)));
+    const art = itemFrameArt((n) => all.has(n));
+    expect(art.backs['4']).toBe('back_icon_subject_72x72_blue');
+    expect(art.backs['8']).toBe('back_icon_subject_72x72_gold');
+    expect(art.plainBack).toBe('back_icon_resources_72x72');
+    expect(art.frame).toBe('frame_icon_thing_94x92');
+    // Only what was extracted is named.
+    expect(itemFrameArt((n) => n === 'back_icon_subject_72x72_green')).toEqual({
+      backs: { 3: 'back_icon_subject_72x72_green' }, plainBack: null, frame: null,
+    });
   });
 
   it('builds a captain tile from the unit icon sprites in its rarity colour, and picks the full-body art', () => {

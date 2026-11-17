@@ -10,7 +10,9 @@ import {
   TABLE_HERO_LEVELS,
   TABLE_MAP_OBJECTS,
   TABLE_TECHS,
+  NAMES_FORMAT,
   buildNames,
+  fixedResourceGrants,
   parseTranslationsCsv,
   readTables,
   unzipFirst,
@@ -170,6 +172,60 @@ describe('game names from static data', () => {
     t.set(TABLE_TERRAINS, { 113: [113, 9004, terrainVectors.length - 1, 40, 1545, 1489] });
     const n = buildNames('v1', terrainStrings, terrainVectors, t, new Map([...en, ['terrain_type.name.n0004', 'Forested hills']]));
     expect(n.terrains?.['113']).toBe('Forested hills');
+  });
+
+  it('reads items (T8): kind, quality grade, a pack\'s fixed resource amount, a speedup\'s duration', () => {
+    // A T8 payload as the game ships it: [grants, units, items, items, 51, 51, 0, 0, 0, {}, 51, effects, 0, 51, 0, {}].
+    const payload = (grants: Record<string, number>, effects: Record<string, number> = {}): Wire =>
+      [grants, {}, [], [], 51, 51, 0, 0, 0, {}, 51, effects, 0, 51, 0, {}];
+    const entry = (grants: Record<string, number>, weight = 1, effects?: Record<string, number>): Wire =>
+      [[2747], weight, payload(grants, effects), 0];
+    // [id, kind, max, name, desc, f5, f6 visual, f7 grants, f8 seconds, f9, f10 quality, f11, f12 VIP seconds, f13, f14, f15, f16]
+    const row = (id: number, kind: number, f7: Wire, { f8 = 0, f10 = 0, f12 = 0 } = {}): Wire =>
+      [id, kind, 999999, 0, 0, 0, 0, f7, f8, 0, f10, 0, f12, 0, 0, 0, [{}]];
+    const t = new Map(tables);
+    t.set(TABLE_GIFT_TYPES, {
+      1123: row(1123, 2, [[entry({ 2: 250000 })]]), // "Silver": 250,000 Silver
+      74009: row(74009, 2, [[entry({ 3: 250000, 4: 250000, 5: 250000 })]]), // building resources: all three
+      2007: row(2007, 3, [[]], { f8: 28800 }), // Speedup, 8 h
+      2053: row(2053, 11, [[]], { f8: 54000 }), // Clan Speedup, 15 h
+      3006: row(3006, 6, [[]], { f12: 86400 }), // VIP status, 1 day
+      535: row(535, 7, [[]], { f10: 2 }), // Cerberus Fang, grade 2
+      1139: row(1139, 2, [[entry({}, 1, { 7803: 21600 })]]), // Army strength booster: an effect, no grant
+      73336: row(73336, 2, [[entry({ 80506: 10 }, 50), entry({ 3: 5000 }, 50)]]), // a draw: no fixed grant
+      40102: row(40102, 2, [[entry({ 125: 50000000 })]]), // grants an item, not a base resource
+      1157: row(1157, 10, [[entry({ 1: 100 }, 1), entry({ 2: 5 }, 1)]], { f10: 6 }), // Golden Chest
+      9: [9, 'x', 0, 0], // no kind: no item
+    });
+    // Every row here is named by vector 0 (f3 = 0 → "Infernal Chest"): only named rows become items.
+    const n = buildNames('v1', strings, vectors, t, en);
+    expect(n.items?.['1123']).toEqual({ kind: 2, grants: { 2: 250000 } });
+    expect(n.items?.['74009']).toEqual({ kind: 2, grants: { 3: 250000, 4: 250000, 5: 250000 } });
+    expect(n.items?.['2007']).toEqual({ kind: 3, seconds: 28800 });
+    expect(n.items?.['2053']).toEqual({ kind: 11, seconds: 54000 });
+    expect(n.items?.['3006']).toEqual({ kind: 6, seconds: 86400 });
+    expect(n.items?.['535']).toEqual({ kind: 7, quality: 2 });
+    expect(n.items?.['1139']).toEqual({ kind: 2 });
+    expect(n.items?.['73336']).toEqual({ kind: 2 });
+    expect(n.items?.['40102']).toEqual({ kind: 2 });
+    expect(n.items?.['1157']).toEqual({ kind: 10, quality: 6 });
+    expect(n.items?.['9']).toBeUndefined();
+    expect(NAMES_FORMAT).toBeGreaterThanOrEqual(10);
+  });
+
+  it('a fixed grant is one entry of base resources and nothing else', () => {
+    const p = (grants: Wire, extra: Partial<Record<number, Wire>> = {}): Wire => {
+      const out: Wire[] = [grants, {}, [], [], 51, 51, 0, 0, 0, {}, 51, {}, 0, 51, 0, {}];
+      for (const [i, v] of Object.entries(extra)) out[Number(i)] = v as Wire;
+      return [[[[2747], 1, out, 0]]];
+    };
+    expect(fixedResourceGrants(p({ 2: 7500 }))).toEqual({ 2: 7500 });
+    expect(fixedResourceGrants(p({ 2: 7500 }, { 2: [[3006, 1]] }))).toBeUndefined(); // also gives an item
+    expect(fixedResourceGrants(p({ 2: 7500 }, { 11: { 7803: 21600 } }))).toBeUndefined(); // also a timed effect
+    expect(fixedResourceGrants(p({ 2: 0 }))).toBeUndefined();
+    expect(fixedResourceGrants(p({}))).toBeUndefined();
+    expect(fixedResourceGrants([[]])).toBeUndefined();
+    expect(fixedResourceGrants(undefined)).toBeUndefined();
   });
 
   it('drops names that resolve to a JSON fragment', () => {

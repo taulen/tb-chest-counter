@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CAPTAIN_STAR_OFF = exports.CAPTAIN_STAR_ON = exports.CAPTAIN_LEVEL_PLATE = exports.CAPTAIN_RARITY_COLOURS = exports.HERO_LEVEL_BADGE = exports.TIER_NUMERALS = exports.UNIT_TIER_COLOURS = void 0;
+exports.ITEM_FRAME = exports.ITEM_PLAIN_BACK = exports.ITEM_QUALITY_COLOURS = exports.CAPTAIN_STAR_OFF = exports.CAPTAIN_STAR_ON = exports.CAPTAIN_LEVEL_PLATE = exports.CAPTAIN_RARITY_COLOURS = exports.HERO_LEVEL_BADGE = exports.TIER_NUMERALS = exports.UNIT_TIER_COLOURS = void 0;
 exports.unitFrameTextures = unitFrameTextures;
 exports.captainTileArt = captainTileArt;
+exports.itemFrameTextures = itemFrameTextures;
+exports.itemFrameArt = itemFrameArt;
 exports.clientUiTextures = clientUiTextures;
 exports.unitFrameArt = unitFrameArt;
 /**
@@ -100,9 +102,51 @@ function captainTileArt(available) {
     out.starOff = pick(exports.CAPTAIN_STAR_OFF);
     return out;
 }
+/**
+ * An item's tile — a chest reward, a chest — the way the game's inventory and
+ * reward windows draw one: a 72×72 back coloured by the item's quality grade
+ * (T8 f10, the forge's ladder: 1 Poor grey, 2 Common white, 3 Uncommon green,
+ * 4 Rare blue, 5 Epic violet, 6 Legendary orange, 7 Ascendant red, 8 Godlike
+ * gold), the icon over it, and the thin bronze item frame (94×92, centred
+ * 2 px low, as a unit icon's). An item without a grade (resources, packs,
+ * speedups) sits on the plain brown resource back. The client's sprites are
+ * named for exactly this (`back_icon_subject_72x72_<colour>`,
+ * `back_icon_resources_72x72`, `frame_icon_thing_94x92`); which view picks
+ * which is in client code we cannot read, so the grade → colour rule is the
+ * forge's own ladder (client.craft.<colour>_item_title). Many item icons are
+ * opaque squares that cover the back; the cut-out ones (Gold, materials)
+ * show it. Geometry: style.css .game-item.
+ */
+exports.ITEM_QUALITY_COLOURS = {
+    1: 'grey', 2: 'white', 3: 'green', 4: 'blue', 5: 'violet', 6: 'orange', 7: 'red', 8: 'gold',
+};
+const itemBackName = (colour) => `back_icon_subject_72x72_${colour}`;
+exports.ITEM_PLAIN_BACK = 'back_icon_resources_72x72';
+exports.ITEM_FRAME = 'frame_icon_thing_94x92';
+/** The client texture names an item tile uses. */
+function itemFrameTextures() {
+    return [...Object.values(exports.ITEM_QUALITY_COLOURS).map(itemBackName), exports.ITEM_PLAIN_BACK, exports.ITEM_FRAME];
+}
+function itemFrameArt(available) {
+    const pick = (n) => (available((0, selection_js_1.safeArtName)(n)) ? (0, selection_js_1.safeArtName)(n) : null);
+    const backs = {};
+    for (const [grade, colour] of Object.entries(exports.ITEM_QUALITY_COLOURS)) {
+        const back = pick(itemBackName(colour));
+        if (back)
+            backs[grade] = back;
+    }
+    return { backs, plainBack: pick(exports.ITEM_PLAIN_BACK), frame: pick(exports.ITEM_FRAME) };
+}
 /** Every texture we take from the client build. */
 function clientUiTextures() {
-    return [...new Set([...unitFrameTextures(), exports.HERO_LEVEL_BADGE, exports.CAPTAIN_LEVEL_PLATE, exports.CAPTAIN_STAR_ON, exports.CAPTAIN_STAR_OFF])];
+    return [...new Set([
+            ...unitFrameTextures(),
+            exports.HERO_LEVEL_BADGE,
+            exports.CAPTAIN_LEVEL_PLATE,
+            exports.CAPTAIN_STAR_ON,
+            exports.CAPTAIN_STAR_OFF,
+            ...itemFrameTextures(),
+        ])];
 }
 /**
  * Tier ("0"–"10") → its frame art, for the tiers whose back and frame were

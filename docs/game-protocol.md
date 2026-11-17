@@ -60,6 +60,39 @@ name, and an unmapped item is left out with a log line). Its icon comes from
 the game's own bundles, matched by name (game-art `resources` mapping) — no
 image is ever added to the repo.
 
+### Chest rewards (Resources → Chest rewards)
+
+`game_claims` keeps the game's own reply to every claim request: `rewards` is
+`{itemId: amountOrCount}` SUMMED over the request's `batch_size` chests of one
+`gift_type`. [`data/chest-rewards.ts`](../src/data/chest-rewards.ts) turns it
+into the tab's two views (`GET /api/resources/chest-rewards?from&to&trendFrom`,
+clan-scoped, at most 62 days, `pages/resources-chest-rewards.js`):
+
+- **Income** — the period's totals per reward and a per-game-day trend
+  (17:00 UTC rollover, never calendar days). Units never mix: a base resource
+  (T8 id < 100 without a quality grade: Gold, Silver, Tar, Dragon Coins,
+  Sacred Potion …) is an amount; a **fixed resource pack** counts as that
+  amount of its resource (shown apart as "from packs"); Speedup, Clan Speedup
+  and VIP status are total **time** (count × duration, one total per kind);
+  anything else (boosters, March Speedup, forge materials, pincers) is a
+  **count** of that item — never a guessed amount.
+- **By chest** — per `gift_type`: chests opened, average per chest =
+  SUM(rewards) / SUM(batch_size) (never a mean of request means), and the
+  **drop rate** = share of single-chest claims (`batch_size` 1) that held the
+  reward. A stack's rewards come back summed, so stacks count toward the
+  averages only; a type only ever opened in stacks has no drop rate ("—").
+
+What an item is worth comes from T8 (names.json `items`, NAMES_FORMAT 10; see
+GameItem in [static-data.ts](../src/game-protocol/static-data.ts)): f1 kind,
+f10 quality grade, f8 a speedup's seconds (kinds 3, 11), f12 VIP status's
+seconds (kind 6), and f7 — `[[entry…]]`, an entry `[[condition], weight,
+payload, 0]` with payload[0] `{resourceId: amount}`. One entry granting only
+base resources (payload [1] units, [2]/[3] items, [9], [11] timed effects,
+[15] all empty) is a fixed pack: "Silver" 1123 = 250,000 Silver, 1361 =
+5,000,000; "Lumber" 1567 = 250,000 Lumber; "Dragon Coins" 2406 = 1,000.
+Several entries are a weighted draw (a chest) and stay a count. All 84 pack
+ids and 16 duration ids prod's first day of claims held resolve this way.
+
 Before the switch, a parallel run compared every OCR scan with the game's gift
 list (`game_scan_comparisons`, `[game-vs-ocr]` log lines): 100% matched, no
 misreads, across all clans. The comparison code went with the OCR scanner; the
@@ -141,6 +174,20 @@ Image sprite references), which is where the geometry below comes from:
   the number centred. The view picks among `icons_tir_1` / `icons_tir_shield_1…6`
   in code; we use the sprite the prefab is saved with, `icons_tir_shield_4`
   (`heroLevelBadge`).
+- **Item tiles** (chest rewards and chests, `itemFrames`; selection 10): the
+  inventory / reward-window look — a 72×72 back
+  `back_icon_subject_72x72_<colour>` coloured by the item's **quality grade**
+  (T8 f10, the forge's ladder: 1 grey, 2 white, 3 green, 4 blue, 5 violet,
+  6 orange, 7 red, 8 gold — "Rare Jewelers' Pincers" is 4, "Legendary …" 6,
+  Wooden … Magic Chest 3 … 8), `back_icon_resources_72x72` for an item
+  without a grade (resources, packs, speedups), the icon, and the bronze
+  `frame_icon_thing_94x92` centred 2 px low. Which view picks which back is
+  client code; the grade → colour rule is the forge's
+  (`client.craft.<colour>_item_title`). Most item icons are opaque squares
+  that cover the back; cut-outs (Gold, materials) show it. Drawn by
+  `itemIconHtml` / `rewardChipHtml` / `chestIconHtml` in `lib/game-art.js`
+  (geometry: style.css "Game item tiles"); a missing icon is a neutral
+  letter tile, a missing frame the bare icon.
 captain portraits from T75, artifact icons from T110's config (`artifacts`),
 equipment icons from T11 f2 (`equipment`) and gem / enchantment icons from T8
 (`inserts`), and the Ancient planner's pictures (`ancients`,
@@ -921,7 +968,7 @@ Each table has its own id space:
 |---|---|---|
 | 4 | terrain types ("Dense forest") | f2 vector |
 | 7 | map objects | f3 vector |
-| 8 | gift types | f3 chest name, f14 source template |
+| 8 | gift types — and every item (`items`, format 10: f1 kind, f8/f12 seconds, f10 quality, f7 fixed resource grants; see [Chest rewards](#chest-rewards-resources--chest-rewards)) | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
 | 9 | units | f1 name, f2 tier (0–10), f4 icon, f10 strength, f12 health |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |

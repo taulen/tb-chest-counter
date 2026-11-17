@@ -141,6 +141,7 @@ import {
 import { saveUnresolvedResource, saveAllUnresolvedResources } from './pages/unresolved-resources.js';
 import { renderResourcesOverview } from './pages/resources-overview.js';
 import { renderResourcesTotals } from './pages/resources-totals.js';
+import { renderResourcesChestRewards } from './pages/resources-chest-rewards.js';
 import { renderEvents } from './pages/events.js';
 import { renderTools } from './pages/tools.js';
 import {
@@ -964,14 +965,19 @@ async function renderRoute(page, content) {
       return;
     }
   }
-  // Resources is a three-tab page: #resources = Overview (landing),
-  // #resources/totals = per-member totals, #resources/admin = the ledger.
+  // Resources is a four-tab page: #resources = Overview (landing),
+  // #resources/totals = per-member totals, #resources/chests = what opened
+  // chests paid out, #resources/admin = the ledger.
   if (page === 'resources/admin') {
     await renderResourcesAdmin(content);
     return;
   }
   if (page === 'resources/totals') {
     await renderResourcesTotals(content);
+    return;
+  }
+  if (page === 'resources/chests') {
+    await renderResourcesChestRewards(content);
     return;
   }
   // Events is a multi-sub-tab page: #events = the currently live event (or the
