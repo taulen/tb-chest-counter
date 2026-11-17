@@ -59,7 +59,43 @@ function safeWrite(value) {
 const stored = safeRead();
 let current = isLanguage(stored) ? stored : DEFAULT_LANGUAGE;
 let ui = {};
+/** Hand-kept names the game's own files don't cover (lib/i18n/<lang>.js `game`). */
 let game = {};
+/** The game's own names in this language, from its translation files (GET /api/game-texts/<lang>). */
+let official = {};
+
+/** How long a page waits for the game's names before it renders with English ones. */
+const GAME_TEXTS_TIMEOUT_MS = 2500;
+
+/**
+ * The game's names in `lang`, built on the server from the game's own
+ * translation CSVs (src/game-protocol/game-texts.ts). An /api URL — never a
+ * cached-by-extension asset (docs/cloudflare-caching.md) — revalidated by its
+ * ETag. Anything going wrong (offline, slow, no data yet) gives {}: names then
+ * show in English, and the page never waits longer than the timeout.
+ */
+async function loadOfficialNames(lang) {
+  if (typeof fetch !== 'function') return {};
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), GAME_TEXTS_TIMEOUT_MS) : null;
+  try {
+    const res = await fetch(`/api/game-texts/${encodeURIComponent(lang)}`, {
+      credentials: 'same-origin',
+      ...(ctrl ? { signal: ctrl.signal } : {}),
+    });
+    if (!res.ok) return {};
+    const body = await res.json();
+    return body && body.texts && typeof body.texts === 'object' ? body.texts : {};
+  } catch (_) {
+    return {};
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Asked for at once, in parallel with the dictionary; awaited at the end of
+// this module, after the shell is translated and shown.
+const officialNames = current !== DEFAULT_LANGUAGE ? loadOfficialNames(current) : null;
 
 if (current !== DEFAULT_LANGUAGE) {
   try {
@@ -136,34 +172,73 @@ export function tn(count, one, other, params) {
   return interpolate(Number(count) === 1 ? one : other, all);
 }
 
-/**
- * The game's own name for a chest, source, event or resource, in the current
- * language — only where an official translation is known (lib/i18n/<lang>.js
- * `game`). Anything else stays in English, which is what the game shows an
- * English client and what the scanner reads; a guessed name would send a
- * player looking for something that doesn't exist in their game.
- *
- * Names with numbers in them ("Level 15 epic Crypt", "Lvl 20-24 Raid Runic
- * squad") match a pattern entry with `{n}` for each number, filled back in
- * order: 'Level {n} epic Crypt' → 'Cripta épica de nivel {n}'.
- *
- * Failing an official name it falls back to the ui dictionary, which is how
- * the event catalog's own labels ('Finish Reward', 'Vaults Taken Down' — this
- * app's words, not the game's) get translated: the guard test reads them
- * straight out of src/config/event-catalog.ts.
- */
-export function tGame(name) {
-  if (name == null || name === '') return name;
-  const hit = game[name];
-  if (typeof hit === 'string' && hit) return hit;
-  const label = ui[name];
-  if (typeof label === 'string' && label) return label;
-  const numbers = String(name).match(/\d+/g);
-  if (!numbers) return name;
-  const pattern = game[String(name).replace(/\d+/g, '{n}')];
-  if (typeof pattern !== 'string' || !pattern) return name;
+/** `{n}` pattern entry for a name with numbers, filled back in order; null when there is none. */
+function fromPattern(dict, name, normalize) {
+  const numbers = name.match(/\d+/g);
+  if (!numbers) return null;
+  const key = name.replace(/\d+/g, '{n}');
+  const pattern = normalize ? dict.get(normalize(key)) : dict[key];
+  if (typeof pattern !== 'string' || !pattern) return null;
   let i = 0;
   return pattern.replace(/\{n\}/g, () => numbers[i++] ?? '');
+}
+
+/**
+ * A stored spelling the game writes differently: case, spacing, "Lvl" for
+ * "Level" and dash style — the scan's own rule (game-protocol/gift-text.ts),
+ * which keeps writing the OCR era's "Lvl 25-29 Vault of the Ancients" for the
+ * game's "Level 25–29 Vault of the Ancients".
+ */
+const normalizeName = (s) => s.toLowerCase().replace(/\blvl\b/g, 'level').replace(/[–—]/g, '-').replace(/\s+/g, '');
+let officialNormalized = null;
+
+function officialName(name) {
+  const hit = official[name];
+  if (typeof hit === 'string' && hit) return hit;
+  const filled = fromPattern(official, name);
+  if (filled) return filled;
+  if (!officialNormalized) {
+    officialNormalized = new Map();
+    for (const [key, value] of Object.entries(official)) {
+      const k = normalizeName(key);
+      if (typeof value === 'string' && value && !officialNormalized.has(k)) officialNormalized.set(k, value);
+    }
+  }
+  return officialNormalized.get(normalizeName(name)) || fromPattern(officialNormalized, name, normalizeName);
+}
+
+/**
+ * The game's own name for a chest, source, event, resource, title, captain,
+ * tech… in the current language. Data stays English — scans store the game's
+ * English names — so pass the English and call this only where it is shown.
+ *
+ * In order:
+ *   1. the game's own text (`official`, from its translation files via
+ *      /api/game-texts): exact, then a `{n}` pattern, then the same after
+ *      normalizing case, spacing, "Lvl" and dashes;
+ *   2. the hand-kept `game` block of lib/i18n/<lang>.js — only names the
+ *      game's files don't cover (the app's shorthands like 'Ancients');
+ *   3. the ui dictionary — how the event catalog's own labels ('Finish
+ *      Reward', 'Vaults Taken Down': this app's words, not the game's) get
+ *      translated; the guard test reads them out of src/config/event-catalog.ts;
+ *   4. a `{n}` pattern of the `game` block;
+ *   5. the English itself — what the game shows an English client. A guessed
+ *      name would send a player looking for something their game doesn't have.
+ *
+ * Names with numbers ("Level 15 epic Crypt") match a pattern entry with `{n}`
+ * for each number, filled back in order: 'Level {n} epic Crypt' → 'Epische
+ * Gruft Level {n}'.
+ */
+export function tGame(name) {
+  if (name == null || name === '' || current === DEFAULT_LANGUAGE) return name;
+  const s = String(name);
+  const fromGame = officialName(s);
+  if (fromGame) return fromGame;
+  const hit = game[s];
+  if (typeof hit === 'string' && hit) return hit;
+  const label = ui[s];
+  if (typeof label === 'string' && label) return label;
+  return fromPattern(game, s) ?? name;
 }
 
 /**
@@ -277,3 +352,9 @@ if (typeof document !== 'undefined' && document.documentElement) {
     document.documentElement.removeAttribute('data-i18n-pending');
   }
 }
+
+// The game's own names last: the shell above never waits for them, but every
+// importer of this module does (top-level await), so no page renders a name
+// before they are in — and tGame stays synchronous. loadOfficialNames never
+// rejects and gives up after GAME_TEXTS_TIMEOUT_MS.
+if (officialNames && current !== DEFAULT_LANGUAGE) official = await officialNames;

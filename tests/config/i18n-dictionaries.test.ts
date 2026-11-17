@@ -13,8 +13,13 @@
  *    double quote, which would end the attribute a string sits in;
  *  - plurals give every form the language needs (Russian: one / few / many).
  *
- * The `game` entries are the game's official names (tGame) and are keyed by
- * data, not by source, so they are only checked for shape.
+ * Game names (tGame) come from the game's own translation files, built on the
+ * server (src/game-protocol/game-texts.ts) — not from these dictionaries. The
+ * hand-kept `game` block holds only the few names those files don't cover
+ * (the app's shorthands like 'Ancients'). It is keyed by data, not by source,
+ * so it is checked for shape, for being the same list in every language, and
+ * for staying the exception: copying the game's names back in by hand is what
+ * this replaced (~1,000 entries per language, Nov 2026).
  *
  * Adding a string: wrap it in t(), then add it to lib/i18n/{es,fr,ru,de}.js.
  * Pure test; part of `npm run build`.
@@ -24,8 +29,11 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { describe, it, expect } from 'vitest';
 import { PUBLIC_DIR, extractKeys, placeholders, tags } from '../helpers/i18n-keys.js';
+import { UI_TEXT_KEYS } from '../../src/game-protocol/game-texts.js';
 
 const LANGS = ['es', 'fr', 'ru', 'de'] as const;
+/** The hand-kept `game` block is the exception (13 names in Nov 2026). */
+const HAND_GAME_NAMES_MAX = 20;
 type Dict = { ui: Record<string, unknown>; game: Record<string, unknown> };
 
 async function load(lang: string): Promise<Dict> {
@@ -119,5 +127,29 @@ describe.each(LANGS)('i18n dictionary %s', (lang) => {
       if (/[<>"]/.test(value)) problems.push(`${JSON.stringify(key)}: no markup or " in a game name`);
     }
     expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  it("keeps the hand-kept game names to what the game's own files don't cover", async () => {
+    const { game } = await load(lang);
+    const keys = Object.keys(game);
+    // The game's names arrive from its translation files (GET /api/game-texts);
+    // a hand copy would only go stale. Raise this only for names the game's
+    // files really lack — see docs/i18n.md.
+    expect(keys.length, `${lang}: ${keys.length} hand-kept game names — the game's own files cover game names (docs/i18n.md)`).toBeLessThanOrEqual(HAND_GAME_NAMES_MAX);
+    const fromGame = new Set(UI_TEXT_KEYS.map((u) => u.en));
+    const duplicated = keys.filter((k) => fromGame.has(k));
+    expect(duplicated, `${lang}: these come from the game (UI_TEXT_KEYS in src/game-protocol/game-texts.ts):\n${list(duplicated)}`).toEqual([]);
+  });
+});
+
+describe('hand-kept game names', () => {
+  it('are the same names in every language', async () => {
+    const sets = await Promise.all(LANGS.map(async (lang) => [lang, Object.keys((await load(lang)).game).sort()] as const));
+    const [, first] = sets[0];
+    for (const [lang, keys] of sets) {
+      const missing = first.filter((k) => !keys.includes(k));
+      const extra = keys.filter((k) => !first.includes(k));
+      expect({ lang, missing, extra }).toEqual({ lang, missing: [], extra: [] });
+    }
   });
 });

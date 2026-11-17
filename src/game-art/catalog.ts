@@ -83,6 +83,19 @@ export function addressIndex(entries: CatalogEntry[]): Map<string, string> {
   return out;
 }
 
+/**
+ * Lower-cased bundle name OR address → bundle hash; the first entry naming it
+ * wins. For an asset looked up by its own name — the tech trees' layout
+ * TextAssets ("guardtree"), whose bundles are named like the asset.
+ */
+export function nameIndex(entries: CatalogEntry[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const e of entries) {
+    for (const a of [e.name.toLowerCase(), ...e.addresses]) if (!out.has(a)) out.set(a, e.bundle);
+  }
+  return out;
+}
+
 /** The catalogue hash the live game uses, from the versions config. */
 export function catalogVersionFromConfig(body: unknown): string {
   const v = (body as { result?: { unity_catalog_version?: { webgl?: unknown } } })?.result?.unity_catalog_version?.webgl;

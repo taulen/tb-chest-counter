@@ -194,8 +194,10 @@ export function extractFromBundle(bundle: UnityBundle, wanted: (name: string) =>
 const CLASS_TEXT_ASSET = 49;
 
 /**
- * The TextAssets of a bundle whose name the caller wants, as text — e.g. a
- * Spine animation's "<name>.atlas" (see spine.ts). Unreadable ones are skipped.
+ * The TextAssets of a bundle whose name the caller wants, as text — a Spine
+ * animation's "<name>.atlas" (see spine.ts), a research tree's layout JSON
+ * (game-protocol/tech-trees.ts). In the file's object order; unreadable ones
+ * are skipped.
  */
 export function extractTexts(bundleBuf: Buffer, wanted: (name: string) => boolean): Map<string, string> {
   const bundle = readUnityBundle(bundleBuf);

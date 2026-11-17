@@ -167,8 +167,10 @@ function extractFromBundle(bundle, wanted) {
 }
 const CLASS_TEXT_ASSET = 49;
 /**
- * The TextAssets of a bundle whose name the caller wants, as text — e.g. a
- * Spine animation's "<name>.atlas" (see spine.ts). Unreadable ones are skipped.
+ * The TextAssets of a bundle whose name the caller wants, as text — a Spine
+ * animation's "<name>.atlas" (see spine.ts), a research tree's layout JSON
+ * (game-protocol/tech-trees.ts). In the file's object order; unreadable ones
+ * are skipped.
  */
 function extractTexts(bundleBuf, wanted) {
     const bundle = (0, unityfs_js_1.readUnityBundle)(bundleBuf);

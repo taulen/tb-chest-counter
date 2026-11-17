@@ -16,7 +16,10 @@
  *       appears in. The `game` block is kept as it is.
  *
  *   npx tsx scripts/i18n-sync.ts game <lang> <names.json>
- *       Replace the `game` block (official game names) with { "<English>": "<name>" }.
+ *       Replace the `game` block with { "<English>": "<name>" }. Game names
+ *       come from the game's own translation files at runtime
+ *       (src/game-protocol/game-texts.ts); this block keeps only the few
+ *       the game doesn't cover — see docs/i18n.md.
  *
  * tests/config/i18n-dictionaries.test.ts is the check; this only edits.
  */
@@ -51,7 +54,7 @@ function write(lang: string, ui: Record<string, Entry>, game: Record<string, str
   const lines: string[] = [
     `// ${HEADER[lang]} translations for lib/i18n.js. Keys are the English source strings.`,
     "// ui: the app's own text, grouped by the file each string first appears in.",
-    "// game: the game's OFFICIAL names only — see tGame(). Maintained with",
+    "// game: official names the game's own files don't cover — see tGame(). Maintained with",
     '// scripts/i18n-sync.ts; checked by tests/config/i18n-dictionaries.test.ts.',
     '',
     'export const ui = {',

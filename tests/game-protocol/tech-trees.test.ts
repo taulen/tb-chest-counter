@@ -5,17 +5,13 @@ import {
   TABLE_CLIENT_CONFIG,
   asTreeLayout,
   buildTechTrees,
+  layoutFromBundle,
   readAnyTables,
   readBranches,
   type TreeLayout,
   type TreeSources,
 } from '../../src/game-protocol/tech-trees.js';
-import {
-  jsonTextAssets,
-  lz4BlockDecompress,
-  parseAssetCatalog,
-  unityFsPayload,
-} from '../../src/game-protocol/unity-assets.js';
+import { buildBundle, buildSerializedFile, CLASS_TEXT_ASSET, TEXT_ASSET_TREE } from '../game-art/synthetic-bundle.js';
 
 // ---------------------------------------------------------------------------
 // A miniature of the game's static data, built through an interning pool so
@@ -202,78 +198,39 @@ describe('tech trees from static data + client layouts', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Unity asset delivery: catalog, LZ4, UnityFS, JSON TextAssets
+// Tree layouts from the client's Unity bundles — read with the art pipeline's
+// reader (src/game-art: UnityFS + LZ4 → SerializedFile type trees → TextAsset).
+// Synthetic bundles only.
 // ---------------------------------------------------------------------------
 
-const le32 = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
-const be16 = (n: number) => { const b = Buffer.alloc(2); b.writeUInt16BE(n); return b; };
-const be32 = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
-const be64 = (n: number) => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(n)); return b; };
+const textAsset = (pathId: number, name: string, script: string) => ({
+  pathId: BigInt(pathId), classId: CLASS_TEXT_ASSET, tree: TEXT_ASSET_TREE, value: { m_Name: name, m_Script: script },
+});
+const layoutJson = JSON.stringify({ name: 'guardTree', techs: [{ id: 1197, x: 0, y: 0, linkType: '_1_1' }, { id: 1198, x: 0, y: -330 }, { id: 'x' }] });
 
-/** A valid LZ4 block holding `data` as one literal run. */
-function lz4Literals(data: Buffer): Buffer {
-  const head: number[] = [];
-  if (data.length < 15) head.push(data.length << 4);
-  else {
-    head.push(0xf0);
-    let rest = data.length - 15;
-    for (; rest >= 255; rest -= 255) head.push(255);
-    head.push(rest);
-  }
-  return Buffer.concat([Buffer.from(head), data]);
-}
-
-/** A one-block UnityFS bundle; method 0 = stored, 2 = LZ4 (block table and data). */
-function unityFs(payload: Buffer, method: 0 | 2): Buffer {
-  const block = method ? lz4Literals(payload) : payload;
-  const info = Buffer.concat([
-    Buffer.alloc(16), be32(1), be32(payload.length), be32(block.length), be16(method),
-    be32(1), be64(0), be64(payload.length), be32(4), Buffer.from('CAB-test\0', 'latin1'),
-  ]);
-  const infoBlock = method ? lz4Literals(info) : info;
-  const head = Buffer.from('UnityFS\0\0\0\0\x065.x.x\x002019.4.8f1\0', 'latin1');
-  const total = head.length + 8 + 12 + infoBlock.length + block.length;
-  return Buffer.concat([head, be64(total), be32(infoBlock.length), be32(info.length), be32(0x40 | method), infoBlock, block]);
-}
-
-describe('Unity asset delivery', () => {
-  it('maps asset names (case-insensitively) to their bundle via the catalog', () => {
-    const str = (v: string) => Buffer.concat([le32(Buffer.byteLength(v)), Buffer.from(v)]);
-    const entry = (name: string, kind: number, bundle: string, assets: string[]) =>
-      Buffer.concat([str(name), le32(kind), Buffer.alloc(16, 0xaa), Buffer.from(bundle, 'hex'), le32(assets.length), ...assets.map(str)]);
-    const cat = Buffer.concat([
-      Buffer.from([0x49, 0x17, 0x50, 0x2e, 0x30, 0x38, 0, 0]),
-      entry('guardtree', 4, '00112233445566778899aabbccddeeff', ['guardtree']),
-      entry('masks', 2, 'ffeeddccbbaa99887766554433221100', ['a_mask', 'B_Mask']),
-    ]);
-    const m = parseAssetCatalog(cat);
-    expect(m.get('guardtree')).toEqual({ name: 'guardtree', kind: 4, bundle: '00112233445566778899aabbccddeeff', assets: ['guardtree'] });
-    expect(m.get('b_mask')?.bundle).toBe('ffeeddccbbaa99887766554433221100');
-    expect(() => parseAssetCatalog(Buffer.from('nope'))).toThrow(/catalog/);
-    expect(() => parseAssetCatalog(cat.subarray(0, cat.length - 3))).toThrow(/truncated/);
-  });
-
-  it('decompresses LZ4 blocks with matches and extended lengths', () => {
-    // "abc" then a 9-byte match at offset 3 → abcabcabcabc
-    expect(lz4BlockDecompress(Buffer.from([0x35, 0x61, 0x62, 0x63, 0x03, 0x00]), 12).toString()).toBe('abcabcabcabc');
-    // 1 literal "z", then a match of 4+15+1 = 20 at offset 1 (extended match length)
-    expect(lz4BlockDecompress(Buffer.from([0x1f, 0x7a, 0x01, 0x00, 0x01]), 21).toString()).toBe('z'.repeat(21));
-    const long = Buffer.from('x'.repeat(300));
-    expect(lz4BlockDecompress(lz4Literals(long), 300).equals(long)).toBe(true);
-    expect(() => lz4BlockDecompress(Buffer.from([0x10, 0x61, 0x05, 0x00]), 10)).toThrow(/offset/);
-  });
-
-  it('finds a JSON TextAsset by its length prefix in stored and LZ4 bundles', () => {
-    const json = JSON.stringify({ name: 'guardTree', techs: [{ id: 1, x: 0, y: 0, link: { type: '_1_1' } }] });
-    const payload = Buffer.concat([
-      Buffer.from([0, 1, 2, 3, 0x7b, 0, 0, 0]), // a stray "{" with no sensible length before it
-      le32(json.length), Buffer.from(json), Buffer.alloc(3),
-    ]);
-    for (const method of [0, 2] as const) {
-      const bundle = unityFs(payload, method);
-      expect(unityFsPayload(bundle).equals(payload)).toBe(true);
-      expect(jsonTextAssets(bundle)).toEqual([JSON.parse(json)]);
+describe('tree layouts from Unity bundles', () => {
+  it('reads the layout TextAsset of a stored or LZ4 bundle, a leading BOM allowed', () => {
+    for (const lz4 of [false, true]) {
+      const file = buildSerializedFile([textAsset(1, 'guardTree', `﻿${layoutJson}`)]);
+      expect(layoutFromBundle(buildBundle([{ path: 'CAB-tree', data: file }], lz4))).toEqual({
+        name: 'guardTree', techs: [{ id: 1197, x: 0, y: 0 }, { id: 1198, x: 0, y: -330 }],
+      });
     }
-    expect(() => unityFsPayload(Buffer.from('UnityWeb\0'))).toThrow(/UnityFS/);
+  });
+
+  it('skips TextAssets that are not a layout and takes the first one that is', () => {
+    const file = buildSerializedFile([
+      textAsset(1, 'notes', 'not json at all'),
+      textAsset(2, 'config', JSON.stringify({ name: 'x' })),
+      textAsset(3, 'guardTree', layoutJson),
+      textAsset(4, 'later', JSON.stringify({ name: 'later', techs: [] })),
+    ]);
+    expect(layoutFromBundle(buildBundle([{ path: 'CAB-tree', data: file }]))?.name).toBe('guardTree');
+  });
+
+  it('finds nothing in a bundle without a layout, and refuses what is not a bundle', () => {
+    const file = buildSerializedFile([textAsset(1, 'notes', '{"a": 1}')]);
+    expect(layoutFromBundle(buildBundle([{ path: 'CAB-x', data: file }]))).toBeNull();
+    expect(() => layoutFromBundle(Buffer.from('UnityWeb\0'))).toThrow(/UnityFS/);
   });
 });

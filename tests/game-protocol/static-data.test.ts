@@ -239,6 +239,11 @@ describe('game names from static data', () => {
     expect([...t.keys()]).toEqual([1]);
     expect(t.get(1)).toEqual({ 2: ['b', [1, 2, 3]] });
   });
+
+  it('keys an array table (T1, the client config) by row index', () => {
+    const buf = encodeValues([[[['k1', 'j1'], ['k2', 'j2']], { 3: ['c'] }]]);
+    expect(readTables(buf, [0]).get(0)).toEqual({ 0: ['k1', 'j1'], 1: ['k2', 'j2'] });
+  });
 });
 
 describe('translations', () => {
@@ -248,6 +253,11 @@ describe('translations', () => {
     expect(m.get('a')).toBe('Plain');
     expect(m.get('b')).toBe('Say "hi"');
     expect(m.get('c')).toBe('two\nlines');
+  });
+
+  it('keeps only the asked-for keys when given a set', () => {
+    const m = parseTranslationsCsv('"a","A"\n"b","B"\n"c","C"\n', new Set(['a', 'c', 'z']));
+    expect([...m]).toEqual([['a', 'A'], ['c', 'C']]);
   });
 
   it('extracts the deflated CSV from the translations zip', () => {

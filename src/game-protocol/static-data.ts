@@ -28,12 +28,30 @@
  * data/game-static/<version>/; the raw files are only ever held in memory. Decoding skips
  * every table we don't need without building it, which keeps a rebuild inside
  * the container's heap. Full background: docs/game-protocol.md.
+ *
+ * The same rebuild writes texts-<lang>.json beside names.json: the names in
+ * German, Spanish, French and Russian from the game's own translation CSVs,
+ * for tGame() on the site (game-texts.ts).
  */
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { WireReader, type Wire } from './codec.js';
+import { TABLE_CLIENT_CONFIG, academyTabs, readBranchDefs, type TextLookup } from './client-config.js';
+import {
+  GAME_TEXT_LANGUAGES,
+  GAME_TEXT_LANGUAGE_CODES,
+  UI_TEXT_KEYS,
+  buildGameTexts,
+  labelTexts,
+  pairTexts,
+  useGameTextsDir,
+  writeGameTexts,
+  type GameTextLanguage,
+} from './game-texts.js';
 import { childLogger } from '../utils/logger.js';
+
+export type { TextLookup };
 
 const log = childLogger('game-static');
 
@@ -144,6 +162,8 @@ const NEEDED_TABLES = [
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
   TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS, TABLE_FACTIONS,
   TABLE_DRAGONS, TABLE_TITLES,
+  // The client config, for the tech trees' and Academy tabs' names (game-texts).
+  TABLE_CLIENT_CONFIG,
 ];
 
 export interface GameNames {
@@ -189,6 +209,12 @@ export interface GameNames {
   titles?: Record<string, GameTitle>;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
+  /**
+   * The site languages whose texts-<lang>.json the build wrote (format 12+). A
+   * language missing here (its CSV could not be fetched) makes the next load
+   * rebuild, at most every few hours.
+   */
+  textLanguages?: string[];
 }
 
 /** A title as T29 defines it (English; tGame translates the texts). */
@@ -414,10 +440,11 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * titles (T44); 6: terrain names; 7: hero and captain levels — XP thresholds,
  * Stats, Might; 8: the Hall of Fame's factions and the real names of techs
  * 800–803; 9: the Dragon (T73); 10: items — kind, quality grade, resource pack
- * amounts and speedup durations, for the chest rewards; 11: titles (T29) —
+ * amounts and speedup durations, for the chest rewards; 11: titles (T29);
+ * 12: texts-<lang>.json beside it, the names in the site's other languages —
  * Nov 2026); a cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 11;
+export const NAMES_FORMAT = 12;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -511,8 +538,12 @@ export function unzipFirst(zip: Buffer): Buffer {
   throw new Error(`unsupported zip compression method ${method}`);
 }
 
-/** Parse "key","text" CSV (quoted fields, "" escapes, newlines allowed in quotes). */
-export function parseTranslationsCsv(text: string): Map<string, string> {
+/**
+ * Parse "key","text" CSV (quoted fields, "" escapes, newlines allowed in
+ * quotes). `keep` limits the result to those keys — a language's CSV holds
+ * ~25,000 texts and the names use a few thousand.
+ */
+export function parseTranslationsCsv(text: string, keep?: ReadonlySet<string>): Map<string, string> {
   const out = new Map<string, string>();
   let i = 0;
   const n = text.length;
@@ -547,19 +578,37 @@ export function parseTranslationsCsv(text: string): Map<string, string> {
     const value = field();
     while (i < n && text[i] !== '\n') i++;
     i++;
-    if (key) out.set(key, value);
+    if (key && (!keep || keep.has(key))) out.set(key, value);
   }
   return out;
 }
 
-async function fetchEnglish(catalog: string): Promise<Map<string, string>> {
-  const index = JSON.parse((await fetchBuffer(TRANSLATIONS_BASE + catalog)).toString('utf8')) as {
-    files?: Array<{ name: string; fileName: string }>;
-  };
-  const entry = index.files?.find((f) => f.name === ENGLISH);
-  if (!entry) throw new Error(`translations index has no ${ENGLISH}`);
-  const csv = unzipFirst(await fetchBuffer(TRANSLATIONS_BASE + entry.fileName)).toString('utf8');
-  return parseTranslationsCsv(csv);
+type TranslationsIndex = Array<{ name: string; fileName: string }>;
+
+async function fetchTranslationsIndex(catalog: string): Promise<TranslationsIndex> {
+  const index = JSON.parse((await fetchBuffer(TRANSLATIONS_BASE + catalog)).toString('utf8')) as { files?: TranslationsIndex };
+  return index.files ?? [];
+}
+
+/** One language's translations zip (the index's `name`, e.g. csv_de_DE). */
+async function fetchTranslationsZip(index: TranslationsIndex, name: string): Promise<Buffer> {
+  const entry = index.find((f) => f.name === name);
+  if (!entry) throw new Error(`translations index has no ${name}`);
+  return fetchBuffer(TRANSLATIONS_BASE + entry.fileName);
+}
+
+/** A language's zip, or null (logged) when it can't be had — the names never wait on a translation. */
+async function fetchLanguageZip(index: TranslationsIndex, lang: GameTextLanguage): Promise<Buffer | null> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetchTranslationsZip(index, GAME_TEXT_LANGUAGES[lang]);
+    } catch (err) {
+      if (attempt >= 2) {
+        log.warn({ noAlert: true }, `Game texts: no ${lang} translations (${String(err)}); its names stay English until the next build.`);
+        return null;
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +630,8 @@ function readWrappedArray(buf: Buffer): Wire[] {
  * Decode only the requested tables of no_duplicates; the rest are skipped
  * unbuilt. Most tables are maps keyed by a plain id; some (the artifact tables)
  * are `$pairs` keyed by a one-element array `[id]` — those come back keyed by
- * that id, the same shape as the others.
+ * that id, the same shape as the others. An array table (T1, the client
+ * config) comes back keyed by row index.
  */
 export function readTables(buf: Buffer, wanted: number[]): Map<number, Record<string, Wire>> {
   const r = new WireReader(buf);
@@ -593,7 +643,8 @@ export function readTables(buf: Buffer, wanted: number[]): Map<number, Record<st
       r.skip();
       continue;
     }
-    const t = asIdRecord(r.value());
+    const v = r.value();
+    const t = Array.isArray(v) ? Object.fromEntries(v.map((row, k) => [String(k), row])) : asIdRecord(v);
     if (t) out.set(i, t);
   }
   return out;
@@ -622,7 +673,7 @@ export function buildNames(
   strings: Wire[],
   vectors: Wire[],
   tables: Map<number, Record<string, Wire>>,
-  en: Map<string, string>,
+  en: TextLookup,
 ): GameNames {
   const str = (ref: Wire): string | undefined => (typeof ref === 'number' && typeof strings[ref] === 'string' ? (strings[ref] as string) : undefined);
   const text = (ref: Wire): string | undefined => {
@@ -779,11 +830,98 @@ export function buildNames(
 }
 
 /**
+ * Everything the names build shows as text, for one translation lookup: the
+ * names, the tech trees' names and their Academy tabs (T1). Built once per
+ * language and walked against the English build (game-texts.ts), so templated
+ * names come out concrete on both sides. Pure.
+ */
+export function nameTexts(
+  version: string,
+  strings: Wire[],
+  vectors: Wire[],
+  tables: Map<number, Record<string, Wire>>,
+  lookup: TextLookup,
+): { names: GameNames; trees: string[]; tabs: string[] } {
+  const str = (ref: Wire | undefined): string | undefined => (typeof ref === 'number' && typeof strings[ref] === 'string' ? (strings[ref] as string) : undefined);
+  const t1 = tables.get(TABLE_CLIENT_CONFIG);
+  return {
+    names: buildNames(version, strings, vectors, tables, lookup),
+    trees: readBranchDefs(t1, str, lookup).map((b) => b.name),
+    tabs: [...academyTabs(t1, str, lookup).values()],
+  };
+}
+
+/** A build's texts without the fields that are not text (version, build time, numbers-only tables). */
+function textParts(t: ReturnType<typeof nameTexts>): unknown {
+  const { version: _v, builtAt: _b, format: _f, heroLevels: _h, items: _i, ...rest } = t.names;
+  return { names: rest, trees: t.trees, tabs: t.tabs };
+}
+
+/**
+ * The names build in every site language: the English build (with a lookup
+ * that records each translation key it reads) and each language's CSV,
+ * keeping only those keys, behind that language's own build. `languageCsv`
+ * hands over one language's CSV text at a time (unzipped only when asked);
+ * a language it has none for is left out. Pure; unit-tested.
+ */
+export function buildNamesInLanguages(
+  version: string,
+  strings: Wire[],
+  vectors: Wire[],
+  tables: Map<number, Record<string, Wire>>,
+  en: Map<string, string>,
+  languageCsv: (lang: GameTextLanguage) => string | null,
+): { names: GameNames; texts: Map<GameTextLanguage, Record<string, string>>; drift: string[] } {
+  const used = new Set<string>();
+  const recording: TextLookup = {
+    get: (k) => {
+      used.add(k);
+      return en.get(k);
+    },
+  };
+  const english = nameTexts(version, strings, vectors, tables, recording);
+  const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim();
+  const englishTexts = new Set<string>();
+  for (const k of used) {
+    const v = en.get(k);
+    if (v) englishTexts.add(collapse(v));
+  }
+  const keep = new Set([...used, ...UI_TEXT_KEYS.map((u) => u.key)]);
+  const englishParts = textParts(english);
+  const texts = new Map<GameTextLanguage, Record<string, string>>();
+  let drift: string[] = [];
+  for (const lang of GAME_TEXT_LANGUAGE_CODES) {
+    const csv = languageCsv(lang);
+    if (!csv) continue;
+    const loc = parseTranslationsCsv(csv, keep);
+    // A key the language lacks (or leaves empty) reads as the English, so the
+    // build keeps its shape — but that English is no translation, and must
+    // not stand in for one (it would override a hand-kept name).
+    const untranslated = new Set<string>();
+    const lookup: TextLookup = {
+      get: (k) => {
+        const v = loc.get(k);
+        if (v) return v;
+        const e = en.get(k);
+        if (e) untranslated.add(collapse(e));
+        return e;
+      },
+    };
+    const localized = textParts(nameTexts(version, strings, vectors, tables, lookup));
+    const translated = new Set([...englishTexts].filter((t) => !untranslated.has(t)));
+    const labels = labelTexts(UI_TEXT_KEYS, en, loc);
+    drift = labels.drift;
+    texts.set(lang, buildGameTexts({ lang, pairs: pairTexts(englishParts, localized), englishTexts: translated, labels: labels.labels }));
+  }
+  return { names: english.names, texts, drift };
+}
+
+/**
  * The game's text of a localised vector with its line breaks kept: the
  * translation files write a break as the two characters `\n`. Each line's
  * spaces collapse; empty lines go. Placeholders are filled like a name's.
  */
-export function textLines(v: Wire[] | undefined, str: (ref: Wire) => string | undefined, en: Map<string, string>): string {
+export function textLines(v: Wire[] | undefined, str: (ref: Wire) => string | undefined, en: TextLookup): string {
   if (!v?.length) return '';
   const key = str(v[0]);
   let out = key === undefined ? '' : (en.get(key) ?? '');
@@ -803,7 +941,7 @@ export function buildTitles(
   table: Record<string, Wire> | undefined,
   str: (ref: Wire) => string | undefined,
   vec: (vref: Wire) => Wire[] | undefined,
-  en: Map<string, string>,
+  en: TextLookup,
 ): Record<string, GameTitle> {
   const out: Record<string, GameTitle> = {};
   for (const [id, row] of Object.entries(table ?? {})) {
@@ -896,7 +1034,7 @@ function effectStrings(json: string | undefined): Array<[string, number]> {
 export function buildDragon(
   table: Record<string, Wire> | undefined,
   str: (ref: Wire) => string | undefined,
-  en: Map<string, string>,
+  en: TextLookup,
 ): GameDragon | null {
   const row = table?.['1'];
   if (!Array.isArray(row) || !isPlainObject(row[2])) return null;
@@ -957,7 +1095,7 @@ export function buildDragon(
 export function buildEvents(
   table: Record<string, Wire> | undefined,
   str: (ref: Wire) => string | undefined,
-  en: Map<string, string>,
+  en: TextLookup,
 ): Record<string, GameEvent> {
   const out: Record<string, GameEvent> = {};
   for (const [key, row] of Object.entries(table ?? {})) {
@@ -1033,7 +1171,7 @@ const isPlainObject = (v: Wire): v is Record<string, Wire> =>
  *     → "Level 150 epic, legendary or mythic Captains of this faction needed: 2"
  *   HasFractionLevel(800,801,802, lvl) → "Required level of all factions: 46"
  */
-export function conditionTexts(conds: string[], en: Map<string, string>): string[] {
+export function conditionTexts(conds: string[], en: TextLookup): string[] {
   const out: string[] = [];
   for (const cond of conds) {
     for (const part of cond.split('&&').map((p) => p.trim())) {
@@ -1064,7 +1202,7 @@ export function conditionTexts(conds: string[], en: Map<string, string>): string
 export function buildFactions(
   tables: Map<number, Record<string, Wire>>,
   str: (ref: Wire) => string | undefined,
-  en: Map<string, string>,
+  en: TextLookup,
 ): { factions: Record<string, GameFaction>; hallOfFame: GameLevelledTech | null } {
   const techRows = tables.get(TABLE_TECHS) ?? {};
   const levelled = (techId: number, name: string): GameLevelledTech | null => {
@@ -1127,7 +1265,7 @@ function buildArtifacts(
   tables: Map<number, Record<string, Wire>>,
   str: (ref: Wire) => string | undefined,
   vecText: (ref: Wire) => string | undefined,
-  en: Map<string, string>,
+  en: TextLookup,
 ): Record<string, GameArtifact> {
   const propLines = (ref: Wire): GameTextLine[] => {
     let props: Array<{ propText?: string; propValue?: unknown }> = [];
@@ -1213,6 +1351,19 @@ let memo: GameNames | null = null;
  * decode the ~67 MB of static data on its own.
  */
 let building: { key: string; promise: Promise<GameNames> } | null = null;
+/**
+ * Versions whose last build lacked a language's texts (its CSV could not be
+ * fetched), and when the next try may run: a missing language rebuilds, but
+ * never more often than this — each rebuild downloads the ~67 MB again.
+ */
+const textsRetryAt = new Map<string, number>();
+const TEXTS_RETRY_MS = 6 * 3600_000;
+
+/** Every site language's texts were written with these names — or a rebuild for them waits its turn. */
+function textsSettled(names: GameNames, key: string): boolean {
+  if (GAME_TEXT_LANGUAGE_CODES.every((l) => names.textLanguages?.includes(l))) return true;
+  return (textsRetryAt.get(key) ?? 0) > Date.now();
+}
 
 /**
  * Names for the live game version: from memory, else from the on-disk cache,
@@ -1232,13 +1383,14 @@ export async function loadGameNames(): Promise<GameNames> {
     throw err;
   }
   const key = versionKey(version);
-  if (memo?.version === key) return memo;
+  if (memo?.version === key && textsSettled(memo, key)) return memo;
   const file = path.join(staticDir(), key, 'names.json');
   if (fs.existsSync(file)) {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as GameNames;
     // A names.json from an older format (before captains' star bonuses) is rebuilt once.
-    if ((cached.format ?? 1) >= NAMES_FORMAT) {
+    if ((cached.format ?? 1) >= NAMES_FORMAT && textsSettled(cached, key)) {
       memo = cached;
+      useGameTextsDir(path.dirname(file));
       return memo;
     }
   }
@@ -1253,22 +1405,49 @@ export async function loadGameNames(): Promise<GameNames> {
 }
 
 async function buildAndCacheNames(version: StaticVersion, key: string, file: string): Promise<GameNames> {
-  log.info(`Building game names for static data ${key} (downloads ~67 MB once per game patch)`);
+  log.info(`Building game names for static data ${key} (downloads ~70 MB once per game patch)`);
   const started = Date.now();
-  const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
+  const index = await fetchTranslationsIndex(version.translationsCatalog);
+  const [stringsBuf, vectorsBuf, tablesBuf, enZip, ...langZips] = await Promise.all([
     fetchBuffer(STATIC_BASE + version.files.strings),
     fetchBuffer(STATIC_BASE + version.files.vectors),
     fetchBuffer(STATIC_BASE + version.files.noDuplicates),
-    fetchEnglish(version.translationsCatalog),
+    fetchTranslationsZip(index, ENGLISH),
+    ...GAME_TEXT_LANGUAGE_CODES.map((l) => fetchLanguageZip(index, l)),
   ]);
-  const names = buildNames(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), readTables(tablesBuf, NEEDED_TABLES), en);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const zipOf = new Map(GAME_TEXT_LANGUAGE_CODES.map((l, i) => [l, langZips[i]]));
+  const en = parseTranslationsCsv(unzipFirst(enZip).toString('utf8'));
+  const { names, texts, drift } = buildNamesInLanguages(
+    key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), readTables(tablesBuf, NEEDED_TABLES), en,
+    (lang) => {
+      const zip = zipOf.get(lang);
+      if (!zip) return null;
+      try {
+        return unzipFirst(zip).toString('utf8');
+      } catch (err) {
+        log.warn({ noAlert: true }, `Game texts: unreadable ${lang} translations (${String(err)}).`);
+        return null;
+      }
+    },
+  );
+  if (drift.length) {
+    log.warn({ noAlert: true }, `Game texts: ${drift.length} UI label key(s) changed in the game, their tGame labels may show English: ${drift.join('; ')}`);
+  }
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [lang, dict] of texts) writeGameTexts(dir, lang, key, dict);
+  names.textLanguages = [...texts.keys()];
+  if (texts.size < GAME_TEXT_LANGUAGE_CODES.length) textsRetryAt.set(key, Date.now() + TEXTS_RETRY_MS);
+  // names.json last: its presence says the texts beside it are as complete as they will get.
   fs.writeFileSync(file, JSON.stringify(names));
+  useGameTextsDir(dir, true);
+  const heap = Math.round(process.memoryUsage().heapUsed / 1e6);
   log.info(
-    `Game names ${key} built in ${Math.round((Date.now() - started) / 1000)}s: ` +
+    `Game names ${key} built in ${Math.round((Date.now() - started) / 1000)}s (heap ${heap} MB): ` +
     `${Object.keys(names.gifts).length} gift types, ${Object.keys(names.techs).length} techs, ` +
     `${Object.keys(names.objects).length} map objects, ${Object.keys(names.heroes).length} heroes, ` +
-    `${Object.keys(names.captains).length} captains, ${Object.keys(names.artifacts ?? {}).length} artifacts`,
+    `${Object.keys(names.captains).length} captains, ${Object.keys(names.artifacts ?? {}).length} artifacts; ` +
+    `texts ${[...texts].map(([l, d]) => `${l} ${Object.keys(d).length}`).join(', ') || 'none'}`,
   );
   memo = names;
   return names;
@@ -1281,10 +1460,13 @@ function newestCachedNames(): GameNames | null {
     .map((d) => path.join(dir, d, 'names.json'))
     .filter((f) => fs.existsSync(f))
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  return files[0] ? (JSON.parse(fs.readFileSync(files[0], 'utf8')) as GameNames) : null;
+  if (!files[0]) return null;
+  useGameTextsDir(path.dirname(files[0]));
+  return JSON.parse(fs.readFileSync(files[0], 'utf8')) as GameNames;
 }
 
 /** Test seam. */
 export function resetGameNamesMemo(): void {
   memo = null;
+  textsRetryAt.clear();
 }
