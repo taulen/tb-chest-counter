@@ -6,6 +6,7 @@ exports.listSnapshots = listSnapshots;
 exports.listSnapshotWeeks = listSnapshotWeeks;
 exports.getSnapshot = getSnapshot;
 exports.getLatestSnapshot = getLatestSnapshot;
+exports.hasSnapshotForShareCode = hasSnapshotForShareCode;
 exports.getSnapshotEtagForWindow = getSnapshotEtagForWindow;
 exports.recordPollOutcome = recordPollOutcome;
 exports.getLatestPollAt = getLatestPollAt;
@@ -352,6 +353,12 @@ function getLatestSnapshot(opts = {}) {
         .prepare(`SELECT * FROM snapshot ${whereSql} ORDER BY fetched_at DESC LIMIT 1`)
         .get(...params);
     return row ? rowToSnapshot(row) : null;
+}
+/** Whether this clan holds any snapshot fetched under `shareCode`. */
+function hasSnapshotForShareCode(clanId, shareCode) {
+    return (0, database_js_1.getDb)()
+        .prepare('SELECT 1 FROM snapshot WHERE clan_id = ? AND share_code = ? LIMIT 1')
+        .get(clanId, shareCode) !== undefined;
 }
 /**
  * Return the most recent snapshot that exactly matched the given window,

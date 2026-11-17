@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.overridePointsOf = overridePointsOf;
 exports.ingestSnapshot = ingestSnapshot;
 const logger_js_1 = require("../utils/logger.js");
 const chesttracker_client_js_1 = require("./chesttracker-client.js");
@@ -25,6 +26,15 @@ function extractCategories(p) {
     }
     return out;
 }
+/** A definition's override as a number: `{ points }` (current API) or a
+ *  bare number (older payloads); null when unset or not numeric. */
+function overridePointsOf(override) {
+    const raw = override !== null && typeof override === 'object' ? override.points : override;
+    if (raw === null || raw === undefined || raw === '')
+        return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+}
 function normalizePayload(payload) {
     const [rawPlayers, rawDefs] = payload;
     const mappedPlayers = rawPlayers.map((p) => ({
@@ -44,7 +54,7 @@ function normalizePayload(payload) {
         name: String(d.name ?? ''),
         source: String(d.source ?? ''),
         points: Number(d.points ?? 0),
-        overridePoints: d.override == null ? null : Number(d.override),
+        overridePoints: overridePointsOf(d.override),
     }));
     return { players, definitions };
 }
@@ -125,12 +135,11 @@ async function ingestSnapshot(opts) {
     }
     const totalChests = players.reduce((s, p) => s + p.chests, 0);
     const totalPoints = players.reduce((s, p) => s + p.points, 0);
-    // Also pull the clan's settings (targets + schedule) so the UI can
-    // render green/yellow/red status cells against each player row. This
-    // is best-effort: if the settings fetch fails we still insert the
-    // snapshot — just without the requirement data.
-    const settings = await (0, chesttracker_client_js_1.fetchSettings)(opts.shareCode);
-    const settingsJson = settings ? JSON.stringify(settings) : null;
+    // The clan's settings (targets + schedule) ride along in the counts
+    // response, so the UI can render green/yellow/red status cells against
+    // each player row. A response without them (legacy tuple) still inserts
+    // — just without the requirement data.
+    const settingsJson = res.clan ? JSON.stringify(res.clan) : null;
     const snapshotId = (0, external_repo_js_1.insertSnapshot)({
         clanId: opts.clanId,
         fetchedAt: new Date().toISOString(),

@@ -8,23 +8,33 @@ const USER_AGENT = 'tb-chest-counter/1.0 (+self-hosted personal use)';
 export interface ChesttrackerResponse {
   status: number;
   etag: string | null;
-  // Raw parsed JSON body, or null on 304 Not Modified.
+  // The counts tuple, or null on 304 Not Modified.
   body: ChesttrackerPayload | null;
+  /** The clan block (settings, schedule, last scan) the counts endpoint
+   *  carries since the Nov 2026 API change. Null on a 304 and on the
+   *  legacy bare-tuple response. */
+  clan: ChesttrackerSettings | null;
 }
 
 /**
- * The API returns a 3-tuple array:
+ * The counts tuple:
  *   [0] players[]  — player rows with chest totals + per-category chest counts
  *   [1] definitions[] — chest scoring reference table
  *   [2] categorySchema — template object of used categories
+ *   [3] (new API only) the requirement table again — unused, it is in clan.settings
  *
  * Per-player category keys are dynamic strings like "common crypt", "ancients",
  * "epic squad", etc. Each maps to { chests: number }.
+ *
+ * Until ~Nov 2026 the endpoint returned this tuple bare. It now wraps it:
+ * `{ clan, window, counts: [...] }` — and the separate /settings endpoint is
+ * gone (404), its payload being `clan`. parseCountsPayload reads both.
  */
 export type ChesttrackerPayload = [
   ChesttrackerPlayer[],
   ChesttrackerDefinition[],
   Record<string, unknown>,
+  ...unknown[],
 ];
 
 export interface ChesttrackerPlayer {
@@ -41,7 +51,9 @@ export interface ChesttrackerDefinition {
   name: string;
   source: string;
   points: number;
-  override: number | null;
+  /** The clan's own value for this chest. The new API sends `{ points }`;
+   *  a bare number is accepted too. */
+  override: number | { points?: number | string | null } | null;
 }
 
 export interface FetchOptions {
@@ -56,24 +68,29 @@ export interface FetchOptions {
 }
 
 /**
- * Shape of the /chests/public/{code}/settings endpoint. Used to render
- * target-met status (green/yellow/red) on the counts UI. Not all fields
- * are used today — kept loose so a minor upstream change doesn't break
- * ingest.
+ * The clan block: once the /chests/public/{code}/settings endpoint, now the
+ * `clan` key of the counts response — same layout, so snapshots stored
+ * before and after the change read alike. Used to render target-met status
+ * (green/yellow/red) on the counts UI. Not all fields are used today — kept
+ * loose so a minor upstream change doesn't break ingest.
  */
 export interface ChesttrackerSettings {
   id?: string;
+  name?: string;
+  tag?: string;
   kingdom?: number;
   status?: string;
   lastScannedAt?: string;
+  cycleStartAt?: string;
   settings?: {
     /**
      * Array of per-guardsLevel requirement objects. Keys within each entry
      * match chest category requirement keys (e.g. `points`, `chests`,
-     * `riseoftheancientsevent` → ancients target). Values are nullable
-     * strings representing the target count ("13" or null).
+     * `riseoftheancientsevent` → ancients target). Values are the target
+     * count as a string or a number ("13", 6700) or null, or a nested
+     * per-source object for a category.
      */
-    requirement?: Record<string, string | null>[];
+    requirement?: Record<string, unknown>[];
     /** Per-clan scoring overrides and other tunables. */
     general?: Record<string, unknown>;
   };
@@ -125,7 +142,7 @@ export async function fetchCounts(opts: FetchOptions): Promise<ChesttrackerRespo
 
   if (res.status === 304) {
     log.debug(`Fetch returned 304 (${opts.shareCode} ${opts.start} → ${opts.end})`);
-    return { status: 304, etag, body: null };
+    return { status: 304, etag, body: null, clan: null };
   }
 
   if (!res.ok) {
@@ -134,46 +151,38 @@ export async function fetchCounts(opts: FetchOptions): Promise<ChesttrackerRespo
     throw new Error(`Chesttracker fetch failed: HTTP ${res.status} ${res.statusText} — ${snippet}`);
   }
 
-  const body = (await res.json()) as ChesttrackerPayload;
+  const { counts, clan } = parseCountsPayload(await res.json());
+  return { status: 200, etag, body: counts, clan };
+}
 
-  // Light validation. We don't want to blow up ingest on a minor schema
-  // quirk — but we do want to fail loudly if the top-level shape changed.
-  if (!Array.isArray(body) || body.length < 3 || !Array.isArray(body[0]) || !Array.isArray(body[1])) {
-    throw new Error('Chesttracker fetch returned unexpected payload shape (expected [players[], definitions[], schema])');
-  }
-
-  return { status: 200, etag, body };
+function isCountsTuple(v: unknown): v is ChesttrackerPayload {
+  return Array.isArray(v) && v.length >= 3 && Array.isArray(v[0]) && Array.isArray(v[1]);
 }
 
 /**
- * Fetch the clan's public settings (requirement targets, schedule,
- * last-scanned timestamp). Called once per ingest so each snapshot
- * captures the targets that were in effect at that moment.
- *
- * Returns null on any error — settings are optional; the counts fetch
- * should not fail just because the settings endpoint blipped.
+ * Read a counts response in either shape: the current `{ clan, window,
+ * counts }` envelope or the legacy bare tuple. Throws when it is neither —
+ * naming the keys that did arrive, so the next upstream change says what
+ * it changed to instead of just "unexpected". Pure; unit-tested.
  */
-export async function fetchSettings(
-  shareCode: string,
-  timeoutMs: number = 15_000,
-): Promise<ChesttrackerSettings | null> {
-  const url = `${BASE_URL}/chests/public/${encodeURIComponent(shareCode)}/settings`;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      headers: { accept: 'application/json', 'user-agent': USER_AGENT },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as ChesttrackerSettings;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
+export function parseCountsPayload(json: unknown): {
+  counts: ChesttrackerPayload;
+  clan: ChesttrackerSettings | null;
+} {
+  if (isCountsTuple(json)) return { counts: json, clan: null };
+  if (json && typeof json === 'object' && !Array.isArray(json)) {
+    const env = json as { counts?: unknown; clan?: unknown };
+    if (isCountsTuple(env.counts)) {
+      const clan = env.clan && typeof env.clan === 'object' && !Array.isArray(env.clan)
+        ? (env.clan as ChesttrackerSettings)
+        : null;
+      return { counts: env.counts, clan };
+    }
+    const keys = Object.keys(json).slice(0, 10).join(', ') || 'none';
+    throw new Error(`Chesttracker returned an unrecognised payload: an object without a counts tuple (keys: ${keys})`);
   }
+  const kind = Array.isArray(json) ? `an array of ${json.length}` : json === null ? 'null' : typeof json;
+  throw new Error(`Chesttracker returned an unrecognised payload: ${kind}, expected { counts: [players[], definitions[], schema] }`);
 }
 
 /**

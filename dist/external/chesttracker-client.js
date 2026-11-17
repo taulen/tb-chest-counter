@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchCounts = fetchCounts;
-exports.fetchSettings = fetchSettings;
+exports.parseCountsPayload = parseCountsPayload;
 exports.computeCurrentWeekWindow = computeCurrentWeekWindow;
 exports.computeWeekWindowContaining = computeWeekWindowContaining;
 const logger_js_1 = require("../utils/logger.js");
@@ -44,48 +44,41 @@ async function fetchCounts(opts) {
     const etag = res.headers.get('etag');
     if (res.status === 304) {
         log.debug(`Fetch returned 304 (${opts.shareCode} ${opts.start} → ${opts.end})`);
-        return { status: 304, etag, body: null };
+        return { status: 304, etag, body: null, clan: null };
     }
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         const snippet = text.slice(0, 300);
         throw new Error(`Chesttracker fetch failed: HTTP ${res.status} ${res.statusText} — ${snippet}`);
     }
-    const body = (await res.json());
-    // Light validation. We don't want to blow up ingest on a minor schema
-    // quirk — but we do want to fail loudly if the top-level shape changed.
-    if (!Array.isArray(body) || body.length < 3 || !Array.isArray(body[0]) || !Array.isArray(body[1])) {
-        throw new Error('Chesttracker fetch returned unexpected payload shape (expected [players[], definitions[], schema])');
-    }
-    return { status: 200, etag, body };
+    const { counts, clan } = parseCountsPayload(await res.json());
+    return { status: 200, etag, body: counts, clan };
+}
+function isCountsTuple(v) {
+    return Array.isArray(v) && v.length >= 3 && Array.isArray(v[0]) && Array.isArray(v[1]);
 }
 /**
- * Fetch the clan's public settings (requirement targets, schedule,
- * last-scanned timestamp). Called once per ingest so each snapshot
- * captures the targets that were in effect at that moment.
- *
- * Returns null on any error — settings are optional; the counts fetch
- * should not fail just because the settings endpoint blipped.
+ * Read a counts response in either shape: the current `{ clan, window,
+ * counts }` envelope or the legacy bare tuple. Throws when it is neither —
+ * naming the keys that did arrive, so the next upstream change says what
+ * it changed to instead of just "unexpected". Pure; unit-tested.
  */
-async function fetchSettings(shareCode, timeoutMs = 15_000) {
-    const url = `${BASE_URL}/chests/public/${encodeURIComponent(shareCode)}/settings`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const res = await fetch(url, {
-            headers: { accept: 'application/json', 'user-agent': USER_AGENT },
-            signal: controller.signal,
-        });
-        if (!res.ok)
-            return null;
-        return (await res.json());
+function parseCountsPayload(json) {
+    if (isCountsTuple(json))
+        return { counts: json, clan: null };
+    if (json && typeof json === 'object' && !Array.isArray(json)) {
+        const env = json;
+        if (isCountsTuple(env.counts)) {
+            const clan = env.clan && typeof env.clan === 'object' && !Array.isArray(env.clan)
+                ? env.clan
+                : null;
+            return { counts: env.counts, clan };
+        }
+        const keys = Object.keys(json).slice(0, 10).join(', ') || 'none';
+        throw new Error(`Chesttracker returned an unrecognised payload: an object without a counts tuple (keys: ${keys})`);
     }
-    catch {
-        return null;
-    }
-    finally {
-        clearTimeout(timeout);
-    }
+    const kind = Array.isArray(json) ? `an array of ${json.length}` : json === null ? 'null' : typeof json;
+    throw new Error(`Chesttracker returned an unrecognised payload: ${kind}, expected { counts: [players[], definitions[], schema] }`);
 }
 /**
  * Compute the TB game-week window that CONTAINS `nowMs`. Total Battle's

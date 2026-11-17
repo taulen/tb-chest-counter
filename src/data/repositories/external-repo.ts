@@ -549,6 +549,13 @@ export function getLatestSnapshot(
   return row ? rowToSnapshot(row as Record<string, unknown>) : null;
 }
 
+/** Whether this clan holds any snapshot fetched under `shareCode`. */
+export function hasSnapshotForShareCode(clanId: number, shareCode: string): boolean {
+  return getDb()
+    .prepare('SELECT 1 FROM snapshot WHERE clan_id = ? AND share_code = ? LIMIT 1')
+    .get(clanId, shareCode) !== undefined;
+}
+
 /**
  * Return the most recent snapshot that exactly matched the given window,
  * used to send If-None-Match on re-fetches of the same window.

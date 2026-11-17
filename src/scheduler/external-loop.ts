@@ -5,11 +5,31 @@ import {
   getConfigValue,
   setConfigValue,
   getLatestSnapshot,
+  hasSnapshotForShareCode,
 } from '../data/repositories/external-repo.js';
 import { listClans, getClanById, type Clan } from '../data/repositories/clan-repo.js';
 import { loadConfig } from '../config/index.js';
+import { resolveEntries } from '../utils/log-buffer.js';
 
 const log = childLogger('external-loop');
+
+/** resolveKey for "this clan's ChestTracker poll keeps failing". */
+export function ctPollWarningKey(clanId: number): string {
+  return `chesttracker-poll:clan:${clanId}`;
+}
+
+/** resolveKey for "a ChestTracker backfill run had failed weeks". */
+export function ctBackfillWarningKey(clanId: number): string {
+  return `chesttracker-backfill:clan:${clanId}`;
+}
+
+/** A poll failure is a System-page warning from this many in a row on —
+ *  one network blip resolves itself at the next poll and isn't news. */
+const POLL_FAILURES_BEFORE_WARNING = 2;
+
+/** An initial backfill that got no week at all isn't marked done; the
+ *  poll loop retries it once polling works again, at most this often. */
+const INITIAL_BACKFILL_RETRY_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Legacy single-tenant ct_config keys. Pre-multi-clan deployments stored
@@ -58,11 +78,18 @@ function backfillDoneKey(shareCode: string): string {
 /**
  * Effective settings for one clan, derived from clans table + per-share
  * ct_config marker.
+ *
+ * The marker only counts when the clan holds a snapshot for the code: until
+ * Nov 2026 the backfill wrote it even when every week had failed, which is
+ * how VRG (clan 6) got "backfill done" with nothing stored when the
+ * upstream API changed shape. Every successful fetch stores a snapshot
+ * (even an empty one), so "marker but no snapshot" can only mean the
+ * backfill never got anything — run it again.
  */
 export function readClanSettings(clan: Clan): ExternalLoopSettings {
   const shareCode = clan.ctShareCode || null;
   const initialBackfillDone = shareCode
-    ? getConfigValue(backfillDoneKey(shareCode)) === 'true'
+    ? getConfigValue(backfillDoneKey(shareCode)) === 'true' && hasSnapshotForShareCode(clan.id, shareCode)
     : true;
   return {
     enabled: !!shareCode,
@@ -142,6 +169,10 @@ export class ExternalLoop {
     empty: number;
     failed: number;
   } = { running: false, done: 0, total: 0, inserted: 0, empty: 0, failed: 0 };
+  /** Scheduled polls failed in a row; the warning goes out at the threshold. */
+  private consecutivePollFailures = 0;
+  /** Earliest time the poll loop may re-try an initial backfill that got nothing. */
+  private initialBackfillRetryAt = 0;
 
   constructor(clanId: number = 1) {
     this.clanId = clanId;
@@ -273,6 +304,7 @@ export class ExternalLoop {
     // and double up on the upstream — runCycle() defers by a minute when
     // it sees this, exactly as it does during the initial backfill.
     this.inFlight = true;
+    let lastFailure: string | null = null;
     try {
       log.info(`Clan #${this.clanId}: on-demand backfill of ${weeks} prior week(s) started (${shareCode})`);
       for (let w = 1; w <= weeks; w++) {
@@ -303,6 +335,7 @@ export class ExternalLoop {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           this.backfill.failed++;
+          lastFailure = msg;
           this.lastError = { message: msg, at: new Date().toISOString() };
           // One bad week doesn't abort the range — same policy as the
           // initial backfill. lastError carries it to the admin card.
@@ -314,6 +347,7 @@ export class ExternalLoop {
       log.info(
         `Clan #${this.clanId}: on-demand backfill finished — ${done} week(s) processed, ${inserted} with data, ${empty} empty, ${failed} failed`,
       );
+      this.reportBackfillOutcome(failed, done, lastFailure, 'Run "Backfill past weeks…" again to fill the gaps.');
     } finally {
       this.backfill.running = false;
       this.inFlight = false;
@@ -332,6 +366,10 @@ export class ExternalLoop {
 
     const rolloverHour = loadConfig().gameDayRolloverUtcHour;
     const weeks = Math.max(0, settings.backfillWeeks);
+    this.initialBackfillRetryAt = Date.now() + INITIAL_BACKFILL_RETRY_MS;
+    let attempted = 0;
+    let succeeded = 0;
+    let lastFailure: string | null = null;
 
     try {
       log.info(`Clan #${this.clanId}: running initial backfill: ${weeks} prior week(s)`);
@@ -339,6 +377,7 @@ export class ExternalLoop {
         if (!this.running) break;
         const anchorMs = Date.now() - w * 7 * 24 * 60 * 60 * 1000;
         const window = computeWeekWindowContaining(anchorMs, rolloverHour);
+        attempted++;
         try {
           await ingestSnapshot({
             clanId: this.clanId,
@@ -348,10 +387,12 @@ export class ExternalLoop {
             durationDays: 7,
             trigger: 'backfill',
           });
+          succeeded++;
           this.lastSuccessAt = new Date().toISOString();
           this.lastError = null;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          lastFailure = msg;
           this.lastError = { message: msg, at: new Date().toISOString() };
           // Single-week failure during backfill is recoverable — the
           // outer loop continues with the remaining weeks. The
@@ -360,12 +401,34 @@ export class ExternalLoop {
           log.info({ err }, `Clan #${this.clanId}: backfill week ${w} failed (${window.start} → ${window.end}): ${msg}`);
         }
       }
-      writeSettings({ shareCode: settings.shareCode, initialBackfillDone: true });
-      log.info(`Clan #${this.clanId}: initial backfill complete`);
+      if (succeeded > 0 || weeks === 0) {
+        writeSettings({ shareCode: settings.shareCode, initialBackfillDone: true });
+        log.info(`Clan #${this.clanId}: initial backfill complete (${succeeded}/${weeks} week(s) fetched)`);
+        this.reportBackfillOutcome(attempted - succeeded, attempted, lastFailure, 'Use "Backfill past weeks…" on the ChestTracker tab to fill the gaps.');
+      } else if (attempted > 0) {
+        // Nothing came back — don't mark it done, or the history is never
+        // fetched (runCycle retries once polling works again).
+        this.reportBackfillOutcome(attempted, attempted, lastFailure, 'It will be retried once ChestTracker answers again.');
+      }
     } finally {
       this.inFlight = false;
       if (this.running) this.scheduleNext(0);
     }
+  }
+
+  /** One System-page warning per backfill run with failed weeks (each week's
+   *  own failure stays an info line); a clean run resolves the last one. */
+  private reportBackfillOutcome(failed: number, attempted: number, lastFailure: string | null, advice: string): void {
+    const key = ctBackfillWarningKey(this.clanId);
+    if (failed === 0) {
+      resolveEntries(key);
+      return;
+    }
+    const why = lastFailure ?? 'unknown error';
+    log.warn(
+      { resolveKey: key },
+      `Clan #${this.clanId}: ChestTracker backfill — ${failed} of ${attempted} week(s) failed: ${why}. ${advice}`,
+    );
   }
 
   private scheduleNext(delayMs: number | null = null): void {
@@ -422,16 +485,36 @@ export class ExternalLoop {
       } else {
         log.debug(`Clan #${this.clanId}: ${summary} — next fetch in ${this.nextFetchMinutes()} min`);
       }
+      this.consecutivePollFailures = 0;
+      resolveEntries(ctPollWarningKey(this.clanId));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.lastError = { message: msg, at: new Date().toISOString() };
-      // External fetch failures are retried at the next interval and
-      // tracked in `lastError` (visible on the External admin card).
-      // Operators see persistent failures via that surface; the log
-      // line is just informational scrollback.
+      // Retried at the next interval and tracked in `lastError` (the
+      // ChestTracker admin card). A failure that persists also becomes ONE
+      // System-page warning per failing stretch, resolved by the next good
+      // poll — until Nov 2026 it was only this info line, so an upstream
+      // API change went unnoticed for weeks.
       log.info({ err }, `Clan #${this.clanId}: external fetch failed — will retry in ${this.nextFetchMinutes()} min: ${msg}`);
+      this.consecutivePollFailures++;
+      if (this.consecutivePollFailures === POLL_FAILURES_BEFORE_WARNING) {
+        log.warn(
+          { resolveKey: ctPollWarningKey(this.clanId) },
+          `Clan #${this.clanId}: ChestTracker polling is failing (${this.consecutivePollFailures} in a row): ${msg}`,
+        );
+      }
     } finally {
       this.inFlight = false;
+    }
+
+    // An initial backfill that got nothing isn't marked done: once a poll
+    // works again, fetch the history (rate-limited by the retry window).
+    if (this.consecutivePollFailures === 0 && Date.now() >= this.initialBackfillRetryAt) {
+      const now = this.currentSettings();
+      if (!now.initialBackfillDone) {
+        void this.runInitialBackfill(now);
+        return;
+      }
     }
 
     this.scheduleNext();
