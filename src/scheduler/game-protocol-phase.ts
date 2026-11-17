@@ -39,6 +39,7 @@ import {
 } from '../game-protocol/messages.js';
 import {
   citySnapshotPlayers,
+  cityChangedSinceRead,
   finishCaptureRun,
   hasRawSnapshot,
   loadScanComparisonInputs,
@@ -57,6 +58,7 @@ import {
 import { compareGifts } from '../game-protocol/compare.js';
 import { syncMembersFromGame } from '../game-protocol/member-sync.js';
 import { currentGameDate } from '../utils/game-day.js';
+import { loadTechTrees } from '../game-protocol/tech-trees.js';
 
 const log = childLogger('game-protocol');
 
@@ -204,6 +206,13 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
   const now = new Date().toISOString();
 
   try {
+    // Rebuilds only when the game published a new version (one small request otherwise).
+    await loadTechTrees();
+  } catch (err) {
+    parts.push(`tech trees unavailable: ${String(err)}`);
+  }
+
+  try {
     if (!hasRawSnapshot(clanId, 'clan_record', 0, d.gameDate)) {
       saveRawSnapshot(clanId, 'clan_record', 0, d.gameDate, clanFrame.body, now);
       let objects = 0;
@@ -220,10 +229,14 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
   }
 
   try {
+    // Every member once a game day, plus — every scan — anyone whose might or
+    // hero level moved since their city was last read, so a finished research
+    // or talent is dated to the scan that saw it (history keeps every change).
     const done = citySnapshotPlayers(clanId, d.gameDate);
+    const changedSince = cityChangedSinceRead(clanId, d.gameDate);
     const todo = d.record.members
       .map((m) => d.byId.get(m.playerId))
-      .filter((p): p is PlayerRecord => !!p && p.cityId !== null && !done.has(p.playerId))
+      .filter((p): p is PlayerRecord => !!p && p.cityId !== null && (!done.has(p.playerId) || changedSince.has(p.playerId)))
       .slice(0, MAX_CITIES_PER_CYCLE);
     let changed = 0;
     for (const p of todo) {

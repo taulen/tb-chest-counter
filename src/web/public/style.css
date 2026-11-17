@@ -2131,6 +2131,52 @@ label {
   font-weight: 600;
 }
 
+/* What the game reports about a player (lib/game-facts.js): rank, joined, city,
+   VIP, Gold Pass — on the member profile and the public board's hover card. */
+.game-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.game-fact-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.game-fact-pill.is-rank {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.game-fact-pill.is-gold {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+  font-weight: 600;
+}
+
+.game-fact-pill.is-left {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+/* The player's hero portrait from the game's own art. */
+.hero-avatar {
+  flex: none;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  object-fit: cover;
+}
+
 .member-rank-badge.top-3 {
   border-color: var(--accent-gold);
   background: var(--accent-gold-bg);
@@ -4961,6 +5007,18 @@ details > table {
     line-height: 1.2;
     padding: 6px 6px;
   }
+  /* Five or more sections (the member profile with Research + Talents) no
+     longer fit as equal cells: a sideways-scrolling strip, labels unwrapped. */
+  .view-tabs:has(> .resources-tab:nth-child(5)) {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .view-tabs:has(> .resources-tab:nth-child(5)) .resources-tab {
+    flex: none;
+    white-space: nowrap;
+    padding: 6px 12px;
+  }
 }
 
 /* ─── Resources: overview controls (scope + range + bucket) ──────────── */
@@ -6585,6 +6643,14 @@ table.faq-matrix { min-width: 460px; }
   align-items: baseline;
   gap: 10px;
   margin: -6px 0 8px;
+}
+
+/* The game's facts about the player (lib/game-facts.js), above the totals. */
+.lbb-facts {
+  margin: 2px 0 12px;
+}
+.lbb-facts:empty {
+  display: none;
 }
 
 .lbb-totals {
@@ -8492,3 +8558,205 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .perf-how li, .perf-how p { font-size: 13px; color: var(--text-secondary); }
 .perf-how p { margin: 0 0 8px; }
 .perf-how strong { color: var(--text-primary); }
+
+/* ─── Member profile: Research / Talents trees (pages/member-techs.js) ─── */
+.tech-tiers {
+  margin-bottom: 16px;
+}
+
+.tech-tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tech-tree-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tech-tree-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tech-tree-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tech-tree-btn:hover {
+  background: var(--bg-card-hover);
+}
+
+.tech-tree-btn.is-active {
+  border-color: var(--accent-gold);
+  background: var(--accent-gold-bg);
+}
+
+.tech-tree-btn-pct {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tech-tree-btn.is-done .tech-tree-btn-pct {
+  color: var(--accent-gold);
+  font-weight: 600;
+}
+
+.tech-tree-view {
+  margin-top: 8px;
+}
+
+.tech-tree-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+}
+
+.tech-tree-canvas {
+  position: relative;
+}
+
+.tech-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tech-link {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 2;
+}
+
+.tech-link.is-met {
+  stroke: var(--accent-gold-border);
+}
+
+.tech-node {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 6px 8px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.tech-node-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.tech-node-level {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.tech-node-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--accent-gold) var(--tech-fill), transparent var(--tech-fill));
+}
+
+/* Every unlock requirement met, not started: the next thing this player can research. */
+.tech-node.is-available {
+  border-color: var(--accent-green);
+}
+
+.tech-node.is-available .tech-node-level {
+  color: var(--accent-green);
+}
+
+/* Counts for the open tree: maxed, in progress, available, locked, levels. */
+.tech-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.tech-sum {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 88px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+}
+
+.tech-sum-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.tech-sum-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.tech-sum.is-done .tech-sum-value {
+  color: var(--accent-gold);
+}
+
+/* Dimmed by colour, not opacity, so the links behind stay hidden. */
+.tech-node.is-locked {
+  border-style: dashed;
+}
+
+.tech-node.is-locked .tech-node-name,
+.tech-node.is-locked .tech-node-level {
+  color: var(--text-muted);
+}
+
+.tech-node.is-maxed {
+  border-color: var(--accent-gold-border);
+  /* The tint over an opaque card colour, so links behind never show through. */
+  background: linear-gradient(var(--accent-gold-bg), var(--accent-gold-bg)), var(--bg-card);
+}
+
+.tech-node.is-maxed .tech-node-level {
+  color: var(--accent-gold);
+  font-weight: 600;
+}
+
+.tech-changes-table col.col-level {
+  width: 90px;
+}
+
+.tech-changes-table col.col-date {
+  width: 170px;
+}

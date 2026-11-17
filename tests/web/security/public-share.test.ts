@@ -324,7 +324,9 @@ describe('public share surface (anonymous, token-gated)', () => {
       const r = await request(app).get(`/api/public/aAaA11/leaderboard/${alice}/breakdown`);
       expect(r.status).toBe(200);
       // Exact key set — the allow-list for what an anonymous visitor gets.
-      expect(Object.keys(r.body).sort()).toEqual(['memberId', 'memberName', 'sections', 'totalChests', 'totalPoints']);
+      expect(Object.keys(r.body).sort()).toEqual(['game', 'memberId', 'memberName', 'sections', 'totalChests', 'totalPoints']);
+      // Not linked to a game player: no game facts at all.
+      expect(r.body.game).toBeNull();
       expect(Object.keys(r.body.sections[0]).sort()).toEqual(['chests', 'key', 'points', 'rows']);
       expect(Object.keys(r.body.sections[0].rows[0]).sort()).toEqual(['chests', 'points', 'source']);
       expect(r.body.memberName).toBe('Alice');
@@ -332,6 +334,21 @@ describe('public share surface (anonymous, token-gated)', () => {
       expect(r.body.totalPoints).toBe(row.totalPoints);
       const sources = r.body.sections.flatMap((s: { rows: { source: string }[] }) => s.rows.map((x) => x.source));
       expect(sources.sort()).toEqual(['Level 5 Crypt', 'Raid']);
+    });
+
+    it('shows a linked member\'s game facts — and only these fields', async () => {
+      const alice = memberId(1, 'Alice');
+      const now = new Date().toISOString();
+      getDb().prepare('UPDATE members SET game_player_id = 777 WHERE id = ?').run(alice);
+      getDb().prepare(
+        `INSERT INTO game_players (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar, city_id, first_seen, last_seen)
+         VALUES (1, 777, 'Alice', 3, 1790000000, 1, 123456789, 150, 30, 12, 1, 4, 999, ?, ?)`,
+      ).run(now, now);
+      const r = await request(app).get(`/api/public/aAaA11/leaderboard/${alice}/breakdown`);
+      expect(r.status).toBe(200);
+      // Never the game's internal ids (player, city) — only what the card shows.
+      expect(Object.keys(r.body.game).sort()).toEqual(['cityLevel', 'goldPass', 'heroAvatar', 'heroLevel', 'inClan', 'joinedAt', 'role', 'vip']);
+      expect(r.body.game).toMatchObject({ role: 3, cityLevel: 30, vip: 12, goldPass: true, heroLevel: 150 });
     });
 
     it('refuses another clan\'s member through this clan\'s token', async () => {

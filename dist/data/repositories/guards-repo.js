@@ -30,6 +30,8 @@ const database_js_1 = require("../database.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 const logger_js_1 = require("../../utils/logger.js");
 const game_day_js_1 = require("../../utils/game-day.js");
+const index_js_1 = require("../../config/index.js");
+const member_tiers_js_1 = require("../member-tiers.js");
 const guards_ladder_js_1 = require("../../config/guards-ladder.js");
 const guards_estimator_js_1 = require("../guards-estimator.js");
 const log = (0, logger_js_1.childLogger)('guards-repo');
@@ -94,6 +96,13 @@ function loadObservations(clanId) {
     }
     for (const r of reports)
         push(r.memberId, { kind: 'report', date: r.date, level: r.level });
+    // The Guardsmen tier from the member's own research, as the game reports it —
+    // exact, so it settles the level (and supersedes older admin entries).
+    const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
+    for (const [memberId, m] of (0, member_tiers_js_1.getMemberTiers)(clanId)) {
+        if (m.tiers.guardsmen)
+            push(memberId, { kind: 'research', date: (0, game_day_js_1.gameDateFor)(Date.parse(m.readAt), rollover), level: m.tiers.guardsmen });
+    }
     return out;
 }
 /**

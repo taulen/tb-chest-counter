@@ -17,6 +17,8 @@ import {
   getPlayerTechChanges,
   getPlayerTechs,
 } from '../../data/repositories/game-profile-repo.js';
+import { getMemberTiers } from '../../data/member-tiers.js';
+import { loadTechTrees } from '../../game-protocol/tech-trees.js';
 
 const CHANGES_DAYS = 90;
 
@@ -40,6 +42,8 @@ export function createGameRouter(): Router {
       linked: true,
       player: getGamePlayer(clanId, playerId),
       city: getLatestCity(clanId, playerId),
+      // G/S/E/M tiers and crypt level from the member's research (null until read).
+      tiers: getMemberTiers(clanId).get(memberId) ?? null,
     });
   });
 
@@ -64,11 +68,28 @@ export function createGameRouter(): Router {
   /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */
   router.get('/roster', (req, res) => {
     const clanId = req.clanId!;
-    const out: Record<number, { heroAvatar: number | null; heroLevel: number | null; role: number | null; goldPass: boolean; vip: number | null; cityLevel: number | null }> = {};
+    const tiers = getMemberTiers(clanId);
+    const out: Record<number, object> = {};
     for (const [memberId, p] of getGamePlayersByMember(clanId)) {
-      out[memberId] = { heroAvatar: p.heroAvatar, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel };
+      out[memberId] = {
+        heroAvatar: p.heroAvatar, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
+        tiers: tiers.get(memberId)?.tiers ?? null,
+      };
     }
     res.json({ members: out });
+  });
+
+  /**
+   * The game's research and talent trees (names, layout, prerequisites), for
+   * drawing a member's levels. The same for every clan; the client caches it by
+   * `version`.
+   */
+  router.get('/tech-trees', async (_req, res) => {
+    try {
+      res.json(await loadTechTrees());
+    } catch {
+      res.status(503).json({ error: 'Research trees are not available yet' });
+    }
   });
 
   return router;

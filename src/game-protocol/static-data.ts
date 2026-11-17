@@ -253,8 +253,9 @@ export function buildNames(
 // Cache on the data volume
 // ---------------------------------------------------------------------------
 
+/** Cache of the game's static data. GAME_STATIC_DIR overrides it for local runs and tools, never needed in prod. */
 function staticDir(): string {
-  return path.resolve('data', 'game-static');
+  return process.env.GAME_STATIC_DIR ? path.resolve(process.env.GAME_STATIC_DIR) : path.resolve('data', 'game-static');
 }
 
 function versionKey(v: StaticVersion): string {

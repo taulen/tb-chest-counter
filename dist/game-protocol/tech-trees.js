@@ -9,6 +9,7 @@ exports.buildTechTrees = buildTechTrees;
 exports.asTreeLayout = asTreeLayout;
 exports.readAnyTables = readAnyTables;
 exports.loadTechTrees = loadTechTrees;
+exports.cachedTechTrees = cachedTechTrees;
 exports.resetTechTreesMemo = resetTechTreesMemo;
 /**
  * Research and hero-talent TREES — what a page needs to draw every player's
@@ -347,8 +348,9 @@ async function buildFromCdn(v) {
 // Cache on the data volume
 // ---------------------------------------------------------------------------
 const TREES_FILE = 'tech-trees.json';
+/** Cache of the game's static data. GAME_STATIC_DIR overrides it for local runs and tools, never needed in prod. */
 function staticDir() {
-    return path_1.default.resolve('data', 'game-static');
+    return process.env.GAME_STATIC_DIR ? path_1.default.resolve(process.env.GAME_STATIC_DIR) : path_1.default.resolve('data', 'game-static');
 }
 let memo = null;
 let building = null;
@@ -407,6 +409,16 @@ function newestCachedTrees() {
         .filter((f) => fs_1.default.existsSync(f))
         .sort((a, b) => fs_1.default.statSync(b).mtimeMs - fs_1.default.statSync(a).mtimeMs);
     return files[0] ? JSON.parse(fs_1.default.readFileSync(files[0], 'utf8')) : null;
+}
+/**
+ * The trees already in hand, without any network: memory, else the newest file
+ * on disk, else null. For synchronous readers (troop tiers in the guards
+ * estimator) — the scan keeps them current by calling loadTechTrees().
+ */
+function cachedTechTrees() {
+    if (!memo)
+        memo = newestCachedTrees();
+    return memo;
 }
 /** Test seam. */
 function resetTechTreesMemo() {

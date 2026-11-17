@@ -37,6 +37,7 @@ const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo
 const compare_js_1 = require("../game-protocol/compare.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
 const game_day_js_1 = require("../utils/game-day.js");
+const tech_trees_js_1 = require("../game-protocol/tech-trees.js");
 const log = (0, logger_js_1.childLogger)('game-protocol');
 /** Player lookups per request; the game client itself asks for ~90 at a time. */
 const PLAYER_BATCH = 100;
@@ -145,6 +146,13 @@ async function collectExtras(clanId, d, clanFrame) {
     const parts = [];
     const now = new Date().toISOString();
     try {
+        // Rebuilds only when the game published a new version (one small request otherwise).
+        await (0, tech_trees_js_1.loadTechTrees)();
+    }
+    catch (err) {
+        parts.push(`tech trees unavailable: ${String(err)}`);
+    }
+    try {
         if (!(0, game_protocol_repo_js_1.hasRawSnapshot)(clanId, 'clan_record', 0, d.gameDate)) {
             (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'clan_record', 0, d.gameDate, clanFrame.body, now);
             let objects = 0;
@@ -162,10 +170,14 @@ async function collectExtras(clanId, d, clanFrame) {
         parts.push(`clan archive failed: ${String(err)}`);
     }
     try {
+        // Every member once a game day, plus — every scan — anyone whose might or
+        // hero level moved since their city was last read, so a finished research
+        // or talent is dated to the scan that saw it (history keeps every change).
         const done = (0, game_protocol_repo_js_1.citySnapshotPlayers)(clanId, d.gameDate);
+        const changedSince = (0, game_protocol_repo_js_1.cityChangedSinceRead)(clanId, d.gameDate);
         const todo = d.record.members
             .map((m) => d.byId.get(m.playerId))
-            .filter((p) => !!p && p.cityId !== null && !done.has(p.playerId))
+            .filter((p) => !!p && p.cityId !== null && (!done.has(p.playerId) || changedSince.has(p.playerId)))
             .slice(0, MAX_CITIES_PER_CYCLE);
         let changed = 0;
         for (const p of todo) {

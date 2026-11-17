@@ -28,6 +28,7 @@ import { parseBoundedInt } from '../../utils/parse-int.js';
 import { versionHtmlAssets } from '../asset-versioning.js';
 import { getLastCompletedSession } from '../../data/repositories/session-repo.js';
 import { getMemberSourceBreakdown } from '../../data/member-source-breakdown.js';
+import { gamePlayerIdForMember, getGamePlayer } from '../../data/repositories/game-profile-repo.js';
 import type { Clan } from '../../data/repositories/clan-repo.js';
 import type { ScanLoop } from '../../scheduler/loop.js';
 
@@ -348,7 +349,16 @@ export function createPublicShareApiRouter(scanLoop?: ScanLoop): Router {
       res.status(404).json({ error: 'Not found' });
       return;
     }
-    res.json(breakdown);
+    // What the game reports about the player, for the card's header: rank,
+    // city level, VIP, Gold Pass, hero level and portrait. Null when the
+    // member is not linked to a game player.
+    const playerId = gamePlayerIdForMember(memberId, clan.id);
+    const p = playerId === null ? null : getGamePlayer(clan.id, playerId);
+    const game = p ? {
+      role: p.role, joinedAt: p.joinedAt, inClan: p.inClan, cityLevel: p.cityLevel, vip: p.vip,
+      goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar,
+    } : null;
+    res.json({ ...breakdown, game });
   });
 
   // GET /:token/faq — the leaderboard FAQ modal: the global points-per-chest

@@ -419,8 +419,9 @@ async function buildFromCdn(v: TreeVersion): Promise<TechTrees> {
 
 const TREES_FILE = 'tech-trees.json';
 
+/** Cache of the game's static data. GAME_STATIC_DIR overrides it for local runs and tools, never needed in prod. */
 function staticDir(): string {
-  return path.resolve('data', 'game-static');
+  return process.env.GAME_STATIC_DIR ? path.resolve(process.env.GAME_STATIC_DIR) : path.resolve('data', 'game-static');
 }
 
 let memo: TechTrees | null = null;
@@ -481,6 +482,16 @@ function newestCachedTrees(): TechTrees | null {
     .filter((f) => fs.existsSync(f))
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
   return files[0] ? (JSON.parse(fs.readFileSync(files[0], 'utf8')) as TechTrees) : null;
+}
+
+/**
+ * The trees already in hand, without any network: memory, else the newest file
+ * on disk, else null. For synchronous readers (troop tiers in the guards
+ * estimator) — the scan keeps them current by calling loadTechTrees().
+ */
+export function cachedTechTrees(): TechTrees | null {
+  if (!memo) memo = newestCachedTrees();
+  return memo;
 }
 
 /** Test seam. */

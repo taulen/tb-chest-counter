@@ -18,6 +18,7 @@ const parse_int_js_1 = require("../../utils/parse-int.js");
 const asset_versioning_js_1 = require("../asset-versioning.js");
 const session_repo_js_1 = require("../../data/repositories/session-repo.js");
 const member_source_breakdown_js_1 = require("../../data/member-source-breakdown.js");
+const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const PUBLIC_DIR = path_1.default.resolve('src/web/public');
 // Cache-bust JS/CSS references on each container start so a redeploy
 // doesn't get masked by Cloudflare or browser cache.
@@ -319,7 +320,16 @@ function createPublicShareApiRouter(scanLoop) {
             res.status(404).json({ error: 'Not found' });
             return;
         }
-        res.json(breakdown);
+        // What the game reports about the player, for the card's header: rank,
+        // city level, VIP, Gold Pass, hero level and portrait. Null when the
+        // member is not linked to a game player.
+        const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clan.id);
+        const p = playerId === null ? null : (0, game_profile_repo_js_1.getGamePlayer)(clan.id, playerId);
+        const game = p ? {
+            role: p.role, joinedAt: p.joinedAt, inClan: p.inClan, cityLevel: p.cityLevel, vip: p.vip,
+            goldPass: p.goldPass, heroLevel: p.heroLevel, heroAvatar: p.heroAvatar,
+        } : null;
+        res.json({ ...breakdown, game });
     });
     // GET /:token/faq — the leaderboard FAQ modal: the global points-per-chest
     // table, plus who a visitor can ask for an account. Contacts are this

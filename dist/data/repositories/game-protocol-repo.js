@@ -10,6 +10,7 @@ exports.saveScanComparison = saveScanComparison;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
 exports.citySnapshotPlayers = citySnapshotPlayers;
+exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
 exports.saveRawSnapshot = saveRawSnapshot;
 exports.hasRawSnapshot = hasRawSnapshot;
@@ -188,6 +189,19 @@ function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toI
 /** Players of this clan whose city was already captured for the game day. */
 function citySnapshotPlayers(clanId, gameDate) {
     return new Set((0, database_js_1.getDb)().prepare('SELECT player_id FROM game_city_snapshots WHERE clan_id = ? AND game_date = ?').all(clanId, gameDate).map((r) => r.player_id));
+}
+/**
+ * Players whose city has been read today but whose player record changed since
+ * (a game_player_history row newer than the last city read — might or hero
+ * level moved, which finished research and talents nearly always do). Reading
+ * those again on this scan dates a research or talent upgrade to the scan it
+ * happened in, instead of to the day.
+ */
+function cityChangedSinceRead(clanId, gameDate) {
+    return new Set((0, database_js_1.getDb)().prepare(`SELECT c.player_id FROM game_city_snapshots c
+        WHERE c.clan_id = ? AND c.game_date = ?
+          AND EXISTS (SELECT 1 FROM game_player_history h
+                       WHERE h.clan_id = c.clan_id AND h.player_id = c.player_id AND h.captured_at > c.captured_at)`).all(clanId, gameDate).map((r) => r.player_id));
 }
 /** Upsert map objects by the game's object id. Returns how many were new. */
 function saveMapObjects(clanId, objects, now = new Date().toISOString()) {

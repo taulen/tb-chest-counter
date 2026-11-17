@@ -288,6 +288,11 @@ class ScanLoop {
         // New chat messages every minute between scans, on the chat session key
         // each scan refreshes (never touches the game or website login).
         void import('./chat-capture.js').then((m) => m.startChatPoller()).catch(() => { });
+        // Research/talent trees (names, layout, troop-tier unlocks): built once per
+        // game patch, cached on disk; every scan re-checks the version.
+        void import('../game-protocol/tech-trees.js').then((m) => m.loadTechTrees()).catch((err) => {
+            log.warn({ noAlert: true }, `Tech trees not available yet: ${String(err)}`);
+        });
         // If we previously detected maintenance and stored a "blocked until"
         // timestamp, defer the first cycle until that time. Survives redeploys
         // because the value lives on the mounted data volume.

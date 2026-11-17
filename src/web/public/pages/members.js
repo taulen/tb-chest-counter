@@ -27,6 +27,8 @@ import {
   directionPillHtml, isResourcesEnabledForActiveClan,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
+import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
@@ -90,6 +92,8 @@ let memberGoalInfo = null;
 // redrawn against the fresh DOM. `draw` destroys the previous chart itself, so
 // calling it on every render is safe.
 let currentMemberMightDraw = () => {};
+/** What the game says about the open member (GET /api/game/members/:id), or null when not linked. */
+let currentMemberGame = null;
 // The Tin Man + Event runs cards for the member on screen, and whose they are.
 // They don't follow the profile's timeframe, so a timeframe change or a page
 // flip reuses them for a few minutes instead of refetching.
@@ -413,8 +417,13 @@ async function loadAndRenderMemberDetail(data) {
   const { buildMemberMightCard } = await import('./might.js');
   const mightCard = await buildMemberMightCard(data.id).catch(() => null);
   currentMemberMightDraw = mightCard?.draw ?? (() => {});
-  // Inferred data — a failure drops the cards, never the profile.
-  const guards = await api(`/guards/member/${data.id}`).catch(() => null);
+  // Inferred data — a failure drops the cards, never the profile. The game
+  // profile (rank, joined, city, VIP, Gold Pass) likewise never blocks it.
+  const [guards, game] = await Promise.all([
+    api(`/guards/member/${data.id}`).catch(() => null),
+    api(`/game/members/${data.id}`).catch(() => null),
+  ]);
+  currentMemberGame = game && game.linked && game.player ? game : null;
   renderMemberDetail(
     data, chestPage, triumphalPage, rawOcrChests, rawOcrTriumphals,
     resourceCardHtml, mightCard?.html ?? '', mightCard?.statsHtml ?? '', resourcePage,
@@ -627,6 +636,7 @@ const EVIDENCE_LABEL = {
   essence: tGame('Omen Essence'),
   tractate: tGame('Scientific Tractates'),
   report: t('Admin entry'),
+  research: t('Research (from the game)'),
 };
 
 /** Headline stat: the estimated level, with the Gold Pass marker beside it. */
@@ -1415,8 +1425,10 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     <div class="card">
       <div class="card-header member-detail-header">
         <div class="member-detail-title">
+          ${heroAvatarHtml(currentMemberGame?.player, 44)}
           <h2>${esc(data.name)}</h2>
           ${rankBadge}
+          ${gameFactsHtml(currentMemberGame?.player)}
         </div>
         <button class="btn" data-action="member-back">${t('← Back')}</button>
       </div>
@@ -1644,6 +1656,11 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     { key: 'overview', label: t('Overview'), html: overviewPanelHtml },
     { key: 'events', label: t('Events'), html: eventsPanelHtml },
     ...(mightPanelHtml.trim() ? [{ key: 'might', label: t('Might & guards'), html: mightPanelHtml }] : []),
+    // Read from the game: only for members linked to a game player.
+    ...(currentMemberGame ? [
+      { key: 'research', label: t('Research'), html: memberTechPanelHtml('research') },
+      { key: 'talents', label: t('Talents'), html: memberTechPanelHtml('talent') },
+    ] : []),
     { key: 'history', label: t('History'), html: `${historyCardHtml}${rawOcrHtml}` },
   ];
   const view = views.some((v) => v.key === currentMemberView) ? currentMemberView : 'overview';
@@ -1655,13 +1672,20 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
   // so it is drawn the first time its tab is open. Once per render: draw()
   // also wires the card's window buttons, and a second call would stack them.
   let mightDrawn = view === 'might';
+  const mountTechs = (key) => {
+    if (key === 'research' || key === 'talents') {
+      mountMemberTechs(content, data.id, key === 'research' ? 'research' : 'talent', currentMemberGame?.tiers ?? null);
+    }
+  };
   wireViewTabs(content, MEMBER_VIEW_GROUP, (key) => {
     currentMemberView = key;
     if (key === 'might' && !mightDrawn) {
       mightDrawn = true;
       currentMemberMightDraw();
     }
+    mountTechs(key);
   });
+  mountTechs(view);
 
   // Wire up the tab switcher — mirrors the pattern in sessions.js.
   // Flipping tabs is purely client-side toggling: both datasets are

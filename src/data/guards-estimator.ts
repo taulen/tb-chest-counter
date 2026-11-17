@@ -52,7 +52,12 @@ import {
   type EssenceMatch,
 } from '../config/guards-ladder.js';
 
-export type GuardsObservationKind = 'essence' | 'tractate' | 'report';
+/**
+ * `research` is the Guardsmen tier read from the member's own research tree
+ * through the game protocol (game-protocol/troop-tiers.ts): exact, so it is hard
+ * evidence that outweighs everything inferred from donations.
+ */
+export type GuardsObservationKind = 'essence' | 'tractate' | 'report' | 'research';
 
 export interface GuardsObservation {
   kind: GuardsObservationKind;
@@ -128,6 +133,8 @@ const LOG_TRACTATE_UNDER_MORE = LOG(0.01);
 const LOG_TRACTATE_OVER = LOG(0.02);
 /** An admin's report is a pin; disagreeing with it needs overwhelming evidence. */
 const LOG_REPORT_MISS = LOG(1e-6);
+/** The game's own research says so: effectively certain. */
+const LOG_RESEARCH_MISS = LOG(1e-12);
 /** Cost per level gained. */
 const LOG_STEP = LOG(0.7);
 /** The clan prior is tempered: it should break ties, not outvote a donation. */
@@ -213,6 +220,17 @@ function prepare(o: GuardsObservation): PreparedObs | null {
 
   const level = o.level ?? 0;
   if (!Number.isInteger(level) || level < GUARDS_MIN_LEVEL || level > GUARDS_MAX_LEVEL) return null;
+  if (o.kind === 'research') {
+    return {
+      kind: 'research',
+      date: o.date,
+      amount: null,
+      levels: [level],
+      boostedLevels: new Set(),
+      hard: true,
+      score: (l) => (l === level ? 0 : LOG_RESEARCH_MISS),
+    };
+  }
   return {
     kind: 'report',
     date: o.date,

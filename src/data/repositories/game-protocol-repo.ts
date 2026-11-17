@@ -273,6 +273,24 @@ export function citySnapshotPlayers(clanId: number, gameDate: string): Set<numbe
   );
 }
 
+/**
+ * Players whose city has been read today but whose player record changed since
+ * (a game_player_history row newer than the last city read — might or hero
+ * level moved, which finished research and talents nearly always do). Reading
+ * those again on this scan dates a research or talent upgrade to the scan it
+ * happened in, instead of to the day.
+ */
+export function cityChangedSinceRead(clanId: number, gameDate: string): Set<number> {
+  return new Set(
+    (getDb().prepare(
+      `SELECT c.player_id FROM game_city_snapshots c
+        WHERE c.clan_id = ? AND c.game_date = ?
+          AND EXISTS (SELECT 1 FROM game_player_history h
+                       WHERE h.clan_id = c.clan_id AND h.player_id = c.player_id AND h.captured_at > c.captured_at)`,
+    ).all(clanId, gameDate) as Array<{ player_id: number }>).map((r) => r.player_id),
+  );
+}
+
 export interface MapObjectRow {
   objectId: number;
   type: number;

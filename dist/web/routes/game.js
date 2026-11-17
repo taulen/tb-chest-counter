@@ -13,6 +13,8 @@ exports.createGameRouter = createGameRouter;
 const express_1 = require("express");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
+const member_tiers_js_1 = require("../../data/member-tiers.js");
+const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const CHANGES_DAYS = 90;
 function createGameRouter() {
     const router = (0, express_1.Router)();
@@ -33,6 +35,8 @@ function createGameRouter() {
             linked: true,
             player: (0, game_profile_repo_js_1.getGamePlayer)(clanId, playerId),
             city: (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId),
+            // G/S/E/M tiers and crypt level from the member's research (null until read).
+            tiers: (0, member_tiers_js_1.getMemberTiers)(clanId).get(memberId) ?? null,
         });
     });
     /** Research + hero talent levels for one member, and their recent changes. */
@@ -55,11 +59,28 @@ function createGameRouter() {
     /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */
     router.get('/roster', (req, res) => {
         const clanId = req.clanId;
+        const tiers = (0, member_tiers_js_1.getMemberTiers)(clanId);
         const out = {};
         for (const [memberId, p] of (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId)) {
-            out[memberId] = { heroAvatar: p.heroAvatar, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel };
+            out[memberId] = {
+                heroAvatar: p.heroAvatar, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
+                tiers: tiers.get(memberId)?.tiers ?? null,
+            };
         }
         res.json({ members: out });
+    });
+    /**
+     * The game's research and talent trees (names, layout, prerequisites), for
+     * drawing a member's levels. The same for every clan; the client caches it by
+     * `version`.
+     */
+    router.get('/tech-trees', async (_req, res) => {
+        try {
+            res.json(await (0, tech_trees_js_1.loadTechTrees)());
+        }
+        catch {
+            res.status(503).json({ error: 'Research trees are not available yet' });
+        }
     });
     return router;
 }

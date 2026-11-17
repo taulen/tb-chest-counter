@@ -19,7 +19,9 @@
 import { getDb } from '../database.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import { childLogger } from '../../utils/logger.js';
-import { daysBetweenGameDates } from '../../utils/game-day.js';
+import { daysBetweenGameDates, gameDateFor } from '../../utils/game-day.js';
+import { loadConfig } from '../../config/index.js';
+import { getMemberTiers } from '../member-tiers.js';
 import {
   ESSENCE_RESOURCE_SLUG,
   GUARDS_STALE_DAYS,
@@ -128,6 +130,12 @@ function loadObservations(clanId: number): Map<number, GuardsObservation[]> {
     });
   }
   for (const r of reports) push(r.memberId, { kind: 'report', date: r.date, level: r.level });
+  // The Guardsmen tier from the member's own research, as the game reports it —
+  // exact, so it settles the level (and supersedes older admin entries).
+  const rollover = loadConfig().gameDayRolloverUtcHour;
+  for (const [memberId, m] of getMemberTiers(clanId)) {
+    if (m.tiers.guardsmen) push(memberId, { kind: 'research', date: gameDateFor(Date.parse(m.readAt), rollover), level: m.tiers.guardsmen });
+  }
   return out;
 }
 

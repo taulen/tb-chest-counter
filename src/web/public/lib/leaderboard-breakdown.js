@@ -28,6 +28,7 @@
 import { esc, escapeHtml, contentModal } from './ui.js';
 import { t, tn, tGame } from './i18n.js';
 import { pointsSectionTitle } from './leaderboard-faq.js';
+import { gameFactsHtml, heroAvatarHtml } from './game-facts.js';
 
 const PHONE = '(max-width: 640px)';
 const FINE_HOVER = '(hover: hover) and (pointer: fine)';
@@ -141,13 +142,16 @@ function rankHtml(rank) {
 
 /** The hover card: name, rank and window up top, then totals and the lines. */
 function cardHtml(ctx, { data = null, state = 'ready', twoColumns = false } = {}) {
+  // The portrait and the game's facts arrive with the data; the name and rank
+  // are known before it, so the card opens at once and fills in.
   const head = `<div class="lbb-head">
-      <div class="lbb-who">${rankHtml(ctx.rank)}<span class="lbb-name">${escapeHtml(ctx.memberName || '')}</span></div>
+      <div class="lbb-who">${heroAvatarHtml(data?.game, 36)}${rankHtml(ctx.rank)}<span class="lbb-name">${escapeHtml(ctx.memberName || '')}</span></div>
       ${ctx.windowLabel ? `<div class="lbb-when">${escapeHtml(ctx.windowLabel)}</div>` : ''}
     </div>`;
   if (state === 'loading') return `${head}<p class="lbb-empty">${t('Loading…')}</p>`;
   if (state === 'error') return `${head}<p class="lbb-empty">${t("Couldn't load this player's chests.")}</p>`;
   return `${head}
+    <div class="lbb-facts">${gameFactsHtml(data.game, { joined: false, heroLevel: true })}</div>
     ${totalsHtml(data)}
     <div class="lbb-body">${bodyHtml(data, twoColumns)}</div>
     <div class="lbb-more">${t('Click the name for the full list')}</div>`;
@@ -155,7 +159,8 @@ function cardHtml(ctx, { data = null, state = 'ready', twoColumns = false } = {}
 
 /** The modal's content: the title already names the member. */
 function sheetHtml(ctx, data, twoColumns) {
-  return `<div class="lbb-sheet-meta">${rankHtml(ctx.rank)}${ctx.windowLabel ? `<span class="lbb-when">${escapeHtml(ctx.windowLabel)}</span>` : ''}</div>
+  return `<div class="lbb-sheet-meta">${heroAvatarHtml(data.game, 36)}${rankHtml(ctx.rank)}${ctx.windowLabel ? `<span class="lbb-when">${escapeHtml(ctx.windowLabel)}</span>` : ''}</div>
+    <div class="lbb-facts">${gameFactsHtml(data.game, { heroLevel: true })}</div>
     ${totalsHtml(data)}
     <div class="lbb-body">${bodyHtml(data, twoColumns)}</div>`;
 }
