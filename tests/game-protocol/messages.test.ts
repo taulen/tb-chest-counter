@@ -89,7 +89,7 @@ describe('game messages', () => {
       techs: { 1215: 2, 29006: 20 },
       buildings: { 3: { type: 41, level: 25 }, 7: { type: 12, level: 30 } },
       hero: { level: 116, xp: 98765 },
-      captains: [{ id: 27, value: 1211 }, { id: 30, value: 1705 }],
+      troops: [{ id: 27, count: 1211 }, { id: 30, count: 1705 }],
     });
   });
 

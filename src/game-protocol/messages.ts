@@ -177,11 +177,12 @@ export interface CityRecord {
   /** Hero summary: level and experience, when present. */
   hero: { level: number | null; xp: number | null };
   /**
-   * Field 30: `[id, value, 0]` per battler the player owns — captains (T75 ids:
-   * Hercules 27, Skadi 30, …) and other battlers; the caller keeps the captains.
-   * `value` is the game's own number for it (likely experience; Nov 2026).
+   * Field 30: the city's army — `[unitId, count, 0]` per troop type (T9 ids:
+   * Heavy arbalester VI 80, Vulture VII 36, Crystal Dragon 152, City Walls V
+   * 5014, …). Only present in the signed-in account's own city. NOT captains:
+   * their ids merely overlap T75 (checked Nov 2026).
    */
-  captains: Array<{ id: number; value: number }>;
+  troops: Array<{ id: number; count: number }>;
 }
 
 /**
@@ -212,10 +213,10 @@ export function parseCityRecord(frame: Frame): CityRecord | null {
     techs: parseCityTechs(frame),
     buildings,
     hero: { level: num(heroRow[3]), xp: num(heroRow[2]) },
-    captains: arr(r[30])
+    troops: arr(r[30])
       .map((e) => arr(e))
       .filter((e) => typeof e[0] === 'number' && typeof e[1] === 'number')
-      .map((e) => ({ id: e[0] as number, value: e[1] as number })),
+      .map((e) => ({ id: e[0] as number, count: e[1] as number })),
   };
 }
 

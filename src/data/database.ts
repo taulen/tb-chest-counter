@@ -1628,6 +1628,19 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v106 filled game_player_captains from city field 30, which turned out to
+    // be the city's ARMY (troop counts by T9 unit id) whose ids merely overlap
+    // the T75 captain ids. Those rows are not captains: clear them. The tables
+    // stay for the real captain data once its message is found.
+    version: 107,
+    run: (database): void => {
+      database.exec(`
+        DELETE FROM game_player_captain_history;
+        DELETE FROM game_player_captains;
+      `);
+    },
+  },
 ];
 
 /**

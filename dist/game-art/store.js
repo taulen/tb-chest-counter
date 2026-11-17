@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FILE_RE = exports.VERSION_RE = void 0;
+exports.FILE_RE = exports.VERSION_RE = exports.ART_SELECTION_VERSION = void 0;
 exports.gameArtDir = gameArtDir;
 exports.readState = readState;
 exports.loadIndex = loadIndex;
@@ -45,6 +45,13 @@ const mappings_js_1 = require("./mappings.js");
 const log = (0, logger_js_1.childLogger)('game-art');
 /** Daily check failures repeat with the same cause; one line per 6 h is plenty. */
 const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 6 * 60 * 60 * 1000);
+/**
+ * What we extract changes when we start using a new kind of image (captains,
+ * Nov 2026). Bump this with every change to the selection: an index built with
+ * an older one is re-extracted on the next run — reusing every image it already
+ * has, so only the new bundles download — instead of waiting for a game patch.
+ */
+exports.ART_SELECTION_VERSION = 2;
 exports.VERSION_RE = /^[0-9a-f]{32}$/;
 exports.FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 function gameArtDir() {
@@ -188,7 +195,9 @@ async function runEnsure(opts) {
     const state = readState(dir);
     const resourceNames = new Set((opts.resourceNames ? opts.resourceNames() : await defaultResourceNames()).map((n) => n.toLowerCase()));
     const loadStatic = opts.loadStatic ?? art_static_js_1.loadArtStatic;
-    const existing = state?.current === version ? loadIndex(dir, version) : null;
+    const current = state?.current === version ? loadIndex(dir, version) : null;
+    // Same art but an older selection: rebuild, reusing what this version has.
+    const existing = current && (current.selection ?? 1) >= exports.ART_SELECTION_VERSION ? current : null;
     if (existing) {
         // Same art. The static data may still have moved on (a new tech, a renamed
         // chest): recompute the mappings over the images we have.
@@ -232,7 +241,7 @@ async function runEnsure(opts) {
             work.set(e.bundle, new Map());
         work.get(e.bundle).set(addr, cat);
     }
-    const prevVersion = state?.current && state.current !== version ? state.current : null;
+    const prevVersion = state?.current && state.current !== version ? state.current : (current ? version : null);
     const prev = prevVersion ? loadIndex(dir, prevVersion) : null;
     const tmp = path_1.default.join(dir, `.tmp-${version}-${crypto_1.default.randomBytes(4).toString('hex')}`);
     fs_1.default.mkdirSync(tmp, { recursive: true });
@@ -297,6 +306,7 @@ async function runEnsure(opts) {
     const seconds = Math.round((Date.now() - started) / 1000);
     const index = {
         version,
+        selection: exports.ART_SELECTION_VERSION,
         builtAt: new Date().toISOString(),
         staticVersion: st.version,
         images: Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),

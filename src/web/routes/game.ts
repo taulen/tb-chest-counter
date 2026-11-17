@@ -14,12 +14,9 @@ import {
   getGamePlayer,
   getGamePlayersByMember,
   getLatestCity,
-  getPlayerCaptainChanges,
-  getPlayerCaptains,
   getPlayerTechChanges,
   getPlayerTechs,
 } from '../../data/repositories/game-profile-repo.js';
-import { loadGameNames } from '../../game-protocol/static-data.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
 import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
@@ -92,34 +89,6 @@ export function createGameRouter(): Router {
     const { levels, readAt } = getPlayerTechs(clanId, playerId);
     const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
     res.json({ linked: true, levels, readAt, changes: getPlayerTechChanges(clanId, playerId, since) });
-  });
-
-  /** A member's captains (name, rarity, portrait, the game's value) and their recent changes. */
-  router.get('/members/:memberId/captains', async (req, res) => {
-    const clanId = req.clanId!;
-    const memberId = Number.parseInt(String(req.params.memberId), 10);
-    if (!Number.isFinite(memberId) || !getMemberById(memberId, clanId)) {
-      res.status(404).json({ error: 'Member not found' });
-      return;
-    }
-    const playerId = gamePlayerIdForMember(memberId, clanId);
-    if (playerId === null) {
-      res.json({ linked: false, captains: [], changes: [] });
-      return;
-    }
-    const names = await loadGameNames().catch(() => null);
-    const portraits = currentGameArt()?.mappings?.captains ?? {};
-    const describe = (id: number) => {
-      const n = names?.captains?.[String(id)];
-      const img = portraits[String(id)];
-      return { name: n?.name ?? `#${id}`, rarity: n?.rarity ?? 0, iconUrl: img ? gameArtUrl(img) : null };
-    };
-    const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
-    res.json({
-      linked: true,
-      captains: getPlayerCaptains(clanId, playerId).map((c) => ({ ...c, ...describe(c.captainId) })),
-      changes: getPlayerCaptainChanges(clanId, playerId, since).map((c) => ({ ...c, ...describe(c.captainId) })),
-    });
   });
 
   /** memberId → hero avatar id and a few headline game facts, for avatars in lists. */

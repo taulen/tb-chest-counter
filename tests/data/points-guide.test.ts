@@ -47,7 +47,11 @@ function record(source: string, chest: string, count: number): void {
     `INSERT INTO chest_records (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at)
      VALUES (1, ?, ?, ?, ?, 0, ?)`,
   );
-  for (let i = 0; i < count; i++) insert.run(sessionId, memberId, chestId, sourceId, clock++);
+  // One transaction: ~700 rows committed one by one took over the 10 s test
+  // timeout under a loaded full-suite run (intermittent CI-style failures).
+  db.transaction(() => {
+    for (let i = 0; i < count; i++) insert.run(sessionId, memberId, chestId, sourceId, clock++);
+  })();
 }
 
 function section(sections: PointsGuideSection[], key: string): PointsGuideSection | undefined {

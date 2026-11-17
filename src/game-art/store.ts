@@ -45,9 +45,19 @@ export interface GameArtImage {
   bundle: string;
 }
 
+/**
+ * What we extract changes when we start using a new kind of image (captains,
+ * Nov 2026). Bump this with every change to the selection: an index built with
+ * an older one is re-extracted on the next run — reusing every image it already
+ * has, so only the new bundles download — instead of waiting for a game patch.
+ */
+export const ART_SELECTION_VERSION = 2;
+
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */
   version: string;
+  /** ART_SELECTION_VERSION the images were selected with (absent = 1). */
+  selection?: number;
   builtAt: string;
   /** Static data the mappings were computed from. */
   staticVersion: string | null;
@@ -232,7 +242,9 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   const resourceNames = new Set((opts.resourceNames ? opts.resourceNames() : await defaultResourceNames()).map((n) => n.toLowerCase()));
   const loadStatic = opts.loadStatic ?? loadArtStatic;
 
-  const existing = state?.current === version ? loadIndex(dir, version) : null;
+  const current = state?.current === version ? loadIndex(dir, version) : null;
+  // Same art but an older selection: rebuild, reusing what this version has.
+  const existing = current && (current.selection ?? 1) >= ART_SELECTION_VERSION ? current : null;
   if (existing) {
     // Same art. The static data may still have moved on (a new tech, a renamed
     // chest): recompute the mappings over the images we have.
@@ -271,7 +283,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     work.get(e.bundle)!.set(addr, cat);
   }
 
-  const prevVersion = state?.current && state.current !== version ? state.current : null;
+  const prevVersion = state?.current && state.current !== version ? state.current : (current ? version : null);
   const prev = prevVersion ? loadIndex(dir, prevVersion) : null;
   const tmp = path.join(dir, `.tmp-${version}-${crypto.randomBytes(4).toString('hex')}`);
   fs.mkdirSync(tmp, { recursive: true });
@@ -337,6 +349,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   const seconds = Math.round((Date.now() - started) / 1000);
   const index: GameArtIndex = {
     version,
+    selection: ART_SELECTION_VERSION,
     builtAt: new Date().toISOString(),
     staticVersion: st.version,
     images: Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),

@@ -1248,16 +1248,6 @@ export const ui = {
   "Scores": "Очки",
   "What {name} collected": "Что собрал {name}",
   "Last received": "Последнее получение",
-  // pages/member-captains.js
-  "Couldn't load this member's captains.": "Не удалось загрузить капитанов участника.",
-  "This member's captains haven't been read from the game yet. They are read once a day.": "Капитаны этого участника ещё не прочитаны из игры. Они читаются раз в день.",
-  "As the game reports it": "По данным игры",
-  "XP {n}": "Опыт {n}",
-  "Captains": "Капитаны",
-  "{n} captains": { one: "{n} капитан", few: "{n} капитана", many: "{n} капитанов", other: "{n} капитана" },
-  "Recent captain progress": "Недавний прогресс капитанов",
-  "Captain": "Капитан",
-  "XP": "Опыт",
   // pages/member-levels.js
   "{letter} — {category} level": "{letter} — уровень: {category}",
   "Levels from chat": "Уровни из чата",

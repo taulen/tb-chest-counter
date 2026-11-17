@@ -1248,16 +1248,6 @@ export const ui = {
   "Scores": "Scores",
   "What {name} collected": "Ce que {name} a récupéré",
   "Last received": "Dernier reçu",
-  // pages/member-captains.js
-  "Couldn't load this member's captains.": "Impossible de charger les capitaines de ce membre.",
-  "This member's captains haven't been read from the game yet. They are read once a day.": "Les capitaines de ce membre n'ont pas encore été lus dans le jeu. Ils sont lus une fois par jour.",
-  "As the game reports it": "D'après le jeu",
-  "XP {n}": "XP {n}",
-  "Captains": "Capitaines",
-  "{n} captains": { one: "{n} capitaine", other: "{n} capitaines" },
-  "Recent captain progress": "Progrès récents des capitaines",
-  "Captain": "Capitaine",
-  "XP": "XP",
   // pages/member-levels.js
   "{letter} — {category} level": "{letter} — niveau {category}",
   "Levels from chat": "Niveaux depuis le chat",
