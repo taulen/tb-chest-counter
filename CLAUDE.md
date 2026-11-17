@@ -32,13 +32,13 @@
 
 - Scan interval and other runtime settings persist to `data/app.env` (mounted volume), not `.env` (container-local).
 - On startup, any PENDING scan sessions from prior crashes are marked FAILED.
-- Chests are written to DB in real-time during scanning, and each Open click claims its chest in-game for good. So a scan that fails or is aborted **keeps every chest it already saved**; the session is only rolled back when it has nothing on disk. Decide that from a DB row count (`persistedChestCount` in [scan-finalize.ts](src/scheduler/scan-finalize.ts)), never from `result.newChests`, which misses anything thrown mid-sweep.
+- **Scans read the game directly** ([protocol-scan.ts](src/scheduler/protocol-scan.ts), Nov 2026): capture → record every gift keyed by `game_gift_id` → claim it (15013) → ledger rows keyed by `game_entry_id`. Recording comes BEFORE claiming, and a claim is permanent in-game, so a scan that fails or is aborted **keeps every chest it already saved**; the session is only rolled back when it has nothing on disk. Decide that from a DB row count (`persistedChestCount` in [scan-finalize.ts](src/scheduler/scan-finalize.ts)), never from `result.newChests`.
 - A scan-in-progress guard prevents concurrent scans.
-- Two optional phases run AFTER the scan is finalised, in this order: the daily might snapshot, then the daily Clan Capital resource-history read. Both swallow every error by design — neither may ever surface as a scan failure. See [resource-capture-phase.ts](src/scheduler/resource-capture-phase.ts).
+- Members, might/hero snapshots and departures come from the game every scan ([member-sync.ts](src/game-protocol/member-sync.ts)); the OCR might and resource-history phases no longer run. The browser/OCR scan code is still in the tree but unused, pending removal — the browser itself remains for the login bridge.
 
 ## Read before changing that area
 
-- Game protocol / direct client (src/game-protocol; parallel run before each scan, game_* tables v102; never present an old website token — it ends the account's session): [docs/game-protocol.md](docs/game-protocol.md)
+- Game protocol / direct client (src/game-protocol; it IS the scan since Nov 17 2026; game_* tables v102–v103; never present an old website token — it ends the account's session): [docs/game-protocol.md](docs/game-protocol.md)
 
 - Resource-history capture (cursor, open game day, date-floor backstop, adding a resource type): [docs/resource-capture.md](docs/resource-capture.md)
 - Guards levels and Gold Pass (inferred, never stored): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)

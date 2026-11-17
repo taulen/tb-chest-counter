@@ -81,9 +81,9 @@ function insertChest(chest) {
     const chestSourceId = (0, chest_repo_js_1.getOrCreateChestSourceId)(chest.chestSource);
     const result = db.prepare(`
     INSERT INTO triumphal_chest_records
-      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), Math.round(chest.confidence * 100), chest.debugCropPath ?? null, chest.rawPlayerOcr ?? null, chest.earnedAt ?? null);
+      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at, game_gift_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), Math.round(chest.confidence * 100), chest.debugCropPath ?? null, chest.rawPlayerOcr ?? null, chest.earnedAt ?? null, chest.gameGiftId ?? null);
     return { id: result.lastInsertRowid, ...chest };
 }
 function deleteBySession(sessionId, clanId) {

@@ -68,6 +68,8 @@ export async function finalizeScanSuccess(
   scanSessionId: number,
   giftsResult: TabScanResult,
   triumphalWarning: string | null,
+  /** Protocol scan notes: chests that could not be opened, unnamed gift types. */
+  scanWarning: string | null = null,
 ): Promise<ScanResult> {
   const unknownMsg = giftsResult.unknownNames > 0
     ? `OCR failed to read the player name for ${giftsResult.unknownNames} chest(s). ` +
@@ -85,14 +87,16 @@ export async function finalizeScanSuccess(
       'Chests opened before that point were kept; the rest are still on the Gifts tab and the ' +
       'next scan will take them.'
     : null;
-  const errorMessage = [stallMsg, unknownMsg, triumphalWarning].filter(Boolean).join('\n') || null;
+  const errorMessage = [stallMsg, unknownMsg, triumphalWarning, scanWarning].filter(Boolean).join('\n') || null;
   // Most-actionable phase wins the badge. A stall outranks the other two: they
   // describe rows that need review, it describes a scan that did not finish.
   const errorPhase = stallMsg
     ? 'Capture stalled'
     : unknownMsg
       ? 'Manual review needed'
-      : (triumphalWarning ? 'Triumphal sweep warning' : null);
+      : triumphalWarning
+        ? 'Triumphal sweep warning'
+        : (scanWarning ? 'Scan warning' : null);
   sessionRepo.updateSession(scanSessionId, ctx.clanId, {
     status: ScanStatus.COMPLETED,
     chestsFound: result.newChests,

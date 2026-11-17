@@ -65,6 +65,8 @@ const PLAYER_BATCH = 100;
 
 export interface GameProtocolOutcome {
   ok: boolean;
+  /** The saved website session is logged out (already recorded as needing re-auth). */
+  loggedOut?: boolean;
   members?: number;
   giftEntries?: number;
   newGifts?: number;
@@ -111,8 +113,12 @@ export async function runGameProtocolCapture(
     }
     const byId = new Map(players.map((p) => [p.playerId, p]));
 
-    // Senders outside the member list (left since sending) still need a name.
-    const strangers = [...new Set(record.gifts.map((g) => g.senderId).filter((id) => !byId.has(id)))];
+    const ledger = parseLedger(await client.ledger(record.clanId));
+
+    // Gift senders and ledger players outside the member list (left since)
+    // still need a name.
+    const strangers = [...new Set([...record.gifts.map((g) => g.senderId), ...ledger.map((e) => e.playerId)])]
+      .filter((id) => !byId.has(id));
     for (let i = 0; i < strangers.length; i += PLAYER_BATCH) {
       for (const p of parsePlayers(await client.players(strangers.slice(i, i + PLAYER_BATCH)))) byId.set(p.playerId, p);
     }
@@ -129,7 +135,6 @@ export async function runGameProtocolCapture(
       arrivedAt: g.arrivedAt,
       expiresAt: g.expiresAt,
     }));
-    const ledger = parseLedger(await client.ledger(record.clanId));
 
     savePlayers(clanId, record.members, players);
     const newGifts = saveGifts(clanId, gifts);
@@ -173,9 +178,9 @@ export async function runGameProtocolCapture(
       // A definite logout is the same signal the scan's auth check acts on.
       noteSessionLoggedOut(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
     } else {
-      log.warn({ noAlert: true }, `Clan #${clanId} game capture failed (the scan is unaffected): ${error}`);
+      log.warn({ noAlert: true }, `Clan #${clanId} game capture failed: ${error}`);
     }
-    return { ok: false, error };
+    return { ok: false, error, loggedOut: err instanceof SessionLoggedOutError };
   }
 }
 

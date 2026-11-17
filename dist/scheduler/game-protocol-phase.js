@@ -61,8 +61,11 @@ async function runGameProtocolCapture(clanId, opts) {
             players.push(...(0, messages_js_1.parsePlayers)(await client.players(ids.slice(i, i + PLAYER_BATCH))));
         }
         const byId = new Map(players.map((p) => [p.playerId, p]));
-        // Senders outside the member list (left since sending) still need a name.
-        const strangers = [...new Set(record.gifts.map((g) => g.senderId).filter((id) => !byId.has(id)))];
+        const ledger = (0, messages_js_1.parseLedger)(await client.ledger(record.clanId));
+        // Gift senders and ledger players outside the member list (left since)
+        // still need a name.
+        const strangers = [...new Set([...record.gifts.map((g) => g.senderId), ...ledger.map((e) => e.playerId)])]
+            .filter((id) => !byId.has(id));
         for (let i = 0; i < strangers.length; i += PLAYER_BATCH) {
             for (const p of (0, messages_js_1.parsePlayers)(await client.players(strangers.slice(i, i + PLAYER_BATCH))))
                 byId.set(p.playerId, p);
@@ -79,7 +82,6 @@ async function runGameProtocolCapture(clanId, opts) {
             arrivedAt: g.arrivedAt,
             expiresAt: g.expiresAt,
         }));
-        const ledger = (0, messages_js_1.parseLedger)(await client.ledger(record.clanId));
         (0, game_protocol_repo_js_1.savePlayers)(clanId, record.members, players);
         const newGifts = (0, game_protocol_repo_js_1.saveGifts)(clanId, gifts);
         const ledgerNew = (0, game_protocol_repo_js_1.saveLedger)(clanId, ledger);
@@ -120,9 +122,9 @@ async function runGameProtocolCapture(clanId, opts) {
             (0, session_health_js_1.noteSessionLoggedOut)(clanId, 'saved Total Battle session is logged out (seen by the game capture)');
         }
         else {
-            log.warn({ noAlert: true }, `Clan #${clanId} game capture failed (the scan is unaffected): ${error}`);
+            log.warn({ noAlert: true }, `Clan #${clanId} game capture failed: ${error}`);
         }
-        return { ok: false, error };
+        return { ok: false, error, loggedOut: err instanceof client_js_1.SessionLoggedOutError };
     }
 }
 /** Cities per cycle: a big clan's daily research pass spreads over a couple of cycles. */

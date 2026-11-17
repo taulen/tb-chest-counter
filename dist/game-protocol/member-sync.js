@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncMembersFromGame = syncMembersFromGame;
+exports.makeMemberResolver = makeMemberResolver;
 /**
  * Bring our members in line with what the game says, keyed on the game's
  * permanent player id (members.game_player_id, v103).
@@ -101,9 +102,15 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
                 const created = (0, member_repo_js_1.upsertMember)(name, clanId);
                 if (!linkedIds.has(created.id) && link(clanId, created.id, rm.playerId)) {
                     memberId = created.id;
-                    result.created++;
-                    if (!all.some((m) => m.id === created.id))
+                    // upsertMember also finds members by alias and despaced name (and
+                    // reactivates them) — only a row that did not exist is "created".
+                    if (all.some((m) => m.id === created.id)) {
+                        result.newlyLinked++;
+                    }
+                    else {
+                        result.created++;
                         all.push(created);
+                    }
                 }
                 else {
                     // The name (or an alias of it) belongs to a member linked to someone
@@ -159,5 +166,73 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
         }
     }
     return result;
+}
+/**
+ * Resolve the member a game player's activity belongs to — a gift's sender or a
+ * ledger entry's player — including players no longer in the clan. Built once
+ * per run (after syncMembersFromGame) so lookups are cheap.
+ *
+ * Never reactivates or renames anyone, so a gift from someone who left cannot
+ * undo the departure the sync just recorded:
+ *   1. current roster → the synced member;
+ *   2. a member already linked to the player id → that member;
+ *   3. the member with that exact name (after merge rules) → that member, and
+ *      linked to the player when it has no link yet;
+ *   4. else a new member under the game name, linked, and marked left when the
+ *      player is not in the clan.
+ * Returns null only for a player with no id link and no name.
+ */
+function makeMemberResolver(clanId, rosterMembers) {
+    const canonical = (0, merge_repo_js_1.loadPlayerNameCanonicaliser)(clanId);
+    const cache = new Map(rosterMembers);
+    const db = (0, database_js_1.getDb)();
+    let all = null;
+    let prior = null;
+    return (playerId, name) => {
+        if (playerId > 0 && cache.has(playerId))
+            return cache.get(playerId) ?? null;
+        let id = null;
+        const linkedRow = playerId > 0
+            ? db.prepare('SELECT id FROM members WHERE clan_id = ? AND game_player_id = ?').get(clanId, playerId)
+            : undefined;
+        if (linkedRow) {
+            id = linkedRow.id;
+        }
+        else if (name) {
+            const target = canonical(name);
+            all ??= (0, member_repo_js_1.getAllMembers)(false, clanId);
+            const match = (0, fuzzy_js_1.exactMatchMember)(target, all);
+            if (match) {
+                if (playerId > 0)
+                    link(clanId, match.id, playerId);
+                id = match.id;
+            }
+            else {
+                prior ??= new Map(db.prepare('SELECT id, is_active, left_at, last_seen FROM members WHERE clan_id = ?')
+                    .all(clanId).map((r) => [r.id, r]));
+                const found = (0, member_repo_js_1.upsertMember)(target, clanId);
+                const before = prior.get(found.id);
+                if (before) {
+                    // upsertMember found an existing member (alias / despaced name) and
+                    // stamped it seen + active; a player outside the clan must not.
+                    db.prepare('UPDATE members SET is_active = ?, left_at = ?, last_seen = ? WHERE id = ?')
+                        .run(before.is_active, before.left_at, before.last_seen, found.id);
+                    if (playerId > 0)
+                        link(clanId, found.id, playerId);
+                }
+                else {
+                    if (playerId > 0)
+                        link(clanId, found.id, playerId);
+                    (0, member_repo_js_1.removeMember)(found.id, clanId);
+                    prior.set(found.id, { is_active: 0, left_at: null, last_seen: found.lastSeen });
+                    all.push({ ...found, isActive: false });
+                }
+                id = found.id;
+            }
+        }
+        if (playerId > 0)
+            cache.set(playerId, id);
+        return id;
+    };
 }
 //# sourceMappingURL=member-sync.js.map

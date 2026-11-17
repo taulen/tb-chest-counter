@@ -46,7 +46,6 @@ const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
 const logger_js_1 = require("../utils/logger.js");
 const persistent_env_js_1 = require("../config/persistent-env.js");
 const calibration_js_1 = require("../config/calibration.js");
-const member_capture_js_1 = require("../browser/member-capture.js");
 const input_js_1 = require("../browser/input.js");
 const calibration_js_2 = require("./calibration.js");
 const scan_pipeline_js_1 = require("./scan-pipeline.js");
@@ -825,22 +824,16 @@ class ScanLoop {
             this.nextScanAt = null;
             log.info('Cleared pending scheduled scan - manual scan will replace it');
         }
-        if (targetClanId !== undefined && targetClanId !== this.clanId) {
-            log.info(`Manual scan: switching browser to clan #${targetClanId} (was clan #${this.clanId})`);
-            this.setActiveClan(targetClanId);
-            try {
-                await (0, launcher_js_1.closeBrowser)(this.session);
-            }
-            catch {
-                // ignore — about to relaunch
-            }
-            this.session = await this.launchForClan(targetClanId);
+        let result;
+        try {
+            result = await this.runProtocolClanScan(targetClanId ?? this.clanId, 'manual');
         }
-        // No clan switch (or a switch that landed on the same clan) means we
-        // keep whatever browser the last cycle left behind — which may have
-        // been torn down after a re-auth failure.
-        await this.ensureLiveSession();
-        const result = await this.runSingleScan('manual');
+        catch (err) {
+            if (!this.lastScanError || this.lastScanError.at < new Date(Date.now() - 5_000).toISOString()) {
+                this.recordScanError(err);
+            }
+            result = { success: false, chestsFound: 0, newChests: 0, errors: 1, giftsData: [], triumphalData: [] };
+        }
         // Reschedule the next cycle to run a full interval after this manual scan
         if (this.running) {
             const delay = this.stateMachine.isError()
@@ -966,88 +959,27 @@ class ScanLoop {
                 this.scheduleNextCycle(60_000);
             return;
         }
-        // Onboarding gate: calibration is global, so an uncalibrated
-        // instance has nothing useful to do this cycle. Reschedule and bail
-        // instead of marching into the per-clan loop just to hit
-        // CalibrationMissingError once per clan. The dashboard banner tells
-        // the operator how to clear this.
-        if (!(0, calibration_js_1.isFullyCalibrated)()) {
-            log.info('Scheduled scan skipped — scanner not yet calibrated. Operator must finish Admin → Scanner Mode → Calibrate.');
-            if (this.running) {
-                this.scheduleNextCycle(this.config.scanIntervalMs);
-            }
-            return;
-        }
-        // Multi-clan: iterate every active clan in sequence, scanning one
-        // at a time. The Chromium/WebGL bottleneck means we never run two
-        // browsers concurrently; this loop is intentionally serial. Single-
-        // clan deployments fall through with one iteration.
+        // Multi-clan: iterate every active clan in sequence. Each clan is a
+        // protocol scan (scheduler/protocol-scan.ts): no browser, no OCR, no
+        // calibration — the game's own data, read and claimed directly. Serial,
+        // because each direct login takes over that account's game session.
         const fs = await import('fs');
         const activeClans = (0, clan_repo_js_1.listClans)({ activeOnly: true });
         const clansToScan = activeClans.length > 0 ? activeClans : [{ id: 1 }];
-        // Set to true once a clan in this cycle reaches runSingleScan, so
-        // skipped-everything cycles (all clans gated out) don't tick the
-        // periodic-relaunch counter. The workers only leak when they
-        // actually OCR something.
-        let scanRanThisCycle = false;
         this.cycleOrder = clansToScan.map((c) => c.id);
         for (let i = 0; i < clansToScan.length; i++) {
             const clan = clansToScan[i];
             if (!this.running)
                 break;
             this.cycleDoneCount = i;
-            // Defense in depth: skip any clan that hasn't been signed in yet.
-            // Without a storage-state.json the launched browser would either
-            // hit TB's login page (best case, scan fails cleanly) or — if a
-            // bug ever leaks another clan's persistent profile — silently
-            // scan as that other clan and stamp the rows with the wrong
-            // clan_id. Refusing here means a freshly-created clan never
-            // enters the rotation until its login bridge has captured a
-            // session, even if the operator forgot to deactivate it.
+            // A clan that has never been signed in has no session to scan with;
+            // it enters the rotation once the login bridge has saved one.
             if (!fs.existsSync((0, clan_paths_js_1.clanStorageStatePath)(clan.id))) {
-                log.info(`Clan #${clan.id}: skipping scan — no storage state yet (sign in via Clans → Log in to Total Battle).`);
+                log.info(`Clan #${clan.id}: skipping scan — no saved login yet (sign in via Clans → Log in to Total Battle).`);
                 continue;
             }
-            // Per-clan onboarding gate: refuse to start a chest scan until
-            // this clan has a captured member list. The chest pipeline doesn't
-            // need the member list per se, but running a chest scan before the
-            // operator has signed off on names produces report rows attributed
-            // to "<unknown>" or to whatever garbage OCR'd out of the gifts
-            // popup. Better to block here and surface the next step.
-            if ((0, member_capture_js_1.needsMemberCapture)(clan.id)) {
-                log.info(`Clan #${clan.id}: skipping scan — member list not yet captured (operator must run Clans → Capture members).`);
-                continue;
-            }
-            // Parallel run: read the clan straight from the game server before the
-            // browser touches it, so the gift list is the one this scan is about to
-            // claim. Never throws; a failure is logged and the scan goes ahead.
-            await this.captureGameProtocolBestEffort(clan.id);
-            // Hot-swap browser to the clan's storage state AND profile dir.
-            // Both are per-clan so cookies / localStorage / IndexedDB /
-            // service workers from a different clan never leak in. Skip the
-            // teardown + relaunch when the clan is already active AND we're
-            // not iterating multiple clans (single-clan deployments hit this
-            // fast path).
-            if (this.clanId !== clan.id || activeClans.length > 1) {
-                this.setActiveClan(clan.id);
-                try {
-                    await (0, launcher_js_1.closeBrowser)(this.session);
-                }
-                catch {
-                    // ignore — about to relaunch
-                }
-                this.session = await this.launchForClan(clan.id);
-                log.info(`Switched browser to clan #${clan.id} (${i + 1}/${clansToScan.length})`);
-            }
-            else {
-                // Fast path reuses the existing browser — but a previous cycle
-                // may have closed it on purpose (clan blocked on re-auth), so
-                // make sure there's a live page before driving it.
-                await this.ensureLiveSession(clan.id);
-            }
-            scanRanThisCycle = true;
             try {
-                await this.runSingleScan(triggerSource);
+                await this.runProtocolClanScan(clan.id, triggerSource);
             }
             catch (err) {
                 if (!this.lastScanError || this.lastScanError.at < new Date(Date.now() - 5_000).toISOString()) {
@@ -1074,25 +1006,6 @@ class ScanLoop {
             this.endCycleTracking();
             return;
         }
-        // Periodic OCR-worker teardown. Done after the per-clan loop so it never
-        // interrupts an in-flight scan, and before scheduleNextCycle so the next
-        // timer fires against fresh workers. Only counts cycles that actually
-        // scanned — a maintenance-blocked or uncalibrated cycle didn't hit the
-        // workers so it shouldn't count toward the leak.
-        if (scanRanThisCycle) {
-            this.cyclesSinceRelaunch++;
-            if (this.cyclesSinceRelaunch >= this.getCyclesBeforeRelaunch()) {
-                try {
-                    await this.performPeriodicRelaunch();
-                }
-                catch (err) {
-                    // Non-fatal: a failed teardown leaves the existing models in place
-                    // and we'll try again next time the threshold trips. Logged at
-                    // warn so the operator sees it in container stdout.
-                    log.warn('Periodic vision recycle threw; continuing with the existing models: ' + String(err));
-                }
-            }
-        }
         if (this.running) {
             // Always retry at the normal scan interval. Most failures are
             // transient (popup, OCR hiccup, brief network blip) and the
@@ -1107,6 +1020,79 @@ class ScanLoop {
             this.scheduleNextCycle(this.config.scanIntervalMs);
         }
         this.endCycleTracking();
+    }
+    /**
+     * One clan's scan, straight from the game (docs/game-protocol.md):
+     * capture (members, gifts, ledger, cities…) → record every gift → claim →
+     * ledger rows. Owns the same single-flight flags as runSingleScan and the
+     * same session lifecycle: no session row when the capture cannot even sign
+     * in; once one exists, a throw keeps whatever was recorded
+     * (finalizeScanFailure decides from the DB row count).
+     */
+    async runProtocolClanScan(clanId, triggerSource) {
+        const result = { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [] };
+        if (this.scanInProgress)
+            return { ...result, alreadyRunning: true };
+        this.setActiveClan(clanId);
+        this.scanInProgress = true;
+        this.scanStartedAt = Date.now();
+        this.liveChestCount = 0;
+        this.progressMessage = '';
+        try {
+            this.stateMachine.transition(enums_js_1.AppState.SCANNING);
+            this.reportProgress('scan', 'Reading clan data from the game server…');
+            const { runGameProtocolCapture } = await import('./game-protocol-phase.js');
+            const capture = await runGameProtocolCapture(clanId, { rolloverUtcHour: this.config.gameDayRolloverUtcHour });
+            if (!capture.ok || !capture.data) {
+                // Nothing was recorded or claimed. A logged-out session has already been
+                // flagged for re-authentication by the capture.
+                this.recordScanError(new Error(capture.loggedOut
+                    ? 'The saved Total Battle login has expired — refresh it under Clans → Log in to Total Battle.'
+                    : `Could not read the clan from the game: ${capture.error ?? 'unknown error'}`));
+                this.stateMachine.transition(enums_js_1.AppState.ERROR);
+                return result;
+            }
+            const scanSession = sessionRepo.createSession(triggerSource, clanId);
+            result.sessionId = scanSession.id;
+            try {
+                const { recordAndClaim } = await import('./protocol-scan.js');
+                const tally = await recordAndClaim({
+                    clanId,
+                    sessionId: scanSession.id,
+                    rolloverUtcHour: this.config.gameDayRolloverUtcHour,
+                    nextCapturedAt: () => this.nextCapturedAt(),
+                    reportProgress: (message) => this.reportProgress('scan', message),
+                    incrementLiveChestCount: () => { this.liveChestCount++; },
+                }, capture.data);
+                result.giftsData = tally.gifts;
+                result.triumphalData = tally.triumphal;
+                result.chestsFound = tally.gifts.length;
+                result.newChests = tally.gifts.length;
+                result.errors = tally.claimFailures;
+                const tab = {
+                    gifts: tally.gifts,
+                    chestsFound: tally.gifts.length,
+                    newChests: tally.gifts.length,
+                    errors: tally.claimFailures,
+                    screenshots: 0,
+                    unknownNames: 0,
+                    stallReason: null,
+                };
+                return await (0, scan_finalize_js_1.finalizeScanSuccess)(this.buildScanFinalizeContext(), result, scanSession.id, tab, null, tally.warnings.length ? tally.warnings.join('\n') : null);
+            }
+            catch (err) {
+                const outcome = (0, scan_finalize_js_1.finalizeScanFailure)(err, this.buildScanFinalizeContext(), result, scanSession.id);
+                if (outcome.action === 'rethrow')
+                    throw err;
+                return result;
+            }
+        }
+        finally {
+            this.scanInProgress = false;
+            this.scanStartedAt = null;
+            this.liveChestCount = 0;
+            this.progressMessage = '';
+        }
     }
     async runSingleScan(triggerSource = 'scheduled') {
         if (this.scanInProgress) {

@@ -5,27 +5,46 @@ MessagePack format. We speak it directly — no browser, no OCR — to read the 
 record (members + both gift tabs), player records, the Clan Capital ledger and
 any player's city (research + hero talents). Code: [`src/game-protocol/`](../src/game-protocol/).
 
-Status (Nov 2026): **parallel run.** [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts)
-runs before each clan's OCR scan and stores what the game says in the `game_*`
-tables (migration v102). Nothing reads them for scoring yet; the OCR pipeline is
-unchanged. Setting: `GAME_PROTOCOL_CAPTURE_CLANS` — comma-separated clan ids,
-`all`, or empty for none; **default `all`** (trialled on CWB first, widened to all clans the same night with the session check watching).
+Status (Nov 17 2026): **this is the scan.** Each clan in a cycle (and each
+manual scan) is `ScanLoop.runProtocolClanScan`:
 
-Why one clan: CWB's website session ended during development (Nov 17 2026)
-after a burst of direct logins, local browser windows on copies of its session
-and new device identities. The client now follows the browser's full sequence
-(`/en/` → `GetGameStartData` → `bytokenoauth`) and writes rotated cookies back
-([`site-session.ts`](../src/game-protocol/site-session.ts)); on a throwaway
-account five such logins in a row, plus four replays of the old flow, all left
-the session alive — so the client alone did not end CWB's session. It is
-widened clan by clan while the session check below watches.
+1. [`game-protocol-phase.ts`](../src/scheduler/game-protocol-phase.ts) signs in,
+   reads everything (below) and returns its live session and data;
+2. [`protocol-scan.ts`](../src/scheduler/protocol-scan.ts) records every gift —
+   `count − rows already carrying its game_gift_id`, so re-runs never double —
+   THEN claims each gift entry (one 15013 per entry; rewards → `game_claims`),
+   THEN imports the ledger;
+3. the session is finalised like any scan (`finalizeScanSuccess`, Discord report).
 
-After each scan, `compareScanWithGameCapture` matches that scan's OCR rows
-against the gift list the capture saw just before it (per tab, by sender +
-chest + source) and stores the result in `game_scan_comparisons`; one
-`[game-vs-ocr]` log line per scan summarises matched / probable name misreads /
-OCR-only / game-only. Read it with
-`echo "SELECT * FROM game_scan_comparisons ORDER BY created_at DESC LIMIT 10" | ssh tb-read sql`.
+A capture that cannot sign in creates no session row and records nothing.
+Calibration, the member-capture onboarding gate, the browser and OCR are not
+involved; that code is unused, pending removal. The browser is still used by the
+login bridge.
+
+Names: game names are exact, so no OCR correction runs. Each resolves to the
+spelling already stored for it when `normalizeGiftText` matches (the OCR stored
+"Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), then the
+clan's chest/source merge rules apply as before, so point values keep keying on
+the same names.
+
+Ledger → `resource_transactions` ([`ledger-rows.ts`](../src/game-protocol/ledger-rows.ts)):
+one row per entry (`game_entry_id` unique); kind 1 = clan payout (direction −1),
+kinds 2/3/4/7 = donation (+1), kind 8 (a leader-side burst the in-game history
+never showed) is not imported; item → resource type by name; Clan Speedups in
+hours. Only entries on game days AFTER the clan's newest OCR-captured row are
+imported, so the switch-over day is never counted twice.
+
+Before the switch, a parallel run compared every OCR scan with the game's gift
+list (`game_scan_comparisons`, `[game-vs-ocr]` log lines): 100% matched, no
+misreads, across all clans.
+
+Why the client copies the browser's sign-in exactly: CWB's website session
+ended during development after a burst of direct logins, local browser windows
+on copies of its session and new device identities. The client follows the
+browser's full sequence (`/en/` → `GetGameStartData` → `bytokenoauth`) and
+writes rotated cookies back ([`site-session.ts`](../src/game-protocol/site-session.ts));
+on a throwaway account five such logins in a row, plus four replays of the old
+flow, all left the session alive.
 
 ## Members and collection (v103)
 

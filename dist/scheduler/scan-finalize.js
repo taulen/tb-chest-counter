@@ -72,7 +72,9 @@ exports.MAINTENANCE_BUFFER_MS = 5 * 60_000;
  * COMPLETED — the Scan History UI uses errorPhase to render the right
  * banner.
  */
-async function finalizeScanSuccess(ctx, result, scanSessionId, giftsResult, triumphalWarning) {
+async function finalizeScanSuccess(ctx, result, scanSessionId, giftsResult, triumphalWarning, 
+/** Protocol scan notes: chests that could not be opened, unnamed gift types. */
+scanWarning = null) {
     const unknownMsg = giftsResult.unknownNames > 0
         ? `OCR failed to read the player name for ${giftsResult.unknownNames} chest(s). ` +
             `They were saved under "${scan_pipeline_js_1.UNKNOWN_PLAYER_NAME}" and need manual review. ` +
@@ -89,14 +91,16 @@ async function finalizeScanSuccess(ctx, result, scanSessionId, giftsResult, triu
             'Chests opened before that point were kept; the rest are still on the Gifts tab and the ' +
             'next scan will take them.'
         : null;
-    const errorMessage = [stallMsg, unknownMsg, triumphalWarning].filter(Boolean).join('\n') || null;
+    const errorMessage = [stallMsg, unknownMsg, triumphalWarning, scanWarning].filter(Boolean).join('\n') || null;
     // Most-actionable phase wins the badge. A stall outranks the other two: they
     // describe rows that need review, it describes a scan that did not finish.
     const errorPhase = stallMsg
         ? 'Capture stalled'
         : unknownMsg
             ? 'Manual review needed'
-            : (triumphalWarning ? 'Triumphal sweep warning' : null);
+            : triumphalWarning
+                ? 'Triumphal sweep warning'
+                : (scanWarning ? 'Scan warning' : null);
     sessionRepo.updateSession(scanSessionId, ctx.clanId, {
         status: enums_js_1.ScanStatus.COMPLETED,
         chestsFound: result.newChests,

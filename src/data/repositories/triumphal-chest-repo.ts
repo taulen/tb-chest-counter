@@ -66,6 +66,8 @@ export function insertChest(
     /** Best-effort in-game received time (epoch ms) from the gift's "time
      *  left" countdown; see src/utils/gift-time.ts. NULL for non-scan paths. */
     earnedAt?: number | null;
+    /** The game gift this row came from (protocol scan, v103); NULL for OCR rows. */
+    gameGiftId?: number | null;
   },
 ): ChestRecord {
   const db = getDb();
@@ -84,8 +86,8 @@ export function insertChest(
   const chestSourceId = getOrCreateChestSourceId(chest.chestSource);
   const result = db.prepare(`
     INSERT INTO triumphal_chest_records
-      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at, game_gift_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     chest.clanId,
     chest.sessionId,
@@ -98,6 +100,7 @@ export function insertChest(
     chest.debugCropPath ?? null,
     chest.rawPlayerOcr ?? null,
     chest.earnedAt ?? null,
+    chest.gameGiftId ?? null,
   );
   return { id: result.lastInsertRowid as number, ...chest };
 }

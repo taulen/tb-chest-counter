@@ -1,76 +1,67 @@
 # TB Chest Counter
 
-A self-hosted tracker for **Total Battle** clan gift chests. It drives the game
-in a headless browser, reads the Gifts tabs with on-device OCR, scores each
-chest, and serves a multi-clan web dashboard and Discord bot. No game API, no
-cloud AI — everything runs locally in one container.
+A self-hosted tracker for **Total Battle** clans. It reads your clan straight
+from the game's own servers — gifts, members, might, research, the Clan Capital
+ledger — opens the clan's chests, scores them, and serves a multi-clan web
+dashboard and Discord bot. No screen-reading, no cloud services: everything
+runs in one container.
 
-> **Two things to know before you install it.**
+> **Know this before you install it.**
 >
-> **It signs in as you and clicks for you.** There is no API; the only way to
-> read your clan's gifts is to open the game and look at it. Automating a game
-> client may conflict with Total Battle's terms of service, and that risk falls
-> on the account you point it at. Not affiliated with Total Battle or
-> Scorewarrior.
->
-> **It needs a one-time calibration.** The game is a WebGL canvas with no DOM to
-> query, so the scanner is taught where to click by having you mark points on a
-> screenshot of *your* game. Four short stages, walked through in the browser.
-> See [First-run setup](#first-run-setup).
+> **It signs in as you.** Each scan signs into the game with the account you
+> point it at, the same way the web client does, and opens that clan's gifts.
+> A scan takes the account's game session over for a few seconds, so anyone
+> playing on that account at that moment is signed out of the game. Automating
+> a game client may conflict with Total Battle's terms of service, and that risk
+> falls on the account you use. Not affiliated with Total Battle or Scorewarrior.
 
 ## Requirements
 
-- **Linux host with Docker.** The image is Linux-only by design (the build
-  strips the OCR runtime's non-Linux binaries to save ~220MB). Local
+- **Linux host with Docker.** The image is Linux-only by design; local
   development works on any OS.
-- **~5GB RAM for the container.** Chromium's WebGL usage is the driver, not the
-  database. Give it real headroom — the default `MEMORY_LIMIT` is `5g`.
-- **2-4 CPU cores.** Software rendering of the game is per-pixel work; see
-  [GPU acceleration](#gpu-acceleration-and-the-software-fallback) for how to
-  hand that to an integrated GPU instead.
-- **A Total Battle account that is in the clan you want to track**, with the
-  Gifts tab visible to it.
-- **Optional:** an Intel/AMD integrated GPU exposed at `/dev/dri`, a Discord
-  bot token (per clan, configured in-app).
+- **Memory:** the default `MEMORY_LIMIT` is `5g`. The login bridge's browser is
+  the heaviest part, and only runs while someone is signing a clan in.
+- **A Total Battle account that is in the clan you want to track**, with access
+  to the clan's Gifts. The scanner opens the clan's gifts with this account.
+- **Optional:** a Discord bot token (per clan, configured in-app).
 
 ## Features
 
-- **Automated scanning** — a headless **Chromium** (bundled via Playwright)
-  logs into the game, opens the Gifts and Triumphal Gifts tabs, and captures
-  every gift on a timer (default every 120 minutes). Each click claims its
-  chest as it goes, so an interrupted scan keeps what it already opened.
-- **On-device OCR** — local, no external API:
-  - **PaddleOCR** (PP-OCRv6 via ONNX Runtime).
-  - **Non-Latin fallback** re-reads Cyrillic/Arabic player names with bundled
-    PP-OCRv5 language models.
-  - **Fuzzy name matching** against the captured roster absorbs the usual
-    one-character OCR slip without merging genuinely different players.
+- **Scanning from the game itself** — every scan reads the clan's gift list
+  (Gifts and Triumphal Gifts) from the game server, records each chest with its
+  exact sender, chest, source and arrival time, then opens it with the game's
+  own claim request and keeps what it gave. A whole clan takes seconds, so the
+  interval can be short (default every 120 minutes).
+- **Nothing to calibrate, nothing to misread** — names come from the game's
+  data, not from pictures of it. Every chest and every member carries the game's
+  own id, so renames follow the player and nothing is counted twice.
 - **Per-clan scoring** — every clan sets its own chest point values on the
   Chest Points board, can copy another clan's values, and can value sources
-  that haven't dropped yet. Triumphal chests score separately, from their
+  that haven't dropped yet. Values have a history: a change applies from today
+  on or to all of history. Triumphal chests score separately, from their
   package value.
-- **Resource tracking** — after a scan, the app reads the clan's in-game Clan
-  Capital history once a day and records what each member sent, insert-only and
-  safe to re-run.
+- **Members kept in sync** — the roster, clan roles, join dates, departures and
+  in-game renames come from the game every scan.
+- **Might tracking** — every member's might and hero level each scan, with
+  per-member history and a clan-wide trend.
+- **Resource tracking** — the Clan Capital ledger is read every scan: what each
+  member donated and what the clan paid out, one row per ledger line.
 - **Inferred guards levels and Gold Pass** — guardsmen levels are worked out
   from the exact amounts members donate, and Gold Pass holders from a Union
-  Chest plus its 250k tractate line. Neither is read off a screen or stored, so
-  a single bad read can't stick.
-- **Might tracking** — a daily snapshot of every member's might and hero level,
-  with per-member history and a clan-wide trend.
+  Chest plus its 250k tractate line.
 - **Events** — per-event chest breakdowns, with timeframes taken from the
   public **tbclanportal.com** event calendar (one event run = one selectable
   window). Includes Tin Man / Rise of the Ancients standings pasted per summon,
   per-tier targets and a "below target" list ready to paste into chat.
-- **Tools** — an Ancient planner prefilled from the clan roster, with per-clan
-  defaults saved by admins.
+- **Tools** — an Ancient planner prefilled from the clan roster, a Citadel
+  battle simulator, a stack calculator, research costs, and a reward splitter.
 - **Multi-clan, multi-user** — one instance tracks many clans, each with its
   own game login, roster, Discord bot, scoring, week shape (Sunday-to-Sunday,
   or Tin Man to Tin Man) and public URL. One account can belong to several
   clans, with a separate role in each.
 - **Web dashboard** — sidebar layout, Light / Dark / OLED themes (or follow the
-  device), mobile-friendly tables, and the accessibility work described in
-  [ACCESSIBILITY.md](ACCESSIBILITY.md).
+  device), mobile-friendly tables, five languages, and the accessibility work
+  described in [ACCESSIBILITY.md](ACCESSIBILITY.md).
 - **Public share links** — any number of read-only leaderboard links per clan
   at `/<key>`, each with its own visit counter and an optional vanity key; no
   login required. A built-in FAQ explains the points and how to get access.
@@ -85,28 +76,55 @@ cloud AI — everything runs locally in one container.
 - **SQLite storage** — a single `better-sqlite3` database, migrated
   automatically on boot, with daily gzip backups.
 
+## What it collects
+
+Every scan, per clan:
+
+- **Chests** — every gift on both tabs: sender, chest, source, how many, and
+  when it arrived; then the rewards each one gave when opened.
+- **Members** — the game's player id, exact name, clan role and join date;
+  who left and who was renamed.
+- **Players** — might, hero level, city level, VIP level and Gold Pass.
+- **Clan Capital ledger** — every donation and payout, by member.
+- **Vaults of the Ancients** near members' cities, on the days they exist.
+
+Once a day:
+
+- **Research and hero talents** for every member, with a history of each
+  level change.
+- **Buildings and hero** for every member's city.
+- **The raw clan record and Clan Capital**, archived as received, so fields
+  that are not decoded yet still have history once they are.
+
+Much of this is collected ahead of being shown: research and talent trees,
+rewards and the Clan Capital are on the way to the dashboard.
+
+Chest, item, research and hero names come from the game's public static data,
+which the server downloads and caches itself when the game publishes a new
+version. None of the game's data or art is stored in this repository.
+
 ## How it works
 
 ```
-Total Battle (Unity/WebGL canvas game)
-        │  headless Chromium (Playwright), one browser per clan, scanned serially
+Saved Total Battle login (captured once per clan through the login bridge)
+        │  sign in the way the web client does — one clan at a time
         ▼
-  Screenshot capture of the Gifts / Triumphal Gifts tabs
+Game server (binary MessagePack over HTTPS)
+        │  clan record · player records · Clan Capital ledger · cities · map
         ▼
-  OCR (PaddleOCR, non-Latin re-read)  ──►  fuzzy-match names to the captured roster
+Record every gift by its game id  →  open it  →  keep its rewards
         ▼
-  Scoring (clan's points for source + chest name)
+Scoring (the clan's points for source + chest, as of the day it was earned)
         ▼
-  SQLite (better-sqlite3)
-        │   then, once a day and never failing the scan:
-        │   might snapshot  →  Clan Capital resource history
+SQLite (better-sqlite3)
         ▼
-  Web dashboard  +  Discord bot  +  public share links
+Web dashboard  +  Discord bot  +  public share links
 ```
 
-The game canvas has no DOM to query, so navigation and scanning rely on
-**operator-calibrated screen coordinates** (set once per install from the
-System page), not on element selectors or vision-based UI detection.
+A gift is recorded before it is opened, and keyed by the game's gift id, so a
+failed open or an interrupted scan can neither lose a chest nor count it twice:
+the next scan records nothing new for it and opens it again. Protocol details:
+[docs/game-protocol.md](docs/game-protocol.md).
 
 ## Deployment (Docker)
 
@@ -126,19 +144,16 @@ Then open the dashboard at **`http://<host>:3010`** (host `3010` → container
 
 Key deployment facts:
 
-- **Base image:** `node:22-slim`. The image is **Linux-only** (see
-  [CLAUDE.md](CLAUDE.md) — the build strips non-Linux OCR binaries to save
-  ~220 MB).
+- **Base image:** `node:22-slim`, Linux-only.
 - **`dist/` is committed and copied into the image — there is no build step in
   the Dockerfile.** Always run `npm run build` and commit `dist/` before
   deploying, or the container runs stale code. CI fails any push whose
   committed `dist/` doesn't match a fresh build.
 - **Volume:** `tb-chest-data` → `/app/data` holds everything persistent: the
-  SQLite DB, screenshots, per-clan auth (`data/clans/<id>/`), runtime settings
-  (`data/app.env`), and gzip backups.
+  SQLite DB, per-clan logins (`data/clans/<id>/`), the cached game data
+  (`data/game-static/`), runtime settings (`data/app.env`), and gzip backups.
 - **Resources:** memory limit `5g`, CPU reservation `2` (override with
-  `MEMORY_LIMIT` / `CPU_RESERVATION`). The browser's WebGL usage is the memory
-  driver, so give the container real headroom.
+  `MEMORY_LIMIT` / `CPU_RESERVATION`).
 - **Deploy verification:** `GET /api/health` (public) returns `builtAt` and a
   `fingerprint` hashed over `dist/` + `src/web/public/`. The dashboard footer
   shows the same. If they don't change after a redeploy, the rebuild didn't
@@ -156,12 +171,11 @@ Setup runs entirely in the browser.
    their defaults and are editable from the System page afterwards.
 3. On the same page, use the embedded **login bridge** (below) to sign the app
    into Total Battle for your first clan.
-4. Once a valid game session is captured, the app switches to normal mode in
-   the same process (no restart).
+4. Once a valid game login is saved, the app switches to normal mode in the
+   same process (no restart).
 
-Calibration and roster capture are done afterward from the running dashboard
-(System → calibration wizard; then the clan's onboarding capture), not during
-setup.
+That is all. The first scan reads the roster, the gifts and the ledger from the
+game in seconds.
 
 ### Restoring an existing install instead
 
@@ -171,7 +185,7 @@ account including superadmins. An older backup is migrated forward on the way
 in. Sign in afterwards with the credentials from that backup; the wizard issues
 no session of its own, because the accounts are the backup's.
 
-A backup carries no Total Battle session (those live on disk per clan, not in
+A backup carries no Total Battle login (those live on disk per clan, not in
 the DB), so after restoring, run the login bridge once per clan from the Clans
 page. A backup with no superadmin is refused — by the time it were live, the
 setup window would have closed on an install nobody can sign in to.
@@ -227,90 +241,39 @@ files, and needs `--yes` — run it with no flags for a dry run. Locally:
 
 The app runs a Chromium instance server-side and **streams it into your browser
 over a WebSocket** — you drive the real game login inside the dashboard, with
-your mouse and keyboard relayed to it, and the captured session is saved
-server-side. Several admins can share the one session, which is also how a clan
-with shared account credentials operates it.
+your mouse and keyboard relayed to it, and the login is saved server-side.
+Several admins can share the one session, which is also how a clan with shared
+account credentials operates it.
 
 - Start it from **Setup** (first clan) or **Clans → Refresh login** (any clan,
   e.g. after a re-auth prompt).
-- The session is stored per clan at `data/clans/<id>/storage-state.json`; the
-  previous one is backed up to `.bak` on each save.
-- It runs **Chromium's new headless mode** (`channel: 'chromium'`) — a full
-  browser rendering offscreen, not the feature-poor `headless-shell`. That is
-  what lets it reach the GPU at all; the old headed-under-Xvfb setup could not,
-  because Xvfb is a software framebuffer. `LOGIN_BRIDGE_DISPLAY=xvfb` still
-  exists as an escape hatch.
+- The login is stored per clan at `data/clans/<id>/storage-state.json`; the
+  previous one is backed up to `.bak` on each save. Scans keep it current the
+  way a browser would, so it stays valid between visits.
 - Sessions auto-tear-down after 3 min idle or 30 min absolute.
+- To render the bridge on an integrated GPU instead of the CPU, see
+  [docs/igpu-passthrough.md](docs/igpu-passthrough.md); without one, change
+  nothing.
 - Full reference: [docs/login-bridge.md](docs/login-bridge.md).
 
-When a saved session stops working, the scan's auth check flags the clan as
-**needs re-auth** (dashboard badge + one-shot Discord ping); re-run the bridge
-to fix it.
-
-## GPU acceleration and the software fallback
-
-The scanner renders a WebGL game. By default it does that **on the CPU**, which
-works everywhere and is the reason the container wants several cores.
-
-Handing it to an integrated GPU cuts that dramatically:
-
-```yaml
-# docker-compose.yml
-environment:
-  - SCANNER_GPU=1          # scanner renders on the iGPU (ANGLE + Vulkan)
-  - LOGIN_BRIDGE_GPU=      # unset follows SCANNER_GPU; 0/1 to decide separately
-devices:
-  - /dev/dri:/dev/dri      # must exist on the host, renderD128 world-readable
-```
-
-Host setup (Proxmox → LXC → Docker included) is in
-[docs/igpu-passthrough.md](docs/igpu-passthrough.md).
-
-**If you have no GPU, change nothing.** `SCANNER_GPU=0` is the default and the
-software path is fully supported — it is slower, not degraded. Comment out the
-`devices:` block if `/dev/dri` does not exist on your host, or the container
-will refuse to start.
-
-Two things worth knowing before you turn it on:
-
-- **A broken GPU path does not error — it hangs.** WebGL context creation never
-  completes, so anything that needs a context (i.e. the game) waits forever.
-  The app probes the renderer with a timeout before navigating anywhere heavy,
-  logs what it got, and **falls back to software rendering by itself** if the
-  context never arrives. If scans suddenly take forever after enabling this,
-  check the log for the renderer line.
-- **Environment variables only reach the container if they are listed in
-  `docker-compose.yml`'s `environment:` block.** Compose uses `.env` for
-  `${...}` interpolation *inside the file*, not to pass variables through. A
-  new toggle that isn't listed there silently does nothing.
-
-Lowering `LOGIN_BRIDGE_VIEWPORT` (default `1280x800`) is the other lever: on
-the CPU, rendering cost is per-pixel, so `960x600` is ~45% less work for a
-softer picture.
+Every 30 minutes the app checks each clan's saved login against the website.
+When one stops working, the clan is flagged **needs re-auth** (dashboard badge +
+one-shot Discord ping); re-run the bridge to fix it.
 
 ## Troubleshooting
 
-**A scan never finishes, or the dashboard goes unresponsive during one.**
-OCR is a synchronous native call that holds the event loop for its duration —
-the UI going quiet mid-scan is expected, not a hang. A genuinely wedged browser
-is caught by the throughput guard (3 consecutive batches over 60s, a 45-minute
-capture budget, or an OOM kill) and the capture phase is abandoned.
+**A scan fails with "The saved Total Battle login has expired".**
+The website signed that login out — usually because the account's password
+changed or it was signed out everywhere. Refresh it with the login bridge
+(Clans → Refresh login). Nothing was recorded or opened by the failed scan.
 
-**Scans stop with "Members tab not visible" or find no gifts.**
-Usually the game is showing something over the UI — a store offer or event popup
-that Escape does not close. The capture reloads the game once and retries, and
-says so in the log. If it persists, open the login bridge and close the popup by
-hand once.
+**A scan fails with "Could not read the clan from the game".**
+The game servers were unreachable or in maintenance. Nothing was opened, and
+the next scan picks everything up — gifts stay in the game for about 20 hours.
 
-**The roster is short, or a member never appears.**
-The member sweep reports what it saw: `page N: 5 coord row(s) → 4 name(s)`, and
-a closing line with rows seen versus names kept. If rows were seen and not kept,
-it is OCR; if the sweep hit its page ceiling, it warns.
-
-**Might tracking reads nothing.**
-It is gated on Stage 4 having been re-saved with the might column *inside* the
-rectangle. Re-run Stage 4 and drag the right edge past the number beside the
-shield icon.
+**Someone playing on the scanner account keeps getting signed out.**
+Each scan takes the account's game session over for a few seconds. Use an
+account nobody plays on at scan time, or lengthen the scan interval.
 
 **A fix deployed but production still misbehaves.**
 If you put a CDN in front of this, check the edge before re-reading the code —
@@ -328,9 +291,8 @@ container, and raising `MEMORY_LIMIT` cannot help.
   `data/clans/<id>/`, Discord settings, ChestTracker settings, share links,
   chest point values, optional scan interval, week shape, public URL, and
   active/needs-reauth status.
-- The game URL is **not** per-clan — all clans use the same
-  `https://totalbattle.com`; you switch clans **inside the game canvas** during
-  the login bridge. Isolation is at the cookie/profile layer only.
+- Every clan is scanned through its own saved login, one clan at a time. One
+  website account may hold logins for several clans.
 - **Roles:** `superadmin` (no clan, sees/manages all clans and users), `admin`
   (manages a clan's content, config, users, and scans), `user` (read-only
   member of a clan).
@@ -367,21 +329,19 @@ Pages are role-gated. Members see:
 - **Might** — every member's might and hero level, the clan's might over time,
   and side-by-side member comparison.
 - **Resources** *(if enabled for the clan)* — per-resource totals and charts of
-  what members have sent, filled by the daily Clan Capital history read, which
-  extracts each row (member, resource, send/receive, amount, date). Members see
-  read-only Overview / Totals tabs; admins also get the editable ledger, and
-  resolve rows whose resource icon couldn't be identified on the Admin page.
-- **Tools** — the Ancient planner.
-- **Scan History** — recent scan sessions and the chests each captured.
+  what members have sent and received, from the Clan Capital ledger. Members
+  see read-only Overview / Totals tabs; admins also get the editable ledger.
+- **Tools** — the Ancient planner, Citadel simulator, stack calculator,
+  research costs and reward splitter.
+- **Scan History** — recent scan sessions and the chests each recorded.
 - **ChestTracker** *(if enabled)* — chesttracker.com snapshots and deltas.
 
 Admins additionally get **Admin** (the Chest Points board, merge
-players/chests/sources, review queue, OCR name reassignment, player levels
-imported from chat), **Clans** (Discord, share links, login bridge, clan
-settings), and **Users** (accounts + audit log). Superadmins get **System**
-(scan interval, debug/raw-OCR toggles, calibration wizard, event schedule
-corrections, backup/restore including single-clan restore, deleted clans,
-container restart, log viewer).
+players/chests/sources, review queue, player levels imported from chat),
+**Clans** (Discord, share links, login bridge, clan settings), and **Users**
+(accounts + audit log). Superadmins get **System** (scan interval, event
+schedule corrections, backup/restore including single-clan restore, deleted
+clans, container restart, log viewer).
 
 ## Discord bot
 
@@ -408,17 +368,14 @@ Config comes from two layers, loaded in order (later wins):
 1. **`.env`** — boot-time operator config. Copy [.env.example](.env.example),
    which is the accurate, up-to-date template.
 2. **`data/app.env`** — runtime settings the app writes itself (on the mounted
-   volume). Anything you change in the dashboard (scan interval, calibration,
-   debug toggles) is persisted here, never to `.env`, and applies without a
-   restart.
+   volume). Anything you change in the dashboard (scan interval and other
+   toggles) is persisted here, never to `.env`, and applies without a restart.
 
 The authoritative list of variables is [.env.example](.env.example) and
 [src/config/schema.ts](src/config/schema.ts). Most-used:
 
 ```env
-SCAN_NON_LATIN_FALLBACK=true    # re-OCR Cyrillic/Arabic player names
 SCAN_INTERVAL_MS=7200000        # 120 min (runtime-adjustable in the UI)
-HEADLESS=true
 WEB_PORT=3000                   # container port; host maps 3010 -> 3000
 GAME_DAY_ROLLOVER_UTC_HOUR=17   # in-game day boundary (see below)
 DB_PATH=./data/tb-chests.db
@@ -430,19 +387,19 @@ EVENT_CALENDAR_ICS_URL=https://tbclanportal.com/calendar/feed.ics
 Compose-level knobs: `HOST_WEB_PORT` (default `3010`), `NODE_MAX_OLD_SPACE_MB`
 (`1536`), `MEMORY_LIMIT` (`5g`), `CPU_RESERVATION` (`2`), plus `INSTANCE_NAME`
 (`tb-chest-counter`) and `DATA_VOLUME` (`tb-chest-data`) for running a second
-instance alongside the live one (see Deployment above).
+instance alongside the live one (see Deployment above). Environment variables
+only reach the container if they are listed in `docker-compose.yml`'s
+`environment:` block.
 
-> **Note:** OCR runs on-device (PaddleOCR) — there is no `VISION_PROVIDER` var
-> and no cloud-vision API keys. Discord and scoring are configured in-app, not
-> via env vars.
+Discord and scoring are configured in-app, not via env vars.
 
 ## Scoring & game day
 
 - **Points are per clan.** Each clan has its own scoring table on the Chest
   Points board (edited by superadmins; a clan's values can be copied from
   another clan). A chest's value is looked up by `(source, chest name)` with
-  precedence: exact override → source wildcard → built-in default. Editing a
-  value backfills that clan's historical records.
+  precedence: exact override → source wildcard → built-in default, using the
+  values in force on the day the chest was earned.
 - **Triumphal chests** are worth a third of their package value each (values
   are global, superadmin-managed) and are kept out of the main leaderboard.
 - **Game-day rollover** is a fixed UTC hour (**default 17:00 UTC**, not
@@ -450,13 +407,6 @@ instance alongside the live one (see Deployment above).
   the Discord digests all snap to this boundary so they match the game's day.
 - **Weeks** follow each clan's week shape: Sunday to Sunday, or Tin Man to Tin
   Man.
-
-## Data tracked
-
-Per gift entry: player name (with a secondary English/transliterated pass),
-chest name, chest rarity/type, source (e.g. "Level 20 Citadel", "Bank"), gift
-tab, quantity, capture time, confidence, and the resolved member + point value.
-Triumphal gifts are recorded separately and never contribute points.
 
 ## Development
 
@@ -475,10 +425,11 @@ pull request.
 
 - **Source:** `src/` (TypeScript). **Compiled output:** `dist/` (committed, run
   by Docker). **Frontend:** `src/web/public/` (vanilla HTML/CSS/JS, copied
-  as-is).
+  as-is). **Game protocol client:** `src/game-protocol/`.
 - **Database:** single `better-sqlite3` file (`data/tb-chests.db`, WAL mode)
-  holding chest, resource, ChestTracker, user, and clan data. Migrations run
-  automatically on boot. Daily gzip backups land in `data/backups/`.
+  holding chest, member, resource, game, ChestTracker, user, and clan data.
+  Migrations run automatically on boot. Daily gzip backups land in
+  `data/backups/`.
 
 See [CLAUDE.md](CLAUDE.md) for build/deploy conventions and the reasoning
 behind the parts that look odd, and [CONTRIBUTING.md](CONTRIBUTING.md) if you
@@ -487,7 +438,7 @@ plan to send a patch.
 ## Security
 
 Please read [SECURITY.md](SECURITY.md) before exposing this to anything. Short
-version: it holds a live game session and other people's data, it is built for a
+version: it holds a live game login and other people's data, it is built for a
 trusted network rather than the open internet, and vulnerabilities should go to
 a private advisory rather than a public issue.
 

@@ -280,9 +280,9 @@ function insertChest(chest) {
     try {
         const result = db.prepare(`
       INSERT INTO chest_records
-        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), confFloatToInt(chest.confidence), chest.debugCropPath ?? null, chest.rawPlayerOcr ?? null, chest.earnedAt ?? null);
+        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, debug_crop_path, raw_player_ocr, earned_at, game_gift_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), confFloatToInt(chest.confidence), chest.debugCropPath ?? null, chest.rawPlayerOcr ?? null, chest.earnedAt ?? null, chest.gameGiftId ?? null);
         return { id: result.lastInsertRowid, ...chest };
     }
     catch (err) {

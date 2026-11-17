@@ -136,8 +136,14 @@ export function syncMembersFromGame(
         const created = upsertMember(name, clanId);
         if (!linkedIds.has(created.id) && link(clanId, created.id, rm.playerId)) {
           memberId = created.id;
-          result.created++;
-          if (!all.some((m) => m.id === created.id)) all.push(created);
+          // upsertMember also finds members by alias and despaced name (and
+          // reactivates them) — only a row that did not exist is "created".
+          if (all.some((m) => m.id === created.id)) {
+            result.newlyLinked++;
+          } else {
+            result.created++;
+            all.push(created);
+          }
         } else {
           // The name (or an alias of it) belongs to a member linked to someone
           // else — e.g. a newcomer took a renamed player's old name.
@@ -196,4 +202,70 @@ export function syncMembersFromGame(
     }
   }
   return result;
+}
+
+/**
+ * Resolve the member a game player's activity belongs to — a gift's sender or a
+ * ledger entry's player — including players no longer in the clan. Built once
+ * per run (after syncMembersFromGame) so lookups are cheap.
+ *
+ * Never reactivates or renames anyone, so a gift from someone who left cannot
+ * undo the departure the sync just recorded:
+ *   1. current roster → the synced member;
+ *   2. a member already linked to the player id → that member;
+ *   3. the member with that exact name (after merge rules) → that member, and
+ *      linked to the player when it has no link yet;
+ *   4. else a new member under the game name, linked, and marked left when the
+ *      player is not in the clan.
+ * Returns null only for a player with no id link and no name.
+ */
+export function makeMemberResolver(
+  clanId: number,
+  rosterMembers: Map<number, number>,
+): (playerId: number, name: string) => number | null {
+  const canonical = loadPlayerNameCanonicaliser(clanId);
+  const cache = new Map<number, number | null>(rosterMembers);
+  const db = getDb();
+  let all: ClanMember[] | null = null;
+  type Status = { is_active: number; left_at: string | null; last_seen: string };
+  let prior: Map<number, Status> | null = null;
+
+  return (playerId, name) => {
+    if (playerId > 0 && cache.has(playerId)) return cache.get(playerId) ?? null;
+    let id: number | null = null;
+    const linkedRow = playerId > 0
+      ? db.prepare('SELECT id FROM members WHERE clan_id = ? AND game_player_id = ?').get(clanId, playerId) as { id: number } | undefined
+      : undefined;
+    if (linkedRow) {
+      id = linkedRow.id;
+    } else if (name) {
+      const target = canonical(name);
+      all ??= getAllMembers(false, clanId);
+      const match = exactMatchMember(target, all);
+      if (match) {
+        if (playerId > 0) link(clanId, match.id, playerId);
+        id = match.id;
+      } else {
+        prior ??= new Map((db.prepare('SELECT id, is_active, left_at, last_seen FROM members WHERE clan_id = ?')
+          .all(clanId) as Array<Status & { id: number }>).map((r) => [r.id, r]));
+        const found = upsertMember(target, clanId);
+        const before = prior.get(found.id);
+        if (before) {
+          // upsertMember found an existing member (alias / despaced name) and
+          // stamped it seen + active; a player outside the clan must not.
+          db.prepare('UPDATE members SET is_active = ?, left_at = ?, last_seen = ? WHERE id = ?')
+            .run(before.is_active, before.left_at, before.last_seen, found.id);
+          if (playerId > 0) link(clanId, found.id, playerId);
+        } else {
+          if (playerId > 0) link(clanId, found.id, playerId);
+          removeMember(found.id, clanId);
+          prior.set(found.id, { is_active: 0, left_at: null, last_seen: found.lastSeen });
+          all.push({ ...found, isActive: false });
+        }
+        id = found.id;
+      }
+    }
+    if (playerId > 0) cache.set(playerId, id);
+    return id;
+  };
 }

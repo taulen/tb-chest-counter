@@ -126,12 +126,12 @@ function insertTransactions(rows) {
     const stmt = db.prepare(`
     INSERT INTO resource_transactions
       (clan_id, batch_id, member_id, resource_type_id, direction, amount,
-       transaction_date, raw_player_name, created_at, row_crop_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       transaction_date, raw_player_name, created_at, row_crop_path, game_entry_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
     const tx = db.transaction(() => {
         for (const r of rows) {
-            stmt.run(r.clanId, r.batchId, r.memberId, r.resourceTypeId ?? null, r.direction, r.amount, r.transactionDate, r.rawPlayerName, now, r.rowCropPath ?? null);
+            stmt.run(r.clanId, r.batchId, r.memberId, r.resourceTypeId ?? null, r.direction, r.amount, r.transactionDate, r.rawPlayerName, now, r.rowCropPath ?? null, r.gameEntryId ?? null);
         }
     });
     tx();

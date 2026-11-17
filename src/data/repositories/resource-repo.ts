@@ -86,6 +86,8 @@ export interface InsertTransactionRow {
   rawPlayerName: string;
   /** On-disk PNG of the source screenshot row, for rows the importer left unresolved. */
   rowCropPath?: string | null;
+  /** The Clan Capital ledger entry this row came from (v103; unique per clan). */
+  gameEntryId?: number | null;
 }
 
 /**
@@ -215,15 +217,15 @@ export function insertTransactions(rows: InsertTransactionRow[]): { inserted: nu
   const stmt = db.prepare(`
     INSERT INTO resource_transactions
       (clan_id, batch_id, member_id, resource_type_id, direction, amount,
-       transaction_date, raw_player_name, created_at, row_crop_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       transaction_date, raw_player_name, created_at, row_crop_path, game_entry_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const tx = db.transaction(() => {
     for (const r of rows) {
       stmt.run(
         r.clanId, r.batchId, r.memberId, r.resourceTypeId ?? null,
         r.direction, r.amount, r.transactionDate, r.rawPlayerName, now,
-        r.rowCropPath ?? null,
+        r.rowCropPath ?? null, r.gameEntryId ?? null,
       );
     }
   });
