@@ -1110,8 +1110,8 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
 
   // GET /api/export/catalog - chest names, source keys, and admin corrections
   // as a single JSON file intended to be committed into the repo so new
-  // deployments can seed KNOWN_CHESTS / SOURCE_POINTS without re-discovering
-  // every OCR fix. Returned uncompressed so it diffs cleanly in source control.
+  // deployments can seed SOURCE_POINTS / SOURCE_CHEST_POINTS from it.
+  // Returned uncompressed so it diffs cleanly in source control.
   router.get('/export/catalog', requireAdmin, (req, res) => {
     const data = exportCatalog(req.clanId ?? 1);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

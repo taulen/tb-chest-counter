@@ -1,22 +1,16 @@
 /**
- * Pins the Events catalog against the chest-name corrector.
+ * Pins the Events catalog's shape.
  *
  * The Ragnarok "Jormungandr" column read 0 for weeks with 2113 matching records
  * sitting in the DB: commit 89266dd renamed the chest to the umlaut spelling and
  * nothing connected that to the plain-o literal in event-catalog.ts. 652 tests
- * stayed green because no test imported EVENT_CATALOG at all.
- *
- * The load-bearing assertion is `correctChestName(name) === name`. `chests` rows
- * are reconciled through correctChestName on every boot (cleanupChestNames in
- * src/data/database.ts), so a catalog name the corrector would rewrite is, by
- * definition, a name no chest row will ever carry. That makes this a pure test —
- * no DB, no fixtures — that still catches the whole rename class, and it goes red
- * the moment someone edits KNOWN_CHESTS without updating the catalog.
+ * stayed green because no test imported EVENT_CATALOG at all. The spelling half
+ * of that now lives in tests/config/chest-name-literals.test.ts (one spelling
+ * per chest across every hand-written list); this file keeps the rest.
  */
 
 import { describe, it, expect } from 'vitest';
 import { EVENT_CATALOG } from '../../src/config/event-catalog.js';
-import { correctChestName } from '../../src/data/chest-names.js';
 
 function declaredNames(rule: { chestName?: string; chestNames?: string[] }): string[] {
   return [...(rule.chestName ? [rule.chestName] : []), ...(rule.chestNames || [])];
@@ -28,19 +22,6 @@ function columnKey(rule: { label?: string; chestName?: string; chestNames?: stri
 }
 
 describe('EVENT_CATALOG', () => {
-  it('declares every chest under the spelling correctChestName produces', () => {
-    const wrong: string[] = [];
-    for (const def of EVENT_CATALOG) {
-      for (const rule of def.rules) {
-        for (const name of declaredNames(rule)) {
-          const corrected = correctChestName(name);
-          if (corrected !== name) wrong.push(`${def.key}: "${name}" should be "${corrected}"`);
-        }
-      }
-    }
-    expect(wrong).toEqual([]);
-  });
-
   it('gives every rule in an event a distinct column key', () => {
     // columnKeyForRule collisions don't error — the `if (!chestIdToColumn.has(id))`
     // first-wins guard in event-repo silently folds the second rule into the first,

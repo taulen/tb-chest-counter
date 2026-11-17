@@ -19,15 +19,13 @@ const log = childLogger('chest-repo');
 // scan completion and other chest-data mutations via the invalidation hooks.
 export const ANALYTICS_CACHE_TTL_MS = 15000;
 
-// ─── captured_at + confidence storage conversions ───
+// ─── captured_at storage conversions ───
 //
 // Post-v30 captured_at is stored as INTEGER ms-since-epoch (was a
-// 24-char ISO TEXT) and confidence is stored as INTEGER 0–100 (was
-// REAL 0.0–1.0). The application surface stays the same — repo
-// callers pass / receive ISO strings and 0.0–1.0 floats — and these
-// helpers convert at the boundary. Filter args (from / to) get the
-// same treatment so `WHERE captured_at >= ?` keeps comparing
-// numbers to numbers.
+// 24-char ISO TEXT). The application surface stays the same — repo
+// callers pass / receive ISO strings — and these helpers convert at the
+// boundary. Filter args (from / to) get the same treatment so
+// `WHERE captured_at >= ?` keeps comparing numbers to numbers.
 
 function isoToMs(iso: string): number {
   return Date.parse(iso);
@@ -35,14 +33,6 @@ function isoToMs(iso: string): number {
 
 function msToIso(ms: number): string {
   return new Date(ms).toISOString();
-}
-
-function confFloatToInt(f: number): number {
-  return Math.round(f * 100);
-}
-
-function confIntToFloat(i: number): number {
-  return i / 100;
 }
 
 /**
@@ -125,7 +115,6 @@ function rowToChest(row: Record<string, unknown>): ChestRecord {
     pointValue: row.point_value as number,
     capturedAt: msToIso(row.captured_at as number),
     effectiveAt: msToIso((row.effective_at ?? row.captured_at) as number),
-    confidence: confIntToFloat(row.confidence as number),
   };
 }
 
@@ -134,8 +123,8 @@ function rowToChest(row: Record<string, unknown>): ChestRecord {
  * Hot path during scans — gets called once per inserted chest.
  *
  * On the first time a chest is observed, `chest_type` is set from
- * `defaultType` (the catalog type for that name). Subsequent observations
- * leave it alone; a type declared later in KNOWN_CHESTS reaches the row
+ * `defaultType` (chestTypeFor, chest-names.ts). Subsequent observations
+ * leave it alone; a type declared later in CHEST_TYPES reaches the row
  * through syncChestTypes at boot.
  */
 export function getOrCreateChestId(name: string, defaultType: string): number {
@@ -216,8 +205,8 @@ export function insertChest(
   try {
     const result = db.prepare(`
       INSERT INTO chest_records
-        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, earned_at, game_gift_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       chest.clanId,
       chest.sessionId,
@@ -226,7 +215,6 @@ export function insertChest(
       chestSourceId,
       chest.pointValue,
       isoToMs(chest.capturedAt),
-      confFloatToInt(chest.confidence),
       chest.earnedAt ?? null,
       chest.gameGiftId ?? null,
     );

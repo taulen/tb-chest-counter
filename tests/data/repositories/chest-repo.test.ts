@@ -55,7 +55,6 @@ function makeChest(overrides: {
     chestSource: 'clan_gift',
     pointValue: overrides.pointValue ?? 1,
     capturedAt: overrides.capturedAt ?? '2026-04-27T12:00:00.000Z',
-    confidence: 1,
   };
 }
 

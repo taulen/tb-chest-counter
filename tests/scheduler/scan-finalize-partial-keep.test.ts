@@ -76,7 +76,6 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
       chestSource: 'clan_gift',
       pointValue: 1,
       capturedAt: '2026-07-28T06:17:00.000Z',
-      confidence: 1,
     });
   }
 
@@ -92,7 +91,6 @@ describe('finalizeScanFailure — chests claimed before an abort', () => {
       pointValue: 0,
       capturedAt: '2026-07-28T06:17:10.000Z',
       effectiveAt: '2026-07-28T06:17:10.000Z',
-      confidence: 1,
     });
   }
 

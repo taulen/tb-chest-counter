@@ -12,9 +12,9 @@ exports.getRecent = getRecent;
 exports.getStats = getStats;
 const database_js_1 = require("../database.js");
 const chest_repo_js_1 = require("./chest-repo.js");
-// Local conversion helpers — captured_at is INTEGER ms, confidence is
-// INTEGER 0–100 post-v30; the public surface still works with ISO
-// strings + 0.0–1.0 floats. Same shape as in chest-repo.ts.
+// Local conversion helpers — captured_at is INTEGER ms post-v30; the
+// public surface still works with ISO strings. Same shape as in
+// chest-repo.ts.
 function isoToMs(iso) {
     return Date.parse(iso);
 }
@@ -60,7 +60,6 @@ function rowToChest(row) {
         pointValue: row.point_value,
         capturedAt: msToIso(row.captured_at),
         effectiveAt: msToIso((row.effective_at ?? row.captured_at)),
-        confidence: row.confidence / 100,
     };
 }
 function insertChest(chest) {
@@ -79,9 +78,9 @@ function insertChest(chest) {
     const chestSourceId = (0, chest_repo_js_1.getOrCreateChestSourceId)(chest.chestSource);
     const result = db.prepare(`
     INSERT INTO triumphal_chest_records
-      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, confidence, earned_at, game_gift_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), Math.round(chest.confidence * 100), chest.earnedAt ?? null, chest.gameGiftId ?? null);
+      (clan_id, session_id, member_id, chest_id, chest_source_id, point_value, captured_at, earned_at, game_gift_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(chest.clanId, chest.sessionId, chest.memberId, chestId, chestSourceId, chest.pointValue, isoToMs(chest.capturedAt), chest.earnedAt ?? null, chest.gameGiftId ?? null);
     return { id: result.lastInsertRowid, ...chest };
 }
 function deleteBySession(sessionId, clanId) {

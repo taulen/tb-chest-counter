@@ -877,11 +877,11 @@
   {
     "type": "view",
     "name": "chest_records_v",
-    "sql": "CREATE VIEW chest_records_v AS SELECT cr.id, cr.clan_id, cr.session_id, m.name AS player_name, cr.member_id, ch.name AS chest_name, COALESCE(cs.rarity, ch.chest_type) AS chest_type, COALESCE(cs.source, '') AS chest_source, 1 AS quantity, cr.point_value, cr.captured_at, cr.effective_at, cr.confidence, cr.debug_crop_path, cr.chest_id, cr.chest_source_id FROM chest_records cr JOIN members m ON m.id = cr.member_id JOIN chests ch ON ch.id = cr.chest_id LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id"
+    "sql": "CREATE VIEW chest_records_v AS SELECT cr.id, cr.clan_id, cr.session_id, m.name AS player_name, cr.member_id, ch.name AS chest_name, COALESCE(cs.rarity, ch.chest_type) AS chest_type, COALESCE(cs.source, '') AS chest_source, 1 AS quantity, cr.point_value, cr.captured_at, cr.effective_at, cr.chest_id, cr.chest_source_id FROM chest_records cr JOIN members m ON m.id = cr.member_id JOIN chests ch ON ch.id = cr.chest_id LEFT JOIN chest_sources cs ON cs.id = cr.chest_source_id"
   },
   {
     "type": "view",
     "name": "triumphal_chest_records_v",
-    "sql": "CREATE VIEW triumphal_chest_records_v AS SELECT tr.id, tr.clan_id, tr.session_id, m.name AS player_name, tr.member_id, ch.name AS chest_name, ch.chest_type, COALESCE(cs.source, '') AS chest_source, 1 AS quantity, tr.point_value, tr.captured_at, tr.effective_at, tr.confidence, tr.debug_crop_path, tr.chest_id, tr.chest_source_id FROM triumphal_chest_records tr JOIN members m ON m.id = tr.member_id JOIN chests ch ON ch.id = tr.chest_id LEFT JOIN chest_sources cs ON cs.id = tr.chest_source_id"
+    "sql": "CREATE VIEW triumphal_chest_records_v AS SELECT tr.id, tr.clan_id, tr.session_id, m.name AS player_name, tr.member_id, ch.name AS chest_name, ch.chest_type, COALESCE(cs.source, '') AS chest_source, 1 AS quantity, tr.point_value, tr.captured_at, tr.effective_at, tr.chest_id, tr.chest_source_id FROM triumphal_chest_records tr JOIN members m ON m.id = tr.member_id JOIN chests ch ON ch.id = tr.chest_id LEFT JOIN chest_sources cs ON cs.id = tr.chest_source_id"
   }
 ]

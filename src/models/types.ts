@@ -22,10 +22,12 @@ export interface ChestRecord {
    *  capturedAt for rows scanned before earn-time capture existed. This is
    *  the timestamp shown to users; see src/utils/gift-time.ts. Read-side only. */
   effectiveAt?: string;
-  confidence: number;
   // Removed columns, all dropped via migrations and now derived in views:
   //   v20: rawText (was a JSON dump duplicating every other column)
   //   v23: quantity (always 1; SUM(quantity) became COUNT(*))
+  // Not read any more:
+  //   confidence — the OCR parser's hard-coded 0.6, never a measurement;
+  //     the column keeps its old values but left the views at v126.
 }
 
 export interface ClanMember {
@@ -62,7 +64,6 @@ export interface GiftEntry {
   timeLeft: string;
   giftTab: 'gifts' | 'triumphal';
   quantity: number;
-  confidence: number;
 }
 
 export interface AppConfig {

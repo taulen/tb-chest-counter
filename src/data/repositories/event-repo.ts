@@ -20,7 +20,6 @@ import {
   type EventLevelBucket,
 } from '../../config/event-catalog.js';
 import { parseSourceLevel, parseSourceLevelRange } from '../source-names.js';
-import { correctChestName } from '../chest-names.js';
 import { foldDiacritics } from '../../utils/name-normalize.js';
 
 const log = childLogger('event-repo');
@@ -242,17 +241,18 @@ interface ResolvedPredicate {
  * plain-o literal matched nothing, the rule was dropped with a bare `return`,
  * and the column was emitted anyway as a permanent 0.
  *
- * Now it resolves in three tiers — exact, then through `correctChestName` (which
- * already knows the canonical spelling, so a rename self-heals the moment it
- * ships), then on an accent/case/punctuation-folded key — and records anything
- * that didn't land on tier 1 as a config error, so a stale literal still gets
- * the right number AND says it needs fixing. `hasMatches` is false when nothing
- * resolved at all; the errors are still populated so the caller can report why.
+ * Now it resolves in two tiers — exact, then on an accent/case/punctuation-folded
+ * key — and records anything that didn't land on tier 1 as a config error, so a
+ * stale literal still gets the right number AND says it needs fixing. (A third
+ * tier ran the literal through the OCR-era spelling corrector; chests arrive
+ * under the game's own names now, so there is nothing for it to correct.)
+ * `hasMatches` is false when nothing resolved at all; the errors are still
+ * populated so the caller can report why.
  */
 function resolvePredicate(def: EventDefinition): ResolvedPredicate {
   const db = getDb();
 
-  const allChests = db.prepare('SELECT id, name FROM chests').all() as Array<{
+  const allChests = db.prepare('SELECT id, name FROM chests ORDER BY id').all() as Array<{
     id: number;
     name: string;
   }>;
@@ -265,24 +265,20 @@ function resolvePredicate(def: EventDefinition): ResolvedPredicate {
     const k = foldKey(c.name);
     if (!k) continue;
     // Two rows folding to the same key shouldn't happen (config-integrity flags
-    // it if it ever does); prefer the canonical spelling, matching how migration
-    // v61 picks a survivor, so the tie-break can't disagree with the DB.
-    const held = byFold.get(k);
-    if (!held || (correctChestName(c.name) === c.name && correctChestName(held.name) !== held.name)) {
-      byFold.set(k, c);
-    }
+    // it if it ever does); the oldest wins, the spelling the scan resolves a
+    // game name to (protocol-scan's storedNames, oldest row first).
+    if (!byFold.has(k)) byFold.set(k, c);
   }
 
   const configErrors: EventConfigError[] = [];
   const deadColumns = new Map<string, 'chest' | 'source'>();
 
-  /** Exact → corrected → folded. Records a config error for anything past tier 1. */
+  /** Exact → folded. Records a config error for anything past tier 1. */
   const resolveName = (declared: string): { id: number; name: string } | null => {
     const exact = byExact.get(declared);
     if (exact) return exact;
 
-    const corrected = correctChestName(declared);
-    const hit = (corrected !== declared ? byExact.get(corrected) : undefined) ?? byFold.get(foldKey(declared));
+    const hit = byFold.get(foldKey(declared));
     configErrors.push({ declared, resolvedTo: hit ? hit.name : null, kind: 'chest' });
     if (hit) {
       warnOnce(

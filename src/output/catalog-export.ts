@@ -15,8 +15,8 @@ const CATALOG_SCHEMA_VERSION = 3;
 /**
  * Snapshot of every chest name, chest source, and admin correction currently
  * in the DB. The goal is to produce a single JSON dump that can be dropped
- * into the source tree to seed KNOWN_CHESTS / SOURCE_POINTS for new
- * deployments, so fresh installs don't re-discover the same OCR fixes.
+ * into the source tree to seed SOURCE_POINTS / SOURCE_CHEST_POINTS (and
+ * CHEST_TYPES) for new deployments, so fresh installs score from day one.
  *
  * Unlike the full JSON export, this intentionally excludes chest_records,
  * members, and sessions — it's a catalog, not a backup.

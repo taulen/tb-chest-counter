@@ -1,40 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ocrNormalize,
   transliterateCyrillicHomoglyphs,
   namesDifferByAltSuffix,
 } from '../../src/utils/name-normalize.js';
 
 /**
  * Shared name-matching primitives. Pure functions, no I/O — these
- * underpin the chest-name and member-name fuzzy matchers.
+ * underpin the member-name matcher and the merge rules.
  */
-
-describe('ocrNormalize', () => {
-  it('lowercases and strips non-alpha', () => {
-    expect(ocrNormalize("Priest's Chest")).toBe('priests chest');
-  });
-
-  it('maps OCR-confusable digits onto letters', () => {
-    expect(ocrNormalize('0rc Chest')).toBe('orc chest');
-    expect(ocrNormalize('5tone Chest')).toBe('stone chest');
-    expect(ocrNormalize('1nferno')).toBe('lnferno'); // 1 → l
-    expect(ocrNormalize('!nferno')).toBe('inferno');
-    expect(ocrNormalize('8ronze')).toBe('bronze');
-  });
-
-  it('collapses whitespace', () => {
-    expect(ocrNormalize('  Stone   Chest  ')).toBe('stone chest');
-  });
-
-  it('collapses Cyrillic homoglyphs onto their Latin lookalikes', () => {
-    // "Sтоnе" — the т, о and е are Cyrillic (U+0442/043E/0435), a
-    // misread the multi-lang Tesseract worker routinely produces.
-    expect(ocrNormalize('Sтоnе Chest')).toBe('stone chest');
-    // "Аndrе" — leading А and trailing е are Cyrillic.
-    expect(ocrNormalize('Аndrе')).toBe('andre');
-  });
-});
 
 describe('transliterateCyrillicHomoglyphs', () => {
   it('maps Cyrillic lookalikes to Latin and leaves real Latin alone', () => {

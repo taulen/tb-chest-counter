@@ -4,13 +4,11 @@
  *
  * SOURCE_CHEST_POINTS is name-keyed config, so it fails the same way every
  * other name-keyed surface in this repo fails: silently, as a zero that reads
- * like a result. A chest spelled differently from what `correctChestName`
- * produces can never match a `chests` row — cleanupChestNames reconciles every
- * row through that function on each boot — so the entry simply never fires and
- * the chest scores the source-wide default instead. Nothing logs. Same class of
- * bug as the Ragnarok/Jörmungandr rename, and the same fix as
- * tests/config/event-catalog.test.ts: assert the spelling here, in a pure test
- * that runs as part of `npm run build`.
+ * like a result. A chest spelled differently from the game's name can never
+ * match a `chests` row, so the entry simply never fires and the chest scores
+ * the source-wide default instead. Nothing logs. Same class of bug as the
+ * Ragnarok/Jörmungandr rename; tests/config/chest-name-literals.test.ts keeps
+ * the chest spellings here in line with every other list.
  *
  * The source-key half has its own trap: keys are matched through
  * `canonicalSourceKey` (spacing and accents folded), so two keys that look
@@ -26,22 +24,8 @@ import {
   getDefaultPointsFor,
   getDefaultPointsForKey,
 } from '../../src/data/source-names.js';
-import { correctChestName } from '../../src/data/chest-names.js';
 
 describe('seeded source point values', () => {
-  it('spells every chest the way correctChestName does', () => {
-    const wrong: string[] = [];
-    for (const [sourceKey, byName] of Object.entries(SOURCE_CHEST_POINTS)) {
-      for (const chestName of Object.keys(byName)) {
-        const corrected = correctChestName(chestName);
-        if (corrected !== chestName) {
-          wrong.push(`${sourceKey}: "${chestName}" should be "${corrected}"`);
-        }
-      }
-    }
-    expect(wrong).toEqual([]);
-  });
-
   it('has no two source keys that collapse to the same canonical key', () => {
     // Both tables are looked up canonically, so a collision means one of the
     // two entries is unreachable — and which one wins depends on insertion
@@ -74,8 +58,8 @@ describe('seeded source point values', () => {
 
   it('matches a per-chest seed through a spaceless PaddleOCR source key', () => {
     // PaddleOCR drops inter-word spaces, so the key arriving at lookup time can
-    // be "summoningdarkomens". The chest NAME is not folded — it has already
-    // been through correctChestName by then.
+    // be "summoningdarkomens". The chest NAME is not folded — it is the game's
+    // own spelling, stored as is.
     expect(getDefaultPointsFor('summoningdarkomens', 'Epic Omen Chest')).toBe(150);
     expect(getDefaultPointsFor('level35heroicmonster', 'Inferno Chest')).toBe(625);
   });
