@@ -24,19 +24,39 @@ import { childLogger } from '../utils/logger.js';
 import { clanDataDir, clanStorageStatePath } from '../config/clan-paths.js';
 import { GameClient, SessionLoggedOutError } from '../game-protocol/client.js';
 import { noteSessionHealthy, noteSessionLoggedOut } from './session-health.js';
-import { loadGameNames } from '../game-protocol/static-data.js';
-import { parseClanRecord, parseLedger, parsePlayers, type PlayerRecord } from '../game-protocol/messages.js';
+import { loadGameNames, type GameNames } from '../game-protocol/static-data.js';
+import type { Frame } from '../game-protocol/codec.js';
 import {
+  parseCityRecord,
+  parseClanRecord,
+  parseLedger,
+  parseMapObjects,
+  parsePlayers,
+  tileOf,
+  type ClanRecord,
+  type LedgerEntry,
+  type PlayerRecord,
+} from '../game-protocol/messages.js';
+import {
+  citySnapshotPlayers,
   finishCaptureRun,
+  hasRawSnapshot,
   loadScanComparisonInputs,
+  saveCitySnapshot,
   saveGifts,
   saveLedger,
+  saveMapObjects,
   savePlayers,
+  saveRawSnapshot,
   saveScanComparison,
+  saveTechs,
   startCaptureRun,
+  type MapObjectRow,
   type NamedGift,
 } from '../data/repositories/game-protocol-repo.js';
 import { compareGifts } from '../game-protocol/compare.js';
+import { syncMembersFromGame } from '../game-protocol/member-sync.js';
+import { currentGameDate } from '../utils/game-day.js';
 
 const log = childLogger('game-protocol');
 
@@ -52,7 +72,23 @@ export interface GameProtocolOutcome {
   error?: string;
 }
 
-export async function runGameProtocolCapture(clanId: number): Promise<GameProtocolOutcome> {
+/** What a capture read, for callers that act on it (the protocol scan claims on the same session). */
+export interface CaptureData {
+  client: GameClient;
+  names: GameNames;
+  record: ClanRecord;
+  byId: Map<number, PlayerRecord>;
+  gifts: NamedGift[];
+  ledger: LedgerEntry[];
+  gameDate: string;
+  /** game player id → our member id (after member sync). */
+  memberIds: Map<number, number>;
+}
+
+export async function runGameProtocolCapture(
+  clanId: number,
+  opts: { rolloverUtcHour: number },
+): Promise<GameProtocolOutcome & { data?: CaptureData }> {
   const started = Date.now();
   const runId = startCaptureRun(clanId);
   try {
@@ -62,7 +98,8 @@ export async function runGameProtocolCapture(clanId: number): Promise<GameProtoc
       deviceFile: path.join(clanDataDir(clanId), 'game-device.json'),
     });
     noteSessionHealthy(clanId, 'the game capture signed in with the saved session');
-    const record = parseClanRecord(await client.clanRecord());
+    const clanFrame = await client.clanRecord();
+    const record = parseClanRecord(clanFrame);
     if (!record || !record.members.length) {
       throw new Error(`the game returned no member list for clan ${client.clanId} — is the account still in the clan?`);
     }
@@ -98,6 +135,22 @@ export async function runGameProtocolCapture(clanId: number): Promise<GameProtoc
     const newGifts = saveGifts(clanId, gifts);
     const ledgerNew = saveLedger(clanId, ledger);
     const unnamed = gifts.filter((g) => !g.chestName).length;
+    const gameDate = currentGameDate(opts.rolloverUtcHour);
+
+    // Members: link to game ids, exact names, roles, seen, might/hero snapshot, departures.
+    let memberIds = new Map<number, number>();
+    let syncNote = '';
+    try {
+      const sync = syncMembersFromGame(clanId, record.members, players, gameDate);
+      memberIds = sync.memberIds;
+      syncNote = `members linked ${sync.linked} (+${sync.newlyLinked} matched, +${sync.created} new, ` +
+        `${sync.renamed} renamed, ${sync.departed} left${sync.mergedByRule ? `, ${sync.mergedByRule} alts by merge rule` : ''})`;
+    } catch (err) {
+      log.warn({ noAlert: true }, `Clan #${clanId} member sync failed (capture data kept): ${String(err)}`);
+    }
+
+    const data: CaptureData = { client, names, record, byId, gifts, ledger, gameDate, memberIds };
+    const extras = await collectExtras(clanId, data, clanFrame);
 
     const outcome = {
       ok: true,
@@ -109,10 +162,10 @@ export async function runGameProtocolCapture(clanId: number): Promise<GameProtoc
     finishCaptureRun(runId, { ...outcome, gameClanId: record.clanId, namesVersion: names.version, durationMs: Date.now() - started });
     log.info(
       `Clan #${clanId} game capture: ${record.members.length} members, ${gifts.length} gift entries ` +
-      `(${newGifts} new${unnamed ? `, ${unnamed} with no name yet` : ''}), ${ledgerNew} new ledger entries ` +
-      `in ${Date.now() - started} ms`,
+      `(${newGifts} new${unnamed ? `, ${unnamed} with no name yet` : ''}), ${ledgerNew} new ledger entries; ` +
+      `${syncNote}; ${extras} — in ${Date.now() - started} ms`,
     );
-    return outcome;
+    return { ...outcome, data };
   } catch (err) {
     const error = String(err instanceof Error ? err.message : err);
     finishCaptureRun(runId, { ok: false, error, durationMs: Date.now() - started });
@@ -124,6 +177,91 @@ export async function runGameProtocolCapture(clanId: number): Promise<GameProtoc
     }
     return { ok: false, error };
   }
+}
+
+/** Cities per cycle: a big clan's daily research pass spreads over a couple of cycles. */
+const MAX_CITIES_PER_CYCLE = 120;
+/** Map tiles per cycle (members' city tiles + their neighbours). */
+const MAX_TILES_PER_CYCLE = 60;
+const TILE_BATCH = 9;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Collect what we don't display yet but want history of — each part isolated,
+ * so one failing never costs the others or the capture:
+ *   - daily: every member's city (research + hero talents, buildings, hero),
+ *     the raw clan record, and every clan-owned object (Clan Capital) raw;
+ *   - every cycle: vaults and member-owned map objects around members' cities.
+ * Returns a short summary for the log line.
+ */
+async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): Promise<string> {
+  const parts: string[] = [];
+  const now = new Date().toISOString();
+
+  try {
+    if (!hasRawSnapshot(clanId, 'clan_record', 0, d.gameDate)) {
+      saveRawSnapshot(clanId, 'clan_record', 0, d.gameDate, clanFrame.body, now);
+      let objects = 0;
+      for (const id of d.record.objects) {
+        if (hasRawSnapshot(clanId, 'clan_object', id, d.gameDate)) continue;
+        saveRawSnapshot(clanId, 'clan_object', id, d.gameDate, (await d.client.city(id)).body, now);
+        objects++;
+        await pause(100);
+      }
+      parts.push(`clan record + ${objects} clan objects archived`);
+    }
+  } catch (err) {
+    parts.push(`clan archive failed: ${String(err)}`);
+  }
+
+  try {
+    const done = citySnapshotPlayers(clanId, d.gameDate);
+    const todo = d.record.members
+      .map((m) => d.byId.get(m.playerId))
+      .filter((p): p is PlayerRecord => !!p && p.cityId !== null && !done.has(p.playerId))
+      .slice(0, MAX_CITIES_PER_CYCLE);
+    let changed = 0;
+    for (const p of todo) {
+      try {
+        const city = parseCityRecord(await d.client.city(p.cityId as number));
+        if (city) {
+          changed += saveTechs(clanId, p.playerId, city.techs, now);
+          saveCitySnapshot(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, hero: city.hero }, now);
+        }
+      } catch {
+        // One unreadable city never stops the rest; it is retried next cycle.
+      }
+      await pause(100);
+    }
+    if (todo.length) parts.push(`${todo.length} cities read (${changed} research/talent changes)`);
+  } catch (err) {
+    parts.push(`city pass failed: ${String(err)}`);
+  }
+
+  try {
+    const tiles = new Set<number>();
+    for (const m of d.record.members) {
+      const pos = d.byId.get(m.playerId)?.position;
+      if (!pos || pos[0] !== d.client.realmId) continue;
+      for (const dx of [-20, 0, 20]) for (const dy of [-20, 0, 20]) tiles.add(tileOf(pos[1] + dx, pos[2] + dy));
+    }
+    const list = [...tiles].filter((t) => t >= 0).slice(0, MAX_TILES_PER_CYCLE);
+    const memberIds = new Set(d.record.members.map((m) => m.playerId));
+    const rows: MapObjectRow[] = [];
+    for (let i = 0; i < list.length; i += TILE_BATCH) {
+      for (const o of parseMapObjects(await d.client.mapTiles(list.slice(i, i + TILE_BATCH)))) {
+        const name = d.names.objects[String(o.type)] ?? '';
+        if (!/vault/i.test(name) && !(o.ownerId !== null && memberIds.has(o.ownerId))) continue;
+        rows.push({ objectId: o.objectId, type: o.type, name, level: o.level, realm: o.realm, x: o.x, y: o.y, ownerId: o.ownerId, expiresAt: o.expiresAt });
+      }
+      await pause(100);
+    }
+    const fresh = saveMapObjects(clanId, rows, now);
+    parts.push(`${rows.length} vaults/member objects on ${list.length} tiles (${fresh} new)`);
+  } catch (err) {
+    parts.push(`map pass failed: ${String(err)}`);
+  }
+  return parts.join('; ');
 }
 
 /**

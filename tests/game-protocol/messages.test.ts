@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Frame, Wire } from '../../src/game-protocol/codec.js';
-import { GIFT_LIFETIME_S, parseCityTechs, parseClanRecord, parseLedger, parsePlayers } from '../../src/game-protocol/messages.js';
+import {
+  GIFT_LIFETIME_S,
+  parseCityRecord,
+  parseCityTechs,
+  parseClaimRewards,
+  parseClanRecord,
+  parseLedger,
+  parseMapObjects,
+  parsePlayers,
+  tileOf,
+} from '../../src/game-protocol/messages.js';
 import { buildLoginBody, classifySitePage, loginHumanArray, parseSitePage } from '../../src/game-protocol/client.js';
 
 const frame = (type: number, body: Wire[]): Frame => ({ type, seq: 1, head: [type, 1], body, children: [], events: [] });
@@ -35,7 +45,7 @@ describe('game messages', () => {
     ];
     const [r] = parsePlayers(frame(402, [[[[p]]]]));
     expect(r).toEqual({
-      playerId: 4599909974644, name: 'baron SP K260 sk', heroAvatar: 2, heroLevel: 116, cityLevel: 30, vip: 12,
+      playerId: 4599909974644, name: 'baron SP K260 sk', position: [1071, 549, 527], heroAvatar: 2, heroLevel: 116, cityLevel: 30, vip: 12,
       might: 29724600, clanId: 4599909974038, clanTag: 'SIN', cityId: 4599917580129, goldPass: true,
     });
   });
@@ -49,6 +59,46 @@ describe('game messages', () => {
       { entryId: 4609, playerId: 4599909975340, kind: 7, resource: 74285, occurredAt: 1794870480, amounts: { 74285: 1600 } },
       { entryId: 1620, playerId: 4599909974071, kind: 2, resource: 0, occurredAt: 1794516720, amounts: { 2051: 24, 2052: 48 } },
     ]);
+  });
+
+  it('reads the rewards a claim (15013) granted', () => {
+    // Real reply shape: Triumphal Wooden Chest opened → one 1-hour Clan Speedup.
+    const body: Wire[] = [[[{ 2050: 1 }, {}, [], [], [], [], 0, 0, 0, {}, [], {}, 0, [], 0, {}]]];
+    expect(parseClaimRewards(frame(15013, body))).toEqual({ 2050: 1 });
+    expect(parseClaimRewards(frame(15013, [[[{}]]]))).toEqual({});
+  });
+
+  it('lists the clan-owned objects (15000 f5)', () => {
+    const rec: Wire = [[7], ['T', 'Test'], [[[1], 1, 0]], [], {}, [[4599917580066], [4599917593293]], 1, 0, null, 0, null, 0, {}, [], false];
+    expect(parseClanRecord(frame(15000, [[[rec]]]))?.objects).toEqual([4599917580066, 4599917593293]);
+  });
+
+  it('reads a city (601): owner, buildings, techs and hero', () => {
+    const city: Wire[] = [];
+    city[0] = [4599917580129];
+    city[1] = [[4599909974644]];
+    city[12] = { 3: [3, 41, 25, 0], 7: [7, 12, 30, 0] };
+    city[17] = { 1215: [1215, 2], 29006: [29006, 20] };
+    city[26] = { 1: [1, [5], 98765, 116] };
+    // Real reply nesting: [[[city], []]].
+    const r = parseCityRecord(frame(601, [[[city], []]]));
+    expect(r).toEqual({
+      cityId: 4599917580129,
+      ownerId: 4599909974644,
+      techs: { 1215: 2, 29006: 20 },
+      buildings: { 3: { type: 41, level: 25 }, 7: { type: 12, level: 30 } },
+      hero: { level: 116, xp: 98765 },
+    });
+  });
+
+  it('reads map objects (312) wherever they sit in the tile reply, and maps coordinates to tiles', () => {
+    const vault: Wire = [[88], 5021, 0, 0, 0, 45, 0, 0, [1071, 549, 527], [4599909974644], 1795000000];
+    const objs = parseMapObjects(frame(312, [[[[[[1301, [vault]]]]]]]));
+    expect(objs).toEqual([
+      { objectId: 88, type: 5021, level: 45, realm: 1071, x: 549, y: 527, ownerId: 4599909974644, expiresAt: 1795000000 },
+    ]);
+    expect(tileOf(549, 527)).toBe(26 * 50 + 27);
+    expect(tileOf(0, 0)).toBe(0);
   });
 
   it('finds the tech map (research + talents) in city details (601)', () => {

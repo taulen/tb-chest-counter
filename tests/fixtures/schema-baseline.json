@@ -46,6 +46,11 @@
   },
   {
     "type": "index",
+    "name": "idx_chest_records_game_gift",
+    "sql": "CREATE INDEX idx_chest_records_game_gift ON chest_records (clan_id, game_gift_id) WHERE game_gift_id IS NOT NULL"
+  },
+  {
+    "type": "index",
     "name": "idx_chest_records_member",
     "sql": "CREATE INDEX idx_chest_records_member ON chest_records(member_id)"
   },
@@ -96,6 +101,11 @@
   },
   {
     "type": "index",
+    "name": "idx_game_claims_clan",
+    "sql": "CREATE INDEX idx_game_claims_clan ON game_claims (clan_id, claimed_at)"
+  },
+  {
+    "type": "index",
     "name": "idx_game_gifts_arrived",
     "sql": "CREATE INDEX idx_game_gifts_arrived ON game_gifts (clan_id, arrived_at)"
   },
@@ -103,6 +113,11 @@
     "type": "index",
     "name": "idx_game_ledger_time",
     "sql": "CREATE INDEX idx_game_ledger_time ON game_ledger (clan_id, occurred_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_game_map_objects_owner",
+    "sql": "CREATE INDEX idx_game_map_objects_owner ON game_map_objects (clan_id, owner_id, first_seen)"
   },
   {
     "type": "index",
@@ -148,6 +163,11 @@
     "type": "index",
     "name": "idx_members_despaced",
     "sql": "CREATE INDEX idx_members_despaced ON members(clan_id, despaced_name)"
+  },
+  {
+    "type": "index",
+    "name": "idx_members_game_player",
+    "sql": "CREATE UNIQUE INDEX idx_members_game_player ON members (clan_id, game_player_id) WHERE game_player_id IS NOT NULL"
   },
   {
     "type": "index",
@@ -223,6 +243,11 @@
     "type": "index",
     "name": "idx_resource_transactions_unresolved",
     "sql": "CREATE INDEX idx_resource_transactions_unresolved ON resource_transactions(clan_id, transaction_date) WHERE resource_type_id IS NULL"
+  },
+  {
+    "type": "index",
+    "name": "idx_resource_tx_game_entry",
+    "sql": "CREATE UNIQUE INDEX idx_resource_tx_game_entry ON resource_transactions (clan_id, game_entry_id) WHERE game_entry_id IS NOT NULL"
   },
   {
     "type": "index",
@@ -367,7 +392,7 @@
   {
     "type": "table",
     "name": "chest_records",
-    "sql": "CREATE TABLE chest_records ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL DEFAULT 1, session_id INTEGER NOT NULL REFERENCES scan_sessions(id), member_id INTEGER NOT NULL REFERENCES members(id), chest_id INTEGER NOT NULL REFERENCES chests(id), chest_source_id INTEGER REFERENCES chest_sources(id), point_value INTEGER NOT NULL DEFAULT 0, captured_at INTEGER NOT NULL, confidence INTEGER NOT NULL DEFAULT 0, debug_crop_path TEXT, raw_player_ocr TEXT, earned_at INTEGER, effective_at GENERATED ALWAYS AS (COALESCE(earned_at, captured_at)) VIRTUAL, UNIQUE(session_id, member_id, chest_id, captured_at) )"
+    "sql": "CREATE TABLE chest_records ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL DEFAULT 1, session_id INTEGER NOT NULL REFERENCES scan_sessions(id), member_id INTEGER NOT NULL REFERENCES members(id), chest_id INTEGER NOT NULL REFERENCES chests(id), chest_source_id INTEGER REFERENCES chest_sources(id), point_value INTEGER NOT NULL DEFAULT 0, captured_at INTEGER NOT NULL, confidence INTEGER NOT NULL DEFAULT 0, debug_crop_path TEXT, raw_player_ocr TEXT, earned_at INTEGER, effective_at GENERATED ALWAYS AS (COALESCE(earned_at, captured_at)) VIRTUAL, game_gift_id INTEGER, UNIQUE(session_id, member_id, chest_id, captured_at) )"
   },
   {
     "type": "table",
@@ -397,7 +422,7 @@
   {
     "type": "table",
     "name": "clans",
-    "sql": "CREATE TABLE clans ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, game_url TEXT NOT NULL, scan_interval_minutes INTEGER, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, created_by INTEGER REFERENCES users(id), discord_enabled INTEGER NOT NULL DEFAULT 0, discord_token TEXT NOT NULL DEFAULT '', discord_channel_id TEXT NOT NULL DEFAULT '', discord_guild_id TEXT NOT NULL DEFAULT '', discord_scan_reports_enabled INTEGER NOT NULL DEFAULT 1, discord_only_new_chests INTEGER NOT NULL DEFAULT 0, discord_daily_digest_enabled INTEGER NOT NULL DEFAULT 0, discord_commands_enabled INTEGER NOT NULL DEFAULT 1, ct_share_code TEXT NOT NULL DEFAULT '', ct_poll_interval_hours INTEGER, ct_backfill_weeks INTEGER, discord_daily_digest_share_user_id TEXT NOT NULL DEFAULT '', last_digest_at TEXT NOT NULL DEFAULT '', last_digest_channel_error TEXT NOT NULL DEFAULT '', last_digest_dm_error TEXT NOT NULL DEFAULT '' , needs_reauth INTEGER NOT NULL DEFAULT 0, reauth_failed_at TEXT NOT NULL DEFAULT '', resources_enabled INTEGER NOT NULL DEFAULT 0, last_digest_game_day TEXT NOT NULL DEFAULT '', inactivity_days INTEGER, inactivity_sweep_enabled INTEGER NOT NULL DEFAULT 1, resource_auto_capture INTEGER NOT NULL DEFAULT 1, leaderboard_goal_enabled INTEGER NOT NULL DEFAULT 0, leaderboard_weekly_goal_points INTEGER, deleted_at TEXT NOT NULL DEFAULT '', week_start TEXT NOT NULL DEFAULT 'sunday', ancient_planner_defaults TEXT, public_url TEXT NOT NULL DEFAULT '', discord_weekly_digest_enabled INTEGER NOT NULL DEFAULT 0, last_weekly_digest_at TEXT NOT NULL DEFAULT '', last_weekly_digest_week TEXT NOT NULL DEFAULT '', last_weekly_digest_error TEXT NOT NULL DEFAULT '', leaderboard_goal_amber_pct INTEGER, seasonal_kingdom INTEGER NOT NULL DEFAULT 0)"
+    "sql": "CREATE TABLE clans ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, game_url TEXT NOT NULL, scan_interval_minutes INTEGER, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, created_by INTEGER REFERENCES users(id), discord_enabled INTEGER NOT NULL DEFAULT 0, discord_token TEXT NOT NULL DEFAULT '', discord_channel_id TEXT NOT NULL DEFAULT '', discord_guild_id TEXT NOT NULL DEFAULT '', discord_scan_reports_enabled INTEGER NOT NULL DEFAULT 1, discord_only_new_chests INTEGER NOT NULL DEFAULT 0, discord_daily_digest_enabled INTEGER NOT NULL DEFAULT 0, discord_commands_enabled INTEGER NOT NULL DEFAULT 1, ct_share_code TEXT NOT NULL DEFAULT '', ct_poll_interval_hours INTEGER, ct_backfill_weeks INTEGER, discord_daily_digest_share_user_id TEXT NOT NULL DEFAULT '', last_digest_at TEXT NOT NULL DEFAULT '', last_digest_channel_error TEXT NOT NULL DEFAULT '', last_digest_dm_error TEXT NOT NULL DEFAULT '' , needs_reauth INTEGER NOT NULL DEFAULT 0, reauth_failed_at TEXT NOT NULL DEFAULT '', resources_enabled INTEGER NOT NULL DEFAULT 0, last_digest_game_day TEXT NOT NULL DEFAULT '', inactivity_days INTEGER, inactivity_sweep_enabled INTEGER NOT NULL DEFAULT 1, resource_auto_capture INTEGER NOT NULL DEFAULT 1, leaderboard_goal_enabled INTEGER NOT NULL DEFAULT 0, leaderboard_weekly_goal_points INTEGER, deleted_at TEXT NOT NULL DEFAULT '', week_start TEXT NOT NULL DEFAULT 'sunday', ancient_planner_defaults TEXT, public_url TEXT NOT NULL DEFAULT '', discord_weekly_digest_enabled INTEGER NOT NULL DEFAULT 0, last_weekly_digest_at TEXT NOT NULL DEFAULT '', last_weekly_digest_week TEXT NOT NULL DEFAULT '', last_weekly_digest_error TEXT NOT NULL DEFAULT '', leaderboard_goal_amber_pct INTEGER, seasonal_kingdom INTEGER NOT NULL DEFAULT 0, scan_mode TEXT NOT NULL DEFAULT 'browser')"
   },
   {
     "type": "table",
@@ -431,6 +456,16 @@
   },
   {
     "type": "table",
+    "name": "game_city_snapshots",
+    "sql": "CREATE TABLE game_city_snapshots ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, game_date TEXT NOT NULL, captured_at TEXT NOT NULL, tech_count INTEGER NOT NULL DEFAULT 0, buildings TEXT NOT NULL DEFAULT '{}', hero TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (clan_id, player_id, game_date) )"
+  },
+  {
+    "type": "table",
+    "name": "game_claims",
+    "sql": "CREATE TABLE game_claims ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), session_id INTEGER NOT NULL, gift_id INTEGER NOT NULL, gift_type INTEGER NOT NULL, tab INTEGER NOT NULL, rewards TEXT NOT NULL, claimed_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
     "name": "game_gifts",
     "sql": "CREATE TABLE game_gifts ( clan_id INTEGER NOT NULL REFERENCES clans(id), gift_id INTEGER NOT NULL, sender_id INTEGER NOT NULL, sender_name TEXT NOT NULL DEFAULT '', gift_type INTEGER NOT NULL, chest_name TEXT NOT NULL DEFAULT '', source_name TEXT NOT NULL DEFAULT '', chest_count INTEGER NOT NULL DEFAULT 1, tab INTEGER NOT NULL DEFAULT 1, arrived_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, gift_id) )"
   },
@@ -441,13 +476,33 @@
   },
   {
     "type": "table",
+    "name": "game_map_objects",
+    "sql": "CREATE TABLE game_map_objects ( clan_id INTEGER NOT NULL REFERENCES clans(id), object_id INTEGER NOT NULL, object_type INTEGER NOT NULL, object_name TEXT NOT NULL DEFAULT '', level INTEGER, realm INTEGER, x INTEGER, y INTEGER, owner_id INTEGER, expires_at INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, object_id) )"
+  },
+  {
+    "type": "table",
     "name": "game_player_history",
     "sql": "CREATE TABLE game_player_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captured_at TEXT NOT NULL, name TEXT NOT NULL, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, PRIMARY KEY (clan_id, player_id, captured_at) )"
   },
   {
     "type": "table",
+    "name": "game_player_tech_history",
+    "sql": "CREATE TABLE game_player_tech_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, tech_id INTEGER NOT NULL, level INTEGER NOT NULL, changed_at TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, tech_id, changed_at) )"
+  },
+  {
+    "type": "table",
+    "name": "game_player_techs",
+    "sql": "CREATE TABLE game_player_techs ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, tech_id INTEGER NOT NULL, level INTEGER NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, tech_id) )"
+  },
+  {
+    "type": "table",
     "name": "game_players",
     "sql": "CREATE TABLE game_players ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, name TEXT NOT NULL, role INTEGER, joined_at INTEGER, in_clan INTEGER NOT NULL DEFAULT 1, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, city_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id) )"
+  },
+  {
+    "type": "table",
+    "name": "game_raw_snapshots",
+    "sql": "CREATE TABLE game_raw_snapshots ( clan_id INTEGER NOT NULL REFERENCES clans(id), kind TEXT NOT NULL, ref_id INTEGER NOT NULL, game_date TEXT NOT NULL, captured_at TEXT NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (clan_id, kind, ref_id, game_date) )"
   },
   {
     "type": "table",
@@ -472,7 +527,7 @@
   {
     "type": "table",
     "name": "members",
-    "sql": "CREATE TABLE members ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id) DEFAULT 1, name TEXT NOT NULL, normalized_name TEXT NOT NULL, aliases TEXT DEFAULT '[]', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, is_active INTEGER DEFAULT 1, level INTEGER DEFAULT 0, power INTEGER DEFAULT 0, clan_role TEXT DEFAULT '', despaced_name TEXT NOT NULL DEFAULT '', left_at TEXT, UNIQUE(clan_id, normalized_name) )"
+    "sql": "CREATE TABLE members ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id) DEFAULT 1, name TEXT NOT NULL, normalized_name TEXT NOT NULL, aliases TEXT DEFAULT '[]', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, is_active INTEGER DEFAULT 1, level INTEGER DEFAULT 0, power INTEGER DEFAULT 0, clan_role TEXT DEFAULT '', despaced_name TEXT NOT NULL DEFAULT '', left_at TEXT, game_player_id INTEGER, UNIQUE(clan_id, normalized_name) )"
   },
   {
     "type": "table",
@@ -512,7 +567,7 @@
   {
     "type": "table",
     "name": "resource_transactions",
-    "sql": "CREATE TABLE resource_transactions ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), batch_id INTEGER NOT NULL REFERENCES resource_upload_batches(id), member_id INTEGER NOT NULL REFERENCES members(id), resource_type_id INTEGER REFERENCES resource_types(id), direction INTEGER NOT NULL CHECK(direction IN (1, -1)), amount INTEGER NOT NULL CHECK(amount > 0), transaction_date TEXT NOT NULL, raw_player_name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL , row_crop_path TEXT)"
+    "sql": "CREATE TABLE resource_transactions ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), batch_id INTEGER NOT NULL REFERENCES resource_upload_batches(id), member_id INTEGER NOT NULL REFERENCES members(id), resource_type_id INTEGER REFERENCES resource_types(id), direction INTEGER NOT NULL CHECK(direction IN (1, -1)), amount INTEGER NOT NULL CHECK(amount > 0), transaction_date TEXT NOT NULL, raw_player_name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL , row_crop_path TEXT, game_entry_id INTEGER)"
   },
   {
     "type": "table",
@@ -597,7 +652,7 @@
   {
     "type": "table",
     "name": "triumphal_chest_records",
-    "sql": "CREATE TABLE triumphal_chest_records ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL DEFAULT 1, session_id INTEGER NOT NULL REFERENCES scan_sessions(id), member_id INTEGER NOT NULL REFERENCES members(id), chest_id INTEGER NOT NULL REFERENCES chests(id), chest_source_id INTEGER REFERENCES chest_sources(id), point_value INTEGER NOT NULL DEFAULT 0, captured_at INTEGER NOT NULL, confidence INTEGER NOT NULL DEFAULT 0, debug_crop_path TEXT , raw_player_ocr TEXT, earned_at INTEGER, effective_at GENERATED ALWAYS AS (COALESCE(earned_at, captured_at)) VIRTUAL)"
+    "sql": "CREATE TABLE triumphal_chest_records ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL DEFAULT 1, session_id INTEGER NOT NULL REFERENCES scan_sessions(id), member_id INTEGER NOT NULL REFERENCES members(id), chest_id INTEGER NOT NULL REFERENCES chests(id), chest_source_id INTEGER REFERENCES chest_sources(id), point_value INTEGER NOT NULL DEFAULT 0, captured_at INTEGER NOT NULL, confidence INTEGER NOT NULL DEFAULT 0, debug_crop_path TEXT , raw_player_ocr TEXT, earned_at INTEGER, effective_at GENERATED ALWAYS AS (COALESCE(earned_at, captured_at)) VIRTUAL, game_gift_id INTEGER)"
   },
   {
     "type": "table",

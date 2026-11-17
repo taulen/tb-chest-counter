@@ -1247,7 +1247,7 @@ class ScanLoop {
         try {
             this.reportProgress('scan', 'Reading clan data from the game server…');
             const { runGameProtocolCapture } = await import('./game-protocol-phase.js');
-            await runGameProtocolCapture(clanId);
+            await runGameProtocolCapture(clanId, { rolloverUtcHour: this.config.gameDayRolloverUtcHour });
         }
         catch (err) {
             log.warn({ noAlert: true }, 'Game protocol capture threw and was ignored (the chest scan is unaffected): '

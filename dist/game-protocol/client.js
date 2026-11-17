@@ -335,6 +335,22 @@ class GameClient {
     city(cityId) {
         return this.ask(601, [[[[[cityId], 0, ALL_FIELDS]]]]);
     }
+    /** Map objects in the given tiles (what the client loads as the view moves). */
+    mapTiles(tileIds) {
+        return this.ask(312, [[tileIds, tileIds.map(() => 0), [], []]]);
+    }
+    /**
+     * Claim (open) chests from gifts: `{giftId: count}`. The in-game Open button
+     * sends one id with count 1; "Claim chests" sends every unclaimed Gifts-tab id
+     * at once. The reply's rewards are SUMMED across everything claimed, so claim
+     * one gift per request to keep rewards per chest. IRREVERSIBLE.
+     */
+    claim(gifts) {
+        const body = {};
+        for (const [id, n] of Object.entries(gifts))
+            body[id] = n;
+        return this.ask(15013, [[body]]);
+    }
 }
 exports.GameClient = GameClient;
 async function post(url, body) {

@@ -4,6 +4,10 @@ exports.GIFT_LIFETIME_S = void 0;
 exports.parseClanRecord = parseClanRecord;
 exports.parsePlayers = parsePlayers;
 exports.parseLedger = parseLedger;
+exports.parseClaimRewards = parseClaimRewards;
+exports.parseCityRecord = parseCityRecord;
+exports.parseMapObjects = parseMapObjects;
+exports.tileOf = tileOf;
 exports.parseCityTechs = parseCityTechs;
 const num = (v) => (typeof v === 'number' ? v : null);
 const id1 = (v) => (Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null);
@@ -49,6 +53,7 @@ function parseClanRecord(frame) {
         name: typeof info[1] === 'string' ? info[1] : '',
         members,
         gifts,
+        objects: arr(rec[5]).map(id1).filter((v) => v !== null),
     };
 }
 /** Message 402: player records, wherever they sit in the reply. */
@@ -58,9 +63,11 @@ function parsePlayers(frame) {
         if (!Array.isArray(v))
             return;
         if (id1(v[0]) !== null && Array.isArray(v[0]) && v[0].length === 1 && typeof v[1] === 'string' && typeof v[2] === 'string') {
+            const pos = arr(v[15]);
             out.push({
                 playerId: id1(v[0]),
                 name: v[2],
+                position: pos.length === 3 && pos.every((p) => typeof p === 'number') ? pos : null,
                 heroAvatar: num(v[4]),
                 heroLevel: num(v[7]),
                 cityLevel: num(v[8]),
@@ -101,6 +108,79 @@ function parseLedger(frame) {
         out.push({ entryId, playerId, kind: num(row[2]) ?? 0, resource: num(row[3]) ?? 0, occurredAt, amounts });
     }
     return out;
+}
+/** Message 15013 (claim): the rewards granted, `{itemId: count}` (summed for a batch). */
+function parseClaimRewards(frame) {
+    const r = arr(arr(arr(frame.body[0])[0]))[0];
+    const out = {};
+    if (r && typeof r === 'object' && !Array.isArray(r) && !('$bin' in r) && !('$pairs' in r)) {
+        for (const [k, v] of Object.entries(r))
+            if (typeof v === 'number')
+                out[k] = v;
+    }
+    return out;
+}
+/**
+ * Message 601 for a player's city: [0] city id, [1][0] owner, [12] buildings
+ * {slot: [slot, type, level, …]}, [17] techs, [26] hero {"1": [1, [heroId], xp,
+ * level, …]}. Verified against Miana's and Kordobrek's cities (Nov 2026).
+ */
+function parseCityRecord(frame) {
+    let root = frame.body;
+    while (Array.isArray(root) && root.length === 1)
+        root = root[0];
+    const rec = arr(arr(root)[0])[0];
+    const r = arr(rec);
+    const cityId = id1(r[0]);
+    if (cityId === null)
+        return null;
+    const buildings = {};
+    const b = r[12];
+    if (b && typeof b === 'object' && !Array.isArray(b) && !('$bin' in b) && !('$pairs' in b)) {
+        for (const [slot, v] of Object.entries(b)) {
+            const row = arr(v);
+            if (typeof row[1] === 'number' && typeof row[2] === 'number')
+                buildings[slot] = { type: row[1], level: row[2] };
+        }
+    }
+    const h = r[26];
+    const heroRow = h && typeof h === 'object' && !Array.isArray(h) && !('$bin' in h) && !('$pairs' in h) ? arr(Object.values(h)[0]) : [];
+    return {
+        cityId,
+        ownerId: id1(arr(r[1])[0]),
+        techs: parseCityTechs(frame),
+        buildings,
+        hero: { level: num(heroRow[3]), xp: num(heroRow[2]) },
+    };
+}
+/** Message 312 (map tiles): `[[id], type, …, level@5, …, [realm,x,y]@8, [owner]@9, expiresAt@10, …]`. */
+function parseMapObjects(frame) {
+    const out = [];
+    const walk = (v) => {
+        if (!Array.isArray(v))
+            return;
+        const pos = arr(v[8]);
+        if (id1(v[0]) !== null && Array.isArray(v[0]) && v[0].length === 1 && typeof v[1] === 'number' && pos.length === 3) {
+            out.push({
+                objectId: id1(v[0]),
+                type: v[1],
+                level: num(v[5]),
+                realm: num(pos[0]),
+                x: num(pos[1]),
+                y: num(pos[2]),
+                ownerId: id1(v[9]),
+                expiresAt: num(v[10]),
+            });
+            return;
+        }
+        v.forEach(walk);
+    };
+    frame.body.forEach(walk);
+    return out;
+}
+/** Map tile id (20×20 squares, 50 tiles per row) holding a coordinate. */
+function tileOf(x, y) {
+    return Math.floor(y / 20) * 50 + Math.floor(x / 20);
 }
 /** Message 601: a city's tech levels (research + hero talents). */
 function parseCityTechs(frame) {

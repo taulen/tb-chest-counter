@@ -1439,6 +1439,114 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Game protocol, phase 2 (Nov 2026): link our rows to the game's own ids,
+    // let a clan scan without a browser, and start collecting what the protocol
+    // gives that OCR never could. See docs/game-protocol.md.
+    //
+    //   members.game_player_id        the game's permanent player id (renames keep it)
+    //   chest_records / triumphal_chest_records.game_gift_id
+    //                                 the gift a protocol-scanned record came from
+    //   resource_transactions.game_entry_id
+    //                                 the Clan Capital ledger entry a row came from;
+    //                                 unique, so re-reading the ledger never double-counts
+    //   clans.scan_mode               'browser' (OCR, as before) | 'protocol'
+    //   game_claims                   rewards each claimed chest gave
+    //   game_player_techs (+ history) research + hero talent levels per player
+    //   game_city_snapshots           daily buildings + hero summary per player
+    //   game_map_objects              player-owned map objects (vaults) near the clan
+    //   game_raw_snapshots            raw replies (clan record, Clan Capital) daily,
+    //                                 kept for fields not decoded yet
+    //
+    // Every step is guarded / IF NOT EXISTS: runMigrations replays everything
+    // above a rewound MAX(version).
+    version: 103,
+    run: (database): void => {
+      const addColumn = (table: string, column: string, ddl: string): void => {
+        const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+        if (!cols.some((c) => c.name === column)) database.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+      };
+      addColumn('members', 'game_player_id', 'game_player_id INTEGER');
+      addColumn('chest_records', 'game_gift_id', 'game_gift_id INTEGER');
+      addColumn('triumphal_chest_records', 'game_gift_id', 'game_gift_id INTEGER');
+      addColumn('resource_transactions', 'game_entry_id', 'game_entry_id INTEGER');
+      addColumn('clans', 'scan_mode', "scan_mode TEXT NOT NULL DEFAULT 'browser'");
+      database.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_members_game_player
+          ON members (clan_id, game_player_id) WHERE game_player_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_tx_game_entry
+          ON resource_transactions (clan_id, game_entry_id) WHERE game_entry_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_chest_records_game_gift
+          ON chest_records (clan_id, game_gift_id) WHERE game_gift_id IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS game_claims (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          session_id INTEGER NOT NULL,
+          gift_id INTEGER NOT NULL,
+          gift_type INTEGER NOT NULL,
+          tab INTEGER NOT NULL,
+          rewards TEXT NOT NULL,
+          claimed_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_game_claims_clan ON game_claims (clan_id, claimed_at);
+        CREATE TABLE IF NOT EXISTS game_player_techs (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          tech_id INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, tech_id)
+        );
+        CREATE TABLE IF NOT EXISTS game_player_tech_history (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          tech_id INTEGER NOT NULL,
+          level INTEGER NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, tech_id, changed_at)
+        );
+        CREATE TABLE IF NOT EXISTS game_city_snapshots (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          game_date TEXT NOT NULL,
+          captured_at TEXT NOT NULL,
+          tech_count INTEGER NOT NULL DEFAULT 0,
+          buildings TEXT NOT NULL DEFAULT '{}',
+          hero TEXT NOT NULL DEFAULT '{}',
+          PRIMARY KEY (clan_id, player_id, game_date)
+        );
+        CREATE TABLE IF NOT EXISTS game_map_objects (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          object_id INTEGER NOT NULL,
+          object_type INTEGER NOT NULL,
+          object_name TEXT NOT NULL DEFAULT '',
+          level INTEGER,
+          realm INTEGER,
+          x INTEGER,
+          y INTEGER,
+          owner_id INTEGER,
+          expires_at INTEGER,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          PRIMARY KEY (clan_id, object_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_game_map_objects_owner ON game_map_objects (clan_id, owner_id, first_seen);
+        -- Raw game replies kept for later decoding (gzip of the decoded JSON):
+        -- the clan record and every clan-owned object (Clan Capital: buildings,
+        -- clan research …) once per game day. Collect now, decode when needed.
+        CREATE TABLE IF NOT EXISTS game_raw_snapshots (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          kind TEXT NOT NULL,
+          ref_id INTEGER NOT NULL,
+          game_date TEXT NOT NULL,
+          captured_at TEXT NOT NULL,
+          payload BLOB NOT NULL,
+          PRIMARY KEY (clan_id, kind, ref_id, game_date)
+        );
+      `);
+    },
+  },
 ];
 
 /**

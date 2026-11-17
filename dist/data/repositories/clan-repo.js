@@ -593,6 +593,12 @@ function deleteClan(id) {
         db.prepare('DELETE FROM game_ledger WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_capture_runs WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM game_scan_comparisons WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM game_claims WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM game_player_tech_history WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM game_player_techs WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM game_city_snapshots WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM game_map_objects WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM game_raw_snapshots WHERE clan_id = ?').run(id);
         // share_link_daily rows hang off share_links; drop them first, then the
         // ledger rows themselves, so the clans delete doesn't hit the
         // share_links.clan_id FK.

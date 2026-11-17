@@ -27,6 +27,34 @@ chest + source) and stores the result in `game_scan_comparisons`; one
 OCR-only / game-only. Read it with
 `echo "SELECT * FROM game_scan_comparisons ORDER BY created_at DESC LIMIT 10" | ssh tb-read sql`.
 
+## Members and collection (v103)
+
+Each capture also, every cycle:
+
+- **syncs members** ([`member-sync.ts`](../src/game-protocol/member-sync.ts)):
+  `members.game_player_id` links a member to the game's permanent player id.
+  First link: exact name (after the clan's player merge rules), else a fuzzy
+  name whose last might is within ±15 %, else a new member under the exact game
+  name. Linked members take the game's spelling (old name kept as an alias,
+  `rename_member` audited with `source: 'game'`), get `clan_role`, are marked
+  seen and get the day's might + hero-level snapshot (so the OCR might phase
+  skips the day). A linked player missing from a roster of ≥ 5 is marked left.
+  An alt that a merge rule folds into a member another player owns is only
+  marked seen there — never linked, renamed or snapshotted from the alt.
+- **reads map objects** on the tiles around members' cities (3×3 tiles each,
+  capped at 60) and keeps vaults plus member-owned objects (`game_map_objects`).
+
+Once per game day: every member's city (601: research + talents into
+`game_player_techs`, with `game_player_tech_history` rows only on change;
+buildings + hero into `game_city_snapshots`; ≤ 120 cities a cycle), and a
+gzipped raw copy of the clan record and each clan-owned object (record f5,
+Clan Capital) in `game_raw_snapshots` — kept raw so fields we have not mapped
+yet still have history. Each part is isolated: one failing costs nothing else.
+
+v103 also adds the columns the protocol scan will use: `chest_records` /
+`triumphal_chest_records.game_gift_id`, `resource_transactions.game_entry_id`
+(unique), `clans.scan_mode` (`browser` | `protocol`), and `game_claims`.
+
 ## Session check
 
 [`session-check.ts`](../src/scheduler/session-check.ts) GETs `/en/` with each

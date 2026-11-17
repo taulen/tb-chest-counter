@@ -77,12 +77,18 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'audit_log.clan_id',
     'clan_goal_history.clan_id',
     'discord_member_links.clan_id',
-    // Game protocol capture (v102).
+    // Game protocol capture (v102, v103).
     'game_capture_runs.clan_id',
+    'game_city_snapshots.clan_id',
+    'game_claims.clan_id',
     'game_gifts.clan_id',
     'game_ledger.clan_id',
+    'game_map_objects.clan_id',
     'game_player_history.clan_id',
+    'game_player_tech_history.clan_id',
+    'game_player_techs.clan_id',
     'game_players.clan_id',
+    'game_raw_snapshots.clan_id',
     'game_scan_comparisons.clan_id',
     'member_guards_reports.clan_id',
     'member_level_reports.clan_id',
@@ -294,6 +300,24 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO game_scan_comparisons (clan_id, session_id, capture_run_id, created_at, tab, game, ocr, matched, misreads, ocr_only, ocr_late, game_only, details)
      VALUES (?, 1, 1, ?, 1, 0, 0, 0, 0, 0, 0, 0, '{}')`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at) VALUES (?, 1, 1, 5622, 1, '{}', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_player_techs (clan_id, player_id, tech_id, level, first_seen, last_seen) VALUES (?, 77, 1197, 1, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_player_tech_history (clan_id, player_id, tech_id, level, changed_at) VALUES (?, 77, 1197, 1, ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_city_snapshots (clan_id, player_id, game_date, captured_at) VALUES (?, 77, '2026-11-17', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_map_objects (clan_id, object_id, object_type, first_seen, last_seen) VALUES (?, 1, 150329, ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(
+    `INSERT INTO game_raw_snapshots (clan_id, kind, ref_id, game_date, captured_at, payload) VALUES (?, 'clan_record', 0, '2026-11-17', ?, x'00')`,
   ).run(clanId, now);
   // Extra-clan grants from both directions: user 2 is a guest of clan 1, and
   // a clan-1 account (user 4) is a guest of the clan being deleted.

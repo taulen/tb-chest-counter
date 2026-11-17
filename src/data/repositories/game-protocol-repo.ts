@@ -6,6 +6,7 @@
  * duplicate. Nothing here touches the OCR tables; during the parallel run the
  * two sides are compared, not merged. See docs/game-protocol.md.
  */
+import { gzipSync } from 'zlib';
 import { getDb } from '../database.js';
 import type { ClanMember, PlayerRecord, LedgerEntry } from '../../game-protocol/messages.js';
 
@@ -217,6 +218,102 @@ export function saveScanComparison(
        (clan_id, session_id, capture_run_id, created_at, tab, game, ocr, matched, misreads, ocr_only, ocr_late, game_only, details)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(clanId, sessionId, runId, new Date().toISOString(), tab, c.game, c.ocr, c.matched, c.misreads, c.ocrOnly, c.ocrLate, c.gameOnly, JSON.stringify(c.details));
+}
+
+/**
+ * Research + hero talent levels for one player. Upserts the current level and
+ * writes a history row only for techs whose level changed (or are new).
+ * Returns how many changed.
+ */
+export function saveTechs(clanId: number, playerId: number, techs: Record<string, number>, now = new Date().toISOString()): number {
+  const db = getDb();
+  const current = new Map(
+    (db.prepare('SELECT tech_id, level FROM game_player_techs WHERE clan_id = ? AND player_id = ?').all(clanId, playerId) as
+      Array<{ tech_id: number; level: number }>).map((r) => [r.tech_id, r.level]),
+  );
+  const upsert = db.prepare(
+    `INSERT INTO game_player_techs (clan_id, player_id, tech_id, level, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, tech_id) DO UPDATE SET level = excluded.level, last_seen = excluded.last_seen`,
+  );
+  const history = db.prepare(
+    'INSERT OR IGNORE INTO game_player_tech_history (clan_id, player_id, tech_id, level, changed_at) VALUES (?, ?, ?, ?, ?)',
+  );
+  let changed = 0;
+  db.transaction(() => {
+    for (const [id, level] of Object.entries(techs)) {
+      const techId = Number(id);
+      upsert.run(clanId, playerId, techId, level, now, now);
+      if (current.get(techId) !== level) {
+        history.run(clanId, playerId, techId, level, now);
+        changed++;
+      }
+    }
+  })();
+  return changed;
+}
+
+export function saveCitySnapshot(
+  clanId: number,
+  playerId: number,
+  gameDate: string,
+  snap: { techCount: number; buildings: unknown; hero: unknown },
+  now = new Date().toISOString(),
+): void {
+  getDb().prepare(
+    `INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.hero));
+}
+
+/** Players of this clan whose city was already captured for the game day. */
+export function citySnapshotPlayers(clanId: number, gameDate: string): Set<number> {
+  return new Set(
+    (getDb().prepare('SELECT player_id FROM game_city_snapshots WHERE clan_id = ? AND game_date = ?').all(clanId, gameDate) as
+      Array<{ player_id: number }>).map((r) => r.player_id),
+  );
+}
+
+export interface MapObjectRow {
+  objectId: number;
+  type: number;
+  name: string;
+  level: number | null;
+  realm: number | null;
+  x: number | null;
+  y: number | null;
+  ownerId: number | null;
+  expiresAt: number | null;
+}
+
+/** Upsert map objects by the game's object id. Returns how many were new. */
+export function saveMapObjects(clanId: number, objects: MapObjectRow[], now = new Date().toISOString()): number {
+  const db = getDb();
+  const exists = db.prepare('SELECT 1 FROM game_map_objects WHERE clan_id = ? AND object_id = ?');
+  const upsert = db.prepare(
+    `INSERT INTO game_map_objects (clan_id, object_id, object_type, object_name, level, realm, x, y, owner_id, expires_at, first_seen, last_seen)
+     VALUES (@clanId, @objectId, @type, @name, @level, @realm, @x, @y, @ownerId, @expiresAt, @now, @now)
+     ON CONFLICT (clan_id, object_id) DO UPDATE SET level = excluded.level, expires_at = excluded.expires_at, last_seen = excluded.last_seen`,
+  );
+  let fresh = 0;
+  db.transaction(() => {
+    for (const o of objects) {
+      if (!exists.get(clanId, o.objectId)) fresh++;
+      upsert.run({ clanId, now, ...o });
+    }
+  })();
+  return fresh;
+}
+
+/** Keep a raw game reply (gzip of its decoded JSON) once per game day. */
+export function saveRawSnapshot(clanId: number, kind: string, refId: number, gameDate: string, value: unknown, now = new Date().toISOString()): void {
+  getDb().prepare(
+    `INSERT OR REPLACE INTO game_raw_snapshots (clan_id, kind, ref_id, game_date, captured_at, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(clanId, kind, refId, gameDate, now, gzipSync(JSON.stringify(value)));
+}
+
+export function hasRawSnapshot(clanId: number, kind: string, refId: number, gameDate: string): boolean {
+  return !!getDb().prepare('SELECT 1 FROM game_raw_snapshots WHERE clan_id = ? AND kind = ? AND ref_id = ? AND game_date = ?')
+    .get(clanId, kind, refId, gameDate);
 }
 
 export interface CaptureRunRow {
