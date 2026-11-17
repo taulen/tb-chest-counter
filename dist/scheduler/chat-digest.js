@@ -30,11 +30,53 @@ exports.COVERAGE_MAX_GAP_H = 3;
 exports.POST_LATE_LIMIT_MS = 6 * 3600_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-/** "2026-11-15" → "15 November" (the game day, as the hand-written digest dates it). */
-function digestDayLabel(gameDate) {
+const DIGEST_TEXTS = {
+    en: {
+        locale: 'en-US',
+        title: (date) => `Daily Digest — ${date}`,
+        top: (n) => `Our top ${n} crypters`,
+        chests: { one: 'chest', other: 'chests' },
+        months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+        day: (d, m) => `${d} ${m}`,
+    },
+    es: {
+        locale: 'es-ES',
+        title: (date) => `Resumen diario — ${date}`,
+        top: (n) => `Nuestros ${n} mejores exploradores de criptas`,
+        chests: { one: 'cofre', other: 'cofres' },
+        months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+        day: (d, m) => `${d} de ${m}`,
+    },
+    fr: {
+        locale: 'fr-FR',
+        title: (date) => `Résumé du jour — ${date}`,
+        top: (n) => `Nos ${n} meilleurs explorateurs de cryptes`,
+        chests: { one: 'coffre', other: 'coffres' },
+        months: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+        day: (d, m) => `${d} ${m}`,
+    },
+    ru: {
+        locale: 'ru-RU',
+        title: (date) => `Итоги дня — ${date}`,
+        top: (n) => `Наши лучшие ${n} по склепам`,
+        chests: { one: 'сундук', few: 'сундука', many: 'сундуков', other: 'сундука' },
+        months: ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'],
+        day: (d, m) => `${d} ${m}`,
+    },
+    de: {
+        locale: 'de-DE',
+        title: (date) => `Tagesübersicht — ${date}`,
+        top: (n) => `Unsere Top ${n} Gruftjäger`,
+        chests: { one: 'Truhe', other: 'Truhen' },
+        months: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
+        day: (d, m) => `${d}. ${m}`,
+    },
+};
+/** "2026-11-15" → "15 November" (the game day, as the hand-written digest dates it), in the post's language. */
+function digestDayLabel(gameDate, language = 'en') {
+    const tx = DIGEST_TEXTS[language] ?? DIGEST_TEXTS.en;
     const [, m, d] = gameDate.split('-').map(Number);
-    return `${d} ${MONTHS[(m ?? 1) - 1] ?? ''}`.trim();
+    return tx.day(d, tx.months[(m ?? 1) - 1] ?? '').trim();
 }
 /** A name on one line: no line breaks or control characters smuggled into the post. */
 const cleanName = (s) => s.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim() || '?';
@@ -53,17 +95,32 @@ const fits = (text) => text.length <= chat_send_js_1.MAX_POST_CHARS && Buffer.by
  * longer names shorten the dot leaders first, then the names themselves
  * ("…"), and only then are entries dropped from the bottom. Never split.
  */
-function formatChatDigest(rows, gameDate, entries) {
+function formatChatDigest(rows, gameDate, entries, language = 'en') {
+    const tx = DIGEST_TEXTS[language] ?? DIGEST_TEXTS.en;
+    // The language's own number grouping ("5.815", "5 815") — unless it costs
+    // entries (a French narrow no-break space is 3 bytes against the size cap):
+    // then the plain grouping, which never does.
+    const local = layout(rows, gameDate, entries, language, tx.locale);
+    if (tx.locale === 'en-US')
+        return local;
+    const plain = layout(rows, gameDate, entries, language, 'en-US');
+    return plain.shown > local.shown ? plain : local;
+}
+function layout(rows, gameDate, entries, language, numberLocale) {
+    const tx = DIGEST_TEXTS[language] ?? DIGEST_TEXTS.en;
     const list = rows.slice(0, Math.max(0, entries)).map((r) => ({ ...r, name: cleanName(r.name) }));
-    const head = (n) => [`Daily Digest — ${digestDayLabel(gameDate)}`, `Our top ${n} crypters`];
+    const num = new Intl.NumberFormat(numberLocale);
+    const plural = new Intl.PluralRules(tx.locale);
+    const head = (n) => [tx.title(digestDayLabel(gameDate, language)), tx.top(n)];
     const render = (n, width, minDots, maxName) => {
         const lines = head(n);
         list.slice(0, n).forEach((r, i) => {
             const chars = [...r.name];
             const name = chars.length > maxName ? `${chars.slice(0, Math.max(1, maxName - 1)).join('')}…` : r.name;
             const dots = '·'.repeat(Math.max(minDots, width - [...name].length));
-            const chests = `${r.chests.toLocaleString('en-US')} ${r.chests === 1 ? 'chest' : 'chests'}`;
-            lines.push(`${String(i + 1).padStart(2)}) ${name} ${dots} ${chests} (${r.points.toLocaleString('en-US')})`);
+            const word = tx.chests[plural.select(r.chests)] ?? tx.chests.other;
+            const chests = `${num.format(r.chests)} ${word}`;
+            lines.push(`${String(i + 1).padStart(2)}) ${name} ${dots} ${chests} (${num.format(r.points)})`);
         });
         return lines.join('\n');
     };
@@ -238,7 +295,7 @@ async function runChatDigestInner(clanId, opts) {
         settings = (0, chat_digest_repo_js_1.saveChatDigestSettings)(clanId, { ...settings, channelUrl: target.url, channelName: target.name });
     }
     const rows = opts.rows ? opts.rows(sch.dayStartMs, sch.dayEndMs) : digestRows(clanId, sch.dayStartMs, sch.dayEndMs);
-    const { text, shown } = formatChatDigest(rows, sch.gameDate, settings.entries);
+    const { text, shown } = formatChatDigest(rows, sch.gameDate, settings.entries, settings.language);
     if (!shown)
         return test ? done('chat digest test not sent: nothing collected that day') : '';
     const reserved = (0, chat_digest_repo_js_1.reserveDigestPost)({
@@ -277,7 +334,7 @@ async function runChatDigestInner(clanId, opts) {
 function previewChatDigest(clanId, rolloverUtcHour, now = Date.now()) {
     const settings = (0, chat_digest_repo_js_1.getChatDigestSettings)(clanId);
     const sch = digestSchedule(now, rolloverUtcHour, rolloverUtcHour * 60);
-    const { text, shown } = formatChatDigest(digestRows(clanId, sch.dayStartMs, sch.dayEndMs), sch.gameDate, settings.entries);
+    const { text, shown } = formatChatDigest(digestRows(clanId, sch.dayStartMs, sch.dayEndMs), sch.gameDate, settings.entries, settings.language);
     return {
         gameDate: sch.gameDate,
         postAt: new Date(sch.postAtMs).toISOString(),

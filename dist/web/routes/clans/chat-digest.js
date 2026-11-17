@@ -71,6 +71,11 @@ function createChatDigestRouter() {
             res.status(400).json({ error: 'postUtcMinute must be 0–1439' });
             return;
         }
+        const language = body.language ?? current.language;
+        if (!(0, chat_digest_repo_js_1.isDigestLanguage)(language)) {
+            res.status(400).json({ error: `language must be one of ${chat_digest_repo_js_1.DIGEST_LANGUAGES.join(', ')}` });
+            return;
+        }
         // The chat must be one of the account's named group chats; the clan,
         // kingdom and private chats are never offered and never accepted.
         let channelUrl = current.channelUrl;
@@ -90,8 +95,8 @@ function createChatDigestRouter() {
                 channelName = chosen.name;
             }
         }
-        const saved = (0, chat_digest_repo_js_1.saveChatDigestSettings)(id, { enabled: !!(body.enabled ?? current.enabled), channelUrl, channelName, entries, postUtcMinute });
-        (0, user_repo_js_1.logAction)(req.user.id, 'clan.chat_digest.update', { clanId: id, enabled: saved.enabled, channel: saved.channelName, entries, postUtcMinute });
+        const saved = (0, chat_digest_repo_js_1.saveChatDigestSettings)(id, { enabled: !!(body.enabled ?? current.enabled), channelUrl, channelName, entries, postUtcMinute, language });
+        (0, user_repo_js_1.logAction)(req.user.id, 'clan.chat_digest.update', { clanId: id, enabled: saved.enabled, channel: saved.channelName, entries, postUtcMinute, language });
         res.json({ ok: true, settings: saved });
     });
     /** Queue a test post of the latest closed day — it goes out with the clan's next scan. */

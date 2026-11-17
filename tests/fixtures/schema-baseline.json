@@ -417,7 +417,7 @@
   {
     "type": "table",
     "name": "chat_digest_settings",
-    "sql": "CREATE TABLE chat_digest_settings ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), enabled INTEGER NOT NULL DEFAULT 0, channel_url TEXT, channel_name TEXT NOT NULL DEFAULT '', entries INTEGER NOT NULL DEFAULT 20, post_utc_minute INTEGER NOT NULL DEFAULT 1050, test_requested_at TEXT, test_requested_by INTEGER, poster_user_id TEXT, poster_name TEXT, channels_checked_at TEXT, updated_at TEXT NOT NULL )"
+    "sql": "CREATE TABLE chat_digest_settings ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), enabled INTEGER NOT NULL DEFAULT 0, channel_url TEXT, channel_name TEXT NOT NULL DEFAULT '', entries INTEGER NOT NULL DEFAULT 20, post_utc_minute INTEGER NOT NULL DEFAULT 1050, test_requested_at TEXT, test_requested_by INTEGER, poster_user_id TEXT, poster_name TEXT, channels_checked_at TEXT, updated_at TEXT NOT NULL , language TEXT NOT NULL DEFAULT 'en')"
   },
   {
     "type": "table",

@@ -3,6 +3,8 @@ import { getClanById } from '../../../data/repositories/clan-repo.js';
 import {
   DIGEST_ENTRIES_MAX,
   DIGEST_ENTRIES_MIN,
+  DIGEST_LANGUAGES,
+  isDigestLanguage,
   getChatDigestSettings,
   getPostableChannels,
   recentDigestPosts,
@@ -80,6 +82,11 @@ export function createChatDigestRouter(): Router {
       res.status(400).json({ error: 'postUtcMinute must be 0–1439' });
       return;
     }
+    const language = body.language ?? current.language;
+    if (!isDigestLanguage(language)) {
+      res.status(400).json({ error: `language must be one of ${DIGEST_LANGUAGES.join(', ')}` });
+      return;
+    }
     // The chat must be one of the account's named group chats; the clan,
     // kingdom and private chats are never offered and never accepted.
     let channelUrl = current.channelUrl;
@@ -98,8 +105,8 @@ export function createChatDigestRouter(): Router {
         channelName = chosen.name;
       }
     }
-    const saved = saveChatDigestSettings(id, { enabled: !!(body.enabled ?? current.enabled), channelUrl, channelName, entries, postUtcMinute });
-    logAction(req.user!.id, 'clan.chat_digest.update', { clanId: id, enabled: saved.enabled, channel: saved.channelName, entries, postUtcMinute });
+    const saved = saveChatDigestSettings(id, { enabled: !!(body.enabled ?? current.enabled), channelUrl, channelName, entries, postUtcMinute, language });
+    logAction(req.user!.id, 'clan.chat_digest.update', { clanId: id, enabled: saved.enabled, channel: saved.channelName, entries, postUtcMinute, language });
     res.json({ ok: true, settings: saved });
   });
 

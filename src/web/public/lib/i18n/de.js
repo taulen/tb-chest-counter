@@ -2732,6 +2732,7 @@ export const ui = {
   "{n} now": "{n} jetzt",
   "One reading per game day is kept from {date}; the line appears from the second day.": "Ab {date} wird ein Wert pro Spieltag gespeichert; die Linie erscheint ab dem zweiten Tag.",
   "This member's Gold Ingots per game day": "Goldbarren dieses Mitglieds pro Spieltag",
+  "Language of the post": "Sprache des Posts",
 };
 
 export const game = {

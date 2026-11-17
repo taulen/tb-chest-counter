@@ -70,6 +70,17 @@ describe('clans → in-game chat digest routes', () => {
     expect((getDb().prepare('SELECT COUNT(*) AS n FROM chat_digest_posts').get() as { n: number }).n).toBe(0);
   });
 
+  it('saves the post\'s language (en by default), refuses an unknown one, and the preview follows it', async () => {
+    expect(getChatDigestSettings(1).language).toBe('en');
+    expect((await request(app).put('/api/clans/1/chat-digest').send({ enabled: false, entries: 20, language: 'xx' })).status).toBe(400);
+    const ok = await request(app).put('/api/clans/1/chat-digest').send({ enabled: false, entries: 20, language: 'ru' });
+    expect(ok.status).toBe(200);
+    expect(getChatDigestSettings(1).language).toBe('ru');
+    // A save that doesn't name the language keeps it.
+    await request(app).put('/api/clans/1/chat-digest').send({ enabled: false, entries: 15 });
+    expect(getChatDigestSettings(1)).toMatchObject({ language: 'ru', entries: 15 });
+  });
+
   it('queues a test post, and refuses it once the day\'s message is used up or sending is switched off', async () => {
     await request(app).put('/api/clans/1/chat-digest').send({ enabled: true, channelUrl: CARTER.url, entries: 20, postUtcMinute: 1050 });
     const q = await request(app).post('/api/clans/1/chat-digest/test');

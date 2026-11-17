@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_ATTEMPTS = exports.DEFAULT_POST_UTC_MINUTE = exports.DIGEST_ENTRIES_MAX = exports.DIGEST_ENTRIES_MIN = void 0;
+exports.MAX_ATTEMPTS = exports.DEFAULT_POST_UTC_MINUTE = exports.DIGEST_ENTRIES_MAX = exports.DIGEST_ENTRIES_MIN = exports.isDigestLanguage = exports.DIGEST_LANGUAGES = void 0;
 exports.getChatDigestSettings = getChatDigestSettings;
 exports.enabledChatDigestClanIds = enabledChatDigestClanIds;
 exports.saveChatDigestSettings = saveChatDigestSettings;
@@ -21,6 +21,10 @@ exports.finishDigestPost = finishDigestPost;
  * restarts, redeploys and the admin's test button.
  */
 const database_js_1 = require("../database.js");
+/** Languages the digest post can be written in (the site's languages). */
+exports.DIGEST_LANGUAGES = ['en', 'es', 'fr', 'ru', 'de'];
+const isDigestLanguage = (v) => typeof v === 'string' && exports.DIGEST_LANGUAGES.includes(v);
+exports.isDigestLanguage = isDigestLanguage;
 exports.DIGEST_ENTRIES_MIN = 3;
 exports.DIGEST_ENTRIES_MAX = 20;
 exports.DEFAULT_POST_UTC_MINUTE = 17 * 60 + 30;
@@ -33,6 +37,7 @@ const toSettings = (r) => ({
     channelName: r.channel_name,
     entries: r.entries,
     postUtcMinute: r.post_utc_minute,
+    language: (0, exports.isDigestLanguage)(r.language) ? r.language : 'en',
     testRequestedAt: r.test_requested_at,
     testRequestedBy: r.test_requested_by,
     posterUserId: r.poster_user_id,
@@ -44,7 +49,7 @@ function getChatDigestSettings(clanId) {
     const r = (0, database_js_1.getDb)().prepare('SELECT * FROM chat_digest_settings WHERE clan_id = ?').get(clanId);
     return r ? toSettings(r) : {
         clanId, enabled: false, channelUrl: null, channelName: '', entries: exports.DIGEST_ENTRIES_MAX, postUtcMinute: exports.DEFAULT_POST_UTC_MINUTE,
-        testRequestedAt: null, testRequestedBy: null, posterUserId: null, posterName: null, channelsCheckedAt: null,
+        language: 'en', testRequestedAt: null, testRequestedBy: null, posterUserId: null, posterName: null, channelsCheckedAt: null,
     };
 }
 /** Every clan with the digest switched on. */
@@ -53,11 +58,14 @@ function enabledChatDigestClanIds() {
 }
 /** Save the admin's choices. Only stores — saving never posts anything. */
 function saveChatDigestSettings(clanId, s, now = new Date().toISOString()) {
-    (0, database_js_1.getDb)().prepare(`INSERT INTO chat_digest_settings (clan_id, enabled, channel_url, channel_name, entries, post_utc_minute, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    // A caller that doesn't name a language keeps the stored one.
+    const language = s.language ?? getChatDigestSettings(clanId).language;
+    (0, database_js_1.getDb)().prepare(`INSERT INTO chat_digest_settings (clan_id, enabled, channel_url, channel_name, entries, post_utc_minute, language, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (clan_id) DO UPDATE SET
        enabled = excluded.enabled, channel_url = excluded.channel_url, channel_name = excluded.channel_name,
-       entries = excluded.entries, post_utc_minute = excluded.post_utc_minute, updated_at = excluded.updated_at`).run(clanId, s.enabled ? 1 : 0, s.channelUrl, s.channelName, s.entries, s.postUtcMinute, now);
+       entries = excluded.entries, post_utc_minute = excluded.post_utc_minute, language = excluded.language,
+       updated_at = excluded.updated_at`).run(clanId, s.enabled ? 1 : 0, s.channelUrl, s.channelName, s.entries, s.postUtcMinute, language, now);
     return getChatDigestSettings(clanId);
 }
 /** Queue the admin's "Send test post now" for the clan's next scan. */
