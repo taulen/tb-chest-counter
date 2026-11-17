@@ -55,10 +55,10 @@ function savePlayers(clanId, members, players, now = new Date().toISOString()) {
        might = excluded.might, hero_level = excluded.hero_level, city_level = excluded.city_level,
        vip = excluded.vip, gold_pass = excluded.gold_pass, hero_avatar = excluded.hero_avatar,
        city_id = excluded.city_id, last_seen = excluded.last_seen`);
-    const lastHistory = db.prepare(`SELECT name, might, hero_level, city_level, vip, gold_pass FROM game_player_history
+    const lastHistory = db.prepare(`SELECT name, might, hero_level, city_level, vip, gold_pass, hero_avatar, role FROM game_player_history
       WHERE clan_id = ? AND player_id = ? ORDER BY captured_at DESC LIMIT 1`);
-    const addHistory = db.prepare(`INSERT OR IGNORE INTO game_player_history (clan_id, player_id, captured_at, name, might, hero_level, city_level, vip, gold_pass)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const addHistory = db.prepare(`INSERT OR IGNORE INTO game_player_history (clan_id, player_id, captured_at, name, might, hero_level, city_level, vip, gold_pass, hero_avatar, role)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const markGone = db.prepare('UPDATE game_players SET in_clan = 0 WHERE clan_id = ? AND in_clan = 1 AND last_seen < ?');
     db.transaction(() => {
         for (const p of players) {
@@ -74,9 +74,10 @@ function savePlayers(clanId, members, players, now = new Date().toISOString()) {
             const prev = lastHistory.get(clanId, p.playerId);
             const changed = !prev
                 || prev.name !== p.name || prev.might !== p.might || prev.hero_level !== p.heroLevel
-                || prev.city_level !== p.cityLevel || prev.vip !== p.vip || prev.gold_pass !== row.goldPass;
+                || prev.city_level !== p.cityLevel || prev.vip !== p.vip || prev.gold_pass !== row.goldPass
+                || prev.hero_avatar !== p.heroAvatar || prev.role !== m.role;
             if (changed)
-                addHistory.run(clanId, p.playerId, now, p.name, p.might, p.heroLevel, p.cityLevel, p.vip, row.goldPass);
+                addHistory.run(clanId, p.playerId, now, p.name, p.might, p.heroLevel, p.cityLevel, p.vip, row.goldPass, p.heroAvatar, m.role);
         }
         markGone.run(clanId, now);
     })();

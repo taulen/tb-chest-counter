@@ -1584,6 +1584,23 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // Player history also tracks the hero shown (avatar) and the clan rank, so
+    // a member's timeline can show hero switches and promotions. Seeded from
+    // the current values so the first capture after this records no false change.
+    version: 105,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(game_player_history)').all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'hero_avatar')) database.exec('ALTER TABLE game_player_history ADD COLUMN hero_avatar INTEGER');
+      if (!cols.some((c) => c.name === 'role')) database.exec('ALTER TABLE game_player_history ADD COLUMN role INTEGER');
+      database.exec(`
+        UPDATE game_player_history SET
+          hero_avatar = (SELECT g.hero_avatar FROM game_players g WHERE g.clan_id = game_player_history.clan_id AND g.player_id = game_player_history.player_id),
+          role = (SELECT g.role FROM game_players g WHERE g.clan_id = game_player_history.clan_id AND g.player_id = game_player_history.player_id)
+        WHERE hero_avatar IS NULL AND role IS NULL;
+      `);
+    },
+  },
 ];
 
 /**
