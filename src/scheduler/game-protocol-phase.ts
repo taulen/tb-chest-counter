@@ -142,11 +142,11 @@ export async function runGameProtocolCapture(
       expiresAt: g.expiresAt,
     }));
 
-    savePlayers(clanId, record.members, players);
+    const gameDate = currentGameDate(opts.rolloverUtcHour);
+    savePlayers(clanId, record.members, players, new Date().toISOString(), gameDate);
     const newGifts = saveGifts(clanId, gifts);
     const ledgerNew = saveLedger(clanId, ledger);
     const unnamed = gifts.filter((g) => !g.chestName).length;
-    const gameDate = currentGameDate(opts.rolloverUtcHour);
 
     // Members: link to game ids, exact names, roles, seen, might/hero snapshot, departures.
     let memberIds = new Map<number, number>();

@@ -2678,4 +2678,5 @@ export const game = {
   "Alexander the Great": "Alexander der Große",
   "Hercules": "Herkules",
   "Helen": "Helena",
+  "Gold Ingots": "Goldbarren",
 };

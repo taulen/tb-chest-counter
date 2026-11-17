@@ -69,18 +69,35 @@ export function finishCaptureRun(runId: number, res: CaptureRunResult): void {
  * their row with in_clan = 0, so departures stay visible. A history row is
  * written only when a tracked stat or the name changed since the last one.
  */
-export function savePlayers(clanId: number, members: ClanMember[], players: PlayerRecord[], now = new Date().toISOString()): void {
+export function savePlayers(
+  clanId: number,
+  members: ClanMember[],
+  players: PlayerRecord[],
+  now = new Date().toISOString(),
+  /** The scan's game day (rollover-aware); the daily Gold Ingots row is keyed by it. */
+  gameDate: string = now.slice(0, 10),
+): void {
   const db = getDb();
   const roles = new Map(members.map((m) => [m.playerId, m]));
   const upsert = db.prepare(
     `INSERT INTO game_players
-       (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar, city_id, first_seen, last_seen)
-     VALUES (@clanId, @playerId, @name, @role, @joinedAt, 1, @might, @heroLevel, @cityLevel, @vip, @goldPass, @heroAvatar, @cityId, @now, @now)
+       (clan_id, player_id, name, role, joined_at, in_clan, might, hero_level, city_level, vip, gold_pass, hero_avatar, city_id, gold_ingots, first_seen, last_seen)
+     VALUES (@clanId, @playerId, @name, @role, @joinedAt, 1, @might, @heroLevel, @cityLevel, @vip, @goldPass, @heroAvatar, @cityId, @goldIngots, @now, @now)
      ON CONFLICT (clan_id, player_id) DO UPDATE SET
        name = excluded.name, role = excluded.role, joined_at = excluded.joined_at, in_clan = 1,
        might = excluded.might, hero_level = excluded.hero_level, city_level = excluded.city_level,
        vip = excluded.vip, gold_pass = excluded.gold_pass, hero_avatar = excluded.hero_avatar,
-       city_id = excluded.city_id, last_seen = excluded.last_seen`,
+       city_id = excluded.city_id, gold_ingots = COALESCE(excluded.gold_ingots, game_players.gold_ingots),
+       last_seen = excluded.last_seen`,
+  );
+  // Gold Ingots tick up every few minutes, so they are kept per game day (the
+  // day's latest reading, rewritten every scan) — never part of the change
+  // check below, which would write a history row per player per scan.
+  const daily = db.prepare(
+    `INSERT INTO game_player_daily (clan_id, player_id, game_date, gold_ingots, captured_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (clan_id, player_id, game_date) DO UPDATE SET
+       gold_ingots = COALESCE(excluded.gold_ingots, game_player_daily.gold_ingots), captured_at = excluded.captured_at`,
   );
   const lastHistory = db.prepare(
     `SELECT name, might, hero_level, city_level, vip, gold_pass, hero_avatar, role FROM game_player_history
@@ -99,9 +116,10 @@ export function savePlayers(clanId: number, members: ClanMember[], players: Play
       const row = {
         clanId, playerId: p.playerId, name: p.name, role: m.role, joinedAt: m.joinedAt,
         might: p.might, heroLevel: p.heroLevel, cityLevel: p.cityLevel, vip: p.vip,
-        goldPass: p.goldPass ? 1 : 0, heroAvatar: p.heroAvatar, cityId: p.cityId, now,
+        goldPass: p.goldPass ? 1 : 0, heroAvatar: p.heroAvatar, cityId: p.cityId, goldIngots: p.goldIngots ?? null, now,
       };
       upsert.run(row);
+      if (p.goldIngots !== null && p.goldIngots !== undefined) daily.run(clanId, p.playerId, gameDate, p.goldIngots, now);
       const prev = lastHistory.get(clanId, p.playerId) as
         | { name: string; might: number | null; hero_level: number | null; city_level: number | null; vip: number | null;
             gold_pass: number | null; hero_avatar: number | null; role: number | null }

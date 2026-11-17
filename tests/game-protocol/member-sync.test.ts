@@ -25,7 +25,7 @@ const NOW = '2026-11-16T20:00:00.000Z';
 function player(playerId: number, name: string, might: number, heroLevel = 100): PlayerRecord {
   return {
     playerId, name, might, heroLevel, position: [1071, 500, 500], heroAvatar: 1, cityLevel: 30, vip: 10,
-    clanId: 999, clanTag: 'TST', cityId: playerId + 1, goldPass: false,
+    clanId: 999, clanTag: 'TST', cityId: playerId + 1, goldPass: false, goldIngots: null,
   };
 }
 const rosterOf = (players: PlayerRecord[]): ClanMember[] => players.map((p) => ({ playerId: p.playerId, role: 4, joinedAt: 1790000000 }));

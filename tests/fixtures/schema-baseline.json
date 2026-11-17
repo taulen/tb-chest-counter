@@ -506,6 +506,11 @@
   },
   {
     "type": "table",
+    "name": "game_player_daily",
+    "sql": "CREATE TABLE game_player_daily ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, game_date TEXT NOT NULL, gold_ingots INTEGER, captured_at TEXT NOT NULL, PRIMARY KEY (clan_id, player_id, game_date) )"
+  },
+  {
+    "type": "table",
     "name": "game_player_history",
     "sql": "CREATE TABLE game_player_history ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, captured_at TEXT NOT NULL, name TEXT NOT NULL, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, role INTEGER, PRIMARY KEY (clan_id, player_id, captured_at) )"
   },
@@ -522,7 +527,7 @@
   {
     "type": "table",
     "name": "game_players",
-    "sql": "CREATE TABLE game_players ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, name TEXT NOT NULL, role INTEGER, joined_at INTEGER, in_clan INTEGER NOT NULL DEFAULT 1, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, city_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, PRIMARY KEY (clan_id, player_id) )"
+    "sql": "CREATE TABLE game_players ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, name TEXT NOT NULL, role INTEGER, joined_at INTEGER, in_clan INTEGER NOT NULL DEFAULT 1, might INTEGER, hero_level INTEGER, city_level INTEGER, vip INTEGER, gold_pass INTEGER, hero_avatar INTEGER, city_id INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, gold_ingots INTEGER, PRIMARY KEY (clan_id, player_id) )"
   },
   {
     "type": "table",

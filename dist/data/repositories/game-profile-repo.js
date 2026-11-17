@@ -29,6 +29,7 @@ const toProfile = (r) => ({
     cityLevel: r.city_level,
     vip: r.vip,
     goldPass: r.gold_pass === 1,
+    goldIngots: r.gold_ingots ?? null,
     heroAvatar: r.hero_avatar,
     avatarUrl: heroAvatarUrl(r.hero_avatar),
     lastSeen: r.last_seen,

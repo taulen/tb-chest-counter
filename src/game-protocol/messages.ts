@@ -95,6 +95,8 @@ export interface PlayerRecord {
   clanTag: string;
   cityId: number | null;
   goldPass: boolean;
+  /** Gold Ingots (field 17) — public in the game for every player. */
+  goldIngots: number | null;
 }
 
 /** Message 402: player records, wherever they sit in the reply. */
@@ -117,6 +119,7 @@ export function parsePlayers(frame: Frame): PlayerRecord[] {
         clanTag: typeof v[13] === 'string' ? v[13] : '',
         cityId: id1(v[16]),
         goldPass: Array.isArray(v[22]) && v[22][0] === 1,
+        goldIngots: num(v[17]),
       });
       return;
     }

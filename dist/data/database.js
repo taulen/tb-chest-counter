@@ -1679,6 +1679,30 @@ const MIGRATIONS = [
             }
         },
     },
+    {
+        // v110 — Gold Ingots, public in the game for every player (402 field 17).
+        // They tick up by one every few minutes, so they are NOT part of
+        // game_player_history's change check (that would write a row per player
+        // per scan and re-read every city): game_players holds the current value,
+        // game_player_daily the game day's latest reading (updated every scan).
+        version: 110,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(game_players)').all();
+            if (!cols.some((c) => c.name === 'gold_ingots')) {
+                database.exec('ALTER TABLE game_players ADD COLUMN gold_ingots INTEGER');
+            }
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_player_daily (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          game_date TEXT NOT NULL,
+          gold_ingots INTEGER,
+          captured_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id, game_date)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

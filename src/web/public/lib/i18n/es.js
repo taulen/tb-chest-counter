@@ -2685,4 +2685,5 @@ export const game = {
   "Hercules": "Hércules",
   "Helen": "Helena",
   "Attila": "Atila",
+  "Gold Ingots": "Lingotes de oro",
 };

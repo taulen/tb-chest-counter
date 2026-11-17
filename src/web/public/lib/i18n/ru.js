@@ -2708,4 +2708,5 @@ export const game = {
   "Heimdall": "Хеймдалль",
   "Artemisia": "Артемисия",
   "Attila": "Аттила",
+  "Gold Ingots": "Золотые слитки",
 };

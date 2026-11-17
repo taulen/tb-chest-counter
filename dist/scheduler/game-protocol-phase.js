@@ -85,11 +85,11 @@ async function runGameProtocolCapture(clanId, opts) {
             arrivedAt: g.arrivedAt,
             expiresAt: g.expiresAt,
         }));
-        (0, game_protocol_repo_js_1.savePlayers)(clanId, record.members, players);
+        const gameDate = (0, game_day_js_1.currentGameDate)(opts.rolloverUtcHour);
+        (0, game_protocol_repo_js_1.savePlayers)(clanId, record.members, players, new Date().toISOString(), gameDate);
         const newGifts = (0, game_protocol_repo_js_1.saveGifts)(clanId, gifts);
         const ledgerNew = (0, game_protocol_repo_js_1.saveLedger)(clanId, ledger);
         const unnamed = gifts.filter((g) => !g.chestName).length;
-        const gameDate = (0, game_day_js_1.currentGameDate)(opts.rolloverUtcHour);
         // Members: link to game ids, exact names, roles, seen, might/hero snapshot, departures.
         let memberIds = new Map();
         let syncNote = '';

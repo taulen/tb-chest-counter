@@ -1,11 +1,11 @@
 // What the game itself reports about a player — clan rank, when they joined,
-// city level, VIP, Gold Pass, hero level — as a row of pills, plus the hero
+// city level, VIP, Gold Pass, Gold Ingots, hero level — as a row of pills, plus the hero
 // portrait. Shared by the member profile and the public board's hover card, so
 // it imports only what the public page can load (no session, no router).
 //
 // `player` is the shape served by /api/game/members/:id and the public
 // breakdown's `game` field: { role, joinedAt, inClan, cityLevel, vip,
-// goldPass, heroLevel, avatarUrl }.
+// goldPass, goldIngots, heroLevel, avatarUrl }.
 
 import { esc, formatDate, formatDateShort } from './ui.js';
 import { t, tGame } from './i18n.js';
@@ -35,6 +35,9 @@ export function gameFactsHtml(player, { joined = true, heroLevel = false } = {})
   if (heroLevel && p.heroLevel) pills.push(`<span class="game-fact-pill">${t('Hero level {n}', { n: p.heroLevel })}</span>`);
   if (p.cityLevel) pills.push(`<span class="game-fact-pill">${t('City level {n}', { n: p.cityLevel })}</span>`);
   if (p.vip) pills.push(`<span class="game-fact-pill">${t('VIP {n}', { n: p.vip })}</span>`);
+  // Gold Ingots are public in the game (every player's profile shows them); the
+  // game's own name for them, via tGame.
+  if (p.goldIngots != null) pills.push(`<span class="game-fact-pill">${esc(tGame('Gold Ingots'))} ${Number(p.goldIngots).toLocaleString()}</span>`);
   if (p.goldPass) pills.push(`<span class="game-fact-pill is-gold" title="${esc(t('This member has the Gold Pass, as the game reports it'))}">${t('Gold Pass')}</span>`);
   return pills.length ? `<div class="game-facts">${pills.join('')}</div>` : '';
 }

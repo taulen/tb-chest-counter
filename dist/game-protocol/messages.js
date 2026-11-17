@@ -77,6 +77,7 @@ function parsePlayers(frame) {
                 clanTag: typeof v[13] === 'string' ? v[13] : '',
                 cityId: id1(v[16]),
                 goldPass: Array.isArray(v[22]) && v[22][0] === 1,
+                goldIngots: num(v[17]),
             });
             return;
         }
