@@ -138,16 +138,27 @@ function loadOrCreateDevice(file) {
     fs_1.default.writeFileSync(file, JSON.stringify(device, null, 1));
     return device;
 }
-/** Pull the game account id and realm → server map out of the /en/ page. Pure; unit-tested. */
+/** The rating server's pseudo-realm in the site page's realm list. */
+const RATING_REALM_ID = 100000;
+const jsonUrls = (list) => [...list.matchAll(/"([^"]+)"/g)].map((u) => u[1].replace(/\\\//g, '/'));
+/**
+ * Pull the game account id, the realm → server map and the rating server out
+ * of the /en/ page. Pure; unit-tested. The rating server is NOT the realm's:
+ * the client asks it for the event list (24001) — a realm server never answers
+ * that (Nov 2026: every scan's event read failed "no 24001 reply" until this).
+ * It is the page's `rating_url`, else realm 100000's logic_url.
+ */
 function parseSitePage(html) {
     const suid = html.match(/"suid":"([a-z0-9]+:\d+)"/)?.[1] ?? null;
     const realmUrls = new Map();
     for (const m of html.matchAll(/\{"realm_id":(\d+),"logic_url":\[([^\]]*)\]/g)) {
-        const urls = [...m[2].matchAll(/"([^"]+)"/g)].map((u) => u[1].replace(/\\\//g, '/'));
+        const urls = jsonUrls(m[2]);
         if (urls.length)
             realmUrls.set(Number(m[1]), urls);
     }
-    return { suid, realmUrls };
+    const rating = html.match(/"rating_url":\[([^\]]*)\]/);
+    const ratingUrls = rating ? jsonUrls(rating[1]) : (realmUrls.get(RATING_REALM_ID) ?? []);
+    return { suid, realmUrls, ratingUrls };
 }
 function tokenFromSetCookie(setCookies) {
     for (const c of setCookies) {
@@ -167,13 +178,13 @@ async function fetchSiteBootstrap(jar) {
         throw new GameProtocolError(`GET /en/ → HTTP ${res.status}`);
     const html = await res.text();
     const token = tokenFromSetCookie(res.headers.getSetCookie());
-    const { suid, realmUrls } = parseSitePage(html);
+    const { suid, realmUrls, ratingUrls } = parseSitePage(html);
     if (classifySitePage(res.status, html) === 'logged-out')
         throw new SessionLoggedOutError();
     if (!token || !suid) {
         throw new GameProtocolError('totalbattle.com returned an unexpected page (no token or account id) — not treated as a logout');
     }
-    return { token, suid, realmUrls };
+    return { token, suid, realmUrls, ratingUrls };
 }
 async function getGameStartData(boot, jar, device) {
     const body = {
@@ -286,10 +297,13 @@ class GameClient {
     nickname;
     session;
     suid;
+    ratingUrl;
     seq = 1;
     constructor(url, playerId, realmId, clanId, nickname, session, 
     /** The website user id (`tb:<n>`), which is also the chat (Sendbird) user id. */
-    suid = '') {
+    suid = '', 
+    /** The rating server (the site page's rating_url): the event list (24001) is asked there, never on the realm. */
+    ratingUrl = null) {
         this.url = url;
         this.playerId = playerId;
         this.realmId = realmId;
@@ -297,6 +311,7 @@ class GameClient {
         this.nickname = nickname;
         this.session = session;
         this.suid = suid;
+        this.ratingUrl = ratingUrl;
     }
     static async connect(opts) {
         siteCookieHeader(opts.storageStatePath); // throws early when no session is stored at all
@@ -323,17 +338,21 @@ class GameClient {
         const profile = Array.isArray(root) && Array.isArray(root[6]) ? root[6][2] : undefined;
         const nickname = Array.isArray(profile) && typeof profile[0] === 'string' ? profile[0] : '';
         const clanId = Array.isArray(profile) && Array.isArray(profile[1]) && typeof profile[1][0] === 'number' ? profile[1][0] : 0;
-        return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session, boot.suid);
+        return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session, boot.suid, boot.ratingUrls[0] ?? null);
     }
-    /** Send one message and return every message in the reply. */
-    async request(type, body) {
+    /**
+     * Send one message and return every message in the reply. `url` is the
+     * realm server unless given: the rating server takes the same session and
+     * the same running request number (the client numbers both from one counter).
+     */
+    async request(type, body, url = this.url) {
         this.seq += 1;
         const frame = (0, codec_js_1.encodeFrame)([type, this.seq, [[this.playerId], this.session], ''], body);
-        return (0, codec_js_1.messages)((0, codec_js_1.decodeFrames)(await post(this.url, frame)));
+        return (0, codec_js_1.messages)((0, codec_js_1.decodeFrames)(await post(url, frame)));
     }
     /** The first reply message of `type`, or throw. */
-    async ask(type, body) {
-        const reply = (await this.request(type, body)).find((m) => m.type === type);
+    async ask(type, body, url = this.url) {
+        const reply = (await this.request(type, body, url)).find((m) => m.type === type);
         if (!reply)
             throw new GameProtocolError(`no ${type} reply`);
         return reply;
@@ -341,9 +360,15 @@ class GameClient {
     clanRecord(clanId = this.clanId) {
         return this.ask(15000, [[[[[clanId], ALL_FIELDS]]]]);
     }
-    /** Every event the account's realm knows, with which run is live (24001 — what the client asks at login). */
+    /**
+     * Every event the account's realm knows, with which run is live (24001 — what
+     * the client asks at login). Asked on the RATING server: a realm server never
+     * answers it (every scan's event read failed "no 24001 reply" until Nov 2026).
+     */
     eventList(clanId = this.clanId, realmId = this.realmId) {
-        return this.ask(24001, [[[[this.playerId], [clanId], realmId], []]]);
+        if (!this.ratingUrl)
+            return Promise.reject(new GameProtocolError('the site page lists no rating server (rating_url) for the event list'));
+        return this.ask(24001, [[[[this.playerId], [clanId], realmId], []]], this.ratingUrl);
     }
     /** An event's "Clan members" standings for the account's clan (38003 — the event window's first tab). */
     eventStandings(type, run) {

@@ -796,6 +796,14 @@ standings), each player's latest points and rank (`game_event_standings`) and a
 the baseline). An event without a clan-members tab answers nothing and is
 skipped. Raw replies are archived (`event_list`, `event`).
 
+**24001 is asked on the RATING server, not the realm's.** The site page lists it
+as `rating_url` (`https://game-us3.totalbattle.com/rubens-rating` for every realm
+seen, SK7's included, plus a fallback; also realm 100000's `logic_url`). Same
+frame, same session, same running request number as a realm request — only the
+URL differs. A realm server simply never answers 24001: until Nov 17 2026 every
+scan's event read failed "no 24001 reply" and nothing was ever stored. 38000 and
+38003 do go to the realm server.
+
 Titles come from T44 (`names.json` `events`, "type,run" → code, title key,
 English title). A run maps onto the site's events by its English title against
 the catalog's `calendarNames` / name, case- and accent-insensitive

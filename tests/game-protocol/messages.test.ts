@@ -224,6 +224,19 @@ describe('direct client building blocks', () => {
     ]);
   });
 
+  it('finds the rating server the event list (24001) is asked on — not the realm', () => {
+    const rating = '"rating_url":["https:\\/\\/game-us3.totalbattle.com\\/rubens-rating","https:\\/\\/game-us3-fallback.totalbattle.com\\/rubens-rating"],"rating_rpc_url":[]';
+    const realm = '{"realm_id":1071,"logic_url":["https:\\/\\/game-us62.totalbattle.com\\/rubens-realm1071"],"json_rpc_url":[]}';
+    expect(parseSitePage(`x"suid":"tb:1" ${rating} ${realm}`).ratingUrls).toEqual([
+      'https://game-us3.totalbattle.com/rubens-rating',
+      'https://game-us3-fallback.totalbattle.com/rubens-rating',
+    ]);
+    // Without rating_url: the rating pseudo-realm (100000) in the realm list.
+    const pseudo = '{"realm_id":100000,"logic_url":["https:\\/\\/game-us3.totalbattle.com\\/rubens-rating"],"json_rpc_url":[]}';
+    expect(parseSitePage(`x"suid":"tb:1" ${realm} ${pseudo}`).ratingUrls).toEqual(['https://game-us3.totalbattle.com/rubens-rating']);
+    expect(parseSitePage(`x"suid":"tb:1" ${realm}`).ratingUrls).toEqual([]);
+  });
+
   it('lays the login human data out in the client order: 12 fields, two blanks, the rest', () => {
     const device = { deviceId: 'fpc' + '0'.repeat(32), fingerprintId: '123456789', firstWebVisitTs: 1794566702, firstWebVisitRnd: '1794566702840' };
     const arr = loginHumanArray({ ip: '10.0.0.1', continent_code: 'EU', country_code: 'NO', lang: 'en', email: 'a@b.c' }, device);
