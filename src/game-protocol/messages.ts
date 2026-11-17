@@ -645,3 +645,75 @@ export function parseCityTechs(frame: Frame): Record<string, number> {
   }
   return out;
 }
+
+/** One event (tournament) in the 24001 list. */
+export interface GameEventEntry {
+  type: number;
+  run: number;
+  /** Which occurrence of the run this is (Rise of the Ancients #242); a new one each time the event comes round. */
+  occurrence: number;
+  /** 1 = running now (the list the client polls with 24203), 2 = past / upcoming / not for this clan. */
+  state: number;
+  /** Epoch seconds; 4294967295 = open-ended. */
+  startsAt: number | null;
+  endsAt: number | null;
+}
+
+/**
+ * Message 24001 (ask `[[[[playerId], [clanId], realm], []]]`): every event the
+ * account's realm knows, `[[type, run], occurrence, state, endsAt, …, startsAt]`
+ * each, in body[0][0] (body[0][1] lists `[type, run]` pairs only). Recorded
+ * Nov 17 2026: 186 entries, 10 with state 1 — exactly the ones the client then
+ * polls (24203), e.g. `[[1024,1],242,1,…]` Rise of the Ancients running
+ * Nov 16 17:00 → Nov 17 17:00 UTC.
+ */
+export function parseEventList(frame: Frame): GameEventEntry[] {
+  const list = arr(arr(arr(frame.body)[0])[0]);
+  const out: GameEventEntry[] = [];
+  for (const e of list) {
+    const r = arr(e);
+    const key = arr(r[0]);
+    const type = num(key[0]);
+    const run = num(key[1]);
+    const occurrence = num(r[1]);
+    const state = num(r[2]);
+    if (type === null || run === null || occurrence === null || state === null) continue;
+    out.push({ type, run, occurrence, state, startsAt: num(r[7]), endsAt: num(r[3]) });
+  }
+  return out;
+}
+
+/** Running now: state 1 and not past its end (an open-ended end counts as running). */
+export function isEventRunning(e: GameEventEntry, nowSec: number): boolean {
+  if (e.state !== 1) return false;
+  if (e.startsAt !== null && e.startsAt > nowSec) return false;
+  return e.endsAt === null || e.endsAt >= nowSec;
+}
+
+/** One member's line in an event's clan-members standings. */
+export interface GameEventStanding {
+  playerId: number;
+  points: number;
+  rank: number;
+}
+
+/**
+ * Message 38003 (ask `[[[type, run]]]`): the event's "Clan members" tab for the
+ * signed-in account's clan — `[[playerId], points, rank]` per member, in
+ * body[0][0]. Verified against the game's window (Nov 17 2026): Rise of the
+ * Ancients for SIK, Mr Freeze 52,586,600 #1, Daigor 50,047,641 #2, Fiin SK 2
+ * 49,899,136 #3; CWB's all 0 before its first summon.
+ */
+export function parseEventStandings(frame: Frame): GameEventStanding[] {
+  const rows = arr(arr(arr(frame.body)[0])[0]);
+  const out: GameEventStanding[] = [];
+  for (const row of rows) {
+    const r = arr(row);
+    const playerId = id1(r[0]);
+    const points = num(r[1]);
+    const rank = num(r[2]);
+    if (playerId === null || points === null || rank === null) continue;
+    out.push({ playerId, points, rank });
+  }
+  return out;
+}

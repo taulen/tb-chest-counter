@@ -24,6 +24,7 @@ const PAGES = {
   darkomens: '/#events/dark-omens',
   doomsday: '/#events/doomsday',
   hellforge: '/#events/hell-forge',
+  ingame: '/#events/in-game',
   tools: '/#tools',
   citadel: '/#tools/citadel',
   stacks: '/#tools/stacks',
