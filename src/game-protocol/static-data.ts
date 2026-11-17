@@ -74,10 +74,21 @@ export const TABLE_ARTIFACT_BONUSES = 113;
  * f3 name vector, f6 visual JSON {"icon": …}.
  */
 export const TABLE_EQUIPMENT = 11;
+/**
+ * The Hall of Fame's factions: `[id, …, visualRef, techId]` — f4 a JSON string
+ * ({banner, frameIcon, icon, stainedGlass, tooltipDescription:
+ * "battler_fraction.tooltip.<key>"}), f5 the city TECH that holds the
+ * faction's level: 1 Lions of Courage → 800, 2 Eagles of Resolve → 802,
+ * 3 Wolves of Tenacity → 801. The ids are the captains' T75 f1 faction. The
+ * Hall of Fame itself is tech 803, whose levels require
+ * `HasFractionLevel(800,801,802,N)`. Every member's city techs (field 17)
+ * carry them, so the levels are in game_player_techs like research.
+ */
+export const TABLE_FACTIONS = 78;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
-  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS,
+  TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_FACTIONS,
 ];
 
 export interface GameNames {
@@ -100,8 +111,37 @@ export interface GameNames {
   equipmentGrades?: Record<string, string>;
   /** Gems and enchantments (T8 id) that can be set into equipment. Format 3+. */
   inserts?: Record<string, GameInsert>;
+  /** The Hall of Fame's three factions by T78 id (1 Lions, 2 Eagles, 3 Wolves). Format 5+. */
+  factions?: Record<string, GameFaction>;
+  /** The Hall of Fame itself (tech 803): its levels, bonuses and requirements. Format 5+. */
+  hallOfFame?: GameLevelledTech;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
+}
+
+/** A tech whose levels the Hall of Fame shows: per level its bonuses and what reaching it requires. */
+export interface GameLevelledTech {
+  /** The city tech that holds the level (game_player_techs). */
+  techId: number;
+  /** The game's name ("Hall of Fame", "Lions of Courage"). */
+  name: string;
+  maxLevel: number;
+  /**
+   * Level → the bonuses AT that level ([text, value], the game's own lines:
+   * "Army strength", "+41,25%") and the game's texts for what reaching it
+   * requires beyond the level before ("Level 150 epic, legendary or mythic
+   * Captains of this faction needed: 2", "Required level of all factions: 46").
+   */
+  levels: Record<string, { lines: GameTextLine[]; requires: string[] }>;
+}
+
+export interface GameFaction extends GameLevelledTech {
+  /** T78 id = the captains' T75 f1 faction: 1 Lions of Courage, 2 Eagles of Resolve, 3 Wolves of Tenacity. */
+  id: number;
+  /** "courage" | "resolve" | "tenacity" (the game's key). */
+  key: string;
+  /** Sprites from the faction's visual config. */
+  art: { stainedGlass: string; icon: string; banner: string; frameIcon: string };
 }
 
 export interface GameMedal {
@@ -171,10 +211,11 @@ export interface GameCaptain {
 
 /**
  * Bump when names.json gains a field the app reads (2: captain star bonuses
- * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems — Nov 2026); a cached file with an older
- * format is rebuilt.
+ * and rarity labels; 3: clan medals; 4: artifacts, equipment, gems; 5: the
+ * Hall of Fame's factions, and the real names of techs 800–803 — Nov 2026); a
+ * cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 4;
+export const NAMES_FORMAT = 5;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -412,6 +453,13 @@ export function buildNames(
     const levels = row[5];
     if (name) techs[id] = { name, maxLevel: levels && typeof levels === 'object' && !Array.isArray(levels) ? Object.keys(levels).length : 0 };
   }
+  // The Hall of Fame. Its techs' own name vectors are placeholders ("Ranged
+  // units' strength I" for the Lions' tech 800), which every research list
+  // would show — they take the factions' real names.
+  const { factions, hallOfFame } = buildFactions(tables, str, en);
+  for (const f of [...Object.values(factions), ...(hallOfFame ? [hallOfFame] : [])]) {
+    techs[String(f.techId)] = { name: f.name, maxLevel: f.maxLevel };
+  }
   const objects: GameNames['objects'] = {};
   for (const [id, row] of rows(TABLE_MAP_OBJECTS)) {
     const name = vecText(row[3]);
@@ -501,11 +549,104 @@ export function buildNames(
   return {
     version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
     gifts, techs, objects, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+    factions, ...(hallOfFame ? { hallOfFame } : {}),
   };
 }
 
 const isPlainObject = (v: Wire): v is Record<string, Wire> =>
   !!v && typeof v === 'object' && !Array.isArray(v) && !('$bin' in v) && !('$pairs' in v);
+
+/**
+ * The game's own texts for what reaching a tech level requires, from its
+ * condition strings. "HasTech(…)" on the level before is left out (implied);
+ * an unknown condition is left out rather than shown raw.
+ *   HasCaptainFractionRarityLevel(lvl, faction, rarity, count)
+ *     → "Level 150 epic, legendary or mythic Captains of this faction needed: 2"
+ *   HasFractionLevel(800,801,802, lvl) → "Required level of all factions: 46"
+ */
+export function conditionTexts(conds: string[], en: Map<string, string>): string[] {
+  const out: string[] = [];
+  for (const cond of conds) {
+    for (const part of cond.split('&&').map((p) => p.trim())) {
+      const captains = /^HasCaptainFractionRarityLevel\((\d+),(\d+),(\d+),(\d+)\)$/.exec(part);
+      if (captains) {
+        // Rarity 2 = epic and up; 3 = legendary and up (T75 f2: 1 rare … 4 mythic).
+        const key = Number(captains[3]) >= 3 ? 'legendary' : 'epic';
+        const tpl = en.get(`client_config.value.conditions.has_captain_fraction_rarity_level.${key}`);
+        if (tpl) out.push(tpl.replace('%lvl%', captains[1]).replace('%count%', captains[4]));
+        continue;
+      }
+      const all = /^HasFractionLevel\((?:\d+,)+(\d+)\)$/.exec(part);
+      if (all) {
+        const tpl = en.get('client.conditions.has_fraction_level');
+        if (tpl) out.push(tpl.replace('%lvl%', all[1]));
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The Hall of Fame from the static data: the three factions (T78 → their
+ * techs' levels) and the Hall of Fame tech (the one whose levels require
+ * `HasFractionLevel(…)`). Per level: the bonuses at that level and the game's
+ * texts for its requirements. Pure; unit-tested.
+ */
+export function buildFactions(
+  tables: Map<number, Record<string, Wire>>,
+  str: (ref: Wire) => string | undefined,
+  en: Map<string, string>,
+): { factions: Record<string, GameFaction>; hallOfFame: GameLevelledTech | null } {
+  const techRows = tables.get(TABLE_TECHS) ?? {};
+  const levelled = (techId: number, name: string): GameLevelledTech | null => {
+    const row = techRows[String(techId)];
+    const lv = Array.isArray(row) ? row[5] : undefined;
+    if (!lv || !isPlainObject(lv)) return null;
+    const levels: GameLevelledTech['levels'] = {};
+    for (const [level, r] of Object.entries(lv)) {
+      if (!Array.isArray(r)) continue;
+      // [level, effectId, …, [conditionRefs], propsRef, …]
+      let props: Array<{ propText?: string; propValue?: unknown }> = [];
+      try { props = (JSON.parse(str(r[4]) ?? '{}') as { props?: typeof props }).props ?? []; } catch { /* no props */ }
+      const lines = props
+        .filter((p) => typeof p.propText === 'string' && p.propText)
+        .map((p): GameTextLine => [en.get(p.propText as string) ?? (p.propText as string), String(p.propValue ?? '')]);
+      const conds = (Array.isArray(r[3]) ? r[3] : []).map((c) => str(c)).filter((c): c is string => !!c);
+      levels[level] = { lines, requires: conditionTexts(conds, en) };
+    }
+    return { techId, name, maxLevel: Object.keys(levels).length, levels };
+  };
+
+  const factions: Record<string, GameFaction> = {};
+  for (const [id, row] of Object.entries(tables.get(TABLE_FACTIONS) ?? {})) {
+    if (!Array.isArray(row) || typeof row[5] !== 'number') continue;
+    let visual: { banner?: string; frameIcon?: string; icon?: string; stainedGlass?: string; tooltipDescription?: string } = {};
+    try { visual = JSON.parse(str(row[4]) ?? '{}'); } catch { /* no visual */ }
+    const key = /battler_fraction\.tooltip\.([a-z_]+)/.exec(visual.tooltipDescription ?? '')?.[1] ?? '';
+    const name = (key && en.get(`battler_fraction.description.${key}`)) || `#${id}`;
+    const tech = levelled(row[5], name);
+    if (!tech) continue;
+    factions[id] = {
+      ...tech,
+      id: Number(id),
+      key,
+      art: { stainedGlass: visual.stainedGlass ?? '', icon: visual.icon ?? '', banner: visual.banner ?? '', frameIcon: visual.frameIcon ?? '' },
+    };
+  }
+
+  let hallOfFame: GameLevelledTech | null = null;
+  for (const [id, row] of Object.entries(techRows)) {
+    const lv = Array.isArray(row) ? row[5] : undefined;
+    if (!lv || !isPlainObject(lv)) continue;
+    const first = Object.values(lv)[0];
+    const conds = Array.isArray(first) && Array.isArray(first[3]) ? first[3].map((c) => str(c) ?? '') : [];
+    if (conds.some((c) => c.startsWith('HasFractionLevel('))) {
+      hallOfFame = levelled(Number(id), en.get('client.fractions_hall.title') ?? 'Hall of Fame');
+      break;
+    }
+  }
+  return { factions, hallOfFame };
+}
 
 /**
  * T110–T113 → per artifact type: name, rarity, icon, and every level, star

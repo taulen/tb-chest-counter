@@ -379,6 +379,61 @@ function wireTiles(el, views) {
   });
 }
 
+/**
+ * Bonus lines with the next level's value beside each, as the game's upgrade
+ * panel words it ("+41,25% > +42,0%"). `next` lines come in the same order.
+ */
+function stepLinesHtml(lines, next) {
+  const after = new Map((next?.lines || []).map(([text, value]) => [text, value]));
+  const rows = lines.length ? lines : (next?.lines || []).map(([text]) => [text, '']);
+  if (!rows.length) return '';
+  return `<ul class="captain-bonus-list hof-lines">${rows.map(([text, value]) => {
+    const up = after.get(text);
+    return `<li><span>${esc(tGame(text))}</span><span class="hof-values">${value ? `<span class="captain-bonus-value">${esc(value)}</span>` : ''}${up ? `<span class="hof-next-value">${value ? '&rsaquo; ' : ''}${esc(up)}</span>` : ''}</span></li>`;
+  }).join('')}</ul>`;
+}
+
+/**
+ * A level's bonuses as the game's upgrade panel shows them: the step
+ * ("Level 55 → 56"), each bonus now › next, and what the next level takes
+ * (the game's own conditions). At the top level, just the bonuses.
+ */
+function stepHtml(level, lines, next) {
+  return `${next ? `<div class="hof-step">${t('Level {from} → {to}', { from: level, to: next.level })}</div>` : ''}
+    ${stepLinesHtml(lines, next)}
+    ${(next?.requires || []).map((r) => `<div class="hof-requires">${esc(tGame(r))}</div>`).join('')}`;
+}
+
+/**
+ * The Hall of Fame as the game's screen shows it: each faction's stained-glass
+ * window with its level and what that level gives, then the hall's own level.
+ * Faction levels are city techs 800–803 (game-protocol/factions.ts).
+ */
+function hallOfFameCardHtml(hof) {
+  if (!hof?.factions?.length) return '';
+  const faction = (f) => `
+    <div class="hof-faction hof-${esc(f.key)}${f.level > 0 ? '' : ' is-locked'}">
+      <div class="hof-window">${f.windowUrl ? `<img src="${esc(f.windowUrl)}" alt="" loading="lazy" decoding="async">` : ''}</div>
+      <div class="hof-faction-body">
+        <div class="hof-faction-name">${f.crestUrl ? `<img class="hof-crest" src="${esc(f.crestUrl)}" alt="" decoding="async">` : ''}<span>${esc(tGame(f.name))}</span></div>
+        <div class="hof-level">${esc(tGame(`Level: ${f.level}`))}</div>
+        ${stepHtml(f.level, f.lines, f.next)}
+      </div>
+    </div>`;
+  return `<div class="card hof-card">
+      <div class="card-header"><h2>${esc(tGame('Hall of Fame'))}</h2>
+        <span class="card-header-hint">${esc(tGame(`Level: ${hof.level}`))}</span>
+      </div>
+      <div class="card-body card-body-padded">
+        <div class="hof-factions">${hof.factions.map(faction).join('')}</div>
+        <div class="hof-hall">
+          <div class="hof-hall-title">${esc(tGame('Hall of Fame bonuses'))}</div>
+          ${stepHtml(hof.level, hof.lines, hof.next)}
+        </div>
+      </div>
+    </div>`;
+}
+
 function artifactsCardHtml(artifacts) {
   return `<div class="card">
       <div class="card-header"><h2>${t('Artifacts')}</h2>
@@ -471,6 +526,7 @@ export async function mountMemberCaptains(root, memberId) {
         <div class="captain-grid">${captains.map((c, i) => tileHtml(c, i)).join('')}</div>
       </div>
     </div>
+    ${hallOfFameCardHtml(data.hallOfFame)}
     ${artifactsCardHtml(artifacts)}
     ${changesTableHtml(t('Recent captain progress'), t('Captain'), recent)}
     ${changesTableHtml(t('Recent artifact and equipment changes'), t('Item'), gearChangeRows(data, captainNames))}`;

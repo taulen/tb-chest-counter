@@ -45,6 +45,7 @@ import { itemIconUrls } from '../../game-art/item-icons.js';
 import { CLAN_RANKING_KINDS } from '../../game-protocol/messages.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
 import { describeItem, HERO_ENTRY_ID } from '../../game-protocol/equipment.js';
+import { hallOfFameView } from '../../game-protocol/factions.js';
 
 /**
  * The trees with each tree's and node's sprite as a URL (the game's own icon
@@ -130,7 +131,7 @@ export function createGameRouter(): Router {
     }
     const playerId = gamePlayerIdForMember(memberId, clanId);
     if (playerId === null) {
-      res.json({ linked: false, hero: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
+      res.json({ linked: false, hero: null, hallOfFame: null, captains: [], changes: [], artifacts: [], artifactChanges: [], equipmentChanges: [] });
       return;
     }
     const names = await loadGameNames().catch(() => null);
@@ -194,9 +195,13 @@ export function createGameRouter(): Router {
       frameUrl: player.frameUrl,
       equipment: gear.get(HERO_ENTRY_ID) ?? [],
     } : null;
+    // The Hall of Fame: faction levels are city techs 800–803 (factions.ts).
+    const techs = getPlayerTechs(clanId, playerId);
+    const hallOfFame = hallOfFameView(names, techs.readAt ? techs.levels : null, (n) => gameArtUrl(safeArtName(n)));
     res.json({
       linked: true,
       hero,
+      hallOfFame,
       // Shared tile art: the level plate and the star sprites (null until extracted).
       tileArt: {
         levelPlateUrl: tile?.levelPlate ? gameArtUrl(tile.levelPlate) : null,

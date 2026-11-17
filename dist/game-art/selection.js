@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.CLAN_RANKING_ICONS = exports.SPINE_REGIONS = exports.STATUS_ART = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
+exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_PATTERNS = exports.CLAN_RANKING_ICONS = exports.SPINE_REGIONS = exports.FACTION_ART = exports.FACTION_WINDOWS = exports.STATUS_ART = exports.EVENT_ART = exports.ART_CATEGORIES = void 0;
 exports.isChestName = isChestName;
 exports.isResourceItem = isResourceItem;
 exports.staticIconsByCategory = staticIconsByCategory;
@@ -14,7 +14,7 @@ exports.safeArtName = safeArtName;
  * `items` last: every other item icon (T8) that no category above took — a
  * clan treasury or inventory row shows its item's own icon (by item id).
  */
-exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'ui', 'items'];
+exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'ui', 'items'];
 /**
  * Event pictures the app shows by key (Tools → Ancient planner), the game's
  * own art. With a `region`, the address is a Spine animation and the picture
@@ -49,8 +49,28 @@ exports.STATUS_ART = {
     city: 'player_city_lv1_icon',
     goldIngots: 'gold_bar_72',
 };
+/**
+ * The Hall of Fame's factions (profile → Captains). The faction table (T78)
+ * names each faction's art by colour — red Lions of Courage, green Eagles of
+ * Resolve, blue Wolves of Tenacity — and the server hands the names out
+ * (game-protocol/factions.ts). A window (`stainedglass_*`) is a Spine
+ * animation whose atlas packs the still window with its glow frames: the
+ * picture is the window's region. The crest (`fraction_*`) is a plain icon.
+ */
+exports.FACTION_WINDOWS = {
+    stainedglass_red: 'redv',
+    stainedglass_green: 'greenv',
+    stainedglass_blue: 'bluev',
+};
+exports.FACTION_ART = [
+    new RegExp(`^(${Object.keys(exports.FACTION_WINDOWS).join('|')})$`),
+    /^fraction_(red|green|blue)$/,
+];
 /** Address → the Spine atlas region its picture is cut from. */
-exports.SPINE_REGIONS = new Map(Object.values(exports.EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region]));
+exports.SPINE_REGIONS = new Map([
+    ...Object.values(exports.EVENT_ART).filter((e) => e.region).map((e) => [e.address, e.region]),
+    ...Object.entries(exports.FACTION_WINDOWS),
+]);
 /**
  * The clan ranking window's categories by ranking kind (message 23), with the
  * game's icon for each — the client config's rating tabs, RATING_CLANS.
@@ -91,6 +111,7 @@ exports.ART_PATTERNS = {
     events: Object.values(exports.EVENT_ART).map((e) => new RegExp(`^${e.address}$`)),
     // Exactly the STATUS_ART addresses.
     status: Object.values(exports.STATUS_ART).map((a) => new RegExp(`^${a}$`)),
+    factions: [...exports.FACTION_ART],
     // From the client build, not the catalogue (see ART_CATEGORIES).
     ui: [],
     // Item icons come from the item table (T8) alone.

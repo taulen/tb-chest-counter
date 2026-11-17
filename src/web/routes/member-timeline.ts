@@ -21,6 +21,7 @@ import { cachedTechTrees } from '../../game-protocol/tech-trees.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
 import { describeItem } from '../../game-protocol/equipment.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
+import { safeArtName } from '../../game-art/selection.js';
 
 const PAGE_DEFAULT = 60;
 const PAGE_MAX = 200;
@@ -56,9 +57,11 @@ export function createMemberTimelineRouter(opts: { names?: () => Promise<GameNam
     for (const tree of cachedTechTrees()?.trees ?? []) {
       if (tree.kind === 'talent') for (const n of tree.nodes) talentIds.add(n.techId);
     }
+    // A faction's level is a tech (800–802) with no tech icon: its crest stands in.
+    const factionCrests = new Map(Object.values(names?.factions ?? {}).map((f) => [f.techId, f.art.icon]));
     const look: TimelineLookups = {
       techName: (id) => names?.techs?.[String(id)]?.name ?? `#${id}`,
-      techIconUrl: (id) => art(mappings?.techs, id),
+      techIconUrl: (id) => art(mappings?.techs, id) ?? (factionCrests.get(id) ? gameArtUrl(safeArtName(factionCrests.get(id)!)) : null),
       techKind: (id) => (talentIds.has(id) ? 'talent' : 'research'),
       captainName: (id) => names?.captains?.[String(id)]?.name ?? `#${id}`,
       captainIconUrl: (id) => art(mappings?.captains, id),

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildArtStatic, ART_STATIC_FORMAT, type ArtStatic, type ArtUnit } from '../../src/game-art/art-static.js';
-import { selectArt, safeArtName, ART_PATTERNS } from '../../src/game-art/selection.js';
+import { selectArt, safeArtName, ART_PATTERNS, SPINE_REGIONS } from '../../src/game-art/selection.js';
 import {
   matchTroopIcons,
   matchTroopTiers,
@@ -116,6 +116,13 @@ describe('selectArt', () => {
   it('takes exactly the event art the Ancient planner shows', () => {
     const sel = selectArt(['clandoom_icon_book_anim', 'map_clan_doomsday_boss_scaled', 'clandoom_icon_book_anim_old'], st);
     expect(Object.fromEntries(sel)).toEqual({ clandoom_icon_book_anim: 'events', map_clan_doomsday_boss_scaled: 'events' });
+  });
+
+  it("takes the Hall of Fame's faction windows (cut to the still window) and crests, nothing else of theirs", () => {
+    const sel = selectArt(['stainedglass_red', 'stainedglass_interior_gems', 'fraction_blue', 'fraction_barbarian_on_56', 'fraction_banner_red'], st);
+    expect(Object.fromEntries(sel)).toEqual({ stainedglass_red: 'factions', fraction_blue: 'factions' });
+    expect(SPINE_REGIONS.get('stainedglass_red')).toBe('redv');
+    expect(SPINE_REGIONS.get('clandoom_icon_book_anim')).toBe('book');
   });
 
   it('a resource type name pulls in its item even past the currency id range', () => {

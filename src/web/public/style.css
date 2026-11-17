@@ -9324,6 +9324,126 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
 }
 
+/* The Hall of Fame (pages/member-captains.js hallOfFameCardHtml): the game's
+   three faction windows side by side, each over its level plate and bonuses,
+   then the hall's own level. On a phone each faction is a row, the window
+   beside its text. A faction not raised yet shows its window dimmed. */
+.hof-factions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.hof-faction {
+  --faction: var(--accent-gold);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 28%, color-mix(in srgb, var(--faction) 20%, transparent), transparent),
+    var(--subtle-bg);
+}
+.hof-courage { --faction: var(--accent-red); }
+.hof-resolve { --faction: var(--accent-green); }
+.hof-tenacity { --faction: var(--accent-blue); }
+.hof-window {
+  flex: none;
+  width: 112px;
+  aspect-ratio: 232 / 437;
+}
+.hof-window img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--faction) 55%, transparent));
+}
+.hof-faction.is-locked .hof-window img { filter: grayscale(0.9) brightness(0.6); }
+.hof-faction-body {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.hof-faction-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-weight: 700;
+  text-align: center;
+}
+.hof-crest {
+  flex: none;
+  width: 16px;
+  height: auto;
+}
+.hof-level {
+  justify-self: center;
+  padding: 2px 12px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 999px;
+  background: var(--accent-gold-bg);
+  color: var(--accent-gold);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.hof-step {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.hof-lines { font-size: 12.5px; }
+.hof-values {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.hof-next-value {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hof-requires {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.hof-hall {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+.hof-hall > * { max-width: 520px; }
+.hof-hall-title {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .hof-factions { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .hof-faction {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px;
+    background:
+      radial-gradient(ellipse 30% 60% at 10% 40%, color-mix(in srgb, var(--faction) 20%, transparent), transparent),
+      var(--subtle-bg);
+  }
+  .hof-window { width: 60px; }
+  .hof-faction-name { justify-content: flex-start; text-align: left; }
+  .hof-level { justify-self: start; }
+}
+
 
 /* ─── My Clan (pages/clan.js) ─── */
 .clan-head-name {
