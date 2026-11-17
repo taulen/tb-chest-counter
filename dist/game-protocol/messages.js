@@ -23,6 +23,7 @@ exports.parseCityTechs = parseCityTechs;
 exports.parseEventList = parseEventList;
 exports.isEventRunning = isEventRunning;
 exports.parseEventStandings = parseEventStandings;
+exports.parseEventProgress = parseEventProgress;
 const num = (v) => (typeof v === 'number' ? v : null);
 const id1 = (v) => (Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null);
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -508,5 +509,31 @@ function parseEventStandings(frame) {
         out.push({ playerId, points, rank });
     }
     return out;
+}
+/**
+ * Message 38000 (ask `[[[type, run]]]`, what the client sends as the event
+ * window opens): `body[0]` = `[[occurrence, bossId, summonsLeft, 0, [0],
+ * [0,0,0]], {artifactId: [level, points]}]`. Read for Rise of the Ancients;
+ * fields 3–5 are not decoded. The artifacts map is T44 f9's `artifactIds`
+ * (`clandoom_artifacts` config: 1 Tome of Knowledge, 2/4 Enchanted Figurine,
+ * 3 Mysterious Clock) — SIK's Tome 26 / Clock 16 match its in-game screen.
+ */
+function parseEventProgress(frame) {
+    const root = arr(arr(frame.body)[0]);
+    const head = arr(root[0]);
+    if (!head.length)
+        return null;
+    const artifacts = {};
+    const map = root[1];
+    if (map && typeof map === 'object' && !Array.isArray(map) && !('$pairs' in map) && !('$bin' in map)) {
+        for (const [k, v] of Object.entries(map)) {
+            const id = Number(k);
+            const level = num(arr(v)[0]);
+            if (!Number.isInteger(id) || level === null)
+                continue;
+            artifacts[id] = { level, points: num(arr(v)[1]) ?? 0 };
+        }
+    }
+    return { occurrence: num(head[0]), bossId: num(head[1]), summonsLeft: num(head[2]), artifacts };
 }
 //# sourceMappingURL=messages.js.map

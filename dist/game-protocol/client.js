@@ -349,6 +349,10 @@ class GameClient {
     eventStandings(type, run) {
         return this.ask(38003, [[[type, run]]]);
     }
+    /** An event's header for the account's clan (38000 — what the client asks as the window opens): Rise of the Ancients' summons left and artifacts. */
+    eventProgress(type, run) {
+        return this.ask(38000, [[[type, run]]]);
+    }
     /**
      * The clan's headline numbers (25): might and wealth points — what the game
      * asks for whenever its clan window opens. Read-only.

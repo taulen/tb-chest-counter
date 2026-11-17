@@ -178,6 +178,9 @@ class ScanLoop {
         // New chat messages every minute between scans, on the chat session key
         // each scan refreshes (never touches the game or website login).
         void import('./chat-capture.js').then((m) => m.startChatPoller()).catch(() => { });
+        // A running Rise of the Ancients is read again every ~10 min between scans,
+        // on the game session each clan's scan leaves (never a login of its own).
+        void import('./event-poller.js').then((m) => m.startEventPoller(this.pollGate())).catch(() => { });
         // Research/talent trees (names, layout, troop-tier unlocks): built once per
         // game patch, cached on disk; every scan re-checks the version.
         void import('../game-protocol/tech-trees.js').then((m) => m.loadTechTrees()).catch((err) => {
@@ -226,10 +229,48 @@ class ScanLoop {
         // resume a loop the operator (or shutdown) explicitly halted.
         this.clearPauseWatchdog();
         this.nextScanAt = null;
+        void import('./event-poller.js').then((m) => m.stopEventPoller()).catch(() => { });
         log.info('Scan loop stopped');
     }
     parallel() {
         return this.hooks.parallel ? this.hooks.parallel() : (0, scan_lanes_js_1.scanParallelEnabled)();
+    }
+    /**
+     * What the between-scans event poller (event-poller.ts) may do: nothing while
+     * paused (the login bridge) or stopped; never on a clan whose lane has a scan
+     * queued or running (an unknown-account scan might be anyone's); its reads go
+     * through the lane like a scan.
+     */
+    pollGate() {
+        return {
+            paused: () => !this.running,
+            laneBusy: (clanId) => {
+                const lane = this.laneOf(clanId);
+                return this.isClanScanQueuedOrRunning(clanId)
+                    || this.lanes.pending(lane) > 0
+                    || this.lanes.pending(scan_lanes_js_1.EXCLUSIVE) > 0
+                    || (lane === scan_lanes_js_1.EXCLUSIVE && !this.lanes.idle());
+            },
+            runOnLane: (clanId, job) => this.lanes.run(this.laneOf(clanId), job),
+            rolloverUtcHour: () => this.config.gameDayRolloverUtcHour,
+        };
+    }
+    /**
+     * A scan signs in to the game, which takes over its account's game session:
+     * the sessions kept for between-scans reads of every clan on that account
+     * (or on an account not known yet) are dead from here on.
+     */
+    async dropSessionsSharing(clanId) {
+        const { dropGameSession, keptSessionClans } = await import('./event-poller.js');
+        const others = keptSessionClans();
+        if (!others.length)
+            return;
+        const mine = (0, scan_account_repo_js_1.getClanScanAccount)(clanId);
+        for (const other of others) {
+            const theirs = (0, scan_account_repo_js_1.getClanScanAccount)(other);
+            if (other === clanId || !mine || !theirs || mine === theirs)
+                dropGameSession(other);
+        }
     }
     /**
      * Check every active clan's saved login without the game client, every
@@ -298,6 +339,9 @@ class ScanLoop {
         // resuming us, arm a watchdog so no future pause path can strand the
         // scanner the way an abandoned login session used to.
         this.armPauseWatchdog();
+        // The bridge signs in on an account: every session kept for
+        // between-scans reads is superseded (and the poller reads nothing while paused).
+        void import('./event-poller.js').then((m) => m.dropAllGameSessions()).catch(() => { });
         log.info('Scan loop paused');
         return true;
     }
@@ -694,6 +738,7 @@ class ScanLoop {
         const report = (message) => { run.progressMessage = message; };
         this.stateMachine.transition(enums_js_1.AppState.SCANNING);
         report('Reading clan data from the game server…');
+        await this.dropSessionsSharing(clanId);
         const { runGameProtocolCapture, collectCaptureExtras } = await import('./game-protocol-phase.js');
         const capture = await runGameProtocolCapture(clanId, { rolloverUtcHour: this.config.gameDayRolloverUtcHour });
         if (!capture.ok || !capture.data) {
@@ -746,6 +791,9 @@ class ScanLoop {
             const digestNote = await runChatDigest(clanId, { client: capture.data.client, rolloverUtcHour: this.config.gameDayRolloverUtcHour });
             if (digestNote)
                 log.info(`Clan #${clanId} ${digestNote}`);
+            // Kept for between-scans reads of a running Rise of the Ancients (event-poller.ts).
+            const { keepGameSession } = await import('./event-poller.js');
+            keepGameSession(clanId, capture.data.client);
             return done;
         }
         catch (err) {

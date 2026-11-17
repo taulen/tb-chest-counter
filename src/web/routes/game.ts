@@ -9,6 +9,7 @@
  */
 import { Router } from 'express';
 import { getDb } from '../../data/database.js';
+import { gamePlayerNames } from '../../data/game-player-names.js';
 import { getMemberById } from '../../data/repositories/member-repo.js';
 import {
   gamePlayerIdForMember,
@@ -93,20 +94,7 @@ function eventRunApi(r: StoredEventRun, nowSec: number) {
 }
 
 /** game player id → the name the site shows (the linked member's) and the member id, for event standings. */
-function playerNames(clanId: number, playerIds: number[]): Map<number, { name: string; memberId: number | null }> {
-  const out = new Map<number, { name: string; memberId: number | null }>();
-  if (!playerIds.length) return out;
-  const db = getDb();
-  const ph = playerIds.map(() => '?').join(',');
-  const players = db.prepare(`SELECT player_id, name FROM game_players WHERE clan_id = ? AND player_id IN (${ph})`)
-    .all(clanId, ...playerIds) as Array<{ player_id: number; name: string }>;
-  const members = db.prepare(`SELECT id, name, game_player_id FROM members WHERE clan_id = ? AND game_player_id IN (${ph})`)
-    .all(clanId, ...playerIds) as Array<{ id: number; name: string; game_player_id: number }>;
-  for (const id of playerIds) out.set(id, { name: '', memberId: null });
-  for (const p of players) out.set(p.player_id, { name: p.name, memberId: null });
-  for (const m of members) out.set(m.game_player_id, { name: m.name, memberId: m.id });
-  return out;
-}
+const playerNames = gamePlayerNames;
 
 export function createGameRouter(): Router {
   const router = Router();

@@ -98,7 +98,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_clan_tech_history.clan_id',
     'game_clan_techs.clan_id',
     'game_clan_treasury.clan_id',
-    // Event standings from the game (v120).
+    // Event standings from the game (v120) and every read of them (v124).
+    'game_event_reads.clan_id',
     'game_event_runs.clan_id',
     'game_event_standing_history.clan_id',
     'game_event_standings.clan_id',
@@ -419,6 +420,9 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now, now);
   db.prepare(
     `INSERT INTO game_event_standing_history (clan_id, event_type, run, occurrence, player_id, points, rank, changed_at) VALUES (?, 1024, 1, 242, 1, 52586600, 1, ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_event_reads (clan_id, event_type, run, occurrence, read_at, source, members, total_points, changed, summons_left, summons_max, summons_used, boss_id) VALUES (?, 1024, 1, 242, ?, 'poll', 99, 52586600, 1, 1, 2, 1, 6130)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO clan_scan_accounts (clan_id, account, player_id, source, updated_at) VALUES (?, 'tb:85164216', 1297080171719, 'scan', ?)`,
