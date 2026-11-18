@@ -91,6 +91,11 @@ function renderAccountInvites(root, box, clanId, data) {
   const notices = [
     data.sendingDisabled ? t('Chat sending is switched off on this server (CHAT_SEND_DISABLED): nothing is answered.') : '',
     !data.scannerKnown ? t("The scanner account isn't known yet; it is read at the clan's next scan.") : '',
+    // Our account is muted (the game's anti-spam), not the players: nothing goes out until then.
+    data.chatPause ? t('The game muted the scanner account’s chat at {at}. Nothing is sent until {until}; codes wait and go out after that.', {
+      at: data.chatPause.mutedAt ? formatDate(new Date(data.chatPause.mutedAt).toISOString()) : '—',
+      until: formatDate(new Date(data.chatPause.until).toISOString()),
+    }) : '',
   ].filter(Boolean);
 
   const answerState = s.enabled && s.enabledAt
@@ -108,7 +113,7 @@ function renderAccountInvites(root, box, clanId, data) {
   const progress = welcomeProgressText(data.welcomeProgress, s);
   const welcomeRow = settingRow({
     title: `<span id="${welcomeLabelId}">${t('Send members a code')}</span>`,
-    desc: t('The scanner account messages each member without an account once, then everyone who joins. Up to 10 per scan.'),
+    desc: t('The scanner account messages each member without an account once, then everyone who joins. One message every 10 minutes at most.'),
     state: progress ? escapeHtml(progress) : '',
     note: s.welcomeMode === 'on' ? '' : `⚠ ${t('Not tried live yet. Dry run lists who would get a code and sends nothing.')}`,
     control: `<div class="invite-segmented" role="radiogroup" aria-labelledby="${welcomeLabelId}">
@@ -146,7 +151,7 @@ function renderAccountInvites(root, box, clanId, data) {
   const would = s.welcomeMode === 'dry-run' ? (data.wouldGetCode || []) : [];
   const wouldTable = s.welcomeMode === 'dry-run' ? `
     <h4 class="invite-subhead">${escapeHtml(tn(would.length, '{n} member would get a code', '{n} members would get a code', { n: would.length }))}</h4>
-    <p class="ui-sub">${t('Dry run: nothing is sent. Switch to On to send these, up to 10 per scan.')}</p>
+    <p class="ui-sub">${t('Dry run: nothing is sent. Switch to On to send these, one every 10 minutes.')}</p>
     ${would.length ? `<div class="table-wrap invite-would">
       <table class="data-table account-invite-would">
         <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th></tr></thead>
@@ -215,7 +220,7 @@ function renderAccountInvites(root, box, clanId, data) {
       const due = (s.welcomeBacklogAt ? p?.due : p?.backlogDue) ?? 0;
       if (mode === 'on' && due > 0) {
         const ok = await confirmDialog(
-          tn(due, 'The scanner account will message {n} member a code, up to 10 per scan.', 'The scanner account will message {n} members a code, up to 10 per scan.', { n: due }),
+          tn(due, 'The scanner account will message {n} member a code, one every 10 minutes.', 'The scanner account will message {n} members a code, one every 10 minutes.', { n: due }),
           { title: t('Send members a code'), confirmLabel: t('Switch on') },
         );
         if (!ok) return;

@@ -15,6 +15,8 @@ const chat_send_js_1 = require("../game-protocol/chat-send.js");
 const chest_repo_js_1 = require("../data/repositories/chest-repo.js");
 const chat_digest_repo_js_1 = require("../data/repositories/chat-digest-repo.js");
 const database_js_1 = require("../data/database.js");
+const chat_send_state_repo_js_1 = require("../data/repositories/chat-send-state-repo.js");
+const chat_invites_js_1 = require("./chat-invites.js");
 const game_day_js_1 = require("../utils/game-day.js");
 const log_buffer_js_1 = require("../utils/log-buffer.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -267,6 +269,12 @@ async function runChatDigestInner(clanId, opts) {
     // before. The next day posts on time. An admin's test post is exempt.
     if (!test && now > sch.postAtMs + exports.POST_LATE_LIMIT_MS)
         return '';
+    // The game has the scanner account muted (chat-send-state-repo.ts): a post
+    // would be refused, and trying only adds to it. A later scan posts it.
+    const pausedUntil = (0, chat_send_state_repo_js_1.chatPausedUntil)(clanId, now);
+    if (pausedUntil !== null) {
+        return test ? done(`chat digest test not sent: the game muted the scanner account's chat until ${new Date(pausedUntil).toISOString()}`) : '';
+    }
     const blocked = (0, chat_digest_repo_js_1.attemptBlocker)(clanId, sch.gameDate, sch.sentGameDate);
     if (blocked)
         return test ? done(`chat digest test not sent: ${blocked.message}`) : '';
@@ -315,6 +323,8 @@ async function runChatDigestInner(clanId, opts) {
         return done('chat digest failed: no chat token');
     }
     const outcome = await (0, chat_send_js_1.postToGroupChat)({ userId: opts.client.suid, token, channel: target, text }, opts.send);
+    const muteSession = (0, chat_capture_js_1.chatSessionFor)(clanId);
+    await (0, chat_invites_js_1.noteSendOutcome)(clanId, outcome, now, muteSession ? () => (0, chat_js_1.myMuteInfo)(muteSession, target.url) : undefined);
     if (outcome.status === 'sent') {
         (0, chat_digest_repo_js_1.finishDigestPost)(reserved.id, outcome);
         (0, log_buffer_js_1.resolveEntries)((0, exports.digestWarningKey)(clanId));

@@ -501,6 +501,11 @@
   },
   {
     "type": "table",
+    "name": "chat_send_state",
+    "sql": "CREATE TABLE chat_send_state ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), last_send_at INTEGER, paused_until INTEGER, muted_at INTEGER, mute_count INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
     "name": "chest_daily_summary",
     "sql": "CREATE TABLE chest_daily_summary ( clan_id INTEGER NOT NULL, member_id INTEGER NOT NULL, game_day TEXT NOT NULL, chests INTEGER NOT NULL, points INTEGER NOT NULL, earned_chests INTEGER NOT NULL DEFAULT 0, earned_points INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (clan_id, member_id, game_day) )"
   },

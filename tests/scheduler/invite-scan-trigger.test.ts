@@ -8,6 +8,7 @@ const kept = vi.fn((): number[] => []);
 vi.mock('../../src/scheduler/chat-invites.js', () => ({
   hasWaitingInviteRequests: (clanId: number) => waiting(clanId),
   processInviteRequests: vi.fn(async () => ''),
+  sendWelcomeCodes: vi.fn(async () => ''),
 }));
 vi.mock('../../src/scheduler/event-poller.js', () => ({
   keptSessionClans: () => kept(),

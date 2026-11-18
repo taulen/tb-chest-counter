@@ -20,6 +20,8 @@
  *     the player writing from a different chat account (the player id comes
  *     from chat metadata, which a modified client could fake);
  *   - one code per player per 10 minutes, one open request per player;
+ *   - nothing while the game has the scanner account muted (the pause in
+ *     chat-send-state-repo.ts — a mute refuses every recipient alike);
  *   - CHAT_SEND_DISABLED=1 answers nothing.
  * Every keyword DM is recorded once (chat_invite_requests), answered or not,
  * so it is never handled twice. A send with no answer (`unknown`) is never
@@ -29,8 +31,10 @@
 import { getDb } from '../data/database.js';
 import {
   CODE_TTL_MS,
-  WELCOME_SENDS_PER_SCAN,
+  WELCOME_CANDIDATES_PER_RUN,
   WELCOME_DRY_RUN_LIMIT,
+  WELCOME_MIN_GAP_MS,
+  welcomeGapMs,
   WELCOME_WAIT_MS,
   finishInviteSend,
   finishWelcomeSend,
@@ -49,18 +53,69 @@ import {
 } from '../data/repositories/account-invite-repo.js';
 import { clanPublicUrl, getClanById } from '../data/repositories/clan-repo.js';
 import { clanChatChannels } from '../data/repositories/chat-repo.js';
-import { listChannelMembers, openPrivateChat, type ChatChannel, type ChatMember, type ChatSession } from '../game-protocol/chat.js';
+import { listChannelMembers, myMuteInfo, openPrivateChat, type ChatChannel, type ChatMember, type ChatSession, type MuteInfo } from '../game-protocol/chat.js';
 import { chatSenderPlayerId } from '../game-protocol/chat-text.js';
-import { assertInviteChannel, chatSendingDisabled, sendInviteMessage, type SocketSender } from '../game-protocol/chat-send.js';
+import { MAX_INVITE_REPLY_CHARS, assertInviteChannel, chatSendingDisabled, isMutedRefusal, sendInviteMessage, type SendOutcome, type SocketSender } from '../game-protocol/chat-send.js';
+import { chatPausedUntil, getChatSendState, noteChatMuted, noteChatSendAttempt, noteChatSent, noteMuteEnd } from '../data/repositories/chat-send-state-repo.js';
 import { loadConfig } from '../config/index.js';
 import { readEnvValue } from '../config/persistent-env.js';
-import { requestGap } from '../utils/request-gap.js';
+import { resolveEntries } from '../utils/log-buffer.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
 
 const log = childLogger('chat-invites');
 const quietWarner = createCoalescedWarner((m) => log.warn({ noAlert: true }, m), 24 * 3600_000);
 const alertWarner = createCoalescedWarner((m) => log.warn(m), 3600_000);
+
+/** The System-page key of a clan's "scanner account muted" warning, resolved by the next send that gets through. */
+export function chatMutedWarningKey(clanId: number): string {
+  return `chat-muted:clan:${clanId}`;
+}
+
+/**
+ * After a send: a message that got through clears a mute's record; a "You
+ * are muted." refusal pauses the clan's sending at once (every recipient
+ * would get the same answer), then — when `readMute` can ask the chat
+ * service — runs the pause to the mute's own end instead of the backoff's
+ * guess. The log line keeps the refusal frame and the mute info as the chat
+ * service gave them. Returns whether it was a mute.
+ */
+export async function noteSendOutcome(
+  clanId: number,
+  outcome: SendOutcome,
+  nowMs: number,
+  readMute?: () => Promise<MuteInfo>,
+): Promise<boolean> {
+  if (outcome.status === 'sent') {
+    if (getChatSendState(clanId).muteCount > 0) resolveEntries(chatMutedWarningKey(clanId));
+    noteChatSent(clanId, nowMs);
+    return false;
+  }
+  if (!isMutedRefusal(outcome)) return false;
+  // Paused before anything is awaited: no other send slips in meanwhile.
+  let until = noteChatMuted(clanId, outcome.error, nowMs);
+  let said = '';
+  let known = false;
+  if (readMute) {
+    try {
+      const info = await readMute();
+      said = info.raw;
+      if (info.muted && info.endAt !== null && info.endAt > nowMs) {
+        until = noteMuteEnd(clanId, info.endAt, nowMs);
+        known = true;
+      }
+    } catch (err) {
+      said = `could not be read: ${String(err)}`;
+    }
+  }
+  log.warn(
+    { noAlert: true, resolveKey: chatMutedWarningKey(clanId) },
+    `Clan #${clanId}: the game muted the scanner account's chat (${outcome.error}) — nothing is sent until ${new Date(until).toISOString()}`
+      + ` (${known ? "the mute's own end, plus 2 min" : 'its end unknown: a set pause'}); codes and the digest wait and go out after.`
+      + ` Refusal: ${outcome.status === 'refused' && outcome.detail ? outcome.detail : '–'}; mute info: ${said || '–'}`,
+  );
+  return true;
+}
 
 /** The words a DM must be (alone) to ask for a code. Exact match after trimming. */
 export const INVITE_KEYWORDS: readonly string[] = ['code', 'invite', 'tracker', 'код', 'código', 'codigo'];
@@ -122,15 +177,74 @@ export function defaultSiteNameFor(clanId: number): string | null {
   return spaced || null;
 }
 
-function whereToGo(site: string | null): string {
-  // A player already signed in never sees the sign-in page: name their door too.
-  const doors = `"${JOIN_ENTRY_LABEL}" (signed in: "${ADD_CLAN_LABEL}" in your account menu)`;
-  return site ? `Go to ${site} and pick ${doors}` : `On the TB Chest Counter site, pick ${doors}`;
+// ── The messages ───────────────────────────────────────────────────────────
+//
+// The wording varies from message to message (user, Nov 18 2026): the
+// scanner account sends many alike, and a spam filter reads repeats. Every
+// version says the same things — the code, that it is TB Chest Counter, the
+// clan tracker by taulen (user, Nov 18 2026), where to go with both door
+// labels exactly, the hours and the single use — in English, one line, no
+// link, at most MAX_INVITE_REPLY_CHARS.
+
+/** A random number in [0, 1) — Math.random, or a fixed one in tests. */
+export type Rand = () => number;
+const pick = <T>(xs: readonly T[], rand: Rand): T => xs[Math.min(xs.length - 1, Math.max(0, Math.floor(rand() * xs.length)))];
+/** Always the first (shortest) wording: the fallback when a message would run long. */
+const FIRST: Rand = () => 0;
+
+const CODE_LINES: ReadonlyArray<(code: string) => string> = [
+  (c) => `Your TB Chest Counter code (the clan tracker by taulen): ${c}.`,
+  (c) => `Your code for TB Chest Counter, the clan tracker by taulen: ${c}.`,
+  (c) => `TB Chest Counter is the clan tracker by taulen. Your code: ${c}.`,
+  (c) => `Here is your code for TB Chest Counter (the clan tracker by taulen): ${c}.`,
+];
+const GO_TO: ReadonlyArray<(site: string) => string> = [
+  (site) => `Go to ${site} and pick`,
+  (site) => `Open ${site} and choose`,
+  (site) => `On ${site}, pick`,
+  (site) => `Visit ${site} and press`,
+];
+const GO_NO_SITE: readonly string[] = ['On the TB Chest Counter site, pick', 'On the TB Chest Counter site, choose'];
+// A player already signed in never sees the sign-in page: their door is named too.
+const SIGNED_IN: readonly string[] = [
+  `(signed in: "${ADD_CLAN_LABEL}" in your account menu)`,
+  `(already signed in? "${ADD_CLAN_LABEL}" in your account menu)`,
+  `(or, signed in, "${ADD_CLAN_LABEL}" in your account menu)`,
+];
+const VALIDITY: ReadonlyArray<(hours: number) => string> = [
+  (h) => `within ${h} hours. It works once.`,
+  (h) => `within ${h} hours; the code works once.`,
+  (h) => `in the next ${h} hours. It can be used once.`,
+];
+const REPLY_OPENERS: readonly string[] = ['', 'Hi! ', 'Here you go. ', 'Sure! '];
+const GREETINGS: ReadonlyArray<(clan: string) => string> = [
+  (n) => `Welcome to ${n}!`,
+  (n) => `Hi, and welcome to ${n}!`,
+  (n) => `Welcome to ${n}, glad to have you!`,
+];
+const GREETINGS_NO_NAME: readonly string[] = ['Welcome!', 'Hi, and welcome!'];
+const FRESH: readonly string[] = [
+  'Reply "code" any time for a fresh one.',
+  'Need a new one? Reply "code".',
+  'Reply "code" whenever you need a new one.',
+];
+
+function whereToGo(site: string | null, rand: Rand): string {
+  const go = site ? pick(GO_TO, rand)(site) : pick(GO_NO_SITE, rand);
+  return `${go} "${JOIN_ENTRY_LABEL}" ${pick(SIGNED_IN, rand)}`;
 }
 
-/** The reply: the code, where to enter it and how long it lasts. English, one short line, no link. */
-export function inviteReplyText(code: string, site: string | null): string {
-  return `TB Chest Counter code: ${formatCode(code)}. ${whereToGo(site)} within ${Math.round(CODE_TTL_MS / 3600_000)} hours. It works once.`;
+const hours = (): number => Math.round(CODE_TTL_MS / 3600_000);
+
+/** The first wording that fits, trying `rand`'s then the shortest. */
+function fitted(build: (rand: Rand) => string, rand: Rand): string {
+  const text = build(rand);
+  return text.length <= MAX_INVITE_REPLY_CHARS ? text : build(FIRST);
+}
+
+/** The reply: the code, what it is for, where to enter it and how long it lasts. */
+export function inviteReplyText(code: string, site: string | null, rand: Rand = Math.random): string {
+  return fitted((r) => `${pick(REPLY_OPENERS, r)}${pick(CODE_LINES, r)(formatCode(code))} ${whereToGo(site, r)} ${pick(VALIDITY, r)(hours())}`, rand);
 }
 
 interface ChannelRow { url: string; customType: string; members: Array<{ userId: string }> }
@@ -245,20 +359,29 @@ export interface InviteRunOptions {
   chatToken: () => Promise<string | null>;
   /** The transport (the real chat socket by default) — swapped out in tests. */
   send?: SocketSender;
+  /** The chat session (REST), to ask when a mute ends; without it a mute gets the set pause. */
+  chatSession?: ChatSession | null;
+  /** The mute-info read (myMuteInfo by default) — swapped out in tests. */
+  muteInfo?: (s: ChatSession, channelUrl: string) => Promise<MuteInfo>;
   now?: () => number;
+}
+
+/**
+ * Whether the clan has a code request that can be answered now: answering is
+ * on, one waits, and the scanner account isn't muted (a mute's pause holds
+ * them all until it is over).
+ */
+export function hasWaitingInviteRequests(clanId: number, nowMs = Date.now()): boolean {
+  return getInviteSettings(clanId).enabled && pendingInviteRequests(clanId).length > 0 && chatPausedUntil(clanId, nowMs) === null;
 }
 
 /**
  * Answer the clan's pending requests, oldest first: each is re-checked, then
  * reserved (status `sending` + the code's hash, in one transaction), then the
  * reply goes out and its outcome is recorded. Stops (leaving the rest pending)
- * when no chat token can be had. Returns how many replies went out.
+ * when no chat token can be had, while the scanner account is muted, and at
+ * the mute itself. Returns how many replies went out.
  */
-/** Whether the clan has a code request waiting to be answered (and answering is on). */
-export function hasWaitingInviteRequests(clanId: number): boolean {
-  return getInviteSettings(clanId).enabled && pendingInviteRequests(clanId).length > 0;
-}
-
 export async function answerInviteRequests(clanId: number, opts: InviteRunOptions): Promise<number> {
   const now = opts.now ?? Date.now;
   const pending = pendingInviteRequests(clanId);
@@ -267,6 +390,8 @@ export async function answerInviteRequests(clanId: number, opts: InviteRunOption
     for (const r of pending) setRequestStatus(r.id, 'ignored', 'disabled');
     return 0;
   }
+  // Muted: every send would be refused, and trying only adds to it.
+  if (chatPausedUntil(clanId, now()) !== null) return 0;
   let sent = 0;
   for (const req of pending) {
     const nowMs = now();
@@ -291,11 +416,16 @@ export async function answerInviteRequests(clanId: number, opts: InviteRunOption
     if (!token) return sent;
     const reserved = reserveInviteSend(req.id, now());
     if (!reserved) continue;
+    noteChatSendAttempt(clanId, now());
     const outcome = await sendInviteMessage(
       { userId: opts.scannerChatId, token, channel, recipientUserId: req.senderChatId, text: inviteReplyText(reserved.code, siteNameFor(clanId)) },
       opts.send,
     );
-    finishInviteSend(req.id, reserved.codeId, outcome);
+    const session = opts.chatSession;
+    const readMute = session ? () => (opts.muteInfo ?? myMuteInfo)(session, channel.url) : undefined;
+    const muted = await noteSendOutcome(clanId, outcome, now(), readMute);
+    finishInviteSend(req.id, reserved.codeId, outcome, undefined, { muted });
+    if (muted) return sent;
     if (outcome.status === 'sent') {
       sent++;
       log.info(`Clan #${clanId}: account-invite code sent to player ${req.playerId} (message ${outcome.messageId})`);
@@ -334,35 +464,40 @@ export async function processInviteRequests(clanId: number, opts: InviteRunOptio
 // The second, separate exception (its own setting, off by default): the
 // scanner opens a private chat with a player and sends a code (72 h).
 //   - The first time the setting is switched on, every CURRENT member without
-//     a linked account is due (the backlog), worked through at the per-scan
-//     cap with a pause between sends; switching it off stops it where it is.
+//     a linked account is due (the backlog); switching it off stops it where
+//     it is.
 //   - After that, every player who joins.
 // Once per player per clan, ever (chat_invite_welcomes); never someone with a
-// linked account, never someone who has left by the time of the send; at most
-// WELCOME_SENDS_PER_SCAN per scan. `dry-run` records and logs who would get
-// one (never a code) and sends nothing; those players are still due once it
-// is switched on.
+// linked account, never someone who has left by the time of the send.
 //
-// Opening the private chat (chat.ts openPrivateChat) and reading the clan
-// chat's member list were NOT confirmed live when this was built: run it in
-// dry-run first, then watch the first live sends.
-
-/** The pause between two welcome sends, ms (random in the range). */
-export const WELCOME_GAP_MS: readonly [number, number] = [2_000, 4_000];
+// ONE code a run, at least WELCOME_MIN_GAP_MS (20 min for a week after a
+// mute) after the scanner's last invite DM: runs come after each scan and,
+// between scans, from the minute chat poller while the scan's game session
+// is kept — a steady trickle, never a burst. (Nov 18 2026: 10 a scan, 2–4 s apart, and two manual scans sent 20
+// in three minutes; the game muted the scanner account for an hour.) A mute
+// pauses everything (chat-send-state-repo.ts) and the player stays due.
+//
+// `dry-run` records and logs who would get one (never a code) and sends
+// nothing; those players are still due once it is switched on.
 
 /** Anything a chat filter could read as a link: a scheme, www, or name.tld with no spaces. */
 export const LINK_LIKE = /https?:|www|[a-z0-9-]\.[a-z]{2,}/i;
 
 /**
- * The welcome message: the code, where to enter it, how long it lasts, and
- * how to get a fresh one. No link — and the clan's name is left out if it
- * looks like one.
+ * The welcome message: a greeting, the code and what it is for, where to
+ * enter it, how long it lasts, and how to get a fresh one. No link — the
+ * clan's name is left out if it looks like one, or if it makes the message
+ * too long.
  */
-export function welcomeText(code: string, clanName: string, site: string | null): string {
-  const tail = `Your TB Chest Counter code: ${formatCode(code)}. ${whereToGo(site)} within ${Math.round(CODE_TTL_MS / 3600_000)} hours. It works once. Reply "code" any time for a fresh one.`;
+export function welcomeText(code: string, clanName: string, site: string | null, rand: Rand = Math.random): string {
   const name = clanName.trim();
-  const full = name && !LINK_LIKE.test(name) ? `Welcome to ${name}! ${tail}` : `Welcome! ${tail}`;
-  return full.length <= 300 ? full : `Welcome! ${tail}`;
+  const named = name && !LINK_LIKE.test(name) ? name : '';
+  const build = (r: Rand, withName: boolean): string => {
+    const greet = withName && named ? pick(GREETINGS, r)(named) : pick(GREETINGS_NO_NAME, r);
+    return `${greet} ${pick(CODE_LINES, r)(formatCode(code))} ${whereToGo(site, r)} ${pick(VALIDITY, r)(hours())} ${pick(FRESH, r)}`;
+  };
+  const text = fitted((r) => build(r, true), rand);
+  return text.length <= MAX_INVITE_REPLY_CHARS ? text : build(FIRST, false);
 }
 
 /**
@@ -390,26 +525,38 @@ export interface WelcomeRunOptions {
   /** A fresh chat token for the send. */
   chatToken: () => Promise<string | null>;
   send?: SocketSender;
-  /** The pause between two sends (WELCOME_GAP_MS by default) — instant in tests. */
-  pause?: () => Promise<void>;
+  /** A run from the minute chat poller (not a scan): live sends only, never a dry-run listing. */
+  betweenScans?: boolean;
   /** The chat REST calls — swapped out in tests. */
   chatApi?: {
     listMembers: (s: ChatSession, channelUrl: string) => Promise<ChatMember[]>;
     openPrivateChat: (s: ChatSession, otherUserId: string) => Promise<ChatChannel>;
+    /** Our own mute in a chat (when it ends); absent = not asked. */
+    muteInfo?: (s: ChatSession, channelUrl: string) => Promise<MuteInfo>;
   };
   now?: () => number;
 }
 
+const welcomeInFlight = new Set<number>();
+/** When the minute poller last ran a clan's welcome codes (a run may read the clan chat's members). */
+const lastPollerRun = new Map<number, number>();
+
 /**
- * After a scan: send (or, in dry-run, note) the welcome codes due. Never
- * throws. Returns a note for the scan log ('' when nothing happened).
+ * After a scan, and each minute between scans: send the next welcome code
+ * due (one, when the gap since the last invite DM allows), or in dry-run note
+ * everyone due. Never throws; one run per clan at a time. Returns a note for
+ * the log ('' when nothing happened).
  */
 export async function sendWelcomeCodes(clanId: number, opts: WelcomeRunOptions): Promise<string> {
+  if (welcomeInFlight.has(clanId)) return '';
+  welcomeInFlight.add(clanId);
   try {
     return await runWelcome(clanId, opts);
   } catch (err) {
     log.warn({ noAlert: true }, `Clan #${clanId}: welcome codes failed (nothing else is affected): ${String(err)}`);
     return '';
+  } finally {
+    welcomeInFlight.delete(clanId);
   }
 }
 
@@ -418,17 +565,31 @@ async function runWelcome(clanId: number, opts: WelcomeRunOptions): Promise<stri
   const settings = getInviteSettings(clanId);
   if (settings.welcomeMode === 'off' || settings.welcomeEnabledAt === null) return '';
   const live = settings.welcomeMode === 'on';
+  if (opts.betweenScans && !live) return '';
+  if (live) {
+    // Muted: every send would be refused, and trying only adds to it.
+    if (chatPausedUntil(clanId, now()) !== null) return '';
+    // One at a time, well apart: the scanner account never bursts messages.
+    // (Twice as far apart for a week after a mute.)
+    const state = getChatSendState(clanId);
+    if (state.lastSendAt !== null && now() - state.lastSendAt < welcomeGapMs(state.mutedAt, now())) return '';
+    // Between scans a run that found no one to send to (their chat accounts
+    // not seen yet) waits as long as a send would before reading again.
+    if (opts.betweenScans) {
+      if (now() - (lastPollerRun.get(clanId) ?? 0) < WELCOME_MIN_GAP_MS) return '';
+      lastPollerRun.set(clanId, now());
+    }
+  }
   // A dry run previews EVERYONE switching it on would message — the current
   // members without an account (the backlog) as well as new joins — all at
-  // once: nothing is sent, so there is no burst to spread over scans. (It
-  // used to preview only joins after the switch, so a clan with nobody new
-  // showed nothing at all.) Live, the backlog starts with the first switch
-  // to on, at most WELCOME_SENDS_PER_SCAN a scan.
+  // once: nothing is sent. (It used to preview only joins after the switch,
+  // so a clan with nobody new showed nothing at all.) Live, the backlog
+  // starts with the first switch to on, one code at a time.
   const dryRun = settings.welcomeMode === 'dry-run';
   const candidates = welcomeCandidates(clanId, settings.welcomeEnabledAt, {
     backlog: dryRun || settings.welcomeBacklogAt !== null,
     live,
-    limit: dryRun ? WELCOME_DRY_RUN_LIMIT : WELCOME_SENDS_PER_SCAN,
+    limit: dryRun ? WELCOME_DRY_RUN_LIMIT : WELCOME_CANDIDATES_PER_RUN,
   });
   if (!candidates.length) return '';
 
@@ -441,19 +602,15 @@ async function runWelcome(clanId: number, opts: WelcomeRunOptions): Promise<stri
 
   if (chatSendingDisabled() || !opts.chatSession || !opts.scannerChatId) return '';
   const session = opts.chatSession;
-  const chatApi = opts.chatApi ?? { listMembers: listChannelMembers, openPrivateChat };
+  const chatApi = opts.chatApi ?? { listMembers: listChannelMembers, openPrivateChat, muteInfo: myMuteInfo };
   const clan = getClanById(clanId);
   if (!clan) return '';
 
   let members: ChatMember[] | null = null;
   let membersRead = false;
-  let sent = 0;
-  let attempted = false;
-  const pause = opts.pause ?? (() => requestGap(WELCOME_GAP_MS[0], WELCOME_GAP_MS[1]));
+  // The first player who can be sent to gets the code; the rest wait for a later run.
   for (const c of candidates) {
-    // A pause between sends: the scanner account never bursts messages.
-    if (attempted) await pause();
-    // Switched off meanwhile (a backlog in progress): stop where it is.
+    // Switched off meanwhile: stop where it is.
     if (getInviteSettings(clanId).welcomeMode !== 'on') break;
     const nowMs = now();
     // A join waits a day for its chat account to show up; a backlog member a
@@ -509,22 +666,28 @@ async function runWelcome(clanId: number, opts: WelcomeRunOptions): Promise<stri
     if (!token) break;
     const reserved = reserveWelcomeSend(clanId, c, chatId, channel.url, now());
     if (!reserved) continue;
-    attempted = true;
+    noteChatSendAttempt(clanId, now());
     const outcome = await sendInviteMessage(
       { userId: opts.scannerChatId, token, channel, recipientUserId: chatId, text: welcomeText(reserved.code, clan.name, siteNameFor(clanId)) },
       opts.send,
     );
-    finishWelcomeSend(clanId, c, reserved.codeId, outcome);
+    const readMute = chatApi.muteInfo ? () => chatApi.muteInfo!(session, channel.url) : undefined;
+    const muted = await noteSendOutcome(clanId, outcome, now(), readMute);
+    finishWelcomeSend(clanId, c, reserved.codeId, outcome, undefined, { muted });
+    if (muted) return '';
     if (outcome.status === 'sent') {
-      sent++;
       log.info(`Clan #${clanId}: welcome code sent to ${c.name} (player ${c.playerId}, message ${outcome.messageId})`);
-    } else if (outcome.status === 'unknown') {
+      return 'welcome codes: 1 sent';
+    }
+    if (outcome.status === 'unknown') {
       quietWarner.warn(`wunknown:${clanId}`, `Clan #${clanId}: a welcome code may or may not have gone out (${outcome.error}) — it is not resent`);
     } else {
       quietWarner.warn(`wrefused:${clanId}`, `Clan #${clanId}: a welcome code was refused (${outcome.error}); it is tried again`);
     }
+    // One message a run, whatever came of it.
+    return '';
   }
-  return sent ? `welcome codes: ${sent} sent` : '';
+  return '';
 }
 
 function hasOwnChatLines(clanId: number, playerId: number): boolean {

@@ -29,9 +29,16 @@ superadmin:
 2. **Sent to members** (welcome codes; mode off / dry run / on) — the scanner
    account opens a private chat and sends a code. The **first time** it is
    switched on, every current member without an account is due one (the
-   backlog); after that, every player who joins. At most **10 per scan**, 2–4 s
-   apart; switching it off stops it where it is (switching it on again carries
-   on, it doesn't start over). Progress shows in the settings: "Codes sent: 34
+   backlog); after that, every player who joins. **One at a time**: one code
+   a run, at least **10 minutes** after the scanner's last invite DM (a reply
+   counts too) — **20 minutes** for a week after a mute. Runs come after each
+   scan and, between scans, every minute from the chat poller while the
+   scan's game session is kept (a run that found no one to send to waits 10
+   minutes before reading the clan chat's members again). Switching it off
+   stops it where it is (switching it on again carries on, it doesn't start
+   over). It used to be 10 a scan, 2–4 s apart: on Nov 18 2026 two manual
+   scans sent 20 in three minutes and the game muted the scanner account for
+   an hour (see [When the game mutes the scanner account](#when-the-game-mutes-the-scanner-account)). Progress shows in the settings: "Codes sent: 34
    of 98". Code: **72 hours** (a new member may not read the chat for a while).
    **Once per player per clan, ever** (`chat_invite_welcomes`): a rejoin never
    resends. **Dry run** only lists and logs who would get a code (never the
@@ -45,10 +52,19 @@ code? Join here"" — from the public address (the clan's own domain, else
 sign-in page has the **Have a code? Join here** button (keep its English in
 step with `JOIN_ENTRY_LABEL`), which leads to `/join`.
 
-The messages (English, one line, at most 300 characters):
+The messages (English, one line, at most 400 characters — `MAX_INVITE_REPLY_CHARS`;
+the chat takes 1000). **The wording varies** from message to message (user,
+Nov 18 2026): the scanner account sends many alike, and a spam filter reads
+repeats. Each part has a few versions picked at random — the opener or
+greeting, the code line, "Go to / Open / On / Visit", the signed-in door,
+the validity, the "fresh one" line — but every version says the same things:
+the code, **TB Chest Counter, the clan tracker by taulen** (user, Nov 18
+2026), the site, both door labels word for word, 72 hours, single use. When
+a random pick would run long, the first (shortest) versions are used; a
+welcome then drops the clan name. Two of the versions:
 
-- Reply: `TB Chest Counter code: ABCD-EFGH. Go to cwb . fyi and pick "Have a code? Join here" (signed in: "Add a clan with a code" in your account menu) within 72 hours. It works once.`
-- Welcome: `Welcome to <clan>! Your TB Chest Counter code: ABCD-EFGH. Go to cwb . fyi and pick "Have a code? Join here" (signed in: "Add a clan with a code" in your account menu) within 72 hours. It works once. Reply "code" any time for a fresh one.`
+- Reply: `Your TB Chest Counter code (the clan tracker by taulen): ABCD-EFGH. Go to cwb . fyi and pick "Have a code? Join here" (signed in: "Add a clan with a code" in your account menu) within 72 hours. It works once.`
+- Welcome: `Hi, and welcome to <clan>! TB Chest Counter is the clan tracker by taulen. Your code: ABCD-EFGH. Open cwb . fyi and choose "Have a code? Join here" (already signed in? "Add a clan with a code" in your account menu) in the next 72 hours. It can be used once. Need a new one? Reply "code".`
   (The clan name is left out when it looks like a link.)
 
 ## Who gets an answer (the safety rules)
@@ -76,11 +92,44 @@ these are the only two exceptions, each narrowly scoped:
   not, so nothing is answered twice.
 - **Outcomes like the digest:** `sent`; `refused` (nothing went out) → the code
   is withdrawn and it is tried again, up to three times; `unknown` (no answer)
-  → never resent. A reserved send is marked `sending` with the code's hash in
+  → never resent. A refusal **"You are muted."** is not the player's: see below. A reserved send is marked `sending` with the code's hash in
   one transaction first, so a crash never sends twice.
 - **`CHAT_SEND_DISABLED=1`** stops every send (and requests are recorded as
   ignored).
 - **No code is ever logged or stored in plain text** — only its sha256.
+
+## When the game mutes the scanner account
+
+Too many messages and the game mutes the **scanner account** — ours, not the
+players: every send to anyone comes back `EROR` "You are muted." until it
+runs out (Nov 18 2026: about an hour, after 20 welcome codes in three
+minutes; the game shows the countdown in its own chat). Then
+([chat-send-state-repo.ts](../src/data/repositories/chat-send-state-repo.ts),
+`chat_send_state` v131, per clan):
+
+- **Everything stops at once** — code replies, welcome codes and the daily
+  digest ([chat-digest.md](chat-digest.md)) — and nothing is tried again
+  before the pause is over: trying while muted only adds to it. No scan is
+  triggered for a waiting request meanwhile.
+- **How long:** the app asks the chat service for the account's own mute in
+  that chat (`myMuteInfo`: `GET /group_channels/<url>/mute/<user>` →
+  `is_muted`, `end_at`, `remaining_duration`). If it gives the end, the pause
+  runs to exactly then **plus 2 minutes**. If it says not muted (the game may
+  mute outside the chat service's channel mutes) or can't be read, a set
+  pause: **75 min**, then **3 h**, **12 h**, **24 h** for mutes in a row; a
+  message that gets through starts that over. UNCONFIRMED LIVE: the first
+  mute's log line (System page) keeps the refusal frame and the mute info as
+  the chat service gave them — read it to learn which applied.
+- **The player stays due:** the welcome goes back to `waiting` (reason
+  `muted`) and a reply's request to `pending`, the code withdrawn and the try
+  **not counted** — before this, three muted tries marked 10 players
+  `skipped` for good (v131 put them back to waiting and started CWB's pause
+  75 min after the last refusal).
+- **Slower afterwards:** for a week after a mute, welcome codes go 20 minutes
+  apart instead of 10 (`welcomeGapMs`) — the game may be stricter with an
+  account it has flagged.
+- The Clans → Account invites section says so while it lasts: "The game
+  muted the scanner account's chat at … Nothing is sent until …".
 
 ## Joining (`/join`)
 
@@ -172,5 +221,6 @@ welcome_enabled_at, welcome_backlog_at), `user_game_links` (account ↔ player,
 several per clan since v130 — alts; chat_user_id, rank, on_roster),
 `user_clan_main` (v130: the player an account plays as in a clan), `chat_invite_requests`,
 `chat_invite_welcomes`, `account_invite_codes` (sha256 only, kind
-reply/welcome). Deleting a clan or a user clears them
+reply/welcome), `chat_send_state` (v131: the last invite DM, a mute's pause
+and its count). Deleting a clan or a user clears them
 ([fk-delete-guards.test.ts](../tests/data/fk-delete-guards.test.ts)).

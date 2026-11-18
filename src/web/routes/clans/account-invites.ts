@@ -16,6 +16,7 @@ import {
 import { logAction } from '../../../data/repositories/user-repo.js';
 import { deleteEnvValue, updateEnvValue } from '../../../config/persistent-env.js';
 import { chatSendingDisabled } from '../../../game-protocol/chat-send.js';
+import { chatPausedUntil, getChatSendState } from '../../../data/repositories/chat-send-state-repo.js';
 import { INVITE_KEYWORDS, JOIN_ENTRY_LABEL, defaultSiteNameFor, siteNameFor, siteNameOverride, spacedSiteName } from '../../../scheduler/chat-invites.js';
 import { requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { createClanSubRouter } from './_shared.js';
@@ -45,6 +46,11 @@ export function createAccountInvitesRouter(): Router {
     res.json({
       settings: getInviteSettings(id),
       sendingDisabled: chatSendingDisabled(),
+      // The game muted the scanner account: nothing goes out until `until` (epoch ms).
+      chatPause: (() => {
+        const until = chatPausedUntil(id);
+        return until === null ? null : { until, mutedAt: getChatSendState(id).mutedAt };
+      })(),
       keywords: INVITE_KEYWORDS,
       // Messages carry no link (the game blocks them): the site's name, spaced out.
       siteName: siteNameFor(id),

@@ -197,7 +197,7 @@ function setInviteScanTrigger(fn) {
 function maybeScanForInvites(clanId, now = Date.now()) {
     if (!inviteScanTrigger || (0, event_poller_js_1.keptSessionClans)().includes(clanId))
         return;
-    if (!(0, chat_invites_js_1.hasWaitingInviteRequests)(clanId))
+    if (!(0, chat_invites_js_1.hasWaitingInviteRequests)(clanId, now))
         return;
     if (now - (lastInviteScan.get(clanId) ?? 0) < INVITE_SCAN_MIN_GAP_MS)
         return;
@@ -220,11 +220,24 @@ async function pollOnce() {
                 // token, else by the clan's next scan. Never throws.
                 const note = await (0, chat_invites_js_1.processInviteRequests)(clanId, {
                     scannerChatId: chat.session.userId,
+                    chatSession: chat.session,
                     chatToken: async () => (await (0, event_poller_js_1.withKeptGameSession)(clanId, (client) => client.chatToken())) ?? null,
                 });
                 if (note)
                     log.info(`Clan #${clanId} ${note}`);
                 maybeScanForInvites(clanId);
+                // Welcome codes trickle out between scans too (one a run, 10 min
+                // apart — chat-invites.ts), on the game session the last scan kept.
+                if ((0, event_poller_js_1.keptSessionClans)().includes(clanId)) {
+                    const welcome = await (0, chat_invites_js_1.sendWelcomeCodes)(clanId, {
+                        scannerChatId: chat.session.userId,
+                        chatSession: chat.session,
+                        chatToken: async () => (await (0, event_poller_js_1.withKeptGameSession)(clanId, (client) => client.chatToken())) ?? null,
+                        betweenScans: true,
+                    });
+                    if (welcome)
+                        log.info(`Clan #${clanId} ${welcome}`);
+                }
             }
             catch (err) {
                 // A rejected key (or any failure) waits for the next scan's fresh session.

@@ -31,6 +31,7 @@ import {
   saveChatDigestSettings,
 } from '../../src/data/repositories/chat-digest-repo.js';
 import { makeTestDb } from '../helpers/test-db.js';
+import { chatPausedUntil, MUTE_BACKOFF_MS } from '../../src/data/repositories/chat-send-state-repo.js';
 
 // The hand-written post of 15 November 2026 (user's screenshot), names as typed there.
 const SCREENSHOT_ROWS: DigestRow[] = [
@@ -266,7 +267,7 @@ describe('chat digest — at most one message a day', () => {
   });
 
   it('retries a VERIFIED failure once, on a later scan — never within the same scan, never a third time', async () => {
-    const send = vi.fn<SocketSender>(async () => ({ status: 'refused', error: 'chat refused the message: muted' }));
+    const send = vi.fn<SocketSender>(async () => ({ status: 'refused', error: 'chat refused the message: not a member' }));
     await run(at(25.1), send);
     expect(send).toHaveBeenCalledTimes(1);
     expect(getDigestPost(CLAN, '2026-11-15')).toMatchObject({ status: 'failed', attempts: 1 });
@@ -276,6 +277,22 @@ describe('chat digest — at most one message a day', () => {
     await run(at(29), send);
     await run(at(31), send);
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('"You are muted." (the scanner account is): nothing is tried again until the pause is over', async () => {
+    const send = vi.fn<SocketSender>(async () => ({ status: 'refused', error: 'chat refused the message: You are muted.' }));
+    await run(at(25.1), send);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(chatPausedUntil(CLAN, at(25.1))).toBe(at(25.1) + MUTE_BACKOFF_MS[0]);
+    // The next scans inside the pause try nothing.
+    await run(at(25.5), send);
+    await run(at(26), send);
+    expect(send).toHaveBeenCalledTimes(1);
+    // After it, the one retry.
+    send.mockResolvedValue({ status: 'sent', messageId: 9 });
+    await run(at(26.5), send);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(getDigestPost(CLAN, '2026-11-15')).toMatchObject({ status: 'sent' });
   });
 
   it('never resends when it is unclear whether the message went out', async () => {

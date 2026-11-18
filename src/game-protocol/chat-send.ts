@@ -85,8 +85,17 @@ export function assertPostableText(text: string): void {
 
 export type SendOutcome =
   | { status: 'sent'; messageId: number }
-  | { status: 'refused'; error: string }
+  | { status: 'refused'; error: string; detail?: string }
   | { status: 'unknown'; error: string };
+
+/**
+ * The game refused the message because OUR account is muted ("You are
+ * muted." — its anti-spam, after too many messages): every recipient gets
+ * the same answer until it runs out, so sending pauses (chat-send-state-repo).
+ */
+export function isMutedRefusal(outcome: SendOutcome): boolean {
+  return outcome.status === 'refused' && /\bmuted\b/i.test(outcome.error);
+}
 
 /** What actually talks to the chat service — swapped out in tests. */
 export type SocketSender = (args: { userId: string; token: string; channelUrl: string; text: string }) => Promise<SendOutcome>;
@@ -112,8 +121,12 @@ export async function postToGroupChat(
 
 // ── The one private-chat exception: account invite replies ─────────────────
 
-/** An invite reply is a short line with a code and a link — never a post. */
-export const MAX_INVITE_REPLY_CHARS = 300;
+/**
+ * An invite message is one line with a code and where to use it — never a
+ * post. (The chat takes 1000; 300 became 400 on Nov 18 2026 to name the
+ * tracker's maker in every wording.)
+ */
+export const MAX_INVITE_REPLY_CHARS = 400;
 
 /**
  * Throws ChatSendRefused unless `channel` is the 1:1 private chat between the
@@ -230,7 +243,9 @@ export const sendOverSocket: SocketSender = ({ userId, token, channelUrl, text }
       }
       const echoed = body.req_id === reqId || body.request_id === reqId;
       if (cmd === 'EROR' && (echoed || !body.req_id)) {
-        return finish({ status: 'refused', error: `chat refused the message: ${String(body.message ?? body.code ?? 'error')}` });
+        // The whole error frame rides along (code and anything else it says,
+        // e.g. how long a mute lasts) — an error object, nothing secret in it.
+        return finish({ status: 'refused', error: `chat refused the message: ${String(body.message ?? body.code ?? 'error')}`, detail: frame.slice(4, 400) });
       }
       if (cmd === 'MESG' && echoed) {
         const id = Number(body.msg_id ?? body.message_id);

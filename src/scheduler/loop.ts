@@ -868,13 +868,15 @@ export class ScanLoop {
       // to the player who asked, in their private chat — chat-invites.ts).
       if (capture.data.client.suid) {
         const { processInviteRequests } = await import('./chat-invites.js');
+        const { chatSessionFor } = await import('./chat-capture.js');
         const client = capture.data.client;
-        const inviteNote = await processInviteRequests(clanId, { scannerChatId: client.suid, chatToken: () => client.chatToken() });
+        const inviteNote = await processInviteRequests(clanId, {
+          scannerChatId: client.suid, chatToken: () => client.chatToken(), chatSession: chatSessionFor(clanId),
+        });
         if (inviteNote) log.info(`Clan #${clanId} ${inviteNote}`);
         // Welcome codes for players who joined since (its own setting, off by
-        // default; capped per scan; once per player ever).
+        // default; one code a run, 10 min apart; once per player ever).
         const { sendWelcomeCodes } = await import('./chat-invites.js');
-        const { chatSessionFor } = await import('./chat-capture.js');
         const welcomeNote = await sendWelcomeCodes(clanId, {
           scannerChatId: client.suid, chatSession: chatSessionFor(clanId), chatToken: () => client.chatToken(),
         });

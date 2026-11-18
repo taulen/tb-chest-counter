@@ -95,6 +95,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'chat_invite_welcomes.clan_id',
     'chat_messages.clan_id',
     'chat_post_channels.clan_id',
+    // The scanner account's sends and mute pauses (v131).
+    'chat_send_state.clan_id',
     'clan_goal_history.clan_id',
     'clan_scan_accounts.clan_id',
     'discord_member_links.clan_id',

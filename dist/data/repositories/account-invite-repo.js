@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JoinError = exports.JOIN_ACTIONS = exports.WELCOME_WAIT_MS = exports.WELCOME_DRY_RUN_LIMIT = exports.WELCOME_SENDS_PER_SCAN = exports.WELCOME_CODE_TTL_MS = exports.WELCOME_MODES = exports.MIN_ROSTER_FOR_ACCESS_CHANGES = exports.CODE_ALPHABET = exports.CODE_LENGTH = exports.CODE_COOLDOWN_MS = exports.CODE_TTL_MS = void 0;
+exports.JoinError = exports.JOIN_ACTIONS = exports.WELCOME_WAIT_MS = exports.WELCOME_DRY_RUN_LIMIT = exports.WELCOME_CANDIDATES_PER_RUN = exports.MUTE_CAUTION_MS = exports.WELCOME_GAP_AFTER_MUTE_MS = exports.WELCOME_MIN_GAP_MS = exports.WELCOME_CODE_TTL_MS = exports.WELCOME_MODES = exports.MIN_ROSTER_FOR_ACCESS_CHANGES = exports.CODE_ALPHABET = exports.CODE_LENGTH = exports.CODE_COOLDOWN_MS = exports.CODE_TTL_MS = void 0;
 exports.rankRole = rankRole;
 exports.isWelcomeMode = isWelcomeMode;
 exports.getInviteSettings = getInviteSettings;
@@ -22,6 +22,7 @@ exports.generateCode = generateCode;
 exports.playerInCooldown = playerInCooldown;
 exports.reserveInviteSend = reserveInviteSend;
 exports.finishInviteSend = finishInviteSend;
+exports.welcomeGapMs = welcomeGapMs;
 exports.welcomeCandidates = welcomeCandidates;
 exports.welcomeProgress = welcomeProgress;
 exports.setWelcomeStatus = setWelcomeStatus;
@@ -217,13 +218,21 @@ function reserveInviteSend(requestId, nowMs = Date.now()) {
  * The send's outcome. `sent`: done. `refused` (nothing went out): the code is
  * withdrawn and the request waits for another try, up to three. `unknown` (it
  * may have gone out): the code stays valid and the request is never resent.
+ * `muted` (refused because the scanner account is muted): the code is
+ * withdrawn and the request waits, the try not counted — it wasn't the
+ * request's fault.
  */
-function finishInviteSend(requestId, codeId, outcome, now = new Date().toISOString()) {
+function finishInviteSend(requestId, codeId, outcome, now = new Date().toISOString(), opts = {}) {
     const db = (0, database_js_1.getDb)();
     db.transaction(() => {
         if (outcome.status === 'sent') {
             db.prepare("UPDATE chat_invite_requests SET status = 'sent', reason = NULL, reply_message_id = ?, updated_at = ? WHERE id = ?")
                 .run(outcome.messageId, now, requestId);
+        }
+        else if (outcome.status === 'refused' && opts.muted) {
+            db.prepare('DELETE FROM account_invite_codes WHERE id = ? AND used_at IS NULL').run(codeId);
+            db.prepare("UPDATE chat_invite_requests SET status = 'pending', reason = 'muted', attempts = MAX(attempts - 1, 0), updated_at = ? WHERE id = ?")
+                .run(now, requestId);
         }
         else if (outcome.status === 'refused') {
             db.prepare('DELETE FROM account_invite_codes WHERE id = ? AND used_at IS NULL').run(codeId);
@@ -240,8 +249,21 @@ function finishInviteSend(requestId, codeId, outcome, now = new Date().toISOStri
 // ── Welcome codes (unprompted, for players who join) ───────────────────────
 /** A welcome code lasts longer: a new member may not read their chat for a while. */
 exports.WELCOME_CODE_TTL_MS = exports.CODE_TTL_MS;
-/** At most this many welcome sends (or dry-run notes) per scan; the rest wait for the next one. */
-exports.WELCOME_SENDS_PER_SCAN = 10;
+/**
+ * Welcome codes go ONE at a time, at least this long after the scanner's last
+ * invite DM (a reply counts too). On Nov 18 2026, 20 in three minutes got the
+ * scanner account muted for an hour; one every 10 min is 6 an hour.
+ */
+exports.WELCOME_MIN_GAP_MS = 10 * 60_000;
+/** For a week after a mute the game may be stricter: the gap doubles. */
+exports.WELCOME_GAP_AFTER_MUTE_MS = 20 * 60_000;
+exports.MUTE_CAUTION_MS = 7 * 24 * 3600_000;
+/** The gap before the next welcome code: doubled while a mute is less than a week old. */
+function welcomeGapMs(mutedAt, nowMs) {
+    return mutedAt !== null && nowMs - mutedAt < exports.MUTE_CAUTION_MS ? exports.WELCOME_GAP_AFTER_MUTE_MS : exports.WELCOME_MIN_GAP_MS;
+}
+/** A run looks this far down the queue for the one player it can send to (the first may have no chat account yet). */
+exports.WELCOME_CANDIDATES_PER_RUN = 10;
 /** A dry run sends nothing, so it lists everyone due at once (up to this many). */
 exports.WELCOME_DRY_RUN_LIMIT = 1000;
 /** How long a join waits for its chat account to show up before it is given up. */
@@ -264,7 +286,7 @@ function welcomeCandidates(clanId, sinceMs, opts = {}) {
        FROM game_players gp
        LEFT JOIN chat_invite_welcomes w ON w.clan_id = gp.clan_id AND w.player_id = gp.player_id
       WHERE ${DUE_WHERE}
-      ORDER BY (gp.joined_at * 1000 >= ?) DESC, gp.joined_at DESC, gp.player_id LIMIT ?`).all(clanId, backlog, sinceMs, live, sinceMs, opts.limit ?? exports.WELCOME_SENDS_PER_SCAN)
+      ORDER BY (gp.joined_at * 1000 >= ?) DESC, gp.joined_at DESC, gp.player_id LIMIT ?`).all(clanId, backlog, sinceMs, live, sinceMs, opts.limit ?? exports.WELCOME_CANDIDATES_PER_RUN)
         .map((r) => ({ playerId: r.player_id, name: r.name, joinedAt: r.joined_at, attempts: r.attempts }));
 }
 /**
@@ -344,12 +366,21 @@ function reserveWelcomeSend(clanId, c, chatUserId, channelUrl, nowMs = Date.now(
         throw new Error('could not generate a unique code');
     })();
 }
-/** The welcome send's outcome: refused → the code is withdrawn and the join waits (three tries); unknown → never resent. */
-function finishWelcomeSend(clanId, c, codeId, outcome, now = new Date().toISOString()) {
+/**
+ * The welcome send's outcome: refused → the code is withdrawn and the join
+ * waits (three tries); unknown → never resent; `muted` (the scanner account
+ * is muted) → withdrawn and waiting, the try not counted.
+ */
+function finishWelcomeSend(clanId, c, codeId, outcome, now = new Date().toISOString(), opts = {}) {
     const db = (0, database_js_1.getDb)();
     db.transaction(() => {
         if (outcome.status === 'sent') {
             setWelcomeStatus(clanId, c, 'sent', null, { messageId: outcome.messageId }, now);
+        }
+        else if (outcome.status === 'refused' && opts.muted) {
+            db.prepare('DELETE FROM account_invite_codes WHERE id = ? AND used_at IS NULL').run(codeId);
+            setWelcomeStatus(clanId, c, 'waiting', 'muted', {}, now);
+            db.prepare('UPDATE chat_invite_welcomes SET attempts = MAX(attempts - 1, 0) WHERE clan_id = ? AND player_id = ?').run(clanId, c.playerId);
         }
         else if (outcome.status === 'refused') {
             db.prepare('DELETE FROM account_invite_codes WHERE id = ? AND used_at IS NULL').run(codeId);

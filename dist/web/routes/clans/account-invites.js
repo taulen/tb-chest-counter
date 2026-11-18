@@ -7,6 +7,7 @@ const account_invite_repo_js_1 = require("../../../data/repositories/account-inv
 const user_repo_js_1 = require("../../../data/repositories/user-repo.js");
 const persistent_env_js_1 = require("../../../config/persistent-env.js");
 const chat_send_js_1 = require("../../../game-protocol/chat-send.js");
+const chat_send_state_repo_js_1 = require("../../../data/repositories/chat-send-state-repo.js");
 const chat_invites_js_1 = require("../../../scheduler/chat-invites.js");
 const auth_js_1 = require("../../middleware/auth.js");
 const _shared_js_1 = require("./_shared.js");
@@ -34,6 +35,11 @@ function createAccountInvitesRouter() {
         res.json({
             settings: (0, account_invite_repo_js_1.getInviteSettings)(id),
             sendingDisabled: (0, chat_send_js_1.chatSendingDisabled)(),
+            // The game muted the scanner account: nothing goes out until `until` (epoch ms).
+            chatPause: (() => {
+                const until = (0, chat_send_state_repo_js_1.chatPausedUntil)(id);
+                return until === null ? null : { until, mutedAt: (0, chat_send_state_repo_js_1.getChatSendState)(id).mutedAt };
+            })(),
             keywords: chat_invites_js_1.INVITE_KEYWORDS,
             // Messages carry no link (the game blocks them): the site's name, spaced out.
             siteName: (0, chat_invites_js_1.siteNameFor)(id),

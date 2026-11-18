@@ -25,7 +25,7 @@ import {
 } from '../data/repositories/chat-repo.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
-import { hasWaitingInviteRequests, processInviteRequests } from './chat-invites.js';
+import { hasWaitingInviteRequests, processInviteRequests, sendWelcomeCodes } from './chat-invites.js';
 import { keptSessionClans, withKeptGameSession } from './event-poller.js';
 
 const log = childLogger('chat');
@@ -183,7 +183,7 @@ export function setInviteScanTrigger(fn: ((clanId: number) => void) | null): voi
 
 export function maybeScanForInvites(clanId: number, now = Date.now()): void {
   if (!inviteScanTrigger || keptSessionClans().includes(clanId)) return;
-  if (!hasWaitingInviteRequests(clanId)) return;
+  if (!hasWaitingInviteRequests(clanId, now)) return;
   if (now - (lastInviteScan.get(clanId) ?? 0) < INVITE_SCAN_MIN_GAP_MS) return;
   lastInviteScan.set(clanId, now);
   log.info(`Clan #${clanId}: a code request is waiting and no game session is kept (restarted since the last scan) — scanning the clan now to answer it`);
@@ -203,10 +203,22 @@ async function pollOnce(): Promise<void> {
         // token, else by the clan's next scan. Never throws.
         const note = await processInviteRequests(clanId, {
           scannerChatId: chat.session.userId,
+          chatSession: chat.session,
           chatToken: async () => (await withKeptGameSession(clanId, (client) => client.chatToken())) ?? null,
         });
         if (note) log.info(`Clan #${clanId} ${note}`);
         maybeScanForInvites(clanId);
+        // Welcome codes trickle out between scans too (one a run, 10 min
+        // apart — chat-invites.ts), on the game session the last scan kept.
+        if (keptSessionClans().includes(clanId)) {
+          const welcome = await sendWelcomeCodes(clanId, {
+            scannerChatId: chat.session.userId,
+            chatSession: chat.session,
+            chatToken: async () => (await withKeptGameSession(clanId, (client) => client.chatToken())) ?? null,
+            betweenScans: true,
+          });
+          if (welcome) log.info(`Clan #${clanId} ${welcome}`);
+        }
       } catch (err) {
         // A rejected key (or any failure) waits for the next scan's fresh session.
         dropSession(clanId);

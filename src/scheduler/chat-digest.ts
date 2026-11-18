@@ -18,7 +18,7 @@
  *   - saving the settings never posts.
  */
 import type { GameClient } from '../game-protocol/client.js';
-import { listChannels } from '../game-protocol/chat.js';
+import { listChannels, myMuteInfo } from '../game-protocol/chat.js';
 import {
   MAX_POST_BYTES,
   MAX_POST_CHARS,
@@ -43,6 +43,8 @@ import {
   type PostableChannel,
 } from '../data/repositories/chat-digest-repo.js';
 import { getDb } from '../data/database.js';
+import { chatPausedUntil } from '../data/repositories/chat-send-state-repo.js';
+import { noteSendOutcome } from './chat-invites.js';
 import { gameDateFor } from '../utils/game-day.js';
 import { resolveEntries } from '../utils/log-buffer.js';
 import { childLogger } from '../utils/logger.js';
@@ -334,6 +336,12 @@ async function runChatDigestInner(clanId: number, opts: ChatDigestRunOptions): P
   // 15 November digest the leaders had already posted by hand the evening
   // before. The next day posts on time. An admin's test post is exempt.
   if (!test && now > sch.postAtMs + POST_LATE_LIMIT_MS) return '';
+  // The game has the scanner account muted (chat-send-state-repo.ts): a post
+  // would be refused, and trying only adds to it. A later scan posts it.
+  const pausedUntil = chatPausedUntil(clanId, now);
+  if (pausedUntil !== null) {
+    return test ? done(`chat digest test not sent: the game muted the scanner account's chat until ${new Date(pausedUntil).toISOString()}`) : '';
+  }
 
   const blocked = attemptBlocker(clanId, sch.gameDate, sch.sentGameDate);
   if (blocked) return test ? done(`chat digest test not sent: ${blocked.message}`) : '';
@@ -382,6 +390,8 @@ async function runChatDigestInner(clanId: number, opts: ChatDigestRunOptions): P
     return done('chat digest failed: no chat token');
   }
   const outcome = await postToGroupChat({ userId: opts.client.suid, token, channel: target, text }, opts.send);
+  const muteSession = chatSessionFor(clanId);
+  await noteSendOutcome(clanId, outcome, now, muteSession ? () => myMuteInfo(muteSession, target.url) : undefined);
   if (outcome.status === 'sent') {
     finishDigestPost(reserved.id, outcome);
     resolveEntries(digestWarningKey(clanId));

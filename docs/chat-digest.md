@@ -25,7 +25,9 @@ send), [chat-digest-repo.ts](../src/data/repositories/chat-digest-repo.ts),
   is `max_length_message: 1000`). Longer names shorten the dot leaders first,
   then the names ("…"), then entries drop from the bottom. Entries: 3–20.
 - **Retries:** a send the chat service *refused* (nothing went out) is retried
-  once, on a later scan. A send with no answer (`unknown`) — or a row left
+  once, on a later scan. While the game has the scanner account **muted**
+  ("You are muted."), nothing is posted until the pause is over
+  ([account-invites.md](account-invites.md#when-the-game-mutes-the-scanner-account)). A send with no answer (`unknown`) — or a row left
   `sending` by a crash — is **never** resent.
 - **Only the chosen named group chat.** `assertPostableChannel` refuses the
   clan chat (`clanGroup`, `triumph_clan_channel_*`), the kingdom chat

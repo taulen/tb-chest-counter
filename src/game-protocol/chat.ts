@@ -172,6 +172,33 @@ export async function openPrivateChat(s: ChatSession, otherUserId: string): Prom
     lastMessageAt: c.last_message?.created_at ?? null,
   };
 }
+/** Our own mute in a chat, as the chat service reports it. */
+export interface MuteInfo {
+  muted: boolean;
+  /** Epoch ms the mute ends; null when it gave none (or it has no end). */
+  endAt: number | null;
+  /** The raw answer, for the log (an error-sized object: no keys or tokens in it). */
+  raw: string;
+}
+
+/**
+ * The session user's own mute in `channelUrl` — the chat service's "my muted
+ * info" (`GET /group_channels/<url>/mute/<user>`: is_muted, end_at,
+ * remaining_duration). Read after a send is refused "You are muted." to learn
+ * when the mute ends. UNCONFIRMED LIVE (Nov 18 2026): the game may mute
+ * outside the chat service's own channel mutes, in which case this says
+ * `muted: false` and the caller falls back to its own pause.
+ */
+export async function myMuteInfo(s: ChatSession, channelUrl: string): Promise<MuteInfo> {
+  const r = await api<{ is_muted?: boolean; end_at?: number; remaining_duration?: number; start_at?: number; description?: string }>(
+    s, `/group_channels/${encodeURIComponent(channelUrl)}/mute/${encodeURIComponent(s.userId)}`,
+  );
+  const now = Date.now();
+  const endAt = typeof r.end_at === 'number' && r.end_at > 0 ? r.end_at
+    : typeof r.remaining_duration === 'number' && r.remaining_duration > 0 ? now + r.remaining_duration : null;
+  return { muted: r.is_muted === true, endAt, raw: JSON.stringify(r).slice(0, 300) };
+}
+
 type RawChannel = {
   channel_url: string; custom_type?: string; name?: string; member_count?: number;
   members?: RawUser[]; last_message?: { created_at?: number } | null;

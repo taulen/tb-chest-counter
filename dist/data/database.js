@@ -2552,6 +2552,42 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v131 — the scanner account's sends, per clan (Nov 18 2026;
+        // chat-send-state-repo, chat-invites). The game muted CWB's scanner
+        // account for about an hour after 20 welcome codes in three minutes; the
+        // sends after it came back "You are muted." and, on their third try, were
+        // marked skipped for good — as if the players were at fault. chat_send_state
+        // keeps when the scanner last sent an invite DM (welcome codes now go one
+        // at a time, 10 min apart) and a mute's pause with its count (the
+        // backoff). The muted-skipped welcomes go back to waiting with their tries
+        // cleared, and the clan they came from starts paused 75 min after its
+        // last refusal. Replay-safe: IF NOT EXISTS, OR IGNORE, and the UPDATE
+        // matches nothing the second time.
+        version: 131,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS chat_send_state (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          last_send_at INTEGER,
+          paused_until INTEGER,
+          muted_at INTEGER,
+          mute_count INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          updated_at TEXT NOT NULL
+        );
+        INSERT OR IGNORE INTO chat_send_state (clan_id, last_send_at, paused_until, muted_at, mute_count, last_error, updated_at)
+          SELECT clan_id,
+                 MAX(CAST(strftime('%s', updated_at) AS INTEGER)) * 1000,
+                 MAX(CAST(strftime('%s', updated_at) AS INTEGER)) * 1000 + 75 * 60000,
+                 MAX(CAST(strftime('%s', updated_at) AS INTEGER)) * 1000,
+                 1, MAX(reason), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            FROM chat_invite_welcomes WHERE status = 'skipped' AND reason LIKE '%muted%' GROUP BY clan_id;
+        UPDATE chat_invite_welcomes SET status = 'waiting', reason = NULL, attempts = 0
+          WHERE status = 'skipped' AND reason LIKE '%muted%';
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted
