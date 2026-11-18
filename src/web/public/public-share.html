@@ -44,44 +44,56 @@
   <link rel="stylesheet" href="/public-share.css">
 </head>
 <body class="public-share-body">
-  <div class="header public-share-header">
-    <div class="brand">
-      <svg class="brand-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
-        <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
-        <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
-        <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
-        <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
-        <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
-      </svg>
-      <h1 id="clanName">TB Chest Counter</h1>
+  <!-- The redesign's look on a public, read-only page: no app shell, so the
+       clan's own name and logo head it, and the board sits in one centred
+       column (docs/design-standard.md). -->
+  <header class="share-top">
+    <div class="share-top-inner">
+      <div class="share-brand">
+        <svg class="brand-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+          <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+          <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
+          <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
+          <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
+          <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
+        </svg>
+        <div class="share-brand-text">
+          <span class="share-brand-app">TB Chest Counter</span>
+          <h1 id="clanName">TB Chest Counter</h1>
+        </div>
+      </div>
+      <!-- Kept in this browser only: a share link has no account to save them to. -->
+      <div class="share-prefs">
+        <select class="input share-pref-select" data-lang-select aria-label="Language" data-i18n-attr="aria-label"></select>
+        <select class="input share-pref-select" data-theme-select aria-label="Theme" data-i18n-attr="aria-label">
+          <option value="auto" data-i18n>Auto</option>
+          <option value="light" data-i18n>Light</option>
+          <option value="dark" data-i18n>Dark</option>
+          <option value="oled">OLED</option>
+        </select>
+      </div>
     </div>
-    <!-- Kept in this browser only: a share link has no account to save them to. -->
-    <div class="public-share-theme">
-      <select class="input public-share-theme-select" data-lang-select aria-label="Language" data-i18n-attr="aria-label"></select>
-      <select class="input public-share-theme-select" data-theme-select aria-label="Theme" data-i18n-attr="aria-label">
-        <option value="auto" data-i18n>Auto</option>
-        <option value="light" data-i18n>Light</option>
-        <option value="dark" data-i18n>Dark</option>
-        <option value="oled">OLED</option>
-      </select>
-    </div>
-  </div>
+  </header>
 
-  <nav id="shareNav" class="public-share-nav">
-    <a href="#leaderboard" class="active" data-tab="leaderboard" data-i18n>Leaderboard</a>
-    <a href="#chesttracker" data-tab="chesttracker" id="ctTab" class="is-hidden">ChestTracker</a>
-    <a href="#faq" class="public-share-nav-faq" data-open-faq>
-      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
-      <span><span data-i18n>FAQ</span> <span class="nav-faq-extra" data-i18n>&amp; access</span></span>
-    </a>
-  </nav>
+  <main class="share-main">
+    <!-- The kit's sub-tab bar (ui-subtabs). Tabs switch in place (public-share.js),
+         the current one aria-current="page"; the FAQ link opens its dialog. -->
+    <nav id="shareNav" class="ui-subtabs share-tabs" aria-labelledby="clanName">
+      <a href="#leaderboard" class="ui-subtab" data-tab="leaderboard" aria-current="page" data-i18n>Leaderboard</a>
+      <a href="#chesttracker" class="ui-subtab is-hidden" data-tab="chesttracker" id="ctTab">ChestTracker</a>
+      <a href="#faq" class="ui-subtab share-faq" data-open-faq>
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
+        <span><span data-i18n>FAQ</span> <span class="share-faq-extra" data-i18n>&amp; access</span></span>
+      </a>
+    </nav>
 
-  <!-- Last scan / next scan, filled by public-share.js. Leaderboard tab only:
-       the ChestTracker tab's data doesn't come from our scans. Not a live
-       region: the countdown changes every second. -->
-  <div class="public-share-scan is-hidden" id="scanStatus"></div>
-  <div class="container" id="content"></div>
+    <!-- Last scan / next scan, filled by public-share.js. Leaderboard tab only:
+         the ChestTracker tab's data doesn't come from our scans. Not a live
+         region: the countdown changes every second. -->
+    <div class="share-scan is-hidden" id="scanStatus"></div>
+    <div id="content"></div>
+  </main>
   <div class="modal-root" id="modalRoot"></div>
 
   <script type="module" src="/public-share.js"></script>
