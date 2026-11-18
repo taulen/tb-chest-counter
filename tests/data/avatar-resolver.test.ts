@@ -8,7 +8,7 @@ vi.mock('../../src/data/repositories/game-profile-repo.js', async (importOrigina
 
 import { getDb } from '../../src/data/database.js';
 import * as userRepo from '../../src/data/repositories/user-repo.js';
-import { resolveAccountAvatar, setUserAvatar, removeUserAvatar, avatarInitial, linkedPhotoUrlsForClan, resolveMemberAvatar } from '../../src/data/repositories/avatar-repo.js';
+import { resolveAccountAvatar, setUserAvatar, removeUserAvatar, avatarInitial, linkedPhotoUrlsForClan, resolveMemberAvatar, photoUrlForPlayer } from '../../src/data/repositories/avatar-repo.js';
 import { sniffImage } from '../../src/utils/image-sniff.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 import { pngBytes } from '../helpers/image-bytes.js';
@@ -74,6 +74,20 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
     expect(resolveAccountAvatar(user, 1)).toEqual({ kind: 'photo', url, initial: 'V' });
     expect(removeUserAvatar(user.id)).toBe(true);
     expect(resolveAccountAvatar(user, 1).kind).toBe('hero');
+  });
+
+  it('a member profile shows the photo of the account linked to its player, nothing otherwise', () => {
+    addGamePlayer(1, 9001, 42);
+    expect(photoUrlForPlayer(9001)).toBeNull(); // not linked
+    link(user.id, 1, 9001);
+    expect(photoUrlForPlayer(9001)).toBeNull(); // linked, no photo: the profile shows the hero
+    const bytes = pngBytes(512, 512);
+    const { url } = setUserAvatar(user.id, bytes, sniffImage(bytes)!);
+    // The very URL the account's own avatar resolves to.
+    expect(photoUrlForPlayer(9001)).toBe(url);
+    expect(photoUrlForPlayer(9001)).toBe(resolveAccountAvatar(user, 1).url);
+    removeUserAvatar(user.id);
+    expect(photoUrlForPlayer(9001)).toBeNull();
   });
 
   it('takes the first letter of any script, upper-cased', () => {

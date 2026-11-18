@@ -28,7 +28,6 @@ import {
   directionPillHtml,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
-import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
 import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
 import { memberCaptainsPanelHtml, mountMemberCaptains } from './member-captains.js';
 import { memberTitlesHtml, wireMemberTitles } from './member-titles.js';
@@ -36,7 +35,6 @@ import { memberTimelinePanelHtml, mountMemberTimeline } from './member-timeline.
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
-import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 import { getMembersView, membersViewToggleHtml, renderMembersBoard, wireMembersViewToggle } from './members-board.js';
 
 // ─── Members list ─────────────────────────────────────────────
@@ -60,11 +58,11 @@ let currentMemberId = null;
 // stays on the user's current tab. Resets to 'chests' when the operator
 // opens a different member.
 let currentMemberChestsTab = 'chests';
-// Open view tab of the profile — 'overview' | 'events' | 'might' | 'research' | 'talents' | 'captains' | 'timeline' | 'history'.
-// Unlike the chest tab it carries over to the next member opened: someone
-// going through players' event runs stays on Events.
-const MEMBER_VIEW_GROUP = 'member-view';
-let currentMemberView = 'overview';
+// The profile's open sheet (pages/member-profile.js) — 'history' | 'overview'
+// | 'events' | 'might' | 'research' | 'talents' | 'captains' | 'timeline', or
+// null. Kept across re-renders (a page flip or timeframe inside the sheet);
+// cleared when another member is opened.
+let currentMemberView = null;
 // Timeframe for the member profile. Page-local, like Analytics and Events —
 // lib/state.js's currentPeriod belongs to the Leaderboard and Triumphal pages.
 // All Time is the default so a profile opened from a link reads the same as
@@ -356,6 +354,11 @@ export function setMembersFilter(text) {
 
 // ─── Member detail ────────────────────────────────────────────
 
+/** pages/member-profile.js, loaded with the first profile opened. */
+let memberProfileModule = null;
+/** The open member read for this game week (the pinned rank), or null. */
+let currentMemberWeek = null;
+
 export async function viewMemberByName(name, navigate) {
   const data = await api(`/members/${encodeURIComponent(name)}`);
   if (data.error) { navigate('members'); return; }
@@ -388,6 +391,8 @@ export async function viewMember(id, navigate) {
     currentMemberTriumphalsPage = 1;
     currentMemberResourcesPage = 1;
     currentMemberChestsTab = 'chests';
+    // No sheet carries over to the next member opened.
+    currentMemberView = null;
     currentMemberId = id;
   }
   const [data, goal] = await Promise.all([
@@ -450,12 +455,24 @@ async function loadAndRenderMemberDetail(data) {
   };
   // Inferred data — a failure drops the cards, never the profile. The game
   // profile (rank, joined, city, VIP, Gold Pass) likewise never blocks it.
-  const [guards, game] = await Promise.all([
+  // The profile's pinned numbers read this game week (rank in the clan), so
+  // unless the Statistics timeframe already is this week, it is read too.
+  const weekWin = computeGameWindow('weekly', 0);
+  const weekPending = currentMemberPeriod === 'weekly' && currentMemberOffset === 0
+    ? Promise.resolve(data)
+    : (weekWin
+      ? api(`/members/${data.id}?${new URLSearchParams({ from: weekWin.from, to: weekWin.to })}`).catch(() => null)
+      : Promise.resolve(null));
+  const [guards, game, week, profileModule] = await Promise.all([
     api(`/guards/member/${data.id}`).catch(() => null),
     api(`/game/members/${data.id}`).catch(() => null),
+    weekPending,
+    import('./member-profile.js'),
     // The game's resource icons for the resource card (never rejects).
     loadGameArt(),
   ]);
+  memberProfileModule = profileModule;
+  currentMemberWeek = week && !week.error ? week : null;
   currentMemberGame = game && game.linked && game.player ? game : null;
   renderMemberDetail(
     data, chestPage, triumphalPage,
@@ -1293,21 +1310,13 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       }).join('')
     : `<div class="empty-state"><p>${t('No chests yet.')}</p></div>`;
 
-  const headerHtml = `
+  // The Statistics sheet's top: the timeframe, its rank and records, the
+  // rank gap and pace, and the totals (what the profile header used to hold).
+  const statsTopHtml = `
     <div class="card">
-      <div class="card-header member-detail-header is-profile">
-        <div class="member-detail-title">
-          ${heroAvatarHtml(currentMemberGame?.player, 72)}
-          <h2>${esc(data.name)}</h2>
-          ${rankBadge}
-          ${gameFactsHtml(currentMemberGame?.player)}
-          ${/* The titles they hold, small: the profile only, never a list. */''}
-          ${memberTitlesHtml(currentMemberGame?.titles)}
-        </div>
-        <button class="btn" data-action="member-back">${t('← Back')}</button>
-      </div>
       <div class="card-body card-body-padded">
         ${memberPeriodControlsHtml()}
+        ${rankBadge ? `<div class="mb-12">${rankBadge}</div>` : ''}
         ${recordBadgesHtml ? `<div class="mb-12">${recordBadgesHtml}</div>` : ''}
         ${memberRankGapHtml(data.neighbours)}
         ${memberPaceHtml(data.neighbours ? data.neighbours.points : null)}
@@ -1481,49 +1490,68 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       </div>`;
     })();
 
-  // The profile is four view tabs under the header (lib/view-tabs.js), so no
-  // section has to be scrolled past to reach another. Might only exists when
-  // one of its cards does; the open tab carries across members.
-  const views = [
-    { key: 'overview', label: t('Overview'), html: overviewPanelHtml },
-    { key: 'events', label: t('Events'), html: eventsPanelHtml },
-    ...(mightPanelHtml.trim() ? [{ key: 'might', label: t('Might'), html: mightPanelHtml }] : []),
+  // The profile (pages/member-profile.js): who they are, this week's numbers
+  // and what happened, by game day. Every older panel is a sheet behind
+  // "Everything else", so nothing it showed before is lost.
+  const profile = memberProfileModule;
+  const game = currentMemberGame;
+  const sheets = [
+    { key: 'history', label: t('Chest history'), hint: t('Every chest, triumphal chest and resource row'), html: historyCardHtml },
+    { key: 'overview', label: t('Statistics'), hint: t('Totals, records, pace, consistency and sources'), html: `${statsTopHtml}${overviewPanelHtml}` },
+    { key: 'events', label: t('Events'), hint: t('Tin Man and recent event runs'), html: eventsPanelHtml },
+    ...(mightPanelHtml.trim() ? [{ key: 'might', label: t('Might and resources'), hint: t('Might over time, Gold Ingots, resources sent'), html: mightPanelHtml }] : []),
     // Read from the game: only for members linked to a game player.
-    ...(currentMemberGame ? [
-      { key: 'research', label: t('Research'), html: memberTechPanelHtml('research') },
-      { key: 'talents', label: t('Talents'), html: memberTechPanelHtml('talent') },
-      { key: 'captains', label: t('Captains'), html: memberCaptainsPanelHtml() },
+    ...(game ? [
+      { key: 'research', label: t('Research'), hint: '', html: memberTechPanelHtml('research') },
+      { key: 'talents', label: t('Talents'), hint: '', html: memberTechPanelHtml('talent') },
+      { key: 'captains', label: t('Captains'), hint: t('Captains, gear, artifacts, Hall of Fame and the Dragon'), html: memberCaptainsPanelHtml() },
     ] : []),
     // Everything recorded about the member, newest first (member-timeline.js).
-    { key: 'timeline', label: t('Timeline'), html: memberTimelinePanelHtml() },
-    { key: 'history', label: t('History'), html: historyCardHtml },
+    { key: 'timeline', label: t('Timeline'), hint: t('Everything recorded, newest first'), html: memberTimelinePanelHtml() },
   ];
-  const view = views.some((v) => v.key === currentMemberView) ? currentMemberView : 'overview';
-  content.innerHTML = `
-    ${headerHtml}
-    ${viewTabsHtml(MEMBER_VIEW_GROUP, views, view)}
-    ${views.map((v) => viewPanelHtml(MEMBER_VIEW_GROUP, v.key, view, v.html)).join('')}`;
-  wireMemberTitles(content, currentMemberGame?.titles);
-  // The might chart is sized from its box, which a hidden panel doesn't have,
-  // so it is drawn the first time its tab is open. Once per render: draw()
+  const week = currentMemberWeek;
+  content.innerHTML = profile.profilePageHtml({
+    backHtml: `<button class="btn btn-sm" data-action="member-back">${t('← Back')}</button>`,
+    identity: profile.identityHtml({ name: data.name, game, titlesHtml: memberTitlesHtml(game?.titles) }),
+    pins: profile.pinsHtml({
+      progress: week?.neighbours
+        ? { ...progress, thisWeek: { ...progress.thisWeek, points: week.neighbours.points } }
+        : progress,
+      goal: weeklyGoalForWindow(memberGoalInfo, 'weekly', 0),
+      week,
+      player: game?.player,
+      guardsHtml: guards?.summary ? guardsCellHtml(guards.summary) : '',
+    }),
+    more: profile.moreListHtml(sheets),
+    sheets,
+  });
+  const page = content.querySelector('.mp-page');
+  wireMemberTitles(page, game?.titles);
+  // The might chart is sized from its box, which a closed sheet doesn't have,
+  // so it is drawn the first time its sheet opens. Once per render: draw()
   // also wires the card's window buttons, and a second call would stack them.
-  let mightDrawn = view === 'might';
+  let mightDrawn = false;
   const mountTechs = (key) => {
     if (key === 'research' || key === 'talents') {
-      mountMemberTechs(content, data.id, key === 'research' ? 'research' : 'talent', currentMemberGame?.tiers ?? null);
+      mountMemberTechs(page, data.id, key === 'research' ? 'research' : 'talent', game?.tiers ?? null);
     }
-    if (key === 'captains') mountMemberCaptains(content, data.id);
-    if (key === 'timeline') mountMemberTimeline(content, data.id);
+    if (key === 'captains') mountMemberCaptains(page, data.id);
+    if (key === 'timeline') mountMemberTimeline(page, data.id);
   };
-  wireViewTabs(content, MEMBER_VIEW_GROUP, (key) => {
-    currentMemberView = key;
-    if (key === 'might' && !mightDrawn) {
-      mightDrawn = true;
-      currentMemberMightDraw();
-    }
-    mountTechs(key);
+  profile.mountProfile(page, {
+    memberId: data.id,
+    name: data.name,
+    dailySeries: data.dailySeries,
+    reopen: sheets.some((s) => s.key === currentMemberView) ? currentMemberView : null,
+    onSheet: (key) => {
+      currentMemberView = key;
+      if (key === 'might' && !mightDrawn) {
+        mightDrawn = true;
+        currentMemberMightDraw();
+      }
+      mountTechs(key);
+    },
   });
-  mountTechs(view);
 
   // Wire up the tab switcher — mirrors the pattern in sessions.js.
   // Flipping tabs is purely client-side: every dataset is already in
@@ -1543,12 +1571,9 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
     });
   }
 
+  // The Statistics sheet's timeframe buttons. A sheet open before this
+  // re-render was reopened by mountProfile, which also drew the might chart.
   wireMemberPeriodControls();
-
-  // Chart.js needs a live canvas, so this runs after the HTML is mounted — on
-  // the first render and again after every tab flip's re-render. Only when
-  // its tab is the open one; otherwise opening that tab draws it.
-  if (view === 'might') currentMemberMightDraw();
 }
 
 /** A one-line card for the Events tab while it loads, or when it has nothing. */

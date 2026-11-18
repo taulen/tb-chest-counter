@@ -398,10 +398,19 @@ Pages are role-gated. Members see:
   plain member's own row is pinned at the top under "You", and a short list
   says who is burning on the map and who joined or left in the last 7 days.
   The full sortable roster table (guards, might, first/last seen, admin
-  actions) is one toggle away, remembered per browser. Plus per-member detail
-  (rank, week-over-week progress, single-day records, guards level, Gold Pass,
-  full chest history), and a **Might** tab: every member's might and hero
-  level, the clan's might over time, and side-by-side member comparison.
+  actions) is one toggle away, remembered per browser. Each member has a
+  **profile**: who they are (photo or hero portrait, in-game rank, join date,
+  levels, Gold Pass, the city on the map, titles), this week's numbers (points
+  against the weekly goal, chests collected, rank in the clan, might), **what
+  happened** over the last seven game days — each day's chests with where they
+  came from, plus the timeline's news — and the chests collected today. Game
+  words (Might, Gold Pass, ranks, crypts, points…) explain themselves when
+  tapped. Everything else opens as a sheet: chest history (chests, triumphal
+  chests, resources), statistics (any timeframe: totals, records, rank gap,
+  pace, consistency, sources, chest types), events, might and resources,
+  research, talents, captains and the full timeline. A **Might** tab lists
+  every member's might and hero level, the clan's might over time, and
+  side-by-side member comparison.
 - **Events** — per-event chest breakdowns per player for each event run, plus
   Tin Man / Ancients standings and targets.
 - **My Clan** — the clan as the game shows it: research, rankings, treasury,

@@ -11,6 +11,7 @@ import { Router } from 'express';
 import { getDb } from '../../data/database.js';
 import { gamePlayerNames } from '../../data/game-player-names.js';
 import { getMemberById } from '../../data/repositories/member-repo.js';
+import { photoUrlForPlayer } from '../../data/repositories/avatar-repo.js';
 import {
   gamePlayerIdForMember,
   getGamePlayer,
@@ -161,6 +162,8 @@ export function createGameRouter(): Router {
     res.json({
       linked: true,
       player: getGamePlayer(clanId, playerId),
+      // The photo the player's own account uploaded (the profile shows it before the hero portrait), or null.
+      photoUrl: photoUrlForPlayer(playerId),
       city: getLatestCity(clanId, playerId),
       // G/S/E/M tiers and crypt level from the member's research (null until read).
       tiers: getMemberTiers(clanId).get(memberId) ?? null,
