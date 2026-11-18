@@ -2133,11 +2133,48 @@ html.mp-sheet-open { overflow: hidden; }
   .mp-today-all { display: inline; align-self: flex-start; }
 }
 
-/* A phone: one column — who, this week, everything else, today, the feed. */
+/* A phone: one column — who, this week, everything else as one row of pills,
+   then straight into what happened; today's full list comes last (the feed's
+   Today story already says what was collected). */
 @media (max-width: 760px) {
-  .mp-grid { display: flex; flex-direction: column; gap: 14px; }
-  .mp-today { order: 1; }
-  .mp-feed { order: 2; }
+  /* Stretch, not start (the grid's): sized to their content, the pill row
+     would widen the whole page instead of scrolling inside itself. */
+  .mp-grid { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+  .mp-side,
+  .mp-feed,
+  .mp-today { min-width: 0; }
+  .mp-feed { order: 1; }
+  .mp-today { order: 2; }
+  .mp-card.mp-more {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .mp-more > .mp-label { margin-bottom: 6px; padding: 0 2px; }
+  .mp-more-list {
+    flex-direction: row;
+    gap: 8px;
+    margin: 0 -10px;
+    padding: 2px 10px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-padding-inline: 10px;
+  }
+  .mp-more-list::-webkit-scrollbar { display: none; }
+  .mp-more-list > li { flex: none; }
+  .mp-more-btn {
+    width: auto;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border-control);
+    border-radius: 999px;
+    background: var(--bg-card);
+    white-space: nowrap;
+  }
+  .mp-more-btn:focus-visible { outline-offset: 2px; }
+  .mp-more-label { font-size: 14px; }
+  .mp-more-hint,
+  .mp-more-chev { display: none; }
   .mp-card { padding: 14px; }
   .mp-identity {
     display: grid;

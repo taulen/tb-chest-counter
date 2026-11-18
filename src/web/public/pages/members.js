@@ -28,7 +28,6 @@ import {
   directionPillHtml,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
-import { gameFactsHtml, heroAvatarHtml } from '../lib/game-facts.js';
 import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
 import { memberCaptainsPanelHtml, mountMemberCaptains } from './member-captains.js';
 import { memberTitlesHtml, wireMemberTitles } from './member-titles.js';
@@ -36,7 +35,6 @@ import { memberTimelinePanelHtml, mountMemberTimeline } from './member-timeline.
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
-import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
 
 // ─── Members list ─────────────────────────────────────────────
 
@@ -59,11 +57,11 @@ let currentMemberId = null;
 // stays on the user's current tab. Resets to 'chests' when the operator
 // opens a different member.
 let currentMemberChestsTab = 'chests';
-// Open view tab of the profile — 'overview' | 'events' | 'might' | 'research' | 'talents' | 'captains' | 'timeline' | 'history'.
-// Unlike the chest tab it carries over to the next member opened: someone
-// going through players' event runs stays on Events.
-const MEMBER_VIEW_GROUP = 'member-view';
-let currentMemberView = 'overview';
+// The profile's open sheet (pages/member-profile.js) — 'history' | 'overview'
+// | 'events' | 'might' | 'research' | 'talents' | 'captains' | 'timeline', or
+// null. Kept across re-renders (a page flip or timeframe inside the sheet);
+// cleared when another member is opened.
+let currentMemberView = null;
 // Timeframe for the member profile. Page-local, like Analytics and Events —
 // lib/state.js's currentPeriod belongs to the Leaderboard and Triumphal pages.
 // All Time is the default so a profile opened from a link reads the same as
