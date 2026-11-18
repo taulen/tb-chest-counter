@@ -14,6 +14,8 @@ let currentAuditPage = 1;
 // From the last render, for the extra-clans editor (superadmin only).
 let usersById = new Map();
 let clansForEditor = [];
+// Soft-deleted clans (superadmin only), so a grant to one shows its name.
+let deletedClans = [];
 
 const HOME_ICON = '<svg class="clan-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>';
 const EDIT_ICON = '<svg class="clan-chips-edit" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
@@ -544,11 +546,25 @@ export async function renderUsers(el) {
       allClans = Array.isArray(d.clans) ? d.clans : [];
     }
   } catch { /* ignore — single-clan deployments still work */ }
+  // Deleted clans, by name: an account can still hold a grant to one (kept so
+  // a restore gives the access back), and "#3" told nobody what it was.
+  deletedClans = [];
+  if (isSuperAdmin) {
+    try {
+      const r = await fetch('/api/clans/deleted');
+      if (r.ok) {
+        const d = await r.json();
+        deletedClans = Array.isArray(d.clans) ? d.clans : [];
+      }
+    } catch { /* names fall back to #id */ }
+  }
   const clanNameById = new Map(allClans.map((c) => [c.id, c.name]));
+  const deletedNameById = new Map(deletedClans.map((c) => [c.id, c.name]));
   const clanLabel = (id) => {
     if (id === null || id === undefined) return '—';
-    return clanNameById.get(id) ?? `#${id}`;
+    return clanNameById.get(id) ?? deletedNameById.get(id) ?? `#${id}`;
   };
+  const isDeletedClan = (id) => id != null && !clanNameById.has(id);
   clansForEditor = allClans;
   // "SIK - SINful Knights" → "SIK": the chips only have room for the tag.
   // Names without one are used whole and ellipsize.
@@ -579,10 +595,13 @@ export async function renderUsers(el) {
       ? t('{clan}: {role} (home clan)', { clan: clanLabel(m.clanId), role: roleLabel(m.role) })
       : t('{clan}: {role}', { clan: clanLabel(m.clanId), role: roleLabel(m.role) }))).join(', ');
     const chips = all.map((m) => {
-      const cls = ['clan-chip', m.home ? 'is-home' : '', m.clanId === activeClanId ? 'is-current' : ''].filter(Boolean).join(' ');
-      const title = m.home
-        ? t('{clan} · home clan · {role}', { clan: clanLabel(m.clanId), role: roleLabel(m.role) })
-        : `${clanLabel(m.clanId)} · ${roleLabel(m.role)}`;
+      const gone = isDeletedClan(m.clanId);
+      const cls = ['clan-chip', m.home ? 'is-home' : '', m.clanId === activeClanId ? 'is-current' : '', gone ? 'is-deleted' : ''].filter(Boolean).join(' ');
+      const title = gone
+        ? t('{clan} · deleted clan · {role}', { clan: clanLabel(m.clanId), role: roleLabel(m.role) })
+        : m.home
+          ? t('{clan} · home clan · {role}', { clan: clanLabel(m.clanId), role: roleLabel(m.role) })
+          : `${clanLabel(m.clanId)} · ${roleLabel(m.role)}`;
       // Every chip keeps the icon slot, so names line up whether or not it's home.
       return `<span class="${cls}" title="${esc(title)}">${m.home ? HOME_ICON : '<span class="clan-chip-icon" aria-hidden="true"></span>'}<span class="clan-chip-name">${esc(clanShort(m.clanId))}</span><span class="clan-chip-role role-${esc(m.role)}">${esc(roleLabel(m.role))}</span></span>`;
     }).join('');
@@ -955,6 +974,23 @@ export function editUserClans(id, rerender) {
       </select>
     </div>`;
   }).join('');
+  // Grants to a soft-deleted clan: inert, kept so a restore gives the access
+  // back. Listed here so they can be removed (they used to be invisible here
+  // and showed as "#3" in the list).
+  const liveIds = new Set(clansForEditor.map((c) => c.id));
+  const goneGrants = (user.clanAccess || []).filter((a) => !liveIds.has(a.clanId));
+  const goneHtml = goneGrants.length ? `
+      <div class="user-clans-deleted">
+        <div class="user-clans-deleted-head">${t('Deleted clans')}</div>
+        <p class="muted-copy">${t('Kept in case the clan is restored; it does nothing while the clan is deleted.')}</p>
+        ${goneGrants.map((a) => {
+          const name = deletedClans.find((c) => c.id === a.clanId)?.name ?? `#${a.clanId}`;
+          return `<div class="user-clans-deleted-row">
+            <span class="user-clans-name">${esc(name)} <span class="muted-copy">· ${esc(a.role === 'admin' ? t('Admin') : t('User'))}</span></span>
+            <button class="btn btn-sm" type="button" data-remove-deleted-clan="${a.clanId}" aria-label="${esc(t('Remove access to {clan}', { clan: name }))}">${t('Remove')}</button>
+          </div>`;
+        }).join('')}
+      </div>` : '';
   const modal = contentModal({
     title: t('Clans for {user}', { user: user.username }),
     html: `
@@ -963,6 +999,7 @@ export function editUserClans(id, rerender) {
         <div class="user-clans-row user-clans-head" aria-hidden="true"><span>${t('Home')}</span><span class="user-clans-name">${t('Clan')}</span><span>${t('Role')}</span></div>
         ${rows}
       </div>
+      ${goneHtml}
       <div class="modal-actions">
         <button class="btn" type="button" data-user-clans="cancel">${t('Cancel')}</button>
         <button class="btn btn-primary" type="button" data-user-clans="save">${t('Save')}</button>
@@ -989,6 +1026,17 @@ export function editUserClans(id, rerender) {
   syncHome();
 
   root.querySelector('[data-user-clans="cancel"]').addEventListener('click', () => modal.close());
+  for (const btn of root.querySelectorAll('[data-remove-deleted-clan]')) {
+    btn.addEventListener('click', async () => {
+      const clanId = Number(btn.dataset.removeDeletedClan);
+      if (!await mustOk(apiDelete(`/auth/users/${id}/clans/${clanId}`), t('Removing access failed'))) return;
+      user.clanAccess = (user.clanAccess || []).filter((a) => a.clanId !== clanId);
+      btn.closest('.user-clans-deleted-row')?.remove();
+      if (!root.querySelector('.user-clans-deleted-row')) root.querySelector('.user-clans-deleted')?.remove();
+      // The list behind the dialog still shows the chip until the next render.
+      rerender('users');
+    });
+  }
   root.querySelector('[data-user-clans="save"]').addEventListener('click', async () => {
     const home = homeId();
     if (!Number.isFinite(home)) return notify(t('Pick a home clan.'), t('Clans'));

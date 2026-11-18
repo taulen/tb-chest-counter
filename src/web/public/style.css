@@ -4139,6 +4139,13 @@ details > table {
   border-color: var(--accent-gold-border);
   background: var(--accent-gold-bg);
 }
+/* A grant to a soft-deleted clan: inert, so it reads as faded and dashed
+   (the title says "deleted clan"; the editor lists it with Remove). */
+.clan-chip.is-deleted {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-muted);
+}
 .clan-chip-name {
   flex: none;
   max-width: 48px;
@@ -4220,6 +4227,29 @@ details > table {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Clans editor → grants to deleted clans, each with a Remove button. */
+.user-clans-deleted {
+  margin: 14px 0 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.user-clans-deleted-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.user-clans-deleted .muted-copy { margin: 0; }
+.user-clans-deleted-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .user-clans-head {
   font-size: 11px;
