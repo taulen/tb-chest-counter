@@ -284,6 +284,8 @@ export function finishInviteSend(
 export const WELCOME_CODE_TTL_MS = CODE_TTL_MS;
 /** At most this many welcome sends (or dry-run notes) per scan; the rest wait for the next one. */
 export const WELCOME_SENDS_PER_SCAN = 10;
+/** A dry run sends nothing, so it lists everyone due at once (up to this many). */
+export const WELCOME_DRY_RUN_LIMIT = 1000;
 /** How long a join waits for its chat account to show up before it is given up. */
 export const WELCOME_WAIT_MS = 24 * 3600_000;
 

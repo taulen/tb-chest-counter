@@ -142,7 +142,21 @@ function renderAccountInvites(root, box, clanId, data) {
       </ul>
     </details>`;
 
-  const welcomesTable = (data.welcomes || []).length ? `
+  // Dry run: the list it is for — who switching it on would message now.
+  const would = s.welcomeMode === 'dry-run' ? (data.wouldGetCode || []) : [];
+  const wouldTable = s.welcomeMode === 'dry-run' ? `
+    <h4 class="invite-subhead">${escapeHtml(tn(would.length, '{n} member would get a code', '{n} members would get a code', { n: would.length }))}</h4>
+    <p class="ui-sub">${t('Dry run: nothing is sent. Switch to On to send these, up to 10 per scan.')}</p>
+    ${would.length ? `<div class="table-wrap invite-would">
+      <table class="data-table account-invite-would">
+        <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th></tr></thead>
+        <tbody>
+          ${would.map((w) => `<tr><td>${escapeHtml(w.player)}</td><td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}` : '';
+
+  const welcomesTable = s.welcomeMode !== 'dry-run' && (data.welcomes || []).length ? `
     <h4 class="invite-subhead">${t('Codes for members')}</h4>
     <div class="table-wrap">
       <table class="data-table account-invite-welcomes">
@@ -177,6 +191,7 @@ function renderAccountInvites(root, box, clanId, data) {
       <p class="invite-lede">${t('Players get a one-time code from the scanner account in the game chat, and enter it on the site to get an account linked to their player.')}</p>
       ${notices.map((n) => `<p class="invite-notice">⚠ ${escapeHtml(n)}</p>`).join('')}
       <div class="invite-settings">${answerRow}${welcomeRow}</div>
+      ${wouldTable}
       ${siteRow}
       ${how}
       ${welcomesTable}

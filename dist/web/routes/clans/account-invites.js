@@ -50,6 +50,12 @@ function createAccountInvitesRouter() {
                 reason: r.reason,
             })),
             welcomes: (0, account_invite_repo_js_1.recentWelcomes)(id, 15),
+            // Dry run: everyone switching "Send members a code" on would message now,
+            // shown at once (no scan needed). Live mode lists its sends above instead.
+            wouldGetCode: (0, account_invite_repo_js_1.getInviteSettings)(id).welcomeMode === 'dry-run'
+                ? (0, account_invite_repo_js_1.welcomeCandidates)(id, 0, { backlog: true, live: true, limit: account_invite_repo_js_1.WELCOME_DRY_RUN_LIMIT })
+                    .map((c) => ({ player: c.name, joinedAt: c.joinedAt }))
+                : [],
         });
     });
     router.put('/:clanId/account-invites', auth_js_1.requireClanAdmin, (req, res) => {

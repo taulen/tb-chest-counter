@@ -10,6 +10,8 @@ import {
   setInvitesEnabled,
   setWelcomeMode,
   welcomeProgress,
+  welcomeCandidates,
+  WELCOME_DRY_RUN_LIMIT,
 } from '../../../data/repositories/account-invite-repo.js';
 import { logAction } from '../../../data/repositories/user-repo.js';
 import { deleteEnvValue, updateEnvValue } from '../../../config/persistent-env.js';
@@ -59,6 +61,12 @@ export function createAccountInvitesRouter(): Router {
         reason: r.reason,
       })),
       welcomes: recentWelcomes(id, 15),
+      // Dry run: everyone switching "Send members a code" on would message now,
+      // shown at once (no scan needed). Live mode lists its sends above instead.
+      wouldGetCode: getInviteSettings(id).welcomeMode === 'dry-run'
+        ? welcomeCandidates(id, 0, { backlog: true, live: true, limit: WELCOME_DRY_RUN_LIMIT })
+          .map((c) => ({ player: c.name, joinedAt: c.joinedAt }))
+        : [],
     });
   });
 

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JoinError = exports.JOIN_ACTIONS = exports.WELCOME_WAIT_MS = exports.WELCOME_SENDS_PER_SCAN = exports.WELCOME_CODE_TTL_MS = exports.WELCOME_MODES = exports.MIN_ROSTER_FOR_ACCESS_CHANGES = exports.CODE_ALPHABET = exports.CODE_LENGTH = exports.CODE_COOLDOWN_MS = exports.CODE_TTL_MS = void 0;
+exports.JoinError = exports.JOIN_ACTIONS = exports.WELCOME_WAIT_MS = exports.WELCOME_DRY_RUN_LIMIT = exports.WELCOME_SENDS_PER_SCAN = exports.WELCOME_CODE_TTL_MS = exports.WELCOME_MODES = exports.MIN_ROSTER_FOR_ACCESS_CHANGES = exports.CODE_ALPHABET = exports.CODE_LENGTH = exports.CODE_COOLDOWN_MS = exports.CODE_TTL_MS = void 0;
 exports.rankRole = rankRole;
 exports.isWelcomeMode = isWelcomeMode;
 exports.getInviteSettings = getInviteSettings;
@@ -242,6 +242,8 @@ function finishInviteSend(requestId, codeId, outcome, now = new Date().toISOStri
 exports.WELCOME_CODE_TTL_MS = exports.CODE_TTL_MS;
 /** At most this many welcome sends (or dry-run notes) per scan; the rest wait for the next one. */
 exports.WELCOME_SENDS_PER_SCAN = 10;
+/** A dry run sends nothing, so it lists everyone due at once (up to this many). */
+exports.WELCOME_DRY_RUN_LIMIT = 1000;
 /** How long a join waits for its chat account to show up before it is given up. */
 exports.WELCOME_WAIT_MS = 24 * 3600_000;
 const DUE_WHERE = `

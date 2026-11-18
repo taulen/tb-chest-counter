@@ -30,6 +30,7 @@ import { getDb } from '../data/database.js';
 import {
   CODE_TTL_MS,
   WELCOME_SENDS_PER_SCAN,
+  WELCOME_DRY_RUN_LIMIT,
   WELCOME_WAIT_MS,
   finishInviteSend,
   finishWelcomeSend,
@@ -412,18 +413,24 @@ async function runWelcome(clanId: number, opts: WelcomeRunOptions): Promise<stri
   const settings = getInviteSettings(clanId);
   if (settings.welcomeMode === 'off' || settings.welcomeEnabledAt === null) return '';
   const live = settings.welcomeMode === 'on';
-  // The backlog (every current member without an account) only once switched
-  // on for real; a dry run previews the joins.
+  // A dry run previews EVERYONE switching it on would message — the current
+  // members without an account (the backlog) as well as new joins — all at
+  // once: nothing is sent, so there is no burst to spread over scans. (It
+  // used to preview only joins after the switch, so a clan with nobody new
+  // showed nothing at all.) Live, the backlog starts with the first switch
+  // to on, at most WELCOME_SENDS_PER_SCAN a scan.
+  const dryRun = settings.welcomeMode === 'dry-run';
   const candidates = welcomeCandidates(clanId, settings.welcomeEnabledAt, {
-    backlog: live && settings.welcomeBacklogAt !== null, live, limit: WELCOME_SENDS_PER_SCAN,
+    backlog: dryRun || settings.welcomeBacklogAt !== null,
+    live,
+    limit: dryRun ? WELCOME_DRY_RUN_LIMIT : WELCOME_SENDS_PER_SCAN,
   });
   if (!candidates.length) return '';
 
-  if (settings.welcomeMode === 'dry-run') {
-    for (const c of candidates) {
-      setWelcomeStatus(clanId, c, 'dry-run', null);
-      log.info(`Clan #${clanId}: welcome code DRY RUN — would send one to ${c.name} (player ${c.playerId}, joined ${new Date(c.joinedAt * 1000).toISOString()})`);
-    }
+  if (dryRun) {
+    for (const c of candidates) setWelcomeStatus(clanId, c, 'dry-run', null);
+    const names = candidates.slice(0, 5).map((c) => c.name).join(', ');
+    log.info(`Clan #${clanId}: welcome codes DRY RUN — ${candidates.length} would get one (${names}${candidates.length > 5 ? ', …' : ''}); nothing sent`);
     return `welcome codes: ${candidates.length} dry run`;
   }
 

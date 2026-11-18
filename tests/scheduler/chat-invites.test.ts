@@ -245,7 +245,7 @@ describe('welcome codes for new members', () => {
     expect(s.sent).toHaveLength(0);
   });
 
-  it('dry run: records and logs who would get one (joins only), sends nothing; switched on, they are still due', async () => {
+  it('dry run: records and logs everyone who would get one (current members too), sends nothing; switched on, they are still due', async () => {
     setWelcomeMode(1, 'dry-run', T0);
     gamePlayer(1, 20, 'OldTimer', 4, 1, T0s - 3600);
     gamePlayer(1, 21, 'New', 4, 1, T0s + 60);
@@ -254,8 +254,13 @@ describe('welcome codes for new members', () => {
     await sendWelcomeCodes(1, wopts(s, a));
     expect(s.sent).toHaveLength(0);
     expect(a.openPrivateChat).not.toHaveBeenCalled();
-    expect(welcomes()).toEqual([{ player_id: 21, status: 'dry-run', reason: null }]);
-    expect(logged.some((l) => l.includes('DRY RUN') && l.includes('New'))).toBe(true);
+    // The current member (the backlog) as well as the new arrival: a clan with
+    // nobody new used to preview nothing at all.
+    expect(welcomes()).toEqual([
+      { player_id: 20, status: 'dry-run', reason: null },
+      { player_id: 21, status: 'dry-run', reason: null },
+    ]);
+    expect(logged.some((l) => l.includes('DRY RUN') && l.includes('2 would get one') && l.includes('New'))).toBe(true);
     expect(welcomeProgress(1).backlogDue).toBe(2);
     setWelcomeMode(1, 'on', T0 + 1000);
     await sendWelcomeCodes(1, wopts(s, a));

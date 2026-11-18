@@ -12296,3 +12296,6 @@ button.ui-tile-link {
   .perf-bleed { margin: 0 -16px; }
   .an-drill-title h2 { font-size: 20px; }
 }
+
+/* Dry run: who switching "Send members a code" on would message - a scroll box, not a page of rows. */
+.invite-would { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }

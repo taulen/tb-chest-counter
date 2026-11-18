@@ -1066,6 +1066,8 @@ export const ui = {
   "The scanner account isn't known yet; it is read at the clan's next scan.": "Das Scanner-Konto ist noch nicht bekannt; es wird beim nächsten Scan des Clans gelesen.",
   "Have a code? Join here": "Einen Code? Hier beitreten",
   "Site name in messages (every clan)": "Seitenname in Nachrichten (alle Clans)",
+  "{n} members would get a code": { one: "{n} Mitglied bekäme einen Code", other: "{n} Mitglieder bekämen einen Code" },
+  "Dry run: nothing is sent. Switch to On to send these, up to 10 per scan.": "Probelauf: Es wird nichts gesendet. Auf „An“ stellen, um diese zu senden, bis zu 10 pro Scan.",
   "Dry run": "Probelauf",
   "On since {date}": "An seit {date}",
   "Answer code requests": "Code-Anfragen beantworten",
