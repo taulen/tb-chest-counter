@@ -70,7 +70,7 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
     link(user.id, 1, 9001);
     const bytes = pngBytes(512, 512);
     const { url } = setUserAvatar(user.id, bytes, sniffImage(bytes)!);
-    expect(url).toMatch(/^\/avatars\/[0-9a-f]{64}\.png$/);
+    expect(url).toMatch(/^\/api\/avatars\/[0-9a-f]{64}$/);
     expect(resolveAccountAvatar(user, 1)).toEqual({ kind: 'photo', url, initial: 'V' });
     expect(removeUserAvatar(user.id)).toBe(true);
     expect(resolveAccountAvatar(user, 1).kind).toBe('hero');

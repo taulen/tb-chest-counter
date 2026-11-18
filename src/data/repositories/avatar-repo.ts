@@ -10,10 +10,10 @@
  *   3. else the account name's first letter.
  *
  * Photos live in the database, not on disk, so a backup or a restore carries
- * them. They are served publicly at a content-hash path (/avatars/<sha256>.<ext>,
- * routes/avatars.ts): static files never sit behind auth here (Cloudflare caches
- * by extension — docs/cloudflare-caching.md), and the hash makes every new photo
- * a new URL that can be cached for good. See docs/account-avatars.md.
+ * them. They are served to signed-in viewers only at an extensionless /api path
+ * (/api/avatars/<sha256>, routes/avatars.ts) that Cloudflare never stores, and
+ * the hash makes every new photo a new URL the browser can keep for good. See
+ * docs/account-avatars.md.
  */
 import crypto from 'crypto';
 import { getDb } from '../database.js';
@@ -28,12 +28,6 @@ export const AVATAR_MIN_PX = 64;
 export const AVATAR_MAX_PX = 1024;
 /** The Content-Types the upload route reads a body for. */
 export const AVATAR_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
-
-const EXT_BY_MIME: Record<string, 'png' | 'jpg' | 'webp'> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-};
 
 export type AvatarKind = 'photo' | 'hero' | 'initial';
 
@@ -75,9 +69,12 @@ export function validateAvatarUpload(bytes: Buffer | null | undefined): { ok: tr
   return { ok: true, image };
 }
 
-/** The public URL of a stored photo. */
-export function avatarUrl(sha256: string, mime: string): string {
-  return `/avatars/${sha256}.${EXT_BY_MIME[mime] ?? 'png'}`;
+/**
+ * The URL of a stored photo: signed-in viewers only, extensionless under /api
+ * so Cloudflare never stores it (routes/avatars.ts).
+ */
+export function avatarUrl(sha256: string): string {
+  return `/api/avatars/${sha256}`;
 }
 
 /** First letter of the account name, upper-cased ('?' for an empty name). */
@@ -98,7 +95,7 @@ export function setUserAvatar(userId: number, bytes: Buffer, image: SniffedImage
        sha256 = excluded.sha256, mime = excluded.mime, width = excluded.width,
        height = excluded.height, bytes = excluded.bytes, updated_at = excluded.updated_at`,
   ).run(userId, sha256, image.mime, image.width, image.height, bytes, new Date().toISOString());
-  return { url: avatarUrl(sha256, image.mime), sha256 };
+  return { url: avatarUrl(sha256), sha256 };
 }
 
 /** Drop an account's photo. True when there was one. */
@@ -111,15 +108,11 @@ export function hasUserAvatar(userId: number): boolean {
   return !!getDb().prepare('SELECT 1 FROM user_avatars WHERE user_id = ?').get(userId);
 }
 
-/**
- * A stored photo by its content hash and extension, for serving. The
- * extension must be the one its type is served under; anything else is null.
- */
-export function getAvatarBytes(sha256: string, ext: string): { mime: string; bytes: Buffer } | null {
+/** A stored photo by its content hash, for serving; null when no account has it. */
+export function getAvatarBytes(sha256: string): { mime: string; bytes: Buffer } | null {
   const row = getDb().prepare('SELECT mime, bytes FROM user_avatars WHERE sha256 = ? LIMIT 1').get(sha256) as
     { mime: string; bytes: Buffer } | undefined;
-  if (!row || EXT_BY_MIME[row.mime] !== ext) return null;
-  return row;
+  return row ?? null;
 }
 
 /** The hero portrait of the game player this account is in that clan, or null. */
@@ -140,7 +133,7 @@ export function resolveAccountAvatar(user: { id: number; username: string }, cla
   const initial = avatarInitial(user.username);
   const photo = getDb().prepare('SELECT sha256, mime FROM user_avatars WHERE user_id = ?').get(user.id) as
     { sha256: string; mime: string } | undefined;
-  if (photo) return { kind: 'photo', url: avatarUrl(photo.sha256, photo.mime), initial };
+  if (photo) return { kind: 'photo', url: avatarUrl(photo.sha256), initial };
   const hero = heroPortraitUrl(user.id, clanId);
   if (hero) return { kind: 'hero', url: hero, initial };
   return { kind: 'initial', url: null, initial };
