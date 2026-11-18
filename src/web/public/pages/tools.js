@@ -13,6 +13,7 @@
 
 import { api, apiPut } from '../lib/api.js';
 import { esc, notify } from '../lib/ui.js';
+import { subTabsHtml } from '../lib/ui-kit.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import {
@@ -51,11 +52,13 @@ export async function renderTools(el, toolKey) {
   else if (tool.key === 'rewards') await renderRewardsTool(mount);
 }
 
+/** The kit's sub-tab bar: real links to #tools/<key> (old links keep working). */
 function toolTabsHtml(activeKey) {
-  return `<div class="resources-tabs tools-tabs" role="tablist">${TOOLS.map((tool) => {
-    const active = tool.key === activeKey;
-    return `<a class="resources-tab ${active ? 'is-active' : ''}" href="#tools/${tool.key}" role="tab" aria-selected="${active}">${esc(tool.name)}</a>`;
-  }).join('')}</div>`;
+  return subTabsHtml({
+    label: t('Tools'),
+    current: activeKey,
+    items: TOOLS.map((tool) => ({ key: tool.key, label: tool.name, href: `#tools/${tool.key}` })),
+  });
 }
 
 // ─── Ancient planner ─────────────────────────────────────────────
@@ -222,12 +225,12 @@ function rosterCardHtml() {
   })).join('');
 
   return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Members per tier')}</h2>
+    <div class="ui-tile tool-tile">
+      <div class="ui-tile-head">
+        <h2 class="ui-tile-title">${t('Members per tier')}</h2>
         <button type="button" class="btn btn-sm" data-tool-action="reload-roster">${t('Count the roster again')}</button>
       </div>
-      <div class="card-body-padded">
+      <div class="tool-tile-body">
         <p class="muted-copy">${rosterSourceHtml()}</p>
         ${unknown > 0 ? `
           <div class="tool-inline-field">
@@ -276,8 +279,8 @@ function rosterListHtml() {
     return `<li><span class="tool-roster-level">${lvl}</span> ${esc(m.name)}${stale}</li>`;
   }).join('');
   return `
-    <details class="card-collapsible tool-roster-list" data-section-key="tools-ancient-roster">
-      <summary class="card-header"><h2>${t('Who was counted')}</h2></summary>
+    <details class="ui-fold is-inset tool-roster-list" data-section-key="tools-ancient-roster">
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('Who was counted')}</h2></summary>
       <ul class="tool-roster-items">${items}</ul>
     </details>`;
 }
@@ -294,15 +297,15 @@ function settingsCardHtml() {
     attrs: { key, html: `data-setting="${key}"` },
   })).join('');
   return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Settings')}</h2>
+    <div class="ui-tile tool-tile">
+      <div class="ui-tile-head">
+        <h2 class="ui-tile-title">${t('Settings')}</h2>
         <div class="tool-default-actions">
           <button type="button" class="btn btn-sm" data-tool-action="reset-defaults">${t('Reset to clan default')}</button>
           ${isAdmin() ? `<button type="button" class="btn btn-sm btn-primary" data-tool-action="save-defaults">${t('Save as clan default')}</button>` : ''}
         </div>
       </div>
-      <div class="card-body-padded">
+      <div class="tool-tile-body">
         <p class="tool-default-status" data-readout="defaultsStatus" role="status">${defaultsStatusHtml()}</p>
         <div class="tool-slider-grid tool-slider-grid-wide">${rows}</div>
       </div>
@@ -534,7 +537,7 @@ function heroHtml(plan, opt) {
        <div class="ancient-verdict-sub">${tn(Math.round(opt.short), '{n} vault point short of the Figurine and Tome alone', '{n} vault points short of the Figurine and Tome alone', { n: fmtInt(opt.short) })}</div>`;
 
   return `
-    <div class="card ancient-hero ${ok ? 'is-ok' : 'is-short'}">
+    <div class="ui-tile tool-tile ancient-hero ${ok ? 'is-ok' : 'is-short'}">
       <div class="ancient-hero-body">
         <div class="ancient-hero-main">
           <div class="ancient-verdict">${verdict}</div>
@@ -543,10 +546,10 @@ function heroHtml(plan, opt) {
             ${medallionHtml('figurine', tGame('Enchanted Figurine'), opt.summons, t('Summons {count}', { count: opt.summons }))}
             ${medallionHtml('clock', tGame('Mysterious Clock'), opt.clockLevel, ok ? t('Time {minutes} min', { minutes: opt.minutes }) : t('Time —'))}
           </div>
-          <div class="stats-grid ancient-stats">
-            <div class="stat-card"><div class="label">${t('Vault pot')}</div><div class="value">${formatCompact(plan.pot)}</div><div class="sub">${tn(plan.pot, '{n} point', '{n} points', { n: fmtInt(plan.pot) })}</div></div>
-            <div class="stat-card stat-card-lead"><div class="label">${t('Clan target')}</div><div class="value">${formatCompact(opt.requirement)}</div><div class="sub">${t('{kills} incl. +{pct}% Tome', { kills: killsText(opt.summons), pct: tomePct })}</div></div>
-            <div class="stat-card"><div class="label">${esc(tGame('Tin Man'))}</div><div class="value">${plan.level} → ${opt.endLevel}</div><div class="sub">${t('level before → after')}</div></div>
+          <div class="tool-stats ancient-stats">
+            <div class="ui-stat tool-stat"><div class="ui-stat-label">${t('Vault pot')}</div><div class="ui-big">${formatCompact(plan.pot)}</div><div class="ui-sub">${tn(plan.pot, '{n} point', '{n} points', { n: fmtInt(plan.pot) })}</div></div>
+            <div class="ui-stat tool-stat is-lead"><div class="ui-stat-label">${t('Clan target')}</div><div class="ui-big">${formatCompact(opt.requirement)}</div><div class="ui-sub">${t('{kills} incl. +{pct}% Tome', { kills: killsText(opt.summons), pct: tomePct })}</div></div>
+            <div class="ui-stat tool-stat"><div class="ui-stat-label">${esc(tGame('Tin Man'))}</div><div class="ui-big">${plan.level} → ${opt.endLevel}</div><div class="ui-sub">${t('level before → after')}</div></div>
           </div>
         </div>
         ${ancientArtUrl('tinman') ? `<img class="ancient-tinman" src="${esc(ancientArtUrl('tinman'))}" alt="" width="707" height="650" decoding="async">` : ''}
@@ -571,10 +574,10 @@ function optionsCardHtml(plan, sel) {
       </tr>`;
   }).join('');
   return `
-    <div class="card">
-      <div class="card-header"><h2>${t('Summon options')}</h2><span class="card-header-hint">${t('Pick a row to plan it')}</span></div>
-      <div class="card-body">
-        <table class="table-responsive ancient-options-table">
+    <div class="ui-tile tool-tile">
+      <div class="ui-tile-head"><h2 class="ui-tile-title">${t('Summon options')}</h2><span class="ui-sub">${t('Pick a row to plan it')}</span></div>
+      <div class="tool-tile-table">
+        <table class="table-responsive ui-table ancient-options-table">
           <colgroup><col class="col-summons"><col class="col-time"><col class="col-vault"><col class="col-target"><col class="col-after"></colgroup>
           <thead><tr><th>${t('Summons')}</th><th>${t('Time')}</th><th class="num">${t('Vault points')}</th><th class="num">${t('Clan target')}</th><th class="num">${esc(tinManAfter)}</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -601,14 +604,14 @@ function perMemberCardHtml(plan, opt) {
       </tr>`;
   }).join('');
   const empty = plan.weightTotal === 0
-    ? `<p class="card-note muted-copy">${t('Add members to a tier to split the target.')}</p>`
-    : `<p class="card-note muted-copy">${t('For {kills}, already lowered for a {pct}% overshoot.', { kills: killsText(opt.summons), pct: st.settings.margin })}</p>`;
+    ? `<p class="ui-sub tool-tile-note">${t('Add members to a tier to split the target.')}</p>`
+    : `<p class="ui-sub tool-tile-note">${t('For {kills}, already lowered for a {pct}% overshoot.', { kills: killsText(opt.summons), pct: st.settings.margin })}</p>`;
   return `
-    <div class="card">
-      <div class="card-header"><h2>${t('Points per member')}</h2><span class="card-header-hint">${esc(tGame('Rise of the Ancients'))}</span></div>
+    <div class="ui-tile tool-tile">
+      <div class="ui-tile-head"><h2 class="ui-tile-title">${t('Points per member')}</h2><span class="ui-sub">${esc(tGame('Rise of the Ancients'))}</span></div>
       ${empty}
-      <div class="card-body">
-        <table class="table-responsive ancient-tier-table">
+      <div class="tool-tile-table">
+        <table class="table-responsive ui-table ancient-tier-table">
           <colgroup><col class="col-tier"><col class="col-members"><col class="col-each"><col class="col-total"><col class="col-share"></colgroup>
           <thead><tr><th>${t('Tier')}</th><th>${t('Members')}</th><th class="num">${t('Points each')}</th><th class="num">${t('Tier total')}</th><th class="num">${t('Share')}</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -619,9 +622,9 @@ function perMemberCardHtml(plan, opt) {
 
 function howItWorksHtml() {
   return `
-    <details class="card card-collapsible" data-section-key="tools-ancient-howto">
-      <summary class="card-header"><h2>${t('How this works')}</h2></summary>
-      <div class="card-body-padded tool-howto">
+    <details class="ui-fold" data-section-key="tools-ancient-howto">
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('How this works')}</h2></summary>
+      <div class="ui-fold-body tool-howto">
         <ul>
           <li>${t('<strong>Vault pot.</strong> Each member raids one vault in {event}. Their guards level caps its size: G1 1,000 … G9 8,200 vault points.', { event: esc(tGame('Ancients\' Treasure')) })}</li>
           <li>${t('<strong>What it buys.</strong> The Figurine (summons) and the Tome you pick come first. The Clock gets the rest, up to 120 minutes.')}</li>

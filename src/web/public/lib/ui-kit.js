@@ -189,6 +189,19 @@ export function notesHtml(lines) {
   return lines.length ? `<ul class="ui-notes">${lines.map((l) => `<li>${l}</li>`).join('')}</ul>` : '';
 }
 
+/**
+ * A tile that folds (native <details>): "How this works", fine-tuning, a long
+ * list. `key` becomes its data-section-key, so the open state survives a
+ * re-render (lib/ui.js). `title` and `body` are HTML; `inset` for one inside
+ * another tile.
+ */
+export function foldHtml({ key, title, body, open = false, inset = false, cls = '' }) {
+  return `<details class="ui-fold${inset ? ' is-inset' : ''}${cls ? ` ${cls}` : ''}" data-section-key="${esc(key)}"${open ? ' open' : ''}>
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${title}</h2></summary>
+      <div class="ui-fold-body">${body}</div>
+    </details>`;
+}
+
 /** Nothing to show — say so in one plain sentence. */
 export function emptyHtml(text) {
   return `<p class="ui-empty">${esc(text)}</p>`;
