@@ -239,8 +239,7 @@ function headerHtml() {
         current: view.mode,
         attr: 'cr-mode',
       })}
-    </div>
-    <p class="ui-sub">${t("What the clan's opened chests paid out")}</p>`;
+    </div>`;
 }
 
 function paint(error = '') {

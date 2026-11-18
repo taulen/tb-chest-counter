@@ -9,6 +9,7 @@ import {
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
+import { segHtml, tileHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions } from '../lib/ui-kit.js';
 
 const CHEST_TYPE_LABELS = {
   common: t('common'),
@@ -31,9 +32,27 @@ const STATUS_LABELS = {
 const PAGE_SIZE = 25;
 let currentPage = 1;
 
+/** A scan's outcome: a glyph AND words, never colour alone. */
+function statusHtml(status, title = '') {
+  const kind = status === 'completed' ? ['is-ok', '✓']
+    : status === 'failed' ? ['is-bad', '✕']
+      : status === 'processing' ? ['is-busy', '◐']
+        : ['is-wait', '…'];
+  return `<span class="sess-status ${kind[0]}"${title ? ` title="${esc(title)}"` : ''}><span aria-hidden="true">${kind[1]}</span> ${esc(STATUS_LABELS[status] ?? status)}</span>`;
+}
+
 export async function renderSessions(el) {
-  const sessions = await api('/sessions?limit=500');
+  setPageActions('');
+  const answer = await api('/sessions?limit=500');
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
+
+  // The list is the page: a refusal (an object, not a list) is said, with Try again.
+  if (!Array.isArray(answer)) {
+    el.innerHTML = `<div class="sess-page">${errorStateHtml(t('The scan history could not be loaded.'), refusalText(answer))}</div>`;
+    wireRetry(el, () => renderSessions(el));
+    return;
+  }
+  const sessions = answer;
 
   const totalSessions = sessions.length;
   const totalPages = Math.max(1, Math.ceil(totalSessions / PAGE_SIZE));
@@ -51,35 +70,41 @@ export async function renderSessions(el) {
       </div>`
     : '';
 
-  el.innerHTML = `<div class="card"><div class="card-header"><h2>${t('Scan History')}</h2></div><div class="card-body">
-    ${pageSessions.length > 0 ? `<table class="table-responsive"><thead><tr><th>${t('Started')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Status')}</th><th>${t('Chests')}</th><th>${t('Triumphal')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead><tbody>
-      ${pageSessions.map((s) => {
-        // Status tooltip carries everything we used to surface as columns:
-        // the screenshot count of scans recorded by the retired screenshot
-        // reader, plus (for failed scans) the error phase and message.
-        // Hover-only so the row stays compact.
-        const screenshotsLine = s.screenshotsTaken > 0 ? t('Screenshots: {count}', { count: s.screenshotsTaken }) : '';
-        const failureLines = s.errorMessage
-          ? (s.errorPhase ? `${s.errorPhase}\n\n${s.errorMessage}` : s.errorMessage)
-          : '';
-        const tipText = [screenshotsLine, failureLines].filter(Boolean).join('\n\n');
-        const statusTip = tipText ? ` title="${esc(tipText)}"` : '';
-        const failureBadge = s.errorMessage
-          ? ` <span class="failure-phase-badge"${statusTip}>${esc(s.errorPhase || t('see details'))}</span>`
-          : '';
-        return `<tr>
+  const rows = pageSessions.map((s) => {
+    // The status's title carries what used to be columns: the screenshot
+    // count of scans recorded by the retired screenshot reader, plus (for a
+    // failed scan) the phase and message. The badge names the phase.
+    const screenshotsLine = s.screenshotsTaken > 0 ? t('Screenshots: {count}', { count: s.screenshotsTaken }) : '';
+    const failureLines = s.errorMessage
+      ? (s.errorPhase ? `${s.errorPhase}\n\n${s.errorMessage}` : s.errorMessage)
+      : '';
+    const tipText = [screenshotsLine, failureLines].filter(Boolean).join('\n\n');
+    const failureBadge = s.errorMessage
+      ? ` <span class="failure-phase-badge" title="${esc(tipText)}">${esc(s.errorPhase || t('see details'))}</span>`
+      : '';
+    return `<tr>
         <td data-label="${t('Started')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${sessionHash(s.id)}">${formatDate(s.startedAt)}</a></span><span class="mrow-sub">${formatTriggerSource(s.triggerSource)} · ${formatDuration(s.startedAt, s.completedAt)}</span></td>
         <td data-label="${t('Duration')}">${formatDuration(s.startedAt, s.completedAt)}</td>
         <td data-label="${t('Trigger')}">${formatTriggerSource(s.triggerSource)}</td>
-        <td data-label="${t('Status')}"><span class="chest-type ${s.status === 'completed' ? 'uncommon' : 'arena'}"${statusTip}>${STATUS_LABELS[s.status] ?? s.status}</span>${failureBadge}</td>
-        <td data-label="${t('Chests')}" data-role="metric">${s.chestsFound}</td>
-        <td data-label="${t('Triumphal')}">${s.triumphalChestsFound ?? 0}</td>
+        <td data-label="${t('Status')}">${statusHtml(s.status, tipText)}${failureBadge}</td>
+        <td data-label="${t('Chests')}" class="num" data-role="metric">${(s.chestsFound ?? 0).toLocaleString()}</td>
+        <td data-label="${t('Triumphal')}" class="num">${(s.triumphalChestsFound ?? 0).toLocaleString()}</td>
         ${isSuperAdmin ? `<td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-session" data-session-id="${s.id}" data-session-chests="${s.chestsFound}">${t('Delete')}</button></td>` : ''}
       </tr>`;
-      }).join('')}
-    </tbody></table>` : `<div class="empty-state"><p>${t('No scans yet.')}</p></div>`}
-    ${paginationControls}
-  </div></div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="sess-page">
+      ${pageSessions.length > 0 ? `
+      <p class="ui-sub">${tn(totalSessions, '{n} scan', '{n} scans', { n: totalSessions.toLocaleString() })}</p>
+      <div class="ui-table-card">
+        <table class="table-responsive ui-table sess-table">
+          <colgroup><col class="col-started"><col class="col-duration"><col class="col-trigger"><col class="col-status"><col class="col-chests"><col class="col-triumphal">${isSuperAdmin ? '<col class="col-actions">' : ''}</colgroup>
+          <thead><tr><th>${t('Started')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Status')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Triumphal')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${paginationControls}
+      </div>` : emptyHtml(t('No scans yet.'))}
+    </div>`;
 }
 
 /**
@@ -108,57 +133,71 @@ export async function viewSession(id, navigate) {
   renderSessionDetail(data);
 }
 
-function renderSessionDetail({ session, chests, triumphalChests }) {
+function renderSessionDetail({ session, chests: chestList, triumphalChests }) {
   const content = $('#content');
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
+  const chests = Array.isArray(chestList) ? chestList : [];
   const totalPoints = chests.reduce((sum, c) => sum + (c.pointValue || 0), 0);
   const triumphals = Array.isArray(triumphalChests) ? triumphalChests : [];
 
+  // Back and (superadmin) Delete: in the page, where app.js's #content click
+  // delegation hears their data-action (the shell's #pageActions is outside it).
+  setPageActions('');
+  const actions = `<div class="ui-toolbar sess-actions">
+      <button class="btn" data-action="member-back">${t('← Back')}</button>
+      ${isSuperAdmin ? `<button class="btn btn-danger" data-action="delete-session" data-session-id="${session.id}" data-session-chests="${session.chestsFound}">${t('Delete Scan')}</button>` : ''}
+    </div>`;
+
   const chestRows = chests.length > 0
-    ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Type')}</th><th>${t('Source')}</th><th>${t('Points')}</th><th>${t('Received')}</th></tr></thead><tbody>
+    ? `<div class="ui-table-card"><table class="table-responsive ui-table sess-chests-table">
+        <colgroup><col class="col-player"><col class="col-chest"><col class="col-type"><col class="col-source"><col class="col-points"><col class="col-received"></colgroup>
+        <thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Type')}</th><th>${t('Source')}</th><th class="num">${t('Points')}</th><th>${t('Received')}</th></tr></thead><tbody>
         ${chests.map((c) => `<tr>
           <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)), { size: 16 })}</span></td>
           <td data-label="${t('Chest')}">${chestLabelHtml(c.chestName, `<a class="member-link" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a>`)}</td>
           <td data-label="${t('Type')}"><span class="chest-type ${c.chestType}">${CHEST_TYPE_LABELS[c.chestType] ?? c.chestType}</span></td>
           <td data-label="${t('Source')}">${sourceLink(c.chestSource)}</td>
-          <td data-label="${t('Points')}" data-role="metric">${c.pointValue}</td>
+          <td data-label="${t('Points')}" class="num" data-role="metric">${c.pointValue}</td>
           <td data-label="${t('Received')}">${formatDate(c.effectiveAt)}</td>
         </tr>`).join('')}
-      </tbody></table>`
-    : `<div class="empty-state"><p>${t('No chests recorded for this scan.')}</p></div>`;
+      </tbody></table></div>`
+    : emptyHtml(t('No chests recorded for this scan.'));
 
   const triumphalRows = triumphals.length > 0
-    ? `<table class="table-responsive"><thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Received')}</th></tr></thead><tbody>
+    ? `<div class="ui-table-card"><table class="table-responsive ui-table sess-triumphal-table">
+        <colgroup><col class="col-player"><col class="col-chest"><col class="col-source"><col class="col-received"></colgroup>
+        <thead><tr><th>${t('Player')}</th><th>${t('Chest')}</th><th>${t('Source')}</th><th>${t('Received')}</th></tr></thead><tbody>
         ${triumphals.map((c) => `<tr>
           <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.playerName)}</span><span class="mrow-sub">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)), { size: 16 })}</span></td>
           <td data-label="${t('Chest')}">${chestLabelHtml(c.chestName, esc(tGame(c.chestName)))}</td>
           <td data-label="${t('Source')}">${esc(tGame(c.chestSource || ''))}</td>
           <td data-label="${t('Received')}" data-role="metric">${formatDate(c.effectiveAt)}</td>
         </tr>`).join('')}
-      </tbody></table>`
+      </tbody></table></div>`
     : '';
 
   const hasTriumphals = triumphals.length > 0;
-  const chestsCard = hasTriumphals
-    ? `<div class="card" id="sessionChestsCard">
-        <div class="card-header leaderboard-header">
-          <div class="period-selector" id="sessionTabs">
-            <button class="btn active" data-session-tab="chests">${t('Chests ({count})', { count: chests.length })}</button>
-            <button class="btn" data-session-tab="triumphals">${t('Triumphal Chests ({count})', { count: triumphals.length })}</button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div data-session-panel="chests">${chestRows}</div>
-          <div data-session-panel="triumphals" class="is-hidden">${triumphalRows}</div>
-        </div>
+  // Chests | Triumphal Chests: the kit's segmented control, one table at a time.
+  const chestsBlock = hasTriumphals
+    ? `<div class="sess-chests">
+        ${segHtml({
+          label: t('Chests captured'),
+          items: [
+            { value: 'chests', label: t('Chests ({count})', { count: chests.length }) },
+            { value: 'triumphals', label: t('Triumphal Chests ({count})', { count: triumphals.length }) },
+          ],
+          current: 'chests',
+          attr: 'session-tab',
+        })}
+        <div data-session-panel="chests">${chestRows}</div>
+        <div data-session-panel="triumphals" class="is-hidden">${triumphalRows}</div>
       </div>`
-    : `<div class="card">
-        <div class="card-header"><h2>${t('Chests Captured ({count})', { count: chests.length })}</h2></div>
-        <div class="card-body">
-          ${chestRows}
-        </div>
+    : `<div class="sess-chests">
+        <h2 class="sess-h">${t('Chests Captured ({count})', { count: chests.length })}</h2>
+        ${chestRows}
       </div>`;
 
+  // A failed scan's own words: what happened, plainly.
   const errorBanner = session.errorMessage
     ? `<div class="session-error-banner">
          <div class="session-error-phase">${esc(session.errorPhase || t('Scan failed'))}</div>
@@ -166,70 +205,42 @@ function renderSessionDetail({ session, chests, triumphalChests }) {
        </div>`
     : '';
 
-  content.innerHTML = `
-    <div class="card">
-      <div class="card-header member-detail-header">
-        <div class="member-detail-title">
-          <h2>${t('Scan #{id}', { id: session.id })}</h2>
-        </div>
-        <div class="header-actions">
-          ${isSuperAdmin ? `<button class="btn btn-danger" data-action="delete-session" data-session-id="${session.id}" data-session-chests="${session.chestsFound}">${t('Delete Scan')}</button>` : ''}
-          <button class="btn" data-action="member-back">${t('← Back')}</button>
-        </div>
-      </div>
-      <div class="card-body card-body-padded">
-        ${errorBanner}
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="label">${t('Status')}</div>
-            <div class="value"><span class="chest-type ${session.status === 'completed' ? 'uncommon' : 'arena'}">${esc(STATUS_LABELS[session.status] ?? session.status)}</span></div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Chests Recorded')}</div>
-            <div class="value">${(session.chestsFound ?? 0).toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Total Points')}</div>
-            <div class="value">${totalPoints.toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Errors')}</div>
-            <div class="value">${session.errorsEncountered ?? 0}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Trigger')}</div>
-            <div class="value value-pill">${formatTriggerSource(session.triggerSource)}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Started')}</div>
-            <div class="value member-detail-date">${formatDateShort(session.startedAt)}</div>
-            <div class="sub">${session.startedAt ? formatRelativeTime(session.startedAt) : ''}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Duration')}</div>
-            <div class="value">${formatDuration(session.startedAt, session.completedAt)}</div>
-          </div>
-          ${(session.screenshotsTaken ?? 0) > 0 ? `<div class="stat-card">
-            <div class="label">${t('Screenshots')}</div>
-            <div class="value">${session.screenshotsTaken}</div>
-          </div>` : ''}
-        </div>
-      </div>
-    </div>
+  const stat = (label, valueHtml, sub = '') => `<div class="ui-stat">
+      <div class="ui-stat-label">${label}</div>
+      <div class="ui-big sess-stat-value">${valueHtml}</div>
+      ${sub ? `<div class="ui-sub">${sub}</div>` : ''}
+    </div>`;
+  const stats = `<div class="ui-big-row sess-stats">
+      ${stat(t('Status'), statusHtml(session.status))}
+      ${stat(t('Chests Recorded'), (session.chestsFound ?? 0).toLocaleString())}
+      ${stat(t('Total Points'), totalPoints.toLocaleString())}
+      ${stat(t('Errors'), String(session.errorsEncountered ?? 0))}
+      ${stat(t('Trigger'), formatTriggerSource(session.triggerSource))}
+      ${stat(t('Started'), esc(formatDateShort(session.startedAt)), session.startedAt ? esc(formatRelativeTime(session.startedAt)) : '')}
+      ${stat(t('Duration'), esc(formatDuration(session.startedAt, session.completedAt)))}
+      ${(session.screenshotsTaken ?? 0) > 0 ? stat(t('Screenshots'), String(session.screenshotsTaken)) : ''}
+    </div>`;
 
-    ${chestsCard}
-  `;
+  content.innerHTML = `<div class="sess-page">
+      ${actions}
+      <div class="ui-grid">
+        ${tileHtml('sess-scan', t('Scan #{id}', { id: session.id }), `${errorBanner}${stats}`, { span: 12 })}
+      </div>
+      ${chestsBlock}
+    </div>`;
 
   if (hasTriumphals) {
-    const tabBar = content.querySelector('#sessionTabs');
-    tabBar?.addEventListener('click', (ev) => {
-      const btn = ev.target.closest('button[data-session-tab]');
+    const box = content.querySelector('.sess-chests');
+    box?.addEventListener('click', (ev) => {
+      const btn = ev.target instanceof Element ? ev.target.closest('button[data-session-tab]') : null;
       if (!btn) return;
       const next = btn.dataset.sessionTab;
-      tabBar.querySelectorAll('button[data-session-tab]').forEach((b) => {
-        b.classList.toggle('active', b.dataset.sessionTab === next);
+      box.querySelectorAll('button[data-session-tab]').forEach((b) => {
+        const on = b.dataset.sessionTab === next;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', String(on));
       });
-      content.querySelectorAll('[data-session-panel]').forEach((panel) => {
+      box.querySelectorAll('[data-session-panel]').forEach((panel) => {
         panel.classList.toggle('is-hidden', panel.dataset.sessionPanel !== next);
       });
     });

@@ -4777,8 +4777,8 @@ details > table {
 }
 
 .resources-table .col-member     { width: auto; }
-.resources-table .col-resource   { width: 250px; }
-.resources-table .col-direction  { width: 90px; }
+.resources-table .col-resource   { width: 220px; }
+.resources-table .col-direction  { width: 130px; }
 .resources-table .col-amount     { width: 115px; }
 .resources-table .col-date       { width: 140px; }
 /* 140px: enough for "Save" + "Cancel" side-by-side in btn-tight; "Edit" alone looks fine too */
@@ -4999,25 +4999,6 @@ details > table {
   }
 }
 
-/* ─── Resources: overview controls (scope + range + bucket) ──────────── */
-.resources-controls { margin-bottom: 16px; }
-.resources-controls-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  /* The bar is the card's only content; .card-body is unpadded (for tables). */
-  padding: 14px 20px;
-}
-.resources-scope-select { max-width: 260px; }
-.resources-range-group,
-.resources-bucket-group { display: inline-flex; gap: 4px; }
-.resources-range-btn.is-active,
-.resources-bucket-btn.is-active {
-  background: var(--accent-gold-bg-strong);
-  color: var(--accent-gold);
-  border-color: var(--accent-gold-border);
-}
 .card-header-hint {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -5102,7 +5083,6 @@ details > table {
 .resources-nondonors-table .col-player { width: auto; }
 
 /* ─── Resources: Totals matrix (member × resource type) ──────────────── */
-.resources-totals-scroll { overflow-x: auto; }
 .resources-totals-table { table-layout: fixed; min-width: 780px; }
 .resources-totals-table .col-player { width: 132px; }
 .resources-totals-table .col-rtype { width: 58px; }
@@ -5136,41 +5116,10 @@ details > table {
 }
 .resources-totals-table th.rtype-th.is-sorted .rtype-head-name { color: var(--accent-gold); }
 
-/* Totals header: title left, period selector + nav right (wraps on narrow). */
-.resources-totals-header { flex-wrap: wrap; gap: 10px; }
-.resources-totals-title { display: flex; flex-direction: column; gap: 2px; }
-.resources-totals-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-/* Fixed-width label + always-present nav keeps the controls from shifting
-   when switching timeframes (weekly range vs a short year vs All). */
-.resources-totals-nav .period-nav-label {
-  min-width: 178px;
-  text-align: center;
-}
-
-/* The Resources sub-tab bar holds four tabs (Overview, Totals, Chest rewards,
-   Admin): on a phone they share one full-width row and long labels wrap
-   inside their own cell instead of pushing the bar off the screen. */
-@media (max-width: 640px) {
-  .resources-nav {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: 1fr;
-    width: 100%;
-  }
-  .resources-nav .resources-tab {
-    display: grid;
-    place-items: center;
-    padding: 6px 4px;
-    text-align: center;
-    line-height: 1.2;
-    font-size: 0.84rem;
-  }
-}
 
 /* ─── Resources → Chest rewards (pages/resources-chest-rewards.js) ─────── */
 .chest-rewards-body { transition: opacity 0.15s; }
 .chest-rewards-body.is-loading { opacity: 0.5; }
-.chest-trend-header { flex-wrap: wrap; gap: 8px; }
 .chest-trend-pick select { max-width: 220px; }
 .chest-trend-wrap { position: relative; height: 240px; }
 .chest-rewards-groups { display: flex; flex-direction: column; gap: 22px; }
@@ -5422,7 +5371,6 @@ details > table {
   .resources-chart-wrap { height: 280px; }
   /* Totals table collapses to the shared card layout — drop the wide min-width. */
   .resources-totals-table { min-width: 0; }
-  .resources-totals-scroll { overflow-x: visible; }
 }
 
 /* ─── Might tracking (Might page, member-detail card, Analytics trend) ──────
@@ -5694,8 +5642,7 @@ details > table {
 }
 
 @media (max-width: 640px) {
-  .analytics-controls-body,
-  .resources-controls-body { gap: 8px; padding: 12px 14px; }
+  .analytics-controls-body { gap: 8px; padding: 12px 14px; }
   /* Let the label shrink rather than push the arrows off the row. */
   .analytics-nav .period-nav-label { min-width: 0; flex: 1 1 auto; }
   .analytics-nav { width: 100%; }
@@ -12308,4 +12255,63 @@ button.ui-tile-link {
 .shell-clan-add.is-sheet-only { display: none; margin-top: 8px; }
 @media (max-width: 640px) {
   .shell-clan-add.is-sheet-only { display: flex; }
+}
+
+/* ─── Resources (Overview / Totals / Admin), Chest rewards, Scan History,
+   ChestTracker — on the UI kit (docs/design-standard.md). Page blocks keep
+   only what is theirs: the resource cards, the totals matrix, the reward
+   tiles and the scan status words. ─── */
+.rs-page,
+.chest-rewards-page,
+.sess-page,
+.ext-page { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.rs-controls .ui-period { flex: 1 1 auto; }
+.rs-scope select { min-height: 44px; max-width: 260px; }
+.rs-stat-value { font-size: 22px; }
+.rs-chart-tools { display: flex; justify-content: flex-end; }
+.rs-h,
+.sess-h { margin: 0 0 10px; font-size: 16px; font-weight: 700; }
+.rs-section > .ui-toolbar { margin-bottom: 12px; justify-content: flex-start; }
+.resources-filter-bar .input { min-height: 44px; }
+
+.cr-controls .ui-period { flex: 1 1 auto; }
+
+/* A scan's outcome: a glyph and words, coloured by meaning. */
+.sess-status { font-weight: 600; white-space: nowrap; }
+.sess-status.is-ok { color: var(--accent-green-soft-text); }
+.sess-status.is-bad { color: var(--accent-red-soft-text); }
+.sess-status.is-busy { color: var(--accent-warn-text); }
+.sess-status.is-wait { color: var(--text-secondary); }
+.sess-stat-value { font-size: 20px; }
+.sess-stats { gap: 14px 28px; }
+.sess-actions { justify-content: flex-start; }
+.sess-chests { display: flex; flex-direction: column; gap: 12px; }
+.sess-table { table-layout: fixed; min-width: 720px; }
+.sess-table .col-started { width: 190px; }
+.sess-table .col-duration { width: 110px; }
+.sess-table .col-trigger { width: 120px; }
+.sess-table .col-status { width: auto; }
+.sess-table .col-chests { width: 90px; }
+/* "Триумфальные" is the longest header. */
+.sess-table .col-triumphal { width: 130px; }
+.sess-table .col-actions { width: 96px; }
+.sess-chests-table { table-layout: fixed; min-width: 760px; }
+.sess-chests-table .col-player { width: 22%; }
+.sess-chests-table .col-chest { width: 24%; }
+.sess-chests-table .col-type { width: 100px; }
+.sess-chests-table .col-source { width: auto; }
+.sess-chests-table .col-points { width: 80px; }
+.sess-chests-table .col-received { width: 150px; }
+.sess-triumphal-table { table-layout: fixed; min-width: 640px; }
+.sess-triumphal-table .col-received { width: 150px; }
+
+.ext-section { display: flex; flex-direction: column; gap: 10px; }
+
+@media (max-width: 760px) {
+  /* The phone's compact rows: the tables give up their desktop min-widths. */
+  .sess-table,
+  .sess-chests-table,
+  .sess-triumphal-table { min-width: 0; }
+  .rs-scope,
+  .rs-scope select { width: 100%; max-width: none; }
 }
