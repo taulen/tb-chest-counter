@@ -387,16 +387,111 @@ function artifactDetailHtml(a, changes, { withName = false } = {}) {
 let hoverCard = null;
 let showTimer = 0;
 let hideTimer = 0;
+// The tile whose card is on screen, and the one a timer is about to show.
+let shownTile = null;
+let pendingTile = null;
 // Until then, the next tile shows its card at once: moving from captain to
 // captain, a card hidden over the gap between two tiles (or a pass over one
 // tile faster than the intent delay) made it look random whether one showed.
 let warmUntil = 0;
+// Each wired container → its tile lookup (wireTiles).
+const tileRoots = new WeakMap();
 
 function hideHoverCard() {
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
   if (hoverCard?.classList.contains('is-visible')) warmUntil = Date.now() + WARM_MS;
   hoverCard?.classList.remove('is-visible');
+  shownTile = null;
+  pendingTile = null;
+}
+
+/** The wired container a tile belongs to, and its view lookup; null if none. */
+function lookupFor(tile) {
+  for (let n = tile.parentElement; n; n = n.parentElement) {
+    const viewOf = tileRoots.get(n);
+    if (viewOf) return viewOf;
+  }
+  return null;
+}
+
+/** A tile's view, or null — a view that throws must never break the hover for the others. */
+function safeView(viewOf, tile) {
+  try {
+    return viewOf(tile);
+  } catch (err) {
+    console.warn('hover card: no view for this tile', err);
+    return null;
+  }
+}
+
+/**
+ * The pointer is on `tile`: show its card, at once when a card is up or just
+ * went (warm), else after the intent delay. Idempotent — called on every
+ * pointer move over the tile, so it may run hundreds of times per hover.
+ */
+function hoverTile(tile, viewOf) {
+  if (tile === shownTile && hoverCard?.classList.contains('is-visible')) {
+    clearTimeout(hideTimer);
+    return;
+  }
+  if (tile === pendingTile) return;
+  const v = safeView(viewOf, tile);
+  if (!v) return;
+  clearTimeout(hideTimer);
+  clearTimeout(showTimer);
+  const warm = hoverCard?.classList.contains('is-visible') || Date.now() < warmUntil;
+  pendingTile = tile;
+  showTimer = setTimeout(() => {
+    pendingTile = null;
+    showHoverCard(tile, v.hoverHtml);
+  }, warm ? 0 : SHOW_DELAY_MS);
+}
+
+/** The pointer is off every tile: cancel a pending card, hide a shown one after a short grace. */
+function leaveTiles() {
+  if (pendingTile) {
+    clearTimeout(showTimer);
+    pendingTile = null;
+  }
+  if (!hoverCard?.classList.contains('is-visible')) return;
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(hideHoverCard, HIDE_DELAY_MS);
+}
+
+let pointerWired = false;
+/**
+ * One document-wide pointer listener drives every card from where the pointer
+ * IS, not from enter/leave events. With mouseover/mouseout alone, a missed or
+ * mis-ordered boundary event left the card blank or stuck: moving along the
+ * profile's title icons it was about 50/50 whether a card showed (user's
+ * screen recording, Nov 18 2026).
+ */
+function wirePointer() {
+  if (pointerWired) return;
+  pointerWired = true;
+  const fine = window.matchMedia(FINE_HOVER);
+  document.addEventListener('pointermove', (ev) => {
+    if (!fine.matches || (ev.pointerType && ev.pointerType !== 'mouse' && ev.pointerType !== 'pen')) return;
+    const tile = ev.target instanceof Element ? ev.target.closest('[data-tile]') : null;
+    const viewOf = tile && tile.isConnected ? lookupFor(tile) : null;
+    if (tile && viewOf) hoverTile(tile, viewOf);
+    else leaveTiles();
+  }, { passive: true });
+  // The pointer left the window over a tile: no pointermove follows.
+  document.addEventListener('pointerout', (ev) => {
+    if (!ev.relatedTarget) leaveTiles();
+  }, { passive: true });
+  window.addEventListener('hashchange', hideHoverCard);
+  // Hide when the shown tile moves under the card — the page scrolled, or a
+  // box holding the tile did. Other boxes scrolling (a feed, a sideways strip)
+  // used to hide it too, which also read as "the card randomly doesn't show".
+  window.addEventListener('scroll', (ev) => {
+    if (!shownTile) return;
+    const box = ev.target;
+    if (box === document || box === document.documentElement || box === document.body
+      || (box instanceof Element && box.contains(shownTile))) hideHoverCard();
+  }, { passive: true, capture: true });
 }
 
 function showHoverCard(tile, html) {
@@ -409,20 +504,10 @@ function showHoverCard(tile, html) {
     hoverCard.className = 'captain-hovercard';
     hoverCard.setAttribute('aria-hidden', 'true');
     document.body.appendChild(hoverCard);
-    window.addEventListener('hashchange', hideHoverCard);
-    window.addEventListener('scroll', hideHoverCard, { passive: true, capture: true });
-    // Anywhere but a tile: hide (also covers a tile removed under the pointer,
-    // which never sends mouseout).
-    document.addEventListener('pointermove', (ev) => {
-      if (!hoverCard?.classList.contains('is-visible')) return;
-      const over = ev.target instanceof Element ? ev.target.closest('[data-tile]') : null;
-      if (over && over.isConnected) return;
-      clearTimeout(hideTimer);
-      hideTimer = setTimeout(hideHoverCard, HIDE_DELAY_MS);
-    }, { passive: true });
   }
   hoverCard.innerHTML = html;
   hoverCard.classList.add('is-visible');
+  shownTile = tile;
   const a = tile.getBoundingClientRect();
   const r = hoverCard.getBoundingClientRect();
   const gap = 12;
@@ -452,33 +537,15 @@ function showHoverCard(tile, html) {
  * titles (member-titles.js) use it too.
  */
 export function wireTiles(el, views) {
-  const fine = window.matchMedia(FINE_HOVER);
   const viewOf = (tile) => views[tile.dataset.tile]?.(Number(tile.dataset.index)) ?? null;
+  tileRoots.set(el, viewOf);
+  wirePointer();
   el.addEventListener('click', (ev) => {
     const tile = ev.target.closest('[data-tile]');
-    const v = tile && viewOf(tile);
+    const v = tile && safeView(viewOf, tile);
     if (!v) return;
     hideHoverCard();
     contentModal({ title: v.title, html: v.html, wide: !!v.wide, className: 'captain-modal' });
-  });
-  el.addEventListener('mouseover', (ev) => {
-    if (!fine.matches) return;
-    const tile = ev.target.closest('[data-tile]');
-    if (!tile || tile.contains(ev.relatedTarget)) return;
-    const v = viewOf(tile);
-    if (!v) return;
-    clearTimeout(hideTimer);
-    clearTimeout(showTimer);
-    // Already showing a card, or one just hid: swap straight to this one.
-    const warm = hoverCard?.classList.contains('is-visible') || Date.now() < warmUntil;
-    const delay = warm ? 0 : SHOW_DELAY_MS;
-    showTimer = setTimeout(() => showHoverCard(tile, v.hoverHtml), delay);
-  });
-  el.addEventListener('mouseout', (ev) => {
-    const tile = ev.target.closest('[data-tile]');
-    if (!tile || tile.contains(ev.relatedTarget)) return;
-    clearTimeout(showTimer);
-    hideTimer = setTimeout(hideHoverCard, HIDE_DELAY_MS);
   });
 }
 
