@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SENDBIRD_APP_ID = void 0;
 exports.chatLogin = chatLogin;
+exports.listChannelMembers = listChannelMembers;
+exports.openPrivateChat = openPrivateChat;
 exports.channelListQuery = channelListQuery;
 exports.listChannels = listChannels;
 exports.readMessages = readMessages;
@@ -83,6 +85,60 @@ async function api(s, pathAndQuery) {
     if (!res.ok)
         throw new client_js_1.GameProtocolError(`chat API ${pathAndQuery.split('?')[0]} → HTTP ${res.status}`);
     return (await res.json());
+}
+/**
+ * Every member of a channel (the clan chat: the clan's players, with the
+ * memberInfo that names their player id). Pages through the member list.
+ * Account invites use it to find a new member's chat account — whether the
+ * member list carries metadata was not confirmed live (Nov 2026); a member
+ * without it is simply not matched.
+ */
+async function listChannelMembers(s, channelUrl, max = 500) {
+    const out = [];
+    let token = '';
+    for (let page = 0; page < 10 && out.length < max; page++) {
+        const q = new URLSearchParams({ limit: '100', ...(token ? { token } : {}) });
+        const r = await api(s, `/group_channels/${encodeURIComponent(channelUrl)}/members?${q}`);
+        for (const m of r.members ?? []) {
+            out.push({ userId: m.user_id ?? m.guest_id ?? '', nickname: m.nickname ?? m.name ?? '', memberInfo: m.metadata?.memberInfo ?? '' });
+        }
+        if (!r.next)
+            break;
+        token = r.next;
+    }
+    return out;
+}
+/**
+ * Open (or find — Sendbird returns the existing one for a distinct pair) the
+ * 1:1 private chat between the session's user and `otherUserId`, in the shape
+ * the game's own private chats have: custom_type `whisper`, is_distinct, the
+ * two chat accounts as members, named `tb:<a>_tb:<b>` (docs/game-protocol.md).
+ * UNCONFIRMED LIVE (Nov 2026): no capture of the game client creating one —
+ * the caller verifies the returned channel before anything is sent into it.
+ */
+async function openPrivateChat(s, otherUserId) {
+    const res = await fetch(`https://api-${lower(s.appId)}.sendbird.com/v3/group_channels`, {
+        method: 'POST',
+        headers: {
+            'Session-Key': s.key, Accept: 'application/json', 'Content-Type': 'application/json',
+            'SB-User-Agent': `unity/c${SDK_VERSION}/owebglplayer`,
+        },
+        body: JSON.stringify({
+            user_ids: [s.userId, otherUserId], is_distinct: true, custom_type: 'whisper', name: `${s.userId}_${otherUserId}`,
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok)
+        throw new client_js_1.GameProtocolError(`chat API create channel → HTTP ${res.status}`);
+    const c = (await res.json());
+    return {
+        url: c.channel_url,
+        customType: c.custom_type ?? '',
+        name: c.name ?? '',
+        memberCount: c.member_count ?? 0,
+        members: (c.members ?? []).map((m) => ({ userId: m.user_id ?? m.guest_id ?? '', nickname: m.nickname ?? m.name ?? '' })),
+        lastMessageAt: c.last_message?.created_at ?? null,
+    };
 }
 /**
  * The query the game client itself sends to list a user's channels (recorded

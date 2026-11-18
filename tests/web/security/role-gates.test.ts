@@ -255,6 +255,11 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       // Triumphal chest points: same global read-admin / write-superadmin split.
       { name: 'PUT /admin/triumphal-points', method: 'put', path: '/api/admin/triumphal-points', body: { chestName: 'Golden Chest', packagePoints: 50 } },
       { name: 'DELETE /admin/triumphal-points', method: 'delete', path: '/api/admin/triumphal-points?chestName=Golden%20Chest' },
+      // Accounts from the game (v127): creating an account by hand is
+      // superadmin-only — everyone else joins with a code from the game chat —
+      // and so is unlinking an account from its player.
+      { name: 'POST /auth/users', method: 'post', path: '/api/auth/users', body: { username: 'made-by-hand', password: 'Test1234!aA', role: 'user', clanId: 1 } },
+      { name: 'DELETE /auth/users/:id/game-links/:clanId', method: 'delete', path: '/api/auth/users/__ID__/game-links/2' },
     ];
 
     for (const ep of SUPER_ONLY) {
@@ -339,6 +344,11 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'PUT /clans/1/leaderboard-goal', method: 'put', path: '/api/clans/1/leaderboard-goal', body: { enabled: true, weeklyPoints: 25000 } },
       { name: 'GET /clans/1/share-links', method: 'get', path: '/api/clans/1/share-links' },
       { name: 'POST /clans/1/share-links', method: 'post', path: '/api/clans/1/share-links', body: {} },
+      // Account invites via chat: a plain member must not be able to make the
+      // scanner account message anyone.
+      { name: 'GET /clans/1/account-invites', method: 'get', path: '/api/clans/1/account-invites' },
+      { name: 'PUT /clans/1/account-invites', method: 'put', path: '/api/clans/1/account-invites', body: { enabled: false } },
+      { name: 'PUT /clans/1/account-invites (welcome)', method: 'put', path: '/api/clans/1/account-invites', body: { welcomeMode: 'off' } },
     ];
 
     for (const ep of CLAN_ADMIN) {
@@ -545,19 +555,14 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expectStatus(r.status, 403);
     });
 
-    it('POST /auth/users with clanId=2 from admin1 — clanId is ignored, account lands in admin1\'s clan', async () => {
-      // Admin can call POST /auth/users but the body's clanId is
-      // overridden to the caller's own clan. Verify it succeeds AND
-      // the resulting account is in clan 1 (not the requested 2).
-      const r = await send('post', '/api/auth/users', 'admin1', {
-        username: 'crossclanattempt',
-        password: 'Test1234!aA',
-        role: 'user',
-        clanId: 2,
-      });
-      expectStatus(r.status, 200);
-      const created = userRepo.getUserById(r.body.id);
-      expect(created?.clanId).toBe(1);
+    it('POST /auth/users from a clan admin is refused, whatever clan it names (v127: accounts come from the game)', async () => {
+      for (const clanId of [1, 2]) {
+        const r = await send('post', '/api/auth/users', 'admin1', {
+          username: `crossclanattempt${clanId}`, password: 'Test1234!aA', role: 'user', clanId,
+        });
+        expectStatus(r.status, 403);
+      }
+      expect(getDb().prepare("SELECT COUNT(*) AS n FROM users WHERE username LIKE 'crossclanattempt%'").get()).toEqual({ n: 0 });
     });
 
     it('PUT /clans/:clanId for clan 2 is rejected by admin1', async () => {
@@ -938,12 +943,13 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     it('audit entries are filed under the clan the action was taken in', async () => {
       await grant('user1', [{ clanId: 2, role: 'admin' }]);
       await activate('user1', 2);
-      const created = await send('post', '/api/auth/users', 'user1', { username: 'made-in-2', password: 'Test1234!aA', role: 'user' });
-      expectStatus(created.status, 200);
-      expect(created.body.clanId).toBe(2);
+      // Creating accounts is superadmin-only now (v127); a clan setting is an
+      // action a guest admin can take in clan 2.
+      const saved = await send('put', '/api/clans/2/account-invites', 'user1', { enabled: true });
+      expectStatus(saved.status, 200);
 
-      const sees = async (p: Persona) => ((await send('get', '/api/auth/audit-log', p)).body as Array<{ details: string | null }>)
-        .some((a) => (a.details ?? '').includes('made-in-2'));
+      const sees = async (p: Persona) => ((await send('get', '/api/auth/audit-log', p)).body as Array<{ action: string }>)
+        .some((a) => a.action === 'clan.account_invites.update');
       expect(await sees('admin2')).toBe(true);
       expect(await sees('admin1')).toBe(false);
     });
@@ -1006,13 +1012,11 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expect([403, 404]).toContain((await send('put', `/api/auth/users/${ids.admin2.userId}/clans/1`, 'admin1', { role: 'user' })).status);
       expect(userRepo.listClanAccess(ids.admin2.userId)).toEqual([]);
 
-      // Creating a user never lands outside the admin's current clan,
-      // whatever clanId the body asks for.
+      // Creating a user by hand is superadmin-only (v127), whatever clanId the body asks for.
       const made = await send('post', '/api/auth/users', 'admin2', {
         username: 'sneaky-into-1', password: 'Test1234!aA', role: 'admin', clanId: 1,
       });
-      expectStatus(made.status, 200);
-      expect(made.body.clanId).toBe(2);
+      expectStatus(made.status, 403);
     });
 
     it('promoting to superadmin or moving home clears overlapping grants', async () => {
@@ -1023,6 +1027,69 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       await grant('admin1', [{ clanId: 2, role: 'user' }]);
       expectStatus((await send('put', `/api/auth/users/${ids.admin1.userId}/role`, 'super', { role: 'superadmin' })).status, 200);
       expect(userRepo.listClanAccess(ids.admin1.userId)).toEqual([]);
+    });
+  });
+
+  // ─── accounts linked to a game player (v127) ─────────────────
+  //
+  // The role in a linked clan follows the player's in-game rank on every
+  // scan, so nobody sets it by hand there — and a demotion in the game takes
+  // admin rights away on the account's very next request, with no stale
+  // session rights left over.
+
+  describe('accounts from the game', () => {
+    const link = (userId: number, clanId: number, playerId: number, rank: number) => {
+      getDb().prepare(
+        `INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, rank, linked_at, synced_at)
+         VALUES (?, ?, ?, 'P', ?, 'x', 'x')`,
+      ).run(userId, clanId, playerId, rank);
+    };
+    const roster = (ranks: Record<number, number>) => {
+      const out = Object.entries(ranks).map(([id, role]) => ({ playerId: Number(id), role }));
+      for (let i = 900; out.length < 5; i++) out.push({ playerId: i, role: 5 });
+      return out;
+    };
+
+    it('a role that follows the game can\'t be changed by hand (409), by a clan admin or the superadmin', async () => {
+      link(ids.user1.userId, 1, 501, 4);
+      expectStatus((await send('put', `/api/auth/users/${ids.user1.userId}/role`, 'admin1', { role: 'admin' })).status, 409);
+      expectStatus((await send('put', `/api/auth/users/${ids.user1.userId}/role`, 'super', { role: 'admin' })).status, 409);
+      expect(userRepo.getUserById(ids.user1.userId)?.role).toBe('user');
+      // A linked guest's role and access in the clan follow the game too.
+      userRepo.replaceClanAccess(ids.user1.userId, [{ clanId: 2, role: 'user' }]);
+      link(ids.user1.userId, 2, 502, 4);
+      expectStatus((await send('put', `/api/auth/users/${ids.user1.userId}/clans/2`, 'admin2', { role: 'admin' })).status, 409);
+      expectStatus((await send('delete', `/api/auth/users/${ids.user1.userId}/clans/2`, 'admin2')).status, 409);
+    });
+
+    it('demoted in the game → admin rights gone on the next request; promoted → granted on the next request', async () => {
+      const { syncLinkedAccounts } = await import('../../../src/data/repositories/account-invite-repo.js');
+      link(ids.admin1.userId, 1, 511, 2);
+      expectStatus((await send('get', '/api/auth/users', 'admin1')).status, 200);
+      syncLinkedAccounts(1, roster({ 511: 3 }));
+      expectStatus((await send('get', '/api/auth/users', 'admin1')).status, 403);
+      expectStatus((await send('put', '/api/clans/1/account-invites', 'admin1', { enabled: true })).status, 403);
+      syncLinkedAccounts(1, roster({ 511: 1 }));
+      expectStatus((await send('get', '/api/auth/users', 'admin1')).status, 200);
+    });
+
+    it('the users listing shows each account\'s player: all links to the superadmin, only its own clan\'s to a clan admin', async () => {
+      userRepo.replaceClanAccess(ids.user1.userId, [{ clanId: 2, role: 'user' }]);
+      link(ids.user1.userId, 1, 521, 4);
+      link(ids.user1.userId, 2, 522, 4);
+      const bySuper = ((await send('get', '/api/auth/users', 'super')).body as Array<{ id: number; gameLinks: Array<{ clanId: number }> }>)
+        .find((u) => u.id === ids.user1.userId);
+      expect(bySuper?.gameLinks.map((l) => l.clanId)).toEqual([1, 2]);
+      const byAdmin1 = ((await send('get', '/api/auth/users', 'admin1')).body as Array<{ id: number; gameLinks: Array<{ clanId: number }> }>)
+        .find((u) => u.id === ids.user1.userId);
+      expect(byAdmin1?.gameLinks.map((l) => l.clanId)).toEqual([1]);
+    });
+
+    it('the superadmin can unlink; the account keeps its access', async () => {
+      link(ids.user1.userId, 1, 531, 4);
+      expectStatus((await send('delete', `/api/auth/users/${ids.user1.userId}/game-links/1`, 'super')).status, 200);
+      expectStatus((await send('delete', `/api/auth/users/${ids.user1.userId}/game-links/1`, 'super')).status, 404);
+      expect(userRepo.getUserById(ids.user1.userId)).toMatchObject({ clanId: 1, role: 'user' });
     });
   });
 });

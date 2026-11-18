@@ -25,6 +25,8 @@ import {
 } from '../data/repositories/chat-repo.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
+import { processInviteRequests } from './chat-invites.js';
+import { withKeptGameSession } from './event-poller.js';
 
 const log = childLogger('chat');
 const pollWarner = createCoalescedWarner((m) => log.warn({ noAlert: true }, m), 60 * 60_000);
@@ -171,6 +173,14 @@ async function pollOnce(): Promise<void> {
       try {
         const r = await sync(clanId, chat);
         if (r.added) log.debug(`Clan #${clanId} chat: ${r.added} new messages`);
+        // Account invites (chat-invites.ts): a keyword DM is answered within a
+        // minute when the clan's last scan left a game session for a chat
+        // token, else by the clan's next scan. Never throws.
+        const note = await processInviteRequests(clanId, {
+          scannerChatId: chat.session.userId,
+          chatToken: async () => (await withKeptGameSession(clanId, (client) => client.chatToken())) ?? null,
+        });
+        if (note) log.info(`Clan #${clanId} ${note}`);
       } catch (err) {
         // A rejected key (or any failure) waits for the next scan's fresh session.
         dropSession(clanId);

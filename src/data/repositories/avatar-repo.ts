@@ -1,11 +1,12 @@
 /**
- * Account avatars (v127): the small round picture next to a signed-in account.
+ * Account avatars (v128): the small round picture next to a signed-in account.
  *
  * What an account shows, in order (resolveAccountAvatar — the ONE place that
  * decides, used by every route that hands an account to the UI):
  *   1. the photo the account uploaded itself (framed in the browser, 512×512);
  *   2. else the hero portrait of the game player the account is, in that clan
- *      (account-link.linkedGamePlayerId → game_players.hero_avatar);
+ *      (the invite link, account-invite-repo.linkedGamePlayerId →
+ *      game_players.hero_avatar);
  *   3. else the account name's first letter.
  *
  * Photos live in the database, not on disk, so a backup or a restore carries
@@ -17,7 +18,7 @@
 import crypto from 'crypto';
 import { getDb } from '../database.js';
 import { heroAvatarUrl } from './game-profile-repo.js';
-import { linkedGamePlayerId } from './account-link.js';
+import { linkedGamePlayerId } from './account-invite-repo.js';
 import { sniffImage, type SniffedImage } from '../../utils/image-sniff.js';
 
 /** Largest upload the route accepts. The browser sends a 512×512 WebP/JPEG, well under it. */

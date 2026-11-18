@@ -347,11 +347,15 @@ function deleteUser(id) {
     const tx = db.transaction(() => {
         db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM user_clan_access WHERE user_id = ?').run(id);
+        // The account's links to game players go with it (the player can join
+        // again with a new code); a code it used stays, unattributed.
+        db.prepare('DELETE FROM user_game_links WHERE user_id = ?').run(id);
+        db.prepare('UPDATE account_invite_codes SET used_by = NULL WHERE used_by = ?').run(id);
         // A player's own saved citadel and stack armies go with the account.
         db.prepare('DELETE FROM citadel_presets WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM citadel_levels WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM stack_presets WHERE user_id = ?').run(id);
-        // Their uploaded photo too (v127): it is theirs, and served by its hash.
+        // Their uploaded photo too (v128): it is theirs, and served by its hash.
         db.prepare('DELETE FROM user_avatars WHERE user_id = ?').run(id);
         db.prepare('UPDATE audit_log SET user_id = NULL WHERE user_id = ?').run(id);
         db.prepare('UPDATE resource_upload_batches SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
@@ -380,6 +384,9 @@ function updateRole(id, role) {
         db.transaction(() => {
             db.prepare('UPDATE users SET role = ?, clan_id = NULL WHERE id = ?').run(role, id);
             db.prepare('DELETE FROM user_clan_access WHERE user_id = ?').run(id);
+            // A superadmin is never linked to a game player (v127): the game's
+            // rank would otherwise keep rewriting a role that is above it.
+            db.prepare('DELETE FROM user_game_links WHERE user_id = ?').run(id);
         })();
     }
     else {
@@ -472,6 +479,16 @@ function validateSession(token) {
   `).get(token, now.toISOString());
     if (!row)
         return null;
+    // An account linked to a game player (v127) whose player has left its home
+    // clan in the game, with no other clan it is still in, can't be used until
+    // the player is back (account-invite-repo.ts isAccountBlocked; the scan's
+    // sync moves the home when another linked clan is still theirs).
+    if (row.role !== 'superadmin' && row.clan_id !== null) {
+        const off = db.prepare('SELECT 1 FROM user_game_links WHERE user_id = ? AND clan_id = ? AND on_roster = 0')
+            .get(row.id, row.clan_id);
+        if (off)
+            return null;
+    }
     const sessionExpiresAt = new Date(row.session_expires_at);
     const remainingMs = sessionExpiresAt.getTime() - now.getTime();
     let extended = false;

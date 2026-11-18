@@ -13,13 +13,14 @@ exports.hasUserAvatar = hasUserAvatar;
 exports.getAvatarBytes = getAvatarBytes;
 exports.resolveAccountAvatar = resolveAccountAvatar;
 /**
- * Account avatars (v127): the small round picture next to a signed-in account.
+ * Account avatars (v128): the small round picture next to a signed-in account.
  *
  * What an account shows, in order (resolveAccountAvatar — the ONE place that
  * decides, used by every route that hands an account to the UI):
  *   1. the photo the account uploaded itself (framed in the browser, 512×512);
  *   2. else the hero portrait of the game player the account is, in that clan
- *      (account-link.linkedGamePlayerId → game_players.hero_avatar);
+ *      (the invite link, account-invite-repo.linkedGamePlayerId →
+ *      game_players.hero_avatar);
  *   3. else the account name's first letter.
  *
  * Photos live in the database, not on disk, so a backup or a restore carries
@@ -31,7 +32,7 @@ exports.resolveAccountAvatar = resolveAccountAvatar;
 const crypto_1 = __importDefault(require("crypto"));
 const database_js_1 = require("../database.js");
 const game_profile_repo_js_1 = require("./game-profile-repo.js");
-const account_link_js_1 = require("./account-link.js");
+const account_invite_repo_js_1 = require("./account-invite-repo.js");
 const image_sniff_js_1 = require("../../utils/image-sniff.js");
 /** Largest upload the route accepts. The browser sends a 512×512 WebP/JPEG, well under it. */
 exports.AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -114,7 +115,7 @@ function getAvatarBytes(sha256, ext) {
 function heroPortraitUrl(userId, clanId) {
     if (clanId === null)
         return null;
-    const playerId = (0, account_link_js_1.linkedGamePlayerId)(userId, clanId);
+    const playerId = (0, account_invite_repo_js_1.linkedGamePlayerId)(userId, clanId);
     if (playerId === null)
         return null;
     const row = (0, database_js_1.getDb)().prepare('SELECT hero_avatar FROM game_players WHERE clan_id = ? AND player_id = ?').get(clanId, playerId);

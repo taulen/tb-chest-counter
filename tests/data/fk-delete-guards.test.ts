@@ -56,6 +56,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'triumphal_chest_records.member_id',
   ],
   users: [
+    // Accounts from the game (v127): a used code keeps no actor once the
+    // account is gone; the account's links to players go with it.
+    'account_invite_codes.used_by',
     'audit_log.user_id',
     // ON DELETE CASCADE, and deleteUser clears both explicitly too: a player's
     // troop levels and saved armies on the Citadel and Stacks tools have no
@@ -70,18 +73,24 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'share_links.revoked_by',
     'stack_presets.user_id',
     // ON DELETE CASCADE, and deleteUser clears it explicitly too: the photo is
-    // the account's own (v127).
+    // the account's own (v128).
     'user_avatars.user_id',
     'user_clan_access.user_id',
+    'user_game_links.user_id',
     'user_sessions.user_id',
     'users.created_by',
   ],
   clans: [
+    // Accounts from the game (v127).
+    'account_invite_codes.clan_id',
+    'account_invite_settings.clan_id',
     'audit_log.clan_id',
     // In-game chat (v104).
     'chat_channels.clan_id',
     'chat_digest_posts.clan_id',
     'chat_digest_settings.clan_id',
+    'chat_invite_requests.clan_id',
+    'chat_invite_welcomes.clan_id',
     'chat_messages.clan_id',
     'chat_post_channels.clan_id',
     'clan_goal_history.clan_id',
@@ -143,6 +152,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'tinman_targets.clan_id',
     'tinman_uploads.clan_id',
     'user_clan_access.clan_id',
+    'user_game_links.clan_id',
     'user_sessions.active_clan_id',
     'users.clan_id',
   ],
@@ -449,6 +459,23 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (2, 1, 'user', ?), (4, ?, 'admin', ?)`,
   ).run(now, clanId, now);
+  // Accounts from the game (v127): user 2 linked to a clan-2 player, a code
+  // they used, the clan's settings, a request and a welcome row.
+  db.prepare(
+    `INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at) VALUES (2, ?, 77, 'Guard', ?, ?)`,
+  ).run(clanId, now, now);
+  db.prepare(`INSERT INTO account_invite_settings (clan_id, enabled, updated_at) VALUES (?, 1, ?)`).run(clanId, now);
+  const inviteReq = db.prepare(
+    `INSERT INTO chat_invite_requests (clan_id, channel_url, message_id, sender_chat_id, player_id, requested_at, status, created_at, updated_at)
+     VALUES (?, 'dm', 1, 'tb:77', 77, 1, 'sent', ?, ?) RETURNING id`,
+  ).get(clanId, now, now) as { id: number };
+  db.prepare(
+    `INSERT INTO account_invite_codes (clan_id, player_id, chat_user_id, request_id, code_hash, created_at, expires_at, used_at, used_by)
+     VALUES (?, 77, 'tb:77', ?, 'guard-hash', ?, ?, ?, 2)`,
+  ).run(clanId, inviteReq.id, now, now, now);
+  db.prepare(
+    `INSERT INTO chat_invite_welcomes (clan_id, player_id, status, created_at, updated_at) VALUES (?, 77, 'sent', ?, ?)`,
+  ).run(clanId, now, now);
   db.prepare(
     `INSERT INTO citadel_presets (user_id, name, data, updated_at) VALUES (2, 'Elven 25', '{"citadelId":"elven-25","rows":[]}', ?)`,
   ).run(now);

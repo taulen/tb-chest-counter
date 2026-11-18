@@ -15,8 +15,23 @@ An account has one **home** clan (`users.clan_id` + `users.role`) and may be gra
 | Grant extra clans, move the home clan (`PUT /api/auth/users/:id/clans`, `PUT /api/auth/users/:id/clan`) | superadmin only |
 | Change a guest's role in a clan, or remove them from it (`PUT`/`DELETE /api/auth/users/:id/clans/:clanId`) | superadmin, or an admin **currently in that clan**; only an existing grant, never creates one |
 | Delete the account, or change its account-level role | as before: the home clan's admins (and superadmins) |
+| Create an account by hand (`POST /api/auth/users`) | superadmin only (v127) — players join with a code from the game chat |
+| Unlink an account from its game player (`DELETE /api/auth/users/:id/game-links/:clanId`) | superadmin only |
 
 All of it is pinned by the `multi-clan accounts` block in [role-gates.test.ts](../tests/web/security/role-gates.test.ts).
+
+## Accounts linked to a game player (v127)
+
+An account made (or linked) with a code from the game chat has a row in
+`user_game_links` per clan: home clan and extra clans alike. In a linked clan
+the role is **not** set by hand — it follows the player's in-game rank on every
+scan (Leader/Superior → `admin`, else `user`), both directions, and the role
+routes above answer 409 there until the superadmin unlinks. A code from another
+clan, redeemed while signed in, adds that clan as an extra clan with the role
+its rank gives. Leaving a clan in the game removes the extra grant (it returns
+on rejoin); leaving the home clan moves the home to another linked clan still
+theirs, or pauses the account (`validateSession` answers null, login is
+refused) until they are back. See [account-invites.md](account-invites.md).
 
 ## Not leaking across clans
 

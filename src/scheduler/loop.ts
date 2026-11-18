@@ -841,6 +841,23 @@ export class ScanLoop {
       const { runChatDigest } = await import('./chat-digest.js');
       const digestNote = await runChatDigest(clanId, { client: capture.data.client, rolloverUtcHour: this.config.gameDayRolloverUtcHour });
       if (digestNote) log.info(`Clan #${clanId} ${digestNote}`);
+      // Account invites: answer keyword DMs to the scanner account with a
+      // join code, on this scan's game session (opt-in per clan; replies only
+      // to the player who asked, in their private chat — chat-invites.ts).
+      if (capture.data.client.suid) {
+        const { processInviteRequests } = await import('./chat-invites.js');
+        const client = capture.data.client;
+        const inviteNote = await processInviteRequests(clanId, { scannerChatId: client.suid, chatToken: () => client.chatToken() });
+        if (inviteNote) log.info(`Clan #${clanId} ${inviteNote}`);
+        // Welcome codes for players who joined since (its own setting, off by
+        // default; capped per scan; once per player ever).
+        const { sendWelcomeCodes } = await import('./chat-invites.js');
+        const { chatSessionFor } = await import('./chat-capture.js');
+        const welcomeNote = await sendWelcomeCodes(clanId, {
+          scannerChatId: client.suid, chatSession: chatSessionFor(clanId), chatToken: () => client.chatToken(),
+        });
+        if (welcomeNote) log.info(`Clan #${clanId} ${welcomeNote}`);
+      }
       // Kept for between-scans reads of a running Rise of the Ancients (event-poller.ts).
       const { keepGameSession } = await import('./event-poller.js');
       keepGameSession(clanId, capture.data.client);

@@ -51,6 +51,15 @@
       <input type="password" id="password" name="password" class="input" autocomplete="current-password" required>
       <button type="submit" class="btn" data-i18n>Sign In</button>
     </form>
+    <!-- New accounts come from a code the clan's scanner account sends in the
+         game chat (docs/account-invites.md); so does a forgotten password.
+         The chat message can't carry a link (the game blocks them), so it
+         names the site and this button: keep the English label in step with
+         JOIN_ENTRY_LABEL in src/scheduler/chat-invites.ts. -->
+    <div class="login-join">
+      <a class="btn btn-secondary login-join-btn" href="/join" data-i18n>Have a code? Join here</a>
+      <p class="login-join-hint" data-i18n>No account or forgot your password? Send the word code to your clan's tracker account in the game chat.</p>
+    </div>
     <!-- Filled by login.js from /api/public/boards; stays hidden when no clan
          has a live share link (or the call fails). -->
     <nav class="login-boards" id="publicBoards" aria-labelledby="publicBoardsTitle" hidden>

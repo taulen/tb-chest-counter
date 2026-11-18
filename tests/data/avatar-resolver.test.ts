@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The account ↔ game player link is a seam the invite branch fills in; stub it
-// here so the hero step can be exercised before that exists.
-const linked = vi.hoisted(() => ({ map: new Map<string, number>() }));
-vi.mock('../../src/data/repositories/account-link.js', () => ({
-  linkedGamePlayerId: (userId: number, clanId: number) => linked.map.get(`${userId}:${clanId}`) ?? null,
-}));
 // Hero art comes from the extracted game bundles, which tests don't have.
 vi.mock('../../src/data/repositories/game-profile-repo.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/data/repositories/game-profile-repo.js')>()),
@@ -27,6 +21,16 @@ function addGamePlayer(clanId: number, playerId: number, heroAvatar: number | nu
   ).run(clanId, playerId, `Player ${playerId}`, heroAvatar, now, now);
 }
 
+/** Link the account to a game player in a clan, as a redeemed invite code does (v127). */
+function link(userId: number, clanId: number, playerId: number): void {
+  const now = new Date().toISOString();
+  getDb().prepare('DELETE FROM user_game_links WHERE user_id = ? AND clan_id = ?').run(userId, clanId);
+  getDb().prepare(
+    `INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(userId, clanId, playerId, `Player ${playerId}`, now, now);
+}
+
 describe('resolveAccountAvatar: photo → game hero → initial', () => {
   let cleanup: () => void;
   let user: userRepo.User;
@@ -34,7 +38,6 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
   beforeEach(() => {
     cleanup = makeTestDb().cleanup;
     seedTwoClans();
-    linked.map.clear();
     user = userRepo.createUser('valka', 'Test1234!aA', 'user', undefined, 1);
   });
   afterEach(() => cleanup());
@@ -46,17 +49,17 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
   it('shows the linked player\'s hero portrait, in the clan being viewed', () => {
     addGamePlayer(1, 9001, 42);
     addGamePlayer(2, 9002, 7);
-    linked.map.set(`${user.id}:1`, 9001);
-    linked.map.set(`${user.id}:2`, 9002);
+    link(user.id, 1, 9001);
+    link(user.id, 2, 9002);
     expect(resolveAccountAvatar(user, 1)).toEqual({ kind: 'hero', url: '/game-art/test/hero-42.png', initial: 'V' });
     expect(resolveAccountAvatar(user, 2)).toEqual({ kind: 'hero', url: '/game-art/test/hero-7.png', initial: 'V' });
   });
 
   it('falls back to the initial when the linked player has no hero or no row', () => {
     addGamePlayer(1, 9001, null);
-    linked.map.set(`${user.id}:1`, 9001);
+    link(user.id, 1, 9001);
     expect(resolveAccountAvatar(user, 1).kind).toBe('initial');
-    linked.map.set(`${user.id}:1`, 12345); // no game_players row
+    link(user.id, 1, 12345); // no game_players row
     expect(resolveAccountAvatar(user, 1).kind).toBe('initial');
     // No clan (a superadmin): no hero to look up.
     expect(resolveAccountAvatar(user, null).kind).toBe('initial');
@@ -64,7 +67,7 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
 
   it('an uploaded photo wins over the hero, and removing it brings the hero back', () => {
     addGamePlayer(1, 9001, 42);
-    linked.map.set(`${user.id}:1`, 9001);
+    link(user.id, 1, 9001);
     const bytes = pngBytes(512, 512);
     const { url } = setUserAvatar(user.id, bytes, sniffImage(bytes)!);
     expect(url).toMatch(/^\/avatars\/[0-9a-f]{64}\.png$/);

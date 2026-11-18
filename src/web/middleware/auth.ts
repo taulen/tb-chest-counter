@@ -75,6 +75,18 @@ function getToken(req: Request): string | null {
 }
 
 /**
+ * The signed-in user on a PUBLIC route that serves signed-out visitors too
+ * (/api/join), or null. Never rejects and never extends anything a gate
+ * relies on: the route decides what a session changes.
+ */
+export function optionalSessionUser(req: Request): { user: User; token: string } | null {
+  const token = getToken(req);
+  if (!token) return null;
+  const v = validateSession(token);
+  return v ? { user: v.user, token } : null;
+}
+
+/**
  * Resolve which clan a request should operate against.
  *
  *   - Non-superadmin users are forced to their own user.clanId; ignore any

@@ -6,6 +6,13 @@ import * as avatarRepo from '../../data/repositories/avatar-repo.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
 import { createPreActionBackup } from '../../utils/db-backup.js';
 import {
+  allGameLinks,
+  isAccountBlocked,
+  linkFor,
+  linksForClan,
+  unlinkGameAccount,
+} from '../../data/repositories/account-invite-repo.js';
+import {
   SESSION_COOKIE_NAME,
   requireAdmin,
   requireAuth,
@@ -41,6 +48,11 @@ export function createAuthRouter(): Router {
     const user = userRepo.authenticate(normalizedUsername, String(password));
     if (!user) {
       return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    // A game-linked account whose player has left the clan in the game (and
+    // is in no other tracked clan) is paused until they are back.
+    if (isAccountBlocked(user.id)) {
+      return res.status(403).json({ error: 'Your player is no longer in this clan in the game.' });
     }
 
     const token = userRepo.createSession(user.id);
@@ -147,7 +159,7 @@ export function createAuthRouter(): Router {
     res.json({ ok: true });
   });
 
-  // --- Own photo (v127, avatar-repo) ---
+  // --- Own photo (v128, avatar-repo) ---
 
   const avatarLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -202,12 +214,22 @@ export function createAuthRouter(): Router {
 
   // GET /api/auth/users
   // Admin sees only users in their own clan; superadmin sees everyone.
+  // Each account carries the game players it is linked to (v127): every link
+  // for a superadmin, only the viewer's own clan's link for a clan admin.
   router.get('/users', requireAdmin, (req, res) => {
     const viewerClan = req.user!.role === 'superadmin' ? null : req.user!.clanId;
+    const links = viewerClan === null ? allGameLinks() : linksForClan(viewerClan);
+    const byUser = new Map<number, Array<{ clanId: number; playerName: string; rank: number | null; onRoster: boolean; linkedAt: string }>>();
+    for (const l of links) {
+      const list = byUser.get(l.userId) ?? [];
+      list.push({ clanId: l.clanId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt });
+      byUser.set(l.userId, list);
+    }
     // Each row's picture as the account shows it in the clan it is listed in
     // (a guest's row is the viewer's clan; the superadmin listing, its home).
     res.json(userRepo.getAllUsers(viewerClan).map((u) => ({
       ...u,
+      gameLinks: byUser.get(u.id) ?? [],
       avatar: avatarRepo.resolveAccountAvatar(u, u.clanId),
     })));
   });
@@ -237,10 +259,31 @@ export function createAuthRouter(): Router {
     res.json({ ok: true, removed });
   });
 
+  // DELETE /api/auth/users/:id/game-links/:clanId — superadmin: forget an
+  // account's link to a game player in one clan (a wrong link, or a player
+  // who wants a fresh account). The account keeps the access and role it has
+  // now, as a plain grant; the player can link again with a new code.
+  router.delete('/users/:id/game-links/:clanId', requireSuperAdmin, (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const clanId = parseInt(String(req.params.clanId));
+    if (!Number.isFinite(id) || !Number.isFinite(clanId)) {
+      return res.status(400).json({ error: 'Invalid user or clan' });
+    }
+    const target = userRepo.getUserById(id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    const removed = unlinkGameAccount(id, clanId);
+    if (!removed) return res.status(404).json({ error: 'That account is not linked to a player in this clan' });
+    userRepo.logAction(req.user!.id, 'unlink_game_player', {
+      username: target.username, clanId, playerId: removed.playerId, player: removed.playerName,
+    });
+    res.json({ ok: true });
+  });
+
   // POST /api/auth/users - create user
-  // Superadmin: any role, any clan (clan_id required for non-superadmin).
-  // Admin: only role='user', clan_id forced to admin's own clan.
-  router.post('/users', requireAdmin, (req, res) => {
+  // Superadmin only (v127): everyone else joins with a code from the game
+  // chat (/join), which links the account to their player. Any role, any
+  // clan (clan_id required for non-superadmin).
+  router.post('/users', requireSuperAdmin, (req, res) => {
     const { username, password, role, clanId } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
@@ -261,33 +304,19 @@ export function createAuthRouter(): Router {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    // Authorization: a clan-admin can only create user-role accounts in
-    // their own clan. A superadmin can target any clan and any role.
+    // A superadmin can target any clan and any role (a superadmin has none).
     let resolvedClanId: number | null;
-    if (req.user!.role === 'superadmin') {
-      if (requestedRole === 'superadmin') {
-        resolvedClanId = null;
-      } else {
-        const parsed = Number.parseInt(String(clanId ?? ''), 10);
-        if (!Number.isFinite(parsed)) {
-          return res.status(400).json({ error: 'clanId is required for non-superadmin users' });
-        }
-        if (!clanRepo.getClanById(parsed)) {
-          return res.status(404).json({ error: 'Target clan not found' });
-        }
-        resolvedClanId = parsed;
-      }
+    if (requestedRole === 'superadmin') {
+      resolvedClanId = null;
     } else {
-      // Clan admin: forced into own clan; can create user OR admin
-      // accounts but never superadmins (those are cross-clan
-      // instance-level and only superadmins can mint them).
-      if (requestedRole === 'superadmin') {
-        return res.status(403).json({ error: 'Only superadmins can create superadmin accounts' });
+      const parsed = Number.parseInt(String(clanId ?? ''), 10);
+      if (!Number.isFinite(parsed)) {
+        return res.status(400).json({ error: 'clanId is required for non-superadmin users' });
       }
-      if (req.user!.clanId === null) {
-        return res.status(400).json({ error: 'Your account is not attached to a clan' });
+      if (!clanRepo.getClanById(parsed)) {
+        return res.status(404).json({ error: 'Target clan not found' });
       }
-      resolvedClanId = req.user!.clanId;
+      resolvedClanId = parsed;
     }
 
     try {
@@ -371,6 +400,10 @@ export function createAuthRouter(): Router {
       if (target.clanId !== req.user!.clanId) {
         return res.status(403).json({ error: 'You can only change roles for users in your own clan' });
       }
+    }
+    // A role that follows the game: every scan would put it back.
+    if (role !== 'superadmin' && target.clanId !== null && linkFor(id, target.clanId)) {
+      return res.status(409).json({ error: 'This account\'s role follows its in-game rank' });
     }
 
     const demotingSuperadmin = target.role === 'superadmin' && role !== 'superadmin';
@@ -514,6 +547,11 @@ export function createAuthRouter(): Router {
     const target = userRepo.getUserById(id);
     if (!target || target.role === 'superadmin' || userRepo.getClanAccessRole(id, clanId) === null) {
       res.status(404).json({ error: 'That user has no extra access to this clan' });
+      return null;
+    }
+    // Access and role from a game link follow the roster: unlink first.
+    if (linkFor(id, clanId)) {
+      res.status(409).json({ error: 'This account\'s access here follows its in-game player' });
       return null;
     }
     return { id, clanId, username: target.username };

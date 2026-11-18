@@ -1,13 +1,13 @@
 # Account avatars
 
-The round picture beside an account's name (the account button at the sidebar's foot, the phone's More sheet, each row of Users). v127, Nov 2026.
+The round picture beside an account's name (the account button at the sidebar's foot, the phone's More sheet, each row of Users). v128, Nov 2026.
 
 ## What an account shows
 
 One server-side resolver decides, `resolveAccountAvatar` in [avatar-repo.ts](../src/data/repositories/avatar-repo.ts), and every route that hands an account to the UI attaches its answer as `avatar: { kind, url, initial }` (`/api/auth/me`, `/api/auth/login`, `/api/auth/users`, the photo routes). In order:
 
 1. **`photo`**: the photo the account uploaded itself.
-2. **`hero`**: the hero portrait of the game player the account *is* in the clan being viewed (`game_players.hero_avatar` → the extracted game art). Which player that is comes from `linkedGamePlayerId(userId, clanId)` in [account-link.ts](../src/data/repositories/account-link.ts). That function is a **seam**: it returns null until the chat-invite account system (docs/account-invites.md) adds the account ↔ player link, and its lookup plugs in there. Nothing else changes.
+2. **`hero`**: the hero portrait of the game player the account *is* in the clan being viewed (`game_players.hero_avatar` → the extracted game art). Which player that is comes from the account's invite link, `linkedGamePlayerId(userId, clanId)` in [account-invite-repo.ts](../src/data/repositories/account-invite-repo.ts) (`user_game_links`, v127 — [account-invites.md](account-invites.md)). Accounts made with a code from the game chat therefore show their hero until they upload a photo. Old password accounts and superadmins have no link.
 3. **`initial`**: the first letter of the account name.
 
 The client only paints what it is given ([lib/avatar.js](../src/web/public/lib/avatar.js)). The picture is decorative (`alt=""`): the name always sits beside it.
