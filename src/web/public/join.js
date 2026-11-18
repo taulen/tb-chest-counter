@@ -9,6 +9,7 @@
 
 import { t, bindLanguageSwitcher } from './lib/i18n.js';
 import { esc } from './lib/ui.js';
+import { wireCodeInput } from './lib/code-input.js';
 import { gameRankName } from './lib/game-facts.js';
 
 bindLanguageSwitcher(document, { syncServer: false });
@@ -68,10 +69,11 @@ function renderCodeStep() {
     <form id="codeForm" novalidate>
       <label for="code">${t('Code')}</label>
       <input type="text" id="code" class="input join-code" autocomplete="one-time-code" autocapitalize="characters"
-        spellcheck="false" maxlength="12" placeholder="ABCD-EFGH" value="${esc(code)}" required>
+        spellcheck="false" maxlength="20" placeholder="ABCD-EFGH" value="${esc(code)}" required>
       <button type="submit" class="btn">${t('Continue')}</button>
     </form>`;
   const input = document.getElementById('code');
+  wireCodeInput(input);
   input.focus();
   document.getElementById('codeForm').addEventListener('submit', async (e) => {
     e.preventDefault();

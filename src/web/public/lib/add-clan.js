@@ -14,6 +14,7 @@
 
 import { t } from './i18n.js';
 import { esc, contentModal } from './ui.js';
+import { wireCodeInput } from './code-input.js';
 import { gameRankName } from './game-facts.js';
 import { getCurrentUser } from './state.js';
 import { refreshClanSwitcher } from './shell.js';
@@ -73,13 +74,14 @@ export function openAddClanDialog() {
       <form class="add-clan-form" data-step="code" novalidate>
         <label for="addClanCode">${t('Code')}</label>
         <input type="text" id="addClanCode" class="input add-clan-code" autocomplete="one-time-code" autocapitalize="characters"
-          spellcheck="false" maxlength="12" placeholder="ABCD-EFGH" value="${esc(code)}" required>
+          spellcheck="false" maxlength="20" placeholder="ABCD-EFGH" value="${esc(code)}" required>
         ${errorHtml(error)}
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary">${t('Continue')}</button>
         </div>
       </form>`;
     const input = box.querySelector('#addClanCode');
+    wireCodeInput(input);
     input.focus();
     box.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
