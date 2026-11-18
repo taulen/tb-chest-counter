@@ -13,20 +13,17 @@ import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
-import { computeGameWindowDates } from '../lib/period.js';
-import { renderPeriodNav } from '../lib/period-nav.js';
+import { computeGameWindow, computeGameWindowDates } from '../lib/period.js';
+import { getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions,
+} from '../lib/ui-kit.js';
 import {
   formatResourceAmount, formatResourceCompact, resourceIconOnly, resourceTabsHtml,
 } from '../lib/resource-format.js';
 
 const PAGE_SIZE = 25;
 const PERIODS = ['weekly', 'monthly', 'yearly', 'all'];
-const PERIOD_LABEL = {
-  weekly: t('Weekly'),
-  monthly: t('Monthly'),
-  yearly: t('Yearly'),
-  all: t('All'),
-};
 
 // Resources that aren't useful in the totals matrix (per clan request).
 const EXCLUDED_SLUGS = new Set([
@@ -48,7 +45,8 @@ let mountedEl = null;
 export async function renderResourcesTotals(el) {
   // Read-only dashboard — visible to any authenticated clan member.
   mountedEl = el;
-  el.innerHTML = `${resourceTabsHtml('totals')}<div class="empty-state"><p>${t('Loading totals…')}</p></div>`;
+  setPageActions('');
+  el.innerHTML = `<div class="rs-page">${resourceTabsHtml('totals')}${emptyHtml(t('Loading totals…'))}</div>`;
   // The game's resource icons (lib/game-art.js) are in before the first paint.
   await loadGameArt();
   await reload();
@@ -67,11 +65,18 @@ async function reload() {
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
 
-  const [typesRes, membersRes, summaryRes] = await Promise.all([
-    api('/resources/types'),
-    api('/members'),
-    api(`/resources/summary?${qs}`),
-  ]);
+  let answers;
+  try {
+    answers = await Promise.all([
+      api('/resources/types'),
+      api('/members'),
+      api(`/resources/summary?${qs}`),
+    ]);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    answers = [null, null, { error: err?.message || '' }];
+  }
+  const [typesRes, membersRes, summaryRes] = answers;
 
   const types = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
   const members = Array.isArray(membersRes) ? membersRes : [];
@@ -86,7 +91,8 @@ async function reload() {
     if (rec) rec.sent.set(r.resourceTypeId, (rec.sent.get(r.resourceTypeId) || 0) + r.sentAmount);
   }
 
-  cache = { columns, rows: [...byMember.values()] };
+  // A refusal answer (an object, not { rows }) is said, not drawn as all zeros.
+  cache = { columns, rows: [...byMember.values()], failed: Array.isArray(summaryRes?.rows) ? null : (refusalText(summaryRes) || ' ') };
   // Default to sorting by Silver (descending) on first load when it's a
   // column, surfacing silver donations; the user's own sort choice sticks
   // afterward across period changes and repaints.
@@ -163,47 +169,33 @@ function paint() {
       <button class="btn btn-tight" data-totals-page="next" ${page >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>` : '';
 
-  const periodBtns = PERIODS.map((p) =>
-    `<button class="btn ${period === p ? 'active' : ''}" data-tperiod="${p}">${PERIOD_LABEL[p]}</button>`
-  ).join('');
-  // Always render the nav (arrows disabled for All) with a fixed-width label
-  // so the controls don't shift when switching timeframes.
-  const periodNav = renderPeriodNav({
-    period,
-    offset: periodOffset,
-    prevAttr: 'data-tperiod-nav="prev"',
-    nextAttr: 'data-tperiod-nav="next"',
-    navClass: 'resources-totals-nav',
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  const scrubber = periodScrubberHtml({
+    periods: PERIODS, period, offset: periodOffset, rolloverHr, weekStart,
+    win: computeGameWindow(period, periodOffset, rolloverHr, weekStart),
   });
 
-  el.innerHTML = `
-    ${resourceTabsHtml('totals')}
-    <div class="card">
-      <div class="card-header resources-totals-header">
-        <div class="resources-totals-title">
-          <h2>${t('Donation totals by member')}</h2>
-          <span class="card-header-hint">${t('Sent · each in its own unit')}</span>
-        </div>
-        <div class="resources-totals-controls">
-          <div class="period-selector">${periodBtns}</div>
-          ${periodNav}
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="resources-totals-scroll">
-          <table class="table-responsive resources-totals-table">
-            ${colGroup}
-            <thead><tr>
-              ${sortableThHtml({ key: 'member', labelHtml: t('Member'), sortState: sort })}
-              ${headCols}
-            </tr></thead>
-            <tbody>${body}</tbody>
-          </table>
-        </div>
+  el.innerHTML = cache.failed
+    ? `<div class="rs-page">${resourceTabsHtml('totals')}${scrubber}${errorStateHtml(t('The resources could not be loaded.'), cache.failed.trim())}</div>`
+    : `<div class="rs-page">
+      ${resourceTabsHtml('totals')}
+      ${scrubber}
+      <p class="ui-sub">${t('Donation totals by member')} · ${t('Sent · each in its own unit')}</p>
+      <div class="ui-table-card">
+        <table class="table-responsive ui-table resources-totals-table">
+          ${colGroup}
+          <thead><tr>
+            ${sortableThHtml({ key: 'member', labelHtml: t('Member'), sortState: sort })}
+            ${headCols}
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
         ${pagination}
       </div>
     </div>`;
 
+  if (cache.failed) wireRetry(el, reload);
   wire(el);
 }
 
@@ -231,21 +223,8 @@ function wire(el) {
     });
   });
 
-  el.querySelectorAll('[data-tperiod]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      period = btn.dataset.tperiod;
-      periodOffset = 0;
-      page = 1;
-      await reload();
-    });
-  });
-
-  el.querySelectorAll('[data-tperiod-nav]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      periodOffset += btn.dataset.tperiodNav === 'next' ? -1 : 1;
-      if (periodOffset < 0) periodOffset = 0;
-      page = 1;
-      await reload();
-    });
+  wirePeriodScrubber(el, {
+    onPeriod: async (p) => { period = p; periodOffset = 0; page = 1; await reload(); },
+    onStep: async (delta) => { periodOffset = Math.max(0, periodOffset + delta); page = 1; await reload(); },
   });
 }

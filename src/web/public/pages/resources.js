@@ -14,6 +14,7 @@ import {
   resourceTabsHtml,
 } from '../lib/resource-format.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { asList, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions } from '../lib/ui-kit.js';
 
 const PAGE_SIZE = 25;
 let currentPage = 1;
@@ -187,10 +188,11 @@ export function handleResourcesTxCancel(reload) {
 export async function renderResourcesAdmin(el) {
   const user = getCurrentUser();
   if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-    el.innerHTML = `<div class="card"><div class="card-body"><p>${t('Admin access required.')}</p></div></div>`;
+    el.innerHTML = `<div class="rs-page">${emptyHtml(t('Admin access required.'))}</div>`;
     return;
   }
 
+  setPageActions('');
   // The game's resource icons (lib/game-art.js) are in before the first paint.
   const [typesRes, membersRes] = await Promise.all([
     api('/resources/types'),
@@ -200,7 +202,7 @@ export async function renderResourcesAdmin(el) {
 
   const allTypes = Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []);
   cachedTypes = allTypes;
-  const allMembers = Array.isArray(membersRes) ? membersRes : [];
+  const allMembers = asList(membersRes);
 
   const qs = new URLSearchParams();
   if (filters.memberId)      qs.set('memberId',       filters.memberId);
@@ -218,7 +220,13 @@ export async function renderResourcesAdmin(el) {
     api('/resources/batches'),
   ]);
 
-  const transactions = Array.isArray(txRes?.rows) ? txRes.rows : [];
+  // The ledger is the tab: a refusal (an object, not { rows }) is said, with Try again.
+  if (!Array.isArray(txRes?.rows)) {
+    el.innerHTML = `<div class="rs-page">${resourceTabsHtml('admin')}${errorStateHtml(t('The resource history could not be loaded.'), refusalText(txRes))}</div>`;
+    wireRetry(el, () => renderResourcesAdmin(el));
+    return;
+  }
+  const transactions = txRes.rows;
   const total = txRes?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (currentPage > totalPages) currentPage = totalPages;
@@ -290,13 +298,12 @@ export async function renderResourcesAdmin(el) {
         </tr>`;
       }).join('');
 
-  el.innerHTML = `
+  el.innerHTML = `<div class="rs-page">
     ${resourceTabsHtml('admin')}
 
-    <div class="card">
-      <div class="card-header"><h2>${t('Resource History')}</h2></div>
-      <div class="card-body">
-        <div class="resources-filter-bar">
+    <section class="rs-section" aria-labelledby="rsHistoryTitle">
+        <h2 class="rs-h" id="rsHistoryTitle">${t('Resource History')}</h2>
+        <div class="ui-toolbar resources-filter-bar">
           <select class="input resource-filter-select" data-filter-key="memberId" aria-label="${t('Filter by member')}">
             <option value="">${t('All members')}</option>
             ${memberOptions}
@@ -315,7 +322,8 @@ export async function renderResourcesAdmin(el) {
           <input type="date" id="resourcesDateTo"   class="input" lang="sv" value="${esc(filters.to)}"   aria-label="${t('To date')}">
           <button class="btn" data-action="resources-apply-filters">${t('Apply')}</button>
         </div>
-        <table class="table-responsive resources-table">
+        <div class="ui-table-card">
+        <table class="table-responsive ui-table resources-table">
           <colgroup>
             <col class="col-member">
             <col class="col-resource">
@@ -335,13 +343,14 @@ export async function renderResourcesAdmin(el) {
           <tbody>${txRows}</tbody>
         </table>
         ${pagination}
-      </div>
-    </div>
+        </div>
+    </section>
 
     <details class="card card-collapsible" data-section-key="resources-upload-history">
       <summary class="card-header"><h2>${t('Import History')}</h2></summary>
       <div class="card-body">
-        <table class="table-responsive resources-batches-table">
+        <div class="ui-table-card">
+        <table class="table-responsive ui-table resources-batches-table">
           <colgroup>
             <col class="col-uploaded-at">
             <col class="col-batch-source">
@@ -362,7 +371,8 @@ export async function renderResourcesAdmin(el) {
           </tr></thead>
           <tbody>${batchRows}</tbody>
         </table>
+        </div>
       </div>
     </details>
-  `;
+  </div>`;
 }
