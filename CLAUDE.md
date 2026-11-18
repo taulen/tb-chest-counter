@@ -51,6 +51,7 @@
 - Posting into in-game chat (the opt-in daily chat digest): at most ONE message per clan per game day, reserved in `chat_digest_posts` before sending; never the clan, kingdom or private chats (`assertPostableChannel`) — the ONLY private-chat sends are account-invite codes, through their own `sendInviteMessage`/`assertInviteChannel` (1:1 with one roster player, no links in the text); never resend an `unknown` outcome; `CHAT_SEND_DISABLED=1` kills all sending: [docs/chat-digest.md](docs/chat-digest.md)
 - Accounts from the game (invite codes by DM, `/join`, `user_game_links`; roles follow the in-game rank every scan — Leader/Superior admin, both directions; superadmin never linked; welcome codes' first live send untested): [docs/account-invites.md](docs/account-invites.md)
 - Weekly points goal is historical (v93 `clan_goal_history`); anything judging a PAST window goes through `weeklyGoalForWindow` / `resolveWeeklyGoalForWindow`, never today's number: [docs/performance-page.md#weekly-goal-history](docs/performance-page.md#weekly-goal-history)
+- Any page's UI (the redesign's kit: sub-tab bar, period scrubber, tiles, rows, tables, notices, error states; copy and phone-first rules): build from [lib/ui-kit.js](src/web/public/lib/ui-kit.js) + style.css "UI kit", never a page-local copy — [docs/design-standard.md](docs/design-standard.md)
 - Running the dashboard locally + screenshots per language/viewport (ask first unless requested): [.claude/skills/local-ui-check/SKILL.md](.claude/skills/local-ui-check/SKILL.md)
 
 ## Logging

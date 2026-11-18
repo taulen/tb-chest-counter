@@ -860,7 +860,7 @@ async function renderRoute(page, content) {
   switch (page) {
     case 'dashboard': await renderHome(content); break;
     case 'analytics': await renderAnalytics(content); break;
-    case 'leaderboard': await renderLeaderboard(content); break;
+    case 'leaderboard': await renderLeaderboard(content, { navigate: navigateTo }); break;
     case 'triumphal': {
       // A tab of My Clan with its own address (the period selector lives in
       // it): with My Clan on screen only the tab's panel changes.

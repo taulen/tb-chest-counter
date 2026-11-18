@@ -68,4 +68,5 @@ Stop the background server task (TaskStop) and confirm `curl -s -o /dev/null -w 
 - **No Playwright browser bundle** on this machine — the scripts drive the system **Edge** (`channel: 'msedge'`). `TB_UI_BROWSER=chrome` or `bundled` to change.
 - **Git Bash mangles arguments starting with `/`** (`/#users` → `C:/Program Files/Git/#users`). That's why the scripts take page *keys*, not URLs, and pick their own output paths.
 - **The account's language beats localStorage** (`adoptAccountLanguage` reloads to it), so `newContext` PUTs `/api/auth/language` before each language — switching languages via localStorage alone reload-loops.
+- **The account's theme beats localStorage too**: `newContext({ theme })` only seeds the browser, and the app adopts the account's saved theme, so OLED and light shots came out in whatever theme the run copy's account last had. PUT `/api/auth/theme` with `{ theme }` on the context before each theme.
 - The prod backups live in `data/exports/dbbackup/`; never use `data/tb-chests.db` and never write into `data/`.

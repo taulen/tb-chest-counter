@@ -11580,21 +11580,16 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--bg-card);
-  overflow: hidden;
+  /* A wide table scrolls inside the card, never the page. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .ui-table th { background: transparent; padding-top: 12px; padding-bottom: 10px; }
 .ui-table td { padding-top: 12px; padding-bottom: 12px; font-size: 14px; }
 .ui-table td.num,
 .ui-table th.num { font-variant-numeric: tabular-nums; }
-.ui-table-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-}
+/* The site's .pagination is the card's last row: its border, not a second box. */
+.ui-table-card > .pagination { background: transparent; }
 
 /* Sub-tab bar: links to #page/sub, the current one aria-current="page".
    A sideways-scrolling strip on a phone, never a wrapped second row. */
@@ -11864,6 +11859,8 @@ button.ui-tile-link {
   .ui-seg-btn { min-height: 44px; }
   .ui-period { gap: 8px; }
   .ui-period .ui-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+  /* Five periods (Leaderboard adds Year) share 358px: no minimum, small padding. */
+  .ui-period .ui-seg-btn { min-width: 0; padding: 0 6px; }
   .ui-step { width: 100%; }
   .ui-when { flex: 1; min-width: 0; text-align: center; }
   .ui-when-label,
@@ -11895,6 +11892,53 @@ button.ui-tile-link {
 .ui-tile.span-12 { grid-column: 1 / -1; }
   .ui-tile { padding: 14px 16px; }
   .ui-big.is-xl { font-size: 32px; }
+}
+
+/* ─── Leaderboard (pages/leaderboard.js; the UI kit's reference page) ───
+   The kit's scrubber, the top three as a podium, the goal line, then the
+   ranked table in .ui-table-card. FAQ / Export CSV / Copy data sit in the
+   page header (#pageActions). */
+.lb { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.lb .leaderboard-goal-hint { margin: 0; }
+.lb-podium {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.lb-podium-card {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 80px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.lb-podium-card:hover { background: var(--bg-card-hover); }
+.lb-podium-card:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.place-1 .lb-podium-card { border-color: var(--accent-gold-border); background: var(--accent-gold-bg); }
+.lb-podium-who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lb-podium-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 16px; font-weight: 700; }
+.lb-podium-sub { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.lb-podium-pts { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.lb-podium-n { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+.lb-podium-unit { font-size: 12px; color: var(--text-secondary); }
+/* A tablet: the three stack. A phone: tighter cards. */
+@media (max-width: 1100px) {
+  .lb-podium { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
+@media (max-width: 640px) {
+  .lb-podium-card { min-height: 64px; gap: 10px; padding: 10px 12px; }
+  .lb-podium-card .avatar-lg { width: 40px; height: 40px; font-size: 16px; }
+  .lb-podium-n { font-size: 17px; }
 }
 
 /* ─── Members → ranking board (pages/members-board.js; redesign phase 2a) ───

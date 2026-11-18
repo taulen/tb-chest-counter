@@ -405,6 +405,8 @@ export const ui = {
   "Weekly": "Semanal",
   "Monthly": "Mensual",
   "Year": "Año",
+  "The leaderboard could not be loaded.": "No se pudo cargar la clasificación.",
+  "Top three": "Los tres primeros",
   "Yearly": "Anual",
   "All": "Todo",
   "Goal reached": "Objetivo alcanzado",
