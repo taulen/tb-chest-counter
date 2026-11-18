@@ -12108,6 +12108,9 @@ button.home-tile-link {
 .add-clan-form { display: flex; flex-direction: column; gap: 8px; }
 .add-clan-form label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .add-clan-code {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
   min-height: 52px;
   font-size: 22px;
   font-weight: 700;
