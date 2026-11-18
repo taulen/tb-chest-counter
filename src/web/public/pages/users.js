@@ -138,6 +138,21 @@ const AUDIT_ACTION_LABELS = {
   'account.left_in_game': t('Player left the clan in the game'),
   'account.rejoined_in_game': t('Player back in the clan in the game'),
   'account.home_moved': t('Home clan moved'),
+  'account.join.add-player': t('Player added with a game code'),
+  'account.join.link-player': t('Player linked with a game code'),
+  set_main_player: t('Choose who to play as'),
+  'member.left_clan': t('Member left the clan'),
+  'clan.chat_digest.update': t('Update chat digest'),
+  'clan.chat_digest.test': t('Test chat digest'),
+  'clan.seasonal_kingdom.update': t('Update Seasonal Kingdom'),
+  edit_source_points_change: t('Edit a dated point change'),
+  remove_source_points_change: t('Remove a dated point change'),
+  // Older entries still in the log.
+  save_scanner_calibration: t('Save scanner calibration'),
+  dismiss_rename_suggestion: t('Dismiss rename suggestion'),
+  update_discord_settings: t('Update Discord settings'),
+  test_discord: t('Test Discord'),
+  'clan.share_token.recover': t('Recover share link'),
 };
 
 function parseAuditDetails(raw) {
@@ -148,7 +163,8 @@ function parseAuditDetails(raw) {
 function formatAuditAction(action) {
   if (!action) return '';
   if (AUDIT_ACTION_LABELS[action]) return AUDIT_ACTION_LABELS[action];
-  return action.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  // A new action without a label yet still reads as words: "account.join.add-player" → "Account join add player".
+  return action.replace(/[_.-]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
 }
 
 function formatAuditDate(iso) {
@@ -456,6 +472,39 @@ function formatAuditDetails(action, d, ctx) {
       const rows = d.rows != null ? tn(d.rows, '{n} row fetched', '{n} rows fetched') : t('Fetch triggered');
       return rows;
     }
+    // Accounts and their game players (account-invite-repo.ts): the account,
+    // the player and what changed, in words — never the raw ids.
+    case 'account.join.new':
+    case 'account.join.recover':
+    case 'account.join.link':
+    case 'account.join.add-clan':
+    case 'account.join.add-player':
+    case 'account.join.link-player': {
+      const rank = d.rank != null ? gameRankName(d.rank) : '';
+      const player = d.player ? `${esc(d.player)}${rank ? ` (${esc(rank)})` : ''}` : '';
+      return [quoted(d.username), player, d.role ? esc(roleLabel(d.role)) : ''].filter(Boolean).join(' · ') + clanSuffix(d.clanId);
+    }
+    case 'account.role_from_game':
+    case 'account.clan_access_from_game': {
+      const roles = d.from ? `${esc(roleLabel(d.from))} → ${esc(roleLabel(d.to))}` : esc(roleLabel(d.to));
+      const ranks = d.toRank != null
+        ? `${d.player ? `${esc(d.player)} ` : ''}${d.fromRank != null ? `${esc(gameRankName(d.fromRank))} → ` : ''}${esc(gameRankName(d.toRank))}`
+        : '';
+      return [quoted(d.username), roles, ranks].filter(Boolean).join(' · ');
+    }
+    case 'account.left_in_game':
+    case 'account.rejoined_in_game': {
+      return [quoted(d.username), d.player ? esc(d.player) : ''].filter(Boolean).join(' · ');
+    }
+    case 'account.home_moved': {
+      return `${d.username ? `${quoted(d.username)} · ` : ''}${esc(clanLabel(d.from))} → ${esc(clanLabel(d.to))}`;
+    }
+    case 'set_main_player': {
+      return d.clanId != null ? esc(clanLabel(d.clanId)) : '<span class="muted-copy">—</span>';
+    }
+    case 'member.left_clan': {
+      return quoted(d.name);
+    }
     case 'clan.create': {
       return d.name ? t('{name} (id {id})', { name: quoted(d.name), id: d.clanId }) : t('Clan #{id}', { id: d.clanId });
     }
@@ -463,20 +512,60 @@ function formatAuditDetails(action, d, ctx) {
     case 'clan.delete':
     case 'clan.share_token.generate':
     case 'clan.share_token.disable':
+    case 'clan.share_token.recover':
+    case 'clan.share_link.create':
+    case 'clan.share_link.delete':
+    case 'clan.share_link.disable':
+    case 'clan.share_link.restore':
     case 'clan.discord.update':
-    case 'clan.chesttracker.update': {
+    case 'clan.chesttracker.update':
+    case 'clan.week_start.update':
+    case 'clan.resources.toggle':
+    case 'clan.restore':
+    case 'clan.seasonal_kingdom.update':
+    case 'clan.chat_digest.update':
+    case 'clan.chat_digest.test':
+    case 'clan.account_invites.update':
+    case 'ancient_defaults_save': {
       return d.clanId != null ? esc(clanLabel(d.clanId)) : '<span class="muted-copy">—</span>';
     }
+    // The busiest entries in the log, in words.
+    case 'resources.transaction.update':
+      return `${esc(t('Ledger row #{id}', { id: d.txId }))}${clanSuffix(d.clanId)}`;
+    case 'resources.batch.delete':
+      return `${esc(t('Import #{id}', { id: d.batchId }))}${clanSuffix(d.clanId)}`;
+    case 'member.might_capture':
+      return `${esc(d.gameDate ?? '')} · ${esc(tn(d.recorded ?? 0, '{n} member recorded', '{n} members recorded'))}${clanSuffix(d.clanId)}`;
+    case 'resources.capture':
+      return `${esc(d.gameDate ?? '')} · ${esc(tn(d.rowsInserted ?? 0, '{n} row saved', '{n} rows saved'))}${clanSuffix(d.clanId)}`;
+    case 'member_levels_import':
+    case 'tinman_upload':
+      return `${esc(d.date ?? '')} · ${esc(tn(d.saved ?? d.matched ?? 0, '{n} row saved', '{n} rows saved'))}${clanSuffix(d.clanId)}`;
+    case 'resources.upload':
+      return `${esc(tn(d.fileCount ?? 0, '{n} file', '{n} files'))} · ${esc(tn(d.inserted ?? 0, '{n} row saved', '{n} rows saved'))}${clanSuffix(d.clanId)}`;
+    case 'clan.leaderboard_goal.update':
+      return `${d.enabled ? esc(t('{n} points a week', { n: Number(d.weeklyPoints ?? 0).toLocaleString() })) : esc(t('Off'))}${clanSuffix(d.clanId)}`;
+    case 'set_avatar':
+      return esc(t('Photo changed'));
   }
 
-  // Unknown action — render any non-trivial keys as "key: value" pairs.
-  // clanId is special-cased: resolve it to the clan name when possible
-  // so the table never shows a bare numeric id.
+  // Any other action: the keys that mean something to a person, readably.
+  // Internal ids and the source tag are left out; a clan id becomes its
+  // name, an account its quoted name, a role or rank its word, a list its
+  // count; camelCase keys read as words ("rowsSeen" → "rows seen").
+  const HIDDEN = new Set(['userId', 'playerId', 'memberId', 'id', 'txId', 'batchId', 'linkId', 'requestId', 'source']);
+  const words = (k) => k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.]/g, ' ').toLowerCase();
   const pairs = Object.entries(d)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .filter(([k, v]) => !HIDDEN.has(k) && v !== null && v !== undefined && v !== '' && v !== false)
     .map(([k, v]) => {
-      if (k === 'clanId') return t('clan: {clan}', { clan: esc(clanLabel(v)) });
-      return `${esc(k)}: ${esc(typeof v === 'object' ? JSON.stringify(v) : String(v))}`;
+      if (k === 'clanId') return esc(clanLabel(v));
+      if (k === 'username' || k === 'user') return quoted(v);
+      if (k === 'role') return esc(roleLabel(v));
+      if (/rank$/i.test(k) && Number.isFinite(Number(v))) return `${esc(words(k))}: ${esc(gameRankName(Number(v)))}`;
+      if (Array.isArray(v)) return `${esc(words(k))}: ${v.length}`;
+      if (typeof v === 'object') return esc(words(k));
+      if (v === true) return esc(words(k));
+      return `${esc(words(k))}: ${esc(String(v))}`;
     });
   return pairs.length ? pairs.join(' · ') : '<span class="muted-copy">—</span>';
 }
