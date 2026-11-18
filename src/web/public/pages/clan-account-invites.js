@@ -1,8 +1,12 @@
 // Clans → "Account invites via chat": players DM the clan's scanner account a
 // keyword and get a code for /join back (scheduler/chat-invites.ts,
 // docs/account-invites.md). Off by default; loaded when the section opens.
+//
+// Layout: one line on what it is, then the two settings as rows that save
+// the moment they change (a switch; Off / Dry run / On), the site name as a
+// sentence with an Edit link, and the fine print folded into "How it works".
 
-import { escapeHtml, notify, formatDate } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, confirmDialog } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 import { getCurrentUser } from '../lib/state.js';
@@ -58,48 +62,89 @@ function statusText(status, reason) {
   return `– ${t('Not answered')}${why ? ` (${escapeHtml(why)})` : ''}`;
 }
 
+const WELCOME_MODES = ['off', 'dry-run', 'on'];
+
+function welcomeModeLabel(mode) {
+  return mode === 'on' ? t('On') : mode === 'dry-run' ? t('Dry run') : t('Off');
+}
+
+/** One settings row: title, one-line description, current state on the left; the control on the right. */
+function settingRow({ title, desc, state = '', note = '', control }) {
+  return `<div class="invite-setting">
+      <div class="invite-setting-text">
+        <div class="invite-setting-title">${title}</div>
+        <div class="invite-setting-desc">${desc}</div>
+        ${state ? `<div class="invite-setting-state">${state}</div>` : ''}
+        ${note ? `<div class="invite-setting-note">${note}</div>` : ''}
+      </div>
+      <div class="invite-setting-control">${control}</div>
+    </div>`;
+}
+
 function renderAccountInvites(root, box, clanId, data) {
   const s = data.settings;
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
-  const keywords = (data.keywords || []).map((k) => `<code>${escapeHtml(k)}</code>`).join(', ');
-  box.innerHTML = `
-    <p class="muted-copy mb-8">${t("Players DM the clan's scanner account one word, and it answers in that private chat with a one-time code. On the site's Join page the code creates their account, linked to their player — or sets a new password, or adds this clan to their account. <strong>Only members on the roster get an answer</strong>, never more than one code per player per 10 minutes.")}</p>
-    <p class="muted-copy mb-8">${t('Words that ask for a code: {words}', { words: keywords })}</p>
-    <p class="muted-copy mb-8">${t('Roles follow the game: the {leader} and {superior} ranks are admins here, everyone else a member. Someone who leaves the clan in the game loses access until they are back.', { leader: escapeHtml(gameRankName(1)), superior: escapeHtml(gameRankName(2)) })}</p>
-    ${data.sendingDisabled ? `<p class="warning-text mb-8">⚠ ${t('Chat sending is switched off on this server (CHAT_SEND_DISABLED): nothing is answered.')}</p>` : ''}
-    ${!data.scannerKnown ? `<p class="warning-text mb-8">⚠ ${t("The scanner account isn't known yet; it is read at the clan's next scan.")}</p>` : ''}
-    ${data.siteName
-      ? `<p class="muted-copy mb-8">${t('The game blocks links, so messages name the site as <strong>{site}</strong> and tell players to pick “{label}” on its sign-in page.', { site: escapeHtml(data.siteName), label: escapeHtml(t('Have a code? Join here')) })}</p>`
-      : `<p class="warning-text mb-8">⚠ ${t('No public address is set for the site, so messages can only say “the TB Chest Counter site”. Set the site name below.')}</p>`}
-    ${isSuperAdmin ? `
-    <div class="inline-form-row mb-8">
-      <div class="invite-site-field"><label for="clan-account-site-${clanId}">${t('Site name in messages (every clan)')}</label>
-        <input id="clan-account-site-${clanId}" class="input" type="text" maxlength="80" spellcheck="false" placeholder="${escapeHtml(t('From the public address'))}" value="${escapeHtml(data.siteName || '')}"></div>
-      <button class="btn btn-primary" type="button" data-account-site-save>${t('Save')}</button>
-    </div>` : ''}
-    <div class="inline-form-row">
-      <label class="checkbox-row"><input type="checkbox" id="clan-account-invites-enabled-${clanId}" ${s.enabled ? 'checked' : ''}> ${t('Answer code requests in the game chat')}</label>
-      <button class="btn btn-primary" type="button" data-account-invites-save>${t('Save')}</button>
+  const keywords = (data.keywords || []).map((k) => `<code>${escapeHtml(k)}</code>`).join(' ');
+  const answerId = `clan-account-invites-enabled-${clanId}`;
+  const welcomeLabelId = `clan-account-welcome-label-${clanId}`;
+
+  const notices = [
+    data.sendingDisabled ? t('Chat sending is switched off on this server (CHAT_SEND_DISABLED): nothing is answered.') : '',
+    !data.scannerKnown ? t("The scanner account isn't known yet; it is read at the clan's next scan.") : '',
+  ].filter(Boolean);
+
+  const answerState = s.enabled && s.enabledAt
+    ? `<span class="invite-on">✓ ${t('On since {date}', { date: escapeHtml(formatDate(new Date(s.enabledAt).toISOString())) })}</span>`
+    : `<span class="invite-off">○ ${t('Off')}</span>`;
+  const linked = tn(data.linkedAccounts, '{n} linked account in this clan.', '{n} linked accounts in this clan.', { n: data.linkedAccounts });
+
+  const answerRow = settingRow({
+    title: `<label for="${answerId}">${t('Answer code requests')}</label>`,
+    desc: t('A member messages the scanner account “code” in the game and gets one back.'),
+    state: `${answerState} · ${linked}`,
+    control: `<input type="checkbox" role="switch" class="invite-switch" id="${answerId}" ${s.enabled ? 'checked' : ''}>`,
+  });
+
+  const progress = welcomeProgressText(data.welcomeProgress, s);
+  const welcomeRow = settingRow({
+    title: `<span id="${welcomeLabelId}">${t('Send members a code')}</span>`,
+    desc: t('The scanner account messages each member without an account once, then everyone who joins. Up to 10 per scan.'),
+    state: progress ? escapeHtml(progress) : '',
+    note: s.welcomeMode === 'on' ? '' : `⚠ ${t('Not tried live yet. Dry run lists who would get a code and sends nothing.')}`,
+    control: `<div class="invite-segmented" role="radiogroup" aria-labelledby="${welcomeLabelId}">
+        ${WELCOME_MODES.map((m) => `<button type="button" role="radio" class="invite-segmented-btn${s.welcomeMode === m ? ' is-active' : ''}" aria-checked="${s.welcomeMode === m}" data-welcome-mode="${m}">${welcomeModeLabel(m)}</button>`).join('')}
+      </div>`,
+  });
+
+  const siteLine = data.siteName
+    ? t('Messages name the site as {site}.', { site: `<strong>${escapeHtml(data.siteName)}</strong>` })
+    : `⚠ ${t('No public address is set, so messages say “the TB Chest Counter site”.')}`;
+  const siteRow = `<div class="invite-site" data-site-view>
+      <span>${siteLine}</span>
+      ${isSuperAdmin ? `<button type="button" class="invite-link-btn" data-site-edit>${t('Edit')}</button>` : ''}
     </div>
-    <p class="muted-copy mt-4 hint-text">${s.enabled && s.enabledAt
-      ? t('On since {date}. Only messages sent after that are answered.', { date: escapeHtml(formatDate(new Date(s.enabledAt).toISOString())) })
-      : t('Off. Messages sent while it is off are never answered.')}
-      ${tn(data.linkedAccounts, '{n} linked account in this clan.', '{n} linked accounts in this clan.', { n: data.linkedAccounts })}</p>
-    <h4 class="mt-12">${t('Codes for members')}</h4>
-    <p class="muted-copy mb-8">${t('The scanner account opens a private chat with a player and sends a code that lasts 72 hours, once per player, ever. The first time this is switched on, every current member without an account gets one; after that, everyone who joins. At most 10 per scan, a few seconds apart; never someone who already has an account. Switching it off stops it where it is.')}</p>
-    <p class="muted-copy mb-8">⚠ ${t('Opening that chat has not been tried live yet: start with <strong>Dry run</strong>, which only lists who would get a code, then switch it on and watch the first sends.')}</p>
-    <p class="muted-copy mb-8"><strong>${welcomeProgressText(data.welcomeProgress, s)}</strong></p>
-    <div class="inline-form-row">
-      <div><label for="clan-account-welcome-${clanId}">${t('Send members a code')}</label>
-        <select id="clan-account-welcome-${clanId}" class="input">
-          <option value="off" ${s.welcomeMode === 'off' ? 'selected' : ''}>${t('Off')}</option>
-          <option value="dry-run" ${s.welcomeMode === 'dry-run' ? 'selected' : ''}>${t('Dry run (list only, sends nothing)')}</option>
-          <option value="on" ${s.welcomeMode === 'on' ? 'selected' : ''}>${t('On')}</option>
-        </select></div>
-      <button class="btn btn-primary" type="button" data-account-welcome-save>${t('Save')}</button>
-    </div>
-    ${(data.welcomes || []).length ? `
-    <div class="table-wrap mt-8">
+    ${isSuperAdmin ? `<form class="invite-site-form" data-site-form hidden>
+      <label class="visually-hidden" for="clan-account-site-${clanId}">${t('Site name in messages (every clan)')}</label>
+      <input id="clan-account-site-${clanId}" class="input" type="text" maxlength="80" spellcheck="false" placeholder="cwb.fyi" value="${escapeHtml(data.siteName || '')}">
+      <button class="btn btn-primary btn-sm" type="submit">${t('Save')}</button>
+      <button class="btn btn-sm" type="button" data-site-cancel>${t('Cancel')}</button>
+      <span class="invite-site-hint">${t('Every clan. Leave it as the public address unless the game should see another name.')}</span>
+    </form>` : ''}`;
+
+  const how = `<details class="invite-how">
+      <summary>${t('How it works')}</summary>
+      <ul>
+        <li>${t('Words that ask for a code: {words}', { words: keywords })}</li>
+        <li>${t('Only members on the roster get a code. It lasts 72 hours, works once, and a player gets at most one every 10 minutes.')}</li>
+        <li>${t('On the Join page the code creates their account linked to their player, sets a new password, or adds this clan to their account.')}</li>
+        <li>${t('Roles follow the game: the {leader} and {superior} ranks are admins here, everyone else a member. Someone who leaves the clan in the game loses access until they are back.', { leader: escapeHtml(gameRankName(1)), superior: escapeHtml(gameRankName(2)) })}</li>
+        <li>${t('The game blocks links, so messages spell the site out and tell players to pick “{label}”.', { label: escapeHtml(t('Have a code? Join here')) })}</li>
+      </ul>
+    </details>`;
+
+  const welcomesTable = (data.welcomes || []).length ? `
+    <h4 class="invite-subhead">${t('Codes for members')}</h4>
+    <div class="table-wrap">
       <table class="data-table account-invite-welcomes">
         <thead><tr><th scope="col">${t('Joined')}</th><th scope="col">${t('Player')}</th><th scope="col">${t('Status')}</th></tr></thead>
         <tbody>
@@ -110,10 +155,11 @@ function renderAccountInvites(root, box, clanId, data) {
           </tr>`).join('')}
         </tbody>
       </table>
-    </div>` : ''}
-    <h4 class="mt-12">${t('Recent code requests')}</h4>
-    ${(data.recent || []).length ? `
-    <div class="table-wrap mt-8">
+    </div>` : '';
+
+  const requestsTable = (data.recent || []).length ? `
+    <h4 class="invite-subhead">${t('Recent code requests')}</h4>
+    <div class="table-wrap">
       <table class="data-table account-invite-requests">
         <thead><tr><th scope="col">${t('Asked')}</th><th scope="col">${t('Player')}</th><th scope="col">${t('Status')}</th></tr></thead>
         <tbody>
@@ -124,19 +170,63 @@ function renderAccountInvites(root, box, clanId, data) {
           </tr>`).join('')}
         </tbody>
       </table>
-    </div>` : `<p class="muted-copy">${t('None yet.')}</p>`}
-  `;
+    </div>` : '';
 
-  box.querySelector('[data-account-invites-save]')?.addEventListener('click', () => {
-    void save({ enabled: !!box.querySelector(`#clan-account-invites-enabled-${clanId}`)?.checked });
-  });
-  box.querySelector('[data-account-welcome-save]')?.addEventListener('click', () => {
-    void save({ welcomeMode: box.querySelector(`#clan-account-welcome-${clanId}`)?.value || 'off' });
-  });
-  box.querySelector('[data-account-site-save]')?.addEventListener('click', () => {
-    void save({ siteName: box.querySelector(`#clan-account-site-${clanId}`)?.value || '' }, `/api/clans/${clanId}/account-invites/site-name`);
+  box.innerHTML = `
+    <div class="invite-panel">
+      <p class="invite-lede">${t('Players get a one-time code from the scanner account in the game chat, and enter it on the site to get an account linked to their player.')}</p>
+      ${notices.map((n) => `<p class="invite-notice">⚠ ${escapeHtml(n)}</p>`).join('')}
+      <div class="invite-settings">${answerRow}${welcomeRow}</div>
+      ${siteRow}
+      ${how}
+      ${welcomesTable}
+      ${requestsTable}
+    </div>`;
+
+  // The switch saves on change; a failed save puts it back.
+  const sw = box.querySelector(`#${answerId}`);
+  sw?.addEventListener('change', async () => {
+    if (!(await save({ enabled: sw.checked }))) sw.checked = !sw.checked;
   });
 
+  // Off / Dry run / On save on click; On asks first while it would message members.
+  for (const btn of box.querySelectorAll('[data-welcome-mode]')) {
+    btn.addEventListener('click', async () => {
+      const mode = btn.dataset.welcomeMode;
+      if (mode === s.welcomeMode) return;
+      const p = data.welcomeProgress;
+      const due = (s.welcomeBacklogAt ? p?.due : p?.backlogDue) ?? 0;
+      if (mode === 'on' && due > 0) {
+        const ok = await confirmDialog(
+          tn(due, 'The scanner account will message {n} member a code, up to 10 per scan.', 'The scanner account will message {n} members a code, up to 10 per scan.', { n: due }),
+          { title: t('Send members a code'), confirmLabel: t('Switch on') },
+        );
+        if (!ok) return;
+      }
+      await save({ welcomeMode: mode });
+    });
+  }
+
+  // Site name: a sentence with Edit, which swaps in the field.
+  const view = box.querySelector('[data-site-view]');
+  const form = box.querySelector('[data-site-form]');
+  box.querySelector('[data-site-edit]')?.addEventListener('click', () => {
+    if (!form || !view) return;
+    view.hidden = true;
+    form.hidden = false;
+    form.querySelector('input')?.focus();
+  });
+  box.querySelector('[data-site-cancel]')?.addEventListener('click', () => {
+    if (!form || !view) return;
+    form.hidden = true;
+    view.hidden = false;
+  });
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void save({ siteName: form.querySelector('input')?.value || '' }, `/api/clans/${clanId}/account-invites/site-name`);
+  });
+
+  /** PUT, then redraw from the server; true when it saved. */
   async function save(payload, url = `/api/clans/${clanId}/account-invites`) {
     try {
       const r = await fetch(url, {
@@ -145,12 +235,14 @@ function renderAccountInvites(root, box, clanId, data) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         notify(t('Save failed: {error}', { error: j.error || r.status }), t('Account invites via chat'));
-        return;
+        return false;
       }
       notify(t('Saved.'), t('Account invites via chat'));
       void loadAccountInvites(root, clanId);
+      return true;
     } catch {
       notify(t('Save failed.'), t('Account invites via chat'));
+      return false;
     }
   }
 }
@@ -159,7 +251,7 @@ function renderAccountInvites(root, box, clanId, data) {
 function welcomeProgressText(p, s) {
   if (!p) return '';
   if (!s.welcomeBacklogAt) {
-    return tn(p.backlogDue, 'Switching it on sends a code to {n} current member without an account.', 'Switching it on sends a code to {n} current members without an account.', { n: p.backlogDue });
+    return tn(p.backlogDue, '{n} current member without an account would get one first.', '{n} current members without an account would get one first.', { n: p.backlogDue });
   }
   const sent = t('Codes sent: {sent} of {total}', { sent: p.sent, total: p.total });
   const skipped = p.skipped ? ` · ${tn(p.skipped, '{n} could not be sent', '{n} could not be sent', { n: p.skipped })}` : '';

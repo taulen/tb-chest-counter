@@ -1652,10 +1652,160 @@ label {
 
 /* A clan's short code ("CWB"): at most 8 characters, so a narrow field. */
 .clan-code-field .input { width: 7.5em; }
-/* Account invites → site name ("cwb . fyi"): sized to a host name, so its
-   Save sits beside it like the other rows' instead of at the far edge. */
-.invite-site-field { width: min(18em, 100%); }
-.invite-site-field .input { width: 100%; }
+/* ─── Clans → Account invites via chat (pages/clan-account-invites.js) ───
+   One line on what it is, the two settings as rows in one box that save on
+   change (a switch; Off / Dry run / On), the site name as a sentence with an
+   Edit link, the fine print folded into "How it works". */
+.invite-panel { display: flex; flex-direction: column; gap: 14px; }
+.invite-lede { margin: 0; max-width: 72ch; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.invite-notice {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--subtle-bg-strong);
+  font-size: 13px;
+  color: var(--accent-warn-text);
+}
+.invite-settings {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+.invite-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 14px 16px;
+}
+.invite-setting + .invite-setting { border-top: 1px solid var(--border); }
+.invite-setting-text { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.invite-setting-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.invite-setting-title label {
+  display: inline;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+/* A switch is small: it stays on the right of its text, even on a phone. */
+.invite-setting:has(.invite-switch) { flex-wrap: nowrap; }
+.invite-setting:has(.invite-switch) .invite-setting-text { flex-basis: 0; flex-grow: 1; }
+.invite-setting-desc { max-width: 64ch; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.invite-setting-state { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.invite-setting-note { font-size: 12.5px; color: var(--accent-warn-text); }
+.invite-on { font-weight: 600; color: var(--accent-green-soft-text); }
+.invite-off { font-weight: 600; color: var(--text-secondary); }
+.invite-setting-control { flex: none; }
+
+/* A switch: a native checkbox (role="switch"), the knob drawn as a
+   background so it renders the same in every engine. */
+.invite-switch {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  margin: 0;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 14px 50%, var(--text-secondary) 0 9px, transparent 9.5px), var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--border-control);
+  cursor: pointer;
+  transition: background-color var(--transition), box-shadow var(--transition);
+}
+.invite-switch:checked {
+  background: radial-gradient(circle at 34px 50%, var(--bg-primary) 0 9px, transparent 9.5px), var(--accent-gold);
+  box-shadow: none;
+}
+.invite-switch:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 3px; }
+
+/* Off / Dry run / On: the theme picker's recessed track; On lights up gold. */
+.invite-segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.invite-segmented-btn {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+.invite-segmented-btn:hover { color: var(--text-primary); }
+.invite-segmented-btn:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 1px; }
+.invite-segmented-btn.is-active {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-light);
+}
+.invite-segmented-btn.is-active[data-welcome-mode="on"] {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+  box-shadow: 0 0 0 1px var(--accent-gold-border);
+}
+
+.invite-site { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 13.5px; color: var(--text-secondary); }
+.invite-site strong { color: var(--text-primary); }
+.invite-site[hidden], .invite-site-form[hidden] { display: none; }
+.invite-link-btn {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-gold);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.invite-link-btn:hover { text-decoration: underline; }
+.invite-site-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.invite-site-form .input { width: min(16em, 100%); }
+.invite-site-hint { flex-basis: 100%; font-size: 12.5px; color: var(--text-secondary); }
+
+.invite-how { padding-top: 10px; border-top: 1px solid var(--border); }
+.invite-how > summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.invite-how > summary:hover { color: var(--text-primary); }
+.invite-how ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-width: 80ch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.invite-subhead { margin: 4px 0 0; font-size: 14px; }
+
+@media (max-width: 640px) {
+  /* The three-way choice drops under its text and spans the row. */
+  .invite-setting:has(.invite-segmented) .invite-setting-control { flex-basis: 100%; }
+  .invite-segmented { display: grid; width: 100%; }
+}
 
 .import-row {
   align-items: center;
@@ -3010,11 +3160,6 @@ details > table {
   .inline-form-row .btn {
     width: 100%;
   }
-
-  .inline-form-row .invite-site-field {
-    width: auto;
-  }
-
   .input {
     max-width: none;
   }
