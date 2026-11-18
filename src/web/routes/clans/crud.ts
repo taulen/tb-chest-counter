@@ -14,7 +14,11 @@ import {
   listDeletedClans,
   getClanByIdIncludingDeleted,
   listGoalHistory,
+  type Clan,
 } from '../../../data/repositories/clan-repo.js';
+import { getClanInfo } from '../../../data/repositories/game-clan-repo.js';
+import { getLastCompletedSession } from '../../../data/repositories/session-repo.js';
+import { clanLogoUrl } from '../../../game-art/clan-logo.js';
 import { setSessionActiveClan, logAction, listSwitchableClans } from '../../../data/repositories/user-repo.js';
 import {
   createShareLink,
@@ -97,6 +101,48 @@ export function createCrudRouter(): Router {
       ? req.clanId
       : (clans[0]?.id as number | undefined) ?? null;
     res.json({ clans, activeClanId, defaultPublicUrl });
+  });
+
+  /**
+   * The shell's clan switcher: every clan the caller may switch to, with what
+   * the switcher shows for each — logo, kingdom, last completed scan, whether
+   * it is in the scan rotation. Deliberately light (no share keys, no goal
+   * history, no file checks), because every page load asks for it.
+   *
+   * `needsReauth` is operator information, like the scan errors /api/status
+   * hides from members: it is sent only for clans the caller administers (a
+   * superadmin administers every clan), and left out — not false — elsewhere.
+   *
+   * MUST stay above `GET /:clanId` (see the deleted-clans route below).
+   */
+  router.get('/switcher', requireAuth, (req, res) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const entries: Array<{ clan: Clan; admin: boolean }> = req.user.role === 'superadmin'
+      ? listClans().map((clan) => ({ clan, admin: true }))
+      : listSwitchableClans(req.user.id).flatMap((access) => {
+        const clan = getClanById(access.clanId);
+        return clan ? [{ clan, admin: access.role === 'admin' }] : [];
+      });
+    const clans = entries.map(({ clan, admin }) => {
+      const info = getClanInfo(clan.id);
+      return {
+        id: clan.id,
+        name: clan.name,
+        shortCode: clan.shortCode,
+        kingdom: info?.realm ?? null,
+        logoUrl: clanLogoUrl(info?.logo ?? null),
+        lastScanAt: getLastCompletedSession(clan.id)?.completedAt ?? null,
+        isActive: clan.isActive,
+        ...(admin ? { needsReauth: clan.needsReauth } : {}),
+      };
+    });
+    const activeClanId = req.clanId !== undefined && clans.some((c) => c.id === req.clanId)
+      ? req.clanId
+      : clans[0]?.id ?? null;
+    res.json({ clans, activeClanId });
   });
 
   /**

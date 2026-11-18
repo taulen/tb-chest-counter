@@ -876,6 +876,28 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expectStatus((await send('get', `/api/members/${memberClan2Id}`, 'admin1')).status, 404);
     });
 
+    it('the clan switcher lists only the clans an account may switch to, sign-in state only where it is admin', async () => {
+      // A plain member: just the home clan, and no operator information.
+      const solo = (await send('get', '/api/clans/switcher', 'user1')).body;
+      expect(solo.clans.map((c: { id: number }) => c.id)).toEqual([1]);
+      expect(solo.clans[0]).not.toHaveProperty('needsReauth');
+
+      // Admin at home, plain member in the guest clan.
+      await grant('admin1', [{ clanId: 2, role: 'user' }]);
+      const both = (await send('get', '/api/clans/switcher', 'admin1')).body;
+      const byId = new Map(both.clans.map((c: { id: number }) => [c.id, c]));
+      expect([...byId.keys()].sort()).toEqual([1, 2]);
+      expect(byId.get(1)).toHaveProperty('needsReauth');
+      expect(byId.get(2)).not.toHaveProperty('needsReauth');
+
+      // The superadmin sees every clan, sign-in state included.
+      const all = (await send('get', '/api/clans/switcher', 'super')).body;
+      expect(all.clans.length).toBeGreaterThanOrEqual(2);
+      for (const c of all.clans) expect(c).toHaveProperty('needsReauth');
+
+      expectStatus((await send('get', '/api/clans/switcher', 'unauth')).status, 401);
+    });
+
     it('soft-deleting the guest clan drops the account home', async () => {
       await grant('user1', [{ clanId: 2, role: 'admin' }]);
       await activate('user1', 2);

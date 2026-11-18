@@ -114,7 +114,7 @@ export async function renderClans(el, refreshClanIndicator) {
   }
   const allClans = Array.isArray(clansData.clans) ? clansData.clans : [];
   // Superadmins have global access to every clan, but rendering all of
-  // them stacked got unwieldy. Honor the header clan-picker selection
+  // them stacked got unwieldy. Honor the sidebar clan switcher's selection
   // instead and show just the active clan's card — switching clans up
   // top swaps the card here, mirroring how every other tab behaves.
   const activeClanId = clansData.activeClanId ?? allClans[0]?.id ?? null;

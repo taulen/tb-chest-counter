@@ -44,8 +44,8 @@ function tokensOf(selector: string): Record<string, string> {
 const ROOT = tokensOf(':root');
 const THEMES: Record<string, Record<string, string>> = {
   dark: ROOT,
-  light: { ...ROOT, ...tokensOf('[data-theme="light"]') },
-  oled: { ...ROOT, ...tokensOf('[data-theme="oled"]') },
+  light: { ...ROOT, ...tokensOf(':root[data-theme="light"]') },
+  oled: { ...ROOT, ...tokensOf(':root[data-theme="oled"]') },
 };
 
 function parseColor(value: string, name: string): Rgba {
@@ -127,6 +127,16 @@ const PAIRS: Pair[] = [
   ...['--bg-primary', '--bg-card', '--bg-surface'].map((s) => ({
     label: `focus ring on ${s}`, fg: '--focus-ring', on: [s], min: AA_NON_TEXT,
   })),
+  // Non-text: a control's outline (the shell's clan switcher and icon buttons)
+  // against every surface a control sits on, the sidebar's included.
+  ...['--bg-primary', '--bg-sidebar', '--bg-card', '--bg-surface', '--bg-elevated'].map((s) => ({
+    label: `control border on ${s}`, fg: '--border-control', on: [s], min: AA_NON_TEXT,
+  })),
+  // The shell's status words: clan rows in the switcher, the scanner's glyph.
+  ...['--accent-green-soft-text', '--accent-warn-text', '--accent-red-soft-text'].flatMap((fg) =>
+    ['--bg-sidebar', '--bg-surface', '--bg-elevated'].map((s) => ({
+      label: `${fg} on ${s}`, fg, on: [s], min: AA_TEXT,
+    }))),
 ];
 
 describe('theme tokens', () => {
@@ -135,8 +145,8 @@ describe('theme tokens', () => {
       expect(tokens['--bg-card'], `${name} has no --bg-card`).toBeDefined();
     }
     // The cascade only works if the overrides really are overrides.
-    expect(tokensOf('[data-theme="light"]')['--bg-card']).not.toBe(ROOT['--bg-card']);
-    expect(tokensOf('[data-theme="oled"]')['--bg-card']).not.toBe(ROOT['--bg-card']);
+    expect(tokensOf(':root[data-theme="light"]')['--bg-card']).not.toBe(ROOT['--bg-card']);
+    expect(tokensOf(':root[data-theme="oled"]')['--bg-card']).not.toBe(ROOT['--bg-card']);
   });
 });
 

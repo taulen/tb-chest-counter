@@ -2,6 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createCrudRouter = createCrudRouter;
 const clan_repo_js_1 = require("../../../data/repositories/clan-repo.js");
+const game_clan_repo_js_1 = require("../../../data/repositories/game-clan-repo.js");
+const session_repo_js_1 = require("../../../data/repositories/session-repo.js");
+const clan_logo_js_1 = require("../../../game-art/clan-logo.js");
 const user_repo_js_1 = require("../../../data/repositories/user-repo.js");
 const share_link_repo_js_1 = require("../../../data/repositories/share-link-repo.js");
 const index_js_1 = require("../../../config/index.js");
@@ -72,6 +75,47 @@ function createCrudRouter() {
             ? req.clanId
             : clans[0]?.id ?? null;
         res.json({ clans, activeClanId, defaultPublicUrl });
+    });
+    /**
+     * The shell's clan switcher: every clan the caller may switch to, with what
+     * the switcher shows for each — logo, kingdom, last completed scan, whether
+     * it is in the scan rotation. Deliberately light (no share keys, no goal
+     * history, no file checks), because every page load asks for it.
+     *
+     * `needsReauth` is operator information, like the scan errors /api/status
+     * hides from members: it is sent only for clans the caller administers (a
+     * superadmin administers every clan), and left out — not false — elsewhere.
+     *
+     * MUST stay above `GET /:clanId` (see the deleted-clans route below).
+     */
+    router.get('/switcher', auth_js_1.requireAuth, (req, res) => {
+        if (!req.user) {
+            res.status(401).json({ error: 'Authentication required' });
+            return;
+        }
+        const entries = req.user.role === 'superadmin'
+            ? (0, clan_repo_js_1.listClans)().map((clan) => ({ clan, admin: true }))
+            : (0, user_repo_js_1.listSwitchableClans)(req.user.id).flatMap((access) => {
+                const clan = (0, clan_repo_js_1.getClanById)(access.clanId);
+                return clan ? [{ clan, admin: access.role === 'admin' }] : [];
+            });
+        const clans = entries.map(({ clan, admin }) => {
+            const info = (0, game_clan_repo_js_1.getClanInfo)(clan.id);
+            return {
+                id: clan.id,
+                name: clan.name,
+                shortCode: clan.shortCode,
+                kingdom: info?.realm ?? null,
+                logoUrl: (0, clan_logo_js_1.clanLogoUrl)(info?.logo ?? null),
+                lastScanAt: (0, session_repo_js_1.getLastCompletedSession)(clan.id)?.completedAt ?? null,
+                isActive: clan.isActive,
+                ...(admin ? { needsReauth: clan.needsReauth } : {}),
+            };
+        });
+        const activeClanId = req.clanId !== undefined && clans.some((c) => c.id === req.clanId)
+            ? req.clanId
+            : clans[0]?.id ?? null;
+        res.json({ clans, activeClanId });
     });
     /**
      * Clans that have been soft-deleted, with the row counts they still hold —

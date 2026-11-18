@@ -61,9 +61,15 @@ runs in one container.
   own game login, roster, Discord bot, scoring, week shape (Sunday-to-Sunday,
   or Tin Man to Tin Man) and public URL. One account can belong to several
   clans, with a separate role in each.
-- **Web dashboard** — sidebar layout, Light / Dark / OLED themes (or follow the
-  device), mobile-friendly tables, five languages, and the accessibility work
-  described in [ACCESSIBILITY.md](ACCESSIBILITY.md).
+- **Web dashboard** — a sidebar with every page your role can use, grouped
+  Overview / Clan / Manage, that folds to an icon rail; the clan switcher
+  (logo, kingdom, last scan, status of every clan you can switch to) and the
+  scanner card (state, next scan, and for the superadmin Scan this clan / Scan
+  all clans) sit at its top. Phones get a bottom tab bar — Dashboard, Members,
+  Leaderboard, Events, More — where More opens the same menu as a sheet.
+  OLED / Light / Dark themes (Auto follows the device: Light or OLED),
+  mobile-friendly tables, five languages, and the accessibility work described
+  in [ACCESSIBILITY.md](ACCESSIBILITY.md).
 - **Public share links** — any number of read-only leaderboard links per clan
   at `/<key>`, each with its own visit counter and an optional vanity key; no
   login required. A built-in FAQ explains the points and how to get access.

@@ -1,8 +1,8 @@
 /**
  * The shell's scan card: which clan the scanner is on, what it is doing, how
- * long it has run and where it is in the cycle. One copy sits in the sidebar
- * foot (a strip in the tablet top bar), another at the top of the phone menu;
- * every [data-scan-card] gets the same content.
+ * long it has run and where it is in the cycle. It sits in the sidebar's
+ * scanner card, which is also the phone's More sheet; every [data-scan-card]
+ * gets the same content.
  *
  * Clans on different game accounts scan at the same time: `activity.clans`
  * lists every one, shown as "CWB · SIK" with one current segment each on the
@@ -43,8 +43,8 @@ function setText(el, text) {
  * @param {{ detail?: string }} opts the line under the clan name
  */
 export function renderScanCards(activity, { detail = '' } = {}) {
-  const topbar = document.querySelector('.topbar');
-  topbar?.classList.toggle('is-scanning', !!activity);
+  // The sidebar's scanner card swaps its state line for this card (style.css).
+  document.body.classList.toggle('is-scanning', !!activity);
   if (!activity) {
     elapsedBase = null;
     return;

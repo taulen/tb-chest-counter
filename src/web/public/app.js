@@ -34,6 +34,16 @@ import { initMobileRows } from './lib/mobile-rows.js';
 import { checkLiveBuild, initBuildCheck, noteLiveBuild, reloadIfNewBuild } from './lib/build-check.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
 import { renderScanCards, tickScanCards } from './lib/scan-card.js';
+import {
+  initShell,
+  closeShellOverlay,
+  closeUserMenu,
+  refreshClanSwitcher,
+  setShellScanState,
+  setShellUser,
+  setScanButtonLabel,
+  syncMoreDot,
+} from './lib/shell.js';
 // renderExternalAdminCardHtml + wireExternalAdminHandlers are
 // exported by external.js but currently unused (the Admin tab
 // renders its own ChestTracker card via clans-page Discord/CT
@@ -213,12 +223,8 @@ async function checkAuth() {
     // getCurrentUser() without taking a hard import dependency on app.js.
     setCurrentUser(currentUser);
 
-    // Show user info
-    const userInfoEl = $('#userInfo');
-    if (userInfoEl) userInfoEl.classList.remove('is-hidden');
-    $('#userName').textContent = currentUser.username;
-    const mobileNameEl = $('#navMobileUserName');
-    if (mobileNameEl) mobileNameEl.textContent = currentUser.username;
+    // The account at the sidebar's foot (and in the phone sheet).
+    setShellUser(currentUser);
 
     const navAdminEl = $('#navAdmin');
     const navUsersEl = $('#navUsers');
@@ -231,7 +237,9 @@ async function checkAuth() {
     if (navSystemEl) navSystemEl.classList.add('is-hidden');
     if (navPerformanceEl) navPerformanceEl.classList.add('is-hidden');
 
-    // Show/hide nav based on role.
+    // Show/hide nav based on role — the sidebar, and with it the phone's More
+    // sheet, which is the same element (lib/shell.js).
+    // - Member (user): Overview + Clan, nothing under Manage.
     // - Admin tab: clan admin + superadmin (per-clan content management).
     // - Clans tab: clan admin (own clan only) + superadmin (all clans).
     // - Users tab: clan admin (own clan only, no superadmins shown) +
@@ -248,16 +256,16 @@ async function checkAuth() {
       if (navSystemEl) navSystemEl.classList.remove('is-hidden');
     }
 
-    // Manual scans live in the shell next to the scan status (sidebar foot,
-    // or the phone menu), superadmin only.
+    // Manual scans live in the sidebar's scanner card (the phone sheet is the
+    // same element), superadmin only; everyone else sees the state alone.
     for (const el of document.querySelectorAll('[data-scan-controls]')) {
       el.classList.toggle('is-hidden', currentUser.role !== 'superadmin');
     }
 
-    // Multi-clan: superadmins get a clan-picker dropdown in the header;
-    // everyone else sees a read-only clan label so they always know
-    // which clan's data they're looking at.
-    await refreshClanIndicator();
+    // The clan block at the top of the sidebar: a switcher for a superadmin
+    // or an account granted extra clans, a read-only label for everyone else,
+    // so they always know which clan's data they're looking at.
+    await refreshClanSwitcher(currentUser);
 
     // ChestTracker tab visibility is driven by the integration's own
     // enabled flag, not by user role — any logged-in user sees it when
@@ -304,100 +312,9 @@ async function refreshBuildFooter() {
   }
 }
 
-/**
- * The active clan's in-game logo beside its name in the header (label or
- * switcher). Hidden until a scan has read the clan's record — and when the
- * game art isn't extracted — so the header never shows a broken image.
- */
-async function refreshClanLogo() {
-  let url = null;
-  try {
-    const res = await fetch('/api/game/clan/logo');
-    if (res.ok) url = (await res.json())?.logoUrl ?? null;
-  } catch {
-    // No logo then; the name alone still says which clan.
-  }
-  for (const img of document.querySelectorAll('[data-clan-logo]')) {
-    if (url) img.setAttribute('src', url);
-    else img.removeAttribute('src');
-    img.classList.toggle('is-hidden', !url);
-  }
-}
-
-/**
- * Populate the per-clan label or the superadmin clan-switcher dropdown
- * based on the current user. Refreshes after a clan rename or after the
- * superadmin switches active clan.
- */
-async function refreshClanIndicator() {
-  const indicatorEl = $('#clanIndicator');
-  const indicatorNameEl = $('#clanIndicatorName');
-  const switcherEl = $('#clanSwitcher');
-  const switcherSelect = $('#clanSwitcherSelect');
-  if (!currentUser) return;
-  void refreshClanLogo();
-
-  // Superadmins switch between every clan; anyone else only when they were
-  // granted extra clans (multiClan), and then only between those.
-  if (currentUser.role !== 'superadmin' && !currentUser.multiClan) {
-    // Read-only clan label.
-    if (indicatorEl && indicatorNameEl) {
-      const label = currentUser.activeClan?.name ?? '';
-      if (label) {
-        indicatorNameEl.textContent = label;
-        indicatorEl.classList.remove('is-hidden');
-      } else {
-        indicatorEl.classList.add('is-hidden');
-      }
-    }
-    if (switcherEl) switcherEl.classList.add('is-hidden');
-    return;
-  }
-
-  // Render the dropdown with every clan the caller may switch to, mark the
-  // active one.
-  if (indicatorEl) indicatorEl.classList.add('is-hidden');
-  if (!switcherEl || !switcherSelect) return;
-  try {
-    const res = await fetch('/api/clans');
-    if (!res.ok) return;
-    const data = await res.json();
-    const clans = Array.isArray(data.clans) ? data.clans : [];
-    const activeId = data.activeClanId ?? clans[0]?.id ?? null;
-    switcherSelect.innerHTML = '';
-    for (const c of clans) {
-      const opt = document.createElement('option');
-      opt.value = String(c.id);
-      opt.textContent = c.name;
-      if (c.id === activeId) opt.selected = true;
-      switcherSelect.appendChild(opt);
-    }
-    if (clans.length > 0) {
-      switcherEl.classList.remove('is-hidden');
-      // Bind once.
-      if (!switcherSelect.dataset.bound) {
-        switcherSelect.addEventListener('change', async (ev) => {
-          const newId = Number((ev.target).value);
-          if (!Number.isFinite(newId)) return;
-          try {
-            const r = await fetch(`/api/clans/${newId}/activate`, { method: 'POST' });
-            if (!r.ok) return;
-            // Reload everything so analytics, members, etc. reflect the
-            // newly-active clan. Cheaper than threading a clan-changed
-            // event into every page.
-            window.location.reload();
-          } catch {
-            // ignore
-          }
-        });
-        switcherSelect.dataset.bound = '1';
-      }
-    } else {
-      switcherEl.classList.add('is-hidden');
-    }
-  } catch {
-    switcherEl.classList.add('is-hidden');
-  }
+/** Redraw the sidebar's clan block — after a clan is renamed on the Clans page. */
+function refreshClanIndicator() {
+  return refreshClanSwitcher(currentUser);
 }
 
 /**
@@ -427,46 +344,11 @@ async function logout() {
   window.location.href = '/login';
 }
 
-// ─── Mobile Nav ───
-const hamburgerBtn = $('#hamburgerBtn');
-const navOverlay = $('#navOverlay');
-const navBar = $('#navBar');
-
-// The open drawer is a modal: it covers the page, so focus moves into it, the
-// page behind goes inert, Escape closes it, and focus returns to the hamburger.
-let releaseMobileNav = null;
-
-function openMobileNav() {
-  if (!navBar || navBar.classList.contains('open')) return;
-  navBar.classList.add('open');
-  if (navOverlay) navOverlay.classList.add('visible');
-  if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'true');
-  const first = navBar.querySelector('a:not(.is-hidden), button');
-  releaseMobileNav = holdDialogFocus(navBar, { initial: first, onEscape: closeMobileNav, keepLive: [navOverlay] });
-}
-
-function closeMobileNav() {
-  if (navBar) navBar.classList.remove('open');
-  if (navOverlay) navOverlay.classList.remove('visible');
-  if (hamburgerBtn) hamburgerBtn.setAttribute('aria-expanded', 'false');
-  if (releaseMobileNav) {
-    const release = releaseMobileNav;
-    releaseMobileNav = null;
-    release();
-  }
-}
-
-if (hamburgerBtn) {
-  hamburgerBtn.setAttribute('aria-expanded', 'false');
-  hamburgerBtn.setAttribute('aria-controls', 'navBar');
-  hamburgerBtn.addEventListener('click', () => {
-    navBar.classList.contains('open') ? closeMobileNav() : openMobileNav();
-  });
-}
-
-if (navOverlay) {
-  navOverlay.addEventListener('click', closeMobileNav);
-}
+// ─── The shell ───
+// Sidebar, rail, phone tab bar + More sheet, clan switcher, account menu:
+// lib/shell.js. Wired before the first await so its controls work while the
+// first page is still loading.
+initShell();
 
 const statusErrorBtn = $('#statusErrorBtn');
 const statusErrorPanel = $('#statusErrorDetails');
@@ -485,17 +367,12 @@ if (statusErrorBtn && statusErrorPanel) {
   });
 }
 
-// Escape closes the header's pop-outs (the user menu and the scan-error
-// details) and hands focus back to the button that opened them. Dialogs never
-// see this: their own Escape is taken in the capture phase (holdDialogFocus).
+// Escape closes the scan-error details and hands focus back to their button
+// (lib/shell.js does the same for the account menu and the clan switcher).
+// Dialogs never see this: their own Escape is taken in the capture phase
+// (holdDialogFocus).
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  const menu = document.getElementById('userMenu');
-  if (menu && !menu.hidden) {
-    closeUserMenu();
-    document.getElementById('userMenuBtn')?.focus();
-    return;
-  }
   if (statusErrorPanel && !statusErrorPanel.classList.contains('is-hidden')) {
     statusErrorPanel.classList.add('is-hidden');
     statusErrorBtn?.setAttribute('aria-expanded', 'false');
@@ -514,42 +391,18 @@ function syncChartMotion() {
 syncChartMotion();
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', syncChartMotion);
 
-// A drawer left open while the window grows past the phone breakpoint would
-// keep the page inert behind a menu that is no longer a drawer.
-window.matchMedia('(max-width: 640px)').addEventListener('change', (mq) => {
-  if (!mq.matches) closeMobileNav();
-});
-
 // ─── Navigation ───
-$$('nav a').forEach((link) => {
+// The sidebar's links and the phone tab bar's (both are <nav>s).
+$$('nav a[data-page]').forEach((link) => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    closeMobileNav();
+    closeShellOverlay();
     navigateTo(link.dataset.page);
   });
 });
 
-// Mobile-only account buttons inside the slide-out nav
-const logoutBtnMobile = $('#logoutBtnMobile');
-if (logoutBtnMobile) {
-  logoutBtnMobile.addEventListener('click', () => {
-    closeMobileNav();
-    logout();
-  });
-}
-
-const navBarEl = $('#navBar');
-if (navBarEl) {
-  navBarEl.addEventListener('click', (e) => {
-    const target = e.target.closest('[data-action="open-change-password-mobile"]');
-    if (!target) return;
-    closeMobileNav();
-    openChangePasswordModal();
-  });
-}
-
-// Manual scan buttons sit in the shell (sidebar foot + phone menu), outside
-// #content, so they get their own listener.
+// Manual scan buttons sit in the shell's scanner card, outside #content, so
+// they get their own listener.
 for (const el of document.querySelectorAll('[data-scan-controls]')) {
   el.addEventListener('click', (event) => {
     const btn = event.target.closest('[data-action="trigger-scan"]');
@@ -739,20 +592,15 @@ if (logoutBtn) {
   logoutBtn.addEventListener('click', () => logout());
 }
 
-const userMenuBtn = $('#userMenuBtn');
-if (userMenuBtn) {
-  userMenuBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleUserMenu();
-  });
-}
-
+// The account menu's own toggle lives in lib/shell.js; its actions here.
 const userMenu = $('#userMenu');
 if (userMenu) {
   userMenu.addEventListener('click', (e) => {
     const target = e.target.closest('[data-action]');
     if (!target) return;
     if (target.dataset.action === 'open-change-password') {
+      // Out of the phone sheet first, so the dialog isn't stacked on a menu.
+      closeShellOverlay();
       openChangePasswordModal();
     }
   });
@@ -1132,42 +980,16 @@ function openChangePasswordModal() {
       if (e.target === overlay) cleanup(false);
     });
 
+    // Opened from the account menu, which has closed by now: hand focus back
+    // to what opened that — the account button, or More in the phone sheet.
+    const phone = window.matchMedia('(max-width: 640px)').matches;
     release = holdDialogFocus(overlay, {
       card: overlay.querySelector('.modal-card'),
       initial: currentInput,
       onEscape: () => cleanup(false),
+      returnTo: document.getElementById(phone ? 'shellMoreBtn' : 'userMenuBtn'),
     });
   });
-}
-
-function toggleUserMenu() {
-  const menu = document.getElementById('userMenu');
-  const btn = document.getElementById('userMenuBtn');
-  if (!menu || !btn) return;
-  const isOpen = !menu.hidden;
-  if (isOpen) {
-    closeUserMenu();
-  } else {
-    menu.hidden = false;
-    btn.setAttribute('aria-expanded', 'true');
-    setTimeout(() => document.addEventListener('click', onDocumentClickForUserMenu), 0);
-  }
-}
-
-function closeUserMenu() {
-  const menu = document.getElementById('userMenu');
-  const btn = document.getElementById('userMenuBtn');
-  if (!menu || !btn) return;
-  menu.hidden = true;
-  btn.setAttribute('aria-expanded', 'false');
-  document.removeEventListener('click', onDocumentClickForUserMenu);
-}
-
-function onDocumentClickForUserMenu(e) {
-  const userInfo = document.getElementById('userInfo');
-  if (userInfo && !userInfo.contains(e.target)) {
-    closeUserMenu();
-  }
 }
 
 // createNewUser moved to ./pages/users.js — imported above.
@@ -1181,9 +1003,10 @@ async function triggerScan(scope, btn) {
   // state; status polling later disables every copy via [data-action=trigger-scan].
   const allClans = scope === 'all';
   if (!btn) return;
-  const originalLabel = btn.textContent;
+  const labelOf = () => (btn.querySelector('.btn-label') ?? btn).textContent;
+  const originalLabel = labelOf();
   btn.dataset.localBusy = '1';
-  btn.textContent = t('Starting scan...');
+  setScanButtonLabel(btn, t('Starting scan...'));
   btn.disabled = true;
   try {
     const result = await apiPost('/scan', allClans ? { allClans: true } : {});
@@ -1195,12 +1018,12 @@ async function triggerScan(scope, btn) {
       await notify(result.error, t('Scan failed to start'));
       return;
     }
-    // Scan now runs in the background. The header status poll will show
-    // "scanning · N chests" while it runs and clear when it finishes.
+    // Scan now runs in the background. The status poll shows it in the
+    // sidebar's scanner card while it runs and clears when it finishes.
     notify(
       allClans
-        ? t('Scan started for all active clans. Watch the header for progress.')
-        : t('Scan started for the selected clan. Watch the header for progress.'),
+        ? t('Scan started for all active clans. The scanner card in the menu shows its progress.')
+        : t('Scan started for the selected clan. The scanner card in the menu shows its progress.'),
       t('Scan started'),
     );
   } catch (err) {
@@ -1212,8 +1035,8 @@ async function triggerScan(scope, btn) {
     // error before the scan even started), restore the original label
     // so the button doesn't get stuck on "Starting scan...". Status
     // polling overrides this when a scan actually begins.
-    if (btn.textContent === t('Starting scan...')) {
-      btn.textContent = originalLabel;
+    if (labelOf() === t('Starting scan...')) {
+      setScanButtonLabel(btn, originalLabel);
       btn.disabled = false;
     }
   }
@@ -1262,7 +1085,13 @@ function updateNavState() {
   else if (currentPage.startsWith('tools')) navPage = 'tools';
   else if (currentPage.startsWith('admin/')) navPage = 'admin';
   else if (currentPage.startsWith('system')) navPage = 'system';
-  $$('nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage));
+  // The sidebar's link and the phone tab bar's both say where you are.
+  $$('nav a[data-page]').forEach((a) => {
+    const here = a.dataset.page === navPage;
+    a.classList.toggle('active', here);
+    if (here) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
   updatePageHead(navPage);
 }
 
@@ -1332,6 +1161,8 @@ async function refreshNavDots() {
     const systemNeeds = typeof latest === 'number' && latest > lastSeen;
     systemDot.classList.toggle('is-hidden', !systemNeeds);
   }
+  // On a phone those entries sit behind More: light its dot too.
+  syncMoreDot();
 }
 
 function navigateTo(page, params = {}) {
@@ -1363,7 +1194,7 @@ function navigateTo(page, params = {}) {
 // The header polls /api/status every 2s. A single failed poll is almost
 // always transient — a scan briefly pinning the event loop, or an upstream
 // proxy (Cloudflare) blip — not a real outage. Flipping straight to
-// "Disconnected" on one failure made the header flap constantly. Only show it
+// "Disconnected" on one failure made the status flap constantly. Only show it
 // after several consecutive failures (≈6s of silence); until then keep the
 // last-known state so momentary blips are invisible. Each poll is also bounded
 // by a timeout so a hung request fails fast instead of stacking up.
@@ -1371,7 +1202,7 @@ const STATUS_MAX_FAILURES = 3;
 const STATUS_POLL_TIMEOUT_MS = 4000;
 let statusFailures = 0;
 
-// The scanner's state names, as the header shows them.
+// The scanner's state names, as the scanner card shows them.
 const STATUS_STATE_LABELS = {
   idle: t('idle'),
   scanning: t('scanning'),
@@ -1391,7 +1222,6 @@ async function updateStatus() {
       : undefined;
     const status = await api('/status', timeoutOpts);
     statusFailures = 0;
-    const dot = $('#statusDot');
     const text = $('#statusText');
     const errBtn = $('#statusErrorBtn');
     const errPanel = $('#statusErrorDetails');
@@ -1413,9 +1243,11 @@ async function updateStatus() {
     } else {
       text.textContent = statusStateLabel(status.state);
     }
-    dot.className = 'dot';
-    if (isScanning) dot.classList.add('scanning');
-    else if (status.state === 'error' || status.state === 'cooldown') dot.classList.add('error');
+    // The glyph beside the state line (lib/shell.js): ✓ idle, ◐ scanning,
+    // ! a failure — the line itself always says which in words.
+    const kind = isScanning ? 'scanning'
+      : (status.state === 'error' || status.state === 'cooldown' || status.lastScanError) ? 'error'
+        : 'idle';
 
     renderScanCards(activity, {
       detail: status.progressMessage
@@ -1444,21 +1276,27 @@ async function updateStatus() {
     nextScanClanInactive = !!status.clanInactive;
     nextScanInProgress = !!status.scanInProgress || activity !== null;
     renderNextScanCountdown();
+    setShellScanState({
+      kind,
+      text: text.textContent,
+      next: $('#nextScan')?.textContent ?? '',
+      runningClanIds: (activity?.clans ?? (activity ? [activity] : [])).map((c) => c.clanId),
+    });
 
     // Disable the manual scan buttons (Scan This Clan / Scan All Clans)
-    // while a scan is running. They live in the shell next to this status
-    // (sidebar foot, and again in the phone menu), superadmin only. The scan
-    // card hides them meanwhile; disabled is the backstop, and it holds
-    // through the gap between two clans of a cycle too.
+    // while a scan is running. They live in the sidebar's scanner card (the
+    // phone sheet is the same element), superadmin only. The scan card hides
+    // them meanwhile; disabled is the backstop, and it holds through the gap
+    // between two clans of a cycle too.
     const scanBtns = document.querySelectorAll('[data-action="trigger-scan"]');
     scanBtns.forEach((btn) => {
       if (btn.dataset.localBusy) return;
       if (status.scanInProgress || activity !== null) {
         btn.disabled = true;
-        btn.textContent = t('Scan in progress...');
+        setScanButtonLabel(btn, t('Scan in progress...'));
       } else {
         btn.disabled = false;
-        btn.textContent = btn.dataset.scope === 'all' ? t('Scan All Clans') : t('Scan This Clan');
+        setScanButtonLabel(btn, btn.dataset.scope === 'all' ? t('Scan All Clans') : t('Scan This Clan'));
       }
     });
   } catch (err) {
@@ -1466,11 +1304,11 @@ async function updateStatus() {
     if (err && err.name === 'UnauthenticatedError') return;
     // Tolerate transient blips: only surface "Disconnected" once several
     // polls in a row have failed. Below the threshold, leave the last-known
-    // status in place so a one-off failed poll doesn't flap the header.
+    // status in place so a one-off failed poll doesn't flap the shell.
     statusFailures++;
     if (statusFailures >= STATUS_MAX_FAILURES) {
       $('#statusText').textContent = t('Disconnected');
-      $('#statusDot').className = 'dot error';
+      setShellScanState({ kind: 'offline', text: t('Disconnected') });
       // The card hides the status line; drop it so "Disconnected" shows
       // instead of a frozen scan.
       renderScanCards(null);

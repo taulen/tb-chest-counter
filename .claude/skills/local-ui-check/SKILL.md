@@ -31,7 +31,8 @@ node .claude/skills/local-ui-check/layout-check.cjs                       # all 
 node .claude/skills/local-ui-check/layout-check.cjs en,de,ru users,members  # a subset
 node .claude/skills/local-ui-check/snap.cjs users ru phone --el .audit-table
 node .claude/skills/local-ui-check/snap.cjs dashboard de desk --click '#userMenuBtn'
-node .claude/skills/local-ui-check/snap.cjs dashboard ru phone --click '#hamburgerBtn'
+node .claude/skills/local-ui-check/snap.cjs dashboard ru phone --click '#shellMoreBtn'   # the More sheet
+node .claude/skills/local-ui-check/snap.cjs dashboard de desk --click '#shellClanBtn'   # the clan switcher
 node .claude/skills/local-ui-check/snap.cjs login ru phone --signed-out
 ```
 
@@ -61,6 +62,8 @@ Reading the layout-check results:
 Stop the background server task (TaskStop) and confirm `curl -s -o /dev/null -w "%{http_code}" http://localhost:3999/login` fails. The run dir is disposable.
 
 ## Gotchas (all hit once)
+
+- **A worktree under `.claude/worktrees/` serves no Chart.js.** Express's `send` refuses any file path with a dot-segment, and the server resolves `node_modules/` from its cwd, so run it from a folder whose path has none — a plain folder holding junctions to the worktree's `dist` and `src` and to `node_modules`. The same check fails `frontend-assets.test.ts` ("serves Chart.js") when the suite runs inside such a worktree; it passes in the main checkout.
 
 - **No Playwright browser bundle** on this machine — the scripts drive the system **Edge** (`channel: 'msedge'`). `TB_UI_BROWSER=chrome` or `bundled` to change.
 - **Git Bash mangles arguments starting with `/`** (`/#users` → `C:/Program Files/Git/#users`). That's why the scripts take page *keys*, not URLs, and pick their own output paths.

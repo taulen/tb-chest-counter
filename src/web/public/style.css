@@ -14,9 +14,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* The header and tab row share one left edge with the content column, so a
-   bar reads as part of the page, not a strip above it. On body, not .topbar:
-   the public share page uses the same .header without the app shell. */
+/* The public share page's header and tab row share one left edge with the
+   content column, so a bar reads as part of the page, not a strip above it. */
 body {
   --shell-gutter: max(20px, calc((100% - var(--content-max)) / 2 + 20px));
 }
@@ -26,30 +25,7 @@ td, th, .stat-card .value, .num {
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Topbar (header + nav stick as one unit) ─── */
-/* Wrapping header and nav in a single sticky container avoids the
-   "menu slides up a few px before sticking" glitch we used to get
-   from giving each its own `top` value — the gap inevitably drifted
-   whenever the header's actual height changed (theme, clan switcher,
-   long status text, etc.). */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-topbar);
-  border-bottom: 1px solid var(--border);
-}
-
-/* Frosted bar on desktop only: backdrop-filter makes .topbar the containing
-   block for position:fixed descendants, and the phone nav drawer is one. */
-@media (min-width: 641px) {
-  .topbar {
-    -webkit-backdrop-filter: saturate(160%) blur(14px);
-    backdrop-filter: saturate(160%) blur(14px);
-  }
-}
-
-/* ─── Header ─── */
+/* ─── Header (the public share page's; the app's shell is "App shell" below) ─── */
 .header {
   padding: 12px var(--shell-gutter) 6px;
   display: grid;
@@ -83,8 +59,7 @@ td, th, .stat-card .value, .num {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .3));
 }
 
-.header h1,
-.brand-name {
+.header h1 {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
@@ -92,125 +67,17 @@ td, th, .stat-card .value, .num {
   white-space: nowrap;
 }
 
-.header-right {
-  grid-column: 2;
-  justify-self: end;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.user-info {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-/* Multi-clan: read-only clan label for clan-scoped users. */
-.clan-indicator {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--subtle-bg);
-  border: 1px solid var(--subtle-bg-strong);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.clan-indicator-label {
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 10px;
-}
-.clan-indicator-name {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-/* Superadmin clan-switcher dropdown. Same visual weight as the
-   read-only label so the header stays balanced. The select inherits
-   color-scheme from :root / [data-theme] so the native popup matches
-   the active theme on Windows / older Chrome where it would otherwise
-   render in the OS theme. */
-.clan-switcher {
-  display: inline-flex;
-  align-items: center;
-}
-.clan-switcher select {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-light);
-  color: var(--text-primary);
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-}
-.clan-switcher select option {
-  background-color: var(--bg-card);
-  color: var(--text-primary);
-}
-/* The active clan's in-game logo leading the label or the switcher (the
-   switcher stays a native dropdown; the logo sits beside it). */
-.clan-switcher { gap: 8px; }
-.clan-switcher select { flex: 1 1 auto; min-width: 0; }
-.clan-header-logo {
-  flex: none;
-  align-self: center;
-  object-fit: contain;
-}
-.clan-indicator .clan-header-logo { width: 20px; height: 20px; }
-.clan-switcher .clan-header-logo { width: 26px; height: 26px; }
-
-.user-menu-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
-  transition: all var(--transition);
-}
-
-.user-menu-btn:hover {
-  background: var(--hover-overlay);
-  border-color: var(--border-light);
-  color: var(--text-primary);
-}
-
-.user-menu-btn[aria-expanded="true"] {
-  background: var(--hover-overlay);
-  border-color: var(--border-light);
-  color: var(--text-primary);
-}
-
-.user-menu-chevron {
-  opacity: 0.6;
-  transition: transform var(--transition);
-}
-
-.user-menu-btn[aria-expanded="true"] .user-menu-chevron {
-  transform: rotate(180deg);
-}
-
+/* The account menu: a popover above the account button at the sidebar's foot
+   (placed by lib/shell.js), laid out inline in the phone sheet. */
 .user-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-elevated);
-  min-width: 180px;
+  min-width: 220px;
   padding: 6px;
-  z-index: 200;
+  z-index: 300;
+  overflow-y: auto;
 }
 
 .user-menu[hidden] {
@@ -267,63 +134,13 @@ td, th, .stat-card .value, .num {
 }
 /* .theme-segmented* moved to base.css (shared with the setup wizard). */
 
-.user-name {
-  color: inherit;
-  font-size: 13px;
-}
-
-/* Mobile account section in slide-out nav (hidden on desktop) */
-.nav-mobile-account {
-  display: none;
-}
-
-.header .status {
-  font-size: 13px;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.next-scan {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent-gold);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  padding: 5px 12px;
-  border: 1px solid var(--accent-gold-border);
-  background: var(--accent-gold-bg);
-  border-radius: 999px;
-  letter-spacing: 0.2px;
-}
-
-.next-scan:empty {
-  display: none;
-}
-
-/* Manual scans (superadmin), beside the scan status they start. */
-.scan-controls { display: flex; gap: 6px; }
-.scan-controls .btn { white-space: nowrap; justify-content: center; }
-.nav-mobile-scan { display: none; }
-/* Tablet top bar: no room beside the status, countdown and clan picker, so the
-   pair takes its own right-aligned row under them. */
-@media (min-width: 641px) and (max-width: 1099px) {
-  .header-right { flex-wrap: wrap; row-gap: 6px; }
-  .header-right > .scan-controls { order: 10; flex-basis: 100%; justify-content: flex-end; }
-}
-
 /* ─── Scan card (lib/scan-card.js) ───
    While a scan runs: the clan being scanned, the phase, elapsed time and one
-   segment per clan of the cycle. It stands in for the status line, the
-   countdown pill and the scan buttons (which only said "Scan in progress..."
-   twice). A card in the sidebar foot and the phone menu; a one-line strip in
-   the tablet top bar; the phone top bar keeps just the pulsing dot. */
+   segment per clan of the cycle. It stands in for the scanner card's state
+   line, countdown and buttons (which only said "Scan in progress..." twice);
+   the rules that swap them are in "App shell" below. */
 .scan-card { display: none; }
-.topbar.is-scanning .scan-card { display: block; }
-.topbar.is-scanning .scan-controls,
-.topbar.is-scanning .header-right > .next-scan,
-.topbar.is-scanning .header-right > .status { display: none; }
+body.is-scanning .scan-card { display: block; }
 
 .scan-card {
   min-width: 0;
@@ -445,78 +262,6 @@ td, th, .stat-card .value, .num {
   color: var(--text-muted);
 }
 
-/* Tablet top bar: the card becomes a right-aligned strip on the row the scan
-   buttons would have taken. */
-@media (min-width: 641px) and (max-width: 1099px) {
-  /* A fit-content column can't shrink below the strip's one-line content, which
-     ran it off the right edge; a full-width, right-packed column can. */
-  .topbar.is-scanning .header { grid-template-columns: auto minmax(0, 1fr); }
-  .topbar.is-scanning .header-right { width: 100%; min-width: 0; justify-content: flex-end; }
-  .topbar.is-scanning .header-right > .scan-card {
-    order: 10;
-    flex-basis: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-  }
-  .header-right > .scan-card .scan-card-head { flex-shrink: 0; }
-  .header-right > .scan-card .scan-card-clan,
-  .header-right > .scan-card .scan-card-detail {
-    margin: 0;
-    display: block;
-    min-width: 0;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  /* The progress line gives way before the clan name does. */
-  .header-right > .scan-card .scan-card-clan { max-width: 240px; flex-shrink: 0; font-size: 13px; }
-  .header-right > .scan-card .scan-card-detail { max-width: 320px; }
-  .header-right > .scan-card .scan-card-progress { margin: 0; width: 96px; flex-shrink: 0; }
-}
-@media (min-width: 641px) and (max-width: 859px) {
-  .header-right > .scan-card .scan-card-detail { display: none; }
-  .header-right > .scan-card .scan-card-clan { flex-shrink: 1; }
-}
-
-/* Phone: the top bar has no room, so it keeps the status dot (pulsing) and the
-   card opens the slide-out menu instead. */
-@media (max-width: 640px) {
-  .topbar.is-scanning .header-right > .status { display: flex; }
-  .topbar.is-scanning .header-right > .scan-card { display: none; }
-  .nav-mobile-account > .scan-card { margin-bottom: 16px; }
-}
-
-.header .status .dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent-green);
-  box-shadow: 0 0 6px rgba(52, 211, 153, .4);
-  flex-shrink: 0;
-}
-
-.header .status .dot.error {
-  background: var(--accent-red);
-  box-shadow: 0 0 6px rgba(248, 113, 113, .4);
-}
-
-.header .status .dot.scanning {
-  background: var(--accent-amber);
-  box-shadow: 0 0 6px rgba(245, 158, 11, .4);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
 .status-error-btn {
   font-size: 11px;
   font-weight: 600;
@@ -532,22 +277,18 @@ td, th, .stat-card .value, .num {
   background: var(--accent-red-bg-strong);
 }
 
+/* The last scan error, opened by Details in the scanner card: inline in the
+   card, so it scrolls with the sidebar and never covers the page. */
 .status-error-details {
-  position: absolute;
-  /* Anchored to .header (which is position: relative). top: 100% drops
-     us flush with the header's bottom border regardless of how tall
-     the header actually rendered — no magic offset to drift. */
-  top: calc(100% + 4px);
-  right: 20px;
-  max-width: min(520px, calc(100vw - 40px));
+  margin-top: 8px;
+  max-height: 260px;
+  overflow-y: auto;
   background: var(--status-error-bg);
   border: 1px solid var(--accent-red-border);
   color: var(--text-primary);
   font-size: 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  box-shadow: var(--shadow-error-panel);
-  z-index: 100;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -603,26 +344,8 @@ td, th, .stat-card .value, .num {
   word-break: break-word;
 }
 
-/* ─── Hamburger (mobile) ─── */
-.hamburger {
-  display: none;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
-  color: var(--text-secondary);
-  transition: color var(--transition);
-}
-
-.hamburger:hover { color: var(--text-primary); }
-
-.hamburger svg {
-  display: block;
-  width: 22px;
-  height: 22px;
-}
-
-/* ─── Navigation ─── */
+/* ─── Navigation: a plain tab row (the share page's; the app's sidebar and tab
+   bar restyle theirs in "App shell" below) ─── */
 nav {
   display: flex;
   gap: 2px;
@@ -2840,19 +2563,6 @@ details > table {
   }
 }
 
-/* ─── Mobile Nav Overlay ─── */
-.nav-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: var(--bg-mobile-overlay);
-  z-index: 98;
-}
-
-.nav-overlay.visible {
-  display: block;
-}
-
 /* ──────────────────────────────────────── */
 /* ─── RESPONSIVE: Tablet (<=960px) ────── */
 /* ──────────────────────────────────────── */
@@ -2895,178 +2605,8 @@ details > table {
     height: 24px;
   }
 
-  .header h1,
-  .brand-name {
+  .header h1 {
     font-size: 16px;
-  }
-
-  .header-right {
-    grid-column: 3;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .header .status span:not(.dot) {
-    display: none;
-  }
-
-  /* Clan control is superadmin-heavy; a normal user only needs to read
-     the active clan name. Cap its width on mobile so a long clan name
-     truncates instead of shoving the hamburger off the edge. */
-  .clan-switcher,
-  .clan-indicator {
-    min-width: 0;
-  }
-  .clan-switcher select,
-  .clan-indicator-name {
-    max-width: 42vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .next-scan {
-    display: none;
-  }
-
-  /* The scan buttons move into the slide-out menu with the account actions. */
-  .header-right > .scan-controls { display: none; }
-  .nav-mobile-scan {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 18px;
-  }
-  .nav-mobile-scan .btn { width: 100%; padding: 10px 14px; font-size: 14px; }
-
-  /* Hide the desktop user menu on mobile - account actions move
-     into the slide-out hamburger nav instead */
-  .user-info {
-    display: none !important;
-  }
-
-  /* Show the mobile account section at the bottom of the slide-out nav */
-  .nav-mobile-account {
-    display: block;
-    margin-top: auto;
-    padding: 16px 24px 24px;
-    border-top: 1px solid var(--border);
-  }
-
-  .nav-mobile-account-label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 4px;
-  }
-
-  .nav-mobile-account-name {
-    font-size: 14px;
-    color: var(--text-primary);
-    font-weight: 500;
-    margin-bottom: 12px;
-    word-break: break-word;
-  }
-
-  .nav-mobile-theme,
-  .nav-mobile-lang {
-    margin-bottom: 12px;
-  }
-
-  .nav-mobile-account-btn {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 1px solid var(--border-light);
-    color: var(--text-primary);
-    padding: 11px 14px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: 14px;
-    font-family: inherit;
-    margin-bottom: 8px;
-    transition: background var(--transition);
-  }
-
-  .nav-mobile-account-btn:hover {
-    background: var(--subtle-bg);
-  }
-
-  .nav-mobile-account-btn-danger {
-    color: var(--accent-red);
-    border-color: var(--accent-red-border-soft);
-  }
-
-  .nav-mobile-account-btn-danger:hover {
-    background: var(--accent-red-bg);
-  }
-
-  /* Show hamburger, hide desktop nav */
-  .hamburger {
-    display: block;
-  }
-
-  /* No blur on phones (see .topbar), so the bar must be opaque. */
-  .topbar {
-    background: var(--bg-primary);
-  }
-
-  /* The drawer is the app shell's nav only — the public share page's tab
-     row is a plain nav and stays a tab row on phones. */
-  .topbar nav {
-    padding-left: 0;
-    padding-right: 0;
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 260px;
-    flex-direction: column;
-    justify-content: flex-start;
-    background: var(--bg-card);
-    border-left: 1px solid var(--border);
-    border-bottom: none;
-    box-shadow: var(--shadow-mobile-nav);
-    z-index: 200;
-    transform: translateX(100%);
-    /* visibility steps AFTER the slide-out (and before the slide-in), so the
-       closed drawer's links leave the Tab order instead of being reachable
-       off-screen — transform alone only moves them out of sight. */
-    visibility: hidden;
-    transition: transform 0.25s ease, visibility 0s linear 0.25s;
-    padding-top: 16px;
-    overflow-y: auto;
-  }
-
-  .topbar nav.open {
-    transform: translateX(0);
-    visibility: visible;
-    transition: transform 0.25s ease, visibility 0s;
-  }
-
-  .topbar nav a {
-    padding: 14px 24px;
-    font-size: 15px;
-    border-bottom: none;
-    border-left: 3px solid transparent;
-  }
-
-  .topbar nav a.active {
-    border-bottom: none;
-    border-left-color: var(--accent-gold);
-    background: var(--accent-gold-active-bg);
-  }
-
-  .topbar nav a:hover {
-    background: var(--subtle-bg);
-  }
-
-  .nav-overlay.visible {
-    display: block;
-    z-index: 199;
   }
 
   /* Container */
@@ -7257,19 +6797,28 @@ summary.pb-impact-heading { cursor: pointer; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   App shell — three layouts from one piece of markup (index.html):
+   App shell (index.html; behaviour in lib/shell.js) — one sidebar, three
+   layouts:
 
-     ≥1100px  a fixed left SIDEBAR: brand, grouped icon nav, and the clan /
-              status / account controls pinned to its foot.
-     641–1099 the top BAR: brand + controls, a row of text tabs under it.
-     ≤640px   the phone DRAWER (rules in the ≤640 block above), which now
-              shows the same groups and icons as the sidebar.
+     ≥1100px  the full SIDEBAR: brand, the clan block, the scanner card, every
+              page the role may use (grouped), the account at the foot. It
+              folds to the icon RAIL, remembered per browser.
+     641–1099 the icon rail; its fold button unfolds the full sidebar over the
+              page (html[data-nav-peek]), behind a scrim.
+     ≤640px   a slim bar on top, a bottom TAB BAR (four pages + More), and
+              More opens the sidebar itself as a SHEET above the tab bar.
 
-   .header holds both the brand and the controls, so the sidebar uses
-   `display: contents` on it to lay the brand out at the top and the
-   controls at the bottom with the nav in between — no second copy of any
-   control, and every id app.js looks up stays where it was.
+   html[data-nav="rail"] is the only switch for the rail (set before first
+   paint by index.html, kept by lib/shell.js). Every control exists once, so
+   every id app.js looks up stays unique. The share page has no shell: it only
+   ever sees .header / nav above.
    ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --side-w: 264px;
+  --rail-w: 76px;
+  --tabbar-h: 62px;
+}
 
 body {
   background-color: var(--bg-primary);
@@ -7285,6 +6834,7 @@ body {
 
 /* Nav icons: drawn by stroke, coloured by the link. */
 .nav-icon {
+  display: block;
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -7294,14 +6844,6 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-
-/* Top-bar layout (the default between the phone and sidebar breakpoints):
-   groups dissolve into one row of text tabs. */
-.nav-group { display: contents; }
-.nav-group-label { display: none; }
-.nav-icon { display: none; }
-/* A group with nothing visible in it (a member's "Manage") disappears. */
-.nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
 
 /* ─── Page head ─── */
 .page-head {
@@ -7338,175 +6880,573 @@ body {
 .rank.rank-2 { background: var(--rank-2-glow); }
 .rank.rank-3 { background: var(--rank-3-glow); }
 
-/* ─── Phone drawer: groups + icons like the sidebar ─── */
-@media (max-width: 640px) {
-  .nav-group { display: block; }
-  .nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
-  .nav-group-label {
-    display: block;
-    padding: 14px 24px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .nav-icon { display: block; }
-  /* Compact rows: with the Manage group and the account section a superadmin's
-     menu ran well past one phone screen at the old 46px rows. 32px still
-     clears the 24px target-size minimum. */
-  .topbar nav { padding-top: 4px; }
-  .topbar nav a {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 5px 20px;
-    font-size: 14px;
-  }
-  .nav-group-label { padding: 8px 20px 2px; font-size: 10.5px; }
-  .nav-mobile-account { padding: 10px 20px 12px; }
-  .nav-mobile-scan { gap: 6px; margin-bottom: 10px; }
-  .nav-mobile-scan .btn { padding: 6px 12px; font-size: 13px; }
-  /* "ACCOUNT  taulen" on one line. */
-  .nav-mobile-account-label { display: inline-block; margin: 0 8px 8px 0; }
-  .nav-mobile-account-name { display: inline-block; font-size: 13.5px; margin-bottom: 8px; }
-  .nav-mobile-theme,
-  .nav-mobile-lang { margin-bottom: 8px; }
-  .nav-mobile-account-btn { padding: 7px 12px; font-size: 13.5px; margin-bottom: 6px; }
-  .page-head { padding-top: 18px; }
-  .page-title { font-size: 24px; }
+/* ─── The sidebar ─── */
+.shell-side {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 200;
+  width: var(--side-w);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px 12px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
-/* ─── Desktop sidebar ─── */
-@media (min-width: 1100px) {
-  :root { --sidebar-w: 248px; }
+.shell-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.shell-brand .brand-logo { width: 30px; height: 30px; }
+.shell-brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
 
-  body:has(> .topbar) { padding-left: var(--sidebar-w); }
+/* Square icon buttons: fold, close. Their outline is a control's (3:1). */
+.shell-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.shell-icon-btn:hover {
+  background: var(--hover-overlay-strong);
+  color: var(--text-primary);
+}
+.shell-fold-out { display: none; }
+.shell-sheet-title,
+.shell-sheet-close { display: none; }
 
-  .topbar {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: var(--sidebar-w);
-    display: flex;
-    flex-direction: column;
-    padding: 18px 12px 14px;
-    background: var(--bg-sidebar);
-    border-bottom: 0;
-    border-right: 1px solid var(--border);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    overflow-y: auto;
-    scrollbar-width: thin;
-  }
+/* A section's small caps label (Scanner, Switch clan). */
+.shell-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 
-  .topbar .header { display: contents; }
+/* ─── The clan block: a switcher, or a label for a one-clan account ─── */
+.shell-clan-btn,
+.shell-clan-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+.shell-clan-btn {
+  border-color: var(--border-control);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.shell-clan-btn:hover { background: var(--bg-card-hover); }
+.shell-clan-btn[aria-expanded="true"] { border-color: var(--accent-gold); }
+.shell-clan-btn[aria-expanded="true"] .shell-clan-chevron { transform: rotate(180deg); }
+.shell-clan-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  transition: transform var(--transition);
+}
 
-  .topbar .brand {
-    order: 0;
-    padding: 2px 10px 20px;
-  }
-  .topbar .brand-logo { width: 30px; height: 30px; }
-  .topbar .brand-name { font-size: 15.5px; }
+/* The clan's in-game logo, or its short code while there is none. */
+.shell-clan-logo {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  object-fit: contain;
+}
+.shell-clan-logo.is-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: var(--subtle-bg-strong);
+  box-shadow: inset 0 0 0 1px var(--border-light);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.shell-clan-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+/* The name is what the block is for: a long one ("CWB - ChaosWithoutBorders")
+   takes a second line rather than losing its end. */
+.shell-clan-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.shell-clan-sub {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
 
-  .topbar nav {
-    order: 1;
-    flex-direction: column;
-    gap: 1px;
-    padding: 0;
-    overflow: visible;
-  }
-  .nav-group { display: block; margin-bottom: 14px; }
-  .nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
-  .nav-group-label {
-    display: block;
-    padding: 0 10px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .nav-icon { display: block; }
+/* The popover (placed by lib/shell.js beside its button). */
+.shell-clan-pop {
+  z-index: 300;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-elevated);
+  overflow-y: auto;
+}
+.shell-clan-pop[hidden] { display: none; }
+.shell-clan-pop > .shell-label { padding: 4px 8px 4px; }
+.shell-clan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.shell-clan-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shell-clan-option:hover { background: var(--hover-overlay-strong); }
+.shell-clan-option[aria-current="true"] {
+  border-color: var(--accent-gold-border);
+  background: var(--accent-gold-bg);
+}
+.shell-clan-option .shell-clan-name { font-weight: 600; }
+.shell-clan-status {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.shell-clan-status.is-ok { color: var(--accent-green-soft-text); }
+.shell-clan-status.is-busy { color: var(--accent-warn-text); }
+.shell-clan-status.is-bad { color: var(--accent-red-soft-text); }
+.shell-clan-status.is-muted { color: var(--text-secondary); }
+.shell-clan-manage {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  margin-top: 2px;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  text-decoration: none;
+}
+.shell-clan-manage:hover { text-decoration: underline; }
 
-  .topbar nav a {
-    display: flex;
+/* ─── The scanner card ─── */
+.shell-scanner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+.shell-scanner-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.shell-scanner-glyph {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-secondary);
+}
+.shell-scanner[data-state="idle"] .shell-scanner-glyph { color: var(--accent-green-soft-text); }
+.shell-scanner[data-state="scanning"] .shell-scanner-glyph { color: var(--accent-warn-text); }
+.shell-scanner[data-state="error"] .shell-scanner-glyph,
+.shell-scanner[data-state="offline"] .shell-scanner-glyph { color: var(--accent-red-soft-text); }
+.shell-scanner-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+/* The state names are lower case mid-sentence elsewhere ("idle · Gifts");
+   here the line starts with one. */
+.shell-scanner-text::first-letter { text-transform: uppercase; }
+.shell-scanner-text.is-loading {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.shell-next-scan {
+  padding-left: 26px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.shell-next-scan:empty { display: none; }
+.shell-scanner .scan-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.shell-scanner .scan-controls .btn {
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+.shell-scanner .scan-controls .nav-icon { width: 15px; height: 15px; }
+
+/* While a scan runs, the scan card stands in for the state line, the
+   countdown and the buttons, and the whole card takes the gold wash. */
+body.is-scanning .shell-scanner {
+  border-color: var(--accent-gold-border);
+  background:
+    radial-gradient(140% 100% at 0% 0%, var(--accent-gold-bg-strong), transparent 65%),
+    var(--accent-gold-bg);
+}
+body.is-scanning .shell-scanner-state,
+body.is-scanning .shell-next-scan,
+body.is-scanning .shell-scanner .scan-controls { display: none; }
+.shell-scanner .scan-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+/* ─── The pages ─── */
+.shell-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  overflow: visible;
+}
+.shell-nav .nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+/* A group with nothing visible in it (a member's "Manage") disappears. */
+.shell-nav .nav-group:not(:has(> a:not(.is-hidden))) { display: none; }
+.shell-nav .nav-group-label {
+  padding: 0 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.shell-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.shell-nav a:hover {
+  background: var(--hover-overlay);
+  color: var(--text-primary);
+}
+.shell-nav a.active {
+  background: var(--accent-gold-bg);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent-gold);
+}
+.shell-nav a.active .nav-icon { color: var(--accent-gold); }
+.shell-nav .nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shell-nav .nav-dot { margin-left: auto; }
+
+/* ─── The account, at the foot ─── */
+.shell-account {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.shell-account-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.shell-account-btn:hover,
+.shell-account-btn[aria-expanded="true"] {
+  border-color: var(--border-light);
+  background: var(--hover-overlay);
+}
+.shell-account-btn[aria-expanded="true"] .shell-account-chevron { transform: rotate(180deg); }
+.shell-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-gold);
+}
+.shell-account-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.shell-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.shell-account-role {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.shell-account-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  transition: transform var(--transition);
+}
+/* The phone sheet's account heading; the desktop button says it already. */
+.shell-account-heading { display: none; }
+
+/* ─── Rail tooltips, the scrim, the phone-only bars ─── */
+.shell-tip {
+  position: fixed;
+  z-index: 400;
+  max-width: 320px;
+  padding: 6px 10px;
+  transform: translateY(-50%);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-elevated);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  pointer-events: none;
+}
+.shell-tip[hidden] { display: none; }
+
+.shell-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+  background: var(--bg-mobile-overlay);
+}
+.shell-scrim[hidden] { display: none; }
+
+.shell-phonebar,
+.shell-tabbar { display: none; }
+
+/* ─── Tablet and desktop: the sidebar beside the page ─── */
+@media (min-width: 641px) {
+  body.app-shell { padding-left: var(--side-w); }
+  /* Tablet: always the rail's width — the unfolded sidebar lies over the page. */
+  html[data-nav="rail"] body.app-shell,
+  html[data-nav-peek] body.app-shell { padding-left: var(--rail-w); }
+  html[data-nav-peek] .shell-side { box-shadow: var(--shadow-elevated); }
+
+  /* The rail: icons only, every label still in the markup for screen readers
+     (visually hidden) and shown on hover or focus by .shell-tip. */
+  html[data-nav="rail"] .shell-side {
+    width: var(--rail-w);
     align-items: center;
-    gap: 11px;
-    padding: 8px 10px;
-    margin-bottom: 1px;
-    border-bottom: 0;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
+    gap: 12px;
+    padding: 12px 8px;
   }
-  .topbar nav a:hover {
-    background: var(--hover-overlay);
-  }
-  .topbar nav a.active {
-    background: var(--accent-gold-bg);
-    color: var(--text-primary);
-    font-weight: 600;
-    box-shadow: inset 2px 0 0 var(--accent-gold);
-  }
-  .topbar nav a.active .nav-icon { color: var(--accent-gold); }
-  .topbar nav a .nav-dot { margin-left: auto; }
-
-  /* The controls row becomes the sidebar's foot. */
-  .topbar .header-right {
-    order: 2;
-    margin-top: auto;
+  html[data-nav="rail"] .shell-side > * { width: 100%; }
+  html[data-nav="rail"] .shell-side-head {
     flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    padding: 14px 4px 0;
+    gap: 8px;
+  }
+  html[data-nav="rail"] .shell-brand { justify-content: center; padding: 0; }
+  html[data-nav="rail"] .shell-fold-in { display: none; }
+  html[data-nav="rail"] .shell-fold-out { display: block; }
+  html[data-nav="rail"] :is(.shell-brand-name, .shell-clan-btn .shell-clan-text, .shell-clan-label .shell-clan-text, .shell-scanner > .shell-label,
+    .shell-scanner-text, .shell-scanner .btn-label, .shell-nav .nav-label, .shell-account-text) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  html[data-nav="rail"] :is(.shell-clan-btn, .shell-clan-label) {
+    justify-content: center;
+    min-height: 52px;
+    padding: 7px;
+  }
+  html[data-nav="rail"] .shell-clan-chevron,
+  html[data-nav="rail"] .shell-account-chevron { display: none; }
+
+  html[data-nav="rail"] .shell-scanner {
+    align-items: center;
+    padding: 10px 4px;
+  }
+  html[data-nav="rail"] .shell-scanner-state { justify-content: center; }
+  html[data-nav="rail"] .shell-scanner-glyph { font-size: 16px; }
+  /* The rail has no room for the details or the countdown; the state's
+     tooltip carries both, and unfolding shows them. */
+  html[data-nav="rail"] :is(.status-error-btn, .status-error-details, .shell-next-scan, .scan-card) { display: none !important; }
+  html[data-nav="rail"] body.is-scanning .shell-scanner-state { display: flex; }
+  html[data-nav="rail"] .shell-scanner .scan-controls .btn {
+    min-height: 40px;
+    padding: 0;
+  }
+  html[data-nav="rail"] .shell-scanner .scan-controls .nav-icon { width: 18px; height: 18px; }
+
+  html[data-nav="rail"] .shell-nav { align-items: center; }
+  html[data-nav="rail"] .shell-nav .nav-group {
+    align-items: center;
+    width: 100%;
+  }
+  html[data-nav="rail"] .shell-nav .nav-group-label { display: none; }
+  html[data-nav="rail"] .shell-nav .nav-group + .nav-group {
+    padding-top: 12px;
     border-top: 1px solid var(--border);
   }
-  .header-right > .status,
-  .header-right > .next-scan { padding: 0 6px; }
-  /* Stacked full-width under the countdown: the sidebar is too narrow for the
-     pair side by side in German or Russian. */
-  .header-right > .scan-controls { flex-direction: column; padding: 0 6px; }
-  .header-right > .scan-controls .btn { width: 100%; }
-  /* The sidebar is ~220px wide, and "Prochain scan dans 1 h 00 min 00 s" is
-     not. The countdown wraps inside the pill rather than running off the
-     edge; the short translations keep it to one line in practice. */
-  .header-right > .next-scan {
-    padding: 4px 10px;
-    white-space: normal;
-    text-align: center;
-    border-radius: 10px;
+  html[data-nav="rail"] .shell-nav a {
+    justify-content: center;
+    width: 52px;
+    min-height: 44px;
+    padding: 0;
   }
-  .clan-switcher,
-  .clan-switcher select,
-  .clan-indicator { width: 100%; }
-  .user-info { width: 100%; }
-  .user-menu-btn {
-    width: 100%;
-    justify-content: space-between;
-    border-color: var(--border);
-    background: var(--subtle-bg);
+  html[data-nav="rail"] .shell-nav a.active {
+    background: var(--accent-gold-bg-strong);
+    box-shadow: none;
   }
-  /* At the foot of the sidebar the account menu has to open upward. */
-  .user-menu {
-    top: auto;
-    bottom: calc(100% + 6px);
-    left: 0;
-    right: auto;
-    width: 100%;
+  html[data-nav="rail"] .shell-nav .nav-icon { width: 20px; height: 20px; }
+  html[data-nav="rail"] .shell-nav .nav-dot {
+    position: absolute;
+    top: 7px;
+    right: 9px;
+    margin: 0;
   }
-  /* The scan-error panel was anchored under the header; in the sidebar it
-     floats beside it instead. */
-  .status-error-details {
-    position: fixed;
-    top: auto;
-    bottom: 16px;
-    left: calc(var(--sidebar-w) + 16px);
-    right: auto;
+  html[data-nav="rail"] .shell-account-btn {
+    justify-content: center;
+    padding: 6px 0;
   }
+}
 
-  body:has(> .topbar) .container {
+/* ─── Desktop: room for a wider column ─── */
+@media (min-width: 1100px) {
+  body.app-shell .container {
     max-width: 1320px;
     padding-left: 36px;
     padding-right: 36px;
@@ -7515,10 +7455,289 @@ body {
   .page-title { font-size: 30px; }
 }
 
-/* On a phone the bar has a logo, the clan switcher and the menu button to
-   fit; the page title right under it already says where you are. */
+/* ─── Phone: tab bar + the sidebar as a sheet ─── */
 @media (max-width: 640px) {
-  .brand-name { display: none; }
+  body.app-shell { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); }
+  /* Toasts rise above the tab bar rather than covering it. */
+  body.app-shell .toast-root { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px); }
+  /* The page behind an open sheet stays put. */
+  body.shell-locked { overflow: hidden; }
+
+  /* The slim bar on top: brand, clan, scanner state. Scrolls away. */
+  .shell-phonebar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    box-sizing: border-box;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-primary);
+  }
+  .shell-phonebar-brand {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+  }
+  .shell-phonebar-brand .brand-logo { width: 26px; height: 26px; }
+  .shell-phonebar-clan {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .shell-phonebar-clan .shell-clan-logo {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    font-size: 9.5px;
+  }
+  .shell-phonebar-clan-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .shell-phonebar-status {
+    flex: none;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .shell-phonebar-status:empty { display: none; }
+  .shell-phonebar-status.is-scanning { color: var(--accent-warn-text); }
+  .shell-phonebar-status.is-error,
+  .shell-phonebar-status.is-offline { color: var(--accent-red-soft-text); }
+
+  /* The sheet: the sidebar, risen from behind the tab bar. visibility steps
+     AFTER the slide-out, so a closed sheet's links leave the Tab order. */
+  .shell-side {
+    top: max(12px, env(safe-area-inset-top, 0px));
+    right: 0;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    gap: 18px;
+    padding: 8px 16px 20px;
+    border: 0;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 20px 20px 0 0;
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow-elevated);
+    transform: translateY(100%);
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
+    z-index: 210;
+  }
+  .shell-side.is-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.25s ease, visibility 0s;
+  }
+  .shell-brand,
+  .shell-fold { display: none; }
+  .shell-sheet-title {
+    display: block;
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+  }
+  .shell-sheet-close {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Clans: the switcher's list, laid out in the sheet (never a popover). */
+  .shell-clan-btn { display: none; }
+  .shell-clan-pop,
+  .shell-clan-pop[hidden] {
+    display: flex;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .shell-clan-pop > .shell-label { padding: 0 0 2px; }
+  .shell-clan-list { gap: 6px; }
+  .shell-clan-option {
+    border-color: var(--border);
+    border-radius: 12px;
+    background: var(--bg-surface);
+  }
+  .shell-clan-manage {
+    min-height: 44px;
+    margin-top: 0;
+    padding: 0;
+    border-top: 0;
+  }
+  .shell-clan-label { min-height: 56px; }
+
+  .shell-scanner { padding: 14px; }
+  .shell-scanner .scan-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .shell-scanner .scan-controls .btn {
+    min-height: 48px;
+    font-size: 14px;
+  }
+
+  /* Every page as a tile, grouped as in the sidebar. */
+  .shell-nav { gap: 16px; }
+  .shell-nav .nav-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .shell-nav .nav-group-label {
+    grid-column: 1 / -1;
+    padding: 0;
+  }
+  .shell-nav a {
+    min-height: 52px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    white-space: normal;
+    line-height: 1.2;
+  }
+  .shell-nav a.active {
+    border-color: var(--accent-gold-border);
+    background: var(--accent-gold-bg-strong);
+    color: var(--accent-gold);
+    box-shadow: none;
+  }
+  .shell-nav .nav-icon { width: 20px; height: 20px; }
+  /* "Truhenbelohnungen", "Результативность": one word wider than a tile. */
+  .shell-nav .nav-label {
+    min-width: 0;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+  .shell-nav .nav-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    margin: 0;
+  }
+
+  /* The account: the menu laid out inline, under its heading. */
+  .shell-account {
+    margin-top: 0;
+    padding-top: 16px;
+  }
+  .shell-account-btn { display: none; }
+  .shell-account .user-menu,
+  .shell-account .user-menu[hidden] {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .shell-account-heading {
+    display: block;
+    padding: 0 0 6px;
+  }
+  .shell-account-heading .user-menu-section-label { padding-left: 0; }
+  .shell-account-who {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+  }
+  .shell-account .user-menu-section { padding: 6px 0; }
+  .shell-account .user-menu-section-label { padding-left: 0; }
+  .shell-account .theme-segmented-btn { min-height: 44px; font-size: 13px; }
+  .shell-account .lang-select { min-height: 44px; }
+  .shell-account .user-menu-divider { margin: 8px 0; }
+  .shell-account .user-menu-item {
+    min-height: 44px;
+    margin-top: 8px;
+    border: 1px solid var(--border-light);
+    font-size: 14px;
+  }
+  .shell-account .user-menu-item-danger { border-color: var(--accent-red-border-soft); }
+
+  /* The tab bar. */
+  .shell-tabbar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 220;
+    min-height: var(--tabbar-h);
+    box-sizing: border-box;
+    gap: 0;
+    padding: 4px 4px env(safe-area-inset-bottom, 0px);
+    overflow: visible;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+  }
+  .shell-tabbar a,
+  .shell-more {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 54px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 12px;
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.15;
+    text-align: center;
+    text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+  .shell-tabbar .nav-icon {
+    box-sizing: content-box;
+    width: 22px;
+    height: 22px;
+    padding: 3px 14px;
+    border-radius: 999px;
+  }
+  .shell-tabbar a.active,
+  .shell-more.is-open {
+    color: var(--accent-gold);
+    font-weight: 700;
+  }
+  .shell-tabbar a.active .nav-icon,
+  .shell-more.is-open .nav-icon { background: var(--accent-gold-bg-strong); }
+  .shell-more-icon { position: relative; display: inline-flex; }
+  .shell-more .nav-dot {
+    position: absolute;
+    top: 1px;
+    right: 10px;
+    margin: 0;
+  }
 }
 
 /* ─── Disclosure chevrons everywhere ───
