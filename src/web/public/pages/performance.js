@@ -14,6 +14,9 @@ import { getCurrentUser } from '../lib/state.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { guardsCellHtml, nameWithGoldPassHtml } from '../lib/guards-format.js';
 import { DEFAULT_GOAL_AMBER_PCT } from '../lib/weekly-goal.js';
+import {
+  segHtml, statHtml, tileHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, asList,
+} from '../lib/ui-kit.js';
 
 const PAGE_SIZE = 25;
 /** Members named in each of the two spotlight cards; the table has the rest. */
@@ -62,48 +65,57 @@ export async function renderPerformance(el) {
   hostEl = el;
   const role = getCurrentUser()?.role;
   if (role !== 'admin' && role !== 'superadmin') {
-    el.innerHTML = `<div class="card"><div class="card-body"><div class="empty-state"><p>${t('Only clan admins can see this page.')}</p></div></div></div>`;
+    el.innerHTML = emptyHtml(t('Only clan admins can see this page.'));
     return;
   }
-  el.innerHTML = `<div class="card"><div class="card-body"><div class="empty-state"><p>${t('Scoring members…')}</p></div></div></div>`;
+  el.innerHTML = emptyHtml(t('Scoring members…'));
   wire(el);
   await load();
 }
 
 async function load() {
   const query = timeframe ? `?timeframe=${encodeURIComponent(timeframe)}` : '';
-  const [data, guards] = await Promise.all([
-    api(`/performance${query}`),
-    // Only for the Guards cell's confidence and Gold Pass marker; the report
-    // carries the level itself, so a failure here costs nothing else.
-    api('/guards/overview').catch(() => null),
-  ]);
-  if (!data || data.error) {
-    hostEl.innerHTML = `<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(data?.error || t('Could not load the performance report.'))}</p></div></div></div>`;
+  let data;
+  let guards = null;
+  try {
+    [data, guards] = await Promise.all([
+      api(`/performance${query}`),
+      // Only for the Guards cell's confidence and Gold Pass marker; the report
+      // carries the level itself, so a failure here costs nothing else.
+      api('/guards/overview').catch(() => null),
+    ]);
+  } catch (err) {
+    data = { error: err?.message || '' };
+  }
+  // A refusal (429, a 500's { error, ref }) arrives as an object without the
+  // report's members: say so and offer Try again.
+  if (!data || data.error || !Array.isArray(data.members)) {
+    hostEl.innerHTML = errorStateHtml(t('Could not load the performance report.'), refusalText(data));
+    wireRetry(hostEl, load);
     return;
   }
   report = data;
   timeframe = data.timeframe;
-  guardsByMember = new Map((Array.isArray(guards?.rows) ? guards.rows : []).map((g) => [g.memberId, g]));
+  guardsByMember = new Map(asList(guards?.rows).map((g) => [g.memberId, g]));
   paint();
 }
 
 function paint() {
   const r = report;
   if (!r.dataStart) {
-    hostEl.innerHTML = `${headerCardHtml(r)}<div class="card"><div class="card-body"><div class="empty-state"><p>${t('No chest data for this clan yet.')}</p></div></div></div>`;
+    hostEl.innerHTML = `<div class="perf">${headerCardHtml(r)}${emptyHtml(t('No chest data for this clan yet.'))}</div>`;
     return;
   }
-  hostEl.innerHTML = `
+  // Phone: one column in this order — the timeframe and its counts, the two
+  // spotlights, guards levels, everyone, then the fine print.
+  hostEl.innerHTML = `<div class="perf">
     ${headerCardHtml(r)}
     ${r.members.length
-      ? `<div class="perf-spotlight">${spotlightHtml('over', r)}${spotlightHtml('under', r)}</div>
-         ${guardsCardHtml(r)}
+      ? `<div class="ui-grid">${spotlightHtml('over', r)}${spotlightHtml('under', r)}${guardsCardHtml(r)}</div>
          <div id="perfTableHost">${tableCardHtml(r)}</div>`
-      : `<div class="card"><div class="card-body"><div class="empty-state"><p>${t('Nobody has been in the clan long enough for this timeframe yet.')}</p></div></div></div>`}
-    ${howCardHtml(r)}
-    ${tooNewCardHtml(r)}
-  `;
+      : emptyHtml(t('Nobody has been in the clan long enough for this timeframe yet.'))}
+    <div class="ui-grid">${howCardHtml(r)}${tooNewCardHtml(r)}</div>
+  </div>`;
 }
 
 // ─── Header ───────────────────────────────────────────────────
@@ -121,47 +133,26 @@ function headerCardHtml(r) {
   ].filter(Boolean).join(' · ');
   const hint = [esc(span), r.windowFrom ? units : ''].filter(Boolean).join(' · ');
 
-  const buttons = r.timeframes.map((tf) => {
-    const active = tf.key === r.timeframe;
-    return `<button class="btn ${active ? 'active' : ''}" aria-pressed="${active}" data-perf-timeframe="${esc(tf.key)}">${esc(TIMEFRAME_LABELS[tf.key] ?? tf.key)}</button>`;
-  }).join('');
+  const seg = segHtml({
+    label: t('Timeframe'),
+    items: asList(r.timeframes).map((tf) => ({ value: tf.key, label: TIMEFRAME_LABELS[tf.key] ?? tf.key })),
+    current: r.timeframe,
+    attr: 'perf-timeframe',
+  });
 
   const noGoal = r.weeklyGoal
     ? ''
-    : `<p class="perf-note">${t('No weekly points goal is set, so the score leaves the weekly goal out. Set one on the Clans page (Leaderboard goal).')}</p>`;
+    : `<p class="ui-sub">${t('No weekly points goal is set, so the score leaves the weekly goal out. Set one on the Clans page (Leaderboard goal).')}</p>`;
 
-  return `<div class="card">
-    <div class="card-header leaderboard-header">
-      <div class="events-title">
-        <h2>${t('Over- and underachievers')}</h2>
-        <span class="card-header-hint">${hint}</span>
-      </div>
-      <div class="period-selector" role="group" aria-label="${t('Timeframe')}">${buttons}</div>
-    </div>
-    <div class="card-body card-body-padded">
-      ${noGoal}
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="label">${t('Members scored')}</div>
-          <div class="value">${scored.toLocaleString()}</div>
-          <div class="sub">${tn(r.requiredDays, 'at least {n} day in the clan', 'at least {n} days in the clan', { n: r.requiredDays })}</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">${t('Overachievers')}</div>
-          <div class="value perf-value-over">${counts.over.toLocaleString()}</div>
-          <div class="sub">${t('score {pct} or more', { pct: pct(r.scoring.overThreshold) })}</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">${t('Underachievers')}</div>
-          <div class="value perf-value-under">${counts.under.toLocaleString()}</div>
-          <div class="sub">${t('score below {pct}', { pct: pct(r.scoring.underThreshold) })}</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">${t('Too new to judge')}</div>
-          <div class="value">${r.tooNew.length.toLocaleString()}</div>
-          <div class="sub">${t('joined too recently for this timeframe')}</div>
-        </div>
-      </div>
+  // Over / under carry a glyph as well as their colour (▲ / ▼, as in the table).
+  return `<div class="perf-head">
+    <div class="ui-toolbar">${seg}<p class="ui-sub perf-window">${hint}</p></div>
+    ${noGoal}
+    <div class="ui-stats">
+      ${statHtml({ label: t('Members scored'), value: scored.toLocaleString(), sub: tn(r.requiredDays, 'at least {n} day in the clan', 'at least {n} days in the clan', { n: r.requiredDays }) })}
+      ${statHtml({ label: t('Overachievers'), value: `<span class="perf-value-over"><span aria-hidden="true">▲</span> ${counts.over.toLocaleString()}</span>`, sub: t('score {pct} or more', { pct: pct(r.scoring.overThreshold) }) })}
+      ${statHtml({ label: t('Underachievers'), value: `<span class="perf-value-under"><span aria-hidden="true">▼</span> ${counts.under.toLocaleString()}</span>`, sub: t('score below {pct}', { pct: pct(r.scoring.underThreshold) }) })}
+      ${statHtml({ label: t('Too new to judge'), value: r.tooNew.length.toLocaleString(), sub: t('joined too recently for this timeframe') })}
     </div>
   </div>`;
 }
@@ -204,18 +195,18 @@ function spotlightHtml(kind, r) {
     ? t('Nobody scores {pct} or more in this timeframe.', { pct: pct(r.scoring.overThreshold) })
     : t('Nobody scores below {pct} in this timeframe.', { pct: pct(r.scoring.underThreshold) });
   const more = rows.length - shown.length;
-  return `<div class="card perf-spotlight-card perf-spotlight-${kind}">
-    <div class="card-header"><h2>${title}</h2><span class="card-header-hint">${rows.length.toLocaleString()}</span></div>
-    <div class="card-body card-body-padded">
-      ${shown.length
-        ? `<ol class="perf-list">${shown.map((m) => `<li class="perf-list-item">
-            <div class="perf-list-main"><span class="perf-list-name">${nameHtml(m)}</span>${statusHtml(m)}</div>
-            <div class="perf-list-sub">${signalSummaryHtml(m)}</div>
-          </li>`).join('')}</ol>
-          ${more > 0 ? `<p class="perf-more">${tn(more, '+{n} more in the table below', '+{n} more in the table below', { n: more })}</p>` : ''}`
-        : `<p class="perf-note">${empty}</p>`}
-    </div>
-  </div>`;
+  const body = shown.length
+    ? `<ol class="ui-rows perf-list">${shown.map((m) => `<li class="ui-row">
+        <span class="ui-row-main"><span class="ui-row-name">${nameHtml(m)}</span><span class="ui-row-sub">${signalSummaryHtml(m)}</span></span>
+        <span class="ui-row-n">${statusHtml(m)}</span>
+      </li>`).join('')}</ol>
+      ${more > 0 ? `<p class="ui-sub">${tn(more, '+{n} more in the table below', '+{n} more in the table below', { n: more })}</p>` : ''}`
+    : emptyHtml(empty);
+  return tileHtml(`perf-${kind}`, title, body, {
+    span: 6,
+    link: `<span class="ui-sub perf-count">${rows.length.toLocaleString()}</span>`,
+    cls: `perf-spotlight-${kind}`,
+  });
 }
 
 // ─── By guards level ──────────────────────────────────────────
@@ -249,13 +240,10 @@ function guardsCardHtml(r) {
       <td data-label="${t('Underachievers')}" class="num">${under.toLocaleString()}</td>
     </tr>`;
   }).join('');
-  return `<div class="card">
-    <div class="card-header">
-      <h2>${t('By guards level')}</h2>
-      <span class="card-header-hint">${t('{tinman} targets follow the guards level; unknown counts as G{level}', { tinman: esc(tGame('Tin Man')), level: r.scoring.assumedGuardsLevel })}</span>
-    </div>
-    <div class="card-body">
-      <table class="table-responsive perf-guards-table"><colgroup>
+  return tileHtml('perf-guards', t('By guards level'), `
+      <p class="ui-sub">${t('{tinman} targets follow the guards level; unknown counts as G{level}', { tinman: esc(tGame('Tin Man')), level: r.scoring.assumedGuardsLevel })}</p>
+      <div class="perf-bleed">
+      <table class="table-responsive perf-guards-table ui-table"><colgroup>
         <col class="col-guards"><col><col><col><col>
       </colgroup><thead><tr>
         <th>${t('Guards')}</th>
@@ -264,8 +252,7 @@ function guardsCardHtml(r) {
         <th class="num">${t('Overachievers')}</th>
         <th class="num">${t('Underachievers')}</th>
       </tr></thead><tbody>${rows}</tbody></table>
-    </div>
-  </div>`;
+      </div>`, { span: 12 });
 }
 
 // ─── Everyone ─────────────────────────────────────────────────
@@ -389,7 +376,7 @@ function tableCardHtml(r) {
         <td data-label="${t('Joined')}" title="${esc(tn(m.presentDays, '{n} day in the clan in this timeframe', '{n} days in the clan in this timeframe', { n: m.presentDays }))}">${esc(m.tenureStart)}</td>
       </tr>`;
     }).join('')
-    : `<tr><td colspan="8"><div class="empty-state"><p>${t('No member matches these filters.')}</p></div></td></tr>`;
+    : `<tr><td colspan="8">${emptyHtml(t('No member matches these filters.'))}</td></tr>`;
 
   const pager = rows.length > PAGE_SIZE
     ? `<div class="pagination">
@@ -399,16 +386,15 @@ function tableCardHtml(r) {
       </div>`
     : '';
 
-  return `<div class="card">
-    <div class="card-header perf-table-header">
-      <h2>${t('Everyone')}</h2>
+  return `<div class="ui-toolbar perf-everyone-head">
+      <h2 class="ui-section-title">${t('Everyone')}</h2>
       <div class="perf-toolbar">
         <label>${t('Show')} <select class="input" data-perf-filter="status">${statusOptions}</select></label>
         <label>${t('Guards')} <select class="input" data-perf-filter="guards">${guardsOptions}</select></label>
       </div>
     </div>
-    <div class="card-body">
-      <table class="table-responsive perf-table"><colgroup>
+    <div class="ui-table-card">
+      <table class="table-responsive perf-table ui-table"><colgroup>
         <col class="col-rank"><col class="col-member"><col class="col-score">
         <col class="col-goal"><col class="col-signal"><col class="col-signal">
         <col class="col-guards"><col class="col-date">
@@ -421,8 +407,7 @@ function tableCardHtml(r) {
         ${th('since', t('Joined'))}
       </tr></thead><tbody>${body}</tbody></table>
       ${pager}
-    </div>
-  </div>`;
+    </div>`;
 }
 
 // ─── How it works / too new ───────────────────────────────────
@@ -452,9 +437,9 @@ function howCardHtml(r) {
   const events = r.events.map((e) => esc(tGame(e.name))).join(', ');
   const goal = r.weeklyGoal ? r.weeklyGoal.toLocaleString() : '—';
   const item = (key, text) => `<li><strong>${esc(SIGNAL_LABELS[key])}</strong> <span class="perf-dim">(${weight(key)})</span> — ${text}</li>`;
-  return `<details class="card card-collapsible" data-section-key="performance-how">
-    <summary class="card-header"><h2>${t('How the score works')}</h2></summary>
-    <div class="card-body card-body-padded perf-how">
+  return `<details class="ui-tile span-12 ui-fold" data-section-key="performance-how">
+    <summary class="ui-tile-head"><h2 class="ui-tile-title">${t('How the score works')}</h2></summary>
+    <div class="perf-how">
       <ul>
         ${item('goalHits', t('the share of closed weeks at or above the weekly points goal that applied that week (the Leaderboard goal, now {goal} points).', { goal })
           + goalStepsHtml(r)
@@ -492,10 +477,10 @@ function tooNewCardHtml(r) {
     <td data-label="${t('Joined')}" data-role="metric">${esc(m.tenureStart)}</td>
     <td data-label="${t('Days in timeframe')}" class="num">${m.presentDays.toLocaleString()}</td>
   </tr>`).join('');
-  return `<details class="card card-collapsible" data-section-key="performance-too-new">
-    <summary class="card-header"><h2>${t('Too new to judge ({count})', { count: r.tooNew.length })}</h2></summary>
-    <div class="card-body">
-      <table class="table-responsive perf-new-table"><colgroup>
+  return `<details class="ui-tile span-12 ui-fold" data-section-key="performance-too-new">
+    <summary class="ui-tile-head"><h2 class="ui-tile-title">${t('Too new to judge ({count})', { count: r.tooNew.length })}</h2></summary>
+    <div class="perf-bleed">
+      <table class="table-responsive perf-new-table ui-table"><colgroup>
         <col class="col-member"><col class="col-date"><col class="col-days">
       </colgroup><thead><tr>
         <th>${t('Member')}</th><th>${t('Joined')}</th><th class="num">${t('Days in timeframe')}</th>
@@ -524,7 +509,7 @@ function wire(el) {
       page = 1;
       el.querySelectorAll('button[data-perf-timeframe]').forEach((b) => {
         const on = b.dataset.perfTimeframe === tf;
-        b.classList.toggle('active', on);
+        b.classList.toggle('is-active', on);
         b.setAttribute('aria-pressed', String(on));
       });
       el.setAttribute('aria-busy', 'true');

@@ -135,6 +135,27 @@ stays whole.
   the band's colour, the goal line (bright) and the pace line (thin, only while
   the period runs).
 
+### Headline stat strip
+
+A page's headline numbers for the window on screen (Analytics, Performance,
+a chest's drill-down): `.ui-stats` holds `statHtml()` cards, as many to a
+row as fit (two on a phone).
+
+```js
+`<div class="ui-stats">${statHtml({ label: t('Chests'), value: n.toLocaleString(), sub: deltaHtml(...) })}</div>`
+```
+
+`value`, `of`, `sub` and `extra` are HTML (`of` is the quiet " of 100",
+`extra` a sparkline).
+
+### Section heading and collapsible tile
+
+- A heading outside a tile, above a table card: `<h2 class="ui-section-title">`.
+- Fine print or a long secondary list folds away in a tile:
+  `<details class="ui-tile span-12 ui-fold" data-section-key="…">` with
+  `<summary class="ui-tile-head"><h2 class="ui-tile-title">…</h2></summary>`.
+  The chevron is drawn for you; the open/closed state is remembered per page.
+
 ### Notices, empty, error
 
 - **Notices:** `notesHtml([...lines])` renders plain facts in a quiet box.
