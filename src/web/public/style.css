@@ -1320,76 +1320,6 @@ th.sortable:hover {
   gap: 20px;
 }
 
-/* ─── Clan Records card (Analytics page) ─── */
-.records-podium-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-
-.records-podium {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-}
-
-.records-podium-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent-gold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 12px;
-}
-
-.records-podium-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.records-podium-row:last-child {
-  border-bottom: 0;
-}
-
-.records-podium-medal {
-  font-size: 22px;
-  line-height: 1;
-  width: 28px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.records-podium-body {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.records-podium-name {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.records-podium-meta {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-/* Stack podiums vertically on narrow screens. */
-@media (max-width: 640px) {
-  .records-podium-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Member profile page single-day record badge */
 .record-badge {
   display: inline-flex;
@@ -11902,4 +11832,216 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .mboard-pts { grid-area: pts; }
   .mboard-bar { grid-area: bar; align-self: center; height: 10px; }
   .mboard-band { grid-area: band; font-size: 12px; text-align: right; }
+}
+
+/* ─── Home (pages/home.js): a bento of tiles, shaped by role ───
+   One period scrubber (the Members board's .mboard-period) drives every tile.
+   Desktop: a 12-column grid, tiles span 4 / 6 / 8 / 12. A tablet: halves.
+   A phone: one column, in the order the role's tile list gives. */
+.home { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  gap: 16px;
+}
+.home-tile {
+  grid-column: span 6;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.home-tile.span-4 { grid-column: span 4; }
+.home-tile.span-8 { grid-column: span 8; }
+.home-tile.span-12 { grid-column: span 12; }
+.home-tile.is-you { border-color: var(--accent-gold-border); }
+.home-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.home-tile-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.home-tile-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  text-decoration: none;
+}
+.home-tile-link:hover { text-decoration: underline; }
+
+.home-big { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.home-big.is-xl { font-size: 40px; }
+.home-big-of { font-size: 16px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0; }
+.home-label { font-size: 12.5px; color: var(--text-secondary); }
+.home-sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.home-copy { margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.home-big-row { display: flex; flex-wrap: wrap; gap: 14px 32px; }
+.home-bar { height: 10px; }
+
+.home-delta { font-size: 12.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.home-delta.is-up { color: var(--accent-green-soft-text); }
+.home-delta.is-down { color: var(--accent-red-soft-text); }
+.home-delta.is-flat { color: var(--text-secondary); }
+.home-delta-label { font-weight: 500; color: var(--text-secondary); }
+.home-band { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+p.home-band { white-space: normal; line-height: 1.45; }
+.home-band.band-ok { color: var(--accent-green-soft-text); }
+.home-band.band-pace { color: var(--accent-warn-text); }
+.home-band.band-behind { color: var(--accent-red-soft-text); }
+
+/* Your week */
+.home-you { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.avatar-lg { width: 56px; height: 56px; font-size: 22px; }
+.home-you-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.home-you-name { font-size: 20px; font-weight: 800; color: var(--text-primary); text-decoration: none; overflow-wrap: anywhere; }
+.home-you-name:hover { text-decoration: underline; }
+
+/* Clan points */
+.home-points-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 28px; }
+.home-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 16px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.home-facts dt { color: var(--text-secondary); }
+.home-facts dd { margin: 0; font-weight: 600; text-align: right; color: var(--text-primary); }
+.home-chart { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.home-chart svg { display: block; width: 100%; height: 150px; }
+.home-chart-area { fill: var(--accent-gold-bg); stroke: none; }
+.home-chart-this { fill: none; stroke: var(--accent-gold); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.home-chart-prev { fill: none; stroke: var(--text-secondary); stroke-width: 2; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; }
+.home-chart-target { fill: none; stroke: var(--text-primary); stroke-width: 1.5; stroke-dasharray: 2 4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.home-chart-key { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--text-secondary); }
+.home-chart-key > span { display: inline-flex; align-items: center; gap: 6px; }
+.home-key { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid var(--accent-gold); }
+.home-key.is-prev { border-top: 2px dashed var(--text-secondary); }
+.home-key.is-target { border-top: 2px dotted var(--text-primary); }
+
+/* Lists of rows: collectors, movers, sources, events, chests, records */
+.home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.home-row:last-child { border-bottom: 0; }
+.home-rank { flex: none; width: 34px; font-size: 13px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.home-medal { flex: none; width: 24px; font-size: 18px; text-align: center; }
+.home-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.home-row-name { font-size: 14px; font-weight: 600; color: var(--text-primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.home-row-name:hover { text-decoration: underline; }
+.home-row-name .member-link { color: var(--text-primary); }
+.home-row-n { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.home-row-sub { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.home-row-who { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.home-row-who a { color: var(--text-primary); }
+.home-event-when { flex: none; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
+.home-event-when.is-live { color: var(--accent-green-soft-text); font-weight: 600; }
+
+/* Goal status: three bands, each a button into the Members board */
+.home-bands { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.home-band-n { font-weight: 700; font-variant-numeric: tabular-nums; }
+.home-goal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.home-goal-btn {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.home-goal-btn:hover { background: var(--bg-card-hover); }
+.home-goal-btn:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.home-goal-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.home-goal-n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.home-goal-names { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Roster changes: plain facts */
+.home-facts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; }
+.home-facts-list a { color: var(--text-primary); font-weight: 600; }
+.home-when { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Records */
+.home-podiums { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; }
+.home-podium-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+
+/* Clans (superadmin) */
+.home-clans { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; }
+.home-clan {
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-areas: "logo text today" "logo status today";
+  align-items: center;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.home-clan:hover { background: var(--bg-card-hover); }
+.home-clan:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.home-clan.is-here { border-color: var(--accent-gold-border); background: var(--accent-gold-bg); cursor: default; }
+.home-clan-logo { grid-area: logo; width: 32px; height: 32px; border-radius: 8px; object-fit: contain; }
+.home-clan-logo.is-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--subtle-bg-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.home-clan-text { grid-area: text; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.home-clan-name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-clan-today { grid-area: today; display: flex; flex-direction: column; align-items: flex-end; }
+.home-clan-n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.home-clan .shell-clan-status { grid-area: status; }
+
+/* A tablet: halves and wholes. */
+@media (max-width: 1100px) {
+  .home-tile.span-4, .home-tile.span-6 { grid-column: span 6; }
+  .home-tile.span-8, .home-tile.span-12 { grid-column: span 12; }
+}
+/* A phone: one column, in the role's order. */
+@media (max-width: 760px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .home-tile, .home-tile.span-4, .home-tile.span-6, .home-tile.span-8, .home-tile.span-12 { grid-column: 1 / -1; }
+  .home-tile { padding: 14px 16px; }
+  .home-big.is-xl { font-size: 32px; }
+  .home-clans { grid-template-columns: minmax(0, 1fr); }
+  .home-points-head .home-facts { width: 100%; }
 }

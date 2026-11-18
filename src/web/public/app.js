@@ -90,7 +90,7 @@ import {
   openLeaderboardFaqModal,
   copyLeaderboardToClipboard,
 } from './pages/leaderboard.js';
-import { renderDashboard } from './pages/dashboard.js';
+import { renderHome } from './pages/home.js';
 import {
   renderMembers,
   renderMembersTable,
@@ -847,7 +847,7 @@ async function renderRoute(page, content) {
   }
 
   switch (page) {
-    case 'dashboard': await renderDashboard(content); break;
+    case 'dashboard': await renderHome(content); break;
     case 'analytics': await renderAnalytics(content); break;
     case 'leaderboard': await renderLeaderboard(content); break;
     case 'triumphal': {
@@ -886,7 +886,7 @@ async function renderRoute(page, content) {
   }
 }
 
-// ─── Dashboard moved to ./pages/dashboard.js — imported above. ───
+// ─── Home (#dashboard) lives in ./pages/home.js — imported above. ───
 // ─── Analytics + Chest Drill-Down moved to ./pages/analytics.js — imported above. ───
 // ─── Leaderboard moved to ./pages/leaderboard.js — imported above. ───
 // ─── Members moved to ./pages/members.js — imported above. ───
