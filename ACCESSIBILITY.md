@@ -20,8 +20,9 @@ and how to tell us when something gets in your way.
   rows that expand when tapped.
 - **Themes:** Auto, Light, Dark and OLED. Auto follows your device — Light in
   light mode, OLED in dark mode — and is what you get until you choose. Signed-in
-  users pick from the user menu (or the phone menu); a public share link has its
-  own picker in the header, remembered by that browser.
+  users pick from the account menu at the foot of the sidebar (on a phone, under
+  More); a public share link has its own picker in the header, remembered by
+  that browser.
 - **Assistive technology:** not formally tested with screen readers or other
   assistive tools yet. Reports from people who use them are especially welcome.
 - **Language:** the interface is English only. Player names are shown in
@@ -41,7 +42,12 @@ and how to tell us when something gets in your way.
   behind can't be reached until it closes, Escape closes only the topmost
   dialog, and focus returns to whatever opened it. Enter in a confirmation does
   what the focused button says, and destructive confirmations open on Cancel.
-  The phone menu behaves the same way.
+  The phone's More sheet and the tablet's unfolded menu behave the same way;
+  the clan switcher and the account menu close on Escape and hand focus back to
+  their button.
+- **The folded menu still names everything.** With the sidebar folded to
+  icons, every label stays in the page for screen readers and shows beside the
+  icon on hover or keyboard focus.
 - **The login bridge doesn't trap the keyboard.** Every key typed in the game
   view goes to the game, except **Shift+Esc**, which leaves it.
 - **Charts have text alternatives.** Each chart on the Analytics, Might and
@@ -49,10 +55,14 @@ and how to tell us when something gets in your way.
   table" option under it with every value it draws.
 - **Colour is never the only signal.** The leaderboard's goal colours, the
   Analytics top contributors and the ChestTracker tab's target colours each
-  carry a symbol (✓ reached, ◐ close, ↓ below) and the status in words.
+  carry a symbol (✓ reached, ◐ close, ↓ below) and the status in words. So do
+  the scanner card (✓ idle, ◐ scanning, ! error) and the clan switcher's rows
+  (✓ Active, ◐ Scanning, ‖ Paused, ! Needs re-authentication).
 - **Text contrast meets WCAG AA (4.5:1)** in all four themes, for every text and
   background pair the interface paints. A test checks this on every build, so
-  a colour change that breaks it can't ship.
+  a colour change that breaks it can't ship. The outline of the shell's
+  controls (clan switcher, fold and close buttons) holds 3:1 against every
+  surface it sits on, checked by the same test.
 - **"Reduce motion" is respected.** With the system setting on, animations and
   transitions are cut to nothing, and charts draw without animating.
 - **Keyboard focus is always visible**, with a focus ring in every theme.

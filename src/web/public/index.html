@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>TB Chest Counter</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <!-- Apply the user's saved theme synchronously before the stylesheet
@@ -40,6 +40,18 @@
       }
     })();
   </script>
+  <script>
+    // The sidebar's width before first paint, so a desktop folded to the icon
+    // rail never flashes the full menu. Desktop (≥1100px) follows this
+    // browser's choice; the tablet width is always the rail. lib/shell.js keeps
+    // the attribute current from here on (resizes, the fold button).
+    (function () {
+      var rail = false;
+      try { rail = localStorage.getItem('navRail') === '1'; } catch (_) {}
+      if (window.innerWidth < 1100) rail = true;
+      document.documentElement.setAttribute('data-nav', rail ? 'rail' : 'full');
+    })();
+  </script>
   <link rel="stylesheet" href="/base.css">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/external.css">
@@ -48,153 +60,175 @@
        CSP would otherwise have to allow an external script origin. -->
   <script src="/vendor/chart.umd.js"></script>
 </head>
-<body>
-  <div class="topbar">
-  <div class="header">
-    <a href="#dashboard" class="brand">
+<body class="app-shell">
+  <!-- ══ App shell (style.css "App shell"; behaviour in lib/shell.js) ══
+       One sidebar, three layouts:
+         ≥1100px  the full sidebar, which folds to an icon rail (remembered
+                  per browser);
+         641–1099 the icon rail, unfolding over the page;
+         ≤640px   a bottom tab bar, whose More opens this same sidebar as a
+                  sheet — so every control exists once and every id app.js
+                  looks up stays unique. -->
+
+  <!-- Phone only: the brand, the clan being viewed and the scanner's state.
+       Scrolls away with the page. -->
+  <header class="shell-phonebar">
+    <a href="#dashboard" class="shell-phonebar-brand" aria-label="Dashboard" data-i18n-attr="aria-label">
       <svg class="brand-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <!-- Chest lid -->
         <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
-        <!-- Chest body -->
         <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
-        <!-- Dark metal band -->
         <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
-        <!-- Lock plate -->
         <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
-        <!-- Keyhole -->
         <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
         <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
       </svg>
-      <span class="brand-name">TB Chest Counter</span>
     </a>
-    <div class="header-right">
-      <div class="status">
-        <span class="dot" id="statusDot"></span>
-        <span id="statusText" class="is-loading" data-i18n>Loading...</span>
-        <button id="statusErrorBtn" class="status-error-btn is-hidden" type="button" aria-label="Show last scan error details" data-i18n data-i18n-attr="aria-label">Details</button>
-      </div>
-      <!-- While a scan runs: the clan, phase, elapsed time and place in the
-           cycle, in place of the status line, countdown and scan buttons.
-           Filled by lib/scan-card.js; a second copy opens the phone menu. -->
-      <div class="scan-card" data-scan-card></div>
-      <div class="next-scan" id="nextScan"></div>
-      <!-- Superadmin-only manual scans, next to the scan status they start.
-           Phones get the same pair in the slide-out menu (nav-mobile-scan). -->
-      <div class="scan-controls is-hidden" data-scan-controls>
-        <button class="btn btn-sm btn-primary" type="button" data-action="trigger-scan" data-scope="clan" data-i18n>Scan This Clan</button>
-        <button class="btn btn-sm" type="button" data-action="trigger-scan" data-scope="all" data-i18n>Scan All Clans</button>
-      </div>
-      <div id="statusErrorDetails" class="status-error-details is-hidden" role="status"></div>
-      <!-- Multi-clan: read-only label for clan-scoped users; superadmins
-           get a dropdown to switch which clan they're viewing. -->
-      <!-- The clan's in-game logo leads either control (decorative: the name
-           beside it says which clan). Filled by app.js once a scan read it. -->
-      <div id="clanIndicator" class="clan-indicator is-hidden" aria-live="polite">
-        <img class="clan-header-logo is-hidden" data-clan-logo alt="" width="20" height="20" decoding="async">
-        <span class="clan-indicator-label" data-i18n>Clan</span>
-        <span id="clanIndicatorName" class="clan-indicator-name"></span>
-      </div>
-      <div id="clanSwitcher" class="clan-switcher is-hidden">
-        <img class="clan-header-logo is-hidden" data-clan-logo alt="" width="26" height="26" decoding="async">
-        <select id="clanSwitcherSelect" aria-label="Active clan" data-i18n-attr="aria-label"></select>
-      </div>
-      <div id="userInfo" class="user-info is-hidden">
-        <button id="userMenuBtn" class="user-menu-btn" aria-haspopup="true" aria-expanded="false">
-          <span id="userName" class="user-name"></span>
-          <svg class="user-menu-chevron" viewBox="0 0 12 12" width="10" height="10" fill="currentColor" aria-hidden="true">
-            <path d="M2 4 L6 8 L10 4 Z"/>
-          </svg>
-        </button>
-        <div id="userMenu" class="user-menu" hidden>
-          <div class="user-menu-section">
-            <div class="user-menu-section-label" data-i18n>Theme</div>
-            <div class="theme-segmented" role="group" aria-label="Color theme" data-i18n-attr="aria-label">
-              <button class="theme-segmented-btn" data-action="set-theme" data-theme="auto" type="button" title="Follow your device: Light in light mode, OLED in dark mode" data-i18n data-i18n-attr="title">Auto</button>
-              <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button" data-i18n>Light</button>
-              <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button" data-i18n>Dark</button>
-              <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
-            </div>
-          </div>
-          <div class="user-menu-section">
-            <label class="user-menu-section-label" for="userMenuLanguage" data-i18n>Language</label>
-            <select id="userMenuLanguage" class="lang-select" data-lang-select></select>
-          </div>
-          <div class="user-menu-divider" role="separator"></div>
-          <button class="user-menu-item" data-action="open-change-password" data-i18n>Change Password</button>
-          <button class="user-menu-item user-menu-item-danger" id="logoutBtn" data-i18n>Logout</button>
-        </div>
-      </div>
-      <button class="hamburger" id="hamburgerBtn" aria-label="Menu" data-i18n-attr="aria-label">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <line x1="3" y1="6" x2="21" y2="6"/>
-          <line x1="3" y1="12" x2="21" y2="12"/>
-          <line x1="3" y1="18" x2="21" y2="18"/>
+    <span class="shell-phonebar-clan" id="phonebarClan"></span>
+    <span class="shell-phonebar-status" id="phonebarStatus"></span>
+  </header>
+
+  <aside class="shell-side" id="shellSide" aria-label="Menu" data-i18n-attr="aria-label">
+    <div class="shell-side-head">
+      <a href="#dashboard" class="shell-brand" data-tip="TB Chest Counter">
+        <svg class="brand-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+          <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+          <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
+          <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
+          <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
+          <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
         </svg>
+        <span class="shell-brand-name">TB Chest Counter</span>
+      </a>
+      <!-- Desktop: fold to the icon rail and back. Tablet: unfold over the page. -->
+      <button class="shell-icon-btn shell-fold" id="shellFoldBtn" type="button" aria-controls="shellSide" aria-expanded="true">
+        <svg class="nav-icon shell-fold-in" viewBox="0 0 24 24" aria-hidden="true"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+        <svg class="nav-icon shell-fold-out" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 17 5-5-5-5"/><path d="m6 17 5-5-5-5"/></svg>
+        <span class="visually-hidden" id="shellFoldLabel">Fold the menu to icons</span>
+      </button>
+      <!-- Phone sheet only. -->
+      <h2 class="shell-sheet-title" id="shellSheetTitle" data-i18n>Menu</h2>
+      <button class="shell-icon-btn shell-sheet-close" id="shellSheetClose" type="button" aria-label="Close the menu" data-i18n-attr="aria-label">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
-  </div>
 
-  <div class="nav-overlay" id="navOverlay"></div>
+    <!-- The clan being viewed. Filled by lib/shell.js from /api/clans/switcher:
+         a switcher for an account that can change clans, a label otherwise. -->
+    <div class="shell-clan" id="shellClan"></div>
 
-  <!-- Grouped nav. Each group hides itself (CSS :has) when every link in it
-       is hidden for this user's role, so a member never sees an empty
-       "Manage" heading. Icons are the sidebar's (desktop) and drawer's
-       (phone); the in-between top bar shows labels only. -->
-  <nav id="navBar">
-    <div class="nav-group">
-      <div class="nav-group-label" data-i18n>Overview</div>
-      <a href="#" class="active" data-page="dashboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="nav-label" data-i18n>Dashboard</span></a>
-      <a href="#" data-page="analytics"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg><span class="nav-label" data-i18n>Analytics</span></a>
-      <a href="#" data-page="leaderboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span class="nav-label" data-i18n>Leaderboard</span></a>
-      <!-- Admins only (app.js unhides it): names over- and underachievers. -->
-      <a href="#" data-page="performance" id="navPerformance" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg><span class="nav-label" data-i18n>Performance</span></a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-group-label" data-i18n>Clan</div>
-      <a href="#" data-page="clan"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg><span class="nav-label" data-i18n>My Clan</span></a>
-      <a href="#" data-page="members"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label" data-i18n>Members</span></a>
-      <a href="#" data-page="chats"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg><span class="nav-label" data-i18n>Chats</span></a>
-      <a href="#" data-page="events"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg><span class="nav-label" data-i18n>Events</span></a>
-      <a href="#" data-page="tools"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/><path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg><span class="nav-label" data-i18n>Tools</span></a>
-      <a href="#" data-page="chest-rewards"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.6 3 11.2 5.3 12 8c.8-2.7 2.4-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg><span class="nav-label" data-i18n>Chest rewards</span></a>
-      <a href="#" data-page="resources"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span class="nav-label" data-i18n>Resources</span></a>
-      <a href="#" data-page="sessions"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><span class="nav-label" data-i18n>Scan History</span></a>
-      <a href="#" data-page="external" id="navExternal" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span class="nav-label" data-i18n>ChestTracker</span></a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-group-label" data-i18n>Manage</div>
-      <a href="#" data-page="admin" id="navAdmin" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="nav-label" data-i18n>Admin</span><span id="navAdminDot" class="nav-dot is-hidden"><span class="visually-hidden" data-i18n> (items need review)</span></span></a>
-      <a href="#" data-page="users" id="navUsers" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span class="nav-label" data-i18n>Users</span></a>
-      <!-- Superadmin-only: manage clans (create, rename, archive, Discord
-           + ChestTracker per-clan settings, delete). -->
-      <a href="#" data-page="clans" id="navClans" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg><span class="nav-label" data-i18n>Clans</span></a>
-      <!-- Superadmin-only: instance-wide settings (scan interval,
-           event dates, restart, backup/import). -->
-      <a href="#" data-page="system" id="navSystem" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="nav-label" data-i18n>System</span><span id="navSystemDot" class="nav-dot is-hidden"><span class="visually-hidden" data-i18n> (new warnings logged)</span></span></a>
-    </div>
-    <!-- Mobile-only account section at the bottom of the slide-out menu -->
-    <div class="nav-mobile-account">
+    <!-- The scanner, always in view. Everyone sees its state and the next
+         scan; only a superadmin gets the buttons (app.js). While a scan runs
+         the scan card (lib/scan-card.js) stands in for the state line. -->
+    <section class="shell-scanner" id="shellScanner" aria-labelledby="shellScannerLabel" data-state="loading">
+      <div class="shell-label" id="shellScannerLabel" data-i18n>Scanner</div>
+      <div class="shell-scanner-state">
+        <span class="shell-scanner-glyph" id="statusGlyph" aria-hidden="true">·</span>
+        <span id="statusText" class="shell-scanner-text is-loading" data-i18n>Loading...</span>
+        <button id="statusErrorBtn" class="status-error-btn is-hidden" type="button" aria-label="Show last scan error details" aria-controls="statusErrorDetails" data-i18n data-i18n-attr="aria-label">Details</button>
+      </div>
+      <div class="shell-next-scan" id="nextScan"></div>
       <div class="scan-card" data-scan-card></div>
-      <div class="scan-controls nav-mobile-scan is-hidden" data-scan-controls>
-        <button class="btn btn-sm btn-primary" type="button" data-action="trigger-scan" data-scope="clan" data-i18n>Scan This Clan</button>
-        <button class="btn btn-sm" type="button" data-action="trigger-scan" data-scope="all" data-i18n>Scan All Clans</button>
+      <div class="scan-controls is-hidden" data-scan-controls>
+        <button class="btn btn-sm btn-primary" type="button" data-action="trigger-scan" data-scope="clan">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          <span class="btn-label" data-i18n>Scan This Clan</span>
+        </button>
+        <button class="btn btn-sm" type="button" data-action="trigger-scan" data-scope="all">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l2.5 2.5"/></svg>
+          <span class="btn-label" data-i18n>Scan All Clans</span>
+        </button>
       </div>
-      <div class="nav-mobile-account-label" data-i18n>Account</div>
-      <div class="nav-mobile-account-name" id="navMobileUserName"></div>
-      <!-- The user menu (and its theme picker) is hidden on phones, which left
-           no way to change theme there at all. -->
-      <div class="theme-segmented nav-mobile-theme" role="group" aria-label="Color theme" data-i18n-attr="aria-label">
-        <button class="theme-segmented-btn" data-action="set-theme" data-theme="auto" type="button" title="Follow your device: Light in light mode, OLED in dark mode" data-i18n data-i18n-attr="title">Auto</button>
-        <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button" data-i18n>Light</button>
-        <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button" data-i18n>Dark</button>
-        <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
+      <div id="statusErrorDetails" class="status-error-details is-hidden" role="status"></div>
+    </section>
+
+    <!-- Every page the signed-in role may use, grouped. app.js unhides the
+         gated ones; a group with nothing visible hides itself (CSS :has), so a
+         member never sees an empty "Manage" heading. -->
+    <nav id="navBar" class="shell-nav" aria-label="Pages" data-i18n-attr="aria-label">
+      <div class="nav-group">
+        <div class="nav-group-label" data-i18n>Overview</div>
+        <a href="#" class="active" data-page="dashboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="nav-label" data-i18n>Dashboard</span></a>
+        <a href="#" data-page="analytics"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg><span class="nav-label" data-i18n>Analytics</span></a>
+        <a href="#" data-page="leaderboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span class="nav-label" data-i18n>Leaderboard</span></a>
+        <!-- Admins only (app.js unhides it): names over- and underachievers. -->
+        <a href="#" data-page="performance" id="navPerformance" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg><span class="nav-label" data-i18n>Performance</span></a>
       </div>
-      <select class="lang-select nav-mobile-lang" data-lang-select aria-label="Language" data-i18n-attr="aria-label"></select>
-      <button class="nav-mobile-account-btn" data-action="open-change-password-mobile" data-i18n>Change Password</button>
-      <button class="nav-mobile-account-btn nav-mobile-account-btn-danger" id="logoutBtnMobile" data-i18n>Logout</button>
+      <div class="nav-group">
+        <div class="nav-group-label" data-i18n>Clan</div>
+        <a href="#" data-page="clan"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg><span class="nav-label" data-i18n>My Clan</span></a>
+        <a href="#" data-page="members"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label" data-i18n>Members</span></a>
+        <a href="#" data-page="chats"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg><span class="nav-label" data-i18n>Chats</span></a>
+        <a href="#" data-page="events"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg><span class="nav-label" data-i18n>Events</span></a>
+        <a href="#" data-page="tools"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M16 14v4"/><path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg><span class="nav-label" data-i18n>Tools</span></a>
+        <a href="#" data-page="chest-rewards"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.6 3 11.2 5.3 12 8c.8-2.7 2.4-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg><span class="nav-label" data-i18n>Chest rewards</span></a>
+        <a href="#" data-page="resources"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span class="nav-label" data-i18n>Resources</span></a>
+        <a href="#" data-page="sessions"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><span class="nav-label" data-i18n>Scan History</span></a>
+        <a href="#" data-page="external" id="navExternal" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span class="nav-label" data-i18n>ChestTracker</span></a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label" data-i18n>Manage</div>
+        <a href="#" data-page="admin" id="navAdmin" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="nav-label" data-i18n>Admin</span><span id="navAdminDot" class="nav-dot is-hidden"><span class="visually-hidden" data-i18n> (items need review)</span></span></a>
+        <a href="#" data-page="users" id="navUsers" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span class="nav-label" data-i18n>Users</span></a>
+        <!-- Clan admins (their own clan) and superadmins (every clan): create,
+             rename, archive, Discord + ChestTracker settings, delete. -->
+        <a href="#" data-page="clans" id="navClans" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg><span class="nav-label" data-i18n>Clans</span></a>
+        <!-- Superadmin-only: instance-wide settings (scan interval,
+             event dates, restart, backup/import). -->
+        <a href="#" data-page="system" id="navSystem" class="is-hidden"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="nav-label" data-i18n>System</span><span id="navSystemDot" class="nav-dot is-hidden"><span class="visually-hidden" data-i18n> (new warnings logged)</span></span></a>
+      </div>
+    </nav>
+
+    <!-- The account, at the foot. Desktop: a button opening a menu above it.
+         Phone sheet: the same menu laid out inline. -->
+    <div class="shell-account" id="userInfo">
+      <button id="userMenuBtn" class="shell-account-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userMenu">
+        <span class="shell-avatar" id="userInitial" aria-hidden="true"></span>
+        <span class="shell-account-text">
+          <span id="userName" class="shell-account-name"></span>
+          <span id="userRole" class="shell-account-role"></span>
+        </span>
+        <svg class="nav-icon shell-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 14 5-5 5 5"/></svg>
+      </button>
+      <div id="userMenu" class="user-menu" hidden>
+        <div class="user-menu-section shell-account-heading">
+          <div class="user-menu-section-label" data-i18n>Account</div>
+          <div class="shell-account-who" id="userMenuWho"></div>
+        </div>
+        <div class="user-menu-section">
+          <div class="user-menu-section-label" data-i18n>Theme</div>
+          <div class="theme-segmented" role="group" aria-label="Color theme" data-i18n-attr="aria-label">
+            <button class="theme-segmented-btn" data-action="set-theme" data-theme="auto" type="button" title="Follow your device: Light in light mode, OLED in dark mode" data-i18n data-i18n-attr="title">Auto</button>
+            <button class="theme-segmented-btn" data-action="set-theme" data-theme="light" type="button" data-i18n>Light</button>
+            <button class="theme-segmented-btn" data-action="set-theme" data-theme="dark" type="button" data-i18n>Dark</button>
+            <button class="theme-segmented-btn" data-action="set-theme" data-theme="oled" type="button">OLED</button>
+          </div>
+        </div>
+        <div class="user-menu-section">
+          <label class="user-menu-section-label" for="userMenuLanguage" data-i18n>Language</label>
+          <select id="userMenuLanguage" class="lang-select" data-lang-select></select>
+        </div>
+        <div class="user-menu-divider" role="separator"></div>
+        <button class="user-menu-item" type="button" data-action="open-change-password" data-i18n>Change Password</button>
+        <button class="user-menu-item user-menu-item-danger" type="button" id="logoutBtn" data-i18n>Logout</button>
+      </div>
     </div>
+  </aside>
+
+  <!-- Behind the unfolded tablet menu and the phone sheet; a tap closes them. -->
+  <div class="shell-scrim" id="shellScrim" hidden></div>
+
+  <!-- Phone only: the four pages members open most, and More for the rest. -->
+  <nav class="shell-tabbar" id="shellTabbar" aria-label="Main" data-i18n-attr="aria-label">
+    <a href="#" data-page="dashboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="nav-label" data-i18n>Dashboard</span></a>
+    <a href="#" data-page="members"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-label" data-i18n>Members</span></a>
+    <a href="#" data-page="leaderboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span class="nav-label" data-i18n>Leaderboard</span></a>
+    <a href="#" data-page="events"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg><span class="nav-label" data-i18n>Events</span></a>
+    <button type="button" class="shell-more" id="shellMoreBtn" aria-controls="shellSide" aria-expanded="false" aria-haspopup="dialog">
+      <span class="shell-more-icon"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg><span class="nav-dot is-hidden" id="shellMoreDot"><span class="visually-hidden" data-i18n> (something needs attention)</span></span></span>
+      <span class="nav-label" data-i18n>More</span>
+    </button>
   </nav>
-  </div>
 
   <!-- The page's own title, set by app.js from the active nav entry. -->
   <div class="container page-head" id="pageHead">
@@ -213,6 +247,10 @@
   <footer class="build-footer">
     <span id="buildInfo" class="build-info" title="" data-i18n>Loading…</span>
   </footer>
+
+  <!-- Rail tooltips (lib/shell.js): one element, placed beside whatever is
+       hovered or focused, because the scrolling rail would clip its own. -->
+  <div class="shell-tip" id="shellTip" aria-hidden="true" hidden></div>
 
   <!-- app.js loads external.js transitively via its `import { renderExternal }`.
        Keeping the entry point a single module script is enough — the

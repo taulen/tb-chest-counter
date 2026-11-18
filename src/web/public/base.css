@@ -136,6 +136,10 @@ html { scrollbar-gutter: stable; }
   --border: #1e2736;
   --border-light: #2a3545;
   --border-strong: #3a4a5e;
+  /* The outline that tells you a thing is a control (the shell's clan
+     switcher, fold and close buttons). Non-text, so 3:1 against every surface
+     it can sit on — the plain borders above are ~1.4:1 and only separate. */
+  --border-control: #62728c;
   --row-divider: rgba(30, 39, 54, 0.6);
   --row-divider-mobile: rgba(30, 39, 54, 0.4);
 
@@ -326,7 +330,10 @@ html { scrollbar-gutter: stable; }
 }
 
 /* ─── Light theme ─────────────────────────────────────────────── */
-[data-theme="light"] {
+/* On :root, not a bare [data-theme]: the theme picker's own buttons carry
+   data-theme="light" / "oled", and a bare selector repainted each one with
+   that theme's tokens — the Light button sat at 3.2:1 on OLED. */
+:root[data-theme="light"] {
   color-scheme: light;
 
   --bg-primary: #f6f8fb;
@@ -347,6 +354,7 @@ html { scrollbar-gutter: stable; }
   --border: #e1e5ec;
   --border-light: #ced4dc;
   --border-strong: #b6bec9;
+  --border-control: #828b99;
   --row-divider: rgba(30, 39, 54, 0.08);
   --row-divider-mobile: rgba(30, 39, 54, 0.06);
 
@@ -489,7 +497,7 @@ html { scrollbar-gutter: stable; }
 }
 
 /* ─── OLED theme (pure black for AMOLED) ───────────────────────── */
-[data-theme="oled"] {
+:root[data-theme="oled"] {
   color-scheme: dark;
 
   --bg-primary: #000000;
@@ -513,6 +521,7 @@ html { scrollbar-gutter: stable; }
   --border: #1f1f23;
   --border-light: #2c2c31;
   --border-strong: #3a3a3e;
+  --border-control: #5f5f66;
   --row-divider: rgba(255, 255, 255, 0.06);
   --row-divider-mobile: rgba(255, 255, 255, 0.04);
 

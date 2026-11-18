@@ -882,7 +882,7 @@ export function editUserClans(id, rerender) {
   const modal = contentModal({
     title: t('Clans for {user}', { user: user.username }),
     html: `
-      <p class="muted-copy">${t('Clans {user} can switch to from the header, and their role in each. <strong>Home</strong> is the clan the account belongs to — pick another to move it.', { user: esc(user.username) })}</p>
+      <p class="muted-copy">${t('Clans {user} can switch to with the clan switcher, and their role in each. <strong>Home</strong> is the clan the account belongs to — pick another to move it.', { user: esc(user.username) })}</p>
       <div class="user-clans-editor">
         <div class="user-clans-row user-clans-head" aria-hidden="true"><span>${t('Home')}</span><span class="user-clans-name">${t('Clan')}</span><span>${t('Role')}</span></div>
         ${rows}

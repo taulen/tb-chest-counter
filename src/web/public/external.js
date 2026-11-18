@@ -53,7 +53,7 @@ function withCode(path) {
         }),
       ]);
       // The ChestTracker tab only applies to clans with the integration
-      // enabled. A superadmin can switch the header clan-picker to a clan
+      // enabled. A superadmin can switch the sidebar's clan switcher to a clan
       // that has it disabled while sitting on this tab (the switch reloads
       // with the old #external hash) — rather than show an empty wireframe
       // for a feature that clan doesn't use, bounce back to the dashboard.

@@ -1,6 +1,6 @@
 # Multi-clan accounts
 
-An account has one **home** clan (`users.clan_id` + `users.role`) and may be granted **extra** clans in `user_clan_access` (v88), each with its own role, `admin` or `user`. It switches between them with the header clan switcher (`POST /api/clans/:clanId/activate`), the same one superadmins use. Superadmins never hold rows; they are cross-clan already.
+An account has one **home** clan (`users.clan_id` + `users.role`) and may be granted **extra** clans in `user_clan_access` (v88), each with its own role, `admin` or `user`. It switches between them with the clan switcher at the top of the sidebar (`GET /api/clans/switcher` lists them, `POST /api/clans/:clanId/activate` switches), the same one superadmins use; an account with only its home clan sees a plain label there instead. Superadmins never hold rows; they are cross-clan already.
 
 ## The security model is one choke point
 

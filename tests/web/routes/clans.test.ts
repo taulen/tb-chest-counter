@@ -59,6 +59,10 @@ import { createClansRouter } from '../../../src/web/routes/clans.js';
 import { sendClanTestMessage } from '../../../src/discord/bot.js';
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import { createUser } from '../../../src/data/repositories/user-repo.js';
+import { saveClanInfo } from '../../../src/data/repositories/game-clan-repo.js';
+import { createSession, updateSession } from '../../../src/data/repositories/session-repo.js';
+import { markClanNeedsReauth } from '../../../src/data/repositories/clan-repo.js';
+import { ScanStatus } from '../../../src/models/enums.js';
 
 describe('clans router — baseline coverage for Phase B1 split', () => {
   let cleanup: () => void;
@@ -100,6 +104,37 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
         expect(c.discordToken).toBeUndefined();
         expect(c).toHaveProperty('discordTokenSet');
       }
+    });
+  });
+
+  describe('GET /api/clans/switcher', () => {
+    it('lists every clan with what the switcher shows, and nothing heavier', async () => {
+      saveClanInfo(2, {
+        gameClanId: 22, tag: 'SIK', name: 'SIK', foundedAt: null, language: 'en', capitalId: null, position: [289, 10, 20], logo: null,
+      });
+      const s = createSession('manual', 2);
+      updateSession(s.id, 2, { status: ScanStatus.COMPLETED, completedAt: '2026-11-18T10:00:00.000Z' });
+      markClanNeedsReauth(2);
+
+      const res = await request(app).get('/api/clans/switcher');
+      expect(res.status).toBe(200);
+      expect(res.body.activeClanId).toBe(1);
+      const byId = new Map(res.body.clans.map((c: { id: number }) => [c.id, c]));
+      expect(byId.get(1)).toMatchObject({ name: 'Clan #1', kingdom: null, lastScanAt: null, isActive: true, needsReauth: false });
+      expect(byId.get(2)).toMatchObject({
+        name: 'Clan #2', kingdom: 289, lastScanAt: '2026-11-18T10:00:00.000Z', isActive: true, needsReauth: true,
+      });
+      // Share keys, goal history and Discord settings belong to /api/clans.
+      for (const c of res.body.clans) {
+        expect(c).not.toHaveProperty('shareLinks');
+        expect(c).not.toHaveProperty('discordTokenSet');
+      }
+    });
+
+    it('is not swallowed by GET /:clanId', async () => {
+      const res = await request(app).get('/api/clans/switcher');
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('error');
     });
   });
 
