@@ -403,8 +403,11 @@ Pages are role-gated. Members see:
 - **Analytics** — daily-activity charts, chest-type breakdown, top-contributor
   podiums, source breakdown, and a drill-down "all chest types" table, all for a
   selectable timeframe.
-- **Leaderboard** — daily / weekly / monthly / yearly / all-time, with
-  period stepping, sorting, pagination, and an FAQ of points per chest.
+- **Leaderboard** — day / week / month / year / all time on the same period
+  scrubber as Home and Members, the top three as a podium with their
+  pictures, the line naming the goal the window is judged against, then the
+  ranked table (sorting, 25 a page, guards / level / might columns). FAQ of
+  points per chest, Export CSV and Copy data sit beside the page title.
 - **Members** — opens on a **ranking board**: each member's chest points for
   the day, week, month or all time as a bar against the clan's goal line and,
   while the period runs, a pace line (where the goal stands by now), banded

@@ -240,9 +240,14 @@
   </nav>
 
   <!-- The page's own title, set by app.js from the active nav entry. -->
+  <!-- #pageActions: a page's own buttons beside its title (lib/ui-kit.js
+       setPageActions); emptied on every navigation. -->
   <div class="container page-head" id="pageHead">
-    <h1 class="page-title" id="pageTitle"></h1>
-    <p class="page-subtitle" id="pageSubtitle"></p>
+    <div class="page-head-text">
+      <h1 class="page-title" id="pageTitle"></h1>
+      <p class="page-subtitle" id="pageSubtitle"></p>
+    </div>
+    <div class="page-actions" id="pageActions"></div>
   </div>
 
   <div class="container" id="content">

@@ -265,6 +265,108 @@ const DEFAULT_FAQ_LABEL = t('FAQ');
 const chestCountLabel = (n) => tn(n, '{n} chest', '{n} chests');
 
 /**
+ * The board's core, shared by every leaderboard surface: the line naming the
+ * goal this view is judged against, the ranked table and its pagination.
+ * renderLeaderboardCardHtml wraps it in the classic card (public share page,
+ * Triumphal); the signed-in Leaderboard (pages/leaderboard.js) lays it out with
+ * the UI kit. `tableClass` adds classes to the <table> (the kit's .ui-table).
+ */
+export function leaderboardTablePartsHtml({
+  countLabel = DEFAULT_COUNT_LABEL,
+  countSubLabel = chestCountLabel,
+  pageEntries,
+  totalEntries,
+  currentPage,
+  totalPages,
+  period,
+  sortState,
+  pageSize,
+  playerCellHtml,
+  actions,
+  showMight = false,
+  showGuards = false,
+  goalWeeklyPoints = null,
+  goalWarnRatio = GOAL_WARN_RATIO,
+  tableClass = '',
+}) {
+  const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
+  const th = (key, labelHtml, className = '', title = '') =>
+    sortableThHtml({ key, labelHtml, sortState, action: actions.sort, className, title });
+
+  // Level and Might carry NO data-role on purpose: under 640px the compact-row
+  // engine reveals unmarked cells in the tap-to-expand panel, which is where
+  // two secondary numbers belong on a phone. Rank/Player/Points keep their
+  // lead/primary/metric roles, so the collapsed row looks exactly as it did.
+  const mightHeadHtml = showMight
+    ? `${th('level', t('Level'), 'num', t('Hero level at the latest daily snapshot'))}
+        ${th('might', t('Might'), 'num', t('Might at the latest daily snapshot'))}`
+    : '';
+
+  const mightCellsHtml = (e) => showMight
+    ? `<td data-label="${t('Level')}" class="num">${e.heroLevel == null ? '—' : e.heroLevel.toLocaleString()}</td>
+        <td data-label="${t('Might')}" class="num"${e.might == null ? '' : ` title="${e.might.toLocaleString()}"`}>${formatMightCompact(e.might)}</td>`
+    : '';
+
+  // Unmarked for the same reason as Level/Might: on a phone it belongs in the
+  // tap-to-expand panel, not in the collapsed row.
+  const guardsHeadHtml = showGuards
+    ? th('guards', t('Guards'), 'num', t('{guardsmen} tier from their research, as the game reports it — hover a value for when it was read', { guardsmen: tGame('Guardsmen') }))
+    : '';
+  const guardsCellsHtml = (e) => showGuards
+    ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`
+    : '';
+
+  const tableHtml = pageEntries.length > 0
+    ? `<table class="table-responsive leaderboard-table${tableClass ? ` ${tableClass}` : ''}"><colgroup>
+        <col class="col-rank">
+        <col class="col-player">
+        <col class="col-num">
+        <col class="col-num">
+        ${showGuards ? '<col class="col-num col-guards">' : ''}
+        ${showMight ? '<col class="col-num col-level"><col class="col-num">' : ''}
+      </colgroup><thead><tr>
+        ${th('rank', t('Rank'))}
+        ${th('name', t('Player'))}
+        ${th('chests', esc(countLabel), 'num', EARNED_ONLY_HINT)}
+        ${th('points', t('Points'), 'num', EARNED_ONLY_HINT)}
+        ${guardsHeadHtml}
+        ${mightHeadHtml}
+      </tr></thead><tbody>
+      ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal, goalWarnRatio)}">
+        <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
+        <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${esc(countSubLabel(e.totalChests))}</span></td>
+        <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
+        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal, goalWarnRatio)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal, goalWarnRatio))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal, undefined, goalWarnRatio)}</td>
+        ${guardsCellsHtml(e)}
+        ${mightCellsHtml(e)}
+      </tr>`).join('')}
+    </tbody></table>`
+    : `<div class="empty-state"><p>${t('No data.')}</p></div>`;
+
+  // Small line above the table naming the target this view is judged against.
+  // It states which timeframe it is and, when the number was derived rather
+  // than typed in, where it came from — otherwise a daily figure of 3,571 sat
+  // next to a weekly goal of 25,000 reads as two unrelated numbers.
+  const goalHintHtml = periodGoal !== null
+    ? `<div class="leaderboard-goal-hint">
+        <span class="goal-hint-swatch" aria-hidden="true"></span>
+        <span>${goalLineHtml(period, periodGoal)}${period === 'weekly' ? '' : ` <span class="goal-hint-src">${t('(from {weekly} / week)', { weekly: goalWeeklyPoints.toLocaleString() })}</span>`}</span>
+        <span class="goal-hint-src">${t('✓ green at the goal · ◐ amber from {threshold} · ↓ red below', { threshold: goalWarnThreshold(periodGoal, goalWarnRatio).toLocaleString() })}</span>
+      </div>`
+    : '';
+
+  const paginationControls = totalEntries > pageSize
+    ? `<div class="pagination">
+        <button class="btn btn-tight" data-action="${actions.pagePrev}" ${currentPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+        <span class="pagination-info">${t('Page {page} of {pages} · {players}', { page: currentPage, pages: totalPages, players: tn(totalEntries, '{n} player', '{n} players', { n: totalEntries }) })}</span>
+        <button class="btn btn-tight" data-action="${actions.pageNext}" ${currentPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
+      </div>`
+    : '';
+
+  return { goalHintHtml, tableHtml, paginationHtml: paginationControls };
+}
+
+/**
  * Render the full leaderboard card (header with period selector +
  * period-nav arrows, table, pagination). All state is passed in — this
  * function is pure.
@@ -327,9 +429,10 @@ export function renderLeaderboardCardHtml({
   faqLabel = DEFAULT_FAQ_LABEL,
   faqIsNew = false,
 }) {
-  const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
-  const th = (key, labelHtml, className = '', title = '') =>
-    sortableThHtml({ key, labelHtml, sortState, action: actions.sort, className, title });
+  const { goalHintHtml, tableHtml, paginationHtml: paginationControls } = leaderboardTablePartsHtml({
+    countLabel, countSubLabel, pageEntries, totalEntries, currentPage, totalPages, period,
+    sortState, pageSize, playerCellHtml, actions, showMight, showGuards, goalWeeklyPoints, goalWarnRatio,
+  });
 
   const periodNavRow = renderPeriodNav({
     period,
@@ -340,14 +443,6 @@ export function renderLeaderboardCardHtml({
     hideOnAll: true,
     title: period,
   });
-
-  const paginationControls = totalEntries > pageSize
-    ? `<div class="pagination">
-        <button class="btn btn-tight" data-action="${actions.pagePrev}" ${currentPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
-        <span class="pagination-info">${t('Page {page} of {pages} · {players}', { page: currentPage, pages: totalPages, players: tn(totalEntries, '{n} player', '{n} players', { n: totalEntries }) })}</span>
-        <button class="btn btn-tight" data-action="${actions.pageNext}" ${currentPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
-      </div>`
-    : '';
 
   const exportLink = exportHref
     ? `<a class="btn btn-tight leaderboard-export" href="${exportHref}" download
@@ -372,68 +467,6 @@ export function renderLeaderboardCardHtml({
   const periodSelector = PERIODS.map((p) =>
     `<button class="btn ${period === p ? 'active' : ''}" data-action="${actions.setPeriod}" data-period="${p}">${PERIOD_LABELS[p]}</button>`,
   ).join('');
-
-  // Level and Might carry NO data-role on purpose: under 640px the compact-row
-  // engine reveals unmarked cells in the tap-to-expand panel, which is where
-  // two secondary numbers belong on a phone. Rank/Player/Points keep their
-  // lead/primary/metric roles, so the collapsed row looks exactly as it did.
-  const mightHeadHtml = showMight
-    ? `${th('level', t('Level'), 'num', t('Hero level at the latest daily snapshot'))}
-        ${th('might', t('Might'), 'num', t('Might at the latest daily snapshot'))}`
-    : '';
-
-  const mightCellsHtml = (e) => showMight
-    ? `<td data-label="${t('Level')}" class="num">${e.heroLevel == null ? '—' : e.heroLevel.toLocaleString()}</td>
-        <td data-label="${t('Might')}" class="num"${e.might == null ? '' : ` title="${e.might.toLocaleString()}"`}>${formatMightCompact(e.might)}</td>`
-    : '';
-
-  // Unmarked for the same reason as Level/Might: on a phone it belongs in the
-  // tap-to-expand panel, not in the collapsed row.
-  const guardsHeadHtml = showGuards
-    ? th('guards', t('Guards'), 'num', t('{guardsmen} tier from their research, as the game reports it — hover a value for when it was read', { guardsmen: tGame('Guardsmen') }))
-    : '';
-  const guardsCellsHtml = (e) => showGuards
-    ? `<td data-label="${t('Guards')}" class="num">${guardsCellHtml(guardsFromEntry(e))}</td>`
-    : '';
-
-  const tableHtml = pageEntries.length > 0
-    ? `<table class="table-responsive leaderboard-table"><colgroup>
-        <col class="col-rank">
-        <col class="col-player">
-        <col class="col-num">
-        <col class="col-num">
-        ${showGuards ? '<col class="col-num col-guards">' : ''}
-        ${showMight ? '<col class="col-num col-level"><col class="col-num">' : ''}
-      </colgroup><thead><tr>
-        ${th('rank', t('Rank'))}
-        ${th('name', t('Player'))}
-        ${th('chests', esc(countLabel), 'num', EARNED_ONLY_HINT)}
-        ${th('points', t('Points'), 'num', EARNED_ONLY_HINT)}
-        ${guardsHeadHtml}
-        ${mightHeadHtml}
-      </tr></thead><tbody>
-      ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal, goalWarnRatio)}">
-        <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
-        <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${esc(countSubLabel(e.totalChests))}</span></td>
-        <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
-        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal, goalWarnRatio)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal, goalWarnRatio))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal, undefined, goalWarnRatio)}</td>
-        ${guardsCellsHtml(e)}
-        ${mightCellsHtml(e)}
-      </tr>`).join('')}
-    </tbody></table>`
-    : `<div class="empty-state"><p>${t('No data.')}</p></div>`;
-
-  // Small line above the table naming the target this view is judged against.
-  // It states which timeframe it is and, when the number was derived rather
-  // than typed in, where it came from — otherwise a daily figure of 3,571 sat
-  // next to a weekly goal of 25,000 reads as two unrelated numbers.
-  const goalHintHtml = periodGoal !== null
-    ? `<div class="leaderboard-goal-hint">
-        <span class="goal-hint-swatch" aria-hidden="true"></span>
-        <span>${goalLineHtml(period, periodGoal)}${period === 'weekly' ? '' : ` <span class="goal-hint-src">${t('(from {weekly} / week)', { weekly: goalWeeklyPoints.toLocaleString() })}</span>`}</span>
-        <span class="goal-hint-src">${t('✓ green at the goal · ◐ amber from {threshold} · ↓ red below', { threshold: goalWarnThreshold(periodGoal, goalWarnRatio).toLocaleString() })}</span>
-      </div>`
-    : '';
 
   return `<div class="card">
     <div class="card-header leaderboard-header">

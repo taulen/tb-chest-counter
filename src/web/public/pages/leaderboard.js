@@ -9,22 +9,29 @@
 // so the two surfaces can never drift apart.
 
 import { api } from '../lib/api.js';
-import { memberLink, formatUtcDateKey } from '../lib/ui.js';
+import { esc, memberLink, memberHash } from '../lib/ui.js';
+import { t, tn } from '../lib/i18n.js';
 import {
-  computeGameWindow, formatPeriodLabel, periodAnchorFromOffset, periodOffsetFromAnchor,
+  computeGameWindow, formatPeriodLabel, periodAnchorFromOffset,
 } from '../lib/period.js';
-import { sortLeaderboardEntries, renderLeaderboardCardHtml, copyLeaderboardData } from '../lib/leaderboard-render.js';
+import { sortLeaderboardEntries, leaderboardTablePartsHtml, copyLeaderboardData } from '../lib/leaderboard-render.js';
 import { openLeaderboardFaq } from '../lib/leaderboard-faq.js';
 import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
+import { avatarHtml } from '../lib/avatar.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, setPageActions, errorStateHtml, refusalText, wireRetry,
+} from '../lib/ui-kit.js';
 import {
   getGameDayRolloverUtcHour,
   getCurrentPeriod,
   setCurrentPeriod,
   getCurrentPeriodOffset,
   setCurrentPeriodOffset,
+  getWeekStart,
 } from '../lib/state.js';
 
 const PAGE_SIZE = 25;
+const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
 let currentPage = 1;
 let sortState = { key: 'points', dir: 'desc' };
 
@@ -43,15 +50,36 @@ const ACTIONS = {
 // roster, not just the page on screen.
 let lastCopy = null;
 
-export async function renderLeaderboard(el) {
+/**
+ * The signed-in Leaderboard (redesign wave 1, the UI kit's reference page):
+ * the period scrubber, the top three as a podium, the line naming the goal
+ * this window is judged against, then the ranked table in the kit's table
+ * card. FAQ, Export CSV and Copy data sit in the page header. The table core
+ * is lib/leaderboard-render.js's, shared with the public share page and
+ * Triumphal (which keep the classic card), so the boards can never disagree.
+ * The Members board is its sibling: bars against the goal there, the ranked
+ * table and podium here.
+ *
+ * `navigate` is the router's navigateTo (period changes go through the URL).
+ */
+export async function renderLeaderboard(el, { navigate } = {}) {
   // The goal is a separate call because /leaderboard answers with a bare
-  // array that the Dashboard also consumes — see the route comment. Fetched
-  // in parallel, and a failure there is non-fatal: the board renders without
-  // colouring rather than not at all.
-  const [leaderboard, goal] = await Promise.all([
+  // array that Home also consumes — see the route comment. Fetched in
+  // parallel, and a failure there is non-fatal: the board renders without
+  // colouring rather than not at all. /game/roster gives the podium pictures.
+  const [leaderboard, goal, roster] = await Promise.all([
     api(buildLeaderboardQuery()),
     api('/leaderboard/goal').catch(() => null),
+    api('/game/roster').catch(() => null),
   ]);
+
+  // A refusal (429, a 500's { error, ref }) arrives as an object, not a list.
+  if (!Array.isArray(leaderboard)) {
+    setPageActions('');
+    el.innerHTML = errorStateHtml(t('The leaderboard could not be loaded.'), refusalText(leaderboard));
+    wireRetry(el, () => renderLeaderboard(el, { navigate }));
+    return;
+  }
 
   // Backend returns rows in canonical "true rank" order (points DESC,
   // chests DESC, name ASC) — keep e.rank pinned to that even when the
@@ -92,16 +120,17 @@ export async function renderLeaderboard(el) {
     goalWarnRatio,
   };
 
-  el.innerHTML = renderLeaderboardCardHtml({
+  const period = getCurrentPeriod() || 'all';
+  const offset = getCurrentPeriodOffset();
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  const { goalHintHtml, tableHtml, paginationHtml } = leaderboardTablePartsHtml({
     pageEntries,
     totalEntries,
     currentPage,
     totalPages,
-    period: getCurrentPeriod(),
-    offset: getCurrentPeriodOffset(),
-    exportHref,
+    period,
     sortState,
-    rolloverHr: getGameDayRolloverUtcHour(),
     pageSize: PAGE_SIZE,
     playerCellHtml: (e) => memberLink(e.memberId, e.memberName),
     actions: ACTIONS,
@@ -109,7 +138,58 @@ export async function renderLeaderboard(el) {
     showGuards,
     goalWeeklyPoints,
     goalWarnRatio,
+    tableClass: 'ui-table',
   });
+
+  setPageActions(pageActionsHtml(exportHref, totalEntries > 0));
+  el.innerHTML = `<div class="lb">
+      ${periodScrubberHtml({
+        periods: PERIODS, period, offset, rolloverHr, weekStart,
+        win: computeGameWindow(period, offset, rolloverHr, weekStart),
+      })}
+      ${podiumHtml(leaderboard, roster?.members || {})}
+      ${goalHintHtml}
+      <div class="ui-table-card">
+        ${tableHtml}
+        ${paginationHtml}
+      </div>
+    </div>`;
+  wirePeriodScrubber(el, {
+    onPeriod: (p) => setPeriod(p, navigate),
+    onStep: (delta) => changePeriodOffset(delta, navigate),
+  });
+}
+
+/** FAQ, Export CSV (the window on screen) and Copy data, beside the page title. */
+function pageActionsHtml(exportHref, hasRows) {
+  return `<button type="button" class="btn" data-action="${ACTIONS.openFaq}" title="${esc(t('What each chest is worth, and how the board works'))}">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
+      ${esc(t('FAQ'))}
+    </button>
+    <a class="btn" href="${esc(exportHref)}" download title="${esc(t('Download this timeframe as CSV'))}">${esc(t('Export CSV'))}</a>
+    ${hasRows ? `<button type="button" class="btn" data-action="${ACTIONS.copyData}" title="${esc(t('Copy every player in this timeframe as text'))}">${esc(t('Copy data'))}</button>` : ''}`;
+}
+
+/**
+ * The top three of the window, by canonical rank whatever the table's sort:
+ * picture, name, points and chests. Nothing when nobody has points yet.
+ */
+function podiumHtml(entries, game) {
+  const top = entries.filter((e) => (e.totalPoints || 0) > 0 && e.rank <= 3).sort((a, b) => a.rank - b.rank).slice(0, 3);
+  if (!top.length) return '';
+  return `<ol class="lb-podium" aria-label="${esc(t('Top three'))}">
+      ${top.map((e) => `<li class="lb-podium-place place-${e.rank}">
+        <a class="lb-podium-card" href="${memberHash(e.memberId)}">
+          <span class="rank rank-${e.rank} lb-podium-rank">#${e.rank}</span>
+          ${avatarHtml({ username: e.memberName, avatar: game[e.memberId]?.avatar ?? null }, { size: 'lg' })}
+          <span class="lb-podium-who">
+            <span class="lb-podium-name">${esc(e.memberName)}</span>
+            <span class="lb-podium-sub">${esc(tn(e.totalChests || 0, '{n} chest', '{n} chests', { n: (e.totalChests || 0).toLocaleString() }))}</span>
+          </span>
+          <span class="lb-podium-pts"><span class="lb-podium-n">${(e.totalPoints || 0).toLocaleString()}</span> <span class="lb-podium-unit">${esc(t('points'))}</span></span>
+        </a>
+      </li>`).join('')}
+    </ol>`;
 }
 
 function buildLeaderboardQuery() {

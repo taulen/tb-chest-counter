@@ -17,8 +17,11 @@
 import { api } from '../lib/api.js';
 import { esc, memberHash, formatDate, formatDateShort, formatRelativeTime, chestHash, sourceLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
-import { computeGameWindow, formatPeriodLabel } from '../lib/period.js';
-import { goalDaysForPeriod, scaleGoalForPeriod } from '../lib/leaderboard-render.js';
+import { computeGameWindow } from '../lib/period.js';
+import { scaleGoalForPeriod } from '../lib/leaderboard-render.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, tileHtml, tileLinkHtml, deltaHtml, bandHtml, barHtml as kitBarHtml, asList,
+} from '../lib/ui-kit.js';
 import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { getCurrentUser, getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
 import { gameRankName } from '../lib/game-facts.js';
@@ -30,12 +33,6 @@ import { openAddClanDialog } from '../lib/add-clan.js';
 
 const DAY_MS = 86_400_000;
 const PERIODS = ['daily', 'weekly', 'monthly', 'all'];
-const PERIOD_LABEL = { daily: () => t('Day'), weekly: () => t('Week'), monthly: () => t('Month'), all: () => t('All') };
-const BANDS = {
-  ok: { glyph: '✓', label: () => t('Reached') },
-  pace: { glyph: '◐', label: () => t('On pace') },
-  behind: { glyph: '↓', label: () => t('Behind') },
-};
 const DELTA_LABEL = {
   daily: { now: () => t('vs yesterday by now'), past: () => t('vs the day before') },
   weekly: { now: () => t('vs last week by now'), past: () => t('vs the week before') },
@@ -65,41 +62,13 @@ function analyticsQuery(win, limit = 5) {
 
 const num = (n) => Number(n || 0).toLocaleString();
 
-/** "▲ 1,234" / "▼ 56" / "± 0", with a word for the colour. */
-function deltaHtml(delta, label) {
-  if (delta === null || delta === undefined) return '';
-  const cls = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : 'is-flat';
-  const glyph = delta > 0 ? '▲' : delta < 0 ? '▼' : '±';
-  return `<span class="home-delta ${cls}"><span aria-hidden="true">${glyph}</span> ${num(Math.abs(delta))}${label ? ` <span class="home-delta-label">${esc(label)}</span>` : ''}</span>`;
-}
-
-function bandHtml(band) {
-  if (!band) return '';
-  const b = BANDS[band];
-  return `<span class="home-band band-${band}"><span aria-hidden="true">${b.glyph}</span> ${esc(b.label())}</span>`;
-}
-
-function tile(id, title, body, { span = 6, link = '', cls = '' } = {}) {
-  return `<section class="home-tile span-${span}${cls ? ` ${cls}` : ''}" aria-labelledby="home-t-${id}">
-      <div class="home-tile-head"><h2 id="home-t-${id}" class="home-tile-title">${title}</h2>${link}</div>
-      ${body}
-    </section>`;
-}
-
-function tileLink(href, label) {
-  return `<a class="home-tile-link" href="${href}">${esc(label)} <span aria-hidden="true">→</span></a>`;
-}
-
-/** A bar against a goal tick and a pace tick (the Members board's look). */
+/** Home's bars: the kit's, stretched to the tile (.home-bar). */
 function barHtml(points, goal, pace, band, max) {
-  const top = Math.max(max || 0, goal || 0, points, 1);
-  const pct = (v) => `${Math.max(0, Math.min(100, (v / top) * 100)).toFixed(2)}%`;
-  return `<div class="mboard-bar home-bar" aria-hidden="true">
-      <div class="mboard-fill${band ? ` band-${band}` : ''}" style="--w:${pct(points)}"></div>
-      ${pace ? `<span class="mboard-tick is-pace" style="--x:${pct(pace)}"></span>` : ''}
-      ${goal ? `<span class="mboard-tick is-goal" style="--x:${pct(goal)}"></span>` : ''}
-    </div>`;
+  return kitBarHtml({ points, goal, pace, band, max, cls: 'home-bar' });
 }
+
+const tile = tileHtml;
+const tileLink = tileLinkHtml;
 
 /** Draw Home into `el`. */
 export async function renderHome(el) {
@@ -155,10 +124,10 @@ export async function renderHome(el) {
   const fraction = running ? Math.min(1, Math.max(0, (now - Date.parse(win.from)) / (Date.parse(win.to) - Date.parse(win.from)))) : 1;
   const pacePts = goalPts && running ? Math.round(goalPts * fraction) : null;
 
-  const prevByMember = new Map((prevEntries || []).map((e) => [e.memberId, e.totalPoints || 0]));
-  const prevChestsByMember = new Map((prevEntries || []).map((e) => [e.memberId, e.totalChests || 0]));
+  const prevByMember = new Map(asList(prevEntries).map((e) => [e.memberId, e.totalPoints || 0]));
+  const prevChestsByMember = new Map(asList(prevEntries).map((e) => [e.memberId, e.totalChests || 0]));
   const game = roster?.members || {};
-  const rows = (entries || []).map((e) => {
+  const rows = asList(entries).map((e) => {
     const g = game[e.memberId] || {};
     const points = e.totalPoints || 0;
     return {
@@ -180,18 +149,18 @@ export async function renderHome(el) {
 
   const ctx = {
     stats, role, isAdmin, isSuper, period, offset, win, running, rolloverHr, weekStart,
-    goalPts, pacePts, rows, prevEntries: prevEntries || [], analytics,
-    events: events?.events || [], recent: recent || [], records,
-    changes: changes?.entries || [], ranks: ranks?.entries || [],
+    goalPts, pacePts, rows, prevEntries: asList(prevEntries), analytics,
+    events: asList(events?.events), recent: asList(recent), records,
+    changes: asList(changes?.entries), ranks: asList(ranks?.entries),
     coverage: analyticsIsThisWeek ? analytics?.coverage ?? null : weekCover,
-    clans: clans?.clans || [], overview: overview?.clans || [], status,
+    clans: asList(clans?.clans), overview: asList(overview?.clans), status,
     you: rows.find((r) => r.isYou) || null,
   };
 
   const tiles = isAdmin ? leaderTiles(ctx) : memberTiles(ctx);
   el.innerHTML = `<div class="home">
-      ${periodHtml(ctx)}
-      <div class="home-grid">${tiles.join('')}</div>
+      ${periodScrubberHtml({ periods: PERIODS, period: ctx.period, offset: ctx.offset, rolloverHr: ctx.rolloverHr, weekStart: ctx.weekStart, win: ctx.win })}
+      <div class="ui-grid">${tiles.join('')}</div>
     </div>`;
   wire(el, ctx);
 }
@@ -226,52 +195,6 @@ function leaderTiles(ctx) {
   ].filter(Boolean);
 }
 
-// ─── The period scrubber (the Members board's control) ───
-
-function periodHtml(ctx) {
-  const { period, offset, running, win, rolloverHr, weekStart } = ctx;
-  let where = '';
-  let resetText = '';
-  let dayShort = '';
-  if (running) {
-    const reset = new Date(Date.UTC(2000, 0, 1, rolloverHr));
-    const local = reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    resetText = t('resets {utc} UTC ({local} your time)', { utc: `${String(rolloverHr).padStart(2, '0')}:00`, local });
-    if (period === 'weekly') {
-      const days = goalDaysForPeriod('weekly', weekStart);
-      const day = Math.min(days, Math.floor((Date.now() - Date.parse(win.from)) / DAY_MS) + 1);
-      where = `${t('Game day {day} of {days}', { day, days })} · ${resetText}`;
-      dayShort = t('day {day} of {days}', { day, days });
-    } else {
-      where = resetText;
-    }
-  }
-  const label = formatPeriodLabel(period, offset, rolloverHr, weekStart);
-  const short = [compactRange(label), dayShort].filter(Boolean).join(' · ');
-  return `<div class="mboard-period home-period">
-      <div class="mboard-seg" role="group" aria-label="${esc(t('Period'))}">
-        ${PERIODS.map((p) => `<button type="button" class="mboard-seg-btn${period === p ? ' is-active' : ''}" aria-pressed="${period === p}" data-home-period="${p}">${PERIOD_LABEL[p]()}</button>`).join('')}
-      </div>
-      ${period === 'all' ? '' : `<div class="mboard-step">
-        <button type="button" class="mboard-arrow" data-home-step="1" aria-label="${esc(t('Earlier'))}">‹</button>
-        <div class="mboard-when"${resetText ? ` title="${esc(resetText)}"` : ''}>
-          <span class="mboard-when-label">${esc(label)}</span>${where ? `<span class="mboard-when-sub">${esc(where)}</span>` : ''}
-          <span class="mboard-when-short">${esc(short)}${resetText ? `<span class="visually-hidden"> · ${esc(resetText)}</span>` : ''}</span>
-        </div>
-        <button type="button" class="mboard-arrow" data-home-step="-1" aria-label="${esc(t('Later'))}"${offset === 0 ? ' disabled' : ''}>›</button>
-      </div>`}
-    </div>`;
-}
-
-/** "2026-11-15 → 2026-11-21" → "2026-11-15 → 21"; across a month "→ 12-05"; anything else as it is. */
-function compactRange(label) {
-  const m = String(label).match(/^(\d{4})-(\d{2})-(\d{2}) → (\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return label;
-  const [, y1, m1, d1, y2, m2, d2] = m;
-  if (y1 !== y2) return label;
-  return `${y1}-${m1}-${d1} → ${m1 === m2 ? d2 : `${m2}-${d2}`}`;
-}
-
 // ─── Tiles ───
 
 /** The signed-in member's own period: points against the goal, pace, rank, chests. */
@@ -281,21 +204,21 @@ function youTile(ctx, span) {
   const deltaLabel = ctx.win ? DELTA_LABEL[ctx.period][ctx.running ? 'now' : 'past']() : '';
   const chestDelta = r.prevChests === null ? null : r.chests - r.prevChests;
   const goalLine = ctx.goalPts
-    ? `<p class="home-sub">${t('Goal {n}', { n: num(ctx.goalPts) })}${ctx.pacePts ? ` · ${t('pace now {n}', { n: num(ctx.pacePts) })}` : ''} · ${bandHtml(r.band)}</p>`
-    : `<p class="home-sub">${ctx.period === 'all' ? esc(t('All time: ranked by points, no goal applies.')) : esc(t('No points goal is set for this clan, so the board ranks by points only.'))}</p>`;
+    ? `<p class="ui-sub">${t('Goal {n}', { n: num(ctx.goalPts) })}${ctx.pacePts ? ` · ${t('pace now {n}', { n: num(ctx.pacePts) })}` : ''} · ${bandHtml(r.band)}</p>`
+    : `<p class="ui-sub">${ctx.period === 'all' ? esc(t('All time: ranked by points, no goal applies.')) : esc(t('No points goal is set for this clan, so the board ranks by points only.'))}</p>`;
   const body = `
     <div class="home-you">
       ${avatarHtml({ avatar: r.avatar, username: r.name }, { size: 'lg' })}
       <div class="home-you-who">
         <a class="home-you-name" href="${memberHash(r.id)}">${esc(r.name)}</a>
-        <span class="home-sub">${r.role ? esc(gameRankName(r.role)) : ''}</span>
+        <span class="ui-sub">${r.role ? esc(gameRankName(r.role)) : ''}</span>
       </div>
     </div>
-    <div class="home-big-row">
-      <div><div class="home-big">${num(r.points)}${ctx.goalPts ? `<span class="home-big-of"> / ${num(ctx.goalPts)}</span>` : ''}</div>
-        <div class="home-label">${t('Points')}</div></div>
-      <div><div class="home-big">#${num(r.rank)}</div><div class="home-label">${t('of {n} in the clan', { n: num(total) })}</div></div>
-      <div><div class="home-big">${num(r.chests)}</div><div class="home-label">${t('Chests collected')}</div>
+    <div class="ui-big-row">
+      <div><div class="ui-big">${num(r.points)}${ctx.goalPts ? `<span class="ui-big-of"> / ${num(ctx.goalPts)}</span>` : ''}</div>
+        <div class="ui-stat-label">${t('Points')}</div></div>
+      <div><div class="ui-big">#${num(r.rank)}</div><div class="ui-stat-label">${t('of {n} in the clan', { n: num(total) })}</div></div>
+      <div><div class="ui-big">${num(r.chests)}</div><div class="ui-stat-label">${t('Chests collected')}</div>
         ${chestDelta !== null ? `<div>${deltaHtml(chestDelta, deltaLabel)}</div>` : ''}</div>
     </div>
     ${ctx.goalPts ? barHtml(r.points, ctx.goalPts, ctx.pacePts, r.band, ctx.goalPts * 1.25) : ''}
@@ -307,8 +230,8 @@ function youTile(ctx, span) {
 function unlinkedTile() {
   // Plain information, not a nag: what's missing and how to fix it. The
   // button opens the in-app code dialog (lib/add-clan.js), never /join.
-  const body = `<p class="home-copy">${t('Your account is not linked to your player in this clan yet, so this page cannot show your own week. Send the word code to the clan’s tracker account in the game chat, then enter the code here.')}</p>`;
-  const link = `<button type="button" class="home-tile-link" data-home-add-clan>${esc(t('Add a clan with a code'))} <span aria-hidden="true">→</span></button>`;
+  const body = `<p class="ui-copy">${t('Your account is not linked to your player in this clan yet, so this page cannot show your own week. Send the word code to the clan’s tracker account in the game chat, then enter the code here.')}</p>`;
+  const link = `<button type="button" class="ui-tile-link" data-home-add-clan>${esc(t('Add a clan with a code'))} <span aria-hidden="true">→</span></button>`;
   return tile('you', t('Your week'), body, { span: 8, link });
 }
 
@@ -318,10 +241,10 @@ function clanSnapshotTile(ctx) {
   const target = ctx.goalPts ? ctx.goalPts * ctx.rows.length : null;
   const counts = bandCounts(ctx.rows);
   const body = `
-    <div class="home-big">${num(total)}${target ? `<span class="home-big-of"> / ${num(target)}</span>` : ''}</div>
-    <div class="home-label">${t('Clan points')}</div>
+    <div class="ui-big">${num(total)}${target ? `<span class="ui-big-of"> / ${num(target)}</span>` : ''}</div>
+    <div class="ui-stat-label">${t('Clan points')}</div>
     ${target ? barHtml(total, target, ctx.pacePts ? ctx.pacePts * ctx.rows.length : null, null, target * 1.25) : ''}
-    ${ctx.goalPts ? `<ul class="home-bands">${['ok', 'pace', 'behind'].map((b) => `<li>${bandHtml(b)} <span class="home-band-n">${num(counts[b].length)}</span></li>`).join('')}</ul>` : ''}`;
+    ${ctx.goalPts ? `<ul class="home-bands">${['ok', 'pace', 'behind'].map((b) => `<li>${bandHtml(b)} <span class="ui-band-n">${num(counts[b].length)}</span></li>`).join('')}</ul>` : ''}`;
   return tile('clan', t('The clan'), body, { span: 4, link: tileLink('#members', t('Members')) });
 }
 
@@ -339,15 +262,15 @@ function clanPointsTile(ctx) {
   if (paceNow) {
     const ahead = total - paceNow;
     facts.push(`<dt>${t('Clan vs pace')}</dt><dd>${ahead >= 0
-      ? `<span class="home-band band-ok"><span aria-hidden="true">✓</span> ${t('{n} ahead', { n: num(ahead) })}</span>`
-      : `<span class="home-band band-behind"><span aria-hidden="true">↓</span> ${t('{n} behind', { n: num(-ahead) })}</span>`}</dd>`);
+      ? `<span class="ui-band band-ok"><span aria-hidden="true">✓</span> ${t('{n} ahead', { n: num(ahead) })}</span>`
+      : `<span class="ui-band band-behind"><span aria-hidden="true">↓</span> ${t('{n} behind', { n: num(-ahead) })}</span>`}</dd>`);
   }
   if (Number.isFinite(chests)) facts.push(`<dt>${t('Chests collected')}</dt><dd>${num(chests)}</dd>`);
   if (ctx.period === 'all') facts.push(`<dt>${t('Members')}</dt><dd>${num(ctx.rows.length)}</dd>`);
   const body = `
     <div class="home-points-head">
       <div>
-        <div class="home-big is-xl">${num(total)}</div>
+        <div class="ui-big is-xl">${num(total)}</div>
         ${prevTotal !== null ? `<div>${deltaHtml(total - prevTotal, deltaLabel)}</div>` : ''}
       </div>
       ${facts.length ? `<dl class="home-facts">${facts.join('')}</dl>` : ''}
@@ -419,7 +342,7 @@ function bandCounts(rows) {
 /** The goal bands with the first names in each; each band opens the Members board filtered to it. */
 function goalStatusTile(ctx) {
   if (!ctx.goalPts) {
-    const body = `<p class="home-copy">${ctx.period === 'all' ? esc(t('All time: ranked by points, no goal applies.')) : esc(t('No points goal is set for this clan, so the board ranks by points only.'))}</p>`;
+    const body = `<p class="ui-copy">${ctx.period === 'all' ? esc(t('All time: ranked by points, no goal applies.')) : esc(t('No points goal is set for this clan, so the board ranks by points only.'))}</p>`;
     return tile('goal', t('Goal status'), body, { span: 4 });
   }
   const counts = bandCounts(ctx.rows);
@@ -432,7 +355,7 @@ function goalStatusTile(ctx) {
         <span class="home-goal-names">${list.length ? esc(more) : esc(t('Nobody'))}</span>
       </button></li>`;
   }).join('')}</ul>
-    <p class="home-sub">${t('Goal {n}', { n: num(ctx.goalPts) })}${ctx.pacePts ? ` · ${t('pace now {n}', { n: num(ctx.pacePts) })}` : ''}</p>`;
+    <p class="ui-sub">${t('Goal {n}', { n: num(ctx.goalPts) })}${ctx.pacePts ? ` · ${t('pace now {n}', { n: num(ctx.pacePts) })}` : ''}</p>`;
   return tile('goal', t('Goal status'), body, { span: 4 });
 }
 
@@ -441,34 +364,34 @@ function topTile(ctx, span) {
   const top = ctx.rows.filter((r) => r.points > 0).slice(0, 5);
   const max = top[0]?.points || 1;
   const body = top.length
-    ? `<ol class="home-list">${top.map((r) => `<li class="home-row">
-        <span class="home-rank">#${num(r.rank)}</span>
+    ? `<ol class="ui-rows">${top.map((r) => `<li class="ui-row">
+        <span class="ui-rank">#${num(r.rank)}</span>
         ${avatarHtml({ avatar: r.avatar, username: r.name }, { size: 'sm' })}
-        <span class="home-row-main"><a class="home-row-name" href="${memberHash(r.id)}">${esc(r.name)}</a>
+        <span class="ui-row-main"><a class="ui-row-name" href="${memberHash(r.id)}">${esc(r.name)}</a>
           ${barHtml(r.points, null, null, r.band, max)}</span>
-        <span class="home-row-n">${num(r.points)}</span>
+        <span class="ui-row-n">${num(r.points)}</span>
       </li>`).join('')}</ol>`
-    : `<p class="home-copy">${esc(t('Nobody collected a chest in this timeframe.'))}</p>`;
+    : `<p class="ui-copy">${esc(t('Nobody collected a chest in this timeframe.'))}</p>`;
   return tile('top', t('Top collectors'), body, { span, link: tileLink('#leaderboard', t('Leaderboard')) });
 }
 
 /** Biggest changes in points against the period before (cut at the same point while it runs). */
 function moversTile(ctx) {
   if (!ctx.win) {
-    return tile('movers', t('Biggest movers'), `<p class="home-copy">${esc(t('All time has no period before it to compare with.'))}</p>`, { span: 4 });
+    return tile('movers', t('Biggest movers'), `<p class="ui-copy">${esc(t('All time has no period before it to compare with.'))}</p>`, { span: 4 });
   }
   const withDelta = ctx.rows.filter((r) => r.delta !== null && r.delta !== 0);
   const up = [...withDelta].sort((a, b) => b.delta - a.delta).filter((r) => r.delta > 0).slice(0, 3);
   const down = [...withDelta].sort((a, b) => a.delta - b.delta).filter((r) => r.delta < 0).slice(0, 2);
   const label = DELTA_LABEL[ctx.period][ctx.running ? 'now' : 'past']();
-  const row = (r) => `<li class="home-row">
+  const row = (r) => `<li class="ui-row">
       ${avatarHtml({ avatar: r.avatar, username: r.name }, { size: 'sm' })}
-      <span class="home-row-main"><a class="home-row-name" href="${memberHash(r.id)}">${esc(r.name)}</a></span>
-      <span class="home-row-n">${deltaHtml(r.delta)}</span>
+      <span class="ui-row-main"><a class="ui-row-name" href="${memberHash(r.id)}">${esc(r.name)}</a></span>
+      <span class="ui-row-n">${deltaHtml(r.delta)}</span>
     </li>`;
   const body = up.length || down.length
-    ? `<p class="home-sub">${esc(label)}</p><ul class="home-list">${up.map(row).join('')}${down.map(row).join('')}</ul>`
-    : `<p class="home-copy">${esc(t('No changes against the period before yet.'))}</p>`;
+    ? `<p class="ui-sub">${esc(label)}</p><ul class="ui-rows">${up.map(row).join('')}${down.map(row).join('')}</ul>`
+    : `<p class="ui-copy">${esc(t('No changes against the period before yet.'))}</p>`;
   return tile('movers', t('Biggest movers'), body, { span: 4 });
 }
 
@@ -477,12 +400,12 @@ function sourcesTile(ctx) {
   const list = [...(ctx.analytics?.current?.bySource || [])].sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 6);
   const max = list[0]?.points || 1;
   const body = list.length
-    ? `<ul class="home-list">${list.map((s) => `<li class="home-row is-source">
-        <span class="home-row-main"><span class="home-row-name">${sourceLink(s.chest_source, { period: ctx.period })}</span>
+    ? `<ul class="ui-rows">${list.map((s) => `<li class="ui-row is-source">
+        <span class="ui-row-main"><span class="ui-row-name">${sourceLink(s.chest_source, { period: ctx.period })}</span>
           ${barHtml(s.points || 0, null, null, null, max)}</span>
-        <span class="home-row-n">${num(s.points)}<span class="home-row-sub">${tn(s.count, '{n} chest', '{n} chests', { n: num(s.count) })}</span></span>
+        <span class="ui-row-n">${num(s.points)}<span class="ui-row-sub">${tn(s.count, '{n} chest', '{n} chests', { n: num(s.count) })}</span></span>
       </li>`).join('')}</ul>`
-    : `<p class="home-copy">${esc(t('Nobody collected a chest in this timeframe.'))}</p>`;
+    : `<p class="ui-copy">${esc(t('Nobody collected a chest in this timeframe.'))}</p>`;
   return tile('sources', t('Points by source'), body, { span: 4, link: tileLink('#analytics', t('Analytics')) });
 }
 
@@ -550,17 +473,17 @@ function rosterTile(ctx) {
 
   const rows = items.slice(0, 8).map((it) => {
     const name = it.memberId
-      ? `<a class="home-row-name" href="${memberHash(it.memberId)}">${esc(it.name)}</a>`
-      : `<span class="home-row-name">${esc(it.name)}</span>`;
-    return `<li class="home-row roster-row">
+      ? `<a class="ui-row-name" href="${memberHash(it.memberId)}">${esc(it.name)}</a>`
+      : `<span class="ui-row-name">${esc(it.name)}</span>`;
+    return `<li class="ui-row roster-row">
         ${avatarHtml({ avatar: avatarOf.get(it.memberId) ?? null, username: it.name }, { size: 'sm' })}
-        <span class="home-row-main">${name}<span class="roster-what is-${it.kind}">${it.what}</span></span>
+        <span class="ui-row-main">${name}<span class="roster-what is-${it.kind}">${it.what}</span></span>
         <time class="roster-when" datetime="${esc(it.at)}" title="${esc(formatDate(it.at))}">${esc(rosterWhen(it.at))}</time>
       </li>`;
   }).join('');
   const body = burningHtml || rows
-    ? `${burningHtml}${rows ? `<ul class="home-list roster-list">${rows}</ul>` : ''}`
-    : `<p class="home-copy">${esc(t('No joins, leaves or rank changes in the last 7 days.'))}</p>`;
+    ? `${burningHtml}${rows ? `<ul class="ui-rows roster-list">${rows}</ul>` : ''}`
+    : `<p class="ui-copy">${esc(t('No joins, leaves or rank changes in the last 7 days.'))}</p>`;
   return tile('roster', t('Roster changes'), body, { span: 6, link: tileLink('#clan', t('My Clan')) });
 }
 
@@ -577,11 +500,11 @@ function eventsTile(ctx, span) {
     .sort((a, b) => a.sort - b.sort)
     .slice(0, 6);
   const body = list.length
-    ? `<ul class="home-list">${list.map(({ e, text, live }) => `<li class="home-row is-event">
-        <span class="home-row-main"><a class="home-row-name" href="#events/${encodeURIComponent(e.key)}">${esc(tGame(e.name))}</a></span>
+    ? `<ul class="ui-rows">${list.map(({ e, text, live }) => `<li class="ui-row is-event">
+        <span class="ui-row-main"><a class="ui-row-name" href="#events/${encodeURIComponent(e.key)}">${esc(tGame(e.name))}</a></span>
         <span class="home-event-when${live ? ' is-live' : ''}">${live ? '<span aria-hidden="true">● </span>' : ''}${esc(text)}</span>
       </li>`).join('')}</ul>`
-    : `<p class="home-copy">${esc(t('No event dates are known right now.'))}</p>`;
+    : `<p class="ui-copy">${esc(t('No event dates are known right now.'))}</p>`;
   return tile('events', t('Events'), body, { span, link: tileLink('#events', t('Events')) });
 }
 
@@ -598,8 +521,8 @@ function scanHealthTile(ctx) {
   let verdict = '';
   if (cov) {
     verdict = cov.gaps?.length
-      ? `<p class="home-band band-behind"><span aria-hidden="true">↓</span> ${tn(cov.gaps.length, 'One gap longer than {hours} h this week (longest {worst} h). Gifts last about 21 h, so chests from then may be missing.', '{n} gaps longer than {hours} h this week (longest {worst} h). Gifts last about 21 h, so chests from then may be missing.', { n: cov.gaps.length, hours: GIFT_HOURS, worst: Math.round(cov.worstGapHours) })}</p>`
-      : `<p class="home-band band-ok"><span aria-hidden="true">✓</span> ${t('No gap longer than {hours} h this week: every gift was read before it could expire.', { hours: GIFT_HOURS })}</p>`;
+      ? `<p class="ui-band band-behind"><span aria-hidden="true">↓</span> ${tn(cov.gaps.length, 'One gap longer than {hours} h this week (longest {worst} h). Gifts last about 21 h, so chests from then may be missing.', '{n} gaps longer than {hours} h this week (longest {worst} h). Gifts last about 21 h, so chests from then may be missing.', { n: cov.gaps.length, hours: GIFT_HOURS, worst: Math.round(cov.worstGapHours) })}</p>`
+      : `<p class="ui-band band-ok"><span aria-hidden="true">✓</span> ${t('No gap longer than {hours} h this week: every gift was read before it could expire.', { hours: GIFT_HOURS })}</p>`;
   }
   const body = `${verdict}<dl class="home-facts">${facts.join('')}</dl>`;
   return tile('scans', t('Scan health'), body, { span: 6, link: tileLink('#sessions', t('Scan History')) });
@@ -632,13 +555,13 @@ function clansTile(ctx) {
         ${logo}
         <span class="home-clan-text">
           <span class="home-clan-name">${esc(c.name)}</span>
-          <span class="home-sub">${c.kingdom ? `${esc(t('Kingdom #{n}', { n: c.kingdom }))} · ` : ''}${c.lastScanAt ? esc(t('Scanned {when}', { when: formatRelativeTime(c.lastScanAt) })) : esc(t('Not scanned yet'))}</span>
+          <span class="ui-sub">${c.kingdom ? `${esc(t('Kingdom #{n}', { n: c.kingdom }))} · ` : ''}${c.lastScanAt ? esc(t('Scanned {when}', { when: formatRelativeTime(c.lastScanAt) })) : esc(t('Not scanned yet'))}</span>
         </span>
-        <span class="home-clan-today"><span class="home-clan-n">${num(o.chestsToday)}</span><span class="home-sub">${t('chests today')}</span></span>
+        <span class="home-clan-today"><span class="home-clan-n">${num(o.chestsToday)}</span><span class="ui-sub">${t('chests today')}</span></span>
         <span class="shell-clan-status ${st.cls}"><span aria-hidden="true">${st.glyph}</span> ${esc(st.text)}</span>
       </button></li>`;
   });
-  const body = `${next ? `<p class="home-sub">${esc(next)}</p>` : ''}
+  const body = `${next ? `<p class="ui-sub">${esc(next)}</p>` : ''}
     <ul class="home-clans">${rows.join('')}</ul>`;
   return tile('clans', t('Clans'), body, { span: 12, link: tileLink('#clans', t('Manage clans')) });
 }
@@ -646,11 +569,11 @@ function clansTile(ctx) {
 /** The latest chests collected, with where each came from. */
 function recentTile(ctx, span) {
   const body = ctx.recent.length
-    ? `<ul class="home-list">${ctx.recent.map((c) => `<li class="home-row is-chest">
-        <span class="home-row-main">${chestLabelHtml(c.chestName, `<span class="cell-stacked"><a class="member-link cell-stacked-primary" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a><span class="cell-stacked-sub">${t('from {source}', { source: sourceLink(c.chestSource) })}</span></span>`, { size: 28, cls: 'is-block' })}</span>
-        <span class="home-row-who">${c.memberId ? `<a href="${memberHash(c.memberId)}">${esc(c.playerName)}</a>` : esc(c.playerName)}</span>
+    ? `<ul class="ui-rows">${ctx.recent.map((c) => `<li class="ui-row is-chest">
+        <span class="ui-row-main">${chestLabelHtml(c.chestName, `<span class="cell-stacked"><a class="member-link cell-stacked-primary" href="${chestHash(c.chestName, 'all')}">${esc(tGame(c.chestName))}</a><span class="cell-stacked-sub">${t('from {source}', { source: sourceLink(c.chestSource) })}</span></span>`, { size: 28, cls: 'is-block' })}</span>
+        <span class="ui-row-who">${c.memberId ? `<a href="${memberHash(c.memberId)}">${esc(c.playerName)}</a>` : esc(c.playerName)}</span>
       </li>`).join('')}</ul>`
-    : `<p class="home-copy">${esc(t('No chests yet.'))}</p>`;
+    : `<p class="ui-copy">${esc(t('No chests yet.'))}</p>`;
   return tile('recent', t('Recent Chests'), body, { span });
 }
 
@@ -659,39 +582,32 @@ function recordsTile(ctx, span) {
   const medals = ['🥇', '🥈', '🥉'];
   const podium = (label, list, fmt) => `<div class="home-podium">
       <h3 class="home-podium-title">${label}</h3>
-      ${list?.length ? `<ol class="home-list">${list.map((e, i) => `<li class="home-row">
+      ${list?.length ? `<ol class="ui-rows">${list.map((e, i) => `<li class="ui-row">
           <span class="home-medal" aria-hidden="true">${medals[i] || ''}</span>
-          <span class="home-row-main"><a class="home-row-name" href="${memberHash(e.memberId)}">${esc(e.memberName)}</a><span class="home-row-sub">${esc(e.date || '')}</span></span>
-          <span class="home-row-n">${fmt(e.value)}</span>
-        </li>`).join('')}</ol>` : `<p class="home-copy">${t('No data yet.')}</p>`}
+          <span class="ui-row-main"><a class="ui-row-name" href="${memberHash(e.memberId)}">${esc(e.memberName)}</a><span class="ui-row-sub">${esc(e.date || '')}</span></span>
+          <span class="ui-row-n">${fmt(e.value)}</span>
+        </li>`).join('')}</ol>` : `<p class="ui-copy">${t('No data yet.')}</p>`}
     </div>`;
   const body = `<div class="home-podiums">
       ${podium(t('Most Chests in a Day'), ctx.records?.byChests, (v) => tn(v, '{n} chest', '{n} chests', { n: num(v) }))}
       ${podium(t('Most Points in a Day'), ctx.records?.byPoints, (v) => t('{n} pts', { n: num(v) }))}
     </div>
-    <p class="home-sub">${t('All-time best days. Excludes end-of-event clan rewards.')}</p>`;
+    <p class="ui-sub">${t('All-time best days. Excludes end-of-event clan rewards.')}</p>`;
   return tile('records', t('Clan records'), body, { span });
 }
 
 // ─── Events ───
 
 function wire(el, ctx) {
-  for (const b of el.querySelectorAll('[data-home-period]')) {
-    b.addEventListener('click', () => {
-      if (state.period === b.dataset.homePeriod) return;
-      state.period = b.dataset.homePeriod;
-      state.offset = 0;
-      void renderHome(el);
-    });
-  }
-  for (const b of el.querySelectorAll('[data-home-step]')) {
-    b.addEventListener('click', () => {
-      const next = state.offset + Number(b.dataset.homeStep);
+  wirePeriodScrubber(el, {
+    onPeriod: (p) => { state.period = p; state.offset = 0; void renderHome(el); },
+    onStep: (delta) => {
+      const next = state.offset + delta;
       if (next < 0) return;
       state.offset = next;
       void renderHome(el);
-    });
-  }
+    },
+  });
   for (const b of el.querySelectorAll('[data-home-band]')) {
     b.addEventListener('click', () => {
       presetMembersBoard({ band: b.dataset.homeBand, period: ctx.period, offset: ctx.offset });

@@ -860,7 +860,7 @@ async function renderRoute(page, content) {
   switch (page) {
     case 'dashboard': await renderHome(content); break;
     case 'analytics': await renderAnalytics(content); break;
-    case 'leaderboard': await renderLeaderboard(content); break;
+    case 'leaderboard': await renderLeaderboard(content, { navigate: navigateTo }); break;
     case 'triumphal': {
       // A tab of My Clan with its own address (the period selector lives in
       // it): with My Clan on screen only the tab's panel changes.
@@ -1145,6 +1145,9 @@ const PAGE_SUBTITLES = {
 function updatePageHead(navPage) {
   const link = $(`nav a[data-page="${navPage}"]`);
   const title = link?.querySelector('.nav-label')?.textContent || '';
+  // A page's own header buttons belong to that page: the next one sets its own.
+  const actionsEl = $('#pageActions');
+  if (actionsEl) actionsEl.innerHTML = '';
   const titleEl = $('#pageTitle');
   const subEl = $('#pageSubtitle');
   if (titleEl) titleEl.textContent = title;
