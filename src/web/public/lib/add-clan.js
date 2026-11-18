@@ -123,8 +123,9 @@ export function openAddClanDialog() {
       case 'conflict':
         what = esc(t('This player is already linked to another account. Ask the superadmin to unlink it.'));
         break;
-      case 'other-player':
-        what = esc(t('Your account is already linked to another player in this clan.'));
+      case 'add-player':
+        what = `${t('Adds <strong>{player}</strong>{rank} to your account in <strong>{clan}</strong>, beside the player you already have there.', { clan: esc(clan), player: esc(player), rank: esc(rank) })} ${roleLine(info.role)}`;
+        action = t('Add player');
         break;
       default:
         what = esc(t('Superadmin accounts are not linked to a player.'));
@@ -183,7 +184,9 @@ export function openAddClanDialog() {
     const canSwitch = Number.isFinite(clanId) && clanId !== activeId;
     const message = result.mode === 'link'
       ? t('Your account is linked to <strong>{player}</strong>.', { player: esc(info.player?.name ?? '') })
-      : t('<strong>{clan}</strong> is added to your account.', { clan: esc(clan) });
+      : result.mode === 'add-player'
+        ? t('<strong>{player}</strong> is added to your account. Pick who you play as in the account menu.', { player: esc(info.player?.name ?? '') })
+        : t('<strong>{clan}</strong> is added to your account.', { clan: esc(clan) });
     box.innerHTML = `
       <div class="add-clan-preview is-done">
         <p class="add-clan-what"><span aria-hidden="true">✓ </span>${message}</p>

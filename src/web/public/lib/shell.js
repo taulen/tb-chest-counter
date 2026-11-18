@@ -473,6 +473,45 @@ export function setShellUser(user) {
   if (who) who.textContent = `${user.username} · ${role}`;
   const btn = byId('userMenuBtn');
   if (btn) btn.dataset.tip = `${user.username} · ${role}`;
+  void refreshPlayingAs(user);
+}
+
+/**
+ * "Playing as" in the account menu (alts, v130): with more than one of the
+ * account's players in the clan being viewed, pick which one it plays as —
+ * that player's photo or hero becomes the account's picture here.
+ */
+let playingSeq = 0;
+async function refreshPlayingAs(user) {
+  const box = byId('userMenuPlaying');
+  const select = byId('userMenuPlayingSelect');
+  if (!box || !select) return;
+  const seq = ++playingSeq;
+  let data = null;
+  try {
+    const r = await fetch('/api/auth/players', { cache: 'no-store' });
+    data = r.ok ? await r.json() : null;
+  } catch { data = null; }
+  if (seq !== playingSeq) return;
+  const here = Array.isArray(data?.players) ? data.players.filter((p) => p.clanId === data.activeClanId) : [];
+  box.hidden = here.length < 2;
+  if (here.length < 2) return;
+  select.innerHTML = here.map((p) => `<option value="${p.playerId}"${p.isMain ? ' selected' : ''}>${esc(p.playerName)}</option>`).join('');
+  select.onchange = async () => {
+    try {
+      const r = await fetch('/api/auth/main-player', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clanId: data.activeClanId, playerId: Number(select.value) }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.avatar) return;
+      user.avatar = j.avatar;
+      paintAvatar(byId('userInitial'), user);
+      paintAvatar(byId('userMenuAvatar'), user);
+      // The Members board's "You" and the photo dialog read it fresh next time.
+      document.dispatchEvent(new CustomEvent('tb:main-player', { detail: { clanId: data.activeClanId, playerId: Number(select.value) } }));
+    } catch { /* stays as it was */ }
+  };
 }
 
 // ─── Rail tooltips ───

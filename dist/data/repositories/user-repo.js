@@ -350,6 +350,8 @@ function deleteUser(id) {
         // The account's links to game players go with it (the player can join
         // again with a new code); a code it used stays, unattributed.
         db.prepare('DELETE FROM user_game_links WHERE user_id = ?').run(id);
+        db.prepare('DELETE FROM user_clan_main WHERE user_id = ?').run(id);
+        db.prepare('UPDATE player_avatars SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
         db.prepare('UPDATE account_invite_codes SET used_by = NULL WHERE used_by = ?').run(id);
         // A player's own saved citadel and stack armies go with the account.
         db.prepare('DELETE FROM citadel_presets WHERE user_id = ?').run(id);
@@ -387,6 +389,8 @@ function updateRole(id, role) {
             // A superadmin is never linked to a game player (v127): the game's
             // rank would otherwise keep rewriting a role that is above it.
             db.prepare('DELETE FROM user_game_links WHERE user_id = ?').run(id);
+            db.prepare('DELETE FROM user_clan_main WHERE user_id = ?').run(id);
+            db.prepare('UPDATE player_avatars SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
         })();
     }
     else {
@@ -479,13 +483,12 @@ function validateSession(token) {
   `).get(token, now.toISOString());
     if (!row)
         return null;
-    // An account linked to a game player (v127) whose player has left its home
-    // clan in the game, with no other clan it is still in, can't be used until
-    // the player is back (account-invite-repo.ts isAccountBlocked; the scan's
+    // An account linked to game players (v127; alts v130) whose players have ALL
+    // left its home clan in the game, with no other clan it is still in, can't be
+    // used until one is back (account-invite-repo.ts isAccountBlocked; the scan's
     // sync moves the home when another linked clan is still theirs).
     if (row.role !== 'superadmin' && row.clan_id !== null) {
-        const off = db.prepare('SELECT 1 FROM user_game_links WHERE user_id = ? AND clan_id = ? AND on_roster = 0')
-            .get(row.id, row.clan_id);
+        const off = db.prepare('SELECT 1 FROM user_game_links WHERE user_id = ? AND clan_id = ? GROUP BY user_id HAVING SUM(on_roster) = 0').get(row.id, row.clan_id);
         if (off)
             return null;
     }
