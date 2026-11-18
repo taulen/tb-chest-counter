@@ -133,6 +133,31 @@ function heroPortraitUrl(userId: number, clanId: number | null): string | null {
 }
 
 /**
+ * The own photos of accounts linked to players in a clan: game player id →
+ * photo URL. A member list uses it so a member shows the picture its account
+ * chose — the same order as resolveAccountAvatar, seen from the member's side.
+ */
+export function linkedPhotoUrlsForClan(clanId: number): Map<number, string> {
+  const rows = getDb().prepare(
+    `SELECT l.player_id, a.sha256, a.mime FROM user_game_links l
+       JOIN user_avatars a ON a.user_id = l.user_id
+      WHERE l.clan_id = ?`,
+  ).all(clanId) as Array<{ player_id: number; sha256: string; mime: string }>;
+  return new Map(rows.map((r) => [r.player_id, avatarUrl(r.sha256, r.mime)]));
+}
+
+/**
+ * What a MEMBER shows as its picture, in resolveAccountAvatar's order: the
+ * linked account's own photo, else the hero portrait, else the initial.
+ */
+export function resolveMemberAvatar(name: string, heroUrl: string | null, photoUrl: string | null): AccountAvatar {
+  const initial = avatarInitial(name);
+  if (photoUrl) return { kind: 'photo', url: photoUrl, initial };
+  if (heroUrl) return { kind: 'hero', url: heroUrl, initial };
+  return { kind: 'initial', url: null, initial };
+}
+
+/**
  * What an account shows as its picture: its own photo, else the hero portrait
  * of its game player in `clanId` (the clan being viewed), else its initial.
  */
