@@ -177,7 +177,10 @@ class ScanLoop {
         this.armSessionChecks();
         // New chat messages every minute between scans, on the chat session key
         // each scan refreshes (never touches the game or website login).
-        void import('./chat-capture.js').then((m) => m.startChatPoller()).catch(() => { });
+        void import('./chat-capture.js').then((m) => {
+            m.startChatPoller();
+            m.setInviteScanTrigger((clanId) => this.scanForInviteReply(clanId));
+        }).catch(() => { });
         // A running Rise of the Ancients is read again every ~10 min between scans,
         // on the game session each clan's scan leaves (never a login of its own).
         void import('./event-poller.js').then((m) => m.startEventPoller(this.pollGate())).catch(() => { });
@@ -523,6 +526,25 @@ class ScanLoop {
      * clan on the same account is scanning, it starts right after; clans on
      * other accounts are not waited for.
      */
+    /**
+     * Scan one clan to answer a waiting code request when no game session is
+     * kept (chat-capture.ts maybeScanForInvites). Unlike the Scan This Clan
+     * button it never touches the scheduled cycle: it just takes the clan's
+     * turn on its lane. Skipped while paused or when the clan is already
+     * scanning or queued.
+     */
+    scanForInviteReply(clanId) {
+        if (!this.running || this.isClanScanQueuedOrRunning(clanId))
+            return;
+        const lane = this.laneOf(clanId);
+        this.queued.add(clanId);
+        void this.lanes.run(lane, () => {
+            this.queued.delete(clanId);
+            return this.scanClan(clanId, 'manual', lane);
+        }).catch((err) => {
+            log.warn({ noAlert: true }, `Clan #${clanId}: the scan to answer a code request failed (the next scan answers it): ${String(err)}`);
+        }).finally(() => this.queued.delete(clanId));
+    }
     async triggerManualScan(targetClanId) {
         const clanId = targetClanId ?? this.lastClanId;
         if (this.isClanScanQueuedOrRunning(clanId)) {

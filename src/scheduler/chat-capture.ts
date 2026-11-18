@@ -25,8 +25,8 @@ import {
 } from '../data/repositories/chat-repo.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
-import { processInviteRequests } from './chat-invites.js';
-import { withKeptGameSession } from './event-poller.js';
+import { hasWaitingInviteRequests, processInviteRequests } from './chat-invites.js';
+import { keptSessionClans, withKeptGameSession } from './event-poller.js';
 
 const log = childLogger('chat');
 const pollWarner = createCoalescedWarner((m) => log.warn({ noAlert: true }, m), 60 * 60_000);
@@ -165,6 +165,31 @@ export function stopChatPoller(): void {
   pollTimer = null;
 }
 
+/**
+ * A code request between scans is answered on the game session the clan's
+ * last scan kept. After a server restart there is none until the next scan —
+ * up to a whole interval (2 h): a request on Nov 18 2026 sat at "Waiting to
+ * send". Then the scan loop is asked to scan just that clan (seconds; it
+ * answers the request and keeps a session for the next ones), at most once
+ * per clan every INVITE_SCAN_MIN_GAP_MS.
+ */
+let inviteScanTrigger: ((clanId: number) => void) | null = null;
+const INVITE_SCAN_MIN_GAP_MS = 10 * 60_000;
+const lastInviteScan = new Map<number, number>();
+
+export function setInviteScanTrigger(fn: ((clanId: number) => void) | null): void {
+  inviteScanTrigger = fn;
+}
+
+export function maybeScanForInvites(clanId: number, now = Date.now()): void {
+  if (!inviteScanTrigger || keptSessionClans().includes(clanId)) return;
+  if (!hasWaitingInviteRequests(clanId)) return;
+  if (now - (lastInviteScan.get(clanId) ?? 0) < INVITE_SCAN_MIN_GAP_MS) return;
+  lastInviteScan.set(clanId, now);
+  log.info(`Clan #${clanId}: a code request is waiting and no game session is kept (restarted since the last scan) — scanning the clan now to answer it`);
+  inviteScanTrigger(clanId);
+}
+
 async function pollOnce(): Promise<void> {
   if (polling) return;
   polling = true;
@@ -181,6 +206,7 @@ async function pollOnce(): Promise<void> {
           chatToken: async () => (await withKeptGameSession(clanId, (client) => client.chatToken())) ?? null,
         });
         if (note) log.info(`Clan #${clanId} ${note}`);
+        maybeScanForInvites(clanId);
       } catch (err) {
         // A rejected key (or any failure) waits for the next scan's fresh session.
         dropSession(clanId);

@@ -254,6 +254,11 @@ export interface InviteRunOptions {
  * reply goes out and its outcome is recorded. Stops (leaving the rest pending)
  * when no chat token can be had. Returns how many replies went out.
  */
+/** Whether the clan has a code request waiting to be answered (and answering is on). */
+export function hasWaitingInviteRequests(clanId: number): boolean {
+  return getInviteSettings(clanId).enabled && pendingInviteRequests(clanId).length > 0;
+}
+
 export async function answerInviteRequests(clanId: number, opts: InviteRunOptions): Promise<number> {
   const now = opts.now ?? Date.now;
   const pending = pendingInviteRequests(clanId);

@@ -7,6 +7,8 @@ exports.refreshChatSession = refreshChatSession;
 exports.chatSessionFor = chatSessionFor;
 exports.startChatPoller = startChatPoller;
 exports.stopChatPoller = stopChatPoller;
+exports.setInviteScanTrigger = setInviteScanTrigger;
+exports.maybeScanForInvites = maybeScanForInvites;
 /**
  * Keeps each clan's chat stored: the clan chat and the scanner account's
  * private (1:1) messages (game-protocol/chat.ts, migration v104).
@@ -178,6 +180,31 @@ function stopChatPoller() {
         clearInterval(pollTimer);
     pollTimer = null;
 }
+/**
+ * A code request between scans is answered on the game session the clan's
+ * last scan kept. After a server restart there is none until the next scan —
+ * up to a whole interval (2 h): a request on Nov 18 2026 sat at "Waiting to
+ * send". Then the scan loop is asked to scan just that clan (seconds; it
+ * answers the request and keeps a session for the next ones), at most once
+ * per clan every INVITE_SCAN_MIN_GAP_MS.
+ */
+let inviteScanTrigger = null;
+const INVITE_SCAN_MIN_GAP_MS = 10 * 60_000;
+const lastInviteScan = new Map();
+function setInviteScanTrigger(fn) {
+    inviteScanTrigger = fn;
+}
+function maybeScanForInvites(clanId, now = Date.now()) {
+    if (!inviteScanTrigger || (0, event_poller_js_1.keptSessionClans)().includes(clanId))
+        return;
+    if (!(0, chat_invites_js_1.hasWaitingInviteRequests)(clanId))
+        return;
+    if (now - (lastInviteScan.get(clanId) ?? 0) < INVITE_SCAN_MIN_GAP_MS)
+        return;
+    lastInviteScan.set(clanId, now);
+    log.info(`Clan #${clanId}: a code request is waiting and no game session is kept (restarted since the last scan) — scanning the clan now to answer it`);
+    inviteScanTrigger(clanId);
+}
 async function pollOnce() {
     if (polling)
         return;
@@ -197,6 +224,7 @@ async function pollOnce() {
                 });
                 if (note)
                     log.info(`Clan #${clanId} ${note}`);
+                maybeScanForInvites(clanId);
             }
             catch (err) {
                 // A rejected key (or any failure) waits for the next scan's fresh session.

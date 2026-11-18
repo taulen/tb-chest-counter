@@ -10,6 +10,7 @@ exports.inviteReplyText = inviteReplyText;
 exports.chatAccountMismatch = chatAccountMismatch;
 exports.inviteRequestBlocker = inviteRequestBlocker;
 exports.detectInviteRequests = detectInviteRequests;
+exports.hasWaitingInviteRequests = hasWaitingInviteRequests;
 exports.answerInviteRequests = answerInviteRequests;
 exports.processInviteRequests = processInviteRequests;
 exports.welcomeText = welcomeText;
@@ -226,6 +227,10 @@ function detectInviteRequests(clanId, scannerChatId, nowMs = Date.now()) {
  * reply goes out and its outcome is recorded. Stops (leaving the rest pending)
  * when no chat token can be had. Returns how many replies went out.
  */
+/** Whether the clan has a code request waiting to be answered (and answering is on). */
+function hasWaitingInviteRequests(clanId) {
+    return (0, account_invite_repo_js_1.getInviteSettings)(clanId).enabled && (0, account_invite_repo_js_1.pendingInviteRequests)(clanId).length > 0;
+}
 async function answerInviteRequests(clanId, opts) {
     const now = opts.now ?? Date.now;
     const pending = (0, account_invite_repo_js_1.pendingInviteRequests)(clanId);
