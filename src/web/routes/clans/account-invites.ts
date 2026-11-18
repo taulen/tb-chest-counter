@@ -14,7 +14,7 @@ import {
 import { logAction } from '../../../data/repositories/user-repo.js';
 import { deleteEnvValue, updateEnvValue } from '../../../config/persistent-env.js';
 import { chatSendingDisabled } from '../../../game-protocol/chat-send.js';
-import { INVITE_KEYWORDS, JOIN_ENTRY_LABEL, siteNameFor, siteNameOverride, spacedSiteName } from '../../../scheduler/chat-invites.js';
+import { INVITE_KEYWORDS, JOIN_ENTRY_LABEL, defaultSiteNameFor, siteNameFor, siteNameOverride, spacedSiteName } from '../../../scheduler/chat-invites.js';
 import { requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { createClanSubRouter } from './_shared.js';
 
@@ -103,9 +103,13 @@ export function createAccountInvitesRouter(): Router {
       res.status(400).json({ error: 'Not a site name' });
       return;
     }
-    if (raw) updateEnvValue('INVITE_SITE_NAME', spacedSiteName(raw).replace(/ \. /g, '.'));
+    // The box is pre-filled with the name in use, so saving it unchanged — or
+    // typing the public address's own host — keeps following that address
+    // instead of freezing it as an override.
+    const custom = raw && spacedSiteName(raw) !== defaultSiteNameFor(req.parsedClanId!) ? spacedSiteName(raw) : '';
+    if (custom) updateEnvValue('INVITE_SITE_NAME', custom.replace(/ \. /g, '.'));
     else deleteEnvValue('INVITE_SITE_NAME');
-    logAction(req.user!.id, 'update_invite_site_name', { siteName: raw ? spacedSiteName(raw) : '' });
+    logAction(req.user!.id, 'update_invite_site_name', { siteName: custom });
     res.json({ ok: true, siteName: siteNameFor(req.parsedClanId!) });
   });
 

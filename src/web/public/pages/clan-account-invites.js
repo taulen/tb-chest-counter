@@ -73,9 +73,9 @@ function renderAccountInvites(root, box, clanId, data) {
       : `<p class="warning-text mb-8">⚠ ${t('No public address is set for the site, so messages can only say “the TB Chest Counter site”. Set the site name below.')}</p>`}
     ${isSuperAdmin ? `
     <div class="inline-form-row mb-8">
-      <div class="form-row-grow"><label for="clan-account-site-${clanId}">${t('Site name in messages (every clan)')}</label>
-        <input id="clan-account-site-${clanId}" class="input" type="text" maxlength="80" spellcheck="false" placeholder="${escapeHtml(t('From the public address'))}" value="${escapeHtml(data.siteNameOverride || '')}"></div>
-      <button class="btn" type="button" data-account-site-save>${t('Save')}</button>
+      <div class="invite-site-field"><label for="clan-account-site-${clanId}">${t('Site name in messages (every clan)')}</label>
+        <input id="clan-account-site-${clanId}" class="input" type="text" maxlength="80" spellcheck="false" placeholder="${escapeHtml(t('From the public address'))}" value="${escapeHtml(data.siteName || '')}"></div>
+      <button class="btn btn-primary" type="button" data-account-site-save>${t('Save')}</button>
     </div>` : ''}
     <div class="inline-form-row">
       <label class="checkbox-row"><input type="checkbox" id="clan-account-invites-enabled-${clanId}" ${s.enabled ? 'checked' : ''}> ${t('Answer code requests in the game chat')}</label>

@@ -5,6 +5,7 @@ exports.isInviteKeyword = isInviteKeyword;
 exports.spacedSiteName = spacedSiteName;
 exports.siteNameOverride = siteNameOverride;
 exports.siteNameFor = siteNameFor;
+exports.defaultSiteNameFor = defaultSiteNameFor;
 exports.inviteReplyText = inviteReplyText;
 exports.chatAccountMismatch = chatAccountMismatch;
 exports.inviteRequestBlocker = inviteRequestBlocker;
@@ -101,6 +102,10 @@ function siteNameFor(clanId) {
     const override = spacedSiteName(siteNameOverride());
     if (override)
         return override;
+    return defaultSiteNameFor(clanId);
+}
+/** The site name with no override: the clan's public address host, spaced out; null when there is none. */
+function defaultSiteNameFor(clanId) {
     const base = (0, clan_repo_js_1.clanPublicUrl)((0, clan_repo_js_1.getClanById)(clanId), (0, index_js_1.loadConfig)().webExternalUrl);
     const spaced = base ? spacedSiteName(base) : '';
     return spaced || null;

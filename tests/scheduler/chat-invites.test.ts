@@ -29,6 +29,7 @@ import {
   isInviteKeyword,
   processInviteRequests,
   sendWelcomeCodes,
+  defaultSiteNameFor,
   siteNameFor,
   spacedSiteName,
   welcomeText,
@@ -379,6 +380,8 @@ describe('welcome codes for new members', () => {
   it('no message ever carries a link: no http, no www, no unspaced domain — the site is spaced out', async () => {
     getDb().prepare("UPDATE clans SET public_url = 'https://www.cwb.fyi', name = 'cwb.fyi' WHERE id = 1").run();
     expect(siteNameFor(1)).toBe('cwb . fyi');
+    // The settings box is pre-filled with this; saving it unchanged keeps following the address.
+    expect(defaultSiteNameFor(1)).toBe('cwb . fyi');
     expect(spacedSiteName('https://Chests.Taul1.com:8443/join?x=1')).toBe('chests . taul1 . com');
     const linky = /http|www|[a-z0-9-]\.[a-z]{2,}/i;
     const texts = [

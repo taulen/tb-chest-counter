@@ -1652,6 +1652,10 @@ label {
 
 /* A clan's short code ("CWB"): at most 8 characters, so a narrow field. */
 .clan-code-field .input { width: 7.5em; }
+/* Account invites → site name ("cwb . fyi"): sized to a host name, so its
+   Save sits beside it like the other rows' instead of at the far edge. */
+.invite-site-field { width: min(18em, 100%); }
+.invite-site-field .input { width: 100%; }
 
 .import-row {
   align-items: center;
@@ -3005,6 +3009,10 @@ details > table {
 
   .inline-form-row .btn {
     width: 100%;
+  }
+
+  .inline-form-row .invite-site-field {
+    width: auto;
   }
 
   .input {

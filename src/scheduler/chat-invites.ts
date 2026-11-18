@@ -109,6 +109,11 @@ export function siteNameOverride(): string {
 export function siteNameFor(clanId: number): string | null {
   const override = spacedSiteName(siteNameOverride());
   if (override) return override;
+  return defaultSiteNameFor(clanId);
+}
+
+/** The site name with no override: the clan's public address host, spaced out; null when there is none. */
+export function defaultSiteNameFor(clanId: number): string | null {
   const base = clanPublicUrl(getClanById(clanId), loadConfig().webExternalUrl);
   const spaced = base ? spacedSiteName(base) : '';
   return spaced || null;

@@ -94,11 +94,15 @@ function createAccountInvitesRouter() {
             res.status(400).json({ error: 'Not a site name' });
             return;
         }
-        if (raw)
-            (0, persistent_env_js_1.updateEnvValue)('INVITE_SITE_NAME', (0, chat_invites_js_1.spacedSiteName)(raw).replace(/ \. /g, '.'));
+        // The box is pre-filled with the name in use, so saving it unchanged — or
+        // typing the public address's own host — keeps following that address
+        // instead of freezing it as an override.
+        const custom = raw && (0, chat_invites_js_1.spacedSiteName)(raw) !== (0, chat_invites_js_1.defaultSiteNameFor)(req.parsedClanId) ? (0, chat_invites_js_1.spacedSiteName)(raw) : '';
+        if (custom)
+            (0, persistent_env_js_1.updateEnvValue)('INVITE_SITE_NAME', custom.replace(/ \. /g, '.'));
         else
             (0, persistent_env_js_1.deleteEnvValue)('INVITE_SITE_NAME');
-        (0, user_repo_js_1.logAction)(req.user.id, 'update_invite_site_name', { siteName: raw ? (0, chat_invites_js_1.spacedSiteName)(raw) : '' });
+        (0, user_repo_js_1.logAction)(req.user.id, 'update_invite_site_name', { siteName: custom });
         res.json({ ok: true, siteName: (0, chat_invites_js_1.siteNameFor)(req.parsedClanId) });
     });
     return router;
