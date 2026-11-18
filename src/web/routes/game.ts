@@ -11,7 +11,6 @@ import { Router } from 'express';
 import { getDb } from '../../data/database.js';
 import { gamePlayerNames } from '../../data/game-player-names.js';
 import { getMemberById } from '../../data/repositories/member-repo.js';
-import { photoUrlForPlayer } from '../../data/repositories/avatar-repo.js';
 import {
   gamePlayerIdForMember,
   getGamePlayer,
@@ -44,7 +43,7 @@ import {
   getLatestClanStats,
 } from '../../data/repositories/game-clan-repo.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
-import { linkedPhotoUrlsForClan, resolveMemberAvatar } from '../../data/repositories/avatar-repo.js';
+import { linkedPhotoUrlsForClan, photoUrlForPlayer, resolveMemberAvatar } from '../../data/repositories/avatar-repo.js';
 import { linkedGamePlayerId } from '../../data/repositories/account-invite-repo.js';
 import { buildRosterChanges, countRosterChanges, filterRosterChanges } from '../../data/roster-changes.js';
 import { loadRosterSources, rosterReadSince } from '../../data/repositories/roster-changes-repo.js';
