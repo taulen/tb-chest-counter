@@ -271,9 +271,10 @@ function sortRows(rows) {
 function listHtml() {
   const q = state.query.trim().toLowerCase();
   const shown = sortRows(board.rows.filter((r) => (state.band === 'all' || r.band === state.band) && (!q || r.name.toLowerCase().includes(q))));
-  const pinYou = getCurrentUser()?.role === 'user' ? board.rows.find((r) => r.isYou) : null;
+  // Every one of your players (alts, v130), in board order.
+  const pinYou = getCurrentUser()?.role === 'user' ? board.rows.filter((r) => r.isYou) : [];
   if (!board.rows.length) return `<p class="ui-empty">${t('No members yet.')}</p>`;
-  const you = pinYou ? `<div class="mboard-you"><h3 class="mboard-group">${t('You')}</h3><ol class="mboard-list">${rowHtml(pinYou)}</ol></div>` : '';
+  const you = pinYou.length ? `<div class="mboard-you"><h3 class="mboard-group">${t('You')}</h3><ol class="mboard-list">${pinYou.map(rowHtml).join('')}</ol></div>` : '';
   if (!shown.length) return `${you}<p class="ui-empty">${t('Nobody matches this filter.')}</p>`;
   // Grouped under the band headings when ranked by points against a goal.
   if (state.sort === 'points' && board.goalPts && state.band === 'all') {

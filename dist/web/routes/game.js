@@ -502,15 +502,15 @@ function createGameRouter() {
         // The picture a member shows (Members board): the linked account's own
         // photo, else the hero portrait, else the initial — avatar-repo's order.
         const photos = (0, avatar_repo_js_1.linkedPhotoUrlsForClan)(clanId);
-        // Which member is the signed-in account's own player, for the board's "You".
-        const myPlayerId = req.user ? (0, account_invite_repo_js_1.linkedGamePlayerId)(req.user.id, clanId) : null;
+        // Which members are the signed-in account's own players (alts too), for the board's "You".
+        const mine = new Set(req.user ? (0, account_invite_repo_js_1.linkedPlayerIds)(req.user.id, clanId) : []);
         const out = {};
         for (const [memberId, p] of (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId)) {
             out[memberId] = {
                 heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, frameUrl: p.frameUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
                 tiers: tiers.get(memberId)?.tiers ?? null,
                 avatar: (0, avatar_repo_js_1.resolveMemberAvatar)(p.name, p.avatarUrl, photos.get(p.playerId) ?? null),
-                isYou: myPlayerId !== null && myPlayerId === p.playerId,
+                isYou: mine.has(p.playerId),
                 joinedAt: p.joinedAt, burning: p.burning, mapSeenAt: p.mapSeenAt, might: p.might,
             };
         }

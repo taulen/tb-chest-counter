@@ -11,6 +11,9 @@ import {
   isAccountBlocked,
   linkFor,
   linksForClan,
+  linksForUser,
+  mainLink,
+  setMainPlayer,
   unlinkGameAccount,
 } from '../../data/repositories/account-invite-repo.js';
 import {
@@ -191,8 +194,61 @@ export function createAuthRouter(): Router {
     });
   };
 
-  // PUT /api/auth/avatar — set (or replace) your own photo.
+  /**
+   * Which picture a photo request is about (v130: photos belong to PLAYERS):
+   * `?player=<id>` — one of the account's own players (anything else is
+   * refused); without it, the player it plays as in the clan being viewed,
+   * else its home clan's. An account with no player at all edits its own
+   * account photo (playerId null).
+   */
+  const photoTarget = (req: Request, res: Response): { playerId: number | null } | null => {
+    const u = req.user!;
+    const mine = linksForUser(u.id);
+    if (req.query.player !== undefined) {
+      const playerId = Number(req.query.player);
+      if (!Number.isFinite(playerId) || !mine.some((l) => l.playerId === playerId)) {
+        res.status(403).json({ error: 'That player is not linked to your account' });
+        return null;
+      }
+      return { playerId };
+    }
+    if (!mine.length) return { playerId: null };
+    const main = mainLink(u.id, req.clanId ?? u.clanId ?? mine[0].clanId) ?? mine[0];
+    return { playerId: main.playerId };
+  };
+
+  const photoState = (req: Request) => {
+    const u = req.user!;
+    return {
+      avatar: avatarRepo.resolveAccountAvatar(u, req.clanId ?? u.clanId),
+      players: avatarRepo.accountPlayers(u.id),
+    };
+  };
+
+  // GET /api/auth/players — your linked players (every clan) with their
+  // pictures and which one you play as in each clan: the photo dialog's
+  // picker and the account menu's "Playing as".
+  router.get('/players', requireAuth, (req, res) => {
+    res.json({ ok: true, activeClanId: req.clanId ?? req.user!.clanId, ...photoState(req) });
+  });
+
+  // PUT /api/auth/main-player { clanId, playerId } — play as another of your
+  // players in a clan (its picture becomes the account's there).
+  router.put('/main-player', requireAuth, (req, res) => {
+    const clanId = Number(req.body?.clanId);
+    const playerId = Number(req.body?.playerId);
+    if (!Number.isFinite(clanId) || !Number.isFinite(playerId)) return res.status(400).json({ error: 'Invalid clan or player' });
+    if (!setMainPlayer(req.user!.id, clanId, playerId)) return res.status(403).json({ error: 'That player is not linked to your account in this clan' });
+    userRepo.logAction(req.user!.id, 'set_main_player', { clanId, playerId });
+    res.json({ ok: true, ...photoState(req) });
+  });
+
+  // PUT /api/auth/avatar[?player=<id>] — set (or replace) the photo of one of
+  // your players (default: the one you play as here); an account with no
+  // player sets its own photo.
   router.put('/avatar', requireAuth, avatarLimiter, readAvatarBody, (req, res) => {
+    const target = photoTarget(req, res);
+    if (!target) return;
     const body = Buffer.isBuffer(req.body) ? req.body : null;
     const check = avatarRepo.validateAvatarUpload(body);
     if (!check.ok) {
@@ -200,17 +256,21 @@ export function createAuthRouter(): Router {
       return res.status(status).json({ error: avatarRepo.AVATAR_REJECTION_MESSAGES[check.reason] });
     }
     const u = req.user!;
-    avatarRepo.setUserAvatar(u.id, body!, check.image);
-    userRepo.logAction(u.id, 'set_avatar');
-    res.json({ ok: true, avatar: avatarRepo.resolveAccountAvatar(u, req.clanId ?? u.clanId) });
+    if (target.playerId !== null) avatarRepo.setPlayerAvatar(target.playerId, u.id, body!, check.image);
+    else avatarRepo.setUserAvatar(u.id, body!, check.image);
+    userRepo.logAction(u.id, 'set_avatar', target.playerId !== null ? { playerId: target.playerId } : undefined);
+    res.json({ ok: true, ...photoState(req) });
   });
 
-  // DELETE /api/auth/avatar — remove your own photo; the hero portrait or
-  // the initial shows again.
+  // DELETE /api/auth/avatar[?player=<id>] — remove that photo; the hero
+  // portrait or the initial shows again.
   router.delete('/avatar', requireAuth, (req, res) => {
+    const target = photoTarget(req, res);
+    if (!target) return;
     const u = req.user!;
-    if (avatarRepo.removeUserAvatar(u.id)) userRepo.logAction(u.id, 'remove_avatar');
-    res.json({ ok: true, avatar: avatarRepo.resolveAccountAvatar(u, req.clanId ?? u.clanId) });
+    const removed = target.playerId !== null ? avatarRepo.removePlayerAvatar(target.playerId) : avatarRepo.removeUserAvatar(u.id);
+    if (removed) userRepo.logAction(u.id, 'remove_avatar', target.playerId !== null ? { playerId: target.playerId } : undefined);
+    res.json({ ok: true, ...photoState(req) });
   });
 
   // --- User Management (Admin / Super Admin) ---
@@ -222,10 +282,10 @@ export function createAuthRouter(): Router {
   router.get('/users', requireAdmin, (req, res) => {
     const viewerClan = req.user!.role === 'superadmin' ? null : req.user!.clanId;
     const links = viewerClan === null ? allGameLinks() : linksForClan(viewerClan);
-    const byUser = new Map<number, Array<{ clanId: number; playerName: string; rank: number | null; onRoster: boolean; linkedAt: string }>>();
+    const byUser = new Map<number, Array<{ clanId: number; playerId: number; playerName: string; rank: number | null; onRoster: boolean; linkedAt: string }>>();
     for (const l of links) {
       const list = byUser.get(l.userId) ?? [];
-      list.push({ clanId: l.clanId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt });
+      list.push({ clanId: l.clanId, playerId: l.playerId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt });
       byUser.set(l.userId, list);
     }
     // Each row's picture as the account shows it in the clan it is listed in
@@ -237,10 +297,12 @@ export function createAuthRouter(): Router {
     })));
   });
 
-  // DELETE /api/auth/users/:id/avatar — take down someone's photo.
-  // Superadmin: anyone. Clan admin: accounts of the clan they are viewing
-  // (its own members and its guests — the same accounts its Users page lists),
-  // never a superadmin.
+  // DELETE /api/auth/users/:id/avatar[?player=<id>] — take down someone's
+  // photos: the account's own (old, unlinked accounts) and its players' (v130),
+  // or just one player's with ?player. Superadmin: anyone, every player. Clan
+  // admin: accounts of the clan they are viewing (its own members and its
+  // guests — the same accounts its Users page lists), only their players in
+  // that clan, never a superadmin.
   router.delete('/users/:id/avatar', requireAdmin, (req, res) => {
     const id = parseInt(String(req.params.id));
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid user' });
@@ -257,13 +319,22 @@ export function createAuthRouter(): Router {
         return res.status(403).json({ error: 'You can only manage users in your own clan' });
       }
     }
-    const removed = avatarRepo.removeUserAvatar(id);
-    if (removed) userRepo.logAction(req.user!.id, 'remove_user_avatar', { username: target.username });
+    const scope = req.user!.role === 'superadmin' ? null : req.user!.clanId;
+    let players = linksForUser(id).filter((l) => scope === null || l.clanId === scope).map((l) => l.playerId);
+    if (req.query.player !== undefined) {
+      const one = Number(req.query.player);
+      if (!players.includes(one)) return res.status(404).json({ error: 'That player is not linked to this account here' });
+      players = [one];
+    }
+    let removed = req.query.player === undefined && avatarRepo.removeUserAvatar(id);
+    for (const p of players) if (avatarRepo.removePlayerAvatar(p)) removed = true;
+    if (removed) userRepo.logAction(req.user!.id, 'remove_user_avatar', { username: target.username, players });
     res.json({ ok: true, removed });
   });
 
-  // DELETE /api/auth/users/:id/game-links/:clanId — superadmin: forget an
-  // account's link to a game player in one clan (a wrong link, or a player
+  // DELETE /api/auth/users/:id/game-links/:clanId[?player=<id>] — superadmin:
+  // forget an account's link to one game player in a clan (?player), or to all
+  // its players there (a wrong link, or a player
   // who wants a fresh account). The account keeps the access and role it has
   // now, as a plain grant; the player can link again with a new code.
   router.delete('/users/:id/game-links/:clanId', requireSuperAdmin, (req, res) => {
@@ -274,11 +345,15 @@ export function createAuthRouter(): Router {
     }
     const target = userRepo.getUserById(id);
     if (!target) return res.status(404).json({ error: 'User not found' });
-    const removed = unlinkGameAccount(id, clanId);
-    if (!removed) return res.status(404).json({ error: 'That account is not linked to a player in this clan' });
-    userRepo.logAction(req.user!.id, 'unlink_game_player', {
-      username: target.username, clanId, playerId: removed.playerId, player: removed.playerName,
-    });
+    const playerParam = req.query.player === undefined ? undefined : Number(req.query.player);
+    if (playerParam !== undefined && !Number.isFinite(playerParam)) return res.status(400).json({ error: 'Invalid player' });
+    const removed = unlinkGameAccount(id, clanId, playerParam);
+    if (!removed.length) return res.status(404).json({ error: 'That account is not linked to a player in this clan' });
+    for (const l of removed) {
+      userRepo.logAction(req.user!.id, 'unlink_game_player', {
+        username: target.username, clanId, playerId: l.playerId, player: l.playerName,
+      });
+    }
     res.json({ ok: true });
   });
 

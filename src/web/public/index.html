@@ -198,6 +198,13 @@
             <div class="shell-account-who" id="userMenuWho"></div>
           </div>
         </div>
+        <!-- Alts (v130): which of the account's players in the clan being viewed
+             it plays as — its picture is the account's here. Shown only when the
+             account has more than one player in this clan (lib/shell.js). -->
+        <div class="user-menu-section" id="userMenuPlaying" hidden>
+          <label class="user-menu-section-label" for="userMenuPlayingSelect" data-i18n>Playing as</label>
+          <select id="userMenuPlayingSelect" class="lang-select"></select>
+        </div>
         <div class="user-menu-section">
           <div class="user-menu-section-label" data-i18n>Theme</div>
           <div class="theme-segmented" role="group" aria-label="Color theme" data-i18n-attr="aria-label">

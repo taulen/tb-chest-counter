@@ -15,7 +15,7 @@ import { createAuthRouter } from '../../../src/web/routes/auth.js';
 import { createAvatarRouter } from '../../../src/web/routes/avatars.js';
 import { requireAuth, SESSION_COOKIE_NAME } from '../../../src/web/middleware/auth.js';
 import * as userRepo from '../../../src/data/repositories/user-repo.js';
-import { AVATAR_MAX_BYTES } from '../../../src/data/repositories/avatar-repo.js';
+import { AVATAR_MAX_BYTES, photoUrlForPlayer } from '../../../src/data/repositories/avatar-repo.js';
 import { getDb } from '../../../src/data/database.js';
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import { jpegBytes, pngBytes, webpLossyBytes } from '../../helpers/image-bytes.js';
@@ -228,6 +228,65 @@ describe('account photos', () => {
       expect(res.status).toBe(200);
       const byName = Object.fromEntries((res.body as Array<{ username: string; avatar: { kind: string } }>).map((u) => [u.username, u.avatar.kind]));
       expect(byName).toEqual({ a1: 'photo', u1: 'photo' });
+    });
+  });
+
+  describe('photos per player (v130)', () => {
+    // u1 plays two players in clan 1 (alts); u2 one in clan 2.
+    beforeEach(() => {
+      const now = new Date().toISOString();
+      const link = (userId: number, clanId: number, playerId: number) => {
+        getDb().prepare('INSERT INTO game_players (clan_id, player_id, name, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)')
+          .run(clanId, playerId, `P${playerId}`, now, now);
+        getDb().prepare('INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(userId, clanId, playerId, `P${playerId}`, now, now);
+      };
+      link(ids.user1.userId, 1, 7001);
+      link(ids.user1.userId, 1, 7002);
+      link(ids.user2.userId, 2, 7003);
+    });
+
+    const put = (who: Persona, path: string, body: unknown) => request(app).put(path).set('Accept', 'application/json')
+      .set('Cookie', ids[who].cookie).send(body as object);
+
+    it('without ?player the photo goes to the player you play as; the account shows it', async () => {
+      const res = await upload('user1', pngBytes(512, 512), 'image/png');
+      expect(res.status).toBe(200);
+      expect(photoUrlForPlayer(7001)).toBe(res.body.avatar.url);
+      expect(photoUrlForPlayer(7002)).toBeNull();
+      expect(photoRows(ids.user1.userId)).toBe(0);
+      expect(res.body.players.map((p: { playerId: number; isMain: boolean }) => [p.playerId, p.isMain])).toEqual([[7001, true], [7002, false]]);
+    });
+
+    it('?player picks one of your players; anyone else\'s is refused', async () => {
+      const mine = await request(app).put('/api/auth/avatar?player=7002').set('Accept', 'application/json')
+        .set('Cookie', ids.user1.cookie).set('Content-Type', 'image/png').send(pngBytes(512, 512));
+      expect(mine.status).toBe(200);
+      expect(photoUrlForPlayer(7002)).not.toBeNull();
+      const theirs = await request(app).put('/api/auth/avatar?player=7003').set('Accept', 'application/json')
+        .set('Cookie', ids.user1.cookie).set('Content-Type', 'image/png').send(pngBytes(512, 512));
+      expect(theirs.status).toBe(403);
+      expect(photoUrlForPlayer(7003)).toBeNull();
+    });
+
+    it('playing as another alt moves the account picture with it', async () => {
+      await request(app).put('/api/auth/avatar?player=7002').set('Accept', 'application/json')
+        .set('Cookie', ids.user1.cookie).set('Content-Type', 'image/png').send(pngBytes(512, 512));
+      const switched = await put('user1', '/api/auth/main-player', { clanId: 1, playerId: 7002 });
+      expect(switched.status).toBe(200);
+      expect(switched.body.avatar.url).toBe(photoUrlForPlayer(7002));
+      expect((await put('user1', '/api/auth/main-player', { clanId: 1, playerId: 7003 })).status).toBe(403);
+    });
+
+    it("a clan admin takes down a player's photo in their clan only", async () => {
+      await upload('user1', pngBytes(512, 512), 'image/png');
+      const other = await request(app).delete(`/api/auth/users/${ids.user1.userId}/avatar?player=7001`)
+        .set('Accept', 'application/json').set('Cookie', ids.admin2.cookie);
+      expect(other.status).toBe(403);
+      const own = await request(app).delete(`/api/auth/users/${ids.user1.userId}/avatar?player=7001`)
+        .set('Accept', 'application/json').set('Cookie', ids.admin1.cookie);
+      expect(own.status).toBe(200);
+      expect(photoUrlForPlayer(7001)).toBeNull();
     });
   });
 });

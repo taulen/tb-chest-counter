@@ -2488,6 +2488,70 @@ const MIGRATIONS = [
             }
         },
     },
+    {
+        // v130 — alts and photos per player (Nov 18 2026; account-invite-repo,
+        // avatar-repo). One account may link SEVERAL game players in one clan:
+        // user_game_links goes from one row per (user, clan) to one per (user,
+        // clan, player), a player still linked to at most one account. Its
+        // "main" player per clan (the one the account plays as, and whose picture
+        // it shows) is user_clan_main — absent = the earliest link. Photos belong
+        // to the PLAYER: player_avatars, keyed by the game player id, recording
+        // the account that uploaded it. Existing account photos move to every
+        // player their account is linked to; unlinked (old) accounts keep theirs
+        // in user_avatars. Replay-safe: the rebuild runs only while the old key is
+        // in place, the rest is IF NOT EXISTS / OR IGNORE.
+        version: 130,
+        run: (database) => {
+            const sql = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_game_links'").get()?.sql ?? '';
+            if (sql && !/PRIMARY KEY\s*\(\s*user_id\s*,\s*clan_id\s*,\s*player_id\s*\)/i.test(sql)) {
+                database.exec(`
+          CREATE TABLE user_game_links_v130 (
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            clan_id INTEGER NOT NULL REFERENCES clans(id),
+            player_id INTEGER NOT NULL,
+            player_name TEXT NOT NULL DEFAULT '',
+            chat_user_id TEXT NOT NULL DEFAULT '',
+            rank INTEGER,
+            on_roster INTEGER NOT NULL DEFAULT 1,
+            linked_at TEXT NOT NULL,
+            synced_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, clan_id, player_id),
+            UNIQUE (clan_id, player_id)
+          );
+          INSERT INTO user_game_links_v130
+            (user_id, clan_id, player_id, player_name, chat_user_id, rank, on_roster, linked_at, synced_at)
+            SELECT user_id, clan_id, player_id, player_name, chat_user_id, rank, on_roster, linked_at, synced_at FROM user_game_links;
+          DROP TABLE user_game_links;
+          ALTER TABLE user_game_links_v130 RENAME TO user_game_links;
+          CREATE INDEX IF NOT EXISTS idx_user_game_links_player ON user_game_links (player_id);
+        `);
+            }
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS user_clan_main (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          set_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, clan_id)
+        );
+        CREATE TABLE IF NOT EXISTS player_avatars (
+          player_id INTEGER PRIMARY KEY,
+          sha256 TEXT NOT NULL,
+          mime TEXT NOT NULL,
+          width INTEGER NOT NULL,
+          height INTEGER NOT NULL,
+          bytes BLOB NOT NULL,
+          uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_player_avatars_sha256 ON player_avatars(sha256);
+        INSERT OR IGNORE INTO player_avatars (player_id, sha256, mime, width, height, bytes, uploaded_by, updated_at)
+          SELECT l.player_id, a.sha256, a.mime, a.width, a.height, a.bytes, a.user_id, a.updated_at
+            FROM user_avatars a JOIN user_game_links l ON l.user_id = a.user_id;
+        DELETE FROM user_avatars WHERE user_id IN (SELECT user_id FROM user_game_links);
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

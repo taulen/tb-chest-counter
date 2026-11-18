@@ -216,6 +216,11 @@
   },
   {
     "type": "index",
+    "name": "idx_player_avatars_sha256",
+    "sql": "CREATE INDEX idx_player_avatars_sha256 ON player_avatars(sha256)"
+  },
+  {
+    "type": "index",
     "name": "idx_player_category_ref",
     "sql": "CREATE INDEX idx_player_category_ref ON player_category(player_ref_id)"
   },
@@ -771,6 +776,11 @@
   },
   {
     "type": "table",
+    "name": "player_avatars",
+    "sql": "CREATE TABLE player_avatars ( player_id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL, mime TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, bytes BLOB NOT NULL, uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
     "name": "player_category",
     "sql": "CREATE TABLE player_category ( id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL REFERENCES snapshot(id) ON DELETE CASCADE, player_ref_id INTEGER NOT NULL REFERENCES ct_player_ref(id), category TEXT NOT NULL, chests INTEGER NOT NULL DEFAULT 0, clan_id INTEGER NOT NULL DEFAULT 1 )"
   },
@@ -896,8 +906,13 @@
   },
   {
     "type": "table",
+    "name": "user_clan_main",
+    "sql": "CREATE TABLE user_clan_main ( user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, set_at TEXT NOT NULL, PRIMARY KEY (user_id, clan_id) )"
+  },
+  {
+    "type": "table",
     "name": "user_game_links",
-    "sql": "CREATE TABLE user_game_links ( user_id INTEGER NOT NULL REFERENCES users(id), clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, player_name TEXT NOT NULL DEFAULT '', chat_user_id TEXT NOT NULL DEFAULT '', rank INTEGER, on_roster INTEGER NOT NULL DEFAULT 1, linked_at TEXT NOT NULL, synced_at TEXT NOT NULL, PRIMARY KEY (user_id, clan_id), UNIQUE (clan_id, player_id) )"
+    "sql": "CREATE TABLE user_game_links ( user_id INTEGER NOT NULL REFERENCES users(id), clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, player_name TEXT NOT NULL DEFAULT '', chat_user_id TEXT NOT NULL DEFAULT '', rank INTEGER, on_roster INTEGER NOT NULL DEFAULT 1, linked_at TEXT NOT NULL, synced_at TEXT NOT NULL, PRIMARY KEY (user_id, clan_id, player_id), UNIQUE (clan_id, player_id) )"
   },
   {
     "type": "table",

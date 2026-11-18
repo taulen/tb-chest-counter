@@ -14,6 +14,10 @@ import {
   hashCode,
   isAccountBlocked,
   linkFor,
+  linkedPlayerIds,
+  linksInClan,
+  mainLink,
+  setMainPlayer,
   lookupCode,
   normalizeCode,
   rankRole,
@@ -155,14 +159,12 @@ describe('joining with a code', () => {
     expect(userRepo.getUserById(home.user.id)).toMatchObject({ clanId: 1, role: 'user' });
   });
 
-  it('refuses: a player linked to another account, another player in the same clan, a superadmin', () => {
+  it('refuses: a player linked to another account, a superadmin', () => {
     gamePlayer(1, 61, 'Taken', 4);
     gamePlayer(1, 62, 'Other', 4);
     redeemJoin(issueCode(1, 61), null, { username: 'owner', password: PW }, NOW);
     const other = userRepo.createUser('other', PW, 'user', undefined, 1);
     expect(() => redeemJoin(issueCode(1, 61, 'tb:61', NOW + 11 * 60_000), userRepo.getUserById(other.id), {}, NOW + 11 * 60_000)).toThrow('conflict');
-    const owner = userRepo.getUserById(accountForPlayer(61)!)!;
-    expect(() => redeemJoin(issueCode(1, 62), owner, {}, NOW)).toThrow('other-player');
     const su = userRepo.createUser('su', PW, 'superadmin');
     expect(() => redeemJoin(issueCode(1, 62, 'tb:62', NOW + 11 * 60_000), su, {}, NOW + 11 * 60_000)).toThrow('superadmin');
   });
@@ -289,9 +291,88 @@ describe('roles follow the in-game rank, both directions, every scan', () => {
     const other = linkedAccount(1, 172, 2, 'unlinked');
     userRepo.updateRole(id, 'superadmin');
     expect(linkFor(id, 1)).toBeNull();
-    expect(unlinkGameAccount(other, 1)?.playerId).toBe(172);
+    expect(unlinkGameAccount(other, 1)[0]?.playerId).toBe(172);
     syncLinkedAccounts(1, roster({ 172: 5 }));
     expect(userRepo.getUserById(other)?.role).toBe('admin');
+  });
+});
+
+describe('alts: several players of one account in the same clan (v130)', () => {
+  const audits = (action: string) => (getDb().prepare('SELECT details FROM audit_log WHERE action = ? ORDER BY id').all(action) as Array<{ details: string }>)
+    .map((r) => JSON.parse(r.details) as Record<string, unknown>);
+  function account(clanId: number, playerId: number, rank: number, username: string) {
+    gamePlayer(clanId, playerId, `P${playerId}`, rank);
+    return redeemJoin(issueCode(clanId, playerId), null, { username, password: PW }, NOW).user;
+  }
+  function addAlt(user: userRepo.User, clanId: number, playerId: number, rank: number) {
+    gamePlayer(clanId, playerId, `P${playerId}`, rank);
+    return redeemJoin(issueCode(clanId, playerId), userRepo.getUserById(user.id)!, {}, NOW);
+  }
+
+  it('a code for another player in a clan the account is in ADDS it; the first stays the main', () => {
+    const u = account(1, 301, 5, 'alty');
+    const r = addAlt(u, 1, 302, 4);
+    expect(r.mode).toBe('add-player');
+    expect(linksInClan(u.id, 1).map((l) => l.playerId)).toEqual([301, 302]);
+    expect(mainLink(u.id, 1)?.playerId).toBe(301);
+    expect(linkedPlayerIds(u.id, 1)).toEqual([301, 302]);
+    expect(setMainPlayer(u.id, 1, 302)).toBe(true);
+    expect(mainLink(u.id, 1)?.playerId).toBe(302);
+    expect(setMainPlayer(u.id, 1, 999)).toBe(false);
+  });
+
+  it('a Superior alt makes the account admin; demoting the alt takes it away; promoting the main gives it back', () => {
+    const u = account(1, 311, 5, 'boss');
+    const token = userRepo.createSession(u.id);
+    addAlt(u, 1, 312, 2);
+    expect(userRepo.validateSession(token)?.user.role).toBe('admin');
+    syncLinkedAccounts(1, roster({ 311: 5, 312: 3 }));
+    expect(userRepo.validateSession(token)?.user.role).toBe('user');
+    syncLinkedAccounts(1, roster({ 311: 1, 312: 3 }));
+    expect(userRepo.validateSession(token)?.user.role).toBe('admin');
+    const a = audits('account.role_from_game');
+    expect(a.at(-1)).toMatchObject({ from: 'user', to: 'admin', playerId: 311, toRank: 1, source: 'game' });
+  });
+
+  it('one alt leaving keeps the clan; the last one leaving takes it; a return gives it back', () => {
+    const u = account(1, 321, 4, 'home1');
+    gamePlayer(2, 322, 'P322', 4);
+    redeemJoin(issueCode(2, 322), userRepo.getUserById(u.id)!, {}, NOW);
+    addAlt(u, 2, 323, 4);
+    expect(userRepo.getClanAccessRole(u.id, 2)).toBe('user');
+    syncLinkedAccounts(2, roster({ 323: 4 }));
+    expect(userRepo.getClanAccessRole(u.id, 2)).toBe('user');
+    syncLinkedAccounts(2, roster({}));
+    expect(userRepo.getClanAccessRole(u.id, 2)).toBeNull();
+    syncLinkedAccounts(2, roster({ 322: 2 }));
+    expect(userRepo.getClanAccessRole(u.id, 2)).toBe('admin');
+  });
+
+  it('the home clan blocks the account only when every one of its players there has left', () => {
+    const u = account(1, 331, 4, 'homey');
+    addAlt(u, 1, 332, 4);
+    const token = userRepo.createSession(u.id);
+    syncLinkedAccounts(1, roster({ 332: 4 }));
+    expect(isAccountBlocked(u.id)).toBe(false);
+    expect(userRepo.validateSession(token)).not.toBeNull();
+    syncLinkedAccounts(1, roster({}));
+    expect(isAccountBlocked(u.id)).toBe(true);
+    expect(userRepo.validateSession(token)).toBeNull();
+  });
+
+  it('unlinking one alt keeps the other, and the main moves to the one left', () => {
+    const u = account(1, 341, 4, 'pair');
+    addAlt(u, 1, 342, 4);
+    setMainPlayer(u.id, 1, 342);
+    expect(unlinkGameAccount(u.id, 1, 342).map((l) => l.playerId)).toEqual([342]);
+    expect(linkedPlayerIds(u.id, 1)).toEqual([341]);
+    expect(mainLink(u.id, 1)?.playerId).toBe(341);
+  });
+
+  it('still refuses a player linked to another account', () => {
+    account(1, 351, 4, 'first');
+    const u = account(1, 352, 4, 'second');
+    expect(() => redeemJoin(issueCode(1, 351, 'tb:351', NOW + 11 * 60_000), userRepo.getUserById(u.id)!, {}, NOW + 11 * 60_000)).toThrow('conflict');
   });
 });
 

@@ -11,20 +11,25 @@ exports.setUserAvatar = setUserAvatar;
 exports.removeUserAvatar = removeUserAvatar;
 exports.hasUserAvatar = hasUserAvatar;
 exports.getAvatarBytes = getAvatarBytes;
+exports.setPlayerAvatar = setPlayerAvatar;
+exports.removePlayerAvatar = removePlayerAvatar;
+exports.photoUrlForPlayer = photoUrlForPlayer;
 exports.linkedPhotoUrlsForClan = linkedPhotoUrlsForClan;
 exports.resolveMemberAvatar = resolveMemberAvatar;
-exports.photoUrlForPlayer = photoUrlForPlayer;
 exports.resolveAccountAvatar = resolveAccountAvatar;
+exports.accountPlayers = accountPlayers;
 /**
- * Account avatars (v128): the small round picture next to a signed-in account.
+ * Avatars: the small round picture next to a signed-in account (v128) and the
+ * picture each game player shows (v130: photos belong to PLAYERS).
  *
  * What an account shows, in order (resolveAccountAvatar — the ONE place that
  * decides, used by every route that hands an account to the UI):
- *   1. the photo the account uploaded itself (framed in the browser, 512×512);
- *   2. else the hero portrait of the game player the account is, in that clan
- *      (the invite link, account-invite-repo.linkedGamePlayerId →
- *      game_players.hero_avatar);
- *   3. else the account name's first letter.
+ *   1. its main player in the clan being viewed (account-invite-repo.mainLink):
+ *      that player's photo (player_avatars), else its hero portrait;
+ *   2. an account with no player at all (old, unlinked): its own photo
+ *      (user_avatars), else its name's first letter.
+ * A member shows its own photo, else its hero, else its initial
+ * (resolveMemberAvatar). Photos are framed in the browser, 512×512.
  *
  * Photos live in the database, not on disk, so a backup or a restore carries
  * them. They are served to signed-in viewers only at an extensionless /api path
@@ -102,36 +107,54 @@ function removeUserAvatar(userId) {
 function hasUserAvatar(userId) {
     return !!(0, database_js_1.getDb)().prepare('SELECT 1 FROM user_avatars WHERE user_id = ?').get(userId);
 }
-/** A stored photo by its content hash, for serving; null when no account has it. */
+/**
+ * A stored photo by its content hash, for serving; null when none has it. A
+ * player's photo (v130) or an unlinked account's own photo.
+ */
 function getAvatarBytes(sha256) {
-    const row = (0, database_js_1.getDb)().prepare('SELECT mime, bytes FROM user_avatars WHERE sha256 = ? LIMIT 1').get(sha256);
+    const db = (0, database_js_1.getDb)();
+    const row = (db.prepare('SELECT mime, bytes FROM player_avatars WHERE sha256 = ? LIMIT 1').get(sha256)
+        ?? db.prepare('SELECT mime, bytes FROM user_avatars WHERE sha256 = ? LIMIT 1').get(sha256));
     return row ?? null;
 }
-/** The hero portrait of the game player this account is in that clan, or null. */
-function heroPortraitUrl(userId, clanId) {
-    if (clanId === null)
-        return null;
-    const playerId = (0, account_invite_repo_js_1.linkedGamePlayerId)(userId, clanId);
-    if (playerId === null)
-        return null;
+// ── Photos per player (v130) ────────────────────────────────────────────────
+/**
+ * Store (or replace) a game player's photo, uploaded by the account linked to
+ * it. One row per player: the previous photo's bytes go in the same write.
+ */
+function setPlayerAvatar(playerId, uploadedBy, bytes, image) {
+    const sha256 = crypto_1.default.createHash('sha256').update(bytes).digest('hex');
+    (0, database_js_1.getDb)().prepare(`INSERT INTO player_avatars (player_id, sha256, mime, width, height, bytes, uploaded_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(player_id) DO UPDATE SET
+       sha256 = excluded.sha256, mime = excluded.mime, width = excluded.width, height = excluded.height,
+       bytes = excluded.bytes, uploaded_by = excluded.uploaded_by, updated_at = excluded.updated_at`).run(playerId, sha256, image.mime, image.width, image.height, bytes, uploadedBy, new Date().toISOString());
+    return { url: avatarUrl(sha256), sha256 };
+}
+/** Drop a game player's photo. True when there was one. */
+function removePlayerAvatar(playerId) {
+    return (0, database_js_1.getDb)().prepare('DELETE FROM player_avatars WHERE player_id = ?').run(playerId).changes > 0;
+}
+/** A game player's own photo URL, or null. */
+function photoUrlForPlayer(playerId) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT sha256 FROM player_avatars WHERE player_id = ?').get(playerId);
+    return row ? avatarUrl(row.sha256) : null;
+}
+/** The hero portrait of a game player in a clan, or null. */
+function heroPortraitUrl(clanId, playerId) {
     const row = (0, database_js_1.getDb)().prepare('SELECT hero_avatar FROM game_players WHERE clan_id = ? AND player_id = ?').get(clanId, playerId);
     return (0, game_profile_repo_js_1.heroAvatarUrl)(row?.hero_avatar ?? null);
 }
 /**
- * The own photos of accounts linked to players in a clan: game player id →
- * photo URL. A member list uses it so a member shows the picture its account
- * chose — the same order as resolveAccountAvatar, seen from the member's side.
+ * The photos of a clan's players: game player id → photo URL. A member list
+ * uses it so each player — alts included — shows its own picture.
  */
 function linkedPhotoUrlsForClan(clanId) {
-    const rows = (0, database_js_1.getDb)().prepare(`SELECT l.player_id, a.sha256 FROM user_game_links l
-       JOIN user_avatars a ON a.user_id = l.user_id
-      WHERE l.clan_id = ?`).all(clanId);
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT pa.player_id, pa.sha256 FROM player_avatars pa
+       WHERE pa.player_id IN (SELECT player_id FROM game_players WHERE clan_id = ?)`).all(clanId);
     return new Map(rows.map((r) => [r.player_id, avatarUrl(r.sha256)]));
 }
-/**
- * What a MEMBER shows as its picture, in resolveAccountAvatar's order: the
- * linked account's own photo, else the hero portrait, else the initial.
- */
+/** What a MEMBER (a game player) shows: its own photo, else the hero portrait, else the initial. */
 function resolveMemberAvatar(name, heroUrl, photoUrl) {
     const initial = avatarInitial(name);
     if (photoUrl)
@@ -141,30 +164,51 @@ function resolveMemberAvatar(name, heroUrl, photoUrl) {
     return { kind: 'initial', url: null, initial };
 }
 /**
- * The photo the account linked to this game player uploaded, or null (not
- * linked, or no photo). The member profile shows it in place of the hero
- * portrait, the same order resolveAccountAvatar follows for the account.
- */
-function photoUrlForPlayer(playerId) {
-    const userId = (0, account_invite_repo_js_1.accountForPlayer)(playerId);
-    if (userId === null)
-        return null;
-    // Through the resolver, so the URL is always the one accounts get.
-    const avatar = resolveAccountAvatar({ id: userId, username: '' }, null);
-    return avatar.kind === 'photo' ? avatar.url : null;
-}
-/**
- * What an account shows as its picture: its own photo, else the hero portrait
- * of its game player in `clanId` (the clan being viewed), else its initial.
+ * What an account shows as its picture: its MAIN player in `clanId` (the clan
+ * being viewed) — that player's photo, else its hero portrait; an account not
+ * linked there uses its home clan's main player. An account with no player at
+ * all (old, unlinked) shows its own photo, else its initial.
  */
 function resolveAccountAvatar(user, clanId) {
     const initial = avatarInitial(user.username);
-    const photo = (0, database_js_1.getDb)().prepare('SELECT sha256, mime FROM user_avatars WHERE user_id = ?').get(user.id);
-    if (photo)
-        return { kind: 'photo', url: avatarUrl(photo.sha256), initial };
-    const hero = heroPortraitUrl(user.id, clanId);
-    if (hero)
-        return { kind: 'hero', url: hero, initial };
+    const main = (clanId !== null ? (0, account_invite_repo_js_1.mainLink)(user.id, clanId) : null)
+        ?? (user.clanId != null ? (0, account_invite_repo_js_1.mainLink)(user.id, user.clanId) : null)
+        ?? (0, account_invite_repo_js_1.linksForUser)(user.id)[0] ?? null;
+    if (main) {
+        const photo = photoUrlForPlayer(main.playerId);
+        if (photo)
+            return { kind: 'photo', url: photo, initial };
+        const hero = heroPortraitUrl(main.clanId, main.playerId);
+        if (hero)
+            return { kind: 'hero', url: hero, initial };
+        return { kind: 'initial', url: null, initial };
+    }
+    const own = (0, database_js_1.getDb)().prepare('SELECT sha256 FROM user_avatars WHERE user_id = ?').get(user.id);
+    if (own)
+        return { kind: 'photo', url: avatarUrl(own.sha256), initial };
     return { kind: 'initial', url: null, initial };
+}
+/** Every player the account is linked to, with its clan and picture — the photo dialog's picker and "Playing as". */
+function accountPlayers(userId) {
+    const db = (0, database_js_1.getDb)();
+    const links = (0, account_invite_repo_js_1.linksForUser)(userId);
+    const mains = new Map();
+    for (const l of links)
+        if (!mains.has(l.clanId))
+            mains.set(l.clanId, (0, account_invite_repo_js_1.mainLink)(userId, l.clanId)?.playerId ?? l.playerId);
+    return links.map((l) => {
+        const clan = db.prepare('SELECT name, short_code FROM clans WHERE id = ?').get(l.clanId);
+        const code = String(clan?.short_code ?? '').trim();
+        return {
+            playerId: l.playerId,
+            clanId: l.clanId,
+            clanName: clan ? (code ? `${code} - ${clan.name}` : clan.name) : `#${l.clanId}`,
+            playerName: l.playerName,
+            rank: l.rank,
+            onRoster: l.onRoster,
+            isMain: mains.get(l.clanId) === l.playerId,
+            avatar: resolveMemberAvatar(l.playerName, heroPortraitUrl(l.clanId, l.playerId), photoUrlForPlayer(l.playerId)),
+        };
+    });
 }
 //# sourceMappingURL=avatar-repo.js.map

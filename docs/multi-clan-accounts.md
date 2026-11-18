@@ -23,13 +23,17 @@ All of it is pinned by the `multi-clan accounts` block in [role-gates.test.ts](.
 ## Accounts linked to a game player (v127)
 
 An account made (or linked) with a code from the game chat has a row in
-`user_game_links` per clan: home clan and extra clans alike. In a linked clan
-the role is **not** set by hand — it follows the player's in-game rank on every
-scan (Leader/Superior → `admin`, else `user`), both directions, and the role
+`user_game_links` per linked player: home clan and extra clans alike, and
+(v130) **several players in one clan** — alts. One of them is its *main* there
+(`user_clan_main`, else the earliest): the one it plays as, whose picture it
+shows (account menu → **Playing as**). In a linked clan the role is **not** set
+by hand — it follows the in-game ranks on every scan: `admin` when ANY of its
+players there on the roster is Leader/Superior, else `user`, both directions, and the role
 routes above answer 409 there until the superadmin unlinks. A code from another
 clan, redeemed while signed in, adds that clan as an extra clan with the role
-its rank gives. Leaving a clan in the game removes the extra grant (it returns
-on rejoin); leaving the home clan moves the home to another linked clan still
+its rank gives. Leaving a clan in the game removes the extra grant only when NONE of its
+players there is left on the roster (it returns when one rejoins); all of them
+leaving the home clan moves the home to another linked clan still
 theirs, or pauses the account (`validateSession` answers null, login is
 refused) until they are back. See [account-invites.md](account-invites.md).
 

@@ -67,10 +67,13 @@ runs in one container.
   scanner card (state, next scan, and for the superadmin Scan this clan / Scan
   all clans) sit at its top. Phones get a bottom tab bar — Home, Members,
   Leaderboard, Events, More — where More opens the same menu as a sheet.
-  Each account has a round picture beside its name: a photo it uploaded
-  (account menu → **Change photo**: pick any photo, frame it in the circle by
-  dragging, pinching or zooming; only the framed 512×512 picture is uploaded),
-  else its game hero's portrait, else its initial — see
+  Each account has a round picture beside its name: its game player's photo
+  (account menu → **Change photo**: pick which of your players it is for, pick
+  any photo, frame it in the circle by dragging, pinching or zooming; only the
+  framed 512×512 picture is uploaded), else that player's hero portrait, else
+  its initial. Photos belong to players: an account with several players in a
+  clan (alts) gives each its own, and **Playing as** in the account menu picks
+  which one the account shows there — see
   [docs/account-avatars.md](docs/account-avatars.md).
   OLED / Light / Dark themes (Auto follows the device: Light or OLED),
   mobile-friendly tables, five languages, and the accessibility work described

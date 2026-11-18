@@ -68,6 +68,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'clans.created_by',
     'event_schedule_corrections.created_by',
     'member_guards_reports.created_by',
+    'player_avatars.uploaded_by',
     'resource_upload_batches.uploaded_by',
     'share_links.created_by',
     'share_links.revoked_by',
@@ -76,6 +77,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     // the account's own (v128).
     'user_avatars.user_id',
     'user_clan_access.user_id',
+    'user_clan_main.user_id',
     'user_game_links.user_id',
     'user_sessions.user_id',
     'users.created_by',
@@ -152,6 +154,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'tinman_targets.clan_id',
     'tinman_uploads.clan_id',
     'user_clan_access.clan_id',
+    'user_clan_main.clan_id',
     'user_game_links.clan_id',
     'user_sessions.active_clan_id',
     'users.clan_id',

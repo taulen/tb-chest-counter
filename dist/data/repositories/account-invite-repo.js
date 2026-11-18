@@ -32,10 +32,15 @@ exports.lookupCode = lookupCode;
 exports.linksForUser = linksForUser;
 exports.allGameLinks = allGameLinks;
 exports.linksForClan = linksForClan;
+exports.linksInClan = linksInClan;
+exports.mainLink = mainLink;
+exports.setMainPlayer = setMainPlayer;
 exports.linkFor = linkFor;
 exports.linkedGamePlayerId = linkedGamePlayerId;
+exports.linkedPlayerIds = linkedPlayerIds;
 exports.accountForPlayer = accountForPlayer;
 exports.pinnedChatUserFor = pinnedChatUserFor;
+exports.linkedClanRole = linkedClanRole;
 exports.isAccountBlocked = isAccountBlocked;
 exports.ensureHomeOnRoster = ensureHomeOnRoster;
 exports.syncLinkedAccounts = syncLinkedAccounts;
@@ -381,21 +386,51 @@ function rowToLink(r) {
     };
 }
 function linksForUser(userId) {
-    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links WHERE user_id = ? ORDER BY clan_id').all(userId).map(rowToLink);
+    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links WHERE user_id = ? ORDER BY clan_id, linked_at, player_id').all(userId).map(rowToLink);
 }
 function allGameLinks() {
-    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links ORDER BY user_id, clan_id').all().map(rowToLink);
+    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links ORDER BY user_id, clan_id, linked_at, player_id').all().map(rowToLink);
 }
 function linksForClan(clanId) {
-    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links WHERE clan_id = ? ORDER BY user_id').all(clanId).map(rowToLink);
+    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links WHERE clan_id = ? ORDER BY user_id, linked_at, player_id').all(clanId).map(rowToLink);
 }
+/** Every player the account is linked to in one clan (alts, v130), earliest first. */
+function linksInClan(userId, clanId) {
+    return (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links WHERE user_id = ? AND clan_id = ? ORDER BY linked_at, player_id')
+        .all(userId, clanId).map(rowToLink);
+}
+/**
+ * The account's MAIN player in a clan — the one it plays as there and whose
+ * picture it shows: the one it picked (user_clan_main), else its earliest
+ * link. Null when it has none there.
+ */
+function mainLink(userId, clanId) {
+    const links = linksInClan(userId, clanId);
+    if (!links.length)
+        return null;
+    const picked = (0, database_js_1.getDb)().prepare('SELECT player_id FROM user_clan_main WHERE user_id = ? AND clan_id = ?')
+        .get(userId, clanId);
+    return (picked && links.find((l) => l.playerId === picked.player_id)) || links[0];
+}
+/** Pick which of its players the account plays as in a clan. False when it isn't linked to that player there. */
+function setMainPlayer(userId, clanId, playerId) {
+    if (!linksInClan(userId, clanId).some((l) => l.playerId === playerId))
+        return false;
+    (0, database_js_1.getDb)().prepare(`INSERT INTO user_clan_main (user_id, clan_id, player_id, set_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (user_id, clan_id) DO UPDATE SET player_id = excluded.player_id, set_at = excluded.set_at`).run(userId, clanId, playerId, new Date().toISOString());
+    return true;
+}
+/** The account's main link in a clan (see mainLink); null when it has none there. */
 function linkFor(userId, clanId) {
-    const r = (0, database_js_1.getDb)().prepare('SELECT * FROM user_game_links WHERE user_id = ? AND clan_id = ?').get(userId, clanId);
-    return r ? rowToLink(r) : null;
+    return mainLink(userId, clanId);
 }
-/** The game player an account is linked to in a clan, or null (old accounts, superadmins). */
+/** The game player an account plays as in a clan (its main), or null (old accounts, superadmins). */
 function linkedGamePlayerId(userId, clanId) {
-    return linkFor(userId, clanId)?.playerId ?? null;
+    return mainLink(userId, clanId)?.playerId ?? null;
+}
+/** Every game player id the account is linked to in a clan (the Members board's "You"). */
+function linkedPlayerIds(userId, clanId) {
+    return linksInClan(userId, clanId).map((l) => l.playerId);
 }
 /** The account a game player is linked to (any clan), or null. */
 function accountForPlayer(playerId) {
@@ -408,13 +443,25 @@ function pinnedChatUserFor(playerId) {
     return r?.chat_user_id ?? null;
 }
 /**
+ * The role the account's linked players give it in a clan: admin when ANY of
+ * them on the roster is Leader or Superior, user when some are on the roster,
+ * null when none of them is (the account has no access there from the game).
+ */
+function linkedClanRole(userId, clanId) {
+    const on = linksInClan(userId, clanId).filter((l) => l.onRoster);
+    if (!on.length)
+        return null;
+    return on.some((l) => rankRole(l.rank) === 'admin') ? 'admin' : 'user';
+}
+/**
  * Whether the account can be used at all: false only for a linked account
- * whose home-clan player has left that clan in the game and that has no other
- * clan it is still in (ensureHomeOnRoster moves the home when it does).
+ * whose home-clan players have ALL left that clan in the game and that has no
+ * other clan it is still in (ensureHomeOnRoster moves the home when it does).
  */
 function isAccountBlocked(userId) {
     return !!(0, database_js_1.getDb)().prepare(`SELECT 1 FROM users u JOIN user_game_links l ON l.user_id = u.id AND l.clan_id = u.clan_id
-      WHERE u.id = ? AND u.role <> 'superadmin' AND l.on_roster = 0`).get(userId);
+      WHERE u.id = ? AND u.role <> 'superadmin'
+      GROUP BY u.id HAVING SUM(l.on_roster) = 0`).get(userId);
 }
 /** Give the account `role` in `clanId`: the home role, or an extra-clan grant. */
 function applyClanRole(userId, clanId, role) {
@@ -435,32 +482,32 @@ function applyClanRole(userId, clanId, role) {
     return { from, to: role };
 }
 /**
- * When the account's home clan is a linked clan its player has left, and it
- * is still in another linked clan, that clan becomes the home (the old home is
- * not kept as an extra: they left it). Nothing to do otherwise.
+ * When the account's home clan is a linked clan all its players there have
+ * left, and it is still in another linked clan, that clan becomes the home
+ * (the old home is not kept as an extra: they left it). Nothing to do otherwise.
  */
 function ensureHomeOnRoster(userId) {
     const db = (0, database_js_1.getDb)();
     const u = db.prepare('SELECT role, clan_id FROM users WHERE id = ?').get(userId);
     if (!u || u.role === 'superadmin' || u.clan_id === null)
         return;
-    const home = linkFor(userId, u.clan_id);
-    if (!home || home.onRoster)
+    if (!linksInClan(userId, u.clan_id).length || linkedClanRole(userId, u.clan_id) !== null)
         return;
-    const next = db.prepare(`SELECT l.clan_id, l.rank FROM user_game_links l JOIN clans c ON c.id = l.clan_id AND c.deleted_at = ''
+    const next = db.prepare(`SELECT l.clan_id FROM user_game_links l JOIN clans c ON c.id = l.clan_id AND c.deleted_at = ''
       WHERE l.user_id = ? AND l.clan_id <> ? AND l.on_roster = 1 ORDER BY l.linked_at LIMIT 1`).get(userId, u.clan_id);
     if (!next)
         return;
     const extras = (0, user_repo_js_1.listClanAccess)(userId).filter((a) => a.clanId !== next.clan_id);
-    (0, user_repo_js_1.setHomeAndClanAccess)(userId, { clanId: next.clan_id, role: rankRole(next.rank) }, extras);
+    (0, user_repo_js_1.setHomeAndClanAccess)(userId, { clanId: next.clan_id, role: linkedClanRole(userId, next.clan_id) ?? 'user' }, extras);
     (0, user_repo_js_1.logSystemAction)(next.clan_id, 'account.home_moved', { userId, from: u.clan_id, to: next.clan_id, source: 'game' });
 }
 /**
- * After a scan read the clan's roster: every account linked to a player of
- * this clan gets the role the player's rank gives (Leader/Superior → admin),
- * loses the clan when the player is gone from the roster, and gets it back
- * when they return. A short roster (a partial read) changes no access.
- * Superadmins are never touched. Every change is audited (source 'game').
+ * After a scan read the clan's roster: every linked player is marked on or
+ * off the roster with its rank, then each account gets the role its players
+ * there give it (any Leader/Superior on the roster → admin; linkedClanRole),
+ * loses the clan only when NONE of its players is still on the roster, and
+ * gets it back when one returns. A short roster (a partial read) changes no
+ * access. Superadmins are never touched. Every change is audited (source 'game').
  */
 function syncLinkedAccounts(clanId, roster, now = new Date().toISOString()) {
     const out = { roleChanges: 0, left: 0, rejoined: 0 };
@@ -470,58 +517,77 @@ function syncLinkedAccounts(clanId, roster, now = new Date().toISOString()) {
     const byPlayer = new Map(roster.map((m) => [m.playerId, m]));
     const links = db.prepare(`SELECT l.*, u.role AS user_role, u.clan_id AS home_clan_id, u.username
        FROM user_game_links l JOIN users u ON u.id = l.user_id WHERE l.clan_id = ?`).all(clanId);
-    const touched = new Set();
+    const accounts = new Map();
     db.transaction(() => {
+        // 1. Every linked player: on or off the roster, with its rank now.
         for (const row of links) {
             if (row.user_role === 'superadmin')
                 continue;
             const link = rowToLink(row);
-            const userId = link.userId;
-            const username = row.username;
+            const acct = accounts.get(link.userId) ?? { username: row.username, home: row.home_clan_id ?? null, changed: [] };
+            accounts.set(link.userId, acct);
             const m = byPlayer.get(link.playerId);
             if (m) {
-                // Both directions: a rank that runs the clan gives admin, any other
-                // rank takes it away — the home role and each extra clan on its own.
-                const { from, to } = applyClanRole(userId, clanId, rankRole(m.role));
-                if (from !== to) {
-                    out.roleChanges++;
-                    (0, user_repo_js_1.logSystemAction)(clanId, from === null ? 'account.clan_access_from_game' : 'account.role_from_game', {
-                        userId, username, playerId: link.playerId, player: m.name ?? link.playerName,
-                        from, to, fromRank: link.rank, toRank: m.role, source: 'game',
-                    });
-                }
                 if (!link.onRoster) {
                     out.rejoined++;
-                    (0, user_repo_js_1.logSystemAction)(clanId, 'account.rejoined_in_game', { userId, username, playerId: link.playerId, player: m.name ?? link.playerName, source: 'game' });
+                    (0, user_repo_js_1.logSystemAction)(clanId, 'account.rejoined_in_game', { userId: link.userId, username: acct.username, playerId: link.playerId, player: m.name ?? link.playerName, source: 'game' });
                 }
-                db.prepare('UPDATE user_game_links SET on_roster = 1, rank = ?, player_name = ?, synced_at = ? WHERE user_id = ? AND clan_id = ?')
-                    .run(m.role, m.name || link.playerName, now, userId, clanId);
+                if (link.rank !== m.role)
+                    acct.changed.push({ playerId: link.playerId, player: m.name ?? link.playerName, fromRank: link.rank, toRank: m.role });
+                db.prepare('UPDATE user_game_links SET on_roster = 1, rank = ?, player_name = ?, synced_at = ? WHERE user_id = ? AND clan_id = ? AND player_id = ?')
+                    .run(m.role, m.name || link.playerName, now, link.userId, clanId, link.playerId);
             }
             else {
                 if (link.onRoster) {
                     out.left++;
-                    (0, user_repo_js_1.logSystemAction)(clanId, 'account.left_in_game', { userId, username, playerId: link.playerId, player: link.playerName, source: 'game' });
+                    (0, user_repo_js_1.logSystemAction)(clanId, 'account.left_in_game', { userId: link.userId, username: acct.username, playerId: link.playerId, player: link.playerName, source: 'game' });
                 }
-                db.prepare('UPDATE user_game_links SET on_roster = 0, synced_at = ? WHERE user_id = ? AND clan_id = ?').run(now, userId, clanId);
-                if (row.home_clan_id !== clanId)
-                    (0, user_repo_js_1.removeClanAccess)(userId, clanId);
+                db.prepare('UPDATE user_game_links SET on_roster = 0, synced_at = ? WHERE user_id = ? AND clan_id = ? AND player_id = ?')
+                    .run(now, link.userId, clanId, link.playerId);
             }
-            touched.add(userId);
         }
-        for (const userId of touched)
+        // 2. Each account: the role its players give it, both directions; no
+        //    access only when none of them is on the roster.
+        for (const [userId, acct] of accounts) {
+            const role = linkedClanRole(userId, clanId);
+            if (role === null) {
+                if (acct.home !== clanId)
+                    (0, user_repo_js_1.removeClanAccess)(userId, clanId);
+                continue;
+            }
+            const { from, to } = applyClanRole(userId, clanId, role);
+            if (from !== to) {
+                out.roleChanges++;
+                (0, user_repo_js_1.logSystemAction)(clanId, from === null ? 'account.clan_access_from_game' : 'account.role_from_game', {
+                    // The player whose rank decided it on top (what the audit view reads), every alt that moved beside.
+                    userId, username: acct.username, ...(acct.changed[0] ?? {}), from, to,
+                    ...(acct.changed.length > 1 ? { players: acct.changed } : {}), source: 'game',
+                });
+            }
+        }
+        for (const userId of accounts.keys())
             ensureHomeOnRoster(userId);
     })();
     return out;
 }
-/** Superadmin: forget the link. The account keeps the access and role it has now, as a plain (old-style) grant. */
-function unlinkGameAccount(userId, clanId) {
-    const link = linkFor(userId, clanId);
-    if (!link)
-        return null;
-    (0, database_js_1.getDb)().prepare('DELETE FROM user_game_links WHERE user_id = ? AND clan_id = ?').run(userId, clanId);
-    return link;
+/**
+ * Superadmin: forget an account's link to its players in a clan — one player
+ * (`playerId`) or all of them. The account keeps the access and role it has
+ * now, as a plain (old-style) grant. Returns the links removed.
+ */
+function unlinkGameAccount(userId, clanId, playerId) {
+    const links = linksInClan(userId, clanId).filter((l) => playerId === undefined || l.playerId === playerId);
+    if (!links.length)
+        return [];
+    const db = (0, database_js_1.getDb)();
+    db.transaction(() => {
+        for (const l of links)
+            db.prepare('DELETE FROM user_game_links WHERE user_id = ? AND clan_id = ? AND player_id = ?').run(userId, clanId, l.playerId);
+        db.prepare('DELETE FROM user_clan_main WHERE user_id = ? AND clan_id = ? AND player_id NOT IN (SELECT player_id FROM user_game_links WHERE user_id = ? AND clan_id = ?)').run(userId, clanId, userId, clanId);
+    })();
+    return links;
 }
-exports.JOIN_ACTIONS = new Set(['new', 'recover', 'link', 'add-clan']);
+exports.JOIN_ACTIONS = new Set(['new', 'recover', 'link', 'add-clan', 'add-player']);
 /** What a code would do for this viewer (null = signed out). Reads only. */
 function planJoin(info, viewer) {
     const role = rankRole(info.rank);
@@ -537,11 +603,13 @@ function planJoin(info, viewer) {
         return { mode: 'superadmin', userId: viewer.id, username: viewer.username, role };
     if (owner !== null && owner !== viewer.id)
         return { mode: 'conflict', userId: null, username: null, role };
-    const here = linkFor(viewer.id, info.clanId);
-    if (here) {
-        return here.playerId === info.playerId
-            ? { mode: 'already', userId: viewer.id, username: home.username, role }
-            : { mode: 'other-player', userId: viewer.id, username: home.username, role };
+    const here = linksInClan(viewer.id, info.clanId);
+    if (here.some((l) => l.playerId === info.playerId))
+        return { mode: 'already', userId: viewer.id, username: home.username, role };
+    if (here.length) {
+        // An alt: the account's role there is the best its players give it.
+        const now = linkedClanRole(viewer.id, info.clanId);
+        return { mode: 'add-player', userId: viewer.id, username: home.username, role: now === 'admin' || role === 'admin' ? 'admin' : 'user' };
     }
     const hasClan = home.clanId === info.clanId || (0, user_repo_js_1.getClanAccessRole)(viewer.id, info.clanId) !== null;
     return { mode: hasClan ? 'link' : 'add-clan', userId: viewer.id, username: home.username, role };
@@ -594,9 +662,9 @@ function redeemJoin(input, viewer, creds, nowMs = Date.now()) {
                 throw new JoinError('Password required');
             userId = plan.userId;
             (0, user_repo_js_1.changePassword)(userId, creds.password);
-            if (!linkFor(userId, info.clanId)) {
+            if (!linksInClan(userId, info.clanId).some((l) => l.playerId === info.playerId)) {
                 insertLink(userId, info, now);
-                applyClanRole(userId, info.clanId, plan.role);
+                applyClanRole(userId, info.clanId, linkedClanRole(userId, info.clanId) ?? plan.role);
             }
             ensureHomeOnRoster(userId);
             // Every session the account had ends: whoever held the old password is out.
@@ -605,7 +673,7 @@ function redeemJoin(input, viewer, creds, nowMs = Date.now()) {
         else {
             userId = plan.userId;
             insertLink(userId, info, now);
-            applyClanRole(userId, info.clanId, plan.role);
+            applyClanRole(userId, info.clanId, linkedClanRole(userId, info.clanId) ?? plan.role);
             ensureHomeOnRoster(userId);
         }
         if (!consumeCode(info.codeId, userId, now))

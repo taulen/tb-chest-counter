@@ -161,8 +161,9 @@ accounts show "Not linked (old account)" and are never removed automatically.
 ## Tables (v127)
 
 `account_invite_settings` (per clan: enabled + enabled_at; welcome_mode,
-welcome_enabled_at, welcome_backlog_at), `user_game_links` (account ↔ player
-per clan, chat_user_id, rank, on_roster), `chat_invite_requests`,
+welcome_enabled_at, welcome_backlog_at), `user_game_links` (account ↔ player,
+several per clan since v130 — alts; chat_user_id, rank, on_roster),
+`user_clan_main` (v130: the player an account plays as in a clan), `chat_invite_requests`,
 `chat_invite_welcomes`, `account_invite_codes` (sha256 only, kind
 reply/welcome). Deleting a clan or a user clears them
 ([fk-delete-guards.test.ts](../tests/data/fk-delete-guards.test.ts)).

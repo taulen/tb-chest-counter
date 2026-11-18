@@ -102,11 +102,17 @@ async function exportSquare(photo, frame) {
   return toBlob(flat, 'image/jpeg', 0.9);
 }
 
-/** What the account shows now, in words. */
-function currentLine(avatar) {
-  if (avatar?.kind === 'photo') return t('Your photo is shown beside your name.');
-  if (avatar?.kind === 'hero') return t('Your hero portrait from the game is shown beside your name.');
-  return t('Your initial is shown beside your name.');
+/** What the account (or one of its players, v130) shows now, in words. */
+function currentLine(avatar, player) {
+  if (player) {
+    const name = esc(player.playerName);
+    if (avatar?.kind === 'photo') return t('{name} shows this photo.', { name });
+    if (avatar?.kind === 'hero') return t('{name} shows its hero portrait from the game.', { name });
+    return t('{name} shows its initial.', { name });
+  }
+  if (avatar?.kind === 'photo') return esc(t('Your photo is shown beside your name.'));
+  if (avatar?.kind === 'hero') return esc(t('Your hero portrait from the game is shown beside your name.'));
+  return esc(t('Your initial is shown beside your name.'));
 }
 
 /**
@@ -125,8 +131,9 @@ export function openAvatarEditor(user, onChange) {
       <input type="file" accept="image/*" class="avatar-editor-file" hidden>
 
       <div class="avatar-editor-step" data-step="pick">
+        <fieldset class="avatar-editor-players" hidden></fieldset>
         <div class="avatar-editor-current">${avatarHtml(user, { size: 'xl' })}</div>
-        <p class="avatar-editor-line">${esc(currentLine(user.avatar))}</p>
+        <p class="avatar-editor-line">${currentLine(user.avatar, null)}</p>
         <button type="button" class="btn btn-primary avatar-editor-choose" data-act="choose">${t('Choose a photo')}</button>
       </div>
 
@@ -182,11 +189,54 @@ export function openAvatarEditor(user, onChange) {
   let maxZoom = 1;
   let loadSeq = 0;
   let busy = false;
+  // Photos belong to players (v130): the account's linked players, and the
+  // one this photo is for (null = an unlinked account's own photo).
+  let players = [];
+  let target = null;
+  let step = 'pick';
+  const targetPlayer = () => players.find((p) => p.playerId === target) ?? null;
+  const shownAvatar = () => targetPlayer()?.avatar ?? user.avatar;
+  const photoQuery = () => (target !== null ? `?player=${target}` : '');
 
   const showStep = (name) => {
+    step = name;
     for (const el of overlay.querySelectorAll('[data-step]')) el.hidden = el.dataset.step !== name;
     saveBtn.hidden = name !== 'frame';
-    removeBtn.hidden = name !== 'pick' || user.avatar?.kind !== 'photo';
+    removeBtn.hidden = name !== 'pick' || shownAvatar()?.kind !== 'photo';
+  };
+
+  /** The pick step for the chosen player: its picture and the words under it. */
+  const paintTarget = () => {
+    const p = targetPlayer();
+    overlay.querySelector('.avatar-editor-current').innerHTML = avatarHtml(p ? { avatar: p.avatar, username: p.playerName } : user, { size: 'xl' });
+    overlay.querySelector('.avatar-editor-line').innerHTML = currentLine(shownAvatar(), p);
+    if (step === 'pick') showStep('pick');
+  };
+
+  /** Which player the photo is for: a choice when the account has several. */
+  const loadPlayers = async () => {
+    try {
+      const res = await api('/auth/players');
+      players = Array.isArray(res?.players) ? res.players : [];
+      if (!players.length) return;
+      const def = players.find((p) => p.isMain && p.clanId === res.activeClanId) ?? players.find((p) => p.isMain) ?? players[0];
+      target = def.playerId;
+      const box = overlay.querySelector('.avatar-editor-players');
+      if (players.length > 1) {
+        box.innerHTML = `<legend class="avatar-editor-players-label">${esc(t('Photo for'))}</legend>`
+          + players.map((p) => `<label class="avatar-player">
+              <input type="radio" name="avatarPlayer" value="${p.playerId}"${p.playerId === target ? ' checked' : ''}>
+              ${avatarHtml({ avatar: p.avatar, username: p.playerName }, { size: 'sm' })}
+              <span class="avatar-player-text"><span class="avatar-player-name">${esc(p.playerName)}</span><span class="avatar-player-clan">${esc(p.clanName)}</span></span>
+            </label>`).join('');
+        box.addEventListener('change', (e) => {
+          const v = Number(e.target?.value);
+          if (Number.isFinite(v)) { target = v; paintTarget(); }
+        });
+        box.hidden = false;
+      }
+      paintTarget();
+    } catch { /* the account photo editor works as before */ }
   };
 
   const stageSize = () => stage.clientWidth || 280;
@@ -261,6 +311,7 @@ export function openAvatarEditor(user, onChange) {
 
   const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => draw()) : null;
   resizeObserver?.observe(stage);
+  void loadPlayers();
 
   function close() {
     loadSeq++;
@@ -304,7 +355,7 @@ export function openAvatarEditor(user, onChange) {
     try {
       const blob = await exportSquare(photo, frame);
       if (!blob) throw new Error(t('This browser could not prepare the picture.'));
-      const res = await api('/auth/avatar', { method: 'PUT', headers: { 'Content-Type': blob.type }, body: blob });
+      const res = await api(`/auth/avatar${photoQuery()}`, { method: 'PUT', headers: { 'Content-Type': blob.type }, body: blob });
       if (res?.error) throw new Error(res.error);
       onChange?.(res.avatar);
       close();
@@ -323,7 +374,7 @@ export function openAvatarEditor(user, onChange) {
     });
     if (!ok) return;
     try {
-      const res = await api('/auth/avatar', { method: 'DELETE' });
+      const res = await api(`/auth/avatar${photoQuery()}`, { method: 'DELETE' });
       if (res?.error) throw new Error(res.error);
       onChange?.(res.avatar);
       close();

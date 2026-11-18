@@ -156,8 +156,9 @@ function renderAction(info) {
     case 'conflict':
       note = t('This player is already linked to another account. Ask the superadmin to unlink it.');
       break;
-    case 'other-player':
-      note = t('Your account is already linked to another player in this clan.');
+    case 'add-player':
+      note = `${t('Add this player to your account, beside the player you already have in this clan.')} ${roleWords(info.role)}`;
+      form = `<button type="submit" class="btn">${t('Add player')}</button>`;
       break;
     default:
       note = t('Superadmin accounts are not linked to a player.');
