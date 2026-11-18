@@ -31,6 +31,7 @@ import { createToolsRouter } from './routes/tools.js';
 import { createTinmanRouter } from './routes/tinman.js';
 import { createPerformanceRouter } from './routes/performance.js';
 import { denyCaching, requireAdmin, requireAuth, requireClanContext, SESSION_COOKIE_NAME } from './middleware/auth.js';
+import { clientKey } from './client-key.js';
 import { firstSuperadmin, logAction } from '../data/repositories/user-repo.js';
 import { childLogger } from '../utils/logger.js';
 import { validateSession } from '../data/repositories/user-repo.js';
@@ -334,6 +335,7 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
     legacyHeaders: false,
     message: { error: 'Too many requests. Slow down and try again shortly.' },
     validate: { xForwardedForHeader: false },
+    keyGenerator: clientKey,
   }));
 
   if (setupMode) {

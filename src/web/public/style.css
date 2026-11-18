@@ -11903,3 +11903,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .mboard-bar { grid-area: bar; align-self: center; height: 10px; }
   .mboard-band { grid-area: band; font-size: 12px; text-align: right; }
 }
+
+/* The board could not load its list (a refusal from the server): say so, offer a retry. */
+.mboard-failed { margin: 0 0 12px; color: var(--text-secondary); }

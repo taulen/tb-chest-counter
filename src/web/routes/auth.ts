@@ -1,5 +1,6 @@
 import express, { Router, type NextFunction, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
+import { clientKey } from '../client-key.js';
 import * as userRepo from '../../data/repositories/user-repo.js';
 import * as clanRepo from '../../data/repositories/clan-repo.js';
 import * as avatarRepo from '../../data/repositories/avatar-repo.js';
@@ -30,6 +31,7 @@ export function createAuthRouter(): Router {
     legacyHeaders: false,
     message: { error: 'Too many authentication attempts. Please try again later.' },
     validate: { xForwardedForHeader: false },
+    keyGenerator: clientKey,
   });
 
   // POST /api/auth/login
@@ -168,6 +170,7 @@ export function createAuthRouter(): Router {
     legacyHeaders: false,
     message: { error: 'Too many photo changes. Please try again later.' },
     validate: { xForwardedForHeader: false },
+    keyGenerator: clientKey,
   });
 
   // The framed photo arrives as the raw image body (the browser crops and

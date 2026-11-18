@@ -1083,6 +1083,8 @@ export const ui = {
   "vs yesterday by now": "ко вчера на это время",
   "{names} and {n} more": "{names} и ещё {n}",
   "{n} might": "{n} могущества",
+  "The board could not be loaded.": "Не удалось загрузить рейтинг.",
+  "Try again": "Повторить",
   "Ranking board": "Рейтинг участников",
   "day {day} of {days}": "день {day} из {days}",
   "{n} linked accounts in this clan.": { one: "{n} привязанный аккаунт в этом клане.", few: "{n} привязанных аккаунта в этом клане.", many: "{n} привязанных аккаунтов в этом клане.", other: "{n} привязанного аккаунта в этом клане." },

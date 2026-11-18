@@ -36,6 +36,7 @@ const tools_js_1 = require("./routes/tools.js");
 const tinman_js_1 = require("./routes/tinman.js");
 const performance_js_1 = require("./routes/performance.js");
 const auth_js_2 = require("./middleware/auth.js");
+const client_key_js_1 = require("./client-key.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
 const logger_js_1 = require("../utils/logger.js");
 const user_repo_js_2 = require("../data/repositories/user-repo.js");
@@ -311,6 +312,7 @@ function startWebServer(port, scanLoop, options = {}) {
         legacyHeaders: false,
         message: { error: 'Too many requests. Slow down and try again shortly.' },
         validate: { xForwardedForHeader: false },
+        keyGenerator: client_key_js_1.clientKey,
     }));
     if (setupMode) {
         app.use('/api/setup', (0, setup_js_1.createSetupRouter)());

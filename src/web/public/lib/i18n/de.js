@@ -1083,6 +1083,8 @@ export const ui = {
   "vs yesterday by now": "ggü. gestern bis jetzt",
   "{names} and {n} more": "{names} und {n} weitere",
   "{n} might": "{n} Macht",
+  "The board could not be loaded.": "Die Rangliste konnte nicht geladen werden.",
+  "Try again": "Erneut versuchen",
   "Ranking board": "Rangliste der Mitglieder",
   "day {day} of {days}": "Tag {day} von {days}",
   "{n} linked accounts in this clan.": { one: "{n} verknüpftes Konto in diesem Clan.", other: "{n} verknüpfte Konten in diesem Clan." },

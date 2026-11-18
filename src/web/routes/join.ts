@@ -13,6 +13,7 @@
  */
 import { Router, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
+import { clientKey } from '../client-key.js';
 import * as userRepo from '../../data/repositories/user-repo.js';
 import {
   JOIN_ACTIONS,
@@ -47,7 +48,7 @@ export function suggestUsername(playerName: string): string {
 
 export function createJoinRouter(): Router {
   const router = Router();
-  const common = { windowMs: 15 * 60 * 1000, standardHeaders: true, legacyHeaders: false, validate: { xForwardedForHeader: false } } as const;
+  const common = { windowMs: 15 * 60 * 1000, standardHeaders: true, legacyHeaders: false, validate: { xForwardedForHeader: false }, keyGenerator: clientKey } as const;
   const attempts = rateLimit({ ...common, max: 20, message: { error: 'Too many attempts. Please try again later.' } });
   const failures = rateLimit({ ...common, max: 10, skipSuccessfulRequests: true, message: { error: 'Too many attempts. Please try again later.' } });
 

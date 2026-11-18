@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createAuthRouter = createAuthRouter;
 const express_1 = __importStar(require("express"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
+const client_key_js_1 = require("../client-key.js");
 const userRepo = __importStar(require("../../data/repositories/user-repo.js"));
 const clanRepo = __importStar(require("../../data/repositories/clan-repo.js"));
 const avatarRepo = __importStar(require("../../data/repositories/avatar-repo.js"));
@@ -55,6 +56,7 @@ function createAuthRouter() {
         legacyHeaders: false,
         message: { error: 'Too many authentication attempts. Please try again later.' },
         validate: { xForwardedForHeader: false },
+        keyGenerator: client_key_js_1.clientKey,
     });
     // POST /api/auth/login
     router.post('/login', authLimiter, (req, res) => {
@@ -178,6 +180,7 @@ function createAuthRouter() {
         legacyHeaders: false,
         message: { error: 'Too many photo changes. Please try again later.' },
         validate: { xForwardedForHeader: false },
+        keyGenerator: client_key_js_1.clientKey,
     });
     // The framed photo arrives as the raw image body (the browser crops and
     // re-encodes it, 512×512). Its own small limit, on this route only: the

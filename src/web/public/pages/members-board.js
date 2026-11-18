@@ -103,7 +103,7 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
     const prevTo = running ? new Date(Math.min(Date.parse(prev.from) + elapsed, Date.parse(prev.to))).toISOString() : prev.to;
     prevQuery = leaderboardQuery(prev.from, prevTo);
   }
-  const [entries, prevEntries, goal, roster, changes] = await Promise.all([
+  let [entries, prevEntries, goal, roster, changes] = await Promise.all([
     api(leaderboardQuery(win?.from, win?.to)),
     prevQuery ? api(prevQuery).catch(() => []) : Promise.resolve([]),
     api('/leaderboard/goal').catch(() => null),
@@ -112,6 +112,22 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
   ]);
   // A later click (another period) already started its own draw.
   if (state.period !== period || state.offset !== offset) return;
+
+  // api() hands back whatever JSON the server sent, so a refusal (a 429 from
+  // the /api rate limit, a 500's { error, ref }) arrives as an OBJECT where a
+  // list was expected. A member's phone hit exactly that on Nov 18 2026 and the
+  // page died on `.map`. The comparison window is optional: drop it. The
+  // window itself is the board: say what happened and offer a retry.
+  if (!Array.isArray(entries)) {
+    const why = entries && typeof entries === 'object' && typeof entries.error === 'string' ? entries.error : '';
+    el.innerHTML = `${tabsHtml}<section class="mboard" aria-label="${esc(t('Ranking board'))}">
+      <p class="mboard-failed">${esc(t('The board could not be loaded.'))}${why ? ` <span class="muted-copy">${esc(why)}</span>` : ''}</p>
+      <button type="button" class="btn btn-primary" data-mb-retry>${esc(t('Try again'))}</button>
+    </section>`;
+    el.querySelector('[data-mb-retry]')?.addEventListener('click', () => { void renderMembersBoard(el, { tabsHtml, rerender }); });
+    return;
+  }
+  if (!Array.isArray(prevEntries)) prevEntries = [];
 
   const weekly = period === 'all' ? null : weeklyGoalForWindow(goal, period, offset, rolloverHr, weekStart);
   const goalPts = period === 'all' ? null : scaleGoalForPeriod(weekly, period, weekStart);

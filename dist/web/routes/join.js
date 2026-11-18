@@ -53,6 +53,7 @@ exports.createJoinRouter = createJoinRouter;
  */
 const express_1 = require("express");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
+const client_key_js_1 = require("../client-key.js");
 const userRepo = __importStar(require("../../data/repositories/user-repo.js"));
 const account_invite_repo_js_1 = require("../../data/repositories/account-invite-repo.js");
 const auth_js_1 = require("../middleware/auth.js");
@@ -71,7 +72,7 @@ function suggestUsername(playerName) {
 }
 function createJoinRouter() {
     const router = (0, express_1.Router)();
-    const common = { windowMs: 15 * 60 * 1000, standardHeaders: true, legacyHeaders: false, validate: { xForwardedForHeader: false } };
+    const common = { windowMs: 15 * 60 * 1000, standardHeaders: true, legacyHeaders: false, validate: { xForwardedForHeader: false }, keyGenerator: client_key_js_1.clientKey };
     const attempts = (0, express_rate_limit_1.default)({ ...common, max: 20, message: { error: 'Too many attempts. Please try again later.' } });
     const failures = (0, express_rate_limit_1.default)({ ...common, max: 10, skipSuccessfulRequests: true, message: { error: 'Too many attempts. Please try again later.' } });
     router.use((_req, res, next) => {
