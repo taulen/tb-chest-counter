@@ -25,6 +25,7 @@ const member_repo_js_1 = require("../data/repositories/member-repo.js");
 const merge_repo_js_1 = require("../data/repositories/merge-repo.js");
 const might_repo_js_1 = require("../data/repositories/might-repo.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
+const account_invite_repo_js_1 = require("../data/repositories/account-invite-repo.js");
 const fuzzy_js_1 = require("../utils/fuzzy.js");
 const logger_js_1 = require("../utils/logger.js");
 /**
@@ -204,6 +205,15 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
             m.isActive = false;
             result.departed++;
         }
+    }
+    // Site accounts linked to these players (v127): the role follows the rank
+    // (Leader/Superior → admin), and a player gone from the roster loses the
+    // clan until they are back. Same short-roster floor as departures.
+    try {
+        (0, account_invite_repo_js_1.syncLinkedAccounts)(clanId, roster.map((rm) => ({ playerId: rm.playerId, role: rm.role, name: byPlayer.get(rm.playerId)?.name })), now);
+    }
+    catch (err) {
+        log.warn({ noAlert: true }, `Clan #${clanId}: could not sync linked site accounts: ${String(err)}`);
     }
     return result;
 }

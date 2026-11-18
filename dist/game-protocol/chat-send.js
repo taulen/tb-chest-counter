@@ -3,18 +3,26 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOverSocket = exports.ChatSendRefused = exports.CHANNEL_MAX_LENGTH = exports.MAX_POST_BYTES = exports.MAX_POST_CHARS = exports.POSTABLE_TYPES = void 0;
+exports.sendOverSocket = exports.MAX_INVITE_REPLY_CHARS = exports.ChatSendRefused = exports.CHANNEL_MAX_LENGTH = exports.MAX_POST_BYTES = exports.MAX_POST_CHARS = exports.POSTABLE_TYPES = void 0;
 exports.chatSendingDisabled = chatSendingDisabled;
 exports.assertPostableChannel = assertPostableChannel;
 exports.assertPostableText = assertPostableText;
 exports.postToGroupChat = postToGroupChat;
+exports.assertInviteChannel = assertInviteChannel;
+exports.assertInviteText = assertInviteText;
+exports.sendInviteMessage = sendInviteMessage;
 /**
  * Posting ONE message into an in-game GROUP chat, the way the game client
  * posts: over the chat socket (Sendbird), signed in with a fresh chat token
  * from the game session (message 414), a `MESG` frame carrying a request id;
  * the server echoes the message back with its id, or answers `EROR`.
  *
- * Used only by the daily chat digest (scheduler/chat-digest.ts). Hard rules
+ * Used by the daily chat digest (scheduler/chat-digest.ts) and, through its
+ * own narrower path below (sendInviteMessage), by account invites: the only
+ * exceptions to "never a private chat" — a code in the 1:1 chat between the
+ * scanner account and one player, as the answer to that player's request or
+ * as the one welcome code when they join (scheduler/chat-invites.ts).
+ * Hard rules for the digest
  * (user, Nov 2026 — clans mute anyone who spams):
  *   - only a NAMED group chat an admin picked (`publicGroup` / `privateGroup`)
  *     — never the clan chat (`clanGroup`, triumph_clan_channel_*), the kingdom
@@ -96,6 +104,56 @@ async function postToGroupChat(args, send = exports.sendOverSocket) {
     try {
         assertPostableChannel(args.channel);
         assertPostableText(args.text);
+    }
+    catch (err) {
+        return { status: 'refused', error: err.message };
+    }
+    return send({ userId: args.userId, token: args.token, channelUrl: args.channel.url, text: args.text });
+}
+// ── The one private-chat exception: account invite replies ─────────────────
+/** An invite reply is a short line with a code and a link — never a post. */
+exports.MAX_INVITE_REPLY_CHARS = 300;
+/**
+ * Throws ChatSendRefused unless `channel` is the 1:1 private chat between the
+ * scanner account and the one player the message is for: a `whisper` channel
+ * (never a clan/kingdom URL) whose members are exactly those two chat
+ * accounts. These are the ONLY private chats anything may be sent into, and
+ * only an account-invite code (scheduler/chat-invites.ts): the answer to that
+ * player's own request, or the one welcome code for a player who just joined.
+ */
+function assertInviteChannel(channel, scannerUserId, recipientUserId) {
+    const url = channel.url ?? '';
+    if (!url)
+        throw new ChatSendRefused('no channel');
+    if (/^triumph_(clan|realm)_channel_/i.test(url))
+        throw new ChatSendRefused('refusing to send outside a private chat');
+    if (channel.customType !== 'whisper')
+        throw new ChatSendRefused(`refusing to send in a "${channel.customType || 'unknown'}" channel`);
+    if (!scannerUserId || !recipientUserId || scannerUserId === recipientUserId)
+        throw new ChatSendRefused('no recipient');
+    const ids = new Set((channel.members ?? []).map((m) => m.userId));
+    if ((channel.members ?? []).length !== 2 || ids.size !== 2 || !ids.has(scannerUserId) || !ids.has(recipientUserId)) {
+        throw new ChatSendRefused('refusing to send: the chat is not between the scanner and that one player');
+    }
+}
+function assertInviteText(text) {
+    if (!text.trim())
+        throw new ChatSendRefused('empty message');
+    if (text.length > exports.MAX_INVITE_REPLY_CHARS)
+        throw new ChatSendRefused(`invite message too long (${text.length} chars)`);
+}
+/**
+ * Send an account-invite code into the private chat between the scanner
+ * account and that player. Every guard runs first (the kill switch, the
+ * channel, the text); nothing is sent when one fails. Same three-way outcome
+ * as postToGroupChat — an `unknown` is never resent.
+ */
+async function sendInviteMessage(args, send = exports.sendOverSocket) {
+    if (chatSendingDisabled())
+        return { status: 'refused', error: 'chat sending is disabled (CHAT_SEND_DISABLED)' };
+    try {
+        assertInviteChannel(args.channel, args.userId, args.recipientUserId);
+        assertInviteText(args.text);
     }
     catch (err) {
         return { status: 'refused', error: err.message };

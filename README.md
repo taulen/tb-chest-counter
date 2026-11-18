@@ -70,11 +70,22 @@ runs in one container.
 - **Discord bot** — per-clan `/leaderboard`, `/me` and `/status` commands, scan
   reports, and daily and weekly digests, optionally DM'd to chosen members as
   text ready to paste into in-game chat.
+- **Accounts from the game** (opt-in per clan) — players get their account
+  with a one-time code from the clan's scanner account in the game chat: they
+  DM it the word `code`, or (its own setting) every member is sent one — all
+  current members the first time it's switched on, then everyone who joins.
+  The message names the site without a link (the game blocks them: "cwb .
+  fyi"); **Have a code? Join here** on the sign-in page creates the account,
+  linked to their player, or resets a forgotten password, or adds another
+  clan. Roles follow the game every scan: the clan's Leader and Superiors are
+  admins, everyone else a member, and leaving the clan in the game takes the
+  access away. See [docs/account-invites.md](docs/account-invites.md).
 - **In-game chat digest** (opt-in per clan) — the clan's scanner account posts
   the daily "Daily Digest — Our top 20 crypters" message straight into a group
   chat the admins pick: at most one message a day, never split, never into the
-  clan chat, kingdom chat or a private chat; `CHAT_SEND_DISABLED=1` switches all
-  sending off. See [docs/chat-digest.md](docs/chat-digest.md).
+  clan chat, kingdom chat or a private chat (the only private messages are the
+  account codes above); `CHAT_SEND_DISABLED=1` switches all sending off. See
+  [docs/chat-digest.md](docs/chat-digest.md).
 - **ChestTracker integration** — optionally ingest snapshots from
   chesttracker.com per clan.
 - **Safe to administer** — deleting a clan hides it rather than destroying it

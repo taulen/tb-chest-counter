@@ -41,6 +41,25 @@ send), [chat-digest-repo.ts](../src/data/repositories/chat-digest-repo.ts),
 - **Kill switch:** `CHAT_SEND_DISABLED=1` (docker-compose.yml) stops every send.
 - **Saving the settings never posts.**
 
+## The only exceptions: account-invite codes in a private chat
+
+Nothing else ever goes into a private chat — except an account-invite code
+([account-invites.md](account-invites.md)), through its own narrower path
+(`sendInviteMessage` / `assertInviteChannel`), never through
+`assertPostableChannel`, which still refuses every private chat:
+
+1. **A reply**: a player DMs the scanner account a keyword; the answer goes
+   back in that same 1:1 chat. Per-clan setting, off by default.
+2. **A welcome code**: the scanner opens a 1:1 chat with a member and sends
+   one code — on the first switch-on to every current member without an
+   account, then to each player who joins; once per player per clan, ever;
+   at most 10 per scan, a few seconds apart. Its own per-clan setting
+   (off / dry run / on), off by default; opening the chat is untested live.
+
+Both: only into a `whisper` channel whose members are exactly the scanner and
+that one player, only roster members, no link in the text (the game blocks
+them), never an `unknown` outcome resent, `CHAT_SEND_DISABLED=1` stops them.
+
 ## When
 
 At the end of a scan (it needs the scan's game session for a chat token): the

@@ -6,6 +6,7 @@ exports.keepGameSession = keepGameSession;
 exports.dropGameSession = dropGameSession;
 exports.dropAllGameSessions = dropAllGameSessions;
 exports.keptSessionClans = keptSessionClans;
+exports.withKeptGameSession = withKeptGameSession;
 exports.startEventPoller = startEventPoller;
 exports.stopEventPoller = stopEventPoller;
 exports.setPollGateForTest = setPollGateForTest;
@@ -60,6 +61,30 @@ function dropAllGameSessions() {
 /** Clans with a session kept. */
 function keptSessionClans() {
     return [...kept.keys()];
+}
+/**
+ * Run `job` with the clan's kept game session, queued on its lane like a read —
+ * the chat invite replies between scans use it for a chat token (message 414,
+ * scheduler/chat-invites.ts). Undefined when there is no session, scanning is
+ * paused (the login bridge is open) or the lane is busy: the clan's next scan
+ * answers instead. A failure drops the session and is rethrown.
+ */
+async function withKeptGameSession(clanId, job) {
+    const g = gate;
+    const k = kept.get(clanId);
+    if (!g || !k || g.paused() || g.laneBusy(clanId))
+        return undefined;
+    try {
+        return await g.runOnLane(clanId, async () => {
+            if (g.paused() || kept.get(clanId)?.client !== k.client)
+                return undefined;
+            return job(k.client);
+        });
+    }
+    catch (err) {
+        dropGameSession(clanId, k.client);
+        throw err;
+    }
 }
 function startEventPoller(g) {
     gate = g;

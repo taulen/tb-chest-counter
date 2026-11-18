@@ -20,7 +20,7 @@ import { describe, it, expect } from 'vitest';
 import { resolveTheme } from '../../src/web/public/lib/theme.js';
 
 const PUBLIC_DIR = path.resolve(fileURLToPath(new URL('../../src/web/public', import.meta.url)));
-const SHELLS = ['index.html', 'login.html', 'setup.html', 'public-share.html'];
+const SHELLS = ['index.html', 'login.html', 'setup.html', 'public-share.html', 'join.html'];
 
 function bootstrapOf(file: string): string {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8').replace(/\r\n/g, '\n');
