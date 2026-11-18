@@ -1071,6 +1071,8 @@ export const ui = {
   "Site name in messages (every clan)": "Название сайта в сообщениях (все кланы)",
   "{n} members would get a code": { one: "{n} участник получит код", few: "{n} участника получат код", many: "{n} участников получат код", other: "{n} участника получат код" },
   "Dry run: nothing is sent. Switch to On to send these, up to 10 per scan.": "Пробный запуск: ничего не отправляется. Переключите на «Включено», чтобы отправить, до 10 за сканирование.",
+  "Code expired": "Код истёк",
+  "Not used yet": "Ещё не использован",
   "Dry run": "Пробный запуск",
   "On since {date}": "Включено с {date}",
   "Answer code requests": "Отвечать на запросы кода",

@@ -160,13 +160,14 @@ function renderAccountInvites(root, box, clanId, data) {
     <h4 class="invite-subhead">${t('Codes for members')} <span class="ui-sub">${data.welcomes.length}</span></h4>
     <div class="table-wrap invite-would">
       <table class="data-table account-invite-welcomes">
-        <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th><th scope="col">${t('Sent')}</th><th scope="col">${t('Status')}</th></tr></thead>
+        <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th><th scope="col">${t('Sent')}</th><th scope="col">${t('Status')}</th><th scope="col">${t('Account')}</th></tr></thead>
         <tbody>
           ${data.welcomes.map((w) => `<tr>
-            <td>${escapeHtml(w.player)}</td>
+            <td>${w.memberId ? `<a href="#member/${w.memberId}">${escapeHtml(w.player)}</a>` : escapeHtml(w.player)}</td>
             <td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td>
             <td>${w.status === 'sent' && w.updatedAt ? escapeHtml(formatDate(w.updatedAt)) : ''}</td>
             <td>${welcomeStatusText(w.status, w.reason)}</td>
+            <td>${welcomeAccountHtml(w)}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -273,6 +274,22 @@ function welcomeProgressText(p, s) {
   const skipped = p.skipped ? ` · ${tn(p.skipped, '{n} could not be sent', '{n} could not be sent', { n: p.skipped })}` : '';
   const paused = s.welcomeMode !== 'on' && p.due ? ` · ${t('paused')}` : '';
   return `${sent}${skipped}${paused}`;
+}
+
+/**
+ * What became of a sent code: the account now linked to the player (whichever
+ * code they used, with when), else whether the code still works.
+ */
+function welcomeAccountHtml(w) {
+  if (w.account) {
+    const when = w.linkedAt ? ` title="${escapeHtml(formatDate(w.linkedAt))}"` : '';
+    return `<span class="invite-on"${when}>✓ ${escapeHtml(w.account)}</span>`;
+  }
+  if (w.status !== 'sent') return '';
+  const expired = w.codeExpiresAt && Date.parse(w.codeExpiresAt) < Date.now();
+  return expired
+    ? `<span class="muted-copy">○ ${escapeHtml(t('Code expired'))}</span>`
+    : `<span class="muted-copy">– ${escapeHtml(t('Not used yet'))}</span>`;
 }
 
 /** A welcome code's outcome, glyph + words. */

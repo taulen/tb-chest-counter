@@ -379,11 +379,33 @@ export function setWelcomeStatus(
     extra.countAttempt ? 1 : 0, extra.messageId ?? null, now, now, extra.countAttempt ? 1 : 0);
 }
 
-export function recentWelcomes(clanId: number, limit = 15): Array<{ player: string; joinedAt: number | null; status: WelcomeStatus; reason: string | null; updatedAt: string }> {
+/**
+ * The welcome codes sent in a clan, newest first, each with what became of it:
+ * the account now linked to the player (whichever code they used), the
+ * member it is (for a profile link) and when its code runs out.
+ */
+export function recentWelcomes(clanId: number, limit = 15): Array<{
+  player: string; joinedAt: number | null; status: WelcomeStatus; reason: string | null; updatedAt: string;
+  account: string | null; linkedAt: string | null; memberId: number | null; codeExpiresAt: string | null;
+}> {
   return (getDb().prepare(
-    'SELECT player_name, joined_at, status, reason, updated_at FROM chat_invite_welcomes WHERE clan_id = ? ORDER BY updated_at DESC LIMIT ?',
-  ).all(clanId, limit) as Array<{ player_name: string; joined_at: number | null; status: WelcomeStatus; reason: string | null; updated_at: string }>)
-    .map((r) => ({ player: r.player_name, joinedAt: r.joined_at, status: r.status, reason: r.reason, updatedAt: r.updated_at }));
+    `SELECT w.player_name, w.joined_at, w.status, w.reason, w.updated_at,
+            u.username AS account, l.linked_at,
+            (SELECT m.id FROM members m WHERE m.clan_id = w.clan_id AND m.game_player_id = w.player_id
+              ORDER BY m.is_active DESC, m.id DESC LIMIT 1) AS member_id,
+            (SELECT MAX(c.expires_at) FROM account_invite_codes c
+              WHERE c.clan_id = w.clan_id AND c.player_id = w.player_id AND c.kind = 'welcome') AS code_expires_at
+       FROM chat_invite_welcomes w
+       LEFT JOIN user_game_links l ON l.clan_id = w.clan_id AND l.player_id = w.player_id
+       LEFT JOIN users u ON u.id = l.user_id
+      WHERE w.clan_id = ? ORDER BY w.updated_at DESC LIMIT ?`,
+  ).all(clanId, limit) as Array<{
+    player_name: string; joined_at: number | null; status: WelcomeStatus; reason: string | null; updated_at: string;
+    account: string | null; linked_at: string | null; member_id: number | null; code_expires_at: string | null;
+  }>).map((r) => ({
+    player: r.player_name, joinedAt: r.joined_at, status: r.status, reason: r.reason, updatedAt: r.updated_at,
+    account: r.account, linkedAt: r.linked_at, memberId: r.member_id, codeExpiresAt: r.code_expires_at,
+  }));
 }
 
 /**

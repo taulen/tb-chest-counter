@@ -1071,6 +1071,8 @@ export const ui = {
   "Site name in messages (every clan)": "Nombre del sitio en los mensajes (todos los clanes)",
   "{n} members would get a code": { one: "{n} miembro recibiría un código", other: "{n} miembros recibirían un código" },
   "Dry run: nothing is sent. Switch to On to send these, up to 10 per scan.": "Prueba: no se envía nada. Cambia a Activado para enviarlos, hasta 10 por escaneo.",
+  "Code expired": "Código caducado",
+  "Not used yet": "Aún sin usar",
   "Dry run": "Prueba",
   "On since {date}": "Activo desde {date}",
   "Answer code requests": "Responder solicitudes de código",
