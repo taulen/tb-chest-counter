@@ -28,6 +28,9 @@ exports.loadArtStatic = loadArtStatic;
  *   T11 equipment    f2 icon address, f3 name vector (gems/enchantments: T8 f1 8/9)
  *   T29 titles       f1 name vector, f3 visual JSON {"smallIcon": <round 28 px,
  *                    an atlas sprite>, "mobileIcon": <72 px>, …}
+ *   T1  client config the research / talent / clan trees ("branches") with
+ *                    their `visual` — the tree's own picture beside its name
+ *                    (client-config.ts readBranchDefs; tech-trees.ts shows it)
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -36,6 +39,7 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const codec_js_1 = require("../game-protocol/codec.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
+const client_config_js_1 = require("../game-protocol/client-config.js");
 const STATIC_BASE = 'https://assets-client-static.totalbattle.dev/';
 const TRANSLATIONS_BASE = 'https://assets-translations.totalbattle.dev//';
 const ENGLISH = 'csv_en_US';
@@ -52,8 +56,8 @@ exports.TABLE_CUSTOMIZATIONS = 52;
 const CUSTOMIZATION_FRAME = 1;
 /** T52 kind of a city look; its visual JSON holds another JSON with {"icon": {minCityLevel: icon}}. */
 const CUSTOMIZATION_CITY = 2;
-/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames; 4: titles). */
-exports.ART_STATIC_FORMAT = 4;
+/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames; 4: titles; 5: tree pictures). */
+exports.ART_STATIC_FORMAT = 5;
 /** Titles: f1 name vector, f3 visual JSON. */
 exports.TABLE_TITLES = 29;
 /** Artifact types: f7 JSON config {"icon": …}, f8 name vector. A `$pairs` table keyed [type]. */
@@ -231,7 +235,15 @@ function buildArtStatic(version, strings, vectors, tables, en) {
         if (icon || art)
             titles[id] = { name: name(row[1]), icon, art };
     }
-    return { version, format: exports.ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts, titles };
+    const branches = {};
+    const t1 = tables.get(client_config_js_1.TABLE_CLIENT_CONFIG);
+    if (t1) {
+        for (const b of (0, client_config_js_1.readBranchDefs)(t1, (ref) => (ref === undefined ? undefined : str(ref)), en)) {
+            if (b.visual && /^[\w-]+$/.test(b.visual))
+                branches[b.id] = { name: b.name, visual: b.visual };
+        }
+    }
+    return { version, format: exports.ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts, titles, branches };
 }
 function staticKey(v) {
     return `${v.composite.slice(0, 16)}-${v.translationsCatalog.replace(/\.json$/, '')}`;
@@ -261,7 +273,7 @@ async function loadArtStatic(dir) {
         const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
         // A cache from an older format (no captains, no unit tiers, no artifacts or
         // equipment) is rebuilt once.
-        if (cached.captains && cached.format === exports.ART_STATIC_FORMAT && cached.artifacts && cached.equipment)
+        if (cached.captains && cached.format === exports.ART_STATIC_FORMAT && cached.artifacts && cached.equipment && cached.branches)
             return cached;
     }
     const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
@@ -270,7 +282,7 @@ async function loadArtStatic(dir) {
         fetchBuffer(STATIC_BASE + version.files.noDuplicates),
         fetchEnglish(version.translationsCatalog),
     ]);
-    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_CUSTOMIZATIONS, exports.TABLE_ARTIFACTS, exports.TABLE_EQUIPMENT, exports.TABLE_TITLES]), en);
+    const data = buildArtStatic(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), (0, static_data_js_1.readTables)(tablesBuf, [exports.TABLE_ITEMS, exports.TABLE_UNITS, exports.TABLE_HERO_AVATARS, exports.TABLE_TECHS, exports.TABLE_CAPTAINS, exports.TABLE_CUSTOMIZATIONS, exports.TABLE_ARTIFACTS, exports.TABLE_EQUIPMENT, exports.TABLE_TITLES, client_config_js_1.TABLE_CLIENT_CONFIG]), en);
     fs_1.default.mkdirSync(dir, { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
     fs_1.default.writeFileSync(tmp, JSON.stringify(data));

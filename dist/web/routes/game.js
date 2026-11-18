@@ -52,9 +52,10 @@ function treesWithIcons(trees) {
         ...trees,
         trees: trees.trees.map((tr) => ({
             ...tr,
-            iconUrl: tr.icon ? (0, index_js_2.gameArtUrl)(tr.icon) : null,
+            // Image names are safeArtName forms (lower case); the tree data keeps the game's spelling.
+            iconUrl: tr.icon ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(tr.icon)) : null,
             nodes: tr.nodes.map((n) => {
-                const name = techIcons[String(n.techId)] ?? n.icon;
+                const name = techIcons[String(n.techId)] ?? (n.icon ? (0, selection_js_1.safeArtName)(n.icon) : '');
                 return { ...n, iconUrl: name ? (0, index_js_2.gameArtUrl)(name) : null };
             }),
         })),

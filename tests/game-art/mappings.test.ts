@@ -111,6 +111,9 @@ describe('selectArt', () => {
       clan_emblem_12: 'clan',
       // Every other item's icon, for rows listed by item id (Clan Capital treasury).
       booster_silver_72: 'items',
+      // Not the burning city: the 'Fiery' city look. A UI icon like any other, so
+      // the icons catch-all has it ready before a page asks.
+      player_feiry_city_72: 'icons',
     });
   });
 
@@ -150,7 +153,8 @@ describe('selectArt', () => {
       161: { name: 'Prefect', icon: 'titul_great_marshal_28', art: 'bonus_great_marshal_72' },
     });
     const sel = selectArt(['perfect_28', 'bonus_perfect_72', 'perfect_50', 'titul_great_marshal_28'], titled);
-    expect(Object.fromEntries(sel)).toEqual({ perfect_28: 'titles', bonus_perfect_72: 'titles', titul_great_marshal_28: 'titles' });
+    // perfect_50 (the big icon) isn't a title picture the profile shows; the icons catch-all still takes it.
+    expect(Object.fromEntries(sel)).toEqual({ perfect_28: 'titles', bonus_perfect_72: 'titles', titul_great_marshal_28: 'titles', perfect_50: 'icons' });
     const m = buildMappings(titled, [], new Set(), (n) => n !== 'bonus_great_marshal_72');
     expect(m.titles).toEqual({ 29: 'perfect_28', 161: 'titul_great_marshal_28' });
     expect(m.titleArt).toEqual({ 29: 'bonus_perfect_72' });

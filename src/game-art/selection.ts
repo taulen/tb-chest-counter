@@ -1,13 +1,20 @@
 /**
  * Which game art we extract — the one place that decides it.
  *
- * The CDN holds ~14,400 bundles; we take ~1,150 icons. Each category is the
+ * The CDN holds ~14,400 bundles (~15,500 addresses). Each category is the
  * union of
  *   - the address patterns below (catalogue addresses are lower-cased asset
  *     names, e.g. "merc_guard_flying_9_icon_72"), and
  *   - the icons the game's own static data names for that category (see
  *     staticIconsByCategory), so a new hero, unit, tech or chest is picked up
- *     without touching this file.
+ *     without touching this file;
+ * then two catch-alls, so a page never has to wait for its picture to be
+ * "wanted" first (Nov 18 2026, after My Clan showed "Clan territories" bare):
+ *   - `named`: every sprite name names.json carries (artNamesFromGameNames),
+ *     whatever field it sits in — the static data can't name art we skip;
+ *   - `icons`: every catalogue address that is a UI icon by its name
+ *     (LIBRARY_ART), at most LIBRARY_MAX_SIDE px — ~2,200 more small images
+ *     (selection 11 took 3,190 addresses, 12 takes 5,416; docs/game-protocol.md).
  * An address in more than one category goes to the first in ART_CATEGORIES.
  */
 import type { ArtStatic } from './art-static.js';
@@ -17,11 +24,48 @@ import type { ArtStatic } from './art-static.js';
  * not in the catalogue at all, it comes from the WebGL client build
  * (webgl-client.ts, unit-frames.ts), so it has no pattern here.
  *
- * `items` last: every other item icon (T8) that no category above took — a
- * clan treasury or inventory row shows its item's own icon (by item id).
+ * `items`: every other item icon (T8) that no category above took — a clan
+ * treasury or inventory row shows its item's own icon (by item id).
+ *
+ * `named` and `icons` last: the catch-alls (see the file header).
  */
-export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items'] as const;
+export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items', 'named', 'icons'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
+
+/**
+ * The `icons` catch-all: every catalogue address that is a UI icon by its
+ * name. Measured on the live catalogue (c508dcac…, Nov 18 2026) beyond what
+ * the other categories take:
+ *   size-suffixed sprites (`_72`, `_28`, `_22`, `_64`, …)  +1,837 · ~46 MB down · ~19 MB disk
+ *   `icon_*` / `*_icon` / `*_icon_<n>`                       +741 · ~87 MB down · ~21 MB disk
+ * Left out on purpose (measured too): `_frame/_back/_mask/_lg` backgrounds
+ * (+361, ~900 MB) and `_scaled` full-body pictures (+262, ~540 MB) — the ones
+ * the app shows come in through their own categories.
+ */
+export const LIBRARY_ART: readonly RegExp[] = [
+  /^[a-z0-9_]+_(?:22|28|32|36|42|48|50|62|64|72|128)$/,
+  /^icon_[a-z0-9_]+$/,
+  /^[a-z0-9_]+_icon(?:_\d+)?$/,
+];
+/**
+ * Never in the `icons` catch-all: animations and bundles of parts, audio,
+ * per-language pictures, marketing banners, the world map and its minimaps,
+ * tutorial screens, the "_old" copies the game keeps beside the current one.
+ */
+export const LIBRARY_DENY: readonly RegExp[] = [
+  /^(?:.*_)?(?:anim|animation|spine|artbundle|bundle|vfx|sound|voice)(?:_.*)?$/,
+  /^(?:map|realm|mini|minimap|promo|banner|tutorial)_[a-z0-9_]*$/,
+  /^[a-z0-9_]+_(?:en|ru|de|fr|it|pl|pt|nl|es|sp|tr)$/,
+  /^[a-z0-9_]*\d+x\d+[a-z0-9_]*$/,
+  /^[a-z0-9_]+_old$/,
+];
+/** A catch-all picture bigger than this on either side is skipped (a background, not an icon). */
+export const LIBRARY_MAX_SIDE = 512;
+
+/** Is `address` a UI icon the `icons` catch-all takes? */
+export function isLibraryArt(address: string): boolean {
+  return LIBRARY_ART.some((p) => p.test(address)) && !LIBRARY_DENY.some((p) => p.test(address));
+}
 
 /**
  * Event pictures the app shows by key (Tools → Ancient planner), the game's
@@ -145,7 +189,40 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   ui: [],
   // Item icons come from the item table (T8) alone.
   items: [],
+  // names.json's sprite names alone (artNamesFromGameNames).
+  named: [],
+  // isLibraryArt (LIBRARY_ART minus LIBRARY_DENY), applied in selectArt.
+  icons: [],
 };
+
+/** Keys whose string values are sprite names, wherever they sit in names.json. */
+export const ART_KEYS = /^(?:icon|inactiveIcon|art|visual|smallIcon|mobileIcon|rewardIcon|bigIcon|stainedGlass|banner|frameIcon|frame|back)$/;
+const ART_NAME = /^[A-Za-z0-9_-]{2,128}$/;
+
+/**
+ * Every sprite name the game's names data (names.json, static-data.ts) carries
+ * — a medal's icon, a faction's window and crest, the Dragon's stage icons and
+ * window sprites, captains, titles, items, … — found by key wherever it sits,
+ * so a field added to names.json is selected without touching this file.
+ * Lower-cased, like catalogue addresses.
+ */
+export function artNamesFromGameNames(names: unknown): Set<string> {
+  const out = new Set<string>();
+  const walk = (v: unknown, key: string, depth: number): void => {
+    if (depth > 8 || v === null || v === undefined) return;
+    if (typeof v === 'string') {
+      if (ART_KEYS.test(key) && ART_NAME.test(v)) out.add(v.toLowerCase());
+      return;
+    }
+    if (Array.isArray(v)) {
+      for (const x of v) walk(x, key, depth + 1);
+      return;
+    }
+    if (typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, k, depth + 1);
+  };
+  walk(names, '', 0);
+  return out;
+}
 
 /** Items (T8) below this id are the game's currencies and base resources. */
 export const RESOURCE_ITEM_MAX_ID = 100;
@@ -162,10 +239,17 @@ export function isResourceItem(item: { id: number; name: string }, resourceNames
   return item.id < RESOURCE_ITEM_MAX_ID || resourceNames.has(item.name.toLowerCase());
 }
 
-/** The icons the static data names per category (lower-cased addresses). */
-export function staticIconsByCategory(st: ArtStatic | null, resourceNames: ReadonlySet<string>): Record<ArtCategory, Set<string>> {
+/**
+ * The icons the static data names per category (lower-cased addresses).
+ * `names` is names.json (static-data.ts GameNames): every sprite name it
+ * carries goes to `named`, unless a category above already claims it.
+ */
+export function staticIconsByCategory(st: ArtStatic | null, resourceNames: ReadonlySet<string>, names: unknown = null): Record<ArtCategory, Set<string>> {
   const out = Object.fromEntries(ART_CATEGORIES.map((c) => [c, new Set<string>()])) as Record<ArtCategory, Set<string>>;
+  for (const n of artNamesFromGameNames(names)) out.named.add(n);
   if (!st) return out;
+  // Every research, talent and clan tree's own picture (T1 branches).
+  for (const b of Object.values(st.branches ?? {})) if (b.visual) out.research.add(b.visual.toLowerCase());
   for (const h of Object.values(st.heroes)) out.heroes.add(h.icon.toLowerCase());
   // Captain portraits sit with the hero portraits.
   for (const c of Object.values(st.captains ?? {})) {
@@ -200,23 +284,26 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
 
 /**
  * The addresses to extract, each with its category. Only addresses the
- * catalogue actually lists are returned.
+ * catalogue actually lists are returned. `names` is names.json (see
+ * staticIconsByCategory); without it the `named` catch-all is empty.
  */
 export function selectArt(
   catalogAddresses: Iterable<string>,
   st: ArtStatic | null,
   resourceNames: ReadonlySet<string> = new Set(),
+  names: unknown = null,
 ): Map<string, ArtCategory> {
   const available = new Set<string>();
   for (const a of catalogAddresses) available.add(a.toLowerCase());
-  const fromStatic = staticIconsByCategory(st, resourceNames);
+  const fromStatic = staticIconsByCategory(st, resourceNames, names);
   const out = new Map<string, ArtCategory>();
   for (const cat of ART_CATEGORIES) {
     for (const a of fromStatic[cat]) if (available.has(a) && !out.has(a)) out.set(a, cat);
     const patterns = ART_PATTERNS[cat];
-    if (!patterns.length) continue;
+    const matches = cat === 'icons' ? isLibraryArt : (a: string): boolean => patterns.some((p) => p.test(a));
+    if (cat !== 'icons' && !patterns.length) continue;
     for (const a of available) {
-      if (!out.has(a) && patterns.some((p) => p.test(a))) out.set(a, cat);
+      if (!out.has(a) && matches(a)) out.set(a, cat);
     }
   }
   return out;
