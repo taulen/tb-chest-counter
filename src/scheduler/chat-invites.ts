@@ -84,6 +84,8 @@ export function isInviteKeyword(text: string): boolean {
  * player picks "Have a code? Join here" on the sign-in page it opens on.
  */
 export const JOIN_ENTRY_LABEL = 'Have a code? Join here';
+/** The same door inside the app for a signed-in player (account menu; index.html userMenuAddClan). */
+export const ADD_CLAN_LABEL = 'Add a clan with a code';
 
 /** "https://www.cwb.fyi/x" or "cwb.fyi" → "cwb . fyi". '' when nothing usable is left. */
 export function spacedSiteName(input: string): string {
@@ -120,7 +122,9 @@ export function defaultSiteNameFor(clanId: number): string | null {
 }
 
 function whereToGo(site: string | null): string {
-  return site ? `Go to ${site} and pick "${JOIN_ENTRY_LABEL}"` : `On the TB Chest Counter site, pick "${JOIN_ENTRY_LABEL}"`;
+  // A player already signed in never sees the sign-in page: name their door too.
+  const doors = `"${JOIN_ENTRY_LABEL}" (signed in: "${ADD_CLAN_LABEL}" in your account menu)`;
+  return site ? `Go to ${site} and pick ${doors}` : `On the TB Chest Counter site, pick ${doors}`;
 }
 
 /** The reply: the code, where to enter it and how long it lasts. English, one short line, no link. */

@@ -394,6 +394,8 @@ describe('welcome codes for new members', () => {
       expect(text, text).not.toMatch(linky);
       expect(text.length).toBeLessThanOrEqual(300);
       expect(text).toContain('Have a code? Join here');
+      // Signed-in players never see the sign-in page: their door is named too.
+      expect(text).toContain('Add a clan with a code');
     }
     expect(texts[0]).toContain('Go to cwb . fyi');
     // The clan name is dropped when it looks like a link.

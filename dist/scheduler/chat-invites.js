@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LINK_LIKE = exports.WELCOME_GAP_MS = exports.JOIN_ENTRY_LABEL = exports.MAX_REQUEST_AGE_MS = exports.INVITE_KEYWORDS = void 0;
+exports.LINK_LIKE = exports.WELCOME_GAP_MS = exports.ADD_CLAN_LABEL = exports.JOIN_ENTRY_LABEL = exports.MAX_REQUEST_AGE_MS = exports.INVITE_KEYWORDS = void 0;
 exports.isInviteKeyword = isInviteKeyword;
 exports.spacedSiteName = spacedSiteName;
 exports.siteNameOverride = siteNameOverride;
@@ -79,6 +79,8 @@ function isInviteKeyword(text) {
  * player picks "Have a code? Join here" on the sign-in page it opens on.
  */
 exports.JOIN_ENTRY_LABEL = 'Have a code? Join here';
+/** The same door inside the app for a signed-in player (account menu; index.html userMenuAddClan). */
+exports.ADD_CLAN_LABEL = 'Add a clan with a code';
 /** "https://www.cwb.fyi/x" or "cwb.fyi" → "cwb . fyi". '' when nothing usable is left. */
 function spacedSiteName(input) {
     const host = String(input ?? '').trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/[/?#].*$/, '').replace(/:\d+$/, '')
@@ -111,7 +113,9 @@ function defaultSiteNameFor(clanId) {
     return spaced || null;
 }
 function whereToGo(site) {
-    return site ? `Go to ${site} and pick "${exports.JOIN_ENTRY_LABEL}"` : `On the TB Chest Counter site, pick "${exports.JOIN_ENTRY_LABEL}"`;
+    // A player already signed in never sees the sign-in page: name their door too.
+    const doors = `"${exports.JOIN_ENTRY_LABEL}" (signed in: "${exports.ADD_CLAN_LABEL}" in your account menu)`;
+    return site ? `Go to ${site} and pick ${doors}` : `On the TB Chest Counter site, pick ${doors}`;
 }
 /** The reply: the code, where to enter it and how long it lasts. English, one short line, no link. */
 function inviteReplyText(code, site) {

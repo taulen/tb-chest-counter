@@ -79,8 +79,15 @@ describe('/api/join', () => {
     const c2 = code(2, 22);
     const chk = await request(app).post('/api/join/check').set('Cookie', cookie).send({ code: c2 });
     expect(chk.body).toMatchObject({ mode: 'add-clan', viewer: { username: 'homer' }, role: 'admin' });
-    expect((await request(app).post('/api/join/redeem').set('Cookie', cookie).send({ code: c2 })).status).toBe(200);
+    // `stay: true` (the in-app dialog): the clan is added, the session stays put.
+    const sessionClan = () => (getDb().prepare('SELECT active_clan_id FROM user_sessions WHERE token = ?')
+      .get(cookie.split('=')[1]) as { active_clan_id: number | null }).active_clan_id;
+    const before = sessionClan();
+    const added = await request(app).post('/api/join/redeem').set('Cookie', cookie).send({ code: c2, stay: true });
+    expect(added.status).toBe(200);
+    expect(added.body).toMatchObject({ mode: 'add-clan', clanId: 2 });
     expect(userRepo.getClanAccessRole(first.body.user.id, 2)).toBe('admin');
+    expect(sessionClan()).toBe(before);
 
     // Another account trying to take player 22.
     const other = userRepo.createUser('other', PW, 'user', undefined, 2);

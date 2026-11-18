@@ -12109,3 +12109,72 @@ a.home-row-name:hover { text-decoration: underline; }
   .home-clans { grid-template-columns: minmax(0, 1fr); }
   .home-points-head .home-facts { width: 100%; }
 }
+
+/* A Home tile's link as a button (the unlinked tile opens the code dialog). */
+button.home-tile-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ─── Add a clan with a code (lib/add-clan.js) ───
+   The code, then what it will do (before anything happens), then done with
+   "Switch to … now" / "Stay here". */
+.add-clan { display: flex; flex-direction: column; gap: 14px; }
+.add-clan-lede { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.add-clan-form { display: flex; flex-direction: column; gap: 8px; }
+.add-clan-form label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.add-clan-code {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  min-height: 52px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.add-clan-code::placeholder { color: var(--text-muted); letter-spacing: 0.16em; }
+.add-clan-error { margin: 0; font-size: 13px; color: var(--accent-red-soft-text); }
+.add-clan-preview {
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.add-clan-preview.is-done { border-color: var(--accent-gold-border); background: var(--accent-gold-bg); }
+.add-clan-preview.is-refused { border-style: dashed; }
+.add-clan-what { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text-primary); }
+.add-clan .modal-actions { margin-top: 2px; }
+.add-clan .btn { min-height: 44px; }
+
+/* Shell: "Add a clan" under the switcher's list, or under a one-clan label
+   (that one only in the phone's More sheet, where the label is the list). */
+.shell-clan-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px dashed var(--border-control);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.shell-clan-add:hover { color: var(--text-primary); border-color: var(--accent-gold-border); }
+.shell-clan-add:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.shell-clan-add.is-sheet-only { display: none; margin-top: 8px; }
+@media (max-width: 640px) {
+  .shell-clan-add.is-sheet-only { display: flex; }
+}

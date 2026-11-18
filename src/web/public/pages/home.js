@@ -26,6 +26,7 @@ import { avatarHtml } from '../lib/avatar.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { presetMembersBoard } from './members-board.js';
 import { relativeUntil, timeLeftUntil } from './events.js';
+import { openAddClanDialog } from '../lib/add-clan.js';
 
 const DAY_MS = 86_400_000;
 const PERIODS = ['daily', 'weekly', 'monthly', 'all'];
@@ -304,8 +305,11 @@ function youTile(ctx, span) {
 
 /** An old account not yet linked to its player: how linking works. Information, not a nag. */
 function unlinkedTile() {
-  const body = `<p class="home-copy">${t('Your account is not linked to your player in this clan yet, so this page cannot show your own week. Send the word code to the clan’s tracker account in the game chat, then pick “{label}” in the account menu.', { label: esc(t('Have a code? Join here')) })}</p>`;
-  return tile('you', t('Your week'), body, { span: 8, link: tileLink('/join', t('Have a code? Join here')) });
+  // Plain information, not a nag: what's missing and how to fix it. The
+  // button opens the in-app code dialog (lib/add-clan.js), never /join.
+  const body = `<p class="home-copy">${t('Your account is not linked to your player in this clan yet, so this page cannot show your own week. Send the word code to the clan’s tracker account in the game chat, then enter the code here.')}</p>`;
+  const link = `<button type="button" class="home-tile-link" data-home-add-clan>${esc(t('Add a clan with a code'))} <span aria-hidden="true">→</span></button>`;
+  return tile('you', t('Your week'), body, { span: 8, link });
 }
 
 /** The clan total against its target (goal × members) and the bands, for members. */
@@ -687,6 +691,7 @@ function wire(el, ctx) {
       window.location.hash = '#members';
     });
   }
+  el.querySelector('[data-home-add-clan]')?.addEventListener('click', () => openAddClanDialog());
   for (const b of el.querySelectorAll('[data-home-clan]')) {
     b.addEventListener('click', async () => {
       const id = Number(b.dataset.homeClan);
