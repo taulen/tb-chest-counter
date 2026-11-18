@@ -4916,29 +4916,6 @@ details > table {
   color: var(--accent-gold);
 }
 
-/* Events sub-tabs carry a small "next occurrence" schedule line, so each tab
-   is a two-line stack (name + muted schedule). Scoped to .events-tabs so the
-   Resources sub-tabs stay single-line. Wraps on narrow screens, and every row
-   is centred: twelve events don't fit one row, and a left-aligned second row
-   left a ragged gap on the right. Full-width flex (not inline-flex) so a set
-   that does fit one row is centred too. Phones get the grid further down. */
-.events-tabs { display: flex; flex-wrap: wrap; justify-content: center; }
-.events-tabs .resources-tab {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  line-height: 1.2;
-}
-.events-tabs .event-tab-next {
-  font-size: 0.66rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.events-tabs .event-tab-next.is-live { color: var(--accent-green-soft-text); }
-
 /* In-page view tabs (lib/view-tabs.js): Events → Scores / Participants and the
    member profile's sections. The sub-tab bars' segmented look, on real
    <button>s. Phones get an equal-width row further down. */
@@ -5241,34 +5218,8 @@ details > table {
 }
 
 /* ─── Events page ─────────────────────────────────────────────────────── */
-/* Header: title left, timeframe selector + nav right (wraps on narrow). */
-.events-header { flex-wrap: wrap; gap: 10px; }
+/* .events-title is shared (Members, Might, Performance, Rewards, Tin Man). */
 .events-title { display: flex; flex-direction: column; gap: 2px; }
-.events-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-/* Fixed-width label so switching timeframe doesn't shift the controls —
-   same trick as .resources-totals-nav. 200px fits the weekly date range. */
-.events-nav .period-nav-label { min-width: 200px; text-align: center; }
-/* "live" marker on the current in-progress occurrence in the selector. Sized
-   and set to read as part of the window label ("Jul 26–30 · live"), not as a
-   badge: as a pill it sat oddly in the label's fixed-width slot, which centres
-   label + marker together and so shoved the date off-centre only on the live
-   run. Soft green text (not white on solid green, which is low-contrast where
-   --accent-green is a bright mint) — reads cleanly in light, dark, and OLED. */
-.events-occ-live {
-  margin-left: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent-green-soft-text);
-}
-/* Occurrence whose dates were projected from the event's cadence (the calendar
-   feed only reaches ~a month back) — a footnote, so it sits back from the label. */
-.events-occ-est {
-  margin-left: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  cursor: help;
-}
 /* Wide matrices (many chest/level columns) scroll horizontally on narrow. */
 .events-scroll { overflow-x: auto; }
 .events-table td.col-num { font-size: 0.82rem; }
@@ -5286,31 +5237,6 @@ details > table {
 .events-level-table th.num { text-align: right; }
 .events-level-table .col-level { width: 48%; }
 .events-zero { color: var(--text-muted); }
-/* Catalog-vs-data mismatch banner. A dead event rule renders as a column of
-   zeros that looks exactly like "nobody played", so it gets said out loud. */
-.events-config-warning {
-  margin: 0 0 16px;
-  padding: 12px 16px;
-  border: 1px solid var(--accent-gold-border);
-  border-left-width: 3px;
-  border-radius: 6px;
-  background: var(--accent-gold-bg);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.events-config-warning-title {
-  font-weight: 700;
-  color: var(--accent-gold);
-  margin-bottom: 6px;
-}
-.events-config-warning ul { margin: 0; padding-left: 20px; }
-.events-config-warning li { margin-top: 2px; }
-.events-config-warning code {
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--accent-gold-bg-strong);
-  font-size: 12px;
-}
 /* Header/cell markers on a column whose rule resolved to nothing. */
 .events-unresolved-mark {
   margin-left: 3px;
@@ -5332,14 +5258,6 @@ details > table {
 /* Lead summary card (e.g. Ancients "Vaults Taken Down") — accent the value. */
 .stat-card.stat-card-lead { border-color: var(--accent-gold); }
 .stat-card.stat-card-lead .value { color: var(--accent-gold); }
-/* Finish Reward card subline — the chest count under the recipient name. */
-.events-finish-sub {
-  margin-top: 2px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
 /* "Did not participate" list: wrapping chips of member links. .card-body has
    no padding of its own, so pad the list here. */
 .events-np-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; }
@@ -5352,54 +5270,48 @@ details > table {
   font-size: 0.88rem;
 }
 
-/* Mobile: the event picker's tabs have uneven widths (some carry a
-   schedule subline, some don't), so a wrapping flex row ragged-stacks
-   into a 3-2-1 mess with the active tab stranded. Turn it into a tidy
-   2-column grid of equal tab cards instead — every event visible at a
-   glance, uniform sizes, active clearly highlighted. The timeframe /
-   occurrence cluster below fills the width and centers. */
-@media (max-width: 640px) {
-  .events-tabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    width: 100%;
-    margin: 0 0 16px;
-    background: transparent;
-    border: 0;
-    padding: 0;
-  }
-  .events-tabs .resources-tab {
-    align-items: center;
-    /* Top, not centre: a row's cards stretch to its tallest, and a name that
-       wraps (de "Streben nach Erfahrung") pushed its centred neighbour's name
-       down. Anchored to the top, every name in a row starts level. */
-    justify-content: flex-start;
-    text-align: center;
-    padding: 10px 8px;
-    min-height: 52px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--bg-card);
-  }
-  .events-tabs .resources-tab.is-active {
-    border-color: var(--accent-gold-border);
-    background: var(--accent-gold-bg-strong);
-  }
-
-  .events-controls {
-    width: 100%;
-    justify-content: center;
-  }
-  .events-nav {
-    width: 100%;
-    justify-content: center;
-  }
-  .events-nav .period-nav-label {
-    min-width: 0;
-    flex: 1;
-    text-align: center;
-  }
+/* ─── Events (pages/events.js, game-standings.js; redesign wave 2) ───
+   Built on the UI kit: the sub-tab bar (each event's schedule in its badge),
+   the event's name with the timeframe control, stat tiles, the Scores |
+   Participants segmented control, tables in .ui-table-card. Only what is
+   Events' own lives here. */
+.ev { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ev > .ui-subtabs, .ev-tabs .ui-subtabs { margin: 0; }
+/* A dozen events: on a desktop the bar wraps so none hides off to the side;
+   a phone keeps the kit's sideways strip (the current event scrolled in). */
+@media (min-width: 761px) {
+  .ev-tabs .ui-subtabs { flex-wrap: wrap; width: auto; }
+}
+.ev-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.ev-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 280px; }
+.ev-name { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.ev-when { flex: 0 1 auto; min-width: 0; }
+.ev-when .ui-when-sub.ev-live { color: var(--accent-green-soft-text); font-weight: 600; }
+.ev-config-title { color: var(--accent-gold); }
+.ui-notes code { padding: 1px 4px; border-radius: 3px; background: var(--subtle-bg-strong); font-size: 12px; }
+/* Stat tiles: as many across as fit, two on a phone. A .ui-tile carries the
+   bento grid's span; this grid lays them out itself. */
+.ev-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.ev-stats > .ui-tile { grid-column: auto; gap: 4px; padding: 14px 16px; }
+.ev-stat .ui-stat-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ev-stat .ui-big { font-size: 26px; overflow-wrap: anywhere; }
+.ev-stat.is-lead { border-color: var(--accent-gold-border); }
+.ev-stat.is-lead .ui-big { color: var(--accent-gold); }
+.ev-views { display: flex; }
+.ev-panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ev-panel[hidden] { display: none; }
+/* A section above a table: its heading, then the card. */
+.ev-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ev-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.ev-section-title { margin: 0; font-size: 16px; font-weight: 700; }
+.ev .card-collapsible { margin: 0; }
+@media (max-width: 760px) {
+  .ev-head { align-items: stretch; }
+  .ev-when { flex: 1 1 100%; }
+  .ev-name { font-size: 20px; }
+  .ev-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .ev-stat .ui-big { font-size: 22px; }
+  .ev-views .ui-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
 }
 
 /* ─── Resources: per-member donated cards (member detail page) ────────────
@@ -11412,7 +11324,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 /* ── Event standings from the game (pages/game-standings.js) ─────────────────
    The event window's "Clan members" tab, read every scan. */
-.game-standings-card { margin-bottom: 16px; }
 .game-standings-table { table-layout: fixed; width: 100%; }
 .game-standings-table col.col-rank { width: 72px; }
 .game-standings-table col.col-points { width: 150px; }
@@ -11427,21 +11338,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-weight: 600;
 }
 .game-run-badge.is-live { border-color: var(--accent-green); color: var(--accent-green); }
-.game-run-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.game-run {
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  padding: 10px 12px;
-  min-width: 0;
-}
-.game-run-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: baseline; }
-.game-run-title { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; min-width: 0; }
-.game-run-title strong { color: var(--text-primary); overflow-wrap: anywhere; }
-.game-run-link { font-size: 12px; }
-.game-run-meta { font-size: 12px; color: var(--text-secondary); }
-.game-run-top { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
-.game-run-standings { margin-top: 8px; }
+/* Events → In-game rankings: one kit tile per run (.ui-tile.game-run). */
+.game-runs-lede { margin: 0 0 14px; }
+.game-run-standings { margin-top: 4px; }
 /* The hand-pasted standings, folded while the game's are read. */
 .events-paste-fold { margin: 0 0 16px; }
 .events-paste-fold > summary {

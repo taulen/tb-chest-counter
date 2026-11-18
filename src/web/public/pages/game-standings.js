@@ -9,6 +9,7 @@
 import { api } from '../lib/api.js';
 import { esc, memberLink, formatDate, formatDateShort, formatRelativeTime } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { tileHtml, tileLinkHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, asList } from '../lib/ui-kit.js';
 
 const PAGE_SIZE = 25;
 
@@ -41,7 +42,7 @@ function whoCell(row) {
 
 function runStatusHtml(run) {
   if (run.live) {
-    return `<span class="game-run-badge is-live">${esc(t('Live now'))}</span>${run.endsAt ? ` <span class="muted-copy">${esc(t('Ends {date}', { date: formatDate(run.endsAt).slice(0, 16) }))}</span>` : ''}`;
+    return `<span class="game-run-badge is-live"><span aria-hidden="true">●</span> ${esc(t('Live now'))}</span>${run.endsAt ? ` <span class="muted-copy">${esc(t('Ends {date}', { date: formatDate(run.endsAt).slice(0, 16) }))}</span>` : ''}`;
   }
   return `<span class="game-run-badge">${esc(t('Ended {date}', { date: run.endsAt ? formatDateShort(run.endsAt) : '—' }))}</span>`;
 }
@@ -63,8 +64,8 @@ function standingsTableHtml(rows, page) {
         <button class="btn btn-tight" data-gs-page="${p + 1}" ${p >= pages ? 'disabled' : ''}>${t('Next →')}</button>
       </div>`
     : '';
-  return `<div class="table-responsive">
-      <table class="data-table game-standings-table">
+  return `<div class="ui-table-card">
+      <table class="table-responsive ui-table game-standings-table">
         <colgroup><col class="col-rank"><col><col class="col-points"><col class="col-change"></colgroup>
         <thead><tr>
           <th scope="col">${t('Rank')}</th><th scope="col">${t('Member')}</th>
@@ -72,7 +73,8 @@ function standingsTableHtml(rows, page) {
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
-    </div>${pagination}`;
+      ${pagination}
+    </div>`;
 }
 
 /** The standings card for an event page; nothing when the game gave no standings for that window. */
@@ -81,20 +83,17 @@ export function mountGameStandings(el, data) {
   if (!data?.run) { el.innerHTML = ''; return; }
   let page = 1;
   const draw = () => {
-    const { run, standings } = data;
-    el.innerHTML = `<div class="card game-standings-card">
-        <div class="card-header">
-          <div>
-            <h2>${esc(t('Standings from the game'))}</h2>
-            <span class="card-header-hint">${esc(tGame(run.title || ''))} · ${runStatusHtml(run)}</span>
-          </div>
-          <span class="card-header-hint" title="${esc(formatDate(run.readAt))}">${esc(t('Read {time}', { time: formatRelativeTime(run.readAt) }))}</span>
+    const { run } = data;
+    const standings = asList(data.standings);
+    el.innerHTML = `<section class="ev-section game-standings-card" aria-labelledby="gs-title">
+        <div class="ev-section-head">
+          <h2 class="ev-section-title" id="gs-title">${esc(t('Standings from the game'))}</h2>
+          <span class="ui-sub" title="${esc(formatDate(run.readAt))}">${esc(t('Read {time}', { time: formatRelativeTime(run.readAt) }))}</span>
         </div>
-        <div class="card-body">
-          <p class="muted-copy card-note">${esc(t("The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved."))}</p>
-          ${standingsTableHtml(standings, page)}
-        </div>
-      </div>`;
+        <p class="ui-sub">${esc(tGame(run.title || ''))} · ${runStatusHtml(run)}</p>
+        <p class="ui-copy">${esc(t("The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved."))}</p>
+        ${standingsTableHtml(standings, page)}
+      </section>`;
     el.querySelectorAll('[data-gs-page]').forEach((b) => b.addEventListener('click', () => {
       page = Number(b.dataset.gsPage) || 1;
       draw();
@@ -103,39 +102,47 @@ export function mountGameStandings(el, data) {
   draw();
 }
 
-/** Events → In-game rankings: the latest run of every event the game reported. */
+/**
+ * Events → In-game rankings: the latest run of every event the game reported,
+ * one kit tile each — the event (with a link to its tab when the site has
+ * one), live or ended, its top members as rows, and the full standings on
+ * demand.
+ */
 export async function renderGameRankings(el) {
-  el.innerHTML = `<div class="empty-state"><p>${esc(t('Loading…'))}</p></div>`;
+  el.innerHTML = emptyHtml(t('Loading…'));
   let res = null;
   try { res = await api('/game/events'); } catch { res = null; }
-  const runs = Array.isArray(res?.runs) ? res.runs : [];
-  if (!runs.length) {
-    el.innerHTML = `<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${esc(t('No in-game rankings read yet. Every scan reads the standings of the events running in the game.'))}</p></div></div>`;
+  if (res && !Array.isArray(res.runs) && refusalText(res)) {
+    el.innerHTML = errorStateHtml(t('Could not load the standings.'), refusalText(res));
+    wireRetry(el, () => renderGameRankings(el));
     return;
   }
-  el.innerHTML = `<div class="card">
-      <div class="card-header"><div>
-        <h2>${esc(t('In-game rankings'))}</h2>
-        <span class="card-header-hint">${esc(t('The latest run of every event the game reported for the clan, read every scan.'))}</span>
-      </div></div>
-      <div class="card-body card-body-padded">
-        <ul class="game-run-list">${runs.map((r, i) => `<li class="game-run" data-gr="${i}">
-            <div class="game-run-head">
-              <div class="game-run-title">
-                <strong>${esc(tGame(r.title || t('Event {type}', { type: r.type })))}</strong>
-                ${r.eventKey ? `<a class="game-run-link" href="#events/${esc(r.eventKey)}">${esc(t('Open the event'))}</a>` : ''}
-              </div>
-              <div class="game-run-meta">${runStatusHtml(r)} · ${esc(tn(r.withPoints, '{n} member with points', '{n} members with points', { n: r.withPoints }))}</div>
-            </div>
-            ${r.top.length ? `<ol class="game-run-top">${r.top.map((p) => `<li><span class="rank rank-${p.rank}">#${p.rank}</span> ${p.memberId ? memberLink(p.memberId, p.name) : esc(p.name || t('Unknown player'))} <span class="muted-copy">${Number(p.points).toLocaleString()}</span></li>`).join('')}</ol>` : ''}
-            <button class="btn btn-tight" type="button" data-gr-toggle="${i}" aria-expanded="false">${esc(t('Show standings'))}</button>
-            <div class="game-run-standings" hidden></div>
-          </li>`).join('')}</ul>
-      </div>
-    </div>`;
+  const runs = asList(res?.runs);
+  if (!runs.length) {
+    el.innerHTML = emptyHtml(t('No in-game rankings read yet. Every scan reads the standings of the events running in the game.'));
+    return;
+  }
+  const tiles = runs.map((r, i) => {
+    const top = asList(r.top);
+    const body = `<p class="ui-sub">${runStatusHtml(r)} · ${esc(tn(r.withPoints, '{n} member with points', '{n} members with points', { n: r.withPoints }))}</p>
+      ${top.length ? `<ol class="ui-rows">${top.map((p) => `<li class="ui-row">
+          <span class="ui-rank">#${p.rank}</span>
+          <span class="ui-row-main"><span class="ui-row-name">${p.memberId ? memberLink(p.memberId, p.name) : esc(p.name || t('Unknown player'))}</span></span>
+          <span class="ui-row-n">${Number(p.points).toLocaleString()}</span>
+        </li>`).join('')}</ol>` : ''}
+      <div><button class="btn btn-tight" type="button" data-gr-toggle="${i}" aria-expanded="false">${esc(t('Show standings'))}</button></div>
+      <div class="game-run-standings" hidden></div>`;
+    return tileHtml(`gr-${i}`, esc(tGame(r.title || t('Event {type}', { type: r.type }))), body, {
+      span: 6,
+      cls: 'game-run',
+      link: r.eventKey ? tileLinkHtml(`#events/${r.eventKey}`, t('Open the event')) : '',
+    });
+  }).join('');
+  el.innerHTML = `<p class="ui-copy game-runs-lede">${esc(t('The latest run of every event the game reported for the clan, read every scan.'))}</p>
+    <div class="ui-grid">${tiles}</div>`;
   el.querySelectorAll('[data-gr-toggle]').forEach((btn) => btn.addEventListener('click', async () => {
     const r = runs[Number(btn.dataset.grToggle)];
-    const box = btn.parentElement.querySelector('.game-run-standings');
+    const box = btn.closest('.game-run').querySelector('.game-run-standings');
     const open = btn.getAttribute('aria-expanded') === 'true';
     if (open) {
       box.hidden = true;
@@ -152,7 +159,7 @@ export async function renderGameRankings(el) {
         const data = await api(`/game/events/standings?type=${r.type}&run=${r.run}&occurrence=${r.occurrence}`);
         let page = 1;
         const draw = () => {
-          box.innerHTML = standingsTableHtml(data.standings || [], page);
+          box.innerHTML = standingsTableHtml(asList(data?.standings), page);
           box.querySelectorAll('[data-gs-page]').forEach((b) => b.addEventListener('click', () => { page = Number(b.dataset.gsPage) || 1; draw(); }));
         };
         draw();
