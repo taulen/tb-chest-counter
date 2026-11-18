@@ -47,6 +47,18 @@ function setMembersView(view) {
   } catch { /* private window: the toggle still works for this page */ }
 }
 
+/**
+ * Open the board on one band and period (Home's goal tile links here): the
+ * next draw of Members starts on the board, filtered, for that window.
+ */
+export function presetMembersBoard({ band = 'all', period, offset } = {}) {
+  if (BANDS.includes(band)) state.band = band;
+  if (PERIODS.includes(period)) state.period = period;
+  if (Number.isInteger(offset) && offset >= 0) state.offset = offset;
+  state.query = '';
+  setMembersView('board');
+}
+
 /** Board | Table, the same two buttons on both views. */
 export function membersViewToggleHtml(active) {
   const btn = (view, label) => `<button type="button" class="mboard-seg-btn${view === active ? ' is-active' : ''}" aria-pressed="${view === active}" data-mb-view="${view}">${label}</button>`;

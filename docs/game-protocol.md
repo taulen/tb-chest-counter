@@ -213,7 +213,7 @@ chest's quality grade (it draws framed, graded tiles, `chestIconHtml`). The
 label keeps the page's own markup (link, ellipsis, name-over-source stack), so
 locked columns keep their widths. Sizes: 22 px in table rows, 28 px beside a
 two-line name, 20 px in drill-down sub-tables, 16 px in a phone row's summary
-line and in chips, 44 px on the chest's own page. Shown on: Dashboard Recent
+line and in chips, 44 px on the chest's own page. Shown on: Home Recent
 Chests; Scan History session detail (chests + triumphal); Triumphal Chests
 recent list; member profile History (chests + triumphal tabs); Analytics →
 Breakdown → Chest (the icon replaces the type dot; the bar keeps the type

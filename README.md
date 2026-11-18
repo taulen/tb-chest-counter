@@ -65,7 +65,7 @@ runs in one container.
   Overview / Clan / Manage, that folds to an icon rail; the clan switcher
   (logo, kingdom, last scan, status of every clan you can switch to) and the
   scanner card (state, next scan, and for the superadmin Scan this clan / Scan
-  all clans) sit at its top. Phones get a bottom tab bar — Dashboard, Members,
+  all clans) sit at its top. Phones get a bottom tab bar — Home, Members,
   Leaderboard, Events, More — where More opens the same menu as a sheet.
   Each account has a round picture beside its name: a photo it uploaded
   (account menu → **Change photo**: pick any photo, frame it in the circle by
@@ -382,8 +382,22 @@ the time since deploy means you are not talking to the app.
 
 Pages are role-gated. Members see:
 
-- **Dashboard** — live scan status, next-scan countdown, headline stats, clan
-  records.
+- **Home** — shaped by who signs in, all of it driven by one Day / Week /
+  Month / All scrubber (the goal a past window was played under, never
+  today's). A **member** sees their own period first — points against the
+  goal with pace, rank in the clan, chests against the period before, a link to
+  their profile (an account not yet linked to its player gets a plain line on
+  how to link it) — then the clan's points and goal bands, the top collectors,
+  events, the latest chests and the clan's best days. A **leader** sees the
+  clan's command center: clan points against the clan target (goal × members)
+  with a by-day chart against the period before and target pace, goal bands
+  with the first names in each (each opens the Members board filtered to it),
+  top collectors and biggest movers, points by source, roster changes (joins,
+  leaves, burning cities, in-game rank changes — plain facts with times),
+  events, scan health (last scan, this week's scans, any gap longer than the
+  ~21 h a gift lasts), then the latest chests and records. The **superadmin**
+  also gets every clan on top: last scan, status, chests today, one click to
+  switch.
 - **Analytics** — daily-activity charts, chest-type breakdown, top-contributor
   podiums, source breakdown, and a drill-down "all chest types" table, all for a
   selectable timeframe.

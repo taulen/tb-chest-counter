@@ -3,6 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createCrudRouter = createCrudRouter;
 const clan_repo_js_1 = require("../../../data/repositories/clan-repo.js");
 const game_clan_repo_js_1 = require("../../../data/repositories/game-clan-repo.js");
+const member_repo_js_1 = require("../../../data/repositories/member-repo.js");
+const chest_summary_repo_js_1 = require("../../../data/repositories/chest-summary-repo.js");
+const game_day_js_1 = require("../../../utils/game-day.js");
 const session_repo_js_1 = require("../../../data/repositories/session-repo.js");
 const clan_logo_js_1 = require("../../../game-art/clan-logo.js");
 const user_repo_js_1 = require("../../../data/repositories/user-repo.js");
@@ -116,6 +119,28 @@ function createCrudRouter() {
             ? req.clanId
             : clans[0]?.id ?? null;
         res.json({ clans, activeClanId });
+    });
+    /**
+     * Home's "Clans" tile (superadmin): what every clan collected this game day
+     * and how many members it has, keyed by clan id. The rest of the tile (logo,
+     * kingdom, last scan, status) comes from /switcher. Superadmin only: it is
+     * the one view that spans every clan's numbers.
+     *
+     * MUST stay above `GET /:clanId`.
+     */
+    router.get('/overview', auth_js_1.requireSuperAdmin, (_req, res) => {
+        const today = (0, game_day_js_1.gameDateFor)(Date.now(), (0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
+        const clans = (0, clan_repo_js_1.listClans)().map((clan) => {
+            const totals = (0, chest_summary_repo_js_1.getWindowTotals)(clan.id, today, today);
+            return {
+                id: clan.id,
+                gameDate: today,
+                chestsToday: totals.chests,
+                pointsToday: totals.points,
+                members: (0, member_repo_js_1.getMemberCount)(clan.id),
+            };
+        });
+        res.json({ clans });
     });
     /**
      * Clans that have been soft-deleted, with the row counts they still hold —

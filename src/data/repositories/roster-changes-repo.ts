@@ -76,3 +76,56 @@ export function rosterReadSince(clanId: number): string | null {
   const r = getDb().prepare('SELECT MIN(first_seen) AS at FROM game_players WHERE clan_id = ?').get(clanId) as { at: string | null };
   return r.at;
 }
+
+/** One in-game rank change: the player's role went from `from` to `to` at `at`. */
+export interface RankChange {
+  playerId: number;
+  memberId: number | null;
+  name: string;
+  at: string;
+  from: number;
+  to: number;
+  /** Ranks count down (1 Leader … 5 Soldier), so a smaller number is a promotion. */
+  promoted: boolean;
+}
+
+/**
+ * The clan's in-game rank changes since `sinceIso`, newest first: every
+ * history row whose role differs from that player's previous recorded role
+ * (game_player_history keeps the rank since v-history; the member timeline
+ * reads the same change per member). The previous role is looked up per row
+ * through the (clan_id, player_id, captured_at) key, so a rank held for months
+ * before the window is still the "from".
+ */
+export function recentRankChanges(clanId: number, sinceIso: string, limit = 20): RankChange[] {
+  const rows = getDb().prepare(`
+    SELECT h.player_id, h.captured_at, h.name, h.role,
+           (SELECT p.role FROM game_player_history p
+             WHERE p.clan_id = h.clan_id AND p.player_id = h.player_id
+               AND p.captured_at < h.captured_at AND p.role IS NOT NULL
+             ORDER BY p.captured_at DESC LIMIT 1) AS prev_role,
+           (SELECT m.id FROM members m
+             WHERE m.clan_id = h.clan_id AND m.game_player_id = h.player_id
+             ORDER BY m.is_active DESC, m.id DESC LIMIT 1) AS member_id
+      FROM game_player_history h
+     WHERE h.clan_id = ? AND h.captured_at >= ? AND h.role IS NOT NULL
+     ORDER BY h.captured_at DESC
+  `).all(clanId, sinceIso) as Array<{
+    player_id: number; captured_at: string; name: string; role: number; prev_role: number | null; member_id: number | null;
+  }>;
+  const out: RankChange[] = [];
+  for (const r of rows) {
+    if (r.prev_role === null || r.prev_role === r.role) continue;
+    out.push({
+      playerId: r.player_id,
+      memberId: r.member_id,
+      name: r.name,
+      at: r.captured_at,
+      from: r.prev_role,
+      to: r.role,
+      promoted: r.role < r.prev_role,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}

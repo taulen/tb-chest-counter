@@ -903,6 +903,22 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       expectStatus((await send('get', '/api/clans/switcher', 'unauth')).status, 401);
     });
 
+    it("Home's every-clan overview is the superadmin's alone — a clan admin with a guest clan gets 403, never another clan's numbers", async () => {
+      await grant('admin1', [{ clanId: 2, role: 'admin' }]);
+      for (const who of ['user1', 'admin1', 'admin2'] as const) {
+        const res = await send('get', '/api/clans/overview', who);
+        expectStatus(res.status, 403);
+        expect(res.body).not.toHaveProperty('clans');
+      }
+      expectStatus((await send('get', '/api/clans/overview', 'unauth')).status, 401);
+      const all = await send('get', '/api/clans/overview', 'super');
+      expectStatus(all.status, 200);
+      expect(all.body.clans.map((c: { id: number }) => c.id).sort()).toEqual(expect.arrayContaining([1, 2]));
+      for (const c of all.body.clans) {
+        expect(c).toEqual(expect.objectContaining({ chestsToday: expect.any(Number), pointsToday: expect.any(Number), members: expect.any(Number) }));
+      }
+    });
+
     it('soft-deleting the guest clan drops the account home', async () => {
       await grant('user1', [{ clanId: 2, role: 'admin' }]);
       await activate('user1', 2);

@@ -448,6 +448,18 @@ function createGameRouter() {
         });
     });
     /**
+     * In-game rank changes (Home → roster changes): every promotion or demotion
+     * in the clan over the last `?days=` (1–30, default 7), newest first, with
+     * the member each links to. Ranks are numbers (1 Leader … 5 Soldier); the
+     * page names them with the game's own words.
+     */
+    router.get('/clan/rank-changes', (req, res) => {
+        const clanId = req.clanId;
+        const days = Math.min(30, Math.max(1, Number.parseInt(String(req.query.days ?? '7'), 10) || 7));
+        const since = new Date(Date.now() - days * 86_400_000).toISOString();
+        res.json({ days, entries: (0, roster_changes_repo_js_1.recentRankChanges)(clanId, since) });
+    });
+    /**
      * Joins & leaves (My Clan): who joined the clan, who left, who came back,
      * newest first — the rules are data/roster-changes.ts's. `?filter=joined|left`,
      * `?q=` part of a name, `?before=` the cursor of the last entry shown,

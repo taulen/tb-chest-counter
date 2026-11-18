@@ -17,6 +17,9 @@ import {
   type Clan,
 } from '../../../data/repositories/clan-repo.js';
 import { getClanInfo } from '../../../data/repositories/game-clan-repo.js';
+import { getMemberCount } from '../../../data/repositories/member-repo.js';
+import { getWindowTotals } from '../../../data/repositories/chest-summary-repo.js';
+import { gameDateFor } from '../../../utils/game-day.js';
 import { getLastCompletedSession } from '../../../data/repositories/session-repo.js';
 import { clanLogoUrl } from '../../../game-art/clan-logo.js';
 import { setSessionActiveClan, logAction, listSwitchableClans } from '../../../data/repositories/user-repo.js';
@@ -143,6 +146,29 @@ export function createCrudRouter(): Router {
       ? req.clanId
       : clans[0]?.id ?? null;
     res.json({ clans, activeClanId });
+  });
+
+  /**
+   * Home's "Clans" tile (superadmin): what every clan collected this game day
+   * and how many members it has, keyed by clan id. The rest of the tile (logo,
+   * kingdom, last scan, status) comes from /switcher. Superadmin only: it is
+   * the one view that spans every clan's numbers.
+   *
+   * MUST stay above `GET /:clanId`.
+   */
+  router.get('/overview', requireSuperAdmin, (_req, res) => {
+    const today = gameDateFor(Date.now(), loadConfig().gameDayRolloverUtcHour);
+    const clans = listClans().map((clan) => {
+      const totals = getWindowTotals(clan.id, today, today);
+      return {
+        id: clan.id,
+        gameDate: today,
+        chestsToday: totals.chests,
+        pointsToday: totals.points,
+        members: getMemberCount(clan.id),
+      };
+    });
+    res.json({ clans });
   });
 
   /**

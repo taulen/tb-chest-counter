@@ -254,7 +254,7 @@ function eventScheduleTag(e) {
 // it nears: game-DAYS while ≥ a day out (17:00-reset aligned, like the date
 // label — an event starts on a reset, so "in 2d" = two resets away), then
 // wall-clock hours in the final day, then minutes in the final hour.
-function relativeUntil(iso) {
+export function relativeUntil(iso) {
   const startMs = Date.parse(iso);
   if (!Number.isFinite(startMs)) return '';
   const wallMs = startMs - Date.now();
@@ -270,7 +270,7 @@ function relativeUntil(iso) {
 
 // Time left until a reset, two units, mirroring the in-game timer — which counts
 // real hours down ("26d 6h left"), not reset boundaries like relativeUntil.
-function timeLeftUntil(iso) {
+export function timeLeftUntil(iso) {
   const ms = Date.parse(iso) - Date.now();
   if (!Number.isFinite(ms)) return '';
   const MIN = 60 * 1000;
