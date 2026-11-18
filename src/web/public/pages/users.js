@@ -6,6 +6,7 @@ import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
 import { $, esc, formatDate, formatRelativeTime, notify, confirmDialog, selectDialog, contentModal } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { avatarHtml } from '../lib/avatar.js';
 import { gameRankName } from '../lib/game-facts.js';
 
 const AUDIT_PAGE_SIZE = 25;
@@ -49,6 +50,9 @@ const AUDIT_ACTION_LABELS = {
   recalculate_source_points: t('Recalculate source points'),
   acknowledge_review_queue: t('Acknowledge review queue'),
   change_password: t('Change password'),
+  set_avatar: t('Change photo'),
+  remove_avatar: t('Remove photo'),
+  remove_user_avatar: t('Remove a user\'s photo'),
   create_user: t('Create user'),
   delete_user: t('Delete user'),
   change_role: t('Change user role'),
@@ -412,6 +416,9 @@ function formatAuditDetails(action, d, ctx) {
     case 'change_password': {
       return t('Password updated');
     }
+    case 'remove_user_avatar': {
+      return quoted(d.username);
+    }
     case 'acknowledge_review_queue': {
       const label = REVIEW_QUEUE_LABELS[d.category] || t('{category} queue', { category: esc(d.category || '') });
       return `${label}${clanSuffix(d.clanId)}`;
@@ -690,8 +697,13 @@ export async function renderUsers(el) {
               const rowRoles = isGuest ? ['user', 'admin'] : roleOptions;
               // A linked account's role here follows the player's in-game rank.
               const roleLocked = isSelf || !!link;
+              // Someone else's uploaded photo can be taken down from here; your
+              // own is changed from the account menu.
+              const removePhoto = !isSelf && u.avatar?.kind === 'photo'
+                ? `<button type="button" class="user-photo-remove" data-action="remove-user-avatar" data-user-id="${u.id}" data-username="${esc(u.username)}">${t('Remove photo')}</button>`
+                : '';
               return `<tr${isOrphan ? ' class="user-row-orphan"' : ''}>
-              <td data-label="${t('Username')}" data-role="primary"><span class="mrow-name">${esc(u.username)}${isSelf ? ` <span class="muted-copy">${t('(you)')}</span>` : ''}</span>${gameLinkLine(u)}</td>
+              <td data-label="${t('Username')}" data-role="primary"><span class="user-cell">${avatarHtml(u)}<span class="user-cell-text"><span class="mrow-name">${esc(u.username)}${isSelf ? ` <span class="muted-copy">${t('(you)')}</span>` : ''}</span>${gameLinkLine(u)}${removePhoto}</span></span></td>
               <td data-label="${t('Role')}">
                 <select class="input user-role-select" data-user-id="${u.id}" data-username="${esc(u.username)}" data-current-role="${esc(u.role)}"${isGuest ? ` data-guest-clan-id="${u.clanId}"` : ''} ${roleLocked ? 'disabled' : ''}${link ? ` title="${esc(t('Follows the in-game rank'))}"` : ''}>
                   ${rowRoles.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}
@@ -810,6 +822,17 @@ export async function deleteUserById(id, rerender, username) {
   );
   if (!ok) return;
   if (!await mustOk(apiDelete(`/auth/users/${id}`), t('Delete user failed'))) return;
+  rerender('users');
+}
+
+/** Take down someone else's uploaded photo; they fall back to their hero or initial. */
+export async function removeUserAvatar(id, username, rerender) {
+  const ok = await confirmDialog(
+    t('Remove the photo {user} uploaded? Their picture goes back to the default. They can upload a new one.', { user: username ? `"${username}"` : t('this user') }),
+    { title: t('Remove photo'), confirmLabel: t('Remove photo'), cancelLabel: t('Cancel'), danger: true },
+  );
+  if (!ok) return;
+  if (!await mustOk(apiDelete(`/auth/users/${id}/avatar`), t('Could not remove the photo'))) return;
   rerender('users');
 }
 

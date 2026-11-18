@@ -33,7 +33,7 @@ const VANITY_REGEX = new RegExp(`^[a-z0-9]{${VANITY_MIN_LENGTH},${VANITY_MAX_LEN
  */
 export const RESERVED_SHARE_KEYS = new Set([
   // Registered before the share handler — a key here would never resolve.
-  'login', 'logout', 'setup', 'robots', 'health', 'join',
+  'login', 'logout', 'setup', 'robots', 'health', 'join', 'avatars',
   // Namespaces and static roots registered after it.
   'api', 'assets', 'vendor', 'public', 'static', 'lib', 'pages', 'img',
   'images', 'css', 'js', 'fonts', 'favicon', 'index', 'app', 'v', 'auth',

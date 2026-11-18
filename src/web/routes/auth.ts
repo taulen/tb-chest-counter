@@ -1,7 +1,8 @@
-import { Router, type Request, type Response } from 'express';
+import express, { Router, type NextFunction, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import * as userRepo from '../../data/repositories/user-repo.js';
 import * as clanRepo from '../../data/repositories/clan-repo.js';
+import * as avatarRepo from '../../data/repositories/avatar-repo.js';
 import { parseBoundedInt } from '../../utils/parse-int.js';
 import { createPreActionBackup } from '../../utils/db-backup.js';
 import {
@@ -58,7 +59,17 @@ export function createAuthRouter(): Router {
 
     res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions(req));
 
-    res.json({ user: { id: user.id, username: user.username, role: user.role, clanId: user.clanId, theme: user.theme, language: user.language } });
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        clanId: user.clanId,
+        theme: user.theme,
+        language: user.language,
+        avatar: avatarRepo.resolveAccountAvatar(user, user.clanId),
+      },
+    });
   });
 
   // POST /api/auth/logout
@@ -89,6 +100,9 @@ export function createAuthRouter(): Router {
         theme: u.theme,
         language: u.language,
         multiClan: u.role !== 'superadmin' && userRepo.listSwitchableClans(u.id).length > 1,
+        // The picture beside the account: its photo, else its game hero in
+        // the clan being viewed, else its initial (avatar-repo).
+        avatar: avatarRepo.resolveAccountAvatar(u, req.clanId ?? u.clanId),
       },
       activeClan: activeClan ? {
         id: activeClan.id,
@@ -145,6 +159,57 @@ export function createAuthRouter(): Router {
     res.json({ ok: true });
   });
 
+  // --- Own photo (v128, avatar-repo) ---
+
+  const avatarLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many photo changes. Please try again later.' },
+    validate: { xForwardedForHeader: false },
+  });
+
+  // The framed photo arrives as the raw image body (the browser crops and
+  // re-encodes it, 512×512). Its own small limit, on this route only: the
+  // global JSON parser never reads an image body. A parser failure (too
+  // large) answers here as JSON rather than reaching the 500 handler.
+  const avatarBody = express.raw({ type: [...avatarRepo.AVATAR_MIMES], limit: avatarRepo.AVATAR_MAX_BYTES });
+  const readAvatarBody = (req: Request, res: Response, next: NextFunction): void => {
+    avatarBody(req, res, (err?: unknown) => {
+      if (err) {
+        const status = (err as { status?: number }).status;
+        res.status(status === 413 ? 413 : 400).json({
+          error: avatarRepo.AVATAR_REJECTION_MESSAGES[status === 413 ? 'too-large' : 'not-an-image'],
+        });
+        return;
+      }
+      next();
+    });
+  };
+
+  // PUT /api/auth/avatar — set (or replace) your own photo.
+  router.put('/avatar', requireAuth, avatarLimiter, readAvatarBody, (req, res) => {
+    const body = Buffer.isBuffer(req.body) ? req.body : null;
+    const check = avatarRepo.validateAvatarUpload(body);
+    if (!check.ok) {
+      const status = check.reason === 'too-large' ? 413 : check.reason === 'empty' && !body ? 415 : 400;
+      return res.status(status).json({ error: avatarRepo.AVATAR_REJECTION_MESSAGES[check.reason] });
+    }
+    const u = req.user!;
+    avatarRepo.setUserAvatar(u.id, body!, check.image);
+    userRepo.logAction(u.id, 'set_avatar');
+    res.json({ ok: true, avatar: avatarRepo.resolveAccountAvatar(u, req.clanId ?? u.clanId) });
+  });
+
+  // DELETE /api/auth/avatar — remove your own photo; the hero portrait or
+  // the initial shows again.
+  router.delete('/avatar', requireAuth, (req, res) => {
+    const u = req.user!;
+    if (avatarRepo.removeUserAvatar(u.id)) userRepo.logAction(u.id, 'remove_avatar');
+    res.json({ ok: true, avatar: avatarRepo.resolveAccountAvatar(u, req.clanId ?? u.clanId) });
+  });
+
   // --- User Management (Admin / Super Admin) ---
 
   // GET /api/auth/users
@@ -160,7 +225,38 @@ export function createAuthRouter(): Router {
       list.push({ clanId: l.clanId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt });
       byUser.set(l.userId, list);
     }
-    res.json(userRepo.getAllUsers(viewerClan).map((u) => ({ ...u, gameLinks: byUser.get(u.id) ?? [] })));
+    // Each row's picture as the account shows it in the clan it is listed in
+    // (a guest's row is the viewer's clan; the superadmin listing, its home).
+    res.json(userRepo.getAllUsers(viewerClan).map((u) => ({
+      ...u,
+      gameLinks: byUser.get(u.id) ?? [],
+      avatar: avatarRepo.resolveAccountAvatar(u, u.clanId),
+    })));
+  });
+
+  // DELETE /api/auth/users/:id/avatar — take down someone's photo.
+  // Superadmin: anyone. Clan admin: accounts of the clan they are viewing
+  // (its own members and its guests — the same accounts its Users page lists),
+  // never a superadmin.
+  router.delete('/users/:id/avatar', requireAdmin, (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid user' });
+    const target = userRepo.getUserById(id);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (req.user!.role !== 'superadmin') {
+      if (target.role === 'superadmin') {
+        return res.status(403).json({ error: 'Clan admins cannot change a superadmin\'s photo' });
+      }
+      const clanId = req.user!.clanId;
+      const inClan = clanId !== null
+        && (target.clanId === clanId || userRepo.getClanAccessRole(id, clanId) !== null);
+      if (!inClan) {
+        return res.status(403).json({ error: 'You can only manage users in your own clan' });
+      }
+    }
+    const removed = avatarRepo.removeUserAvatar(id);
+    if (removed) userRepo.logAction(req.user!.id, 'remove_user_avatar', { username: target.username });
+    res.json({ ok: true, removed });
   });
 
   // DELETE /api/auth/users/:id/game-links/:clanId — superadmin: forget an

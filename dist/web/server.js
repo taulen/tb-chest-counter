@@ -24,6 +24,7 @@ const asset_versioning_js_1 = require("./asset-versioning.js");
 const frontend_assets_js_1 = require("./frontend-assets.js");
 const routes_js_1 = require("../game-art/routes.js");
 const clan_logo_js_1 = require("../game-art/clan-logo.js");
+const avatars_js_1 = require("./routes/avatars.js");
 const game_texts_js_1 = require("./routes/game-texts.js");
 const resources_js_1 = require("./routes/resources.js");
 const might_js_1 = require("./routes/might.js");
@@ -403,6 +404,8 @@ function startWebServer(port, scanLoop, options = {}) {
     app.use((0, routes_js_1.createGameArtRouter)());
     // Clan logos composed from those layers: /game-art/<version>/clan-logo/<code>.png.
     app.use((0, clan_logo_js_1.createClanLogoRouter)());
+    // Account photos by content hash: /avatars/<sha256>.<ext> (public, immutable).
+    app.use((0, avatars_js_1.createAvatarRouter)());
     // The game's own names in the site's other languages, for tGame() on every
     // page — the login and public share pages included, so public like the art.
     // Ahead of the /api no-store middleware: it sets its own Cache-Control + ETag.

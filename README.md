@@ -67,6 +67,11 @@ runs in one container.
   scanner card (state, next scan, and for the superadmin Scan this clan / Scan
   all clans) sit at its top. Phones get a bottom tab bar — Dashboard, Members,
   Leaderboard, Events, More — where More opens the same menu as a sheet.
+  Each account has a round picture beside its name: a photo it uploaded
+  (account menu → **Change photo**: pick any photo, frame it in the circle by
+  dragging, pinching or zooming; only the framed 512×512 picture is uploaded),
+  else its game hero's portrait, else its initial — see
+  [docs/account-avatars.md](docs/account-avatars.md).
   OLED / Light / Dark themes (Auto follows the device: Light or OLED),
   mobile-friendly tables, five languages, and the accessibility work described
   in [ACCESSIBILITY.md](ACCESSIBILITY.md).
@@ -410,7 +415,8 @@ Pages are role-gated. Members see:
 Admins additionally get **Admin** (the Chest Points board, merge
 players/chests/sources, triumphal chests still waiting for a value),
 **Clans** (Discord, share links, login bridge, clan settings), and **Users**
-(accounts + audit log). Superadmins get **System** (scan interval, event
+(accounts + audit log; an admin can take down a member's uploaded photo
+there). Superadmins get **System** (scan interval, event
 schedule corrections, backup/restore including single-clan restore, deleted
 clans, container restart, log viewer).
 

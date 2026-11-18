@@ -2432,6 +2432,32 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v128 — account avatars (Nov 2026; repositories/avatar-repo.ts): the photo
+        // an account uploads for the round picture beside its name, framed in the
+        // browser and sent as a square of at most 1024 px. One row per account —
+        // replacing a photo replaces the row, so the old bytes go with it. The
+        // bytes live here, not on disk, so backups and restores carry them;
+        // they're served publicly at /avatars/<sha256>.<ext> (routes/avatars.ts),
+        // looked up by the hash. Without a row the account shows its game hero's
+        // portrait (user_game_links, v127), else its initial.
+        // IF NOT EXISTS: runMigrations may replay this.
+        version: 128,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS user_avatars (
+          user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          sha256 TEXT NOT NULL,
+          mime TEXT NOT NULL,
+          width INTEGER NOT NULL,
+          height INTEGER NOT NULL,
+          bytes BLOB NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_avatars_sha256 ON user_avatars(sha256);
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

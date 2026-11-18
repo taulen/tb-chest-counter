@@ -34,6 +34,7 @@ import { initMobileRows } from './lib/mobile-rows.js';
 import { checkLiveBuild, initBuildCheck, noteLiveBuild, reloadIfNewBuild } from './lib/build-check.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
 import { renderScanCards, tickScanCards } from './lib/scan-card.js';
+import { openAvatarEditor } from './lib/avatar-editor.js';
 import {
   initShell,
   closeShellOverlay,
@@ -71,6 +72,7 @@ import {
   renderUsers,
   createNewUser,
   deleteUserById,
+  removeUserAvatar,
   changeRole,
   reassignUserClan,
   editUserClans,
@@ -502,6 +504,7 @@ if (contentEl) {
     if (action === 'change-password') return openChangePasswordModal();
     if (action === 'create-user') return createNewUser(loadPage);
     if (action === 'delete-user') return deleteUserById(Number.parseInt(target.dataset.userId || '0', 10), loadPage, target.dataset.username);
+    if (action === 'remove-user-avatar') return removeUserAvatar(Number.parseInt(target.dataset.userId || '0', 10), target.dataset.username, loadPage);
     if (action === 'reassign-user-clan') return reassignUserClan(Number.parseInt(target.dataset.userId || '0', 10), target.dataset.username, loadPage);
     if (action === 'edit-user-clans') return editUserClans(Number.parseInt(target.dataset.userId || '0', 10), loadPage);
     if (action === 'remove-guest-clan') return removeGuestFromClan(Number.parseInt(target.dataset.userId || '0', 10), Number.parseInt(target.dataset.clanId || '0', 10), target.dataset.username, loadPage);
@@ -602,6 +605,14 @@ if (userMenu) {
       // Out of the phone sheet first, so the dialog isn't stacked on a menu.
       closeShellOverlay();
       openChangePasswordModal();
+    } else if (target.dataset.action === 'open-avatar-editor') {
+      closeShellOverlay();
+      closeUserMenu();
+      openAvatarEditor(currentUser, (avatar) => {
+        // In place: pages hold this same object (lib/state.js).
+        currentUser.avatar = avatar;
+        setShellUser(currentUser);
+      });
     }
   });
 }

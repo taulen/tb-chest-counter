@@ -193,7 +193,10 @@
       <div id="userMenu" class="user-menu" hidden>
         <div class="user-menu-section shell-account-heading">
           <div class="user-menu-section-label" data-i18n>Account</div>
-          <div class="shell-account-who" id="userMenuWho"></div>
+          <div class="shell-account-who-row">
+            <span class="shell-avatar" id="userMenuAvatar" aria-hidden="true"></span>
+            <div class="shell-account-who" id="userMenuWho"></div>
+          </div>
         </div>
         <div class="user-menu-section">
           <div class="user-menu-section-label" data-i18n>Theme</div>
@@ -209,6 +212,7 @@
           <select id="userMenuLanguage" class="lang-select" data-lang-select></select>
         </div>
         <div class="user-menu-divider" role="separator"></div>
+        <button class="user-menu-item" type="button" data-action="open-avatar-editor" data-i18n>Change photo</button>
         <button class="user-menu-item" type="button" data-action="open-change-password" data-i18n>Change Password</button>
         <button class="user-menu-item user-menu-item-danger" type="button" id="logoutBtn" data-i18n>Logout</button>
       </div>
