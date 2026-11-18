@@ -72,7 +72,7 @@ export function memberTitlesHtml(titles) {
     const art = tt.iconUrl
       ? `<img src="${esc(tt.iconUrl)}" alt="" width="26" height="26" decoding="async">`
       : `<span class="member-title-letter" aria-hidden="true">${esc((name.trim()[0] ?? '?').toUpperCase())}</span>`;
-    return `<button type="button" class="member-title" data-tile="title" data-index="${i}" aria-haspopup="dialog"`
+    return `<button type="button" class="member-title" data-tile="title" data-index="${i}" data-card-place="below" aria-haspopup="dialog"`
       + ` aria-label="${esc(t('{title}: {left}', { title: name, left }))}">${art}</button>`;
   }).join('');
   return `<div class="member-titles" role="group" aria-labelledby="memberTitlesLabel">`

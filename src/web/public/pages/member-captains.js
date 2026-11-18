@@ -426,9 +426,21 @@ function showHoverCard(tile, html) {
   const a = tile.getBoundingClientRect();
   const r = hoverCard.getBoundingClientRect();
   const gap = 12;
-  const roomRight = window.innerWidth - a.right - gap;
-  const left = roomRight >= r.width + 8 ? a.right + gap : Math.max(8, a.left - gap - r.width);
-  const top = Math.min(Math.max(8, a.top + a.height / 2 - r.height / 2), window.innerHeight - r.height - 8);
+  let left;
+  let top;
+  if (tile.dataset.cardPlace === 'below') {
+    // A row of small icons (the profile's titles): beside the icon, the card
+    // covered the next icons in the row, so the one you meant to hover next
+    // was hidden. Below the row (above it when there's no room), left-aligned.
+    const row = tile.parentElement?.getBoundingClientRect() ?? a;
+    left = Math.min(Math.max(8, a.left), window.innerWidth - r.width - 8);
+    const below = row.bottom + gap;
+    top = below + r.height <= window.innerHeight - 8 ? below : Math.max(8, row.top - gap - r.height);
+  } else {
+    const roomRight = window.innerWidth - a.right - gap;
+    left = roomRight >= r.width + 8 ? a.right + gap : Math.max(8, a.left - gap - r.width);
+    top = Math.min(Math.max(8, a.top + a.height / 2 - r.height / 2), window.innerHeight - r.height - 8);
+  }
   hoverCard.style.left = `${Math.round(left)}px`;
   hoverCard.style.top = `${Math.round(Math.max(8, top))}px`;
 }
