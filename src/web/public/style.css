@@ -12029,9 +12029,28 @@ a.home-row-name:hover { text-decoration: underline; }
 }
 
 /* Roster changes: plain facts */
-.home-facts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; }
-.home-facts-list a { color: var(--text-primary); font-weight: 600; }
-.home-when { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+/* Roster changes: rows like the other tiles (picture, name, what changed,
+   when on the right); burning cities as one summary line above them. */
+.roster-what { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.roster-what.is-joined { color: var(--accent-green-soft-text); }
+.roster-what.is-up { color: var(--accent-gold); }
+.roster-when { flex: none; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.roster-burning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--subtle-bg-strong);
+  font-size: 13.5px;
+}
+.roster-burning-head { font-weight: 700; color: var(--accent-warn-text); }
+.roster-burning-names { flex: 1 1 200px; min-width: 0; color: var(--text-secondary); }
+.roster-burning-names a { color: var(--text-primary); text-decoration: none; }
+.roster-burning-names a:hover { text-decoration: underline; }
+.roster-more { font-weight: 600; color: var(--text-secondary); }
+.roster-list .home-row-name:hover { text-decoration: underline; }
 
 /* Records */
 .home-podiums { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; }

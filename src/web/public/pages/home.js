@@ -15,7 +15,7 @@
 // come FROM a source; notices are information, never calls to action.
 
 import { api } from '../lib/api.js';
-import { esc, memberHash, formatDateShort, formatRelativeTime, chestHash, sourceLink } from '../lib/ui.js';
+import { esc, memberHash, formatDate, formatDateShort, formatRelativeTime, chestHash, sourceLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { computeGameWindow, formatPeriodLabel } from '../lib/period.js';
 import { goalDaysForPeriod, scaleGoalForPeriod } from '../lib/leaderboard-render.js';
@@ -63,14 +63,6 @@ function analyticsQuery(win, limit = 5) {
 }
 
 const num = (n) => Number(n || 0).toLocaleString();
-
-/** Local date + time, ISO-ish: "2026/11/18 14:20". */
-function when(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${formatDateShort(iso)} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-}
 
 /** "▲ 1,234" / "▼ 56" / "± 0", with a word for the colour. */
 function deltaHtml(delta, label) {
@@ -490,32 +482,80 @@ function sourcesTile(ctx) {
   return tile('sources', t('Points by source'), body, { span: 4, link: tileLink('#analytics', t('Analytics')) });
 }
 
-/** Joins, leaves, burning cities and rank changes: plain facts with times. */
+/**
+ * "Today 07:14", "Yesterday 04:12", else the date ("2026-11-15") — the
+ * viewer's own clock, 24-hour, the full stamp in the title.
+ */
+function rosterWhen(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const day = (x) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - DAY_MS);
+  if (day(d) === day(now)) return t('Today {time}', { time });
+  if (day(d) === day(yesterday)) return t('Yesterday {time}', { time });
+  return formatDateShort(iso);
+}
+
+/**
+ * Joins, leaves and rank changes as rows like the other tiles — picture,
+ * name, what changed, when — newest first; burning cities as one summary
+ * line above them. Plain facts: no alerts, no advice.
+ */
 function rosterTile(ctx) {
-  const lines = [];
-  const burning = ctx.rows.filter((r) => r.burning);
-  if (burning.length) {
-    const seen = burning.map((r) => r.mapSeenAt).filter(Boolean).sort().pop();
-    const names = burning.slice(0, 5).map((r) => r.name).join(', ');
-    lines.push({ at: seen || '', html: `<span aria-hidden="true">🔥</span> ${t('Burning on the map: {names}', { names: esc(burning.length > 5 ? t('{names} and {n} more', { names, n: burning.length - 5 }) : names) })}${seen ? ` <span class="home-when">· ${esc(t('map read {when}', { when: formatRelativeTime(seen) }))}</span>` : ''}` });
-  }
+  const avatarOf = new Map(ctx.rows.map((r) => [r.id, r.avatar]));
+  const items = [];
   const since = Date.now() - NOTE_DAYS * DAY_MS;
   for (const c of ctx.changes) {
     if (Date.parse(c.at) < since) continue;
     const joined = c.kind === 'joined' || c.kind === 'returned' || c.kind === 'restored';
     const left = c.kind === 'left';
     if (!joined && !left) continue;
-    const name = c.memberId ? `<a href="${memberHash(c.memberId)}">${esc(c.name)}</a>` : esc(c.name);
-    lines.push({ at: c.at, html: `<span aria-hidden="true">${joined ? '→' : '←'}</span> ${joined ? t('{name} joined', { name }) : t('{name} left', { name })} <span class="home-when">· ${esc(formatDateShort(c.at))}</span>` });
+    items.push({
+      at: c.at, memberId: c.memberId, name: c.name,
+      kind: joined ? 'joined' : 'left',
+      what: joined ? `<span aria-hidden="true">+</span> ${esc(t('Joined the clan'))}` : `<span aria-hidden="true">−</span> ${esc(t('Left the clan'))}`,
+    });
   }
   for (const r of ctx.ranks) {
-    const name = r.memberId ? `<a href="${memberHash(r.memberId)}">${esc(r.name)}</a>` : esc(r.name);
     const rank = esc(gameRankName(r.to));
-    lines.push({ at: r.at, html: `<span aria-hidden="true">${r.promoted ? '▲' : '▼'}</span> ${r.promoted ? t('{name}: promoted to {rank}', { name, rank }) : t('{name}: now {rank}', { name, rank })} <span class="home-when">· ${esc(when(r.at))}</span>` });
+    const from = r.from ? esc(gameRankName(r.from)) : '';
+    items.push({
+      at: r.at, memberId: r.memberId, name: r.name,
+      kind: r.promoted ? 'up' : 'down',
+      what: r.promoted
+        ? `<span aria-hidden="true">▲</span> ${t('Promoted to {rank}', { rank })}`
+        : `<span aria-hidden="true">▼</span> ${from ? t('Now {rank}, was {from}', { rank, from }) : t('Now {rank}', { rank })}`,
+    });
   }
-  lines.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const body = lines.length
-    ? `<ul class="home-facts-list">${lines.slice(0, 9).map((l) => `<li>${l.html}</li>`).join('')}</ul>`
+  items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+
+  const burning = ctx.rows.filter((r) => r.burning);
+  let burningHtml = '';
+  if (burning.length) {
+    const seen = burning.map((r) => r.mapSeenAt).filter(Boolean).sort().pop();
+    const first = burning.slice(0, 3).map((r) => `<a href="${memberHash(r.id)}">${esc(r.name)}</a>`).join(', ');
+    const more = burning.length > 3 ? ` <span class="roster-more">+${num(burning.length - 3)}</span>` : '';
+    burningHtml = `<div class="roster-burning">
+        <span class="roster-burning-head"><span aria-hidden="true">🔥</span> ${esc(tn(burning.length, '{n} city burning', '{n} cities burning', { n: num(burning.length) }))}</span>
+        <span class="roster-burning-names">${first}${more}</span>
+        ${seen ? `<span class="roster-when">${esc(t('map read {when}', { when: formatRelativeTime(seen) }))}</span>` : ''}
+      </div>`;
+  }
+
+  const rows = items.slice(0, 8).map((it) => {
+    const name = it.memberId
+      ? `<a class="home-row-name" href="${memberHash(it.memberId)}">${esc(it.name)}</a>`
+      : `<span class="home-row-name">${esc(it.name)}</span>`;
+    return `<li class="home-row roster-row">
+        ${avatarHtml({ avatar: avatarOf.get(it.memberId) ?? null, username: it.name }, { size: 'sm' })}
+        <span class="home-row-main">${name}<span class="roster-what is-${it.kind}">${it.what}</span></span>
+        <time class="roster-when" datetime="${esc(it.at)}" title="${esc(formatDate(it.at))}">${esc(rosterWhen(it.at))}</time>
+      </li>`;
+  }).join('');
+  const body = burningHtml || rows
+    ? `${burningHtml}${rows ? `<ul class="home-list roster-list">${rows}</ul>` : ''}`
     : `<p class="home-copy">${esc(t('No joins, leaves or rank changes in the last 7 days.'))}</p>`;
   return tile('roster', t('Roster changes'), body, { span: 6, link: tileLink('#clan', t('My Clan')) });
 }
