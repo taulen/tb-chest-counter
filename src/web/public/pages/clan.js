@@ -1,22 +1,24 @@
 // Clan page — the clan as the game's own clan window shows it, read by every
-// scan (game-protocol-phase.ts → collectClan, /api/game/clan):
+// scan (game-protocol-phase.ts → collectClan, /api/game/clan). Built on the
+// UI kit (docs/design-standard.md):
 //
-//   header  the clan logo (composed from the game's layers, game-art/
+//   header  a tile: the clan logo (composed from the game's layers, game-art/
 //           clan-logo.ts), [TAG] Name, kingdom, the Clan Capital's position,
 //           founded, leader, language, and the medals the clan displays;
-//   stats   members / member limit, might, wealth points, help points, rank by
-//           wealth in the kingdom (opens Rankings) — each with its change
-//           since the day before;
-//   tabs    Research: the clan's three technology trees (Clan territories,
-//           Allies, Fortifications — Clan Capital field 17) drawn like the
-//           profile's research trees, with a per-tree summary and recent
-//           level-ups. Rankings: the game's "Clan ranking by Kingdom" — five
-//           categories, the top 100 with logos, this clan highlighted (pinned
-//           under the list when outside it), its rank by day; loaded when the
-//           tab opens (/api/game/clan/rankings). Treasury: the capital's stock
-//           per item, each with its own game icon. History: one row per game day.
-//           Joins & leaves: who joined, left or came back, newest first by game
-//           day (pages/clan-roster.js, loaded when the tab opens).
+//   stats   stat tiles: members / member limit, might, wealth points, help
+//           points, rank by wealth in the kingdom (a link to Rankings) — each
+//           with its change since the day before;
+//   tabs    the kit's sub-tab bar, one address per section (#clan/<tab>,
+//           #triumphal). Research: the clan's three technology trees (Clan
+//           territories, Allies, Fortifications — Clan Capital field 17) drawn
+//           like the profile's research trees, with a per-tree summary and
+//           recent level-ups. Rankings: the game's "Clan ranking by Kingdom" —
+//           five categories, the top 100 with logos, this clan highlighted
+//           (pinned under the list when outside it), its rank by day; loaded
+//           when the tab opens (/api/game/clan/rankings). Treasury: the
+//           capital's stock per item, each with its own game icon. History: one
+//           row per game day. Joins & leaves: who joined, left or came back
+//           (pages/clan-roster.js). Triumphal Chests (pages/triumphal.js).
 //
 // The trees come from /api/game/tech-trees (the same file the profile uses);
 // only the clan trees the game's clan research holds are shown — tree 17
@@ -26,7 +28,10 @@ import { api } from '../lib/api.js';
 import { esc, formatDate, formatDateShort, formatGameDayShort, memberLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, resourceIconUrl } from '../lib/game-art.js';
-import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
+import {
+  subTabsHtml, tileHtml, statTileHtml, statTilesHtml, tableCardHtml, emptyHtml,
+  errorStateHtml, refusalText, wireRetry, asList,
+} from '../lib/ui-kit.js';
 import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js';
 import { renderTriumphal } from './triumphal.js';
 import { mountRoster, rosterPanelHtml } from './clan-roster.js';
@@ -40,8 +45,9 @@ const view = { tab: 'research', tree: null, rankKind: 7, rankPage: null };
 
 // My Clan's sections. Triumphal Chests is a tab here too (Nov 2026: it left the
 // main menu). Every tab has an address (#clan/<tab>, #triumphal — Triumphal's
-// period selector lives in it), and switching tabs while My Clan is on screen
-// changes only the panel: the header and stats stay put (switchClanTab).
+// period selector lives in it); the sub-tab bar is links to those addresses,
+// and the router switches only the panel while My Clan is on screen
+// (switchClanTab): the header and stats stay put.
 const CLAN_TABS = [
   { key: 'research', label: () => t('Research') },
   { key: 'rankings', label: () => t('Rankings') },
@@ -57,6 +63,15 @@ export function setClanTab(key) {
 }
 
 const tabHash = (key) => (key === 'triumphal' ? '#triumphal' : `#clan/${key}`);
+
+/** The sub-tab bar: one link per section, the open one marked. */
+function clanTabsHtml(active) {
+  return subTabsHtml({
+    label: t('My Clan'),
+    current: active,
+    items: CLAN_TABS.map((tb) => ({ key: tb.key, label: tb.label(), href: tabHash(tb.key) })),
+  });
+}
 
 /** Fill the Triumphal Chests panel (or container) in place. */
 async function mountTriumphal(content) {
@@ -80,6 +95,15 @@ async function mountPanel(content, key) {
   else if (key === 'triumphal') await mountTriumphal(content);
 }
 
+/** Show `key`'s panel and mark its link; every other panel hides. */
+function showPanel(content, key) {
+  content.querySelectorAll('[data-clan-panel]').forEach((p) => { p.hidden = p.dataset.clanPanel !== key; });
+  content.querySelectorAll('.ui-subtabs .ui-subtab').forEach((a) => {
+    if (a.getAttribute('href') === tabHash(key)) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+}
+
 /**
  * Switch to a tab while My Clan is already on screen: only the panel changes,
  * nothing above it moves. False when My Clan isn't mounted (render it then).
@@ -87,18 +111,9 @@ async function mountPanel(content, key) {
 export async function switchClanTab(content, key) {
   if (!CLAN_TABS.some((tb) => tb.key === key) || !content.querySelector('[data-clan-page]')) return false;
   view.tab = key;
-  const tab = content.querySelector(`#clan-view-tab-${key}`);
-  if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
+  showPanel(content, key);
   await mountPanel(content, key);
   return true;
-}
-
-/** My Clan's tab strip as links, for the Triumphal Chests page (#triumphal). */
-export function clanTabLinksHtml(active) {
-  return `<div class="resources-tabs view-tabs" role="navigation" aria-label="${esc(t('Page sections'))}">${CLAN_TABS.map((tb) => {
-    const href = tb.key === 'triumphal' ? '#triumphal' : `#clan/${tb.key}`;
-    return `<a class="resources-tab${tb.key === active ? ' is-active' : ''}" href="${href}"${tb.key === active ? ' aria-current="page"' : ''}>${esc(tb.label())}</a>`;
-  }).join('')}</div>`;
 }
 
 /** Medal tier → CSS modifier (colour) — the tier's name is always written next to it. */
@@ -121,8 +136,9 @@ function signed(n, format = fmt) {
   return `${n > 0 ? '+' : '−'}${format(Math.abs(n))}`;
 }
 
-function noteCard(text) {
-  return `<div class="card"><div class="card-body card-body-padded"><div class="empty-state"><p>${text}</p></div></div></div>`;
+/** A plain one-sentence note where a section has nothing to show yet. */
+function noteTile(text) {
+  return `<div class="ui-tile span-12 clan-note">${emptyHtml(text)}</div>`;
 }
 
 /** The language's own name in the viewer's language ("en_US" → "English (United States)"). */
@@ -139,7 +155,7 @@ function languageName(code) {
 export async function renderClan(content) {
   rankingsPromise = null;
   clanData = null;
-  content.innerHTML =`<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div>`;
+  content.innerHTML = `<div class="ui-tile span-12 clan-note"><p class="ui-sub">${t('Loading…')}</p></div>`;
   let data;
   let trees = null;
   try {
@@ -148,58 +164,64 @@ export async function renderClan(content) {
       loadTrees().catch(() => null),
       loadGameArt(),
     ]);
-  } catch {
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
     data = null;
   }
-  if (!data?.linked) {
+  // A refusal (a 429, a 500's { error, ref }) or a failed read: say so, offer
+  // Try again — the strip stays, so Triumphal Chests is still reachable.
+  const why = refusalText(data);
+  if (data === null || why) {
+    content.innerHTML = `<div class="clan-page">${clanTabsHtml(view.tab)}
+        ${view.tab === 'triumphal'
+          ? '<div data-clan-triumphal></div>'
+          : `<div class="ui-tile span-12">${errorStateHtml(t("Couldn't load the clan. Try again in a minute."), why)}</div>`}
+      </div>`;
+    wireRetry(content, () => renderClan(content));
+    if (view.tab === 'triumphal') await mountTriumphal(content);
+    return;
+  }
+  if (!data.linked) {
     // No game data (yet): the strip stays, so Triumphal Chests is reachable.
-    const note = data === null
-      ? t("Couldn't load the clan. Try again in a minute.")
-      : t("The clan hasn't been read from the game yet. The next scan reads it.");
-    content.innerHTML = clanTabLinksHtml(view.tab)
-      + (view.tab === 'triumphal' ? '<div data-clan-triumphal></div>' : noteCard(note));
+    content.innerHTML = `<div class="clan-page">${clanTabsHtml(view.tab)}
+        ${view.tab === 'triumphal'
+          ? '<div data-clan-triumphal></div>'
+          : noteTile(t("The clan hasn't been read from the game yet. The next scan reads it."))}
+      </div>`;
     if (view.tab === 'triumphal') await mountTriumphal(content);
     return;
   }
 
-  const clanTrees = (trees?.trees || []).filter((tr) => tr.kind === 'clan' && tr.nodes.length && !/talents/i.test(tr.layout || ''));
+  const clanTrees = asList(trees?.trees).filter((tr) => tr.kind === 'clan' && tr.nodes.length && !/talents/i.test(tr.layout || ''));
   const levels = data.techs?.levels || {};
-  const tabs = CLAN_TABS.map((tb) => ({ key: tb.key, label: esc(tb.label()) }));
-  if (!tabs.some((tb) => tb.key === view.tab)) view.tab = 'research';
+  if (!CLAN_TABS.some((tb) => tb.key === view.tab)) view.tab = 'research';
 
+  const panel = (key, html) => `<div class="clan-panel" data-clan-panel="${key}"${key === view.tab ? '' : ' hidden'}>${html}</div>`;
   content.innerHTML = `
     <div class="clan-page" data-clan-page>
       ${headerHtml(data)}
       ${statsHtml(data)}
-      ${viewTabsHtml('clan-view', tabs, view.tab)}
-      ${viewPanelHtml('clan-view', 'research', view.tab, researchHtml(clanTrees, levels, data.techs))}
-      ${viewPanelHtml('clan-view', 'rankings', view.tab, '<div data-clan-rankings></div>')}
-      ${viewPanelHtml('clan-view', 'treasury', view.tab, treasuryHtml(data.treasury))}
-      ${viewPanelHtml('clan-view', 'history', view.tab, historyHtml(data.history || []))}
-      ${viewPanelHtml('clan-view', 'roster', view.tab, rosterPanelHtml())}
-      ${viewPanelHtml('clan-view', 'triumphal', view.tab, '<div data-clan-triumphal></div>')}
+      ${clanTabsHtml(view.tab)}
+      ${panel('research', researchHtml(clanTrees, levels, data.techs))}
+      ${panel('rankings', '<div data-clan-rankings></div>')}
+      ${panel('treasury', treasuryHtml(data.treasury))}
+      ${panel('history', historyHtml(asList(data.history)))}
+      ${panel('roster', rosterPanelHtml())}
+      ${panel('triumphal', '<div data-clan-triumphal></div>')}
     </div>`;
 
   clanData = data;
-  wireViewTabs(content, 'clan-view', (key) => {
-    view.tab = key;
-    // The tab's address, so a reload or a shared link lands on it; the router
-    // sees My Clan mounted, changes only the panel and fills it (switchClanTab).
-    if (window.location.hash !== tabHash(key)) window.location.hash = tabHash(key);
-  });
   wireTrees(content, clanTrees, levels, trees);
   if (view.tab === 'triumphal') await mountTriumphal(content);
   else mountPanel(content, view.tab);
-  // The rank stat card opens the Rankings tab on that ranking.
-  content.querySelectorAll('[data-goto-ranking]').forEach((el) => el.addEventListener('click', () => {
+  // The rank tile is a link to #clan/rankings: open it on that ranking. When
+  // Rankings is already drawn, redraw it on that ranking now (no fetch); the
+  // link then switches the tab, or — already on it — nothing else is needed.
+  content.querySelectorAll('[data-goto-ranking]').forEach((el) => el.addEventListener('click', (ev) => {
     view.rankKind = Number(el.dataset.gotoRanking);
     view.rankPage = null;
-    const tab = content.querySelector('#clan-view-tab-rankings');
-    // Already loaded: redraw on that ranking now (no fetch); else the router's
-    // switch loads it, on that ranking.
     if (content.querySelector('[data-clan-rankings]')?.dataset.mounted) mountRankings(content, data, true);
-    if (tab?.getAttribute('aria-selected') !== 'true') tab?.click();
-    tab?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (view.tab === 'rankings') ev.preventDefault();
   }));
 }
 
@@ -222,19 +244,17 @@ function headerHtml(data) {
   if (i.language) pills.push(`<span class="game-fact-pill">${esc(languageName(i.language))}</span>`);
 
   return `
-    <div class="card clan-head">
-      <div class="card-body card-body-padded">
-        <div class="clan-head-top">
-          ${i.logoUrl ? `<img class="clan-head-logo" src="${esc(i.logoUrl)}" alt="${esc(t('Clan logo'))}" width="87" height="87" decoding="async">` : ''}
-          <div class="clan-head-main">
-            <h2 class="clan-head-name"><span class="clan-head-tag">[${esc(i.tag)}]</span> ${esc(i.name)}</h2>
-            <div class="game-facts clan-head-facts">${pills.join('')}</div>
-          </div>
+    <section class="ui-tile span-12 clan-head" aria-labelledby="clanHeadName">
+      <div class="clan-head-top">
+        ${i.logoUrl ? `<img class="clan-head-logo" src="${esc(i.logoUrl)}" alt="${esc(t('Clan logo'))}" width="87" height="87" decoding="async">` : ''}
+        <div class="clan-head-main">
+          <h2 class="clan-head-name" id="clanHeadName"><span class="clan-head-tag">[${esc(i.tag)}]</span> ${esc(i.name)}</h2>
+          <div class="game-facts clan-head-facts">${pills.join('')}</div>
         </div>
-        ${medalsHtml(data.medals || [])}
-        ${data.stats ? `<p class="clan-head-read" title="${esc(formatDate(data.stats.capturedAt))}">${t('Read from the game {date}', { date: esc(formatDate(data.stats.capturedAt)) })}</p>` : ''}
       </div>
-    </div>`;
+      ${medalsHtml(asList(data.medals))}
+      ${data.stats ? `<p class="ui-sub" title="${esc(formatDate(data.stats.capturedAt))}">${t('Read from the game {date}', { date: esc(formatDate(data.stats.capturedAt)) })}</p>` : ''}
+    </section>`;
 }
 
 function medalsHtml(medals) {
@@ -261,44 +281,40 @@ function statsHtml(data) {
   const s = data.stats;
   if (!s) return '';
   // The change since the previous game day's last read.
-  const days = data.history || [];
+  const days = asList(data.history);
   const prev = [...days].reverse().find((d) => d.gameDate < s.gameDate) || null;
   const delta = (key, format = fmt) => {
     if (!prev || prev[key] === null || prev[key] === undefined || s[key] === null || s[key] === undefined) return '';
     return t('{change} since {date}', { change: signed(s[key] - prev[key], format), date: formatGameDayShort(prev.gameDate) });
   };
-  const card = (label, value, { title = '', sub = '', ranking = null } = {}) => {
-    const inner = `
-      <div class="label">${label}</div>
-      <div class="value"${title ? ` title="${esc(title)}"` : ''}>${value}</div>
-      ${sub ? `<div class="sub">${esc(sub)}</div>` : ''}`;
-    // A rank opens that ranking on the Rankings tab.
-    return ranking === null
-      ? `<div class="stat-card">${inner}</div>`
-      : `<button type="button" class="stat-card stat-card-link" data-goto-ranking="${ranking}" title="${esc(t('Open the clan rankings'))}">${inner}</button>`;
-  };
-  const cards = [
-    card(t('Members'), s.memberLimit ? `${fmt(s.members)} / ${fmt(s.memberLimit)}` : fmt(s.members), {
+  const tiles = [
+    statTileHtml({
+      label: t('Members'),
+      value: s.memberLimit ? `${fmt(s.members)}<span class="ui-big-of"> / ${fmt(s.memberLimit)}</span>` : fmt(s.members),
       sub: delta('members'),
     }),
-    card(t('Might'), compact(s.might), { title: fmt(s.might), sub: delta('might', compact) }),
+    statTileHtml({ label: t('Might'), value: compact(s.might), title: fmt(s.might), sub: delta('might', compact) }),
   ];
-  if (s.wealth !== null) cards.push(card(t('Wealth points'), compact(s.wealth), { title: fmt(s.wealth), sub: delta('wealth', compact) }));
-  if (s.helpPoints !== null) cards.push(card(t('Help points'), compact(s.helpPoints), { title: fmt(s.helpPoints), sub: delta('helpPoints', compact) }));
+  if (s.wealth !== null) tiles.push(statTileHtml({ label: t('Wealth points'), value: compact(s.wealth), title: fmt(s.wealth), sub: delta('wealth', compact) }));
+  if (s.helpPoints !== null) tiles.push(statTileHtml({ label: t('Help points'), value: compact(s.helpPoints), title: fmt(s.helpPoints), sub: delta('helpPoints', compact) }));
   if (s.wealthRank !== null) {
-    cards.push(card(t('Rank by wealth'), `#${s.wealthRank}`, {
+    // A rank opens that ranking on the Rankings tab.
+    tiles.push(statTileHtml({
+      label: t('Rank by wealth'),
+      value: `#${s.wealthRank}`,
       sub: data.info.realm ? t('in kingdom #{n}', { n: data.info.realm }) : '',
-      ranking: 7,
+      href: '#clan/rankings',
+      attrs: `data-goto-ranking="7" title="${esc(t('Open the clan rankings'))}"`,
     }));
   }
-  return `<div class="stats-grid clan-stats">${cards.join('')}</div>`;
+  return statTilesHtml(tiles, 'clan-stats');
 }
 
 // ─── Research ────────────────────────────────────────────────────────────
 
 function researchHtml(clanTrees, levels, techs) {
-  if (!clanTrees.length) return noteCard(t("Couldn't load the research trees. Try again in a minute."));
-  if (!techs?.readAt) return noteCard(t("The clan's research hasn't been read from the game yet. The next scan reads it."));
+  if (!clanTrees.length) return noteTile(t("Couldn't load the research trees. Try again in a minute."));
+  if (!techs?.readAt) return noteTile(t("The clan's research hasn't been read from the game yet. The next scan reads it."));
   if (!clanTrees.some((tr) => tr.id === view.tree)) view.tree = clanTrees[0].id;
 
   const rows = clanTrees.map((tr) => {
@@ -339,27 +355,20 @@ function researchHtml(clanTrees, levels, techs) {
     }).join('')}
   </div>`;
 
-  return `
-    <div class="card">
-      <div class="card-header"><h2>${t('Clan research')}</h2>
-        <span class="card-header-hint" title="${esc(formatDate(techs.readAt))}">${t('read from the game {date}', { date: esc(formatDateShort(techs.readAt)) })}</span>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive clan-trees-table">
+  return `<div class="clan-stack">
+    ${tableCardHtml({
+      title: t('Clan research'),
+      hint: t('read from the game {date}', { date: esc(formatDateShort(techs.readAt)) }),
+      hintTitle: formatDate(techs.readAt),
+      body: `<table class="table-responsive ui-table clan-trees-table">
           <colgroup><col class="col-tree"><col class="col-n"><col class="col-n"><col class="col-n"><col class="col-levels"></colgroup>
           <thead><tr><th>${t('Tree')}</th><th class="num">${t('Maxed')}</th><th class="num">${t('In progress')}</th><th class="num">${t('Not started')}</th><th class="num">${t('Levels')}</th></tr></thead>
           <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header"><h2>${t('Technology trees')}</h2></div>
-      <div class="card-body card-body-padded">
-        ${picker}
-        <div class="tech-tree-view" data-clan-tree-view></div>
-      </div>
-    </div>
-    ${changesHtml(clanTrees, techs.changes || [])}`;
+        </table>`,
+    })}
+    ${tileHtml('clan-tech-trees', t('Technology trees'), `${picker}<div class="tech-tree-view" data-clan-tree-view></div>`, { span: 12 })}
+    ${changesHtml(clanTrees, asList(techs.changes))}
+  </div>`;
 }
 
 function wireTrees(root, clanTrees, levels, trees) {
@@ -387,7 +396,7 @@ function changesHtml(clanTrees, changes) {
   const inTrees = new Map(clanTrees.flatMap((tr) => tr.nodes.map((n) => [n.techId, { node: n, tree: tr }])));
   const rows = changes.filter((c) => inTrees.has(c.techId)).slice(0, CHANGES_SHOWN);
   const body = rows.length
-    ? `<table class="table-responsive tech-changes-table">
+    ? `<table class="table-responsive ui-table tech-changes-table">
         <colgroup><col class="col-tech"><col class="col-tree"><col class="col-level"><col class="col-date"></colgroup>
         <thead><tr><th>${t('Name')}</th><th>${t('Tree')}</th><th class="num">${t('Level')}</th><th>${t('Date')}</th></tr></thead>
         <tbody>
@@ -402,13 +411,12 @@ function changesHtml(clanTrees, changes) {
           }).join('')}
         </tbody>
       </table>`
-    : `<div class="card-body-padded"><p class="muted-copy">${t('No level-ups since the clan was first read. New ones show here with the scan that saw them.')}</p></div>`;
-  return `<div class="card">
-      <div class="card-header"><h2>${t('Recent research')}</h2>
-        ${rows.length ? `<span class="card-header-hint">${tn(rows.length, '{n} change in the last 90 days', '{n} changes in the last 90 days', { n: rows.length })}</span>` : ''}
-      </div>
-      <div class="card-body">${body}</div>
-    </div>`;
+    : emptyHtml(t('No level-ups since the clan was first read. New ones show here with the scan that saw them.'));
+  return tableCardHtml({
+    title: t('Recent research'),
+    hint: rows.length ? tn(rows.length, '{n} change in the last 90 days', '{n} changes in the last 90 days', { n: rows.length }) : '',
+    body,
+  });
 }
 
 // ─── Rankings ────────────────────────────────────────────────────────────
@@ -432,20 +440,28 @@ async function mountRankings(root, data, redraw = false) {
   if (!el) return;
   if (el.dataset.mounted && !redraw) return;
   el.dataset.mounted = '1';
-  if (!el.innerHTML) el.innerHTML = `<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div>`;
+  if (!el.innerHTML) el.innerHTML = `<div class="ui-tile span-12 clan-note"><p class="ui-sub">${t('Loading…')}</p></div>`;
   let r;
   try {
     rankingsPromise = rankingsPromise || api('/game/clan/rankings');
     r = await rankingsPromise;
-  } catch {
+  } catch (err) {
     rankingsPromise = null;
     el.dataset.mounted = '';
-    el.innerHTML = noteCard(t("Couldn't load the clan rankings. Try again in a minute."));
+    if (err?.name === 'AbortError') { el.innerHTML = ''; return; }
+    r = null;
+  }
+  const why = refusalText(r);
+  if (r === null || why) {
+    rankingsPromise = null;
+    el.dataset.mounted = '';
+    el.innerHTML = `<div class="ui-tile span-12">${errorStateHtml(t("Couldn't load the clan rankings. Try again in a minute."), why)}</div>`;
+    wireRetry(el, () => mountRankings(root, data, true));
     return;
   }
-  const kinds = (r.kinds || []).filter((k) => RANKING_LABELS[k.kind]);
+  const kinds = asList(r.kinds).filter((k) => RANKING_LABELS[k.kind]).map((k) => ({ ...k, entries: asList(k.entries) }));
   if (!kinds.some((k) => k.entries.length)) {
-    el.innerHTML = noteCard(t("The clan rankings haven't been read from the game yet. The next scan reads them."));
+    el.innerHTML = noteTile(t("The clan rankings haven't been read from the game yet. The next scan reads them."));
     return;
   }
   if (!kinds.some((k) => k.kind === view.rankKind)) view.rankKind = kinds[0].kind;
@@ -467,12 +483,12 @@ async function mountRankings(root, data, redraw = false) {
 function rankingsHtml(kinds, r, data) {
   const k = kinds.find((x) => x.kind === view.rankKind);
   const own = r.gameClanId;
-  const picker = `<div class="tech-tree-picker clan-rank-picker" role="group" aria-label="${esc(t('Ranking'))}">
+  const picker = `<div class="clan-chips" role="group" aria-label="${esc(t('Ranking'))}">
     ${kinds.map((x) => {
       const on = x.kind === view.rankKind;
-      return `<button type="button" class="tech-tree-btn${on ? ' is-active' : ''}" data-rank-kind="${x.kind}" aria-pressed="${on}">
+      return `<button type="button" class="ui-chip clan-rank-chip${on ? ' is-active' : ''}" data-rank-kind="${x.kind}" aria-pressed="${on}">
         ${x.iconUrl ? `<img class="clan-rank-kind-icon" src="${esc(x.iconUrl)}" alt="" width="22" height="22" decoding="async">` : ''}
-        <span class="tech-tree-btn-name">${esc(RANKING_LABELS[x.kind])}</span>
+        <span>${esc(RANKING_LABELS[x.kind])}</span>
       </button>`;
     }).join('')}
   </div>`;
@@ -516,62 +532,58 @@ function rankingsHtml(kinds, r, data) {
     ? t('{clan} is not in the top {n}', { clan: `[${esc(data.info.tag)}]`, n: k.entries.length })
     : t('{clan} is #{rank} of the top {n}', { clan: `[${esc(data.info.tag)}]`, rank: at + 1, n: k.entries.length });
 
-  return `
-    <div class="card">
-      <div class="card-header"><h2>${t('Clan ranking by Kingdom')}</h2>
-        ${k.capturedAt ? `<span class="card-header-hint" title="${esc(formatDate(k.capturedAt))}">${t('read from the game {date}', { date: esc(formatDateShort(k.capturedAt)) })}</span>` : ''}
-      </div>
-      <div class="card-body card-body-padded">
-        ${picker}
-        <p class="clan-rank-summary">${summary}</p>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive clan-rank-table">
+  const pagination = pages > 1 ? `<div class="pagination">
+      <button class="btn btn-tight" type="button" data-rank-page="${view.rankPage - 1}" ${view.rankPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+      <span class="pagination-info">${t('Page {page} of {pages}', { page: view.rankPage, pages })}</span>
+      <button class="btn btn-tight" type="button" data-rank-page="${view.rankPage + 1}" ${view.rankPage >= pages ? 'disabled' : ''}>${t('Next →')}</button>
+    </div>` : '';
+
+  return `<div class="clan-stack">
+    ${tableCardHtml({
+      title: t('Clan ranking by Kingdom'),
+      hint: k.capturedAt ? t('read from the game {date}', { date: esc(formatDateShort(k.capturedAt)) }) : '',
+      hintTitle: k.capturedAt ? formatDate(k.capturedAt) : '',
+      before: `${picker}<p class="ui-sub clan-rank-summary">${summary}</p>`,
+      body: `<table class="table-responsive ui-table clan-rank-table">
           <colgroup><col class="col-rank"><col class="col-clan"><col class="col-members"><col class="col-value"></colgroup>
           <thead><tr><th class="col-rank">${t('Rank')}</th><th>${t('Clan')}</th><th class="num">${t('Members')}</th><th class="num">${esc(RANKING_LABELS[view.rankKind])}</th></tr></thead>
           <tbody>${rows}${pinned}</tbody>
-        </table>
-        ${pages > 1 ? `<div class="pagination">
-          <button class="btn btn-tight" type="button" data-rank-page="${view.rankPage - 1}" ${view.rankPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
-          <span class="pagination-info">${t('Page {page} of {pages}', { page: view.rankPage, pages })}</span>
-          <button class="btn btn-tight" type="button" data-rank-page="${view.rankPage + 1}" ${view.rankPage >= pages ? 'disabled' : ''}>${t('Next →')}</button>
-        </div>` : ''}
-      </div>
-    </div>
-    ${rankHistoryHtml(r.history || [])}`;
+        </table>`,
+      foot: pagination,
+    })}
+    ${rankHistoryHtml(asList(r.history))}
+  </div>`;
 }
 
 function rankHistoryHtml(history) {
   const days = history.filter((h) => h.kind === view.rankKind).reverse().slice(0, RANK_HISTORY_SHOWN);
   if (!days.length) return '';
-  return `<div class="card">
-      <div class="card-header"><h2>${t('Our rank by day')}</h2>
-        <span class="card-header-hint">${t('The last read of each game day')}</span>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive clan-rank-history-table">
-          <colgroup><col class="col-date"><col class="col-rank"><col class="col-value"></colgroup>
-          <thead><tr><th>${t('Date')}</th><th class="col-rank">${t('Rank')}</th><th class="num">${esc(RANKING_LABELS[view.rankKind])}</th></tr></thead>
-          <tbody>
-            ${days.map((d) => `<tr>
-              <td data-label="${esc(t('Date'))}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(d.gameDate))}</span></td>
-              <td data-label="${esc(t('Rank'))}" data-role="metric" class="col-rank">${d.rank === null ? esc(t('not in the top 100')) : `#${d.rank}`}</td>
-              <td data-label="${esc(RANKING_LABELS[view.rankKind])}" class="num">${fmt(d.value)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+  return tableCardHtml({
+    title: t('Our rank by day'),
+    hint: t('The last read of each game day'),
+    body: `<table class="table-responsive ui-table clan-rank-history-table">
+        <colgroup><col class="col-date"><col class="col-rank"><col class="col-value"></colgroup>
+        <thead><tr><th>${t('Date')}</th><th class="col-rank">${t('Rank')}</th><th class="num">${esc(RANKING_LABELS[view.rankKind])}</th></tr></thead>
+        <tbody>
+          ${days.map((d) => `<tr>
+            <td data-label="${esc(t('Date'))}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(d.gameDate))}</span></td>
+            <td data-label="${esc(t('Rank'))}" data-role="metric" class="col-rank">${d.rank === null ? esc(t('not in the top 100')) : `#${d.rank}`}</td>
+            <td data-label="${esc(RANKING_LABELS[view.rankKind])}" class="num">${fmt(d.value)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`,
+  });
 }
 
 // ─── Treasury ────────────────────────────────────────────────────────────
 
 function treasuryHtml(treasury) {
-  const rows = (treasury?.rows || []).filter((r) => r.name);
-  if (!rows.length) return noteCard(t("The Clan Capital's treasury hasn't been read from the game yet."));
+  const rows = asList(treasury?.rows).filter((r) => r.name);
+  if (!rows.length) return noteTile(t("The Clan Capital's treasury hasn't been read from the game yet."));
   const body = rows.map((r) => {
     const icon = r.iconUrl || resourceIconUrl(r.name);
     const change = r.previous === null || r.previous === undefined ? '' : signed(r.amount - r.previous);
+    const dir = r.amount > (r.previous ?? r.amount) ? ' is-up' : r.amount < (r.previous ?? r.amount) ? ' is-down' : '';
     return `<tr>
       <td data-label="${esc(t('Resource'))}" data-role="primary">
         <span class="clan-res-cell">
@@ -580,27 +592,25 @@ function treasuryHtml(treasury) {
         </span>
       </td>
       <td data-label="${esc(t('Amount'))}" data-role="metric" class="num" title="${esc(fmt(r.amount))}">${fmt(r.amount)}</td>
-      <td data-label="${esc(t('Change'))}" class="num${r.amount > (r.previous ?? r.amount) ? ' is-up' : r.amount < (r.previous ?? r.amount) ? ' is-down' : ''}">${esc(change || '—')}</td>
+      <td data-label="${esc(t('Change'))}" class="num${dir}">${esc(change || '—')}</td>
     </tr>`;
   }).join('');
-  return `<div class="card">
-      <div class="card-header"><h2>${t('Clan Capital treasury')}</h2>
-        <span class="card-header-hint" title="${esc(formatDate(treasury.capturedAt))}">${t('read from the game {date}', { date: esc(formatGameDayShort(treasury.gameDate)) })}</span>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive clan-treasury-table">
-          <colgroup><col class="col-res"><col class="col-amount"><col class="col-change"></colgroup>
-          <thead><tr><th>${t('Resource')}</th><th class="num">${t('Amount')}</th><th class="num">${t('Change since the day before')}</th></tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-      </div>
-    </div>`;
+  return tableCardHtml({
+    title: t('Clan Capital treasury'),
+    hint: t('read from the game {date}', { date: esc(formatGameDayShort(treasury.gameDate)) }),
+    hintTitle: formatDate(treasury.capturedAt),
+    body: `<table class="table-responsive ui-table clan-treasury-table">
+        <colgroup><col class="col-res"><col class="col-amount"><col class="col-change"></colgroup>
+        <thead><tr><th>${t('Resource')}</th><th class="num">${t('Amount')}</th><th class="num">${t('Change since the day before')}</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>`,
+  });
 }
 
 // ─── History ─────────────────────────────────────────────────────────────
 
 function historyHtml(days) {
-  if (!days.length) return noteCard(t('No history yet: every scan adds a reading.'));
+  if (!days.length) return noteTile(t('No history yet: every scan adds a reading.'));
   const rows = [...days].reverse().slice(0, HISTORY_SHOWN).map((d) => `<tr>
       <td data-label="${esc(t('Date'))}" data-role="primary"><span class="mrow-name">${esc(formatGameDayShort(d.gameDate))}</span></td>
       <td data-label="${esc(t('Members'))}" class="num">${d.memberLimit ? `${fmt(d.members)} / ${fmt(d.memberLimit)}` : fmt(d.members)}</td>
@@ -609,16 +619,13 @@ function historyHtml(days) {
       <td data-label="${esc(t('Help points'))}" class="num" title="${esc(fmt(d.helpPoints))}">${compact(d.helpPoints)}</td>
       <td data-label="${esc(t('Rank by wealth'))}" class="num">${d.wealthRank ? `#${d.wealthRank}` : '—'}</td>
     </tr>`).join('');
-  return `<div class="card">
-      <div class="card-header"><h2>${t('Clan history')}</h2>
-        <span class="card-header-hint">${t('The last read of each game day')}</span>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive clan-history-table">
-          <colgroup><col class="col-date"><col class="col-members"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-rank"></colgroup>
-          <thead><tr><th>${t('Date')}</th><th class="num">${t('Members')}</th><th class="num">${t('Might')}</th><th class="num">${t('Wealth points')}</th><th class="num">${t('Help points')}</th><th class="num">${t('Rank by wealth')}</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+  return tableCardHtml({
+    title: t('Clan history'),
+    hint: t('The last read of each game day'),
+    body: `<table class="table-responsive ui-table clan-history-table">
+        <colgroup><col class="col-date"><col class="col-members"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-rank"></colgroup>
+        <thead><tr><th>${t('Date')}</th><th class="num">${t('Members')}</th><th class="num">${t('Might')}</th><th class="num">${t('Wealth points')}</th><th class="num">${t('Help points')}</th><th class="num">${t('Rank by wealth')}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`,
+  });
 }

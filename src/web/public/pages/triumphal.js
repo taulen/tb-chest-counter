@@ -1,22 +1,28 @@
-// Triumphal Chests page — bookkeeping view for in-game package
-// purchases. Each row is a per-member tally with a presentation-only
-// points total (computed in triumphal-chest-repo per individual chest).
-// Points stay separate from the main leaderboard.
+// Triumphal Chests (My Clan → Triumphal Chests, #triumphal) — bookkeeping view
+// for in-game package purchases. Each row is a per-member tally with a
+// presentation-only points total (computed in triumphal-chest-repo per
+// individual chest). Points stay separate from the main leaderboard.
 //
-// UI mirrors the main /#leaderboard page: same period selector
-// (daily/weekly/monthly/yearly/all), same period-nav arrows, same
-// sort + pagination, same URL anchor scheme. The shared renderer in
-// lib/leaderboard-render.js is parametrized with title + count label.
-// Recent chests sit in a collapsed <details> at the bottom.
+// Built on the UI kit like the Leaderboard (pages/leaderboard.js): the kit's
+// period scrubber (daily/weekly/monthly/yearly/all, the URL anchor scheme the
+// Leaderboard uses), stat tiles, then the shared table core
+// (leaderboardTablePartsHtml: same sort + pagination) in a table card. The
+// public share page keeps the classic card (renderLeaderboardCardHtml).
+// Recent chests sit in a collapsed table card at the bottom.
 
 import { api } from '../lib/api.js';
-import { esc, formatDate, memberLink } from '../lib/ui.js';
+import { buildHash, esc, formatDate, memberLink } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { computeGameWindow, periodAnchorFromOffset } from '../lib/period.js';
-import { sortLeaderboardEntries, renderLeaderboardCardHtml } from '../lib/leaderboard-render.js';
+import { sortLeaderboardEntries, leaderboardTablePartsHtml } from '../lib/leaderboard-render.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, statTileHtml, statTilesHtml, emptyHtml,
+  errorStateHtml, refusalText, wireRetry, asList,
+} from '../lib/ui-kit.js';
 import {
   getGameDayRolloverUtcHour,
+  getWeekStart,
   getCurrentPeriod,
   setCurrentPeriod,
   getCurrentPeriodOffset,
@@ -27,6 +33,7 @@ import {
 
 const PAGE_SIZE = 25;
 const RECENT_LIMIT = 1000;
+const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
 let sortState = { key: 'points', dir: 'desc' };
 let currentBoardPage = 1;
 let currentRecentPage = 1;
@@ -40,12 +47,31 @@ const ACTIONS = {
   sort: 'sort-triumphal',
 };
 
+/**
+ * The scrubber changes the address (#triumphal?period=…&w=…); the router
+ * reads it into the shared period state and redraws this panel in place
+ * (My Clan's switchClanTab).
+ */
+function goToWindow() {
+  const period = getCurrentPeriod() || 'all';
+  const params = { period };
+  if (period !== 'all') {
+    const anchor = periodAnchorFromOffset(period, getCurrentPeriodOffset());
+    if (anchor) params[anchor.key] = anchor.value;
+  }
+  window.location.hash = buildHash('triumphal', params);
+}
+
 export async function renderTriumphal(el) {
-  const window = computeGameWindow(getCurrentPeriod(), getCurrentPeriodOffset());
+  const period = getCurrentPeriod() || 'all';
+  const offset = getCurrentPeriodOffset();
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  const win = computeGameWindow(period, offset);
   const params = new URLSearchParams();
-  if (window) {
-    params.set('from', window.from);
-    params.set('to', window.to);
+  if (win) {
+    params.set('from', win.from);
+    params.set('to', win.to);
   }
   const qs = params.toString();
   const suffix = qs ? `?${qs}` : '';
@@ -53,22 +79,63 @@ export async function renderTriumphal(el) {
   const recentParams = new URLSearchParams(params);
   recentParams.set('limit', String(RECENT_LIMIT));
 
-  const [stats, leaderboard, recent] = await Promise.all([
-    api(`/triumphal/stats${suffix}`),
-    api(`/triumphal/leaderboard${suffix}`),
-    api(`/triumphal/chests?${recentParams.toString()}`),
-    // The chests' pictures in Recent chests (never rejects).
-    loadGameArt(),
-  ]);
+  const scrubber = periodScrubberHtml({
+    periods: PERIODS, period, offset, rolloverHr, weekStart,
+    win: computeGameWindow(period, offset, rolloverHr, weekStart),
+  });
+  const wire = () => wirePeriodScrubber(el, {
+    onPeriod: (p) => {
+      setCurrentPeriod(p);
+      setCurrentPeriodOffset(0);
+      currentBoardPage = 1;
+      currentRecentPage = 1;
+      goToWindow();
+    },
+    onStep: (delta) => {
+      const next = getCurrentPeriodOffset() + delta;
+      if (next < 0) return;
+      setCurrentPeriodOffset(next);
+      currentBoardPage = 1;
+      currentRecentPage = 1;
+      goToWindow();
+    },
+  });
+
+  let stats;
+  let leaderboard;
+  let recent;
+  try {
+    [stats, leaderboard, recent] = await Promise.all([
+      api(`/triumphal/stats${suffix}`),
+      api(`/triumphal/leaderboard${suffix}`),
+      api(`/triumphal/chests?${recentParams.toString()}`),
+      // The chests' pictures in Recent chests (never rejects).
+      loadGameArt(),
+    ]);
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
+    leaderboard = null;
+  }
+  // The board is the panel's main data: a refusal (a 429, a 500's
+  // { error, ref }) or a failed read says so, with Try again.
+  if (!Array.isArray(leaderboard)) {
+    el.innerHTML = `<div class="trc">${scrubber}
+        <div class="ui-tile span-12">${errorStateHtml(t('The Triumphal Chests could not be loaded.'), refusalText(leaderboard))}</div>
+      </div>`;
+    wire();
+    wireRetry(el, () => renderTriumphal(el));
+    return;
+  }
+  const recentRows = asList(recent);
 
   // Total points within the window — derived client-side from the same
-  // leaderboard the renderer below is about to consume, so the headline
-  // stat and the per-member rows can never disagree.
+  // leaderboard the table below is about to consume, so the headline stat
+  // and the per-member rows can never disagree.
   const totalPoints = leaderboard.reduce((sum, e) => sum + (e.totalPoints || 0), 0);
 
-  // The leaderboard column shows the raw chest count — every triumphal
-  // chest scores on its own now (no more groups of 3), so the shared
-  // renderer's `totalChests` slot maps straight through.
+  // The board shows the raw chest count — every triumphal chest scores on its
+  // own now (no more groups of 3), so the shared renderer's `totalChests` slot
+  // maps straight through.
   const sorted = sortLeaderboardEntries(leaderboard, sortState.key, sortState.dir);
 
   const totalEntries = sorted.length;
@@ -78,39 +145,35 @@ export async function renderTriumphal(el) {
   const startIdx = (currentBoardPage - 1) * PAGE_SIZE;
   const pageEntries = sorted.slice(startIdx, startIdx + PAGE_SIZE);
 
-  const headerStats = `
-    <div class="stats-grid">
-      <div class="stat-card"><div class="label">${t('Total triumphal chests')}</div><div class="value">${(stats.totalChests ?? 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">${t('Members with triumphals')}</div><div class="value">${(stats.uniqueMembers ?? 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">${t('Total points')}</div><div class="value">${totalPoints.toLocaleString()}</div></div>
-    </div>`;
+  const statTiles = statTilesHtml([
+    statTileHtml({ label: t('Total triumphal chests'), value: (stats?.totalChests ?? 0).toLocaleString() }),
+    statTileHtml({ label: t('Members with triumphals'), value: (stats?.uniqueMembers ?? 0).toLocaleString() }),
+    statTileHtml({ label: t('Total points'), value: totalPoints.toLocaleString() }),
+  ]);
 
-  const boardCardHtml = renderLeaderboardCardHtml({
-    title: t('Triumphal Chests'),
+  const { tableHtml, paginationHtml } = leaderboardTablePartsHtml({
     countLabel: t('Chests'),
     pageEntries,
     totalEntries,
     currentPage: currentBoardPage,
     totalPages,
-    period: getCurrentPeriod(),
-    offset: getCurrentPeriodOffset(),
+    period,
     sortState,
-    rolloverHr: getGameDayRolloverUtcHour(),
     pageSize: PAGE_SIZE,
     playerCellHtml: (e) => memberLink(e.memberId, e.memberName),
     actions: ACTIONS,
+    tableClass: 'ui-table',
   });
 
   // Recent list — site-wide table conventions (locked widths via the
-  // leaderboard-table colgroup, 25/page, date column on the right).
-  // Wrapped in <details> so the section stays collapsed by default —
-  // the per-member board above is the primary view.
-  const recentTotal = recent.length;
+  // leaderboard-table colgroup, 25/page, date column on the right), in a
+  // collapsed card: the per-member board above is the primary view.
+  const recentTotal = recentRows.length;
   const recentTotalPages = Math.max(1, Math.ceil(recentTotal / PAGE_SIZE));
   if (currentRecentPage > recentTotalPages) currentRecentPage = recentTotalPages;
   if (currentRecentPage < 1) currentRecentPage = 1;
   const recentStart = (currentRecentPage - 1) * PAGE_SIZE;
-  const recentPageRows = recent.slice(recentStart, recentStart + PAGE_SIZE);
+  const recentPageRows = recentRows.slice(recentStart, recentStart + PAGE_SIZE);
 
   const recentPagination = recentTotal > PAGE_SIZE
     ? `<div class="pagination">
@@ -121,8 +184,8 @@ export async function renderTriumphal(el) {
     : '';
 
   const recentBody = recentTotal === 0
-    ? `<p class="muted-copy">${t('No triumphal chests in this period.')}</p>`
-    : `<table class="table-responsive leaderboard-table"><colgroup>
+    ? emptyHtml(t('No triumphal chests in this period.'))
+    : `<table class="table-responsive ui-table leaderboard-table"><colgroup>
         <col class="col-player">
         <col class="col-player">
         <col class="col-num">
@@ -141,19 +204,21 @@ export async function renderTriumphal(el) {
       </tr>`).join('')}
     </tbody></table>${recentPagination}`;
 
-  el.innerHTML = `
-    <div class="card"><div class="card-header"><h2>${t('About triumphal chests')}</h2></div><div class="card-body card-body-padded">
-      <p class="muted-copy">${t('Triumphal chests come from in-game package purchases. Each chest is worth one third of its package value, shown rounded to a whole number — Magic ≈83, Precious ≈33, Golden ≈17, Silver ≈7, Bronze ≈3, Wooden ≈2 — so a full set of three sums back to the package value (3 Golden = 50). These points are tracked separately from the main leaderboard.')}</p>
-      ${headerStats}
-    </div></div>
-    ${boardCardHtml}
-    <div class="card"><div class="card-header"><h2>${t('Recent chests')}</h2></div><div class="card-body card-body-padded">
-      <details>
-        <summary class="collapse-toggle">${t('Show recent chests')}${recentTotal > 0 ? ` (${recentTotal.toLocaleString()})` : ''}</summary>
-        <div class="details-content">${recentBody}</div>
+  el.innerHTML = `<div class="trc">
+      ${scrubber}
+      ${statTiles}
+      <p class="ui-copy trc-about">${t('Triumphal chests come from in-game package purchases. Each chest is worth one third of its package value, shown rounded to a whole number — Magic ≈83, Precious ≈33, Golden ≈17, Silver ≈7, Bronze ≈3, Wooden ≈2 — so a full set of three sums back to the package value (3 Golden = 50). These points are tracked separately from the main leaderboard.')}</p>
+      <section class="ui-table-card" aria-labelledby="trcBoardTitle">
+        <div class="ui-card-head"><h2 class="ui-tile-title" id="trcBoardTitle">${t('Triumphal Chests')}</h2></div>
+        ${totalEntries ? tableHtml : emptyHtml(t('No triumphal chests in this period.'))}
+        ${totalEntries ? paginationHtml : ''}
+      </section>
+      <details class="ui-table-card card-collapsible trc-recent" data-section-key="triumphal-recent">
+        <summary class="card-header ui-card-head"><h2 class="ui-tile-title">${t('Recent chests')}</h2>${recentTotal > 0 ? `<span class="ui-sub">${tn(recentTotal, '{n} chest', '{n} chests', { n: recentTotal.toLocaleString() })}</span>` : ''}</summary>
+        ${recentBody}
       </details>
-    </div></div>
-  `;
+    </div>`;
+  wire();
 }
 
 // ─── Action handlers ───
@@ -185,10 +250,12 @@ export function setTriumphalSort(key, rerender) {
 }
 
 // ─── Period selector ──────────────────────────────────────────
-// Mirrors the matching helpers on the leaderboard page. Period state
-// is shared (lib/state.js, persisted to localStorage) so a user's
-// choice carries between the two pages, but the URL anchor is encoded
-// per-page so a shared link lands on the right page in the right window.
+// The kit scrubber above drives the window (goToWindow). These stay for the
+// shell's data-action handlers (app.js), which still route the classic
+// period buttons here. Period state is shared (lib/state.js, persisted to
+// localStorage) so a user's choice carries between Leaderboard and
+// Triumphal, but the URL anchor is encoded per page so a shared link lands
+// on the right page in the right window.
 
 export function setTriumphalPeriod(period, navigate) {
   setCurrentPeriod(period);

@@ -135,6 +135,27 @@ stays whole.
   the band's colour, the goal line (bright) and the pace line (thin, only while
   the period runs).
 
+### Stat tiles
+
+A row of headline numbers (My Clan's members, might, wealth; Triumphal's
+totals): as many to a line as fit, two on a phone. A tile with `href` is a
+link (a rank that opens its ranking).
+
+```js
+statTilesHtml([
+  statTileHtml({ label: t('Members'), value: `80<span class="ui-big-of"> / 100</span>`, sub: '+11 since 2026-11-16' }),
+  statTileHtml({ label: t('Rank by wealth'), value: '#12', href: '#clan/rankings', attrs: 'data-goto-ranking="7"' }),
+]);
+```
+
+### Titled table card
+
+A table (or list) with a heading: `tableCardHtml({ title, hint, before, body, foot })`
+puts the title and a quiet hint ("read from the game 2026-11-18") in the
+card's head, optional padded content above the table (`before`: a picker of
+chips, a summary line), the table full-bleed, and the `.pagination` as `foot`.
+It is `.ui-table-card` with a `.ui-card-head`, so the table rules above apply.
+
 ### Notices, empty, error
 
 - **Notices:** `notesHtml([...lines])` renders plain facts in a quiet box.

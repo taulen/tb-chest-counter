@@ -223,3 +223,39 @@ export function errorStateHtml(what, why = '') {
 export function wireRetry(root, again) {
   root.querySelector('[data-ui-retry]')?.addEventListener('click', () => { void again(); });
 }
+
+/**
+ * One stat tile for a row of them (wrap the row in statTilesHtml): a label, a
+ * big number (`value` is HTML; the exact figure in `title`), an optional line
+ * under it. With `href` the whole tile is a link — a rank that opens its
+ * ranking — and `attrs` adds raw attributes to it (data-*).
+ */
+export function statTileHtml({ label, value, title = '', sub = '', href = '', attrs = '' }) {
+  const inner = `<span class="ui-stat-label">${esc(label)}</span>
+      <span class="ui-big"${title ? ` title="${esc(title)}"` : ''}>${value}</span>
+      ${sub ? `<span class="ui-sub">${esc(sub)}</span>` : ''}`;
+  return href
+    ? `<a class="ui-stat-tile is-link" href="${esc(href)}"${attrs ? ` ${attrs}` : ''}>${inner}</a>`
+    : `<div class="ui-stat-tile"${attrs ? ` ${attrs}` : ''}>${inner}</div>`;
+}
+
+/** A row of stat tiles: as many to a line as fit (two on a phone). */
+export function statTilesHtml(tiles, cls = '') {
+  return tiles.length ? `<div class="ui-stats${cls ? ` ${cls}` : ''}">${tiles.join('')}</div>` : '';
+}
+
+/**
+ * A titled card around a table or a list (.ui-table-card): the title and a
+ * quiet hint in its head, optional padded content above the table (`before`:
+ * a picker, a summary line), the table full-bleed, and `foot` (the site's
+ * .pagination) as its last row. `title`, `hint`, `before`, `body` and `foot`
+ * are HTML.
+ */
+export function tableCardHtml({ title, hint = '', hintTitle = '', before = '', body, foot = '', cls = '' }) {
+  return `<section class="ui-table-card${cls ? ` ${cls}` : ''}">
+      <div class="ui-card-head"><h2 class="ui-tile-title">${title}</h2>${hint ? `<span class="ui-sub"${hintTitle ? ` title="${esc(hintTitle)}"` : ''}>${hint}</span>` : ''}</div>
+      ${before ? `<div class="ui-card-pad">${before}</div>` : ''}
+      ${body}
+      ${foot}
+    </section>`;
+}

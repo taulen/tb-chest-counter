@@ -11,6 +11,7 @@ import { esc, formatDate, formatGameDayShort, memberLink } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { heroAvatarHtml } from '../lib/game-facts.js';
 import { gameDayKeyFor } from '../lib/period.js';
+import { emptyHtml, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
 const PAGE = 50;
 const SEARCH_DELAY_MS = 250;
@@ -23,7 +24,7 @@ const FILTERS = [
 
 /** The panel's placeholder until the tab is first opened (mountRoster fills it). */
 export function rosterPanelHtml() {
-  return `<div class="clan-roster" data-clan-roster><div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${t('Loading…')}</p></div></div></div>`;
+  return `<div class="clan-roster" data-clan-roster><div class="ui-tile span-12"><p class="ui-sub">${t('Loading…')}</p></div></div>`;
 }
 
 const timeOf = (iso) => {
@@ -108,18 +109,18 @@ export async function mountRoster(root) {
   el.dataset.mounted = '1';
   const state = { filter: '', q: '', next: null, lastDay: null, seq: 0, moreLoading: false, loaded: false };
 
-  el.innerHTML = `<div class="card" data-rc-card>
-      <div class="card-header"><h2>${esc(t('Joins & leaves'))}</h2><span class="card-header-hint rc-count"></span></div>
-      <div class="rc-tools">
-        <div class="tl-chips" role="group" aria-label="${esc(t('Show'))}">
-          ${FILTERS.map((f) => `<button type="button" class="btn btn-sm tl-chip${f.key === '' ? ' active' : ''}" data-rc-filter="${f.key}" aria-pressed="${f.key === '' ? 'true' : 'false'}">${esc(f.label())}</button>`).join('')}
+  el.innerHTML = `<section class="ui-tile span-12 rc-tile" data-rc-card aria-labelledby="rcTitle">
+      <div class="ui-tile-head"><h2 class="ui-tile-title" id="rcTitle">${esc(t('Joins & leaves'))}</h2><span class="ui-sub rc-count"></span></div>
+      <div class="ui-toolbar rc-tools">
+        <div class="rc-chips" role="group" aria-label="${esc(t('Show'))}">
+          ${FILTERS.map((f) => `<button type="button" class="ui-chip${f.key === '' ? ' is-active' : ''}" data-rc-filter="${f.key}" aria-pressed="${f.key === '' ? 'true' : 'false'}">${esc(f.label())}</button>`).join('')}
         </div>
         <input type="search" class="input rc-search" placeholder="${esc(t('Find a player…'))}" aria-label="${esc(t('Find a player'))}" autocomplete="off" enterkeyhint="search" data-rc-search>
       </div>
       <ol class="tl-list rc-list" aria-live="polite"></ol>
       <div class="tl-foot"></div>
-      <p class="rc-source"></p>
-    </div>`;
+      <p class="ui-sub rc-source"></p>
+    </section>`;
   // Listeners go on the card, which a remount replaces (never on `el`, which stays).
   const card = el.querySelector('[data-rc-card]');
   const list = card.querySelector('.rc-list');
@@ -152,10 +153,19 @@ export async function mountRoster(root) {
         else foot.innerHTML = state.next ? moreButton() : '';
         return;
       }
-      foot.innerHTML = `<p class="muted-copy">${esc(t("Couldn't load the joins and leaves. Try again in a minute."))}</p>`;
+      foot.innerHTML = errorStateHtml(t("Couldn't load the joins and leaves. Try again in a minute."));
+      wireRetry(foot, () => load(more));
       return;
     }
     if (seq !== state.seq) return;
+    // A refusal (a 429, a 500's { error, ref }) is not "nobody joined".
+    const why = refusalText(res);
+    if (why) {
+      state.moreLoading = false;
+      foot.innerHTML = errorStateHtml(t("Couldn't load the joins and leaves. Try again in a minute."), why);
+      wireRetry(foot, () => load(more));
+      return;
+    }
     state.moreLoading = false;
     state.loaded = true;
     const entries = Array.isArray(res?.entries) ? res.entries : [];
@@ -173,7 +183,7 @@ export async function mountRoster(root) {
     foot.innerHTML = state.next
       ? moreButton()
       : empty
-        ? `<p class="muted-copy">${esc(state.filter || state.q ? t('No one matches.') : t('No joins or leaves recorded yet.'))}</p>`
+        ? emptyHtml(state.filter || state.q ? t('No one matches.') : t('No joins or leaves recorded yet.'))
         : '';
   };
 
@@ -183,7 +193,7 @@ export async function mountRoster(root) {
       state.filter = chip.dataset.rcFilter;
       card.querySelectorAll('[data-rc-filter]').forEach((b) => {
         const on = b === chip;
-        b.classList.toggle('active', on);
+        b.classList.toggle('is-active', on);
         b.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
       load(false);

@@ -24,6 +24,7 @@ import { api, apiPost } from '../lib/api.js';
 import { esc, memberLink, localDateKey, copyTextToClipboard, prefersReducedMotion } from '../lib/ui.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 import { gameRankName, heroAvatarHtml } from '../lib/game-facts.js';
+import { emptyHtml, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
 const CHANNELS = [{ key: 'clan', label: () => t('Clan chat'), endpoint: '/chat/clan' }];
 const PAGE = 100;
@@ -330,11 +331,11 @@ function chunkHtml(items, opts, prevDay = '') {
   return html;
 }
 
-function emptyHtml() {
+function noMessagesHtml() {
   const empty = filtering()
     ? t('No messages match.')
     : state.available ? t('No clan chat stored yet. It is collected with every scan.') : t('The clan chat has not been read yet. It is collected with every scan.');
-  return `<p class="chat-none">${esc(empty)}</p>`;
+  return emptyHtml(empty);
 }
 
 function statusHtml() {
@@ -365,6 +366,12 @@ function resultsQuery(extra) {
 }
 
 function absorb(res) {
+  // api() hands back whatever JSON the server sent: a refusal (a 429, a 500's
+  // { error, ref }) is an error to show, not an empty chat.
+  const refusal = refusalText(res);
+  if (refusal || !res || typeof res !== 'object') {
+    throw Object.assign(new Error(refusal || 'No answer'), { refusal: !!refusal });
+  }
   Object.assign(state.people, res.people ?? {});
   Object.assign(state.objects, res.objects ?? {});
   Object.assign(state.terrains, res.terrains ?? {});
@@ -658,7 +665,7 @@ function paint(root, { toBottom = false, toTop = false } = {}) {
   log.setAttribute('aria-label', results ? t('Search results') : t('Clan chat messages'));
   log.innerHTML = items.length
     ? `<div class="chat-edge is-top"></div><ol class="chat-list">${chunkHtml(items, { hit: results })}</ol><div class="chat-edge is-bottom"></div>`
-    : emptyHtml();
+    : noMessagesHtml();
   paintEdges(root);
   paintChrome(root);
   if (toBottom) log.scrollTop = log.scrollHeight;
@@ -722,17 +729,18 @@ async function loadSenders(root) {
 export async function renderChats(el) {
   state = freshState();
   const today = localDateKey();
+  // One tile on the kit: the channel's name and how much is stored, the
+  // search / writer / date toolbar, the conversation. Only the clan chat
+  // exists (CHANNELS), so there is no channel list to pick from; private
+  // messages are never shown here.
   el.innerHTML = `
     <div class="chat-page">
-      <nav class="chat-channels card" aria-label="${esc(t('Chats'))}">
-        <ul>${CHANNELS.map((c) => `<li><button type="button" class="chat-channel${c === state.channel ? ' is-active' : ''}" aria-current="${c === state.channel ? 'true' : 'false'}">${esc(c.label())}</button></li>`).join('')}</ul>
-      </nav>
-      <section class="chat-main card" aria-labelledby="chatTitle">
-        <div class="chat-top">
-          <h2 id="chatTitle">${esc(state.channel.label())}</h2>
-          <p class="chat-status"></p>
+      <section class="ui-tile span-12 chat-main" aria-labelledby="chatTitle">
+        <div class="ui-tile-head chat-top">
+          <h2 id="chatTitle" class="ui-tile-title">${esc(state.channel.label())}</h2>
+          <p class="ui-sub chat-status"></p>
         </div>
-        <form class="chat-tools" role="search">
+        <form class="ui-toolbar chat-tools" role="search">
           <label class="chat-search">
             <span class="visually-hidden">${esc(t('Search the chat'))}</span>
             <input type="search" class="input" id="chatSearch" placeholder="${esc(t('Search messages and names'))}" autocomplete="off" enterkeyhint="search">
@@ -753,7 +761,7 @@ export async function renderChats(el) {
         </div>
         <div class="chat-log" role="region" tabindex="0" aria-label="${esc(t('Clan chat messages'))}"></div>
         <button type="button" class="btn btn-sm btn-primary chat-jump" data-chat-action="latest" hidden></button>
-        <p class="chat-note">${esc(t('Every message is kept here, even after the game no longer shows it.'))}</p>
+        <p class="ui-sub chat-note">${esc(t('Every message is kept here, even after the game no longer shows it.'))}</p>
         <span class="visually-hidden" aria-live="polite" id="chatLive"></span>
       </section>
     </div>`;
@@ -770,7 +778,7 @@ export async function renderChats(el) {
     syncClear();
     state.fromResults = false;
     state.results = null;
-    return (filtering() ? openResults(root) : openLive(root)).catch(() => {});
+    return (filtering() ? openResults(root) : openLive(root)).catch((err) => showLoadError(root, err, refilter));
   };
 
   let searchTimer = null;
@@ -845,7 +853,21 @@ export async function renderChats(el) {
   }, { passive: true });
 
   wireEdgePaging(root);
-  await openLive(root);
+  const loadLive = () => openLive(root).catch((err) => showLoadError(root, err, loadLive));
+  await loadLive();
   loadSenders(root).catch(() => {});
   startPolling(root);
+}
+
+/**
+ * The conversation could not load (a failed read, or a refusal such as a
+ * 429): say so in the log, with the server's reason and Try again. A read the
+ * router cancelled (another page) shows nothing.
+ */
+function showLoadError(root, err, again) {
+  if (err?.name === 'AbortError' || !root.isConnected) return;
+  const log = root.querySelector('.chat-log');
+  if (!log) return;
+  log.innerHTML = errorStateHtml(t('The chat could not be loaded.'), err?.refusal ? err.message : '');
+  wireRetry(log, again);
 }
