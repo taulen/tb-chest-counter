@@ -1811,6 +1811,367 @@ label {
   align-items: center;
 }
 
+/* ─── Member profile (pages/member-profile.js) ───
+   Desktop: identity + this week + "Everything else" | what happened, by game
+   day | collected today. A phone stacks them; every "Everything else" entry
+   opens as a sheet (a drawer from the right on desktop, sliding up on a
+   phone). OLED first: cards are one step up from the page, gold the accent. */
+body:has(#content .mp-page) #pageHead { display: none; }
+
+.mp-page { display: flex; flex-direction: column; gap: 14px; }
+.mp-top { display: flex; }
+.mp-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(260px, 320px);
+  gap: 18px;
+  align-items: start;
+}
+.mp-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mp-card {
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.mp-label {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.mp-muted { margin: 0; font-size: 13px; color: var(--text-secondary); }
+
+/* A game word: dotted underline, explains itself in a popover. */
+.mp-term {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.mp-term:hover { text-decoration-color: var(--accent-gold); }
+.mp-term:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; border-radius: 3px; }
+.mp-term-pop {
+  position: absolute;
+  z-index: 600;
+  box-sizing: border-box;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-elevated);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.mp-term-pop p { margin: 0; color: var(--text-secondary); }
+.mp-term-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mp-term-title { margin: 0; font-size: 14px; font-weight: 700; }
+.mp-term-close,
+.mp-sheet-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+}
+.mp-term-close:hover,
+.mp-sheet-close:hover { background: var(--hover-overlay-strong); color: var(--text-primary); }
+
+/* Identity */
+.mp-identity { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.mp-avatar { display: flex; }
+.mp-photo,
+.mp-initial {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--accent-gold-border);
+}
+.mp-photo { object-fit: cover; }
+.mp-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--subtle-bg-strong);
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.mp-name {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.mp-facts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mp-fact {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--subtle-bg-strong);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.mp-fact.is-rank { color: var(--text-primary); font-weight: 600; }
+.mp-fact.is-gold { color: var(--accent-gold); font-weight: 600; }
+.mp-fact.is-burning { color: var(--accent-warn-text); }
+.mp-fact.is-left { color: var(--accent-warn-text); }
+.mp-titles .member-titles { flex-wrap: wrap; }
+.mp-read { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+/* This week */
+.mp-pins { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.mp-pins > .mp-label { grid-column: 1 / -1; margin-bottom: 0; }
+.mp-pin { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mp-pin.is-wide { grid-column: 1 / -1; }
+.mp-pin-label { font-size: 12.5px; color: var(--text-secondary); }
+.mp-pin-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.mp-pin-of { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.mp-pin-sub { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.mp-pin-sub.is-up { color: var(--accent-green-soft-text); }
+.mp-pin-sub.is-down { color: var(--text-secondary); }
+.mp-pin-status { font-size: 12.5px; color: var(--text-secondary); }
+.mp-pin-status.is-done { font-weight: 600; color: var(--accent-green-soft-text); }
+.mp-bar {
+  height: 8px;
+  margin: 4px 0 2px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.mp-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent-gold); }
+
+/* Everything else */
+.mp-more { padding: 12px 8px 8px; }
+.mp-more > .mp-label { padding: 0 8px; }
+.mp-more-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.mp-more-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mp-more-btn:hover { background: var(--hover-overlay-strong); }
+.mp-more-btn:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; }
+.mp-more-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mp-more-label { font-size: 14.5px; font-weight: 600; }
+.mp-more-hint { font-size: 12.5px; color: var(--text-secondary); }
+.mp-more-chev { flex: none; font-size: 20px; line-height: 1; color: var(--text-muted); }
+
+/* What happened */
+.mp-feed { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.mp-feed-title { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.mp-day { display: flex; flex-direction: column; gap: 8px; }
+.mp-day-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.025em; }
+.mp-day-date { margin-left: 6px; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--text-secondary); }
+.mp-stories { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.mp-story {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+.mp-story.is-chests { border-color: var(--accent-gold-border); }
+.mp-story-icon { display: flex; justify-content: center; padding-top: 1px; }
+.mp-story-icon .tl-img { width: 24px; height: 24px; }
+.mp-story-body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mp-story-text { margin: 0; font-size: 15px; line-height: 1.4; color: var(--text-primary); overflow-wrap: anywhere; }
+.mp-story-big { font-size: 18px; font-weight: 700; letter-spacing: -0.015em; }
+.mp-story-pts { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.mp-story-from { margin: 0; font-size: 13px; color: var(--text-secondary); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.mp-source {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--subtle-bg-strong);
+  color: var(--text-primary);
+}
+.mp-source-n { margin-left: 2px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-gold); }
+.mp-story-plain { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
+.mp-story-fold > summary { cursor: pointer; font-size: 15px; color: var(--text-primary); }
+.mp-story-fold .tl-items { margin-top: 6px; }
+.mp-story-time { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; padding-top: 2px; }
+.mp-link {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-gold);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mp-link:hover { text-decoration: underline; }
+.mp-feed-older { align-self: flex-start; }
+
+/* Collected today */
+.mp-today { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.mp-today-title { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+.mp-today-sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+.mp-chests {
+  margin: 4px -6px 0;
+  padding: 0;
+  list-style: none;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+.mp-chest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 10px;
+  padding: 7px 6px;
+  border-top: 1px solid var(--border);
+}
+.mp-chest:first-child { border-top: 0; }
+.mp-chest-name { min-width: 0; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.mp-chest-source { grid-column: 1; font-size: 12px; color: var(--text-secondary); }
+.mp-chest-source a { color: inherit; }
+.mp-chest-pts { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mp-today-all { display: none; }
+
+/* The sheets */
+html.mp-sheet-open { overflow: hidden; }
+.mp-sheet-host { position: fixed; inset: 0; z-index: 500; }
+.mp-sheet-host[hidden] { display: none; }
+.mp-sheet-backdrop { position: absolute; inset: 0; background: var(--bg-modal-backdrop); }
+.mp-sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(1100px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-strong);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-elevated);
+  animation: mp-sheet-in 0.18s ease-out;
+}
+.mp-sheet:focus { outline: none; }
+.mp-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 20px 6px 22px;
+  border-bottom: 1px solid var(--border);
+}
+.mp-sheet-head h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+.mp-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Never squeezed to fit: a card with overflow hidden would otherwise shrink
+   to the sheet's height and clip what it holds. The body scrolls instead. */
+.mp-sheet-body > *,
+.mp-sheet-body .view-panel > * { flex-shrink: 0; }
+.mp-sheet-body > .card,
+.mp-sheet-body .card { margin-bottom: 0; }
+@keyframes mp-sheet-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes mp-sheet-up { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .mp-sheet { animation: none; }
+}
+
+/* Narrower desktops: today's chests go above the feed in the second column. */
+@media (max-width: 1279px) {
+  .mp-grid { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); }
+  .mp-side { grid-row: 1 / span 2; }
+  .mp-today { position: static; grid-column: 2; grid-row: 1; }
+  .mp-feed { grid-column: 2; grid-row: 2; }
+  .mp-chests { max-height: none; }
+  .mp-chest:nth-child(n + 7) { display: none; }
+  .mp-today-all { display: inline; align-self: flex-start; }
+}
+
+/* A phone: one column — who, this week, everything else, today, the feed. */
+@media (max-width: 760px) {
+  .mp-grid { display: flex; flex-direction: column; gap: 14px; }
+  .mp-today { order: 1; }
+  .mp-feed { order: 2; }
+  .mp-card { padding: 14px; }
+  .mp-identity {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 8px;
+    align-items: center;
+  }
+  .mp-identity > .mp-avatar { grid-row: 1 / span 2; }
+  .mp-identity > .mp-name { font-size: 22px; align-self: end; }
+  .mp-identity > .mp-facts { align-self: start; }
+  .mp-identity > .mp-titles,
+  .mp-identity > .mp-read { grid-column: 1 / -1; }
+  .mp-photo,
+  .mp-initial { width: 64px; height: 64px; font-size: 26px; }
+  .mp-day-title { font-size: 19px; }
+  .mp-story { grid-template-columns: 24px minmax(0, 1fr); padding: 11px 12px; }
+  .mp-story-icon { grid-column: 1; grid-row: 1 / span 2; }
+  .mp-story-body { grid-column: 2; grid-row: 1; }
+  .mp-story-time { grid-column: 2; grid-row: 2; padding-top: 0; }
+  .mp-sheet {
+    left: 0;
+    top: 24px;
+    width: auto;
+    border-left: 0;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 16px 16px 0 0;
+    animation-name: mp-sheet-up;
+  }
+  .mp-sheet-head { padding: 4px 12px 4px 16px; }
+  .mp-sheet-head h2 { font-size: 18px; }
+  .mp-sheet-body { padding: 12px 10px 24px; }
+}
+
 /* ─── Member Detail Page ─── */
 .member-detail-header {
   align-items: flex-start;
@@ -1821,13 +2182,6 @@ label {
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-}
-
-/* The profile's title block takes the room beside Back and wraps inside it:
-   a long row of game facts or titles pushed Back onto a line of its own. */
-.member-detail-header.is-profile .member-detail-title {
-  flex: 1 1 0;
-  min-width: 0;
 }
 
 .member-rank-badge {
@@ -2168,47 +2522,9 @@ label {
     gap: 8px;
   }
 
-  /* The member profile: portrait left with the name and rank beside it, the
-     game facts across the width below, Back small at the top-right — not one
-     item per row (user, Nov 2026: "a lot of wasted space up top"). */
-  .member-detail-header.is-profile {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .member-detail-header.is-profile > .btn {
-    order: 2;
-    flex: none;
-    padding: 6px 10px;
-  }
-  .member-detail-header.is-profile .member-detail-title {
-    flex: 1 1 0;
-    min-width: 0;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: 12px;
-    row-gap: 6px;
-    align-items: center;
-  }
-  .member-detail-header.is-profile .member-detail-title > .hero-framed,
-  .member-detail-header.is-profile .member-detail-title > .hero-avatar { grid-row: 1 / span 2; }
-  .member-detail-header.is-profile .member-detail-title > h2 {
-    margin: 0;
-    align-self: end;
-    overflow-wrap: anywhere;
-  }
-  .member-detail-header.is-profile .member-detail-title > .member-rank-badge { justify-self: start; align-self: start; }
-  .member-detail-header.is-profile .member-detail-title > .game-facts { grid-column: 1 / -1; }
-  .member-detail-header.is-profile .member-detail-title > .member-titles { grid-column: 1 / -1; margin-top: -2px; gap: 1px; }
   /* Smaller on a phone (still a 26 px target): an SK player's 19 titles take two rows, not three. */
   .member-title { width: 26px; height: 26px; }
   .member-title img { width: 22px; height: 22px; }
-  /* No portrait (not linked to a game player yet): everything full width. */
-  .member-detail-header.is-profile .member-detail-title:not(:has(> .hero-framed, > .hero-avatar)) > * { grid-column: 1 / -1; }
-  /* A member profile on a phone: the "Members — Everyone in the clan" page
-     heading repeats nothing the card doesn't say — drop it (desktop keeps it). */
-  body:has(#content .member-detail-header.is-profile) #pageHead { display: none; }
 
   .stat-card .value.member-detail-date {
     font-size: 16px;

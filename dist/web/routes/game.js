@@ -13,6 +13,7 @@ exports.createGameRouter = createGameRouter;
 const express_1 = require("express");
 const game_player_names_js_1 = require("../../data/game-player-names.js");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
+const avatar_repo_js_1 = require("../../data/repositories/avatar-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
 const titles_js_1 = require("../../game-protocol/titles.js");
 const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
@@ -128,6 +129,8 @@ function createGameRouter() {
         res.json({
             linked: true,
             player: (0, game_profile_repo_js_1.getGamePlayer)(clanId, playerId),
+            // The photo the player's own account uploaded (the profile shows it before the hero portrait), or null.
+            photoUrl: (0, avatar_repo_js_1.photoUrlForPlayer)(playerId),
             city: (0, game_profile_repo_js_1.getLatestCity)(clanId, playerId),
             // G/S/E/M tiers and crypt level from the member's research (null until read).
             tiers: (0, member_tiers_js_1.getMemberTiers)(clanId).get(memberId) ?? null,

@@ -11,6 +11,7 @@ exports.setUserAvatar = setUserAvatar;
 exports.removeUserAvatar = removeUserAvatar;
 exports.hasUserAvatar = hasUserAvatar;
 exports.getAvatarBytes = getAvatarBytes;
+exports.photoUrlForPlayer = photoUrlForPlayer;
 exports.resolveAccountAvatar = resolveAccountAvatar;
 /**
  * Account avatars (v128): the small round picture next to a signed-in account.
@@ -113,6 +114,19 @@ function heroPortraitUrl(userId, clanId) {
         return null;
     const row = (0, database_js_1.getDb)().prepare('SELECT hero_avatar FROM game_players WHERE clan_id = ? AND player_id = ?').get(clanId, playerId);
     return (0, game_profile_repo_js_1.heroAvatarUrl)(row?.hero_avatar ?? null);
+}
+/**
+ * The photo the account linked to this game player uploaded, or null (not
+ * linked, or no photo). The member profile shows it in place of the hero
+ * portrait, the same order resolveAccountAvatar follows for the account.
+ */
+function photoUrlForPlayer(playerId) {
+    const userId = (0, account_invite_repo_js_1.accountForPlayer)(playerId);
+    if (userId === null)
+        return null;
+    // Through the resolver, so the URL is always the one accounts get.
+    const avatar = resolveAccountAvatar({ id: userId, username: '' }, null);
+    return avatar.kind === 'photo' ? avatar.url : null;
 }
 /**
  * What an account shows as its picture: its own photo, else the hero portrait

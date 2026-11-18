@@ -42,8 +42,10 @@ and how to tell us when something gets in your way.
   behind can't be reached until it closes, Escape closes only the topmost
   dialog, and focus returns to whatever opened it. Enter in a confirmation does
   what the focused button says, and destructive confirmations open on Cancel.
-  The phone's More sheet and the tablet's unfolded menu behave the same way;
-  the clan switcher and the account menu close on Escape and hand focus back to
+  The phone's More sheet, the tablet's unfolded menu and a member profile's
+  sheets (chest history, statistics, captains…) behave the same way; the clan
+  switcher, the account menu and the profile's game-word explanations (a
+  dotted underline, a real button) close on Escape and hand focus back to
   their button.
 - **The folded menu still names everything.** With the sidebar folded to
   icons, every label stays in the page for screen readers and shows beside the

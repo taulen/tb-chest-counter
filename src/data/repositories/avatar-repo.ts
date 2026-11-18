@@ -18,7 +18,7 @@
 import crypto from 'crypto';
 import { getDb } from '../database.js';
 import { heroAvatarUrl } from './game-profile-repo.js';
-import { linkedGamePlayerId } from './account-invite-repo.js';
+import { accountForPlayer, linkedGamePlayerId } from './account-invite-repo.js';
 import { sniffImage, type SniffedImage } from '../../utils/image-sniff.js';
 
 /** Largest upload the route accepts. The browser sends a 512×512 WebP/JPEG, well under it. */
@@ -123,6 +123,19 @@ function heroPortraitUrl(userId: number, clanId: number | null): string | null {
   const row = getDb().prepare('SELECT hero_avatar FROM game_players WHERE clan_id = ? AND player_id = ?').get(clanId, playerId) as
     { hero_avatar: number | null } | undefined;
   return heroAvatarUrl(row?.hero_avatar ?? null);
+}
+
+/**
+ * The photo the account linked to this game player uploaded, or null (not
+ * linked, or no photo). The member profile shows it in place of the hero
+ * portrait, the same order resolveAccountAvatar follows for the account.
+ */
+export function photoUrlForPlayer(playerId: number): string | null {
+  const userId = accountForPlayer(playerId);
+  if (userId === null) return null;
+  // Through the resolver, so the URL is always the one accounts get.
+  const avatar = resolveAccountAvatar({ id: userId, username: '' }, null);
+  return avatar.kind === 'photo' ? avatar.url : null;
 }
 
 /**

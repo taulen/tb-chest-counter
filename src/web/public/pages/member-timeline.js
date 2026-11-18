@@ -94,8 +94,8 @@ function itemHtml(kind, it) {
   return `<li>${img(it.change === 'taken_off' ? it.prevIconUrl : it.iconUrl, 'tl-img is-small')}<span>${line}</span></li>`;
 }
 
-/** [icon html, text html, folded items html] for an entry. */
-function entryParts(e) {
+/** [icon html, text html, folded items html] for an entry (also the profile feed). */
+export function entryParts(e) {
   switch (e.kind) {
     // The clan's Joins & leaves list, this member's part of it (same rules).
     case 'joined': return [glyph(e.returned || e.restored ? '↻' : '↪', e.restored ? '' : e.returned ? 'is-gold' : 'is-good'),
