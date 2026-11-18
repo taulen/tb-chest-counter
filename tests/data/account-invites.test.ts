@@ -14,6 +14,7 @@ import {
   hashCode,
   isAccountBlocked,
   linkFor,
+  planJoin,
   linkedPlayerIds,
   linksInClan,
   mainLink,
@@ -159,14 +160,14 @@ describe('joining with a code', () => {
     expect(userRepo.getUserById(home.user.id)).toMatchObject({ clanId: 1, role: 'user' });
   });
 
-  it('refuses: a player linked to another account, a superadmin', () => {
+  it('refuses a player linked to another account, even for the superadmin', () => {
     gamePlayer(1, 61, 'Taken', 4);
     gamePlayer(1, 62, 'Other', 4);
     redeemJoin(issueCode(1, 61), null, { username: 'owner', password: PW }, NOW);
     const other = userRepo.createUser('other', PW, 'user', undefined, 1);
     expect(() => redeemJoin(issueCode(1, 61, 'tb:61', NOW + 11 * 60_000), userRepo.getUserById(other.id), {}, NOW + 11 * 60_000)).toThrow('conflict');
     const su = userRepo.createUser('su', PW, 'superadmin');
-    expect(() => redeemJoin(issueCode(1, 62, 'tb:62', NOW + 11 * 60_000), su, {}, NOW + 11 * 60_000)).toThrow('superadmin');
+    expect(() => redeemJoin(issueCode(1, 61, 'tb:61', NOW + 22 * 60_000), su, {}, NOW + 22 * 60_000)).toThrow('conflict');
   });
 });
 
@@ -276,24 +277,79 @@ describe('roles follow the in-game rank, both directions, every scan', () => {
   it('never touches a superadmin or an unlinked old account', () => {
     const su = userRepo.createUser('su', PW, 'superadmin');
     const old = userRepo.createUser('oldie', PW, 'admin', undefined, 1);
-    // Even a stray link row for a superadmin is skipped.
+    // A superadmin's link row is kept current; the account itself is not touched.
     getDb().prepare(
       "INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at) VALUES (?, 1, 161, 'X', 'x', 'x')",
     ).run(su.id);
     syncLinkedAccounts(1, roster({ 161: 5 }));
     expect(userRepo.getUserById(su.id)).toMatchObject({ role: 'superadmin', clanId: null });
     expect(userRepo.listClanAccess(su.id)).toEqual([]);
+    expect(linkFor(su.id, 1)).toMatchObject({ playerId: 161, rank: 5, onRoster: true });
     expect(userRepo.getUserById(old.id)?.role).toBe('admin');
   });
 
-  it('promoting an account to superadmin drops its links; unlinking keeps the access as a plain grant', () => {
+  it('promoting an account to superadmin keeps its links (its role no longer follows them); unlinking keeps the access as a plain grant', () => {
     const id = linkedAccount(1, 171, 2, 'promoted');
     const other = linkedAccount(1, 172, 2, 'unlinked');
     userRepo.updateRole(id, 'superadmin');
-    expect(linkFor(id, 1)).toBeNull();
+    expect(linkFor(id, 1)?.playerId).toBe(171);
+    syncLinkedAccounts(1, roster({ 171: 5, 172: 2 }));
+    expect(userRepo.getUserById(id)).toMatchObject({ role: 'superadmin', clanId: null });
+    expect(userRepo.listClanAccess(id)).toEqual([]);
     expect(unlinkGameAccount(other, 1)[0]?.playerId).toBe(172);
     syncLinkedAccounts(1, roster({ 172: 5 }));
     expect(userRepo.getUserById(other)?.role).toBe('admin');
+  });
+});
+
+describe('the superadmin links its own players: the link and nothing else', () => {
+  function superadmin() {
+    return userRepo.createUser('boss', PW, 'superadmin');
+  }
+
+  it('a code checks as link-player and links the player — no grant, no home, no role change', () => {
+    const su = superadmin();
+    gamePlayer(1, 401, 'Boss Main', 5);
+    const info = lookupCode(issueCode(1, 401), NOW)!;
+    expect(planJoin(info, su)).toMatchObject({ mode: 'link-player', userId: su.id });
+    const r = redeemJoin(issueCode(1, 401, 'tb:401', NOW + 11 * 60_000), su, {}, NOW + 11 * 60_000);
+    expect(r.mode).toBe('link-player');
+    expect(linkedPlayerIds(su.id, 1)).toEqual([401]);
+    expect(userRepo.getUserById(su.id)).toMatchObject({ role: 'superadmin', clanId: null });
+    expect(userRepo.listClanAccess(su.id)).toEqual([]);
+    // A second player in the same clan (an alt) links the same way; the main stays the first.
+    gamePlayer(1, 402, 'Boss Alt', 1);
+    expect(redeemJoin(issueCode(1, 402, 'tb:402', NOW + 22 * 60_000), su, {}, NOW + 22 * 60_000).mode).toBe('link-player');
+    expect(mainLink(su.id, 1)?.playerId).toBe(401);
+    expect(userRepo.listClanAccess(su.id)).toEqual([]);
+  });
+
+  it('promotion, demotion, leaving and rejoining in the game keep the link current and never touch the account', () => {
+    const su = superadmin();
+    gamePlayer(1, 411, 'Boss', 5);
+    redeemJoin(issueCode(1, 411), su, {}, NOW);
+    const token = userRepo.createSession(su.id);
+    const steps: Array<Record<number, number>> = [{ 411: 2 }, { 411: 1 }, { 411: 4 }, {}, { 411: 3 }];
+    for (const ranks of steps) {
+      syncLinkedAccounts(1, roster(ranks));
+      expect(userRepo.getUserById(su.id)).toMatchObject({ role: 'superadmin', clanId: null });
+      expect(userRepo.listClanAccess(su.id)).toEqual([]);
+      expect(isAccountBlocked(su.id)).toBe(false);
+      expect(userRepo.validateSession(token)?.user.role).toBe('superadmin');
+    }
+    expect(linkFor(su.id, 1)).toMatchObject({ rank: 3, onRoster: true });
+    syncLinkedAccounts(1, roster({}));
+    expect(linkFor(su.id, 1)?.onRoster).toBe(false);
+  });
+
+  it("a code for the superadmin's player never resets its password", () => {
+    const su = superadmin();
+    gamePlayer(1, 421, 'Boss', 4);
+    redeemJoin(issueCode(1, 421), su, {}, NOW);
+    const code = issueCode(1, 421, 'tb:421', NOW + 11 * 60_000);
+    expect(planJoin(lookupCode(code, NOW + 11 * 60_000)!, null).mode).toBe('superadmin-recover');
+    expect(() => redeemJoin(code, null, { password: 'Another1234!aA' }, NOW + 11 * 60_000)).toThrow('superadmin-recover');
+    expect(userRepo.authenticate('boss', PW)).not.toBeNull();
   });
 });
 

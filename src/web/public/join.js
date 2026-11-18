@@ -20,8 +20,7 @@ const SERVER_MESSAGES = {
   'Too many attempts. Please try again later.': t('Too many attempts. Please try again later.'),
   'Your account is already linked to this player.': t('Your account is already linked to this player.'),
   'This player is already linked to another account. Ask the superadmin to unlink it.': t('This player is already linked to another account. Ask the superadmin to unlink it.'),
-  'Your account is already linked to another player in this clan.': t('Your account is already linked to another player in this clan.'),
-  'Superadmin accounts are not linked to a player.': t('Superadmin accounts are not linked to a player.'),
+  'This player is linked to a superadmin account; its password cannot be reset with a code.': t('This player is linked to a superadmin account; its password cannot be reset with a code.'),
   'Username already exists': t('That username is taken. Pick another.'),
   'Username must be at least 3 characters': t('Username must be at least 3 characters'),
   'Username must be 32 characters or fewer': t('Username must be 32 characters or fewer'),
@@ -160,8 +159,15 @@ function renderAction(info) {
       note = `${t('Add this player to your account, beside the player you already have in this clan.')} ${roleWords(info.role)}`;
       form = `<button type="submit" class="btn">${t('Add player')}</button>`;
       break;
+    case 'link-player':
+      note = t('Link this player to your account. Your superadmin access does not change.');
+      form = `<button type="submit" class="btn">${t('Link player')}</button>`;
+      break;
+    case 'superadmin-recover':
+      note = t('This player is linked to a superadmin account; its password cannot be reset with a code.');
+      break;
     default:
-      note = t('Superadmin accounts are not linked to a player.');
+      note = t('This code can’t be used here.');
   }
   footer.hidden = !!info.viewer;
   body.innerHTML = `

@@ -258,8 +258,9 @@ async function checkAuth() {
     if (currentUser.role === 'superadmin') {
       if (navSystemEl) navSystemEl.classList.remove('is-hidden');
     }
-    // A code links an account to a player; the superadmin never is one.
-    $('#userMenuAddClan')?.toggleAttribute('hidden', currentUser.role === 'superadmin');
+    // A code links an account to a player — the superadmin's too (it links
+    // the player and nothing else). Shown for everyone.
+    $('#userMenuAddClan')?.removeAttribute('hidden');
 
     // Manual scans live in the sidebar's scanner card (the phone sheet is the
     // same element), superadmin only; everyone else sees the state alone.

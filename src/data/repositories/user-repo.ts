@@ -481,11 +481,9 @@ export function updateRole(id: number, role: UserRole): void {
     db.transaction(() => {
       db.prepare('UPDATE users SET role = ?, clan_id = NULL WHERE id = ?').run(role, id);
       db.prepare('DELETE FROM user_clan_access WHERE user_id = ?').run(id);
-      // A superadmin is never linked to a game player (v127): the game's
-      // rank would otherwise keep rewriting a role that is above it.
-      db.prepare('DELETE FROM user_game_links WHERE user_id = ?').run(id);
-      db.prepare('DELETE FROM user_clan_main WHERE user_id = ?').run(id);
-      db.prepare('UPDATE player_avatars SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
+      // Its linked game players stay (they are who it plays): the scan's sync
+      // keeps them current but never touches a superadmin's role, grants or
+      // home (account-invite-repo syncLinkedAccounts).
     })();
   } else {
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);

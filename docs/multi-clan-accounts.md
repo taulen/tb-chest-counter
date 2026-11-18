@@ -35,7 +35,10 @@ its rank gives. Leaving a clan in the game removes the extra grant only when NON
 players there is left on the roster (it returns when one rejoins); all of them
 leaving the home clan moves the home to another linked clan still
 theirs, or pauses the account (`validateSession` answers null, login is
-refused) until they are back. See [account-invites.md](account-invites.md).
+refused) until they are back. The superadmin may link its own players too
+(account menu → Add a clan with a code): the link is all it gets — it still
+holds no `user_clan_access` rows, and nothing in the game ever changes its
+role, home or access. See [account-invites.md](account-invites.md).
 
 ## Not leaking across clans
 
