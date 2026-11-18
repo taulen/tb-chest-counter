@@ -452,6 +452,8 @@ export function setShellUser(user) {
   const roleEl = byId('userRole');
   if (roleEl) roleEl.textContent = role;
   paintAvatar(byId('userInitial'), user);
+  // The phone sheet's account heading shows it too (the button is hidden there).
+  paintAvatar(byId('userMenuAvatar'), user);
   const who = byId('userMenuWho');
   if (who) who.textContent = `${user.username} · ${role}`;
   const btn = byId('userMenuBtn');

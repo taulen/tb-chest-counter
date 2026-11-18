@@ -3484,12 +3484,19 @@ details > table {
   table-layout: fixed;
 }
 .users-table .col-user-name { width: auto; }
+/* 160px: the widest role in any language ("пользователь") plus the select's
+   arrow. The name column takes what is left, and needs it: the avatar, the
+   name and the in-game link line under it — with three 145px date columns it
+   was left ~80px at 1440 wide, and "Not linked (old account)" broke over four
+   lines, so the dates were narrowed (below). */
 .users-table .col-user-role { width: 160px; }
 /* 300px: two 116px clan chips + the edit pencil on one line, inside the
    cell's 16px padding and the button's own 3px + border (262px of content;
    290px left 258 and pushed the pencil onto a line of its own). */
 .users-table .col-user-clan { width: 300px; }
-.users-table .col-user-date { width: 145px; }
+/* The dates already break into date / time lines; 112px fits "2026/04/26"
+   and the localized column headers. */
+.users-table .col-user-date { width: 112px; }
 
 /* Orphaned-user row: tint to flag the anomaly (account with no clan).
    The badge in the Clan column already says "⚠ No clan"; the tint
@@ -7893,6 +7900,12 @@ body.is-scanning .shell-scanner .scan-controls { display: none; }
     padding: 0 0 6px;
   }
   .shell-account-heading .user-menu-section-label { padding-left: 0; }
+  .shell-account-who-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+  }
   .shell-account-who {
     font-size: 14px;
     font-weight: 600;
