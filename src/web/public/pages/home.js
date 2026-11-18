@@ -229,7 +229,7 @@ function leaderTiles(ctx) {
     scanHealthTile(ctx),
     ctx.you ? youTile(ctx, 6) : '',
     recentTile(ctx, 6),
-    recordsTile(ctx, ctx.you ? 12 : 6),
+    recordsTile(ctx, 12),
   ].filter(Boolean);
 }
 
@@ -254,7 +254,7 @@ function periodHtml(ctx) {
     }
   }
   const label = formatPeriodLabel(period, offset, rolloverHr, weekStart);
-  const short = [label, dayShort].filter(Boolean).join(' · ');
+  const short = [compactRange(label), dayShort].filter(Boolean).join(' · ');
   return `<div class="mboard-period home-period">
       <div class="mboard-seg" role="group" aria-label="${esc(t('Period'))}">
         ${PERIODS.map((p) => `<button type="button" class="mboard-seg-btn${period === p ? ' is-active' : ''}" aria-pressed="${period === p}" data-home-period="${p}">${PERIOD_LABEL[p]()}</button>`).join('')}
@@ -268,6 +268,15 @@ function periodHtml(ctx) {
         <button type="button" class="mboard-arrow" data-home-step="-1" aria-label="${esc(t('Later'))}"${offset === 0 ? ' disabled' : ''}>›</button>
       </div>`}
     </div>`;
+}
+
+/** "2026-11-15 → 2026-11-21" → "2026-11-15 → 21"; across a month "→ 12-05"; anything else as it is. */
+function compactRange(label) {
+  const m = String(label).match(/^(\d{4})-(\d{2})-(\d{2}) → (\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return label;
+  const [, y1, m1, d1, y2, m2, d2] = m;
+  if (y1 !== y2) return label;
+  return `${y1}-${m1}-${d1} → ${m1 === m2 ? d2 : `${m2}-${d2}`}`;
 }
 
 // ─── Tiles ───

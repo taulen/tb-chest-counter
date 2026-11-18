@@ -11888,7 +11888,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .home-sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .home-copy { margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
 .home-big-row { display: flex; flex-wrap: wrap; gap: 14px 32px; }
-.home-bar { height: 10px; }
+/* The board's phone rule centres .mboard-bar (a grid row there); in a flex
+   column that shrinks it to nothing, so Home's bars always stretch. */
+.mboard-bar.home-bar { align-self: stretch; width: 100%; height: 10px; background: var(--bg-input); box-shadow: inset 0 0 0 1px var(--border); }
 
 .home-delta { font-size: 12.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .home-delta.is-up { color: var(--accent-green-soft-text); }
@@ -11954,6 +11956,8 @@ a.home-row-name:hover { text-decoration: underline; }
 .home-row-sub { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .home-row-who { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .home-row-who a { color: var(--text-primary); }
+/* A chest's name wraps rather than losing its end ("Редкий сундук дракона"). */
+.home-row.is-chest .cell-stacked-primary { white-space: normal; overflow: visible; text-overflow: clip; }
 .home-event-when { flex: none; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
 .home-event-when.is-live { color: var(--accent-green-soft-text); font-weight: 600; }
 
@@ -11981,7 +11985,15 @@ a.home-row-name:hover { text-decoration: underline; }
 .home-goal-btn:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
 .home-goal-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .home-goal-n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.home-goal-names { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-goal-names {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
 
 /* Roster changes: plain facts */
 .home-facts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.45; }
@@ -12026,7 +12038,7 @@ a.home-row-name:hover { text-decoration: underline; }
   color: var(--text-secondary);
 }
 .home-clan-text { grid-area: text; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.home-clan-name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-clan-name { font-size: 14px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
 .home-clan-today { grid-area: today; display: flex; flex-direction: column; align-items: flex-end; }
 .home-clan-n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .home-clan .shell-clan-status { grid-area: status; }

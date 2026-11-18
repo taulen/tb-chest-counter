@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadRosterSources = loadRosterSources;
 exports.rosterReadSince = rosterReadSince;
+exports.recentRankChanges = recentRankChanges;
 /**
  * The rows the clan's joins & leaves are built from (data/roster-changes.ts),
  * all already kept by other features: the members (first_seen, left_at, the
@@ -65,5 +66,45 @@ function loadRosterSources(clanId) {
 function rosterReadSince(clanId) {
     const r = (0, database_js_1.getDb)().prepare('SELECT MIN(first_seen) AS at FROM game_players WHERE clan_id = ?').get(clanId);
     return r.at;
+}
+/**
+ * The clan's in-game rank changes since `sinceIso`, newest first: every
+ * history row whose role differs from that player's previous recorded role
+ * (game_player_history keeps the rank since v-history; the member timeline
+ * reads the same change per member). The previous role is looked up per row
+ * through the (clan_id, player_id, captured_at) key, so a rank held for months
+ * before the window is still the "from".
+ */
+function recentRankChanges(clanId, sinceIso, limit = 20) {
+    const rows = (0, database_js_1.getDb)().prepare(`
+    SELECT h.player_id, h.captured_at, h.name, h.role,
+           (SELECT p.role FROM game_player_history p
+             WHERE p.clan_id = h.clan_id AND p.player_id = h.player_id
+               AND p.captured_at < h.captured_at AND p.role IS NOT NULL
+             ORDER BY p.captured_at DESC LIMIT 1) AS prev_role,
+           (SELECT m.id FROM members m
+             WHERE m.clan_id = h.clan_id AND m.game_player_id = h.player_id
+             ORDER BY m.is_active DESC, m.id DESC LIMIT 1) AS member_id
+      FROM game_player_history h
+     WHERE h.clan_id = ? AND h.captured_at >= ? AND h.role IS NOT NULL
+     ORDER BY h.captured_at DESC
+  `).all(clanId, sinceIso);
+    const out = [];
+    for (const r of rows) {
+        if (r.prev_role === null || r.prev_role === r.role)
+            continue;
+        out.push({
+            playerId: r.player_id,
+            memberId: r.member_id,
+            name: r.name,
+            at: r.captured_at,
+            from: r.prev_role,
+            to: r.role,
+            promoted: r.role < r.prev_role,
+        });
+        if (out.length >= limit)
+            break;
+    }
+    return out;
 }
 //# sourceMappingURL=roster-changes-repo.js.map
