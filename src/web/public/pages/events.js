@@ -24,8 +24,13 @@
 // and any event when the calendar feed is unavailable — fall back to the classic
 // Weekly/Monthly/Yearly/All game-window selector (same as Leaderboard/Resources).
 // Timeframe state is module-local and repaints in place, so changing it never
-// changes the selected event sub-tab (the sub-tab is the hash route). Mirrors
-// pages/resources-totals.js.
+// changes the selected event sub-tab (the sub-tab is the hash route).
+//
+// Redesign (wave 2, Nov 2026): built on the UI kit (lib/ui-kit.js,
+// docs/design-standard.md) — the sub-tab bar (each event's schedule as its
+// badge), the event's name + timeframe control (the kit scrubber for
+// fixed windows; the same look stepping run by run), stat tiles, the
+// Scores | Participants segmented control, and the tables in .ui-table-card.
 
 import { api } from '../lib/api.js';
 import { esc, memberLink, formatDate, chestHash, sourceLink, parseHashRoute } from '../lib/ui.js';
@@ -34,11 +39,14 @@ import { nameWithGoldPassHtml } from '../lib/guards-format.js';
 import {
   computeGameWindow, gameDaysUntil, gameDayKeyFor, periodOffsetFromAnchor,
 } from '../lib/period.js';
-import { renderPeriodNav } from '../lib/period-nav.js';
 import { formatResourceAmount, formatResourceCompact } from '../lib/resource-format.js';
 import { mountTinmanScores, prefetchTinmanScores } from './tinman-scores.js';
 import { fetchGameStandings, mountGameStandings, renderGameRankings } from './game-standings.js';
-import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
+import {
+  subTabsHtml, segHtml, periodScrubberHtml, wirePeriodScrubber, setPageActions, tileHtml,
+  notesHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, asList,
+} from '../lib/ui-kit.js';
+import { getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestIconUrl, chestLabelHtml } from '../lib/game-art.js';
 
@@ -63,7 +71,6 @@ const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok', 'dark-omen
 // stays put while they step through runs, and Scores stays open on an empty
 // run (an admin about to paste day 1) — except that a Scores pick still falls
 // back to Participants on the next run that has no scores.
-const VIEW_GROUP = 'events-view';
 let eventsViewPick = 'scores';  // 'scores' | 'participants' — the last tab clicked
 let eventsView = 'scores';      // the tab shown for the current run
 
@@ -85,6 +92,7 @@ let sort = { key: 'points', dir: 'desc' };
 let currentEventKey = null;
 let catalog = null;      // [{ key, name, order, description }]
 let cache = null;        // current EventBreakdown from the API
+let loadRefusal = '';    // the server's words when it refused the breakdown
 // The run's standings read from the game (message 38003, every scan) for the
 // selected window — { run, standings } or null. When present they come first
 // and the pasted-standings card folds away (it stays for runs the game
@@ -125,8 +133,9 @@ export async function renderEvents(el, navigate, eventKey) {
     } catch { /* keep the last-known catalog (possibly null → handled below) */ }
     if (!catalog) catalog = [];
   }
+  setPageActions('');
   if (!catalog.length) {
-    el.innerHTML = `<div class="card"><div class="card-body"><p>${t('No events configured.')}</p></div></div>`;
+    el.innerHTML = emptyHtml(t('No events configured.'));
     return;
   }
 
@@ -137,7 +146,9 @@ export async function renderEvents(el, navigate, eventKey) {
   // outage) falls back to the first event in catalog order (Ancients).
   if (wanted === IN_GAME_KEY) {
     currentEventKey = IN_GAME_KEY;
-    el.innerHTML = `${eventTabsHtml(IN_GAME_KEY)}<div class="game-rankings-mount"></div>`;
+    el.innerHTML = `<div class="ev">${eventTabsHtml(IN_GAME_KEY)}<div class="game-rankings-mount"></div></div>`;
+    centreCurrentTab(el);
+    startScheduleRefresh();
     await renderGameRankings(el.querySelector('.game-rankings-mount'));
     return;
   }
@@ -146,7 +157,8 @@ export async function renderEvents(el, navigate, eventKey) {
 
   page = 1;
   sort = { key: 'points', dir: 'desc' };  // columns differ per event → fresh sort
-  el.innerHTML = `${eventTabsHtml(currentEventKey)}<div class="empty-state"><p>${t('Loading…')}</p></div>`;
+  el.innerHTML = `<div class="ev">${eventTabsHtml(currentEventKey)}${emptyHtml(t('Loading…'))}</div>`;
+  centreCurrentTab(el);
 
   // Load this event's occurrence windows. mode:'occurrences' (feed runs) or
   // 'cycle' (Triumphal's rolling 30 days) with a non-empty list → occurrence
@@ -193,14 +205,14 @@ function applyRunFromHash() {
 // Keep the tab schedule tags live: every minute re-pull the (feed-cached, cheap)
 // catalog so `live`/next-occurrence stay current, and re-render the tab bar so
 // the countdown ticks down. Self-cleans once the Events page is unmounted (the
-// router swaps the container contents, so the .events-tabs bar disappears).
+// router swaps the container contents, so the .ev-tabs bar disappears).
 function startScheduleRefresh() {
   if (scheduleTimer) clearInterval(scheduleTimer);
   scheduleTimer = setInterval(refreshScheduleTags, 60_000);
 }
 
 async function refreshScheduleTags() {
-  if (!mountedEl || !mountedEl.querySelector('.events-tabs')) {
+  if (!mountedEl || !mountedEl.querySelector('.ev-tabs')) {
     clearInterval(scheduleTimer);
     scheduleTimer = null;
     return;
@@ -209,8 +221,14 @@ async function refreshScheduleTags() {
     const res = await api('/events');
     if (Array.isArray(res?.events) && res.events.length) catalog = res.events;
   } catch { /* keep last-known catalog; tab still re-renders the countdown */ }
-  const bar = mountedEl && mountedEl.querySelector('.events-tabs');
-  if (bar) bar.outerHTML = eventTabsHtml(currentEventKey);
+  const bar = mountedEl && mountedEl.querySelector('.ev-tabs');
+  if (!bar) return;
+  const strip = bar.querySelector('.ui-subtabs');
+  const scrolled = strip ? strip.scrollLeft : 0;
+  bar.outerHTML = eventTabsHtml(currentEventKey);
+  // Keep a phone's sideways strip where the reader left it.
+  const fresh = mountedEl.querySelector('.ev-tabs .ui-subtabs');
+  if (fresh) fresh.scrollLeft = scrolled;
 }
 
 // Which event a bare #events resolves to: the first live one in catalog order
@@ -220,34 +238,45 @@ function defaultEventKey() {
   return (live || catalog[0]).key;
 }
 
-// Event sub-tab bar — reuses the generic .resources-tabs segmented control.
-// Every tab links to #events/<key>, including the first: a bare #events means
-// "whatever is live", so the first event needs its own explicit route to stay
-// selectable while something else is running. Plain hash links, so clicking one
-// navigates (hashchange → renderEvents) — the only path that changes the
-// selected event.
+// Event sub-tab bar — the kit's (subTabsHtml): real links to #events/<key>,
+// the current one aria-current="page". Every tab links to its own route,
+// including the first: a bare #events means "whatever is live", so the first
+// event needs an explicit route to stay selectable while something else runs.
+// Clicking one navigates (hashchange → renderEvents) — the only path that
+// changes the selected event. Each event's schedule rides in the tab's badge.
+// Desktop wraps the bar (a dozen events don't fit one row and nothing should
+// hide off to the side); a phone keeps the kit's sideways strip, scrolled so
+// the current event is in view (centreCurrentTab).
 function eventTabsHtml(activeKey) {
-  return `<div class="resources-tabs events-tabs" role="tablist">${catalog
-    .map((e) => {
-      const href = `#events/${e.key}`;
-      const active = e.key === activeKey ? 'is-active' : '';
-      return `<a class="resources-tab ${active}" href="${href}"><span class="event-tab-name">${esc(tGame(e.name))}</span>${eventScheduleTag(e)}</a>`;
-    })
-    .join('')}<a class="resources-tab ${activeKey === IN_GAME_KEY ? 'is-active' : ''}" href="#events/${IN_GAME_KEY}"><span class="event-tab-name">${esc(t('In-game rankings'))}</span></a></div>`;
+  const items = catalog.map((e) => ({
+    key: e.key,
+    label: tGame(e.name),
+    href: `#events/${e.key}`,
+    count: eventScheduleTag(e),
+  }));
+  items.push({ key: IN_GAME_KEY, label: t('In-game rankings'), href: `#events/${IN_GAME_KEY}` });
+  return `<div class="ev-tabs">${subTabsHtml({ label: t('Events'), items, current: activeKey })}</div>`;
 }
 
-// Small schedule sub-line under an event tab: "Live now" while a run is in
-// progress, else "<date> · in Nd" for the next upcoming run. A rolling-cycle
-// event (Triumphal) is always running, so a "live" badge would say nothing —
-// it gets the countdown to its next reset instead. Nothing for events with no
-// schedule at all (Citadels) or a down feed.
+// The schedule in an event tab's badge (plain text — the kit escapes it):
+// "● Live now" while a run is in progress, else "in Nd" for the next run. A
+// rolling-cycle event (Triumphal) is always running, so a "live" badge would
+// say nothing — it gets the countdown to its next reset instead. No badge for
+// events with no schedule at all (Citadels, Heroics) or a down feed.
 function eventScheduleTag(e) {
-  if (e.endsAt) return `<span class="event-tab-next">${t('Resets in {time}', { time: esc(timeLeftUntil(e.endsAt)) })}</span>`;
-  if (e.live) return `<span class="event-tab-next is-live">${t('Live now')}</span>`;
-  // No schedule (Citadels, Heroics) still gets the line, empty: a tab without
-  // it centred its one line and sat its name lower than every neighbour's.
-  if (!e.nextFrom || !e.nextLabel) return '<span class="event-tab-next" aria-hidden="true">&nbsp;</span>';
-  return `<span class="event-tab-next">${esc(e.nextLabel)} · ${esc(relativeUntil(e.nextFrom))}</span>`;
+  if (e.endsAt) return t('Resets in {time}', { time: timeLeftUntil(e.endsAt) });
+  if (e.live) return `● ${t('Live now')}`;
+  if (!e.nextFrom) return null;
+  return relativeUntil(e.nextFrom);
+}
+
+// On a phone the tab strip scrolls sideways: bring the current event into
+// view (scrollLeft only — never scrolls the page). A no-op where it wraps.
+function centreCurrentTab(root) {
+  const strip = root.querySelector('.ev-tabs .ui-subtabs');
+  const tab = strip?.querySelector('[aria-current="page"]');
+  if (!strip || !tab || strip.scrollWidth <= strip.clientWidth) return;
+  strip.scrollLeft = Math.max(0, tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2);
 }
 
 // Compact countdown to an upcoming ISO timestamp, single unit, stepping down as
@@ -291,7 +320,7 @@ function periodWindow() {
     const occ = occurrences[occSel] || occurrences[0];
     return { from: occ.from, to: occ.to };
   }
-  const win = computeGameWindow(period, periodOffset);
+  const win = computeGameWindow(period, periodOffset, getGameDayRolloverUtcHour(), getWeekStart());
   return win ? { from: win.from, to: win.to } : { from: '', to: '' };
 }
 
@@ -312,9 +341,13 @@ async function reload() {
       api('/members'),  // active members only — for the non-participants list
       loadGameArt(),    // the Finish Reward cards' chest pictures (never rejects)
     ]);
-    cache = breakdown;
-    activeMembers = Array.isArray(membersRes) ? membersRes : [];
+    // api() hands back whatever JSON the server sent: a refusal (a 429, a
+    // 500's { error, ref }) is an object without `players` — the error state.
+    loadRefusal = refusalText(breakdown);
+    cache = breakdown && Array.isArray(breakdown.players) ? breakdown : null;
+    activeMembers = asList(membersRes);
   } catch {
+    loadRefusal = '';
     cache = null;
   }
   // null (couldn't tell) keeps the pick: the card shows its own load error.
@@ -453,74 +486,70 @@ function columnBreakdownTip(column, row) {
     .join(' · ');
 }
 
-// Fixed Weekly/Monthly/Yearly/All selector — the fallback for events with no
-// calendar schedule (Triumphal, Citadels) or when the feed is unavailable.
+// Fixed Week / Month / Year / All — the kit's period scrubber, for events with
+// no calendar schedule (Citadels, Heroics) or when the feed is unavailable.
 function fixedControlsHtml() {
-  const periodLabels = { weekly: t('Weekly'), monthly: t('Monthly'), yearly: t('Yearly'), all: t('All') };
-  const periodBtns = PERIODS.map(
-    (p) => `<button class="btn ${period === p ? 'active' : ''}" data-tperiod="${p}">${periodLabels[p]}</button>`,
-  ).join('');
-  return `
-    <div class="period-selector">${periodBtns}</div>
-    ${renderPeriodNav({
-      period,
-      offset: periodOffset,
-      prevAttr: 'data-tperiod-nav="prev"',
-      nextAttr: 'data-tperiod-nav="next"',
-      navClass: 'events-nav',
-    })}`;
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  return periodScrubberHtml({
+    periods: PERIODS, period, offset: periodOffset, rolloverHr, weekStart,
+    win: computeGameWindow(period, periodOffset, rolloverHr, weekStart),
+  });
 }
 
-// Per-occurrence selector — one event run per step (← older / → newer), plus an
-// "All time" toggle that aggregates across every run. `occSel` is the index or
-// 'all'. ← moves to an older run (higher index, list is newest-first).
+// Run by run: the scrubber's look (kit classes) over this event's occurrences —
+// "One run | All time", then ‹ the run › with what it is under the dates (live,
+// a cycle's reset, projected dates). `occSel` is the index or 'all'; ‹ moves to
+// an older run (higher index, the list is newest-first). In "All time" the
+// arrows stay enabled as the way back into the list (‹ the oldest, › the newest).
 function occurrenceControlsHtml() {
   const len = occurrences.length;
   const isAll = occSel === 'all';
+  const isCycle = occMode === 'cycle';
   const occ = isAll ? null : (occurrences[occSel] || occurrences[0]);
   const label = isAll ? t('All time') : (occ ? occ.label : '');
-  // "live" reads as part of the label ("Jul 26–30 · live") rather than as a
-  // separate badge floating in the nav's fixed-width slot. Skipped in cycle mode:
-  // the newest cycle is always the live one, so the flag carries no information —
-  // the window's hover text gives the reset countdown instead.
   const isCurrent = !isAll && occ && occ.isCurrent;
-  const live = isCurrent && occMode !== 'cycle'
-    ? `<span class="events-occ-live" title="${t('Event in progress')}">${t('· live')}</span>`
+  // Under the dates, plain facts: a run in progress; the newest cycle's reset
+  // (a cycle is always "live", so the countdown is what says something); and
+  // runs older than the feed's ~1-month reach, whose dates are projected from
+  // the event's cadence (only the window's edges are inferred, the totals are
+  // the clan's own chests — a footnote, not a warning).
+  const facts = [];
+  if (isCurrent && !isCycle) facts.push(`● ${t('Live now')}`);
+  if (isCurrent && isCycle && occ.to) facts.push(t('Current cycle — resets in {time}', { time: timeLeftUntil(occ.to) }));
+  if (!isAll && occ && occ.estimated) facts.push(t('Estimated dates'));
+  const estTitle = !isAll && occ && occ.estimated
+    ? t("Dates projected from this event's schedule — the calendar feed only carries about a month of history")
     : '';
-  // Runs older than the calendar feed's ~1-month reach have dates projected
-  // from the event's cadence, not read from the feed. The totals are still the
-  // clan's own chests — only the window's edges are inferred — so this is a
-  // quiet footnote on the label, not a warning.
-  const est = !isAll && occ && occ.estimated
-    ? `<span class="events-occ-est" title="${esc(t("Dates projected from this event's schedule — the calendar feed only carries about a month of history"))}">${t('· est.')}</span>`
-    : '';
-  const labelTitle = isCurrent && occMode === 'cycle' && occ.to
-    ? ` title="${t('Current cycle — resets in {time}', { time: esc(timeLeftUntil(occ.to)) })}"`
-    : '';
-  // In "All time" the arrows stay ENABLED and act as the way back into the
-  // occurrence list (← → the oldest / newest run) — otherwise the only exit is
-  // re-clicking the highlighted toggle, which isn't discoverable.
   const prevDisabled = !isAll && occSel >= len - 1;
   const nextDisabled = !isAll && occSel <= 0;
-  // Cycle mode steps through 30-day cycles, not discrete runs — say so in the
-  // arrow tooltips rather than calling them "occurrences".
-  const isCycle = occMode === 'cycle';
   const prevTitle = isAll
     ? (isCycle ? t('Oldest cycle') : t('Oldest occurrence'))
     : (isCycle ? t('Older cycle') : t('Older occurrence'));
   const nextTitle = isAll
     ? (isCycle ? t('Newest cycle') : t('Newest occurrence'))
     : (isCycle ? t('Newer cycle') : t('Newer occurrence'));
-  const allTitle = isAll
-    ? (isCycle ? t('Showing all cycles — pick a single one with the arrows') : t('Showing all occurrences — pick a single one with the arrows'))
-    : (isCycle ? t('Aggregate across all cycles') : t('Aggregate across all occurrences'));
-  return `
-    <div class="period-nav events-nav">
-      <button class="btn btn-tight" data-occ-nav="prev" ${prevDisabled ? 'disabled' : ''} title="${prevTitle}">←</button>
-      <span class="period-nav-label"${labelTitle}>${esc(label)}${live}${est}</span>
-      <button class="btn btn-tight" data-occ-nav="next" ${nextDisabled ? 'disabled' : ''} title="${nextTitle}">→</button>
-    </div>
-    <button class="btn ${isAll ? 'active' : ''}" data-occ-all title="${allTitle}">${t('All time')}</button>`;
+  const seg = segHtml({
+    label: t('Timeframe'),
+    items: [
+      { value: 'run', label: isCycle ? t('One cycle') : t('One run') },
+      { value: 'all', label: t('All time') },
+    ],
+    current: isAll ? 'all' : 'run',
+    attr: 'ev-occ',
+  });
+  const short = [label, isCurrent && !isCycle ? t('Live now') : ''].filter(Boolean).join(' · ');
+  return `<div class="ui-period">
+      ${seg}
+      <div class="ui-step">
+        <button type="button" class="ui-arrow" data-occ-nav="prev" aria-label="${esc(prevTitle)}" title="${esc(prevTitle)}"${prevDisabled ? ' disabled' : ''}>‹</button>
+        <div class="ui-when"${estTitle ? ` title="${esc(estTitle)}"` : ''}>
+          <span class="ui-when-label">${esc(label)}</span>${facts.length ? `<span class="ui-when-sub${isCurrent && !isCycle ? ' ev-live' : ''}">${esc(facts.join(' · '))}</span>` : ''}
+          <span class="ui-when-short">${esc(short)}</span>
+        </div>
+        <button type="button" class="ui-arrow" data-occ-nav="next" aria-label="${esc(nextTitle)}" title="${esc(nextTitle)}"${nextDisabled ? ' disabled' : ''}>›</button>
+      </div>
+    </div>`;
 }
 
 /**
@@ -586,23 +615,15 @@ function eventSeriesCardHtml() {
     ? Math.round(((latest.points - prior.points) / prior.points) * 100)
     : null;
 
-  return `
-    <div class="card mt-24">
-      <div class="card-header">
-        <h2>${t('Run over run')}</h2>
-        <span class="card-header-hint">${t('Points per occurrence · newest on the right')}</span>
+  return tileHtml('ev-series', t('Run over run'), `
+      <p class="ui-sub">${t('Points per occurrence · newest on the right')}</p>
+      <div class="evseries-chart">${bars}</div>
+      <div class="evseries-labels">
+        <span>${esc(runs[0]?.label || '')}</span>
+        <span>${esc(runs[runs.length - 1]?.label || '')}</span>
       </div>
-      <div class="card-body card-body-padded">
-        <div class="evseries-chart">${bars}</div>
-        <div class="evseries-labels">
-          <span>${esc(runs[0]?.label || '')}</span>
-          <span>${esc(runs[runs.length - 1]?.label || '')}</span>
-        </div>
-        ${delta !== null ? `<p class="muted-copy evseries-note">
-          ${seriesDeltaSentence(delta, latest.isCurrent)}
-        </p>` : ''}
-      </div>
-    </div>`;
+      ${delta !== null ? `<p class="ui-copy evseries-note">${seriesDeltaSentence(delta, latest.isCurrent)}</p>` : ''}`,
+  { span: 12 });
 }
 
 function paint() {
@@ -610,8 +631,9 @@ function paint() {
   const el = mountedEl;
 
   if (!cache) {
-    el.innerHTML = `${eventTabsHtml(currentEventKey)}<div class="card"><div class="card-body"><p>${t('Failed to load event data.')}</p></div></div>`;
-    wireTabsOnly();
+    el.innerHTML = `<div class="ev">${eventTabsHtml(currentEventKey)}${errorStateHtml(t('Failed to load event data.'), loadRefusal)}</div>`;
+    centreCurrentTab(el);
+    wireRetry(el, reload);
     return;
   }
 
@@ -661,10 +683,17 @@ function paint() {
   const avgPer = cache.uniqueParticipants > 0
     ? Math.round((tableTotal / cache.uniqueParticipants) * 10) / 10
     : 0;
-  // Optional lead card, e.g. Ancients "Vaults Taken Down" — every leveled
+  // A stat tile (kit: .ui-tile + .ui-stat-label / .ui-big / .ui-sub). `label`
+  // and `sub` are HTML; `lead` marks the event's own headline (gold edge).
+  const stat = (label, value, { sub = '', lead = false, title = '' } = {}) => `<div class="ui-tile ev-stat${lead ? ' is-lead' : ''}"${title ? ` title="${esc(title)}"` : ''}>
+      <span class="ui-stat-label">${label}</span>
+      <span class="ui-big">${value}</span>
+      ${sub ? `<span class="ui-sub">${sub}</span>` : ''}
+    </div>`;
+  // Optional lead tile, e.g. Ancients "Vaults Taken Down" — every leveled
   // (vault) chest is one vault kill, so sum the level-card chest counts.
   const vaultsCard = cache.levelSummaryLabel
-    ? `<div class="stat-card stat-card-lead"><div class="label">${esc(tGame(cache.levelSummaryLabel))}</div><div class="value">${(Array.isArray(cache.levelCard) ? cache.levelCard.reduce((s, l) => s + (l.chests || 0), 0) : 0).toLocaleString()}</div></div>`
+    ? stat(esc(tGame(cache.levelSummaryLabel)), (Array.isArray(cache.levelCard) ? cache.levelCard.reduce((s, l) => s + (l.chests || 0), 0) : 0).toLocaleString(), { lead: true })
     : '';
   // Info-card lead boxes for rarely-awarded chests (e.g. Dark Omens' leader
   // "Finish Reward"): show who received it in this timeframe, not a column.
@@ -695,32 +724,27 @@ function paint() {
     const cardLabel = ic.chestName && chestIconUrl(ic.chestName)
       ? chestLabelHtml(ic.chestName, esc(tGame(ic.label)), { size: 22 })
       : `🏆 ${esc(tGame(ic.label))}`;
-    return `<div class="stat-card stat-card-lead" title="${esc(cardTitle)}">
-      <div class="label">${cardLabel}</div>
-      <div class="value">${value}</div>
-      <div class="events-finish-sub">${sub}</div>
-    </div>`;
+    return stat(cardLabel, value, { sub, lead: true, title: cardTitle });
   }).join('');
   // ── catalog-vs-data mismatches ──
   // A rule that resolves to nothing renders as a column of zeros, which is
   // indistinguishable from a week nobody played — that is exactly how the
   // Ragnarok/Jörmungandr rename went unnoticed. Say so out loud instead.
-  const configErrors = Array.isArray(cache.configErrors) ? cache.configErrors : [];
+  // A plain notice box (kit notesHtml): what doesn't match, said as facts.
+  const configErrors = asList(cache.configErrors);
   const configWarnHtml = configErrors.length
-    ? `<div class="events-config-warning">
-        <div class="events-config-warning-title">${t("⚠ This event's chest list doesn't match the data")}</div>
-        <ul>${configErrors
-          .map((e) => {
-            if (e.kind === 'source') {
-              return `<li>${t('Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.', { declared: esc(e.declared) })}</li>`;
-            }
-            if (e.resolvedTo) {
-              return `<li>${t('<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.', { declared: esc(e.declared), resolved: esc(e.resolvedTo) })}</li>`;
-            }
-            return `<li>${t('<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.', { declared: esc(e.declared) })}</li>`;
-          })
-          .join('')}</ul>
-      </div>`
+    ? notesHtml([
+      `<strong class="ev-config-title">${t("⚠ This event's chest list doesn't match the data")}</strong>`,
+      ...configErrors.map((e) => {
+        if (e.kind === 'source') {
+          return t('Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.', { declared: esc(e.declared) });
+        }
+        if (e.resolvedTo) {
+          return t('<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.', { declared: esc(e.declared), resolved: esc(e.resolvedTo) });
+        }
+        return t('<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.', { declared: esc(e.declared) });
+      }),
+    ])
     : '';
 
   // Triumphal only: who held a Gold Pass in the cycle on screen, as the game
@@ -728,25 +752,25 @@ function paint() {
   // game history starts has no answer, so no count rather than a zero.
   const goldPassIds = new Set(Array.isArray(cache.goldPass?.memberIds) ? cache.goldPass.memberIds : []);
   const goldPassCard = cache.goldPass && cache.goldPass.basis !== 'none'
-    ? `<div class="stat-card" title="${esc(cache.goldPass.basis === 'partial'
-      ? t('Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it')
-      : t('Members the game showed with the Gold Pass at some point in this cycle'))}">
-        <div class="label">${t('Gold Pass')}</div><div class="value">${goldPassIds.size.toLocaleString()}</div>
-        <div class="sub">${tn(cache.uniqueParticipants || 0, 'of {n} participant', 'of {n} participants')}</div>
-      </div>`
+    ? stat(t('Gold Pass'), goldPassIds.size.toLocaleString(), {
+      sub: tn(cache.uniqueParticipants || 0, 'of {n} participant', 'of {n} participants'),
+      title: cache.goldPass.basis === 'partial'
+        ? t('Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it')
+        : t('Members the game showed with the Gold Pass at some point in this cycle'),
+    })
     : '';
   const goldPassTitle = t('Gold Pass in the cycle shown, as the game reported it');
 
   const statCards = `
     ${configWarnHtml}
-    <div class="stats-grid">
+    <div class="ev-stats">
       ${finishCards}
       ${vaultsCard}
       ${goldPassCard}
-      <div class="stat-card"><div class="label">${t('Total Chests')}</div><div class="value">${(cache.totalChests || 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">${t('Participants')}</div><div class="value">${(cache.uniqueParticipants || 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">${t('Total Points')}</div><div class="value">${(cache.totalPoints || 0).toLocaleString()}</div></div>
-      <div class="stat-card"><div class="label">${t('Avg / Participant')}</div><div class="value">${avgPer.toLocaleString()}</div></div>
+      ${stat(t('Total Chests'), (cache.totalChests || 0).toLocaleString())}
+      ${stat(t('Participants'), (cache.uniqueParticipants || 0).toLocaleString())}
+      ${stat(t('Total Points'), (cache.totalPoints || 0).toLocaleString())}
+      ${stat(t('Avg / Participant'), avgPer.toLocaleString())}
     </div>`;
 
   // ── optional level-distribution card (vaults) ──
@@ -764,18 +788,16 @@ function paint() {
       )
       .join('');
     levelCardHtml = `
-      <div class="card">
-        <div class="card-header"><h2>${t('By level')}</h2></div>
-        <div class="card-body">
-          <div class="events-scroll">
-            <table class="table-responsive events-level-table">
-              <colgroup><col class="col-level"><col class="col-num"><col class="col-num"><col class="col-num"></colgroup>
-              <thead><tr><th>${esc(levelHeader)}</th><th class="num">${t('Players')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Points')}</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
+      <section class="ev-section" aria-labelledby="ev-levels-title">
+        <h2 class="ev-section-title" id="ev-levels-title">${t('By level')}</h2>
+        <div class="ui-table-card">
+          <table class="table-responsive ui-table events-level-table">
+            <colgroup><col class="col-level"><col class="col-num"><col class="col-num"><col class="col-num"></colgroup>
+            <thead><tr><th>${esc(levelHeader)}</th><th class="num">${t('Players')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Points')}</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
         </div>
-      </div>`;
+      </section>`;
   }
 
   // ── per-player matrix ──
@@ -881,66 +903,75 @@ function paint() {
   const participantsHtml = `
     ${eventSeriesCardHtml()}
     ${levelCardHtml}
-    <div class="card">
-      <div class="card-header"><h2>${t('Participants ({count})', { count: cache.uniqueParticipants || 0 })}</h2></div>
-      <div class="card-body">
-        <div class="events-scroll">
-          <table class="table-responsive events-table">
-            ${colGroup}
-            <thead><tr>
-              <th class="caret-col"></th>
-              ${th('rank', t('Rank'))}
-              ${th('name', t('Player'))}
-              ${headCols}
-              ${essenceHead}
-              ${th('total', t('Total'), 'num', totalTitle)}
-              ${th('points', t('Points'), 'num')}
-            </tr></thead>
-            <tbody>${body}</tbody>
-          </table>
-        </div>
+    <section class="ev-section" aria-labelledby="ev-players-title">
+      <h2 class="ev-section-title" id="ev-players-title">${t('Participants ({count})', { count: cache.uniqueParticipants || 0 })}</h2>
+      <div class="ui-table-card">
+        <table class="table-responsive ui-table events-table">
+          ${colGroup}
+          <thead><tr>
+            <th class="caret-col"></th>
+            ${th('rank', t('Rank'))}
+            ${th('name', t('Player'))}
+            ${headCols}
+            ${essenceHead}
+            ${th('total', t('Total'), 'num', totalTitle)}
+            ${th('points', t('Points'), 'num')}
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
         ${pagination}
       </div>
-    </div>
+    </section>
     ${nonParticipantsHtml}`;
 
   // Events with pasted scores split the page: Scores (the card plus Ancients'
-  // "Below target") and Participants (everything chest-based) under one shared
-  // header, so neither has to be scrolled past to reach the other.
+  // "Below target") and Participants (everything chest-based), one choice of
+  // two — the kit's segmented control — so neither has to be scrolled past.
   const hasScores = SCORES_EVENT_KEYS.has(currentEventKey);
   // Ancients: the Tin Man card is itself the game's per-summon view whenever
   // the game covers the run (routes/tinman.ts), so no separate game card and
   // nothing folded — the card drops its paste form on its own.
   const tinmanFromGame = currentEventKey === 'ancients';
+  const scoresPanel = tinmanFromGame
+    ? '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'
+    : `<div class="game-standings-mount"></div>${gameStandings
+      ? `<details class="card-collapsible events-paste-fold" data-section-key="events-paste"><summary>${esc(t('Standings pasted by hand'))}<span class="card-header-hint">${esc(t('Not needed while the game\'s standings are read every scan.'))}</span></summary><div class="tinman-mount"></div></details><div class="tinman-below-mount"></div>`
+      : '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'}`;
   const viewsHtml = hasScores
-    ? `${viewTabsHtml(VIEW_GROUP, [
-        // Dark Omens' pasted ranking is Spoils of Dread damage, beside the
-        // Essence column under Participants — "Scores" would say neither.
-        { key: 'scores', label: currentEventKey === 'dark-omens' ? t('Damage') : t('Scores') },
-        { key: 'participants', label: t('Participants ({count})', { count: cache.uniqueParticipants || 0 }) },
-      ], eventsView)}
-      ${viewPanelHtml(VIEW_GROUP, 'scores', eventsView, tinmanFromGame ? '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>' : `<div class="game-standings-mount"></div>${gameStandings
-        ? `<details class="card-collapsible events-paste-fold" data-section-key="events-paste"><summary>${esc(t('Standings pasted by hand'))}<span class="card-header-hint">${esc(t('Not needed while the game\'s standings are read every scan.'))}</span></summary><div class="tinman-mount"></div></details><div class="tinman-below-mount"></div>`
-        : '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'}`)}
-      ${viewPanelHtml(VIEW_GROUP, 'participants', eventsView, participantsHtml)}`
+    ? `<div class="ev-views">${segHtml({
+        label: t('Show'),
+        items: [
+          // Dark Omens' pasted ranking is Spoils of Dread damage, beside the
+          // Essence column under Participants — "Scores" would say neither.
+          { value: 'scores', label: currentEventKey === 'dark-omens' ? t('Damage') : t('Scores') },
+          { value: 'participants', label: t('Participants ({count})', { count: cache.uniqueParticipants || 0 }) },
+        ],
+        current: eventsView,
+        attr: 'ev-view',
+      })}</div>
+      <div class="ev-panel" data-ev-panel="scores"${eventsView === 'scores' ? '' : ' hidden'}>${scoresPanel}</div>
+      <div class="ev-panel" data-ev-panel="participants"${eventsView === 'participants' ? '' : ' hidden'}>${participantsHtml}</div>`
     : `<div class="game-standings-mount"></div>${participantsHtml}`;
 
-  el.innerHTML = `
+  // The event's own name and line, with the timeframe control beside them;
+  // the page title above stays the shell's ("Events").
+  const desc = tGame(cache.description) || '';
+  el.innerHTML = `<div class="ev">
     ${eventTabsHtml(currentEventKey)}
-    <div class="card">
-      <div class="card-header events-header">
-        <div class="events-title">
-          <h2>${esc(tGame(cache.name))}</h2>
-          <span class="card-header-hint">${esc(tGame(cache.description) || '')}</span>
-        </div>
-        <div class="events-controls">${controlsHtml}</div>
+    <section class="ev-head" aria-labelledby="ev-name">
+      <div class="ev-title">
+        <h2 class="ev-name" id="ev-name">${esc(tGame(cache.name))}</h2>
+        ${desc ? `<p class="ui-copy">${esc(desc)}</p>` : ''}
       </div>
-      <div class="card-body card-body-padded">${statCards}</div>
-    </div>
-    ${viewsHtml}`;
+      <div class="ev-when">${controlsHtml}</div>
+    </section>
+    ${statCards}
+    ${viewsHtml}
+  </div>`;
 
+  centreCurrentTab(el);
   wire(el);
-  wireViewTabs(el, VIEW_GROUP, (key) => { eventsView = key; eventsViewPick = key; });
+  wireViews(el);
   if (!tinmanFromGame) mountGameStandings(el.querySelector('.game-standings-mount'), gameStandings);
   if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
@@ -1005,23 +1036,22 @@ function wire(el) {
     });
   });
 
-  el.querySelectorAll('[data-tperiod]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      period = btn.dataset.tperiod;
-      periodOffset = 0;
-      page = 1;
-      await reload();
+  // The fixed Week / Month / Year / All scrubber (events with no schedule).
+  if (!occurrences.length) {
+    wirePeriodScrubber(el, {
+      onPeriod: async (p) => {
+        period = p;
+        periodOffset = 0;
+        page = 1;
+        await reload();
+      },
+      onStep: async (delta) => {  // +1 = earlier
+        periodOffset = Math.max(0, periodOffset + delta);
+        page = 1;
+        await reload();
+      },
     });
-  });
-
-  el.querySelectorAll('[data-tperiod-nav]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      periodOffset += btn.dataset.tperiodNav === 'next' ? -1 : 1;
-      if (periodOffset < 0) periodOffset = 0;
-      page = 1;
-      await reload();
-    });
-  });
+  }
 
   // Occurrence selector: ← older (index+1), → newer (index-1); newest-first.
   // From "All time" the arrows drop back into the list — → newest, ← oldest.
@@ -1040,19 +1070,37 @@ function wire(el) {
     });
   });
 
-  const occAll = el.querySelector('[data-occ-all]');
-  if (occAll) {
-    occAll.addEventListener('click', async () => {
-      occSel = occSel === 'all' ? 0 : 'all';
+  // One run | All time (the kit's segmented control): All time aggregates
+  // every run; One run goes back to the newest.
+  el.querySelectorAll('[data-ev-occ]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const want = btn.dataset.evOcc === 'all' ? 'all' : 0;
+      if ((want === 'all') === (occSel === 'all')) return;
+      occSel = want;
       page = 1;
       await reload();
     });
-  }
+  });
 }
 
-// When we can only render the tab bar (load error), the tabs are plain hash
-// links so no wiring is strictly needed — kept for symmetry/future use.
-function wireTabsOnly() {}
+// Scores | Participants: show one panel, remember the pick (reload() reuses it
+// for the next run, falling back to Participants on a run with no scores).
+function wireViews(el) {
+  el.querySelectorAll('[data-ev-view]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.evView;
+      if (key === eventsView) return;
+      eventsView = key;
+      eventsViewPick = key;
+      el.querySelectorAll('[data-ev-view]').forEach((b) => {
+        const on = b.dataset.evView === key;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      el.querySelectorAll('[data-ev-panel]').forEach((p) => { p.hidden = p.dataset.evPanel !== key; });
+    });
+  });
+}
 
 // Expand/collapse a participant row to show that member's chest breakdown for
 // the current event + timeframe (grouped by chest name + source), mirroring
