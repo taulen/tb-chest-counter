@@ -630,18 +630,23 @@ export async function renderUsers(el) {
    * chat follow their player's rank, and old password accounts have none.
    */
   const rowClanId = (u) => u.clanId ?? null;
-  const gameLinkFor = (u) => (u.gameLinks || []).find((l) => l.clanId === rowClanId(u)) || null;
+  // Every player this account has in the row's clan (alts: several, v130).
+  const gameLinksFor = (u) => (u.gameLinks || []).filter((l) => l.clanId === rowClanId(u));
+  const gameLinkFor = (u) => gameLinksFor(u)[0] || null;
   const gameLinkLine = (u) => {
     if (u.role === 'superadmin') return '';
-    const link = gameLinkFor(u);
-    if (!link) return `<span class="user-game-link is-unlinked">${t('Not linked (old account)')}</span>`;
+    const links = gameLinksFor(u);
+    if (!links.length) return `<span class="user-game-link is-unlinked">${t('Not linked (old account)')}</span>`;
+    return links.map((link) => oneGameLinkLine(u, link)).join('');
+  };
+  const oneGameLinkLine = (u, link) => {
     const rank = gameRankName(link.rank);
     const parts = [t('In game: {name}', { name: esc(link.playerName) })];
     if (rank) parts.push(esc(rank));
     if (!link.onRoster) parts.push(`⚠ ${t('left the clan in the game')}`);
     // Superadmin: unlinking keeps the account and its access; the role stops following the game.
     const unlink = isSuperAdmin
-      ? ` <button type="button" class="link-btn user-game-unlink" data-unlink-game data-user-id="${u.id}" data-clan-id="${link.clanId}" data-username="${esc(u.username)}" data-player="${esc(link.playerName)}">${t('Unlink')}</button>`
+      ? ` <button type="button" class="link-btn user-game-unlink" data-unlink-game data-user-id="${u.id}" data-clan-id="${link.clanId}" data-player-id="${esc(String(link.playerId ?? ''))}" data-username="${esc(u.username)}" data-player="${esc(link.playerName)}">${t('Unlink')}</button>`
       : '';
     return `<span class="user-game-link${link.onRoster ? '' : ' is-gone'}">${parts.join(' · ')}${unlink}</span>`;
   };
@@ -829,7 +834,7 @@ async function unlinkGamePlayer(d, rerender) {
     { title: t('Unlink from player'), confirmLabel: t('Unlink'), cancelLabel: t('Cancel') },
   );
   if (!ok) return;
-  if (!await mustOk(apiDelete(`/auth/users/${d.userId}/game-links/${d.clanId}`), t('Unlink failed'))) return;
+  if (!await mustOk(apiDelete(`/auth/users/${d.userId}/game-links/${d.clanId}${d.playerId ? `?player=${encodeURIComponent(d.playerId)}` : ''}`), t('Unlink failed'))) return;
   rerender();
 }
 
