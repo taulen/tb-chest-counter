@@ -1145,6 +1145,9 @@ const PAGE_SUBTITLES = {
 function updatePageHead(navPage) {
   const link = $(`nav a[data-page="${navPage}"]`);
   const title = link?.querySelector('.nav-label')?.textContent || '';
+  // A page's own header buttons belong to that page: the next one sets its own.
+  const actionsEl = $('#pageActions');
+  if (actionsEl) actionsEl.innerHTML = '';
   const titleEl = $('#pageTitle');
   const subEl = $('#pageSubtitle');
   if (titleEl) titleEl.textContent = title;

@@ -7362,7 +7362,17 @@ body {
 .page-head {
   padding-top: 28px;
   padding-bottom: 0;
+  /* Title + subtitle on the left, the page's actions (#pageActions) on the
+     right; the actions drop under the title when there is no room. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
 }
+.page-head-text { min-width: 0; }
+.page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page-actions:empty { display: none; }
 .page-title {
   font-size: 28px;
   font-weight: 700;
@@ -11552,6 +11562,341 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .rc-source { padding: 0 10px 12px; }
 }
 
+/* ═══ UI kit (lib/ui-kit.js; docs/design-standard.md) ═══
+   The redesign's shared pieces. Every page builds from these instead of its
+   own copies: page header, sub-tab bar, period scrubber, segmented control,
+   chips, tiles on a 12-column bento grid, row lists, stat numbers, the goal
+   bar, notices, empty and error states. Theme variables only, OLED first.
+   Page blocks below (.mboard-*, .home-*, …) keep only what is theirs. */
+
+/* The page header is the shell's .page-head (title, subtitle, #pageActions). */
+
+/* Table standard: a ranked or sortable table sits in .ui-table-card (a
+   tile's edge, full-bleed rows) with .ui-table on the <table>. The table
+   rules stay the site's: locked widths (table-layout: fixed + colgroup),
+   25 a page, Rank canonical and left-aligned, sortableThHtml headers,
+   data-role cells for the phone's compact rows. */
+.ui-table-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+.ui-table th { background: transparent; padding-top: 12px; padding-bottom: 10px; }
+.ui-table td { padding-top: 12px; padding-bottom: 12px; font-size: 14px; }
+.ui-table td.num,
+.ui-table th.num { font-variant-numeric: tabular-nums; }
+.ui-table-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Sub-tab bar: links to #page/sub, the current one aria-current="page".
+   A sideways-scrolling strip on a phone, never a wrapped second row. */
+.ui-subtabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+  width: max-content;
+  box-sizing: border-box;
+}
+.ui-subtabs::-webkit-scrollbar { display: none; }
+.ui-subtab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 9px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ui-subtab:hover { color: var(--text-primary); background: var(--hover-overlay-strong); }
+.ui-subtab[aria-current="page"] {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+  box-shadow: 0 0 0 1px var(--accent-gold-border);
+}
+.ui-subtab:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.ui-subtab-n { font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Stat: a label, a big number, an optional "of" and delta. */
+.ui-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+/* Error state: what happened and a Try again (api() can answer an object). */
+.ui-error-box { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px 0; }
+.ui-error-why { color: var(--text-muted); }
+
+/* A toolbar of controls above a list or table. */
+.ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.ui-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+/* Segmented controls: Board | Table, and Day / Week / Month / All. */
+.ui-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.ui-seg-btn {
+  min-height: 40px;
+  min-width: 56px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+.ui-seg-btn:hover { color: var(--text-primary); }
+.ui-seg-btn.is-active {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+  box-shadow: 0 0 0 1px var(--accent-gold-border);
+}
+.ui-seg-btn:focus-visible,
+.ui-chip:focus-visible,
+.ui-arrow:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+.ui-period { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.ui-step { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ui-arrow {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ui-arrow:hover:not(:disabled) { background: var(--bg-card-hover); }
+.ui-arrow:disabled { opacity: 0.4; cursor: default; }
+.ui-when { display: flex; flex-direction: column; min-width: 0; }
+.ui-when-label { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ui-when-sub { font-size: 12px; color: var(--text-secondary); }
+.ui-notes {
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.ui-note-when { color: var(--text-muted); }
+.ui-chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-control);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ui-chip:hover { background: var(--bg-card-hover); }
+.ui-chip.is-active {
+  border-color: var(--accent-gold-border);
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+}
+.ui-chip-n { font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ui-chip.band-ok:not(.is-active) { color: var(--accent-green-soft-text); }
+.ui-chip.band-pace:not(.is-active) { color: var(--accent-warn-text); }
+.ui-chip.band-behind:not(.is-active) { color: var(--accent-red-soft-text); }
+.ui-key { display: inline-block; width: 3px; height: 14px; border-radius: 2px; }
+.ui-key-goal { background: var(--text-primary); }
+.ui-key-pace { width: 2px; background: var(--text-secondary); }
+.ui-key-sep { margin: 0 4px; }
+/* The bar: the fill, with the pace and goal lines across it. */
+.ui-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--bg-input);
+}
+.ui-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--w);
+  border-radius: 6px;
+  background: var(--text-muted);
+}
+.ui-bar-fill.band-ok { background: var(--accent-green); }
+.ui-bar-fill.band-pace { background: var(--accent-amber); }
+.ui-bar-fill.band-behind { background: var(--accent-red); }
+.ui-bar-tick { position: absolute; top: -4px; bottom: -4px; left: var(--x); transform: translateX(-50%); border-radius: 2px; }
+.ui-bar-tick.is-goal { width: 3px; background: var(--text-primary); }
+.ui-bar-tick.is-pace { width: 2px; background: var(--text-secondary); }
+.ui-band { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.ui-band.band-ok { color: var(--accent-green-soft-text); }
+.ui-band.band-pace { color: var(--accent-warn-text); }
+.ui-band.band-behind { color: var(--accent-red-soft-text); }
+.ui-empty { margin: 0; padding: 18px; text-align: center; color: var(--text-secondary); }
+.ui-when-short { display: none; }
+/* An error line (a list that could not load: api() answered an object). */
+.ui-error { margin: 0 0 12px; color: var(--text-secondary); }
+.ui-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  gap: 16px;
+}
+.ui-tile {
+  grid-column: span 6;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.ui-tile.span-4 { grid-column: span 4; }
+.ui-tile.span-8 { grid-column: span 8; }
+.ui-tile.span-12 { grid-column: span 12; }
+.ui-tile.is-you { border-color: var(--accent-gold-border); }
+.ui-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.ui-tile-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.ui-tile-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-gold);
+  text-decoration: none;
+}
+.ui-tile-link:hover { text-decoration: underline; }
+.ui-big { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.ui-big.is-xl { font-size: 40px; }
+.ui-big-of { font-size: 16px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0; }
+.ui-stat-label { font-size: 12.5px; color: var(--text-secondary); }
+.ui-sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ui-copy { margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.ui-big-row { display: flex; flex-wrap: wrap; gap: 14px 32px; }
+.ui-delta { font-size: 12.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-delta.is-up { color: var(--accent-green-soft-text); }
+.ui-delta.is-down { color: var(--accent-red-soft-text); }
+.ui-delta.is-flat { color: var(--text-secondary); }
+.ui-delta-label { font-weight: 500; color: var(--text-secondary); }
+p.ui-band { white-space: normal; line-height: 1.45; }
+/* Lists of rows: collectors, movers, sources, events, chests, records */
+.ui-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ui-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  min-width: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ui-row:last-child { border-bottom: 0; }
+.ui-rank { flex: none; width: 34px; font-size: 13px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ui-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ui-row-name { font-size: 14px; font-weight: 600; color: var(--text-primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.ui-row-name:hover { text-decoration: underline; }
+.ui-row-name .member-link { color: var(--text-primary); }
+.ui-row-n { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ui-row-sub { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.ui-row-who { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.ui-row-who a { color: var(--text-primary); }
+/* A chest's name wraps rather than losing its end ("Редкий сундук дракона"). */
+.ui-row.is-chest .cell-stacked-primary { white-space: normal; overflow: visible; text-overflow: clip; }
+.ui-band-n { font-weight: 700; font-variant-numeric: tabular-nums; }
+/* A Home tile's link as a button (the unlinked tile opens the code dialog). */
+button.ui-tile-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .ui-seg-btn { min-height: 44px; }
+  .ui-period { gap: 8px; }
+  .ui-period .ui-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+  .ui-step { width: 100%; }
+  .ui-when { flex: 1; min-width: 0; text-align: center; }
+  .ui-when-label,
+.ui-when-sub { display: none; }
+  .ui-when-short {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .ui-notes { padding: 8px 12px; gap: 2px; font-size: 12.5px; line-height: 1.4; }
+  .ui-chip { min-height: 44px; flex: none; }
+}
+@media (max-width: 1100px) {
+  .ui-tile.span-4,
+.ui-tile.span-6 { grid-column: span 6; }
+  .ui-tile.span-8,
+.ui-tile.span-12 { grid-column: span 12; }
+}
+@media (max-width: 760px) {
+  .ui-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .ui-tile,
+.ui-tile.span-4,
+.ui-tile.span-6,
+.ui-tile.span-8,
+.ui-tile.span-12 { grid-column: 1 / -1; }
+  .ui-tile { padding: 14px 16px; }
+  .ui-big.is-xl { font-size: 32px; }
+}
+
 /* ─── Members → ranking board (pages/members-board.js; redesign phase 2a) ───
    Each member's points for the period as a bar against the goal line (bright)
    and the pace line (thin, only while the period runs), banded ✓ Reached /
@@ -11566,110 +11911,10 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   gap: 10px 16px;
 }
 .mboard-sub { margin: 0; font-size: 13.5px; color: var(--text-secondary); }
-.mboard-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-/* Segmented controls: Board | Table, and Day / Week / Month / All. */
-.mboard-seg {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 12px;
-  background: var(--bg-input);
-  box-shadow: inset 0 0 0 1px var(--border);
-}
-.mboard-seg-btn {
-  min-height: 40px;
-  min-width: 56px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
-}
-.mboard-seg-btn:hover { color: var(--text-primary); }
-.mboard-seg-btn.is-active {
-  background: var(--accent-gold-bg-strong);
-  color: var(--accent-gold);
-  box-shadow: 0 0 0 1px var(--accent-gold-border);
-}
-.mboard-seg-btn:focus-visible,
-.mboard-chip:focus-visible,
-.mboard-arrow:focus-visible,
 .mboard-row:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
-
-.mboard-period { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
-.mboard-step { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.mboard-arrow {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--border-control);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-.mboard-arrow:hover:not(:disabled) { background: var(--bg-card-hover); }
-.mboard-arrow:disabled { opacity: 0.4; cursor: default; }
-.mboard-when { display: flex; flex-direction: column; min-width: 0; }
-.mboard-when-label { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.mboard-when-sub { font-size: 12px; color: var(--text-secondary); }
-
-.mboard-notes {
-  margin: 0;
-  padding: 10px 14px;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-elevated);
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-.mboard-note-when { color: var(--text-muted); }
-
 .mboard-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
-.mboard-bands, .mboard-sort { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.mboard-chip {
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--border-control);
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.mboard-chip:hover { background: var(--bg-card-hover); }
-.mboard-chip.is-active {
-  border-color: var(--accent-gold-border);
-  background: var(--accent-gold-bg-strong);
-  color: var(--accent-gold);
-}
-.mboard-chip-n { font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.mboard-chip.band-ok:not(.is-active) { color: var(--accent-green-soft-text); }
-.mboard-chip.band-pace:not(.is-active) { color: var(--accent-warn-text); }
-.mboard-chip.band-behind:not(.is-active) { color: var(--accent-red-soft-text); }
+.mboard-bands,
+.mboard-sort { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .mboard-goal-line {
   margin: 0;
   display: flex;
@@ -11679,15 +11924,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
 }
-.mboard-key { display: inline-block; width: 3px; height: 14px; border-radius: 2px; }
-.mboard-key-goal { background: var(--text-primary); }
-.mboard-key-pace { width: 2px; background: var(--text-secondary); }
-.mboard-key-sep { margin: 0 4px; }
-
 .mboard-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .mboard-search { flex: 1 1 220px; max-width: 320px; }
 .mboard-search .input { width: 100%; min-height: 44px; box-sizing: border-box; }
-
 /* The list. */
 .mboard-group {
   display: flex;
@@ -11752,49 +11991,19 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 .mboard-tag.is-you { background: var(--accent-gold-bg-strong); color: var(--accent-gold); }
 .mboard-tag.is-burning { padding: 0; font-weight: 600; color: var(--text-secondary); }
-
-/* The bar: the fill, with the pace and goal lines across it. */
-.mboard-bar {
-  position: relative;
-  height: 12px;
-  border-radius: 6px;
-  background: var(--bg-input);
-}
-.mboard-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--w);
-  border-radius: 6px;
-  background: var(--text-muted);
-}
-.mboard-fill.band-ok { background: var(--accent-green); }
-.mboard-fill.band-pace { background: var(--accent-amber); }
-.mboard-fill.band-behind { background: var(--accent-red); }
-.mboard-tick { position: absolute; top: -4px; bottom: -4px; left: var(--x); transform: translateX(-50%); border-radius: 2px; }
-.mboard-tick.is-goal { width: 3px; background: var(--text-primary); }
-.mboard-tick.is-pace { width: 2px; background: var(--text-secondary); }
-
 .mboard-pts { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
 .mboard-pts-n { font-size: 15px; font-weight: 700; }
 .mboard-delta { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .mboard-delta.is-up { color: var(--accent-green-soft-text); }
 .mboard-delta.is-down { color: var(--accent-red-soft-text); }
 .mboard-delta.is-flat { color: var(--text-secondary); }
-.mboard-band { font-size: 13px; font-weight: 600; white-space: nowrap; }
-.mboard-band.band-ok { color: var(--accent-green-soft-text); }
-.mboard-band.band-pace { color: var(--accent-warn-text); }
-.mboard-band.band-behind { color: var(--accent-red-soft-text); }
-.mboard-empty { margin: 0; padding: 18px; text-align: center; color: var(--text-secondary); }
 .mboard-you { margin-bottom: 6px; }
-
 /* A tablet: the band word drops; the glyph stays in the bar's colour + chips. */
 @media (max-width: 1100px) {
   .mboard-row { grid-template-columns: 40px 36px minmax(140px, 1.3fr) minmax(120px, 2fr) 112px 96px; gap: 10px; }
 }
-
 /* Phone-only pieces (the one-line date, the sort select) stay out of the desktop layout. */
-.mboard-when-short, .mboard-sort-pick { display: none; }
-
+.mboard-sort-pick { display: none; }
 /* A phone: the controls stay compact enough that the first member row starts
    on the first screen — count + toggle on one line, the period's dates on one
    line, the bands as one sideways-scrolling strip, search + a sort select on
@@ -11803,23 +12012,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .mboard { gap: 10px; min-width: 0; max-width: 100%; }
   .mboard-head { flex-wrap: nowrap; }
   .mboard-hint { display: none; }
-  .mboard-head .mboard-seg { margin-left: auto; flex: none; }
-  .mboard-seg-btn { min-height: 44px; }
-  .mboard-period { gap: 8px; }
-  .mboard-period .mboard-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
-  .mboard-step { width: 100%; }
-  .mboard-when { flex: 1; min-width: 0; text-align: center; }
-  .mboard-when-label, .mboard-when-sub { display: none; }
-  .mboard-when-short {
-    display: block;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 14px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .mboard-notes { padding: 8px 12px; gap: 2px; font-size: 12.5px; line-height: 1.4; }
+  .mboard-head .ui-seg { margin-left: auto; flex: none; }
   .mboard-summary { flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
   .mboard-summary > * { min-width: 0; max-width: 100%; }
   .mboard-bands {
@@ -11828,7 +12021,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
     scrollbar-width: none;
   }
   .mboard-bands::-webkit-scrollbar { display: none; }
-  .mboard-chip { min-height: 44px; flex: none; }
   .mboard-goal-line { font-size: 12px; }
   .mboard-tools { flex-wrap: nowrap; gap: 8px; }
   .mboard-search { flex: 1 1 auto; min-width: 0; max-width: none; }
@@ -11858,91 +12050,25 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
   .mboard-rank { grid-area: rank; align-self: start; padding-top: 8px; font-size: 13px; }
   .mboard-row .avatar { grid-area: av; align-self: start; }
+  .mboard-row .ui-bar { grid-area: bar; align-self: center; height: 10px; }
+  .mboard-row .ui-band { grid-area: band; font-size: 12px; text-align: right; }
   .mboard-who { grid-area: who; }
   .mboard-pts { grid-area: pts; }
-  .mboard-bar { grid-area: bar; align-self: center; height: 10px; }
-  .mboard-band { grid-area: band; font-size: 12px; text-align: right; }
 }
-
-/* The board could not load its list (a refusal from the server): say so, offer a retry. */
-.mboard-failed { margin: 0 0 12px; color: var(--text-secondary); }
-
 /* ─── Home (pages/home.js): a bento of tiles, shaped by role ───
-   One period scrubber (the Members board's .mboard-period) drives every tile.
+   One period scrubber (the Members board's .ui-period) drives every tile.
    Desktop: a 12-column grid, tiles span 4 / 6 / 8 / 12. A tablet: halves.
    A phone: one column, in the order the role's tile list gives. */
 .home { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.home-grid {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-auto-flow: row dense;
-  gap: 16px;
-}
-.home-tile {
-  grid-column: span 6;
-  min-width: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 18px 20px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg-card);
-}
-.home-tile.span-4 { grid-column: span 4; }
-.home-tile.span-8 { grid-column: span 8; }
-.home-tile.span-12 { grid-column: span 12; }
-.home-tile.is-you { border-color: var(--accent-gold-border); }
-.home-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
-.home-tile-title {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-.home-tile-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent-gold);
-  text-decoration: none;
-}
-.home-tile-link:hover { text-decoration: underline; }
-
-.home-big { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-primary); }
-.home-big.is-xl { font-size: 40px; }
-.home-big-of { font-size: 16px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0; }
-.home-label { font-size: 12.5px; color: var(--text-secondary); }
-.home-sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.home-copy { margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
-.home-big-row { display: flex; flex-wrap: wrap; gap: 14px 32px; }
-/* The board's phone rule centres .mboard-bar (a grid row there); in a flex
+/* The board's phone rule centres .ui-bar (a grid row there); in a flex
    column that shrinks it to nothing, so Home's bars always stretch. */
-.mboard-bar.home-bar { align-self: stretch; width: 100%; height: 10px; background: var(--bg-input); box-shadow: inset 0 0 0 1px var(--border); }
-
-.home-delta { font-size: 12.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.home-delta.is-up { color: var(--accent-green-soft-text); }
-.home-delta.is-down { color: var(--accent-red-soft-text); }
-.home-delta.is-flat { color: var(--text-secondary); }
-.home-delta-label { font-weight: 500; color: var(--text-secondary); }
-.home-band { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
-p.home-band { white-space: normal; line-height: 1.45; }
-.home-band.band-ok { color: var(--accent-green-soft-text); }
-.home-band.band-pace { color: var(--accent-warn-text); }
-.home-band.band-behind { color: var(--accent-red-soft-text); }
-
+.ui-bar.home-bar { align-self: stretch; width: 100%; height: 10px; background: var(--bg-input); box-shadow: inset 0 0 0 1px var(--border); }
 /* Your week */
 .home-you { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .avatar-lg { width: 56px; height: 56px; font-size: 22px; }
 .home-you-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .home-you-name { font-size: 20px; font-weight: 800; color: var(--text-primary); text-decoration: none; overflow-wrap: anywhere; }
 .home-you-name:hover { text-decoration: underline; }
-
 /* Clan points */
 .home-points-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 28px; }
 .home-facts {
@@ -11966,37 +12092,11 @@ p.home-band { white-space: normal; line-height: 1.45; }
 .home-key { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid var(--accent-gold); }
 .home-key.is-prev { border-top: 2px dashed var(--text-secondary); }
 .home-key.is-target { border-top: 2px dotted var(--text-primary); }
-
-/* Lists of rows: collectors, movers, sources, events, chests, records */
-.home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.home-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  min-width: 0;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border);
-}
-.home-row:last-child { border-bottom: 0; }
-.home-rank { flex: none; width: 34px; font-size: 13px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .home-medal { flex: none; width: 24px; font-size: 18px; text-align: center; }
-.home-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.home-row-name { font-size: 14px; font-weight: 600; color: var(--text-primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-a.home-row-name:hover { text-decoration: underline; }
-.home-row-name .member-link { color: var(--text-primary); }
-.home-row-n { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-row-sub { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
-.home-row-who { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.home-row-who a { color: var(--text-primary); }
-/* A chest's name wraps rather than losing its end ("Редкий сундук дракона"). */
-.home-row.is-chest .cell-stacked-primary { white-space: normal; overflow: visible; text-overflow: clip; }
 .home-event-when { flex: none; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
 .home-event-when.is-live { color: var(--accent-green-soft-text); font-weight: 600; }
-
 /* Goal status: three bands, each a button into the Members board */
 .home-bands { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
-.home-band-n { font-weight: 700; font-variant-numeric: tabular-nums; }
 .home-goal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .home-goal-btn {
   width: 100%;
@@ -12027,7 +12127,6 @@ a.home-row-name:hover { text-decoration: underline; }
   line-height: 1.4;
   color: var(--text-secondary);
 }
-
 /* Roster changes: plain facts */
 /* Roster changes: rows like the other tiles (picture, name, what changed,
    when on the right); burning cities as one summary line above them. */
@@ -12050,12 +12149,10 @@ a.home-row-name:hover { text-decoration: underline; }
 .roster-burning-names a { color: var(--text-primary); text-decoration: none; }
 .roster-burning-names a:hover { text-decoration: underline; }
 .roster-more { font-weight: 600; color: var(--text-secondary); }
-.roster-list .home-row-name:hover { text-decoration: underline; }
-
+.roster-list .ui-row-name:hover { text-decoration: underline; }
 /* Records */
 .home-podiums { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; }
 .home-podium-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
-
 /* Clans (superadmin) */
 .home-clans { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; }
 .home-clan {
@@ -12094,29 +12191,11 @@ a.home-row-name:hover { text-decoration: underline; }
 .home-clan-today { grid-area: today; display: flex; flex-direction: column; align-items: flex-end; }
 .home-clan-n { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .home-clan .shell-clan-status { grid-area: status; }
-
 /* A tablet: halves and wholes. */
-@media (max-width: 1100px) {
-  .home-tile.span-4, .home-tile.span-6 { grid-column: span 6; }
-  .home-tile.span-8, .home-tile.span-12 { grid-column: span 12; }
-}
 /* A phone: one column, in the role's order. */
 @media (max-width: 760px) {
-  .home-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .home-tile, .home-tile.span-4, .home-tile.span-6, .home-tile.span-8, .home-tile.span-12 { grid-column: 1 / -1; }
-  .home-tile { padding: 14px 16px; }
-  .home-big.is-xl { font-size: 32px; }
   .home-clans { grid-template-columns: minmax(0, 1fr); }
   .home-points-head .home-facts { width: 100%; }
-}
-
-/* A Home tile's link as a button (the unlinked tile opens the code dialog). */
-button.home-tile-link {
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: inherit;
-  cursor: pointer;
 }
 
 /* ─── Add a clan with a code (lib/add-clan.js) ───

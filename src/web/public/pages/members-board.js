@@ -13,8 +13,11 @@
 import { api } from '../lib/api.js';
 import { esc, memberHash, formatDateShort, formatRelativeTime } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
-import { computeGameWindow, formatPeriodLabel } from '../lib/period.js';
-import { goalDaysForPeriod, scaleGoalForPeriod, formatMightCompact } from '../lib/leaderboard-render.js';
+import { computeGameWindow } from '../lib/period.js';
+import { scaleGoalForPeriod, formatMightCompact } from '../lib/leaderboard-render.js';
+import {
+  BANDS as KIT_BANDS, segHtml, periodScrubberHtml, wirePeriodScrubber, errorStateHtml, refusalText, wireRetry,
+} from '../lib/ui-kit.js';
 import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { getCurrentUser, getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
 import { gameRankName } from '../lib/game-facts.js';
@@ -61,8 +64,12 @@ export function presetMembersBoard({ band = 'all', period, offset } = {}) {
 
 /** Board | Table, the same two buttons on both views. */
 export function membersViewToggleHtml(active) {
-  const btn = (view, label) => `<button type="button" class="mboard-seg-btn${view === active ? ' is-active' : ''}" aria-pressed="${view === active}" data-mb-view="${view}">${label}</button>`;
-  return `<div class="mboard-seg" role="group" aria-label="${esc(t('View'))}">${btn('board', t('Board'))}${btn('table', t('Table'))}</div>`;
+  return segHtml({
+    label: t('View'),
+    items: [{ value: 'board', label: t('Board') }, { value: 'table', label: t('Table') }],
+    current: active,
+    attr: 'mb-view',
+  });
 }
 
 /** Wire the toggle on a freshly drawn view; `rerender` draws the page again. */
@@ -76,13 +83,8 @@ export function wireMembersViewToggle(root, rerender) {
   }
 }
 
-const PERIOD_LABEL = { daily: () => t('Day'), weekly: () => t('Week'), monthly: () => t('Month'), all: () => t('All') };
 const SORT_LABEL = { points: () => t('Points'), name: () => t('Name'), might: () => t('Might'), joined: () => t('Joined') };
-const BAND_TEXT = {
-  ok: { glyph: '✓', label: () => t('Reached') },
-  pace: { glyph: '◐', label: () => t('On pace') },
-  behind: { glyph: '↓', label: () => t('Behind') },
-};
+const BAND_TEXT = KIT_BANDS;
 const DELTA_LABEL = {
   daily: { now: () => t('vs yesterday by now'), past: () => t('vs the day before') },
   weekly: { now: () => t('vs last week by now'), past: () => t('vs the week before') },
@@ -131,12 +133,10 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
   // page died on `.map`. The comparison window is optional: drop it. The
   // window itself is the board: say what happened and offer a retry.
   if (!Array.isArray(entries)) {
-    const why = entries && typeof entries === 'object' && typeof entries.error === 'string' ? entries.error : '';
     el.innerHTML = `${tabsHtml}<section class="mboard" aria-label="${esc(t('Ranking board'))}">
-      <p class="mboard-failed">${esc(t('The board could not be loaded.'))}${why ? ` <span class="muted-copy">${esc(why)}</span>` : ''}</p>
-      <button type="button" class="btn btn-primary" data-mb-retry>${esc(t('Try again'))}</button>
+      ${errorStateHtml(t('The board could not be loaded.'), refusalText(entries))}
     </section>`;
-    el.querySelector('[data-mb-retry]')?.addEventListener('click', () => { void renderMembersBoard(el, { tabsHtml, rerender }); });
+    wireRetry(el, () => renderMembersBoard(el, { tabsHtml, rerender }));
     return;
   }
   if (!Array.isArray(prevEntries)) prevEntries = [];
@@ -182,15 +182,15 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
 
   el.innerHTML = `${tabsHtml}<section class="mboard" aria-label="${esc(t('Ranking board'))}">
     ${headHtml(rows.length)}
-    ${periodHtml(rolloverHr, weekStart)}
+    ${periodScrubberHtml({ periods: PERIODS, period: state.period, offset: state.offset, rolloverHr, weekStart, win: board.win })}
     ${notesHtml()}
     ${summaryHtml()}
     <div class="mboard-tools">
       <label class="mboard-search"><span class="visually-hidden">${t('Find a member')}</span>
         <input type="search" id="membersBoardSearch" class="input" placeholder="${esc(t('Find a member'))}" value="${esc(state.query)}" autocomplete="off"></label>
       <div class="mboard-sort" role="group" aria-label="${esc(t('Sort by'))}">
-        <span class="mboard-label" aria-hidden="true">${t('Sort by')}</span>
-        ${SORTS.map((s) => `<button type="button" class="mboard-chip${state.sort === s ? ' is-active' : ''}" aria-pressed="${state.sort === s}" data-mb-sort="${s}">${SORT_LABEL[s]()}</button>`).join('')}
+        <span class="ui-eyebrow" aria-hidden="true">${t('Sort by')}</span>
+        ${SORTS.map((s) => `<button type="button" class="ui-chip${state.sort === s ? ' is-active' : ''}" aria-pressed="${state.sort === s}" data-mb-sort="${s}">${SORT_LABEL[s]()}</button>`).join('')}
       </div>
       ${/* The phone's sort: one compact select beside the search (style.css swaps them). */''}
       <label class="mboard-sort-pick" title="${esc(t('Sort by'))}">
@@ -213,53 +213,6 @@ function headHtml(count) {
     </div>`;
 }
 
-/** Day / Week / Month / All, the arrows, and where in the window we are. */
-function periodHtml(rolloverHr, weekStart) {
-  const { period, offset } = state;
-  let where = '';
-  let resetText = '';
-  let dayShort = '';
-  if (board.running) {
-    const reset = new Date(Date.UTC(2000, 0, 1, rolloverHr));
-    const local = reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    resetText = t('resets {utc} UTC ({local} your time)', { utc: `${String(rolloverHr).padStart(2, '0')}:00`, local });
-    if (period === 'weekly') {
-      const days = goalDaysForPeriod('weekly', weekStart);
-      const day = Math.min(days, Math.floor((Date.now() - Date.parse(board.win.from)) / DAY_MS) + 1);
-      where = `${t('Game day {day} of {days}', { day, days })} · ${resetText}`;
-      dayShort = t('day {day} of {days}', { day, days });
-    } else {
-      where = resetText;
-    }
-  }
-  const label = formatPeriodLabel(period, offset, rolloverHr, weekStart);
-  // The phone's one-line version: "2026-11-15 → 21 · day 3 of 7", the reset
-  // time in the title (and for screen readers) instead of a wrapped second line.
-  const short = [compactRange(label), dayShort].filter(Boolean).join(' · ');
-  return `<div class="mboard-period">
-      <div class="mboard-seg" role="group" aria-label="${esc(t('Period'))}">
-        ${PERIODS.map((p) => `<button type="button" class="mboard-seg-btn${period === p ? ' is-active' : ''}" aria-pressed="${period === p}" data-mb-period="${p}">${PERIOD_LABEL[p]()}</button>`).join('')}
-      </div>
-      ${period === 'all' ? '' : `<div class="mboard-step">
-        <button type="button" class="mboard-arrow" data-mb-step="1" aria-label="${esc(t('Earlier'))}">‹</button>
-        <div class="mboard-when"${resetText ? ` title="${esc(resetText)}"` : ''}>
-          <span class="mboard-when-label">${esc(label)}</span>${where ? `<span class="mboard-when-sub">${esc(where)}</span>` : ''}
-          <span class="mboard-when-short">${esc(short)}${resetText ? `<span class="visually-hidden"> · ${esc(resetText)}</span>` : ''}</span>
-        </div>
-        <button type="button" class="mboard-arrow" data-mb-step="-1" aria-label="${esc(t('Later'))}"${offset === 0 ? ' disabled' : ''}>›</button>
-      </div>`}
-    </div>`;
-}
-
-/** "2026-11-15 → 2026-11-21" → "2026-11-15 → 21"; across a month "→ 12-05"; anything else as it is. */
-function compactRange(label) {
-  const m = String(label).match(/^(\d{4})-(\d{2})-(\d{2}) → (\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return label;
-  const [, y1, m1, d1, y2, m2, d2] = m;
-  if (y1 !== y2) return label;
-  return `${y1}-${m1}-${d1} → ${m1 === m2 ? d2 : `${m2}-${d2}`}`;
-}
-
 /** Plain facts, never alerts: who burns on the map, who joined, who left. */
 function notesHtml() {
   const lines = [];
@@ -270,7 +223,7 @@ function notesHtml() {
   const burning = board.rows.filter((r) => r.burning);
   if (burning.length) {
     const seen = burning.map((r) => r.mapSeenAt).filter(Boolean).sort().pop();
-    lines.push(`<li><span aria-hidden="true">🔥</span> ${t('Burning on the map: {names}', { names: esc(names(burning.map((r) => r.name))) })}${seen ? ` <span class="mboard-note-when">· ${esc(t('map read {when}', { when: formatRelativeTime(seen) }))}</span>` : ''}</li>`);
+    lines.push(`<li><span aria-hidden="true">🔥</span> ${t('Burning on the map: {names}', { names: esc(names(burning.map((r) => r.name))) })}${seen ? ` <span class="ui-note-when">· ${esc(t('map read {when}', { when: formatRelativeTime(seen) }))}</span>` : ''}</li>`);
   }
   const since = Date.now() - NOTE_DAYS * DAY_MS;
   const recent = board.changes.filter((c) => Date.parse(c.at) >= since);
@@ -279,7 +232,7 @@ function notesHtml() {
   const left = recent.filter((c) => c.kind === 'left').map(fmt);
   if (joined.length) lines.push(`<li><span aria-hidden="true">→</span> ${t('Joined in the last 7 days: {names}', { names: esc(names(joined)) })}</li>`);
   if (left.length) lines.push(`<li><span aria-hidden="true">←</span> ${t('Left in the last 7 days: {names}', { names: esc(names(left)) })}</li>`);
-  return lines.length ? `<ul class="mboard-notes">${lines.join('')}</ul>` : '';
+  return lines.length ? `<ul class="ui-notes">${lines.join('')}</ul>` : '';
 }
 
 /** The band chips with counts, and the goal / pace numbers they are measured against. */
@@ -292,15 +245,15 @@ function summaryHtml() {
   const chip = (b) => {
     const s = BAND_TEXT[b];
     const label = s ? `<span aria-hidden="true">${s.glyph}</span> ${s.label()}` : t('All');
-    return `<button type="button" class="mboard-chip mboard-band-chip band-${b}${state.band === b ? ' is-active' : ''}" aria-pressed="${state.band === b}" data-mb-band="${b}">${label} <span class="mboard-chip-n">${count(b)}</span></button>`;
+    return `<button type="button" class="ui-chip ui-band-chip band-${b}${state.band === b ? ' is-active' : ''}" aria-pressed="${state.band === b}" data-mb-band="${b}">${label} <span class="ui-chip-n">${count(b)}</span></button>`;
   };
   const goalText = t('Goal {n}', { n: board.goalPts.toLocaleString() });
   const pace = board.pacePts !== null
-    ? `<span class="mboard-key-sep" aria-hidden="true">·</span><span class="mboard-key mboard-key-pace" aria-hidden="true"></span>${esc(t('pace now {n}', { n: board.pacePts.toLocaleString() }))}`
+    ? `<span class="ui-key-sep" aria-hidden="true">·</span><span class="ui-key ui-key-pace" aria-hidden="true"></span>${esc(t('pace now {n}', { n: board.pacePts.toLocaleString() }))}`
     : '';
   return `<div class="mboard-summary">
       <div class="mboard-bands" role="group" aria-label="${esc(t('Show'))}">${bands.map(chip).join('')}</div>
-      <p class="mboard-goal-line"><span class="mboard-key mboard-key-goal" aria-hidden="true"></span>${esc(goalText)}${pace}</p>
+      <p class="mboard-goal-line"><span class="ui-key ui-key-goal" aria-hidden="true"></span>${esc(goalText)}${pace}</p>
     </div>`;
 }
 
@@ -319,13 +272,13 @@ function listHtml() {
   const q = state.query.trim().toLowerCase();
   const shown = sortRows(board.rows.filter((r) => (state.band === 'all' || r.band === state.band) && (!q || r.name.toLowerCase().includes(q))));
   const pinYou = getCurrentUser()?.role === 'user' ? board.rows.find((r) => r.isYou) : null;
-  if (!board.rows.length) return `<p class="mboard-empty">${t('No members yet.')}</p>`;
+  if (!board.rows.length) return `<p class="ui-empty">${t('No members yet.')}</p>`;
   const you = pinYou ? `<div class="mboard-you"><h3 class="mboard-group">${t('You')}</h3><ol class="mboard-list">${rowHtml(pinYou)}</ol></div>` : '';
-  if (!shown.length) return `${you}<p class="mboard-empty">${t('Nobody matches this filter.')}</p>`;
+  if (!shown.length) return `${you}<p class="ui-empty">${t('Nobody matches this filter.')}</p>`;
   // Grouped under the band headings when ranked by points against a goal.
   if (state.sort === 'points' && board.goalPts && state.band === 'all') {
     const groups = ['ok', 'pace', 'behind'].map((b) => [b, shown.filter((r) => r.band === b)]).filter(([, list]) => list.length);
-    return you + groups.map(([b, list]) => `<h3 class="mboard-group band-${b}"><span aria-hidden="true">${BAND_TEXT[b].glyph}</span> ${BAND_TEXT[b].label()} <span class="mboard-chip-n">${list.length}</span></h3>
+    return you + groups.map(([b, list]) => `<h3 class="mboard-group band-${b}"><span aria-hidden="true">${BAND_TEXT[b].glyph}</span> ${BAND_TEXT[b].label()} <span class="ui-chip-n">${list.length}</span></h3>
       <ol class="mboard-list">${list.map(rowHtml).join('')}</ol>`).join('');
   }
   return `${you}<ol class="mboard-list">${shown.map(rowHtml).join('')}</ol>`;
@@ -352,13 +305,13 @@ function rowHtml(r) {
       <span class="mboard-rank">#${r.rank}</span>
       ${avatarHtml({ username: r.name, avatar: r.avatar }, { size: 'md' })}
       <span class="mboard-who"><span class="mboard-name-line"><span class="mboard-name">${esc(r.name)}</span>${marks}</span>${meta ? `<span class="mboard-meta">${meta}</span>` : ''}</span>
-      <span class="mboard-bar" aria-hidden="true">
-        <span class="mboard-fill${r.band ? ` band-${r.band}` : ''}" style="--w:${pct(r.points)}"></span>
-        ${board.pacePts !== null ? `<span class="mboard-tick is-pace" style="--x:${pct(board.pacePts)}"></span>` : ''}
-        ${board.goalPts ? `<span class="mboard-tick is-goal" style="--x:${pct(board.goalPts)}"></span>` : ''}
+      <span class="ui-bar" aria-hidden="true">
+        <span class="ui-bar-fill${r.band ? ` band-${r.band}` : ''}" style="--w:${pct(r.points)}"></span>
+        ${board.pacePts !== null ? `<span class="ui-bar-tick is-pace" style="--x:${pct(board.pacePts)}"></span>` : ''}
+        ${board.goalPts ? `<span class="ui-bar-tick is-goal" style="--x:${pct(board.goalPts)}"></span>` : ''}
       </span>
       <span class="mboard-pts"><span class="mboard-pts-n">${r.points.toLocaleString()}</span><span class="visually-hidden"> ${t('points')}</span>${deltaHtml(r)}</span>
-      <span class="mboard-band${r.band ? ` band-${r.band}` : ''}">${band ? `<span aria-hidden="true">${band.glyph}</span> ${band.label()}` : ''}</span>
+      <span class="ui-band${r.band ? ` band-${r.band}` : ''}">${band ? `<span aria-hidden="true">${band.glyph}</span> ${band.label()}` : ''}</span>
     </a></li>`;
 }
 
@@ -386,23 +339,18 @@ function wire(el) {
   root.addEventListener('click', (e) => {
     const target = e.target instanceof Element ? e.target.closest('button') : null;
     if (!target || !root.contains(target)) return;
-    if (target.dataset.mbPeriod) {
-      if (target.dataset.mbPeriod === state.period) return;
-      state.period = target.dataset.mbPeriod;
-      state.offset = 0;
-      state.band = 'all';
-      void renderMembersBoard(el, { tabsHtml: el.querySelector('.view-tabs')?.outerHTML ?? '', rerender: board.rerender });
-    } else if (target.dataset.mbStep) {
-      state.offset = Math.max(0, state.offset + Number(target.dataset.mbStep));
-      state.band = 'all';
-      void renderMembersBoard(el, { tabsHtml: el.querySelector('.view-tabs')?.outerHTML ?? '', rerender: board.rerender });
-    } else if (target.dataset.mbSort) {
+    if (target.dataset.mbSort) {
       state.sort = target.dataset.mbSort;
       redrawAll();
     } else if (target.dataset.mbBand) {
       state.band = target.dataset.mbBand;
       redrawAll();
     }
+  });
+  const redraw = () => renderMembersBoard(el, { tabsHtml: el.querySelector('.view-tabs')?.outerHTML ?? '', rerender: board.rerender });
+  wirePeriodScrubber(root, {
+    onPeriod: (p) => { state.period = p; state.offset = 0; state.band = 'all'; void redraw(); },
+    onStep: (delta) => { state.offset = Math.max(0, state.offset + delta); state.band = 'all'; void redraw(); },
   });
   root.querySelector('[data-mb-sort-select]')?.addEventListener('change', (e) => {
     state.sort = SORTS.includes(e.target.value) ? e.target.value : 'points';

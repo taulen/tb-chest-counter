@@ -404,6 +404,7 @@ export const ui = {
   "Daily": "Diario",
   "Weekly": "Semanal",
   "Monthly": "Mensual",
+  "Year": "Año",
   "Yearly": "Anual",
   "All": "Todo",
   "Goal reached": "Objetivo alcanzado",
