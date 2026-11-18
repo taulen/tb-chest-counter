@@ -23,21 +23,21 @@ import { esc, contentModal } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { sortableThHtml } from '../lib/sort-headers.js';
 import { computeGameWindow } from '../lib/period.js';
-import { renderPeriodNav } from '../lib/period-nav.js';
-import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
+import { getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, segHtml, tileHtml, emptyHtml as kitEmptyHtml, errorStateHtml, wireRetry, setPageActions,
+} from '../lib/ui-kit.js';
 import { describeChart } from '../lib/chart-a11y.js';
 import { readToken } from '../lib/theme.js';
 
 const PAGE_SIZE = 25;
 const PERIODS = ['daily', 'weekly', 'monthly'];
-const PERIOD_LABEL = { daily: t('Daily'), weekly: t('Weekly'), monthly: t('Monthly') };
 /** A Daily view's trend reaches back this many game days (one day is no trend). */
 const DAILY_TREND_DAYS = 14;
 /** Count items shown before "Show all". */
 const ITEMS_PREVIEW = 24;
 /** Reward chips per chest in the By chest table. */
 const CHEST_TOP_REWARDS = 4;
-const VIEW_GROUP = 'chest-rewards';
 const DAY_MS = 86_400_000;
 /** A reward tile in the Income view, frame included (px). */
 const TILE_SIZE = 64;
@@ -195,7 +195,7 @@ async function reload() {
   if (seq !== loadSeq) return; // a newer period was asked for meanwhile
   if (!res || res.error) {
     cache = null;
-    paint(res?.error ?? t('Could not load the chest rewards.'));
+    paint(res?.error || ' ');
     return;
   }
   cache = res;
@@ -214,62 +214,52 @@ function trendKeys() {
 export async function renderResourcesChestRewards(el) {
   mountedEl = el;
   destroyChart();
-  el.innerHTML = `<div class="empty-state"><p>${t('Loading chest rewards…')}</p></div>`;
+  setPageActions('');
+  el.innerHTML = `<div class="chest-rewards-page">${kitEmptyHtml(t('Loading chest rewards…'))}</div>`;
   // The game's art index (frames, chest icons) is in before the first paint.
   await loadGameArt();
   await reload();
 }
 
+/**
+ * The window (the kit's period scrubber) and the view (Income | By chest):
+ * one header for both, the period is theirs together.
+ */
 function headerHtml() {
-  const periodBtns = PERIODS.map((p) =>
-    `<button class="btn ${view.period === p ? 'active' : ''}" data-cr-period="${p}">${PERIOD_LABEL[p]}</button>`,
-  ).join('');
-  const nav = renderPeriodNav({
-    period: view.period,
-    offset: view.offset,
-    prevAttr: 'data-cr-nav="prev"',
-    nextAttr: 'data-cr-nav="next"',
-    navClass: 'resources-totals-nav',
-  });
-  // One header for both views (the period is theirs together), then the view
-  // tabs — the way Events splits Scores / Participants.
-  return `
-    <div class="card chest-rewards-head">
-      <div class="card-header resources-totals-header">
-        <div class="resources-totals-title">
-          <h2>${t('Chest rewards')}</h2>
-          <span class="card-header-hint">${t("What the clan's opened chests paid out")}</span>
-        </div>
-        <div class="resources-totals-controls">
-          <div class="period-selector">${periodBtns}</div>
-          ${nav}
-        </div>
-      </div>
-    </div>
-    ${viewTabsHtml(VIEW_GROUP, [
-      { key: 'income', label: t('Income') },
-      { key: 'chests', label: t('By chest') },
-    ], view.mode)}`;
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  return `<div class="ui-toolbar cr-controls">
+      ${periodScrubberHtml({
+        periods: PERIODS, period: view.period, offset: view.offset, rolloverHr, weekStart,
+        win: computeGameWindow(view.period, view.offset, rolloverHr, weekStart),
+      })}
+      ${segHtml({
+        label: t('View'),
+        items: [{ value: 'income', label: t('Income') }, { value: 'chests', label: t('By chest') }],
+        current: view.mode,
+        attr: 'cr-mode',
+      })}
+    </div>`;
 }
 
 function paint(error = '') {
   if (!mountedEl) return;
   destroyChart();
   const body = error
-    ? `<div class="card"><div class="card-body card-body-padded"><p class="muted-copy">${esc(error)}</p></div></div>`
-    : viewPanelHtml(VIEW_GROUP, 'income', view.mode, incomeHtml())
-      + viewPanelHtml(VIEW_GROUP, 'chests', view.mode, byChestHtml());
+    ? errorStateHtml(t('Could not load the chest rewards.'), error.trim())
+    : (view.mode === 'income' ? incomeHtml() : byChestHtml());
   mountedEl.innerHTML = `
     <div class="chest-rewards-page">
       ${headerHtml()}
       <div class="chest-rewards-body">${body}</div>
     </div>`;
   wire(mountedEl);
-  if (!error && view.mode === 'income') drawTrend();
+  if (error) wireRetry(mountedEl, reload);
+  else if (view.mode === 'income') drawTrend();
 }
 
-function emptyHtml() {
-  return `<div class="card"><div class="card-body card-body-padded"><div class="empty-state"><p>${t('No chests were opened in this period.')}</p></div></div></div>`;
+function noChestsHtml() {
+  return kitEmptyHtml(t('No chests were opened in this period.'));
 }
 
 // ─── Income ─────────────────────────────────────────────────────────────────
@@ -282,7 +272,7 @@ function elapsedDays() {
 
 function incomeHtml() {
   const inc = cache?.income;
-  if (!inc?.chests) return emptyHtml();
+  if (!inc?.chests) return noChestsHtml();
   const tiles = [
     [t('Chests opened'), plain(inc.chests)],
     // A day's "per day" would only repeat the count beside it.
@@ -308,7 +298,7 @@ function incomeHtml() {
       : '';
     return `
       <section class="chest-rewards-group">
-        <div class="chest-rewards-group-head"><h3>${title}</h3><span class="card-header-hint">${hint}</span></div>
+        <div class="chest-rewards-group-head"><h3>${title}</h3><span class="ui-sub">${hint}</span></div>
         <div class="reward-grid">${shown.map((tot) => totalChip(tot)).join('')}</div>
         ${more}
       </section>`;
@@ -319,27 +309,18 @@ function incomeHtml() {
     ...trendKeys().map((tot) => `<option value="${esc(tot.key)}"${view.metric === tot.key ? ' selected' : ''}>${esc(itemName(tot.itemId))}</option>`),
   ].join('');
 
-  return `
-    <div class="stats-grid">
-      ${tiles.map(([label, value]) => `<div class="stat-card"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`).join('')}
-    </div>
-    <div class="card">
-      <div class="card-header chest-trend-header">
-        <h2>${view.period === 'daily'
-          ? tn(DAILY_TREND_DAYS, 'Last {n} game day', 'Last {n} game days', { n: DAILY_TREND_DAYS })
-          : t('By game day')}</h2>
-        <label class="chest-trend-pick">
-          <span class="visually-hidden">${t('Show')}</span>
-          <select class="input input-tight" id="crTrendMetric">${options}</select>
-        </label>
-      </div>
-      <div class="card-body card-body-padded">
-        <div class="chest-trend-wrap"><canvas id="crTrendChart"></canvas></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header"><h2>${t('Rewards')}</h2><span class="card-header-hint">${t('Hover a reward for the exact total')}</span></div>
-      <div class="card-body card-body-padded chest-rewards-groups">${sections}</div>
+  const stats = `<div class="ui-big-row">${tiles.map(([label, value]) => `<div class="ui-stat"><div class="ui-stat-label">${esc(label)}</div><div class="ui-big">${esc(value)}</div></div>`).join('')}</div>`;
+  const trendTitle = view.period === 'daily'
+    ? tn(DAILY_TREND_DAYS, 'Last {n} game day', 'Last {n} game days', { n: DAILY_TREND_DAYS })
+    : t('By game day');
+  const pick = `<label class="chest-trend-pick">
+      <span class="visually-hidden">${t('Show')}</span>
+      <select class="input input-tight" id="crTrendMetric">${options}</select>
+    </label>`;
+  return `<div class="ui-grid">
+      ${tileHtml('cr-stats', t('This period'), stats, { span: 12 })}
+      ${tileHtml('cr-trend', esc(trendTitle), '<div class="chest-trend-wrap"><canvas id="crTrendChart"></canvas></div>', { span: 12, link: pick })}
+      ${tileHtml('cr-rewards', t('Rewards'), `<p class="ui-sub">${t('Hover a reward for the exact total')}</p><div class="chest-rewards-groups">${sections}</div>`, { span: 12 })}
     </div>`;
 }
 
@@ -421,7 +402,7 @@ function topRewards(stat) {
 
 function byChestHtml() {
   const all = sortedChests();
-  if (!all.length) return emptyHtml();
+  if (!all.length) return noChestsHtml();
   const totalChests = cache.income?.chests || all.reduce((n, c) => n + c.chests, 0);
   const pages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
   if (view.page > pages) view.page = pages;
@@ -453,10 +434,9 @@ function byChestHtml() {
       <button class="btn btn-tight" data-cr-page="next" ${view.page >= pages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>` : '';
   return `
-    <div class="card">
-      <div class="card-header"><h2>${t('Chest types')}</h2><span class="card-header-hint">${t('Click a chest for everything it gives')}</span></div>
-      <div class="card-body">
-        <table class="table-responsive chest-rewards-table">
+    <p class="ui-sub">${t('Chest types')} · ${t('Click a chest for everything it gives')}</p>
+      <div class="ui-table-card">
+        <table class="table-responsive ui-table chest-rewards-table">
           <colgroup><col class="col-chest"><col class="col-opened"><col class="col-share"><col class="col-gives"></colgroup>
           <thead><tr>
             ${sortableThHtml({ key: 'chest', labelHtml: t('Chest'), sortState: view.sort })}
@@ -467,8 +447,7 @@ function byChestHtml() {
           <tbody>${rows}</tbody>
         </table>
         ${pager}
-      </div>
-    </div>`;
+      </div>`;
 }
 
 function openChest(giftType) {
@@ -517,26 +496,17 @@ function openChest(giftType) {
 // ─── Wiring ─────────────────────────────────────────────────────────────────
 
 function wire(el) {
-  wireViewTabs(el, VIEW_GROUP, (key) => {
-    view.mode = key;
-    if (key === 'income') drawTrend();
-    else destroyChart();
+  el.querySelectorAll('[data-cr-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (view.mode === btn.dataset.crMode) return;
+      view.mode = btn.dataset.crMode;
+      paint();
+    });
   });
 
-  el.querySelectorAll('[data-cr-period]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      view.period = btn.dataset.crPeriod;
-      view.offset = 0;
-      view.page = 1;
-      await reload();
-    });
-  });
-  el.querySelectorAll('[data-cr-nav]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      view.offset = Math.max(0, view.offset + (btn.dataset.crNav === 'next' ? -1 : 1));
-      view.page = 1;
-      await reload();
-    });
+  wirePeriodScrubber(el, {
+    onPeriod: async (p) => { view.period = p; view.offset = 0; view.page = 1; await reload(); },
+    onStep: async (delta) => { view.offset = Math.max(0, view.offset + delta); view.page = 1; await reload(); },
   });
 
   el.querySelector('#crTrendMetric')?.addEventListener('change', (ev) => {

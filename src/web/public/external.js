@@ -15,6 +15,7 @@ import {
 } from './lib/chesttracker-render.js';
 import { computeGameWindow } from './lib/period.js';
 import { t, tn } from './lib/i18n.js';
+import { emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions } from './lib/ui-kit.js';
 
 let selectedSnapshotId = null;
 // Which of the clan's ChestTracker codes we're viewing. null = the live
@@ -35,7 +36,8 @@ function withCode(path) {
   const SNAPSHOT_LIST_LIMIT = 10;
 
   async function renderExternal(el, navigate) {
-    el.innerHTML = `<div class="empty-state"><p>${t('Loading external data…')}</p></div>`;
+    setPageActions('');
+    el.innerHTML = `<div class="ext-page">${emptyHtml(t('Loading external data…'))}</div>`;
     try {
       const [status, snapshotsResp, weeksResp, codesResp] = await Promise.all([
         api(withCode('/external/status')),
@@ -52,6 +54,15 @@ function withCode(path) {
           return { current: '', rows: [] };
         }),
       ]);
+      // A refusal (a 429, a 500's { error, ref }) is an object without
+      // settings: say so with Try again, rather than reading it as "the
+      // integration is off" and bouncing to Home.
+      const refused = refusalText(status);
+      if (refused) {
+        el.innerHTML = `<div class="ext-page">${errorStateHtml(t('The ChestTracker data could not be loaded.'), refused)}</div>`;
+        wireRetry(el, () => renderExternal(el, navigate));
+        return;
+      }
       // The ChestTracker tab only applies to clans with the integration
       // enabled. A superadmin can switch the sidebar's clan switcher to a clan
       // that has it disabled while sitting on this tab (the switch reloads
@@ -90,14 +101,12 @@ function withCode(path) {
       const detail = selectedSnapshotId
         ? await api(`/external/snapshots/${selectedSnapshotId}`).catch(() => null)
         : null;
-      el.innerHTML = renderShell(status, snapshots, totalSnapshots, detail, weeks, shareCodes);
+      el.innerHTML = `<div class="ext-page">${renderShell(status, snapshots, totalSnapshots, detail, weeks, shareCodes)}</div>`;
       wireHandlers(el);
     } catch (err) {
       if (err?.name === 'UnauthenticatedError') throw err;
-      el.innerHTML = `<div class="card"><div class="card-body card-body-padded">
-        <h2>${t('External (ChestTracker.com)')}</h2>
-        <p class="error">${t('Failed to load: {error}', { error: esc(String(err?.message || err)) })}</p>
-      </div></div>`;
+      el.innerHTML = `<div class="ext-page">${errorStateHtml(t('The ChestTracker data could not be loaded.'), String(err?.message || err))}</div>`;
+      wireRetry(el, () => renderExternal(el, navigate));
     }
   }
 
@@ -184,10 +193,10 @@ function withCode(path) {
 
   function renderCollapsibleSnapshotListCard(snapshots, totalSnapshots) {
     if (!snapshots.length) {
-      return `<div class="card"><div class="card-body card-body-padded">
-        <h2 class="ext-subheader">${t('Snapshots')}</h2>
-        <div class="empty-state"><p>${t('No snapshots yet. An admin needs to configure a share code and enable polling.')}</p></div>
-      </div></div>`;
+      return `<section class="ext-section" aria-labelledby="extSnapshotsTitle">
+        <h2 class="ext-subheader" id="extSnapshotsTitle">${t('Snapshots')}</h2>
+        ${emptyHtml(t('No snapshots yet. An admin needs to configure a share code and enable polling.'))}
+      </section>`;
     }
 
     const rows = snapshots.map((s) => {
@@ -219,9 +228,9 @@ function withCode(path) {
           <span class="ext-collapsible-meta">${esc(meta)}</span>
         </summary>
         <div class="ext-collapsible-body">
-          <table class="table-responsive ext-snapshots-table"><thead><tr>
+          <div class="ui-table-card"><table class="table-responsive ui-table ext-snapshots-table"><thead><tr>
             <th>${t('Fetched')}</th><th title="${t('Upstream chesttracker scan time')}">${t('CT scanned')}</th><th>${t('Window')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Players')}</th><th>${t('Chests')}</th><th>${t('Points')}</th>
-          </tr></thead><tbody>${rows}</tbody></table>
+          </tr></thead><tbody>${rows}</tbody></table></div>
         </div>
       </details>
     </div>`;

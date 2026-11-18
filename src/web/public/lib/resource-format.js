@@ -9,6 +9,7 @@ import { esc } from './ui.js';
 import { getCurrentUser } from './state.js';
 import { t, tGame } from './i18n.js';
 import { resourceIconUrl } from './game-art.js';
+import { subTabsHtml } from './ui-kit.js';
 
 /**
  * Format a resource amount for display. Speedups are stored in hours and
@@ -92,15 +93,19 @@ export function resourceIconOnly(name) {
  * still enforce this server-side — this is just UI hygiene.
  */
 export function resourceTabsHtml(active) {
-  const tab = (key, hash, label) =>
-    `<a class="resources-tab ${active === key ? 'is-active' : ''}" href="${hash}">${label}</a>`;
+  // The kit's sub-tab bar (docs/design-standard.md): real links to the
+  // existing routes, so #resources/totals and #resources/admin keep working.
   const user = getCurrentUser();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
-  return `<div class="resources-tabs resources-nav" role="tablist">
-    ${tab('overview', '#resources', t('Overview'))}
-    ${tab('totals', '#resources/totals', t('Totals'))}
-    ${isAdmin ? tab('admin', '#resources/admin', t('Admin')) : ''}
-  </div>`;
+  return subTabsHtml({
+    label: t('Resources'),
+    current: active,
+    items: [
+      { key: 'overview', label: t('Overview'), href: '#resources' },
+      { key: 'totals', label: t('Totals'), href: '#resources/totals' },
+      ...(isAdmin ? [{ key: 'admin', label: t('Admin'), href: '#resources/admin' }] : []),
+    ],
+  });
 }
 
 /** Sent/Took direction pill. `direction` is 1 (Sent) or -1 (Took). */

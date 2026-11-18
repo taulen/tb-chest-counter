@@ -20,8 +20,11 @@ import { api } from '../lib/api.js';
 import { esc, memberLink } from '../lib/ui.js';
 import { readToken } from '../lib/theme.js';
 import { describeChart } from '../lib/chart-a11y.js';
-import { computeGameWindowDates, gameWeekStartOf, weekLengthDays } from '../lib/period.js';
-import { renderPeriodNav } from '../lib/period-nav.js';
+import { computeGameWindow, computeGameWindowDates, gameWeekStartOf, weekLengthDays } from '../lib/period.js';
+import { getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, tileHtml, segHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions,
+} from '../lib/ui-kit.js';
 import {
   formatResourceAmount, resourceIconOnly, resourceTabsHtml,
   resourceSparklineSvg,
@@ -29,6 +32,8 @@ import {
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 
 const DONORS_PAGE_SIZE = 25;
+/** The period scrubber's buttons (the same game-day windows as the Leaderboard). */
+const PERIODS = ['daily', 'weekly', 'monthly', 'all'];
 const MONTH_FMT = new Intl.DateTimeFormat(getLanguage(), { month: 'short', timeZone: 'UTC' });
 
 // Selection state — survives repaints (theme change, resource pick, etc.).
@@ -263,13 +268,20 @@ async function fetchData() {
   txQs.set('limit', '1');
   if (view.memberId) txQs.set('memberId', view.memberId);
 
-  const [typesRes, membersRes, summaryRes, dailyRes, txRes] = await Promise.all([
-    api('/resources/types'),
-    api('/members'),
-    api(`/resources/summary?${qs}`),
-    api(`/resources/daily?${dailyQs}`),
-    api(`/resources/transactions?${txQs}`),
-  ]);
+  let answers;
+  try {
+    answers = await Promise.all([
+      api('/resources/types'),
+      api('/members'),
+      api(`/resources/summary?${qs}`),
+      api(`/resources/daily?${dailyQs}`),
+      api(`/resources/transactions?${txQs}`),
+    ]);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    answers = [null, null, { error: err?.message || '' }, null, null];
+  }
+  const [typesRes, membersRes, summaryRes, dailyRes, txRes] = answers;
 
   cache = {
     types: Array.isArray(typesRes) ? typesRes : (typesRes?.types ?? []),
@@ -277,6 +289,8 @@ async function fetchData() {
     summary: Array.isArray(summaryRes?.rows) ? summaryRes.rows : [],
     daily: Array.isArray(dailyRes?.rows) ? dailyRes.rows : [],
     donationCount: txRes?.total ?? 0,
+    // The summary is the page; a refusal answer is an object, not { rows }.
+    failed: Array.isArray(summaryRes?.rows) ? null : (refusalText(summaryRes) || ' '),
   };
 }
 
@@ -286,7 +300,8 @@ export async function renderResourcesOverview(el) {
   // Read-only dashboard — visible to any authenticated clan member. Admin-only
   // controls (edit / delete) live on the separate Admin tab.
   mountedEl = el;
-  el.innerHTML = `${resourceTabsHtml('overview')}<div class="empty-state"><p>${t('Loading resources…')}</p></div>`;
+  setPageActions('');
+  el.innerHTML = `<div class="rs-page">${resourceTabsHtml('overview')}${emptyHtml(t('Loading resources…'))}</div>`;
 
   // The game's resource icons (lib/game-art.js) are in before the first paint.
   await Promise.all([fetchData(), loadGameArt()]);
@@ -314,6 +329,21 @@ function paint() {
   if (!mountedEl) return;
   const el = mountedEl;
   const { types, members, summary } = cache;
+
+  // The summary is the page: a refusal (a 429, a 500's { error, ref }) says so
+  // and offers Try again instead of drawing an all-zero dashboard.
+  if (cache.failed) {
+    destroyChart();
+    el.innerHTML = `<div class="rs-page">
+        ${resourceTabsHtml('overview')}
+        ${controlsHtml(members)}
+        ${errorStateHtml(t('The resources could not be loaded.'), cache.failed.trim())}
+      </div>`;
+    wire(el);
+    wireRetry(el, refetchAndPaint);
+    return;
+  }
+
   const typeById = new Map(types.map((type) => [type.id, type]));
   const scopedTotals = perTypeTotals(summary, view.memberId);
 
@@ -329,52 +359,47 @@ function paint() {
   const buckets = meaningfulBuckets();
   if (buckets.length && !buckets.includes(view.bucket)) view.bucket = buckets[buckets.length - 1];
 
-  el.innerHTML = `
-    ${resourceTabsHtml('overview')}
-    ${filterBarHtml(members)}
-    ${kpiRowHtml(scopedTotals)}
-    ${resourceGridHtml(cardTypes)}
-    ${buckets.length ? mainChartHtml(typeById, buckets) : ''}
-    ${view.memberId ? '' : topDonorsHtml(typeById)}
-    ${view.memberId ? '' : nonDonorsHtml(typeById)}
-  `;
+  el.innerHTML = `<div class="rs-page">
+      ${resourceTabsHtml('overview')}
+      ${controlsHtml(members)}
+      <div class="ui-grid">
+        ${statsTileHtml(scopedTotals)}
+        ${resourceGridHtml(cardTypes)}
+        ${buckets.length ? mainChartHtml(typeById, buckets) : ''}
+        ${view.memberId ? '' : topDonorsHtml(typeById)}
+        ${view.memberId ? '' : nonDonorsHtml(typeById)}
+      </div>
+    </div>`;
 
   wire(el);
   drawMainChart(typeById);
 }
 
-function filterBarHtml(members) {
+/** Who (the whole clan or one member) and when (the kit's period scrubber). */
+function controlsHtml(members) {
   const memberOpts = members
     .slice()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .map((m) => `<option value="${m.id}" ${String(m.id) === String(view.memberId) ? 'selected' : ''}>${esc(m.name)}</option>`)
     .join('');
-  const periods = ['daily', 'weekly', 'monthly', 'all'];
-  const periodLabels = { daily: t('Daily'), weekly: t('Weekly'), monthly: t('Monthly'), all: t('All') };
-  const periodBtns = periods.map((p) =>
-    `<button class="btn ${view.period === p ? 'active' : ''}" data-period="${p}">${periodLabels[p]}</button>`
-  ).join('');
-  const nav = renderPeriodNav({
-    period: view.period,
-    offset: view.periodOffset,
-    prevAttr: 'data-period-nav="prev"',
-    nextAttr: 'data-period-nav="next"',
-    hideOnAll: true,
-  });
-  return `
-    <div class="card resources-controls">
-      <div class="card-body resources-controls-body">
-        <select class="input resources-scope-select" id="rsvScope" aria-label="${t('Scope')}">
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  return `<div class="ui-toolbar rs-controls">
+      ${periodScrubberHtml({
+        periods: PERIODS, period: view.period, offset: view.periodOffset, rolloverHr, weekStart,
+        win: computeGameWindow(view.period, view.periodOffset, rolloverHr, weekStart),
+      })}
+      <label class="rs-scope"><span class="visually-hidden">${t('Scope')}</span>
+        <select class="input" id="rsvScope">
           <option value="">${t('Whole clan')}</option>
           ${memberOpts}
         </select>
-        <div class="period-selector">${periodBtns}</div>
-        ${nav}
-      </div>
+      </label>
     </div>`;
 }
 
-function kpiRowHtml(scopedTotals) {
+/** The window's headline numbers, as the kit's stats. */
+function statsTileHtml(scopedTotals) {
   const scopeSummary = view.memberId
     ? cache.summary.filter((r) => String(r.memberId) === String(view.memberId))
     : cache.summary;
@@ -391,7 +416,7 @@ function kpiRowHtml(scopedTotals) {
     ? `${view.from} → ${view.to}`
     : (dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : t('All time'));
 
-  const tiles = view.memberId
+  const stats = view.memberId
     ? [
         [t('Donations logged'), cache.donationCount.toLocaleString()],
         [t('Resources donated'), String(typeCount)],
@@ -405,16 +430,17 @@ function kpiRowHtml(scopedTotals) {
         [t('Date span'), span],
       ];
 
-  return `<div class="stats-grid">
-    ${tiles.map(([label, value]) => `<div class="stat-card"><div class="label">${label}</div><div class="value">${esc(value)}</div></div>`).join('')}
-  </div>`;
+  const body = `<div class="ui-big-row rs-stats">
+      ${stats.map(([label, value]) => `<div class="ui-stat"><div class="ui-stat-label">${esc(label)}</div><div class="ui-big rs-stat-value">${esc(value)}</div></div>`).join('')}
+    </div>`;
+  return tileHtml('rs-stats', view.memberId ? t('This member') : t('The clan'), body, { span: 12 });
 }
 
 function resourceGridHtml(cardTypes) {
   if (cardTypes.length === 0) {
-    return `<div class="card"><div class="card-body"><div class="empty-state"><p>${view.memberId
+    return tileHtml('rs-cards', t('Donated by resource'), emptyHtml(view.memberId
       ? t('No donations recorded for this member in the selected range yet.')
-      : t('No donations recorded for this clan in the selected range yet.')}</p></div></div></div>`;
+      : t('No donations recorded for this clan in the selected range yet.')), { span: 12 });
   }
   const cards = cardTypes.map(({ id, tot, type }) => {
     const series = bucketSeries(dailyForType(cache.daily, id), 'week', view.from, view.to);
@@ -422,7 +448,7 @@ function resourceGridHtml(cardTypes) {
     const donor = view.memberId ? null : topDonorForType(cache.summary, id);
     const isActive = id === view.resourceTypeId;
     return `
-      <button class="resource-card ${isActive ? 'is-selected' : ''}" data-resource-id="${id}" type="button">
+      <button class="resource-card ${isActive ? 'is-selected' : ''}" data-resource-id="${id}" type="button" aria-pressed="${isActive}">
         <div class="resource-card-head">
           ${resourceIconOnly(type.name)}
           <span class="resource-card-name">${esc(tGame(type.name))}</span>
@@ -433,17 +459,15 @@ function resourceGridHtml(cardTypes) {
           <span>${t('Net {amount}', { amount: esc(formatResourceAmount(type.slug, tot.net)) })}</span>
         </div>
         ${spark}
-        <div class="resource-card-donor">${donor ? t('Top: {name}', { name: esc(donor.memberName) }) : (view.memberId ? ' ' : t('No donors'))}</div>
+        <div class="resource-card-donor">${donor ? t('Top: {name}', { name: esc(donor.memberName) }) : (view.memberId ? ' ' : t('No donors'))}</div>
       </button>`;
   }).join('');
-  return `
-    <div class="card">
-      <div class="card-header"><h2>${t('Donated by resource')}</h2><span class="card-header-hint">${t('Each in its own unit · click to chart')}</span></div>
-      <div class="card-body card-body-padded"><div class="resources-cards">${cards}</div></div>
-    </div>`;
+  const body = `<p class="ui-sub">${t('Each in its own unit · click to chart')}</p>
+    <div class="resources-cards">${cards}</div>`;
+  return tileHtml('rs-cards', t('Donated by resource'), body, { span: 12 });
 }
 
-/** The selected resource's icon at the start of a card heading ('' without art). */
+/** The selected resource's icon at the start of a tile title ('' without art). */
 function resourceHeadIcon(name) {
   const icon = resourceIconOnly(name);
   return icon ? `<span class="resource-head-icon">${icon}</span>` : '';
@@ -453,22 +477,24 @@ function mainChartHtml(typeById, buckets) {
   const type = view.resourceTypeId != null ? typeById.get(view.resourceTypeId) : null;
   const title = type ? t('{resource} over time', { resource: esc(tGame(type.name)) }) : t('Over time');
   const labels = { day: t('Day'), week: t('Week'), month: t('Month') };
-  const bucketBtn = (key) =>
-    `<button class="btn btn-tight resources-bucket-btn ${view.bucket === key ? 'is-active' : ''}" data-bucket="${key}">${labels[key]}</button>`;
   // Only offer the granularity switch when more than one granularity gives a
   // real trend; a lone button would be a control that can't change anything.
-  const group = buckets.length >= 2
-    ? `<div class="resources-bucket-group">${buckets.map(bucketBtn).join('')}</div>`
+  const seg = buckets.length >= 2
+    ? segHtml({ label: t('Chart granularity'), items: buckets.map((b) => ({ value: b, label: labels[b] })), current: view.bucket, attr: 'rs-bucket' })
     : '';
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${type ? resourceHeadIcon(type.name) : ''}${title}</h2>
-        ${group}
-      </div>
-      <div class="card-body card-body-padded">
-        <div class="resources-chart-wrap"><canvas id="rsvChart"></canvas></div>
-      </div>
+  const body = `${seg ? `<div class="rs-chart-tools">${seg}</div>` : ''}
+    <div class="resources-chart-wrap"><canvas id="rsvChart"></canvas></div>`;
+  return tileHtml('rs-chart', `${type ? resourceHeadIcon(type.name) : ''}${title}`, body, { span: 12 });
+}
+
+/** A page of a list, with the site's pagination row when it has more than one. */
+function pagerHtml(page, total, attr, countText) {
+  const totalPages = Math.max(1, Math.ceil(total / DONORS_PAGE_SIZE));
+  if (total <= DONORS_PAGE_SIZE) return '';
+  return `<div class="pagination">
+      <button class="btn btn-tight" data-${attr}="prev" ${page <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
+      <span class="pagination-info">${t('Page {page} of {pages}', { page, pages: totalPages })} · ${countText}</span>
+      <button class="btn btn-tight" data-${attr}="next" ${page >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
     </div>`;
 }
 
@@ -484,41 +510,20 @@ function topDonorsHtml(typeById) {
   const start = (view.donorsPage - 1) * DONORS_PAGE_SIZE;
   const pageRows = rows.slice(start, start + DONORS_PAGE_SIZE);
 
+  // Rank is the donor's place by amount — canonical, left-aligned.
   const body = pageRows.length === 0
-    ? `<tr><td colspan="3" class="empty-state-cell">${t('No donations for this resource in range.')}</td></tr>`
-    : pageRows.map((r, i) => {
-        const rank = start + i + 1;
-        const highlight = view.memberId && String(r.memberId) === String(view.memberId) ? ' class="is-me"' : '';
-        return `<tr${highlight}>
-          <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${rank <= 3 ? rank : ''}">#${rank}</span></td>
-          <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.memberName)}</span></td>
-          <td data-label="${t('Donated')}" class="col-num" data-role="metric">${esc(formatResourceAmount(type?.slug, r.sentAmount))}</td>
-        </tr>`;
-      }).join('');
-
-  const pagination = total > DONORS_PAGE_SIZE ? `
-    <div class="pagination">
-      <button class="btn btn-tight" data-donors-page="prev" ${view.donorsPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
-      <span class="pagination-info">${t('Page {page} of {pages}', { page: view.donorsPage, pages: totalPages })} · ${tn(total, '{n} donor', '{n} donors', { n: total })}</span>
-      <button class="btn btn-tight" data-donors-page="next" ${view.donorsPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
-    </div>` : '';
-
-  return `
-    <div class="card">
-      <div class="card-header"><h2>${type ? resourceHeadIcon(type.name) : ''}${t('Top donors')}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2></div>
-      <div class="card-body">
-        <table class="table-responsive resources-donors-table">
-          <colgroup><col class="col-rank"><col class="col-player"><col class="col-num"></colgroup>
-          <thead><tr><th>${t('Rank')}</th><th>${t('Member')}</th><th class="col-num">${t('Donated')}</th></tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-        ${pagination}
-      </div>
-    </div>`;
+    ? emptyHtml(t('No donations for this resource in range.'))
+    : `<ol class="ui-rows">${pageRows.map((r, i) => `<li class="ui-row">
+          <span class="ui-rank">#${(start + i + 1).toLocaleString()}</span>
+          <span class="ui-row-main"><span class="ui-row-name">${memberLink(r.memberId, r.memberName)}</span></span>
+          <span class="ui-row-n">${esc(formatResourceAmount(type?.slug, r.sentAmount))}</span>
+        </li>`).join('')}</ol>`;
+  const title = `${type ? resourceHeadIcon(type.name) : ''}${t('Top donors')}${type ? ` · ${esc(tGame(type.name))}` : ''}`;
+  return tileHtml('rs-donors', title, `${body}${pagerHtml(view.donorsPage, total, 'donors-page', tn(total, '{n} donor', '{n} donors', { n: total }))}`, { span: 6 });
 }
 
 // Members who have NOT sent the selected resource in the current period —
-// the flip side of the top-donors table, so it's easy to see who to nudge.
+// the flip side of the top-donors list, as a plain fact.
 function nonDonorsHtml(typeById) {
   const type = view.resourceTypeId != null ? typeById.get(view.resourceTypeId) : null;
   if (!type) return '';
@@ -539,31 +544,11 @@ function nonDonorsHtml(typeById) {
   const pageRows = nonDonors.slice(start, start + DONORS_PAGE_SIZE);
 
   const body = pageRows.length === 0
-    ? `<tr><td class="empty-state-cell">${t('Everyone has donated {resource} in this period. 🎉', { resource: esc(tGame(type.name)) })}</td></tr>`
-    : pageRows.map((m) => `<tr><td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${memberLink(m.id, m.name)}</span></td></tr>`).join('');
-
-  const pagination = total > DONORS_PAGE_SIZE ? `
-    <div class="pagination">
-      <button class="btn btn-tight" data-nondonors-page="prev" ${view.nonDonorsPage <= 1 ? 'disabled' : ''}>${t('← Prev')}</button>
-      <span class="pagination-info">${t('Page {page} of {pages}', { page: view.nonDonorsPage, pages: totalPages })} · ${tn(total, '{n} member', '{n} members', { n: total })}</span>
-      <button class="btn btn-tight" data-nondonors-page="next" ${view.nonDonorsPage >= totalPages ? 'disabled' : ''}>${t('Next →')}</button>
-    </div>` : '';
-
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${type ? resourceHeadIcon(type.name) : ''}${t("Haven't donated")}${type ? ` · ${esc(tGame(type.name))}` : ''}</h2>
-        <span class="card-header-hint">${tn(total, '{n} member', '{n} members', { n: total })} · ${t('this period')}</span>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive resources-nondonors-table">
-          <colgroup><col class="col-player"></colgroup>
-          <thead><tr><th>${t('Member')}</th></tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-        ${pagination}
-      </div>
-    </div>`;
+    ? emptyHtml(t('Everyone has donated {resource} in this period.', { resource: tGame(type.name) }))
+    : `<p class="ui-sub">${tn(total, '{n} member', '{n} members', { n: total })} · ${t('this period')}</p>
+       <ul class="ui-rows">${pageRows.map((m) => `<li class="ui-row"><span class="ui-row-main"><span class="ui-row-name">${memberLink(m.id, m.name)}</span></span></li>`).join('')}</ul>`;
+  const title = `${resourceHeadIcon(type.name)}${t("Haven't donated")} · ${esc(tGame(type.name))}`;
+  return tileHtml('rs-nondonors', title, `${body}${pagerHtml(view.nonDonorsPage, total, 'nondonors-page', tn(total, '{n} member', '{n} members', { n: total }))}`, { span: 6 });
 }
 
 // ─── Chart ───────────────────────────────────────────────────────────────────
@@ -662,25 +647,21 @@ function wire(el) {
     await refetchAndPaint();
   });
 
-  el.querySelectorAll('.period-selector .btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      view.period = btn.dataset.period;
+  wirePeriodScrubber(el, {
+    onPeriod: async (p) => {
+      view.period = p;
       view.periodOffset = 0;
       view.bucket = defaultBucketForPeriod(view.period);
       view.donorsPage = 1;
       view.nonDonorsPage = 1;
       await refetchAndPaint();
-    });
-  });
-
-  el.querySelectorAll('[data-period-nav]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      view.periodOffset += btn.dataset.periodNav === 'next' ? -1 : 1;
-      if (view.periodOffset < 0) view.periodOffset = 0;
+    },
+    onStep: async (delta) => {
+      view.periodOffset = Math.max(0, view.periodOffset + delta);
       view.donorsPage = 1;
       view.nonDonorsPage = 1;
       await refetchAndPaint();
-    });
+    },
   });
 
   el.querySelectorAll('.resource-card').forEach((card) => {
@@ -690,8 +671,8 @@ function wire(el) {
     });
   });
 
-  el.querySelectorAll('.resources-bucket-btn').forEach((btn) => {
-    btn.addEventListener('click', () => { view.bucket = btn.dataset.bucket; paint(); });
+  el.querySelectorAll('[data-rs-bucket]').forEach((btn) => {
+    btn.addEventListener('click', () => { view.bucket = btn.dataset.rsBucket; paint(); });
   });
 
   el.querySelectorAll('[data-donors-page]').forEach((btn) => {
