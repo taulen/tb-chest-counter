@@ -445,6 +445,7 @@ export const ui = {
   "Fold the menu to icons": "Свернуть меню до значков",
   "Kingdom #{n}": "Королевство #{n}",
   "Last scan {when}": "Последний скан {when}",
+  "Scanned {when}": "Скан {when}",
   "Not scanned yet": "Ещё не сканировался",
   "Needs re-authentication": "Нужен повторный вход",
   "Paused": "Приостановлен",

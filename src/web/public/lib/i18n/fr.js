@@ -445,6 +445,7 @@ export const ui = {
   "Fold the menu to icons": "Réduire le menu aux icônes",
   "Kingdom #{n}": "Royaume n° {n}",
   "Last scan {when}": "Dernier scan {when}",
+  "Scanned {when}": "Scanné {when}",
   "Not scanned yet": "Pas encore scanné",
   "Needs re-authentication": "Nouvelle authentification requise",
   "Paused": "En pause",

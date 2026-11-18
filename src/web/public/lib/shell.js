@@ -250,11 +250,30 @@ function logoHtml(c) {
     : `<span class="shell-clan-logo is-initials" aria-hidden="true">${esc(initials(c))}</span>`;
 }
 
-function clanSubline(c) {
+/**
+ * "CWB - ChaosWithoutBorders" → { tag: 'CWB', name: 'ChaosWithoutBorders' }:
+ * the tag goes on the small line above, so the name gets a line to itself.
+ * The clan's short code wins; otherwise a leading 2–6 character tag followed
+ * by a dash, bar or colon is taken as one.
+ */
+function splitClanName(c) {
+  const full = String(c.name || '').trim();
+  const code = (c.shortCode || '').trim();
+  const m = full.match(/^([^\s\-–—|:]{2,6})\s*[-–—|:]\s*(.+)$/u);
+  if (m && (!code || m[1].toLowerCase() === code.toLowerCase())) return { tag: code || m[1], name: m[2] };
+  return { tag: code, name: full };
+}
+
+/** "<b>CWB</b> · Kingdom #260" (HTML), or '' when there is neither. */
+function clanEyebrowHtml(c, tag) {
   const parts = [];
-  if (c.kingdom) parts.push(t('Kingdom #{n}', { n: c.kingdom }));
-  parts.push(c.lastScanAt ? t('Last scan {when}', { when: formatRelativeTime(c.lastScanAt) }) : t('Not scanned yet'));
+  if (tag) parts.push(`<b>${esc(tag)}</b>`);
+  if (c.kingdom) parts.push(esc(t('Kingdom #{n}', { n: c.kingdom })));
   return parts.join(' · ');
+}
+
+function clanLastScan(c) {
+  return c.lastScanAt ? t('Scanned {when}', { when: formatRelativeTime(c.lastScanAt) }) : t('Not scanned yet');
 }
 
 /** The one status a clan row carries: glyph + words, never colour alone. */
@@ -270,10 +289,20 @@ function statusHtml(c) {
   return `<span class="shell-clan-status ${s.cls}"><span aria-hidden="true">${s.glyph}</span> ${esc(s.text)}</span>`;
 }
 
-function clanTextHtml(c) {
+/**
+ * Tag + kingdom, the name, the last scan — each on its own line. The name's
+ * font scales down (style.css, --fit) until its longest word fits the box, so
+ * "ChaosWithoutBorders" stays whole instead of ending in "…".
+ */
+function clanTextHtml(c, extra = '') {
+  const { tag, name } = splitClanName(c);
+  const eyebrow = clanEyebrowHtml(c, tag);
+  const longestWord = Math.max(...name.split(/\s+/).map((w) => [...w].length), 1);
   return `<span class="shell-clan-text">
-      <span class="shell-clan-name">${esc(c.name)}</span>
-      <span class="shell-clan-sub">${esc(clanSubline(c))}</span>
+      ${eyebrow ? `<span class="shell-clan-eyebrow">${eyebrow}</span>` : ''}
+      <span class="shell-clan-name" style="--fit:${longestWord}">${esc(name)}</span>
+      <span class="shell-clan-sub">${esc(clanLastScan(c))}</span>
+      ${extra}
     </span>`;
 }
 
@@ -309,11 +338,7 @@ function renderClanBlock() {
         ${clans.map((c) => `<li>
           <button type="button" class="shell-clan-option" data-clan-id="${c.id}"${c.id === active.id ? ' aria-current="true"' : ''}>
             ${logoHtml(c)}
-            <span class="shell-clan-text">
-              <span class="shell-clan-name">${esc(c.name)}</span>
-              <span class="shell-clan-sub">${esc(clanSubline(c))}</span>
-              ${statusHtml(c)}
-            </span>
+            ${clanTextHtml(c, statusHtml(c))}
           </button>
         </li>`).join('')}
       </ul>

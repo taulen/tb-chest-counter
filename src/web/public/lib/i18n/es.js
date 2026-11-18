@@ -445,6 +445,7 @@ export const ui = {
   "Fold the menu to icons": "Plegar el menú a iconos",
   "Kingdom #{n}": "Reino #{n}",
   "Last scan {when}": "Último escaneo {when}",
+  "Scanned {when}": "Escaneado {when}",
   "Not scanned yet": "Aún sin escanear",
   "Needs re-authentication": "Requiere volver a autenticarse",
   "Paused": "En pausa",

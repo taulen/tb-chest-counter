@@ -7019,9 +7019,29 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  /* The name's font is sized against this box's width (cqi below). */
+  container-type: inline-size;
 }
-/* The name is what the block is for: a long one ("CWB - ChaosWithoutBorders")
-   takes a second line rather than losing its end. */
+/* Tag + kingdom: "CWB · Kingdom #260". Normal case, so "Königreich #260"
+   and "Королевство #260" keep their number in the sidebar's width. */
+.shell-clan-eyebrow {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.shell-clan-eyebrow b {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+/* The name is what the block is for, so it never ends in "…": the font
+   shrinks until the longest word (--fit characters, set by lib/shell.js)
+   fits the box, 15px down to 11px; names with spaces wrap to a second line.
+   Without container units it stays 14px and breaks the word instead. */
 .shell-clan-name {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -7029,8 +7049,9 @@ body {
   overflow: hidden;
   overflow-wrap: anywhere;
   font-size: 14px;
+  font-size: clamp(11px, calc(100cqi / (var(--fit, 12) * 0.62)), 15px);
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 .shell-clan-sub {
   overflow-wrap: anywhere;
