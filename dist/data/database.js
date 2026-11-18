@@ -2560,9 +2560,9 @@ const MIGRATIONS = [
         // marked skipped for good — as if the players were at fault. chat_send_state
         // keeps when the scanner last sent an invite DM (welcome codes now go one
         // at a time, 10 min apart) and a mute's pause with its count (the
-        // backoff). The muted-skipped welcomes go back to waiting with their tries
-        // cleared, and the clan they came from starts paused 75 min after its
-        // last refusal. Replay-safe: IF NOT EXISTS, OR IGNORE, and the UPDATE
+        // backoff). The welcomes refused as muted (skipped, or waiting with a try
+        // counted) go back to waiting with their tries cleared, and the clan they
+        // came from starts paused 75 min after its last refusal. Replay-safe: IF NOT EXISTS, OR IGNORE, and the UPDATE
         // matches nothing the second time.
         version: 131,
         run: (database) => {
@@ -2582,9 +2582,9 @@ const MIGRATIONS = [
                  MAX(CAST(strftime('%s', updated_at) AS INTEGER)) * 1000 + 75 * 60000,
                  MAX(CAST(strftime('%s', updated_at) AS INTEGER)) * 1000,
                  1, MAX(reason), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-            FROM chat_invite_welcomes WHERE status = 'skipped' AND reason LIKE '%muted%' GROUP BY clan_id;
+            FROM chat_invite_welcomes WHERE status IN ('skipped', 'waiting') AND reason LIKE '%muted%' GROUP BY clan_id;
         UPDATE chat_invite_welcomes SET status = 'waiting', reason = NULL, attempts = 0
-          WHERE status = 'skipped' AND reason LIKE '%muted%';
+          WHERE status IN ('skipped', 'waiting') AND reason LIKE '%muted%';
       `);
         },
     },
