@@ -610,7 +610,14 @@ function clansTile(ctx) {
   const byId = new Map(ctx.overview.map((o) => [o.id, o]));
   const runningIds = new Set((ctx.status?.activity?.clans ?? (ctx.status?.activity ? [ctx.status.activity] : [])).map((c) => c.clanId));
   const activeId = getCurrentUser()?.activeClan?.id ?? getCurrentUser()?.clanId ?? null;
-  const next = ctx.status?.nextScanAt ? formatRelativeTime(ctx.status.nextScanAt) : null;
+  // A future time: formatRelativeTime is for the past and turned every future
+  // moment into "just now" (beside a scanner card saying "in 47m").
+  const nextMs = Date.parse(ctx.status?.nextScanAt ?? '');
+  const next = runningIds.size
+    ? t('A scan cycle is running')
+    : Number.isFinite(nextMs) && nextMs > Date.now()
+      ? t('Next scan cycle in {time}', { time: timeLeftUntil(ctx.status.nextScanAt) })
+      : null;
   const rows = ctx.clans.map((c) => {
     const o = byId.get(c.id) || {};
     const st = c.needsReauth ? { cls: 'is-bad', glyph: '!', text: t('Needs re-authentication') }
@@ -631,7 +638,7 @@ function clansTile(ctx) {
         <span class="shell-clan-status ${st.cls}"><span aria-hidden="true">${st.glyph}</span> ${esc(st.text)}</span>
       </button></li>`;
   });
-  const body = `${next ? `<p class="home-sub">${esc(t('Next scan cycle {when}', { when: next }))}</p>` : ''}
+  const body = `${next ? `<p class="home-sub">${esc(next)}</p>` : ''}
     <ul class="home-clans">${rows.join('')}</ul>`;
   return tile('clans', t('Clans'), body, { span: 12, link: tileLink('#clans', t('Manage clans')) });
 }
