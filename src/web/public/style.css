@@ -5297,6 +5297,11 @@ details > table {
 .ev-stat .ui-big { font-size: 26px; overflow-wrap: anywhere; }
 .ev-stat.is-lead { border-color: var(--accent-gold-border); }
 .ev-stat.is-lead .ui-big { color: var(--accent-gold); }
+/* A chest's name in a tile label wraps (de "Abschlussbelohnung" in a phone's half-width tile). */
+.ev-stat .chest-label { flex-wrap: wrap; row-gap: 4px; }
+.ev-stat .chest-label-text { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; min-width: 0; }
+/* A vault level's name wraps in the phone's compact row ("Schatzkammer der Ahnen Level 15–19"). */
+.events-level-table .mrow-name { white-space: normal; overflow: visible; text-overflow: clip; }
 .ev-views { display: flex; }
 .ev-panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .ev-panel[hidden] { display: none; }
@@ -11341,6 +11346,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 /* Events → In-game rankings: one kit tile per run (.ui-tile.game-run). */
 .game-runs-lede { margin: 0 0 14px; }
 .game-run-standings { margin-top: 4px; }
+/* A tile whose standings open grows on its own; its neighbour keeps its height. */
+.ui-tile.game-run { align-self: start; }
 /* The hand-pasted standings, folded while the game's are read. */
 .events-paste-fold { margin: 0 0 16px; }
 .events-paste-fold > summary {
