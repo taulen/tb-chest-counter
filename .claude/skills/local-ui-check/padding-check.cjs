@@ -39,7 +39,7 @@ function measure() {
   const TABLEISH = /^(TABLE|THEAD|TBODY|TFOOT|TR|TH|TD|COLGROUP|COL|CAPTION)$/;
   // Panels whose items sit 4px in on purpose: a segmented control's pills and
   // the Might picker's highlighted rows.
-  const DESIGNED_INSET = '.resources-tabs, .might-pick-list';
+  const DESIGNED_INSET = '.resources-tabs, .might-pick-list, .mboard-seg';
   // Between the element and its panel, a strip that actually scrolls sideways
   // (the phone timeframe buttons): its overflow is reachable, not a fault.
   const inScrollStrip = (el, panel) => {

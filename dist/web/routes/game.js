@@ -17,6 +17,8 @@ const game_profile_repo_js_1 = require("../../data/repositories/game-profile-rep
 const titles_js_1 = require("../../game-protocol/titles.js");
 const game_clan_repo_js_1 = require("../../data/repositories/game-clan-repo.js");
 const member_tiers_js_1 = require("../../data/member-tiers.js");
+const avatar_repo_js_1 = require("../../data/repositories/avatar-repo.js");
+const account_invite_repo_js_1 = require("../../data/repositories/account-invite-repo.js");
 const roster_changes_js_1 = require("../../data/roster-changes.js");
 const roster_changes_repo_js_1 = require("../../data/repositories/roster-changes-repo.js");
 const member_timeline_js_1 = require("../../data/member-timeline.js");
@@ -482,11 +484,19 @@ function createGameRouter() {
     router.get('/roster', (req, res) => {
         const clanId = req.clanId;
         const tiers = (0, member_tiers_js_1.getMemberTiers)(clanId);
+        // The picture a member shows (Members board): the linked account's own
+        // photo, else the hero portrait, else the initial — avatar-repo's order.
+        const photos = (0, avatar_repo_js_1.linkedPhotoUrlsForClan)(clanId);
+        // Which member is the signed-in account's own player, for the board's "You".
+        const myPlayerId = req.user ? (0, account_invite_repo_js_1.linkedGamePlayerId)(req.user.id, clanId) : null;
         const out = {};
         for (const [memberId, p] of (0, game_profile_repo_js_1.getGamePlayersByMember)(clanId)) {
             out[memberId] = {
                 heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, frameUrl: p.frameUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
                 tiers: tiers.get(memberId)?.tiers ?? null,
+                avatar: (0, avatar_repo_js_1.resolveMemberAvatar)(p.name, p.avatarUrl, photos.get(p.playerId) ?? null),
+                isYou: myPlayerId !== null && myPlayerId === p.playerId,
+                joinedAt: p.joinedAt, burning: p.burning, mapSeenAt: p.mapSeenAt, might: p.might,
             };
         }
         res.json({ members: out });

@@ -11241,13 +11241,11 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .mboard-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 10px 16px;
 }
-.mboard-heading { min-width: 0; }
-.mboard-heading h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; }
-.mboard-sub { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+.mboard-sub { margin: 0; font-size: 13.5px; color: var(--text-secondary); }
 .mboard-label {
   font-size: 11px;
   font-weight: 600;
@@ -11363,7 +11361,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 .mboard-key { display: inline-block; width: 3px; height: 14px; border-radius: 2px; }
 .mboard-key-goal { background: var(--text-primary); }
-.mboard-key-pace { margin-left: 6px; width: 2px; background: var(--text-secondary); }
+.mboard-key-pace { width: 2px; background: var(--text-secondary); }
+.mboard-key-sep { margin: 0 4px; }
 
 .mboard-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .mboard-search { flex: 1 1 220px; max-width: 320px; }
@@ -11475,8 +11474,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 /* A phone: two lines per member — who + points, then the bar + band. */
 @media (max-width: 640px) {
-  .mboard-heading h2 { font-size: 22px; }
-  .mboard-head .mboard-seg { order: -1; align-self: stretch; }
+  .mboard-head .mboard-seg { margin-left: auto; }
   .mboard-period .mboard-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
   .mboard-step { width: 100%; }
   .mboard-when { flex: 1; text-align: center; }

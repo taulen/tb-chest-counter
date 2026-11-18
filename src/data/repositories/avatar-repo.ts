@@ -132,11 +132,11 @@ function heroPortraitUrl(userId: number, clanId: number | null): string | null {
  */
 export function linkedPhotoUrlsForClan(clanId: number): Map<number, string> {
   const rows = getDb().prepare(
-    `SELECT l.player_id, a.sha256, a.mime FROM user_game_links l
+    `SELECT l.player_id, a.sha256 FROM user_game_links l
        JOIN user_avatars a ON a.user_id = l.user_id
       WHERE l.clan_id = ?`,
-  ).all(clanId) as Array<{ player_id: number; sha256: string; mime: string }>;
-  return new Map(rows.map((r) => [r.player_id, avatarUrl(r.sha256, r.mime)]));
+  ).all(clanId) as Array<{ player_id: number; sha256: string }>;
+  return new Map(rows.map((r) => [r.player_id, avatarUrl(r.sha256)]));
 }
 
 /**

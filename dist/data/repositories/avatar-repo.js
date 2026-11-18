@@ -11,6 +11,8 @@ exports.setUserAvatar = setUserAvatar;
 exports.removeUserAvatar = removeUserAvatar;
 exports.hasUserAvatar = hasUserAvatar;
 exports.getAvatarBytes = getAvatarBytes;
+exports.linkedPhotoUrlsForClan = linkedPhotoUrlsForClan;
+exports.resolveMemberAvatar = resolveMemberAvatar;
 exports.resolveAccountAvatar = resolveAccountAvatar;
 /**
  * Account avatars (v128): the small round picture next to a signed-in account.
@@ -113,6 +115,29 @@ function heroPortraitUrl(userId, clanId) {
         return null;
     const row = (0, database_js_1.getDb)().prepare('SELECT hero_avatar FROM game_players WHERE clan_id = ? AND player_id = ?').get(clanId, playerId);
     return (0, game_profile_repo_js_1.heroAvatarUrl)(row?.hero_avatar ?? null);
+}
+/**
+ * The own photos of accounts linked to players in a clan: game player id →
+ * photo URL. A member list uses it so a member shows the picture its account
+ * chose — the same order as resolveAccountAvatar, seen from the member's side.
+ */
+function linkedPhotoUrlsForClan(clanId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT l.player_id, a.sha256 FROM user_game_links l
+       JOIN user_avatars a ON a.user_id = l.user_id
+      WHERE l.clan_id = ?`).all(clanId);
+    return new Map(rows.map((r) => [r.player_id, avatarUrl(r.sha256)]));
+}
+/**
+ * What a MEMBER shows as its picture, in resolveAccountAvatar's order: the
+ * linked account's own photo, else the hero portrait, else the initial.
+ */
+function resolveMemberAvatar(name, heroUrl, photoUrl) {
+    const initial = avatarInitial(name);
+    if (photoUrl)
+        return { kind: 'photo', url: photoUrl, initial };
+    if (heroUrl)
+        return { kind: 'hero', url: heroUrl, initial };
+    return { kind: 'initial', url: null, initial };
 }
 /**
  * What an account shows as its picture: its own photo, else the hero portrait

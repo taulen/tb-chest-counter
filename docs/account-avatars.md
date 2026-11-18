@@ -10,6 +10,8 @@ One server-side resolver decides, `resolveAccountAvatar` in [avatar-repo.ts](../
 2. **`hero`**: the hero portrait of the game player the account *is* in the clan being viewed (`game_players.hero_avatar` → the extracted game art). Which player that is comes from the account's invite link, `linkedGamePlayerId(userId, clanId)` in [account-invite-repo.ts](../src/data/repositories/account-invite-repo.ts) (`user_game_links`, v127 — [account-invites.md](account-invites.md)). Accounts made with a code from the game chat therefore show their hero until they upload a photo. Old password accounts and superadmins have no link.
 3. **`initial`**: the first letter of the account name.
 
+**Members (the other way round).** A member list shows a *member's* picture in the same order, seen from the player's side: `resolveMemberAvatar(name, heroUrl, photoUrl)`, with the linked accounts' photos for a clan from `linkedPhotoUrlsForClan(clanId)` (player id → photo URL). `GET /api/game/roster` attaches it per member as `avatar`, next to `isYou` (that member is the signed-in account's own player); the Members ranking board ([pages/members-board.js](../src/web/public/pages/members-board.js)) paints it with the same `avatarHtml`.
+
 The client only paints what it is given ([lib/avatar.js](../src/web/public/lib/avatar.js)). The picture is decorative (`alt=""`): the name always sits beside it.
 
 ## Uploading (account menu → Change photo)

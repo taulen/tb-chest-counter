@@ -144,11 +144,15 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
 
   board = {
     el, rows, goalPts, pacePts, running, win, rerender,
-    scaleMax: Math.max(goalPts ? goalPts * 1.15 : 0, ...rows.map((r) => r.points), 1),
+    // With a goal the bar spans up to twice it, so one runaway total doesn't
+    // squash everyone else's bar to a sliver (the number shows the real total).
+    scaleMax: goalPts
+      ? Math.max(goalPts * 1.25, Math.min(Math.max(...rows.map((r) => r.points), 0), goalPts * 2))
+      : Math.max(...rows.map((r) => r.points), 1),
     changes: Array.isArray(changes?.entries) ? changes.entries : [],
   };
 
-  el.innerHTML = `${tabsHtml}<section class="mboard" aria-labelledby="mboardTitle">
+  el.innerHTML = `${tabsHtml}<section class="mboard" aria-label="${esc(t('Ranking board'))}">
     ${headHtml(rows.length)}
     ${periodHtml(rolloverHr, weekStart)}
     ${notesHtml()}
@@ -166,14 +170,12 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
   wire(el);
 }
 
+/** The page header already says "Members": this line is the count + the view toggle. */
 function headHtml(count) {
-  return `<header class="mboard-head">
-      <div class="mboard-heading">
-        <h2 id="mboardTitle">${t('Members')}</h2>
-        <p class="mboard-sub">${tn(count, '{n} member', '{n} members', { n: count })} · ${t('select a member for their profile')}</p>
-      </div>
+  return `<div class="mboard-head">
+      <p class="mboard-sub">${tn(count, '{n} member', '{n} members', { n: count })} · ${t('select a member for their profile')}</p>
       ${membersViewToggleHtml('board')}
-    </header>`;
+    </div>`;
 }
 
 /** Day / Week / Month / All, the arrows, and where in the window we are. */
@@ -182,7 +184,7 @@ function periodHtml(rolloverHr, weekStart) {
   let where = '';
   if (board.running) {
     const reset = new Date(Date.UTC(2000, 0, 1, rolloverHr));
-    const local = reset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const local = reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const resetText = t('resets {utc} UTC ({local} your time)', { utc: `${String(rolloverHr).padStart(2, '0')}:00`, local });
     if (period === 'weekly') {
       const days = goalDaysForPeriod('weekly', weekStart);
@@ -239,10 +241,12 @@ function summaryHtml() {
     return `<button type="button" class="mboard-chip mboard-band-chip band-${b}${state.band === b ? ' is-active' : ''}" aria-pressed="${state.band === b}" data-mb-band="${b}">${label} <span class="mboard-chip-n">${count(b)}</span></button>`;
   };
   const goalText = t('Goal {n}', { n: board.goalPts.toLocaleString() });
-  const paceText = board.pacePts !== null ? ` · ${t('pace now {n}', { n: board.pacePts.toLocaleString() })}` : '';
+  const pace = board.pacePts !== null
+    ? `<span class="mboard-key-sep" aria-hidden="true">·</span><span class="mboard-key mboard-key-pace" aria-hidden="true"></span>${esc(t('pace now {n}', { n: board.pacePts.toLocaleString() }))}`
+    : '';
   return `<div class="mboard-summary">
       <div class="mboard-bands" role="group" aria-label="${esc(t('Show'))}">${bands.map(chip).join('')}</div>
-      <p class="mboard-goal-line"><span class="mboard-key mboard-key-goal" aria-hidden="true"></span>${esc(goalText)}${board.pacePts !== null ? `<span class="mboard-key mboard-key-pace" aria-hidden="true"></span>` : ''}${esc(paceText)}</p>
+      <p class="mboard-goal-line"><span class="mboard-key mboard-key-goal" aria-hidden="true"></span>${esc(goalText)}${pace}</p>
     </div>`;
 }
 
