@@ -421,7 +421,10 @@ if (contentEl) {
   initMobileRows(contentEl);
   // Keep focus on a sort header across the re-render its sort triggers.
   initSortableHeaders(contentEl);
-  contentEl.addEventListener('click', async (event) => {
+  // One handler for the page body and the header's action slot (#pageActions,
+  // outside #content): a [data-action] button a page puts beside its title
+  // (Leaderboard: FAQ, Copy data) did nothing when only #content listened.
+  const onPageAction = async (event) => {
     const target = event.target.closest('[data-action]');
     if (!target) return;
 
@@ -527,7 +530,9 @@ if (contentEl) {
     if (action === 'resources-tx-edit') return handleResourcesTxEdit(Number.parseInt(target.dataset.txId || '0', 10));
     if (action === 'resources-tx-save') return handleResourcesTxSave(Number.parseInt(target.dataset.txId || '0', 10), loadPage);
     if (action === 'resources-tx-cancel') return handleResourcesTxCancel(loadPage);
-  });
+  };
+  contentEl.addEventListener('click', onPageAction);
+  document.getElementById('pageActions')?.addEventListener('click', onPageAction);
 
   // Hover preview + click-to-enlarge for any row that kept the screenshot it came
   // from (rows recorded by the retired screenshot reader): unreadable chest
