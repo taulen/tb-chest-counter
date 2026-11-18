@@ -191,6 +191,11 @@ function setPopover(btnId, popId, open, opts) {
   const pop = byId(popId);
   if (!btn || !pop) return;
   if (open) {
+    // Out of the flow BEFORE it shows. Unhidden in place, the account menu sat
+    // in the sidebar's column for a moment and pushed the account button up by
+    // its own height (the block is pinned to the foot with margin-top: auto);
+    // the button was measured up there, so the menu opened that far above it.
+    if (!isPhone()) pop.style.position = 'fixed';
     pop.hidden = false;
     placePopover(pop, btn, opts);
     btn.setAttribute('aria-expanded', 'true');
