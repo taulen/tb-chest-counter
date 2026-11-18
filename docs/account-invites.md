@@ -99,6 +99,11 @@ in one transaction:
 | signed in | another player linked here | refused |
 | superadmin | — | refused — superadmins are never linked |
 
+Signed out, the way in is the sign-in page's "Have a code? Join here". Signed
+in, the same words sit in the account menu (sidebar foot; the More sheet on a
+phone) — the in-game message tells players to pick them, so both doors carry
+that label.
+
 Every attempt counts against the caller's address (20 per 15 min) and failed
 ones again on their own (10 per 15 min). A wrong, used or expired code all
 answer the same.

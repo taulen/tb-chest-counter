@@ -102,6 +102,13 @@ td, th, .stat-card .value, .num {
 .user-menu-item:hover {
   background: var(--hover-overlay-strong);
 }
+/* A link in the menu ("Have a code? Join here") looks like its buttons. */
+a.user-menu-item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  text-decoration: none;
+}
 
 .user-menu-item-danger {
   color: var(--accent-red);
