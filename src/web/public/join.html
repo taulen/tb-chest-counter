@@ -42,8 +42,18 @@
 </head>
 <body>
   <main class="login-card join-card">
-    <h1>TB Chest Counter</h1>
-    <p class="subtitle" data-i18n>Join with a code from the game</p>
+    <div class="auth-brand">
+      <svg class="auth-logo" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M5 14 C5 8 9 5 16 5 C23 5 27 8 27 14 L27 15 L5 15 Z" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+        <rect x="5" y="15" width="22" height="12" rx="0.8" fill="#f0c040" stroke="#3d2b0f" stroke-width="1.4" stroke-linejoin="round"/>
+        <rect x="5" y="18" width="22" height="2" fill="#3d2b0f"/>
+        <rect x="13.5" y="16.8" width="5" height="6.2" rx="0.4" fill="#3d2b0f"/>
+        <circle cx="16" cy="19.5" r="0.8" fill="#f0c040"/>
+        <rect x="15.65" y="19.5" width="0.7" height="1.6" fill="#f0c040"/>
+      </svg>
+      <span class="auth-brand-name">TB Chest Counter</span>
+    </div>
+    <h1 class="auth-title" data-i18n>Join with a code from the game</h1>
     <div class="error" id="error" role="alert"></div>
     <!-- Filled by join.js: the code step, then what the code does for this
          visitor (a new account, a new password, linking or adding a clan). -->
