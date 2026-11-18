@@ -8,6 +8,7 @@ import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { avatarHtml } from '../lib/avatar.js';
 import { gameRankName } from '../lib/game-facts.js';
+import { setPageActions, asList, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
 const AUDIT_PAGE_SIZE = 25;
 let currentAuditPage = 1;
@@ -489,9 +490,18 @@ export async function renderUsers(el) {
     return;
   }
   const isSuperAdmin = currentUser.role === 'superadmin';
-  const [allFetchedUsers, audit] = await Promise.all([
+  const [allFetchedUsers, auditRaw] = await Promise.all([
     api('/auth/users'), api('/auth/audit-log?limit=500'),
   ]);
+  // A refusal (429, a 500's { error, ref }) is an object, not a list: the
+  // account list is the page, so say so with Try again; the log just goes empty.
+  if (!Array.isArray(allFetchedUsers)) {
+    setPageActions('');
+    el.innerHTML = errorStateHtml(t('The accounts could not be loaded.'), refusalText(allFetchedUsers));
+    wireRetry(el, () => renderUsers(el));
+    return;
+  }
+  const audit = asList(auditRaw);
 
   // Superadmins see every user across every clan from the API; the
   // page honors the header clan-switcher by trimming that down to
@@ -636,15 +646,29 @@ export async function renderUsers(el) {
     return `<span class="user-game-link${link.onRoster ? '' : ' is-gone'}">${parts.join(' · ')}${unlink}</span>`;
   };
 
-  el.innerHTML = `
-    <h2 class="page-section-title">${t('User Accounts')}</h2>
-    <p class="page-section-intro">${isSuperAdmin
-      ? t("Create, modify, and remove user accounts. Roles control which pages a user can access.")
-      : t("Manage user accounts for your clan. You can grant the User and Admin roles; only superadmins manage instance-wide accounts.")}</p>
-    <p class="page-section-intro">${t('Players get their account with a code from the game chat (Clans → Account invites via chat): it is linked to their player, and its role follows their rank — the {leader} and {superior} ranks are admins.', { leader: esc(gameRankName(1)), superior: esc(gameRankName(2)) })}</p>
+  // The page's own button beside the shell's title: open the (folded) form.
+  setPageActions(isSuperAdmin
+    ? `<button type="button" class="btn btn-primary" data-users-open-create>${esc(t('Create User'))}</button>`
+    : '');
+  const people = users.filter((u) => u.role !== 'superadmin');
+  const linkedCount = people.filter((u) => gameLinkFor(u)).length;
+  const adminCount = people.filter((u) => u.role === 'admin').length;
+  const stat = (n, label) => `<div class="ui-tile span-3 users-stat"><div class="ui-big">${Number(n).toLocaleString()}</div><div class="ui-stat-label">${esc(label)}</div></div>`;
 
-    ${isSuperAdmin ? `<div class="card">
-      <div class="card-header"><h2>${t('Create User')}</h2></div>
+  el.innerHTML = `
+    <div class="ui-grid users-stats">
+      ${stat(people.length, t('Accounts'))}
+      ${stat(linkedCount, t('Linked to a player'))}
+      ${stat(people.length - linkedCount, t('Not linked'))}
+      ${stat(adminCount, t('Admins'))}
+    </div>
+    <p class="ui-copy users-intro">${isSuperAdmin
+      ? t("Create, modify, and remove user accounts. Roles control which pages a user can access.")
+      : t("Manage user accounts for your clan. You can grant the User and Admin roles; only superadmins manage instance-wide accounts.")}
+      ${t('Players get their account with a code from the game chat (Clans → Account invites via chat): it is linked to their player, and its role follows their rank — the {leader} and {superior} ranks are admins.', { leader: esc(gameRankName(1)), superior: esc(gameRankName(2)) })}</p>
+
+    ${isSuperAdmin ? `<details class="card card-collapsible" data-section-key="users-create" id="usersCreate">
+      <summary class="card-header"><h2>${t('Create User')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="inline-form-row">
           <div><label>${t('Username')}</label><input type="text" id="newUsername" class="input"></div>
@@ -662,12 +686,12 @@ export async function renderUsers(el) {
         </div>
         <p class="muted-copy">${t('New accounts are created in the clan selected in the header. Choosing role <strong>Super Admin</strong> drops the clan — superadmins are cross-clan.')}</p>
       </div>
-    </div>` : ''}
+    </details>` : ''}
 
-    <div class="card">
+    <section class="card ui-table-card users-card">
       <div class="card-header"><h2>${t('All Users ({count})', { count: users.length })}</h2></div>
       <div class="card-body">
-        <table class="table-responsive users-table">
+        <table class="ui-table table-responsive users-table">
           <colgroup>
             <col class="col-user-name">
             <col class="col-user-role">
@@ -738,15 +762,13 @@ export async function renderUsers(el) {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
 
-    <h2 class="page-section-title">${t('Audit Log')}</h2>
-    <p class="page-section-intro">${t('Record of administrative actions taken by users.')}</p>
-
-    <details class="card card-collapsible">
-      <summary class="card-header"><h2>${t('Recent Actions ({count})', { count: totalAudit })}</h2></summary>
+    <details class="card ui-table-card card-collapsible users-audit" data-section-key="users-audit">
+      <summary class="card-header"><h2>${t('Audit Log')} <span class="ui-sub">${t('Recent Actions ({count})', { count: totalAudit })}</span></h2></summary>
       <div class="card-body">
-        ${auditPageEntries.length > 0 ? `<table class="table-responsive audit-table">
+        <p class="ui-copy users-audit-intro">${t('Record of administrative actions taken by users.')}</p>
+        ${auditPageEntries.length > 0 ? `<table class="ui-table table-responsive audit-table">
           <colgroup>
             <col class="col-audit-time">
             <col class="col-audit-user">
@@ -787,6 +809,15 @@ export async function renderUsers(el) {
   for (const btn of el.querySelectorAll('[data-unlink-game]')) {
     btn.addEventListener('click', () => unlinkGamePlayer(btn.dataset, () => renderUsers(el)));
   }
+
+  // The header's Create User opens the folded form and puts the cursor in it.
+  document.querySelector('[data-users-open-create]')?.addEventListener('click', () => {
+    const form = el.querySelector('#usersCreate');
+    if (!form) return;
+    form.open = true;
+    form.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    form.querySelector('#newUsername')?.focus({ preventScroll: true });
+  });
 }
 
 // ─── Action handlers ──────────────────────────────────────────

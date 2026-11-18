@@ -25,6 +25,7 @@ import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { mountPointsBoard } from './points-board.js';
+import { subTabsHtml, asList, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
 /**
  * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
@@ -56,32 +57,22 @@ function attentionCount(navStatus) {
 }
 
 /**
- * Same segmented bar and link-per-tab routing as Tools. Review is only shown
- * while it has something — or when it is the open tab, so the bar still says
- * where you are after its last item is cleared. A failed count (null) keeps it
- * visible rather than hiding work.
+ * The kit's sub-tab bar (links to #admin/<tab>). Review is only shown while it
+ * has something — or when it is the open tab, so the bar still says where you
+ * are after its last item is cleared — and carries its count. A failed count
+ * (null) keeps it visible rather than hiding work.
  */
 function adminTabsHtml(active, count) {
-  const tabs = [];
+  const items = [];
   if (count !== 0 || active === 'review') {
-    tabs.push({
-      key: 'review',
-      label: count > 0
-        ? `${t('Review ({count})', { count })}<span class="nav-dot" aria-hidden="true"></span>`
-        : t('Review'),
-    });
+    items.push({ key: 'review', label: t('Review'), href: '#admin/review', count: count > 0 ? count : null });
   }
-  tabs.push(
-    { key: 'members', label: t('Members') },
-    { key: 'chests', label: t('Chests') },
-    { key: 'points', label: t('Points') },
+  items.push(
+    { key: 'members', label: t('Members'), href: '#admin/members' },
+    { key: 'chests', label: t('Chests'), href: '#admin/chests' },
+    { key: 'points', label: t('Points'), href: '#admin/points' },
   );
-  return `<div class="resources-tabs admin-tabs" role="tablist" aria-label="${esc(t('Page sections'))}">${tabs.map(({ key, label }) => {
-    const on = key === active;
-    // One wrapper so a label that wraps on a phone keeps Review's dot inline
-    // after its count instead of becoming a flex item on a line of its own.
-    return `<a class="resources-tab${on ? ' is-active' : ''}" href="#admin/${key}" role="tab" aria-selected="${on}"><span>${label}</span></a>`;
-  }).join('')}</div>`;
+  return subTabsHtml({ label: t('Page sections'), items, current: active });
 }
 
 /** Log a mount failure unless it is a sign-out or a navigation abort. */
@@ -158,20 +149,29 @@ function rosterFor(members, memberChestCounts) {
 
 /** Edit Members and Merge Player Names. */
 async function membersTab() {
-  const [members, memberChestCounts, stats, playerRules] = await Promise.all([
+  const [members, memberChestCounts, stats, playerRulesRaw] = await Promise.all([
     api('/members?include=inactive'),
     api('/admin/member-chest-counts'),
     api('/stats'),
     api('/admin/merge-rules?type=player'),
   ]);
+  // The tab's main list: a refusal (429, a 500's { error, ref }) is an object,
+  // not a member list — say so with Try again instead of drawing an empty tab.
+  if (!Array.isArray(members)) {
+    return {
+      html: errorStateHtml(t('The member list could not be loaded.'), refusalText(members)),
+      wire: (el) => wireRetry(el, () => renderAdmin(el, 'members')),
+    };
+  }
   // Edit Members lists active rows by default; the soft-deleted ones
   // hide behind a "Show removed members" toggle so the table doesn't
   // get cluttered.
+  const playerRules = asList(playerRulesRaw);
   const { activeMembers, removedMembers, chestCounts } = rosterFor(members, memberChestCounts);
   const memberOption = (m) => countedOption(m.name, chestCounts[m.id]);
 
   const html = `
-    <p class="page-section-intro">${t('Edit names, delete duplicates, and merge OCR misreads into the correct player.')}</p>
+    <p class="page-section-intro">${t('Edit names, remove duplicates, and merge two names that belong to the same player.')}</p>
 
     <div class="card">
       <div class="card-header"><h2>${t('Edit Members ({count})', { count: activeMembers.length })}</h2></div>
@@ -179,7 +179,7 @@ async function membersTab() {
         <details ${stats.totalSessions === 0 ? 'open' : ''}>
           <summary class="collapse-toggle">${t('Show member list')}</summary>
           <p class="muted-copy mtb-12">${t('Rename or remove members. Removing a player who has chest history keeps their existing records but excludes them from future scans — useful when a player leaves so a new player with a similar name can\'t accidentally be matched into their identity.')}</p>
-          <table class="table-responsive">
+          <table class="ui-table table-responsive">
             <thead><tr><th>${t('Current Name')}</th><th class="col-edit">${t('New Name')}</th><th class="col-actions"></th></tr></thead>
             <tbody>
               ${activeMembers.map((m) => `<tr id="member-row-${m.id}">
@@ -196,7 +196,7 @@ async function membersTab() {
         ${removedMembers.length > 0 ? `<details class="mt-12">
           <summary class="collapse-toggle">${t('Show removed members ({count})', { count: removedMembers.length })}</summary>
           <p class="muted-copy mtb-12">${t('Players excluded from scan matching. Their chest history is intact. Restore one if it was removed by mistake or the player rejoined the clan.')}</p>
-          <table class="table-responsive">
+          <table class="ui-table table-responsive">
             <thead><tr><th>${t('Name')}</th><th class="col-date">${t('Last Seen')}</th><th class="col-actions"></th></tr></thead>
             <tbody>
               ${removedMembers.map((m) => `<tr id="member-row-${m.id}">
@@ -215,10 +215,10 @@ async function membersTab() {
     <div class="card">
       <div class="card-header"><h2>${t('Merge Player Names')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Fix OCR name variations. Updates existing records and auto-corrects future scans.')}</p>
+        <p class="muted-copy mb-12">${t('Join two spellings of one player into one. Updates existing records and every future scan.')}</p>
         <div class="inline-form-row">
           <div>
-            <label>${t('OCR Misread')}</label>
+            <label>${t('Wrong name')}</label>
             <select id="mergePlayerFrom" class="input">
               <option value="">${t('Select...')}</option>
               ${activeMembers.map(memberOption).join('')}
@@ -236,7 +236,7 @@ async function membersTab() {
         ${playerMergeCustomHtml('mergePlayerToCustom', { className: 'mb-16' })}
         ${playerRules.length > 0 ? `<details>
           <summary class="collapse-toggle">${tn(playerRules.length, '{n} active player merge rule', '{n} active player merge rules', { n: playerRules.length })}</summary>
-          <table class="table-responsive merge-rules-table">
+          <table class="ui-table table-responsive merge-rules-table">
             <colgroup>
               <col class="col-merge-from">
               <col class="col-merge-to">
@@ -262,21 +262,23 @@ async function membersTab() {
 
 /** Merge Chest Names and Merge Chest Sources. */
 async function chestsTab() {
-  const [chestRules, sourceRules, chestTypes, chestSources] = await Promise.all([
+  const [chestRulesRaw, sourceRulesRaw, chestTypesRaw, chestSourcesRaw] = await Promise.all([
     api('/admin/merge-rules?type=chest'),
     api('/admin/merge-rules?type=source'),
     api('/admin/unique-chests'),
     api('/admin/unique-sources'),
   ]);
+  // asList: a refusal answers with an object, never a list to map over.
+  const [chestRules, sourceRules, chestTypes, chestSources] = [chestRulesRaw, sourceRulesRaw, chestTypesRaw, chestSourcesRaw].map(asList);
 
   const html = `
     <div class="card">
       <div class="card-header"><h2>${t('Merge Chest Names')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Map OCR misreads to the correct chest name. Applies to existing records and future scans.')}</p>
+        <p class="muted-copy mb-12">${t('Map an old or misspelled chest name to the correct one. Applies to existing records and future scans.')}</p>
         <div class="inline-form-row">
           <div>
-            <label>${t('OCR Misread')}</label>
+            <label>${t('Wrong name')}</label>
             <select id="mergeChestFrom" class="input">
               <option value="">${t('Select...')}</option>
               ${chestTypes.map((c) => countedOption(c.name, c.count)).join('')}
@@ -298,7 +300,7 @@ async function chestsTab() {
         </div>
         ${chestRules.length > 0 ? `<details>
           <summary class="collapse-toggle">${tn(chestRules.length, '{n} active chest merge rule', '{n} active chest merge rules', { n: chestRules.length })}</summary>
-          <table class="table-responsive merge-rules-table">
+          <table class="ui-table table-responsive merge-rules-table">
             <colgroup>
               <col class="col-merge-from">
               <col class="col-merge-to">
@@ -322,10 +324,10 @@ async function chestsTab() {
     <div class="card">
       <div class="card-header"><h2>${t('Merge Chest Sources')}</h2></div>
       <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Map OCR misreads to the correct source string (e.g. "Level 5 Crypt." → "Level 5 Crypt"). Applies to existing records and future scans.')}</p>
+        <p class="muted-copy mb-12">${t('Map an old or misspelled source to the correct one (e.g. "Level 5 Crypt." → "Level 5 Crypt"). Applies to existing records and future scans.')}</p>
         <div class="inline-form-row">
           <div>
-            <label>${t('OCR Misread')}</label>
+            <label>${t('Wrong name')}</label>
             <select id="mergeSourceFrom" class="input">
               <option value="">${t('Select...')}</option>
               ${chestSources.map((s) => countedOption(s.source, s.count)).join('')}
@@ -347,7 +349,7 @@ async function chestsTab() {
         </div>
         ${sourceRules.length > 0 ? `<details>
           <summary class="collapse-toggle">${tn(sourceRules.length, '{n} active source merge rule', '{n} active source merge rules', { n: sourceRules.length })}</summary>
-          <table class="table-responsive merge-rules-table">
+          <table class="ui-table table-responsive merge-rules-table">
             <colgroup>
               <col class="col-merge-from">
               <col class="col-merge-to">
@@ -492,7 +494,7 @@ export async function doMergeSource(rerender) {
 // GET /admin/triumphal-points: every configured chest plus any chest
 // observed in scans but not yet valued (flagged `isNew`, sorted first).
 function renderTriumphalPointsSection(rows, isSuperadmin) {
-  const list = rows || [];
+  const list = asList(rows);
   const hasNew = list.some((row) => row.isNew);
   return `
     <div class="card">
@@ -502,7 +504,7 @@ function renderTriumphalPointsSection(rows, isSuperadmin) {
         ${list.length > 0 ? `
           <details${hasNew ? ' open' : ''}>
             <summary class="collapse-toggle">${t('Show triumphal chest values ({count})', { count: list.length })}</summary>
-            <table class="table-responsive mt-12">
+            <table class="ui-table table-responsive mt-12">
               <thead><tr><th>${t('Chest')}</th><th>${t('Chests Seen')}</th><th>${t('Per Chest')}</th><th>${t('Package (3-of-a-kind)')}</th></tr></thead>
               <tbody>
                 ${list.map((row) => `<tr${row.isNew ? ' class="row-needs-attention"' : ''}>
@@ -584,16 +586,15 @@ export async function saveAllTriumphalPoints(rerender) {
  * from the game itself now (Nov 2026).
  */
 function renderReviewQueueSection(queue) {
-  const entries = queue?.triumphalChests?.entries || [];
+  const entries = asList(queue?.triumphalChests?.entries);
   if (entries.length === 0) return '';
   return `
-    <h2 class="page-section-title">${t('Review Queue')} <span class="chest-type epic">${tn(entries.length, '{n} new', '{n} new', { n: entries.length })}</span></h2>
     <div class="card">
       <div class="card-header">
         <h2>${t('New Triumphal Chests')} (${entries.length})</h2>
       </div>
       <div class="card-body card-body-padded">
-        <table class="table-responsive">
+        <table class="ui-table table-responsive">
           <thead><tr><th>${t('Chest Name')}</th><th>${t('First Seen')}</th><th>${t('Chests')}</th></tr></thead>
           <tbody>
             ${entries.map((e) => `<tr>
@@ -686,7 +687,7 @@ export async function promptMergePlayerById(id, rerender) {
           ${playerMergeOptionsHtml(sorted, counts && !counts.error ? counts : {}, member.name)}
         </select>
         ${playerMergeCustomHtml('mergeDialogToCustom', { inputClass: 'input modal-input', value: member.name })}
-        <p class="modal-form-hint">${t('Fix OCR name variations. Updates existing records and auto-corrects future scans.')}</p>
+        <p class="modal-form-hint">${t('Join two spellings of one player into one. Updates existing records and every future scan.')}</p>
       </div>
       <div class="modal-actions">
         <button class="btn" type="button" data-merge-dialog="cancel">${t('Cancel')}</button>

@@ -23,6 +23,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { attachChatDigest, chatDigestSectionHtml } from './clan-chat-digest.js';
 import { attachAccountInvites, accountInvitesSectionHtml } from './clan-account-invites.js';
 import { isTinmanWeek, weekLengthDays } from '../lib/period.js';
+import { setPageActions, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
 export { saveLoginSession, cancelLoginSession, reloadLoginSession, pasteIntoLoginSession };
 
@@ -110,7 +111,13 @@ export async function renderClans(el, refreshClanIndicator) {
   try {
     clansData = await fetch('/api/clans').then((r) => r.json());
   } catch {
-    el.innerHTML = `<div class="empty-state"><p>${t('Failed to load clans.')}</p></div>`;
+    clansData = null;
+  }
+  // A failed or refused read (no clans list) is the whole page: say so, offer Try again.
+  if (!clansData || !Array.isArray(clansData.clans)) {
+    setPageActions('');
+    el.innerHTML = errorStateHtml(t('Failed to load clans.'), refusalText(clansData));
+    wireRetry(el, () => renderClans(el, refreshClanIndicator));
     return;
   }
   const allClans = Array.isArray(clansData.clans) ? clansData.clans : [];
@@ -140,8 +147,13 @@ export async function renderClans(el, refreshClanIndicator) {
     }
   }
 
+  // The page's own button beside the shell's title: open the folded form.
+  setPageActions(isSuperAdmin
+    ? `<button type="button" class="btn btn-primary" data-clans-open-add>${escapeHtml(t('Add Clan'))}</button>`
+    : '');
+
   el.innerHTML = `
-    <p class="page-section-intro">${isSuperAdmin
+    <p class="ui-copy clans-intro">${isSuperAdmin
       ? t("Each clan has its own member roster, chest data, Total Battle login, Discord channel, and ChestTracker share code. The scanner reads every active clan in turn on each scheduled interval.")
       : t("Manage your clan's Discord and ChestTracker integrations and refresh the Total Battle login session.")}</p>
 
@@ -154,8 +166,8 @@ export async function renderClans(el, refreshClanIndicator) {
     ${loginBridgePanelHTML({ modal: true, bonusLinks: true })}
 
     ${isSuperAdmin ? `
-    <div class="card">
-      <div class="card-header"><h2>${t('Add Clan')}</h2></div>
+    <details class="card card-collapsible" data-section-key="clans-add" id="clansAdd">
+      <summary class="card-header"><h2>${t('Add Clan')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="inline-form-row">
           <div class="clan-code-field"><label for="newClanShortCode">${t('Short code')}</label><input id="newClanShortCode" class="input" type="text" maxlength="8" placeholder="${t('e.g. ARD')}" autocomplete="off" spellcheck="false"></div>
@@ -164,11 +176,20 @@ export async function renderClans(el, refreshClanIndicator) {
         </div>
         <p class="muted-copy mt-12">${t('After creating, sign in to TB for the new clan via the in-app login bridge. The next scan reads its members and chests from the game.')}</p>
       </div>
-    </div>
+    </details>
     ` : ''}
 
     ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl)).join('')}
   `;
+
+  // The header's Add Clan opens the folded form and puts the cursor in it.
+  document.querySelector('[data-clans-open-add]')?.addEventListener('click', () => {
+    const form = el.querySelector('#clansAdd');
+    if (!form) return;
+    form.open = true;
+    form.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    form.querySelector('#newClanShortCode')?.focus({ preventScroll: true });
+  });
 
   // Wire up create + per-clan controls. These actions are clan-page-
   // local, not routed through the global app.js dispatcher, since
