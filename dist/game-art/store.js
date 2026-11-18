@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FILE_RE = exports.VERSION_RE = exports.ART_SELECTION_VERSION = void 0;
+exports.CATALOG_NAMES_FILE = exports.FILE_RE = exports.VERSION_RE = exports.ART_SELECTION_VERSION = void 0;
 exports.gameArtDir = gameArtDir;
 exports.readState = readState;
 exports.loadIndex = loadIndex;
@@ -11,6 +11,8 @@ exports.resetGameArtMemo = resetGameArtMemo;
 exports.servedVersions = servedVersions;
 exports.currentGameArt = currentGameArt;
 exports.gameArtUrl = gameArtUrl;
+exports.noteMissingArt = noteMissingArt;
+exports.resetMissingArtForTests = resetMissingArtForTests;
 exports.heroAvatarImage = heroAvatarImage;
 exports.avatarFrameImage = avatarFrameImage;
 exports.ensureGameArt = ensureGameArt;
@@ -64,12 +66,14 @@ const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ no
  * and crests; 9: the Dragon's icons, frame and pictures; 10: item tiles — the
  * quality-coloured item backs and the item frame from the WebGL client, for
  * the chest rewards; 11: titles' round icons and pictures (T29), for the
- * profile header — Nov 2026). Bump this with
+ * profile header; 12: every tree's picture (T1 branches), every sprite name
+ * names.json carries (`named`) and every UI icon in the catalogue (`icons`,
+ * ~2,600 small images) — extract before a page needs it — Nov 2026). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-exports.ART_SELECTION_VERSION = 11;
+exports.ART_SELECTION_VERSION = 12;
 exports.VERSION_RE = /^[0-9a-f]{32}$/;
 exports.FILE_RE = /^[a-z0-9_-]{1,128}\.png$/;
 function gameArtDir() {
@@ -142,11 +146,84 @@ function currentGameArt(dir = gameArtDir()) {
     const s = readState(dir);
     return s ? loadIndex(dir, s.current) : null;
 }
-/** URL of an image of the current version, or null. */
+/** URL of an image of the current version, or null (and a hole noted: noteMissingArt). */
 function gameArtUrl(name, dir = gameArtDir()) {
     const index = currentGameArt(dir);
     const img = index?.images[name];
+    if (index && !img && name)
+        noteMissingArt(index.version, name, dir);
     return index && img ? `/game-art/${index.version}/${img.file}` : null;
+}
+/** Per version: every address the catalogue listed (safeArtName), written by the run. */
+exports.CATALOG_NAMES_FILE = 'catalog-names.txt';
+// One line per minute at most: a page asks for many pictures at once, and each
+// name is only ever reported once per art version (missingSeen), so batching
+// keeps the warning buffer to a line per burst; the coalescer's window
+// matches, so a batch is never swallowed into a "repeated" summary.
+const MISSING_FLUSH_MS = 60_000;
+const missingSeen = new Set();
+const missingPending = new Map();
+let missingTimer = null;
+const catalogNames = new Map();
+const missingWarner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), MISSING_FLUSH_MS);
+function catalogHas(dir, version, name) {
+    const key = `${dir}|${version}`;
+    if (!catalogNames.has(key)) {
+        try {
+            catalogNames.set(key, new Set(fs_1.default.readFileSync(path_1.default.join(dir, version, exports.CATALOG_NAMES_FILE), 'utf8').split('\n')));
+        }
+        catch {
+            catalogNames.set(key, null); // an index built before the list was written
+        }
+    }
+    const names = catalogNames.get(key);
+    return names ? names.has(name) : null;
+}
+/**
+ * A page asked for a picture the current art doesn't have: a hole. Logged
+ * once per name per art version, batched into one informational line a minute (a page asks for many at once), saying whether the game's catalogue
+ * lists it — "listed" means the selection should take it (selection.ts),
+ * "not listed" that the game has no such picture by that name.
+ */
+function noteMissingArt(version, name, dir = gameArtDir()) {
+    const key = `${version}|${name}`;
+    if (missingSeen.has(key))
+        return;
+    missingSeen.add(key);
+    if (!missingPending.has(version))
+        missingPending.set(version, new Set());
+    missingPending.get(version).add(name);
+    if (missingTimer)
+        return;
+    missingTimer = setTimeout(() => {
+        missingTimer = null;
+        for (const [v, names] of missingPending) {
+            const listed = [];
+            const unlisted = [];
+            const unknown = [];
+            for (const n of names) {
+                const has = catalogHas(dir, v, n);
+                (has === null ? unknown : has ? listed : unlisted).push(n);
+            }
+            const part = (label, list) => list.length ? `${label} ${list.length} (${list.slice(0, 12).join(', ')}${list.length > 12 ? ', …' : ''})` : '';
+            missingWarner.warn(`missing:${v}`, `Game art ${v}: asked for pictures it hasn't got — ` + [
+                part('in the catalogue, not selected:', listed),
+                part('not in the catalogue:', unlisted),
+                part('catalogue unknown:', unknown),
+            ].filter(Boolean).join('; '));
+        }
+        missingPending.clear();
+    }, MISSING_FLUSH_MS);
+    missingTimer.unref?.();
+}
+/** Forget noted holes (tests). */
+function resetMissingArtForTests() {
+    missingSeen.clear();
+    missingPending.clear();
+    catalogNames.clear();
+    if (missingTimer)
+        clearTimeout(missingTimer);
+    missingTimer = null;
 }
 /** The portrait image name for a player's heroAvatar (game_players.hero_avatar), or null. */
 function heroAvatarImage(heroAvatar, dir = gameArtDir()) {
@@ -226,7 +303,9 @@ async function runEnsure(opts) {
     const loadStatic = opts.loadStatic ?? art_static_js_1.loadArtStatic;
     const current = state?.current === version ? loadIndex(dir, version) : null;
     // Same art but an older selection: rebuild, reusing what this version has.
-    const existing = current && (current.selection ?? 1) >= exports.ART_SELECTION_VERSION ? current : null;
+    // A run that couldn't download some bundles left a retry list: rebuild
+    // (reusing every image) to fill those holes instead of keeping them.
+    const existing = current && (current.selection ?? 1) >= exports.ART_SELECTION_VERSION && !current.retry?.length ? current : null;
     if (existing) {
         // Same art. The static data may still have moved on (a new tech, a renamed
         // chest): recompute the mappings over the images we have.
@@ -279,7 +358,8 @@ async function runEnsure(opts) {
     const addresses = [];
     for (const e of catalog)
         addresses.push(...e.addresses);
-    const selected = (0, selection_js_1.selectArt)(addresses, st, resourceNames);
+    const names = await loadNames(opts);
+    const selected = (0, selection_js_1.selectArt)(addresses, st, resourceNames, names);
     // address → bundle (first listing wins), then bundle → wanted addresses
     const bundleOf = new Map();
     for (const e of catalog)
@@ -300,18 +380,29 @@ async function runEnsure(opts) {
     const tmp = path_1.default.join(dir, `.tmp-${version}-${crypto_1.default.randomBytes(4).toString('hex')}`);
     fs_1.default.mkdirSync(tmp, { recursive: true });
     const images = {};
+    // Failures of bundles with a picture the app shows: too many abort the run.
     const failures = [];
+    // The catch-alls (`named`, `icons`) are best effort: a failure there is
+    // counted, retried next run when it was the download, never fatal.
+    const optionalFailures = [];
+    const retry = [];
+    const skipped = new Set();
+    const prevSkipped = new Set(prev?.skipped ?? []);
     let downloaded = 0;
     let reused = 0;
     let bytes = 0;
     const processBundle = async (bundle, wanted) => {
         // Unchanged bundle: copy the previous version's PNGs.
         if (prev && prevVersion) {
-            const reusable = [...wanted.keys()].map((a) => (0, selection_js_1.safeArtName)(a)).filter((n) => prev.images[n]?.bundle === bundle);
-            if (reusable.length === wanted.size) {
+            const covered = [...wanted.keys()].filter((a) => prev.images[(0, selection_js_1.safeArtName)(a)]?.bundle === bundle || prevSkipped.has(a));
+            if (covered.length === wanted.size) {
                 for (const [addr, cat] of wanted) {
                     const name = (0, selection_js_1.safeArtName)(addr);
                     const old = prev.images[name];
+                    if (!old) {
+                        skipped.add(addr);
+                        continue;
+                    }
                     fs_1.default.copyFileSync(path_1.default.join(dir, prevVersion, old.file), path_1.default.join(tmp, old.file));
                     images[name] = { ...old, category: cat };
                 }
@@ -319,15 +410,25 @@ async function runEnsure(opts) {
                 return;
             }
         }
-        const buf = await fetchBuffer(fetchImpl, catalog_js_1.UNITY_BASE + bundle, BUNDLE_TIMEOUT_MS);
+        let buf;
+        try {
+            buf = await fetchBuffer(fetchImpl, catalog_js_1.UNITY_BASE + bundle, BUNDLE_TIMEOUT_MS);
+        }
+        catch (err) {
+            retry.push(...wanted.keys());
+            throw err;
+        }
         downloaded++;
         bytes += buf.length;
         if (!(0, unityfs_js_1.isUnityFs)(buf))
             throw new Error('not a UnityFS bundle');
         const { images: found, errors } = (0, extract_js_1.extractImages)(buf, (n) => wanted.has(n.toLowerCase()));
         const picked = (0, extract_js_1.pickImages)(found);
-        if (!picked.length)
+        if (!picked.length) {
+            for (const a of wanted.keys())
+                skipped.add(a);
             throw new Error(errors[0] ?? 'no matching image in bundle');
+        }
         // A Spine animation's picture is one region of its texture (spine.ts).
         const spine = [...wanted.keys()].filter((a) => selection_js_1.SPINE_REGIONS.has(a));
         const atlases = spine.length
@@ -339,6 +440,11 @@ async function runEnsure(opts) {
             const name = (0, selection_js_1.safeArtName)(addr);
             if (!cat || images[name])
                 continue;
+            // The `icons` catch-all keeps icons, not the odd big picture named like one.
+            if (cat === 'icons' && Math.max(img.image.width, img.image.height) > selection_js_1.LIBRARY_MAX_SIDE) {
+                skipped.add(addr);
+                continue;
+            }
             let pixels = img.image;
             const region = selection_js_1.SPINE_REGIONS.get(addr);
             if (region) {
@@ -362,13 +468,15 @@ async function runEnsure(opts) {
                 await processBundle(next[0], next[1]);
             }
             catch (err) {
-                failures.push(`${next[0]}: ${err instanceof Error ? err.message : String(err)}`);
+                const optional = [...next[1].values()].every((c) => c === 'named' || c === 'icons');
+                (optional ? optionalFailures : failures).push(`${next[0]}: ${err instanceof Error ? err.message : String(err)}`);
             }
         }
     });
     await Promise.all(workers);
     const total = work.size;
-    if (!Object.keys(images).length || failures.length > Math.max(10, total * MAX_FAILED_SHARE)) {
+    const required = [...work.values()].filter((w) => [...w.values()].some((c) => c !== 'named' && c !== 'icons')).length;
+    if (!Object.keys(images).length || failures.length > Math.max(10, required * MAX_FAILED_SHARE)) {
         fs_1.default.rmSync(tmp, { recursive: true, force: true });
         throw new Error(`${failures.length} of ${total} bundles failed (e.g. ${failures[0] ?? 'no images'})`);
     }
@@ -397,9 +505,14 @@ async function runEnsure(opts) {
         client: frames?.client ?? null,
         images: Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),
         mappings: (0, mappings_js_1.buildMappings)(st, troops, resourceNames, has),
-        stats: { bundles: total, downloaded, reused, bytes, failed: failures.length, seconds },
+        stats: { bundles: total, downloaded, reused, bytes, failed: failures.length, seconds, optionalFailed: optionalFailures.length, skipped: skipped.size },
+        ...(retry.length ? { retry: [...new Set(retry)].sort() } : {}),
+        ...(skipped.size ? { skipped: [...skipped].sort() } : {}),
     };
     writeJsonAtomic(path_1.default.join(tmp, 'index.json'), index);
+    // Every address the catalogue lists, so a miss can say whether the game has
+    // the picture at all (noteMissingArt). Not served: FILE_RE takes .png only.
+    fs_1.default.writeFileSync(path_1.default.join(tmp, exports.CATALOG_NAMES_FILE), [...new Set(addresses.map(selection_js_1.safeArtName))].sort().join('\n'));
     const finalDir = path_1.default.join(dir, version);
     fs_1.default.rmSync(finalDir, { recursive: true, force: true });
     fs_1.default.renameSync(tmp, finalDir);
@@ -413,12 +526,27 @@ async function runEnsure(opts) {
         .filter(([id, icon]) => icon && index.mappings.unitFrames[String(index.mappings.troopTiers[id])]).length;
     log.info(`Game art ${version}: ${Object.keys(images).length} images (${perCat}) from ${total} bundles ` +
         `(${downloaded} downloaded, ${reused} reused), ${(bytes / 1048576).toFixed(1)} MB in ${seconds}s; ` +
-        `${failures.length} failed; troop icons ${troopIcons.filter(Boolean).length}/${troopIcons.length}, ` +
+        `${failures.length} failed, ${optionalFailures.length} catch-all bundle(s) without a usable picture, ${skipped.size} skipped, ` +
+        `${retry.length ? `${new Set(retry).size} to retry next run, ` : ''}troop icons ${troopIcons.filter(Boolean).length}/${troopIcons.length}, ` +
         `framed ${framed} (client ${frames?.client ?? 'none'}${frames?.downloaded ? ', downloaded' : ''})`);
     if (failures.length) {
         warner.warn('bundles', `Game art ${version}: ${failures.length} bundle(s) failed, e.g. ${failures.slice(0, 3).join('; ')}`);
     }
     return { status: 'updated', version, images: Object.keys(images).length };
+}
+/** names.json for the `named` catch-all; null (nothing named) when it can't be had. */
+async function loadNames(opts) {
+    try {
+        if (opts.loadNames)
+            return await opts.loadNames();
+        // Imported lazily: static-data pulls the protocol codec and its caches in.
+        const { loadGameNames } = await import('../game-protocol/static-data.js');
+        return await loadGameNames();
+    }
+    catch (err) {
+        warner.warn('names', `Game art: names.json unavailable, nothing selected by name this run (${errText(err)})`);
+        return null;
+    }
 }
 async function loadTroops(opts) {
     try {

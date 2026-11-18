@@ -114,14 +114,60 @@ The game's own sprites, extracted on the server in plain Node — never stored i
 the repo. `versions.totalbattle.com/config` → `unity_catalog_version.webgl` names
 the asset catalogue at `assets-unity.totalbattle.dev/webgl/<hash>` (custom
 binary: per bundle a name, group, content hash, bundle hash and the lower-cased
-asset addresses inside). Only bundles holding images we use are downloaded
+asset addresses inside). Only bundles holding images we select are downloaded
 (heroes, portrait frames, city looks, troops/mercenaries, research/talent
-icons, chests, resources, clan, events, status icons),
+icons and every tree's own picture, chests, resources, clan, events, status
+icons, … — then the two catch-alls below),
 decoded (UnityFS + LZ4 → SerializedFile type trees → Texture2D RGBA32 / RGB24 /
 RGB565 / DXT1 / DXT5, Sprites cut from their atlas — pixel-identical to UnityPy
 on 2188 references) and written as PNG to `data/game-art/<catalog>/` with an
 `index.json` (images + mappings). Runs at startup and daily; a new catalogue
 re-downloads only changed bundles; current + previous version are kept.
+
+**Extract before a page needs it** (selection 12, Nov 18 2026). My Clan showed
+"Clan territories" without its picture: the tree's `visual` (`clan_fort_4_72`,
+T1 client config) was never selected, because a picture was only extracted once
+some category "wanted" it. Now, in [selection.ts](../src/game-art/selection.ts):
+
+- **By construction from the static data**: every tree's picture (T1 branches,
+  `ArtStatic.branches`, format 5 — research, talents and clan; the audit also
+  caught `tech_guards_new`, `tech_army_new`, `tech_beasts_new`), and every sprite
+  name names.json carries, found by key wherever it sits (`named`,
+  `artNamesFromGameNames`, keys `ART_KEYS`). A test scans static-data.ts so a new
+  art field on a `Game*` interface must be collected. On the live data all 818
+  names.json sprite names the catalogue lists are selected; 6 it names aren't in
+  the catalogue at all (`lvlup_heimdall`, `lvlup_artemisia`, `lvlup_attila`, two
+  artifact icons, `bonus_adept_fire_28`).
+- **`icons`, the catch-all**: every catalogue address that is a UI icon by its
+  name — size-suffixed sprites (`_72`, `_28`, `_22`, `_64`, …) and `icon_*` /
+  `*_icon` — minus animations, audio, per-language pictures, banners, the world
+  map and minimaps, tutorials and `_old` copies; at most 512 px a side
+  (`LIBRARY_MAX_SIDE`; bigger ones are recorded as skipped). Measured on catalogue
+  c508dcac… (14,384 bundles, 15,554 addresses):
+
+  | Rule | Adds | Bundles | Download | On disk |
+  |---|---|---|---|---|
+  | size-suffixed sprites | +1,837 | 1,806 | ~46 MB | ~19 MB |
+  | `icon_*` / `*_icon` | +741 | 741 | ~87 MB | ~21 MB |
+  | *not taken:* `_frame/_back/_mask/_lg` backgrounds | +361 | 201 | ~873 MB | ~894 MB |
+  | *not taken:* `_scaled` full-body pictures | +262 | 262 | ~542 MB | ~184 MB |
+  | *not taken:* everything but known non-pictures | +7,940 | 6,995 | ~3.3 GB | ~1.2 GB |
+
+  Selection 11 took 3,190 addresses from 2,977 bundles; selection 12 takes 5,416
+  from 5,168. The first run per art version downloads the ~2,200 new bundles
+  (~130 MB, a few minutes at 6 at a time; ~12 ms CPU each) and copies the rest.
+- **Best effort, never fatal**: a `named`/`icons` bundle that fails is counted,
+  not held against the run (only bundles with a picture the app shows count
+  toward the 20% abort). A bundle that couldn't be **downloaded** goes on the
+  index's `retry` list — the next run with the same art and selection rebuilds
+  to fetch just those, reusing every image, instead of keeping the hole until
+  the next game patch. Addresses with no picture in their bundle, or too big,
+  go on `skipped` and aren't downloaded again.
+- **Holes are logged**: `gameArtUrl` asked for a name the index doesn't have
+  logs it once per name per art version, batched to one informational
+  (noAlert) line a minute, split into "in the catalogue, not selected" (the
+  selection should take it) and "not in the catalogue". The run writes
+  `catalog-names.txt` beside `index.json` for that (not served: only `.png` is).
 
 This is the one Unity reader: the research and talent trees' layouts (JSON
 TextAssets, "guardtree" …, [tech-trees.ts](../src/game-protocol/tech-trees.ts))

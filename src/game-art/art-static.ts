@@ -19,6 +19,9 @@
  *   T11 equipment    f2 icon address, f3 name vector (gems/enchantments: T8 f1 8/9)
  *   T29 titles       f1 name vector, f3 visual JSON {"smallIcon": <round 28 px,
  *                    an atlas sprite>, "mobileIcon": <72 px>, …}
+ *   T1  client config the research / talent / clan trees ("branches") with
+ *                    their `visual` — the tree's own picture beside its name
+ *                    (client-config.ts readBranchDefs; tech-trees.ts shows it)
  *
  * The raw files are ~67 MB and only held in memory; the result is cached as
  * data/game-art/static-<version>.json, rebuilt once per game patch.
@@ -33,6 +36,7 @@ import {
   unzipFirst,
   type StaticVersion,
 } from '../game-protocol/static-data.js';
+import { TABLE_CLIENT_CONFIG, readBranchDefs } from '../game-protocol/client-config.js';
 
 const STATIC_BASE = 'https://assets-client-static.totalbattle.dev/';
 const TRANSLATIONS_BASE = 'https://assets-translations.totalbattle.dev//';
@@ -62,8 +66,8 @@ export interface ArtUnit {
   icon: string;
 }
 
-/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames; 4: titles). */
-export const ART_STATIC_FORMAT = 4;
+/** Bumped when ArtStatic gains a field: a cache file of an older format is rebuilt once (2: unit tiers, portrait frames; 4: titles; 5: tree pictures). */
+export const ART_STATIC_FORMAT = 5;
 
 export interface ArtItem {
   id: number;
@@ -95,6 +99,13 @@ export interface ArtStatic {
   inserts?: Record<string, { name: string; icon: string }>;
   /** T29 title id → { name, icon (round smallIcon), art (72 px mobileIcon, else rewardIcon) }. Format 4+. */
   titles?: Record<string, { name: string; icon: string; art: string }>;
+  /**
+   * T1 tree (branch) id → { name, visual }: every research, talent and clan
+   * tree's own picture. Format 5+. Before it, a tree's picture was only there
+   * when another category happened to take it — "Clan territories"
+   * (clan_fort_4_72) wasn't, and My Clan showed it bare (Nov 18 2026).
+   */
+  branches?: Record<string, { name: string; visual: string }>;
 }
 
 /** Titles: f1 name vector, f3 visual JSON. */
@@ -238,7 +249,14 @@ export function buildArtStatic(
     const art = typeof v.mobileIcon === 'string' && v.mobileIcon ? v.mobileIcon : typeof v.rewardIcon === 'string' ? v.rewardIcon : '';
     if (icon || art) titles[id] = { name: name(row[1]), icon, art };
   }
-  return { version, format: ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts, titles };
+  const branches: NonNullable<ArtStatic['branches']> = {};
+  const t1 = tables.get(TABLE_CLIENT_CONFIG);
+  if (t1) {
+    for (const b of readBranchDefs(t1, (ref) => (ref === undefined ? undefined : str(ref)), en)) {
+      if (b.visual && /^[\w-]+$/.test(b.visual)) branches[b.id] = { name: b.name, visual: b.visual };
+    }
+  }
+  return { version, format: ART_STATIC_FORMAT, heroes, units, techs, items, captains, frames, cityLooks, artifacts, equipment, inserts, titles, branches };
 }
 
 export function staticKey(v: StaticVersion): string {
@@ -269,7 +287,7 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as ArtStatic;
     // A cache from an older format (no captains, no unit tiers, no artifacts or
     // equipment) is rebuilt once.
-    if (cached.captains && cached.format === ART_STATIC_FORMAT && cached.artifacts && cached.equipment) return cached;
+    if (cached.captains && cached.format === ART_STATIC_FORMAT && cached.artifacts && cached.equipment && cached.branches) return cached;
   }
   const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
     fetchBuffer(STATIC_BASE + version.files.strings),
@@ -281,7 +299,7 @@ export async function loadArtStatic(dir: string): Promise<ArtStatic> {
     key,
     readWrappedArray(stringsBuf),
     readWrappedArray(vectorsBuf),
-    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CUSTOMIZATIONS, TABLE_ARTIFACTS, TABLE_EQUIPMENT, TABLE_TITLES]),
+    readTables(tablesBuf, [TABLE_ITEMS, TABLE_UNITS, TABLE_HERO_AVATARS, TABLE_TECHS, TABLE_CAPTAINS, TABLE_CUSTOMIZATIONS, TABLE_ARTIFACTS, TABLE_EQUIPMENT, TABLE_TITLES, TABLE_CLIENT_CONFIG]),
     en,
   );
   fs.mkdirSync(dir, { recursive: true });
