@@ -45,16 +45,16 @@ export function renderCostsTool(mount) {
         ${tiersCardHtml()}
         ${blueprintsCardHtml()}
       </div>
-      <div class="card costs-research">
-        <div class="card-header">
-          <h2>${t('Research costs')}</h2>
-          <span class="card-header-hint">${t('{points} per level', { points: esc(tGame('Valor points')) })}</span>
+      <div class="ui-tile tool-tile costs-research">
+        <div class="ui-tile-head">
+          <h2 class="ui-tile-title">${t('Research costs')}</h2>
+          <span class="ui-sub">${t('{points} per level', { points: esc(tGame('Valor points')) })}</span>
         </div>
         <div class="costs-filters">
           <input type="search" class="input costs-search" placeholder="${t('Find a research…')}" aria-label="${t('Find a research')}" data-costs="search">
           <div class="costs-chips-slot">${chipsHtml()}</div>
         </div>
-        <div class="card-body costs-table-slot">${tableHtml()}</div>
+        <div class="tool-tile-table costs-table-slot">${tableHtml()}</div>
       </div>
     </div>`;
 
@@ -92,8 +92,8 @@ function tiersCardHtml() {
       <span class="costs-tile-sub">${formatCompact(x.unlock)} + 2×${formatCompact(curveTotal(x.research))}</span>
     </div>`).join('');
   return `
-    <div class="card costs-glance-card">
-      <div class="card-header"><h2>${esc(tGame('Guardsmen'))}</h2><span class="card-header-hint">${t('Tier unlock + two maxed 10-level researches')}</span></div>
+    <div class="ui-tile tool-tile costs-glance-card">
+      <div class="ui-tile-head"><h2 class="ui-tile-title">${esc(tGame('Guardsmen'))}</h2><span class="ui-sub">${t('Tier unlock + two maxed 10-level researches')}</span></div>
       <div class="costs-tiles">${tiles}</div>
     </div>`;
 }
@@ -108,8 +108,8 @@ function blueprintsCardHtml() {
       <span class="costs-tile-sub costs-gold" title="${exact(x.gold)} ${gold}">${formatCompact(x.gold)}<span class="visually-hidden"> ${gold}</span></span>
     </div>`).join('');
   return `
-    <div class="card costs-glance-card">
-      <div class="card-header"><h2>${t('Blueprints for upgrades')}</h2><span class="card-header-hint costs-legend"><span class="costs-gold">${gold}</span></span></div>
+    <div class="ui-tile tool-tile costs-glance-card">
+      <div class="ui-tile-head"><h2 class="ui-tile-title">${t('Blueprints for upgrades')}</h2><span class="ui-sub costs-legend"><span class="costs-gold">${gold}</span></span></div>
       <div class="costs-tiles costs-tiles-narrow">${tiles}</div>
     </div>`;
 }
@@ -164,7 +164,7 @@ function tableHtml() {
     return `<p class="costs-empty muted-copy">${t('No research matches “{query}”.', { query: esc(cs.query.trim()) })}</p>`;
   }
   return `
-    <table class="table-responsive costs-table">
+    <table class="table-responsive ui-table costs-table">
       <colgroup><col class="col-name">${LEVELS.map(() => '<col class="col-lv">').join('')}<col class="col-total"></colgroup>
       <thead>
         <tr>

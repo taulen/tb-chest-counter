@@ -438,7 +438,7 @@ function topCardHtml() {
     .join('');
 
   return `
-    <div class="card citadel-top">
+    <div class="ui-tile tool-tile citadel-top">
       <h2 class="citadel-step"><span class="citadel-step-num" aria-hidden="true">1</span>${t('Pick the citadel')}</h2>
       <div class="citadel-top-row">
         <div class="citadel-picker">${picker}</div>
@@ -499,12 +499,12 @@ function armyCardHtml(a) {
   const hasRoles = a.mode === 'gm' && a.roles.some(Boolean);
   const rows = cs.rows.map((r, i) => rowHtml(r, i, hasRoles ? a.roles[i] : undefined, a)).join('');
   return `
-    <div class="card citadel-army">
-      <div class="card-header">
+    <div class="ui-tile tool-tile citadel-army">
+      <div class="ui-tile-head">
         <h2 class="citadel-step"><span class="citadel-step-num" aria-hidden="true">2</span>${t('Your army')}<span class="citadel-step-hint">${t('you fill this in')}</span></h2>
         ${countModeHtml(a)}
       </div>
-      <div class="card-body-padded">
+      <div class="tool-tile-body">
         ${bonusesNoteHtml()}
         <p class="citadel-note citadel-count-note">${countModeNote(a)}</p>
         ${cs.rows.length && !cs.rows.some((r) => troopById(r.troopId)?.siegeEngine)
@@ -610,23 +610,23 @@ function paintResults(root, a) {
   }
   if (asks.length) {
     el.innerHTML = `${title}
-      <div class="card citadel-waiting">
+      <div class="ui-tile tool-tile citadel-waiting">
         ${asks.map((x) => `<p>${x}</p>`).join('')}
         <p class="muted-copy">${t('The result needs these from your own troop cards — they decide every number.')}</p>
       </div>`;
     return;
   }
   if (a.pending) {
-    el.innerHTML = `${title}<div class="card citadel-waiting"><p>${t('Working out the counts…')}</p></div>`;
+    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting"><p>${t('Working out the counts…')}</p></div>`;
     return;
   }
   if (a.failed) {
-    el.innerHTML = `${title}<div class="card citadel-waiting is-bad"><p>${t('These troops can\'t take this citadel in both coin flips, even in large numbers.')}</p>
+    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting is-bad"><p>${t('These troops can\'t take this citadel in both coin flips, even in large numbers.')}</p>
       <p class="muted-copy">${t('Add a siege engine for the walls, or stronger troops.')}</p></div>`;
     return;
   }
   if (!a.both) {
-    el.innerHTML = `${title}<div class="card citadel-waiting"><p>${t('Enter how many of each troop you send.')}</p></div>`;
+    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting"><p>${t('Enter how many of each troop you send.')}</p></div>`;
     return;
   }
   const both = a.both;
@@ -671,7 +671,7 @@ function outcomeHtml(r, title, opener) {
   const selected = cs.logOpener === opener;
   const pick = selected ? t('Strikes shown below') : t('Show the strikes');
   return `
-    <div class="card citadel-outcome ${r.won ? 'is-win' : 'is-loss'} ${selected ? 'is-selected' : ''}">
+    <div class="ui-tile tool-tile citadel-outcome ${r.won ? 'is-win' : 'is-loss'} ${selected ? 'is-selected' : ''}">
       <div class="citadel-outcome-head"><h3>${esc(title)}</h3>${verdict}</div>
       ${headline}
       ${list ? `<ul class="citadel-losses">${list}</ul>` : ''}
@@ -742,9 +742,9 @@ function logHtml(both) {
       </ol>
     </li>`).join('');
   return `
-    <details class="card card-collapsible citadel-log" data-section-key="tools-citadel-log">
-      <summary class="card-header"><h2>${t('Strike by strike')}<span class="citadel-log-which">${esc(cs.logOpener === 'you' ? t('If you strike first') : t('If the citadel strikes first'))}</span></h2></summary>
-      <div class="card-body-padded">
+    <details class="ui-fold citadel-log" data-section-key="tools-citadel-log">
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('Strike by strike')}<span class="citadel-log-which">${esc(cs.logOpener === 'you' ? t('If you strike first') : t('If the citadel strikes first'))}</span></h2></summary>
+      <div class="ui-fold-body">
         <div class="citadel-log-bar">
           <p class="citadel-log-legend">${t('Each line is one stack hitting another, in the order the game plays them. Red lines are the citadel hitting you; the last column is what each hit cost or left.')}</p>
         </div>
@@ -758,9 +758,9 @@ function logHtml(both) {
 
 function howItWorksHtml() {
   return `
-    <details class="card card-collapsible" data-section-key="tools-citadel-howto">
-      <summary class="card-header"><h2>${t('How this works')}</h2></summary>
-      <div class="card-body-padded tool-howto">
+    <details class="ui-fold" data-section-key="tools-citadel-howto">
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('How this works')}</h2></summary>
+      <div class="ui-fold-body tool-howto">
         <ul>
           <li>${t('<strong>Siege.</strong> Siege engines strike the walls first. Without them the walls hit you first, and keep hitting each round until they fall. Losses to the walls are final; wounds from them heal before the battle.')}</li>
           <li>${t('<strong>Battle.</strong> A coin flip decides who opens; after that the sides take turns, strongest stack first, and the side that did not act last opens the next round.')}</li>

@@ -271,12 +271,12 @@ function groupedRowsHtml(plan) {
 function armyCardHtml(plan) {
   const rows = groupedRowsHtml(plan);
   return `
-    <div class="card citadel-army">
-      <div class="card-header">
+    <div class="ui-tile tool-tile citadel-army">
+      <div class="ui-tile-head">
         <h2 class="citadel-step"><span class="citadel-step-num" aria-hidden="true">1</span>${t('Your troops')}<span class="citadel-step-hint">${t('everything you will send')}</span></h2>
         ${presetsHtml()}
       </div>
-      <div class="card-body-padded">
+      <div class="tool-tile-body">
         ${levelsHtml(ss.levels)}
         ${ss.presetsError ? `<p class="citadel-note tool-warn">${t('Your saved armies could not be loaded.')}</p>` : ''}
         <p class="citadel-note stacks-intro">${t('The strongest guardsman or specialist you add is the base stack; every other stack is sized from it. Health bonuses are optional: type them from each troop\'s card for exact counts.')}</p>
@@ -397,11 +397,11 @@ function sizeCardHtml(plan, fitted) {
     ['whole-stacks', t('Leave out whole monster stacks')],
   ].map(([v, l]) => `<option value="${v}" ${s.monsterMode === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
   return `
-    <div class="card stacks-size">
-      <div class="card-header">
+    <div class="ui-tile tool-tile stacks-size">
+      <div class="ui-tile-head">
         <h2 class="citadel-step"><span class="citadel-step-num" aria-hidden="true">2</span>${t('Size and limits')}</h2>
       </div>
-      <div class="card-body-padded">
+      <div class="tool-tile-body">
         <div class="stacks-size-grid">
           <div class="stacks-base">
             <div class="stacks-field">
@@ -423,8 +423,8 @@ function sizeCardHtml(plan, fitted) {
           <label class="stacks-field stacks-temple" for="stacks-temple"><span class="stacks-field-label">${esc(TEMPLE)}<small>${t('divides the revival cost')}</small></span>
             <select id="stacks-temple" class="input" data-setting="templeLevel">${temple}</select></label>
         </div>
-        <details class="card-collapsible stacks-advanced" data-section-key="tools-stacks-advanced">
-          <summary class="card-header"><h2>${t('Fine-tuning')}</h2></summary>
+        <details class="ui-fold is-inset stacks-advanced" data-section-key="tools-stacks-advanced">
+          <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('Fine-tuning')}</h2></summary>
           <div class="stacks-advanced-body">
             <label class="stacks-field" for="stacks-tierMultiplier"><span class="stacks-field-label">${t('Tier multiplier')}<small>${t('how much bigger each lower tier is (1.9; older calculators used 2)')}</small></span>
               ${textBox({ key: 'tierMultiplier', value: fmtDecimal(s.tierMultiplier), label: t('Tier multiplier'), inputmode: 'decimal' })}</label>
@@ -448,7 +448,7 @@ function sizeCardHtml(plan, fitted) {
 const fmt = (n) => Math.round(n).toLocaleString();
 
 function statCard(label, value, sub, cls = '') {
-  return `<div class="stat-card ${cls}"><div class="label">${esc(label)}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`;
+  return `<div class="ui-stat tool-stat ${cls}"><div class="ui-stat-label">${esc(label)}</div><div class="ui-big">${value}</div><div class="ui-sub">${sub}</div></div>`;
 }
 
 function limitCard(key, label, plan) {
@@ -481,7 +481,7 @@ function paintResults(root, plan) {
   if (!el) return;
   const title = `<h2 class="citadel-step citadel-result-title"><span class="citadel-step-num" aria-hidden="true">3</span>${t('Stacks')}<span class="citadel-step-hint">${t('in the order they fall')}</span></h2>`;
   if (!plan.ok) {
-    el.innerHTML = plan.reason === 'empty' ? '' : `${title}<div class="card citadel-waiting"><p>${t('Add at least one guardsman or specialist: every stack is sized from the strongest of them.')}</p></div>`;
+    el.innerHTML = plan.reason === 'empty' ? '' : `${title}<div class="ui-tile tool-tile citadel-waiting"><p>${t('Add at least one guardsman or specialist: every stack is sized from the strongest of them.')}</p></div>`;
     return;
   }
   const s = ss.settings;
@@ -511,16 +511,16 @@ function paintResults(root, plan) {
           <path d="M6 4h8M6 8h8M6 12h8"/><circle cx="2.5" cy="4" r="0.9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="2.5" cy="12" r="0.9" fill="currentColor" stroke="none"/>
         </svg>${t('March list')}</button>
     </div>
-    <div class="stats-grid stacks-stats">
+    <div class="tool-stats stacks-stats">
       ${LIMITS.map(([k, label]) => limitCard(k, label, plan)).join('')}
       ${statCard(t('Revival cost'), formatCompact(plan.revivalGold), esc(t('gold · {temple} {level}', { temple: TEMPLE, level: s.templeLevel })))}
     </div>
     ${monsterFitHtml(plan)}
-    <div class="card">
-      <div class="card-header"><h2>${t('Loss order')}</h2><span class="card-header-hint">${t('1 falls first')}</span></div>
-      <p class="card-note muted-copy">${t('An enemy hits the stack with the most health first. Each stack here holds a little less than the one above it, so the cheap stacks soak the hits and your strongest troops fall last.')}</p>
-      <div class="card-body">
-        <table class="table-responsive stacks-table">
+    <div class="ui-tile tool-tile">
+      <div class="ui-tile-head"><h2 class="ui-tile-title">${t('Loss order')}</h2><span class="ui-sub">${t('1 falls first')}</span></div>
+      <p class="ui-sub tool-tile-note">${t('An enemy hits the stack with the most health first. Each stack here holds a little less than the one above it, so the cheap stacks soak the hits and your strongest troops fall last.')}</p>
+      <div class="tool-tile-table">
+        <table class="table-responsive ui-table stacks-table">
           <colgroup><col class="col-order"><col class="col-troop"><col class="col-count"><col class="col-health"><col class="col-gap"><col class="col-cost"></colgroup>
           <thead><tr><th>#</th><th>${t('Troop')}</th><th class="num">${t('Count')}</th><th class="num">${t('Stack health')}</th><th class="num">${t('Less than the one before')}</th><th class="num">${t('Costs')}</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -531,9 +531,9 @@ function paintResults(root, plan) {
 
 function howItWorksHtml() {
   return `
-    <details class="card card-collapsible" data-section-key="tools-stacks-howto">
-      <summary class="card-header"><h2>${t('How this works')}</h2></summary>
-      <div class="card-body-padded tool-howto">
+    <details class="ui-fold" data-section-key="tools-stacks-howto">
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('How this works')}</h2></summary>
+      <div class="ui-fold-body tool-howto">
         <ul>
           <li>${t('<strong>Who gets hit.</strong> An enemy stack hits the stack with the most health it can finish off. So the stack with the most health falls first, the one with the least falls last.')}</li>
           <li>${t('<strong>The base stack</strong> is your strongest guardsman or specialist, at the size you set. It is the smallest stack of trained troops and the last of them to fall.')}</li>

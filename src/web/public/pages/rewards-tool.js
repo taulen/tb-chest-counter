@@ -139,9 +139,9 @@ export async function renderRewardsTool(mount) {
   mount.innerHTML = `
     <div class="rewards-tool">
       <div class="rewards-setup">
-        <div class="card rewards-source-card">
-          <div class="card-header"><h2>${t('Scores')}</h2><span class="card-header-hint">${t('The run whose ranking decides the split')}</span></div>
-          <div class="card-body-padded rewards-source-slot">${sourceHtml()}</div>
+        <div class="ui-tile tool-tile rewards-source-card">
+          <div class="ui-tile-head"><h2 class="ui-tile-title">${t('Scores')}</h2><span class="ui-sub">${t('The run whose ranking decides the split')}</span></div>
+          <div class="tool-tile-body rewards-source-slot">${sourceHtml()}</div>
         </div>
         ${potsCardHtml()}
       </div>
@@ -365,9 +365,9 @@ function potsCardHtml() {
       <input type="text" inputmode="numeric" autocomplete="off" class="input rewards-pot-input" data-pot="${key}" placeholder="0" value="">
     </label>`;
   return `
-    <div class="card rewards-pots-card">
-      <div class="card-header"><h2>${t('Rewards to share')}</h2><span class="card-header-hint">${t('The clan\'s totals')}</span></div>
-      <div class="card-body-padded">
+    <div class="ui-tile tool-tile rewards-pots-card">
+      <div class="ui-tile-head"><h2 class="ui-tile-title">${t('Rewards to share')}</h2><span class="ui-sub">${t('The clan\'s totals')}</span></div>
+      <div class="tool-tile-body">
         <div class="rewards-pots">
           ${field('coins', `${resourceIconOnly('Dragon Coins')}${esc(tGame('Dragon Coins'))}`)}
           ${field('fragments', t('Clan fragments'))}
@@ -435,20 +435,20 @@ function matchesQuery(p) {
 
 function resultsShellHtml() {
   return `
-    <div class="card rewards-results-card">
-      <div class="card-header rewards-results-header">
+    <div class="ui-tile tool-tile rewards-results-card">
+      <div class="ui-tile-head rewards-results-header">
         <div class="events-title">
-          <h2>${t('Distribution')}</h2>
-          <span class="card-header-hint rewards-results-hint"></span>
+          <h2 class="ui-tile-title">${t('Distribution')}</h2>
+          <span class="ui-sub rewards-results-hint"></span>
         </div>
         <div class="rewards-actions"></div>
       </div>
-      <div class="card-body-padded rewards-summary">
+      <div class="tool-tile-body rewards-summary">
         <p class="tool-total-line rewards-summary-line"></p>
         <div class="rewards-note-slot"></div>
         <input type="search" class="input rewards-search" placeholder="${t('Find a player…')}" aria-label="${t('Find a player')}" data-rw="search" value="${esc(rs.query)}">
       </div>
-      <div class="card-body rewards-table-slot"></div>
+      <div class="tool-tile-table rewards-table-slot"></div>
     </div>`;
 }
 
@@ -518,7 +518,7 @@ function tableHtml(rows) {
       </tr>`;
   }).join('');
   return `
-    <table class="table-responsive rewards-table">
+    <table class="table-responsive ui-table rewards-table">
       <colgroup><col class="col-take"><col class="col-rank"><col class="col-member"><col class="col-score"><col class="col-share"><col class="col-amount"><col class="col-amount"></colgroup>
       <thead><tr>
         <th><span class="visually-hidden">${t('Included')}</span></th>
@@ -651,9 +651,9 @@ function ignoreAbort(err) {
 
 function howItWorksHtml() {
   return `
-    <details class="card card-collapsible" data-section-key="tools-rewards-howto">
-      <summary class="card-header"><h2>${t('How this works')}</h2></summary>
-      <div class="card-body-padded tool-howto">
+    <details class="ui-fold" data-section-key="tools-rewards-howto">
+      <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('How this works')}</h2></summary>
+      <div class="ui-fold-body tool-howto">
         <ul>
           <li>${t('<strong>The split.</strong> Each player gets the pot × their score ÷ everyone\'s total, rounded down. The units left over go one each to the largest remainders, so the parts always add up to the pot.')}</li>
           <li>${t('<strong>Leaving someone out.</strong> Untick them: they get nothing, and their part is spread over everyone else by score. Who you leave out is remembered in this browser.')}</li>

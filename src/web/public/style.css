@@ -8661,8 +8661,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tool-muted { color: var(--text-muted); }
 
 .tool-roster-list { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); }
-.tool-roster-list > summary.card-header { padding: 10px 14px; }
-.tool-roster-list > summary.card-header h2 { font-size: 13px; }
 .tool-roster-items {
   list-style: none;
   margin: 0;
@@ -8698,11 +8696,39 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tool-default-status strong { color: var(--text-primary); }
 .tool-changed { color: var(--accent-amber-text); font-weight: 600; margin-right: 4px; }
 
+/* ─── Tools on the UI kit (pages/tools.js + citadel/stacks/costs/rewards) ───
+   Each card is a kit tile (.ui-tile.tool-tile); a table inside one runs to
+   its edges; the stats are the kit's stat in a small box. */
+.tools-mount .tool-tile,
+.tools-mount .ui-fold { margin-bottom: 16px; }
+/* The tools lay their tiles out in their own grids (two columns: options +
+   points per member, roster + settings, Costs' two glance tiles): the kit's
+   12-column span must not apply there. */
+.tools-mount .tool-tile { grid-column: auto; }
+.tool-tile-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tool-tile-body > p { margin: 0; }
+.tool-tile-note { margin: 0; }
+.tool-tile-table {
+  margin: 0 -20px -18px;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tool-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tool-stat { padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-elevated); }
+.tool-stat .ui-big { font-size: 26px; }
+.tool-stat.is-lead { border-color: var(--accent-gold-border); }
+.tool-stat.is-lead .ui-big { color: var(--accent-gold); }
+@media (max-width: 760px) {
+  .tool-tile-table { margin: 0 -16px -14px; }
+  .tool-stat .ui-big { font-size: 22px; }
+}
+
 /* ─── Tools → Citadel ────────────────────────────────────────────────
    Army editor + simulated fight. Compact on purpose: one row per troop, the
    two coin-flip outcomes side by side, the strike list folded away. */
 .citadel-tool { display: flex; flex-direction: column; }
-.citadel-top { padding: 14px 18px; }
+.tool-tile.citadel-top { display: block; padding: 14px 18px; }
 .citadel-top-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; }
 .citadel-picker { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .citadel-kind { display: inline-flex; align-items: center; gap: 4px; }
@@ -8737,7 +8763,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 .citadel-note { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 12px; }
 .citadel-note-when { color: var(--text-muted); }
-.citadel-army .card-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+.citadel-army .ui-tile-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
 
 /* Numbered steps: 1 pick, 2 fill in, 3 read. */
 .citadel-step { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary); }
@@ -9085,7 +9111,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .citadel-empty { margin: 4px 0 0; }
 
 .citadel-outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
-.citadel-outcome { position: relative; padding: 14px 16px; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.tool-tile.citadel-outcome { display: block; position: relative; padding: 14px 16px; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 /* The card is the switch for the strike list below: a stretched, transparent button. */
 .citadel-outcome-pick {
   position: absolute; inset: 0; z-index: 1;
@@ -9113,7 +9139,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .citadel-why { margin: 8px 0 0; font-size: 12.5px; color: var(--accent-red-soft-text); }
 .citadel-meta { margin: 8px 0 0; font-size: 12px; }
 .citadel-avg { margin: -6px 0 18px; font-size: 12.5px; }
-.citadel-waiting { padding: 14px 16px; font-size: 13px; border-left: 3px solid var(--accent-amber); }
+.tool-tile.citadel-waiting { display: block; padding: 14px 16px; font-size: 13px; border-left: 3px solid var(--accent-amber); }
 .citadel-waiting p { margin: 0 0 4px; }
 
 /* Strike list: read like the game's battle report, one hit per line. */
@@ -9194,9 +9220,9 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   font-size: 10.5px; letter-spacing: 0; text-align: center; color: var(--text-secondary); font-variant-numeric: tabular-nums;
 }
 .stacks-intro { margin-top: 12px; }
-.stacks-tool .citadel-army .card-header { row-gap: 8px; }
+.stacks-tool .citadel-army .ui-tile-head { row-gap: 8px; }
 /* The saved-army controls keep select + buttons on one line beside the title. */
-.stacks-tool .citadel-army .card-header .citadel-presets { flex: 0 0 auto; flex-wrap: nowrap; }
+.stacks-tool .citadel-army .ui-tile-head .citadel-presets { flex: 0 0 auto; flex-wrap: nowrap; }
 /* The levels open the card here, so no divider of their own. */
 .stacks-tool .citadel-army .citadel-levels { margin-top: 0; padding-top: 0; border-top: 0; }
 
@@ -9222,8 +9248,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .stacks-limit-grid .stacks-field-label { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
 
 .stacks-advanced { margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius-md); }
-.stacks-advanced > summary.card-header { padding: 10px 14px; }
-.stacks-advanced > summary.card-header h2 { font-size: 13px; }
 .stacks-advanced-body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -9237,7 +9261,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .stacks-reset { margin: 0; }
 
 .stacks-stats { margin-bottom: 12px; }
-.stat-card.is-over { border-color: var(--accent-red); }
+.tool-stat.is-over { border-color: var(--accent-red); }
 .stacks-fit-note { margin: -2px 0 14px; }
 .stacks-table { table-layout: fixed; width: 100%; }
 .stacks-table .col-order { width: 64px; }
@@ -9271,7 +9295,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .stacks-limit-grid .stacks-input { max-width: 150px; }
   /* Two boxes, not Citadel's three: troop and ✕ on line one, Count and
      Health % side by side under them. */
-  .stacks-tool .citadel-army .card-header .citadel-presets { flex: 1 1 100%; flex-wrap: wrap; }
+  .stacks-tool .citadel-army .ui-tile-head .citadel-presets { flex: 1 1 100%; flex-wrap: wrap; }
   .stacks-rows .citadel-row .citadel-troop { flex: 1 1 60%; }
   .stacks-rows .citadel-row .citadel-field { flex: 1 1 40%; }
   .stacks-rows .citadel-row .stacks-na { text-align: left; }
@@ -9279,17 +9303,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .stacks-table td[data-role="lead"] { background: transparent; padding: 0; }
 }
 
-/* Tools' sub-tabs: five don't fit a phone as one strip (a single long word —
-   "Recompensas", "Belohnungen" — can't wrap in a fifth of the width), so they
-   wrap three to a row, the last row's cells stretching to fill it. */
-@media (max-width: 640px) {
-  .tools-tabs { display: flex; flex-wrap: wrap; width: 100%; }
-  .tools-tabs .resources-tab {
-    flex: 1 1 calc(33.333% - 4px); min-width: 0;
-    display: flex; align-items: center; justify-content: center;
-    padding: 7px 4px; font-size: 12.5px; line-height: 1.2; text-align: center;
-  }
-}
 
 /* Admin's tabs: three, or four while Review has something. The bar already
    separates the tab from what's under it, so the Review tab's first section
@@ -11774,6 +11787,45 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .ui-band.band-pace { color: var(--accent-warn-text); }
 .ui-band.band-behind { color: var(--accent-red-soft-text); }
 .ui-empty { margin: 0; padding: 18px; text-align: center; color: var(--text-secondary); }
+/* A folding tile (foldHtml; native <details> with data-section-key, so the
+   open state survives a re-render): "How this works", fine-tuning, a long
+   list. .is-inset is one inside another tile. */
+.ui-fold {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  min-width: 0;
+}
+.ui-fold.is-inset { border-radius: 10px; background: var(--bg-elevated); }
+details.ui-fold > summary.ui-fold-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.ui-fold.is-inset > summary.ui-fold-head { min-height: 44px; padding: 0 14px; }
+details.ui-fold > summary.ui-fold-head::-webkit-details-marker { display: none; }
+details.ui-fold > summary.ui-fold-head::before { content: none; display: none; }
+details.ui-fold > summary.ui-fold-head::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: translateY(-25%) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+details.ui-fold[open] > summary.ui-fold-head::after { transform: translateY(25%) rotate(-135deg); }
+details.ui-fold > summary.ui-fold-head:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: -2px; border-radius: 14px; }
+.ui-fold-head .ui-tile-title { margin: 0; }
+.ui-fold-body { display: flex; flex-direction: column; gap: 12px; padding: 0 20px 18px; min-width: 0; }
+.ui-fold.is-inset > .ui-fold-body,
+.ui-fold.is-inset > :not(summary) { padding-left: 14px; padding-right: 14px; }
 .ui-when-short { display: none; }
 /* An error line (a list that could not load: api() answered an object). */
 .ui-error { margin: 0 0 12px; color: var(--text-secondary); }

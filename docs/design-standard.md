@@ -108,6 +108,20 @@ A past window is judged against the goal it was played under:
 - **Phone (≤ 760px):** one column, in source order. Put each role's most
   personal or most important tile first.
 
+### Folding tile
+
+"How this works", fine-tuning, a long list: a tile that opens and closes.
+Native `<details>`, so it works without script; its `data-section-key`
+keeps it open across a re-render.
+
+```js
+foldHtml({ key: 'tools-citadel-howto', title: t('How this works'), body: '<ul>…</ul>' });
+foldHtml({ key: 'tools-stacks-advanced', title: t('Fine-tuning'), body, inset: true }); // inside another tile
+```
+
+Classes: `.ui-fold` (`.is-inset`), `summary.ui-fold-head` with a
+`.ui-tile-title`, `.ui-fold-body`.
+
 ### Row list
 
 ```html
