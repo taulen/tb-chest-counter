@@ -1,5 +1,6 @@
 // Account photos: the upload/remove routes (real auth, real sessions), the
-// moderation gate, and the public /avatars/<sha256>.<ext> serving.
+// moderation gate, and serving at /api/avatars/<sha256> to signed-in viewers
+// only (the old public /avatars/<sha256>.<ext> path is a plain 404 for good).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
@@ -74,7 +75,7 @@ describe('account photos', () => {
       const res = await upload('user1', pngBytes(512, 512), 'image/png');
       expect(res.status).toBe(200);
       expect(res.body.avatar.kind).toBe('photo');
-      expect(res.body.avatar.url).toMatch(/^\/avatars\/[0-9a-f]{64}\.png$/);
+      expect(res.body.avatar.url).toMatch(/^\/api\/avatars\/[0-9a-f]{64}$/);
       expect(photoRows(ids.user1.userId)).toBe(1);
       const me = await request(app).get('/api/auth/me').set('Cookie', ids.user1.cookie);
       expect(me.body.user.avatar).toEqual(res.body.avatar);
@@ -83,7 +84,8 @@ describe('account photos', () => {
     it('takes the format from the bytes, not the claimed Content-Type', async () => {
       const res = await upload('user1', webpLossyBytes(512, 512), 'image/png');
       expect(res.status).toBe(200);
-      expect(res.body.avatar.url).toMatch(/\.webp$/);
+      const served = await request(app).get(res.body.avatar.url).set('Cookie', ids.user1.cookie);
+      expect(served.headers['content-type']).toBe('image/webp');
     });
 
     it('refuses a non-image renamed .png, a GIF, and a JSON body', async () => {
@@ -113,8 +115,8 @@ describe('account photos', () => {
       const second = await upload('user1', jpegBytes(512, 512), 'image/jpeg');
       expect(second.body.avatar.url).not.toBe(first.body.avatar.url);
       expect(photoRows(ids.user1.userId)).toBe(1);
-      expect((await request(app).get(first.body.avatar.url)).status).toBe(404);
-      expect((await request(app).get(second.body.avatar.url)).status).toBe(200);
+      expect((await request(app).get(first.body.avatar.url).set('Cookie', ids.user1.cookie)).status).toBe(404);
+      expect((await request(app).get(second.body.avatar.url).set('Cookie', ids.user1.cookie)).status).toBe(200);
     });
 
     it('removing your photo brings the default back', async () => {
@@ -122,38 +124,54 @@ describe('account photos', () => {
       const res = await request(app).delete('/api/auth/avatar').set('Accept', 'application/json').set('Cookie', ids.user1.cookie);
       expect(res.status).toBe(200);
       expect(res.body.avatar).toEqual({ kind: 'initial', url: null, initial: 'U' });
-      expect((await request(app).get(up.body.avatar.url)).status).toBe(404);
+      expect((await request(app).get(up.body.avatar.url).set('Cookie', ids.user1.cookie)).status).toBe(404);
     });
   });
 
-  describe('serving /avatars/<sha256>.<ext>', () => {
-    it('serves the bytes publicly, immutable, with the stored type and nosniff', async () => {
+  describe('serving /api/avatars/<sha256>', () => {
+    it('needs a session: a JSON 401, never a redirect or the bytes', async () => {
+      const { body } = await upload('user1', pngBytes(512, 512), 'image/png');
+      const res = await request(app).get(body.avatar.url).set('Accept', 'application/json');
+      expect(res.status).toBe(401);
+      expect(res.headers['content-type']).not.toMatch(/^image\//);
+      expect(res.headers.location).toBeUndefined();
+    });
+
+    it('serves any signed-in viewer the bytes, privately cached, with the stored type and nosniff', async () => {
       const bytes = pngBytes(512, 512, 100);
       const { body } = await upload('user1', bytes, 'image/png');
-      const res = await request(app).get(body.avatar.url).buffer(true).parse((r, cb) => {
+      const res = await request(app).get(body.avatar.url).set('Cookie', ids.user2.cookie).buffer(true).parse((r, cb) => {
         const chunks: Buffer[] = [];
         r.on('data', (c: Buffer) => chunks.push(c));
         r.on('end', () => cb(null, Buffer.concat(chunks)));
       });
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toBe('image/png');
-      expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+      // private: no shared cache (Cloudflare) may keep it; the extensionless /api URL isn't stored at the edge either.
+      expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
       expect(res.headers['x-content-type-options']).toBe('nosniff');
       expect(res.headers['content-security-policy']).toContain('sandbox');
       expect(Buffer.compare(res.body as Buffer, bytes)).toBe(0);
     });
 
-    it('answers every other /avatars path with a plain 404 — never the auth redirect', async () => {
+    it('the retired public path is a plain 404 for every shape, the real hash included — never the auth redirect', async () => {
       const { body } = await upload('user1', pngBytes(512, 512), 'image/png');
-      const hash = body.avatar.url.slice('/avatars/'.length, -'.png'.length);
+      const hash = body.avatar.url.slice('/api/avatars/'.length);
       for (const path of [
-        `/avatars/${hash}.jpg`, // wrong extension for the stored type
-        `/avatars/${'0'.repeat(64)}.png`, // unknown hash
+        `/avatars/${hash}.png`, // the photo itself, at its old public address
+        `/avatars/${hash}.webp`,
+        `/avatars/${'0'.repeat(64)}.png`,
         '/avatars/not-a-hash.png',
-        `/avatars/${hash.toUpperCase()}.png`,
         '/avatars/', '/avatars', `/avatars/${hash}.png/extra`,
       ]) {
         const res = await request(app).get(path);
+        expect(res.status, path).toBe(404);
+      }
+    });
+
+    it('an unknown or malformed hash is a 404 for a signed-in viewer', async () => {
+      for (const path of [`/api/avatars/${'0'.repeat(64)}`, '/api/avatars/not-a-hash', `/api/avatars/${'A'.repeat(64)}`]) {
+        const res = await request(app).get(path).set('Cookie', ids.user1.cookie);
         expect(res.status, path).toBe(404);
       }
     });

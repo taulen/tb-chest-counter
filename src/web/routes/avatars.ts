@@ -1,22 +1,23 @@
 /**
- * Account photos: GET /avatars/<sha256>.<png|jpg|webp>
+ * Account photos: GET /api/avatars/<sha256> — signed-in viewers only.
  *
- * Public on purpose, like every image the pages load: Cloudflare caches by
- * extension and stores a redirect against the URL whatever our headers say, so
- * a static file must never answer with an auth rejection
- * (docs/cloudflare-caching.md). The path is the photo's content hash — a new
- * photo is a new URL, so the bytes behind a URL never change and can be cached
- * for good. Every /avatars/ path is answered here (a 404 for anything unknown),
- * so none can fall through to the auth-gated SPA fallback and its redirect.
+ * These are photos of real people, so they sit behind the login. That is safe
+ * with Cloudflare only because the URL has NO file extension and lives under
+ * /api: Cloudflare caches by extension (docs/cloudflare-caching.md), so an
+ * extensionless /api response is passed through (DYNAMIC) and never stored at
+ * the edge — neither the photo nor a rejection. The browser still keeps its
+ * own copy: the path is the photo's content hash, so the bytes behind a URL
+ * never change (`private, max-age=…, immutable`).
  *
- * A removed photo stops being served at once by this origin; an edge copy
- * Cloudflare already holds lives until it expires. The URL is unguessable and
- * nothing references it any more.
+ * The old public path /avatars/<sha256>.<ext> (Nov 18 2026, a few hours) is
+ * answered with a plain 404 for good — never the auth-gated SPA fallback and
+ * its redirect, which Cloudflare would store against an image URL.
  */
 import { Router, type Response } from 'express';
 import { getAvatarBytes } from '../../data/repositories/avatar-repo.js';
+import { requireAuth } from '../middleware/auth.js';
 
-const FILE_RE = /^([0-9a-f]{64})\.(png|jpg|webp)$/;
+const HASH_RE = /^[0-9a-f]{64}$/;
 
 function notFound(res: Response): void {
   res.status(404).type('text/plain').send('Not found');
@@ -25,13 +26,13 @@ function notFound(res: Response): void {
 export function createAvatarRouter(): Router {
   const router = Router();
 
-  router.get('/avatars/:file', (req, res) => {
-    const m = FILE_RE.exec(String(req.params.file ?? ''));
-    if (!m) return notFound(res);
-    const found = getAvatarBytes(m[1], m[2]);
+  router.get('/api/avatars/:hash', requireAuth, (req, res) => {
+    const hash = String(req.params.hash ?? '');
+    if (!HASH_RE.test(hash)) return notFound(res);
+    const found = getAvatarBytes(hash);
     if (!found) return notFound(res);
     res.setHeader('Content-Type', found.mime);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     // An image is all this ever is: nothing in it may run, even opened directly.
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
@@ -39,7 +40,8 @@ export function createAvatarRouter(): Router {
     res.end(found.bytes);
   });
 
-  // The folder itself and anything deeper: never a listing, never the SPA.
+  // The retired public path, the folder itself and anything deeper: a plain
+  // 404, never a listing and never the SPA's sign-in redirect.
   router.all(['/avatars', '/avatars/', '/avatars/{*rest}'], (_req, res) => notFound(res));
 
   return router;

@@ -2451,7 +2451,7 @@ const MIGRATIONS: Migration[] = [
     // browser and sent as a square of at most 1024 px. One row per account —
     // replacing a photo replaces the row, so the old bytes go with it. The
     // bytes live here, not on disk, so backups and restores carry them;
-    // they're served publicly at /avatars/<sha256>.<ext> (routes/avatars.ts),
+    // they're served to signed-in viewers at /api/avatars/<sha256> (routes/avatars.ts),
     // looked up by the hash. Without a row the account shows its game hero's
     // portrait (user_game_links, v127), else its initial.
     // IF NOT EXISTS: runMigrations may replay this.
