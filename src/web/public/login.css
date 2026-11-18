@@ -1,5 +1,8 @@
-/* Login page is standalone. Reset + theme tokens now come from base.css
-   (loaded before this file); only login-specific styles remain here. */
+/* Login (and /join, which builds on this file). Standalone pages: reset and
+   theme tokens come from base.css, loaded first. The redesign's look
+   (docs/design-standard.md): one card, the app's chest mark and name over a
+   real title, 44px fields and buttons (16px text so iOS doesn't zoom), theme
+   variables only, OLED first. */
 
 body {
   font-family: var(--font-sans);
@@ -9,53 +12,67 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 24px 16px;
   -webkit-font-smoothing: antialiased;
 }
 
 .login-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 40px 36px;
+  border-radius: 18px;
+  padding: 32px 28px;
   width: 100%;
-  max-width: 380px;
+  max-width: 400px;
   box-shadow: var(--shadow-login-card);
 }
 
-h1 {
-  text-align: center;
-  color: var(--accent-gold);
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 6px;
-  letter-spacing: -0.3px;
+/* The app's mark and name, then what this page is for. */
+.auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 14px;
 }
-
-.subtitle {
+.auth-logo {
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+.auth-brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.auth-title {
+  margin: 0 0 24px;
   text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-  margin-bottom: 28px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
 label {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 4px;
-  font-weight: 500;
+  margin-bottom: 6px;
+  font-weight: 600;
 }
 
 .input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-control, var(--border));
+  border-radius: 10px;
   background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 13px;
-  margin-bottom: 14px;
+  font-size: 16px;
+  margin-bottom: 16px;
   transition: border-color var(--transition);
 }
 
@@ -67,13 +84,14 @@ label {
 
 .btn {
   width: 100%;
+  min-height: 46px;
   padding: 10px 14px;
   border: 1px solid var(--accent-gold);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   background: var(--accent-gold);
   color: var(--text-on-gold);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
   transition: background var(--transition), border-color var(--transition);
   margin-top: 4px;
@@ -92,8 +110,8 @@ label {
    game-chat message names the site and this button, so it is a real button,
    right under Sign In, not a footnote. */
 .login-join {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
   text-align: center;
 }
@@ -119,9 +137,9 @@ label {
   box-shadow: 0 0 0 3px var(--accent-gold-bg-strong);
 }
 .login-join-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.4;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--text-secondary);
 }
 
@@ -158,13 +176,14 @@ label {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
+  min-height: 44px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: none;
   transition: border-color var(--transition), background var(--transition);
 }
@@ -194,26 +213,27 @@ label {
 }
 .login-lang .lang-select {
   width: auto;
+  min-height: 40px;
 }
 
 .error {
   color: var(--accent-red);
   font-size: 13px;
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   display: none;
-  padding: 8px;
+  padding: 10px 12px;
   background: var(--accent-red-bg);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
 }
 
 @media (max-width: 420px) {
   .login-card {
-    padding: 28px 20px;
-    border-radius: 12px;
+    padding: 26px 18px;
+    border-radius: 16px;
   }
 
-  h1 {
-    font-size: 20px;
+  .auth-title {
+    font-size: 21px;
   }
 }

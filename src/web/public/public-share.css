@@ -1,106 +1,105 @@
-.public-share-header {
-  cursor: default;
+/* Public share board (/<share-key>): the redesign's look on a public,
+   read-only page (docs/design-standard.md). No app shell, so the page heads
+   itself: the clan's logo and name, the language and theme pickers, then one
+   centred column with the kit's sub-tab bar, the scan line and the board.
+   The board itself uses the kit (style.css "UI kit") and the Leaderboard
+   page's own block (.lb, .lb-podium). Theme variables only, OLED first. */
+
+.public-share-body {
+  min-height: 100vh;
+  background: var(--bg-primary);
 }
 
-/* Centred, like the tabs under it: a share page is one board, read
-   straight down the middle, with no app shell around it. */
-.public-share-header {
-  grid-template-columns: 1fr auto 1fr;
+/* ─── Top bar: the clan, then the pickers ─── */
+.share-top {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-topbar);
 }
-.public-share-header .brand {
-  cursor: default;
-  grid-column: 2;
-  justify-self: center;
+.share-top-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 14px 24px;
+  box-sizing: border-box;
+}
+.share-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.share-brand .brand-logo {
+  flex: none;
+  width: 32px;
+  height: 32px;
 }
 /* The clan's in-game logo in place of the app's chest mark: its own art,
-   so no drop shadow, a touch larger than the 28px mark. */
-.public-share-clan-logo {
-  width: 36px;
-  height: 36px;
+   so no drop shadow, a touch larger. */
+.share-brand .share-clan-logo {
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   filter: none;
 }
-/* Theme picker in the header's right-hand column (the brand owns the centre). */
-.public-share-theme {
-  grid-column: 3;
-  justify-self: end;
+.share-brand-text {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  min-width: 0;
 }
-
-/* Phones: no room beside a clan name for both pickers (language + theme) —
-   name on its own row, the pickers right-aligned on the row under it. After
-   the rule above on purpose: declared before it, its grid-column: 3 won and
-   put the pickers back beside the name, cutting the name off. */
-@media (max-width: 640px) {
-  .public-share-header { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
-  .public-share-header .brand { grid-column: 1; justify-self: start; min-width: 0; }
-  .public-share-theme { grid-column: 1; }
-}
-.public-share-theme-select {
-  width: auto;
-  padding: 5px 8px;
-  font-size: 12px;
-}
-
-.public-share-nav {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 16px;
-  background: var(--bg-topbar);
-  border-bottom: 1px solid var(--border);
-}
-
-.public-share-nav a {
-  padding: 12px 18px;
+.share-brand-app {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-secondary);
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-  font-weight: 500;
-  transition: color var(--transition);
 }
-
-.public-share-nav a.active {
+.share-brand h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   color: var(--text-primary);
-  font-weight: 600;
-  border-bottom-color: var(--accent-gold);
+  overflow-wrap: anywhere;
+}
+.share-prefs {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+.share-pref-select {
+  width: auto;
+  min-height: 40px;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
-.public-share-nav a:hover {
-  color: var(--text-primary);
+/* ─── The column: tabs, scan line, board ─── */
+.share-main {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+  box-sizing: border-box;
 }
+.share-tabs { margin-bottom: 12px; }
+.share-tabs .is-hidden { display: none; }
 
-.public-share-nav a.is-hidden {
-  display: none;
-}
-
-/* Always visible, on either tab — the leaderboard card's own FAQ button
-   scrolls away and isn't there at all on the ChestTracker tab. Sits in the
-   centred row with the tabs (the global `nav` rule centres it); no auto margin,
-   which would pull the tabs off-centre to the left. */
-.public-share-nav a.public-share-nav-faq {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* "FAQ & access": always on screen, on either tab — the way a visitor learns
+   how to get an account. A gold link in the tab strip, with a "not opened
+   yet" dot until this browser has opened it once (public-share.js). */
+.share-tabs .share-faq {
+  position: relative;
   color: var(--accent-gold);
-  font-weight: 600;
-  white-space: nowrap;
 }
-.public-share-nav a.public-share-nav-faq:hover {
-  color: var(--accent-gold);
-  border-bottom-color: var(--accent-gold-border);
-}
-.public-share-nav-faq svg { flex: none; }
-
-/* "Not opened yet" dot — the visitor's first open clears it (public-share.js),
-   so a newcomer's eye lands on the FAQ without it nagging anyone after. */
-.public-share-nav a.public-share-nav-faq { position: relative; }
-.public-share-nav-faq.is-new::after {
+.share-faq svg { flex: none; }
+.share-faq.is-new::after {
   content: '';
   position: absolute;
-  top: 8px;
-  right: 6px;
+  top: 6px;
+  right: 4px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -108,48 +107,34 @@
   animation: faq-new-pulse 1.8s ease-out infinite;
 }
 
-/* Three items on a phone: tighten the padding, and below ~420px drop the
-   "& access" half so the row never wraps or scrolls. */
-@media (max-width: 480px) {
-  .public-share-nav { padding: 0 8px; }
-  .public-share-nav a { padding: 12px 10px; }
-}
-@media (max-width: 420px) {
-  .public-share-nav-faq .nav-faq-extra { display: none; }
-}
-
-/* "Last scan 14m ago · Next scan in 1h 46m 12s" between the tabs and the
-   board — the first thing a member asks is whether their chests are in yet.
-   Two items that wrap onto their own centred lines on a narrow phone rather
-   than one sentence that would break mid-phrase. */
-.public-share-scan {
+/* "Last scan 14m ago · Next scan in 1h 46m 12s": the first thing a member
+   asks is whether their chests are in yet. Two items that wrap onto their
+   own lines on a narrow phone rather than one sentence broken mid-phrase. */
+.share-scan {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   align-items: center;
   gap: 6px 22px;
-  max-width: var(--content-max);
-  margin: 0 auto;
-  padding: 14px 16px 0;
+  margin-bottom: 16px;
   font-size: 13px;
   color: var(--text-secondary);
 }
-.public-share-scan:not(.is-hidden) + .container { padding-top: 14px; }
-.public-share-scan-item {
+.share-scan.is-hidden { display: none; }
+.share-scan-item {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
 }
-.public-share-scan-item svg { flex: none; color: var(--text-muted); }
-.public-share-scan-item strong {
+.share-scan-item svg { flex: none; color: var(--text-muted); }
+.share-scan-item strong {
   color: var(--text-primary);
   font-weight: 600;
   /* Fixed-width digits: a ticking countdown must not jiggle its line. */
   font-variant-numeric: tabular-nums;
 }
-.public-share-scan-item.is-scanning strong { color: var(--accent-gold); }
-.public-share-scan-dot {
+.share-scan-item.is-scanning strong { color: var(--accent-gold); }
+.share-scan-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -158,8 +143,47 @@
   animation: faq-new-pulse 1.8s ease-out infinite;
 }
 
-.public-share-snapshot-meta {
-  color: var(--text-secondary);
-  font-size: 13px;
-  margin-bottom: 12px;
+/* The board: the scrubber with Copy data beside it. */
+.share-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.share-toolbar .ui-period { flex: 1 1 auto; min-width: 0; }
+.share-copy { flex: none; min-height: 40px; }
+
+/* The podium cards are buttons here (they open the player's breakdown; there
+   is no profile to link to on a public page). */
+.share-board .lb-podium-card {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.share-podium-pic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 56px;
+}
+
+/* ─── Phone ─── */
+@media (max-width: 640px) {
+  .share-top-inner {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+  .share-brand h1 { font-size: 19px; }
+  .share-prefs { width: 100%; }
+  .share-pref-select { flex: 1 1 0; min-height: 44px; font-size: 16px; }
+  .share-main { padding: 14px 16px 32px; }
+  .share-copy { width: 100%; min-height: 44px; }
+  .share-podium-pic { min-width: 44px; }
+}
+/* Below ~420px the "& access" half goes, so the strip doesn't need to scroll. */
+@media (max-width: 420px) {
+  .share-faq-extra { display: none; }
 }

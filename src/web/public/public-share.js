@@ -12,10 +12,10 @@
 import { esc, formatDate, formatCountdown } from './lib/ui.js';
 import { computeGameWindow } from './lib/period.js';
 import { weeklyGoalForWindow, amberRatioForWindow } from './lib/weekly-goal.js';
-import { setGameDayRolloverUtcHour, setWeekStart } from './lib/state.js';
+import { setGameDayRolloverUtcHour, setWeekStart, getWeekStart } from './lib/state.js';
 import {
   sortLeaderboardEntries,
-  renderLeaderboardCardHtml,
+  leaderboardTablePartsHtml,
   copyLeaderboardData,
   leaderboardWindowLabel,
 } from './lib/leaderboard-render.js';
@@ -30,7 +30,13 @@ import { initMobileRows } from './lib/mobile-rows.js';
 import { initSortableHeaders } from './lib/sort-headers.js';
 import { openLeaderboardFaq } from './lib/leaderboard-faq.js';
 import { bindThemeSwitcher } from './lib/theme.js';
-import { bindLanguageSwitcher, t } from './lib/i18n.js';
+import { bindLanguageSwitcher, t, tn } from './lib/i18n.js';
+import { periodScrubberHtml, wirePeriodScrubber, errorStateHtml, wireRetry, emptyHtml } from './lib/ui-kit.js';
+import { avatarHtml } from './lib/avatar.js';
+import { heroAvatarHtml } from './lib/game-facts.js';
+
+// The board's windows, as the signed-in Leaderboard offers them.
+const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
 
 // Mirrors SHARE_TOKEN_REGEX on the server: a generated 6-char token OR an
 // admin-chosen vanity key (3-10 chars, a-z0-9). The server already refused to
@@ -47,7 +53,7 @@ bindLanguageSwitcher(document, { syncServer: false });
 
 if (!token) {
   document.getElementById('content').innerHTML =
-    `<div class="empty-state"><p>${t('Invalid share link.')}</p></div>`;
+    emptyHtml(t('Invalid share link.'));
 } else {
   start();
 }
@@ -197,11 +203,11 @@ function start() {
     const s = scanStatus;
     const items = [];
     if (s?.lastScanAt) {
-      items.push(`<span class="public-share-scan-item" title="${esc(formatDate(s.lastScanAt))}">${ICON_LAST_SCAN}<span>${t('Last scan {when}', { when: `<strong data-scan-ago>${esc(formatTimeAgo(s.lastScanAt))}</strong>` })}</span></span>`);
+      items.push(`<span class="share-scan-item" title="${esc(formatDate(s.lastScanAt))}">${ICON_LAST_SCAN}<span>${t('Last scan {when}', { when: `<strong data-scan-ago>${esc(formatTimeAgo(s.lastScanAt))}</strong>` })}</span></span>`);
     }
     scanCountingDown = false;
     if (s?.scanning) {
-      items.push(`<span class="public-share-scan-item is-scanning"><span class="public-share-scan-dot" aria-hidden="true"></span><strong>${t('Scanning…')}</strong></span>`);
+      items.push(`<span class="share-scan-item is-scanning"><span class="share-scan-dot" aria-hidden="true"></span><strong>${t('Scanning…')}</strong></span>`);
     } else if (s && (s.due || s.nextScanInMs != null)) {
       const remainingMs = s.nextScanInMs != null ? nextScanRemainingMs(s) : 0;
       scanCountingDown = remainingMs > 0;
@@ -209,7 +215,7 @@ function start() {
         ? t('Next scan in {time}', { time: `<strong data-scan-countdown>${esc(formatCountdown(remainingMs))}</strong>` })
         : t('Next scan: soon');
       const title = scanCountingDown ? ` title="${esc(formatDate(s.receivedAt + s.nextScanInMs))}"` : '';
-      items.push(`<span class="public-share-scan-item"${title}>${ICON_NEXT_SCAN}<span>${text}</span></span>`);
+      items.push(`<span class="share-scan-item"${title}>${ICON_NEXT_SCAN}<span>${text}</span></span>`);
     }
     el.innerHTML = items.join('');
     // Leaderboard only: ChestTracker's numbers come from its own site, not our scans.
@@ -265,13 +271,68 @@ function start() {
 
   // quiet: a background refresh — no "Loading…" swap, and a failed fetch
   // leaves the board on screen instead of replacing it with an error.
+  // Hero portraits for the podium, by member id. The board's rows carry no
+  // pictures, but the breakdown answer (the hover card's) does — game art,
+  // public like the board. A portrait doesn't depend on the window, so each
+  // member is asked once per visit; null = asked, nobody linked.
+  const portraits = new Map();
+
+  /**
+   * The top three of the window by canonical rank, whatever the table's sort:
+   * picture, name, chests, points. A card opens the player's chest breakdown,
+   * like their name in the table. Nothing when nobody has points yet.
+   */
+  function podiumHtml(entries) {
+    const top = entries.filter((e) => (e.totalPoints || 0) > 0 && e.rank <= 3).sort((a, b) => a.rank - b.rank).slice(0, 3);
+    if (!top.length) return '';
+    return `<ol class="lb-podium" aria-label="${esc(t('Top three'))}">
+        ${top.map((e) => `<li class="lb-podium-place place-${e.rank}">
+          <button type="button" class="lb-podium-card" data-breakdown-member="${Number(e.memberId)}" aria-haspopup="dialog">
+            <span class="rank rank-${e.rank} lb-podium-rank">#${e.rank}</span>
+            <span class="share-podium-pic" data-podium-pic="${Number(e.memberId)}">${podiumPicHtml(e)}</span>
+            <span class="lb-podium-who">
+              <span class="lb-podium-name">${esc(e.memberName)}</span>
+              <span class="lb-podium-sub">${esc(tn(e.totalChests || 0, '{n} chest', '{n} chests', { n: (e.totalChests || 0).toLocaleString() }))}</span>
+            </span>
+            <span class="lb-podium-pts"><span class="lb-podium-n">${(e.totalPoints || 0).toLocaleString()}</span> <span class="lb-podium-unit">${esc(t('points'))}</span></span>
+          </button>
+        </li>`).join('')}
+      </ol>`;
+  }
+
+  /** The member's framed hero portrait when known, else their initial. */
+  function podiumPicHtml(e) {
+    const game = portraits.get(e.memberId);
+    return (game && heroAvatarHtml(game, 44)) || avatarHtml({ username: e.memberName, avatar: null }, { size: 'lg' });
+  }
+
+  /** Fill the podium's portraits the board doesn't carry, once per member. */
+  function loadPodiumPortraits(root, win) {
+    for (const slot of root.querySelectorAll('[data-podium-pic]')) {
+      const id = Number(slot.dataset.podiumPic);
+      if (portraits.has(id)) continue;
+      portraits.set(id, null);
+      const params = new URLSearchParams();
+      if (win) { params.set('from', win.from); params.set('to', win.to); }
+      const qs = params.toString();
+      fetchJson(`${API}/leaderboard/${id}/breakdown${qs ? `?${qs}` : ''}`)
+        .then((data) => {
+          if (!data?.game?.avatarUrl) return;
+          portraits.set(id, data.game);
+          const html = heroAvatarHtml(data.game, 44);
+          document.querySelectorAll(`[data-podium-pic="${id}"]`).forEach((s) => { s.innerHTML = html; });
+        })
+        .catch(() => { /* the initial stays */ });
+    }
+  }
+
   async function renderLeaderboard({ quiet = false } = {}) {
     const seq = ++renderSeq;
     const el = document.getElementById('content');
     if (!quiet) {
       // The rows an open breakdown card is anchored to are about to go.
       breakdown?.reset();
-      el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
+      el.innerHTML = emptyHtml(t('Loading…'));
     }
     // The window this render fetches, kept so the label it paints is the one
     // its numbers belong to.
@@ -284,9 +345,12 @@ function start() {
     let rows;
     try {
       rows = await fetchJson(`${API}/leaderboard?${params.toString()}`);
+      // A refusal can still arrive as JSON (an object where a list belongs).
+      if (!Array.isArray(rows)) throw new Error('not a list');
     } catch {
       if (seq !== renderSeq || quiet) return;
-      el.innerHTML = `<div class="empty-state"><p>${t('Failed to load leaderboard.')}</p></div>`;
+      el.innerHTML = errorStateHtml(t('Failed to load leaderboard.'));
+      wireRetry(el, () => renderLeaderboard());
       return;
     }
     if (seq !== renderSeq) return;
@@ -311,35 +375,71 @@ function start() {
     const goalWarnRatio = amberRatioForWindow(goalInfo, period, offset);
     lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints, goalWarnRatio };
 
-    el.innerHTML = renderLeaderboardCardHtml({
+    // The signed-in Leaderboard's layout (the kit's reference page): the period
+    // scrubber, the top three, the goal line, the ranked table in a table card.
+    // The table core is the same lib/leaderboard-render.js code, so the two
+    // boards can never disagree.
+    const { goalHintHtml, tableHtml, paginationHtml } = leaderboardTablePartsHtml({
       pageEntries,
       totalEntries: sorted.length,
       currentPage,
       totalPages,
       period,
-      offset,
       sortState: leaderboardSort,
-      // rolloverHr defaults to whatever we pushed into shared state
-      // during init() from the /clan response.
       pageSize: PAGE_SIZE,
       // No member profile to link to here (no auth, no router): the name opens
       // the player's chest breakdown instead, and hovering the row previews it.
       playerCellHtml: breakdownNameHtml,
-      // No FAQ button on the card: the tab row's "FAQ & access" is always on
-      // screen, on either tab, and two of the same button read as a mistake.
-      actions: { ...ACTIONS, openFaq: null },
+      actions: ACTIONS,
       showMight,
       showGuards,
       goalWeeklyPoints,
       goalWarnRatio,
+      tableClass: 'ui-table',
     });
+    const weekStart = getWeekStart();
+    const copyBtn = sorted.length
+      ? `<button type="button" class="btn share-copy" data-action="${ACTIONS.copyData}" title="${esc(t('Copy every player in this timeframe as text'))}">${esc(t('Copy data'))}</button>`
+      : '';
+    el.innerHTML = `<div class="lb share-board">
+        <div class="share-toolbar">
+          ${periodScrubberHtml({
+            periods: PERIODS, period, offset, rolloverHr, weekStart,
+            win: computeGameWindow(period, offset, rolloverHr, weekStart),
+          })}
+          ${copyBtn}
+        </div>
+        ${podiumHtml(rows)}
+        ${goalHintHtml}
+        <div class="ui-table-card">
+          ${tableHtml}
+          ${paginationHtml}
+        </div>
+      </div>`;
+    wirePeriodScrubber(el, {
+      onPeriod: (p) => {
+        changedTimeframe = true;
+        currentPeriod = p;
+        currentPeriodOffset = 0;
+        currentPage = 1;
+        renderLeaderboard();
+      },
+      onStep: (delta) => {
+        const next = currentPeriodOffset + delta;
+        if (next < 0) return;
+        currentPeriodOffset = next;
+        currentPage = 1;
+        renderLeaderboard();
+      },
+    });
+    loadPodiumPortraits(el, win);
   }
 
   function openFaq(initialTab) {
     if (!faqSeen) {
       faqSeen = true;
       try { localStorage.setItem(FAQ_SEEN_KEY, '1'); } catch { /* not remembered */ }
-      document.querySelectorAll('.public-share-nav-faq.is-new')
+      document.querySelectorAll('.share-faq.is-new')
         .forEach((b) => b.classList.remove('is-new'));
     }
     openLeaderboardFaq({
@@ -355,7 +455,7 @@ function start() {
     const seq = ++renderSeq;
     breakdown?.reset();
     const el = document.getElementById('content');
-    el.innerHTML = `<div class="empty-state"><p>${t('Loading…')}</p></div>`;
+    el.innerHTML = emptyHtml(t('Loading…'));
     let data;
     let codes = [];
     try {
@@ -372,7 +472,8 @@ function start() {
       ]);
     } catch {
       if (seq !== renderSeq) return;
-      el.innerHTML = `<div class="empty-state"><p>${t('Failed to load ChestTracker data.')}</p></div>`;
+      el.innerHTML = errorStateHtml(t('Failed to load ChestTracker data.'));
+      wireRetry(el, () => renderChestTracker());
       return;
     }
     if (seq !== renderSeq) return;
@@ -407,8 +508,9 @@ function start() {
       currentTab = 'leaderboard';
       renderLeaderboard();
     }
-    document.querySelectorAll('#shareNav a').forEach((a) => {
-      a.classList.toggle('active', a.dataset.tab === currentTab);
+    document.querySelectorAll('#shareNav a[data-tab]').forEach((a) => {
+      if (a.dataset.tab === currentTab) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
     });
     renderScanStatus();
   }
@@ -457,21 +559,8 @@ function start() {
       const target = ev.target.closest('[data-action]');
       if (!target) return;
       const action = target.dataset.action;
-      if (action === ACTIONS.setPeriod) {
-        if (target.dataset.period !== currentPeriod) changedTimeframe = true;
-        currentPeriod = target.dataset.period;
-        currentPeriodOffset = 0;
-        currentPage = 1;
-        renderLeaderboard();
-      } else if (action === ACTIONS.periodPrev) {
-        currentPeriodOffset += 1;
-        renderLeaderboard();
-      } else if (action === ACTIONS.periodNext) {
-        if (currentPeriodOffset > 0) {
-          currentPeriodOffset -= 1;
-          renderLeaderboard();
-        }
-      } else if (action === ACTIONS.pagePrev) {
+      // Period changes come from the kit's scrubber (wirePeriodScrubber above).
+      if (action === ACTIONS.pagePrev) {
         if (currentPage > 1) { currentPage -= 1; renderLeaderboard(); }
       } else if (action === ACTIONS.pageNext) {
         currentPage += 1;
@@ -503,7 +592,7 @@ function start() {
       info = await fetchJson(`${API}/clan`);
     } catch {
       document.getElementById('content').innerHTML =
-        `<div class="empty-state"><p>${t('This share link is invalid or has been revoked.')}</p></div>`;
+        emptyHtml(t('This share link is invalid or has been revoked.'));
       return;
     }
     clanName = info.clanName || '';
@@ -511,9 +600,9 @@ function start() {
     // The clan's own in-game logo replaces the app's chest mark once a scan
     // has read it (the name beside it says whose it is, so it's decorative).
     if (info.clanLogoUrl) {
-      const mark = document.querySelector('.public-share-header .brand-logo');
+      const mark = document.querySelector('.share-brand .brand-logo');
       const logo = document.createElement('img');
-      logo.className = 'brand-logo public-share-clan-logo';
+      logo.className = 'brand-logo share-clan-logo';
       logo.src = info.clanLogoUrl;
       logo.alt = '';
       logo.width = 36;
@@ -539,7 +628,7 @@ function start() {
     if (ctEnabled) {
       document.getElementById('ctTab').classList.remove('is-hidden');
     }
-    if (!faqSeen) document.querySelector('.public-share-nav-faq')?.classList.add('is-new');
+    if (!faqSeen) document.querySelector('.share-faq')?.classList.add('is-new');
     scanStatus = await scanStatusLoad;
     wireEvents();
     renderCurrentTab();

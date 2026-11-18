@@ -6,16 +6,8 @@
   max-width: 420px;
 }
 
-/* Touch targets: the join page is opened from a phone, straight out of the
-   game. 16px inputs keep iOS from zooming in on focus. */
-.join-card .input {
-  min-height: 44px;
-  font-size: 16px;
-}
-.join-card .btn {
-  min-height: 44px;
-  font-size: 15px;
-}
+/* Touch targets and 16px inputs come from login.css (the join page is
+   opened from a phone, straight out of the game). */
 .join-card .btn:disabled {
   opacity: 0.6;
   cursor: progress;
@@ -49,7 +41,7 @@
 .join-summary {
   border: 1px solid var(--accent-gold-border);
   background: var(--accent-gold-bg);
-  border-radius: var(--radius-md, var(--radius-sm));
+  border-radius: 12px;
   padding: 14px 16px;
   margin-bottom: 14px;
 }
