@@ -26,8 +26,7 @@ const SERVER_MESSAGES = {
   'Too many attempts. Please try again later.': () => t('Too many attempts. Please try again later.'),
   'Your account is already linked to this player.': () => t('Your account is already linked to this player.'),
   'This player is already linked to another account. Ask the superadmin to unlink it.': () => t('This player is already linked to another account. Ask the superadmin to unlink it.'),
-  'Your account is already linked to another player in this clan.': () => t('Your account is already linked to another player in this clan.'),
-  'Superadmin accounts are not linked to a player.': () => t('Superadmin accounts are not linked to a player.'),
+  'This player is linked to a superadmin account; its password cannot be reset with a code.': () => t('This player is linked to a superadmin account; its password cannot be reset with a code.'),
 };
 
 /** The server's reason in the viewer's language; never trips on a non-object answer. */
@@ -127,8 +126,13 @@ export function openAddClanDialog() {
         what = `${t('Adds <strong>{player}</strong>{rank} to your account in <strong>{clan}</strong>, beside the player you already have there.', { clan: esc(clan), player: esc(player), rank: esc(rank) })} ${roleLine(info.role)}`;
         action = t('Add player');
         break;
+      case 'link-player':
+        // The superadmin: the player is linked, nothing else changes.
+        what = t('Links <strong>{player}</strong>{rank} to your account in <strong>{clan}</strong>. Your superadmin access does not change.', { clan: esc(clan), player: esc(player), rank: esc(rank) });
+        action = t('Link player');
+        break;
       default:
-        what = esc(t('Superadmin accounts are not linked to a player.'));
+        what = esc(t('This code can’t be used here.'));
     }
     const refused = !action;
     box.innerHTML = `
@@ -182,7 +186,7 @@ export function openAddClanDialog() {
 
     const activeId = getCurrentUser()?.activeClan?.id ?? null;
     const canSwitch = Number.isFinite(clanId) && clanId !== activeId;
-    const message = result.mode === 'link'
+    const message = result.mode === 'link' || result.mode === 'link-player'
       ? t('Your account is linked to <strong>{player}</strong>.', { player: esc(info.player?.name ?? '') })
       : result.mode === 'add-player'
         ? t('<strong>{player}</strong> is added to your account. Pick who you play as in the account menu.', { player: esc(info.player?.name ?? '') })

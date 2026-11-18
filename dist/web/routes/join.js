@@ -62,7 +62,7 @@ const INVALID = 'This code is not valid or has expired.';
 const REFUSALS = {
     already: 'Your account is already linked to this player.',
     conflict: 'This player is already linked to another account. Ask the superadmin to unlink it.',
-    superadmin: 'Superadmin accounts are not linked to a player.',
+    'superadmin-recover': 'This player is linked to a superadmin account; its password cannot be reset with a code.',
 };
 /** The in-game name as a valid username, or '' when too little of it survives. */
 function suggestUsername(playerName) {

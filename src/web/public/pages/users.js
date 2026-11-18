@@ -634,15 +634,17 @@ export async function renderUsers(el) {
   const gameLinksFor = (u) => (u.gameLinks || []).filter((l) => l.clanId === rowClanId(u));
   const gameLinkFor = (u) => gameLinksFor(u)[0] || null;
   const gameLinkLine = (u) => {
-    if (u.role === 'superadmin') return '';
+    // The superadmin's own players (linked with a code): every clan, each named.
+    if (u.role === 'superadmin') return (u.gameLinks || []).map((link) => oneGameLinkLine(u, link, true)).join('');
     const links = gameLinksFor(u);
     if (!links.length) return `<span class="user-game-link is-unlinked">${t('Not linked (old account)')}</span>`;
     return links.map((link) => oneGameLinkLine(u, link)).join('');
   };
-  const oneGameLinkLine = (u, link) => {
+  const oneGameLinkLine = (u, link, withClan = false) => {
     const rank = gameRankName(link.rank);
     const parts = [t('In game: {name}', { name: esc(link.playerName) })];
     if (rank) parts.push(esc(rank));
+    if (withClan) parts.push(esc(clanShort(link.clanId)));
     if (!link.onRoster) parts.push(`⚠ ${t('left the clan in the game')}`);
     // Superadmin: unlinking keeps the account and its access; the role stops following the game.
     const unlink = isSuperAdmin

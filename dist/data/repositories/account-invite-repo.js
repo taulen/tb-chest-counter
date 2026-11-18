@@ -426,7 +426,7 @@ function setMainPlayer(userId, clanId, playerId) {
 function linkFor(userId, clanId) {
     return mainLink(userId, clanId);
 }
-/** The game player an account plays as in a clan (its main), or null (old accounts, superadmins). */
+/** The game player an account plays as in a clan (its main), or null (old, unlinked accounts). */
 function linkedGamePlayerId(userId, clanId) {
     return mainLink(userId, clanId)?.playerId ?? null;
 }
@@ -523,11 +523,14 @@ function syncLinkedAccounts(clanId, roster, now = new Date().toISOString()) {
     db.transaction(() => {
         // 1. Every linked player: on or off the roster, with its rank now.
         for (const row of links) {
-            if (row.user_role === 'superadmin')
-                continue;
             const link = rowToLink(row);
+            // A superadmin's players (their own, linked with a code) stay current —
+            // rank, name, on the roster or not — but the account itself is never
+            // touched: no role, grant, home or block follows from the game.
+            const isSuper = row.user_role === 'superadmin';
             const acct = accounts.get(link.userId) ?? { username: row.username, home: row.home_clan_id ?? null, changed: [] };
-            accounts.set(link.userId, acct);
+            if (!isSuper)
+                accounts.set(link.userId, acct);
             const m = byPlayer.get(link.playerId);
             if (m) {
                 if (!link.onRoster) {
@@ -589,7 +592,7 @@ function unlinkGameAccount(userId, clanId, playerId) {
     })();
     return links;
 }
-exports.JOIN_ACTIONS = new Set(['new', 'recover', 'link', 'add-clan', 'add-player']);
+exports.JOIN_ACTIONS = new Set(['new', 'recover', 'link', 'add-clan', 'add-player', 'link-player']);
 /** What a code would do for this viewer (null = signed out). Reads only. */
 function planJoin(info, viewer) {
     const role = rankRole(info.rank);
@@ -598,16 +601,20 @@ function planJoin(info, viewer) {
         if (owner === null)
             return { mode: 'new', userId: null, username: null, role };
         const u = (0, user_repo_js_1.getUserById)(owner);
+        if (u?.role === 'superadmin')
+            return { mode: 'superadmin-recover', userId: null, username: null, role };
         return { mode: 'recover', userId: owner, username: u?.username ?? null, role };
     }
     const home = (0, user_repo_js_1.getUserById)(viewer.id);
-    if (!home || home.role === 'superadmin')
-        return { mode: 'superadmin', userId: viewer.id, username: viewer.username, role };
+    if (!home)
+        return { mode: 'conflict', userId: null, username: null, role };
     if (owner !== null && owner !== viewer.id)
         return { mode: 'conflict', userId: null, username: null, role };
     const here = linksInClan(viewer.id, info.clanId);
     if (here.some((l) => l.playerId === info.playerId))
         return { mode: 'already', userId: viewer.id, username: home.username, role };
+    if (home.role === 'superadmin')
+        return { mode: 'link-player', userId: viewer.id, username: home.username, role };
     if (here.length) {
         // An alt: the account's role there is the best its players give it.
         const now = linkedClanRole(viewer.id, info.clanId);
@@ -657,6 +664,11 @@ function redeemJoin(input, viewer, creds, nowMs = Date.now()) {
             if (taken)
                 throw new JoinError('Username already exists', 409);
             userId = (0, user_repo_js_1.createUser)(creds.username, creds.password, plan.role, undefined, info.clanId).id;
+            insertLink(userId, info, now);
+        }
+        else if (plan.mode === 'link-player') {
+            // The superadmin: the link and nothing else (no grant, role or home).
+            userId = plan.userId;
             insertLink(userId, info, now);
         }
         else if (plan.mode === 'recover') {

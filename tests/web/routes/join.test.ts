@@ -99,6 +99,28 @@ describe('/api/join', () => {
     expect(refused.body.error).toMatch(/already linked to another account/);
   });
 
+  it('the superadmin links its own player and nothing else; a code never resets its password', async () => {
+    const su = userRepo.createUser('chief', PW, 'superadmin');
+    const cookie = `${SESSION_COOKIE_NAME}=${userRepo.createSession(su.id)}`;
+    gamePlayer(1, 41, 'Chief Main', 2);
+    const c = code(1, 41);
+    const chk = await request(app).post('/api/join/check').set('Cookie', cookie).send({ code: c });
+    expect(chk.body).toMatchObject({ mode: 'link-player', viewer: { username: 'chief' } });
+    const linked = await request(app).post('/api/join/redeem').set('Cookie', cookie).send({ code: c, stay: true });
+    expect(linked.status).toBe(200);
+    expect(linked.body).toMatchObject({ mode: 'link-player', clanId: 1 });
+    expect(userRepo.getUserById(su.id)).toMatchObject({ role: 'superadmin', clanId: null });
+    expect(userRepo.listClanAccess(su.id)).toEqual([]);
+
+    // Signed out, a code for that player is refused: no password reset for a superadmin.
+    getDb().prepare('DELETE FROM account_invite_codes').run();
+    const again = code(1, 41);
+    expect((await request(app).post('/api/join/check').send({ code: again })).body).toMatchObject({ mode: 'superadmin-recover', username: null });
+    const r = await request(app).post('/api/join/redeem').send({ code: again, password: 'NewPass1!word' });
+    expect(r.status).toBe(409);
+    expect(userRepo.authenticate('chief', PW)).not.toBeNull();
+  });
+
   it('signed out with a linked player: recover sets a new password and signs in', async () => {
     gamePlayer(1, 31, 'Forgetful', 4);
     await request(app).post('/api/join/redeem').send({ code: code(1, 31), username: 'forgetful', password: PW });

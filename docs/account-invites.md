@@ -93,11 +93,12 @@ in one transaction:
 |---|---|---|
 | signed out | has no account | **new**: choose a username (prefilled from the in-game name) and password |
 | signed out | has an account | **recover**: choose a new password; every old session ends |
+| signed out | linked to the superadmin | **superadmin-recover**: refused — a code never resets a superadmin's password (a shared game account must not open the site's top role); the check names no account |
 | signed in | — | **add-clan**: the code's clan is added to the account |
 | signed in, old account, own clan | — | **link**: the old account is linked; its role now follows the rank |
 | signed in | linked to another account | refused — the superadmin can unlink |
-| signed in | another player linked here | refused |
-| superadmin | — | refused — superadmins are never linked |
+| signed in | another player of yours is linked here | **add-player**: an alt (v130) |
+| superadmin | not linked to another account | **link-player**: the player is linked to the superadmin and **nothing else** happens — no grant, no home, no role change |
 
 Signed out, the way in is the sign-in page's "Have a code? Join here" (the
 words the in-game message names). Signed in, it happens inside the app
@@ -110,8 +111,10 @@ your account as Kael Ironwood (Officer). Your role there: member." / "Links
 your account to …"), or why it can't be used. Confirm redeems it with
 `stay: true` — signed in, that keeps the session on its current clan (without
 it, as on /join, the session lands on the code's clan) — then redraws the
-switcher and offers **Switch to … now** or **Stay here**. The superadmin,
-never linked to a player, doesn't get these entries.
+switcher and offers **Switch to … now** or **Stay here**. The superadmin gets
+the account-menu entry (it links its own players, "Links X to your account in
+CWB. Your superadmin access does not change."); the switcher's **+ Add a clan**
+stays hidden for it — it sees every clan already.
 
 Every attempt counts against the caller's address (20 per 15 min) and failed
 ones again on their own (10 per 15 min). A wrong, used or expired code all
@@ -139,8 +142,12 @@ answer the same.
   with from/to role and from/to rank, `account.left_in_game`,
   `account.rejoined_in_game`, `account.home_moved`). The member timeline
   already shows rank changes ("Promoted to Superior") as plain lines.
-- **Superadmins are never linked or touched.** Promoting an account to
-  superadmin drops its links.
+- **A superadmin may link its own players (code, account menu), and is never
+  touched.** The scan keeps its link rows current (rank, name, on the roster)
+  but never changes its role, grants, home or blocked state; a code never
+  resets its password. Promoting an account to superadmin keeps its links.
+  Its main player per clan drives its picture and "Playing as", and the
+  Members board marks its players "You", like anyone's.
 
 On the Users page a linked account shows its player under the name ("In game:
 Name · Rank"), its role can't be changed by hand there (409: unlink first),

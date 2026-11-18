@@ -553,7 +553,7 @@ export function linkFor(userId: number, clanId: number): GameLink | null {
   return mainLink(userId, clanId);
 }
 
-/** The game player an account plays as in a clan (its main), or null (old accounts, superadmins). */
+/** The game player an account plays as in a clan (its main), or null (old, unlinked accounts). */
 export function linkedGamePlayerId(userId: number, clanId: number): number | null {
   return mainLink(userId, clanId)?.playerId ?? null;
 }
@@ -665,10 +665,13 @@ export function syncLinkedAccounts(
   db.transaction(() => {
     // 1. Every linked player: on or off the roster, with its rank now.
     for (const row of links) {
-      if (row.user_role === 'superadmin') continue;
       const link = rowToLink(row);
+      // A superadmin's players (their own, linked with a code) stay current —
+      // rank, name, on the roster or not — but the account itself is never
+      // touched: no role, grant, home or block follows from the game.
+      const isSuper = row.user_role === 'superadmin';
       const acct = accounts.get(link.userId) ?? { username: row.username as string, home: (row.home_clan_id as number | null) ?? null, changed: [] };
-      accounts.set(link.userId, acct);
+      if (!isSuper) accounts.set(link.userId, acct);
       const m = byPlayer.get(link.playerId);
       if (m) {
         if (!link.onRoster) {
@@ -739,11 +742,16 @@ export function unlinkGameAccount(userId: number, clanId: number, playerId?: num
  *   add-player    signed in, the account already has a player in this clan
  *                 → add this one too (an alt; v130)
  *   already       signed in, already linked to this player here
+ *   link-player   signed in as the superadmin → link the player to the account
+ *                 and nothing else: a superadmin holds no grants and its role,
+ *                 home and access never follow the game
  *   conflict      the player is linked to a different account
- *   superadmin    superadmins are never linked
+ *   superadmin-recover  signed out, the player's account is a superadmin:
+ *                 refused — a code from the game never resets a superadmin's
+ *                 password (a shared game account must not open the site's top role)
  */
-export type JoinMode = 'new' | 'recover' | 'link' | 'add-clan' | 'add-player' | 'already' | 'conflict' | 'superadmin';
-export const JOIN_ACTIONS: ReadonlySet<JoinMode> = new Set(['new', 'recover', 'link', 'add-clan', 'add-player']);
+export type JoinMode = 'new' | 'recover' | 'link' | 'add-clan' | 'add-player' | 'link-player' | 'already' | 'conflict' | 'superadmin-recover';
+export const JOIN_ACTIONS: ReadonlySet<JoinMode> = new Set(['new', 'recover', 'link', 'add-clan', 'add-player', 'link-player']);
 
 export interface JoinPlan {
   mode: JoinMode;
@@ -761,13 +769,15 @@ export function planJoin(info: CodeInfo, viewer: User | null): JoinPlan {
   if (!viewer) {
     if (owner === null) return { mode: 'new', userId: null, username: null, role };
     const u = getUserById(owner);
+    if (u?.role === 'superadmin') return { mode: 'superadmin-recover', userId: null, username: null, role };
     return { mode: 'recover', userId: owner, username: u?.username ?? null, role };
   }
   const home = getUserById(viewer.id);
-  if (!home || home.role === 'superadmin') return { mode: 'superadmin', userId: viewer.id, username: viewer.username, role };
+  if (!home) return { mode: 'conflict', userId: null, username: null, role };
   if (owner !== null && owner !== viewer.id) return { mode: 'conflict', userId: null, username: null, role };
   const here = linksInClan(viewer.id, info.clanId);
   if (here.some((l) => l.playerId === info.playerId)) return { mode: 'already', userId: viewer.id, username: home.username, role };
+  if (home.role === 'superadmin') return { mode: 'link-player', userId: viewer.id, username: home.username, role };
   if (here.length) {
     // An alt: the account's role there is the best its players give it.
     const now = linkedClanRole(viewer.id, info.clanId);
@@ -822,6 +832,10 @@ export function redeemJoin(
       const taken = db.prepare('SELECT 1 FROM users WHERE username = ?').get(creds.username.trim());
       if (taken) throw new JoinError('Username already exists', 409);
       userId = createUser(creds.username, creds.password, plan.role, undefined, info.clanId).id;
+      insertLink(userId, info, now);
+    } else if (plan.mode === 'link-player') {
+      // The superadmin: the link and nothing else (no grant, role or home).
+      userId = plan.userId!;
       insertLink(userId, info, now);
     } else if (plan.mode === 'recover') {
       if (!creds.password) throw new JoinError('Password required');
