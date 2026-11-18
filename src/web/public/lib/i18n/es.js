@@ -1084,6 +1084,7 @@ export const ui = {
   "{names} and {n} more": "{names} y {n} más",
   "{n} might": "{n} de poder",
   "Ranking board": "Clasificación de miembros",
+  "day {day} of {days}": "día {day} de {days}",
   "{n} linked accounts in this clan.": { one: "{n} cuenta vinculada en este clan.", other: "{n} cuentas vinculadas en este clan." },
   "Codes for members": "Códigos para miembros",
   "Send members a code": "Enviar un código a los miembros",

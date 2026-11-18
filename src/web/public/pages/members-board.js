@@ -164,6 +164,13 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
         <span class="mboard-label" aria-hidden="true">${t('Sort by')}</span>
         ${SORTS.map((s) => `<button type="button" class="mboard-chip${state.sort === s ? ' is-active' : ''}" aria-pressed="${state.sort === s}" data-mb-sort="${s}">${SORT_LABEL[s]()}</button>`).join('')}
       </div>
+      ${/* The phone's sort: one compact select beside the search (style.css swaps them). */''}
+      <label class="mboard-sort-pick" title="${esc(t('Sort by'))}">
+        <span class="mboard-sort-icon" aria-hidden="true">⇅</span><span class="visually-hidden">${t('Sort by')}</span>
+        <select class="input" data-mb-sort-select>
+          ${SORTS.map((s) => `<option value="${s}"${state.sort === s ? ' selected' : ''}>${SORT_LABEL[s]()}</option>`).join('')}
+        </select>
+      </label>
     </div>
     <div data-mb-list>${listHtml()}</div>
   </section>`;
@@ -173,7 +180,7 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
 /** The page header already says "Members": this line is the count + the view toggle. */
 function headHtml(count) {
   return `<div class="mboard-head">
-      <p class="mboard-sub">${tn(count, '{n} member', '{n} members', { n: count })} · ${t('select a member for their profile')}</p>
+      <p class="mboard-sub">${tn(count, '{n} member', '{n} members', { n: count })}<span class="mboard-hint"> · ${t('select a member for their profile')}</span></p>
       ${membersViewToggleHtml('board')}
     </div>`;
 }
@@ -182,28 +189,47 @@ function headHtml(count) {
 function periodHtml(rolloverHr, weekStart) {
   const { period, offset } = state;
   let where = '';
+  let resetText = '';
+  let dayShort = '';
   if (board.running) {
     const reset = new Date(Date.UTC(2000, 0, 1, rolloverHr));
     const local = reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const resetText = t('resets {utc} UTC ({local} your time)', { utc: `${String(rolloverHr).padStart(2, '0')}:00`, local });
+    resetText = t('resets {utc} UTC ({local} your time)', { utc: `${String(rolloverHr).padStart(2, '0')}:00`, local });
     if (period === 'weekly') {
       const days = goalDaysForPeriod('weekly', weekStart);
       const day = Math.min(days, Math.floor((Date.now() - Date.parse(board.win.from)) / DAY_MS) + 1);
       where = `${t('Game day {day} of {days}', { day, days })} · ${resetText}`;
+      dayShort = t('day {day} of {days}', { day, days });
     } else {
       where = resetText;
     }
   }
+  const label = formatPeriodLabel(period, offset, rolloverHr, weekStart);
+  // The phone's one-line version: "2026-11-15 → 21 · day 3 of 7", the reset
+  // time in the title (and for screen readers) instead of a wrapped second line.
+  const short = [compactRange(label), dayShort].filter(Boolean).join(' · ');
   return `<div class="mboard-period">
       <div class="mboard-seg" role="group" aria-label="${esc(t('Period'))}">
         ${PERIODS.map((p) => `<button type="button" class="mboard-seg-btn${period === p ? ' is-active' : ''}" aria-pressed="${period === p}" data-mb-period="${p}">${PERIOD_LABEL[p]()}</button>`).join('')}
       </div>
       ${period === 'all' ? '' : `<div class="mboard-step">
         <button type="button" class="mboard-arrow" data-mb-step="1" aria-label="${esc(t('Earlier'))}">‹</button>
-        <div class="mboard-when"><span class="mboard-when-label">${esc(formatPeriodLabel(period, offset, rolloverHr, weekStart))}</span>${where ? `<span class="mboard-when-sub">${esc(where)}</span>` : ''}</div>
+        <div class="mboard-when"${resetText ? ` title="${esc(resetText)}"` : ''}>
+          <span class="mboard-when-label">${esc(label)}</span>${where ? `<span class="mboard-when-sub">${esc(where)}</span>` : ''}
+          <span class="mboard-when-short">${esc(short)}${resetText ? `<span class="visually-hidden"> · ${esc(resetText)}</span>` : ''}</span>
+        </div>
         <button type="button" class="mboard-arrow" data-mb-step="-1" aria-label="${esc(t('Later'))}"${offset === 0 ? ' disabled' : ''}>›</button>
       </div>`}
     </div>`;
+}
+
+/** "2026-11-15 → 2026-11-21" → "2026-11-15 → 21"; across a month "→ 12-05"; anything else as it is. */
+function compactRange(label) {
+  const m = String(label).match(/^(\d{4})-(\d{2})-(\d{2}) → (\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return label;
+  const [, y1, m1, d1, y2, m2, d2] = m;
+  if (y1 !== y2) return label;
+  return `${y1}-${m1}-${d1} → ${m1 === m2 ? d2 : `${m2}-${d2}`}`;
 }
 
 /** Plain facts, never alerts: who burns on the map, who joined, who left. */
@@ -321,6 +347,8 @@ function redrawAll() {
     b.classList.toggle('is-active', on);
     b.setAttribute('aria-pressed', String(on));
   }
+  const pick = board.el.querySelector('[data-mb-sort-select]');
+  if (pick && pick.value !== state.sort) pick.value = state.sort;
   redrawList();
 }
 
@@ -347,6 +375,10 @@ function wire(el) {
       state.band = target.dataset.mbBand;
       redrawAll();
     }
+  });
+  root.querySelector('[data-mb-sort-select]')?.addEventListener('change', (e) => {
+    state.sort = SORTS.includes(e.target.value) ? e.target.value : 'points';
+    redrawAll();
   });
   root.querySelector('#membersBoardSearch')?.addEventListener('input', (e) => {
     state.query = e.target.value;

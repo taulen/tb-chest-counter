@@ -11472,13 +11472,62 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .mboard-row { grid-template-columns: 40px 36px minmax(140px, 1.3fr) minmax(120px, 2fr) 112px 96px; gap: 10px; }
 }
 
-/* A phone: two lines per member — who + points, then the bar + band. */
+/* Phone-only pieces (the one-line date, the sort select) stay out of the desktop layout. */
+.mboard-when-short, .mboard-sort-pick { display: none; }
+
+/* A phone: the controls stay compact enough that the first member row starts
+   on the first screen — count + toggle on one line, the period's dates on one
+   line, the bands as one sideways-scrolling strip, search + a sort select on
+   one line. A row is two lines: who + points, then the bar + band. */
 @media (max-width: 640px) {
-  .mboard-head .mboard-seg { margin-left: auto; }
+  .mboard { gap: 10px; min-width: 0; max-width: 100%; }
+  .mboard-head { flex-wrap: nowrap; }
+  .mboard-hint { display: none; }
+  .mboard-head .mboard-seg { margin-left: auto; flex: none; }
+  .mboard-seg-btn { min-height: 44px; }
+  .mboard-period { gap: 8px; }
   .mboard-period .mboard-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
   .mboard-step { width: 100%; }
-  .mboard-when { flex: 1; text-align: center; }
-  .mboard-search { max-width: none; flex-basis: 100%; }
+  .mboard-when { flex: 1; min-width: 0; text-align: center; }
+  .mboard-when-label, .mboard-when-sub { display: none; }
+  .mboard-when-short {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .mboard-notes { padding: 8px 12px; gap: 2px; font-size: 12.5px; line-height: 1.4; }
+  .mboard-summary { flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+  .mboard-summary > * { min-width: 0; max-width: 100%; }
+  .mboard-bands {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mboard-bands::-webkit-scrollbar { display: none; }
+  .mboard-chip { min-height: 44px; flex: none; }
+  .mboard-goal-line { font-size: 12px; }
+  .mboard-tools { flex-wrap: nowrap; gap: 8px; }
+  .mboard-search { flex: 1 1 auto; min-width: 0; max-width: none; }
+  .mboard-sort { display: none; }
+  .mboard-sort-pick {
+    flex: none;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .mboard-sort-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 15px;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+  .mboard-sort-pick select { min-height: 44px; padding-left: 32px; max-width: 46vw; }
+  .mboard-group { margin: 6px 0 4px; }
   .mboard-row {
     grid-template-columns: 30px 36px minmax(0, 1fr) auto;
     grid-template-areas:
