@@ -8,7 +8,11 @@ vi.mock('../../src/data/repositories/game-profile-repo.js', async (importOrigina
 
 import { getDb } from '../../src/data/database.js';
 import * as userRepo from '../../src/data/repositories/user-repo.js';
-import { resolveAccountAvatar, setUserAvatar, removeUserAvatar, avatarInitial, linkedPhotoUrlsForClan, resolveMemberAvatar, photoUrlForPlayer } from '../../src/data/repositories/avatar-repo.js';
+import {
+  resolveAccountAvatar, setUserAvatar, removeUserAvatar, avatarInitial, linkedPhotoUrlsForClan, resolveMemberAvatar,
+  photoUrlForPlayer, setPlayerAvatar, removePlayerAvatar, accountPlayers,
+} from '../../src/data/repositories/avatar-repo.js';
+import { setMainPlayer } from '../../src/data/repositories/account-invite-repo.js';
 import { sniffImage } from '../../src/utils/image-sniff.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 import { pngBytes } from '../helpers/image-bytes.js';
@@ -25,6 +29,7 @@ function addGamePlayer(clanId: number, playerId: number, heroAvatar: number | nu
 function link(userId: number, clanId: number, playerId: number): void {
   const now = new Date().toISOString();
   getDb().prepare('DELETE FROM user_game_links WHERE user_id = ? AND clan_id = ?').run(userId, clanId);
+  getDb().prepare('DELETE FROM user_clan_main WHERE user_id = ? AND clan_id = ?').run(userId, clanId);
   getDb().prepare(
     `INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -65,15 +70,25 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
     expect(resolveAccountAvatar(user, null).kind).toBe('initial');
   });
 
-  it('an uploaded photo wins over the hero, and removing it brings the hero back', () => {
+  it("the main player's photo wins over its hero, and removing it brings the hero back", () => {
     addGamePlayer(1, 9001, 42);
     link(user.id, 1, 9001);
     const bytes = pngBytes(512, 512);
-    const { url } = setUserAvatar(user.id, bytes, sniffImage(bytes)!);
+    const { url } = setPlayerAvatar(9001, user.id, bytes, sniffImage(bytes)!);
     expect(url).toMatch(/^\/api\/avatars\/[0-9a-f]{64}$/);
     expect(resolveAccountAvatar(user, 1)).toEqual({ kind: 'photo', url, initial: 'V' });
-    expect(removeUserAvatar(user.id)).toBe(true);
+    expect(removePlayerAvatar(9001)).toBe(true);
     expect(resolveAccountAvatar(user, 1).kind).toBe('hero');
+  });
+
+  it('an account with no player keeps its own photo; once linked, its player decides', () => {
+    const bytes = pngBytes(512, 512);
+    const { url } = setUserAvatar(user.id, bytes, sniffImage(bytes)!);
+    expect(resolveAccountAvatar(user, 1)).toEqual({ kind: 'photo', url, initial: 'V' });
+    addGamePlayer(1, 9001, 42);
+    link(user.id, 1, 9001);
+    expect(resolveAccountAvatar(user, 1).kind).toBe('hero');
+    expect(removeUserAvatar(user.id)).toBe(true);
   });
 
   it('a member profile shows the photo of the account linked to its player, nothing otherwise', () => {
@@ -82,11 +97,11 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
     link(user.id, 1, 9001);
     expect(photoUrlForPlayer(9001)).toBeNull(); // linked, no photo: the profile shows the hero
     const bytes = pngBytes(512, 512);
-    const { url } = setUserAvatar(user.id, bytes, sniffImage(bytes)!);
-    // The very URL the account's own avatar resolves to.
+    const { url } = setPlayerAvatar(9001, user.id, bytes, sniffImage(bytes)!);
+    // The very URL the account's own avatar resolves to (its main player).
     expect(photoUrlForPlayer(9001)).toBe(url);
     expect(photoUrlForPlayer(9001)).toBe(resolveAccountAvatar(user, 1).url);
-    removeUserAvatar(user.id);
+    removePlayerAvatar(9001);
     expect(photoUrlForPlayer(9001)).toBeNull();
   });
 
@@ -113,10 +128,28 @@ describe("a member's picture (Members board): the linked account's photo → her
     link(a.id, 1, 9001);
     link(b.id, 2, 9002);
     const bytes = pngBytes(512, 512);
-    const { url } = setUserAvatar(a.id, bytes, sniffImage(bytes)!);
-    setUserAvatar(b.id, pngBytes(256, 256), sniffImage(pngBytes(256, 256))!);
+    const { url } = setPlayerAvatar(9001, a.id, bytes, sniffImage(bytes)!);
+    setPlayerAvatar(9002, b.id, pngBytes(256, 256), sniffImage(pngBytes(256, 256))!);
     const photos = linkedPhotoUrlsForClan(1);
     expect([...photos.entries()]).toEqual([[9001, url]]);
+  });
+
+  it("alts each show their own photo; the account shows its main player's", () => {
+    const u = userRepo.createUser('twins', 'Test1234!aA', 'user', undefined, 1);
+    addGamePlayer(1, 9101, 42);
+    addGamePlayer(1, 9102, 7);
+    const now = new Date().toISOString();
+    for (const p of [9101, 9102]) {
+      getDb().prepare('INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at) VALUES (?, 1, ?, ?, ?, ?)')
+        .run(u.id, p, `Player ${p}`, now, now);
+    }
+    const one = setPlayerAvatar(9101, u.id, pngBytes(512, 512), sniffImage(pngBytes(512, 512))!);
+    const two = setPlayerAvatar(9102, u.id, pngBytes(256, 256), sniffImage(pngBytes(256, 256))!);
+    expect(linkedPhotoUrlsForClan(1)).toEqual(new Map([[9101, one.url], [9102, two.url]]));
+    expect(resolveAccountAvatar(u, 1).url).toBe(one.url);
+    setMainPlayer(u.id, 1, 9102);
+    expect(resolveAccountAvatar(u, 1).url).toBe(two.url);
+    expect(accountPlayers(u.id).map((p) => [p.playerId, p.isMain, p.avatar.url])).toEqual([[9101, false, one.url], [9102, true, two.url]]);
   });
 
   it("keeps resolveAccountAvatar's order", () => {

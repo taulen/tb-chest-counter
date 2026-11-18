@@ -44,7 +44,7 @@ import {
 } from '../../data/repositories/game-clan-repo.js';
 import { getMemberTiers } from '../../data/member-tiers.js';
 import { linkedPhotoUrlsForClan, photoUrlForPlayer, resolveMemberAvatar } from '../../data/repositories/avatar-repo.js';
-import { linkedGamePlayerId } from '../../data/repositories/account-invite-repo.js';
+import { linkedPlayerIds } from '../../data/repositories/account-invite-repo.js';
 import { buildRosterChanges, countRosterChanges, filterRosterChanges } from '../../data/roster-changes.js';
 import { loadRosterSources, recentRankChanges, rosterReadSince } from '../../data/repositories/roster-changes-repo.js';
 import { pageNewestFirst } from '../../data/member-timeline.js';
@@ -540,15 +540,15 @@ export function createGameRouter(): Router {
     // The picture a member shows (Members board): the linked account's own
     // photo, else the hero portrait, else the initial — avatar-repo's order.
     const photos = linkedPhotoUrlsForClan(clanId);
-    // Which member is the signed-in account's own player, for the board's "You".
-    const myPlayerId = req.user ? linkedGamePlayerId(req.user.id, clanId) : null;
+    // Which members are the signed-in account's own players (alts too), for the board's "You".
+    const mine = new Set(req.user ? linkedPlayerIds(req.user.id, clanId) : []);
     const out: Record<number, object> = {};
     for (const [memberId, p] of getGamePlayersByMember(clanId)) {
       out[memberId] = {
         heroAvatar: p.heroAvatar, avatarUrl: p.avatarUrl, frameUrl: p.frameUrl, heroLevel: p.heroLevel, role: p.role, goldPass: p.goldPass, vip: p.vip, cityLevel: p.cityLevel,
         tiers: tiers.get(memberId)?.tiers ?? null,
         avatar: resolveMemberAvatar(p.name, p.avatarUrl, photos.get(p.playerId) ?? null),
-        isYou: myPlayerId !== null && myPlayerId === p.playerId,
+        isYou: mine.has(p.playerId),
         joinedAt: p.joinedAt, burning: p.burning, mapSeenAt: p.mapSeenAt, might: p.might,
       };
     }
