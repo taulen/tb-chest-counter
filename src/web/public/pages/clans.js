@@ -21,6 +21,7 @@ import {
 } from '../lib/login-bridge.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { attachChatDigest, chatDigestSectionHtml } from './clan-chat-digest.js';
+import { attachAccountInvites, accountInvitesSectionHtml } from './clan-account-invites.js';
 import { isTinmanWeek, weekLengthDays } from '../lib/period.js';
 
 export { saveLoginSession, cancelLoginSession, reloadLoginSession, pasteIntoLoginSession };
@@ -592,6 +593,7 @@ export async function renderClans(el, refreshClanIndicator) {
 
   // The in-game chat digest section loads when opened (fresh element per render).
   for (const clan of clans) attachChatDigest(el, clan.id);
+  for (const clan of clans) attachAccountInvites(el, clan.id);
 
   for (const clan of clans) {
     // Populate the Discord dropdowns without being asked. The lookup is a
@@ -1119,6 +1121,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         </div>
         </details>
 ${chatDigestSectionHtml(clan.id)}
+${accountInvitesSectionHtml(clan.id)}
 
         <hr class="section-divider">
         <details class="clan-subsection">

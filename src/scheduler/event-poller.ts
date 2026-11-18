@@ -92,6 +92,28 @@ export function keptSessionClans(): number[] {
   return [...kept.keys()];
 }
 
+/**
+ * Run `job` with the clan's kept game session, queued on its lane like a read —
+ * the chat invite replies between scans use it for a chat token (message 414,
+ * scheduler/chat-invites.ts). Undefined when there is no session, scanning is
+ * paused (the login bridge is open) or the lane is busy: the clan's next scan
+ * answers instead. A failure drops the session and is rethrown.
+ */
+export async function withKeptGameSession<T>(clanId: number, job: (client: GameClient) => Promise<T>): Promise<T | undefined> {
+  const g = gate;
+  const k = kept.get(clanId);
+  if (!g || !k || g.paused() || g.laneBusy(clanId)) return undefined;
+  try {
+    return await g.runOnLane(clanId, async () => {
+      if (g.paused() || kept.get(clanId)?.client !== k.client) return undefined;
+      return job(k.client);
+    });
+  } catch (err) {
+    dropGameSession(clanId, k.client);
+    throw err;
+  }
+}
+
 export function startEventPoller(g: PollGate): void {
   gate = g;
   if (timer) return;

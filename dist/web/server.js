@@ -14,6 +14,7 @@ const fs_1 = __importDefault(require("fs"));
 const ws_1 = require("ws");
 const api_js_1 = require("./routes/api.js");
 const auth_js_1 = require("./routes/auth.js");
+const join_js_1 = require("./routes/join.js");
 const clans_js_1 = require("./routes/clans.js");
 const setup_js_1 = require("./routes/setup.js");
 const external_js_1 = require("./routes/external.js");
@@ -388,6 +389,11 @@ function startWebServer(port, scanLoop, options = {}) {
     app.get('/login', (_req, res) => {
         sendHtml(res, 'login.html');
     });
+    // Where a player enters the code the scanner account sent them in the game
+    // chat (docs/account-invites.md). Public: it creates the account.
+    app.get('/join', (_req, res) => {
+        sendHtml(res, 'join.html');
+    });
     // Every script, stylesheet and image the pages load, to anyone. Never put
     // one behind requireAuth: Cloudflare stores the redirect against the asset
     // URL whatever our headers say — see ./frontend-assets.ts for the outage.
@@ -449,6 +455,9 @@ function startWebServer(port, scanLoop, options = {}) {
     // /api-wide cache-control middleware doesn't strip our private,no-store
     // header — the public-share router applies its own headers per response.
     app.use('/api/public', (0, public_share_js_1.createPublicShareApiRouter)(scanLoop));
+    // Join with a code from the game chat (no auth; reads a session when there
+    // is one). Its own rate limits, on top of the /api-wide one.
+    app.use('/api/join', (0, join_js_1.createJoinRouter)());
     // Public share top-level key handler. Acts only on single-segment paths
     // that match the share-key regex (3-10 alphanumerics — a generated token or
     // an admin-chosen vanity key) and aren't in RESERVED_SHARE_KEYS; everything

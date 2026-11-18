@@ -9,6 +9,7 @@ const SERVER_MESSAGES = {
   'Invalid username or password': t('Invalid username or password'),
   'Username and password required': t('Username and password required'),
   'Too many authentication attempts. Please try again later.': t('Too many authentication attempts. Please try again later.'),
+  'Your player is no longer in this clan in the game.': t('Your player is no longer in this clan in the game.'),
 };
 
 // Public boards: one link per clan that shares its leaderboard. Best-effort —

@@ -2344,6 +2344,107 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v127 — accounts from the game (Nov 2026; docs/account-invites.md). A
+    // player DMs the clan's scanner account a keyword, the scanner answers in
+    // that private chat with a one-time code, and the code on /join creates
+    // (or recovers, or extends) a site account linked to that game player.
+    //   account_invite_settings  per clan: invites via chat on/off (off by
+    //                            default) and when they were last switched on
+    //                            (epoch ms — older requests are never answered).
+    //   user_game_links          site account ↔ game player, one per (account,
+    //                            clan) and one account per player in a clan;
+    //                            chat_user_id is the chat account (tb:<n>) the
+    //                            code went to — later codes for that player go
+    //                            only to it. on_roster/rank follow every scan;
+    //                            the account's role there follows the rank
+    //                            (Leader/Superior → admin, else user).
+    //   chat_invite_requests     every keyword DM seen, answered or not (the
+    //                            handled-message record: never answered twice).
+    //   chat_invite_welcomes     the unprompted code: the first switch-on sends
+    //                            one to every current member without an account
+    //                            (welcome_backlog_at), then to each player who
+    //                            joins; one row per (clan, player), ever — a
+    //                            rejoin never resends.
+    //   account_invite_codes     the codes, stored only as sha256, single use
+    //                            (kind 'reply' 30 min, 'welcome' 72 h).
+    // Built in parallel with other branches: renumber at merge.
+    // IF NOT EXISTS: runMigrations may replay this.
+    version: 127,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS account_invite_settings (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          enabled INTEGER NOT NULL DEFAULT 0,
+          enabled_at INTEGER,
+          welcome_mode TEXT NOT NULL DEFAULT 'off',
+          welcome_enabled_at INTEGER,
+          welcome_backlog_at INTEGER,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS chat_invite_welcomes (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          player_name TEXT NOT NULL DEFAULT '',
+          joined_at INTEGER,
+          status TEXT NOT NULL,
+          reason TEXT,
+          chat_user_id TEXT,
+          channel_url TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          message_id INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, player_id)
+        );
+        CREATE TABLE IF NOT EXISTS user_game_links (
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          player_name TEXT NOT NULL DEFAULT '',
+          chat_user_id TEXT NOT NULL DEFAULT '',
+          rank INTEGER,
+          on_roster INTEGER NOT NULL DEFAULT 1,
+          linked_at TEXT NOT NULL,
+          synced_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, clan_id),
+          UNIQUE (clan_id, player_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_game_links_player ON user_game_links (player_id);
+        CREATE TABLE IF NOT EXISTS chat_invite_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          channel_url TEXT NOT NULL,
+          message_id INTEGER NOT NULL,
+          sender_chat_id TEXT NOT NULL,
+          player_id INTEGER,
+          requested_at INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          reason TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          reply_message_id INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE (clan_id, channel_url, message_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_invite_requests_status ON chat_invite_requests (clan_id, status);
+        CREATE TABLE IF NOT EXISTS account_invite_codes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          chat_user_id TEXT NOT NULL,
+          kind TEXT NOT NULL DEFAULT 'reply',
+          request_id INTEGER REFERENCES chat_invite_requests(id),
+          code_hash TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          used_at TEXT,
+          used_by INTEGER REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_account_invite_codes_player ON account_invite_codes (player_id, created_at);
+      `);
+    },
+  },
 ];
 
 /**

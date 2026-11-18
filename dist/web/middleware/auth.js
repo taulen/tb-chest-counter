@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SESSION_COOKIE_NAME = void 0;
 exports.sessionCookieOptions = sessionCookieOptions;
+exports.optionalSessionUser = optionalSessionUser;
 exports.resolveActiveClanId = resolveActiveClanId;
 exports.denyCaching = denyCaching;
 exports.requireAuth = requireAuth;
@@ -50,6 +51,18 @@ function getToken(req) {
     if (auth?.startsWith('Bearer '))
         return auth.slice(7);
     return null;
+}
+/**
+ * The signed-in user on a PUBLIC route that serves signed-out visitors too
+ * (/api/join), or null. Never rejects and never extends anything a gate
+ * relies on: the route decides what a session changes.
+ */
+function optionalSessionUser(req) {
+    const token = getToken(req);
+    if (!token)
+        return null;
+    const v = (0, user_repo_js_1.validateSession)(token);
+    return v ? { user: v.user, token } : null;
 }
 /**
  * Resolve which clan a request should operate against.

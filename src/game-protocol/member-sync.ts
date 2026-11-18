@@ -27,6 +27,7 @@ import {
 import { loadPlayerNameCanonicaliser } from '../data/repositories/merge-repo.js';
 import { saveSnapshots } from '../data/repositories/might-repo.js';
 import { logSystemAction } from '../data/repositories/user-repo.js';
+import { syncLinkedAccounts } from '../data/repositories/account-invite-repo.js';
 import { exactMatchMember, fuzzyMatchMember } from '../utils/fuzzy.js';
 import { childLogger } from '../utils/logger.js';
 import type { ClanMember } from '../models/types.js';
@@ -235,6 +236,15 @@ export function syncMembersFromGame(
       m.isActive = false;
       result.departed++;
     }
+  }
+
+  // Site accounts linked to these players (v127): the role follows the rank
+  // (Leader/Superior → admin), and a player gone from the roster loses the
+  // clan until they are back. Same short-roster floor as departures.
+  try {
+    syncLinkedAccounts(clanId, roster.map((rm) => ({ playerId: rm.playerId, role: rm.role, name: byPlayer.get(rm.playerId)?.name })), now);
+  } catch (err) {
+    log.warn({ noAlert: true }, `Clan #${clanId}: could not sync linked site accounts: ${String(err)}`);
   }
   return result;
 }

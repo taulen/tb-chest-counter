@@ -621,6 +621,12 @@ function deleteClan(id) {
         db.prepare('DELETE FROM game_event_runs WHERE clan_id = ?').run(id);
         // The scanner account (v118).
         db.prepare('DELETE FROM clan_scan_accounts WHERE clan_id = ?').run(id);
+        // Accounts from the game (v127): codes before the requests they answer.
+        db.prepare('DELETE FROM account_invite_codes WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM chat_invite_requests WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM chat_invite_welcomes WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM account_invite_settings WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM user_game_links WHERE clan_id = ?').run(id);
         // In-game chat (v104).
         db.prepare('DELETE FROM chat_messages WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM chat_channels WHERE clan_id = ?').run(id);

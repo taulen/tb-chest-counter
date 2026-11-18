@@ -14,7 +14,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 export const PUBLIC_DIR = path.resolve(fileURLToPath(new URL('../../src/web/public', import.meta.url)));
-export const SHELLS = ['index.html', 'login.html', 'public-share.html'];
+export const SHELLS = ['index.html', 'login.html', 'public-share.html', 'join.html'];
 
 export interface ExtractedKey {
   kind: 'text' | 'plural';

@@ -88,6 +88,43 @@ label {
   transform: scale(0.99);
 }
 
+/* The way in for players without an account (or a password): /join. The
+   game-chat message names the site and this button, so it is a real button,
+   right under Sign In, not a footnote. */
+.login-join {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.login-join-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 0;
+  background: transparent;
+  color: var(--accent-gold);
+  border-color: var(--accent-gold-border);
+  text-decoration: none;
+}
+.login-join-btn:hover {
+  background: var(--accent-gold-bg);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+.login-join-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 3px var(--accent-gold-bg-strong);
+}
+.login-join-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 /* Public boards: every clan's share link, under the form. A divider sets it
    apart from sign-in so it doesn't read as a second login step. */
 .login-boards {

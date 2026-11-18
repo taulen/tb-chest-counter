@@ -3528,6 +3528,39 @@ details > table {
    and gave the whole table a horizontal scrollbar. */
 .users-table .col-actions { width: 96px; }
 
+/* Under the username: the game player the account is linked to (v127), or
+   "Not linked (old account)". Shown on desktop and phone alike — it says why
+   the role can't be changed by hand. */
+.users-table .user-game-link {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.users-table .user-game-link.is-unlinked {
+  color: var(--text-muted);
+}
+.users-table .user-game-link.is-gone {
+  color: var(--accent-warn-text);
+}
+.users-table .user-game-unlink {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  margin-left: 4px;
+  color: var(--accent-gold);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.users-table .user-game-unlink:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* Superadmin Clan cell: one chip per clan the account is in, each carrying
    the role held there. Home first (house icon); the clan picked in the header
    is outlined in gold — that's the one the Role column edits. The whole group

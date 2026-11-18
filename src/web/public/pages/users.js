@@ -6,6 +6,7 @@ import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
 import { $, esc, formatDate, formatRelativeTime, notify, confirmDialog, selectDialog, contentModal } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
+import { gameRankName } from '../lib/game-facts.js';
 
 const AUDIT_PAGE_SIZE = 25;
 let currentAuditPage = 1;
@@ -117,6 +118,19 @@ const AUDIT_ACTION_LABELS = {
   tinman_upload: t('Upload Tin Man standings'),
   update_might_tracking: t('Update might tracking'),
   update_resource_capture: t('Update resource capture settings'),
+  // Accounts from the game (v127).
+  'clan.account_invites.update': t('Update account invites'),
+  update_invite_site_name: t('Set the site name in invite messages'),
+  unlink_game_player: t('Unlink account from player'),
+  'account.join.new': t('Account created with a game code'),
+  'account.join.recover': t('Password reset with a game code'),
+  'account.join.link': t('Account linked to a player'),
+  'account.join.add-clan': t('Clan added with a game code'),
+  'account.role_from_game': t('Role from the in-game rank'),
+  'account.clan_access_from_game': t('Clan access from the game'),
+  'account.left_in_game': t('Player left the clan in the game'),
+  'account.rejoined_in_game': t('Player back in the clan in the game'),
+  'account.home_moved': t('Home clan moved'),
 };
 
 function parseAuditDetails(raw) {
@@ -574,13 +588,36 @@ export async function renderUsers(el) {
     ? ['user', 'admin', 'superadmin']
     : ['user', 'admin'];
 
+  /**
+   * The game player an account is linked to in the clan this row is about
+   * (v127, docs/account-invites.md): accounts made with a code from the game
+   * chat follow their player's rank, and old password accounts have none.
+   */
+  const rowClanId = (u) => u.clanId ?? null;
+  const gameLinkFor = (u) => (u.gameLinks || []).find((l) => l.clanId === rowClanId(u)) || null;
+  const gameLinkLine = (u) => {
+    if (u.role === 'superadmin') return '';
+    const link = gameLinkFor(u);
+    if (!link) return `<span class="user-game-link is-unlinked">${t('Not linked (old account)')}</span>`;
+    const rank = gameRankName(link.rank);
+    const parts = [t('In game: {name}', { name: esc(link.playerName) })];
+    if (rank) parts.push(esc(rank));
+    if (!link.onRoster) parts.push(`⚠ ${t('left the clan in the game')}`);
+    // Superadmin: unlinking keeps the account and its access; the role stops following the game.
+    const unlink = isSuperAdmin
+      ? ` <button type="button" class="link-btn user-game-unlink" data-unlink-game data-user-id="${u.id}" data-clan-id="${link.clanId}" data-username="${esc(u.username)}" data-player="${esc(link.playerName)}">${t('Unlink')}</button>`
+      : '';
+    return `<span class="user-game-link${link.onRoster ? '' : ' is-gone'}">${parts.join(' · ')}${unlink}</span>`;
+  };
+
   el.innerHTML = `
     <h2 class="page-section-title">${t('User Accounts')}</h2>
     <p class="page-section-intro">${isSuperAdmin
       ? t("Create, modify, and remove user accounts. Roles control which pages a user can access.")
       : t("Manage user accounts for your clan. You can grant the User and Admin roles; only superadmins manage instance-wide accounts.")}</p>
+    <p class="page-section-intro">${t('Players get their account with a code from the game chat (Clans → Account invites via chat): it is linked to their player, and its role follows their rank — the {leader} and {superior} ranks are admins.', { leader: esc(gameRankName(1)), superior: esc(gameRankName(2)) })}</p>
 
-    <div class="card">
+    ${isSuperAdmin ? `<div class="card">
       <div class="card-header"><h2>${t('Create User')}</h2></div>
       <div class="card-body card-body-padded">
         <div class="inline-form-row">
@@ -597,11 +634,9 @@ export async function renderUsers(el) {
           ` : ''}
           <button class="btn btn-primary" data-action="create-user">${t('Create User')}</button>
         </div>
-        ${isSuperAdmin
-          ? `<p class="muted-copy">${t('New accounts are created in the clan selected in the header. Choosing role <strong>Super Admin</strong> drops the clan — superadmins are cross-clan.')}</p>`
-          : `<p class="muted-copy">${t('New accounts are created in your clan automatically.')}</p>`}
+        <p class="muted-copy">${t('New accounts are created in the clan selected in the header. Choosing role <strong>Super Admin</strong> drops the clan — superadmins are cross-clan.')}</p>
       </div>
-    </div>
+    </div>` : ''}
 
     <div class="card">
       <div class="card-header"><h2>${t('All Users ({count})', { count: users.length })}</h2></div>
@@ -644,18 +679,21 @@ export async function renderUsers(el) {
               } else {
                 clanCell = esc(clanLabel(u.clanId));
               }
+              const link = gameLinkFor(u);
               let actionButtons = '';
-              if (!isSelf && isGuest) {
+              if (!isSelf && isGuest && !link) {
                 actionButtons = `<button class="btn btn-tight btn-danger" data-action="remove-guest-clan" data-user-id="${u.id}" data-clan-id="${u.clanId}" data-username="${esc(u.username)}">${t('Remove')}</button>`;
-              } else if (!isSelf) {
+              } else if (!isSelf && !isGuest) {
                 actionButtons = `<button class="btn btn-tight btn-danger" data-action="delete-user" data-user-id="${u.id}" data-username="${esc(u.username)}">${t('Delete')}</button>`;
               }
               // A guest's role is the one held in THIS clan — user or admin.
               const rowRoles = isGuest ? ['user', 'admin'] : roleOptions;
+              // A linked account's role here follows the player's in-game rank.
+              const roleLocked = isSelf || !!link;
               return `<tr${isOrphan ? ' class="user-row-orphan"' : ''}>
-              <td data-label="${t('Username')}" data-role="primary"><span class="mrow-name">${esc(u.username)}${isSelf ? ` <span class="muted-copy">${t('(you)')}</span>` : ''}</span></td>
+              <td data-label="${t('Username')}" data-role="primary"><span class="mrow-name">${esc(u.username)}${isSelf ? ` <span class="muted-copy">${t('(you)')}</span>` : ''}</span>${gameLinkLine(u)}</td>
               <td data-label="${t('Role')}">
-                <select class="input user-role-select" data-user-id="${u.id}" data-username="${esc(u.username)}" data-current-role="${esc(u.role)}"${isGuest ? ` data-guest-clan-id="${u.clanId}"` : ''} ${isSelf ? 'disabled' : ''}>
+                <select class="input user-role-select" data-user-id="${u.id}" data-username="${esc(u.username)}" data-current-role="${esc(u.role)}"${isGuest ? ` data-guest-clan-id="${u.clanId}"` : ''} ${roleLocked ? 'disabled' : ''}${link ? ` title="${esc(t('Follows the in-game rank'))}"` : ''}>
                   ${rowRoles.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}
                 </select>
               </td>
@@ -714,9 +752,24 @@ export async function renderUsers(el) {
     if (roleSel) roleSel.addEventListener('change', sync);
     sync();
   }
+
+  for (const btn of el.querySelectorAll('[data-unlink-game]')) {
+    btn.addEventListener('click', () => unlinkGamePlayer(btn.dataset, () => renderUsers(el)));
+  }
 }
 
 // ─── Action handlers ──────────────────────────────────────────
+
+/** Superadmin: forget an account's link to a game player (v127). */
+async function unlinkGamePlayer(d, rerender) {
+  const ok = await confirmDialog(
+    t('Unlink "{user}" from the player {player}? The account keeps its access and role here, which then stop following the game. The player can link again with a new code.', { user: d.username, player: d.player }),
+    { title: t('Unlink from player'), confirmLabel: t('Unlink'), cancelLabel: t('Cancel') },
+  );
+  if (!ok) return;
+  if (!await mustOk(apiDelete(`/auth/users/${d.userId}/game-links/${d.clanId}`), t('Unlink failed'))) return;
+  rerender();
+}
 
 export async function createNewUser(rerender) {
   const username = $('#newUsername').value;
