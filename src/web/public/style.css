@@ -9523,13 +9523,13 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 /* Locked widths, as on every sortable table: sorting can't reflow columns. */
 .perf-table { table-layout: fixed; }
-.perf-table .col-rank { width: 64px; }
+.perf-table .col-rank { width: 76px; }
 .perf-table .col-member { width: auto; }
-.perf-table .col-score { width: 104px; }
+.perf-table .col-score { width: 120px; }
 .perf-table .col-signal { width: 124px; }
 /* Hits, near misses (◐) and the average: "11/25 ◐12 87%" on All time. */
 .perf-table .col-goal { width: 150px; }
-.perf-table .col-guards { width: 84px; }
+.perf-table .col-guards { width: 100px; }
 .perf-table .col-date { width: 120px; }
 .perf-table th.num, .perf-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .perf-table td[data-role="primary"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -11536,6 +11536,11 @@ details.ui-fold > summary {
   min-height: 32px;
 }
 details.ui-fold > summary::-webkit-details-marker { display: none; }
+/* Its chevron is on the right (below), like a card header's: not the
+   site-wide left one every other <summary> gets. */
+details.ui-fold > summary::before { display: none; }
+/* Closed, it stays its own height beside a taller tile in the same row. */
+details.ui-fold { align-self: start; }
 details.ui-fold > summary::after {
   content: '';
   flex: none;
@@ -12254,6 +12259,12 @@ button.ui-tile-link {
 .perf-count { font-weight: 700; color: var(--text-primary); }
 .perf-list .ui-row-name { white-space: nowrap; }
 .perf-everyone-head { margin-bottom: -4px; }
+@media (max-width: 640px) {
+  /* Five timeframes share the phone's width: equal columns, labels may wrap
+     ("За всё время" in three short lines) rather than run off the page. */
+  .perf-head .ui-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; }
+  .perf-head .ui-seg-btn { min-width: 0; padding: 4px; white-space: normal; line-height: 1.15; }
+}
 
 @media (max-width: 760px) {
   .an-table,
