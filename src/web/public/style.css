@@ -1830,13 +1830,15 @@ body:has(#content .mp-page) #pageHead { display: none; }
 .mp-term-close:hover,
 .mp-sheet-close:hover { background: var(--hover-overlay-strong); color: var(--text-primary); }
 
-/* Identity */
-.mp-identity { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+/* Identity. Desktop: a centred profile card — the portrait large on top,
+   name and facts under it (a small portrait in the top-left corner looked
+   off-centre in the column). The phone keeps its portrait-beside-name grid. */
+.mp-identity { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .mp-avatar { display: flex; }
 .mp-photo,
 .mp-initial {
-  width: 88px;
-  height: 88px;
+  width: 128px;
+  height: 128px;
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--accent-gold-border);
 }
@@ -1846,7 +1848,7 @@ body:has(#content .mp-page) #pageHead { display: none; }
   align-items: center;
   justify-content: center;
   background: var(--subtle-bg-strong);
-  font-size: 34px;
+  font-size: 48px;
   font-weight: 700;
   color: var(--text-secondary);
 }
@@ -1864,6 +1866,7 @@ body:has(#content .mp-page) #pageHead { display: none; }
   list-style: none;
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
 }
 .mp-fact {
@@ -1877,7 +1880,7 @@ body:has(#content .mp-page) #pageHead { display: none; }
 .mp-fact.is-gold { color: var(--accent-gold); font-weight: 600; }
 .mp-fact.is-burning { color: var(--accent-warn-text); }
 .mp-fact.is-left { color: var(--accent-warn-text); }
-.mp-titles .member-titles { flex-wrap: wrap; }
+.mp-titles .member-titles { flex-wrap: wrap; justify-content: center; }
 .mp-read { margin: 0; font-size: 12px; color: var(--text-muted); }
 
 /* This week */
@@ -2119,7 +2122,12 @@ html.mp-sheet-open { overflow: hidden; }
     column-gap: 14px;
     row-gap: 8px;
     align-items: center;
+    text-align: left;
   }
+  .mp-identity .mp-facts,
+  .mp-identity .mp-titles .member-titles { justify-content: flex-start; }
+  /* The framed hero is drawn at the desktop size: back to the phone size. */
+  .mp-identity .hero-framed { --hero-box: 87px !important; width: 87px !important; height: 87px !important; }
   .mp-identity > .mp-avatar { grid-row: 1 / span 2; }
   .mp-identity > .mp-name { font-size: 22px; align-self: end; }
   .mp-identity > .mp-facts { align-self: start; }

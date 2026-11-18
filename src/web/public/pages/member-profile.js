@@ -76,9 +76,10 @@ function termHtml(key, label) {
 /** Their own photo, else the hero portrait in its frame, else the first letter. */
 function avatarHtml(name, game) {
   if (game?.photoUrl) {
-    return `<img class="mp-photo" src="${esc(game.photoUrl)}" alt="" width="88" height="88" decoding="async">`;
+    return `<img class="mp-photo" src="${esc(game.photoUrl)}" alt="" width="128" height="128" decoding="async">`;
   }
-  const hero = heroAvatarHtml(game?.player, 72);
+  // Drawn at the desktop size; the phone layout scales it down (style.css).
+  const hero = heroAvatarHtml(game?.player, 108);
   if (hero) return hero;
   const letter = (String(name || '?').trim()[0] || '?').toUpperCase();
   return `<span class="mp-initial" aria-hidden="true">${esc(letter)}</span>`;
