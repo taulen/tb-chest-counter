@@ -49,7 +49,9 @@ function createAccountInvitesRouter() {
                 status: r.status,
                 reason: r.reason,
             })),
-            welcomes: (0, account_invite_repo_js_1.recentWelcomes)(id, 15),
+            // Every code sent so far (a few hundred at most), newest first: a list of
+            // only the latest 15 hid most of a scan's batch.
+            welcomes: (0, account_invite_repo_js_1.recentWelcomes)(id, 1000),
             // Dry run: everyone switching "Send members a code" on would message now,
             // shown at once (no scan needed). Live mode lists its sends above instead.
             wouldGetCode: (0, account_invite_repo_js_1.getInviteSettings)(id).welcomeMode === 'dry-run'

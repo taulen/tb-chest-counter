@@ -60,7 +60,9 @@ export function createAccountInvitesRouter(): Router {
         status: r.status,
         reason: r.reason,
       })),
-      welcomes: recentWelcomes(id, 15),
+      // Every code sent so far (a few hundred at most), newest first: a list of
+      // only the latest 15 hid most of a scan's batch.
+      welcomes: recentWelcomes(id, 1000),
       // Dry run: everyone switching "Send members a code" on would message now,
       // shown at once (no scan needed). Live mode lists its sends above instead.
       wouldGetCode: getInviteSettings(id).welcomeMode === 'dry-run'

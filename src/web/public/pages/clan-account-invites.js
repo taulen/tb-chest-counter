@@ -157,14 +157,15 @@ function renderAccountInvites(root, box, clanId, data) {
     </div>` : ''}` : '';
 
   const welcomesTable = s.welcomeMode !== 'dry-run' && (data.welcomes || []).length ? `
-    <h4 class="invite-subhead">${t('Codes for members')}</h4>
-    <div class="table-wrap">
+    <h4 class="invite-subhead">${t('Codes for members')} <span class="ui-sub">${data.welcomes.length}</span></h4>
+    <div class="table-wrap invite-would">
       <table class="data-table account-invite-welcomes">
-        <thead><tr><th scope="col">${t('Joined')}</th><th scope="col">${t('Player')}</th><th scope="col">${t('Status')}</th></tr></thead>
+        <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th><th scope="col">${t('Sent')}</th><th scope="col">${t('Status')}</th></tr></thead>
         <tbody>
           ${data.welcomes.map((w) => `<tr>
-            <td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString())) : ''}</td>
             <td>${escapeHtml(w.player)}</td>
+            <td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td>
+            <td>${w.status === 'sent' && w.updatedAt ? escapeHtml(formatDate(w.updatedAt)) : ''}</td>
             <td>${welcomeStatusText(w.status, w.reason)}</td>
           </tr>`).join('')}
         </tbody>
