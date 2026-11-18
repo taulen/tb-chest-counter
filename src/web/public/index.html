@@ -214,8 +214,10 @@
         <div class="user-menu-divider" role="separator"></div>
         <button class="user-menu-item" type="button" data-action="open-avatar-editor" data-i18n>Change photo</button>
         <!-- Signed in, a code from another clan's tracker adds that clan to this
-             account (/join). Same words the in-game message tells players to pick. -->
-        <a class="user-menu-item" href="/join" data-i18n>Have a code? Join here</a>
+             account (or links an old account): lib/add-clan.js, inside the app.
+             Signed out, the sign-in page's "Have a code? Join here" opens /join.
+             Hidden for the superadmin, who is never linked to a player. -->
+        <button class="user-menu-item" type="button" data-action="open-add-clan" id="userMenuAddClan" data-i18n>Add a clan with a code</button>
         <button class="user-menu-item" type="button" data-action="open-change-password" data-i18n>Change Password</button>
         <button class="user-menu-item user-menu-item-danger" type="button" id="logoutBtn" data-i18n>Logout</button>
       </div>

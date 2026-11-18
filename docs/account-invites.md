@@ -99,10 +99,19 @@ in one transaction:
 | signed in | another player linked here | refused |
 | superadmin | — | refused — superadmins are never linked |
 
-Signed out, the way in is the sign-in page's "Have a code? Join here". Signed
-in, the same words sit in the account menu (sidebar foot; the More sheet on a
-phone) — the in-game message tells players to pick them, so both doors carry
-that label.
+Signed out, the way in is the sign-in page's "Have a code? Join here" (the
+words the in-game message names). Signed in, it happens inside the app
+([add-clan.js](../src/web/public/lib/add-clan.js)): **Add a clan with a code**
+in the account menu, **+ Add a clan** at the bottom of the clan switcher (and
+under a one-clan label in the phone's More sheet), and Home's line for an
+unlinked account all open one dialog. It checks the code and says exactly
+what it will do before anything happens ("Adds CWB · ChaosWithoutBorders to
+your account as Kael Ironwood (Officer). Your role there: member." / "Links
+your account to …"), or why it can't be used. Confirm redeems it with
+`stay: true` — signed in, that keeps the session on its current clan (without
+it, as on /join, the session lands on the code's clan) — then redraws the
+switcher and offers **Switch to … now** or **Stay here**. The superadmin,
+never linked to a player, doesn't get these entries.
 
 Every attempt counts against the caller's address (20 per 15 min) and failed
 ones again on their own (10 per 15 min). A wrong, used or expired code all

@@ -87,8 +87,10 @@ runs in one container.
   current members the first time it's switched on, then everyone who joins.
   The message names the site without a link (the game blocks them: "cwb .
   fyi"); **Have a code? Join here** on the sign-in page creates the account,
-  linked to their player, or resets a forgotten password, or adds another
-  clan. Roles follow the game every scan: the clan's Leader and Superiors are
+  linked to their player, or resets a forgotten password. Signed in, **Add a
+  clan with a code** (account menu, clan switcher, or Home) shows what a code
+  will do before it does it, adds the clan or links an old account, and offers
+  to switch to it. Roles follow the game every scan: the clan's Leader and Superiors are
   admins, everyone else a member, and leaving the clan in the game takes the
   access away. See [docs/account-invites.md](docs/account-invites.md).
 - **In-game chat digest** (opt-in per clan) — the clan's scanner account posts

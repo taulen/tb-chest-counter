@@ -35,6 +35,7 @@ import { checkLiveBuild, initBuildCheck, noteLiveBuild, reloadIfNewBuild } from 
 import { initSortableHeaders } from './lib/sort-headers.js';
 import { renderScanCards, tickScanCards } from './lib/scan-card.js';
 import { openAvatarEditor } from './lib/avatar-editor.js';
+import { openAddClanDialog } from './lib/add-clan.js';
 import {
   initShell,
   closeShellOverlay,
@@ -257,6 +258,8 @@ async function checkAuth() {
     if (currentUser.role === 'superadmin') {
       if (navSystemEl) navSystemEl.classList.remove('is-hidden');
     }
+    // A code links an account to a player; the superadmin never is one.
+    $('#userMenuAddClan')?.toggleAttribute('hidden', currentUser.role === 'superadmin');
 
     // Manual scans live in the sidebar's scanner card (the phone sheet is the
     // same element), superadmin only; everyone else sees the state alone.
@@ -605,6 +608,10 @@ if (userMenu) {
       // Out of the phone sheet first, so the dialog isn't stacked on a menu.
       closeShellOverlay();
       openChangePasswordModal();
+    } else if (target.dataset.action === 'open-add-clan') {
+      closeShellOverlay();
+      closeUserMenu();
+      openAddClanDialog();
     } else if (target.dataset.action === 'open-avatar-editor') {
       closeShellOverlay();
       closeUserMenu();
@@ -616,6 +623,10 @@ if (userMenu) {
     }
   });
 }
+
+// The clan switcher and the phone More sheet ask for the same dialog
+// (lib/shell.js fires the event: it can't import add-clan.js, which imports it).
+document.addEventListener('tb:add-clan', () => openAddClanDialog());
 
 // ─── Scroll position across navigation ───
 // Hash routing never leaves the document, so the browser keeps the scroll

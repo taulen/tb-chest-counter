@@ -31,6 +31,8 @@ let releaseOverlay = null;
 /** The switcher's last answer, kept to re-render clan statuses between fetches. */
 let clanData = { clans: [], activeClanId: null };
 let canSwitch = false;
+// A code adds a clan to (or links) an account; the superadmin never is one.
+let canAddClan = false;
 let runningClanIds = new Set();
 
 function readRailPref() {
@@ -318,10 +320,16 @@ function renderClanBlock() {
     return;
   }
   renderPhonebarClan(active);
+  // "Add a clan": a code from another clan's tracker (lib/add-clan.js, via
+  // the tb:add-clan event app.js listens for). Under a one-clan label it only
+  // shows in the phone's More sheet (style.css), where the label is the list.
+  const addClan = (extra = '') => (canAddClan
+    ? `<button type="button" class="shell-clan-add${extra}"><span aria-hidden="true">+</span> ${esc(t('Add a clan'))}</button>`
+    : '');
   if (!canSwitch || clans.length < 2) {
     box.innerHTML = `<div class="shell-clan-label" data-tip="${esc(active.name)}">
         ${logoHtml(active)}${clanTextHtml(active)}
-      </div>`;
+      </div>${addClan(' is-sheet-only')}`;
     return;
   }
   const manage = byId('navClans') && !byId('navClans').classList.contains('is-hidden')
@@ -343,6 +351,7 @@ function renderClanBlock() {
           </button>
         </li>`).join('')}
       </ul>
+      ${addClan()}
       ${manage}
     </div>`;
 }
@@ -361,6 +370,7 @@ function renderPhonebarClan(c) {
  */
 export async function refreshClanSwitcher(user) {
   canSwitch = !!user && (user.role === 'superadmin' || !!user.multiClan);
+  canAddClan = !!user && user.role !== 'superadmin';
   try {
     const res = await fetch('/api/clans/switcher', { cache: 'no-store' });
     if (!res.ok) throw new Error(String(res.status));
@@ -530,6 +540,12 @@ export function initShell() {
     const option = e.target.closest('.shell-clan-option');
     if (option) {
       switchClan(Number(option.dataset.clanId));
+      return;
+    }
+    if (e.target.closest('.shell-clan-add')) {
+      closeClanPopover();
+      closeShellOverlay();
+      document.dispatchEvent(new CustomEvent('tb:add-clan'));
       return;
     }
     if (e.target.closest('.shell-clan-manage')) closeShellOverlay();

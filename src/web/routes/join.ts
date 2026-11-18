@@ -109,16 +109,21 @@ export function createJoinRouter(): Router {
       throw err;
     }
 
-    // Signed out: sign them in. Either way, land on the clan the code is for.
+    // Signed out: sign them in. Either way, land on the clan the code is for —
+    // unless a signed-in viewer asked to stay where they are (`stay: true`,
+    // the in-app "Add a clan" dialog: it offers the switch itself, and
+    // "Stay here" must not move them).
     let token = session?.token ?? null;
     if (!token) {
       token = userRepo.createSession(result.user.id);
       res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions(req));
     }
-    if (result.user.role !== 'superadmin') userRepo.setSessionActiveClan(token, result.clanId);
+    const stay = !!session && req.body?.stay === true;
+    if (result.user.role !== 'superadmin' && !stay) userRepo.setSessionActiveClan(token, result.clanId);
     res.json({
       ok: true,
       mode: result.mode,
+      clanId: result.clanId,
       user: { id: result.user.id, username: result.user.username, role: result.user.role, clanId: result.user.clanId },
     });
   });
