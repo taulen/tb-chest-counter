@@ -7291,6 +7291,7 @@ body.is-scanning .shell-scanner .scan-controls { display: none; }
   font-size: 13px;
   font-weight: 700;
   color: var(--accent-gold);
+  overflow: hidden;
 }
 .shell-account-text {
   flex: 1;
@@ -7317,6 +7318,187 @@ body.is-scanning .shell-scanner .scan-controls { display: none; }
 }
 /* The phone sheet's account heading; the desktop button says it already. */
 .shell-account-heading { display: none; }
+
+/* ─── Account avatars (lib/avatar.js, lib/avatar-editor.js) ───
+   A photo the account uploaded, its game hero's portrait, or its initial —
+   always a circle, always beside the name it belongs to (so decorative). */
+.avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent-gold);
+}
+.avatar.is-photo,
+.avatar.is-hero { box-shadow: none; }
+.avatar-sm { width: 28px; height: 28px; font-size: 12px; }
+.avatar-xl { width: 96px; height: 96px; font-size: 36px; }
+
+/* Users page: the picture beside the name; the moderation link under it. */
+.user-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.user-cell-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.user-cell-text .mrow-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.user-photo-remove {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent-red);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.user-photo-remove:hover { color: var(--text-primary); }
+
+/* The "Change photo" dialog. */
+.avatar-editor { max-width: 420px; }
+.avatar-editor [hidden] { display: none !important; }
+.avatar-editor-step[data-step="pick"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 4px;
+  text-align: center;
+}
+.avatar-editor-line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.avatar-editor-choose,
+.avatar-editor-another,
+.avatar-editor-actions .btn { min-height: 44px; }
+.avatar-editor-busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 220px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.avatar-editor-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent-gold);
+  animation: avatar-spin 0.9s linear infinite;
+}
+@keyframes avatar-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .avatar-editor-spinner { animation-duration: 3s; }
+}
+.avatar-crop-stage {
+  position: relative;
+  width: min(300px, 100%);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.avatar-crop-stage.is-dragging { cursor: grabbing; }
+.avatar-crop-stage:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 3px;
+}
+.avatar-crop-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* The circle that is kept; what falls outside it is dimmed. */
+.avatar-crop-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px var(--bg-modal-backdrop), inset 0 0 0 2px var(--accent-gold);
+  pointer-events: none;
+}
+.avatar-crop-hint {
+  margin: 10px 0 0;
+  text-align: center;
+}
+.avatar-crop-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.avatar-crop-zoom-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+.avatar-crop-range {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  accent-color: var(--accent-gold);
+}
+.avatar-crop-previews {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+.avatar-crop-previews-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.avatar-crop-preview {
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.avatar-editor-another { margin-left: auto; }
+.avatar-editor-privacy {
+  margin: 14px 0 16px;
+  text-align: center;
+}
+.avatar-editor-actions { flex-wrap: wrap; }
+.avatar-editor-actions .avatar-editor-remove { margin-right: auto; }
+@media (max-width: 480px) {
+  .avatar-editor-actions .avatar-editor-remove { margin-right: 0; }
+}
 
 /* ─── Rail tooltips, the scrim, the phone-only bars ─── */
 .shell-tip {

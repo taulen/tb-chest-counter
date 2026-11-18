@@ -69,6 +69,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'share_links.created_by',
     'share_links.revoked_by',
     'stack_presets.user_id',
+    // ON DELETE CASCADE, and deleteUser clears it explicitly too: the photo is
+    // the account's own (v127).
+    'user_avatars.user_id',
     'user_clan_access.user_id',
     'user_sessions.user_id',
     'users.created_by',
@@ -453,6 +456,10 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   db.prepare(
     `INSERT INTO stack_presets (user_id, name, data, updated_at) VALUES (2, 'Epic run', '{"rows":[],"settings":{}}', ?)`,
   ).run(now);
+  db.prepare(
+    `INSERT INTO user_avatars (user_id, sha256, mime, width, height, bytes, updated_at)
+     VALUES (2, 'ab', 'image/png', 64, 64, x'00', ?)`,
+  ).run(now);
 
   // ChestTracker ingest: clan-scoped, but only by convention — no FK to clans.
   const playerRef = db.prepare(
@@ -587,6 +594,8 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     expect(db.prepare('SELECT COUNT(*) c FROM citadel_presets WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
     expect(db.prepare('SELECT COUNT(*) c FROM citadel_levels WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
     expect(db.prepare('SELECT COUNT(*) c FROM stack_presets WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
+    // Nor their photo.
+    expect(db.prepare('SELECT COUNT(*) c FROM user_avatars WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
   });
 
   it('a player merge survives a member referenced from every child table', () => {

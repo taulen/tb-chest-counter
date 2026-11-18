@@ -18,6 +18,7 @@ import { versionHtmlAssets } from './asset-versioning.js';
 import { createFrontendAssetRouter } from './frontend-assets.js';
 import { createGameArtRouter } from '../game-art/routes.js';
 import { createClanLogoRouter } from '../game-art/clan-logo.js';
+import { createAvatarRouter } from './routes/avatars.js';
 import { createGameTextsRouter } from './routes/game-texts.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
@@ -431,6 +432,8 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   app.use(createGameArtRouter());
   // Clan logos composed from those layers: /game-art/<version>/clan-logo/<code>.png.
   app.use(createClanLogoRouter());
+  // Account photos by content hash: /avatars/<sha256>.<ext> (public, immutable).
+  app.use(createAvatarRouter());
   // The game's own names in the site's other languages, for tGame() on every
   // page — the login and public share pages included, so public like the art.
   // Ahead of the /api no-store middleware: it sets its own Cache-Control + ETag.

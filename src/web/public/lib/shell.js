@@ -16,6 +16,7 @@
  */
 import { t } from './i18n.js';
 import { esc, formatRelativeTime, holdDialogFocus } from './ui.js';
+import { paintAvatar } from './avatar.js';
 
 const RAIL_KEY = 'navRail';
 const phoneMq = window.matchMedia('(max-width: 640px)');
@@ -413,7 +414,11 @@ export function syncMoreDot() {
   byId('shellMoreDot')?.classList.toggle('is-hidden', !lit);
 }
 
-/** Name, role and initial in the account button and the phone sheet. */
+/**
+ * Name, role and picture in the account button and the phone sheet. The
+ * picture is the account's photo, else its game hero, else its initial
+ * (lib/avatar.js); called again after the photo changes.
+ */
 export function setShellUser(user) {
   if (!user) return;
   const role = user.role === 'superadmin' ? t('Super Admin') : user.role === 'admin' ? t('Admin') : t('Member');
@@ -421,8 +426,7 @@ export function setShellUser(user) {
   if (name) name.textContent = user.username;
   const roleEl = byId('userRole');
   if (roleEl) roleEl.textContent = role;
-  const initial = byId('userInitial');
-  if (initial) initial.textContent = (Array.from(user.username || '?')[0] || '?').toUpperCase();
+  paintAvatar(byId('userInitial'), user);
   const who = byId('userMenuWho');
   if (who) who.textContent = `${user.username} · ${role}`;
   const btn = byId('userMenuBtn');

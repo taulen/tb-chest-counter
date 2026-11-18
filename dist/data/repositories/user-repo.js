@@ -351,6 +351,8 @@ function deleteUser(id) {
         db.prepare('DELETE FROM citadel_presets WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM citadel_levels WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM stack_presets WHERE user_id = ?').run(id);
+        // Their uploaded photo too (v127): it is theirs, and served by its hash.
+        db.prepare('DELETE FROM user_avatars WHERE user_id = ?').run(id);
         db.prepare('UPDATE audit_log SET user_id = NULL WHERE user_id = ?').run(id);
         db.prepare('UPDATE resource_upload_batches SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
         db.prepare('UPDATE clans SET created_by = NULL WHERE created_by = ?').run(id);
