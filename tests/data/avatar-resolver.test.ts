@@ -8,7 +8,7 @@ vi.mock('../../src/data/repositories/game-profile-repo.js', async (importOrigina
 
 import { getDb } from '../../src/data/database.js';
 import * as userRepo from '../../src/data/repositories/user-repo.js';
-import { resolveAccountAvatar, setUserAvatar, removeUserAvatar, avatarInitial } from '../../src/data/repositories/avatar-repo.js';
+import { resolveAccountAvatar, setUserAvatar, removeUserAvatar, avatarInitial, linkedPhotoUrlsForClan, resolveMemberAvatar } from '../../src/data/repositories/avatar-repo.js';
 import { sniffImage } from '../../src/utils/image-sniff.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 import { pngBytes } from '../helpers/image-bytes.js';
@@ -80,5 +80,34 @@ describe('resolveAccountAvatar: photo → game hero → initial', () => {
     expect(avatarInitial('élise')).toBe('É');
     expect(avatarInitial('Ярослав')).toBe('Я');
     expect(avatarInitial('')).toBe('?');
+  });
+});
+
+describe("a member's picture (Members board): the linked account's photo → hero → initial", () => {
+  let cleanup: () => void;
+  beforeEach(() => {
+    cleanup = makeTestDb().cleanup;
+    seedTwoClans();
+  });
+  afterEach(() => cleanup());
+
+  it('finds the photos of accounts linked in that clan only', () => {
+    const a = userRepo.createUser('alpha', 'Test1234!aA', 'user', undefined, 1);
+    const b = userRepo.createUser('bravo', 'Test1234!aA', 'user', undefined, 2);
+    addGamePlayer(1, 9001, 42);
+    addGamePlayer(2, 9002, 7);
+    link(a.id, 1, 9001);
+    link(b.id, 2, 9002);
+    const bytes = pngBytes(512, 512);
+    const { url } = setUserAvatar(a.id, bytes, sniffImage(bytes)!);
+    setUserAvatar(b.id, pngBytes(256, 256), sniffImage(pngBytes(256, 256))!);
+    const photos = linkedPhotoUrlsForClan(1);
+    expect([...photos.entries()]).toEqual([[9001, url]]);
+  });
+
+  it("keeps resolveAccountAvatar's order", () => {
+    expect(resolveMemberAvatar('kael', 'hero-url', 'own-photo-url')).toEqual({ kind: 'photo', url: 'own-photo-url', initial: 'K' });
+    expect(resolveMemberAvatar('kael', 'hero-url', null)).toEqual({ kind: 'hero', url: 'hero-url', initial: 'K' });
+    expect(resolveMemberAvatar('kael', null, null)).toEqual({ kind: 'initial', url: null, initial: 'K' });
   });
 });

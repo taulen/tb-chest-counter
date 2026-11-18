@@ -11238,3 +11238,315 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .rc-entry .tl-glyph { width: 20px; height: 20px; font-size: 11px; }
   .rc-source { padding: 0 10px 12px; }
 }
+
+/* ─── Members → ranking board (pages/members-board.js; redesign phase 2a) ───
+   Each member's points for the period as a bar against the goal line (bright)
+   and the pace line (thin, only while the period runs), banded ✓ Reached /
+   ◐ On pace / ↓ Behind — glyph + words, never colour alone. Phone first: on a
+   phone a row is two lines (who + points, then the bar + band). */
+.mboard { display: flex; flex-direction: column; gap: 14px; }
+.mboard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.mboard-sub { margin: 0; font-size: 13.5px; color: var(--text-secondary); }
+.mboard-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Segmented controls: Board | Table, and Day / Week / Month / All. */
+.mboard-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.mboard-seg-btn {
+  min-height: 40px;
+  min-width: 56px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+.mboard-seg-btn:hover { color: var(--text-primary); }
+.mboard-seg-btn.is-active {
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+  box-shadow: 0 0 0 1px var(--accent-gold-border);
+}
+.mboard-seg-btn:focus-visible,
+.mboard-chip:focus-visible,
+.mboard-arrow:focus-visible,
+.mboard-row:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 2px; }
+
+.mboard-period { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.mboard-step { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mboard-arrow {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mboard-arrow:hover:not(:disabled) { background: var(--bg-card-hover); }
+.mboard-arrow:disabled { opacity: 0.4; cursor: default; }
+.mboard-when { display: flex; flex-direction: column; min-width: 0; }
+.mboard-when-label { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mboard-when-sub { font-size: 12px; color: var(--text-secondary); }
+
+.mboard-notes {
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.mboard-note-when { color: var(--text-muted); }
+
+.mboard-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.mboard-bands, .mboard-sort { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mboard-chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-control);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mboard-chip:hover { background: var(--bg-card-hover); }
+.mboard-chip.is-active {
+  border-color: var(--accent-gold-border);
+  background: var(--accent-gold-bg-strong);
+  color: var(--accent-gold);
+}
+.mboard-chip-n { font-weight: 500; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.mboard-chip.band-ok:not(.is-active) { color: var(--accent-green-soft-text); }
+.mboard-chip.band-pace:not(.is-active) { color: var(--accent-warn-text); }
+.mboard-chip.band-behind:not(.is-active) { color: var(--accent-red-soft-text); }
+.mboard-goal-line {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.mboard-key { display: inline-block; width: 3px; height: 14px; border-radius: 2px; }
+.mboard-key-goal { background: var(--text-primary); }
+.mboard-key-pace { width: 2px; background: var(--text-secondary); }
+.mboard-key-sep { margin: 0 4px; }
+
+.mboard-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.mboard-search { flex: 1 1 220px; max-width: 320px; }
+.mboard-search .input { width: 100%; min-height: 44px; box-sizing: border-box; }
+
+/* The list. */
+.mboard-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.mboard-group.band-ok { color: var(--accent-green-soft-text); }
+.mboard-group.band-pace { color: var(--accent-warn-text); }
+.mboard-group.band-behind { color: var(--accent-red-soft-text); }
+.mboard-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+.mboard-item + .mboard-item { border-top: 1px solid var(--row-divider); }
+.mboard-row {
+  display: grid;
+  grid-template-columns: 44px 36px minmax(150px, 1.2fr) minmax(160px, 2.4fr) 124px 112px;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 14px;
+  color: inherit;
+  text-decoration: none;
+}
+.mboard-row:hover { background: var(--bg-card-hover); }
+.mboard-item.is-you .mboard-row { background: var(--accent-gold-bg); box-shadow: inset 3px 0 0 var(--accent-gold); }
+.mboard-rank { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.mboard-row .avatar { width: 36px; height: 36px; font-size: 14px; }
+.mboard-who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mboard-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mboard-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.mboard-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.mboard-tag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mboard-tag.is-you { background: var(--accent-gold-bg-strong); color: var(--accent-gold); }
+.mboard-tag.is-burning { padding: 0; font-weight: 600; color: var(--text-secondary); }
+
+/* The bar: the fill, with the pace and goal lines across it. */
+.mboard-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--bg-input);
+}
+.mboard-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--w);
+  border-radius: 6px;
+  background: var(--text-muted);
+}
+.mboard-fill.band-ok { background: var(--accent-green); }
+.mboard-fill.band-pace { background: var(--accent-amber); }
+.mboard-fill.band-behind { background: var(--accent-red); }
+.mboard-tick { position: absolute; top: -4px; bottom: -4px; left: var(--x); transform: translateX(-50%); border-radius: 2px; }
+.mboard-tick.is-goal { width: 3px; background: var(--text-primary); }
+.mboard-tick.is-pace { width: 2px; background: var(--text-secondary); }
+
+.mboard-pts { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
+.mboard-pts-n { font-size: 15px; font-weight: 700; }
+.mboard-delta { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.mboard-delta.is-up { color: var(--accent-green-soft-text); }
+.mboard-delta.is-down { color: var(--accent-red-soft-text); }
+.mboard-delta.is-flat { color: var(--text-secondary); }
+.mboard-band { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.mboard-band.band-ok { color: var(--accent-green-soft-text); }
+.mboard-band.band-pace { color: var(--accent-warn-text); }
+.mboard-band.band-behind { color: var(--accent-red-soft-text); }
+.mboard-empty { margin: 0; padding: 18px; text-align: center; color: var(--text-secondary); }
+.mboard-you { margin-bottom: 6px; }
+
+/* A tablet: the band word drops; the glyph stays in the bar's colour + chips. */
+@media (max-width: 1100px) {
+  .mboard-row { grid-template-columns: 40px 36px minmax(140px, 1.3fr) minmax(120px, 2fr) 112px 96px; gap: 10px; }
+}
+
+/* Phone-only pieces (the one-line date, the sort select) stay out of the desktop layout. */
+.mboard-when-short, .mboard-sort-pick { display: none; }
+
+/* A phone: the controls stay compact enough that the first member row starts
+   on the first screen — count + toggle on one line, the period's dates on one
+   line, the bands as one sideways-scrolling strip, search + a sort select on
+   one line. A row is two lines: who + points, then the bar + band. */
+@media (max-width: 640px) {
+  .mboard { gap: 10px; min-width: 0; max-width: 100%; }
+  .mboard-head { flex-wrap: nowrap; }
+  .mboard-hint { display: none; }
+  .mboard-head .mboard-seg { margin-left: auto; flex: none; }
+  .mboard-seg-btn { min-height: 44px; }
+  .mboard-period { gap: 8px; }
+  .mboard-period .mboard-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+  .mboard-step { width: 100%; }
+  .mboard-when { flex: 1; min-width: 0; text-align: center; }
+  .mboard-when-label, .mboard-when-sub { display: none; }
+  .mboard-when-short {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .mboard-notes { padding: 8px 12px; gap: 2px; font-size: 12.5px; line-height: 1.4; }
+  .mboard-summary { flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+  .mboard-summary > * { min-width: 0; max-width: 100%; }
+  .mboard-bands {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mboard-bands::-webkit-scrollbar { display: none; }
+  .mboard-chip { min-height: 44px; flex: none; }
+  .mboard-goal-line { font-size: 12px; }
+  .mboard-tools { flex-wrap: nowrap; gap: 8px; }
+  .mboard-search { flex: 1 1 auto; min-width: 0; max-width: none; }
+  .mboard-sort { display: none; }
+  .mboard-sort-pick {
+    flex: none;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .mboard-sort-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 15px;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+  .mboard-sort-pick select { min-height: 44px; padding-left: 32px; max-width: 46vw; }
+  .mboard-group { margin: 6px 0 4px; }
+  .mboard-row {
+    grid-template-columns: 30px 36px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank av who pts"
+      "rank av bar band";
+    gap: 6px 10px;
+    padding: 10px 12px;
+  }
+  .mboard-rank { grid-area: rank; align-self: start; padding-top: 8px; font-size: 13px; }
+  .mboard-row .avatar { grid-area: av; align-self: start; }
+  .mboard-who { grid-area: who; }
+  .mboard-pts { grid-area: pts; }
+  .mboard-bar { grid-area: bar; align-self: center; height: 10px; }
+  .mboard-band { grid-area: band; font-size: 12px; text-align: right; }
+}

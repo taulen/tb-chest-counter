@@ -389,10 +389,19 @@ Pages are role-gated. Members see:
   selectable timeframe.
 - **Leaderboard** — daily / weekly / monthly / yearly / all-time, with
   period stepping, sorting, pagination, and an FAQ of points per chest.
-- **Members** — sortable roster plus per-member detail (rank, week-over-week
-  progress, single-day records, guards level, Gold Pass, full chest history),
-  and a **Might** tab: every member's might and hero level, the clan's might
-  over time, and side-by-side member comparison.
+- **Members** — opens on a **ranking board**: each member's chest points for
+  the day, week, month or all time as a bar against the clan's goal line and,
+  while the period runs, a pace line (where the goal stands by now), banded
+  ✓ Reached / ◐ On pace / ↓ Behind. Each row has the member's picture (their
+  account's own photo, else their hero portrait), in-game rank, might and the
+  change against the period before (cut at the same point while it runs). A
+  plain member's own row is pinned at the top under "You", and a short list
+  says who is burning on the map and who joined or left in the last 7 days.
+  The full sortable roster table (guards, might, first/last seen, admin
+  actions) is one toggle away, remembered per browser. Plus per-member detail
+  (rank, week-over-week progress, single-day records, guards level, Gold Pass,
+  full chest history), and a **Might** tab: every member's might and hero
+  level, the clan's might over time, and side-by-side member comparison.
 - **Events** — per-event chest breakdowns per player for each event run, plus
   Tin Man / Ancients standings and targets.
 - **My Clan** — the clan as the game shows it: research, rankings, treasury,

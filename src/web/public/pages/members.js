@@ -37,6 +37,7 @@ import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
 import { viewTabsHtml, viewPanelHtml, wireViewTabs } from '../lib/view-tabs.js';
+import { getMembersView, membersViewToggleHtml, renderMembersBoard, wireMembersViewToggle } from './members-board.js';
 
 // ─── Members list ─────────────────────────────────────────────
 
@@ -103,6 +104,12 @@ let memberEventsFor = null;
 let memberEventsAt = 0;
 
 export async function renderMembers(el) {
+  // The ranking board is the default view (pages/members-board.js); the
+  // roster table below is one toggle away and remembered per browser.
+  if (getMembersView() === 'board') {
+    await renderMembersBoard(el, { tabsHtml: membersTabsHtml('roster'), rerender: () => renderMembers(el) });
+    return;
+  }
   cachedMembers = await api('/members');
   // Might is optional data from an opt-in feature, so it's fetched separately
   // and merged in. A failure (or the feature being off) just leaves the columns
@@ -208,6 +215,7 @@ export function renderMembersTable(el) {
   el.innerHTML = `${membersTabsHtml('roster')}<div class="card">
     <div class="card-header members-header">
       <h2>${t('Clan Members ({count})', { count: countLabel })}</h2>
+      ${membersViewToggleHtml('table')}
       ${showMight ? `<div class="period-selector" id="membersMightWindow">${mightWindowButtonsHtml(mightWindow, (o) => `data-action="members-might-window" data-window="${o.id}"`)}</div>` : ''}
       <input
         type="text"
@@ -265,6 +273,7 @@ export function renderMembersTable(el) {
             }).join('')}
           </tbody></table>`}
   </div></div>`;
+  wireMembersViewToggle(el, () => renderMembers(el));
 }
 
 function sortMembers(members, key, dir) {
