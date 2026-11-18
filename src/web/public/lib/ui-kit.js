@@ -150,6 +150,19 @@ export function tileHtml(id, title, body, { span = 6, link = '', cls = '' } = {}
     </section>`;
 }
 
+/**
+ * One headline number in a .ui-stats strip: a label, the number (`value` and
+ * `of` are HTML, e.g. "79" and " / 100"), and a line under it (`sub`, HTML —
+ * a deltaHtml, a short fact). `extra` is anything below that (a sparkline).
+ */
+export function statHtml({ label, value, of = '', sub = '', extra = '', cls = '' }) {
+  return `<div class="ui-stat${cls ? ` ${cls}` : ''}">
+      <div class="ui-stat-label">${label}</div>
+      <div class="ui-big">${value}${of ? `<span class="ui-big-of">${of}</span>` : ''}</div>
+      ${sub ? `<div class="ui-sub">${sub}</div>` : ''}${extra}
+    </div>`;
+}
+
 /** The "Somewhere →" link in a tile's corner. */
 export function tileLinkHtml(href, label) {
   return `<a class="ui-tile-link" href="${esc(href)}">${esc(label)} <span aria-hidden="true">→</span></a>`;

@@ -703,45 +703,6 @@ details.card-collapsible[open] > summary.card-header::after {
   margin-bottom: 0;
 }
 
-/* ─── Analytics Type Panel ─── */
-.analytics-type-panel {
-  padding: 20px;
-  display: grid;
-  grid-template-columns: minmax(200px, 240px) 1fr;
-  gap: 20px;
-  align-items: start;
-  overflow: visible;
-}
-
-.type-summary-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  gap: 6px;
-}
-
-.type-summary-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-.type-summary-card strong {
-  font-size: 36px;
-  line-height: 1;
-  color: var(--text-primary);
-}
-
-.type-summary-card span:last-child {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
 .type-breakdown-list {
   display: flex;
   flex-direction: column;
@@ -1116,7 +1077,6 @@ th.sortable:hover {
    added since — the Breakdown dimension switch, the Clan Activity metric
    switch, "Sustained only" — set .active and looked exactly like it was off. */
 .period-selector .btn.active,
-.metric-toggle .btn.active,
 .btn.active {
   background: var(--accent-gold-bg-strong);
   border-color: var(--accent-gold-border);
@@ -3023,10 +2983,6 @@ details > table {
     grid-template-columns: 1fr;
   }
 
-  .analytics-type-panel {
-    grid-template-columns: 1fr;
-  }
-
   .transfer-import-grid {
     grid-template-columns: 1fr;
   }
@@ -3488,15 +3444,6 @@ details > table {
 
   .btn-compact {
     padding: 6px 10px;
-  }
-
-  /* Type breakdown */
-  .type-summary-card {
-    padding: 16px;
-  }
-
-  .type-summary-card strong {
-    font-size: 28px;
   }
 
   .type-row {
@@ -5603,37 +5550,6 @@ details > table {
   .might-table { min-width: 0; }
 }
 
-/* ─── Analytics timeframe controls ─────────────────────────────────────── */
-/* Mirrors .resources-controls: the selector and its ← label → nav sit in one
-   card above everything the timeframe governs, so it reads as the control for
-   the page rather than for the card nearest it. */
-.analytics-controls { margin-bottom: 16px; }
-.analytics-controls-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  /* The bar is the card's only content; .card-body is unpadded (for tables). */
-  padding: 14px 20px;
-}
-/* Fixed label width so the arrows don't jump as the label text changes
-   length between timeframes (same treatment as the resources totals nav). */
-.analytics-nav .period-nav-label {
-  min-width: 178px;
-  text-align: center;
-}
-
-/* Period-over-period delta under a stat value. Colour is the secondary
-   signal here — the arrow and the words carry the meaning on their own, so
-   this stays readable for anyone who can't separate the two hues. */
-.stat-delta {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.stat-delta.is-up { color: var(--accent-green); }
-.stat-delta.is-down { color: var(--accent-red); }
-.stat-delta.is-flat { color: var(--text-muted); }
-
 /* "31 of 47" — the roster denominator is context, not the headline. */
 .stat-card .value .stat-of {
   font-size: 0.6em;
@@ -5641,30 +5557,6 @@ details > table {
   color: var(--text-secondary);
 }
 
-@media (max-width: 640px) {
-  .analytics-controls-body { gap: 8px; padding: 12px 14px; }
-  /* Let the label shrink rather than push the arrows off the row. */
-  .analytics-nav .period-nav-label { min-width: 0; flex: 1 1 auto; }
-  .analytics-nav { width: 100%; }
-}
-
-/* Segmented [Chests | Points] switch in the Clan Activity card header. */
-.metric-toggle {
-  display: inline-flex;
-  gap: 4px;
-}
-.metric-toggle .btn {
-  padding: 4px 12px;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-@media (max-width: 640px) {
-  /* The header is title-left / toggle-right on desktop; stack it rather than
-     squeezing the title to nothing. */
-  .metric-toggle { width: 100%; }
-  .metric-toggle .btn { flex: 1 1 0; }
-}
 
 /* Breakdown card: filter box and the show-all toggle under the list. */
 .breakdown-filter {
@@ -5740,17 +5632,6 @@ details > table {
 }
 
 /* ─── Concentration tile ─────────────────────────────────────────────── */
-/* A stat tile like its neighbours, not a card beside them: as its own card it
-   was half again their height with the content floating in the middle. */
-.stat-card-concentration {
-  display: flex;
-  flex-direction: column;
-}
-.stat-card-concentration .sub {
-  /* Two short lines rather than one clipped one on a narrow column. */
-  line-height: 1.35;
-}
-
 /* Bars scale to the series' own maximum, not to 100%. A share that sits around
    17% every week drew eight identical stubs along the floor otherwise. */
 .concentration-spark {
@@ -5827,12 +5708,6 @@ details > table {
 }
 
 /* Contributor table: consistency columns and the sustained filter. */
-.contributors-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 .of-days { color: var(--text-muted); font-size: 0.85em; }
 
 
@@ -9575,23 +9450,10 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tool-tier-toggle { margin: 12px 0 0; font-size: 12.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ─── Performance (pages/performance.js) ────────────────────────────── */
-.perf-note { margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
 .perf-dim { color: var(--text-secondary); }
 .perf-value-over { color: var(--accent-green); }
 .perf-value-under { color: var(--accent-red); }
 
-/* Over- and underachievers side by side; stacked once a half is too narrow
-   for a name plus its signal line. */
-.perf-spotlight { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
-@media (max-width: 1100px) { .perf-spotlight { grid-template-columns: minmax(0, 1fr); } }
-.perf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.perf-list-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
-.perf-list-item:first-child { padding-top: 0; }
-.perf-list-item:last-child { border-bottom: 0; padding-bottom: 0; }
-.perf-list-main { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.perf-list-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.perf-list-sub { margin-top: 2px; font-size: 12px; color: var(--text-secondary); }
-.perf-more { margin: 10px 0 0; font-size: 12.5px; color: var(--text-secondary); }
 
 /* Score: glyph + number, coloured by status (the glyph and a hidden word
    carry it for anyone who can't see the colour). */
@@ -9604,13 +9466,13 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 /* Locked widths, as on every sortable table: sorting can't reflow columns. */
 .perf-table { table-layout: fixed; }
-.perf-table .col-rank { width: 64px; }
+.perf-table .col-rank { width: 76px; }
 .perf-table .col-member { width: auto; }
-.perf-table .col-score { width: 104px; }
+.perf-table .col-score { width: 120px; }
 .perf-table .col-signal { width: 124px; }
 /* Hits, near misses (◐) and the average: "11/25 ◐12 87%" on All time. */
 .perf-table .col-goal { width: 150px; }
-.perf-table .col-guards { width: 84px; }
+.perf-table .col-guards { width: 100px; }
 .perf-table .col-date { width: 120px; }
 .perf-table th.num, .perf-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .perf-table td[data-role="primary"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -9623,7 +9485,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 /* Below the signal's minimum: shown, but not part of the score yet. */
 .perf-cell.is-thin { color: var(--text-secondary); font-style: italic; }
 
-.perf-table-header { flex-wrap: wrap; gap: 8px 16px; }
 .perf-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 13px; }
 .perf-toolbar label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
 .perf-toolbar select { width: auto; }
@@ -11586,6 +11447,62 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 
 /* Stat: a label, a big number, an optional "of" and delta. */
 .ui-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* A strip of headline stats (statHtml): as many cards as fit, at least
+   150px each; two to a row on a phone. */
+.ui-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.ui-stats > .ui-stat {
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+/* A section heading outside a tile (above a table card). */
+.ui-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+/* A collapsible tile: <details class="ui-tile ui-fold" data-section-key>
+   with the tile head as its <summary> (fine print, long lists). */
+details.ui-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  align-items: center;
+  min-height: 32px;
+}
+details.ui-fold > summary::-webkit-details-marker { display: none; }
+/* Its chevron is on the right (below), like a card header's: not the
+   site-wide left one every other <summary> gets. */
+details.ui-fold > summary::before { display: none; }
+/* Closed, it stays its own height beside a taller tile in the same row. */
+details.ui-fold { align-self: start; }
+details.ui-fold > summary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 4px 0 auto;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(-45deg);
+  transition: transform var(--transition);
+}
+details.ui-fold[open] > summary::after { transform: rotate(45deg); }
+details.ui-fold > summary:focus-visible { outline: 2px solid var(--accent-gold); outline-offset: 4px; border-radius: 6px; }
+details.ui-fold:not([open]) { gap: 0; }
+@media (max-width: 640px) {
+  .ui-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .ui-stats > .ui-stat { padding: 12px 14px; }
+  .ui-stats .ui-big { font-size: 24px; }
+}
 
 /* Error state: what happened and a Try again (api() can answer an object). */
 .ui-error-box { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px 0; }
@@ -12379,4 +12296,47 @@ button.ui-tile-link {
   .sess-triumphal-table { min-width: 0; }
   .rs-scope,
   .rs-scope select { width: 100%; max-width: none; }
+}
+
+/* ─── Analytics (pages/analytics.js), on the UI kit ───
+   The scrubber, the headline stat strip, then tiles; a table inside a tile
+   runs full-bleed to the tile's edges. */
+.an { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.an-table,
+.perf-bleed { margin: 0 -20px; overflow-x: auto; }
+.an-table > .table-responsive,
+.perf-bleed > .table-responsive { margin: 0; }
+/* The pace line is a projection, said plainly: a quiet box, not an alert. */
+.an .pace-band {
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--subtle-bg);
+  font-size: 13.5px;
+}
+.an .pace-risk { color: var(--accent-red-soft-text); }
+.an-spread .ui-big { font-size: 26px; }
+.an-drill-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.an-drill-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.an-drill-title h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+
+/* ─── Performance (pages/performance.js), on the UI kit ─── */
+.perf { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.perf-head { display: flex; flex-direction: column; gap: 12px; }
+.perf-window { flex: 1 1 280px; }
+.perf-count { font-weight: 700; color: var(--text-primary); }
+.perf-list .ui-row-name { white-space: nowrap; }
+.perf-everyone-head { margin-bottom: -4px; }
+@media (max-width: 640px) {
+  /* Five timeframes share the phone's width: equal columns, labels may wrap
+     ("За всё время" in three short lines) rather than run off the page. */
+  .perf-head .ui-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; }
+  .perf-head .ui-seg-btn { min-width: 0; padding: 4px; white-space: normal; line-height: 1.15; }
+}
+
+@media (max-width: 760px) {
+  .an-table,
+  .perf-bleed { margin: 0 -16px; }
+  .an-drill-title h2 { font-size: 20px; }
 }

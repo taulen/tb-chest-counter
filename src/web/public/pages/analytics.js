@@ -38,7 +38,11 @@ import { describeChart } from '../lib/chart-a11y.js';
 import {
   computeGameWindow, periodAnchorFromOffset, periodOffsetFromAnchor,
 } from '../lib/period.js';
-import { renderPeriodNav } from '../lib/period-nav.js';
+import { getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
+import {
+  periodScrubberHtml, wirePeriodScrubber, tileHtml, tileLinkHtml, segHtml, statHtml,
+  emptyHtml, errorStateHtml, refusalText, wireRetry, asList,
+} from '../lib/ui-kit.js';
 import {
   scaleGoalForPeriod, goalDaysForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
 } from '../lib/leaderboard-render.js';
@@ -214,7 +218,12 @@ async function reload() {
       params.set('to', w.to);
     }
   }
-  windowData = await api(`/analytics/window?${params.toString()}`);
+  try {
+    windowData = await api(`/analytics/window?${params.toString()}`);
+  } catch (err) {
+    // A network failure: the same error state as a refusal, with Try again.
+    windowData = { error: err?.message || '' };
+  }
   paint();
 }
 
@@ -241,23 +250,14 @@ function syncUrl() {
 
 // ─── Rendering ───
 
+/** The kit's period scrubber: Day / Week / Month / Year / All and the arrows. */
 function periodControlsHtml() {
-  const buttons = PERIODS.map((p) =>
-    `<button class="btn ${period === p ? 'active' : ''}" data-aperiod="${p}">${PERIOD_LABEL[p]}</button>`,
-  ).join('');
-  return `
-    <div class="card analytics-controls">
-      <div class="card-body analytics-controls-body">
-        <div class="period-selector">${buttons}</div>
-        ${renderPeriodNav({
-          period,
-          offset: periodOffset,
-          prevAttr: 'data-aperiod-nav="prev"',
-          nextAttr: 'data-aperiod-nav="next"',
-          navClass: 'analytics-nav',
-        })}
-      </div>
-    </div>`;
+  const rolloverHr = getGameDayRolloverUtcHour();
+  const weekStart = getWeekStart();
+  return periodScrubberHtml({
+    periods: PERIODS, period, offset: periodOffset, rolloverHr, weekStart,
+    win: computeGameWindow(period, periodOffset, rolloverHr, weekStart),
+  });
 }
 
 // What the comparison is called when the period is still running and the API
@@ -310,7 +310,7 @@ function deltaHtml(current, previous) {
   const { label, title } = comparisonBasis();
   const titleAttr = title ? ` title="${esc(title)}"` : '';
   const diff = current - previous;
-  if (diff === 0) return `<div class="sub stat-delta is-flat"${titleAttr}>${t('No change vs {basis}', { basis: label })}</div>`;
+  if (diff === 0) return `<span class="ui-delta is-flat"${titleAttr}><span aria-hidden="true">±</span> ${t('No change vs {basis}', { basis: label })}</span>`;
   const up = diff > 0;
   const arrow = up ? '▲' : '▼';
   const cls = up ? 'is-up' : 'is-down';
@@ -318,7 +318,7 @@ function deltaHtml(current, previous) {
   const magnitude = previous >= MIN_BASELINE_FOR_PERCENT
     ? `${Math.abs(Math.round((diff / previous) * 100))}%`
     : `${Math.abs(diff).toLocaleString()}`;
-  return `<div class="sub stat-delta ${cls}"${titleAttr}>${arrow} ${t('{change} vs {basis}', { change: magnitude, basis: label })}</div>`;
+  return `<span class="ui-delta ${cls}"${titleAttr}><span aria-hidden="true">${arrow}</span> ${t('{change} vs {basis}', { change: magnitude, basis: label })}</span>`;
 }
 
 function statsGridHtml(current) {
@@ -340,27 +340,16 @@ function statsGridHtml(current) {
   // "Scans" used to sit here. It is an operational number, not an analytical
   // one, and the Dashboard already carries it.
   return `
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="label">${t('Chests')}</div>
-        <div class="value">${chests.toLocaleString()}</div>
-        ${deltaHtml(chests, prev ? prev.chests : null)}
-      </div>
-      <div class="stat-card">
-        <div class="label">${t('Points')}</div>
-        <div class="value">${points.toLocaleString()}</div>
-        ${deltaHtml(points, prev ? prev.points : null)}
-      </div>
-      <div class="stat-card">
-        <div class="label">${t('Active Members')}</div>
-        <div class="value">${active.toLocaleString()}${roster ? `<span class="stat-of"> ${t('of {total}', { total: roster.toLocaleString() })}</span>` : ''}</div>
-        ${deltaHtml(active, prev ? prev.activeMembers : null)}
-      </div>
-      <div class="stat-card">
-        <div class="label">${t('Avg Chests / Active Member')}</div>
-        <div class="value">${avg.toLocaleString()}</div>
-        ${deltaHtml(avg, prevAvg)}
-      </div>
+    <div class="ui-stats an-stats">
+      ${statHtml({ label: t('Chests'), value: chests.toLocaleString(), sub: deltaHtml(chests, prev ? prev.chests : null) })}
+      ${statHtml({ label: t('Points'), value: points.toLocaleString(), sub: deltaHtml(points, prev ? prev.points : null) })}
+      ${statHtml({
+        label: t('Active Members'),
+        value: active.toLocaleString(),
+        of: roster ? ` ${t('of {total}', { total: roster.toLocaleString() })}` : '',
+        sub: deltaHtml(active, prev ? prev.activeMembers : null),
+      })}
+      ${statHtml({ label: t('Avg Chests / Active Member'), value: avg.toLocaleString(), sub: deltaHtml(avg, prevAvg) })}
       ${concentrationTileHtml(current)}
     </div>`;
 }
@@ -389,7 +378,7 @@ const BREAKDOWN_TOP_N = 15;
 /** The current dimension's rows, normalised to one shape. */
 function breakdownRows(current) {
   if (breakdownDim === 'source') {
-    return (current.bySource || []).map((r) => ({
+    return asList(current.bySource).map((r) => ({
       label: tGame(r.chest_source) || t('Unknown'),
       count: r.count,
       points: r.points || 0,
@@ -400,7 +389,7 @@ function breakdownRows(current) {
     }));
   }
   if (breakdownDim === 'chest') {
-    return (current.byName || []).map((r) => ({
+    return asList(current.byName).map((r) => ({
       label: tGame(r.chest_name),
       // The chest's picture takes the dot's place: its bar keeps the type colour.
       chestName: r.chest_name,
@@ -410,7 +399,7 @@ function breakdownRows(current) {
       href: chestHash(r.chest_name, 'all'),
     }));
   }
-  return (current.byType || []).map((r) => ({
+  return asList(current.byType).map((r) => ({
     label: CHEST_TYPE_LABELS[r.chest_type] ?? r.chest_type,
     count: r.count,
     points: r.points || 0,
@@ -434,9 +423,12 @@ function breakdownCardHtml(current) {
   const visible = breakdownShowAll ? filtered : filtered.slice(0, BREAKDOWN_TOP_N);
   const hidden = filtered.length - visible.length;
 
-  const dimButtons = BREAKDOWN_DIMENSIONS.map((d) =>
-    `<button class="btn btn-tight ${breakdownDim === d.key ? 'active' : ''}" data-bdim="${d.key}">${d.label}</button>`,
-  ).join('');
+  const dimButtons = segHtml({
+    label: t('Break down by'),
+    items: BREAKDOWN_DIMENSIONS.map((d) => ({ value: d.key, label: d.label })),
+    current: breakdownDim,
+    attr: 'bdim',
+  });
 
   // Type has eight or so rows; a filter box over them would be furniture.
   const filterBox = rows.length > BREAKDOWN_TOP_N
@@ -471,7 +463,7 @@ function breakdownCardHtml(current) {
           </div>
         </div>`;
       }).join('')
-    : `<div class="empty-state"><p>${needle ? t('Nothing matches that filter.') : t('No chests in this timeframe.')}</p></div>`;
+    : emptyHtml(needle ? t('Nothing matches that filter.') : t('No chests in this timeframe.'));
 
   const moreControl = hidden > 0
     ? `<button class="btn btn-tight breakdown-more" data-bmore>${t('Show all {count}', { count: filtered.length.toLocaleString() })}</button>`
@@ -479,23 +471,18 @@ function breakdownCardHtml(current) {
         ? `<button class="btn btn-tight breakdown-more" data-bmore>${t('Show top 15')}</button>`
         : '');
 
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Breakdown')}</h2>
-        <div class="metric-toggle" role="group" aria-label="${t('Break down by')}">${dimButtons}</div>
+  const body2 = `
+      <div class="ui-big-row an-spread">
+        ${statHtml({
+          label: esc(BREAKDOWN_DIMENSIONS.find((d) => d.key === breakdownDim).spread),
+          value: rows.length.toLocaleString(),
+          sub: tn(total, '{n} chests · {points} pts in this timeframe', '{n} chests · {points} pts in this timeframe', { points: totalPoints.toLocaleString() }),
+        })}
       </div>
-      <div class="card-body analytics-type-panel">
-        <div class="type-summary-card">
-          <span class="type-summary-label">${esc(BREAKDOWN_DIMENSIONS.find((d) => d.key === breakdownDim).spread)}</span>
-          <strong>${rows.length.toLocaleString()}</strong>
-          <span>${tn(total, '{n} chests · {points} pts in this timeframe', '{n} chests · {points} pts in this timeframe', { points: totalPoints.toLocaleString() })}</span>
-        </div>
-        ${filterBox}
-        <div class="type-breakdown-list">${body}</div>
-        ${moreControl}
-      </div>
-    </div>`;
+      ${filterBox}
+      <div class="type-breakdown-list">${body}</div>
+      ${moreControl}`;
+  return tileHtml('breakdown', t('Breakdown'), body2, { span: 6, link: dimButtons, cls: 'an-breakdown' });
 }
 
 // ─── Pace ───
@@ -630,7 +617,7 @@ function paceBandHtml(current) {
  * the points column will.
  */
 function contributorsCardHtml(current) {
-  const all = current.contributors || [];
+  const all = asList(current.contributors);
   const windowDays = current.windowDays ?? windowData?.windowDays ?? null;
   const periodGoal = windowGoal();
   const amber = windowAmberRatio();
@@ -646,12 +633,12 @@ function contributorsCardHtml(current) {
   const rows = contributorsSustainedOnly && canFilter ? all.filter(sustained) : all;
 
   const goalHint = periodGoal
-    ? `<span class="card-header-hint">${t('Goal {goal} pts / member · ◐ amber from {warn} · ↓ red below', { goal: periodGoal.toLocaleString(), warn: warnAt.toLocaleString() })}</span>`
+    ? `<p class="ui-sub">${t('Goal {goal} pts / member · ◐ amber from {warn} · ↓ red below', { goal: periodGoal.toLocaleString(), warn: warnAt.toLocaleString() })}</p>`
     : '';
 
   const minDays = windowDays ? Math.ceil(windowDays * SUSTAINED_MIN_ACTIVE_RATIO) : 0;
   const filterChip = canFilter
-    ? `<button class="btn btn-tight ${contributorsSustainedOnly ? 'active' : ''}" data-csustained
+    ? `<button type="button" class="ui-chip${contributorsSustainedOnly ? ' is-active' : ''}" aria-pressed="${contributorsSustainedOnly}" data-csustained
          title="${tn(windowDays, 'Members active on at least {min} of the {n} days in this timeframe', 'Members active on at least {min} of the {n} days in this timeframe', { min: minDays, n: windowDays })}">${t('Sustained only')}</button>`
     : '';
 
@@ -659,7 +646,7 @@ function contributorsCardHtml(current) {
   // many went and on which of the two rules, so a member can check themselves
   // against the numbers in their own row.
   const filterNote = contributorsSustainedOnly && canFilter
-    ? `<p class="muted-copy card-note">${tn(windowDays, 'Showing {count} of {total} — members active on at least {min} of the {n} days in this timeframe.', 'Showing {count} of {total} — members active on at least {min} of the {n} days in this timeframe.', { count: rows.length.toLocaleString(), total: all.length.toLocaleString(), min: minDays, n: windowDays })}</p>`
+    ? `<p class="ui-sub">${tn(windowDays, 'Showing {count} of {total} — members active on at least {min} of the {n} days in this timeframe.', 'Showing {count} of {total} — members active on at least {min} of the {n} days in this timeframe.', { count: rows.length.toLocaleString(), total: all.length.toLocaleString(), min: minDays, n: windowDays })}</p>`
     : '';
 
   const body = rows.length > 0
@@ -675,23 +662,19 @@ function contributorsCardHtml(current) {
           <td data-label="${t('Points')}" class="num ${goalClass}" data-role="metric"${periodGoal ? ` title="${esc(goalCellTitle(e.points, periodGoal, amber))}"` : ''}>${goalCellContentHtml(e.points, periodGoal, undefined, amber)}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="5"><div class="empty-state"><p>${contributorsSustainedOnly
+    : `<tr><td colspan="5">${emptyHtml(contributorsSustainedOnly
         ? t('Nobody met the sustained bar in this timeframe.')
-        : t('Nobody collected a chest in this timeframe.')}</p></div></td></tr>`;
+        : t('Nobody collected a chest in this timeframe.'))}</td></tr>`;
 
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Top Contributors')}</h2>
-        <div class="contributors-controls">${filterChip}${goalHint}</div>
-      </div>
-      <div class="card-body">
+  const tileBody = `
         ${paceBandHtml(current)}
+        ${goalHint}
         ${filterNote}
-        <p class="muted-copy card-note">
+        <p class="ui-sub">
           ${t('Gift chests earned in this timeframe. Triumphals are scored on their {link}; end-of-event clan rewards rank nobody, so they are excluded.', { link: `<a class="member-link" href="#triumphal">${t('own page')}</a>` })}
         </p>
-        <table class="table-responsive leaderboard-table">
+        <div class="an-table">
+        <table class="table-responsive leaderboard-table ui-table">
           <colgroup>
             <col class="col-rank">
             <col class="col-player">
@@ -707,8 +690,8 @@ function contributorsCardHtml(current) {
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
-      </div>
-    </div>`;
+        </div>`;
+  return tileHtml('contributors', t('Top Contributors'), tileBody, { span: 12, link: filterChip });
 }
 
 /**
@@ -752,13 +735,13 @@ function concentrationTileHtml(current) {
       </div>`
     : '';
 
-  return `
-    <div class="stat-card stat-card-concentration">
-      <div class="label">${t('Top 5 share')}</div>
-      <div class="value">${pct}%</div>
-      <div class="sub">${half ? tn(half, '{n} member make half the points', '{n} members make half the points') : t('of this timeframe&rsquo;s points')}</div>
-      ${spark}
-    </div>`;
+  return statHtml({
+    label: t('Top 5 share'),
+    value: `${pct}%`,
+    sub: half ? tn(half, '{n} member make half the points', '{n} members make half the points') : t('of this timeframe&rsquo;s points'),
+    extra: spark,
+    cls: 'an-concentration',
+  });
 }
 
 // ─── Movers ───
@@ -851,12 +834,12 @@ function moversCardHtml() {
         <td data-label="${t('Points')}" class="num" data-role="metric">${r.points.toLocaleString()}</td>
         <td data-label="${t('Change')}" class="num" data-role="hidden">${deltaCell(r.delta)}</td>
       </tr>`).join('')
-    : `<tr><td colspan="3"><div class="empty-state"><p>${t('Nothing to compare yet — this is the first period with data on both sides.')}</p></div></td></tr>`;
+    : `<tr><td colspan="3">${emptyHtml(t('Nothing to compare yet — this is the first period with data on both sides.'))}</td></tr>`;
 
   const attention = blindGap
-    ? `<div class="empty-state"><p>${tn(coverage.worstGapHours, 'Not shown for this window: the scanner was quiet for {n} hours, longer than a gift survives, so a member looking inactive here may just be a chest nobody could capture.', 'Not shown for this window: the scanner was quiet for {n} hours, longer than a gift survives, so a member looking inactive here may just be a chest nobody could capture.', { n: coverage.worstGapHours })}</p></div>`
+    ? emptyHtml(tn(coverage.worstGapHours, 'Not shown for this window: the scanner was quiet for {n} hours, longer than a gift survives, so a member looking inactive here may just be a chest nobody could capture.', 'Not shown for this window: the scanner was quiet for {n} hours, longer than a gift survives, so a member looking inactive here may just be a chest nobody could capture.', { n: coverage.worstGapHours }))
     : (flagged.length > 0
-        ? `<table class="table-responsive attention-table">
+        ? `<table class="table-responsive attention-table ui-table">
              <colgroup><col class="col-player"><col><col class="col-num"><col class="col-num"></colgroup>
              <thead><tr>
                <th>${t('Player')}</th><th>${t('Why')}</th>
@@ -869,33 +852,30 @@ function moversCardHtml() {
                <td data-label="${t('This period')}" class="num" data-role="metric">${r.points.toLocaleString()}</td>
              </tr>`).join('')}</tbody>
            </table>`
-        : `<div class="empty-state"><p>${t('Nobody has fallen off their own pace this period.')}</p></div>`);
+        : emptyHtml(t('Nobody has fallen off their own pace this period.')));
 
-  return `
-    <div class="card mt-24">
-      <div class="card-header">
-        <h2>${t('Movers')}</h2>
-        <span class="card-header-hint">${comparisonBasis().samePoint
-          ? t('vs {basis}', { basis: esc(comparisonBasis().label) })
-          : t('vs the {basis}', { basis: PREVIOUS_LABEL[period] || t('previous period') })}</span>
-      </div>
-      <div class="card-body">
-        <table class="table-responsive">
+  const moversBody = `
+      <p class="ui-sub">${comparisonBasis().samePoint
+        ? t('vs {basis}', { basis: esc(comparisonBasis().label) })
+        : t('vs the {basis}', { basis: PREVIOUS_LABEL[period] || t('previous period') })}</p>
+      <div class="an-table">
+        <table class="table-responsive ui-table an-movers-table">
           <colgroup><col class="col-player"><col class="col-num"><col class="col-num"></colgroup>
           <thead><tr><th>${t('Player')}</th><th class="num">${t('Points')}</th><th class="num">${t('Change')}</th></tr></thead>
           <tbody>${moverRows}</tbody>
         </table>
-      </div>
-    </div>
+      </div>`;
 
-    <details class="card card-collapsible" data-section-key="analytics-attention">
-      <summary class="card-header"><h2>${t('Needs a look')}${flagged.length && !blindGap ? ` (${flagged.length})` : ''}</h2></summary>
-      <div class="card-body">
-        <p class="muted-copy card-note">
-          ${t("A reason, not a verdict. Members who joined mid-period are excluded — their previous window is empty because they weren't here, which is not a drop.")}
-        </p>
-        ${attention}
-      </div>
+  // A fact about members' own numbers, not a to-do: the heading says what the
+  // list is ("well below their own pace"), never "needs a look".
+  return `
+    ${tileHtml('movers', t('Movers'), moversBody, { span: 6 })}
+    <details class="ui-tile span-6 ui-fold an-attention" data-section-key="analytics-attention">
+      <summary class="ui-tile-head"><h2 class="ui-tile-title">${t('Well below their own pace')}${flagged.length && !blindGap ? ` <span class="ui-chip-n">${flagged.length}</span>` : ''}</h2></summary>
+      <p class="ui-sub">
+        ${t("A reason, not a verdict. Members who joined mid-period are excluded — their previous window is empty because they weren't here, which is not a drop.")}
+      </p>
+      <div class="an-table">${attention}</div>
     </details>`;
 }
 
@@ -936,13 +916,7 @@ function activityClockCardHtml(current) {
       : (timed === 0
         ? tn(total, 'None of the {n} chests in this timeframe carry a real earn time, so there is nothing to place on a clock. They were recorded before receive times were captured and only have their scan time.', 'None of the {n} chests in this timeframe carry a real earn time, so there is nothing to place on a clock. They were recorded before receive times were captured and only have their scan time.')
         : tn(total, 'Only {count} of {n} chests in this timeframe carry a real earn time — too few to read a pattern from without inventing one.', 'Only {count} of {n} chests in this timeframe carry a real earn time — too few to read a pattern from without inventing one.', { count: timed.toLocaleString() }));
-    return `
-      <div class="card mt-24">
-        <div class="card-header"><h2>${t('Activity Clock')}</h2></div>
-        <div class="card-body card-body-padded">
-          <div class="empty-state"><p>${why}</p></div>
-        </div>
-      </div>`;
+    return tileHtml('clock', t('Activity Clock'), emptyHtml(why), { span: 12 });
   }
 
   const buckets = 24 / CLOCK_BUCKET_HOURS;
@@ -997,15 +971,8 @@ function activityClockCardHtml(current) {
                   title="${CLOCK_DAYS[d]} ${bandLabel(b)}–${bandLabel(b + 1) === '24:00' ? '24:00' : bandLabel(b + 1)} UTC · ${tn(v, '{n} chest', '{n} chests')}"></span>`).join('')}
     </div>`).join('');
 
-  return `
-    <div class="card mt-24">
-      <div class="card-header">
-        <h2>${t('Activity Clock')}</h2>
-        <span class="card-header-hint">
-          ${t("Real earn times, UTC · based on {pct}% of this timeframe's chests", { pct: coverage })}
-        </span>
-      </div>
-      <div class="card-body card-body-padded">
+  return tileHtml('clock', t('Activity Clock'), `
+        <p class="ui-sub">${t("Real earn times, UTC · based on {pct}% of this timeframe's chests", { pct: coverage })}</p>
         <div class="clock-grid">
           <div class="clock-row clock-header"><span class="clock-day-label"></span>${header}</div>
           ${rows}
@@ -1016,9 +983,7 @@ function activityClockCardHtml(current) {
             band: `${bandLabel(bestBand)}–${bandLabel(bestBand + 1) === '24:00' ? '24:00' : bandLabel(bestBand + 1)}`,
             hour: String(windowData?.rolloverUtcHour ?? 17).padStart(2, '0'),
           })}
-        </p>
-      </div>
-    </div>`;
+        </p>`, { span: 12 });
 }
 
 // Level-ups listed on the make-up card before the rest fold into a count.
@@ -1058,12 +1023,13 @@ function clanMakeupCardHtml() {
   const cycleLine = current?.firstDay && current?.lastDay
     ? t('{event} cycle {from} – {to}', { event: tGame('Triumphal'), from: esc(current.firstDay.replace(/-/g, '/')), to: esc(current.lastDay.replace(/-/g, '/')) })
     : '';
-  const passHtml = current ? `
-    <div class="stat-card makeup-pass">
-      <div class="label">${t('Gold Pass now')}</div>
-      <div class="value">${current.holders.toLocaleString()}<span class="stat-of"> ${t('of {total}', { total: total.toLocaleString() })} · ${pct(current.holders)}%</span></div>
-      <div class="sub">${[t('as the game reports it'), cycleLine, previous ? t('last cycle {count}', { count: previous.holders.toLocaleString() }) : ''].filter(Boolean).join(' · ')}</div>
-    </div>` : '';
+  const passHtml = current ? statHtml({
+    label: t('Gold Pass now'),
+    value: current.holders.toLocaleString(),
+    of: ` ${t('of {total}', { total: total.toLocaleString() })} · ${pct(current.holders)}%`,
+    sub: [t('as the game reports it'), cycleLine, previous ? t('last cycle {count}', { count: previous.holders.toLocaleString() }) : ''].filter(Boolean).join(' · '),
+    cls: 'makeup-pass',
+  }) : '';
 
   const ups = g.recentLevelUps || [];
   const upsHtml = ups.length > 0 ? `
@@ -1079,13 +1045,8 @@ function clanMakeupCardHtml() {
       ${ups.length > MAKEUP_LEVEL_UPS_SHOWN ? `<p class="muted-copy">${t('and {count} more', { count: (ups.length - MAKEUP_LEVEL_UPS_SHOWN).toLocaleString() })}</p>` : ''}
     </div>` : '';
 
-  return `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('{guardsmen} &amp; Gold Pass', { guardsmen: tGame('Guardsmen') })}</h2>
-        <span class="card-header-hint">${t('The clan now, whatever the timeframe above')} · <a class="member-link" href="#members">${t('by member →')}</a></span>
-      </div>
-      <div class="card-body card-body-padded">
+  return tileHtml('makeup', t('{guardsmen} &amp; Gold Pass', { guardsmen: tGame('Guardsmen') }), `
+        <p class="ui-sub">${t('The clan now, whatever the timeframe above')}</p>
         <div class="makeup-grid">
           <div>
             <div class="type-breakdown-list">${levelRows || `<p class="muted-copy">${t('No research read from the game yet.')}</p>`}</div>
@@ -1097,9 +1058,7 @@ function clanMakeupCardHtml() {
             ${passHtml}
             ${upsHtml}
           </div>
-        </div>
-      </div>
-    </div>`;
+        </div>`, { span: 12, link: tileLinkHtml('#members', t('By member')) });
 }
 
 function paint() {
@@ -1108,63 +1067,53 @@ function paint() {
   const current = windowData?.current;
 
   if (!current) {
-    el.innerHTML = `${periodControlsHtml()}<div class="card"><div class="card-body"><div class="empty-state"><p>${t('Failed to load analytics.')}</p></div></div></div>`;
+    // A refusal (429, a 500's { error, ref }) arrives as an object: say what
+    // and why, and offer Try again rather than a dead end.
+    el.innerHTML = `<div class="an">${periodControlsHtml()}${errorStateHtml(t('Failed to load analytics.'), refusalText(windowData))}</div>`;
     wire();
+    wireRetry(el, reload);
     return;
   }
 
   const mightTotals = staticData?.mightTotals || [];
+  const mightLink = tileLinkHtml('#might', t('Compare members'));
+  const mightTile = mightTotals.length === 1
+    ? tileHtml('might', t('Clan Might'), emptyHtml(t('Not enough might history yet — one more daily snapshot and this becomes a trend.')), { span: 12, link: mightLink })
+    : mightTotals.length > 1
+      ? tileHtml('might', t('Clan Might'), `
+          <p class="ui-sub">${t('Last 90 game days, whatever the timeframe above')}</p>
+          <div class="chart-container chart-container--compact"><canvas id="clanMightChart"></canvas></div>`, { span: 12, link: mightLink })
+      : '';
 
-  el.innerHTML = `
+  const activityTile = tileHtml('activity', t('Clan Activity'),
+    '<div class="chart-container"><canvas id="clanActivityChart"></canvas></div>',
+    {
+      span: 6,
+      link: segHtml({
+        label: t('Activity metric'),
+        items: [{ value: 'chests', label: t('Chests') }, { value: 'points', label: t('Points') }],
+        current: activityMetric,
+        attr: 'ametric',
+      }),
+    });
+
+  // Phone: one column in this order — the window's numbers, then what it was
+  // made of (activity, breakdown), who made it, when, and who moved; the
+  // clan-as-it-is-now tiles (might, Guardsmen) last, since they ignore the
+  // timeframe.
+  el.innerHTML = `<div class="an">
     ${periodControlsHtml()}
-
     ${statsGridHtml(current)}
-
-    ${mightTotals.length === 1 ? `
-    <div class="card">
-      <div class="card-header"><h2>${t('Clan Might')}</h2></div>
-      <div class="card-body card-body-padded">
-        <div class="empty-state"><p>${t('Not enough might history yet — one more daily snapshot and this becomes a trend.')}</p></div>
-      </div>
-    </div>` : ''}
-    ${mightTotals.length > 1 ? `
-    <div class="card">
-      <div class="card-header">
-        <h2>${t('Clan Might')}</h2>
-        <span class="card-header-hint">
-          ${t('Last 90 game days, whatever the timeframe above')} · <a class="member-link" href="#might">${t('compare members →')}</a>
-        </span>
-      </div>
-      <div class="card-body card-body-padded">
-        <div class="chart-container chart-container--compact"><canvas id="clanMightChart"></canvas></div>
-      </div>
-    </div>` : ''}
-
-    ${clanMakeupCardHtml()}
-
-    <div class="two-col-grid">
-      <div class="card">
-        <div class="card-header">
-          <h2>${t('Clan Activity')}</h2>
-          <div class="metric-toggle" role="group" aria-label="${t('Activity metric')}">
-            <button class="btn btn-tight ${activityMetric === 'chests' ? 'active' : ''}" data-ametric="chests">${t('Chests')}</button>
-            <button class="btn btn-tight ${activityMetric === 'points' ? 'active' : ''}" data-ametric="points">${t('Points')}</button>
-          </div>
-        </div>
-        <div class="card-body card-body-padded">
-          <div class="chart-container"><canvas id="clanActivityChart"></canvas></div>
-        </div>
-      </div>
-
+    <div class="ui-grid">
+      ${activityTile}
       ${breakdownCardHtml(current)}
+      ${contributorsCardHtml(current)}
+      ${activityClockCardHtml(current)}
+      ${moversCardHtml()}
+      ${mightTile}
+      ${clanMakeupCardHtml()}
     </div>
-
-    ${contributorsCardHtml(current)}
-
-    ${activityClockCardHtml(current)}
-
-    ${moversCardHtml()}
-  `;
+  </div>`;
 
   wire();
   // The router calls this after a route change, but a period switch repaints in
@@ -1179,22 +1128,18 @@ function wire() {
   const el = mountedEl;
   if (!el) return;
 
-  el.querySelectorAll('[data-aperiod]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      period = btn.dataset.aperiod;
+  wirePeriodScrubber(el, {
+    onPeriod: async (p) => {
+      period = p;
       periodOffset = 0;
-          syncUrl();
+      syncUrl();
       await reload();
-    });
-  });
-
-  el.querySelectorAll('[data-aperiod-nav]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      periodOffset += btn.dataset.aperiodNav === 'next' ? -1 : 1;
-      if (periodOffset < 0) periodOffset = 0;
-          syncUrl();
+    },
+    onStep: async (delta) => {
+      periodOffset = Math.max(0, periodOffset + delta);
+      syncUrl();
       await reload();
-    });
+    },
   });
 
   // Metric toggle and pagination are both pure re-reads of data already in
@@ -1633,9 +1578,10 @@ function renderChestDetail(data) {
   const members = data.members || [];
   const hasData = members.length > 0;
 
-  const periodButtons = ['daily', 'weekly', 'monthly', 'all'].map((p) =>
-    `<button class="btn ${period === p ? 'active' : ''}" data-action="set-chest-drill-period" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
-  ).join('');
+  // The kit's segmented control, wired by app.js's delegated actions.
+  const periodButtons = `<div class="ui-seg" role="group" aria-label="${esc(t('Period'))}">${['daily', 'weekly', 'monthly', 'all'].map((p) =>
+    `<button type="button" class="ui-seg-btn${period === p ? ' is-active' : ''}" aria-pressed="${period === p}" data-action="set-chest-drill-period" data-period="${p}">${PERIOD_LABEL[p]}</button>`,
+  ).join('')}</div>`;
 
   // Sources carry no rarity of their own, so only the chest page gets a badge.
   const chestTypeBadge = data.chestType
@@ -1693,69 +1639,40 @@ function renderChestDetail(data) {
       }).join('')
     : '';
 
-  content.innerHTML = `
-    <div class="card">
-      <div class="card-header member-detail-header">
-        <div class="member-detail-title">
-          ${drillArt}
-          <h2>${esc(tGame(drillName))}</h2>
-          ${chestTypeBadge}
-        </div>
-        <button class="btn" data-action="member-back">${t('← Back')}</button>
-      </div>
-      <div class="card-body card-body-padded">
-        <div class="period-selector mb-12">${periodButtons}</div>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="label">${t('Total Collected')}</div>
-            <div class="value">${(data.totalCount || 0).toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Total Points')}</div>
-            <div class="value">${(data.totalPoints || 0).toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Unique Collectors')}</div>
-            <div class="value">${(data.uniqueCollectors || 0).toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Avg per Collector')}</div>
-            <div class="value">${(data.avgPerCollector || 0).toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Points per Chest')}</div>
-            <div class="value">${(data.avgPointsPerChest || 0).toLocaleString()}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('First Seen')}</div>
-            <div class="value member-detail-date">${data.firstSeen ? formatDateShort(data.firstSeen) : '-'}</div>
-            <div class="sub">${data.firstSeen ? formatRelativeTime(data.firstSeen) : ''}</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">${t('Last Seen')}</div>
-            <div class="value member-detail-date">${data.lastSeen ? formatDateShort(data.lastSeen) : '-'}</div>
-            <div class="sub">${data.lastSeen ? formatRelativeTime(data.lastSeen) : ''}</div>
-          </div>
-        </div>
+  const stat = (label, value, sub = '') => statHtml({ label: esc(label), value, sub });
+  content.innerHTML = `<div class="an an-drill">
+    <div class="an-drill-head">
+      <button type="button" class="btn" data-action="member-back">${t('← Back')}</button>
+      <div class="an-drill-title">
+        ${drillArt}
+        <h2>${esc(tGame(drillName))}</h2>
+        ${chestTypeBadge}
       </div>
     </div>
-
-    <div class="card">
-      <div class="card-header"><h2>${t('Collectors ({count})', { count: members.length })}</h2></div>
-      <div class="card-body">
-        ${hasData
-          ? `<table class="table-responsive chest-collectors-table"><colgroup>
-              <col class="col-caret">
-              <col class="col-rank">
-              <col class="col-member">
-              <col class="col-num">
-              <col class="col-num">
-              <col class="col-last-seen">
-            </colgroup><thead><tr><th class="caret-col"></th>${th('rank', t('Rank'))}${th('name', t('Member'))}${th('count', t('Count'), 'num')}${th('points', t('Points'), 'num')}${th('lastSeen', t('Last Seen'))}</tr></thead><tbody>${tableBody}</tbody></table>`
-          : `<div class="empty-state"><p>${t('No collectors in this period.')}</p></div>`}
-      </div>
+    ${periodButtons}
+    <div class="ui-stats">
+      ${stat(t('Total Collected'), (data.totalCount || 0).toLocaleString())}
+      ${stat(t('Total Points'), (data.totalPoints || 0).toLocaleString())}
+      ${stat(t('Unique Collectors'), (data.uniqueCollectors || 0).toLocaleString())}
+      ${stat(t('Avg per Collector'), (data.avgPerCollector || 0).toLocaleString())}
+      ${stat(t('Points per Chest'), (data.avgPointsPerChest || 0).toLocaleString())}
+      ${stat(t('First Seen'), data.firstSeen ? esc(formatDateShort(data.firstSeen)) : '-', data.firstSeen ? esc(formatRelativeTime(data.firstSeen)) : '')}
+      ${stat(t('Last Seen'), data.lastSeen ? esc(formatDateShort(data.lastSeen)) : '-', data.lastSeen ? esc(formatRelativeTime(data.lastSeen)) : '')}
     </div>
-  `;
+    <h2 class="ui-section-title">${t('Collectors ({count})', { count: members.length })}</h2>
+    <div class="ui-table-card">
+      ${hasData
+        ? `<table class="table-responsive chest-collectors-table ui-table"><colgroup>
+            <col class="col-caret">
+            <col class="col-rank">
+            <col class="col-member">
+            <col class="col-num">
+            <col class="col-num">
+            <col class="col-last-seen">
+          </colgroup><thead><tr><th class="caret-col"></th>${th('rank', t('Rank'))}${th('name', t('Member'))}${th('count', t('Count'), 'num')}${th('points', t('Points'), 'num')}${th('lastSeen', t('Last Seen'))}</tr></thead><tbody>${tableBody}</tbody></table>`
+        : emptyHtml(t('No collectors in this period.'))}
+    </div>
+  </div>`;
 }
 
 function sortChestCollectors(members, key, dir) {
@@ -1852,12 +1769,12 @@ export async function toggleChestCollectorRow(row) {
   const inner = detailRow.querySelector('.chest-collector-details-inner');
   if (!inner) return;
   if (!resp || resp.error) {
-    inner.innerHTML = `<div class="empty-state"><p>${esc(resp?.error || t('Failed to load history'))}</p></div>`;
+    inner.innerHTML = emptyHtml(resp?.error || t('Failed to load history'));
     return;
   }
   const records = resp.records || [];
   if (records.length === 0) {
-    inner.innerHTML = `<div class="empty-state"><p>${t('No records in this period.')}</p></div>`;
+    inner.innerHTML = emptyHtml(t('No records in this period.'));
     return;
   }
 
