@@ -171,7 +171,7 @@ async function membersTab() {
   const memberOption = (m) => countedOption(m.name, chestCounts[m.id]);
 
   const html = `
-    <p class="page-section-intro">${t('Edit names, remove duplicates, and merge two names that belong to the same player.')}</p>
+    <p class="ui-copy admin-intro">${t('Edit names, remove duplicates, and merge two names that belong to the same player.')}</p>
 
     <div class="card">
       <div class="card-header"><h2>${t('Edit Members ({count})', { count: activeMembers.length })}</h2></div>

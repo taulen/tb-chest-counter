@@ -12306,6 +12306,7 @@ button.ui-tile-link {
 .users-stat,
 .system-stat { gap: 4px; padding: 14px 16px; }
 .users-intro,
+.admin-intro,
 .clans-intro,
 .system-intro { margin: 0 0 16px; }
 .system-group { margin: 28px 0 8px; }

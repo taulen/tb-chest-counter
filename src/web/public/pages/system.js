@@ -603,8 +603,8 @@ function deletedClansCardHtml(clans) {
   }).join('');
 
   return `
-    <h2 class="page-section-title">${t('Deleted Clans ({count})', { count: clans.length })}</h2>
-    <p class="page-section-intro">${t('Deleting a clan hides it everywhere — the clan picker, the scanner, Discord, its public share link — but keeps every row. Restoring puts it back exactly as it was, on the same id and the same share link. Its members can\'t sign in to it while it sits here.')}</p>
+    <h2 class="ui-eyebrow system-group">${t('Deleted Clans ({count})', { count: clans.length })}</h2>
+    <p class="ui-copy system-intro">${t('Deleting a clan hides it everywhere — the clan picker, the scanner, Discord, its public share link — but keeps every row. Restoring puts it back exactly as it was, on the same id and the same share link. Its members can\'t sign in to it while it sits here.')}</p>
     <details class="card card-collapsible" data-section-key="system-deleted-clans">
       <summary class="card-header"><h2>${t('Restore a Deleted Clan')}</h2></summary>
       <div class="card-body card-body-padded">
