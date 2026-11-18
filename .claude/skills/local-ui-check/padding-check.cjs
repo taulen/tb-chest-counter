@@ -37,7 +37,8 @@ function measure() {
   const hasSideBorders = (cs) => ['Left', 'Right'].every((s) => px(cs[`border${s}Width`]) > 0 && !transparent(cs[`border${s}Color`]));
   const FORM = /^(INPUT|SELECT|TEXTAREA|BUTTON|IMG|CANVAS|svg|SVG)$/;
   const TABLEISH = /^(TABLE|THEAD|TBODY|TFOOT|TR|TH|TD|COLGROUP|COL|CAPTION)$/;
-  // Panels whose items sit 4px in on purpose: a segmented control's pills and
+  // Panels whose items sit 4px in on purpose: a segmented control's pills, the
+  // kit's sub-tab bar (.ui-subtabs, the same recessed track) and
   // the Might picker's highlighted rows.
   const DESIGNED_INSET = '.resources-tabs, .might-pick-list, .ui-seg, .ui-subtabs';
   // Between the element and its panel, a strip that actually scrolls sideways

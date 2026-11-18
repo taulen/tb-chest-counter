@@ -9291,21 +9291,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   }
 }
 
-/* Admin's tabs: three, or four while Review has something. The bar already
-   separates the tab from what's under it, so the Review tab's first section
-   title doesn't need its full 40px on top as well. One equal-width row on a
-   phone; a long label wraps inside its own cell rather than pushing the bar
-   past the screen edge. */
-.admin-tabs + .page-section-title { margin-top: 8px; }
-@media (max-width: 640px) {
-  .admin-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
-  .admin-tabs .resources-tab {
-    min-width: 0;
-    display: flex; align-items: center; justify-content: center;
-    padding: 7px 4px; font-size: 12.5px; line-height: 1.2; text-align: center;
-  }
-}
-
 /* ─── Tools → Costs ──────────────────────────────────────────────────
    Two tile strips (Guardsmen tiers, blueprints) over one research table:
    researches that cost the same share a row, levels 1–10 read across, and
@@ -11795,6 +11780,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   border-radius: 14px;
   background: var(--bg-card);
 }
+/* span-3: a quarter, for a row of four small stat tiles (Users, System). */
+.ui-tile.span-3 { grid-column: span 3; }
 .ui-tile.span-4 { grid-column: span 4; }
 .ui-tile.span-8 { grid-column: span 8; }
 .ui-tile.span-12 { grid-column: span 12; }
@@ -11886,6 +11873,7 @@ button.ui-tile-link {
   .ui-chip { min-height: 44px; flex: none; }
 }
 @media (max-width: 1100px) {
+  .ui-tile.span-3,
   .ui-tile.span-4,
 .ui-tile.span-6 { grid-column: span 6; }
   .ui-tile.span-8,
@@ -11894,6 +11882,7 @@ button.ui-tile-link {
 @media (max-width: 760px) {
   .ui-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .ui-tile,
+.ui-tile.span-3,
 .ui-tile.span-4,
 .ui-tile.span-6,
 .ui-tile.span-8,
@@ -12308,4 +12297,28 @@ button.ui-tile-link {
 .shell-clan-add.is-sheet-only { display: none; margin-top: 8px; }
 @media (max-width: 640px) {
   .shell-clan-add.is-sheet-only { display: flex; }
+}
+
+/* ─── Admin, Users, Clans, System (wave 2F; built on the UI kit) ───
+   Stat tiles over the folded cards; page buttons live in #pageActions. */
+.users-stats,
+.system-stats { margin-bottom: 14px; }
+.users-stat,
+.system-stat { gap: 4px; padding: 14px 16px; }
+.users-intro,
+.admin-intro,
+.clans-intro,
+.system-intro { margin: 0 0 16px; }
+.system-group { margin: 28px 0 8px; }
+.users-card .card-header h2 .ui-sub,
+.users-audit .card-header h2 .ui-sub { margin-left: 8px; font-weight: 500; }
+.users-audit-intro { padding: 12px 16px 0; }
+@media (max-width: 760px) {
+  /* Four numbers as two pairs, not a tall column of four tiles. */
+  .users-stats,
+  .system-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .users-stats .ui-tile,
+  .system-stats .ui-tile { grid-column: auto; }
+  .users-stat .ui-big,
+  .system-stat .ui-big { font-size: 24px; }
 }

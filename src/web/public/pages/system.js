@@ -7,6 +7,7 @@ import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate } from '../
 import { getCurrentUser, getLastSeenSystemWarningAt } from '../lib/state.js';
 import { warningHeadline, hasMoreThanHeadline, splitWarnings } from '../lib/warning-digest.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
+import { errorStateHtml, wireRetry } from '../lib/ui-kit.js';
 
 function joinAnd(items) {
   try {
@@ -207,7 +208,7 @@ function eventScheduleCardHtml(data) {
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">${t('Event dates come from the <strong>tbclanportal calendar</strong>, which can lag when the game moves an event. If a run is on the wrong dates, correct it here: chests are counted into the corrected window and the Events page shows the corrected dates. Corrections apply to <strong>every clan</strong>, and each one stops applying by itself once the calendar is fixed.')}</p>
         ${corrections.length > 0 ? `
-          <table class="table-responsive">
+          <table class="ui-table table-responsive">
             <thead><tr><th>${t('Event')}</th><th>${t('Calendar says')}</th><th>${t('Actually')}</th><th>${t('Status')}</th><th class="col-actions"></th></tr></thead>
             <tbody>
               ${corrections.map((c) => `<tr>
@@ -308,7 +309,8 @@ export async function renderSystem(el) {
     // A navigation aborted this load — don't paint an error over the
     // page the user switched to; the router re-renders the live page.
     if (err?.name === 'AbortError') return;
-    el.innerHTML = `<div class="empty-state"><p>${t('Failed to load system settings.')}</p></div>`;
+    el.innerHTML = errorStateHtml(t('Failed to load system settings.'), err?.message || '');
+    wireRetry(el, () => renderSystem(el));
     return;
   }
   const backups = Array.isArray(backupsResp?.backups) ? backupsResp.backups : [];
@@ -329,13 +331,22 @@ export async function renderSystem(el) {
 
   const scanIntervalMinutes = settings?.scanIntervalMinutes ?? 60;
   const scanIntervalLiveApplied = !!settings?.liveApplied;
+  // The page at a glance: four plain numbers, then the folded cards.
+  const needsAttention = splitWarnings(logEntries).attention.length;
+  const stat = (value, label, sub = '') => `<div class="ui-tile span-3 system-stat"><div class="ui-big">${value}</div><div class="ui-stat-label">${esc(label)}</div>${sub ? `<div class="ui-sub">${sub}</div>` : ''}</div>`;
 
   el.innerHTML = `
-    <p class="page-section-intro">${t('Instance-wide settings that affect every clan: scan cadence, event dates and container lifecycle. Each card is collapsed by default — click the header to expand.')}</p>
+    <div class="ui-grid system-stats">
+      ${stat(esc(tn(scanIntervalMinutes, '{n} min', '{n} min', { n: scanIntervalMinutes })), t('Scan interval'))}
+      ${stat(needsAttention > 0 ? `<span aria-hidden="true">!</span> ${needsAttention}` : `<span aria-hidden="true">✓</span> 0`, t('Warnings that need attention'))}
+      ${stat(String(backups.length), t('Server-side backups'), Number.isFinite(backups[0]?.mtimeMs) ? esc(t('Newest {date}', { date: formatDate(new Date(backups[0].mtimeMs).toISOString()) })) : '')}
+      ${stat(String(deletedClans.length), t('Deleted clans'))}
+    </div>
+    <p class="ui-copy system-intro">${t('Instance-wide settings that affect every clan: scan cadence, event dates and container lifecycle. Each card is collapsed by default — click the header to expand.')}</p>
 
     ${scanHealthCardHtml(scanHealth?.scans)}
 
-    <details class="card card-collapsible">
+    <details class="card card-collapsible" data-section-key="system-scan-interval">
       <summary class="card-header"><h2>${t('Scan Interval')}</h2></summary>
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">${t('How often the scanner pulls new chest data from the game. The scheduler iterates every active clan in sequence on each tick — keep this number high enough that one full sweep finishes inside the interval.')}</p>
@@ -352,7 +363,7 @@ export async function renderSystem(el) {
 
     ${eventScheduleCardHtml(eventSchedule)}
 
-    <details class="card card-collapsible">
+    <details class="card card-collapsible" data-section-key="system-restart">
       <summary class="card-header"><h2>${t('Restart Container')}</h2></summary>
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">${t('Gracefully exits the Node process. Docker will restart the container automatically (usually within 5–10 seconds). Use this to pick up changes that require a restart.')}</p>
@@ -374,10 +385,10 @@ export async function renderSystem(el) {
 
     ${deletedClansCardHtml(deletedClans)}
 
-    <h2 class="page-section-title">${t('Backup &amp; Export')}</h2>
-    <p class="page-section-intro">${t('Download a catalog of chest names + sources or a full database snapshot. The server also takes automatic snapshots: a daily rotation, plus one before any destructive admin action (delete user, delete clan).')}</p>
+    <h2 class="ui-eyebrow system-group">${t('Backup &amp; Export')}</h2>
+    <p class="ui-copy system-intro">${t('Download a catalog of chest names + sources or a full database snapshot. The server also takes automatic snapshots: a daily rotation, plus one before any destructive admin action (delete user, delete clan).')}</p>
 
-    <details class="card card-collapsible">
+    <details class="card card-collapsible" data-section-key="system-download">
       <summary class="card-header"><h2>${t('Download Data')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="transfer-export-row">
@@ -388,7 +399,7 @@ export async function renderSystem(el) {
       </div>
     </details>
 
-    <details class="card card-collapsible">
+    <details class="card card-collapsible" data-section-key="system-backups">
       <summary class="card-header"><h2>${t('Server-Side Backups ({count})', { count: backups.length })}</h2></summary>
       <div class="card-body card-body-padded">
         <p class="muted-copy mb-12">${t('Newest first. The server keeps a rolling set of automatic backups — daily snapshots and pre-action snapshots taken before destructive admin operations. Click <strong>Restore</strong> to swap the live database with one of these files (a pre-restore snapshot is taken automatically first).')}</p>
@@ -400,7 +411,7 @@ export async function renderSystem(el) {
       </div>
     </details>
 
-    <details class="card card-collapsible">
+    <details class="card card-collapsible" data-section-key="system-restore-upload">
       <summary class="card-header"><h2>${t('Restore Database Backup (Upload)')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="transfer-card transfer-card-danger">
@@ -528,7 +539,7 @@ function clanRestoreResultsHtml() {
     <hr class="section-divider">
     <p class="muted-copy mb-12">${t('Clans inside {file} (schema v{version}). Counts are what the backup holds — check them against what you expect before restoring.', { file: `<code>${esc(inspection.fileName || clanRestore.fileName)}</code>`, version: esc(String(inspection.schemaVersion ?? '?')) })}</p>
     <div class="table-responsive-wrap">
-      <table class="table-responsive">
+      <table class="ui-table table-responsive">
         <colgroup>
           <col>
           <col style="width: 9%;">
@@ -592,13 +603,13 @@ function deletedClansCardHtml(clans) {
   }).join('');
 
   return `
-    <h2 class="page-section-title">${t('Deleted Clans ({count})', { count: clans.length })}</h2>
-    <p class="page-section-intro">${t('Deleting a clan hides it everywhere — the clan picker, the scanner, Discord, its public share link — but keeps every row. Restoring puts it back exactly as it was, on the same id and the same share link. Its members can\'t sign in to it while it sits here.')}</p>
+    <h2 class="ui-eyebrow system-group">${t('Deleted Clans ({count})', { count: clans.length })}</h2>
+    <p class="ui-copy system-intro">${t('Deleting a clan hides it everywhere — the clan picker, the scanner, Discord, its public share link — but keeps every row. Restoring puts it back exactly as it was, on the same id and the same share link. Its members can\'t sign in to it while it sits here.')}</p>
     <details class="card card-collapsible" data-section-key="system-deleted-clans">
       <summary class="card-header"><h2>${t('Restore a Deleted Clan')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="table-responsive-wrap">
-          <table class="table-responsive">
+          <table class="ui-table table-responsive">
             <colgroup>
               <col>
               <col style="width: 18%;">
@@ -768,7 +779,7 @@ function renderBackupsTable(backups) {
   }).join('');
 
   return `<div class="table-responsive-wrap">
-    <table class="table-responsive">
+    <table class="ui-table table-responsive">
       <colgroup>
         <col style="width: 22%;">
         <col style="width: 14%;">
