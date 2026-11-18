@@ -110,6 +110,29 @@ describe('softDeleteClan', () => {
     expect(user.clan_id).toBe(2);
   });
 
+  it('moves an account homed on the clan to its live extra clan, keeping the deleted one as an inert grant', () => {
+    // SIK, Nov 2026: accounts homed on the deleted clan with a CWB grant opened
+    // a dead clan and could not reach CWB at all.
+    const db = getDb();
+    const now = new Date().toISOString();
+    const id = Number(db.prepare(
+      `INSERT INTO users (username, password_hash, role, created_at, clan_id)
+       VALUES ('stranded', 'x', 'admin', ?, 2)`,
+    ).run(now).lastInsertRowid);
+    db.prepare("INSERT INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (?, 1, 'user', ?)").run(id, now);
+
+    expect(softDeleteClan(2)).toEqual({ ok: true });
+    const user = db.prepare('SELECT clan_id, role FROM users WHERE id = ?').get(id) as { clan_id: number; role: string };
+    expect(user).toEqual({ clan_id: 1, role: 'user' });
+    const grants = db.prepare('SELECT clan_id, role FROM user_clan_access WHERE user_id = ? ORDER BY clan_id').all(id);
+    // Clan 1 is home now (no grant row); clan 2 stays as an extra grant with the old role.
+    expect(grants).toEqual([{ clan_id: 2, role: 'admin' }]);
+
+    // Restoring the clan gives it back as an extra clan.
+    expect(restoreDeletedClan(2)).toEqual({ ok: true });
+    expect(db.prepare('SELECT clan_id FROM users WHERE id = ?').get(id)).toEqual({ clan_id: 1 });
+  });
+
   it('unparks any session pointed at the clan', () => {
     const now = new Date().toISOString();
     getDb().prepare(

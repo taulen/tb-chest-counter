@@ -683,14 +683,55 @@ export function softDeleteClan(id: number): { ok: true } | { ok: false; reason: 
   if (!existing) return { ok: false, reason: 'Clan not found' };
 
   const now = new Date().toISOString();
+  let rehomed = 0;
   const tx = db.transaction(() => {
     db.prepare('UPDATE clans SET deleted_at = ?, is_active = 0 WHERE id = ?').run(now, id);
     db.prepare('UPDATE user_sessions SET active_clan_id = NULL WHERE active_clan_id = ?').run(id);
+    rehomed = rehomeAccountsOffDeletedClans(now);
   });
   tx();
 
-  log.info(`Soft-deleted clan #${id} — rows retained, restorable from the System page`);
+  log.info(`Soft-deleted clan #${id} — rows retained, restorable from the System page`
+    + (rehomed ? `; ${rehomed} account(s) moved home to another of their clans` : ''));
   return { ok: true };
+}
+
+/**
+ * Accounts whose HOME clan is soft-deleted but who still hold a live extra
+ * clan move home to it (the earliest grant), and keep the deleted clan as an
+ * extra grant with their old role — inert while it's deleted, back if it's
+ * restored. Accounts with no live clan stay as they are: there is nowhere to
+ * move them. Returns how many moved.
+ *
+ * Why: deleting SIK (Nov 17 2026) left six accounts homed on it with a live
+ * CWB grant. Sessions start in the home clan, so they opened a clan that no
+ * longer answers and had no way to reach CWB — it looked as if the invite
+ * work had taken their access away. Migration v129 repaired those six; every
+ * soft delete calls this from then on.
+ */
+export function rehomeAccountsOffDeletedClans(now = new Date().toISOString()): number {
+  const db = getDb();
+  const stranded = db.prepare(
+    `SELECT u.id, u.clan_id AS home, u.role FROM users u
+       JOIN clans c ON c.id = u.clan_id
+      WHERE u.role != 'superadmin' AND c.deleted_at != ''`,
+  ).all() as Array<{ id: number; home: number; role: string }>;
+  let moved = 0;
+  for (const u of stranded) {
+    const next = db.prepare(
+      `SELECT a.clan_id, a.role FROM user_clan_access a
+         JOIN clans c ON c.id = a.clan_id AND c.deleted_at = ''
+        WHERE a.user_id = ?
+        ORDER BY a.created_at, a.clan_id LIMIT 1`,
+    ).get(u.id) as { clan_id: number; role: string } | undefined;
+    if (!next) continue;
+    db.prepare('UPDATE users SET clan_id = ?, role = ? WHERE id = ?').run(next.clan_id, next.role, u.id);
+    db.prepare('DELETE FROM user_clan_access WHERE user_id = ? AND clan_id = ?').run(u.id, next.clan_id);
+    db.prepare('INSERT OR IGNORE INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (?, ?, ?, ?)')
+      .run(u.id, u.home, u.role === 'admin' ? 'admin' : 'user', now);
+    moved++;
+  }
+  return moved;
 }
 
 /**

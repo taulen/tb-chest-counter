@@ -2458,6 +2458,36 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v129 — accounts stranded on a deleted home clan (Nov 18 2026). Deleting
+        // SIK left six accounts homed on it with a live CWB grant; sessions start
+        // in the home clan, so they opened a dead clan and could not reach CWB.
+        // Each such account moves home to its earliest live extra clan (taking
+        // that grant's role) and keeps the deleted clan as an extra grant with its
+        // old role, so a restore gives it back. Accounts with no live clan stay.
+        // Same rule as clan-repo's rehomeAccountsOffDeletedClans, which every soft
+        // delete runs from now on; written out here so the migration never changes
+        // with that code. Replay-safe: a moved account no longer matches.
+        version: 129,
+        run: (database) => {
+            const now = new Date().toISOString();
+            const stranded = database.prepare(`SELECT u.id, u.clan_id AS home, u.role FROM users u
+           JOIN clans c ON c.id = u.clan_id
+          WHERE u.role != 'superadmin' AND c.deleted_at != ''`).all();
+            for (const u of stranded) {
+                const next = database.prepare(`SELECT a.clan_id, a.role FROM user_clan_access a
+             JOIN clans c ON c.id = a.clan_id AND c.deleted_at = ''
+            WHERE a.user_id = ?
+            ORDER BY a.created_at, a.clan_id LIMIT 1`).get(u.id);
+                if (!next)
+                    continue;
+                database.prepare('UPDATE users SET clan_id = ?, role = ? WHERE id = ?').run(next.clan_id, next.role, u.id);
+                database.prepare('DELETE FROM user_clan_access WHERE user_id = ? AND clan_id = ?').run(u.id, next.clan_id);
+                database.prepare('INSERT OR IGNORE INTO user_clan_access (user_id, clan_id, role, created_at) VALUES (?, ?, ?, ?)')
+                    .run(u.id, u.home, u.role === 'admin' ? 'admin' : 'user', now);
+            }
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted
