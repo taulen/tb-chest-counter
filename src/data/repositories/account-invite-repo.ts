@@ -27,8 +27,8 @@ import {
   type User,
 } from './user-repo.js';
 
-/** How long a code works after it was sent. */
-export const CODE_TTL_MS = 30 * 60_000;
+/** How long a code works after it was sent: 72 hours, asked for or not (a player may not read their chat for a while). */
+export const CODE_TTL_MS = 72 * 3600_000;
 /** At most one code per player in this window (any clan). */
 export const CODE_COOLDOWN_MS = 10 * 60_000;
 /** Code length and alphabet: no 0/O, 1/I/L — read off a phone and typed. */
@@ -281,7 +281,7 @@ export function finishInviteSend(
 // ── Welcome codes (unprompted, for players who join) ───────────────────────
 
 /** A welcome code lasts longer: a new member may not read their chat for a while. */
-export const WELCOME_CODE_TTL_MS = 72 * 3600_000;
+export const WELCOME_CODE_TTL_MS = CODE_TTL_MS;
 /** At most this many welcome sends (or dry-run notes) per scan; the rest wait for the next one. */
 export const WELCOME_SENDS_PER_SCAN = 10;
 /** How long a join waits for its chat account to show up before it is given up. */

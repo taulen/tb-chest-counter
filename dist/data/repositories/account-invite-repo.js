@@ -59,8 +59,8 @@ exports.redeemJoin = redeemJoin;
 const crypto_1 = __importDefault(require("crypto"));
 const database_js_1 = require("../database.js");
 const user_repo_js_1 = require("./user-repo.js");
-/** How long a code works after it was sent. */
-exports.CODE_TTL_MS = 30 * 60_000;
+/** How long a code works after it was sent: 72 hours, asked for or not (a player may not read their chat for a while). */
+exports.CODE_TTL_MS = 72 * 3600_000;
 /** At most one code per player in this window (any clan). */
 exports.CODE_COOLDOWN_MS = 10 * 60_000;
 /** Code length and alphabet: no 0/O, 1/I/L — read off a phone and typed. */
@@ -234,7 +234,7 @@ function finishInviteSend(requestId, codeId, outcome, now = new Date().toISOStri
 }
 // ── Welcome codes (unprompted, for players who join) ───────────────────────
 /** A welcome code lasts longer: a new member may not read their chat for a while. */
-exports.WELCOME_CODE_TTL_MS = 72 * 3600_000;
+exports.WELCOME_CODE_TTL_MS = exports.CODE_TTL_MS;
 /** At most this many welcome sends (or dry-run notes) per scan; the rest wait for the next one. */
 exports.WELCOME_SENDS_PER_SCAN = 10;
 /** How long a join waits for its chat account to show up before it is given up. */

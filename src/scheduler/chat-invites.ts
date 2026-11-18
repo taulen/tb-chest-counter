@@ -120,8 +120,7 @@ function whereToGo(site: string | null): string {
 
 /** The reply: the code, where to enter it and how long it lasts. English, one short line, no link. */
 export function inviteReplyText(code: string, site: string | null): string {
-  const minutes = Math.round(CODE_TTL_MS / 60_000);
-  return `TB Chest Counter code: ${formatCode(code)}. ${whereToGo(site)} within ${minutes} minutes. It works once.`;
+  return `TB Chest Counter code: ${formatCode(code)}. ${whereToGo(site)} within ${Math.round(CODE_TTL_MS / 3600_000)} hours. It works once.`;
 }
 
 interface ChannelRow { url: string; customType: string; members: Array<{ userId: string }> }
@@ -345,7 +344,7 @@ export const LINK_LIKE = /https?:|www|[a-z0-9-]\.[a-z]{2,}/i;
  * looks like one.
  */
 export function welcomeText(code: string, clanName: string, site: string | null): string {
-  const tail = `Your TB Chest Counter code: ${formatCode(code)}. ${whereToGo(site)} within 72 hours. It works once. Reply "code" any time for a fresh one.`;
+  const tail = `Your TB Chest Counter code: ${formatCode(code)}. ${whereToGo(site)} within ${Math.round(CODE_TTL_MS / 3600_000)} hours. It works once. Reply "code" any time for a fresh one.`;
   const name = clanName.trim();
   const full = name && !LINK_LIKE.test(name) ? `Welcome to ${name}! ${tail}` : `Welcome! ${tail}`;
   return full.length <= 300 ? full : `Welcome! ${tail}`;

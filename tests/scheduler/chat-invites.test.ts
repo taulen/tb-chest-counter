@@ -113,7 +113,7 @@ describe('answering a request', () => {
     expect(s.sent[0]).toMatchObject({ channelUrl: url, userId: SCANNER });
     const code = codeIn(s.sent[0].text);
     expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
-    expect(s.sent[0].text).toContain('30 minutes');
+    expect(s.sent[0].text).toContain('within 72 hours');
     expect(lookupCode(code, T0)?.playerId).toBe(11);
     expect(getDb().prepare('SELECT code_hash FROM account_invite_codes').get()).toEqual({ code_hash: hashCode(code) });
     expect(logged.join('\n')).not.toContain(code);

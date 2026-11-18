@@ -25,7 +25,7 @@ superadmin:
    case; a leading `!` or `/` and trailing punctuation are fine). The chat is
    read every minute; the answer goes out within a minute when the clan's last
    scan left a game session for a chat token, else with the clan's next scan.
-   Code: 30 minutes.
+   Code: 72 hours (the same as a welcome code).
 2. **Sent to members** (welcome codes; mode off / dry run / on) — the scanner
    account opens a private chat and sends a code. The **first time** it is
    switched on, every current member without an account is due one (the
@@ -47,7 +47,7 @@ step with `JOIN_ENTRY_LABEL`), which leads to `/join`.
 
 The messages (English, one line, at most 300 characters):
 
-- Reply: `TB Chest Counter code: ABCD-EFGH. Go to cwb . fyi and pick "Have a code? Join here" within 30 minutes. It works once.`
+- Reply: `TB Chest Counter code: ABCD-EFGH. Go to cwb . fyi and pick "Have a code? Join here" within 72 hours. It works once.`
 - Welcome: `Welcome to <clan>! Your TB Chest Counter code: ABCD-EFGH. Go to cwb . fyi and pick "Have a code? Join here" within 72 hours. It works once. Reply "code" any time for a fresh one.`
   (The clan name is left out when it looks like a link.)
 

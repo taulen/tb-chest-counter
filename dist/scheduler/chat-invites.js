@@ -110,8 +110,7 @@ function whereToGo(site) {
 }
 /** The reply: the code, where to enter it and how long it lasts. English, one short line, no link. */
 function inviteReplyText(code, site) {
-    const minutes = Math.round(account_invite_repo_js_1.CODE_TTL_MS / 60_000);
-    return `TB Chest Counter code: ${(0, account_invite_repo_js_1.formatCode)(code)}. ${whereToGo(site)} within ${minutes} minutes. It works once.`;
+    return `TB Chest Counter code: ${(0, account_invite_repo_js_1.formatCode)(code)}. ${whereToGo(site)} within ${Math.round(account_invite_repo_js_1.CODE_TTL_MS / 3600_000)} hours. It works once.`;
 }
 function channelFor(clanId, channelUrl) {
     const r = (0, database_js_1.getDb)().prepare('SELECT channel_url, custom_type, members FROM chat_channels WHERE clan_id = ? AND channel_url = ?')
@@ -319,7 +318,7 @@ exports.LINK_LIKE = /https?:|www|[a-z0-9-]\.[a-z]{2,}/i;
  * looks like one.
  */
 function welcomeText(code, clanName, site) {
-    const tail = `Your TB Chest Counter code: ${(0, account_invite_repo_js_1.formatCode)(code)}. ${whereToGo(site)} within 72 hours. It works once. Reply "code" any time for a fresh one.`;
+    const tail = `Your TB Chest Counter code: ${(0, account_invite_repo_js_1.formatCode)(code)}. ${whereToGo(site)} within ${Math.round(account_invite_repo_js_1.CODE_TTL_MS / 3600_000)} hours. It works once. Reply "code" any time for a fresh one.`;
     const name = clanName.trim();
     const full = name && !exports.LINK_LIKE.test(name) ? `Welcome to ${name}! ${tail}` : `Welcome! ${tail}`;
     return full.length <= 300 ? full : `Welcome! ${tail}`;

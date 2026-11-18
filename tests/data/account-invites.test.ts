@@ -89,7 +89,7 @@ describe('codes', () => {
     expect(lookupCode('ABCD-EFGH', NOW)).toBeNull();
   });
 
-  it('expire after 30 minutes, and need the player still on the roster', () => {
+  it('expire after 72 hours, and need the player still on the roster', () => {
     gamePlayer(1, 11, 'Alpha', 4);
     const code = issueCode(1, 11);
     expect(lookupCode(code, NOW + CODE_TTL_MS - 1000)).not.toBeNull();
