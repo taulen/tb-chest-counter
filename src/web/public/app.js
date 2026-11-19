@@ -510,7 +510,7 @@ if (contentEl) {
     if (action === 'delete-schedule-correction') return deleteScheduleCorrection(Number.parseInt(target.dataset.correctionId || '0', 10), loadPage);
     if (action === 'change-password') return openChangePasswordModal();
     if (action === 'create-user') return createNewUser(loadPage);
-    if (action === 'delete-user') return deleteUserById(Number.parseInt(target.dataset.userId || '0', 10), loadPage, target.dataset.username);
+    if (action === 'delete-user') return deleteUserById(Number.parseInt(target.dataset.userId || '0', 10), loadPage, target.dataset.username, target);
     if (action === 'remove-user-avatar') return removeUserAvatar(Number.parseInt(target.dataset.userId || '0', 10), target.dataset.username, loadPage);
     if (action === 'reassign-user-clan') return reassignUserClan(Number.parseInt(target.dataset.userId || '0', 10), target.dataset.username, loadPage);
     if (action === 'edit-user-clans') return editUserClans(Number.parseInt(target.dataset.userId || '0', 10), loadPage);

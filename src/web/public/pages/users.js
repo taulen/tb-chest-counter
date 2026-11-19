@@ -965,7 +965,7 @@ export async function createNewUser(rerender) {
   rerender('users');
 }
 
-export async function deleteUserById(id, rerender, username) {
+export async function deleteUserById(id, rerender, username, button = null) {
   const label = username ? `"${username}"` : t('this user');
   // Deleting the account takes every clan with it, not just the one in the
   // header. Superadmins get the list; a clan admin is never shown another
@@ -987,7 +987,19 @@ export async function deleteUserById(id, rerender, username) {
     },
   );
   if (!ok) return;
-  if (!await mustOk(apiDelete(`/auth/users/${id}`), t('Delete user failed'))) return;
+  // The server saves a backup of the whole database before it deletes, which
+  // takes several seconds: say so at once and hold the row, or the confirmed
+  // click looks like it did nothing until the list redraws.
+  const row = button?.closest('tr') ?? null;
+  if (button) button.disabled = true;
+  row?.setAttribute('aria-busy', 'true');
+  notify(t('A backup of the database is saved first. This takes a few seconds.'), t('Deleting {user}…', { user: label }));
+  if (!await mustOk(apiDelete(`/auth/users/${id}`), t('Delete user failed'))) {
+    if (button) button.disabled = false;
+    row?.removeAttribute('aria-busy');
+    return;
+  }
+  notify(t('{user} was deleted.', { user: label }), t('User deleted'));
   rerender('users');
 }
 

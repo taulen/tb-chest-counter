@@ -553,6 +553,10 @@ export async function renderClans(el, refreshClanIndicator) {
       if (String(typed).trim() !== clanName) {
         return notify(t('Name did not match — clan was not deleted.'), t('Delete clan'));
       }
+      // A backup of the whole database is saved first (several seconds): say
+      // so, and hold the button, or the confirmed delete looks like nothing.
+      target.disabled = true;
+      notify(t('A backup of the database is saved first. This takes a few seconds.'), t('Deleting clan "{clan}"…', { clan: clanName }));
       try {
         const r = await fetch(`/api/clans/${clanId}`, { method: 'DELETE' });
         const j = await r.json();
@@ -560,6 +564,8 @@ export async function renderClans(el, refreshClanIndicator) {
         renderClans(el, refreshClanIndicator);
       } catch {
         notify(t('Delete failed.'), t('Delete clan'));
+      } finally {
+        target.disabled = false;
       }
     } else if (action === 'clan-discord-directory-load' && clanId) {
       await loadDiscordDirectory(el, clanId, el.querySelector(`#clan-discord-guild-${clanId}`)?.value || undefined);

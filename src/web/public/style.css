@@ -3949,6 +3949,12 @@ details > table {
   background: var(--accent-warn-bg);
 }
 
+/* A row whose delete is in flight (the server backs up the DB first). */
+.users-table tr[aria-busy="true"] {
+  opacity: 0.5;
+  cursor: progress;
+}
+
 /* Gold "needs-attention" pill. Sibling of .chest-type, but semantic:
    used for "⚠ No clan" on orphan rows so we don't repurpose a rarity
    token for a warning indicator. Reads from the warn theme tokens so

@@ -121,7 +121,10 @@ export async function createPreActionBackup(
 
   await pipeline(
     fs.createReadStream(dbPath),
-    zlib.createGzip({ level: 6 }),
+    // Level 1: an admin waits on this (a delete answers only once it's
+    // written). On a 267 MB copy of prod, level 6 took 8.0 s for 97 MB and
+    // level 1 3.6 s for 111 MB; prod's 504 MB took 11 s at level 6.
+    zlib.createGzip({ level: 1 }),
     fs.createWriteStream(outPath),
   );
 
