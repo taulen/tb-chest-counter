@@ -309,7 +309,7 @@ function clanTextHtml(c, extra = '') {
   return `<span class="shell-clan-text">
       ${eyebrow ? `<span class="shell-clan-eyebrow">${eyebrow}</span>` : ''}
       <span class="shell-clan-name" style="--fit:${longestWord}">${esc(name)}</span>
-      <span class="shell-clan-sub">${esc(clanLastScan(c))}</span>
+      <span class="shell-clan-sub" data-scan-for="${c.id}">${esc(clanLastScan(c))}</span>
       ${extra}
     </span>`;
 }
@@ -376,15 +376,10 @@ function renderPhonebarClan(c) {
 export async function refreshClanSwitcher(user) {
   canSwitch = !!user && (user.role === 'superadmin' || !!user.multiClan);
   canAddClan = !!user && user.role !== 'superadmin';
-  try {
-    const res = await fetch('/api/clans/switcher', { cache: 'no-store' });
-    if (!res.ok) throw new Error(String(res.status));
-    const data = await res.json();
-    clanData = {
-      clans: Array.isArray(data.clans) ? data.clans : [],
-      activeClanId: data.activeClanId ?? null,
-    };
-  } catch {
+  const data = await fetchSwitcher();
+  if (data) {
+    clanData = data;
+  } else {
     // Keep the name /auth/me gave, so the shell still says which clan this is.
     const name = user?.activeClan?.name;
     clanData = name
@@ -392,6 +387,71 @@ export async function refreshClanSwitcher(user) {
       : { clans: [], activeClanId: null };
   }
   renderClanBlock();
+  startScanLineClock();
+}
+
+let switcherFetchedAt = 0;
+
+async function fetchSwitcher() {
+  try {
+    const res = await fetch('/api/clans/switcher', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    switcherFetchedAt = Date.now();
+    return {
+      clans: Array.isArray(data.clans) ? data.clans : [],
+      activeClanId: data.activeClanId ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rewrite every "Scanned … ago" line from clanData, in place: a fresh render
+ * would close an open switcher under the reader's pointer.
+ */
+function paintScanLines() {
+  for (const el of document.querySelectorAll('#shellClan [data-scan-for]')) {
+    const c = clanData.clans.find((x) => x.id === Number(el.dataset.scanFor));
+    if (c) el.textContent = clanLastScan(c);
+  }
+}
+
+/**
+ * Re-read the clans' last scans and repaint their lines: when a scan ends,
+ * after a reconnect, and when the copy is a few minutes old.
+ */
+let lastScanSeq = 0;
+async function refreshLastScans() {
+  if (!clanData.clans.length) return;
+  const seq = ++lastScanSeq;
+  const data = await fetchSwitcher();
+  if (!data || seq !== lastScanSeq) return;
+  const byId = new Map(data.clans.map((c) => [c.id, c]));
+  for (const c of clanData.clans) {
+    const fresh = byId.get(c.id);
+    if (fresh) c.lastScanAt = fresh.lastScanAt ?? null;
+  }
+  paintScanLines();
+}
+
+// "5 min ago" must keep counting on a page left open; a scan of one of the
+// account's other clans (the status poll only reports the clan being viewed)
+// or one that ran while the tab slept is caught by an occasional re-fetch.
+const SCAN_LINE_TICK_MS = 30_000;
+const SWITCHER_STALE_MS = 5 * 60_000;
+let scanLineClock = null;
+
+function startScanLineClock() {
+  if (scanLineClock) return;
+  const tick = () => {
+    if (document.hidden) return;
+    if (Date.now() - switcherFetchedAt > SWITCHER_STALE_MS) void refreshLastScans();
+    else paintScanLines();
+  };
+  scanLineClock = setInterval(tick, SCAN_LINE_TICK_MS);
+  document.addEventListener('visibilitychange', tick);
 }
 
 async function switchClan(id) {
@@ -413,6 +473,7 @@ async function switchClan(id) {
 // ─── The scanner's state, as the shell shows it ───
 
 const GLYPHS = { idle: '✓', scanning: '◐', error: '!', offline: '!', loading: '·' };
+let reconnectRefresh = false;
 
 /**
  * app.js's status poll hands the shell what it decided: `kind` is idle /
@@ -436,6 +497,16 @@ export function setShellScanState({ kind, text, next = '', runningClanIds: ids =
 
   const nextIds = new Set(ids);
   const changed = nextIds.size !== runningClanIds.size || [...nextIds].some((id) => !runningClanIds.has(id));
+  // A clan that left the set has finished (its session is completed before
+  // the scanner lets go of it), so its "Scanned … ago" is out of date.
+  // 'offline' passes no ids: a dropped connection is not a finished scan, but
+  // one may have ended unseen meanwhile, so the first answer after it re-reads.
+  if (kind === 'offline') {
+    reconnectRefresh = true;
+  } else if (reconnectRefresh || [...runningClanIds].some((id) => !nextIds.has(id))) {
+    reconnectRefresh = false;
+    void refreshLastScans();
+  }
   if (changed) {
     runningClanIds = nextIds;
     // Only the rows' status words change; a fresh render would close an open
