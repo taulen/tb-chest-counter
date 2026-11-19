@@ -4522,19 +4522,22 @@ details > table {
 /* contentModal's card: the head stays put and only the content scrolls, so a
    dialog taller than the screen keeps its title and close button in view.
    The content runs out to the card's sides and bottom, so its scrollbar sits
-   on the card's edge and a focus ring at the content's edge isn't clipped. */
+   on the card's edge and a focus ring at the content's edge isn't clipped.
+   The head's 14px gap is split 6 + 8 into the content's top padding: the
+   content clips at its box, and a first row pulled up into that gap (the
+   breakdown's rank pill, margin-top -6px) lost its top half. */
 .modal-card-rich {
   display: flex;
   flex-direction: column;
   padding-bottom: 0;
   overflow: hidden;
 }
-.modal-card-rich > .modal-head { flex: none; }
+.modal-card-rich > .modal-head { flex: none; margin-bottom: 6px; }
 .modal-card-rich > .modal-content {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0 calc(-1 * var(--modal-pad));
-  padding: 0 var(--modal-pad) var(--modal-pad);
+  padding: 8px var(--modal-pad) var(--modal-pad);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
