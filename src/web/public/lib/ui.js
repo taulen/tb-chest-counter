@@ -1072,7 +1072,7 @@ export function contentModal({ title = '', html = '', wide = false, className = 
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  const cardClass = ['modal-card', wide ? 'modal-card-wide' : '', className].filter(Boolean).join(' ');
+  const cardClass = ['modal-card', 'modal-card-rich', wide ? 'modal-card-wide' : '', className].filter(Boolean).join(' ');
   overlay.innerHTML = `
     <div class="${esc(cardClass)}" role="dialog" aria-modal="true">
       <div class="modal-head">

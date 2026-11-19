@@ -2786,6 +2786,8 @@ details > table {
 }
 
 .modal-overlay {
+  /* The screen edge the card keeps clear of; its max-height follows it. */
+  --modal-gap: 16px;
   position: fixed;
   inset: 0;
   background: var(--bg-modal-backdrop);
@@ -2793,7 +2795,7 @@ details > table {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--modal-gap);
   z-index: 1000;
   opacity: 0;
   transition: opacity 0.18s ease;
@@ -2804,13 +2806,22 @@ details > table {
 }
 
 .modal-card {
+  --modal-pad: 24px;
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-elevated);
-  padding: 24px;
+  padding: var(--modal-pad);
   max-width: 440px;
   width: 100%;
+  /* Never taller than the screen. Centred in the overlay, a card that outgrew
+     it lost its top — title and close button — above the viewport, out of
+     reach, and its bottom below it (a captain with gear on a laptop or phone,
+     Nov 2026). Rich dialogs scroll only their content (.modal-card-rich). */
+  max-height: calc(100vh - 2 * var(--modal-gap));
+  max-height: calc(100dvh - 2 * var(--modal-gap));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   transform: translateY(8px);
   transition: transform 0.18s ease;
 }
@@ -2898,8 +2909,12 @@ details > table {
 }
 
 @media (max-width: 480px) {
+  .modal-overlay {
+    --modal-gap: 10px;
+  }
+
   .modal-card {
-    padding: 18px;
+    --modal-pad: 16px;
   }
 
   .modal-actions {
@@ -4503,6 +4518,25 @@ details > table {
 .modal-content {
   font-size: 14px;
   color: var(--text-primary);
+}
+/* contentModal's card: the head stays put and only the content scrolls, so a
+   dialog taller than the screen keeps its title and close button in view.
+   The content runs out to the card's sides and bottom, so its scrollbar sits
+   on the card's edge and a focus ring at the content's edge isn't clipped. */
+.modal-card-rich {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.modal-card-rich > .modal-head { flex: none; }
+.modal-card-rich > .modal-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 calc(-1 * var(--modal-pad));
+  padding: 0 var(--modal-pad) var(--modal-pad);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* ─── Share link analytics + recovery modal ─── */
@@ -6173,19 +6207,12 @@ details > table {
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-/* The card never outgrows the viewport: tabs and footer stay put and only the
-   panel scrolls, so the tab bar is always reachable on a long points list. */
-.faq-modal {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
-}
+/* The card never outgrows the viewport (.modal-card-rich): tabs and footer
+   stay put and only the panel scrolls, so the tab bar is always reachable on
+   a long points list. */
 .faq-modal .modal-content {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
 }
 .faq-tabs {
   flex: none;
@@ -6645,20 +6672,13 @@ table.faq-matrix { min-width: 460px; }
 .lbb-card.is-clipped .lbb-more { display: block; }
 
 /* The modal: one column of sources reads best narrow; two columns get the
-   wide card. Only the lines scroll, so the totals stay in view. */
-.lbb-modal {
-  display: flex;
-  flex-direction: column;
-  max-width: 560px;
-  max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
-}
+   wide card. Only the lines scroll, so the totals stay in view (the card's
+   height cap: .modal-card-rich). */
+.lbb-modal { max-width: 560px; }
 .lbb-modal.is-two { max-width: 920px; }
 .lbb-modal .modal-content {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
 }
 .lbb-modal .lbb-body {
   overflow-y: auto;
@@ -10533,12 +10553,24 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   /* The hero and the three line-up captains in one row, as in the game. */
   .captain-grid.is-lineup { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 6px; }
   .captain-grid.is-lineup .captain-name { font-size: 11.5px; }
-  .captain-modal .captain-detail { grid-template-columns: 1fr; }
-  .captain-modal .captain-detail-art {
-    width: 100%;
-    max-width: 220px;
-    margin: 0 auto;
+  /* The dialog on a phone: the art small beside the level, stars and XP, and
+     everything else full width under them. A 220px picture above it all
+     pushed the details a screen down. The body's children join the grid. */
+  .captain-modal .captain-detail {
+    grid-template-columns: 92px minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 0;
   }
+  .captain-modal .captain-detail-body { display: contents; }
+  .captain-modal .captain-detail-body > * { grid-column: 1 / -1; }
+  .captain-modal .captain-detail-art {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    margin-bottom: 4px;
+  }
+  .captain-modal .captain-detail-head,
+  .captain-modal .captain-detail:not(.artifact-detail) .captain-stars,
+  .captain-modal .captain-xp { grid-column: 2; }
 }
 
 /* The Hall of Fame (pages/member-captains.js hallOfFameCardHtml): the game's
