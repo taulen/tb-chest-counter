@@ -166,6 +166,9 @@ function renderAction(info) {
     case 'superadmin-recover':
       note = t('This player is linked to a superadmin account; its password cannot be reset with a code.');
       break;
+    case 'manual-recover':
+      note = t('This player already has an account. A code made by a clan admin can’t reset its password: sign in, or ask the scanner account for a code in the game.');
+      break;
     default:
       note = t('This code can’t be used here.');
   }

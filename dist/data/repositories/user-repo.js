@@ -353,6 +353,9 @@ function deleteUser(id) {
         db.prepare('DELETE FROM user_clan_main WHERE user_id = ?').run(id);
         db.prepare('UPDATE player_avatars SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
         db.prepare('UPDATE account_invite_codes SET used_by = NULL WHERE used_by = ?').run(id);
+        // A code it made by hand stays, unattributed — and, no longer the
+        // superadmin's, can't reset a password (planJoin).
+        db.prepare('UPDATE account_invite_codes SET issued_by = NULL WHERE issued_by = ?').run(id);
         // A player's own saved citadel and stack armies go with the account.
         db.prepare('DELETE FROM citadel_presets WHERE user_id = ?').run(id);
         db.prepare('DELETE FROM citadel_levels WHERE user_id = ?').run(id);

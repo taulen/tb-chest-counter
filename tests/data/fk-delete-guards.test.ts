@@ -58,6 +58,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
   users: [
     // Accounts from the game (v127): a used code keeps no actor once the
     // account is gone; the account's links to players go with it.
+    'account_invite_codes.issued_by',
     'account_invite_codes.used_by',
     'audit_log.user_id',
     // ON DELETE CASCADE, and deleteUser clears both explicitly too: a player's
@@ -475,8 +476,8 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
      VALUES (?, 'dm', 1, 'tb:77', 77, 1, 'sent', ?, ?) RETURNING id`,
   ).get(clanId, now, now) as { id: number };
   db.prepare(
-    `INSERT INTO account_invite_codes (clan_id, player_id, chat_user_id, request_id, code_hash, created_at, expires_at, used_at, used_by)
-     VALUES (?, 77, 'tb:77', ?, 'guard-hash', ?, ?, ?, 2)`,
+    `INSERT INTO account_invite_codes (clan_id, player_id, chat_user_id, request_id, code_hash, created_at, expires_at, used_at, used_by, issued_by)
+     VALUES (?, 77, 'tb:77', ?, 'guard-hash', ?, ?, ?, 2, 2)`,
   ).run(clanId, inviteReq.id, now, now, now);
   db.prepare(
     `INSERT INTO chat_invite_welcomes (clan_id, player_id, status, created_at, updated_at) VALUES (?, 77, 'sent', ?, ?)`,

@@ -68,7 +68,69 @@ function createAccountInvitesRouter() {
                 ? (0, account_invite_repo_js_1.welcomeCandidates)(id, 0, { backlog: true, live: true, limit: account_invite_repo_js_1.WELCOME_DRY_RUN_LIMIT })
                     .map((c) => ({ player: c.name, joinedAt: c.joinedAt, memberId: memberIdOf(c.playerId) }))
                 : [],
+            // Codes made by hand: who to pick from, and the ones made so far (never a code).
+            roster: (0, account_invite_repo_js_1.rosterForCodes)(id),
+            manualCodes: (0, account_invite_repo_js_1.manualCodes)(id),
         });
+    });
+    /**
+     * Codes made by hand (docs/account-invites.md): for when the scanner account
+     * can't send one — muted, or the player doesn't read the chat. The code is
+     * shown to the admin once, with a ready message (the chat reply's wording:
+     * English, no link, so it can go in the game chat too). Nothing is sent.
+     */
+    const BLOCKED = {
+        'not-on-roster': 'That player is not in the clan.',
+        'has-account': 'That player already has an account. Only the superadmin can make a code that resets its password.',
+        superadmin: 'That player is linked to a superadmin account.',
+        'too-many': 'Too many unused codes. Withdraw some first.',
+    };
+    router.post('/:clanId/account-invites/codes', auth_js_1.requireClanAdmin, (req, res) => {
+        const id = req.parsedClanId;
+        if (!(0, clan_repo_js_1.getClanById)(id)) {
+            res.status(404).json({ error: 'Clan not found' });
+            return;
+        }
+        const playerId = Number(req.body?.playerId);
+        if (!Number.isSafeInteger(playerId) || playerId <= 0) {
+            res.status(400).json({ error: 'playerId must be a player' });
+            return;
+        }
+        // The account itself, not the session's view of it: only a real superadmin may make a code that resets a password.
+        const issuer = (0, user_repo_js_1.getUserById)(req.user.id);
+        if (!issuer) {
+            res.status(401).json({ error: 'Not signed in' });
+            return;
+        }
+        const blocker = (0, account_invite_repo_js_1.manualCodeBlocker)(id, playerId, issuer);
+        if (blocker) {
+            res.status(blocker === 'not-on-roster' ? 404 : 409).json({ error: BLOCKED[blocker], reason: blocker });
+            return;
+        }
+        const player = (0, account_invite_repo_js_1.rosterForCodes)(id).find((p) => p.playerId === playerId);
+        const made = (0, account_invite_repo_js_1.issueManualCode)(id, playerId, issuer.id);
+        (0, user_repo_js_1.logAction)(req.user.id, 'clan.account_invites.manual_code', { clanId: id, playerId, player: player?.name ?? null, replaced: made.replaced });
+        res.json({
+            ok: true,
+            codeId: made.codeId,
+            code: (0, account_invite_repo_js_1.formatCode)(made.code),
+            expiresAt: made.expiresAt,
+            player: player?.name ?? null,
+            // An existing account: only the superadmin gets here, and the code resets its password.
+            account: player?.account ?? null,
+            message: (0, chat_invites_js_1.inviteReplyText)(made.code, (0, chat_invites_js_1.siteNameFor)(id)),
+        });
+    });
+    router.delete('/:clanId/account-invites/codes/:codeId', auth_js_1.requireClanAdmin, (req, res) => {
+        const id = req.parsedClanId;
+        const codeId = Number(req.params.codeId);
+        const gone = Number.isSafeInteger(codeId) ? (0, account_invite_repo_js_1.withdrawManualCode)(id, codeId) : null;
+        if (!gone) {
+            res.status(404).json({ error: 'No such unused code' });
+            return;
+        }
+        (0, user_repo_js_1.logAction)(req.user.id, 'clan.account_invites.manual_code_withdrawn', { clanId: id, playerId: gone.playerId, player: gone.player });
+        res.json({ ok: true });
     });
     router.put('/:clanId/account-invites', auth_js_1.requireClanAdmin, (req, res) => {
         const id = req.parsedClanId;

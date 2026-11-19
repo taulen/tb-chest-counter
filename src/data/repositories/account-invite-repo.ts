@@ -219,10 +219,14 @@ export function generateCode(): string {
   return out;
 }
 
-/** The player was sent a code within the cooldown (any clan). */
+/**
+ * The player was sent a code in the chat within the cooldown (any clan). A
+ * code an admin made by hand doesn't count: it sent no message, and must not
+ * mark the player's welcome as "asked for a code themselves".
+ */
 export function playerInCooldown(playerId: number, nowMs = Date.now()): boolean {
   const since = new Date(nowMs - CODE_COOLDOWN_MS).toISOString();
-  return !!getDb().prepare('SELECT 1 FROM account_invite_codes WHERE player_id = ? AND created_at > ?').get(playerId, since);
+  return !!getDb().prepare("SELECT 1 FROM account_invite_codes WHERE player_id = ? AND created_at > ? AND kind <> 'manual'").get(playerId, since);
 }
 
 /**
@@ -510,6 +514,130 @@ export function finishWelcomeSend(
   })();
 }
 
+// ── Codes made by hand (an admin, on the site) ─────────────────────────────
+
+/** At most this many unused codes made by hand per clan at once. */
+export const MANUAL_OPEN_LIMIT = 50;
+
+/**
+ * Why an admin can't make a code for this player now, or null when they can:
+ *   not-on-roster   not in the clan's roster (the code would not work)
+ *   has-account     already linked to an account: a code from a clan admin
+ *                   could only take that account over, so only the
+ *                   superadmin may make one (it then resets the password)
+ *   superadmin      linked to a superadmin: no code ever resets that
+ *   too-many        MANUAL_OPEN_LIMIT unused codes already
+ */
+export type ManualCodeBlocker = 'not-on-roster' | 'has-account' | 'superadmin' | 'too-many';
+
+export function manualCodeBlocker(clanId: number, playerId: number, issuer: { role: string }, nowMs = Date.now()): ManualCodeBlocker | null {
+  const db = getDb();
+  if (!db.prepare('SELECT 1 FROM game_players WHERE clan_id = ? AND player_id = ? AND in_clan = 1').get(clanId, playerId)) return 'not-on-roster';
+  const owner = accountForPlayer(playerId);
+  if (owner !== null) {
+    if (getUserById(owner)?.role === 'superadmin') return 'superadmin';
+    if (issuer.role !== 'superadmin') return 'has-account';
+  }
+  // The player's own earlier code is replaced, so it doesn't count.
+  const open = (db.prepare(
+    "SELECT COUNT(*) AS n FROM account_invite_codes WHERE clan_id = ? AND kind = 'manual' AND used_at IS NULL AND expires_at > ? AND player_id <> ?",
+  ).get(clanId, new Date(nowMs).toISOString(), playerId) as { n: number }).n;
+  return open >= MANUAL_OPEN_LIMIT ? 'too-many' : null;
+}
+
+/**
+ * Make a code by hand: the same code as the chat's — 72 hours, single use,
+ * bound to the clan and the player — with no chat account behind it and the
+ * issuing account kept. The player's earlier unused code made by hand is
+ * withdrawn (one at a time). Returns the plaintext, the only place it ever
+ * exists. Callers check {@link manualCodeBlocker} first.
+ */
+export function issueManualCode(
+  clanId: number,
+  playerId: number,
+  issuerId: number,
+  nowMs = Date.now(),
+): { code: string; codeId: number; expiresAt: string; replaced: number } {
+  const db = getDb();
+  return db.transaction(() => {
+    const now = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + CODE_TTL_MS).toISOString();
+    const replaced = db.prepare(
+      "DELETE FROM account_invite_codes WHERE clan_id = ? AND player_id = ? AND kind = 'manual' AND used_at IS NULL",
+    ).run(clanId, playerId).changes;
+    for (let tries = 0; tries < 5; tries++) {
+      const code = generateCode();
+      const inserted = db.prepare(
+        `INSERT OR IGNORE INTO account_invite_codes (clan_id, player_id, chat_user_id, kind, request_id, code_hash, created_at, expires_at, issued_by)
+         VALUES (?, ?, '', 'manual', NULL, ?, ?, ?, ?)`,
+      ).run(clanId, playerId, hashCode(code), now, expiresAt, issuerId);
+      if (inserted.changes > 0) return { code, codeId: Number(inserted.lastInsertRowid), expiresAt, replaced };
+    }
+    throw new Error('could not generate a unique code');
+  })();
+}
+
+/** Withdraw an unused code made by hand. The player it was for, or null when there was no such code. */
+export function withdrawManualCode(clanId: number, codeId: number): { playerId: number; player: string | null } | null {
+  const db = getDb();
+  return db.transaction(() => {
+    const row = db.prepare(
+      `SELECT c.player_id, gp.name FROM account_invite_codes c
+         LEFT JOIN game_players gp ON gp.clan_id = c.clan_id AND gp.player_id = c.player_id
+        WHERE c.id = ? AND c.clan_id = ? AND c.kind = 'manual' AND c.used_at IS NULL`,
+    ).get(codeId, clanId) as { player_id: number; name: string | null } | undefined;
+    if (!row) return null;
+    db.prepare('DELETE FROM account_invite_codes WHERE id = ?').run(codeId);
+    return { playerId: row.player_id, player: row.name ?? null };
+  })();
+}
+
+export interface ManualCodeRow {
+  id: number;
+  player: string;
+  memberId: number | null;
+  issuedBy: string | null;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  usedBy: string | null;
+}
+
+/** The clan's codes made by hand, newest first — who made each and what became of it (never the code). */
+export function manualCodes(clanId: number, limit = 30): ManualCodeRow[] {
+  return (getDb().prepare(
+    `SELECT c.id, c.created_at, c.expires_at, c.used_at,
+            COALESCE(gp.name, '#' || c.player_id) AS player, iu.username AS issued_by, uu.username AS used_by,
+            (SELECT m.id FROM members m WHERE m.clan_id = c.clan_id AND m.game_player_id = c.player_id
+              ORDER BY m.is_active DESC, m.id DESC LIMIT 1) AS member_id
+       FROM account_invite_codes c
+       LEFT JOIN game_players gp ON gp.clan_id = c.clan_id AND gp.player_id = c.player_id
+       LEFT JOIN users iu ON iu.id = c.issued_by
+       LEFT JOIN users uu ON uu.id = c.used_by
+      WHERE c.clan_id = ? AND c.kind = 'manual'
+      ORDER BY c.created_at DESC, c.id DESC LIMIT ?`,
+  ).all(clanId, limit) as Array<{
+    id: number; created_at: string; expires_at: string; used_at: string | null;
+    player: string; issued_by: string | null; used_by: string | null; member_id: number | null;
+  }>).map((r) => ({
+    id: r.id, player: r.player, memberId: r.member_id, issuedBy: r.issued_by,
+    createdAt: r.created_at, expiresAt: r.expires_at, usedAt: r.used_at, usedBy: r.used_by,
+  }));
+}
+
+/** The roster to pick a player from: everyone in the clan now, with the account each is linked to. */
+export function rosterForCodes(clanId: number): Array<{ playerId: number; name: string; rank: number | null; account: string | null }> {
+  return (getDb().prepare(
+    `SELECT gp.player_id, gp.name, gp.role,
+            (SELECT u.username FROM user_game_links l JOIN users u ON u.id = l.user_id
+              WHERE l.player_id = gp.player_id ORDER BY l.linked_at LIMIT 1) AS account
+       FROM game_players gp
+      WHERE gp.clan_id = ? AND gp.in_clan = 1
+      ORDER BY gp.name COLLATE NOCASE, gp.player_id`,
+  ).all(clanId) as Array<{ player_id: number; name: string; role: number | null; account: string | null }>)
+    .map((r) => ({ playerId: r.player_id, name: r.name, rank: r.role ?? null, account: r.account }));
+}
+
 export interface CodeInfo {
   codeId: number;
   clanId: number;
@@ -519,6 +647,10 @@ export interface CodeInfo {
   rank: number | null;
   chatUserId: string;
   expiresAt: string;
+  /** 'reply' / 'welcome' (sent in the chat) or 'manual' (made by an admin on the site). */
+  kind: string;
+  /** The account that made a 'manual' code; null otherwise (or once it was deleted). */
+  issuedBy: number | null;
 }
 
 /**
@@ -530,7 +662,7 @@ export function lookupCode(input: string, nowMs = Date.now()): CodeInfo | null {
   const normalized = normalizeCode(input);
   if (normalized.length !== CODE_LENGTH) return null;
   const r = getDb().prepare(
-    `SELECT c.id, c.clan_id, c.player_id, c.chat_user_id, c.expires_at, cl.name AS clan_name, cl.short_code,
+    `SELECT c.id, c.clan_id, c.player_id, c.chat_user_id, c.expires_at, c.kind, c.issued_by, cl.name AS clan_name, cl.short_code,
             gp.name AS player_name, gp.role AS rank
        FROM account_invite_codes c
        JOIN clans cl ON cl.id = c.clan_id AND cl.deleted_at = ''
@@ -548,6 +680,8 @@ export function lookupCode(input: string, nowMs = Date.now()): CodeInfo | null {
     rank: (r.rank as number | null) ?? null,
     chatUserId: r.chat_user_id as string,
     expiresAt: r.expires_at as string,
+    kind: String(r.kind ?? 'reply'),
+    issuedBy: (r.issued_by as number | null) ?? null,
   };
 }
 
@@ -819,8 +953,11 @@ export function unlinkGameAccount(userId: number, clanId: number, playerId?: num
  *   superadmin-recover  signed out, the player's account is a superadmin:
  *                 refused — a code from the game never resets a superadmin's
  *                 password (a shared game account must not open the site's top role)
+ *   manual-recover  signed out, the player has an account, and the code was
+ *                 made by hand by someone other than the superadmin: refused —
+ *                 it would hand a clan admin the account (and its other clans)
  */
-export type JoinMode = 'new' | 'recover' | 'link' | 'add-clan' | 'add-player' | 'link-player' | 'already' | 'conflict' | 'superadmin-recover';
+export type JoinMode = 'new' | 'recover' | 'link' | 'add-clan' | 'add-player' | 'link-player' | 'already' | 'conflict' | 'superadmin-recover' | 'manual-recover';
 export const JOIN_ACTIONS: ReadonlySet<JoinMode> = new Set(['new', 'recover', 'link', 'add-clan', 'add-player', 'link-player']);
 
 export interface JoinPlan {
@@ -840,6 +977,12 @@ export function planJoin(info: CodeInfo, viewer: User | null): JoinPlan {
     if (owner === null) return { mode: 'new', userId: null, username: null, role };
     const u = getUserById(owner);
     if (u?.role === 'superadmin') return { mode: 'superadmin-recover', userId: null, username: null, role };
+    // A code made by hand proves only that an admin made it, not who holds it:
+    // it resets a password only when the superadmin made it. Decided now, not
+    // when it was made — the player may have made an account since.
+    if (info.kind === 'manual' && !(info.issuedBy !== null && getUserById(info.issuedBy)?.role === 'superadmin')) {
+      return { mode: 'manual-recover', userId: null, username: null, role };
+    }
     return { mode: 'recover', userId: owner, username: u?.username ?? null, role };
   }
   const home = getUserById(viewer.id);

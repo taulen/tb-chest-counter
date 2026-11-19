@@ -2604,6 +2604,24 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v132 — codes made by hand (Nov 2026; docs/account-invites.md): a clan
+    // admin can make a join code for a roster player on the site, for when
+    // the scanner account can't send one (muted, or the player doesn't read
+    // the chat). The code is an account_invite_codes row of kind 'manual'
+    // with no chat account behind it; issued_by is the account that made it.
+    // A code made by a clan admin never resets an existing account's password
+    // (planJoin): only one the superadmin made may. Guarded for replay.
+    version: 132,
+    run: (database): void => {
+      const cols = new Set(
+        (database.prepare('PRAGMA table_info(account_invite_codes)').all() as { name: string }[]).map((c) => c.name),
+      );
+      if (!cols.has('issued_by')) {
+        database.exec('ALTER TABLE account_invite_codes ADD COLUMN issued_by INTEGER REFERENCES users(id)');
+      }
+    },
+  },
 ];
 
 /**

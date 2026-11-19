@@ -2,24 +2,31 @@ import type { Router } from 'express';
 import { getDb } from '../../../data/database.js';
 import { getClanById } from '../../../data/repositories/clan-repo.js';
 import {
+  formatCode,
   getInviteSettings,
   isWelcomeMode,
+  issueManualCode,
   linksForClan,
+  manualCodeBlocker,
+  manualCodes,
   memberIdsByPlayer,
   playerKey,
+  rosterForCodes,
   recentInviteRequests,
   recentWelcomes,
   setInvitesEnabled,
   setWelcomeMode,
   welcomeProgress,
   welcomeCandidates,
+  withdrawManualCode,
   WELCOME_DRY_RUN_LIMIT,
+  type ManualCodeBlocker,
 } from '../../../data/repositories/account-invite-repo.js';
-import { logAction } from '../../../data/repositories/user-repo.js';
+import { getUserById, logAction } from '../../../data/repositories/user-repo.js';
 import { deleteEnvValue, updateEnvValue } from '../../../config/persistent-env.js';
 import { chatSendingDisabled } from '../../../game-protocol/chat-send.js';
 import { chatPausedUntil, getChatSendState } from '../../../data/repositories/chat-send-state-repo.js';
-import { INVITE_KEYWORDS, JOIN_ENTRY_LABEL, defaultSiteNameFor, siteNameFor, siteNameOverride, spacedSiteName } from '../../../scheduler/chat-invites.js';
+import { INVITE_KEYWORDS, JOIN_ENTRY_LABEL, defaultSiteNameFor, inviteReplyText, siteNameFor, siteNameOverride, spacedSiteName } from '../../../scheduler/chat-invites.js';
 import { requireClanAdmin, requireSuperAdmin } from '../../middleware/auth.js';
 import { createClanSubRouter } from './_shared.js';
 
@@ -81,7 +88,72 @@ export function createAccountInvitesRouter(): Router {
         ? welcomeCandidates(id, 0, { backlog: true, live: true, limit: WELCOME_DRY_RUN_LIMIT })
           .map((c) => ({ player: c.name, joinedAt: c.joinedAt, memberId: memberIdOf(c.playerId) }))
         : [],
+      // Codes made by hand: who to pick from, and the ones made so far (never a code).
+      roster: rosterForCodes(id),
+      manualCodes: manualCodes(id),
     });
+  });
+
+  /**
+   * Codes made by hand (docs/account-invites.md): for when the scanner account
+   * can't send one — muted, or the player doesn't read the chat. The code is
+   * shown to the admin once, with a ready message (the chat reply's wording:
+   * English, no link, so it can go in the game chat too). Nothing is sent.
+   */
+  const BLOCKED: Record<ManualCodeBlocker, string> = {
+    'not-on-roster': 'That player is not in the clan.',
+    'has-account': 'That player already has an account. Only the superadmin can make a code that resets its password.',
+    superadmin: 'That player is linked to a superadmin account.',
+    'too-many': 'Too many unused codes. Withdraw some first.',
+  };
+
+  router.post('/:clanId/account-invites/codes', requireClanAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    if (!getClanById(id)) {
+      res.status(404).json({ error: 'Clan not found' });
+      return;
+    }
+    const playerId = Number(req.body?.playerId);
+    if (!Number.isSafeInteger(playerId) || playerId <= 0) {
+      res.status(400).json({ error: 'playerId must be a player' });
+      return;
+    }
+    // The account itself, not the session's view of it: only a real superadmin may make a code that resets a password.
+    const issuer = getUserById(req.user!.id);
+    if (!issuer) {
+      res.status(401).json({ error: 'Not signed in' });
+      return;
+    }
+    const blocker = manualCodeBlocker(id, playerId, issuer);
+    if (blocker) {
+      res.status(blocker === 'not-on-roster' ? 404 : 409).json({ error: BLOCKED[blocker], reason: blocker });
+      return;
+    }
+    const player = rosterForCodes(id).find((p) => p.playerId === playerId);
+    const made = issueManualCode(id, playerId, issuer.id);
+    logAction(req.user!.id, 'clan.account_invites.manual_code', { clanId: id, playerId, player: player?.name ?? null, replaced: made.replaced });
+    res.json({
+      ok: true,
+      codeId: made.codeId,
+      code: formatCode(made.code),
+      expiresAt: made.expiresAt,
+      player: player?.name ?? null,
+      // An existing account: only the superadmin gets here, and the code resets its password.
+      account: player?.account ?? null,
+      message: inviteReplyText(made.code, siteNameFor(id)),
+    });
+  });
+
+  router.delete('/:clanId/account-invites/codes/:codeId', requireClanAdmin, (req, res) => {
+    const id = req.parsedClanId!;
+    const codeId = Number(req.params.codeId);
+    const gone = Number.isSafeInteger(codeId) ? withdrawManualCode(id, codeId) : null;
+    if (!gone) {
+      res.status(404).json({ error: 'No such unused code' });
+      return;
+    }
+    logAction(req.user!.id, 'clan.account_invites.manual_code_withdrawn', { clanId: id, playerId: gone.playerId, player: gone.player });
+    res.json({ ok: true });
   });
 
   router.put('/:clanId/account-invites', requireClanAdmin, (req, res) => {

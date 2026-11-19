@@ -427,7 +427,7 @@
   {
     "type": "table",
     "name": "account_invite_codes",
-    "sql": "CREATE TABLE account_invite_codes ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, chat_user_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'reply', request_id INTEGER REFERENCES chat_invite_requests(id), code_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT, used_by INTEGER REFERENCES users(id) )"
+    "sql": "CREATE TABLE account_invite_codes ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, chat_user_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'reply', request_id INTEGER REFERENCES chat_invite_requests(id), code_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT, used_by INTEGER REFERENCES users(id) , issued_by INTEGER REFERENCES users(id))"
   },
   {
     "type": "table",

@@ -31,6 +31,13 @@ import {
   unlinkGameAccount,
   JoinError,
   CODE_ALPHABET,
+  MANUAL_OPEN_LIMIT,
+  issueManualCode,
+  manualCodeBlocker,
+  manualCodes,
+  playerInCooldown,
+  rosterForCodes,
+  withdrawManualCode,
 } from '../../src/data/repositories/account-invite-repo.js';
 import * as userRepo from '../../src/data/repositories/user-repo.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
@@ -352,6 +359,112 @@ describe('the superadmin links its own players: the link and nothing else', () =
     expect(planJoin(lookupCode(code, NOW + 11 * 60_000)!, null).mode).toBe('superadmin-recover');
     expect(() => redeemJoin(code, null, { password: 'Another1234!aA' }, NOW + 11 * 60_000)).toThrow('superadmin-recover');
     expect(userRepo.authenticate('boss', PW)).not.toBeNull();
+  });
+});
+
+describe('codes made by hand (v132): for when the scanner account cannot send one', () => {
+  const clanAdmin = () => userRepo.createUser('clanadmin', PW, 'admin', undefined, 1);
+  const boss = () => userRepo.createUser('boss', PW, 'superadmin');
+
+  it('works like a chat code: 72 h, once, bound to the player; the new account is linked with the role of the rank', () => {
+    const admin = clanAdmin();
+    gamePlayer(1, 601, 'Hand Made', 2);
+    expect(manualCodeBlocker(1, 601, admin, NOW)).toBeNull();
+    const made = issueManualCode(1, 601, admin.id, NOW);
+    expect(made.expiresAt).toBe(new Date(NOW + CODE_TTL_MS).toISOString());
+    expect(lookupCode(made.code, NOW)).toMatchObject({ playerId: 601, kind: 'manual', issuedBy: admin.id, chatUserId: '' });
+    expect(lookupCode(made.code, NOW + CODE_TTL_MS + 1)).toBeNull();
+    const r = redeemJoin(made.code, null, { username: 'handmade', password: PW }, NOW);
+    expect(r).toMatchObject({ mode: 'new', user: { role: 'admin', clanId: 1 } });
+    // No chat account behind it: none is pinned, so chat requests are checked as before linking.
+    expect(linkFor(r.user.id, 1)).toMatchObject({ playerId: 601, chatUserId: '' });
+    expect(() => redeemJoin(made.code, null, { username: 'again', password: PW }, NOW)).toThrow(JoinError);
+    expect(manualCodes(1)[0]).toMatchObject({ player: 'Hand Made', issuedBy: 'clanadmin', usedBy: 'handmade' });
+  });
+
+  it("a clan admin's code never resets an existing account's password — even one made before the account was", () => {
+    const admin = clanAdmin();
+    gamePlayer(1, 611, 'Owner', 4);
+    const early = issueManualCode(1, 611, admin.id, NOW);
+    const owner = redeemJoin(issueCode(1, 611), null, { username: 'owner', password: PW }, NOW);
+    expect(manualCodeBlocker(1, 611, admin, NOW)).toBe('has-account');
+    expect(planJoin(lookupCode(early.code, NOW)!, null).mode).toBe('manual-recover');
+    expect(() => redeemJoin(early.code, null, { password: 'Another1!pass' }, NOW)).toThrow('manual-recover');
+    expect(userRepo.authenticate('owner', PW)?.id).toBe(owner.user.id);
+    // The owner, signed in, sees it as theirs already: nothing to take over.
+    expect(planJoin(lookupCode(early.code, NOW)!, owner.user).mode).toBe('already');
+  });
+
+  it("the superadmin's code may reset it; once its maker is no longer superadmin, it may not", () => {
+    const su = boss();
+    gamePlayer(1, 621, 'Forgetful', 4);
+    redeemJoin(issueCode(1, 621), null, { username: 'forgetful', password: PW }, NOW);
+    expect(manualCodeBlocker(1, 621, su, NOW)).toBeNull();
+    const made = issueManualCode(1, 621, su.id, NOW);
+    expect(redeemJoin(made.code, null, { password: 'Another1!pass' }, NOW).mode).toBe('recover');
+    expect(userRepo.authenticate('forgetful', 'Another1!pass')).not.toBeNull();
+
+    const other = issueManualCode(1, 621, su.id, NOW);
+    getDb().prepare("UPDATE users SET role = 'admin', clan_id = 1 WHERE id = ?").run(su.id);
+    expect(planJoin(lookupCode(other.code, NOW)!, null).mode).toBe('manual-recover');
+  });
+
+  it("refuses players off the roster and a superadmin's players", () => {
+    const su = boss();
+    gamePlayer(1, 631, 'Gone', 4, 0);
+    gamePlayer(1, 632, 'Boss Alt', 4);
+    redeemJoin(issueCode(1, 632), su, {}, NOW);
+    expect(manualCodeBlocker(1, 631, su, NOW)).toBe('not-on-roster');
+    expect(manualCodeBlocker(2, 632, su, NOW)).toBe('not-on-roster');
+    expect(manualCodeBlocker(1, 632, su, NOW)).toBe('superadmin');
+  });
+
+  it("a new code replaces the player's earlier unused one; withdrawing stops a code at once", () => {
+    const admin = clanAdmin();
+    gamePlayer(1, 641, 'Twice', 5);
+    const first = issueManualCode(1, 641, admin.id, NOW);
+    const second = issueManualCode(1, 641, admin.id, NOW + 1000);
+    expect(second.replaced).toBe(1);
+    expect(lookupCode(first.code, NOW + 1000)).toBeNull();
+    expect(lookupCode(second.code, NOW + 1000)).not.toBeNull();
+    expect(withdrawManualCode(2, second.codeId)).toBeNull();
+    expect(withdrawManualCode(1, second.codeId)).toMatchObject({ playerId: 641, player: 'Twice' });
+    expect(lookupCode(second.code, NOW + 1000)).toBeNull();
+    expect(withdrawManualCode(1, second.codeId)).toBeNull();
+  });
+
+  it('never counts as a chat code: the player can still ask for one, and a welcome is not skipped', () => {
+    const admin = clanAdmin();
+    gamePlayer(1, 651, 'Asker', 5);
+    issueManualCode(1, 651, admin.id, NOW);
+    expect(playerInCooldown(651, NOW + 1000)).toBe(false);
+    issueCode(1, 651, 'tb:651', NOW + 1000);
+    expect(playerInCooldown(651, NOW + 2000)).toBe(true);
+  });
+
+  it('caps the unused codes per clan', () => {
+    const admin = clanAdmin();
+    for (let i = 0; i < MANUAL_OPEN_LIMIT; i++) {
+      gamePlayer(1, 7000 + i, `P${i}`, 5);
+      issueManualCode(1, 7000 + i, admin.id, NOW);
+    }
+    gamePlayer(1, 6999, 'One More', 5);
+    expect(manualCodeBlocker(1, 6999, admin, NOW)).toBe('too-many');
+    // Remaking one for a player who has one is a replacement, not one more.
+    expect(manualCodeBlocker(1, 7000, admin, NOW)).toBeNull();
+    // Expired ones don't count.
+    expect(manualCodeBlocker(1, 6999, admin, NOW + CODE_TTL_MS + 1)).toBeNull();
+  });
+
+  it('the roster to pick from names the account each player has', () => {
+    gamePlayer(1, 661, 'Bravo', 3);
+    gamePlayer(1, 662, 'alpha', 5);
+    gamePlayer(1, 663, 'Left', 5, 0);
+    redeemJoin(issueCode(1, 661), null, { username: 'bravo', password: PW }, NOW);
+    expect(rosterForCodes(1)).toEqual([
+      { playerId: 662, name: 'alpha', rank: 5, account: null },
+      { playerId: 661, name: 'Bravo', rank: 3, account: 'bravo' },
+    ]);
   });
 });
 

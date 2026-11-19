@@ -6,10 +6,17 @@
 // the moment they change (a switch; Off / Dry run / On), the site name as a
 // sentence with an Edit link, and the fine print folded into "How it works".
 
-import { escapeHtml, notify, formatDate, confirmDialog, memberLink } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, confirmDialog, memberLink, copyTextToClipboard } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 import { getCurrentUser } from '../lib/state.js';
+
+/**
+ * The code an admin just made, per clan, so it survives the section's redraw
+ * (the server never shows it again — it keeps only the hash). Lives only in
+ * this page's memory: gone on reload.
+ */
+const madeCodes = new Map();
 
 /** The collapsed section on the clan card. */
 export function accountInvitesSectionHtml(clanId) {
@@ -200,10 +207,13 @@ function renderAccountInvites(root, box, clanId, data) {
       <div class="invite-settings">${answerRow}${welcomeRow}</div>
       ${wouldTable}
       ${siteRow}
+      ${manualSectionHtml(clanId, data, isSuperAdmin)}
       ${how}
       ${welcomesTable}
       ${requestsTable}
     </div>`;
+
+  wireManualCodes(root, box, clanId);
 
   // The switch saves on change; a failed save puts it back.
   const sw = box.querySelector(`#${answerId}`);
@@ -266,6 +276,144 @@ function renderAccountInvites(root, box, clanId, data) {
       notify(t('Save failed.'), t('Account invites via chat'));
       return false;
     }
+  }
+}
+
+// ── Codes made by hand ──────────────────────────────────────────────────────
+// For when the scanner account can't send one (muted, or the player doesn't
+// read the chat): an admin makes the code here and passes it on. The same
+// code as the chat's — 72 hours, once, only for that player. A clan admin
+// can't make one for a player who already has an account (it could only take
+// that account over); the superadmin can, and it then sets a new password.
+
+/** The roster as options: players without an account first; the rest only the superadmin may pick. */
+function playerOptionsHtml(roster, isSuperAdmin) {
+  const label = (p) => [p.name, p.rank != null ? gameRankName(p.rank) : ''].filter(Boolean).join(' · ');
+  const free = roster.filter((p) => !p.account);
+  const taken = roster.filter((p) => p.account);
+  return `<option value="">${escapeHtml(t('Choose a player…'))}</option>
+    ${free.map((p) => `<option value="${p.playerId}">${escapeHtml(label(p))}</option>`).join('')}
+    ${taken.length ? `<optgroup label="${escapeHtml(isSuperAdmin ? t('Have an account (the code sets a new password)') : t('Have an account already'))}">
+      ${taken.map((p) => `<option value="${p.playerId}"${isSuperAdmin ? '' : ' disabled'}>${escapeHtml(`${label(p)} (${p.account})`)}</option>`).join('')}
+    </optgroup>` : ''}`;
+}
+
+/** The code just made: big, with copy buttons, until the page is left. */
+function madeCodeHtml(made) {
+  if (!made) return '';
+  const until = formatDate(made.expiresAt).slice(0, 16);
+  return `<div class="invite-made" role="status">
+      <div class="invite-made-head">${t('Code for {player}', { player: `<strong>${escapeHtml(made.player || '')}</strong>` })}</div>
+      <div class="invite-made-code" translate="no">${escapeHtml(made.code)}</div>
+      <div class="invite-made-meta">${escapeHtml(t('Works once, until {date}. Copy it now: it is not shown again once you leave this page.', { date: until }))}</div>
+      ${made.account ? `<div class="invite-setting-note">⚠ ${escapeHtml(t('{player} already has an account ({account}): this code sets a new password for it.', { player: made.player || '', account: made.account }))}</div>` : ''}
+      <div class="invite-made-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-copy="code">${t('Copy code')}</button>
+        <button type="button" class="btn btn-sm" data-copy="message">${t('Copy message')}</button>
+      </div>
+      <p class="invite-made-note">${escapeHtml(t('Give it only to {player}: whoever uses it becomes this player on the site. The message is in English and has no link, so it can go in the game chat too.', { player: made.player || '' }))}</p>
+    </div>`;
+}
+
+function manualStatusHtml(c) {
+  if (c.usedAt) return `<span class="invite-on">✓ ${escapeHtml(c.usedBy ? t('Used by {account}', { account: c.usedBy }) : t('Used'))}</span>`;
+  if (Date.parse(c.expiresAt) <= Date.now()) return `<span class="muted-copy">○ ${escapeHtml(t('Code expired'))}</span>`;
+  return `◐ ${escapeHtml(t('Works until {date}', { date: formatDate(c.expiresAt).slice(0, 16) }))}`;
+}
+
+function manualSectionHtml(clanId, data, isSuperAdmin) {
+  const roster = data.roster || [];
+  const codes = data.manualCodes || [];
+  const selectId = `clan-account-manual-player-${clanId}`;
+  const headId = `clan-account-manual-head-${clanId}`;
+  const isOpen = (c) => !c.usedAt && Date.parse(c.expiresAt) > Date.now();
+  const table = codes.length ? `
+      <div class="table-wrap invite-would">
+        <table class="data-table table-responsive account-invite-manual">
+          <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Made by')}</th><th scope="col">${t('Made')}</th><th scope="col">${t('Status')}</th><th scope="col"><span class="visually-hidden">${t('Actions')}</span></th></tr></thead>
+          <tbody>
+            ${codes.map((c) => `<tr>
+              <td data-label="${escapeHtml(t('Player'))}" data-role="primary"><span class="mrow-name">${memberLink(c.memberId, c.player)}</span><span class="mrow-sub">${manualStatusHtml(c)}</span></td>
+              <td data-label="${escapeHtml(t('Made by'))}">${c.issuedBy ? escapeHtml(c.issuedBy) : '<span class="muted-copy">—</span>'}</td>
+              <td data-label="${escapeHtml(t('Made'))}">${escapeHtml(formatDate(c.createdAt).slice(0, 16))}</td>
+              <td data-label="${escapeHtml(t('Status'))}" data-role="hidden">${manualStatusHtml(c)}</td>
+              <td data-label="">${isOpen(c) ? `<button type="button" class="invite-link-btn" data-withdraw="${c.id}">${t('Withdraw')}</button>` : ''}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
+  return `<section class="invite-manual" aria-labelledby="${headId}">
+      <h4 class="invite-subhead" id="${headId}">${t('Make a code yourself')}</h4>
+      <p class="invite-setting-desc">${t('For when the scanner account can’t send one — muted, or the player doesn’t read the chat. You pass the code on; it works the same: 72 hours, once, only for that player.')}</p>
+      ${roster.length ? `<form class="invite-manual-form" data-manual-form>
+        <label class="visually-hidden" for="${selectId}">${t('Player')}</label>
+        <select id="${selectId}" class="input" required>${playerOptionsHtml(roster, isSuperAdmin)}</select>
+        <button class="btn btn-primary btn-sm" type="submit">${t('Make code')}</button>
+      </form>` : `<p class="muted-copy">${t('The roster is read at the clan’s next scan.')}</p>`}
+      ${madeCodeHtml(madeCodes.get(clanId))}
+      ${table}
+    </section>`;
+}
+
+function wireManualCodes(root, box, clanId) {
+  const form = box.querySelector('[data-manual-form]');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const select = form.querySelector('select');
+    const playerId = Number(select?.value);
+    if (!playerId) {
+      select?.focus();
+      return;
+    }
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    try {
+      const r = await fetch(`/api/clans/${clanId}/account-invites/codes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ playerId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        notify(t('Could not make a code: {error}', { error: j.error || r.status }), t('Make a code yourself'));
+        return;
+      }
+      madeCodes.set(clanId, j);
+      await loadAccountInvites(root, clanId);
+      box.querySelector('.invite-made [data-copy="code"]')?.focus();
+    } catch {
+      notify(t('Connection failed'), t('Make a code yourself'));
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
+
+  for (const btn of box.querySelectorAll('.invite-made [data-copy]')) {
+    btn.addEventListener('click', async () => {
+      const made = madeCodes.get(clanId);
+      if (!made) return;
+      await copyTextToClipboard(btn.dataset.copy === 'message' ? made.message : made.code);
+      const label = btn.textContent;
+      btn.textContent = `✓ ${t('Copied')}`;
+      setTimeout(() => { btn.textContent = label; }, 1500);
+    });
+  }
+
+  for (const btn of box.querySelectorAll('[data-withdraw]')) {
+    btn.addEventListener('click', async () => {
+      const ok = await confirmDialog(t('Withdraw this code? It stops working at once.'), { title: t('Withdraw'), confirmLabel: t('Withdraw'), danger: true });
+      if (!ok) return;
+      const id = Number(btn.dataset.withdraw);
+      try {
+        const r = await fetch(`/api/clans/${clanId}/account-invites/codes/${id}`, { method: 'DELETE' });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          notify(t('Could not withdraw the code: {error}', { error: j.error || r.status }), t('Make a code yourself'));
+        }
+      } catch {
+        notify(t('Connection failed'), t('Make a code yourself'));
+      }
+      if (madeCodes.get(clanId)?.codeId === id) madeCodes.delete(clanId);
+      void loadAccountInvites(root, clanId);
+    });
   }
 }
 

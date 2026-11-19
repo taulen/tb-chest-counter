@@ -349,6 +349,9 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       { name: 'GET /clans/1/account-invites', method: 'get', path: '/api/clans/1/account-invites' },
       { name: 'PUT /clans/1/account-invites', method: 'put', path: '/api/clans/1/account-invites', body: { enabled: false } },
       { name: 'PUT /clans/1/account-invites (welcome)', method: 'put', path: '/api/clans/1/account-invites', body: { welcomeMode: 'off' } },
+      // Codes made by hand: whoever holds one becomes that player on the site.
+      { name: 'POST /clans/1/account-invites/codes', method: 'post', path: '/api/clans/1/account-invites/codes', body: { playerId: 999999 } },
+      { name: 'DELETE /clans/1/account-invites/codes/1', method: 'delete', path: '/api/clans/1/account-invites/codes/1' },
     ];
 
     for (const ep of CLAN_ADMIN) {
@@ -1065,6 +1068,32 @@ describe('role-gate enforcement (real auth + real routes)', () => {
       for (let i = 900; out.length < 5; i++) out.push({ playerId: i, role: 5 });
       return out;
     };
+
+    it('codes made by hand: the admin sees the code and a ready message once; a player with an account only the superadmin may get one for', async () => {
+      const player = (playerId: number, name: string) => getDb().prepare(
+        `INSERT INTO game_players (clan_id, player_id, name, role, joined_at, in_clan, first_seen, last_seen)
+         VALUES (1, ?, ?, 4, 1790000000, 1, '2026-11-01', '2026-11-18')`,
+      ).run(playerId, name);
+      player(531, 'Fresh');
+      player(532, 'Taken');
+      link(ids.user1.userId, 1, 532, 4);
+      const made = await send('post', '/api/clans/1/account-invites/codes', 'admin1', { playerId: 531 });
+      expectStatus(made.status, 200);
+      const body = made.body as { code: string; message: string; player: string; account: string | null };
+      expect(body.code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+      expect(body.message).toContain(body.code);
+      expect(body).toMatchObject({ player: 'Fresh', account: null });
+      // Never shown again: the listing says who made it for whom, not the code.
+      const listing = JSON.stringify((await send('get', '/api/clans/1/account-invites', 'admin1')).body);
+      expect(listing).not.toContain(body.code);
+      expect(listing).not.toContain(body.code.replace('-', ''));
+      expect(listing).toContain('"issuedBy"');
+      expectStatus((await send('post', '/api/clans/1/account-invites/codes', 'admin1', { playerId: 532 })).status, 409);
+      const su = await send('post', '/api/clans/1/account-invites/codes', 'super', { playerId: 532 });
+      expectStatus(su.status, 200);
+      expect((su.body as { account: string | null }).account).not.toBeNull();
+      expectStatus((await send('post', '/api/clans/1/account-invites/codes', 'admin1', { playerId: 533 })).status, 404);
+    });
 
     it('a role that follows the game can\'t be changed by hand (409), by a clan admin or the superadmin', async () => {
       link(ids.user1.userId, 1, 501, 4);

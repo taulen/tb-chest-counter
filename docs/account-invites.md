@@ -16,9 +16,9 @@ Code: [account-invite-repo.ts](../src/data/repositories/account-invite-repo.ts)
 
 ## Getting a code
 
-Two ways, each its own per-clan setting under **Clans → Account invites via
-chat**, both **off by default**, switched by that clan's admins or the
-superadmin:
+Three ways, all under **Clans → Account invites via chat**. The first two
+are per-clan settings, both **off by default**, switched by that clan's
+admins or the superadmin; the third is always there for them:
 
 1. **Asking** — the player DMs the scanner account one word: `code`,
    `invite`, `tracker`, `код`, `código` or `codigo` (the whole message, any
@@ -43,6 +43,29 @@ superadmin:
    **Once per player per clan, ever** (`chat_invite_welcomes`): a rejoin never
    resends. **Dry run** only lists and logs who would get a code (never the
    code) and sends nothing — those players are still due once it is on.
+
+3. **Made by hand** (v132, Nov 2026) — for when the scanner account can't
+   send one (muted, or the player doesn't read the chat). Under the same
+   section, **Make a code yourself**: a clan admin (or the superadmin) picks a
+   roster player and gets the code on screen, with **Copy code** and **Copy
+   message** (the chat reply's wording — English, no link — so it can go in
+   the game chat or anywhere else). Nothing is sent; the admin passes it on.
+   The same code otherwise: 72 hours, single use, bound to the clan and the
+   player (`account_invite_codes.kind = 'manual'`, no chat account,
+   `issued_by` = who made it). Making another for the same player withdraws
+   the earlier unused one; at most 50 unused per clan; **Withdraw** stops one
+   at once. The list shows who made each, for whom, and what became of it —
+   never the code (only its hash is kept; the page shows it until it is left).
+   It doesn't count as a chat code: no 10-minute cooldown for the player's own
+   request, and a pending welcome isn't marked "asked themselves".
+   **The guard:** whoever holds the code becomes that player, so a code made
+   by hand never takes over an existing account unless the superadmin made
+   it. A clan admin can't make one for a player who already has an account
+   (409), and at redeem time — signed out, the player has an account by
+   then, maker not (or no longer) superadmin — it is refused as
+   `manual-recover`. Otherwise a clan admin could reset the password of an
+   account that also holds other clans. The superadmin's code resets it like a
+   chat code; a superadmin's own players get none.
 
 The messages carry **no link**: the game blocks them. The site is written as
 its host with a space around each dot — "Go to cwb . fyi and pick "Have a
@@ -143,6 +166,7 @@ in one transaction:
 | signed out | has no account | **new**: choose a username (prefilled from the in-game name) and password |
 | signed out | has an account | **recover**: choose a new password; every old session ends |
 | signed out | linked to the superadmin | **superadmin-recover**: refused — a code never resets a superadmin's password (a shared game account must not open the site's top role); the check names no account |
+| signed out | has an account, code made by hand by a clan admin | **manual-recover**: refused — sign in, or get a code from the scanner account; names no account |
 | signed in | — | **add-clan**: the code's clan is added to the account |
 | signed in, old account, own clan | — | **link**: the old account is linked; its role now follows the rank |
 | signed in | linked to another account | refused — the superadmin can unlink |
@@ -221,6 +245,6 @@ welcome_enabled_at, welcome_backlog_at), `user_game_links` (account ↔ player,
 several per clan since v130 — alts; chat_user_id, rank, on_roster),
 `user_clan_main` (v130: the player an account plays as in a clan), `chat_invite_requests`,
 `chat_invite_welcomes`, `account_invite_codes` (sha256 only, kind
-reply/welcome), `chat_send_state` (v131: the last invite DM, a mute's pause
-and its count). Deleting a clan or a user clears them
+reply/welcome/manual; v132 `issued_by` for codes made by hand),
+`chat_send_state` (v131: the last invite DM, a mute's pause and its count). Deleting a clan or a user clears them
 ([fk-delete-guards.test.ts](../tests/data/fk-delete-guards.test.ts)).

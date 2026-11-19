@@ -1701,6 +1701,34 @@ label {
 }
 .invite-subhead { margin: 4px 0 0; font-size: 14px; }
 
+/* Codes made by hand: a player picker, then the code just made, then the list. */
+.invite-manual { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.invite-manual .invite-subhead { margin: 0; }
+.invite-manual-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.invite-manual-form select.input { width: min(22em, 100%); min-width: 0; }
+.invite-made {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-gold);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.invite-made-head { font-size: 13.5px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.invite-made-head strong { color: var(--text-primary); }
+.invite-made-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-gold);
+  user-select: all;
+}
+.invite-made-meta { font-size: 12.5px; color: var(--text-secondary); }
+.invite-made-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.invite-made-note { margin: 0; max-width: 72ch; font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
+
 @media (max-width: 640px) {
   /* The three-way choice drops under its text and spans the row. */
   .invite-setting:has(.invite-segmented) .invite-setting-control { flex-basis: 100%; }

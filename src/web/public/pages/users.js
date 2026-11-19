@@ -129,6 +129,8 @@ const AUDIT_ACTION_LABELS = {
   update_resource_capture: t('Update resource capture settings'),
   // Accounts from the game (v127).
   'clan.account_invites.update': t('Update account invites'),
+  'clan.account_invites.manual_code': t('Make an account code by hand'),
+  'clan.account_invites.manual_code_withdrawn': t('Withdraw an account code'),
   update_invite_site_name: t('Set the site name in invite messages'),
   unlink_game_player: t('Unlink account from player'),
   'account.join.new': t('Account created with a game code'),
@@ -549,6 +551,9 @@ function formatAuditDetails(action, d, ctx) {
       return `${d.enabled ? esc(t('{n} points a week', { n: Number(d.weeklyPoints ?? 0).toLocaleString() })) : esc(t('Off'))}${clanSuffix(d.clanId)}`;
     case 'set_avatar':
       return esc(t('Photo changed'));
+    case 'clan.account_invites.manual_code':
+    case 'clan.account_invites.manual_code_withdrawn':
+      return `${d.player ? esc(d.player) : '<span class="muted-copy">—</span>'}${clanSuffix(d.clanId)}`;
   }
 
   // Any other action: the keys that mean something to a person, readably.
