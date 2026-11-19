@@ -148,7 +148,7 @@ export async function renderHome(el) {
   });
 
   const ctx = {
-    stats, role, isAdmin, isSuper, period, offset, win, running, rolloverHr, weekStart,
+    stats, role, isAdmin, isSuper, period, offset, win, running, rolloverHr, weekStart, fraction,
     goalPts, pacePts, rows, prevEntries: asList(prevEntries), analytics,
     events: asList(events?.events), recent: asList(recent), records,
     changes: asList(changes?.entries), ranks: asList(ranks?.entries),
@@ -279,44 +279,58 @@ function clanPointsTile(ctx) {
   return tile('points', t('Clan points'), body, { span: 8, link: tileLink('#analytics', t('Analytics')) });
 }
 
-/** Cumulative points by game day: this period (gold), the one before (grey), target pace (dotted). */
+/**
+ * Cumulative points by game day: this period (gold), the one before (grey), target pace (dotted).
+ *
+ * The x axis is time through the window, the same axis the target-pace line is
+ * drawn on (0 at the window's start, 1 at its end). Every line starts at 0 at
+ * the start, a finished day's running total sits at that day's END, and today's
+ * partial total sits at now — so where the gold line stops, the dotted line is
+ * at "Target pace now". Plotting day i's total at i/(days-1) instead put the
+ * first day's whole total at the window's start and drew every line a day
+ * ahead of the pace line.
+ */
 function chartHtml(ctx, target) {
   const cur = ctx.analytics?.current;
   const prev = ctx.analytics?.previous;
   if (!ctx.win || ctx.period === 'daily' || !cur?.fromDay || !cur?.toDay) return '';
   const days = dayList(cur.fromDay, cur.toDay);
   if (days.length < 2) return '';
+  const n = days.length;
   const byDay = new Map((cur.days || []).map((d) => [d.day, d.earnedPoints ?? d.points ?? 0]));
   const today = ctx.running ? new Date(Date.now() - ctx.rolloverHr * 3_600_000).toISOString().slice(0, 10) : null;
   let acc = 0;
-  const thisSeries = [];
-  for (const d of days) {
+  const thisSeries = [[0, 0]];
+  for (const [i, d] of days.entries()) {
     if (today && d > today) break;
     acc += byDay.get(d) || 0;
-    thisSeries.push(acc);
+    thisSeries.push([d === today ? ctx.fraction : (i + 1) / n, acc]);
   }
   const prevDays = prev?.fromDay && prev?.toDay ? dayList(prev.fromDay, prev.toDay) : [];
   const prevByDay = new Map((prev?.days || []).map((d) => [d.day, d.earnedPoints ?? d.points ?? 0]));
   let pacc = 0;
-  const prevSeries = prevDays.slice(0, days.length).map((d) => (pacc += prevByDay.get(d) || 0));
-  const top = Math.max(target || 0, ...thisSeries, ...prevSeries, 1);
+  const prevSeries = [[0, 0], ...prevDays.slice(0, n).map((d, i) => [(i + 1) / n, (pacc += prevByDay.get(d) || 0)])];
+  // A period before with nothing in it (the clan wasn't tracked yet) is no line to compare with.
+  const showPrev = pacc > 0;
+  const top = Math.max(target || 0, ...thisSeries.map((p) => p[1]), ...(showPrev ? prevSeries.map((p) => p[1]) : []), 1);
   const W = 600;
   const H = 150;
-  const x = (i) => (i / (days.length - 1)) * W;
+  const x = (f) => f * W;
   const y = (v) => H - (v / top) * (H - 6) - 3;
-  const line = (s) => s.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const area = thisSeries.length > 1 ? `${line(thisSeries)} L${x(thisSeries.length - 1).toFixed(1)},${H} L0,${H} Z` : '';
-  const aria = t('Clan points by game day: {n} so far this period', { n: num(thisSeries[thisSeries.length - 1] || 0) });
+  const line = (s) => s.map(([f, v], i) => `${i ? 'L' : 'M'}${x(f).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const last = thisSeries[thisSeries.length - 1];
+  const area = thisSeries.length > 1 ? `${line(thisSeries)} L${x(last[0]).toFixed(1)},${H} L0,${H} Z` : '';
+  const aria = t('Clan points by game day: {n} so far this period', { n: num(last[1]) });
   return `<figure class="home-chart">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(aria)}">
         ${area ? `<path class="home-chart-area" d="${area}"></path>` : ''}
         ${target ? `<path class="home-chart-target" d="M0,${y(0).toFixed(1)} L${W},${y(target).toFixed(1)}"></path>` : ''}
-        ${prevSeries.length > 1 ? `<path class="home-chart-prev" d="${line(prevSeries)}"></path>` : ''}
+        ${showPrev ? `<path class="home-chart-prev" d="${line(prevSeries)}"></path>` : ''}
         ${thisSeries.length > 1 ? `<path class="home-chart-this" d="${line(thisSeries)}"></path>` : ''}
       </svg>
       <figcaption class="home-chart-key">
         <span><span class="home-key is-this" aria-hidden="true"></span>${t('This period')}</span>
-        ${prevSeries.length > 1 ? `<span><span class="home-key is-prev" aria-hidden="true"></span>${t('The period before')}</span>` : ''}
+        ${showPrev ? `<span><span class="home-key is-prev" aria-hidden="true"></span>${t('The period before')}</span>` : ''}
         ${target ? `<span><span class="home-key is-target" aria-hidden="true"></span>${t('Target pace')}</span>` : ''}
       </figcaption>
     </figure>`;
