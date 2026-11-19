@@ -19,6 +19,7 @@ import {
   changePassword,
   getUserById,
   getClanAccessRole,
+  isUsernameTaken,
   listClanAccess,
   logSystemAction,
   removeClanAccess,
@@ -1056,8 +1057,7 @@ export function redeemJoin(
     let userId: number;
     if (plan.mode === 'new') {
       if (!creds.username || !creds.password) throw new JoinError('Username and password required');
-      const taken = db.prepare('SELECT 1 FROM users WHERE username = ?').get(creds.username.trim());
-      if (taken) throw new JoinError('Username already exists', 409);
+      if (isUsernameTaken(creds.username)) throw new JoinError('Username already exists', 409);
       userId = createUser(creds.username, creds.password, plan.role, undefined, info.clanId).id;
       insertLink(userId, info, now);
     } else if (plan.mode === 'link-player') {

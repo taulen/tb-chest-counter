@@ -181,6 +181,7 @@ export const ui = {
   "This player is already linked to another account. Ask the superadmin to unlink it.": "Этот игрок уже привязан к другому аккаунту. Попросите суперадмина отвязать его.",
   "This player is linked to a superadmin account; its password cannot be reset with a code.": "Этот игрок привязан к аккаунту суперадмина; его пароль нельзя сбросить кодом.",
   "That username is taken. Pick another.": "Это имя пользователя занято. Выберите другое.",
+  "An account named <strong>{name}</strong> already exists. If it is yours, sign in first and enter this code again: it links that account instead of making a new one.": "Учётная запись <strong>{name}</strong> уже существует. Если она ваша, сначала войдите, а затем снова введите этот код: он привяжет эту учётную запись вместо создания новой.",
   "Username must be at least 3 characters": "Имя пользователя должно содержать не менее 3 символов",
   "Username must be 32 characters or fewer": "Имя пользователя должно содержать не более 32 символов",
   "Username can only contain letters, numbers, dot, underscore, and dash": "Имя пользователя может содержать только буквы, цифры, точку, подчёркивание и дефис",

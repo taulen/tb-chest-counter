@@ -67,6 +67,32 @@ export function normalizeUsername(username: string): string {
   return username.trim();
 }
 
+/**
+ * A username is taken when any account holds it IGNORING CASE: "Balbine" and
+ * "balbine" are one name to a person, and allowing both let a player who
+ * joined with a code while signed out make a second account beside their old
+ * one (clan 2, Nov 2026). The column's UNIQUE is case-sensitive (BINARY), so this
+ * is the check; usernames are ASCII by policy, which NOCASE folds exactly.
+ * Sign-in still matches the exact name.
+ */
+export function isUsernameTaken(username: string): boolean {
+  return existingUsername(username) !== null;
+}
+
+/** The stored spelling of the account holding this name ignoring case, or null. */
+export function existingUsername(username: string): string | null {
+  const row = getDb().prepare('SELECT username FROM users WHERE username = ? COLLATE NOCASE ORDER BY id LIMIT 1')
+    .get(normalizeUsername(username)) as { username: string } | undefined;
+  return row?.username ?? null;
+}
+
+export class UsernameTakenError extends Error {
+  constructor() {
+    super('Username already exists');
+    this.name = 'UsernameTakenError';
+  }
+}
+
 export function validateUsernamePolicy(username: string): UsernamePolicyResult {
   const normalized = normalizeUsername(username);
 
@@ -156,8 +182,9 @@ export function createUser(
 ): User {
   const db = getDb();
   const now = new Date().toISOString();
-  const passwordHash = hashPassword(password);
   const normalizedUsername = normalizeUsername(username);
+  if (isUsernameTaken(normalizedUsername)) throw new UsernameTakenError();
+  const passwordHash = hashPassword(password);
 
   // Superadmins are cross-clan — clan_id must be NULL. Everyone else needs
   // a clan; default to clan #1 for legacy callers that haven't been

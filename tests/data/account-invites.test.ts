@@ -139,6 +139,17 @@ describe('joining with a code', () => {
     expect(() => redeemJoin(offCode, null, { username: 'again', password: PW }, NOW)).toThrow(JoinError);
   });
 
+  it('new: a username that differs from an existing account only by case is taken', () => {
+    userRepo.createUser('balbine', PW, 'user', undefined, 1);
+    gamePlayer(1, 24, 'Balbine', 4);
+    const c = issueCode(1, 24);
+    expect(() => redeemJoin(c, null, { username: 'Balbine', password: PW }, NOW)).toThrow('Username already exists');
+    expect(accountForPlayer(24)).toBeNull();
+    // The code is still unused: the player can sign in and link the old account.
+    expect(lookupCode(c, NOW)?.playerId).toBe(24);
+    expect(() => userRepo.createUser('BALBINE', PW, 'user', undefined, 1)).toThrow(userRepo.UsernameTakenError);
+  });
+
   it('recover: signed out, the player already has an account → new password, every old session ends', () => {
     gamePlayer(1, 31, 'Rec', 4);
     const first = redeemJoin(issueCode(1, 31), null, { username: 'rec', password: PW }, NOW);

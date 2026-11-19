@@ -3,11 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SESSION_TTL_MS = exports.ALLOWED_LANGUAGES = exports.ALLOWED_THEMES = void 0;
+exports.SESSION_TTL_MS = exports.UsernameTakenError = exports.ALLOWED_LANGUAGES = exports.ALLOWED_THEMES = void 0;
 exports.isClanRole = isClanRole;
 exports.isValidTheme = isValidTheme;
 exports.isValidLanguage = isValidLanguage;
 exports.normalizeUsername = normalizeUsername;
+exports.isUsernameTaken = isUsernameTaken;
+exports.existingUsername = existingUsername;
 exports.validateUsernamePolicy = validateUsernamePolicy;
 exports.validatePasswordPolicy = validatePasswordPolicy;
 exports.createUser = createUser;
@@ -57,6 +59,30 @@ function isValidLanguage(value) {
 function normalizeUsername(username) {
     return username.trim();
 }
+/**
+ * A username is taken when any account holds it IGNORING CASE: "Balbine" and
+ * "balbine" are one name to a person, and allowing both let a player who
+ * joined with a code while signed out make a second account beside their old
+ * one (clan 2, Nov 2026). The column's UNIQUE is case-sensitive (BINARY), so this
+ * is the check; usernames are ASCII by policy, which NOCASE folds exactly.
+ * Sign-in still matches the exact name.
+ */
+function isUsernameTaken(username) {
+    return existingUsername(username) !== null;
+}
+/** The stored spelling of the account holding this name ignoring case, or null. */
+function existingUsername(username) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT username FROM users WHERE username = ? COLLATE NOCASE ORDER BY id LIMIT 1')
+        .get(normalizeUsername(username));
+    return row?.username ?? null;
+}
+class UsernameTakenError extends Error {
+    constructor() {
+        super('Username already exists');
+        this.name = 'UsernameTakenError';
+    }
+}
+exports.UsernameTakenError = UsernameTakenError;
 function validateUsernamePolicy(username) {
     const normalized = normalizeUsername(username);
     if (normalized.length < 3) {
@@ -124,8 +150,10 @@ function rowToUser(row) {
 function createUser(username, password, role = 'user', createdBy, clanId) {
     const db = (0, database_js_1.getDb)();
     const now = new Date().toISOString();
-    const passwordHash = hashPassword(password);
     const normalizedUsername = normalizeUsername(username);
+    if (isUsernameTaken(normalizedUsername))
+        throw new UsernameTakenError();
+    const passwordHash = hashPassword(password);
     // Superadmins are cross-clan — clan_id must be NULL. Everyone else needs
     // a clan; default to clan #1 for legacy callers that haven't been
     // updated yet (the single existing clan in pre-multi-tenant deployments).

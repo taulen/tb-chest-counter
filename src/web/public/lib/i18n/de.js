@@ -181,6 +181,7 @@ export const ui = {
   "This player is already linked to another account. Ask the superadmin to unlink it.": "Dieser Spieler ist bereits mit einem anderen Konto verknüpft. Bitte den Superadmin, die Verknüpfung zu lösen.",
   "This player is linked to a superadmin account; its password cannot be reset with a code.": "Dieser Spieler ist mit einem Superadmin-Konto verknüpft; dessen Passwort lässt sich nicht mit einem Code zurücksetzen.",
   "That username is taken. Pick another.": "Dieser Benutzername ist vergeben. Wähle einen anderen.",
+  "An account named <strong>{name}</strong> already exists. If it is yours, sign in first and enter this code again: it links that account instead of making a new one.": "Ein Konto namens <strong>{name}</strong> gibt es bereits. Wenn es deins ist, melde dich zuerst an und gib diesen Code erneut ein: Er verknüpft dann dieses Konto, statt ein neues anzulegen.",
   "Username must be at least 3 characters": "Der Benutzername muss mindestens 3 Zeichen lang sein",
   "Username must be 32 characters or fewer": "Der Benutzername darf höchstens 32 Zeichen lang sein",
   "Username can only contain letters, numbers, dot, underscore, and dash": "Der Benutzername darf nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich enthalten",

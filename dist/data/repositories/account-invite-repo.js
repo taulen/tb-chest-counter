@@ -832,8 +832,7 @@ function redeemJoin(input, viewer, creds, nowMs = Date.now()) {
         if (plan.mode === 'new') {
             if (!creds.username || !creds.password)
                 throw new JoinError('Username and password required');
-            const taken = db.prepare('SELECT 1 FROM users WHERE username = ?').get(creds.username.trim());
-            if (taken)
+            if ((0, user_repo_js_1.isUsernameTaken)(creds.username))
                 throw new JoinError('Username already exists', 409);
             userId = (0, user_repo_js_1.createUser)(creds.username, creds.password, plan.role, undefined, info.clanId).id;
             insertLink(userId, info, now);

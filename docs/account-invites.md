@@ -169,7 +169,7 @@ in one transaction:
 
 | Visitor | Code's player | Result |
 |---|---|---|
-| signed out | has no account | **new**: choose a username (prefilled from the in-game name) and password |
+| signed out | has no account | **new**: choose a username (prefilled from the in-game name) and password. A username is taken in ANY case (`isUsernameTaken`, also enforced by `createUser`): when an account already holds the in-game name — an old hand-made one, most likely theirs — it is not prefilled, and the page names that account and says to sign in and use the code again, which **links** it. Before Nov 19 2026 the check was case-sensitive and clan 2's `balbine` (old) gained a twin `Balbine` this way |
 | signed out | has an account | **recover**: choose a new password; every old session ends |
 | signed out | linked to the superadmin | **superadmin-recover**: refused — a code never resets a superadmin's password (a shared game account must not open the site's top role); the check names no account |
 | signed out | has an account, code made by hand by a clan admin | **manual-recover**: refused — sign in, or get a code from the scanner account; names no account |

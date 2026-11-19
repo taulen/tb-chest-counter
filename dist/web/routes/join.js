@@ -85,6 +85,11 @@ function createJoinRouter() {
             return res.status(404).json({ error: INVALID });
         const session = (0, auth_js_1.optionalSessionUser)(req);
         const plan = (0, account_invite_repo_js_1.planJoin)(info, session?.user ?? null);
+        // A new account would take the player's own name, but an account already
+        // holds it (any case) — most likely theirs, made by hand before codes. Not
+        // prefilled; the page says to sign in and use the code to link that one.
+        const suggested = plan.mode === 'new' ? suggestUsername(info.playerName) : '';
+        const nameTakenBy = suggested ? userRepo.existingUsername(suggested) : null;
         res.json({
             mode: plan.mode,
             clan: { id: info.clanId, name: info.clanName },
@@ -92,7 +97,8 @@ function createJoinRouter() {
             role: plan.role,
             username: plan.username,
             viewer: session ? { username: session.user.username } : null,
-            suggestedUsername: plan.mode === 'new' ? suggestUsername(info.playerName) : '',
+            suggestedUsername: nameTakenBy ? '' : suggested,
+            existingUsername: nameTakenBy,
             expiresAt: info.expiresAt,
         });
     });
@@ -128,9 +134,10 @@ function createJoinRouter() {
                 const msg = REFUSALS[err.message] ?? err.message;
                 return res.status(err.status).json({ error: msg });
             }
-            // The username's UNIQUE constraint, raced.
-            if (/UNIQUE/i.test(String(err)))
+            // The username taken (any case), or its UNIQUE constraint raced.
+            if (err instanceof userRepo.UsernameTakenError || /UNIQUE/i.test(String(err))) {
                 return res.status(409).json({ error: 'Username already exists' });
+            }
             throw err;
         }
         // Signed out: sign them in. Either way, land on the clan the code is for —

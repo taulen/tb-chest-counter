@@ -787,7 +787,7 @@ export async function renderUsers(el) {
       <summary class="card-header"><h2>${t('Create User')}</h2></summary>
       <div class="card-body card-body-padded">
         <div class="inline-form-row">
-          <div><label>${t('Username')}</label><input type="text" id="newUsername" class="input"></div>
+          <div><label>${t('Username')}</label><input type="text" id="newUsername" class="input" autocapitalize="none" spellcheck="false"></div>
           <div><label>${t('Password')}</label><input type="password" id="newPassword" class="input"></div>
           <div><label>${t('Role')}</label><select id="newRole" class="input">
             ${roleOptions.map((r) => `<option value="${r}">${CREATE_ROLE_LABELS[r] ?? r}</option>`).join('')}

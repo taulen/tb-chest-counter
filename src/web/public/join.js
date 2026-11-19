@@ -131,10 +131,12 @@ function renderAction(info) {
     case 'new':
       form = `
         <label for="username">${t('Username')}</label>
-        <input type="text" id="username" class="input" autocomplete="username" spellcheck="false" maxlength="32" value="${esc(info.suggestedUsername || '')}" required>
+        <input type="text" id="username" class="input" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" value="${esc(info.suggestedUsername || '')}" required>
         ${passwordFields()}
         <button type="submit" class="btn">${t('Create account')}</button>`;
-      note = roleWords(info.role);
+      note = info.existingUsername
+        ? `${t('An account named <strong>{name}</strong> already exists. If it is yours, sign in first and enter this code again: it links that account instead of making a new one.', { name: esc(info.existingUsername) })} ${roleWords(info.role)}`
+        : roleWords(info.role);
       break;
     case 'recover':
       note = t('This player already has an account: <strong>{name}</strong>. Choose a new password to sign in.', { name: esc(info.username || '') });

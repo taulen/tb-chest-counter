@@ -132,6 +132,22 @@ describe('/api/join', () => {
     expect(userRepo.authenticate('forgetful', 'NewPass1!word')).not.toBeNull();
   });
 
+  it('new: the player’s name held by an old account in any case is not offered, and is refused (Balbine/balbine, Nov 2026)', async () => {
+    const old = userRepo.createUser('balbine', PW, 'user', undefined, 1);
+    gamePlayer(1, 51, 'Balbine', 4);
+    const c = code(1, 51);
+    const chk = await request(app).post('/api/join/check').send({ code: c });
+    expect(chk.body).toMatchObject({ mode: 'new', suggestedUsername: '', existingUsername: 'balbine' });
+    const dupe = await request(app).post('/api/join/redeem').send({ code: c, username: 'Balbine', password: PW });
+    expect(dupe.status).toBe(409);
+    expect(dupe.body.error).toBe('Username already exists');
+    // Signed in to the old account, the same code links it instead.
+    const cookie = `${SESSION_COOKIE_NAME}=${userRepo.createSession(old.id)}`;
+    const linked = await request(app).post('/api/join/redeem').set('Cookie', cookie).send({ code: c });
+    expect(linked.body).toMatchObject({ mode: 'link', user: { id: old.id } });
+    expect(getDb().prepare('SELECT COUNT(*) AS n FROM users').get()).toMatchObject({ n: 1 });
+  });
+
   it('wrong guesses are limited per address', async () => {
     let last = 0;
     for (let i = 0; i < 12; i++) last = (await request(app).post('/api/join/check').send({ code: `WRONG${i}XX` })).status;
