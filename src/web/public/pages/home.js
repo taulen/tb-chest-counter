@@ -235,9 +235,30 @@ function unlinkedTile() {
   return tile('you', t('Your week'), body, { span: 8, link });
 }
 
-/** The clan total against its target (goal × members) and the bands, for members. */
+/**
+ * The clan's points for the window, and for the period before (cut at the same
+ * point while this one runs; null for all time): every chest the clan
+ * collected, from the analytics rollup — chests of members who have since left
+ * and end-of-event clan rewards included, the same figure as the Analytics
+ * page's Points. The board rows are today's roster only (includeAll keeps
+ * is_active = 1), so adding them up dropped whatever departed members
+ * collected. Falls back to those rows only if the analytics read failed.
+ */
+function clanPoints(ctx) {
+  const cur = ctx.analytics?.current?.totals;
+  if (!cur) {
+    return {
+      points: ctx.rows.reduce((s, r) => s + r.points, 0),
+      prev: ctx.win ? ctx.prevEntries.reduce((s, e) => s + (e.totalPoints || 0), 0) : null,
+    };
+  }
+  const basis = ctx.analytics.previousToDate?.totals ?? ctx.analytics.previous?.totals ?? null;
+  return { points: cur.points || 0, prev: ctx.win && basis ? basis.points || 0 : null };
+}
+
+/** The clan total against its target (goal × today's members) and the bands, for members. */
 function clanSnapshotTile(ctx) {
-  const total = ctx.rows.reduce((s, r) => s + r.points, 0);
+  const total = clanPoints(ctx).points;
   const target = ctx.goalPts ? ctx.goalPts * ctx.rows.length : null;
   const counts = bandCounts(ctx.rows);
   const body = `
@@ -248,10 +269,12 @@ function clanSnapshotTile(ctx) {
   return tile('clan', t('The clan'), body, { span: 4, link: tileLink('#members', t('Members')) });
 }
 
-/** Clan points against the clan target, with a cumulative chart: this period, the one before, target pace. */
+/**
+ * Clan points against the clan target, with a cumulative chart: this period, the one before, target pace.
+ * The points are every chest collected (clanPoints); the target is the goal for each of today's members.
+ */
 function clanPointsTile(ctx) {
-  const total = ctx.rows.reduce((s, r) => s + r.points, 0);
-  const prevTotal = ctx.win ? ctx.prevEntries.reduce((s, e) => s + (e.totalPoints || 0), 0) : null;
+  const { points: total, prev: prevTotal } = clanPoints(ctx);
   const target = ctx.goalPts ? ctx.goalPts * ctx.rows.length : null;
   const paceNow = ctx.pacePts ? ctx.pacePts * ctx.rows.length : null;
   const deltaLabel = ctx.win ? DELTA_LABEL[ctx.period][ctx.running ? 'now' : 'past']() : '';
@@ -297,7 +320,8 @@ function chartHtml(ctx, target) {
   const days = dayList(cur.fromDay, cur.toDay);
   if (days.length < 2) return '';
   const n = days.length;
-  const byDay = new Map((cur.days || []).map((d) => [d.day, d.earnedPoints ?? d.points ?? 0]));
+  // `points`, not `earnedPoints`: the clan's line is every chest collected, so it ends on the headline.
+  const byDay = new Map((cur.days || []).map((d) => [d.day, d.points ?? 0]));
   const today = ctx.running ? new Date(Date.now() - ctx.rolloverHr * 3_600_000).toISOString().slice(0, 10) : null;
   let acc = 0;
   const thisSeries = [[0, 0]];
@@ -307,7 +331,7 @@ function chartHtml(ctx, target) {
     thisSeries.push([d === today ? ctx.fraction : (i + 1) / n, acc]);
   }
   const prevDays = prev?.fromDay && prev?.toDay ? dayList(prev.fromDay, prev.toDay) : [];
-  const prevByDay = new Map((prev?.days || []).map((d) => [d.day, d.earnedPoints ?? d.points ?? 0]));
+  const prevByDay = new Map((prev?.days || []).map((d) => [d.day, d.points ?? 0]));
   let pacc = 0;
   const prevSeries = [[0, 0], ...prevDays.slice(0, n).map((d, i) => [(i + 1) / n, (pacc += prevByDay.get(d) || 0)])];
   // A period before with nothing in it (the clan wasn't tracked yet) is no line to compare with.
