@@ -32,6 +32,9 @@ function createAccountInvitesRouter() {
         const names = new Map((0, database_js_1.getDb)().prepare('SELECT player_id, name FROM game_players WHERE clan_id = ?').all(id)
             .map((r) => [r.player_id, r.name]));
         const scanner = (0, database_js_1.getDb)().prepare('SELECT account FROM clan_scan_accounts WHERE clan_id = ?').get(id);
+        // Each player's member, for the tables' profile links.
+        const memberIds = (0, account_invite_repo_js_1.memberIdsByPlayer)(id);
+        const memberIdOf = (playerId) => (playerId === null ? null : memberIds.get((0, account_invite_repo_js_1.playerKey)(id, playerId)) ?? null);
         res.json({
             settings: (0, account_invite_repo_js_1.getInviteSettings)(id),
             sendingDisabled: (0, chat_send_js_1.chatSendingDisabled)(),
@@ -52,6 +55,7 @@ function createAccountInvitesRouter() {
             recent: (0, account_invite_repo_js_1.recentInviteRequests)(id, 15).map((r) => ({
                 requestedAt: r.requestedAt,
                 player: r.playerId !== null ? names.get(r.playerId) ?? null : null,
+                memberId: memberIdOf(r.playerId),
                 status: r.status,
                 reason: r.reason,
             })),
@@ -62,7 +66,7 @@ function createAccountInvitesRouter() {
             // shown at once (no scan needed). Live mode lists its sends above instead.
             wouldGetCode: (0, account_invite_repo_js_1.getInviteSettings)(id).welcomeMode === 'dry-run'
                 ? (0, account_invite_repo_js_1.welcomeCandidates)(id, 0, { backlog: true, live: true, limit: account_invite_repo_js_1.WELCOME_DRY_RUN_LIMIT })
-                    .map((c) => ({ player: c.name, joinedAt: c.joinedAt }))
+                    .map((c) => ({ player: c.name, joinedAt: c.joinedAt, memberId: memberIdOf(c.playerId) }))
                 : [],
         });
     });

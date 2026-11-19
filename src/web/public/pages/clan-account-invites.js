@@ -6,7 +6,7 @@
 // the moment they change (a switch; Off / Dry run / On), the site name as a
 // sentence with an Edit link, and the fine print folded into "How it works".
 
-import { escapeHtml, notify, formatDate, confirmDialog } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, confirmDialog, memberLink } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 import { getCurrentUser } from '../lib/state.js';
@@ -156,7 +156,7 @@ function renderAccountInvites(root, box, clanId, data) {
       <table class="data-table account-invite-would">
         <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th></tr></thead>
         <tbody>
-          ${would.map((w) => `<tr><td>${escapeHtml(w.player)}</td><td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td></tr>`).join('')}
+          ${would.map((w) => `<tr><td>${memberLink(w.memberId, w.player)}</td><td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>` : ''}` : '';
@@ -168,7 +168,7 @@ function renderAccountInvites(root, box, clanId, data) {
         <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th><th scope="col">${t('Sent')}</th><th scope="col">${t('Status')}</th><th scope="col">${t('Account')}</th></tr></thead>
         <tbody>
           ${data.welcomes.map((w) => `<tr>
-            <td>${w.memberId ? `<a href="#member/${w.memberId}">${escapeHtml(w.player)}</a>` : escapeHtml(w.player)}</td>
+            <td>${memberLink(w.memberId, w.player)}</td>
             <td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td>
             <td>${w.status === 'sent' && w.updatedAt ? escapeHtml(formatDate(w.updatedAt)) : ''}</td>
             <td>${welcomeStatusText(w.status, w.reason)}</td>
@@ -186,7 +186,7 @@ function renderAccountInvites(root, box, clanId, data) {
         <tbody>
           ${data.recent.map((r) => `<tr>
             <td>${escapeHtml(formatDate(new Date(r.requestedAt).toISOString()))}</td>
-            <td>${r.player ? escapeHtml(r.player) : `<span class="muted-copy">${t('Unknown')}</span>`}</td>
+            <td>${r.player ? memberLink(r.memberId, r.player) : `<span class="muted-copy">${t('Unknown')}</span>`}</td>
             <td>${statusText(r.status, r.reason)}</td>
           </tr>`).join('')}
         </tbody>
@@ -283,12 +283,13 @@ function welcomeProgressText(p, s) {
 
 /**
  * What became of a sent code: the account now linked to the player (whichever
- * code they used, with when), else whether the code still works.
+ * code they used, with when; its name opens that player's profile), else
+ * whether the code still works.
  */
 function welcomeAccountHtml(w) {
   if (w.account) {
     const when = w.linkedAt ? ` title="${escapeHtml(formatDate(w.linkedAt))}"` : '';
-    return `<span class="invite-on"${when}>✓ ${escapeHtml(w.account)}</span>`;
+    return `<span class="invite-on invite-account"${when}>✓ ${memberLink(w.memberId, w.account)}</span>`;
   }
   if (w.status !== 'sent') return '';
   const expired = w.codeExpiresAt && Date.parse(w.codeExpiresAt) < Date.now();

@@ -3051,6 +3051,7 @@ export const ui = {
   "No audit log entries yet.": "Aucune entrée dans le journal d'audit.",
   "Unlink \"{user}\" from the player {player}? The account keeps its access and role here, which then stop following the game. The player can link again with a new code.": "Délier « {user} » du joueur {player} ? Le compte garde ici son accès et son rôle, qui ne suivent alors plus le jeu. Le joueur pourra se lier à nouveau avec un nouveau code.",
   "Unlink from player": "Délier du joueur",
+  "Unlink {player}": "Délier {player}",
   "Unlink failed": "Échec de la déliaison",
   "Create user failed": "Échec de la création de l'utilisateur",
   "this user": "cet utilisateur",

@@ -18,6 +18,8 @@ import {
   linkedPlayerIds,
   linksInClan,
   mainLink,
+  memberIdsByPlayer,
+  playerKey,
   setMainPlayer,
   lookupCode,
   normalizeCode,
@@ -439,5 +441,32 @@ describe('the session rejects a demoted or departed account at once', () => {
     expect(session(r.user.id)?.user.role).toBe('admin');
     syncLinkedAccounts(1, roster({ 181: 5 }));
     expect(session(r.user.id)?.user.role).toBe('user');
+  });
+});
+
+describe('profile links: the member each linked player is', () => {
+  function member(clanId: number, name: string, playerId: number | null, active: number): number {
+    return (getDb().prepare(
+      `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active, game_player_id)
+       VALUES (?, ?, ?, '2026-11-01', '2026-11-18', ?, ?) RETURNING id`,
+    ).get(clanId, name, name.toLowerCase(), active, playerId) as { id: number }).id;
+  }
+
+  it('maps each clan’s players to their member, and skips members with no player', () => {
+    const here = member(1, 'Here', 501, 1);
+    const gone = member(1, 'Gone', 502, 0);
+    member(1, 'NoPlayer', null, 1);
+    const other = member(2, 'Other', 501, 1);
+
+    const one = memberIdsByPlayer(1);
+    expect(one.get(playerKey(1, 501))).toBe(here);
+    // A member who left still has a profile.
+    expect(one.get(playerKey(1, 502))).toBe(gone);
+    expect(one.has(playerKey(2, 501))).toBe(false);
+    expect(one.size).toBe(2);
+
+    const all = memberIdsByPlayer(null);
+    expect(all.get(playerKey(1, 501))).toBe(here);
+    expect(all.get(playerKey(2, 501))).toBe(other);
   });
 });

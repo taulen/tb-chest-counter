@@ -429,6 +429,24 @@ export function recentWelcomes(clanId: number, limit = 15): Array<{
   }));
 }
 
+/** Key of {@link memberIdsByPlayer}'s map: a game player in one clan. */
+export function playerKey(clanId: number, playerId: number): string {
+  return `${clanId}:${playerId}`;
+}
+
+/**
+ * The member each game player is, per clan (one at most: members are unique
+ * on clan + game player): what a profile link opens (#member/<id>). One clan,
+ * or every clan with null.
+ */
+export function memberIdsByPlayer(clanId: number | null): Map<string, number> {
+  const rows = getDb().prepare(
+    `SELECT clan_id, game_player_id, id FROM members
+      WHERE game_player_id IS NOT NULL${clanId === null ? '' : ' AND clan_id = ?'}`,
+  ).all(...(clanId === null ? [] : [clanId])) as Array<{ clan_id: number; game_player_id: number; id: number }>;
+  return new Map(rows.map((r) => [playerKey(r.clan_id, r.game_player_id), r.id]));
+}
+
 /**
  * Reserve a welcome send, like reserveInviteSend: in one transaction the row
  * goes to `sending` and the code's hash is stored (72 h, single use, bound to

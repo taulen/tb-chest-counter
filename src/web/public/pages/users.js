@@ -3,7 +3,7 @@
 // actions.
 
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
-import { $, esc, formatDate, formatRelativeTime, notify, confirmDialog, selectDialog, contentModal } from '../lib/ui.js';
+import { $, esc, formatDate, formatRelativeTime, notify, confirmDialog, selectDialog, contentModal, memberHash } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { avatarHtml } from '../lib/avatar.js';
@@ -20,6 +20,8 @@ let deletedClans = [];
 
 const HOME_ICON = '<svg class="clan-chip-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>';
 const EDIT_ICON = '<svg class="clan-chips-edit" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+// A broken chain link: take the account off its game player.
+const UNLINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><path d="M8 12h4"/><path d="m2 2 20 20"/></svg>';
 
 // ─── Audit helpers ────────────────────────────────────────────
 //
@@ -724,22 +726,35 @@ export async function renderUsers(el) {
   const gameLinkFor = (u) => gameLinksFor(u)[0] || null;
   const gameLinkLine = (u) => {
     // The superadmin's own players (linked with a code): every clan, each named.
-    if (u.role === 'superadmin') return (u.gameLinks || []).map((link) => oneGameLinkLine(u, link, true)).join('');
-    const links = gameLinksFor(u);
-    if (!links.length) return `<span class="user-game-link is-unlinked">${t('Not linked (old account)')}</span>`;
-    return links.map((link) => oneGameLinkLine(u, link)).join('');
+    const links = u.role === 'superadmin' ? (u.gameLinks || []) : gameLinksFor(u);
+    if (!links.length) {
+      return u.role === 'superadmin' ? '' : `<span class="user-players-none">${t('Not linked (old account)')}</span>`;
+    }
+    return `<span class="user-players">${links.map((link) => playerChip(u, link, u.role === 'superadmin')).join('')}</span>`;
   };
-  const oneGameLinkLine = (u, link, withClan = false) => {
+  /**
+   * One linked player under the username: the name, the in-game rank as a
+   * tag (gold for the ranks that are admins here), and for the superadmin a
+   * small unlink button. The name opens the player's profile — profiles open
+   * in the clan picked in the header, so another clan's player stays text.
+   */
+  const playerChip = (u, link, withClan = false) => {
     const rank = gameRankName(link.rank);
-    const parts = [t('In game: {name}', { name: esc(link.playerName) })];
-    if (rank) parts.push(esc(rank));
-    if (withClan) parts.push(esc(clanShort(link.clanId)));
-    if (!link.onRoster) parts.push(`⚠ ${t('left the clan in the game')}`);
+    const name = link.memberId && link.clanId === activeClanId
+      ? `<a class="member-link user-player-name" href="${memberHash(link.memberId)}">${esc(link.playerName)}</a>`
+      : `<span class="user-player-name">${esc(link.playerName)}</span>`;
+    const tags = [
+      rank ? `<span class="user-player-tag${link.rank === 1 || link.rank === 2 ? ' is-admin-rank' : ''}">${esc(rank)}</span>` : '',
+      withClan ? `<span class="user-player-tag">${esc(clanShort(link.clanId))}</span>` : '',
+    ].join('');
+    const gone = link.onRoster ? '' : `<span class="user-player-gone">⚠ ${t('left the clan in the game')}</span>`;
     // Superadmin: unlinking keeps the account and its access; the role stops following the game.
     const unlink = isSuperAdmin
-      ? ` <button type="button" class="link-btn user-game-unlink" data-unlink-game data-user-id="${u.id}" data-clan-id="${link.clanId}" data-player-id="${esc(String(link.playerId ?? ''))}" data-username="${esc(u.username)}" data-player="${esc(link.playerName)}">${t('Unlink')}</button>`
+      ? `<button type="button" class="user-player-unlink" data-unlink-game data-user-id="${u.id}" data-clan-id="${link.clanId}" data-player-id="${esc(String(link.playerId ?? ''))}" data-username="${esc(u.username)}" data-player="${esc(link.playerName)}" title="${esc(t('Unlink from player'))}" aria-label="${esc(t('Unlink {player}', { player: link.playerName }))}">${UNLINK_ICON}</button>`
       : '';
-    return `<span class="user-game-link${link.onRoster ? '' : ' is-gone'}">${parts.join(' · ')}${unlink}</span>`;
+    // Tags and the button wrap as one unit: never a lone icon on a line of its own.
+    const meta = tags || unlink ? `<span class="user-player-meta">${tags}${unlink}</span>` : '';
+    return `<span class="user-player${link.onRoster ? '' : ' is-gone'}" title="${esc(t('In game: {name}', { name: link.playerName }))}">${name}${meta}${gone}</span>`;
   };
 
   // The page's own button beside the shell's title: open the (folded) form.

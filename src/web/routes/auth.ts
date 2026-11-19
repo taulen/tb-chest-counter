@@ -13,6 +13,8 @@ import {
   linksForClan,
   linksForUser,
   mainLink,
+  memberIdsByPlayer,
+  playerKey,
   setMainPlayer,
   unlinkGameAccount,
 } from '../../data/repositories/account-invite-repo.js';
@@ -278,14 +280,19 @@ export function createAuthRouter(): Router {
   // GET /api/auth/users
   // Admin sees only users in their own clan; superadmin sees everyone.
   // Each account carries the game players it is linked to (v127): every link
-  // for a superadmin, only the viewer's own clan's link for a clan admin.
+  // for a superadmin, only the viewer's own clan's link for a clan admin —
+  // each with the member it is, so the page can link the player's profile.
   router.get('/users', requireAdmin, (req, res) => {
     const viewerClan = req.user!.role === 'superadmin' ? null : req.user!.clanId;
     const links = viewerClan === null ? allGameLinks() : linksForClan(viewerClan);
-    const byUser = new Map<number, Array<{ clanId: number; playerId: number; playerName: string; rank: number | null; onRoster: boolean; linkedAt: string }>>();
+    const memberIds = memberIdsByPlayer(viewerClan);
+    const byUser = new Map<number, Array<{ clanId: number; playerId: number; playerName: string; rank: number | null; onRoster: boolean; linkedAt: string; memberId: number | null }>>();
     for (const l of links) {
       const list = byUser.get(l.userId) ?? [];
-      list.push({ clanId: l.clanId, playerId: l.playerId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt });
+      list.push({
+        clanId: l.clanId, playerId: l.playerId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt,
+        memberId: memberIds.get(playerKey(l.clanId, l.playerId)) ?? null,
+      });
       byUser.set(l.userId, list);
     }
     // Each row's picture as the account shows it in the clan it is listed in

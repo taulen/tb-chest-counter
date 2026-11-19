@@ -3051,6 +3051,7 @@ export const ui = {
   "No audit log entries yet.": "Aún no hay entradas en el registro de auditoría.",
   "Unlink \"{user}\" from the player {player}? The account keeps its access and role here, which then stop following the game. The player can link again with a new code.": "¿Desvincular «{user}» del jugador {player}? La cuenta conserva aquí su acceso y su rol, que dejan de seguir al juego. El jugador puede volver a vincularse con un código nuevo.",
   "Unlink from player": "Desvincular del jugador",
+  "Unlink {player}": "Desvincular a {player}",
   "Unlink failed": "No se pudo desvincular",
   "Create user failed": "Error al crear el usuario",
   "this user": "este usuario",

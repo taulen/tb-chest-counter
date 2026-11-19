@@ -5,6 +5,8 @@ import {
   getInviteSettings,
   isWelcomeMode,
   linksForClan,
+  memberIdsByPlayer,
+  playerKey,
   recentInviteRequests,
   recentWelcomes,
   setInvitesEnabled,
@@ -43,6 +45,9 @@ export function createAccountInvitesRouter(): Router {
     const names = new Map((getDb().prepare('SELECT player_id, name FROM game_players WHERE clan_id = ?').all(id) as Array<{ player_id: number; name: string }>)
       .map((r) => [r.player_id, r.name]));
     const scanner = getDb().prepare('SELECT account FROM clan_scan_accounts WHERE clan_id = ?').get(id) as { account: string } | undefined;
+    // Each player's member, for the tables' profile links.
+    const memberIds = memberIdsByPlayer(id);
+    const memberIdOf = (playerId: number | null): number | null => (playerId === null ? null : memberIds.get(playerKey(id, playerId)) ?? null);
     res.json({
       settings: getInviteSettings(id),
       sendingDisabled: chatSendingDisabled(),
@@ -63,6 +68,7 @@ export function createAccountInvitesRouter(): Router {
       recent: recentInviteRequests(id, 15).map((r) => ({
         requestedAt: r.requestedAt,
         player: r.playerId !== null ? names.get(r.playerId) ?? null : null,
+        memberId: memberIdOf(r.playerId),
         status: r.status,
         reason: r.reason,
       })),
@@ -73,7 +79,7 @@ export function createAccountInvitesRouter(): Router {
       // shown at once (no scan needed). Live mode lists its sends above instead.
       wouldGetCode: getInviteSettings(id).welcomeMode === 'dry-run'
         ? welcomeCandidates(id, 0, { backlog: true, live: true, limit: WELCOME_DRY_RUN_LIMIT })
-          .map((c) => ({ player: c.name, joinedAt: c.joinedAt }))
+          .map((c) => ({ player: c.name, joinedAt: c.joinedAt, memberId: memberIdOf(c.playerId) }))
         : [],
     });
   });

@@ -27,6 +27,8 @@ exports.welcomeCandidates = welcomeCandidates;
 exports.welcomeProgress = welcomeProgress;
 exports.setWelcomeStatus = setWelcomeStatus;
 exports.recentWelcomes = recentWelcomes;
+exports.playerKey = playerKey;
+exports.memberIdsByPlayer = memberIdsByPlayer;
 exports.reserveWelcomeSend = reserveWelcomeSend;
 exports.finishWelcomeSend = finishWelcomeSend;
 exports.lookupCode = lookupCode;
@@ -341,6 +343,20 @@ function recentWelcomes(clanId, limit = 15) {
         player: r.player_name, joinedAt: r.joined_at, status: r.status, reason: r.reason, updatedAt: r.updated_at,
         account: r.account, linkedAt: r.linked_at, memberId: r.member_id, codeExpiresAt: r.code_expires_at,
     }));
+}
+/** Key of {@link memberIdsByPlayer}'s map: a game player in one clan. */
+function playerKey(clanId, playerId) {
+    return `${clanId}:${playerId}`;
+}
+/**
+ * The member each game player is, per clan (one at most: members are unique
+ * on clan + game player): what a profile link opens (#member/<id>). One clan,
+ * or every clan with null.
+ */
+function memberIdsByPlayer(clanId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT clan_id, game_player_id, id FROM members
+      WHERE game_player_id IS NOT NULL${clanId === null ? '' : ' AND clan_id = ?'}`).all(...(clanId === null ? [] : [clanId]));
+    return new Map(rows.map((r) => [playerKey(r.clan_id, r.game_player_id), r.id]));
 }
 /**
  * Reserve a welcome send, like reserveInviteSend: in one transaction the row

@@ -1594,6 +1594,9 @@ label {
 .invite-setting-state { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .invite-setting-note { font-size: 12.5px; color: var(--accent-warn-text); }
 .invite-on { font-weight: 600; color: var(--accent-green-soft-text); }
+/* Codes for members: the account a code became, its name a profile link that keeps the green until hovered. */
+.invite-account .member-link { color: inherit; font-weight: inherit; }
+.invite-account .member-link:hover { color: var(--accent-gold); }
 .invite-off { font-weight: 600; color: var(--text-secondary); }
 .invite-setting-control { flex: none; }
 
@@ -3933,37 +3936,101 @@ details > table {
    and gave the whole table a horizontal scrollbar. */
 .users-table .col-actions { width: 96px; }
 
-/* Under the username: the game player the account is linked to (v127), or
-   "Not linked (old account)". Shown on desktop and phone alike — it says why
-   the role can't be changed by hand. */
-.users-table .user-game-link {
+/* Under the username: the game players the account is linked to (v127; alts
+   v130), one line each — the name (a profile link), the in-game rank as a
+   tag and, for the superadmin, a small unlink icon — or "Not linked (old
+   account)". Shown on desktop and phone alike — it says why the role can't
+   be changed by hand. */
+.users-table .user-players {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 2px;
+  max-width: 100%;
+}
+.users-table .user-player {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  max-width: 100%;
+  min-height: 24px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.users-table .user-player-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.users-table a.user-player-name:hover { color: var(--accent-gold); }
+.users-table .user-player-meta {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+.users-table .user-player-tag {
+  flex: none;
+  padding: 0 7px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* Leader and Superior: the ranks that are admins here. */
+.users-table .user-player-tag.is-admin-rank {
+  border-color: var(--accent-gold-border);
+  background: var(--accent-gold-bg);
+  color: var(--accent-gold);
+}
+.users-table .user-player-gone {
+  font-size: 11.5px;
+  color: var(--accent-warn-text);
+}
+.users-table .user-player.is-gone .user-player-name { color: var(--text-muted); }
+.users-table .user-player-unlink {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 -4px 0 -2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.users-table .user-player-unlink svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.users-table .user-player-unlink:hover {
+  color: var(--accent-red);
+  background: var(--accent-red-bg);
+}
+.users-table .user-player-unlink:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 1px;
+}
+.users-table .user-players-none {
   display: block;
   margin-top: 2px;
   font-size: 12px;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-}
-.users-table .user-game-link.is-unlinked {
   color: var(--text-muted);
-}
-.users-table .user-game-link.is-gone {
-  color: var(--accent-warn-text);
-}
-.users-table .user-game-unlink {
-  background: none;
-  border: none;
-  padding: 4px 2px;
-  margin-left: 4px;
-  color: var(--accent-gold);
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.users-table .user-game-unlink:focus-visible {
-  outline: 2px solid var(--accent-gold);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
 }
 
 /* Superadmin Clan cell: one chip per clan the account is in, each carrying
@@ -7638,10 +7705,11 @@ body.is-scanning .shell-scanner .scan-controls { display: none; }
 .avatar-sm { width: 28px; height: 28px; font-size: 12px; }
 .avatar-xl { width: 96px; height: 96px; font-size: 36px; }
 
-/* Users page: the picture beside the name; the moderation link under it. */
+/* Users page: the picture beside the name (top-aligned: a linked account
+   lists its players under the name); the moderation link under them. */
 .user-cell {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   min-width: 0;
   max-width: 100%;
@@ -7657,18 +7725,29 @@ body.is-scanning .shell-scanner .scan-controls { display: none; }
   text-overflow: ellipsis;
   max-width: 100%;
 }
+/* A quiet moderation action: muted until hovered, then red. */
 .user-photo-remove {
+  margin-top: 2px;
   padding: 2px 0;
   border: 0;
   background: none;
-  color: var(--accent-red);
+  color: var(--text-muted);
   font: inherit;
   font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.user-photo-remove:hover {
+  color: var(--accent-red);
   text-decoration: underline;
   text-underline-offset: 2px;
-  cursor: pointer;
 }
-.user-photo-remove:hover { color: var(--text-primary); }
+.user-photo-remove:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
 
 /* The "Change photo" dialog. */
 .avatar-editor { max-width: 420px; }

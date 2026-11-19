@@ -284,14 +284,19 @@ function createAuthRouter() {
     // GET /api/auth/users
     // Admin sees only users in their own clan; superadmin sees everyone.
     // Each account carries the game players it is linked to (v127): every link
-    // for a superadmin, only the viewer's own clan's link for a clan admin.
+    // for a superadmin, only the viewer's own clan's link for a clan admin —
+    // each with the member it is, so the page can link the player's profile.
     router.get('/users', auth_js_1.requireAdmin, (req, res) => {
         const viewerClan = req.user.role === 'superadmin' ? null : req.user.clanId;
         const links = viewerClan === null ? (0, account_invite_repo_js_1.allGameLinks)() : (0, account_invite_repo_js_1.linksForClan)(viewerClan);
+        const memberIds = (0, account_invite_repo_js_1.memberIdsByPlayer)(viewerClan);
         const byUser = new Map();
         for (const l of links) {
             const list = byUser.get(l.userId) ?? [];
-            list.push({ clanId: l.clanId, playerId: l.playerId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt });
+            list.push({
+                clanId: l.clanId, playerId: l.playerId, playerName: l.playerName, rank: l.rank, onRoster: l.onRoster, linkedAt: l.linkedAt,
+                memberId: memberIds.get((0, account_invite_repo_js_1.playerKey)(l.clanId, l.playerId)) ?? null,
+            });
             byUser.set(l.userId, list);
         }
         // Each row's picture as the account shows it in the clan it is listed in
