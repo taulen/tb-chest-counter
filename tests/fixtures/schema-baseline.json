@@ -266,6 +266,11 @@
   },
   {
     "type": "index",
+    "name": "idx_resource_transactions_batch",
+    "sql": "CREATE INDEX idx_resource_transactions_batch ON resource_transactions(batch_id)"
+  },
+  {
+    "type": "index",
     "name": "idx_resource_transactions_clan",
     "sql": "CREATE INDEX idx_resource_transactions_clan ON resource_transactions(clan_id)"
   },
@@ -293,6 +298,11 @@
     "type": "index",
     "name": "idx_resource_upload_batches_clan",
     "sql": "CREATE INDEX idx_resource_upload_batches_clan ON resource_upload_batches(clan_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_resource_upload_batches_session",
+    "sql": "CREATE INDEX idx_resource_upload_batches_session ON resource_upload_batches(session_id)"
   },
   {
     "type": "index",
@@ -822,7 +832,7 @@
   {
     "type": "table",
     "name": "resource_upload_batches",
-    "sql": "CREATE TABLE resource_upload_batches ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), uploaded_by INTEGER REFERENCES users(id), uploaded_at TEXT NOT NULL, upload_date TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, error_count INTEGER NOT NULL DEFAULT 0, notes TEXT NOT NULL DEFAULT '', file_count INTEGER NOT NULL DEFAULT 1 , source TEXT NOT NULL DEFAULT 'upload')"
+    "sql": "CREATE TABLE resource_upload_batches ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), uploaded_by INTEGER REFERENCES users(id), uploaded_at TEXT NOT NULL, upload_date TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, error_count INTEGER NOT NULL DEFAULT 0, notes TEXT NOT NULL DEFAULT '', file_count INTEGER NOT NULL DEFAULT 1 , source TEXT NOT NULL DEFAULT 'upload', session_id INTEGER)"
   },
   {
     "type": "table",

@@ -212,10 +212,18 @@ describe('recordAndClaim', () => {
       { entryId: 1, playerId: 501, kind: 3, resource: 2, occurredAt: Date.parse('2026-11-15T20:00:00Z') / 1000, amounts: { 2: 100 } }, // day 15: OCR has it
       { entryId: 2, playerId: 501, kind: 3, resource: 2, occurredAt: Date.parse('2026-11-16T20:00:00Z') / 1000, amounts: { 2: 200 } }, // day 16: new
     ];
-    const run = () => recordAndClaim(ctx(sessionRepo.createSession('manual', 1).id), capture([], new Map([[501, miana]]), fakeClient(), ledger));
-    expect((await run()).resourceRows).toBe(1);
-    expect((await run()).resourceRows).toBe(0);
+    const first = sessionRepo.createSession('manual', 1).id;
+    const run = (sessionId: number) => recordAndClaim(ctx(sessionId), capture([], new Map([[501, miana]]), fakeClient(), ledger));
+    expect((await run(first)).resourceRows).toBe(1);
+    expect((await run(sessionRepo.createSession('manual', 1).id)).resourceRows).toBe(0);
     const tx = getDb().prepare('SELECT amount, transaction_date, game_entry_id FROM resource_transactions WHERE game_entry_id IS NOT NULL').all();
     expect(tx).toEqual([{ amount: 200, transaction_date: '2026-11-16', game_entry_id: 2 }]);
+    // The batch names the scan that read it (v134): Scan History counts it under that scan.
+    const scanBatches = getDb().prepare(
+      "SELECT session_id, row_count FROM resource_upload_batches WHERE notes = 'Clan Capital ledger (read from the game)'",
+    ).all();
+    expect(scanBatches).toEqual([{ session_id: first, row_count: 1 }]);
+    const listed = sessionRepo.getRecentSessions(10, 1);
+    expect(listed.find((s) => s.id === first)?.resourceRows).toBe(1);
   });
 });

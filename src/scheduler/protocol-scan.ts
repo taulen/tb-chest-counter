@@ -239,7 +239,7 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
 
   // 3. Ledger → resource rows.
   try {
-    tally.resourceRows = importLedger(clanId, d, memberFor, ctx.rolloverUtcHour);
+    tally.resourceRows = importLedger(clanId, sessionId, d, memberFor, ctx.rolloverUtcHour);
   } catch (err) {
     tally.warnings.push(`Clan Capital ledger import failed: ${String(err)}`);
   }
@@ -252,9 +252,13 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
   return tally;
 }
 
-/** Ledger entries newer than the clan's screenshot-read rows → resource_transactions. Returns rows written. */
+/**
+ * Ledger entries newer than the clan's screenshot-read rows → resource_transactions,
+ * in a batch tagged with this scan's session (Scan History counts them). Returns rows written.
+ */
 function importLedger(
   clanId: number,
+  sessionId: number,
   d: CaptureData,
   memberFor: (playerId: number, name: string) => number | null,
   rolloverUtcHour: number,
@@ -307,6 +311,7 @@ function importLedger(
     errorCount: fresh.length - resolved.length,
     notes: 'Clan Capital ledger (read from the game)',
     source: 'scan',
+    sessionId,
   });
   insertTransactions(resolved.map(({ r, name, memberId }) => ({
     clanId,

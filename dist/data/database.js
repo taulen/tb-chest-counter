@@ -2621,6 +2621,39 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v134 — which scan wrote a resource batch (Nov 19 2026): Scan History
+        // shows how many Clan Capital ledger rows each scan recorded. The scan
+        // sets session_id from now on (protocol-scan.ts importLedger). Backfill:
+        // a batch the scan wrote is created inside its session, and one clan's
+        // scans never overlap (the scan-in-progress guard), so the clan's session
+        // whose window holds the batch's uploaded_at is the one — all 107
+        // protocol-era batches on prod matched. The OCR era's daily captures ran
+        // outside a session's window and stay unlinked (NULL). Plain INTEGER like
+        // game_claims.session_id: no FK, so deleting a scan never trips on it.
+        // The scan's page reads its rows by batch, so resource_transactions gets
+        // the batch_id index it never had (deleteBatch walked the table too).
+        // Replay-safe: PRAGMA-guarded column, IF NOT EXISTS, UPDATE only NULLs.
+        version: 134,
+        run: (database) => {
+            const cols = new Set(database.prepare('PRAGMA table_info(resource_upload_batches)').all().map((c) => c.name));
+            if (!cols.has('session_id')) {
+                database.exec('ALTER TABLE resource_upload_batches ADD COLUMN session_id INTEGER');
+            }
+            database.exec(`
+        CREATE INDEX IF NOT EXISTS idx_resource_upload_batches_session ON resource_upload_batches(session_id);
+        CREATE INDEX IF NOT EXISTS idx_resource_transactions_batch ON resource_transactions(batch_id);
+        UPDATE resource_upload_batches
+           SET session_id = (
+             SELECT s.id FROM scan_sessions s
+              WHERE s.clan_id = resource_upload_batches.clan_id
+                AND s.started_at <= resource_upload_batches.uploaded_at
+                AND (s.completed_at IS NULL OR s.completed_at >= resource_upload_batches.uploaded_at)
+              ORDER BY s.started_at DESC LIMIT 1)
+         WHERE source = 'scan' AND session_id IS NULL;
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

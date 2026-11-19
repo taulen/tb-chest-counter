@@ -10,7 +10,8 @@ import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { plainNumber, rewardTotalChip } from '../lib/reward-format.js';
-import { segHtml, tileHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions } from '../lib/ui-kit.js';
+import { resourceIconHtml, formatResourceAmount, directionPillHtml } from '../lib/resource-format.js';
+import { segHtml, tileHtml, tableCardHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions } from '../lib/ui-kit.js';
 
 const CHEST_TYPE_LABELS = {
   common: t('common'),
@@ -42,32 +43,18 @@ function statusHtml(status, title = '') {
   return `<span class="sess-status ${kind[0]}"${title ? ` title="${esc(title)}"` : ''}><span aria-hidden="true">${kind[1]}</span> ${esc(STATUS_LABELS[status] ?? status)}</span>`;
 }
 
-/**
- * What a scan gathered: one small tile + amount per resource, in the game's
- * order so a resource keeps its place down the column. The exact amount (and
- * the part that came as packs) is each one's tooltip and label. Empty for a
- * scan that opened nothing (before Nov 17 2026, or a quiet cycle).
- */
-function resourcesCellHtml(resources, items) {
-  const list = Array.isArray(resources) ? resources : [];
-  if (!list.length) return '';
-  return `<span class="sess-res">${list.map((r) => rewardTotalChip({ ...r, unit: 'amount' }, items, { size: 22, layout: 'inline' })).join('')}</span>`;
-}
-
 export async function renderSessions(el) {
   setPageActions('');
-  // The resources' tiles in the table (loadGameArt never rejects).
-  const [answer] = await Promise.all([api('/sessions?limit=500'), loadGameArt()]);
+  const answer = await api('/sessions?limit=500');
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
 
-  // The list is the page: a refusal (an object without the list) is said, with Try again.
-  if (!Array.isArray(answer?.sessions)) {
+  // The list is the page: a refusal (an object, not a list) is said, with Try again.
+  if (!Array.isArray(answer)) {
     el.innerHTML = `<div class="sess-page">${errorStateHtml(t('The scan history could not be loaded.'), refusalText(answer))}</div>`;
     wireRetry(el, () => renderSessions(el));
     return;
   }
-  const { sessions } = answer;
-  const items = answer.items ?? {};
+  const sessions = answer;
 
   const totalSessions = sessions.length;
   const totalPages = Math.max(1, Math.ceil(totalSessions / PAGE_SIZE));
@@ -97,14 +84,14 @@ export async function renderSessions(el) {
     const failureBadge = s.errorMessage
       ? ` <span class="failure-phase-badge" title="${esc(tipText)}">${esc(s.errorPhase || t('see details'))}</span>`
       : '';
-    // Trigger and duration ride under the start time (desktop too): a protocol
-    // scan takes seconds, and the room goes to what the scan gathered.
     return `<tr>
         <td data-label="${t('Started')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${sessionHash(s.id)}">${formatDate(s.startedAt)}</a></span><span class="mrow-sub">${formatTriggerSource(s.triggerSource)} · ${formatDuration(s.startedAt, s.completedAt)}</span></td>
+        <td data-label="${t('Duration')}">${formatDuration(s.startedAt, s.completedAt)}</td>
+        <td data-label="${t('Trigger')}">${formatTriggerSource(s.triggerSource)}</td>
         <td data-label="${t('Status')}">${statusHtml(s.status, tipText)}${failureBadge}</td>
         <td data-label="${t('Chests')}" class="num" data-role="metric">${(s.chestsFound ?? 0).toLocaleString()}</td>
         <td data-label="${t('Triumphal')}" class="num">${(s.triumphalChestsFound ?? 0).toLocaleString()}</td>
-        <td data-label="${t('Resources')}">${resourcesCellHtml(s.resources, items)}</td>
+        <td data-label="${t('Ledger rows')}" class="num">${(s.resourceRows ?? 0).toLocaleString()}</td>
         ${isSuperAdmin ? `<td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-session" data-session-id="${s.id}" data-session-chests="${s.chestsFound}">${t('Delete')}</button></td>` : ''}
       </tr>`;
   }).join('');
@@ -114,8 +101,8 @@ export async function renderSessions(el) {
       <p class="ui-sub">${tn(totalSessions, '{n} scan', '{n} scans', { n: totalSessions.toLocaleString() })}</p>
       <div class="ui-table-card">
         <table class="table-responsive ui-table sess-table">
-          <colgroup><col class="col-started"><col class="col-status"><col class="col-chests"><col class="col-triumphal"><col class="col-resources">${isSuperAdmin ? '<col class="col-actions">' : ''}</colgroup>
-          <thead><tr><th>${t('Started')}</th><th>${t('Status')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Triumphal')}</th><th>${t('Resources')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead>
+          <colgroup><col class="col-started"><col class="col-duration"><col class="col-trigger"><col class="col-status"><col class="col-chests"><col class="col-triumphal"><col class="col-ledger">${isSuperAdmin ? '<col class="col-actions">' : ''}</colgroup>
+          <thead><tr><th>${t('Started')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Status')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Triumphal')}</th><th class="num" title="${esc(t('Clan Capital ledger rows the scan recorded'))}">${t('Ledger rows')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
         ${paginationControls}
@@ -150,6 +137,30 @@ export async function viewSession(id, navigate) {
 }
 
 /**
+ * The Clan Capital ledger rows this scan recorded, per resource: Sent
+ * (member → clan) first, then Took (clan → member). Empty when it recorded
+ * none (no new entries, or a scan from before the ledger was read).
+ */
+function ledgerCardHtml(ledger) {
+  if (!ledger?.rows || !Array.isArray(ledger.byResource)) return '';
+  const rows = ledger.byResource.map((r) => `<tr>
+      <td data-label="${t('Resource')}" data-role="primary"><span class="mrow-name">${resourceIconHtml(r.slug, r.name)}</span><span class="mrow-sub">${directionPillHtml(r.direction)} · ${tn(r.rows, '{n} row', '{n} rows', { n: plainNumber(r.rows) })}</span></td>
+      <td data-label="${t('Direction')}" data-role="hidden">${directionPillHtml(r.direction)}</td>
+      <td data-label="${t('Rows')}" class="num" data-role="hidden">${plainNumber(r.rows)}</td>
+      <td data-label="${t('Amount')}" class="num" data-role="metric">${esc(formatResourceAmount(r.slug, r.amount))}</td>
+    </tr>`).join('');
+  return tableCardHtml({
+    title: t('Clan Capital ledger'),
+    hint: `${tn(ledger.rows, '{n} row recorded by this scan', '{n} rows recorded by this scan', { n: plainNumber(ledger.rows) })} · ${tn(ledger.members, '{n} member', '{n} members', { n: plainNumber(ledger.members) })}`,
+    body: `<table class="table-responsive ui-table sess-ledger-table">
+        <colgroup><col class="col-resource"><col class="col-direction"><col class="col-rows"><col class="col-amount"></colgroup>
+        <thead><tr><th>${t('Resource')}</th><th>${t('Direction')}</th><th class="num">${t('Rows')}</th><th class="num">${t('Amount')}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`,
+  });
+}
+
+/**
  * Everything opening this scan's chests paid out, the way Resources → Chest
  * rewards shows a period: resources, speedup time, item counts — each its own
  * group, each total in its own unit. Empty for a scan that opened nothing.
@@ -174,7 +185,7 @@ function rewardsTileHtml(rewards, items) {
   return tileHtml('sess-rewards', t('Rewards'), `<p class="ui-sub">${sub}</p><div class="chest-rewards-groups">${sections}</div>`, { span: 12 });
 }
 
-function renderSessionDetail({ session, chests: chestList, triumphalChests, rewards, items }) {
+function renderSessionDetail({ session, chests: chestList, triumphalChests, ledger, rewards, items }) {
   const content = $('#content');
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
   const chests = Array.isArray(chestList) ? chestList : [];
@@ -266,8 +277,9 @@ function renderSessionDetail({ session, chests: chestList, triumphalChests, rewa
       ${actions}
       <div class="ui-grid">
         ${tileHtml('sess-scan', t('Scan #{id}', { id: session.id }), `${errorBanner}${stats}`, { span: 12 })}
-        ${rewardsTileHtml(rewards, items ?? {})}
       </div>
+      ${ledgerCardHtml(ledger)}
+      ${rewards?.chests ? `<div class="ui-grid">${rewardsTileHtml(rewards, items ?? {})}</div>` : ''}
       ${chestsBlock}
     </div>`;
 

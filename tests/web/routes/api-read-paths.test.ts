@@ -235,8 +235,7 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
     it('GET /api/sessions', async () => {
       const res = await request(app).get('/api/sessions');
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.sessions)).toBe(true);
-      expect(res.body).toHaveProperty('items');
+      expect(Array.isArray(res.body)).toBe(true);
     });
 
     it('GET /api/sessions/:id', async () => {
@@ -245,6 +244,7 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
       expect(res.body).toHaveProperty('session');
       expect(res.body).toHaveProperty('chests');
       expect(res.body).toHaveProperty('triumphalChests');
+      expect(res.body).toHaveProperty('ledger');
       expect(res.body).toHaveProperty('rewards');
     });
   });

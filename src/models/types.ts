@@ -49,6 +49,8 @@ export interface ScanSession {
   status: ScanStatus;
   chestsFound: number;
   triumphalChestsFound?: number;
+  /** Clan Capital ledger rows the scan recorded (Scan History's list only). */
+  resourceRows?: number;
   screenshotsTaken: number;
   errorsEncountered: number;
   triggerSource: ScanTriggerSource;

@@ -8,6 +8,7 @@ exports.listResourceTypes = listResourceTypes;
 exports.createBatch = createBatch;
 exports.insertTransactions = insertTransactions;
 exports.listTransactions = listTransactions;
+exports.getSessionLedgerSummary = getSessionLedgerSummary;
 exports.listBatches = listBatches;
 exports.deleteBatch = deleteBatch;
 exports.getRowCropPath = getRowCropPath;
@@ -36,9 +37,9 @@ function createBatch(opts) {
     const result = db.prepare(`
     INSERT INTO resource_upload_batches
       (clan_id, uploaded_by, uploaded_at, upload_date, file_count, row_count,
-       error_count, notes, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(opts.clanId, opts.uploadedBy, now, opts.uploadDate, opts.fileCount, opts.rowCount, opts.errorCount, opts.notes, source);
+       error_count, notes, source, session_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(opts.clanId, opts.uploadedBy, now, opts.uploadDate, opts.fileCount, opts.rowCount, opts.errorCount, opts.notes, source, opts.sessionId ?? null);
     return {
         id: result.lastInsertRowid,
         clanId: opts.clanId,
@@ -159,6 +160,29 @@ function listTransactions(opts) {
             hasCrop: Boolean(r.row_crop_path),
         })),
     };
+}
+/**
+ * What a scan recorded from the Clan Capital ledger: the rows of the batches
+ * it wrote (v134 session_id), counted and summed per resource and direction —
+ * Sent (member → clan) before Took (clan → member) — in resource-type order.
+ */
+function getSessionLedgerSummary(sessionId, clanId) {
+    const db = (0, database_js_1.getDb)();
+    const from = `
+    FROM resource_upload_batches b
+    JOIN resource_transactions rt ON rt.batch_id = b.id AND rt.clan_id = b.clan_id
+    LEFT JOIN resource_types rtype ON rtype.id = rt.resource_type_id
+    WHERE b.session_id = ? AND b.clan_id = ?`;
+    const totals = db.prepare(`SELECT COUNT(*) AS rows, COUNT(DISTINCT rt.member_id) AS members ${from}`)
+        .get(sessionId, clanId);
+    const byResource = db.prepare(`
+    SELECT rtype.slug AS slug, rtype.name AS name, rt.direction AS direction,
+           COUNT(*) AS rows, SUM(rt.amount) AS amount
+    ${from}
+    GROUP BY rt.resource_type_id, rt.direction
+    ORDER BY rt.direction DESC, rt.resource_type_id
+  `).all(sessionId, clanId);
+    return { rows: totals.rows, members: totals.members, byResource };
 }
 function listBatches(clanId) {
     const db = (0, database_js_1.getDb)();

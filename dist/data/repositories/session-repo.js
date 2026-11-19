@@ -136,13 +136,22 @@ function updateSession(id, clanId, updates) {
         (0, chest_summary_repo_js_1.notifyChestDataChanged)(clanId);
     }
 }
+/**
+ * Scan History's list. Besides the session row: its triumphal chests, and the
+ * Clan Capital ledger rows it recorded (`resourceRows`: the batches the scan
+ * wrote, v134 resource_upload_batches.session_id — 0 for a scan that read no
+ * new entries, and for the OCR era, whose daily captures aren't linked).
+ */
 function getRecentSessions(limit, clanId) {
     const db = (0, database_js_1.getDb)();
     const rows = db.prepare(`
     SELECT s.*, (
       SELECT COUNT(*) FROM triumphal_chest_records t
       WHERE t.session_id = s.id AND t.clan_id = s.clan_id
-    ) AS triumphal_chests_found
+    ) AS triumphal_chests_found, (
+      SELECT COALESCE(SUM(b.row_count), 0) FROM resource_upload_batches b
+      WHERE b.session_id = s.id AND b.clan_id = s.clan_id
+    ) AS resource_rows
     FROM scan_sessions s
     WHERE s.clan_id = ?
     ORDER BY s.started_at DESC
@@ -151,6 +160,7 @@ function getRecentSessions(limit, clanId) {
     return rows.map((row) => ({
         ...rowToSession(row),
         triumphalChestsFound: row.triumphal_chests_found ?? 0,
+        resourceRows: row.resource_rows ?? 0,
     }));
 }
 /**

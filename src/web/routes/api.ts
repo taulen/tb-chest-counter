@@ -990,39 +990,21 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     isAdminish: boolean,
   ): T => (isAdminish ? session : { ...session, errorMessage: null, errorPhase: null });
 
-  // GET /api/sessions — the Scan History list. Each scan carries the
-  // `resources` opening its chests gathered (game_claims, Nov 17 2026 on): one
-  // amount per resource, in the game's order (packs count as the resource
-  // they hold; units never mix). `items` names and draws every resource shown.
-  // Older scans opened nothing through the protocol: [].
-  router.get('/sessions', async (req, res) => {
+  // GET /api/sessions — the Scan History list. Each scan carries
+  // `resourceRows`: the Clan Capital ledger rows it recorded (v134).
+  router.get('/sessions', (req, res) => {
     const limit = parseBoundedInt(req.query.limit, 20, { min: 1, max: 500 });
-    const clanId = req.clanId ?? 1;
     const isAdminish = req.user?.role === 'admin' || req.user?.role === 'superadmin';
-    const sessions = sessionRepo.getRecentSessions(limit, clanId);
-    const oldest = sessions.reduce((min, s) => (s.startedAt < min ? s.startedAt : min), sessions[0]?.startedAt ?? '');
-    const claims = loadSessionClaims(clanId, sessions.map((s) => s.id), oldest);
-    // Names only when there is something to name: a clan with no claims never waits on the game.
-    const names = claims.size ? await rewardGameNames() : null;
-    const items = names?.items ?? {};
-    const shown = new Set<number>();
-    const list = sessions.map((s) => {
-      const rows = claims.get(s.id);
-      const sum = rows ? sumRewards(rows, items) : null;
-      const resources = (sum?.totals ?? [])
-        .filter((tot) => tot.unit === 'amount')
-        .map((tot) => ({ itemId: tot.itemId, total: tot.total, fromPacks: tot.fromPacks }));
-      for (const r of resources) shown.add(r.itemId);
-      return { ...redactSessionErrors(s, isAdminish), resources };
-    });
-    res.json({ sessions: list, items: shown.size ? await describeRewardItems([...shown], names) : {} });
+    const sessions = sessionRepo.getRecentSessions(limit, req.clanId ?? 1);
+    res.json(sessions.map((s) => redactSessionErrors(s, isAdminish)));
   });
 
   // GET /api/sessions/:id - return one session along with the chest records
-  // captured during it, and what opening its chests paid out (`rewards`:
-  // chests opened + totals — resources, speedup time, item counts; null for
-  // a scan that opened nothing through the protocol). Used by the Scan
-  // History detail view.
+  // captured during it, the Clan Capital ledger rows it recorded (`ledger`:
+  // per resource and direction), and what opening its chests paid out
+  // (`rewards`: chests opened + totals — resources, speedup time, item
+  // counts; null for a scan that opened nothing through the protocol). Used
+  // by the Scan History detail view.
   router.get('/sessions/:id', async (req, res) => {
     const id = parseBoundedInt(req.params.id, 0, { min: 1 });
     if (!id) {
@@ -1040,7 +1022,8 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     const names = claims.length ? await rewardGameNames() : null;
     const rewards = claims.length ? sumRewards(claims, names?.items ?? {}) : null;
     const items = rewards ? await describeRewardItems(rewardItemIds(rewards.totals), names) : {};
-    res.json({ session: redactSessionErrors(session, isAdminish), chests, triumphalChests, rewards, items });
+    const ledger = resourceRepo.getSessionLedgerSummary(id, clanId);
+    res.json({ session: redactSessionErrors(session, isAdminish), chests, triumphalChests, ledger, rewards, items });
   });
 
   // DELETE /api/sessions/:id - remove a scan session and all chests it produced
