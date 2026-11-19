@@ -66,6 +66,8 @@ const database_js_1 = require("../../data/database.js");
 const index_js_1 = require("../../config/index.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const scan_account_repo_js_1 = require("../../data/repositories/scan-account-repo.js");
+const chest_rewards_js_1 = require("../../data/chest-rewards.js");
+const reward_items_js_1 = require("../../data/reward-items.js");
 const persistent_env_js_1 = require("../../config/persistent-env.js");
 const parse_int_js_1 = require("../../utils/parse-int.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
@@ -916,28 +918,57 @@ function createApiRouter(scanLoop) {
     // (Counts, timestamps and status stay visible so members still see
     // scan history.)
     const redactSessionErrors = (session, isAdminish) => (isAdminish ? session : { ...session, errorMessage: null, errorPhase: null });
-    // GET /api/sessions
-    router.get('/sessions', (req, res) => {
+    // GET /api/sessions — the Scan History list. Each scan carries the
+    // `resources` opening its chests gathered (game_claims, Nov 17 2026 on): one
+    // amount per resource, in the game's order (packs count as the resource
+    // they hold; units never mix). `items` names and draws every resource shown.
+    // Older scans opened nothing through the protocol: [].
+    router.get('/sessions', async (req, res) => {
         const limit = (0, parse_int_js_1.parseBoundedInt)(req.query.limit, 20, { min: 1, max: 500 });
+        const clanId = req.clanId ?? 1;
         const isAdminish = req.user?.role === 'admin' || req.user?.role === 'superadmin';
-        const sessions = sessionRepo.getRecentSessions(limit, req.clanId ?? 1);
-        res.json(sessions.map((s) => redactSessionErrors(s, isAdminish)));
+        const sessions = sessionRepo.getRecentSessions(limit, clanId);
+        const oldest = sessions.reduce((min, s) => (s.startedAt < min ? s.startedAt : min), sessions[0]?.startedAt ?? '');
+        const claims = (0, chest_rewards_js_1.loadSessionClaims)(clanId, sessions.map((s) => s.id), oldest);
+        // Names only when there is something to name: a clan with no claims never waits on the game.
+        const names = claims.size ? await (0, reward_items_js_1.rewardGameNames)() : null;
+        const items = names?.items ?? {};
+        const shown = new Set();
+        const list = sessions.map((s) => {
+            const rows = claims.get(s.id);
+            const sum = rows ? (0, chest_rewards_js_1.sumRewards)(rows, items) : null;
+            const resources = (sum?.totals ?? [])
+                .filter((tot) => tot.unit === 'amount')
+                .map((tot) => ({ itemId: tot.itemId, total: tot.total, fromPacks: tot.fromPacks }));
+            for (const r of resources)
+                shown.add(r.itemId);
+            return { ...redactSessionErrors(s, isAdminish), resources };
+        });
+        res.json({ sessions: list, items: shown.size ? await (0, reward_items_js_1.describeRewardItems)([...shown], names) : {} });
     });
     // GET /api/sessions/:id - return one session along with the chest records
-    // captured during it. Used by the Scan History detail view.
-    router.get('/sessions/:id', (req, res) => {
+    // captured during it, and what opening its chests paid out (`rewards`:
+    // chests opened + totals — resources, speedup time, item counts; null for
+    // a scan that opened nothing through the protocol). Used by the Scan
+    // History detail view.
+    router.get('/sessions/:id', async (req, res) => {
         const id = (0, parse_int_js_1.parseBoundedInt)(req.params.id, 0, { min: 1 });
         if (!id) {
             return res.status(400).json({ error: 'Invalid session id' });
         }
-        const session = sessionRepo.getSessionById(id, req.clanId ?? 1);
+        const clanId = req.clanId ?? 1;
+        const session = sessionRepo.getSessionById(id, clanId);
         if (!session) {
             return res.status(404).json({ error: 'Session not found' });
         }
         const isAdminish = req.user?.role === 'admin' || req.user?.role === 'superadmin';
-        const chests = chestRepo.getChestsBySession(id, req.clanId ?? 1);
-        const triumphalChests = triumphalChestRepo.getBySession(id, req.clanId ?? 1);
-        res.json({ session: redactSessionErrors(session, isAdminish), chests, triumphalChests });
+        const chests = chestRepo.getChestsBySession(id, clanId);
+        const triumphalChests = triumphalChestRepo.getBySession(id, clanId);
+        const claims = (0, chest_rewards_js_1.loadSessionClaims)(clanId, [id], session.startedAt).get(id) ?? [];
+        const names = claims.length ? await (0, reward_items_js_1.rewardGameNames)() : null;
+        const rewards = claims.length ? (0, chest_rewards_js_1.sumRewards)(claims, names?.items ?? {}) : null;
+        const items = rewards ? await (0, reward_items_js_1.describeRewardItems)((0, chest_rewards_js_1.rewardItemIds)(rewards.totals), names) : {};
+        res.json({ session: redactSessionErrors(session, isAdminish), chests, triumphalChests, rewards, items });
     });
     // DELETE /api/sessions/:id - remove a scan session and all chests it produced
     // (superadmin only). Used when a scan recorded chests that were never

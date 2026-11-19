@@ -9,6 +9,7 @@ import {
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
+import { plainNumber, rewardTotalChip } from '../lib/reward-format.js';
 import { segHtml, tileHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, setPageActions } from '../lib/ui-kit.js';
 
 const CHEST_TYPE_LABELS = {
@@ -41,18 +42,32 @@ function statusHtml(status, title = '') {
   return `<span class="sess-status ${kind[0]}"${title ? ` title="${esc(title)}"` : ''}><span aria-hidden="true">${kind[1]}</span> ${esc(STATUS_LABELS[status] ?? status)}</span>`;
 }
 
+/**
+ * What a scan gathered: one small tile + amount per resource, in the game's
+ * order so a resource keeps its place down the column. The exact amount (and
+ * the part that came as packs) is each one's tooltip and label. Empty for a
+ * scan that opened nothing (before Nov 17 2026, or a quiet cycle).
+ */
+function resourcesCellHtml(resources, items) {
+  const list = Array.isArray(resources) ? resources : [];
+  if (!list.length) return '';
+  return `<span class="sess-res">${list.map((r) => rewardTotalChip({ ...r, unit: 'amount' }, items, { size: 22, layout: 'inline' })).join('')}</span>`;
+}
+
 export async function renderSessions(el) {
   setPageActions('');
-  const answer = await api('/sessions?limit=500');
+  // The resources' tiles in the table (loadGameArt never rejects).
+  const [answer] = await Promise.all([api('/sessions?limit=500'), loadGameArt()]);
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
 
-  // The list is the page: a refusal (an object, not a list) is said, with Try again.
-  if (!Array.isArray(answer)) {
+  // The list is the page: a refusal (an object without the list) is said, with Try again.
+  if (!Array.isArray(answer?.sessions)) {
     el.innerHTML = `<div class="sess-page">${errorStateHtml(t('The scan history could not be loaded.'), refusalText(answer))}</div>`;
     wireRetry(el, () => renderSessions(el));
     return;
   }
-  const sessions = answer;
+  const { sessions } = answer;
+  const items = answer.items ?? {};
 
   const totalSessions = sessions.length;
   const totalPages = Math.max(1, Math.ceil(totalSessions / PAGE_SIZE));
@@ -82,13 +97,14 @@ export async function renderSessions(el) {
     const failureBadge = s.errorMessage
       ? ` <span class="failure-phase-badge" title="${esc(tipText)}">${esc(s.errorPhase || t('see details'))}</span>`
       : '';
+    // Trigger and duration ride under the start time (desktop too): a protocol
+    // scan takes seconds, and the room goes to what the scan gathered.
     return `<tr>
         <td data-label="${t('Started')}" data-role="primary"><span class="mrow-name"><a class="member-link" href="${sessionHash(s.id)}">${formatDate(s.startedAt)}</a></span><span class="mrow-sub">${formatTriggerSource(s.triggerSource)} · ${formatDuration(s.startedAt, s.completedAt)}</span></td>
-        <td data-label="${t('Duration')}">${formatDuration(s.startedAt, s.completedAt)}</td>
-        <td data-label="${t('Trigger')}">${formatTriggerSource(s.triggerSource)}</td>
         <td data-label="${t('Status')}">${statusHtml(s.status, tipText)}${failureBadge}</td>
         <td data-label="${t('Chests')}" class="num" data-role="metric">${(s.chestsFound ?? 0).toLocaleString()}</td>
         <td data-label="${t('Triumphal')}" class="num">${(s.triumphalChestsFound ?? 0).toLocaleString()}</td>
+        <td data-label="${t('Resources')}">${resourcesCellHtml(s.resources, items)}</td>
         ${isSuperAdmin ? `<td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-session" data-session-id="${s.id}" data-session-chests="${s.chestsFound}">${t('Delete')}</button></td>` : ''}
       </tr>`;
   }).join('');
@@ -98,8 +114,8 @@ export async function renderSessions(el) {
       <p class="ui-sub">${tn(totalSessions, '{n} scan', '{n} scans', { n: totalSessions.toLocaleString() })}</p>
       <div class="ui-table-card">
         <table class="table-responsive ui-table sess-table">
-          <colgroup><col class="col-started"><col class="col-duration"><col class="col-trigger"><col class="col-status"><col class="col-chests"><col class="col-triumphal">${isSuperAdmin ? '<col class="col-actions">' : ''}</colgroup>
-          <thead><tr><th>${t('Started')}</th><th>${t('Duration')}</th><th>${t('Trigger')}</th><th>${t('Status')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Triumphal')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead>
+          <colgroup><col class="col-started"><col class="col-status"><col class="col-chests"><col class="col-triumphal"><col class="col-resources">${isSuperAdmin ? '<col class="col-actions">' : ''}</colgroup>
+          <thead><tr><th>${t('Started')}</th><th>${t('Status')}</th><th class="num">${t('Chests')}</th><th class="num">${t('Triumphal')}</th><th>${t('Resources')}</th>${isSuperAdmin ? '<th></th>' : ''}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
         ${paginationControls}
@@ -133,7 +149,32 @@ export async function viewSession(id, navigate) {
   renderSessionDetail(data);
 }
 
-function renderSessionDetail({ session, chests: chestList, triumphalChests }) {
+/**
+ * Everything opening this scan's chests paid out, the way Resources → Chest
+ * rewards shows a period: resources, speedup time, item counts — each its own
+ * group, each total in its own unit. Empty for a scan that opened nothing.
+ */
+function rewardsTileHtml(rewards, items) {
+  if (!rewards?.chests || !Array.isArray(rewards.totals)) return '';
+  const groups = [
+    { unit: 'amount', title: t('Resources'), hint: t('Each in its own unit · packs count as the resource they hold') },
+    { unit: 'time', title: t('Speedups'), hint: t('Total time') },
+    { unit: 'count', title: t('Items'), hint: t('How many of each') },
+  ];
+  const sections = groups.map(({ unit, title, hint }) => {
+    const list = rewards.totals.filter((tot) => tot.unit === unit);
+    if (!list.length) return '';
+    return `
+      <section class="chest-rewards-group">
+        <div class="chest-rewards-group-head"><h3>${title}</h3><span class="ui-sub">${hint}</span></div>
+        <div class="reward-grid">${list.map((tot) => rewardTotalChip(tot, items)).join('')}</div>
+      </section>`;
+  }).join('');
+  const sub = `${tn(rewards.chests, '{n} chest opened by this scan', '{n} chests opened by this scan', { n: plainNumber(rewards.chests) })} · ${t('Hover a reward for the exact total')}`;
+  return tileHtml('sess-rewards', t('Rewards'), `<p class="ui-sub">${sub}</p><div class="chest-rewards-groups">${sections}</div>`, { span: 12 });
+}
+
+function renderSessionDetail({ session, chests: chestList, triumphalChests, rewards, items }) {
   const content = $('#content');
   const isSuperAdmin = getCurrentUser()?.role === 'superadmin';
   const chests = Array.isArray(chestList) ? chestList : [];
@@ -225,6 +266,7 @@ function renderSessionDetail({ session, chests: chestList, triumphalChests }) {
       ${actions}
       <div class="ui-grid">
         ${tileHtml('sess-scan', t('Scan #{id}', { id: session.id }), `${errorBanner}${stats}`, { span: 12 })}
+        ${rewardsTileHtml(rewards, items ?? {})}
       </div>
       ${chestsBlock}
     </div>`;

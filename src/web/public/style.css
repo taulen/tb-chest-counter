@@ -12377,15 +12377,21 @@ button.ui-tile-link {
 .sess-stats { gap: 14px 28px; }
 .sess-actions { justify-content: flex-start; }
 .sess-chests { display: flex; flex-direction: column; gap: 12px; }
-.sess-table { table-layout: fixed; min-width: 720px; }
-.sess-table .col-started { width: 190px; }
-.sess-table .col-duration { width: 110px; }
-.sess-table .col-trigger { width: 120px; }
-.sess-table .col-status { width: auto; }
+.sess-table { table-layout: fixed; min-width: 900px; }
+.sess-table .col-started { width: 220px; }
+.sess-table .col-status { width: 150px; }
 .sess-table .col-chests { width: 90px; }
 /* "Триумфальные" is the longest header. */
 .sess-table .col-triumphal { width: 130px; }
+/* What the scan gathered takes the rest: up to eleven resources wrap in it. */
+.sess-table .col-resources { width: auto; }
 .sess-table .col-actions { width: 96px; }
+.sess-res { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+/* Trigger · duration under the start time on desktop too (the phone's
+   compact row shows it already): they were two columns of their own. */
+@media (min-width: 641px) {
+  .sess-table .mrow-sub { display: block; margin-top: 4px; font-size: 12.5px; color: var(--text-secondary); }
+}
 .sess-chests-table { table-layout: fixed; min-width: 760px; }
 .sess-chests-table .col-player { width: 22%; }
 .sess-chests-table .col-chest { width: 24%; }

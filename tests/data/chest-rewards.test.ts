@@ -13,6 +13,9 @@ import {
   expandReward,
   gameDaysBetween,
   loadChestClaims,
+  loadSessionClaims,
+  rewardItemIds,
+  sumRewards,
   type ClaimRow,
 } from '../../src/data/chest-rewards.js';
 import type { GameItem } from '../../src/game-protocol/static-data.js';
@@ -186,5 +189,51 @@ describe('loadChestClaims', () => {
       { giftType: 5512, tab: 1, rewards: { 2: 1000, 2007: 1 }, claimedAt: '2026-11-18T01:00:00.000Z', batchSize: 1 },
       { giftType: 5512, tab: 1, rewards: {}, claimedAt: '2026-11-18T02:00:00.000Z', batchSize: 3 },
     ]);
+  });
+});
+
+describe('sumRewards (one scan, Scan History)', () => {
+  it('counts every claim, chests by batch size, totals in their own units', () => {
+    const sum = sumRewards([
+      claim(5512, { 2: 40000, 1123: 1, 2006: 2 }, '2026-11-18T01:00:00.000Z', 3),
+      claim(1157, { 1: 100, 535: 2 }, '2026-11-18T01:00:01.000Z', 1, 2),
+    ], ITEMS);
+    expect(sum.chests).toBe(4);
+    expect(sum.requests).toBe(2);
+    expect(sum.totals.map((tot) => tot.key)).toEqual(['r1', 'r2', 't3', 'i535']);
+    expect(sum.totals.find((tot) => tot.key === 'r2')).toMatchObject({ unit: 'amount', total: 290000, fromPacks: 250000 });
+    expect(rewardItemIds(sum.totals).sort((a, b) => a - b)).toEqual([1, 2, 535, 1123, 2006]);
+  });
+
+  it('is empty for no claims', () => {
+    expect(sumRewards([], ITEMS)).toEqual({ chests: 0, requests: 0, totals: [] });
+  });
+});
+
+describe('loadSessionClaims', () => {
+  let cleanup: (() => void) | null = null;
+  afterEach(() => { cleanup?.(); cleanup = null; });
+
+  it('groups one clan\'s claims by the sessions asked for, from the oldest start on', () => {
+    ({ cleanup } = makeTestDb());
+    const db = getDb();
+    db.prepare(`INSERT OR IGNORE INTO clans (id, name, slug, game_url, is_active, created_at) VALUES (2, 'B', 'b', 'x', 1, ?)`)
+      .run(new Date().toISOString());
+    const ins = db.prepare(
+      `INSERT INTO game_claims (clan_id, session_id, gift_id, gift_type, tab, rewards, claimed_at, batch_size, gift_ids)
+       VALUES (?, ?, ?, 5512, 1, ?, ?, ?, NULL)`,
+    );
+    ins.run(1, 10, 1, '{"2":1000}', '2026-11-18T01:00:00.000Z', 1);
+    ins.run(1, 10, 2, '{"2":2000}', '2026-11-18T01:00:05.000Z', 2);
+    ins.run(1, 11, 3, '{"1":5}', '2026-11-18T03:00:00.000Z', 1);
+    ins.run(1, 12, 4, '{"1":9}', '2026-11-18T04:00:00.000Z', 1); // not asked for
+    ins.run(2, 10, 5, '{"2":1}', '2026-11-18T01:00:00.000Z', 1); // another clan's session 10
+    ins.run(1, 9, 6, '{"2":1}', '2026-11-17T01:00:00.000Z', 1); // before the oldest start
+
+    const byId = loadSessionClaims(1, [10, 11, 9], '2026-11-18T00:59:00.000Z');
+    expect([...byId.keys()].sort()).toEqual([10, 11]);
+    expect(byId.get(10)!.map((r) => r.batchSize)).toEqual([1, 2]);
+    expect(byId.get(11)![0].rewards).toEqual({ 1: 5 });
+    expect(loadSessionClaims(1, [], '').size).toBe(0);
   });
 });

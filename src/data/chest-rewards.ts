@@ -21,7 +21,12 @@
  *
  * Units never mix: each total is one resource, one kind of time or one item.
  * Days are game days (17:00 UTC rollover, utils/game-day.ts), never calendar
- * days. Pure apart from loadChestClaims; tested in tests/data/chest-rewards.test.ts.
+ * days. Pure apart from loadChestClaims / loadSessionClaims; tested in
+ * tests/data/chest-rewards.test.ts.
+ *
+ * Scan History reads the same rows by session_id (sumRewards): what each scan
+ * gathered — its resources in the list, everything it paid out on the scan's
+ * own page.
  */
 import { getDb } from './database.js';
 import { gameDateFor } from '../utils/game-day.js';
@@ -251,23 +256,78 @@ export function buildByChest(rows: ClaimRow[], items: Record<string, GameItem>):
     .sort((a, b) => b.chests - a.chests || a.giftType - b.giftType);
 }
 
+/** What a set of claims paid out — one scan's, for Scan History: chests opened, requests, totals. */
+export interface RewardSum {
+  chests: number;
+  requests: number;
+  totals: RewardTotal[];
+}
+
+/** Sum claims with no window: every row counts (one scan session's claims). */
+export function sumRewards(rows: ClaimRow[], items: Record<string, GameItem>): RewardSum {
+  const tally = new Tally();
+  let chests = 0;
+  for (const row of rows) {
+    chests += row.batchSize;
+    eachReward(row, (itemId, n) => { tally.add(itemId, n, items); });
+  }
+  return { chests, requests: rows.length, totals: tally.list() };
+}
+
+/** Every item id a total shows or is made of (the icons and names a page needs). */
+export function rewardItemIds(totals: RewardTotal[]): number[] {
+  const ids = new Set<number>();
+  for (const tot of totals) {
+    ids.add(tot.itemId);
+    for (const id of Object.keys(tot.items)) ids.add(Number(id));
+  }
+  return [...ids];
+}
+
+type ClaimDbRow = { session_id?: number; gift_type: number; tab: number; rewards: string; claimed_at: string; batch_size: number };
+
+function toClaimRow(r: ClaimDbRow): ClaimRow {
+  let rewards: Record<string, number> = {};
+  try {
+    const parsed = JSON.parse(r.rewards) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) rewards = parsed as Record<string, number>;
+  } catch {
+    // an unreadable row still counts its chests
+  }
+  return { giftType: r.gift_type, tab: r.tab, rewards, claimedAt: r.claimed_at, batchSize: Math.max(1, r.batch_size || 1) };
+}
+
 /** A clan's claim requests in [from, to) (ISO timestamps; claimed_at is ISO too, so text order is time order). */
 export function loadChestClaims(clanId: number, from: string, to: string): ClaimRow[] {
   const rows = getDb().prepare(
     `SELECT gift_type, tab, rewards, claimed_at, batch_size FROM game_claims
       WHERE clan_id = ? AND claimed_at >= ? AND claimed_at < ?
       ORDER BY claimed_at`,
-  ).all(clanId, from, to) as Array<{ gift_type: number; tab: number; rewards: string; claimed_at: string; batch_size: number }>;
-  const out: ClaimRow[] = [];
+  ).all(clanId, from, to) as ClaimDbRow[];
+  return rows.map(toClaimRow);
+}
+
+/**
+ * The claim requests of these scan sessions, by session. A claim is sent
+ * during its scan, so none is older than the oldest session's start:
+ * `sinceIso` (that start) bounds the read to idx_game_claims_clan instead of
+ * every claim the clan ever made.
+ */
+export function loadSessionClaims(clanId: number, sessionIds: readonly number[], sinceIso: string): Map<number, ClaimRow[]> {
+  const out = new Map<number, ClaimRow[]>();
+  if (!sessionIds.length) return out;
+  const wanted = new Set(sessionIds);
+  const rows = getDb().prepare(
+    `SELECT session_id, gift_type, tab, rewards, claimed_at, batch_size FROM game_claims
+      WHERE clan_id = ? AND claimed_at >= ?
+      ORDER BY claimed_at`,
+  ).all(clanId, sinceIso) as ClaimDbRow[];
   for (const r of rows) {
-    let rewards: Record<string, number> = {};
-    try {
-      const parsed = JSON.parse(r.rewards) as unknown;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) rewards = parsed as Record<string, number>;
-    } catch {
-      // an unreadable row still counts its chests
-    }
-    out.push({ giftType: r.gift_type, tab: r.tab, rewards, claimedAt: r.claimed_at, batchSize: Math.max(1, r.batch_size || 1) });
+    const sid = Number(r.session_id);
+    if (!wanted.has(sid)) continue;
+    let list = out.get(sid);
+    if (!list) { list = []; out.set(sid, list); }
+    list.push(toClaimRow(r));
   }
   return out;
 }

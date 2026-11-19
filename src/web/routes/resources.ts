@@ -12,9 +12,9 @@ import {
   getRowCropPath,
 } from '../../data/repositories/resource-repo.js';
 import { logAction } from '../../data/repositories/user-repo.js';
-import { buildByChest, buildIncome, loadChestClaims } from '../../data/chest-rewards.js';
+import { buildByChest, buildIncome, loadChestClaims, rewardItemIds } from '../../data/chest-rewards.js';
+import { describeRewardItems } from '../../data/reward-items.js';
 import { loadGameNames } from '../../game-protocol/static-data.js';
-import { itemIconUrls } from '../../game-art/item-icons.js';
 import { loadConfig } from '../../config/index.js';
 import { resolveAllowedCropPath } from '../../utils/crop-dirs.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -150,30 +150,16 @@ export function createResourcesDataRouter(): Router {
     const income = buildIncome(rows, items, { from, to, trendFrom, rolloverUtcHour: loadConfig().gameDayRolloverUtcHour });
     const byChest = buildByChest(rows.filter((r) => r.claimedAt >= from), items);
 
-    const itemIds = new Set<number>();
-    for (const tot of [...income.totals, ...byChest.flatMap((c) => c.rewards)]) {
-      itemIds.add(tot.itemId);
-      for (const id of Object.keys(tot.items)) itemIds.add(Number(id));
-    }
+    const itemIds = rewardItemIds([...income.totals, ...byChest.flatMap((c) => c.rewards)]);
     const giftTypes = byChest.map((c) => c.giftType);
-    const icons = await itemIconUrls([...itemIds, ...giftTypes]);
-    const describe = (id: number) => {
-      const it = items[String(id)];
-      return {
-        name: names?.gifts?.[String(id)]?.chest ?? '',
-        kind: it?.kind ?? 0,
-        quality: it?.quality ?? 0,
-        seconds: it?.seconds ?? 0,
-        iconUrl: icons.get(id) ?? null,
-      };
-    };
+    const described = await describeRewardItems([...itemIds, ...giftTypes], names);
     res.json({
       from, to, trendFrom,
       income,
       byChest,
-      items: Object.fromEntries([...itemIds].map((id) => [id, describe(id)])),
+      items: Object.fromEntries(itemIds.map((id) => [id, described[String(id)]])),
       chestTypes: Object.fromEntries(giftTypes.map((id) => [id, {
-        ...describe(id),
+        ...described[String(id)],
         source: names?.gifts?.[String(id)]?.source ?? '',
       }])),
     });

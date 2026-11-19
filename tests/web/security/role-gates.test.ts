@@ -652,13 +652,13 @@ describe('role-gate enforcement (real auth + real routes)', () => {
 
       const asUser = await send('get', '/api/sessions?limit=50', 'user1');
       expect(asUser.status).toBe(200);
-      const failedForUser = (asUser.body as Array<Record<string, unknown>>).find((s) => s.status === 'failed');
+      const failedForUser = (asUser.body.sessions as Array<Record<string, unknown>>).find((s) => s.status === 'failed');
       expect(failedForUser, 'seeded failed session should be visible to members').toBeTruthy();
       expect(failedForUser!.errorMessage).toBeNull();
       expect(failedForUser!.errorPhase).toBeNull();
 
       const asAdmin = await send('get', '/api/sessions?limit=50', 'admin1');
-      const failedForAdmin = (asAdmin.body as Array<Record<string, unknown>>).find((s) => s.status === 'failed');
+      const failedForAdmin = (asAdmin.body.sessions as Array<Record<string, unknown>>).find((s) => s.status === 'failed');
       expect(failedForAdmin!.errorMessage).toBe('Playwright navigation timeout');
       expect(failedForAdmin!.errorPhase).toBe('Navigating to Gifts tab');
     });

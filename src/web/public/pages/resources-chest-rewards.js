@@ -28,6 +28,10 @@ import {
   periodScrubberHtml, wirePeriodScrubber, segHtml, tileHtml, emptyHtml as kitEmptyHtml, errorStateHtml, wireRetry, setPageActions,
 } from '../lib/ui-kit.js';
 import { describeChart } from '../lib/chart-a11y.js';
+import {
+  plainNumber, compactNumber, exactNumber, formatSeconds, formatRewardValue,
+  rewardItemName, rewardItemOf, rewardTotalDetail, rewardTotalChip,
+} from '../lib/reward-format.js';
 import { readToken } from '../lib/theme.js';
 
 const PAGE_SIZE = 25;
@@ -67,60 +71,16 @@ document.addEventListener('themechange', () => {
 
 // ─── Formatting ─────────────────────────────────────────────────────────────
 
-const plain = (n, digits = 0) => Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
-const COMPACT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-
-/** Short number for a tile badge or a table cell: "312.5K", "4.2", "17". */
-function compactNumber(n) {
-  const v = Number(n) || 0;
-  if (v < 10) return plain(v, v % 1 ? 1 : 0);
-  if (v < 1000) return plain(v, 0);
-  return COMPACT.format(v);
-}
-
-/** Exact number with the precision an average needs. */
-function exactNumber(n) {
-  const v = Number(n) || 0;
-  return plain(v, v < 10 ? 2 : v < 100 ? 1 : 0);
-}
-
-/**
- * Seconds → "41d 6h", "8h", "4h 12m", "15m". `short` (a tile badge) drops the
- * hours once it runs to 100 days and more: "1,409d", not "1409d 4h" cut off.
- */
-function formatSeconds(sec, { short = false } = {}) {
-  const totalMin = Math.round((Number(sec) || 0) / 60);
-  const d = Math.floor(totalMin / 1440);
-  const h = Math.floor((totalMin % 1440) / 60);
-  const m = totalMin % 60;
-  if (d > 0) {
-    return h > 0 && !(short && d >= 100)
-      ? t('{days}d {hours}h', { days: plain(d), hours: h })
-      : t('{days}d', { days: plain(d) });
-  }
-  if (h > 0) return m > 0 ? t('{h}h {m}m', { h, m }) : t('{hours}h', { hours: h });
-  return t('{minutes}m', { minutes: m });
-}
-
-function formatValue(unit, v, { exact = false, short = false } = {}) {
-  if (unit === 'time') return formatSeconds(v, { short });
-  return exact ? exactNumber(v) : compactNumber(v);
-}
-
+// Numbers, durations and reward totals: lib/reward-format.js (Scan History prints them the same way).
+const plain = plainNumber;
+const formatValue = formatRewardValue;
 const pct = (share) => `${plain(share * 100, share < 0.1 ? 1 : 0)}%`;
 
 // ─── Items ──────────────────────────────────────────────────────────────────
 
-function itemName(id) {
-  const name = cache?.items?.[id]?.name;
-  return name ? tGame(name) : t('Item {id}', { id });
-}
-
+const itemName = (id) => rewardItemName(cache?.items, id);
 /** The item a reward shows as, ready for rewardChipHtml / itemIconHtml. */
-function itemOf(id) {
-  const it = cache?.items?.[id] ?? {};
-  return { name: itemName(id), iconUrl: it.iconUrl ?? null, quality: it.quality ?? 0 };
-}
+const itemOf = (id) => rewardItemOf(cache?.items, id);
 
 function chestOf(giftType) {
   const c = cache?.chestTypes?.[giftType] ?? {};
@@ -134,30 +94,10 @@ function chestOf(giftType) {
 }
 
 /** What makes up a total, for its tooltip: "250,000 from packs", "279 × 8h". */
-function totalDetail(tot) {
-  if (tot.unit === 'amount') {
-    return tot.fromPacks > 0
-      ? t('{total} ({packs} from packs)', { total: plain(tot.total), packs: plain(tot.fromPacks) })
-      : plain(tot.total);
-  }
-  if (tot.unit === 'time') {
-    const parts = Object.entries(tot.items)
-      .map(([id, n]) => ({ n, sec: cache.items?.[id]?.seconds ?? 0 }))
-      .sort((a, b) => b.sec - a.sec)
-      .map(({ n, sec }) => `${plain(n)} × ${formatSeconds(sec)}`);
-    return `${formatSeconds(tot.total)} (${parts.join(', ')})`;
-  }
-  return plain(tot.total);
-}
+const totalDetail = (tot) => rewardTotalDetail(tot, cache?.items);
 
 /** A period total as the game's reward window shows it: tile, amount on it, name under it. */
-function totalChip(tot) {
-  const item = itemOf(tot.itemId);
-  return rewardChipHtml(item, formatValue(tot.unit, tot.total, { short: true }), {
-    size: TILE_SIZE,
-    label: `${item.name}: ${totalDetail(tot)}`,
-  });
-}
+const totalChip = (tot) => rewardTotalChip(tot, cache?.items, { size: TILE_SIZE });
 
 /** What one chest gives on average, small and inline for a table cell. */
 function perChestChip(r) {

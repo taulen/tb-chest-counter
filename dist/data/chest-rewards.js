@@ -4,7 +4,10 @@ exports.expandReward = expandReward;
 exports.gameDaysBetween = gameDaysBetween;
 exports.buildIncome = buildIncome;
 exports.buildByChest = buildByChest;
+exports.sumRewards = sumRewards;
+exports.rewardItemIds = rewardItemIds;
 exports.loadChestClaims = loadChestClaims;
+exports.loadSessionClaims = loadSessionClaims;
 /**
  * What the clan's opened chests paid out — Resources → Chest rewards.
  *
@@ -28,7 +31,12 @@ exports.loadChestClaims = loadChestClaims;
  *
  * Units never mix: each total is one resource, one kind of time or one item.
  * Days are game days (17:00 UTC rollover, utils/game-day.ts), never calendar
- * days. Pure apart from loadChestClaims; tested in tests/data/chest-rewards.test.ts.
+ * days. Pure apart from loadChestClaims / loadSessionClaims; tested in
+ * tests/data/chest-rewards.test.ts.
+ *
+ * Scan History reads the same rows by session_id (sumRewards): what each scan
+ * gathered — its resources in the list, everything it paid out on the scan's
+ * own page.
  */
 const database_js_1 = require("./database.js");
 const game_day_js_1 = require("../utils/game-day.js");
@@ -176,23 +184,69 @@ function buildByChest(rows, items) {
     }))
         .sort((a, b) => b.chests - a.chests || a.giftType - b.giftType);
 }
+/** Sum claims with no window: every row counts (one scan session's claims). */
+function sumRewards(rows, items) {
+    const tally = new Tally();
+    let chests = 0;
+    for (const row of rows) {
+        chests += row.batchSize;
+        eachReward(row, (itemId, n) => { tally.add(itemId, n, items); });
+    }
+    return { chests, requests: rows.length, totals: tally.list() };
+}
+/** Every item id a total shows or is made of (the icons and names a page needs). */
+function rewardItemIds(totals) {
+    const ids = new Set();
+    for (const tot of totals) {
+        ids.add(tot.itemId);
+        for (const id of Object.keys(tot.items))
+            ids.add(Number(id));
+    }
+    return [...ids];
+}
+function toClaimRow(r) {
+    let rewards = {};
+    try {
+        const parsed = JSON.parse(r.rewards);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+            rewards = parsed;
+    }
+    catch {
+        // an unreadable row still counts its chests
+    }
+    return { giftType: r.gift_type, tab: r.tab, rewards, claimedAt: r.claimed_at, batchSize: Math.max(1, r.batch_size || 1) };
+}
 /** A clan's claim requests in [from, to) (ISO timestamps; claimed_at is ISO too, so text order is time order). */
 function loadChestClaims(clanId, from, to) {
     const rows = (0, database_js_1.getDb)().prepare(`SELECT gift_type, tab, rewards, claimed_at, batch_size FROM game_claims
       WHERE clan_id = ? AND claimed_at >= ? AND claimed_at < ?
       ORDER BY claimed_at`).all(clanId, from, to);
-    const out = [];
+    return rows.map(toClaimRow);
+}
+/**
+ * The claim requests of these scan sessions, by session. A claim is sent
+ * during its scan, so none is older than the oldest session's start:
+ * `sinceIso` (that start) bounds the read to idx_game_claims_clan instead of
+ * every claim the clan ever made.
+ */
+function loadSessionClaims(clanId, sessionIds, sinceIso) {
+    const out = new Map();
+    if (!sessionIds.length)
+        return out;
+    const wanted = new Set(sessionIds);
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT session_id, gift_type, tab, rewards, claimed_at, batch_size FROM game_claims
+      WHERE clan_id = ? AND claimed_at >= ?
+      ORDER BY claimed_at`).all(clanId, sinceIso);
     for (const r of rows) {
-        let rewards = {};
-        try {
-            const parsed = JSON.parse(r.rewards);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-                rewards = parsed;
+        const sid = Number(r.session_id);
+        if (!wanted.has(sid))
+            continue;
+        let list = out.get(sid);
+        if (!list) {
+            list = [];
+            out.set(sid, list);
         }
-        catch {
-            // an unreadable row still counts its chests
-        }
-        out.push({ giftType: r.gift_type, tab: r.tab, rewards, claimedAt: r.claimed_at, batchSize: Math.max(1, r.batch_size || 1) });
+        list.push(toClaimRow(r));
     }
     return out;
 }

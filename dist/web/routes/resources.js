@@ -9,8 +9,8 @@ const fs_1 = __importDefault(require("fs"));
 const resource_repo_js_1 = require("../../data/repositories/resource-repo.js");
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const chest_rewards_js_1 = require("../../data/chest-rewards.js");
+const reward_items_js_1 = require("../../data/reward-items.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
-const item_icons_js_1 = require("../../game-art/item-icons.js");
 const index_js_1 = require("../../config/index.js");
 const crop_dirs_js_1 = require("../../utils/crop-dirs.js");
 const auth_js_1 = require("../middleware/auth.js");
@@ -133,31 +133,16 @@ function createResourcesDataRouter() {
         const rows = (0, chest_rewards_js_1.loadChestClaims)(clanId, trendFrom, to);
         const income = (0, chest_rewards_js_1.buildIncome)(rows, items, { from, to, trendFrom, rolloverUtcHour: (0, index_js_1.loadConfig)().gameDayRolloverUtcHour });
         const byChest = (0, chest_rewards_js_1.buildByChest)(rows.filter((r) => r.claimedAt >= from), items);
-        const itemIds = new Set();
-        for (const tot of [...income.totals, ...byChest.flatMap((c) => c.rewards)]) {
-            itemIds.add(tot.itemId);
-            for (const id of Object.keys(tot.items))
-                itemIds.add(Number(id));
-        }
+        const itemIds = (0, chest_rewards_js_1.rewardItemIds)([...income.totals, ...byChest.flatMap((c) => c.rewards)]);
         const giftTypes = byChest.map((c) => c.giftType);
-        const icons = await (0, item_icons_js_1.itemIconUrls)([...itemIds, ...giftTypes]);
-        const describe = (id) => {
-            const it = items[String(id)];
-            return {
-                name: names?.gifts?.[String(id)]?.chest ?? '',
-                kind: it?.kind ?? 0,
-                quality: it?.quality ?? 0,
-                seconds: it?.seconds ?? 0,
-                iconUrl: icons.get(id) ?? null,
-            };
-        };
+        const described = await (0, reward_items_js_1.describeRewardItems)([...itemIds, ...giftTypes], names);
         res.json({
             from, to, trendFrom,
             income,
             byChest,
-            items: Object.fromEntries([...itemIds].map((id) => [id, describe(id)])),
+            items: Object.fromEntries(itemIds.map((id) => [id, described[String(id)]])),
             chestTypes: Object.fromEntries(giftTypes.map((id) => [id, {
-                    ...describe(id),
+                    ...described[String(id)],
                     source: names?.gifts?.[String(id)]?.source ?? '',
                 }])),
         });

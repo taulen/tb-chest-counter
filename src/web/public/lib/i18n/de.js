@@ -2242,6 +2242,7 @@ export const ui = {
   "By game day": "Nach Spieltag",
   "Rewards": "Belohnungen",
   "Hover a reward for the exact total": "Für den genauen Wert mit der Maus über eine Belohnung fahren",
+  "{n} chests opened by this scan": { one: "{n} Truhe von diesem Scan geöffnet", other: "{n} Truhen von diesem Scan geöffnet" },
   "{metric} by game day": "{metric} nach Spieltag",
   "Gifts": "Geschenke",
   "Opened": "Geöffnet",

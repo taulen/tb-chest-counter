@@ -2242,6 +2242,7 @@ export const ui = {
   "By game day": "По игровым дням",
   "Rewards": "Награды",
   "Hover a reward for the exact total": "Наведите на награду, чтобы увидеть точную сумму",
+  "{n} chests opened by this scan": { one: "Это сканирование открыло {n} сундук", few: "Это сканирование открыло {n} сундука", many: "Это сканирование открыло {n} сундуков", other: "Это сканирование открыло {n} сундука" },
   "{metric} by game day": "{metric} по игровым дням",
   "Gifts": "Подарки",
   "Opened": "Открыто",
