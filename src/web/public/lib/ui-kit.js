@@ -156,11 +156,23 @@ export function tileHtml(id, title, body, { span = 6, link = '', cls = '' } = {}
  * a deltaHtml, a short fact). `extra` is anything below that (a sparkline).
  */
 export function statHtml({ label, value, of = '', sub = '', extra = '', cls = '' }) {
-  return `<div class="ui-stat${cls ? ` ${cls}` : ''}">
+  const classes = ['ui-stat', statFitClass(value), cls].filter(Boolean).join(' ');
+  return `<div class="${classes}">
       <div class="ui-stat-label">${label}</div>
       <div class="ui-big">${value}${of ? `<span class="ui-big-of">${of}</span>` : ''}</div>
       ${sub ? `<div class="ui-sub">${sub}</div>` : ''}${extra}
     </div>`;
+}
+
+/**
+ * A long headline has no break in it and is wider than a card in a
+ * seven-card strip at the full size: "1,563,768" (a chest's all-time points)
+ * and "2026/11/13" (its First Seen) both spilled out. These classes let it
+ * shrink to its own card (style.css "is-fit"); a short one keeps its size.
+ */
+function statFitClass(valueHtml) {
+  const n = String(valueHtml ?? '').replace(/<[^>]*>/g, '').replace(/&#?\w+;/g, 'x').trim().length;
+  return n >= 10 ? 'is-fit-10' : n >= 8 ? 'is-fit-8' : '';
 }
 
 /** The "Somewhere →" link in a tile's corner. */

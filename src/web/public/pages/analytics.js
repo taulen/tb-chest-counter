@@ -1640,6 +1640,11 @@ function renderChestDetail(data) {
     : '';
 
   const stat = (label, value, sub = '') => statHtml({ label: esc(label), value, sub });
+  const dateStat = (label, iso) => statHtml({
+    label: esc(label),
+    value: iso ? `<span title="${esc(formatDate(iso))}">${esc(formatDateShort(iso))}</span>` : '-',
+    sub: iso ? esc(formatRelativeTime(iso)) : '',
+  });
   content.innerHTML = `<div class="an an-drill">
     <div class="an-drill-head">
       <button type="button" class="btn" data-action="member-back">${t('← Back')}</button>
@@ -1656,8 +1661,8 @@ function renderChestDetail(data) {
       ${stat(t('Unique Collectors'), (data.uniqueCollectors || 0).toLocaleString())}
       ${stat(t('Avg per Collector'), (data.avgPerCollector || 0).toLocaleString())}
       ${stat(t('Points per Chest'), (data.avgPointsPerChest || 0).toLocaleString())}
-      ${stat(t('First Seen'), data.firstSeen ? esc(formatDateShort(data.firstSeen)) : '-', data.firstSeen ? esc(formatRelativeTime(data.firstSeen)) : '')}
-      ${stat(t('Last Seen'), data.lastSeen ? esc(formatDateShort(data.lastSeen)) : '-', data.lastSeen ? esc(formatRelativeTime(data.lastSeen)) : '')}
+      ${dateStat(t('First Seen'), data.firstSeen)}
+      ${dateStat(t('Last Seen'), data.lastSeen)}
     </div>
     <h2 class="ui-section-title">${t('Collectors ({count})', { count: members.length })}</h2>
     <div class="ui-table-card">

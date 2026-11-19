@@ -11488,6 +11488,15 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   border-radius: 14px;
   background: var(--bg-card);
 }
+/* A long headline (statHtml adds is-fit-8 / is-fit-10 by its length) has no
+   break in it: at 30px "2026/11/13" (~5.7em) and "1,563,768" (~4.9em) spilled
+   out of a 150–170px card in a seven-card strip (a chest's drill-down). It is
+   sized to its own card instead, never above the strip's normal size, so a
+   wide card shows it at full size. */
+.ui-stats > .ui-stat.is-fit-8,
+.ui-stats > .ui-stat.is-fit-10 { container-type: inline-size; }
+.ui-stats > .ui-stat.is-fit-8 .ui-big { font-size: min(30px, 18.5cqi); }
+.ui-stats > .ui-stat.is-fit-10 .ui-big { font-size: min(30px, 16cqi); }
 /* A section heading outside a tile (above a table card). */
 .ui-section-title {
   margin: 0;
@@ -11529,6 +11538,8 @@ details.ui-fold:not([open]) { gap: 0; }
   .ui-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .ui-stats > .ui-stat { padding: 12px 14px; }
   .ui-stats .ui-big { font-size: 24px; }
+  .ui-stats > .ui-stat.is-fit-8 .ui-big { font-size: min(24px, 18.5cqi); }
+  .ui-stats > .ui-stat.is-fit-10 .ui-big { font-size: min(24px, 16cqi); }
 }
 
 /* Error state: what happened and a Try again (api() can answer an object). */

@@ -160,7 +160,9 @@ row as fit (two on a phone).
 ```
 
 `value`, `of`, `sub` and `extra` are HTML (`of` is the quiet " of 100",
-`extra` a sparkline).
+`extra` a sparkline). A long headline (8+ characters: "1,563,768",
+"2026/11/13") shrinks to fit its card on its own — `statHtml` tags it
+`is-fit-8`/`is-fit-10` — so pass the value as it is, never a smaller font.
 
 ### Section heading and collapsible tile
 
