@@ -279,16 +279,26 @@ exports.WELCOME_CANDIDATES_PER_RUN = 10;
 exports.WELCOME_DRY_RUN_LIMIT = 1000;
 /** How long a join waits for its chat account to show up before it is given up. */
 exports.WELCOME_WAIT_MS = 24 * 3600_000;
+/**
+ * The player `alias` (a column holding a game player id) is one of OUR
+ * scanner accounts — any clan's (clan_scan_accounts, v119; player ids are the
+ * game's, the same in every clan). The scanner sends the codes, so it never
+ * gets one: on Nov 19 2026 CWB's own scanner player (D4DDYLiZ) was queued and
+ * the "private chat" opened with itself failed the 1:1 check.
+ */
+const isScannerPlayer = (alias) => `EXISTS (SELECT 1 FROM clan_scan_accounts sa WHERE sa.player_id = ${alias})`;
 const DUE_WHERE = `
   gp.clan_id = ? AND gp.in_clan = 1 AND gp.joined_at IS NOT NULL
   AND (? = 1 OR gp.joined_at * 1000 >= ?)
   AND (w.status IS NULL OR w.status = 'waiting' OR (? = 1 AND w.status = 'dry-run'))
-  AND NOT EXISTS (SELECT 1 FROM user_game_links l WHERE l.player_id = gp.player_id)`;
+  AND NOT EXISTS (SELECT 1 FROM user_game_links l WHERE l.player_id = gp.player_id)
+  AND NOT ${isScannerPlayer('gp.player_id')}`;
 /**
- * Players due a welcome code: on the roster now, no linked account, never a
- * welcome row past `waiting` (a dry-run row counts as not sent once `live`),
- * and either joined after `sinceMs` or — with `backlog` — any current member.
- * Recent joins first (they are the ones who just arrived), at most `limit`.
+ * Players due a welcome code: on the roster now, no linked account, not one of
+ * our scanner accounts, never a welcome row past `waiting` (a dry-run row
+ * counts as not sent once `live`), and either joined after `sinceMs` or — with
+ * `backlog` — any current member. Recent joins first (they are the ones who
+ * just arrived), at most `limit`.
  */
 function welcomeCandidates(clanId, sinceMs, opts = {}) {
     const backlog = opts.backlog ? 1 : 0;
@@ -312,7 +322,7 @@ function welcomeProgress(clanId) {
        SUM(CASE WHEN w.status IN ('sent', 'unknown', 'sending') THEN 1 ELSE 0 END) AS sent,
        SUM(CASE WHEN w.status = 'skipped' THEN 1 ELSE 0 END) AS skipped
        FROM chat_invite_welcomes w JOIN game_players gp ON gp.clan_id = w.clan_id AND gp.player_id = w.player_id AND gp.in_clan = 1
-      WHERE w.clan_id = ?`).get(clanId);
+      WHERE w.clan_id = ? AND NOT ${isScannerPlayer('w.player_id')}`).get(clanId);
     const dueCount = (backlog) => db.prepare(`SELECT COUNT(*) AS n FROM game_players gp
        LEFT JOIN chat_invite_welcomes w ON w.clan_id = gp.clan_id AND w.player_id = gp.player_id
       WHERE ${DUE_WHERE}`).get(clanId, backlog ? 1 : 0, s.welcomeEnabledAt ?? Number.MAX_SAFE_INTEGER, 1).n;
@@ -334,7 +344,8 @@ function setWelcomeStatus(clanId, c, status, reason, extra = {}, now = new Date(
        updated_at = excluded.updated_at`).run(clanId, c.playerId, c.name, c.joinedAt, status, reason, extra.chatUserId ?? null, extra.channelUrl ?? null, extra.countAttempt ? 1 : 0, extra.messageId ?? null, now, now, extra.countAttempt ? 1 : 0);
 }
 /**
- * The welcome codes sent in a clan, newest first, each with what became of it:
+ * The welcome codes sent in a clan (never one of our scanner accounts' own
+ * players), newest first, each with what became of it:
  * the account now linked to the player (whichever code they used), the
  * member it is (for a profile link) and when its code runs out.
  */
@@ -348,7 +359,8 @@ function recentWelcomes(clanId, limit = 15) {
        FROM chat_invite_welcomes w
        LEFT JOIN user_game_links l ON l.clan_id = w.clan_id AND l.player_id = w.player_id
        LEFT JOIN users u ON u.id = l.user_id
-      WHERE w.clan_id = ? ORDER BY w.updated_at DESC LIMIT ?`).all(clanId, limit).map((r) => ({
+      WHERE w.clan_id = ? AND NOT ${isScannerPlayer('w.player_id')}
+      ORDER BY w.updated_at DESC LIMIT ?`).all(clanId, limit).map((r) => ({
         player: r.player_name, joinedAt: r.joined_at, status: r.status, reason: r.reason, updatedAt: r.updated_at,
         account: r.account, linkedAt: r.linked_at, memberId: r.member_id, codeExpiresAt: r.code_expires_at,
     }));

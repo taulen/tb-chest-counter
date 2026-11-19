@@ -31,7 +31,11 @@ function createAccountInvitesRouter() {
         }
         const names = new Map((0, database_js_1.getDb)().prepare('SELECT player_id, name FROM game_players WHERE clan_id = ?').all(id)
             .map((r) => [r.player_id, r.name]));
-        const scanner = (0, database_js_1.getDb)().prepare('SELECT account FROM clan_scan_accounts WHERE clan_id = ?').get(id);
+        // The scanner account and its player's in-game name (it sends the codes and never gets one).
+        const scanner = (0, database_js_1.getDb)().prepare(`SELECT a.account,
+              (SELECT gp.name FROM game_players gp WHERE gp.player_id = a.player_id
+                ORDER BY gp.clan_id = a.clan_id DESC, gp.last_seen DESC LIMIT 1) AS name
+         FROM clan_scan_accounts a WHERE a.clan_id = ?`).get(id);
         // Each player's member, for the tables' profile links.
         const memberIds = (0, account_invite_repo_js_1.memberIdsByPlayer)(id);
         const memberIdOf = (playerId) => (playerId === null ? null : memberIds.get((0, account_invite_repo_js_1.playerKey)(id, playerId)) ?? null);
@@ -49,6 +53,7 @@ function createAccountInvitesRouter() {
             siteNameOverride: (0, chat_invites_js_1.siteNameOverride)(),
             joinEntryLabel: chat_invites_js_1.JOIN_ENTRY_LABEL,
             scannerKnown: !!scanner?.account,
+            scannerPlayer: scanner?.name ?? null,
             linkedAccounts: (0, account_invite_repo_js_1.linksForClan)(id).filter((l) => l.onRoster).length,
             welcomeProgress: (0, account_invite_repo_js_1.welcomeProgress)(id),
             // Who asked and what happened — never a code (only its hash is kept).

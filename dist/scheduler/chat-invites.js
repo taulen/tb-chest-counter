@@ -420,7 +420,8 @@ async function processInviteRequests(clanId, opts) {
 //     it is.
 //   - After that, every player who joins.
 // Once per player per clan, ever (chat_invite_welcomes); never someone with a
-// linked account, never someone who has left by the time of the send.
+// linked account, never someone who has left by the time of the send, never
+// one of our own scanner accounts (it would be "messaging" itself).
 //
 // ONE code a run, at least WELCOME_MIN_GAP_MS (20 min for a week after a
 // mute) after the scanner's last invite DM: runs come after each scan and,
@@ -567,6 +568,11 @@ async function runWelcome(clanId, opts) {
             (0, account_invite_repo_js_1.setWelcomeStatus)(clanId, c, waitedOut ? 'skipped' : 'waiting', 'no-chat-account');
             continue;
         }
+        // Our own scanner account: it sends the codes. The candidates leave it out
+        // once a scan has noted its player id (clan_scan_accounts); until then its
+        // chat account gives it away. No row: it is not a member waiting for one.
+        if (chatId === opts.scannerChatId)
+            continue;
         if (chatAccountMismatch(c.playerId, chatId)) {
             (0, account_invite_repo_js_1.setWelcomeStatus)(clanId, c, 'skipped', 'chat-account-mismatch', { chatUserId: chatId });
             noteBlocked(clanId, c.playerId, chatId, 'chat-account-mismatch');

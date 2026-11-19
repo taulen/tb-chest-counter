@@ -1095,6 +1095,8 @@ export const ui = {
   "Recent code requests": "Letzte Code-Anfragen",
   "Asked": "Gefragt",
   "Players get a one-time code from the scanner account in the game chat, and enter it on the site to get an account linked to their player.": "Spieler bekommen vom Scanner-Konto im Spielchat einen Einmalcode und geben ihn auf der Seite ein, um ein mit ihrem Spieler verknüpftes Konto zu erhalten.",
+  "Players get a one-time code from the scanner account, {name}, in the game chat, and enter it on the site to get an account linked to their player.": "Spieler bekommen vom Scanner-Konto, {name}, im Spielchat einen Einmalcode und geben ihn auf der Seite ein, um ein mit ihrem Spieler verknüpftes Konto zu erhalten.",
+  "The scanner account sends the codes, so its own player never gets one.": "Das Scanner-Konto verschickt die Codes, sein eigener Spieler bekommt also nie einen.",
   "The scanner account will message {n} members a code, one every 10 minutes.": { one: "Das Scanner-Konto schickt {n} Mitglied einen Code, einen alle 10 Minuten.", other: "Das Scanner-Konto schickt {n} Mitgliedern einen Code, einen alle 10 Minuten." },
   "Switch on": "Einschalten",
   "Save failed: {error}": "Speichern fehlgeschlagen: {error}",

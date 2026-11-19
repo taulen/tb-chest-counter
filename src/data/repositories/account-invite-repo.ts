@@ -326,17 +326,29 @@ export type WelcomeStatus = 'waiting' | 'dry-run' | 'sending' | 'sent' | 'unknow
 
 export interface WelcomeCandidate { playerId: number; name: string; joinedAt: number; attempts: number }
 
+/**
+ * The player `alias` (a column holding a game player id) is one of OUR
+ * scanner accounts — any clan's (clan_scan_accounts, v119; player ids are the
+ * game's, the same in every clan). The scanner sends the codes, so it never
+ * gets one: on Nov 19 2026 CWB's own scanner player (D4DDYLiZ) was queued and
+ * the "private chat" opened with itself failed the 1:1 check.
+ */
+const isScannerPlayer = (alias: string): string =>
+  `EXISTS (SELECT 1 FROM clan_scan_accounts sa WHERE sa.player_id = ${alias})`;
+
 const DUE_WHERE = `
   gp.clan_id = ? AND gp.in_clan = 1 AND gp.joined_at IS NOT NULL
   AND (? = 1 OR gp.joined_at * 1000 >= ?)
   AND (w.status IS NULL OR w.status = 'waiting' OR (? = 1 AND w.status = 'dry-run'))
-  AND NOT EXISTS (SELECT 1 FROM user_game_links l WHERE l.player_id = gp.player_id)`;
+  AND NOT EXISTS (SELECT 1 FROM user_game_links l WHERE l.player_id = gp.player_id)
+  AND NOT ${isScannerPlayer('gp.player_id')}`;
 
 /**
- * Players due a welcome code: on the roster now, no linked account, never a
- * welcome row past `waiting` (a dry-run row counts as not sent once `live`),
- * and either joined after `sinceMs` or — with `backlog` — any current member.
- * Recent joins first (they are the ones who just arrived), at most `limit`.
+ * Players due a welcome code: on the roster now, no linked account, not one of
+ * our scanner accounts, never a welcome row past `waiting` (a dry-run row
+ * counts as not sent once `live`), and either joined after `sinceMs` or — with
+ * `backlog` — any current member. Recent joins first (they are the ones who
+ * just arrived), at most `limit`.
  */
 export function welcomeCandidates(
   clanId: number,
@@ -368,7 +380,7 @@ export function welcomeProgress(clanId: number): { sent: number; due: number; sk
        SUM(CASE WHEN w.status IN ('sent', 'unknown', 'sending') THEN 1 ELSE 0 END) AS sent,
        SUM(CASE WHEN w.status = 'skipped' THEN 1 ELSE 0 END) AS skipped
        FROM chat_invite_welcomes w JOIN game_players gp ON gp.clan_id = w.clan_id AND gp.player_id = w.player_id AND gp.in_clan = 1
-      WHERE w.clan_id = ?`,
+      WHERE w.clan_id = ? AND NOT ${isScannerPlayer('w.player_id')}`,
   ).get(clanId) as { sent: number | null; skipped: number | null };
   const dueCount = (backlog: boolean): number => (db.prepare(
     `SELECT COUNT(*) AS n FROM game_players gp
@@ -405,7 +417,8 @@ export function setWelcomeStatus(
 }
 
 /**
- * The welcome codes sent in a clan, newest first, each with what became of it:
+ * The welcome codes sent in a clan (never one of our scanner accounts' own
+ * players), newest first, each with what became of it:
  * the account now linked to the player (whichever code they used), the
  * member it is (for a profile link) and when its code runs out.
  */
@@ -423,7 +436,8 @@ export function recentWelcomes(clanId: number, limit = 15): Array<{
        FROM chat_invite_welcomes w
        LEFT JOIN user_game_links l ON l.clan_id = w.clan_id AND l.player_id = w.player_id
        LEFT JOIN users u ON u.id = l.user_id
-      WHERE w.clan_id = ? ORDER BY w.updated_at DESC LIMIT ?`,
+      WHERE w.clan_id = ? AND NOT ${isScannerPlayer('w.player_id')}
+      ORDER BY w.updated_at DESC LIMIT ?`,
   ).all(clanId, limit) as Array<{
     player_name: string; joined_at: number | null; status: WelcomeStatus; reason: string | null; updated_at: string;
     account: string | null; linked_at: string | null; member_id: number | null; code_expires_at: string | null;

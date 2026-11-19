@@ -148,6 +148,7 @@ function renderAccountInvites(root, box, clanId, data) {
       <ul>
         <li>${t('Words that ask for a code: {words}', { words: keywords })}</li>
         <li>${t('Only members on the roster get a code. It lasts 72 hours, works once, and a player gets at most one every 10 minutes.')}</li>
+        <li>${t('The scanner account sends the codes, so its own player never gets one.')}</li>
         <li>${t('On the Join page the code creates their account linked to their player, sets a new password, or adds this clan to their account.')}</li>
         <li>${t('Roles follow the game: the {leader} and {superior} ranks are admins here, everyone else a member. Someone who leaves the clan in the game loses access until they are back.', { leader: escapeHtml(gameRankName(1)), superior: escapeHtml(gameRankName(2)) })}</li>
         <li>${t('The game blocks links, so messages spell the site out and tell players to pick “{label}”.', { label: escapeHtml(t('Have a code? Join here')) })}</li>
@@ -202,7 +203,9 @@ function renderAccountInvites(root, box, clanId, data) {
 
   box.innerHTML = `
     <div class="invite-panel">
-      <p class="invite-lede">${t('Players get a one-time code from the scanner account in the game chat, and enter it on the site to get an account linked to their player.')}</p>
+      <p class="invite-lede">${data.scannerPlayer
+        ? t('Players get a one-time code from the scanner account, {name}, in the game chat, and enter it on the site to get an account linked to their player.', { name: `<strong>${escapeHtml(data.scannerPlayer)}</strong>` })
+        : t('Players get a one-time code from the scanner account in the game chat, and enter it on the site to get an account linked to their player.')}</p>
       ${notices.map((n) => `<p class="invite-notice">⚠ ${escapeHtml(n)}</p>`).join('')}
       <div class="invite-settings">${answerRow}${welcomeRow}</div>
       ${wouldTable}

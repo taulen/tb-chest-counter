@@ -51,7 +51,13 @@ export function createAccountInvitesRouter(): Router {
     }
     const names = new Map((getDb().prepare('SELECT player_id, name FROM game_players WHERE clan_id = ?').all(id) as Array<{ player_id: number; name: string }>)
       .map((r) => [r.player_id, r.name]));
-    const scanner = getDb().prepare('SELECT account FROM clan_scan_accounts WHERE clan_id = ?').get(id) as { account: string } | undefined;
+    // The scanner account and its player's in-game name (it sends the codes and never gets one).
+    const scanner = getDb().prepare(
+      `SELECT a.account,
+              (SELECT gp.name FROM game_players gp WHERE gp.player_id = a.player_id
+                ORDER BY gp.clan_id = a.clan_id DESC, gp.last_seen DESC LIMIT 1) AS name
+         FROM clan_scan_accounts a WHERE a.clan_id = ?`,
+    ).get(id) as { account: string; name: string | null } | undefined;
     // Each player's member, for the tables' profile links.
     const memberIds = memberIdsByPlayer(id);
     const memberIdOf = (playerId: number | null): number | null => (playerId === null ? null : memberIds.get(playerKey(id, playerId)) ?? null);
@@ -69,6 +75,7 @@ export function createAccountInvitesRouter(): Router {
       siteNameOverride: siteNameOverride(),
       joinEntryLabel: JOIN_ENTRY_LABEL,
       scannerKnown: !!scanner?.account,
+      scannerPlayer: scanner?.name ?? null,
       linkedAccounts: linksForClan(id).filter((l) => l.onRoster).length,
       welcomeProgress: welcomeProgress(id),
       // Who asked and what happened — never a code (only its hash is kept).

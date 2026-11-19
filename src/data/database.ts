@@ -2622,6 +2622,23 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v133 — the scanner account never gets a welcome code (Nov 19 2026): CWB's
+    // own scanner player (D4DDYLiZ) was queued, and the "private chat" opened
+    // with itself failed the 1:1 check — `skipped`/`channel` for good. The
+    // queue now leaves our scanner players out (account-invite-repo.ts); this
+    // drops those failed rows, so a player who stops being the scanner is an
+    // ordinary member again. Only rows whose chat account IS a scanner
+    // account. Data only; a DELETE is replay-safe.
+    version: 133,
+    run: (database): void => {
+      database.exec(`
+        DELETE FROM chat_invite_welcomes
+         WHERE status = 'skipped' AND reason = 'channel'
+           AND chat_user_id IN (SELECT account FROM clan_scan_accounts);
+      `);
+    },
+  },
 ];
 
 /**

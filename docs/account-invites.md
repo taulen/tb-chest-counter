@@ -41,7 +41,13 @@ admins or the superadmin; the third is always there for them:
    an hour (see [When the game mutes the scanner account](#when-the-game-mutes-the-scanner-account)). Progress shows in the settings: "Codes sent: 34
    of 98". Code: **72 hours** (a new member may not read the chat for a while).
    **Once per player per clan, ever** (`chat_invite_welcomes`): a rejoin never
-   resends. **Dry run** only lists and logs who would get a code (never the
+   resends. **Never our own scanner account** — any clan's scanner player
+   (`clan_scan_accounts.player_id`, noted by every scan), and before a scan
+   has noted it, any candidate whose chat account is the scanner's own: it
+   sends the codes. (Nov 19 2026: CWB's scanner player D4DDYLiZ was queued;
+   the chat "opened" with itself failed the 1:1 check. v133 dropped that row;
+   the list and the counts leave scanner players out.) The section's first
+   line names the scanner account's player. **Dry run** only lists and logs who would get a code (never the
    code) and sends nothing — those players are still due once it is on.
 
 3. **Made by hand** (v132, Nov 2026) — for when the scanner account can't

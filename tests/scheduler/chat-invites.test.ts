@@ -16,6 +16,7 @@ import { getDb } from '../../src/data/database.js';
 import {
   hashCode,
   lookupCode,
+  recentWelcomes,
   setInvitesEnabled,
   setWelcomeMode,
   welcomeProgress,
@@ -496,6 +497,44 @@ describe('welcome codes for new members', () => {
     const s = sender();
     await sendWelcomeCodes(1, wopts(s, api([member(22, 'Gone'), member(23, 'Linked')])));
     expect(s.sent).toHaveLength(0);
+  });
+
+  it('never our own scanner account: it sends the codes (Nov 19 2026: CWB queued its own scanner player)', async () => {
+    setWelcomeMode(1, 'on', T0);
+    gamePlayer(1, 30, 'D4DDYLiZ', 4, 1, T0s + 120);
+    gamePlayer(1, 21, 'New', 4, 1, T0s + 60);
+    getDb().prepare("INSERT INTO clan_scan_accounts (clan_id, account, player_id, source, updated_at) VALUES (1, ?, 30, 'scan', 'x')").run(SCANNER);
+    expect(welcomeProgress(1)).toMatchObject({ due: 1, total: 1 });
+    const s = sender();
+    const a = api([member(30, 'D4DDYLiZ', SCANNER), member(21, 'New')]);
+    expect(await sendWelcomeCodes(1, wopts(s, a))).toBe('welcome codes: 1 sent');
+    expect(s.sent.map((x) => x.channelUrl)).toEqual(['dm-tb:21']);
+    later();
+    await sendWelcomeCodes(1, wopts(s, a));
+    expect(s.sent).toHaveLength(1);
+    expect(a.openPrivateChat).toHaveBeenCalledTimes(1);
+    expect(welcomes()).toEqual([{ player_id: 21, status: 'sent', reason: null }]);
+    expect(welcomeProgress(1)).toMatchObject({ sent: 1, due: 0, total: 1 });
+    // A row from before (the chat with itself, refused) is neither listed nor counted.
+    getDb().prepare(
+      `INSERT INTO chat_invite_welcomes (clan_id, player_id, player_name, joined_at, status, reason, chat_user_id, attempts, created_at, updated_at)
+       VALUES (1, 30, 'D4DDYLiZ', ?, 'skipped', 'channel', ?, 0, 'x', 'x')`,
+    ).run(T0s + 120, SCANNER);
+    expect(recentWelcomes(1, 100).map((w) => w.player)).toEqual(['New']);
+    expect(welcomeProgress(1)).toMatchObject({ sent: 1, skipped: 0, total: 1 });
+  });
+
+  it('a scanner whose player id is not noted yet is still recognised by its chat account: no chat with itself, no row', async () => {
+    setWelcomeMode(1, 'on', T0);
+    gamePlayer(1, 30, 'D4DDYLiZ', 4, 1, T0s + 120);
+    gamePlayer(1, 21, 'New', 4, 1, T0s + 60);
+    const s = sender();
+    const a = api([member(30, 'D4DDYLiZ', SCANNER), member(21, 'New')]);
+    await sendWelcomeCodes(1, wopts(s, a));
+    expect(a.openPrivateChat).toHaveBeenCalledTimes(1);
+    expect(a.openPrivateChat.mock.calls[0][1]).toBe('tb:21');
+    expect(s.sent.map((x) => x.channelUrl)).toEqual(['dm-tb:21']);
+    expect(welcomes()).toEqual([{ player_id: 21, status: 'sent', reason: null }]);
   });
 
   it('never sends into a chat that is not exactly the scanner and that player', async () => {

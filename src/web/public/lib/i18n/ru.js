@@ -1095,6 +1095,8 @@ export const ui = {
   "Recent code requests": "Последние запросы кода",
   "Asked": "Запрошено",
   "Players get a one-time code from the scanner account in the game chat, and enter it on the site to get an account linked to their player.": "Игроки получают одноразовый код от аккаунта-сканера в игровом чате и вводят его на сайте, чтобы получить аккаунт, привязанный к их игроку.",
+  "Players get a one-time code from the scanner account, {name}, in the game chat, and enter it on the site to get an account linked to their player.": "Игроки получают одноразовый код от аккаунта-сканера, {name}, в игровом чате и вводят его на сайте, чтобы получить аккаунт, привязанный к их игроку.",
+  "The scanner account sends the codes, so its own player never gets one.": "Коды рассылает аккаунт-сканер, поэтому его собственный игрок никогда не получает код.",
   "The scanner account will message {n} members a code, one every 10 minutes.": { one: "Аккаунт-сканер отправит код {n} участнику, по одному раз в 10 минут.", few: "Аккаунт-сканер отправит код {n} участникам, по одному раз в 10 минут.", many: "Аккаунт-сканер отправит код {n} участникам, по одному раз в 10 минут.", other: "Аккаунт-сканер отправит код {n} участникам, по одному раз в 10 минут." },
   "Switch on": "Включить",
   "Save failed: {error}": "Ошибка сохранения: {error}",
