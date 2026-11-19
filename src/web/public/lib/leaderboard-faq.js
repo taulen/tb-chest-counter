@@ -16,7 +16,7 @@
 
 import { escapeHtml, esc, contentModal } from './ui.js';
 import { t, tn, tGame } from './i18n.js';
-import { isTinmanWeek, weekLengthDays } from './period.js';
+import { computeGameWindowDates, isTinmanWeek, parseCustomWeek, weekdayName, weekLengthDays } from './period.js';
 import { loadGameArt, chestLabelHtml } from './game-art.js';
 
 const REPO_URL = 'https://github.com/taulen/tb-chest-counter';
@@ -143,11 +143,27 @@ function rolloverLabel(hr) {
 
 /**
  * When this clan's day, week and month start. The week is the clan's own
- * (Clans → Week): Sunday, or Tinman to Tinman — 6 days, or 5 in a Seasonal
- * Kingdom — so a clan counting from Tinman isn't told its week starts Sunday.
+ * (Clans → Week): Sunday, Tinman to Tinman — 6 days, or 5 in a Seasonal
+ * Kingdom — or one the clan set itself, so nobody is told their week starts on
+ * a Sunday it doesn't.
  */
 function timeframesAnswerHtml(rolloverHr, weekStart) {
   const time = escapeHtml(rolloverLabel(rolloverHr));
+  const custom = parseCustomWeek(weekStart);
+  if (custom && custom.days === 7) {
+    return t("Every timeframe follows the game's daily reset at {time}. This clan's weeks start on {weekday} at that time, months on the 1st.", {
+      time, weekday: escapeHtml(weekdayName(custom.anchor)),
+    });
+  }
+  if (custom) {
+    // Any other length drifts through the weekdays, so name the date instead.
+    return tn(
+      custom.days,
+      "Every timeframe follows the game's daily reset at {time}. This clan's week lasts {n} day, from that time; the current one started on {date}. Months start on the 1st.",
+      "Every timeframe follows the game's daily reset at {time}. This clan's week lasts {n} days, from that time; the current one started on {date}. Months start on the 1st.",
+      { time, date: computeGameWindowDates('weekly', 0, rolloverHr, weekStart).from },
+    );
+  }
   if (!isTinmanWeek(weekStart)) {
     return t("Every timeframe follows the game's daily reset at {time}. Weeks start on Sunday at that time, months on the 1st.", { time });
   }

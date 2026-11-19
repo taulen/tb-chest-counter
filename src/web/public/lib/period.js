@@ -16,6 +16,15 @@
 import { getGameDayRolloverUtcHour, getWeekStart } from './state.js';
 import { formatUtcDateKey } from './ui.js';
 import { t, getLanguage } from './i18n.js';
+import { isWeekStart, weekCadence } from './week-shape.js';
+
+// The week-shape vocabulary lives in week-shape.js (state.js needs it too);
+// re-exported so pages keep one import for anything period-shaped.
+export {
+  ANCIENTS_TINMAN_ANCHOR, ANCIENTS_CYCLE_DAYS, SK_TINMAN_ANCHOR, SK_CYCLE_DAYS,
+  CUSTOM_WEEK_MIN_DAYS, CUSTOM_WEEK_MAX_DAYS,
+  isWeekStart, isTinmanWeek, isCustomWeek, parseCustomWeek, customWeekStart,
+} from './week-shape.js';
 
 // `rolloverHrOverride` is for the public-share page, which wires its
 // rollover hour through state.js the same way the auth app does — but
@@ -26,31 +35,11 @@ function resolveRolloverHr(override) {
 }
 
 // ─── Week shape ───
-// A clan's week is Sunday → Sunday (the default) or Tinman → Tinman: from the
-// day Rise of the Ancients (Ancients day 2) begins to the next one — 6 days in
-// a normal kingdom ('ancients'), 5 in a Seasonal Kingdom ('ancients-sk', SK
-// 2026's cadence). Mirrors src/utils/game-day.ts;
-// tests/config/game-window-parity.test.ts asserts the two agree, constants
-// included.
-export const ANCIENTS_TINMAN_ANCHOR = '2026-10-23';
-export const ANCIENTS_CYCLE_DAYS = 6;
-export const SK_TINMAN_ANCHOR = '2026-11-17';
-export const SK_CYCLE_DAYS = 5;
-
-const TINMAN_CADENCES = {
-  ancients: { anchor: ANCIENTS_TINMAN_ANCHOR, days: ANCIENTS_CYCLE_DAYS },
-  'ancients-sk': { anchor: SK_TINMAN_ANCHOR, days: SK_CYCLE_DAYS },
-};
-
-/** The week shapes a clan can hold. */
-export function isWeekStart(v) {
-  return v === 'sunday' || v === 'ancients' || v === 'ancients-sk';
-}
-
-/** True for either Tinman-to-Tinman shape. */
-export function isTinmanWeek(weekStart) {
-  return weekStart === 'ancients' || weekStart === 'ancients-sk';
-}
+// A clan's week is Sunday → Sunday (the default), Tinman → Tinman (6 days, or 5
+// in a Seasonal Kingdom), or its own 'custom:<first day>:<days>' — every one a
+// cadence of a day some week starts on plus a length (week-shape.js). Mirrors
+// src/utils/game-day.ts; tests/config/game-window-parity.test.ts asserts the
+// two agree.
 
 function resolveWeekStart(override) {
   return isWeekStart(override) ? override : getWeekStart();
@@ -58,18 +47,19 @@ function resolveWeekStart(override) {
 
 /** Length of the viewed clan's game week, in game days. */
 export function weekLengthDays(weekStartOverride) {
-  const weekStart = resolveWeekStart(weekStartOverride);
-  return isTinmanWeek(weekStart) ? TINMAN_CADENCES[weekStart].days : 7;
+  return weekCadence(resolveWeekStart(weekStartOverride)).days;
 }
 
 // Days to step back from a shifted-UTC midnight to the first day of its week.
 function daysIntoWeek(day, weekStart) {
-  if (isTinmanWeek(weekStart)) {
-    const { anchor, days } = TINMAN_CADENCES[weekStart];
-    const since = Math.round((day.getTime() - Date.parse(`${anchor}T00:00:00Z`)) / 86_400_000);
-    return ((since % days) + days) % days;
-  }
-  return day.getUTCDay();
+  const { anchor, days } = weekCadence(weekStart);
+  const since = Math.round((day.getTime() - Date.parse(`${anchor}T00:00:00Z`)) / 86_400_000);
+  return ((since % days) + days) % days;
+}
+
+/** The weekday of game day `dateKey` (YYYY-MM-DD), in the reader's language. */
+export function weekdayName(dateKey) {
+  return new Date(`${dateKey}T00:00:00Z`).toLocaleDateString(getLanguage(), { weekday: 'long', timeZone: 'UTC' });
 }
 
 /**
@@ -144,7 +134,7 @@ export function computeGameWindow(period, offset, rolloverHrOverride, weekStartO
   if (period === 'weekly') {
     // Game-week starts on Sunday at the rollover hour (the upstream
     // chesttracker convention, see chesttracker-client.ts) unless the clan
-    // counts Tinman to Tinman.
+    // counts Tinman to Tinman or set its own week.
     const len = weekLengthDays(weekStart);
     shifted.setUTCDate(shifted.getUTCDate() - daysIntoWeek(shifted, weekStart) - offset * len);
     const startMs = shifted.getTime();

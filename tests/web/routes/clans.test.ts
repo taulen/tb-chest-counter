@@ -425,4 +425,41 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
       expect((await request(app).put('/api/clans/999/seasonal-kingdom').send({ enabled: true })).status).toBe(404);
     });
   });
+
+  describe('custom weeks', () => {
+    it('stores a clan\'s own week and shows it on the clan', async () => {
+      const res = await request(app).put('/api/clans/1/week-start').send({ weekStart: 'custom:2026-11-17:7' });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true, weekStart: 'custom:2026-11-17:7' });
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('custom:2026-11-17:7');
+      expect((await request(app).get('/api/clans/2')).body.clan.weekStart).toBe('sunday');
+    });
+
+    it('stores a custom week identical to a preset as the preset', async () => {
+      // 2026-11-15 is a Sunday: 7 days from it IS Sunday to Sunday.
+      const sunday = await request(app).put('/api/clans/1/week-start').send({ weekStart: 'custom:2026-11-15:7' });
+      expect(sunday.body.weekStart).toBe('sunday');
+      // 2026-10-29 is a Tinman day: 6 days from it is the Tinman week.
+      const tinman = await request(app).put('/api/clans/1/week-start').send({ weekStart: 'custom:2026-10-29:6' });
+      expect(tinman.body.weekStart).toBe('ancients');
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('ancients');
+    });
+
+    it('refuses a malformed custom week and keeps the one saved', async () => {
+      await request(app).put('/api/clans/1/week-start').send({ weekStart: 'custom:2026-11-17:7' });
+      for (const bad of ['custom:2026-02-30:7', 'custom:2026-11-17:1', 'custom:2026-11-17:29', 'custom:2026-11-17', 'tuesday']) {
+        const res = await request(app).put('/api/clans/1/week-start').send({ weekStart: bad });
+        expect(res.status, bad).toBe(400);
+      }
+      expect((await request(app).get('/api/clans/1')).body.clan.weekStart).toBe('custom:2026-11-17:7');
+    });
+
+    it('keeps a custom week across a Seasonal Kingdom switch', async () => {
+      await request(app).put('/api/clans/1/week-start').send({ weekStart: 'custom:2026-11-17:7' });
+      expect((await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: true })).body.weekStart)
+        .toBe('custom:2026-11-17:7');
+      expect((await request(app).put('/api/clans/1/seasonal-kingdom').send({ enabled: false })).body.weekStart)
+        .toBe('custom:2026-11-17:7');
+    });
+  });
 });

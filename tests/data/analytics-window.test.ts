@@ -10,7 +10,8 @@ import {
   getWindowTotals,
   notifyChestDataChanged,
 } from '../../src/data/repositories/chest-summary-repo.js';
-import { gameDateFor } from '../../src/utils/game-day.js';
+import { gameDateFor, type WeekStart } from '../../src/utils/game-day.js';
+import { weekFirstDay } from '../../src/data/goal-history.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
 // The rollover the app defaults to; the rollup buckets on it and these tests
@@ -285,6 +286,21 @@ describe('getConcentration', () => {
     seed([{ member: 1, chest: 'Common Chest', type: 'common', source: 'Crypt', pts: 50, at: BASE }]);
     const d = dayOf(BASE);
     expect(getConcentration(1, d, d).totalPoints).toBe(50);
+  });
+
+  it('buckets the weekly trend on the clan\'s own week, wherever the Weekly window cuts', () => {
+    // One record a day for 20 game days; each weekly bar must be keyed by the
+    // first day of the week the Weekly period puts its days in.
+    for (let i = 0; i < 20; i += 1) {
+      seed([{ member: 1, chest: 'Common Chest', type: 'common', source: 'Crypt', pts: 10, at: BASE + i * DAY }]);
+    }
+    const days = Array.from({ length: 20 }, (_, i) => dayOf(BASE + i * DAY));
+    const shapes: WeekStart[] = ['sunday', 'ancients', 'custom:2026-06-09:7', 'custom:2026-05-01:10', 'custom:2026-06-12:3'];
+    for (const shape of shapes) {
+      const expected = [...new Set(days.map((d) => weekFirstDay(Date.parse(`${d}T${String(ROLLOVER).padStart(2, '0')}:00:00Z`), ROLLOVER, shape)))].sort();
+      const got = getConcentration(1, undefined, undefined, shape, 20).weekly.map((w) => w.weekStart);
+      expect(got, shape).toEqual(expected);
+    }
   });
 });
 

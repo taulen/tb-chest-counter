@@ -396,8 +396,8 @@ function getMemberWindowComparison(clanId, prevFromDay, prevToDay, curFromDay, c
  *
  * `weeks` buckets on the clan's game week, matching every other weekly window
  * on the site. game_day is already rollover-shifted, so the week's first day is
- * a plain date offset: strftime('%w') back to Sunday, or the day count since a
- * known Tinman day modulo the 6-day cycle for Tinman-to-Tinman clans.
+ * a plain date offset: the day count since a day some week starts on, modulo
+ * the week's length (weekCadence — Sunday, Tinman or the clan's own).
  */
 function getConcentration(clanId, fromDay, toDay, weekStart = 'sunday', weeks = 8) {
     ensureFresh(clanId);
@@ -425,21 +425,19 @@ function getConcentration(clanId, fromDay, toDay, weekStart = 'sunday', weeks = 
     // Trend, always over recent game weeks regardless of the selected window —
     // a concentration figure for one week is a fact, and only the run of them
     // says whether the clan is becoming more or less dependent.
-    // Both are code constants, never input, so inlining them is safe.
-    const cadence = (0, game_day_js_1.isTinmanWeek)(weekStart) ? game_day_js_1.TINMAN_CADENCES[weekStart] : null;
-    const daysIntoWeek = cadence
-        ? `(((CAST(julianday(game_day) - julianday('${cadence.anchor}') AS INTEGER)) % ${cadence.days}) + ${cadence.days}) % ${cadence.days}`
-        : `CAST(strftime('%w', game_day) AS INTEGER)`;
+    // A custom week's cadence is the clan's own setting, so it is bound, never
+    // inlined.
+    const cadence = (0, game_day_js_1.weekCadence)(weekStart);
     const weeklyRows = db.prepare(`
-    SELECT DATE(game_day, '-' || ${daysIntoWeek} || ' days') AS weekStart,
+    SELECT DATE(game_day, '-' || ((((CAST(julianday(game_day) - julianday(@anchor) AS INTEGER)) % @days) + @days) % @days) || ' days') AS weekStart,
            member_id AS memberId,
            SUM(earned_points) AS points
     FROM chest_daily_summary
-    WHERE clan_id = ?
+    WHERE clan_id = @clanId
     GROUP BY weekStart, member_id
     HAVING points > 0
     ORDER BY weekStart DESC
-  `).all(clanId);
+  `).all({ anchor: cadence.anchor, days: cadence.days, clanId });
     const byWeek = new Map();
     for (const row of weeklyRows) {
         const hit = byWeek.get(row.weekStart);

@@ -31,6 +31,8 @@ export const SETUP_MODE_ASSETS = [
   // is the bridge's scroll normaliser.
   'lib/api.js',
   'lib/state.js',
+  // state.js validates week shapes with it.
+  'lib/week-shape.js',
   'lib/ui.js',
   'lib/login-bridge.js',
   'lib/wheel.js',

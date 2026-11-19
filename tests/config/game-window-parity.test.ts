@@ -19,19 +19,31 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   gameWindow, ANCIENTS_TINMAN_ANCHOR, ANCIENTS_CYCLE_DAYS, SK_TINMAN_ANCHOR, SK_CYCLE_DAYS,
-  isTinmanDay, weekLengthDays, WEEK_STARTS as SERVER_WEEK_STARTS, type WeekStart,
+  CUSTOM_WEEK_MIN_DAYS, CUSTOM_WEEK_MAX_DAYS, SUNDAY_ANCHOR,
+  canonicalWeekStart, isTinmanDay, isWeekStart, parseCustomWeek, weekLengthDays,
+  WEEK_PRESETS, type WeekStart,
 } from '../../src/utils/game-day.js';
 // The frontend module is plain ESM with no DOM access at import time.
 import {
   computeGameWindow, computeGameWindowDates, formatPeriodLabel, gameWeekStartOf,
   isWeekStart as clientIsWeekStart, weekLengthDays as clientWeekLengthDays,
+  parseCustomWeek as clientParseCustomWeek,
   ANCIENTS_TINMAN_ANCHOR as CLIENT_ANCHOR, ANCIENTS_CYCLE_DAYS as CLIENT_CYCLE,
   SK_TINMAN_ANCHOR as CLIENT_SK_ANCHOR, SK_CYCLE_DAYS as CLIENT_SK_CYCLE,
+  CUSTOM_WEEK_MIN_DAYS as CLIENT_MIN_DAYS, CUSTOM_WEEK_MAX_DAYS as CLIENT_MAX_DAYS,
 } from '../../src/web/public/lib/period.js';
+import { SUNDAY_ANCHOR as CLIENT_SUNDAY_ANCHOR } from '../../src/web/public/lib/week-shape.js';
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'yearly'];
 const ROLLOVERS = [17, 0, 5, 23];
-const WEEK_STARTS: WeekStart[] = ['sunday', 'ancients', 'ancients-sk'];
+// The presets, plus custom weeks of every awkward kind: the Tuesday week a
+// clan actually asked for, lengths that drift through the weekdays, the
+// shortest and longest allowed, and first days in the past and the future.
+const WEEK_STARTS: WeekStart[] = [
+  'sunday', 'ancients', 'ancients-sk',
+  'custom:2026-11-17:7', 'custom:2026-10-01:10', 'custom:2026-12-31:2',
+  'custom:2025-01-15:28', 'custom:2026-11-19:14',
+];
 
 describe('server game windows match the client', () => {
   afterEach(() => vi.useRealTimers());
@@ -74,11 +86,71 @@ describe('server game windows match the client', () => {
   it('knows the same week shapes, of the same lengths', () => {
     // A shape the client didn't know would fall back to the viewed clan's own
     // week and silently cut a different window from the server's.
-    for (const weekStart of SERVER_WEEK_STARTS) {
+    for (const weekStart of WEEK_STARTS) {
+      expect(isWeekStart(weekStart), weekStart).toBe(true);
       expect(clientIsWeekStart(weekStart), weekStart).toBe(true);
       expect(clientWeekLengthDays(weekStart), weekStart).toBe(weekLengthDays(weekStart));
     }
-    expect([...SERVER_WEEK_STARTS].sort()).toEqual([...WEEK_STARTS].sort());
+    expect([...WEEK_PRESETS].sort()).toEqual(WEEK_STARTS.filter((w) => !w.startsWith('custom:')).sort());
+    expect(CLIENT_MIN_DAYS).toBe(CUSTOM_WEEK_MIN_DAYS);
+    expect(CLIENT_MAX_DAYS).toBe(CUSTOM_WEEK_MAX_DAYS);
+    expect(CLIENT_SUNDAY_ANCHOR).toBe(SUNDAY_ANCHOR);
+    expect(new Date(`${SUNDAY_ANCHOR}T00:00:00Z`).getUTCDay()).toBe(0);
+  });
+
+  it('agrees on which strings are custom weeks, and refuses malformed ones', () => {
+    const good = ['custom:2026-11-17:7', `custom:2026-02-28:${CUSTOM_WEEK_MIN_DAYS}`, `custom:2024-02-29:${CUSTOM_WEEK_MAX_DAYS}`];
+    const bad = [
+      'custom:2026-02-29:7', // not a date (2026 isn't a leap year)
+      'custom:2026-11-31:7',
+      'custom:2026-11-17:07', // one spelling per week
+      `custom:2026-11-17:${CUSTOM_WEEK_MIN_DAYS - 1}`,
+      `custom:2026-11-17:${CUSTOM_WEEK_MAX_DAYS + 1}`,
+      'custom:2026-11-17:7.5', 'custom:2026-11-17', 'custom:2026-11-17:', 'custom::7',
+      'custom:26-11-17:7', ' custom:2026-11-17:7', 'custom:2026-11-17:7 ', 'monday', '', null, 7,
+    ];
+    for (const v of good) {
+      expect(parseCustomWeek(v), String(v)).not.toBeNull();
+      expect(clientParseCustomWeek(v), String(v)).toEqual(parseCustomWeek(v));
+    }
+    for (const v of bad) {
+      expect(isWeekStart(v), String(v)).toBe(false);
+      expect(clientIsWeekStart(v), String(v)).toBe(false);
+    }
+  });
+
+  it('cuts a custom Tuesday week from Tuesday evening to Tuesday evening', () => {
+    // The week that prompted custom weeks: 7 days from Tuesday at the 17:00
+    // UTC reset. 2026-11-20 is a Friday, inside the week that opened on
+    // Tuesday 2026-11-17 17:00 UTC.
+    const tuesday: WeekStart = 'custom:2026-11-17:7';
+    vi.useFakeTimers({ now: Date.parse('2026-11-20T12:00:00Z') });
+    expect(gameWindow('weekly', 0, 17, tuesday)).toEqual({
+      from: '2026-11-17T17:00:00.000Z', to: '2026-11-24T17:00:00.000Z',
+    });
+    expect(formatPeriodLabel('weekly', 0, 17, tuesday)).toBe('2026-11-17 → 2026-11-23');
+    expect(gameWindow('weekly', 1, 17, tuesday)!.from).toBe('2026-11-10T17:00:00.000Z');
+    // A first day picked in the future names the same cadence.
+    expect(gameWindow('weekly', 0, 17, 'custom:2027-03-02:7')).toEqual(gameWindow('weekly', 0, 17, tuesday));
+    // One second before Tuesday's reset is still the old week; the reset opens the new one.
+    vi.setSystemTime(Date.parse('2026-11-24T16:59:59Z'));
+    expect(gameWindow('weekly', 0, 17, tuesday)!.from).toBe('2026-11-17T17:00:00.000Z');
+    vi.setSystemTime(Date.parse('2026-11-24T17:00:00Z'));
+    expect(gameWindow('weekly', 0, 17, tuesday)!.from).toBe('2026-11-24T17:00:00.000Z');
+  });
+
+  it('stores a custom week identical to a preset as the preset', () => {
+    expect(canonicalWeekStart('custom:2026-11-15:7', false)).toBe('sunday'); // a Sunday
+    expect(canonicalWeekStart('custom:1969-12-28:7', true)).toBe('sunday');
+    expect(canonicalWeekStart('custom:2026-11-17:7', false)).toBe('custom:2026-11-17:7'); // a Tuesday
+    // 6 days from a Tinman day is the Tinman week — in a normal kingdom only.
+    expect(canonicalWeekStart('custom:2026-10-29:6', false)).toBe('ancients');
+    expect(canonicalWeekStart('custom:2026-10-29:6', true)).toBe('custom:2026-10-29:6');
+    expect(canonicalWeekStart('custom:2026-10-30:6', false)).toBe('custom:2026-10-30:6');
+    // 5 days from an SK Tinman day is the SK Tinman week — for an SK clan only.
+    expect(canonicalWeekStart('custom:2026-11-22:5', true)).toBe('ancients-sk');
+    expect(canonicalWeekStart('custom:2026-11-22:5', false)).toBe('custom:2026-11-22:5');
+    expect(canonicalWeekStart('ancients', false)).toBe('ancients');
   });
 
   it('cuts a Seasonal Kingdom Tinman week on the SK cadence', () => {

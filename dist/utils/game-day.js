@@ -14,13 +14,17 @@
  * gameDayKeyFor(): subtract the rollover hours, then read off the UTC date.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TINMAN_CADENCES = exports.SK_CYCLE_DAYS = exports.SK_TINMAN_ANCHOR = exports.ANCIENTS_CYCLE_DAYS = exports.ANCIENTS_TINMAN_ANCHOR = exports.WEEK_STARTS = void 0;
+exports.TINMAN_CADENCES = exports.SK_CYCLE_DAYS = exports.SK_TINMAN_ANCHOR = exports.ANCIENTS_CYCLE_DAYS = exports.ANCIENTS_TINMAN_ANCHOR = exports.SUNDAY_ANCHOR = exports.CUSTOM_WEEK_MAX_DAYS = exports.CUSTOM_WEEK_MIN_DAYS = exports.WEEK_PRESETS = void 0;
 exports.gameDateFor = gameDateFor;
 exports.currentGameDate = currentGameDate;
 exports.daysBetweenGameDates = daysBetweenGameDates;
+exports.parseCustomWeek = parseCustomWeek;
+exports.customWeekStart = customWeekStart;
 exports.isWeekStart = isWeekStart;
 exports.isTinmanWeek = isTinmanWeek;
+exports.weekCadence = weekCadence;
 exports.weekLengthDays = weekLengthDays;
+exports.canonicalWeekStart = canonicalWeekStart;
 exports.gameWindow = gameWindow;
 exports.gameWeekWindow = gameWeekWindow;
 exports.closedWeekAt = closedWeekAt;
@@ -54,7 +58,12 @@ function daysBetweenGameDates(from, to) {
         return null;
     return Math.round((b - a) / 86_400_000);
 }
-exports.WEEK_STARTS = ['sunday', 'ancients', 'ancients-sk'];
+exports.WEEK_PRESETS = ['sunday', 'ancients', 'ancients-sk'];
+/** Bounds on a custom week's length, in game days. Mirrored in lib/week-shape.js. */
+exports.CUSTOM_WEEK_MIN_DAYS = 2;
+exports.CUSTOM_WEEK_MAX_DAYS = 28;
+/** A Sunday: the 'sunday' shape is the cadence of 7 days from here. */
+exports.SUNDAY_ANCHOR = '1970-01-04';
 /**
  * A known Tinman game day. Every Tinman day is this date plus a multiple of
  * ANCIENTS_CYCLE_DAYS — read off the tbclanportal feed (Rise of the Ancients,
@@ -83,28 +92,77 @@ exports.TINMAN_CADENCES = {
     ancients: { anchor: exports.ANCIENTS_TINMAN_ANCHOR, days: exports.ANCIENTS_CYCLE_DAYS },
     'ancients-sk': { anchor: exports.SK_TINMAN_ANCHOR, days: exports.SK_CYCLE_DAYS },
 };
+/**
+ * A custom week's first day and length, or null when `v` isn't a well-formed
+ * one: a real calendar date, and a whole length within bounds written without a
+ * leading zero (so one week has exactly one spelling).
+ */
+function parseCustomWeek(v) {
+    if (typeof v !== 'string')
+        return null;
+    const m = /^custom:(\d{4}-\d{2}-\d{2}):([1-9]\d?)$/.exec(v);
+    if (!m)
+        return null;
+    const days = Number(m[2]);
+    if (days < exports.CUSTOM_WEEK_MIN_DAYS || days > exports.CUSTOM_WEEK_MAX_DAYS)
+        return null;
+    const ms = Date.parse(`${m[1]}T00:00:00Z`);
+    if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== m[1])
+        return null;
+    return { anchor: m[1], days };
+}
+/** The custom week of `days` days, one of which starts on game day `anchor`. */
+function customWeekStart(anchor, days) {
+    return `custom:${anchor}:${days}`;
+}
 function isWeekStart(v) {
-    return typeof v === 'string' && exports.WEEK_STARTS.includes(v);
+    return (typeof v === 'string' && exports.WEEK_PRESETS.includes(v)) || parseCustomWeek(v) !== null;
 }
 /** True for either Tinman-to-Tinman shape. */
 function isTinmanWeek(weekStart) {
     return weekStart === 'ancients' || weekStart === 'ancients-sk';
 }
+/**
+ * Every week shape is one cadence: a game day some week starts on, and the
+ * week's length. The presets are fixed cadences; a custom week carries its own.
+ */
+function weekCadence(weekStart) {
+    if (isTinmanWeek(weekStart))
+        return exports.TINMAN_CADENCES[weekStart];
+    return parseCustomWeek(weekStart) ?? { anchor: exports.SUNDAY_ANCHOR, days: 7 };
+}
 /** Length of one game week, in game days. */
 function weekLengthDays(weekStart) {
-    return isTinmanWeek(weekStart) ? exports.TINMAN_CADENCES[weekStart].days : 7;
+    return weekCadence(weekStart).days;
+}
+/**
+ * The preset a custom week is identical to, or the custom week unchanged: 7
+ * days from any Sunday IS the Sunday week, and 6 days from a Tinman day is the
+ * Tinman week (5 from an SK Tinman day, for a Seasonal Kingdom clan). Saving
+ * through this keeps one spelling per week, so the Clans page shows the preset
+ * and the Discord digest still calls a Tinman week one.
+ */
+function canonicalWeekStart(weekStart, seasonalKingdom) {
+    const custom = parseCustomWeek(weekStart);
+    if (!custom)
+        return weekStart;
+    const presets = ['sunday', seasonalKingdom ? 'ancients-sk' : 'ancients'];
+    for (const preset of presets) {
+        const { anchor, days } = weekCadence(preset);
+        const since = daysBetweenGameDates(anchor, custom.anchor);
+        if (days === custom.days && since !== null && ((since % days) + days) % days === 0)
+            return preset;
+    }
+    return weekStart;
 }
 /**
  * Days to step back from a game day (as a UTC-midnight Date in shifted time)
  * to the first day of the week holding it.
  */
 function daysIntoWeek(day, weekStart) {
-    if (isTinmanWeek(weekStart)) {
-        const { anchor, days } = exports.TINMAN_CADENCES[weekStart];
-        const since = Math.round((day.getTime() - Date.parse(`${anchor}T00:00:00Z`)) / 86_400_000);
-        return ((since % days) + days) % days;
-    }
-    return day.getUTCDay();
+    const { anchor, days } = weekCadence(weekStart);
+    const since = Math.round((day.getTime() - Date.parse(`${anchor}T00:00:00Z`)) / 86_400_000);
+    return ((since % days) + days) % days;
 }
 /**
  * The half-open [from, to) instants of a game-period slot, as ISO strings.

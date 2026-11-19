@@ -247,7 +247,7 @@ effectiveFrom) {
 function listGoalHistory(id) {
     return (0, goal_history_js_1.readGoalHistory)((0, database_js_1.getDb)(), id);
 }
-/** Set how this clan cuts its week (Sunday, or Tinman to Tinman). */
+/** Set how this clan cuts its week (Sunday, Tinman to Tinman, or its own). */
 function setClanWeekStart(id, weekStart) {
     (0, database_js_1.getDb)().prepare('UPDATE clans SET week_start = ? WHERE id = ?').run(weekStart, id);
 }

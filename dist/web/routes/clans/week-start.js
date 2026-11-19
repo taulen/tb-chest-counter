@@ -10,10 +10,12 @@ function createWeekStartRouter() {
     const router = (0, _shared_js_1.createClanSubRouter)();
     /**
      * Set how this clan cuts its week: 'sunday' (Sunday → Sunday), 'ancients'
-     * (Tinman to Tinman, 6 days) or, in a Seasonal Kingdom, 'ancients-sk'
-     * (Tinman to Tinman on the SK cadence). Every Weekly view the clan sees
-     * follows it. Clan-admin only, per the same ownership rule every /api/clans
-     * config route follows.
+     * (Tinman to Tinman, 6 days), in a Seasonal Kingdom 'ancients-sk' (Tinman to
+     * Tinman on the SK cadence), or its own 'custom:<YYYY-MM-DD>:<days>' — the
+     * first day of any one of its weeks and how long each lasts. Every Weekly
+     * view the clan sees follows it. A custom week identical to a preset is
+     * stored as the preset; the response carries what was stored. Clan-admin
+     * only, per the same ownership rule every /api/clans config route follows.
      */
     router.put('/:clanId/week-start', auth_js_1.requireClanAdmin, (req, res) => {
         const id = req.parsedClanId;
@@ -22,11 +24,15 @@ function createWeekStartRouter() {
             res.status(404).json({ error: 'Clan not found' });
             return;
         }
-        const weekStart = req.body?.weekStart;
-        if (!(0, game_day_js_1.isWeekStart)(weekStart)) {
-            res.status(400).json({ error: `weekStart must be one of: ${game_day_js_1.WEEK_STARTS.join(', ')}` });
+        const requested = req.body?.weekStart;
+        if (!(0, game_day_js_1.isWeekStart)(requested)) {
+            res.status(400).json({
+                error: `weekStart must be one of: ${game_day_js_1.WEEK_PRESETS.join(', ')}, or custom:<YYYY-MM-DD>:<days> `
+                    + `(a day a week starts on, and ${game_day_js_1.CUSTOM_WEEK_MIN_DAYS}–${game_day_js_1.CUSTOM_WEEK_MAX_DAYS} days)`,
+            });
             return;
         }
+        const weekStart = (0, game_day_js_1.canonicalWeekStart)(requested, clan.seasonalKingdom);
         // Each kingdom cuts Tinman weeks on its own Ancients cadence.
         if (!(0, clan_repo_js_1.weekStartAllowed)(clan, weekStart)) {
             res.status(400).json({

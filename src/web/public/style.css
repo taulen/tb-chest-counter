@@ -4445,6 +4445,8 @@ details > table {
 .goal-history-amber { margin-left: 8px; color: var(--text-secondary); font-weight: 400; }
 /* A two-digit percent: no need for the goal field's width. */
 .goal-amber-input { max-width: 120px; }
+/* A custom week's length, two digits at most. */
+.week-days-input { max-width: 110px; }
 
 /* ─── Multiple share links per clan ───
    One row per live link: the copy pill, then its name + visit count, then the

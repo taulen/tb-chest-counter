@@ -129,9 +129,10 @@ export interface Clan {
 
   /**
    * How this clan cuts its week: 'sunday' (Sunday → Sunday at the rollover),
-   * 'ancients' (Tinman to Tinman, 6 days) or, for a Seasonal Kingdom clan only,
-   * 'ancients-sk' (Tinman to Tinman on the SK cadence, 5 days). See WeekStart
-   * in utils/game-day.ts. Every "Weekly" window the clan sees follows it —
+   * 'ancients' (Tinman to Tinman, 6 days), for a Seasonal Kingdom clan only
+   * 'ancients-sk' (Tinman to Tinman on the SK cadence, 5 days), or its own
+   * 'custom:<first day>:<days>'. See WeekStart in utils/game-day.ts and
+   * docs/clan-week.md. Every "Weekly" window the clan sees follows it —
    * leaderboard, dashboard, member profile, Discord bot — except the
    * ChestTracker import, whose weeks are upstream's and always Sunday-based.
    */
@@ -395,7 +396,7 @@ export function listGoalHistory(id: number): GoalHistoryRow[] {
   return readGoalHistory(getDb(), id);
 }
 
-/** Set how this clan cuts its week (Sunday, or Tinman to Tinman). */
+/** Set how this clan cuts its week (Sunday, Tinman to Tinman, or its own). */
 export function setClanWeekStart(id: number, weekStart: WeekStart): void {
   getDb().prepare('UPDATE clans SET week_start = ? WHERE id = ?').run(weekStart, id);
 }

@@ -5,7 +5,7 @@
 // central dispatcher in app.js can keep its existing imports working.
 
 import { $, escapeHtml, formatRelativeTime, notify, confirmDialog, promptDialog, contentModal } from '../lib/ui.js';
-import { getCurrentUser, setWeekStart } from '../lib/state.js';
+import { getCurrentUser, getGameDayRolloverUtcHour, setWeekStart } from '../lib/state.js';
 // The leaderboard's own threshold function, not a copy of it: the preview here
 // and the hint above the board have to name the same integer, and an inlined
 // `weekly * 0.66` already got that wrong once (round vs ceil).
@@ -22,16 +22,96 @@ import {
 import { t, tn, tGame } from '../lib/i18n.js';
 import { attachChatDigest, chatDigestSectionHtml } from './clan-chat-digest.js';
 import { attachAccountInvites, accountInvitesSectionHtml } from './clan-account-invites.js';
-import { isTinmanWeek, weekLengthDays } from '../lib/period.js';
+import {
+  computeGameWindowDates, customWeekStart, CUSTOM_WEEK_MAX_DAYS, CUSTOM_WEEK_MIN_DAYS, formatPeriodLabel,
+  isCustomWeek, isTinmanWeek, parseCustomWeek, weekdayName, weekLengthDays,
+} from '../lib/period.js';
 import { setPageActions, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
 export { saveLoginSession, cancelLoginSession, reloadLoginSession, pasteIntoLoginSession };
 
-/** A week shape's name, as the Week card's dropdown words it. */
+/** A week shape's name, as the Week card's dropdown and the Discord hint word it. */
 function weekStartLabel(weekStart) {
   if (weekStart === 'ancients') return t('Tinman to Tinman (6 days)');
   if (weekStart === 'ancients-sk') return t('Tinman to Tinman (5 days)');
+  const custom = parseCustomWeek(weekStart);
+  if (custom && custom.days === 7) return t('{weekday} to {weekday} (7 days)', { weekday: weekdayName(custom.anchor) });
+  if (custom) return tn(custom.days, 'Every {n} day, from {date}', 'Every {n} days, from {date}', { date: custom.anchor });
   return t('Sunday to Sunday (7 days)');
+}
+
+/**
+ * The week shape the Week card describes right now, saved or not: a preset, or
+ * the custom week its two fields spell — null while those don't spell one.
+ */
+function selectedWeekStart(el, clanId) {
+  const choice = el.querySelector(`#clan-week-start-${clanId}`)?.value;
+  if (choice !== 'custom') return choice || null;
+  const first = el.querySelector(`#clan-week-first-${clanId}`)?.value || '';
+  const days = Number(el.querySelector(`#clan-week-days-${clanId}`)?.value);
+  const spec = customWeekStart(first, days);
+  return isCustomWeek(spec) ? spec : null;
+}
+
+/**
+ * Bring the Week card in line with its dropdown: the custom fields show only
+ * for Custom, the hint explains the option picked, and the preview names the
+ * week in progress under it — before anything is saved.
+ */
+function refreshWeekCard(el, clanId) {
+  const select = el.querySelector(`#clan-week-start-${clanId}`);
+  if (!select) return;
+  const custom = select.value === 'custom';
+  for (const field of el.querySelectorAll(`[data-week-custom="${clanId}"]`)) field.hidden = !custom;
+  const hint = el.querySelector(`#clan-week-hint-${clanId}`);
+  if (hint) {
+    const sk = select.querySelector('option[data-tinman]')?.value === 'ancients-sk';
+    hint.innerHTML = isTinmanWeek(select.value) ? tinmanWeekHint(sk) : custom ? customWeekHint() : '';
+    hint.hidden = !hint.innerHTML;
+  }
+  const preview = el.querySelector(`#clan-week-preview-${clanId}`);
+  if (preview) preview.innerHTML = weekPreviewHtml(selectedWeekStart(el, clanId));
+}
+
+/**
+ * Show `saved` — the week the server now holds — as the Week card's selection,
+ * and everywhere the card's page names the clan's week.
+ */
+function syncWeekCard(el, clanId, saved) {
+  const select = el.querySelector(`#clan-week-start-${clanId}`);
+  if (!select) return;
+  select.dataset.saved = saved;
+  const custom = parseCustomWeek(saved);
+  select.value = custom ? 'custom' : saved;
+  if (custom) {
+    el.querySelector(`#clan-week-first-${clanId}`).value = custom.anchor;
+    el.querySelector(`#clan-week-days-${clanId}`).value = String(custom.days);
+  }
+  const current = el.querySelector(`#clan-week-current-${clanId}`);
+  if (current) current.textContent = weekStartLabel(saved);
+  refreshWeekCard(el, clanId);
+  updateGoalPreview(el, clanId);
+}
+
+/** The Week card's line for a custom week. */
+function customWeekHint() {
+  return t('Pick any day one of the weeks starts on, and how many days each lasts. Weeks start at the daily reset, {time}.', {
+    time: `${String(getGameDayRolloverUtcHour()).padStart(2, '0')}:00 UTC`,
+  });
+}
+
+/** The week in progress under `weekStart`, and when the next one starts. */
+function weekPreviewHtml(weekStart) {
+  if (!weekStart) {
+    return t('Pick the day a week starts on, and a length of {min}–{max} days.', { min: CUSTOM_WEEK_MIN_DAYS, max: CUSTOM_WEEK_MAX_DAYS });
+  }
+  const now = computeGameWindowDates('weekly', 0, undefined, weekStart);
+  const next = new Date(`${now.to}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return t('This week: <strong>{range}</strong>. The next one starts {date}.', {
+    range: formatPeriodLabel('weekly', 0, undefined, weekStart),
+    date: next.toISOString().slice(0, 10),
+  });
 }
 
 /** The Tinman week a clan can pick: its kingdom's own cadence. */
@@ -346,7 +426,10 @@ export async function renderClans(el, refreshClanIndicator) {
         notify(t('ChestTracker save failed.'), t('ChestTracker'));
       }
     } else if (action === 'clan-week-start-save' && clanId) {
-      const weekStart = el.querySelector(`#clan-week-start-${clanId}`)?.value;
+      const weekStart = selectedWeekStart(el, clanId);
+      if (!weekStart) {
+        return notify(t('Pick the day a week starts on, and a length of {min}–{max} days.', { min: CUSTOM_WEEK_MIN_DAYS, max: CUSTOM_WEEK_MAX_DAYS }), t('Week'));
+      }
       try {
         const r = await fetch(`/api/clans/${clanId}/week-start`, {
           method: 'PUT',
@@ -355,11 +438,14 @@ export async function renderClans(el, refreshClanIndicator) {
         });
         const j = await r.json();
         if (!r.ok) return notify(j.error || t('Save failed'), t('Week'));
+        // The server stores a custom week identical to a preset AS the preset
+        // (7 days from a Sunday is Sunday to Sunday), so show what it kept.
+        syncWeekCard(el, clanId, j.weekStart);
         // Week windows read the shape from lib/state.js on every render, so
         // updating it here makes the next page visited use the new weeks
         // without a reload — when this is the clan being viewed.
         if (getCurrentUser()?.activeClan?.id === clanId) {
-          setWeekStart(weekStart);
+          setWeekStart(j.weekStart);
         }
         notify(t('Week saved.'), t('Week'));
       } catch {
@@ -378,17 +464,12 @@ export async function renderClans(el, refreshClanIndicator) {
         // A clan on Tinman weeks moves to the new kingdom's cadence; the server
         // says which week it ended up with. Mirror that, the kingdom's Tinman
         // option and hint, and the marker, in place.
-        const week = el.querySelector(`#clan-week-start-${clanId}`);
-        if (week) {
-          const tinman = week.querySelector('option:not([value="sunday"])');
-          if (tinman) {
-            tinman.value = tinmanWeekFor(enabled);
-            tinman.textContent = weekStartLabel(tinman.value);
-          }
-          week.value = j.weekStart;
+        const tinman = el.querySelector(`#clan-week-start-${clanId} option[data-tinman]`);
+        if (tinman) {
+          tinman.value = tinmanWeekFor(enabled);
+          tinman.textContent = weekStartLabel(tinman.value);
         }
-        const hint = el.querySelector(`#clan-week-hint-${clanId}`);
-        if (hint) hint.innerHTML = tinmanWeekHint(enabled);
+        syncWeekCard(el, clanId, j.weekStart);
         el.querySelector(`#clan-sk-marker-${clanId}`)?.toggleAttribute('hidden', !enabled);
         if (getCurrentUser()?.activeClan?.id === clanId) setWeekStart(j.weekStart);
         notify(
@@ -639,8 +720,14 @@ export async function renderClans(el, refreshClanIndicator) {
     if (input) input.addEventListener('input', () => updateGoalPreview(el, clan.id));
     const amber = el.querySelector(`#clan-goal-amber-${clan.id}`);
     if (amber) amber.addEventListener('input', () => updateGoalPreview(el, clan.id));
-    const week = el.querySelector(`#clan-week-start-${clan.id}`);
-    if (week) week.addEventListener('change', () => updateGoalPreview(el, clan.id));
+    const onWeekEdit = () => {
+      refreshWeekCard(el, clan.id);
+      updateGoalPreview(el, clan.id);
+    };
+    el.querySelector(`#clan-week-start-${clan.id}`)?.addEventListener('change', onWeekEdit);
+    el.querySelector(`#clan-week-first-${clan.id}`)?.addEventListener('input', onWeekEdit);
+    el.querySelector(`#clan-week-days-${clan.id}`)?.addEventListener('input', onWeekEdit);
+    refreshWeekCard(el, clan.id);
     updateGoalPreview(el, clan.id);
   }
 }
@@ -691,8 +778,11 @@ function updateGoalPreview(el, clanId) {
     return;
   }
   // The week shape as currently SELECTED, saved or not, so the preview answers
-  // "what would this goal mean" while the admin is still choosing.
-  const weekDays = weekLengthDays(el.querySelector(`#clan-week-start-${clanId}`)?.value || 'sunday');
+  // "what would this goal mean" while the admin is still choosing — the saved
+  // one while half-typed custom fields don't spell a week yet.
+  const weekDays = weekLengthDays(
+    selectedWeekStart(el, clanId) ?? el.querySelector(`#clan-week-start-${clanId}`)?.dataset.saved ?? 'sunday',
+  );
   const per = (days) => Math.round((weekly / weekDays) * days).toLocaleString();
   // The amber field as typed; blank or out of range previews the default.
   const rawAmber = el.querySelector(`#clan-goal-amber-${clanId}`)?.value.trim() ?? '';
@@ -1047,6 +1137,13 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
   const cachedChannels = cachedDir && cachedDir.guildId && cachedDir.guildId === clan.discordGuildId
     ? cachedDir.channels
     : null;
+  // The Week card's custom fields: the clan's own week when it has one, else
+  // the week it is in now, so picking Custom starts from today's week.
+  const customWeek = parseCustomWeek(clan.weekStart);
+  const weekFields = customWeek ?? {
+    anchor: computeGameWindowDates('weekly', 0, undefined, clan.weekStart).from,
+    days: weekLengthDays(clan.weekStart),
+  };
   return `
     <div class="card" data-clan-card-id="${clan.id}">
       <div class="card-header">
@@ -1117,7 +1214,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
           <label class="checkbox-row" title="${t('Posted after the rollover that ends the week set on the Week card below')}"><input type="checkbox" id="clan-discord-weekly-${clan.id}" ${clan.discordWeeklyDigestEnabled ? 'checked' : ''}> ${t('Weekly digest')}</label>
           <label class="checkbox-row"><input type="checkbox" id="clan-discord-cmds-${clan.id}" ${clan.discordCommandsEnabled ? 'checked' : ''}> ${t('Slash commands')}</label>
         </div>
-        <p class="muted-copy mt-4 hint-text">${t("The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>{week}</strong> — and goes out with the daily one, after the first scan once the week has ended.", { week: weekStartLabel(clan.weekStart) })}</p>
+        <p class="muted-copy mt-4 hint-text">${t("The weekly digest follows this clan's <strong>Week</strong> setting — currently <strong>{week}</strong> — and goes out with the daily one, after the first scan once the week has ended.", { week: `<span id="clan-week-current-${clan.id}">${escapeHtml(weekStartLabel(clan.weekStart))}</span>` })}</p>
         <div class="inline-form-row mt-8">
           <div class="form-row-grow">
             <label>${t('Digest DM recipients (optional)')}</label>
@@ -1180,17 +1277,25 @@ ${accountInvitesSectionHtml(clan.id)}
         <details class="clan-subsection">
         <summary class="clan-subsection-summary"><h3>${t('Week')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">${t("What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.")}</p>
+        <p class="muted-copy mb-8">${t("What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.")} ${t('Changing it re-cuts past weeks too.')}</p>
         <div class="inline-form-row">
           <div><label for="clan-week-start-${clan.id}">${t('Week runs')}</label>
-            <select id="clan-week-start-${clan.id}" class="input">
-              <option value="sunday" ${isTinmanWeek(clan.weekStart) ? '' : 'selected'}>${weekStartLabel('sunday')}</option>
-              <option value="${tinmanWeekFor(clan.seasonalKingdom)}" ${isTinmanWeek(clan.weekStart) ? 'selected' : ''}>${weekStartLabel(tinmanWeekFor(clan.seasonalKingdom))}</option>
+            <select id="clan-week-start-${clan.id}" class="input" data-saved="${escapeHtml(clan.weekStart)}">
+              <option value="sunday" ${clan.weekStart === 'sunday' ? 'selected' : ''}>${weekStartLabel('sunday')}</option>
+              <option value="${tinmanWeekFor(clan.seasonalKingdom)}" data-tinman ${isTinmanWeek(clan.weekStart) ? 'selected' : ''}>${weekStartLabel(tinmanWeekFor(clan.seasonalKingdom))}</option>
+              <option value="custom" ${customWeek ? 'selected' : ''}>${t('Custom')}</option>
             </select>
+          </div>
+          <div data-week-custom="${clan.id}" ${customWeek ? '' : 'hidden'}><label for="clan-week-first-${clan.id}">${t('A week starts on')}</label>
+            <input id="clan-week-first-${clan.id}" class="input" type="date" lang="sv" value="${weekFields.anchor}">
+          </div>
+          <div data-week-custom="${clan.id}" ${customWeek ? '' : 'hidden'}><label for="clan-week-days-${clan.id}">${t('Days per week')}</label>
+            <input id="clan-week-days-${clan.id}" class="input week-days-input" type="number" min="${CUSTOM_WEEK_MIN_DAYS}" max="${CUSTOM_WEEK_MAX_DAYS}" step="1" value="${weekFields.days}">
           </div>
           <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
-        <p class="muted-copy mt-8" id="clan-week-hint-${clan.id}">${tinmanWeekHint(clan.seasonalKingdom)}</p>
+        <p class="muted-copy mt-8" id="clan-week-hint-${clan.id}"></p>
+        <p class="muted-copy mt-4" id="clan-week-preview-${clan.id}"></p>
         </div>
         </details>
 
