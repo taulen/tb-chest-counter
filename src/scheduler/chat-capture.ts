@@ -28,7 +28,7 @@ import {
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
 import { hasWaitingInviteRequests, processInviteRequests, sendWelcomeCodes } from './chat-invites.js';
-import { commandGroupRead, processChatCommands } from './chat-commands.js';
+import { commandGroupRead, hasWaitingChatCommands, processChatCommands } from './chat-commands.js';
 import { POSTABLE_TYPES } from '../game-protocol/chat-send.js';
 import { keptSessionClans, withKeptGameSession } from './event-poller.js';
 
@@ -182,28 +182,30 @@ export function stopChatPoller(): void {
 }
 
 /**
- * A code request between scans is answered on the game session the clan's
- * last scan kept. After a server restart there is none until the next scan —
- * up to a whole interval (2 h): a request on Nov 18 2026 sat at "Waiting to
- * send". Then the scan loop is asked to scan just that clan (seconds; it
- * answers the request and keeps a session for the next ones), at most once
- * per clan every INVITE_SCAN_MIN_GAP_MS.
+ * A code request or a chat command between scans is answered on the game
+ * session the clan's last scan kept. After a server restart there is none
+ * until the next scan — up to a whole interval (2 h): a code request on Nov
+ * 18 2026 sat at "Waiting to send", and so did the first chat command after
+ * the Nov 20 deploy. Then the scan loop is asked to scan just that clan
+ * (seconds; it answers what waits and keeps a session for the next ones), at
+ * most once per clan every REPLY_SCAN_MIN_GAP_MS — only while nothing is kept.
  */
-let inviteScanTrigger: ((clanId: number) => void) | null = null;
-const INVITE_SCAN_MIN_GAP_MS = 10 * 60_000;
-const lastInviteScan = new Map<number, number>();
+let replyScanTrigger: ((clanId: number) => void) | null = null;
+const REPLY_SCAN_MIN_GAP_MS = 10 * 60_000;
+const lastReplyScan = new Map<number, number>();
 
-export function setInviteScanTrigger(fn: ((clanId: number) => void) | null): void {
-  inviteScanTrigger = fn;
+export function setChatReplyScanTrigger(fn: ((clanId: number) => void) | null): void {
+  replyScanTrigger = fn;
 }
 
-export function maybeScanForInvites(clanId: number, now = Date.now()): void {
-  if (!inviteScanTrigger || keptSessionClans().includes(clanId)) return;
-  if (!hasWaitingInviteRequests(clanId, now)) return;
-  if (now - (lastInviteScan.get(clanId) ?? 0) < INVITE_SCAN_MIN_GAP_MS) return;
-  lastInviteScan.set(clanId, now);
-  log.info(`Clan #${clanId}: a code request is waiting and no game session is kept (restarted since the last scan) — scanning the clan now to answer it`);
-  inviteScanTrigger(clanId);
+export function maybeScanForChatReplies(clanId: number, now = Date.now()): void {
+  if (!replyScanTrigger || keptSessionClans().includes(clanId)) return;
+  const what = hasWaitingInviteRequests(clanId, now) ? 'a code request' : hasWaitingChatCommands(clanId, now) ? 'a chat command' : null;
+  if (!what) return;
+  if (now - (lastReplyScan.get(clanId) ?? 0) < REPLY_SCAN_MIN_GAP_MS) return;
+  lastReplyScan.set(clanId, now);
+  log.info(`Clan #${clanId}: ${what} is waiting and no game session is kept (restarted since the last scan) — scanning the clan now to answer it`);
+  replyScanTrigger(clanId);
 }
 
 async function pollOnce(): Promise<void> {
@@ -223,16 +225,16 @@ async function pollOnce(): Promise<void> {
           chatToken: async () => (await withKeptGameSession(clanId, (client) => client.chatToken())) ?? null,
         });
         if (note) log.info(`Clan #${clanId} ${note}`);
-        maybeScanForInvites(clanId);
         // Chat commands (chat-commands.ts): "me", "top", … answered the same
-        // way, within a minute on a kept game session — else by the next
-        // scan (a command never starts one). Never throws.
+        // way, within a minute on a kept game session. Never throws.
         const commands = await processChatCommands(clanId, {
           scannerChatId: chat.session.userId,
           chatSession: chat.session,
           chatToken: async () => (await withKeptGameSession(clanId, (client) => client.chatToken())) ?? null,
         });
         if (commands) log.info(`Clan #${clanId} ${commands}`);
+        // No session kept (a restart): scan the clan to answer what waits.
+        maybeScanForChatReplies(clanId);
         // Welcome codes trickle out between scans too (one a run, 10 min
         // apart — chat-invites.ts), on the game session the last scan kept.
         if (keptSessionClans().includes(clanId)) {

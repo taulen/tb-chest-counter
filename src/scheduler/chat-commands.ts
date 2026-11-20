@@ -17,8 +17,9 @@
  *
  * Off by default, per clan (Clans → Chat commands). The chat is read every
  * minute (chat-capture.ts); a reply goes out within a minute when the clan's
- * last scan kept a game session for a chat token, else with its next scan.
- * Unlike a code request, a command never starts a scan.
+ * last scan kept a game session for a chat token. When none is kept (the
+ * server restarted since), a waiting command asks for a scan of that clan,
+ * like a code request — at most once per clan every 10 minutes.
  *
  * A second switch also answers commands written in the clan's chat digest
  * group chat (the named chat its admins picked — CWB • Carter), there, for
@@ -646,6 +647,17 @@ export interface CommandRunOptions {
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Whether the clan has a command that could be answered now: commands are on,
+ * one waits (young enough to answer), and the scanner account isn't muted.
+ * After a restart this asks the scan loop for a scan of the clan, like a code
+ * request (chat-capture.ts maybeScanForChatReplies).
+ */
+export function hasWaitingChatCommands(clanId: number, nowMs = Date.now()): boolean {
+  if (!getChatCommandSettings(clanId).enabled || chatPausedUntil(clanId, nowMs) !== null) return false;
+  return pendingCommandRequests(clanId).some((r) => nowMs - r.requestedAt <= MAX_COMMAND_AGE_MS);
+}
 
 /**
  * Answer the clan's pending commands, oldest first, within the limits: each

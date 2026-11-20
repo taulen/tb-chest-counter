@@ -10,6 +10,7 @@ exports.replyLanguage = replyLanguage;
 exports.fitsReply = fitsReply;
 exports.durationText = durationText;
 exports.buildCommandReply = buildCommandReply;
+exports.hasWaitingChatCommands = hasWaitingChatCommands;
 exports.answerChatCommands = answerChatCommands;
 exports.processChatCommands = processChatCommands;
 /**
@@ -31,8 +32,9 @@ exports.processChatCommands = processChatCommands;
  *
  * Off by default, per clan (Clans → Chat commands). The chat is read every
  * minute (chat-capture.ts); a reply goes out within a minute when the clan's
- * last scan kept a game session for a chat token, else with its next scan.
- * Unlike a code request, a command never starts a scan.
+ * last scan kept a game session for a chat token. When none is kept (the
+ * server restarted since), a waiting command asks for a scan of that clan,
+ * like a code request — at most once per clan every 10 minutes.
  *
  * A second switch also answers commands written in the clan's chat digest
  * group chat (the named chat its admins picked — CWB • Carter), there, for
@@ -601,6 +603,17 @@ async function buildCommandReply(clanId, playerId, command, lang, nowMs = Date.n
 }
 const isCommand = (v) => v === 'help' || exports.MEMBER_COMMANDS.includes(v) || exports.LEADER_COMMANDS.includes(v);
 const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Whether the clan has a command that could be answered now: commands are on,
+ * one waits (young enough to answer), and the scanner account isn't muted.
+ * After a restart this asks the scan loop for a scan of the clan, like a code
+ * request (chat-capture.ts maybeScanForChatReplies).
+ */
+function hasWaitingChatCommands(clanId, nowMs = Date.now()) {
+    if (!(0, chat_command_repo_js_1.getChatCommandSettings)(clanId).enabled || (0, chat_send_state_repo_js_1.chatPausedUntil)(clanId, nowMs) !== null)
+        return false;
+    return (0, chat_command_repo_js_1.pendingCommandRequests)(clanId).some((r) => nowMs - r.requestedAt <= exports.MAX_COMMAND_AGE_MS);
+}
 /**
  * Answer the clan's pending commands, oldest first, within the limits: each
  * is re-checked, its reply built, reserved (`sending`), sent and its outcome

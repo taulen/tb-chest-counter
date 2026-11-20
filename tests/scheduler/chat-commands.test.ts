@@ -43,6 +43,7 @@ import {
   buildCommandReply,
   commandGroupChannel,
   durationText,
+  hasWaitingChatCommands,
   fitsReply,
   parseChatCommand,
   processChatCommands,
@@ -364,6 +365,20 @@ describe('answering', () => {
     await processChatCommands(1, opts(s));
     expect(s.sent).toHaveLength(0);
     expect(requests()[0]).toMatchObject({ status: 'ignored', reason: 'too-old' });
+  });
+
+  it('a waiting command asks for a scan after a restart — unless commands are off, the account is muted or it is too old', async () => {
+    expect(hasWaitingChatCommands(1, T0)).toBe(false);
+    dm(1, 'tb:11', 11, 'me', T0);
+    const s = sender();
+    await processChatCommands(1, { ...opts(s), chatToken: async () => null });
+    expect(hasWaitingChatCommands(1, T0 + 1000)).toBe(true);
+    expect(hasWaitingChatCommands(1, T0 + 3 * HOUR + 1000)).toBe(false);
+    noteChatMuted(1, 'You are muted.', T0 + 2000);
+    expect(hasWaitingChatCommands(1, T0 + 3000)).toBe(false);
+    getDb().prepare('DELETE FROM chat_send_state').run();
+    setChatCommandsEnabled(1, false, T0 + 4000);
+    expect(hasWaitingChatCommands(1, T0 + 5000)).toBe(false);
   });
 
   it('CHAT_SEND_DISABLED answers nothing', async () => {

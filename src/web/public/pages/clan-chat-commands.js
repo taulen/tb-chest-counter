@@ -140,7 +140,7 @@ function renderChatCommands(root, box, clanId, data) {
           groupPerHour: limits.groupPerHour ?? 12, minutes: limits.repeatMinutes ?? 10,
         }))}</li>
         <li>${t('Every reply is one message, never longer than the chat allows: long lists end with “… and N more”.')}</li>
-        <li>${t('Replies go out within a minute while the scanner keeps the game session of its last scan; after a server restart, with the clan’s next scan. A command never starts a scan.')}</li>
+        <li>${t('Replies go out within a minute while the scanner keeps the game session of its last scan. After a server restart, the first command scans the clan to get one (at most every 10 minutes).')}</li>
       </ul>
     </details>`;
 

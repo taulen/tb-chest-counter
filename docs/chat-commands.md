@@ -111,8 +111,14 @@ messages (400) are checked against the channel's limit the same way.
 
 The chat is read every minute (chat-capture.ts). A reply goes out **within a
 minute** while the clan's last scan left its game session kept (a chat token
-needs it — message 414), else with the clan's next scan. Unlike a code
-request, a command **never starts a scan**.
+needs it — message 414). The chat session (reading) survives a restart
+(`chat-session.json`), the game session does not: so after a restart a
+waiting command asks the scan loop for a scan of that clan, exactly like a
+code request (`maybeScanForChatReplies` → `scanForChatReply`: the clan's turn
+on its lane, at most once per clan every 10 minutes, only while no session is
+kept). The scan answers it and keeps a session for the next ones. Until Nov 20
+2026 commands didn't do this, and the first `help` after a deploy sat at
+"Waiting to send" until CWB's scheduled scan.
 
 ## Outcomes
 

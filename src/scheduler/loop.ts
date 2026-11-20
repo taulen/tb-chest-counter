@@ -198,7 +198,7 @@ export class ScanLoop {
     // each scan refreshes (never touches the game or website login).
     void import('./chat-capture.js').then((m) => {
       m.startChatPoller();
-      m.setInviteScanTrigger((clanId) => this.scanForInviteReply(clanId));
+      m.setChatReplyScanTrigger((clanId) => this.scanForChatReply(clanId));
     }).catch(() => {});
     // A running Rise of the Ancients is read again every ~10 min between scans,
     // on the game session each clan's scan leaves (never a login of its own).
@@ -559,13 +559,13 @@ export class ScanLoop {
    * other accounts are not waited for.
    */
   /**
-   * Scan one clan to answer a waiting code request when no game session is
-   * kept (chat-capture.ts maybeScanForInvites). Unlike the Scan This Clan
+   * Scan one clan to answer a waiting code request or chat command when no
+   * game session is kept (chat-capture.ts maybeScanForChatReplies). Unlike the Scan This Clan
    * button it never touches the scheduled cycle: it just takes the clan's
    * turn on its lane. Skipped while paused or when the clan is already
    * scanning or queued.
    */
-  scanForInviteReply(clanId: number): void {
+  scanForChatReply(clanId: number): void {
     if (!this.running || this.isClanScanQueuedOrRunning(clanId)) return;
     const lane = this.laneOf(clanId);
     this.queued.add(clanId);
@@ -573,7 +573,7 @@ export class ScanLoop {
       this.queued.delete(clanId);
       return this.scanClan(clanId, 'manual', lane);
     }).catch((err) => {
-      log.warn({ noAlert: true }, `Clan #${clanId}: the scan to answer a code request failed (the next scan answers it): ${String(err)}`);
+      log.warn({ noAlert: true }, `Clan #${clanId}: the scan to answer a chat request failed (the next scan answers it): ${String(err)}`);
     }).finally(() => this.queued.delete(clanId));
   }
 
