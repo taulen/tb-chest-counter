@@ -35,7 +35,12 @@ export function createAvatarRouter(): Router {
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     // An image is all this ever is: nothing in it may run, even opened directly.
-    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    // default-src 'none' already refuses every script, frame and fetch. No
+    // `sandbox`: opened in its own tab ("Open image in new tab") it made the
+    // photo an opaque-origin, download-blocked document, so saving it from
+    // there failed — the save went out without the SameSite=Strict session
+    // cookie and got the 401 (Nov 20 2026). Saving from the page worked.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
     res.setHeader('Content-Length', String(found.bytes.length));
     res.end(found.bytes);
   });

@@ -150,7 +150,10 @@ describe('account photos', () => {
       // private: no shared cache (Cloudflare) may keep it; the extensionless /api URL isn't stored at the edge either.
       expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
       expect(res.headers['x-content-type-options']).toBe('nosniff');
-      expect(res.headers['content-security-policy']).toContain('sandbox');
+      // Nothing in it runs (default-src 'none'), but no `sandbox`: that made the
+      // photo opened in its own tab an opaque origin that couldn't be saved.
+      expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+      expect(res.headers['content-security-policy']).not.toContain('sandbox');
       expect(Buffer.compare(res.body as Buffer, bytes)).toBe(0);
     });
 
