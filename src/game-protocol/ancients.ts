@@ -9,6 +9,14 @@ import type { GameEventProgress } from './messages.js';
 export const ANCIENTS_EVENT_TYPE = 1024;
 
 /**
+ * Ancients' Treasure (T44 type 1023, code clandoom_preparation): the run's
+ * first day, when members raise Vaults of the Ancients. The game lists it in
+ * the event list (24001) for exactly that game day (SK7: Nov 16 17:00 → Nov
+ * 17 17:00 UTC, 2026); the map pass searches for vaults while it runs.
+ */
+export const ANCIENTS_TREASURE_EVENT_TYPE = 1023;
+
+/**
  * The artifacts whose level is the number of summons: the Enchanted Figurine
  * ("Number of summons" / "Summons: %value%" in the game's clandoom_artifacts
  * config), id 2 in normal kingdoms' runs and 4 in the Seasonal Kingdom run (T44

@@ -904,7 +904,6 @@ export const ui = {
   "No vault seen": "Keine Schatzkammer gesehen",
   "of {n} members": { one: "von {n} Mitglied", other: "von {n} Mitgliedern" },
   "Vaults": "Kammern",
-  "First seen": "Zuerst gesehen",
   "Page {page} of {pages}": "Seite {page} von {pages}",
   "Raised by ({count})": "Errichtet von ({count})",
   "Every member raised a vault.": "Jedes Mitglied hat eine Schatzkammer errichtet.",

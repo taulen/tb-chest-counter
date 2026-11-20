@@ -904,7 +904,6 @@ export const ui = {
   "No vault seen": "Без сокровищницы",
   "of {n} members": { one: "из {n} участника", few: "из {n} участников", many: "из {n} участников", other: "из {n} участника" },
   "Vaults": "Сокровищницы",
-  "First seen": "Впервые замечена",
   "Page {page} of {pages}": "Стр. {page} из {pages}",
   "Raised by ({count})": "Подняли ({count})",
   "Every member raised a vault.": "Каждый участник поднял сокровищницу.",

@@ -904,7 +904,6 @@ export const ui = {
   "No vault seen": "Sin bóveda vista",
   "of {n} members": { one: "de {n} miembro", other: "de {n} miembros" },
   "Vaults": "Bóvedas",
-  "First seen": "Vista por primera vez",
   "Page {page} of {pages}": "Página {page} de {pages}",
   "Raised by ({count})": "Levantadas por ({count})",
   "Every member raised a vault.": "Todos los miembros levantaron una bóveda.",

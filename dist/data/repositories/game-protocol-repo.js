@@ -22,6 +22,8 @@ exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
 exports.listRaisedVaults = listRaisedVaults;
+exports.vaultsSeenSince = vaultsSeenSince;
+exports.lastMapPassAt = lastMapPassAt;
 exports.mapReadSince = mapReadSince;
 exports.saveCityStatuses = saveCityStatuses;
 exports.saveRawSnapshot = saveRawSnapshot;
@@ -499,6 +501,16 @@ function listRaisedVaults(clanId, from, to) {
         firstSeen: r.first_seen,
         lastSeen: r.last_seen,
     }));
+}
+/** Vaults (any owner) first seen at or after `since` (ISO) — this run's, for the map pass. */
+function vaultsSeenSince(clanId, since) {
+    return (0, database_js_1.getDb)().prepare(`SELECT object_id, owner_id, x, y, expires_at, last_seen FROM game_map_objects
+      WHERE clan_id = ? AND object_name LIKE '%vault%' AND first_seen >= ?`).all(clanId, since).map((r) => ({ objectId: r.object_id, ownerId: r.owner_id, x: r.x, y: r.y, expiresAt: r.expires_at, lastSeen: r.last_seen }));
+}
+/** When the map pass last saw members' cities (game_players.map_seen_at), or null. */
+function lastMapPassAt(clanId) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT MAX(map_seen_at) AS at FROM game_players WHERE clan_id = ?').get(clanId);
+    return row.at;
 }
 /**
  * When the map around the clan's cities was first read, or null: the oldest

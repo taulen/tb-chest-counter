@@ -635,6 +635,32 @@ export function listRaisedVaults(clanId: number, from?: string | null, to?: stri
   }));
 }
 
+export interface KnownVault {
+  objectId: number;
+  ownerId: number | null;
+  x: number | null;
+  y: number | null;
+  /** Unix seconds. */
+  expiresAt: number | null;
+  lastSeen: string;
+}
+
+/** Vaults (any owner) first seen at or after `since` (ISO) — this run's, for the map pass. */
+export function vaultsSeenSince(clanId: number, since: string): KnownVault[] {
+  return (getDb().prepare(
+    `SELECT object_id, owner_id, x, y, expires_at, last_seen FROM game_map_objects
+      WHERE clan_id = ? AND object_name LIKE '%vault%' AND first_seen >= ?`,
+  ).all(clanId, since) as Array<{
+    object_id: number; owner_id: number | null; x: number | null; y: number | null; expires_at: number | null; last_seen: string;
+  }>).map((r) => ({ objectId: r.object_id, ownerId: r.owner_id, x: r.x, y: r.y, expiresAt: r.expires_at, lastSeen: r.last_seen }));
+}
+
+/** When the map pass last saw members' cities (game_players.map_seen_at), or null. */
+export function lastMapPassAt(clanId: number): string | null {
+  const row = getDb().prepare('SELECT MAX(map_seen_at) AS at FROM game_players WHERE clan_id = ?').get(clanId) as { at: string | null };
+  return row.at;
+}
+
 /**
  * When the map around the clan's cities was first read, or null: the oldest
  * map object or city-status row (a clan whose map never held a vault still

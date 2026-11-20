@@ -51,6 +51,9 @@ import {
   type PlayerRecord,
 } from '../game-protocol/messages.js';
 import { readEventStandings } from './event-read.js';
+import { TilePlan } from './map-plan.js';
+import { ANCIENTS_TREASURE_EVENT_TYPE } from '../game-protocol/ancients.js';
+import { listRunsOfType } from '../data/repositories/game-event-repo.js';
 import {
   getClanInfo,
   hasClanTechs,
@@ -84,6 +87,8 @@ import {
   saveLedger,
   saveCityStatuses,
   saveMapObjects,
+  lastMapPassAt,
+  vaultsSeenSince,
   savePlayers,
   saveRawSnapshot,
   saveTechs,
@@ -300,15 +305,17 @@ function saveCityGear(clanId: number, playerId: number, city: CityRecord, names:
   return changed;
 }
 /**
- * Map tiles per cycle (members' city tiles + their neighbours). Members' own
- * tiles and their vault reach are always read, even past this.
- */
-const MAX_TILES_PER_CYCLE = 60;
-/**
  * A Vault of the Ancients goes up by itself within 8–10 map squares of the
  * city of the player who raised it (the user, Nov 20 2026).
  */
 const VAULT_RADIUS = 10;
+/**
+ * How far back a vault still counts as this run's: it stands 24 h at most,
+ * and the next Ancients run is days away.
+ */
+const VAULT_RUN_LOOKBACK_MS = 30 * 3600_000;
+/** Keep searching this long after Ancients' Treasure ends: a vault raised in its last minutes. */
+const VAULT_SEARCH_GRACE_SEC = 2 * 3600;
 const TILE_BATCH = 9;
 // Varied, short gaps between reads (utils/request-gap.ts), never one fixed tick.
 const pause = (): Promise<void> => requestGap(READ_GAP[0], READ_GAP[1]);
@@ -396,11 +403,12 @@ async function collectRankings(
  * a field decoded later can be re-read. Between scans, event-poller.ts reads
  * a running Rise of the Ancients again on the session this scan leaves.
  */
-async function collectEvents(clanId: number, d: CaptureData, now: string): Promise<string> {
+async function collectEvents(clanId: number, d: CaptureData, now: string): Promise<{ note: string; treasure: boolean }> {
   const listFrame = await d.client.eventList(d.client.clanId || d.record.clanId, d.client.realmId);
   saveRawSnapshot(clanId, 'event_list', 0, d.gameDate, listFrame.body, now);
   const nowSec = Math.floor(Date.now() / 1000);
   const running = parseEventList(listFrame).filter((e) => isEventRunning(e, nowSec));
+  const treasure = running.some((e) => e.type === ANCIENTS_TREASURE_EVENT_TYPE);
   let read = 0;
   let rows = 0;
   let moved = 0;
@@ -423,7 +431,7 @@ async function collectEvents(clanId: number, d: CaptureData, now: string): Promi
     }
     await pause();
   }
-  return `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)${summons}`;
+  return { note: `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)${summons}`, treasure };
 }
 
 async function collectClan(clanId: number, d: CaptureData, now: string): Promise<string> {
@@ -499,11 +507,93 @@ async function collectClan(clanId: number, d: CaptureData, now: string): Promise
 }
 
 /**
+ * The map around members' cities (map-plan.ts decides which tiles): members'
+ * own tiles every scan (shield, burning — and most vaults); while vaults are
+ * being raised, the reach of every member still without one, dropped as each
+ * vault turns up; each standing member vault's tile, for its "last seen".
+ * Keeps vaults and member-owned objects on those tiles (game_map_objects) and
+ * members' city state. Nothing further out: the 3×3 ring read every scan
+ * until Nov 20 2026 found one member-owned object in 3½ days (a Mimic Chest).
+ *
+ * `treasure`: Ancients' Treasure is on (this scan's event list); null = the
+ * list couldn't be read, so search to be safe. Searching also starts when the
+ * game's run ended under VAULT_SEARCH_GRACE_SEC ago, or when a vault nobody
+ * had seen turns up on the tiles read anyway.
+ */
+async function readMapPass(clanId: number, d: CaptureData, now: string, treasure: boolean | null): Promise<string> {
+  const nowMs = Date.parse(now);
+  const nowSec = Math.floor(nowMs / 1000);
+  const memberIds = new Set(d.record.members.map((m) => m.playerId));
+
+  // This run's vaults so far: whose are found, and which still stood at the last pass.
+  const known = vaultsSeenSince(clanId, new Date(nowMs - VAULT_RUN_LOOKBACK_MS).toISOString());
+  const knownIds = new Set(known.map((v) => v.objectId));
+  const lastPass = lastMapPassAt(clanId);
+  const mine = known.filter((v) => v.ownerId !== null && memberIds.has(v.ownerId));
+  const track = mine
+    .filter((v) => v.x !== null && v.y !== null)
+    .filter((v) => (v.expiresAt === null || v.expiresAt > nowSec) && (lastPass === null || v.lastSeen >= lastPass))
+    .map((v) => tileOf(v.x as number, v.y as number));
+
+  const lastTreasure = listRunsOfType(clanId, ANCIENTS_TREASURE_EVENT_TYPE)[0];
+  const inGrace = lastTreasure?.endsAt != null
+    && (lastTreasure.startsAt ?? 0) <= nowSec && nowSec <= lastTreasure.endsAt + VAULT_SEARCH_GRACE_SEC;
+  const search = treasure !== false || inGrace;
+
+  const own = new Set<number>();
+  const reach = new Map<number, number[]>();
+  for (const m of d.record.members) {
+    const pos = d.byId.get(m.playerId)?.position;
+    if (!pos || pos[0] !== d.client.realmId) continue;
+    own.add(tileOf(pos[1], pos[2]));
+    reach.set(m.playerId, tilesWithin(pos[1], pos[2], VAULT_RADIUS));
+  }
+  const plan = new TilePlan({
+    own,
+    track,
+    reach,
+    found: mine.map((v) => v.ownerId as number),
+    search,
+  });
+
+  const rows = new Map<number, MapObjectRow>();
+  const cities = new Map<number, { playerId: number; shielded: boolean; burning: boolean }>();
+  let requests = 0;
+  for (let batch = plan.next(TILE_BATCH); batch.length; batch = plan.next(TILE_BATCH)) {
+    const frame = await d.client.mapTiles(batch);
+    requests++;
+    plan.markRead(batch);
+    for (const o of parseMapObjects(frame)) {
+      const name = d.names.objects[String(o.type)] ?? '';
+      const vault = /vault/i.test(name);
+      if (!vault && !(o.ownerId !== null && memberIds.has(o.ownerId))) continue;
+      rows.set(o.objectId, { objectId: o.objectId, type: o.type, name, level: o.level, realm: o.realm, x: o.x, y: o.y, ownerId: o.ownerId, expiresAt: o.expiresAt });
+      if (!vault) continue;
+      if (o.ownerId !== null && memberIds.has(o.ownerId)) plan.markFound(o.ownerId);
+      // A vault nobody had seen: vaults are going up — look for the rest.
+      if (!knownIds.has(o.objectId)) plan.startSearch();
+    }
+    for (const c of parseMapCities(frame)) {
+      if (memberIds.has(c.ownerId)) cities.set(c.ownerId, { playerId: c.ownerId, shielded: c.shielded, burning: c.burning });
+    }
+    await pause();
+  }
+  const fresh = saveMapObjects(clanId, [...rows.values()], now);
+  const statusChanges = saveCityStatuses(clanId, [...cities.values()], now);
+  const shielded = [...cities.values()].filter((c) => c.shielded).length;
+  const burning = [...cities.values()].filter((c) => c.burning).length;
+  const vaults = plan.isSearching ? `vault search on, ${plan.stillSearching} members without one` : 'vault search off';
+  return `${rows.size} vaults/member objects on ${plan.readCount} tiles in ${requests} requests (${fresh} new; ${vaults}`
+    + `${track.length ? `; ${track.length} standing tracked` : ''}); `
+    + `${cities.size} member cities: ${shielded} shielded, ${burning} burning (${statusChanges} changed)`;
+}
+
+/**
  * Collect what we don't display yet but want history of — each part isolated,
  * so one failing never costs the others or the capture:
  *   - daily: every member's city (research + hero talents, buildings, hero),
  *     the raw clan record, and every clan-owned object (Clan Capital) raw;
- *   - every cycle: vaults and member-owned map objects around members' cities.
+ *   - every cycle: the map around members' cities (readMapPass).
  * Returns a short summary for the log line.
  */
 async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): Promise<string> {
@@ -543,8 +633,13 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
     parts.push(`clan pass failed: ${String(err)}`);
   }
 
+  // Whether Ancients' Treasure (vault day) is on, from this scan's event
+  // list; null when the list couldn't be read — the map pass then searches.
+  let treasure: boolean | null = null;
   try {
-    parts.push(await collectEvents(clanId, d, now));
+    const events = await collectEvents(clanId, d, now);
+    treasure = events.treasure;
+    parts.push(events.note);
   } catch (err) {
     parts.push(`events failed: ${String(err)}`);
   }
@@ -692,45 +787,7 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
   }
 
   try {
-    // Every member's own tile first, so the cap never drops a member's city
-    // (its shield and burning state come from it); then the tiles within a
-    // vault's reach of each city (≤ 4 each), so a member's vault is always
-    // read; then the rest of the 3×3 around, for other member-owned objects.
-    const own = new Set<number>();
-    const vaultReach = new Set<number>();
-    const around = new Set<number>();
-    for (const m of d.record.members) {
-      const pos = d.byId.get(m.playerId)?.position;
-      if (!pos || pos[0] !== d.client.realmId) continue;
-      own.add(tileOf(pos[1], pos[2]));
-      for (const t of tilesWithin(pos[1], pos[2], VAULT_RADIUS)) vaultReach.add(t);
-      for (const dx of [-20, 0, 20]) for (const dy of [-20, 0, 20]) around.add(tileOf(pos[1] + dx, pos[2] + dy));
-    }
-    const list = [...new Set([...own, ...vaultReach, ...around])].filter((t) => t >= 0)
-      .slice(0, Math.max(MAX_TILES_PER_CYCLE, own.size + vaultReach.size));
-    const memberIds = new Set(d.record.members.map((m) => m.playerId));
-    const rows: MapObjectRow[] = [];
-    const cities = new Map<number, { playerId: number; shielded: boolean; burning: boolean }>();
-    for (let i = 0; i < list.length; i += TILE_BATCH) {
-      const frame = await d.client.mapTiles(list.slice(i, i + TILE_BATCH));
-      for (const o of parseMapObjects(frame)) {
-        const name = d.names.objects[String(o.type)] ?? '';
-        if (!/vault/i.test(name) && !(o.ownerId !== null && memberIds.has(o.ownerId))) continue;
-        rows.push({ objectId: o.objectId, type: o.type, name, level: o.level, realm: o.realm, x: o.x, y: o.y, ownerId: o.ownerId, expiresAt: o.expiresAt });
-      }
-      for (const c of parseMapCities(frame)) {
-        if (memberIds.has(c.ownerId)) cities.set(c.ownerId, { playerId: c.ownerId, shielded: c.shielded, burning: c.burning });
-      }
-      await pause();
-    }
-    const fresh = saveMapObjects(clanId, rows, now);
-    const statusChanges = saveCityStatuses(clanId, [...cities.values()], now);
-    const shielded = [...cities.values()].filter((c) => c.shielded).length;
-    const burning = [...cities.values()].filter((c) => c.burning).length;
-    parts.push(
-      `${rows.length} vaults/member objects on ${list.length} tiles (${fresh} new); ` +
-      `${cities.size} member cities: ${shielded} shielded, ${burning} burning (${statusChanges} changed)`,
-    );
+    parts.push(await readMapPass(clanId, d, now, treasure));
   } catch (err) {
     parts.push(`map pass failed: ${String(err)}`);
   }

@@ -403,19 +403,27 @@ Each capture also, every cycle:
   credited through `makeMemberResolver`, which never reactivates anyone.
   An alt that a merge rule folds into a member another player owns is only
   marked seen there — never linked, renamed or snapshotted from the alt.
-- **reads map tiles** around members' cities (every member's own tile first,
-  then the ≤ 4 tiles within `VAULT_RADIUS` = 10 squares of each city — a
-  Vault of the Ancients goes up by itself within 8–10 squares of the city of
-  the player who raised it (the user, Nov 20 2026) — never cut; then the rest
-  of the 3×3 around while under 60 tiles) and keeps vaults plus member-owned
-  objects (`game_map_objects`). A vault's owner (`[9]`) is the player who
-  raised it; one vault per player per Vaultsday (the run's first day), and it
-  lives 24 h (`[10]` expiry, unix seconds) unless taken down first.
-  **Events → Ancients → Vaults** shows who raised one in the selected run —
-  vaults first seen in its window (`GET /api/tinman/vaults?from=&to=`,
-  `listRaisedVaults`), members without one, and how many vaults of players
-  outside the clan were seen nearby. A vault raised and taken down between two
-  scans is never seen. Each tile's `[4]` lists its **cities** (43-field
+- **reads map tiles** around members' cities ([map-plan.ts](../src/scheduler/map-plan.ts)
+  decides which, 9 per 312 request): every member's own tile, every scan;
+  the tile of each member vault still standing at the last pass (its "last
+  seen"); and **only while vaults are being raised** — Ancients' Treasure
+  (event type 1023, `clandoom_preparation`, the run's first day) is in this
+  scan's event list, ended under 2 h ago, the list couldn't be read, or a
+  vault nobody had seen turns up on a tile read anyway — the ≤ 4 tiles within
+  `VAULT_RADIUS` = 10 squares of the city of each member **without a vault
+  yet**. A vault goes up by itself within 8–10 squares of the raiser's city
+  (the user, Nov 20 2026), and a player raises one a run, so a member's tiles
+  drop out the moment their vault is seen: on an earlier scan that run (30 h
+  lookback) or an earlier batch of the same pass. Vaults plus member-owned
+  objects on those tiles go to `game_map_objects`. A vault's owner (`[9]`) is
+  the player who raised it; it lives 24 h (`[10]` expiry, unix seconds) unless
+  taken down first. (Until Nov 20 2026 the full 3×3 around every city was
+  read every scan; in 3½ days it found one other member-owned object, a Mimic
+  Chest.) **Events → Ancients → Vaults** shows who raised one in the selected
+  run — vaults first seen in its window (`GET /api/tinman/vaults?from=&to=`,
+  `listRaisedVaults`) with first and last seen, members without one, and how
+  many vaults of players outside the clan were seen nearby. A vault raised and
+  taken down between two scans is never seen. Each tile's `[4]` lists its **cities** (43-field
   records: `[0]` city id, `[2]` owner, `[3]` 2, `[4]` clan, `[13]` level,
   `[17]` `[realm,x,y]`, **`[25]` 1 = burning (walls down)**, **`[39]` true =
   shield**), confirmed by the user against the map (Nov 2026). Members' state
