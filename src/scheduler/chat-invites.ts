@@ -7,7 +7,11 @@
  * answered in that same private chat with a one-time code for /join.
  *
  * Replies go only to the player who asked, in the 1:1 chat they opened
- * (chat-send.ts sendInviteMessage). The one unprompted message — the welcome
+ * (chat-send.ts sendInviteMessage). A keyword written in the clan's digest
+ * group chat — read only while chat commands answer there (chat-commands.ts)
+ * — is answered in that player's private chat with the scanner (found, or
+ * opened as a welcome code opens one), never in the group: whoever holds the
+ * code becomes the player. The one unprompted message — the welcome
  * code for a player who joins, its own setting — is at the end of this file.
  * The checks for a reply:
  *   - invites are switched on for the clan (off by default), and the DM was
@@ -52,10 +56,11 @@ import {
   welcomeCandidates,
 } from '../data/repositories/account-invite-repo.js';
 import { clanPublicUrl, getClanById } from '../data/repositories/clan-repo.js';
-import { clanChatChannels } from '../data/repositories/chat-repo.js';
+import { clanChatChannels, upsertChatChannel } from '../data/repositories/chat-repo.js';
+import { commandGroupChannel, getChatCommandSettings } from '../data/repositories/chat-command-repo.js';
 import { listChannelMembers, myMuteInfo, openPrivateChat, type ChatChannel, type ChatMember, type ChatSession, type MuteInfo } from '../game-protocol/chat.js';
 import { chatSenderPlayerId } from '../game-protocol/chat-text.js';
-import { MAX_INVITE_REPLY_CHARS, assertInviteChannel, chatSendingDisabled, isMutedRefusal, sendInviteMessage, type SendOutcome, type SocketSender } from '../game-protocol/chat-send.js';
+import { MAX_INVITE_REPLY_CHARS, assertCommandGroupChannel, assertInviteChannel, chatSendingDisabled, isMutedRefusal, sendInviteMessage, type SendOutcome, type SocketSender } from '../game-protocol/chat-send.js';
 import { chatPausedUntil, getChatSendState, noteChatMuted, noteChatSendAttempt, noteChatSent, noteMuteEnd } from '../data/repositories/chat-send-state-repo.js';
 import { loadConfig } from '../config/index.js';
 import { readEnvValue } from '../config/persistent-env.js';
@@ -302,7 +307,10 @@ export function inviteRequestBlocker(
   const channel = channelFor(clanId, req.channelUrl);
   if (!channel) return 'channel';
   try {
-    assertInviteChannel(channel, scannerChatId, req.senderChatId);
+    // Asked in the digest's group chat (chat commands answer there): allowed
+    // only while that is on — the code itself goes to their private chat.
+    if (channel.customType === 'whisper') assertInviteChannel(channel, scannerChatId, req.senderChatId);
+    else assertCommandGroupChannel(channel, commandGroupChannel(clanId));
   } catch {
     return 'channel';
   }
@@ -323,7 +331,9 @@ function noteBlocked(clanId: number, playerId: number | null, senderChatId: stri
 }
 
 /**
- * Record every new keyword DM in the clan's private chats once: `pending`
+ * Record every new keyword DM in the clan's private chats once — and, while
+ * chat commands answer in the digest's group chat, a keyword written there
+ * (the code then goes to the asker's private chat, never the group): `pending`
  * when it may be answered, `ignored` (with the reason) when not. Returns how
  * many were recorded.
  */
@@ -331,20 +341,25 @@ export function detectInviteRequests(clanId: number, scannerChatId: string, nowM
   const settings = getInviteSettings(clanId);
   if (!settings.enabled || settings.enabledAt === null || !scannerChatId) return 0;
   const since = Math.max(settings.enabledAt, nowMs - MAX_REQUEST_AGE_MS);
+  const group = commandGroupChannel(clanId);
+  const groupSince = Math.max(since, getChatCommandSettings(clanId).groupEnabledAt ?? nowMs);
   const rows = getDb().prepare(
     `SELECT m.channel_url, m.message_id, m.created_at, m.sender_id, m.sender_player_id, m.message
        FROM chat_messages m
        JOIN chat_channels c ON c.clan_id = m.clan_id AND c.channel_url = m.channel_url
-      WHERE m.clan_id = ? AND c.custom_type = 'whisper' AND m.custom_type = 'user'
-        AND m.created_at >= ? AND m.sender_id <> ? AND m.sender_id <> '' AND length(m.message) <= 40
+      WHERE m.clan_id = ? AND m.custom_type = 'user'
+        AND ((c.custom_type = 'whisper' AND m.created_at >= ?) OR (m.channel_url = ? AND m.created_at >= ?))
+        AND m.sender_id <> ? AND m.sender_id <> '' AND length(m.message) <= 40
         AND NOT EXISTS (SELECT 1 FROM chat_invite_requests r
                          WHERE r.clan_id = m.clan_id AND r.channel_url = m.channel_url AND r.message_id = m.message_id)
-      ORDER BY m.created_at, m.message_id LIMIT 200`,
-  ).all(clanId, since, scannerChatId) as Array<{
+      ORDER BY m.created_at DESC, m.message_id DESC LIMIT 500`,
+  ).all(clanId, since, group ?? '', groupSince, scannerChatId) as Array<{
     channel_url: string; message_id: number; created_at: number; sender_id: string; sender_player_id: number | null; message: string;
   }>;
   let recorded = 0;
-  for (const m of rows) {
+  // Newest first above, so a chatty group chat can't push new lines past the
+  // limit; handled oldest first.
+  for (const m of [...rows].reverse()) {
     if (!isInviteKeyword(m.message)) continue;
     const req = { channelUrl: m.channel_url, senderChatId: m.sender_id, playerId: m.sender_player_id };
     const blocker = inviteRequestBlocker(clanId, scannerChatId, req, nowMs);
@@ -371,7 +386,41 @@ export interface InviteRunOptions {
   chatSession?: ChatSession | null;
   /** The mute-info read (myMuteInfo by default) — swapped out in tests. */
   muteInfo?: (s: ChatSession, channelUrl: string) => Promise<MuteInfo>;
+  /** Opens the 1:1 chat for a code asked for in the group chat (openPrivateChat by default) — swapped out in tests. */
+  openChat?: (s: ChatSession, otherUserId: string) => Promise<ChatChannel>;
   now?: () => number;
+}
+
+/**
+ * The private chat between the scanner account and `otherChatId`, for a code
+ * asked for in the group chat: a stored one holding exactly the two of them,
+ * else one opened now (as a welcome code does) and stored. 'later' without a
+ * chat session to open one with (the next scan has one); null when opening
+ * failed or what opened isn't that 1:1 chat.
+ */
+async function privateChatWith(clanId: number, otherChatId: string, opts: InviteRunOptions): Promise<ChannelRow | null | 'later'> {
+  const candidates = getDb().prepare(
+    "SELECT channel_url FROM chat_channels WHERE clan_id = ? AND custom_type = 'whisper' AND members LIKE ? ORDER BY last_seen DESC",
+  ).all(clanId, `%"${otherChatId.replace(/[%_"]/g, '')}"%`) as Array<{ channel_url: string }>;
+  for (const { channel_url: url } of candidates) {
+    const c = channelFor(clanId, url);
+    if (!c) continue;
+    try {
+      assertInviteChannel(c, opts.scannerChatId, otherChatId);
+      return c;
+    } catch { /* not exactly the two of them */ }
+  }
+  const session = opts.chatSession;
+  if (!session) return 'later';
+  try {
+    const opened = await (opts.openChat ?? openPrivateChat)(session, otherChatId);
+    assertInviteChannel(opened, opts.scannerChatId, otherChatId);
+    upsertChatChannel(clanId, opened);
+    return channelFor(clanId, opened.url);
+  } catch (err) {
+    quietWarner.warn(`open-group:${clanId}`, `Clan #${clanId}: could not open a private chat for a code asked for in the group chat — not sent there or anywhere: ${String(err)}`);
+    return null;
+  }
 }
 
 /**
@@ -413,7 +462,18 @@ export async function answerInviteRequests(clanId: number, opts: InviteRunOption
       noteBlocked(clanId, req.playerId, req.senderChatId, blocker);
       continue;
     }
-    const channel = channelFor(clanId, req.channelUrl)!;
+    let channel: ChannelRow = channelFor(clanId, req.channelUrl)!;
+    if (channel.customType !== 'whisper') {
+      // Asked in the digest's group chat: the code is the player's alone, so it
+      // goes to their private chat with the scanner — never the group.
+      const own = await privateChatWith(clanId, req.senderChatId, opts);
+      if (own === 'later') continue;
+      if (!own) {
+        setRequestStatus(req.id, 'failed', 'open-chat-failed');
+        continue;
+      }
+      channel = own;
+    }
     let token: string | null;
     try {
       token = await opts.chatToken();

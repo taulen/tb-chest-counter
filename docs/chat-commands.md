@@ -63,6 +63,11 @@ Tables (v135): `chat_command_settings`, `chat_command_requests`,
    group chats too, keeps only that one, and reads it **forward only** from the
    switch-on (at most 3 h back); its history is never backfilled. The site's
    chat pages serve only the clan chat, so its lines are never shown.
+   **A code is never posted there**: `code` (or any invite keyword) written in
+   the group chat is answered with the code in the asker's **private** chat
+   with the scanner — the stored 1:1 chat, else one opened as a welcome code
+   opens it — with every invite rule ([account-invites.md](account-invites.md)).
+   `help` in the group says so ("sent to you privately").
 
 ## Who gets an answer
 

@@ -22,7 +22,13 @@ admins or the superadmin; the third is always there for them:
 
 1. **Asking** — the player DMs the scanner account one word: `code`,
    `invite`, `tracker`, `код`, `código` or `codigo` (the whole message, any
-   case; a leading `!` or `/` and trailing punctuation are fine). The chat is
+   case; a leading `!` or `/` and trailing punctuation are fine). While chat
+   commands also answer in the clan's digest group chat
+   ([chat-commands.md](chat-commands.md)), the word written **there** works
+   too — and the code still goes to the player's **private** chat with the
+   scanner (the stored 1:1 chat, else one opened like a welcome code's; it
+   must hold exactly the two of them), never the group: whoever holds the
+   code becomes the player. The chat is
    read every minute; the answer goes out within a minute when the clan's last
    scan left a game session for a chat token, else with the clan's next scan.
    Code: 72 hours (the same as a welcome code).

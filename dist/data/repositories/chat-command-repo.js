@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getChatCommandSettings = getChatCommandSettings;
 exports.setChatCommandsEnabled = setChatCommandsEnabled;
+exports.commandGroupChannel = commandGroupChannel;
 exports.setChatCommandsGroupEnabled = setChatCommandsGroupEnabled;
 exports.recordCommandRequest = recordCommandRequest;
 exports.pendingCommandRequests = pendingCommandRequests;
@@ -26,6 +27,7 @@ exports.commandRepliesSentSince = commandRepliesSentSince;
  * may have gone out (`unknown`) is never resent.
  */
 const database_js_1 = require("../database.js");
+const chat_digest_repo_js_1 = require("./chat-digest-repo.js");
 function getChatCommandSettings(clanId) {
     const r = (0, database_js_1.getDb)().prepare('SELECT enabled, enabled_at, group_enabled, group_enabled_at, updated_at FROM chat_command_settings WHERE clan_id = ?')
         .get(clanId);
@@ -44,6 +46,19 @@ function setChatCommandsEnabled(clanId, enabled, nowMs = Date.now()) {
     const current = getChatCommandSettings(clanId);
     const enabledAt = enabled ? (current.enabled ? current.enabledAt ?? nowMs : nowMs) : current.enabledAt;
     return saveSettings(clanId, { ...current, enabled, enabledAt }, nowMs);
+}
+/**
+ * The group chat commands are also answered in, or null: the clan's chat
+ * digest chat (Clans → In-game chat digest — CWB • Carter), when commands and
+ * "answer in the group chat" are both on and a chat is picked there. Here
+ * (not in chat-commands.ts) so account invites can read it without a cycle:
+ * a code asked for there is answered in private.
+ */
+function commandGroupChannel(clanId) {
+    const s = getChatCommandSettings(clanId);
+    if (!s.enabled || !s.groupEnabled)
+        return null;
+    return (0, chat_digest_repo_js_1.getChatDigestSettings)(clanId).channelUrl || null;
 }
 /** Switch answering in the digest's group chat on or off; on stamps the time, as above. */
 function setChatCommandsGroupEnabled(clanId, groupEnabled, nowMs = Date.now()) {

@@ -55,6 +55,8 @@ export interface CommandTexts {
   notOnBoard: string;
   helpHead: string;
   helpCode: string;
+  /** The same in the group chat: the code never goes there. */
+  helpCodePrivate: string;
   helpLeaders: string;
 }
 
@@ -98,6 +100,7 @@ export const COMMAND_TEXTS: Record<ReplyLanguage, CommandTexts> = {
     notOnBoard: "I can't find you on the clan's board yet. Try again after the next scan.",
     helpHead: 'TB Chest Counter (the clan tracker by taulen). Message me one word:',
     helpCode: 'code: your code for the site',
+    helpCodePrivate: 'code: your code for the site, sent to you privately',
     helpLeaders: 'Leaders: missing',
   },
   es: {
@@ -137,6 +140,7 @@ export const COMMAND_TEXTS: Record<ReplyLanguage, CommandTexts> = {
     notOnBoard: 'Todavía no te encuentro en la clasificación del clan. Prueba de nuevo tras el próximo escaneo.',
     helpHead: 'TB Chest Counter (el tracker del clan de taulen). Escríbeme una palabra:',
     helpCode: 'code: tu código para la web',
+    helpCodePrivate: 'code: tu código para la web, te llega en privado',
     helpLeaders: 'Líderes: missing',
   },
   fr: {
@@ -176,6 +180,7 @@ export const COMMAND_TEXTS: Record<ReplyLanguage, CommandTexts> = {
     notOnBoard: 'Je ne vous trouve pas encore au classement du clan. Réessayez après le prochain scan.',
     helpHead: 'TB Chest Counter (le tracker de clan de taulen). Écrivez-moi un mot :',
     helpCode: 'code : votre code pour le site',
+    helpCodePrivate: 'code : votre code pour le site, envoyé en privé',
     helpLeaders: 'Chefs : missing',
   },
   ru: {
@@ -215,6 +220,7 @@ export const COMMAND_TEXTS: Record<ReplyLanguage, CommandTexts> = {
     notOnBoard: 'Пока не нахожу вас в рейтинге клана. Попробуйте после следующего сканирования.',
     helpHead: 'TB Chest Counter (трекер клана от taulen). Напишите мне одно слово:',
     helpCode: 'code: ваш код для сайта',
+    helpCodePrivate: 'code: ваш код для сайта, придёт в личные сообщения',
     helpLeaders: 'Руководство: missing',
   },
   de: {
@@ -254,6 +260,7 @@ export const COMMAND_TEXTS: Record<ReplyLanguage, CommandTexts> = {
     notOnBoard: 'Ich finde dich noch nicht in der Clan-Rangliste. Versuch es nach dem nächsten Scan noch einmal.',
     helpHead: 'TB Chest Counter (der Clan-Tracker von taulen). Schreib mir ein Wort:',
     helpCode: 'code: dein Code für die Website',
+    helpCodePrivate: 'code: dein Code für die Website, kommt privat',
     helpLeaders: 'Clanführung: missing',
   },
 };

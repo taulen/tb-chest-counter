@@ -49,7 +49,7 @@ import {
   processChatCommands,
 } from '../../src/scheduler/chat-commands.js';
 import { COMMAND_TEXTS } from '../../src/scheduler/chat-command-texts.js';
-import { isInviteKeyword } from '../../src/scheduler/chat-invites.js';
+import { isInviteKeyword, processInviteRequests } from '../../src/scheduler/chat-invites.js';
 import {
   CHANNEL_MAX_LENGTH,
   MAX_COMMAND_REPLY_CHARS,
@@ -633,6 +633,68 @@ describe('the digest group chat', () => {
     expect(requests()[0]).toMatchObject({ status: 'ignored', reason: 'group-off' });
   });
 
+  describe('"code" asked in the group chat', () => {
+    const session = { key: 'k', userId: SCANNER } as never;
+    const inviteOpts = (s: ReturnType<typeof sender>, openChat = vi.fn()) => ({ scannerChatId: SCANNER, chatToken: async () => 'tok', send: s.fn, now, chatSession: session, openChat });
+    const inviteRows = () => getDb().prepare('SELECT status, reason FROM chat_invite_requests ORDER BY id').all();
+    beforeEach(() => {
+      setInvitesEnabled(1, true, T0 - HOUR);
+      setChatCommandsGroupEnabled(1, true, T0 - HOUR);
+    });
+
+    it('goes to the asker’s private chat with the scanner, never the group', async () => {
+      dm(1, 'tb:11', 11, 'hello', T0 - 2 * HOUR);
+      say(CARTER, 'tb:11', 11, 'code', T0);
+      const s = sender();
+      const openChat = vi.fn();
+      await processInviteRequests(1, inviteOpts(s, openChat));
+      expect(s.sent).toHaveLength(1);
+      expect(s.sent[0].channelUrl).toBe('sendbird_group_channel_tb11');
+      expect(s.sent[0].text).toMatch(/\b[A-Z0-9]{4}-[A-Z0-9]{4}\b/);
+      expect(openChat).not.toHaveBeenCalled();
+      expect(inviteRows()).toEqual([{ status: 'sent', reason: null }]);
+      // And it is not a chat command either: nothing is answered in the group.
+      const c = sender();
+      await processChatCommands(1, opts(c));
+      expect(c.sent).toHaveLength(0);
+    });
+
+    it('with no private chat yet, opens one (exactly the two of them) and sends there', async () => {
+      say(CARTER, 'tb:12', 12, 'code', T0);
+      const s = sender();
+      const openChat = vi.fn(async () => ({
+        url: 'sendbird_group_channel_new', customType: 'whisper', name: '', memberCount: 2, lastMessageAt: null,
+        members: [{ userId: SCANNER, nickname: '' }, { userId: 'tb:12', nickname: '' }],
+      }));
+      await processInviteRequests(1, inviteOpts(s, openChat));
+      expect(openChat).toHaveBeenCalledWith(session, 'tb:12');
+      expect(s.sent.map((m) => m.channelUrl)).toEqual(['sendbird_group_channel_new']);
+    });
+
+    it('a chat that opens with anyone else in it gets nothing, and the request fails', async () => {
+      say(CARTER, 'tb:12', 12, 'code', T0);
+      const s = sender();
+      const openChat = vi.fn(async () => ({
+        url: 'sendbird_group_channel_new', customType: 'whisper', name: '', memberCount: 3, lastMessageAt: null,
+        members: [{ userId: SCANNER, nickname: '' }, { userId: 'tb:12', nickname: '' }, { userId: 'tb:13', nickname: '' }],
+      }));
+      await processInviteRequests(1, inviteOpts(s, openChat));
+      expect(s.sent).toHaveLength(0);
+      expect(inviteRows()).toEqual([{ status: 'failed', reason: 'open-chat-failed' }]);
+    });
+
+    it('is not read at all while the group chat is off; help there says the code comes privately', async () => {
+      setChatCommandsGroupEnabled(1, false, T0 - 60_000);
+      say(CARTER, 'tb:11', 11, 'code', T0);
+      const s = sender();
+      await processInviteRequests(1, inviteOpts(s));
+      expect(s.sent).toHaveLength(0);
+      expect(inviteRows()).toEqual([]);
+      expect(await buildCommandReply(1, 11, 'help', 'en', T0, { inGroup: true })).toContain('code: your code for the site, sent to you privately');
+      expect((await buildCommandReply(1, 11, 'help', 'en', T0)).split('\n')).toContain('code: your code for the site');
+    });
+  });
+
   it('the group send refuses the clan chat, the kingdom chat, a private chat and any other group chat', async () => {
     const s = sender();
     const carter = { url: CARTER, customType: 'privateGroup', name: 'CWB • Carter', members: [] };
@@ -667,7 +729,7 @@ describe('message length', () => {
     for (const limit of [null, 300, 120]) {
       for (const lang of ['en', 'es', 'fr', 'ru', 'de'] as const) {
         for (const command of ['me', 'points', 'chests', 'top', 'progress', 'events', 'help', 'missing'] as const) {
-          const text = await buildCommandReply(1, 12, command, lang, T0, limit);
+          const text = await buildCommandReply(1, 12, command, lang, T0, { channelMax: limit });
           expect(text.trim(), `${limit} ${lang} ${command}`).not.toBe('');
           expect(fitsReply(text, limit), `${limit} ${lang} ${command}: ${text.length} chars`).toBe(true);
         }

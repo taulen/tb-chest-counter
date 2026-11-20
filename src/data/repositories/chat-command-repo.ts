@@ -10,6 +10,7 @@
  * may have gone out (`unknown`) is never resent.
  */
 import { getDb } from '../database.js';
+import { getChatDigestSettings } from './chat-digest-repo.js';
 
 export interface ChatCommandSettings {
   enabled: boolean;
@@ -46,6 +47,19 @@ export function setChatCommandsEnabled(clanId: number, enabled: boolean, nowMs =
   const current = getChatCommandSettings(clanId);
   const enabledAt = enabled ? (current.enabled ? current.enabledAt ?? nowMs : nowMs) : current.enabledAt;
   return saveSettings(clanId, { ...current, enabled, enabledAt }, nowMs);
+}
+
+/**
+ * The group chat commands are also answered in, or null: the clan's chat
+ * digest chat (Clans → In-game chat digest — CWB • Carter), when commands and
+ * "answer in the group chat" are both on and a chat is picked there. Here
+ * (not in chat-commands.ts) so account invites can read it without a cycle:
+ * a code asked for there is answered in private.
+ */
+export function commandGroupChannel(clanId: number): string | null {
+  const s = getChatCommandSettings(clanId);
+  if (!s.enabled || !s.groupEnabled) return null;
+  return getChatDigestSettings(clanId).channelUrl || null;
 }
 
 /** Switch answering in the digest's group chat on or off; on stamps the time, as above. */

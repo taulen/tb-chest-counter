@@ -60,6 +60,7 @@ import { getDb } from '../data/database.js';
 import {
   channelRepliesSince,
   clanRepliesSince,
+  commandGroupChannel,
   commandRepeated,
   finishCommandSend,
   getChatCommandSettings,
@@ -182,16 +183,8 @@ export function parseChatCommand(text: string): { command: ChatCommand; lang: Re
 
 // ── Who gets an answer ─────────────────────────────────────────────────────
 
-/**
- * The group chat commands are also answered in, or null: the clan's chat
- * digest chat (Clans → In-game chat digest — CWB • Carter), when commands and
- * "answer in the group chat" are both on and a chat is picked there.
- */
-export function commandGroupChannel(clanId: number): string | null {
-  const s = getChatCommandSettings(clanId);
-  if (!s.enabled || !s.groupEnabled) return null;
-  return getChatDigestSettings(clanId).channelUrl || null;
-}
+/** The group chat commands are also answered in, or null (chat-command-repo.ts). */
+export { commandGroupChannel };
 
 /**
  * What the chat sync reads of the group chat: its url and the time to read
@@ -349,17 +342,19 @@ interface Ctx {
   nowMs: number;
   /** The reply's chat's own longest message, null when not known (our ceiling then). */
   channelMax: number | null;
+  /** The reply goes to the digest's group chat (everyone reads it), not a private chat. */
+  inGroup: boolean;
   num: (n: number) => string;
   amount: (n: number, forms: Forms) => string;
   fits: (text: string) => boolean;
 }
 
-function makeCtx(clan: Clan, playerId: number, lang: ReplyLanguage, nowMs: number, channelMax: number | null): Ctx {
+function makeCtx(clan: Clan, playerId: number, lang: ReplyLanguage, nowMs: number, channelMax: number | null, inGroup: boolean): Ctx {
   const tx = COMMAND_TEXTS[lang] ?? COMMAND_TEXTS.en;
   const fmt = new Intl.NumberFormat(tx.locale);
   const num = (n: number) => fmt.format(n);
   return {
-    clan, playerId, lang, tx, nowMs, channelMax, num,
+    clan, playerId, lang, tx, nowMs, channelMax, inGroup, num,
     amount: (n, forms) => `${num(n)} ${pluralWord(tx.locale, n, forms)}`,
     fits: (text) => fitsCommandReply(text, channelMax),
   };
@@ -593,7 +588,8 @@ function helpReply(c: Ctx): string {
   return [
     c.tx.helpHead,
     MEMBER_COMMANDS.join(' · '),
-    getInviteSettings(c.clan.id).enabled ? c.tx.helpCode : null,
+    // In the group chat the code still works, but it comes privately.
+    getInviteSettings(c.clan.id).enabled ? (c.inGroup ? c.tx.helpCodePrivate : c.tx.helpCode) : null,
     isLeader(c.clan.id, c.playerId) ? c.tx.helpLeaders : null,
   ].filter((l): l is string => !!l).join('\n');
 }
@@ -605,14 +601,16 @@ function capitalize(s: string): string {
 /**
  * The reply to one command from one player, in `lang`, at `nowMs`. Always
  * one message the chat takes (fitsReply): our ceiling, or `channelMax` — the
- * chat's own max_length_message — when that is smaller.
+ * chat's own max_length_message — when that is smaller. `inGroup`: it goes to
+ * the digest's group chat.
  */
 export async function buildCommandReply(
-  clanId: number, playerId: number, command: ChatCommand, lang: ReplyLanguage, nowMs = Date.now(), channelMax: number | null = null,
+  clanId: number, playerId: number, command: ChatCommand, lang: ReplyLanguage, nowMs = Date.now(),
+  where: { channelMax?: number | null; inGroup?: boolean } = {},
 ): Promise<string> {
   const clan = getClanById(clanId);
   if (!clan) throw new Error(`clan ${clanId} not found`);
-  const c = makeCtx(clan, playerId, lang, nowMs, channelMax);
+  const c = makeCtx(clan, playerId, lang, nowMs, where.channelMax ?? null, where.inGroup ?? false);
   let text: string;
   switch (command) {
     case 'me': text = meReply(c); break;
@@ -710,7 +708,7 @@ export async function answerChatCommands(clanId: number, opts: CommandRunOptions
     if (inGroup && (groupTried || channelRepliesSince(clanId, channel.url, nowMs - HOUR) >= GROUP_MAX_PER_HOUR)) continue;
     let text: string;
     try {
-      text = await buildCommandReply(clanId, req.playerId!, req.command as ChatCommand, replyLanguage(clanId, req, inGroup), nowMs, channel.maxLength);
+      text = await buildCommandReply(clanId, req.playerId!, req.command as ChatCommand, replyLanguage(clanId, req, inGroup), nowMs, { channelMax: channel.maxLength, inGroup });
     } catch (err) {
       setCommandRequestStatus(req.id, 'failed', 'reply-error');
       log.warn({ noAlert: true }, `Clan #${clanId}: the reply to "${req.command}" could not be built: ${String(err)}`);

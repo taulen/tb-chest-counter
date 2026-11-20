@@ -1,8 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ALIASES = exports.LEADER_COMMANDS = exports.MEMBER_COMMANDS = exports.PROGRESS_WEEKS = exports.TOP_ENTRIES = exports.SHARED_COMMANDS = exports.GROUP_MAX_PER_HOUR = exports.CLAN_MAX_PER_HOUR = exports.COMMAND_SEND_GAP_MS = exports.COMMAND_REPLIES_PER_RUN = exports.PLAYER_MAX_PER_HOUR = exports.REPEAT_WINDOW_MS = exports.MAX_COMMAND_AGE_MS = void 0;
+exports.commandGroupChannel = exports.ALIASES = exports.LEADER_COMMANDS = exports.MEMBER_COMMANDS = exports.PROGRESS_WEEKS = exports.TOP_ENTRIES = exports.SHARED_COMMANDS = exports.GROUP_MAX_PER_HOUR = exports.CLAN_MAX_PER_HOUR = exports.COMMAND_SEND_GAP_MS = exports.COMMAND_REPLIES_PER_RUN = exports.PLAYER_MAX_PER_HOUR = exports.REPEAT_WINDOW_MS = exports.MAX_COMMAND_AGE_MS = void 0;
 exports.parseChatCommand = parseChatCommand;
-exports.commandGroupChannel = commandGroupChannel;
 exports.commandGroupRead = commandGroupRead;
 exports.commandRequestBlocker = commandRequestBlocker;
 exports.detectChatCommands = detectChatCommands;
@@ -73,6 +72,7 @@ exports.processChatCommands = processChatCommands;
  */
 const database_js_1 = require("../data/database.js");
 const chat_command_repo_js_1 = require("../data/repositories/chat-command-repo.js");
+Object.defineProperty(exports, "commandGroupChannel", { enumerable: true, get: function () { return chat_command_repo_js_1.commandGroupChannel; } });
 const clan_repo_js_1 = require("../data/repositories/clan-repo.js");
 const account_invite_repo_js_1 = require("../data/repositories/account-invite-repo.js");
 const user_repo_js_1 = require("../data/repositories/user-repo.js");
@@ -163,25 +163,13 @@ function parseChatCommand(text) {
     const hit = Object.prototype.hasOwnProperty.call(exports.ALIASES, t) ? exports.ALIASES[t] : undefined;
     return hit ? { command: hit.command, lang: hit.lang ?? null } : null;
 }
-// ── Who gets an answer ─────────────────────────────────────────────────────
-/**
- * The group chat commands are also answered in, or null: the clan's chat
- * digest chat (Clans → In-game chat digest — CWB • Carter), when commands and
- * "answer in the group chat" are both on and a chat is picked there.
- */
-function commandGroupChannel(clanId) {
-    const s = (0, chat_command_repo_js_1.getChatCommandSettings)(clanId);
-    if (!s.enabled || !s.groupEnabled)
-        return null;
-    return (0, chat_digest_repo_js_1.getChatDigestSettings)(clanId).channelUrl || null;
-}
 /**
  * What the chat sync reads of the group chat: its url and the time to read
  * forward from — the switch-on, at most MAX_COMMAND_AGE_MS back. Null when
  * commands aren't answered there. Its history is never read.
  */
 function commandGroupRead(clanId, nowMs = Date.now()) {
-    const url = commandGroupChannel(clanId);
+    const url = (0, chat_command_repo_js_1.commandGroupChannel)(clanId);
     if (!url)
         return null;
     const s = (0, chat_command_repo_js_1.getChatCommandSettings)(clanId);
@@ -209,7 +197,7 @@ function commandRequestBlocker(clanId, scannerChatId, req) {
         if (channel.customType === 'whisper')
             (0, chat_send_js_1.assertInviteChannel)(channel, scannerChatId, req.senderChatId);
         else
-            (0, chat_send_js_1.assertCommandGroupChannel)(channel, commandGroupChannel(clanId));
+            (0, chat_send_js_1.assertCommandGroupChannel)(channel, (0, chat_command_repo_js_1.commandGroupChannel)(clanId));
     }
     catch {
         return channel.customType === 'whisper' ? 'channel' : 'group-off';
@@ -233,7 +221,7 @@ function detectChatCommands(clanId, scannerChatId, nowMs = Date.now()) {
     if (!settings.enabled || settings.enabledAt === null || !scannerChatId)
         return 0;
     const since = Math.max(settings.enabledAt, nowMs - exports.MAX_COMMAND_AGE_MS);
-    const group = commandGroupChannel(clanId);
+    const group = (0, chat_command_repo_js_1.commandGroupChannel)(clanId);
     const groupSince = Math.max(since, settings.groupEnabledAt ?? Infinity);
     // Newest first, so a chatty hour can't push new messages past the limit;
     // handled oldest first below.
@@ -311,12 +299,12 @@ function weekView(clan, offset, nowMs) {
     const pace = goal !== null && running ? Math.round(goal * ((nowMs - fromMs) / (toMs - fromMs))) : null;
     return { win, rows, goal, pace, day, days };
 }
-function makeCtx(clan, playerId, lang, nowMs, channelMax) {
+function makeCtx(clan, playerId, lang, nowMs, channelMax, inGroup) {
     const tx = chat_command_texts_js_1.COMMAND_TEXTS[lang] ?? chat_command_texts_js_1.COMMAND_TEXTS.en;
     const fmt = new Intl.NumberFormat(tx.locale);
     const num = (n) => fmt.format(n);
     return {
-        clan, playerId, lang, tx, nowMs, channelMax, num,
+        clan, playerId, lang, tx, nowMs, channelMax, inGroup, num,
         amount: (n, forms) => `${num(n)} ${(0, chat_command_texts_js_1.pluralWord)(tx.locale, n, forms)}`,
         fits: (text) => (0, chat_send_js_1.fitsCommandReply)(text, channelMax),
     };
@@ -557,7 +545,8 @@ function helpReply(c) {
     return [
         c.tx.helpHead,
         exports.MEMBER_COMMANDS.join(' · '),
-        (0, account_invite_repo_js_1.getInviteSettings)(c.clan.id).enabled ? c.tx.helpCode : null,
+        // In the group chat the code still works, but it comes privately.
+        (0, account_invite_repo_js_1.getInviteSettings)(c.clan.id).enabled ? (c.inGroup ? c.tx.helpCodePrivate : c.tx.helpCode) : null,
         isLeader(c.clan.id, c.playerId) ? c.tx.helpLeaders : null,
     ].filter((l) => !!l).join('\n');
 }
@@ -567,13 +556,14 @@ function capitalize(s) {
 /**
  * The reply to one command from one player, in `lang`, at `nowMs`. Always
  * one message the chat takes (fitsReply): our ceiling, or `channelMax` — the
- * chat's own max_length_message — when that is smaller.
+ * chat's own max_length_message — when that is smaller. `inGroup`: it goes to
+ * the digest's group chat.
  */
-async function buildCommandReply(clanId, playerId, command, lang, nowMs = Date.now(), channelMax = null) {
+async function buildCommandReply(clanId, playerId, command, lang, nowMs = Date.now(), where = {}) {
     const clan = (0, clan_repo_js_1.getClanById)(clanId);
     if (!clan)
         throw new Error(`clan ${clanId} not found`);
-    const c = makeCtx(clan, playerId, lang, nowMs, channelMax);
+    const c = makeCtx(clan, playerId, lang, nowMs, where.channelMax ?? null, where.inGroup ?? false);
     let text;
     switch (command) {
         case 'me':
@@ -671,7 +661,7 @@ async function answerChatCommands(clanId, opts) {
             continue;
         let text;
         try {
-            text = await buildCommandReply(clanId, req.playerId, req.command, replyLanguage(clanId, req, inGroup), nowMs, channel.maxLength);
+            text = await buildCommandReply(clanId, req.playerId, req.command, replyLanguage(clanId, req, inGroup), nowMs, { channelMax: channel.maxLength, inGroup });
         }
         catch (err) {
             (0, chat_command_repo_js_1.setCommandRequestStatus)(req.id, 'failed', 'reply-error');
@@ -697,7 +687,7 @@ async function answerChatCommands(clanId, opts) {
         if (inGroup)
             groupTried = true;
         const outcome = inGroup
-            ? await (0, chat_send_js_1.sendGroupCommandReply)({ userId: opts.scannerChatId, token, channel, allowedUrl: commandGroupChannel(clanId), text }, opts.send)
+            ? await (0, chat_send_js_1.sendGroupCommandReply)({ userId: opts.scannerChatId, token, channel, allowedUrl: (0, chat_command_repo_js_1.commandGroupChannel)(clanId), text }, opts.send)
             : await (0, chat_send_js_1.sendCommandReply)({ userId: opts.scannerChatId, token, channel, recipientUserId: req.senderChatId, text }, opts.send);
         const session = opts.chatSession;
         const readMute = session ? () => (opts.muteInfo ?? chat_js_1.myMuteInfo)(session, channel.url) : undefined;
