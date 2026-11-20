@@ -9,6 +9,7 @@ exports.siteNameOverride = siteNameOverride;
 exports.siteNameFor = siteNameFor;
 exports.defaultSiteNameFor = defaultSiteNameFor;
 exports.inviteReplyText = inviteReplyText;
+exports.channelFor = channelFor;
 exports.chatAccountMismatch = chatAccountMismatch;
 exports.inviteRequestBlocker = inviteRequestBlocker;
 exports.detectInviteRequests = detectInviteRequests;
@@ -214,8 +215,9 @@ function fitted(build, rand) {
 function inviteReplyText(code, site, rand = Math.random) {
     return fitted((r) => `${pick(REPLY_OPENERS, r)}${pick(CODE_LINES, r)((0, account_invite_repo_js_1.formatCode)(code))} ${whereToGo(site, r)} ${pick(VALIDITY, r)(hours())}`, rand);
 }
+/** A stored chat channel of the clan, with its members (chat commands read the same rows). */
 function channelFor(clanId, channelUrl) {
-    const r = (0, database_js_1.getDb)().prepare('SELECT channel_url, custom_type, members FROM chat_channels WHERE clan_id = ? AND channel_url = ?')
+    const r = (0, database_js_1.getDb)().prepare('SELECT channel_url, custom_type, name, members, max_length FROM chat_channels WHERE clan_id = ? AND channel_url = ?')
         .get(clanId, channelUrl);
     if (!r)
         return null;
@@ -226,7 +228,7 @@ function channelFor(clanId, channelUrl) {
             members = parsed.map((m) => ({ userId: String(m?.userId ?? '') }));
     }
     catch { /* none */ }
-    return { url: r.channel_url, customType: r.custom_type, members };
+    return { url: r.channel_url, customType: r.custom_type, name: r.name ?? '', members, maxLength: r.max_length ?? null };
 }
 /**
  * Whether `chatUserId` is NOT the chat account this player writes from: the

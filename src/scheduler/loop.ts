@@ -874,6 +874,13 @@ export class ScanLoop {
           scannerChatId: client.suid, chatToken: () => client.chatToken(), chatSession: chatSessionFor(clanId),
         });
         if (inviteNote) log.info(`Clan #${clanId} ${inviteNote}`);
+        // Chat commands ("me", "top", …): answered in the asker's private
+        // chat, within the limits (opt-in per clan — chat-commands.ts).
+        const { processChatCommands } = await import('./chat-commands.js');
+        const commandNote = await processChatCommands(clanId, {
+          scannerChatId: client.suid, chatToken: () => client.chatToken(), chatSession: chatSessionFor(clanId),
+        });
+        if (commandNote) log.info(`Clan #${clanId} ${commandNote}`);
         // Welcome codes for players who joined since (its own setting, off by
         // default; one code a run, 10 min apart; once per player ever).
         const { sendWelcomeCodes } = await import('./chat-invites.js');

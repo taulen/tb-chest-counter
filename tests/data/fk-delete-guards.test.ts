@@ -90,6 +90,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'audit_log.clan_id',
     // In-game chat (v104).
     'chat_channels.clan_id',
+    // Chat commands (v135).
+    'chat_command_requests.clan_id',
+    'chat_command_settings.clan_id',
     'chat_digest_posts.clan_id',
     'chat_digest_settings.clan_id',
     'chat_invite_requests.clan_id',

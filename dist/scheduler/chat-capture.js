@@ -11,7 +11,9 @@ exports.setInviteScanTrigger = setInviteScanTrigger;
 exports.maybeScanForInvites = maybeScanForInvites;
 /**
  * Keeps each clan's chat stored: the clan chat and the scanner account's
- * private (1:1) messages (game-protocol/chat.ts, migration v104).
+ * private (1:1) messages (game-protocol/chat.ts, migration v104) — and, only
+ * while chat commands are answered there, the clan's digest group chat, read
+ * forward from the switch-on (chat-commands.ts commandGroupRead).
  *
  *   - Every scan, on the game session it just signed in with, asks the game for
  *     a chat token, signs in to the chat service and syncs (refreshChatSession).
@@ -34,6 +36,8 @@ const chat_repo_js_1 = require("../data/repositories/chat-repo.js");
 const logger_js_1 = require("../utils/logger.js");
 const log_throttle_js_1 = require("../utils/log-throttle.js");
 const chat_invites_js_1 = require("./chat-invites.js");
+const chat_commands_js_1 = require("./chat-commands.js");
+const chat_send_js_1 = require("../game-protocol/chat-send.js");
 const event_poller_js_1 = require("./event-poller.js");
 const log = (0, logger_js_1.childLogger)('chat');
 const pollWarner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 60 * 60_000);
@@ -102,7 +106,12 @@ function restoreSessions() {
 let pollTimer = null;
 let polling = false;
 async function sync(clanId, chat) {
-    const listed = await (0, chat_js_1.listChannels)(chat.session, KEPT_TYPES);
+    // Chat commands may also be answered in the clan's digest group chat
+    // (chat-commands.ts): then the named group chats are listed too, and only
+    // that one is kept — read forward from the switch-on, never its history.
+    const group = (0, chat_commands_js_1.commandGroupRead)(clanId);
+    const listed = (await (0, chat_js_1.listChannels)(chat.session, group ? [...KEPT_TYPES, ...chat_send_js_1.POSTABLE_TYPES] : KEPT_TYPES))
+        .filter((c) => KEPT_TYPES.includes(c.customType) || c.url === group?.url);
     const clanUrl = `triumph_clan_channel_${chat.gameClanId}`;
     const channels = listed.some((c) => c.url === clanUrl) || !chat.gameClanId
         ? listed
@@ -114,6 +123,13 @@ async function sync(clanId, chat) {
     for (const c of ordered) {
         (0, chat_repo_js_1.upsertChatChannel)(clanId, c, now);
         const after = (0, chat_repo_js_1.newestChatMessageAt)(clanId, c.url);
+        if (group && c.url === group.url) {
+            const from = Math.max(after, group.fromMs);
+            if (c.lastMessageAt === null || c.lastMessageAt > from) {
+                added += (0, chat_repo_js_1.saveChatMessages)(clanId, await (0, chat_js_1.readMessages)(chat.session, c.url, from, 200), now);
+            }
+            continue;
+        }
         if (!after) {
             if (firstReads >= FIRST_READS_PER_SYNC)
                 continue; // next sync
@@ -226,6 +242,16 @@ async function pollOnce() {
                 if (note)
                     log.info(`Clan #${clanId} ${note}`);
                 maybeScanForInvites(clanId);
+                // Chat commands (chat-commands.ts): "me", "top", … answered the same
+                // way, within a minute on a kept game session — else by the next
+                // scan (a command never starts one). Never throws.
+                const commands = await (0, chat_commands_js_1.processChatCommands)(clanId, {
+                    scannerChatId: chat.session.userId,
+                    chatSession: chat.session,
+                    chatToken: async () => (await (0, event_poller_js_1.withKeptGameSession)(clanId, (client) => client.chatToken())) ?? null,
+                });
+                if (commands)
+                    log.info(`Clan #${clanId} ${commands}`);
                 // Welcome codes trickle out between scans too (one a run, 10 min
                 // apart — chat-invites.ts), on the game session the last scan kept.
                 if ((0, event_poller_js_1.keptSessionClans)().includes(clanId)) {

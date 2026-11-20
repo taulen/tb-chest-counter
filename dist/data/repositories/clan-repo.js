@@ -663,6 +663,9 @@ function deleteClan(id) {
         db.prepare('DELETE FROM chat_invite_welcomes WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM account_invite_settings WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM chat_send_state WHERE clan_id = ?').run(id);
+        // Chat commands (v135).
+        db.prepare('DELETE FROM chat_command_requests WHERE clan_id = ?').run(id);
+        db.prepare('DELETE FROM chat_command_settings WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM user_game_links WHERE clan_id = ?').run(id);
         db.prepare('DELETE FROM user_clan_main WHERE clan_id = ?').run(id);
         // In-game chat (v104).

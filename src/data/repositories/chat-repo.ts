@@ -15,13 +15,14 @@ import { chatSearchText, chatSenderPlayerId } from '../../game-protocol/chat-tex
 
 export function upsertChatChannel(clanId: number, c: ChatChannel, now = new Date().toISOString()): void {
   getDb().prepare(
-    `INSERT INTO chat_channels (clan_id, channel_url, custom_type, name, member_count, members, last_message_at, first_seen, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO chat_channels (clan_id, channel_url, custom_type, name, member_count, members, last_message_at, max_length, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (clan_id, channel_url) DO UPDATE SET
        custom_type = excluded.custom_type, name = excluded.name, member_count = excluded.member_count,
        members = excluded.members, last_message_at = COALESCE(excluded.last_message_at, chat_channels.last_message_at),
+       max_length = COALESCE(excluded.max_length, chat_channels.max_length),
        last_seen = excluded.last_seen`,
-  ).run(clanId, c.url, c.customType, c.name, c.memberCount, JSON.stringify(c.members), c.lastMessageAt, now, now);
+  ).run(clanId, c.url, c.customType, c.name, c.memberCount, JSON.stringify(c.members), c.lastMessageAt, c.maxLength ?? null, now, now);
 }
 
 /** Newest stored message time in a channel (ms), or 0 when none is stored yet. */

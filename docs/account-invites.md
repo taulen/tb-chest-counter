@@ -99,7 +99,9 @@ welcome then drops the clan name. Two of the versions:
 ## Who gets an answer (the safety rules)
 
 Sending into a private chat is otherwise never allowed ([chat-digest.md](chat-digest.md));
-these are the only two exceptions, each narrowly scoped:
+these two and the answer to a member's own chat command
+([chat-commands.md](chat-commands.md), same 1:1 check) are the only
+exceptions, each narrowly scoped:
 
 - **Only to the one player, in a 1:1 chat.** `assertInviteChannel`: a
   `whisper` channel (never a clan or kingdom URL) whose members are exactly

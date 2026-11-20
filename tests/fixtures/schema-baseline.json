@@ -11,6 +11,21 @@
   },
   {
     "type": "index",
+    "name": "idx_chat_command_requests_player",
+    "sql": "CREATE INDEX idx_chat_command_requests_player ON chat_command_requests(player_id, requested_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_chat_command_requests_sent",
+    "sql": "CREATE INDEX idx_chat_command_requests_sent ON chat_command_requests(clan_id, sent_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_chat_command_requests_status",
+    "sql": "CREATE INDEX idx_chat_command_requests_status ON chat_command_requests(clan_id, status)"
+  },
+  {
+    "type": "index",
     "name": "idx_chat_digest_posts_sent_day",
     "sql": "CREATE INDEX idx_chat_digest_posts_sent_day ON chat_digest_posts (clan_id, sent_game_date)"
   },
@@ -452,7 +467,17 @@
   {
     "type": "table",
     "name": "chat_channels",
-    "sql": "CREATE TABLE chat_channels ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, custom_type TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', member_count INTEGER NOT NULL DEFAULT 0, members TEXT NOT NULL DEFAULT '[]', last_message_at INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, history_complete INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (clan_id, channel_url) )"
+    "sql": "CREATE TABLE chat_channels ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, custom_type TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', member_count INTEGER NOT NULL DEFAULT 0, members TEXT NOT NULL DEFAULT '[]', last_message_at INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, history_complete INTEGER NOT NULL DEFAULT 0, max_length INTEGER, PRIMARY KEY (clan_id, channel_url) )"
+  },
+  {
+    "type": "table",
+    "name": "chat_command_requests",
+    "sql": "CREATE TABLE chat_command_requests ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, message_id INTEGER NOT NULL, sender_chat_id TEXT NOT NULL, player_id INTEGER, command TEXT NOT NULL, language TEXT, requested_at INTEGER NOT NULL, status TEXT NOT NULL, reason TEXT, attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER, reply_message_id INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (clan_id, channel_url, message_id) )"
+  },
+  {
+    "type": "table",
+    "name": "chat_command_settings",
+    "sql": "CREATE TABLE chat_command_settings ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), enabled INTEGER NOT NULL DEFAULT 0, enabled_at INTEGER, group_enabled INTEGER NOT NULL DEFAULT 0, group_enabled_at INTEGER, updated_at TEXT NOT NULL )"
   },
   {
     "type": "table",

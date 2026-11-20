@@ -1677,6 +1677,25 @@ label {
 .invite-site-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .invite-site-form .input { width: min(16em, 100%); }
 .invite-site-hint { flex-basis: 100%; font-size: 12.5px; color: var(--text-secondary); }
+/* ─── Clans → Chat commands (pages/clan-chat-commands.js) ───
+   Built on the invite panel above; the commands as a two-column list (the
+   word, what it answers) that stacks on a phone. */
+.chat-cmd-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+.chat-cmd-list li { display: contents; }
+.chat-cmd-list code { justify-self: start; font-weight: 600; color: var(--text-primary); }
+@media (max-width: 480px) {
+  .chat-cmd-list { grid-template-columns: 1fr; gap: 2px; }
+  .chat-cmd-list span { margin-bottom: 6px; }
+}
 
 .invite-how { padding-top: 10px; border-top: 1px solid var(--border); }
 .invite-how > summary {

@@ -247,18 +247,26 @@ export function inviteReplyText(code: string, site: string | null, rand: Rand = 
   return fitted((r) => `${pick(REPLY_OPENERS, r)}${pick(CODE_LINES, r)(formatCode(code))} ${whereToGo(site, r)} ${pick(VALIDITY, r)(hours())}`, rand);
 }
 
-interface ChannelRow { url: string; customType: string; members: Array<{ userId: string }> }
+export interface ChannelRow {
+  url: string;
+  customType: string;
+  name: string;
+  members: Array<{ userId: string }>;
+  /** The channel's own longest message (`max_length_message`), null when not known. */
+  maxLength: number | null;
+}
 
-function channelFor(clanId: number, channelUrl: string): ChannelRow | null {
-  const r = getDb().prepare('SELECT channel_url, custom_type, members FROM chat_channels WHERE clan_id = ? AND channel_url = ?')
-    .get(clanId, channelUrl) as { channel_url: string; custom_type: string; members: string } | undefined;
+/** A stored chat channel of the clan, with its members (chat commands read the same rows). */
+export function channelFor(clanId: number, channelUrl: string): ChannelRow | null {
+  const r = getDb().prepare('SELECT channel_url, custom_type, name, members, max_length FROM chat_channels WHERE clan_id = ? AND channel_url = ?')
+    .get(clanId, channelUrl) as { channel_url: string; custom_type: string; name: string; members: string; max_length: number | null } | undefined;
   if (!r) return null;
   let members: Array<{ userId: string }> = [];
   try {
     const parsed = JSON.parse(r.members) as Array<{ userId?: string }>;
     if (Array.isArray(parsed)) members = parsed.map((m) => ({ userId: String(m?.userId ?? '') }));
   } catch { /* none */ }
-  return { url: r.channel_url, customType: r.custom_type, members };
+  return { url: r.channel_url, customType: r.custom_type, name: r.name ?? '', members, maxLength: r.max_length ?? null };
 }
 
 /**

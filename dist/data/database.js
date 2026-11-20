@@ -2654,6 +2654,57 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v135 — chat commands (Nov 20 2026; docs/chat-commands.md): a member
+        // messages the clan's scanner account one word ("me", "points", "top",
+        // "progress", "events", "help"; "missing" for leaders) and gets their
+        // numbers back in that same 1:1 chat. Off by default, per clan
+        // (chat_command_settings); group_enabled also answers commands written in
+        // the clan's chat digest group chat (CWB • Carter), there. Every command
+        // message is recorded once (chat_command_requests), answered or not, so
+        // nothing is answered twice; sent_at is when its reply was tried (the
+        // hourly budgets count it). chat_channels.max_length is the channel's own
+        // max_length_message (the chat service reports 1000): no reply is longer.
+        // Replay-safe: IF NOT EXISTS, PRAGMA-guarded column.
+        version: 135,
+        run: (database) => {
+            const channelCols = new Set(database.prepare('PRAGMA table_info(chat_channels)').all().map((c) => c.name));
+            if (!channelCols.has('max_length'))
+                database.exec('ALTER TABLE chat_channels ADD COLUMN max_length INTEGER');
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS chat_command_settings (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          enabled INTEGER NOT NULL DEFAULT 0,
+          enabled_at INTEGER,
+          group_enabled INTEGER NOT NULL DEFAULT 0,
+          group_enabled_at INTEGER,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS chat_command_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          channel_url TEXT NOT NULL,
+          message_id INTEGER NOT NULL,
+          sender_chat_id TEXT NOT NULL,
+          player_id INTEGER,
+          command TEXT NOT NULL,
+          language TEXT,
+          requested_at INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          reason TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          sent_at INTEGER,
+          reply_message_id INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE (clan_id, channel_url, message_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_command_requests_status ON chat_command_requests(clan_id, status);
+        CREATE INDEX IF NOT EXISTS idx_chat_command_requests_player ON chat_command_requests(player_id, requested_at);
+        CREATE INDEX IF NOT EXISTS idx_chat_command_requests_sent ON chat_command_requests(clan_id, sent_at);
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

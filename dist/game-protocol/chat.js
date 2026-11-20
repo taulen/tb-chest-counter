@@ -187,6 +187,7 @@ async function listChannels(s, customTypes) {
                 memberCount: c.member_count ?? 0,
                 members: (c.members ?? []).map((m) => ({ userId: m.user_id ?? m.guest_id ?? '', nickname: m.nickname ?? m.name ?? '' })),
                 lastMessageAt: c.last_message?.created_at ?? null,
+                maxLength: typeof c.max_length_message === 'number' && c.max_length_message > 0 ? c.max_length_message : null,
             });
         }
         if (!r.next)

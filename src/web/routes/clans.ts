@@ -7,6 +7,7 @@ import { createWeekStartRouter } from './clans/week-start.js';
 import { createSeasonalKingdomRouter } from './clans/seasonal-kingdom.js';
 import { createChatDigestRouter } from './clans/chat-digest.js';
 import { createAccountInvitesRouter } from './clans/account-invites.js';
+import { createChatCommandsRouter } from './clans/chat-commands.js';
 
 /**
  * `/api/clans` is split into sub-routers, composed here. Each
@@ -26,6 +27,7 @@ export function createClansRouter(): Router {
   router.use(createSeasonalKingdomRouter());
   router.use(createChatDigestRouter());
   router.use(createAccountInvitesRouter());
+  router.use(createChatCommandsRouter());
 
   return router;
 }

@@ -36,6 +36,8 @@ export interface ChatChannel {
   /** Other side of a 1:1 channel (whisper), when the API names it. */
   members: Array<{ userId: string; nickname: string }>;
   lastMessageAt: number | null;
+  /** The channel's own longest message (`max_length_message`), when the listing says; null/absent = unknown. */
+  maxLength?: number | null;
 }
 
 export interface ChatMessage {
@@ -202,6 +204,8 @@ export async function myMuteInfo(s: ChatSession, channelUrl: string): Promise<Mu
 type RawChannel = {
   channel_url: string; custom_type?: string; name?: string; member_count?: number;
   members?: RawUser[]; last_message?: { created_at?: number } | null;
+  /** The longest message the channel takes (1000 in every channel, Nov 2026). */
+  max_length_message?: number;
 };
 type RawMessage = {
   message_id?: number; msg_id?: number; created_at?: number; ts?: number; custom_type?: string;
@@ -241,6 +245,7 @@ export async function listChannels(s: ChatSession, customTypes: string[]): Promi
         memberCount: c.member_count ?? 0,
         members: (c.members ?? []).map((m) => ({ userId: m.user_id ?? m.guest_id ?? '', nickname: m.nickname ?? m.name ?? '' })),
         lastMessageAt: c.last_message?.created_at ?? null,
+        maxLength: typeof c.max_length_message === 'number' && c.max_length_message > 0 ? c.max_length_message : null,
       });
     }
     if (!r.next) break;

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOverSocket = exports.MAX_INVITE_REPLY_CHARS = exports.ChatSendRefused = exports.CHANNEL_MAX_LENGTH = exports.MAX_POST_BYTES = exports.MAX_POST_CHARS = exports.POSTABLE_TYPES = void 0;
+exports.sendOverSocket = exports.MAX_COMMAND_REPLY_BYTES = exports.MAX_COMMAND_REPLY_CHARS = exports.MAX_INVITE_REPLY_CHARS = exports.ChatSendRefused = exports.CHANNEL_MAX_LENGTH = exports.MAX_POST_BYTES = exports.MAX_POST_CHARS = exports.POSTABLE_TYPES = void 0;
 exports.chatSendingDisabled = chatSendingDisabled;
 exports.assertPostableChannel = assertPostableChannel;
 exports.assertPostableText = assertPostableText;
@@ -12,17 +12,25 @@ exports.postToGroupChat = postToGroupChat;
 exports.assertInviteChannel = assertInviteChannel;
 exports.assertInviteText = assertInviteText;
 exports.sendInviteMessage = sendInviteMessage;
+exports.replyCharLimit = replyCharLimit;
+exports.fitsCommandReply = fitsCommandReply;
+exports.assertCommandReplyText = assertCommandReplyText;
+exports.sendCommandReply = sendCommandReply;
+exports.assertCommandGroupChannel = assertCommandGroupChannel;
+exports.sendGroupCommandReply = sendGroupCommandReply;
 /**
  * Posting ONE message into an in-game GROUP chat, the way the game client
  * posts: over the chat socket (Sendbird), signed in with a fresh chat token
  * from the game session (message 414), a `MESG` frame carrying a request id;
  * the server echoes the message back with its id, or answers `EROR`.
  *
- * Used by the daily chat digest (scheduler/chat-digest.ts) and, through its
- * own narrower path below (sendInviteMessage), by account invites: the only
- * exceptions to "never a private chat" — a code in the 1:1 chat between the
- * scanner account and one player, as the answer to that player's request or
- * as the one welcome code when they join (scheduler/chat-invites.ts).
+ * Used by the daily chat digest (scheduler/chat-digest.ts) and, through their
+ * own narrower paths below, by the only exceptions to "never a private chat",
+ * each into the 1:1 chat between the scanner account and one player: an
+ * account-invite code (sendInviteMessage — the answer to that player's
+ * request, or the one welcome code when they join; scheduler/chat-invites.ts)
+ * and the answer to that player's chat command (sendCommandReply;
+ * scheduler/chat-commands.ts).
  * Hard rules for the digest
  * (user, Nov 2026 — clans mute anyone who spams):
  *   - only a NAMED group chat an admin picked (`publicGroup` / `privateGroup`)
@@ -131,8 +139,9 @@ exports.MAX_INVITE_REPLY_CHARS = 400;
  * scanner account and the one player the message is for: a `whisper` channel
  * (never a clan/kingdom URL) whose members are exactly those two chat
  * accounts. These are the ONLY private chats anything may be sent into, and
- * only an account-invite code (scheduler/chat-invites.ts): the answer to that
- * player's own request, or the one welcome code for a player who just joined.
+ * only an account-invite code (scheduler/chat-invites.ts: the answer to that
+ * player's own request, or the one welcome code for a player who just joined)
+ * or the answer to that player's own chat command (scheduler/chat-commands.ts).
  */
 function assertInviteChannel(channel, scannerUserId, recipientUserId) {
     const url = channel.url ?? '';
@@ -149,11 +158,12 @@ function assertInviteChannel(channel, scannerUserId, recipientUserId) {
         throw new ChatSendRefused('refusing to send: the chat is not between the scanner and that one player');
     }
 }
-function assertInviteText(text) {
+function assertInviteText(text, channelMax) {
     if (!text.trim())
         throw new ChatSendRefused('empty message');
-    if (text.length > exports.MAX_INVITE_REPLY_CHARS)
-        throw new ChatSendRefused(`invite message too long (${text.length} chars)`);
+    const limit = channelMax && channelMax > 0 ? Math.min(exports.MAX_INVITE_REPLY_CHARS, channelMax) : exports.MAX_INVITE_REPLY_CHARS;
+    if (text.length > limit)
+        throw new ChatSendRefused(`invite message too long (${text.length} chars; limit ${limit})`);
 }
 /**
  * Send an account-invite code into the private chat between the scanner
@@ -166,7 +176,77 @@ async function sendInviteMessage(args, send = exports.sendOverSocket) {
         return { status: 'refused', error: 'chat sending is disabled (CHAT_SEND_DISABLED)' };
     try {
         assertInviteChannel(args.channel, args.userId, args.recipientUserId);
-        assertInviteText(args.text);
+        assertInviteText(args.text, args.channel.maxLength);
+    }
+    catch (err) {
+        return { status: 'refused', error: err.message };
+    }
+    return send({ userId: args.userId, token: args.token, channelUrl: args.channel.url, text: args.text });
+}
+// ── The other private-chat exception: chat command replies ─────────────────
+/**
+ * A command reply (scheduler/chat-commands.ts) answers the player's own
+ * message, so it may be as long as a digest post (a top-10 list) — never
+ * longer: the size the clan already posts by hand.
+ */
+exports.MAX_COMMAND_REPLY_CHARS = exports.MAX_POST_CHARS;
+exports.MAX_COMMAND_REPLY_BYTES = exports.MAX_POST_BYTES;
+/**
+ * The longest reply a channel takes, in characters: our ceiling, or the
+ * channel's own `max_length_message` when it reports a smaller one.
+ */
+function replyCharLimit(channelMax) {
+    return channelMax && channelMax > 0 ? Math.min(exports.MAX_COMMAND_REPLY_CHARS, channelMax) : exports.MAX_COMMAND_REPLY_CHARS;
+}
+/** Whether `text` fits one reply in a channel whose own limit is `channelMax` (null = not known). */
+function fitsCommandReply(text, channelMax) {
+    return text.length <= replyCharLimit(channelMax) && Buffer.byteLength(text, 'utf8') <= exports.MAX_COMMAND_REPLY_BYTES;
+}
+function assertCommandReplyText(text, channelMax) {
+    if (!text.trim())
+        throw new ChatSendRefused('empty message');
+    if (!fitsCommandReply(text, channelMax)) {
+        throw new ChatSendRefused(`command reply too long (${text.length} chars, ${Buffer.byteLength(text, 'utf8')} bytes; limit ${replyCharLimit(channelMax)} chars)`);
+    }
+}
+/**
+ * Answer a chat command in the private chat the player wrote it in: the same
+ * 1:1 check as an invite code (assertInviteChannel — a `whisper` holding
+ * exactly the scanner account and that player), the kill switch, the size.
+ * Nothing is sent when one fails. Same three-way outcome — an `unknown` is
+ * never resent.
+ */
+async function sendCommandReply(args, send = exports.sendOverSocket) {
+    if (chatSendingDisabled())
+        return { status: 'refused', error: 'chat sending is disabled (CHAT_SEND_DISABLED)' };
+    try {
+        assertInviteChannel(args.channel, args.userId, args.recipientUserId);
+        assertCommandReplyText(args.text, args.channel.maxLength);
+    }
+    catch (err) {
+        return { status: 'refused', error: err.message };
+    }
+    return send({ userId: args.userId, token: args.token, channelUrl: args.channel.url, text: args.text });
+}
+/**
+ * The one group chat a command may be answered in: the clan's chat digest
+ * chat (the named group chat its admins picked — `allowedUrl`), when the clan
+ * switched group commands on. Everything assertPostableChannel refuses (the
+ * clan chat, the kingdom chat, private chats, unnamed chats) is refused, and
+ * any other group chat too.
+ */
+function assertCommandGroupChannel(channel, allowedUrl) {
+    assertPostableChannel(channel);
+    if (!allowedUrl || channel.url !== allowedUrl)
+        throw new ChatSendRefused('refusing to post into a group chat other than the digest’s');
+}
+/** Answer a chat command in the clan's digest group chat, where it was asked. Same guards and outcome as above. */
+async function sendGroupCommandReply(args, send = exports.sendOverSocket) {
+    if (chatSendingDisabled())
+        return { status: 'refused', error: 'chat sending is disabled (CHAT_SEND_DISABLED)' };
+    try {
+        assertCommandGroupChannel(args.channel, args.allowedUrl);
+        assertCommandReplyText(args.text, args.channel.maxLength);
     }
     catch (err) {
         return { status: 'refused', error: err.message };

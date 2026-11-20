@@ -29,6 +29,10 @@ send), [chat-digest-repo.ts](../src/data/repositories/chat-digest-repo.ts),
   ("You are muted."), nothing is posted until the pause is over
   ([account-invites.md](account-invites.md#when-the-game-mutes-the-scanner-account)). A send with no answer (`unknown`) — or a row left
   `sending` by a crash — is **never** resent.
+- **Chat commands may answer in the same chat** — a separate switch, off by
+  default ([chat-commands.md](chat-commands.md)): commands written in this
+  chat are answered here, with their own limits (one a minute, 12 an hour).
+  The one-digest-a-day rule is the digest's; command replies are not digests.
 - **Only the chosen named group chat.** `assertPostableChannel` refuses the
   clan chat (`clanGroup`, `triumph_clan_channel_*`), the kingdom chat
   (`realmGroup`, `triumph_realm_channel_*`), private chats (`whisper`) and every
@@ -43,12 +47,14 @@ send), [chat-digest-repo.ts](../src/data/repositories/chat-digest-repo.ts),
 - **Kill switch:** `CHAT_SEND_DISABLED=1` (docker-compose.yml) stops every send.
 - **Saving the settings never posts.**
 
-## The only exceptions: account-invite codes in a private chat
+## The only exceptions: invite codes and command replies in a private chat
 
 Nothing else ever goes into a private chat — except an account-invite code
-([account-invites.md](account-invites.md)), through its own narrower path
-(`sendInviteMessage` / `assertInviteChannel`), never through
-`assertPostableChannel`, which still refuses every private chat:
+([account-invites.md](account-invites.md)) and the answer to a member's own
+chat command ([chat-commands.md](chat-commands.md)), each through its own
+narrower path (`sendInviteMessage` / `sendCommandReply`, both checked by
+`assertInviteChannel`), never through `assertPostableChannel`, which still
+refuses every private chat:
 
 1. **A reply**: a player DMs the scanner account a keyword; the answer goes
    back in that same 1:1 chat. Per-clan setting, off by default.
