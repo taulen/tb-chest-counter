@@ -9,8 +9,8 @@ import { getCurrentUser, getGameDayRolloverUtcHour, setWeekStart } from '../lib/
 // The leaderboard's own threshold function, not a copy of it: the preview here
 // and the hint above the board have to name the same integer, and an inlined
 // `weekly * 0.66` already got that wrong once (round vs ceil).
-import { goalWarnThreshold } from '../lib/leaderboard-render.js';
-import { amberPctOrDefault, DEFAULT_GOAL_AMBER_PCT } from '../lib/weekly-goal.js';
+
+
 import {
   loginBridgePanelHTML,
   startLoginSession as _startLoginSession,
@@ -484,11 +484,9 @@ export async function renderClans(el, refreshClanIndicator) {
     } else if (action === 'clan-goal-save' && clanId) {
       const enabled = !!el.querySelector(`#clan-goal-enabled-${clanId}`)?.checked;
       const raw = el.querySelector(`#clan-goal-points-${clanId}`).value.trim();
-      const rawAmber = el.querySelector(`#clan-goal-amber-${clanId}`)?.value.trim() ?? '';
       const body = {
         enabled,
         weeklyPoints: raw === '' ? null : Number(raw),
-        amberPct: rawAmber === '' ? null : Number(rawAmber),
       };
       try {
         const r = await fetch(`/api/clans/${clanId}/leaderboard-goal`, {
@@ -718,8 +716,6 @@ export async function renderClans(el, refreshClanIndicator) {
   for (const clan of clans) {
     const input = el.querySelector(`#clan-goal-points-${clan.id}`);
     if (input) input.addEventListener('input', () => updateGoalPreview(el, clan.id));
-    const amber = el.querySelector(`#clan-goal-amber-${clan.id}`);
-    if (amber) amber.addEventListener('input', () => updateGoalPreview(el, clan.id));
     const onWeekEdit = () => {
       refreshWeekCard(el, clan.id);
       updateGoalPreview(el, clan.id);
@@ -741,10 +737,8 @@ export async function renderClans(el, refreshClanIndicator) {
 function goalHistoryHtml(history) {
   const steps = Array.isArray(history) ? history : [];
   if (steps.length < 2) return '';
-  // The amber percent rides beside each goal: it is part of the step, and a
-  // change to it alone is a step of its own.
   const value = (s) => (Number.isFinite(s.weeklyPoints) && s.weeklyPoints > 0
-    ? `<strong>${s.weeklyPoints.toLocaleString()}</strong> <span class="goal-history-amber" title="${escapeHtml(t('Amber from'))}"><span aria-hidden="true">◐</span><span class="visually-hidden">${t('Amber from')}</span> ${amberPctOrDefault(s.amberPct)}%</span>`
+    ? `<strong>${s.weeklyPoints.toLocaleString()}</strong>`
     : `<span class="goal-history-none">${t('No goal')}</span>`);
   const rows = steps.map((s, i) => `<li>
       <span class="goal-history-when">${i === 0
@@ -762,11 +756,9 @@ function goalHistoryHtml(history) {
  * Render the derived-goal line under the weekly-goal input.
  *
  * The per-period division is restated here (it's `weekly / weekDays * days`,
- * with weekDays 6 or 7 from the Week select, and the page has no period state
- * to feed scaleGoalForPeriod), but the amber cutoff
- * comes from the leaderboard's own goalWarnThreshold — that one is NOT safe to
- * restate, because the naive `weekly * 0.66` this used to do disagreed with the
- * board by one point for about half of all goals.
+ * with weekDays from the Week select, and the page has no period state to feed
+ * scaleGoalForPeriod). No amber figure: amber is "on pace" against the clock
+ * (Nov 20 2026), so there is no fixed number to quote.
  */
 function updateGoalPreview(el, clanId) {
   const out = el.querySelector(`#clan-goal-preview-${clanId}`);
@@ -784,16 +776,11 @@ function updateGoalPreview(el, clanId) {
     selectedWeekStart(el, clanId) ?? el.querySelector(`#clan-week-start-${clanId}`)?.dataset.saved ?? 'sunday',
   );
   const per = (days) => Math.round((weekly / weekDays) * days).toLocaleString();
-  // The amber field as typed; blank or out of range previews the default.
-  const rawAmber = el.querySelector(`#clan-goal-amber-${clanId}`)?.value.trim() ?? '';
-  const pct = amberPctOrDefault(rawAmber === '' ? null : Number(rawAmber));
-  out.innerHTML = t('Works out to <strong>{day}</strong> / day ({weekDays}-day week), <strong>{month}</strong> / month, <strong>{year}</strong> / year. Amber starts at {pct}% of each (<strong>{week}</strong> for the week).', {
+  out.innerHTML = t('Works out to <strong>{day}</strong> / day ({weekDays}-day week), <strong>{month}</strong> / month, <strong>{year}</strong> / year.', {
     day: per(1),
     weekDays,
     month: per(30),
     year: per(365),
-    pct,
-    week: goalWarnThreshold(weekly, pct / 100).toLocaleString(),
   });
 }
 
@@ -1303,14 +1290,14 @@ ${accountInvitesSectionHtml(clan.id)}
         <details class="clan-subsection">
         <summary class="clan-subsection-summary"><h3>${t('Leaderboard goal')}</h3></summary>
         <div class="mt-12">
-        <p class="muted-copy mb-8">${t("Colours each member's Points cell on the Leaderboard against a target: <strong>green</strong> at the goal, <strong>amber</strong> from the percent of it set below ({pct}% if left blank), <strong>red</strong> below that. Shows on this clan's Leaderboard tab and on its public share link.", { pct: DEFAULT_GOAL_AMBER_PCT })}</p>
+        <p class="muted-copy mb-8">${t("Judges each member's points against a target on the Members board, the public share link, Analytics and their profile: <strong>green</strong> at the goal, <strong>amber</strong> while they are on pace for it (at least the share of it the time gone so far asks for), <strong>red</strong> behind that. A finished week has no pace left, so it is green or red.")}</p>
         <p class="muted-copy mb-8">${t("Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.")}</p>
         <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> ${t('Show goal colours on the leaderboard')}</label>
+          <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> ${t('Show the goal and its colours')}</label>
         </div>
         <div class="inline-form-row mt-8">
           <div><label>${t('Weekly points goal per member')}</label><input id="clan-goal-points-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.leaderboardWeeklyGoalPoints ?? ''}" placeholder="${t('e.g. 25000')}"></div>
-          <div><label for="clan-goal-amber-${clan.id}">${t('Amber from (% of goal)')}</label><input id="clan-goal-amber-${clan.id}" class="input goal-amber-input" type="number" min="1" max="99" step="1" value="${clan.leaderboardGoalAmberPct ?? ''}" placeholder="${DEFAULT_GOAL_AMBER_PCT}"></div>
+
           <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         <p class="muted-copy mt-8" id="clan-goal-preview-${clan.id}"></p>

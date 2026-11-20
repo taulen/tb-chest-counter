@@ -193,24 +193,27 @@ describe('performance report', () => {
     const g = r.members.find((m) => m.memberId === steady)!.signals.goalHits;
     expect(g).toMatchObject({ units: 4, hits: 2, near: 2 });
     expect(r.goalSteps).toEqual([
-      { from: '2026-10-04', weeklyPoints: 10_000, amberPct: 66 },
-      { from: '2026-10-18', weeklyPoints: 12_000, amberPct: 66 },
+      { from: '2026-10-04', weeklyPoints: 10_000 },
+      { from: '2026-10-18', weeklyPoints: 12_000 },
     ]);
   });
 
-  it('counts a near miss from the clan’s own amber percent, as it stood that week', async () => {
-    // Amber from 90% for the first two weeks, then back to the default 66%.
-    writeGoalStep(getDb(), CLAN, '2026-09-27', 12_000, '2026-09-27T18:00:00Z', 90);
-    writeGoalStep(getDb(), CLAN, '2026-10-18', 12_000, '2026-10-18T18:00:00Z', null);
+  it('counts a near miss from the page’s own line (goalNearMiss.from), whatever amber once was', async () => {
+    // A retired amber percent on the history (v94) no longer moves the line.
+    writeGoalStep(getDb(), CLAN, '2026-09-27', 12_000, '2026-09-27T18:00:00Z');
+    getDb().prepare('UPDATE clan_goal_history SET amber_pct = 90 WHERE clan_id = ?').run(CLAN);
     const steady = member('Steady', '2026-09-01T18:00:00Z');
     chest(steady, '2026-09-02', 1);
-    // 80% of the goal every week: red under a 90% amber band, amber under 66%.
+    // 80% of the goal every week: past the 66% near-miss line, short of the goal.
     for (const day of WEEK_MONDAYS) chest(steady, day, 9_600);
+    // 50% every week: short of the line.
+    const short = member('Short', '2026-09-01T18:00:00Z');
+    chest(short, '2026-09-02', 1);
+    for (const day of WEEK_MONDAYS) chest(short, day, 6_000);
 
     const r = await report();
-    const g = r.members.find((m) => m.memberId === steady)!.signals.goalHits;
-    expect(g).toMatchObject({ units: 4, hits: 0, near: 2 });
-    expect(r.goalSteps.map((s) => s.amberPct)).toEqual([90, 66]);
+    expect(r.members.find((m) => m.memberId === steady)!.signals.goalHits).toMatchObject({ units: 4, hits: 0, near: 4 });
+    expect(r.members.find((m) => m.memberId === short)!.signals.goalHits).toMatchObject({ units: 4, hits: 0, near: 0 });
   });
 });
 

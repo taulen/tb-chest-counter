@@ -8,10 +8,11 @@ two files:
 - **style.css, section "UI kit"**: the `.ui-*` classes. Page blocks below it
   (`.mboard-*`, `.home-*`, `.lb-*`, …) keep only what is theirs.
 
-Reference pages: **Leaderboard** (`pages/leaderboard.js`), **Home**
-(`pages/home.js`), **Members board** (`pages/members-board.js`). When a page
-needs something the kit doesn't have, add it to the kit (both files, and this
-doc), not to the page.
+Reference pages: **Members board** (`pages/members-board.js`, also the clan's
+ranking since the Leaderboard page folded into it on Nov 20 2026), **Home**
+(`pages/home.js`), and for a ranked table **Triumphal** (`pages/triumphal.js`)
+or the public share page. When a page needs something the kit doesn't have,
+add it to the kit (both files, and this doc), not to the page.
 
 ## Rules that apply to every page
 
@@ -100,7 +101,7 @@ A past window is judged against the goal it was played under:
 ### Tiles on the bento grid
 
 ```js
-`<div class="ui-grid">${tileHtml('top', t('Top collectors'), body, { span: 4, link: tileLinkHtml('#leaderboard', t('Leaderboard')) })}</div>`
+`<div class="ui-grid">${tileHtml('top', t('Top collectors'), body, { span: 4, link: tileLinkHtml('#members', t('Members')) })}</div>`
 ```
 
 - **Desktop:** 12 columns; a tile spans 4, 6, 8 or 12.

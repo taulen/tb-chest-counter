@@ -322,19 +322,15 @@ describe('clans router — baseline coverage for Phase B1 split', () => {
       ]);
     });
 
-    it('takes an amber percent, keeps it when the field is left out, and rejects nonsense', async () => {
+    it('ignores the retired amber percent a stale page may still send', async () => {
+      // Amber is "on pace" since Nov 20 2026: there is no percent to store.
       const set = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 30_000, amberPct: 80 });
       expect(set.status).toBe(200);
-      expect(set.body.history.at(-1)).toMatchObject({ weeklyPoints: 30_000, amberPct: 80 });
-      // A caller that only knows about the goal must not reset amber.
-      const kept = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 35_000 });
-      expect(kept.body.amberPct).toBe(80);
-      const cleared = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 35_000, amberPct: '' });
-      expect(cleared.body.amberPct).toBeNull();
-      for (const bad of [0, 100, 66.5, -5, 'abc']) {
-        const res = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 30_000, amberPct: bad });
-        expect(res.status, `amberPct=${bad}`).toBe(400);
-      }
+      expect(set.body).not.toHaveProperty('amberPct');
+      expect(set.body.history.at(-1)).toEqual(expect.objectContaining({ weeklyPoints: 30_000 }));
+      expect(set.body.history.at(-1)).not.toHaveProperty('amberPct');
+      const bad = await request(app).put('/api/clans/1/leaderboard-goal').send({ enabled: true, weeklyPoints: 30_000, amberPct: 'abc' });
+      expect(bad.status).toBe(200);
     });
 
     it('keeps the target when the colouring is switched off', async () => {

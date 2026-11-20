@@ -19,8 +19,10 @@ import {
 import { renderPeriodNav } from '../lib/period-nav.js';
 import {
   scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
+  pacePointsFor, paceFractionForWindow,
 } from '../lib/leaderboard-render.js';
-import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
+import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
+import { setPageActions } from '../lib/ui-kit.js';
 import { formatCompact } from '../lib/ancient-planner.js';
 import { getCurrentUser } from '../lib/state.js';
 import {
@@ -35,7 +37,9 @@ import { memberTimelinePanelHtml, mountMemberTimeline } from './member-timeline.
 import {
   mightWindowButtonsHtml, mightDeltaTitle, getMightWindow, setMightWindow, mightWindowParams, mightDeltaQuery,
 } from '../lib/might-window.js';
-import { getMembersView, membersViewToggleHtml, renderMembersBoard, wireMembersViewToggle } from './members-board.js';
+import {
+  getMembersView, membersViewToggleHtml, renderMembersBoard, wireMembersViewToggle, clearBoardAddress,
+} from './members-board.js';
 
 // ─── Members list ─────────────────────────────────────────────
 
@@ -64,7 +68,7 @@ let currentMemberChestsTab = 'chests';
 // cleared when another member is opened.
 let currentMemberView = null;
 // Timeframe for the member profile. Page-local, like Analytics and Events —
-// lib/state.js's currentPeriod belongs to the Leaderboard and Triumphal pages.
+// lib/state.js's currentPeriod belongs to the Triumphal page.
 // All Time is the default so a profile opened from a link reads the same as
 // it always has.
 const MEMBER_PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
@@ -108,6 +112,10 @@ export async function renderMembers(el) {
     await renderMembersBoard(el, { tabsHtml: membersTabsHtml('roster'), rerender: () => renderMembers(el) });
     return;
   }
+  // The board's FAQ / Export / Copy and its window in the address are the
+  // board's; the roster table has neither.
+  setPageActions('');
+  clearBoardAddress();
   cachedMembers = await api('/members');
   // Might is optional data from an opt-in feature, so it's fetched separately
   // and merged in. A failure (or the feature being off) just leaves the columns
@@ -873,17 +881,18 @@ function memberPaceHtml(points) {
   const w = computeGameWindow(currentMemberPeriod, 0);
   if (!w) return '';
 
-  const elapsed = Math.min(1, Math.max(0,
-    (Date.now() - Date.parse(w.from)) / (days * 86_400_000)));
+  // The share of the window gone, measured on the window like the Members
+  // board's pace mark, so the bar here and the band there agree.
+  const elapsed = paceFractionForWindow(w) ?? 1;
   const progress = Math.min(1, goal > 0 ? points / goal : 0);
-  const statusClass = goalStatusClassFor(points, goal, amberRatioForWindow(memberGoalInfo, currentMemberPeriod, currentMemberOffset));
+  const statusClass = goalStatusClassFor(points, goal, { pace: pacePointsFor(goal, elapsed) });
   const needed = Math.max(0, goal - points);
 
   const line = elapsed < MEMBER_PACE_MIN_ELAPSED
     ? tn(needed, '{n} points to go', '{n} points to go')
     : (points >= goal
       ? t('Goal met for this period.')
-      : (points / elapsed >= goal
+      : (points >= pacePointsFor(goal, elapsed)
         ? tn(needed, 'On pace — {n} points to go.', 'On pace — {n} points to go.')
         : tn(needed, 'Behind pace — {n} points to go, and at this rate you finish around {finish}.', 'Behind pace — {n} points to go, and at this rate you finish around {finish}.', { finish: Math.round(points / elapsed).toLocaleString() })));
 

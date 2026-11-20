@@ -1192,7 +1192,8 @@ th.sortable:hover {
    states it. Same idea as the ChestTracker tab's .ext-cell-*, but deliberately
    its own class AND token set — those thresholds mirror chesttracker.com's SPA
    and have to keep matching it, while these are the clan's own standard (green
-   at the goal, amber from 66%, red below) and have to mute together with the
+   at the goal, amber on pace while the window runs, red behind; a Tin Man
+   target's amber is from 66%) and have to mute together with the
    row wash on OLED. The !important keeps the cell tint the last word over any
    row-level background a table may add later. */
 .leaderboard-table td.goal-cell-ok {
@@ -4442,9 +4443,6 @@ details > table {
 .goal-history-when { color: var(--text-secondary); }
 .goal-history-value { font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; }
 .goal-history-none { color: var(--text-muted); }
-.goal-history-amber { margin-left: 8px; color: var(--text-secondary); font-weight: 400; }
-/* A two-digit percent: no need for the goal field's width. */
-.goal-amber-input { max-width: 120px; }
 /* A custom week's length, two digits at most. */
 .week-days-input { max-width: 110px; }
 
@@ -9501,7 +9499,7 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tinman-review-head .tinman-hint { margin: 6px 0 10px; }
 
 /* Tin Man targets: the strip under the summon chips, the Tier column, and the
-   same goal colours the Leaderboard uses (green at the target, amber from 66%,
+   same goal colours the boards use (green at the target, amber from 66%,
    red below) — tokens shared, so the two read alike on every theme. */
 .tinman-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .tinman-targets {
@@ -12065,6 +12063,8 @@ button.ui-tile-link {
 }
 .mboard-tag.is-you { background: var(--accent-gold-bg-strong); color: var(--accent-gold); }
 .mboard-tag.is-burning { padding: 0; font-weight: 600; color: var(--text-secondary); }
+/* The Gold Pass mark beside the name keeps its size when a long name is cut. */
+.mboard-name-line .gold-pass-badge { flex: none; }
 .mboard-pts { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
 .mboard-pts-n { font-size: 15px; font-weight: 700; }
 .mboard-delta { font-size: 11.5px; font-weight: 600; white-space: nowrap; }

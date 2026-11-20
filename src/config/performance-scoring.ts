@@ -81,13 +81,15 @@ export interface PerformanceConfig {
   minUnits: Record<PerformanceSignal, number>;
   /**
    * Partial credit toward `goalHits` for a week that misses the goal but gets
-   * close: a week in the Leaderboard's amber "close to goal" band counts as
-   * `credit` of a hit. Where amber starts is the clan's own setting (Clans →
-   * Leaderboard goal, 66% unless changed), taken as it stood that week, so a
-   * week members saw as amber is the week that earns the credit.
+   * close: a week that reaches `from` of its goal counts as `credit` of a hit.
    * Null = met or not met only.
+   *
+   * Until Nov 20 2026 `from` was the clan's "amber from %" setting (66% unless
+   * changed), the Leaderboard's "close to goal" colour. Amber means "on pace"
+   * now, which a finished week no longer has, so the near-miss line is this
+   * page's own and lives here with the rest of its tuning.
    */
-  goalNearMiss: { credit: number } | null;
+  goalNearMiss: { from: number; credit: number } | null;
   /**
    * How a unit's share ABOVE `from` turns into score. Up to `from` a share
    * scores as it is (half the goal = 50%). Above it, every doubling adds
@@ -165,7 +167,7 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
     tinman: 2,
     events: 2,
   },
-  goalNearMiss: { credit: 0.5 },
+  goalNearMiss: { from: 0.66, credit: 0.5 },
   overCurve: { from: 1, perDoubling: 0.5 },
   ratioCap: 2,
   overThreshold: 1.2,

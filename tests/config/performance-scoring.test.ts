@@ -62,11 +62,12 @@ describe('performance scoring config', () => {
     expect(perDoubling).toBeLessThanOrEqual(from * Math.LN2);
   });
 
-  it('gives a near miss less than a hit', () => {
-    // Where a near miss starts is the clan's amber setting, not config.
+  it('gives a near miss less than a hit, from somewhere short of the goal', () => {
     if (C.goalNearMiss === null) return;
     expect(C.goalNearMiss.credit).toBeGreaterThan(0);
     expect(C.goalNearMiss.credit).toBeLessThan(1);
+    expect(C.goalNearMiss.from).toBeGreaterThan(0);
+    expect(C.goalNearMiss.from).toBeLessThan(1);
   });
 
   it('has distinct timeframes, a default among them, and sane coverage', () => {

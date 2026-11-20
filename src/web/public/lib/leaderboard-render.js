@@ -1,7 +1,8 @@
-// Single source of truth for leaderboard rendering. Used by both the
-// authenticated /#leaderboard page and the public-share page so the
-// two stay in lockstep — same column structure, same sort behaviour,
-// same period selector, same pagination. Caller passes in:
+// Single source of truth for leaderboard rendering and goal judging. The
+// public share page and Triumphal render their tables with it; the Members
+// board (the signed-in ranking since the Leaderboard folded into it, Nov 20
+// 2026), Analytics and the profile judge points against the goal with its
+// helpers, so every surface agrees on green / amber / red. Callers pass in:
 //
 //  - the data (already paginated)
 //  - a `playerCellHtml(entry)` callback so the auth page can render
@@ -17,7 +18,6 @@ import { esc, copyTextToClipboard } from './ui.js';
 import { sortableThHtml } from './sort-headers.js';
 import { renderPeriodNav } from './period-nav.js';
 import { formatPeriodLabel, weekLengthDays } from './period.js';
-import { DEFAULT_GOAL_AMBER_PCT } from './weekly-goal.js';
 import { guardsCellHtml, guardsFromEntry, nameWithGoldPassHtml } from './guards-format.js';
 import { t, tn, tGame } from './i18n.js';
 
@@ -132,14 +132,53 @@ export function scaleGoalForPeriod(weeklyGoalPoints, period, weekStartOverride) 
   return Math.round((weeklyGoalPoints / weekLengthDays(weekStartOverride)) * days);
 }
 
-// Green at the goal, amber from two-thirds of it, red below. Deliberately NOT
-// the 50% threshold statusClassFor() uses for the ChestTracker tab — that one
-// mirrors chesttracker.com's own colouring and has to keep matching their SPA,
-// while this one is the clan's own standard. A clan can set its own amber
-// percent (Clans → Leaderboard goal): pages pass it as `ratio` below, read with
-// amberRatioForWindow() so a past week keeps the threshold it had. This is the
-// default, and what every other goal-coloured table (Tin Man targets) uses.
-const GOAL_WARN_RATIO = DEFAULT_GOAL_AMBER_PCT / 100;
+// Two ways to judge a number against a target, picked by what the caller passes
+// as `judge` to the helpers below:
+//
+//  - `{ pace }` — the clan's points goal (Nov 20 2026). Green at the goal,
+//    amber ("on pace") from the pace mark: the share of the goal the time so far
+//    asks for (pacePointsFor). A finished window has no pace left, so pass
+//    `{ pace: null }` and it is green or red. The Members board, the share
+//    board, Analytics and the profile all judge the same way; there is no
+//    percent setting any more (it was Clans → "Amber from %" until then).
+//  - a ratio — a fixed target with no clock (Tin Man's per-summon targets):
+//    amber ("close to goal") from that share of it, two-thirds by default.
+//
+// Deliberately NOT the 50% threshold statusClassFor() uses for the ChestTracker
+// tab — that one mirrors chesttracker.com's own colouring.
+const TARGET_WARN_RATIO = 0.66;
+
+/**
+ * How a number is judged: a ratio (a fixed target) or `{ pace }` (the points
+ * goal, pace null once the window has ended).
+ * @typedef {number | { pace: number | null | undefined }} GoalJudge
+ */
+
+/**
+ * The pace mark: the points a goal asks for `fraction` of the way through its
+ * window, rounded like every other figure on the boards. Null without a goal,
+ * and null once the window has ended (fraction null or 1): there is no pace
+ * left to be on, only the goal.
+ */
+export function pacePointsFor(goalPoints, fraction) {
+  if (!Number.isFinite(goalPoints) || goalPoints <= 0) return null;
+  if (fraction === null || fraction === undefined || !Number.isFinite(fraction) || fraction >= 1) return null;
+  return Math.round(goalPoints * Math.max(0, fraction));
+}
+
+/**
+ * The share of a window gone by `now` (0…1), or null when it is not running —
+ * finished, not started, or All Time. The pace mark is the goal times this.
+ * Measured on the window itself (`{ from, to }` from computeGameWindow), so the
+ * board, Home and the share page put the mark in the same place.
+ */
+export function paceFractionForWindow(win, now = Date.now()) {
+  if (!win) return null;
+  const from = Date.parse(win.from);
+  const to = Date.parse(win.to);
+  if (!(to > from) || now >= to || now < from) return null;
+  return (now - from) / (to - from);
+}
 
 /** The goal line for the active timeframe, e.g. "Daily goal: <strong>3,571</strong> points". */
 function goalLineHtml(period, goal) {
@@ -161,49 +200,55 @@ const PERIOD_LABELS = {
 };
 
 /**
- * The lowest whole points value that earns amber — i.e. the first integer n
- * with n / goal >= GOAL_WARN_RATIO.
+ * Which status bucket a number falls in against its target, or '' when there
+ * is no target — so an unconfigured board carries no status marker at all for
+ * the stylesheet to key on, rather than a class that paints nothing.
  *
- * Math.CEIL, not round. goalStatusClassFor compares the unrounded ratio, so
- * rounding to nearest names a number one point too low for roughly half of all
- * goals: with a daily goal of 1,073 the rounded figure is 708, but 708/1073 =
- * 0.6598 and that member's cell is painted RED — the caption contradicting the
- * row directly beneath it. Exported so the Clans-tab preview quotes the same
- * function rather than re-deriving it.
+ * `judge` is `{ pace }` for the points goal ('ok' / 'pace' / 'behind' while the
+ * window runs, 'ok' / 'low' once it has ended) or a ratio for a fixed target
+ * ('ok' / 'warn' / 'low') — see TARGET_WARN_RATIO.
+ * @param {number | null | undefined} actualPoints
+ * @param {number | null | undefined} goalPoints
+ * @param {GoalJudge} [judge]
  */
-export function goalWarnThreshold(goalPoints, ratio = GOAL_WARN_RATIO) {
-  if (!Number.isFinite(goalPoints) || goalPoints <= 0) return null;
-  return Math.ceil(goalPoints * ratio);
+export function goalStatusFor(actualPoints, goalPoints, judge = TARGET_WARN_RATIO) {
+  if (!Number.isFinite(goalPoints) || goalPoints <= 0) return '';
+  const points = actualPoints || 0;
+  if (points >= goalPoints) return 'ok';
+  if (judge && typeof judge === 'object') {
+    const pace = judge.pace;
+    if (pace === null || pace === undefined) return 'low';
+    return points >= pace ? 'pace' : 'behind';
+  }
+  return points / goalPoints >= judge ? 'warn' : 'low';
 }
+
+// The stylesheet's three tints: on pace shares amber with "close", behind pace
+// shares red with "below".
+const STATUS_TINT = { ok: 'ok', pace: 'warn', warn: 'warn', behind: 'low', low: 'low' };
 
 /**
- * Which of the three status buckets a member's points fall in, or '' when the
- * clan has no goal — so an unconfigured leaderboard carries no status marker
- * at all for the stylesheet to key on, rather than a class that paints nothing.
- * `ratio` is where amber starts (the clan's own percent / 100).
+ * Status class for the Points cell (the stronger tint + matched text colour).
+ * @param {number | null | undefined} actualPoints
+ * @param {number | null | undefined} goalPoints
+ * @param {GoalJudge} [judge]
  */
-function goalStatusFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATIO) {
-  if (!Number.isFinite(goalPoints) || goalPoints <= 0) return '';
-  const pct = (actualPoints || 0) / goalPoints;
-  if (pct >= 1) return 'ok';
-  if (pct >= ratio) return 'warn';
-  return 'low';
-}
-
-/** Status class for the Points cell (the stronger tint + matched text colour). */
-export function goalStatusClassFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATIO) {
-  const status = goalStatusFor(actualPoints, goalPoints, ratio);
-  return status ? `goal-cell-${status}` : '';
+export function goalStatusClassFor(actualPoints, goalPoints, judge = TARGET_WARN_RATIO) {
+  const status = goalStatusFor(actualPoints, goalPoints, judge);
+  return status ? `goal-cell-${STATUS_TINT[status]}` : '';
 }
 
 /**
  * Status class for the whole ROW — the same bucket, washed across every column
  * so rank and player name carry the signal too, not just the one number that
  * produced it.
+ * @param {number | null | undefined} actualPoints
+ * @param {number | null | undefined} goalPoints
+ * @param {GoalJudge} [judge]
  */
-export function goalRowClassFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATIO) {
-  const status = goalStatusFor(actualPoints, goalPoints, ratio);
-  return status ? `goal-row-${status}` : '';
+export function goalRowClassFor(actualPoints, goalPoints, judge = TARGET_WARN_RATIO) {
+  const status = goalStatusFor(actualPoints, goalPoints, judge);
+  return status ? `goal-row-${STATUS_TINT[status]}` : '';
 }
 
 // The words behind the colours. A tint alone says nothing to a screen reader,
@@ -211,11 +256,13 @@ export function goalRowClassFor(actualPoints, goalPoints, ratio = GOAL_WARN_RATI
 // tell apart — so every status also carries a glyph and its name.
 const GOAL_STATUS_TEXT = {
   ok: { label: t('Goal reached'), spoken: t('goal reached'), glyph: '✓' },
+  pace: { label: t('On pace'), spoken: t('on pace'), glyph: '◐' },
+  behind: { label: t('Behind pace'), spoken: t('behind pace'), glyph: '↓' },
   warn: { label: t('Close to goal'), spoken: t('close to goal'), glyph: '◐' },
   low: { label: t('Below goal'), spoken: t('below goal'), glyph: '↓' },
 };
 
-/** "Goal reached" / "Close to goal" / "Below goal" for a status, else ''. */
+/** "Goal reached" / "On pace" / "Behind pace" / "Close to goal" / "Below goal", else ''. */
 export function goalStatusLabel(status) {
   return GOAL_STATUS_TEXT[status]?.label || '';
 }
@@ -224,20 +271,40 @@ export function goalStatusLabel(status) {
  * Inner html for a goal-coloured number cell: a small glyph in front (fixed
  * width, so right-aligned numbers stay aligned), the number, then the status in
  * words for screen readers. With no goal it is just the number.
+ * @param {number | null | undefined} value
+ * @param {number | null | undefined} goalPoints
+ * @param {string} [formatted]
+ * @param {GoalJudge} [judge]
  */
-export function goalCellContentHtml(value, goalPoints, formatted = (value || 0).toLocaleString(), ratio = GOAL_WARN_RATIO) {
-  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints, ratio)];
+export function goalCellContentHtml(value, goalPoints, formatted = (value || 0).toLocaleString(), judge = TARGET_WARN_RATIO) {
+  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints, judge)];
   if (!s) return formatted;
   return `<span class="goal-glyph" aria-hidden="true">${s.glyph}</span>${formatted}`
     + `<span class="visually-hidden">, ${s.spoken}</span>`;
 }
 
-/** Tooltip for a goal-coloured cell, e.g. "Below goal — 4,210 of 7,143". */
-export function goalCellTitle(value, goalPoints, ratio = GOAL_WARN_RATIO) {
-  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints, ratio)];
+/**
+ * Tooltip for a goal-coloured cell, e.g. "Below goal — 4,210 of 7,143".
+ * @param {number | null | undefined} value
+ * @param {number | null | undefined} goalPoints
+ * @param {GoalJudge} [judge]
+ */
+export function goalCellTitle(value, goalPoints, judge = TARGET_WARN_RATIO) {
+  const s = GOAL_STATUS_TEXT[goalStatusFor(value, goalPoints, judge)];
   return s
     ? t('{status} — {value} of {goal}', { status: s.label, value: (value || 0).toLocaleString(), goal: Math.round(goalPoints).toLocaleString() })
     : '';
+}
+
+/**
+ * The key under a goal-coloured table: what green, amber and red mean for the
+ * window on screen. Amber only while it runs (the pace mark), since an ended
+ * window has no pace left.
+ */
+export function goalKeyText(pacePoints) {
+  return pacePoints === null || pacePoints === undefined
+    ? t('✓ green at the goal · ↓ red below')
+    : t('✓ green at the goal · ◐ amber on pace ({n} by now) · ↓ red behind', { n: pacePoints.toLocaleString() });
 }
 
 /**
@@ -267,9 +334,9 @@ const chestCountLabel = (n) => tn(n, '{n} chest', '{n} chests');
 /**
  * The board's core, shared by every leaderboard surface: the line naming the
  * goal this view is judged against, the ranked table and its pagination.
- * renderLeaderboardCardHtml wraps it in the classic card (public share page,
- * Triumphal); the signed-in Leaderboard (pages/leaderboard.js) lays it out with
- * the UI kit. `tableClass` adds classes to the <table> (the kit's .ui-table).
+ * renderLeaderboardCardHtml wraps it in the classic card; the public share page
+ * and Triumphal lay it out with the UI kit. `tableClass` adds classes to the
+ * <table> (the kit's .ui-table).
  */
 export function leaderboardTablePartsHtml({
   countLabel = DEFAULT_COUNT_LABEL,
@@ -286,10 +353,13 @@ export function leaderboardTablePartsHtml({
   showMight = false,
   showGuards = false,
   goalWeeklyPoints = null,
-  goalWarnRatio = GOAL_WARN_RATIO,
+  // The share of the window gone by now (paceFractionForWindow); null once it
+  // has ended. Amber is "on pace" against it.
+  paceFraction = /** @type {number | null} */ (null),
   tableClass = '',
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
+  const judge = { pace: pacePointsFor(periodGoal, paceFraction) };
   const th = (key, labelHtml, className = '', title = '') =>
     sortableThHtml({ key, labelHtml, sortState, action: actions.sort, className, title });
 
@@ -332,11 +402,11 @@ export function leaderboardTablePartsHtml({
         ${guardsHeadHtml}
         ${mightHeadHtml}
       </tr></thead><tbody>
-      ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal, goalWarnRatio)}">
+      ${pageEntries.map((e) => `<tr class="${goalRowClassFor(e.totalPoints, periodGoal, judge)}">
         <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${e.rank}">#${e.rank}</span></td>
         <td data-label="${t('Player')}" data-role="primary"><span class="mrow-name">${nameWithGoldPassHtml(playerCellHtml(e), e.goldPass)}</span><span class="mrow-sub">${esc(countSubLabel(e.totalChests))}</span></td>
         <td data-label="${esc(countLabel)}" class="num" data-role="hidden">${e.totalChests.toLocaleString()}</td>
-        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal, goalWarnRatio)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal, goalWarnRatio))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal, undefined, goalWarnRatio)}</td>
+        <td data-label="${t('Points')}" class="num ${goalStatusClassFor(e.totalPoints, periodGoal, judge)}" data-role="metric"${periodGoal !== null ? ` title="${esc(goalCellTitle(e.totalPoints, periodGoal, judge))}"` : ''}>${goalCellContentHtml(e.totalPoints, periodGoal, undefined, judge)}</td>
         ${guardsCellsHtml(e)}
         ${mightCellsHtml(e)}
       </tr>`).join('')}
@@ -351,7 +421,7 @@ export function leaderboardTablePartsHtml({
     ? `<div class="leaderboard-goal-hint">
         <span class="goal-hint-swatch" aria-hidden="true"></span>
         <span>${goalLineHtml(period, periodGoal)}${period === 'weekly' ? '' : ` <span class="goal-hint-src">${t('(from {weekly} / week)', { weekly: goalWeeklyPoints.toLocaleString() })}</span>`}</span>
-        <span class="goal-hint-src">${t('✓ green at the goal · ◐ amber from {threshold} · ↓ red below', { threshold: goalWarnThreshold(periodGoal, goalWarnRatio).toLocaleString() })}</span>
+        <span class="goal-hint-src">${esc(goalKeyText(judge.pace))}</span>
       </div>`
     : '';
 
@@ -414,9 +484,8 @@ export function renderLeaderboardCardHtml({
   showMight = false,
   showGuards = false,
   goalWeeklyPoints = null,
-  // Where amber starts, as a ratio of the goal: the clan's own percent for the
-  // window on screen (amberRatioForWindow in lib/weekly-goal.js).
-  goalWarnRatio = GOAL_WARN_RATIO,
+  // The share of the window gone by now, for the on-pace amber (see above).
+  paceFraction = /** @type {number | null} */ (null),
   // `actions.copyData`, when set, adds a "Copy data" button beside the export
   // link; the caller owns the click and hands it to copyLeaderboardData().
   // Optional: when present, a download link for the window on screen. The
@@ -431,7 +500,7 @@ export function renderLeaderboardCardHtml({
 }) {
   const { goalHintHtml, tableHtml, paginationHtml: paginationControls } = leaderboardTablePartsHtml({
     countLabel, countSubLabel, pageEntries, totalEntries, currentPage, totalPages, period,
-    sortState, pageSize, playerCellHtml, actions, showMight, showGuards, goalWeeklyPoints, goalWarnRatio,
+    sortState, pageSize, playerCellHtml, actions, showMight, showGuards, goalWeeklyPoints, paceFraction,
   });
 
   const periodNavRow = renderPeriodNav({
@@ -500,7 +569,7 @@ export function leaderboardWindowLabel(period, offset, rolloverHr) {
 // Status marks for the copied text, NOT the page's ✓ ◐ ↓: the in-game chat font
 // draws ◐ but shows ✓ and ↓ as empty boxes (seen 2026-10-31). Full / half /
 // empty circles all come from the block ◐ lives in, and still read in order.
-const COPY_STATUS_GLYPH = { ok: '●', warn: '◐', low: '○' };
+const COPY_STATUS_GLYPH = { ok: '●', pace: '◐', warn: '◐', behind: '○', low: '○' };
 
 /**
  * The board as plain text for the "Copy data" button: a title line naming the
@@ -519,11 +588,12 @@ export function leaderboardCopyText({
   offset,
   rolloverHr,
   goalWeeklyPoints,
-  goalWarnRatio = GOAL_WARN_RATIO,
+  paceFraction = /** @type {number | null} */ (null),
   title = DEFAULT_TITLE,
   countLabel = DEFAULT_COUNT_LABEL,
 }) {
   const periodGoal = scaleGoalForPeriod(goalWeeklyPoints, period);
+  const judge = { pace: pacePointsFor(periodGoal, paceFraction) };
   // The week's "a → b" range: → is an arrow like ↓, which the chat font lacks.
   const when = leaderboardWindowLabel(period, offset, rolloverHr).replace(' → ', ' - ');
 
@@ -532,7 +602,7 @@ export function leaderboardCopyText({
   const rows = entries.map((e) => {
     const row = [`#${e.rank}`, e.memberName || '', e.totalChests.toLocaleString(), (e.totalPoints || 0).toLocaleString()];
     if (periodGoal !== null) {
-      const status = goalStatusFor(e.totalPoints, periodGoal, goalWarnRatio);
+      const status = goalStatusFor(e.totalPoints, periodGoal, judge);
       row.push(`${COPY_STATUS_GLYPH[status]} ${GOAL_STATUS_TEXT[status].label}`);
     }
     return row;

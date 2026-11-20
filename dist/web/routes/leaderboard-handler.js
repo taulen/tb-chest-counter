@@ -105,7 +105,6 @@ function leaderboardFeatures(clan, clanId) {
     const rows = queryLeaderboard(clanId, { from: undefined, to: undefined, includeAllMembers: true });
     return {
         goalWeeklyPoints: resolveWeeklyGoalPoints(clan),
-        goalAmberPct: (0, weekly_goal_js_1.amberPctOrDefault)(clan?.leaderboardGoalAmberPct),
         // Same predicates the two pages use to decide their columns.
         guards: rows.some((e) => e.guardsLevel != null),
         might: rows.some((e) => e.might != null || e.heroLevel != null),
@@ -155,13 +154,11 @@ function resolveWeeklyGoalPoints(clan) {
  */
 function resolveWeeklyGoal(clan) {
     const weeklyPoints = resolveWeeklyGoalPoints(clan);
-    const amberPct = (0, weekly_goal_js_1.amberPctOrDefault)(clan?.leaderboardGoalAmberPct);
     if (!clan || weeklyPoints === null)
-        return { weeklyPoints, amberPct, history: [] };
+        return { weeklyPoints, history: [] };
     return {
         weeklyPoints,
-        amberPct,
-        history: (0, clan_repo_js_1.listGoalHistory)(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints, amberPct: s.amberPct ?? null })),
+        history: (0, clan_repo_js_1.listGoalHistory)(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints })),
     };
 }
 /**

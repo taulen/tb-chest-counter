@@ -1,6 +1,6 @@
 # A clan's week
 
-What "Weekly" means is per clan (`clans.week_start`, set on Clans → Week). Every weekly window follows it: Leaderboard, Dashboard, Members, Analytics, Resources, Events, Performance, the public share page, the weekly goal and the Discord bot (slash commands and the weekly digest). The ChestTracker tab is the exception: its weeks are upstream's, always Sunday.
+What "Weekly" means is per clan (`clans.week_start`, set on Clans → Week). Every weekly window follows it: Dashboard, the Members board, Analytics, Resources, Events, Performance, the public share page, the weekly goal and the Discord bot (slash commands and the weekly digest). The ChestTracker tab is the exception: its weeks are upstream's, always Sunday.
 
 ## Shapes
 

@@ -3,6 +3,13 @@
 // line, banded ✓ Reached / ◐ On pace / ↓ Behind. The roster table it replaced
 // as the default is one toggle away (pages/members.js renders it).
 //
+// Since Nov 20 2026 it is also THE leaderboard: the separate Leaderboard page
+// (podium + ranked table) folded into it at the clan's request, bringing the
+// Yearly timeframe, chest counts, Guards and the Gold Pass mark, and FAQ /
+// Export CSV / Copy data beside the page title. The window rides in the URL
+// (#members?period=weekly&week=…, the same absolute anchors the Leaderboard
+// used), and old #leaderboard links land here on the window they named.
+//
 // Data: /leaderboard for the window (all members, canonical rank) and for the
 // window before it (the "vs last week" delta — cut at the same point of the
 // week while this one is still running, so it compares like with like),
@@ -11,12 +18,17 @@
 // /game/clan/roster-changes (who joined or left lately).
 
 import { api } from '../lib/api.js';
-import { esc, memberHash, formatDateShort, formatRelativeTime } from '../lib/ui.js';
+import { esc, memberHash, formatDateShort, formatRelativeTime, buildHash } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
-import { computeGameWindow } from '../lib/period.js';
-import { scaleGoalForPeriod, formatMightCompact } from '../lib/leaderboard-render.js';
+import { computeGameWindow, periodAnchorFromOffset } from '../lib/period.js';
+import {
+  scaleGoalForPeriod, formatMightCompact, goalStatusFor, pacePointsFor, paceFractionForWindow, copyLeaderboardData,
+} from '../lib/leaderboard-render.js';
+import { openLeaderboardFaq } from '../lib/leaderboard-faq.js';
+import { goldPassBadgeHtml } from '../lib/guards-format.js';
 import {
   BANDS as KIT_BANDS, segHtml, periodScrubberHtml, wirePeriodScrubber, errorStateHtml, refusalText, wireRetry,
+  setPageActions,
 } from '../lib/ui-kit.js';
 import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { getCurrentUser, getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
@@ -24,8 +36,9 @@ import { gameRankName } from '../lib/game-facts.js';
 import { avatarHtml } from '../lib/avatar.js';
 
 const DAY_MS = 86_400_000;
-const PERIODS = ['daily', 'weekly', 'monthly', 'all'];
-const SORTS = ['points', 'name', 'might', 'joined'];
+export const BOARD_PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
+const PERIODS = BOARD_PERIODS;
+const SORTS = ['points', 'name', 'chests', 'might', 'joined'];
 const BANDS = ['all', 'ok', 'pace', 'behind'];
 const VIEW_KEY = 'tb.members.view';
 const NOTE_DAYS = 7;
@@ -62,6 +75,29 @@ export function presetMembersBoard({ band = 'all', period, offset } = {}) {
   setMembersView('board');
 }
 
+/**
+ * The window the address names (#members?period=…&week=…, which only the board
+ * writes): open the board on it. Search and band survive a return to the same
+ * window — Back from a profile — and the band resets when the window moves.
+ */
+export function setMembersBoardWindow({ period, offset }) {
+  if (!PERIODS.includes(period) || !Number.isInteger(offset) || offset < 0) return;
+  if (state.period !== period || state.offset !== offset) {
+    state.period = period;
+    state.offset = offset;
+    state.band = 'all';
+  }
+  setMembersView('board');
+}
+
+/** The table view drops the board's window from the address: it isn't the table's. */
+export function clearBoardAddress() {
+  if (!window.location.hash.startsWith('#members?')) return;
+  try {
+    history.replaceState(history.state, '', '#members');
+  } catch { /* harmless: the next board draw rewrites it */ }
+}
+
 /** Board | Table, the same two buttons on both views. */
 export function membersViewToggleHtml(active) {
   return segHtml({
@@ -83,12 +119,15 @@ export function wireMembersViewToggle(root, rerender) {
   }
 }
 
-const SORT_LABEL = { points: () => t('Points'), name: () => t('Name'), might: () => t('Might'), joined: () => t('Joined') };
+const SORT_LABEL = {
+  points: () => t('Points'), name: () => t('Name'), chests: () => t('Chests'), might: () => t('Might'), joined: () => t('Joined'),
+};
 const BAND_TEXT = KIT_BANDS;
 const DELTA_LABEL = {
   daily: { now: () => t('vs yesterday by now'), past: () => t('vs the day before') },
   weekly: { now: () => t('vs last week by now'), past: () => t('vs the week before') },
   monthly: { now: () => t('vs last month by now'), past: () => t('vs the month before') },
+  yearly: { now: () => t('vs last year by now'), past: () => t('vs the year before') },
 };
 
 function leaderboardQuery(from, to) {
@@ -96,6 +135,33 @@ function leaderboardQuery(from, to) {
   if (from) p.set('from', from);
   if (to) p.set('to', to);
   return `/leaderboard?${p}`;
+}
+
+/**
+ * The board's window as URL params — `{ period, week: '2026-11-15' }` — the
+ * absolute anchors the Leaderboard's links always used, so a copied link opens
+ * the same week forever, not "last week" relative to whenever it is opened.
+ */
+function windowParams(period, offset) {
+  const params = { period };
+  const anchor = periodAnchorFromOffset(period, offset);
+  if (anchor) params[anchor.key] = anchor.value;
+  return params;
+}
+
+/**
+ * Put the window on screen into the address bar without a navigation (no
+ * hashchange, so no second render), and only while the Members page is the
+ * one showing — never over a profile the user has already moved on to.
+ */
+function syncAddress(period, offset) {
+  const hash = window.location.hash.replace(/^#/, '').split('?')[0];
+  if (hash !== 'members') return;
+  const next = buildHash('members', windowParams(period, offset));
+  if (window.location.hash === next) return;
+  try {
+    history.replaceState(history.state, '', next);
+  } catch { /* a sandboxed frame: the board works, the address just lags */ }
 }
 
 /**
@@ -126,6 +192,7 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
   ]);
   // A later click (another period) already started its own draw.
   if (state.period !== period || state.offset !== offset) return;
+  syncAddress(period, offset);
 
   // api() hands back whatever JSON the server sent, so a refusal (a 429 from
   // the /api rate limit, a 500's { error, ref }) arrives as an OBJECT where a
@@ -133,6 +200,7 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
   // page died on `.map`. The comparison window is optional: drop it. The
   // window itself is the board: say what happened and offer a retry.
   if (!Array.isArray(entries)) {
+    setPageActions('');
     el.innerHTML = `${tabsHtml}<section class="mboard" aria-label="${esc(t('Ranking board'))}">
       ${errorStateHtml(t('The board could not be loaded.'), refusalText(entries))}
     </section>`;
@@ -143,15 +211,19 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
 
   const weekly = period === 'all' ? null : weeklyGoalForWindow(goal, period, offset, rolloverHr, weekStart);
   const goalPts = period === 'all' ? null : scaleGoalForPeriod(weekly, period, weekStart);
-  const fraction = running ? Math.min(1, Math.max(0, (now - Date.parse(win.from)) / (Date.parse(win.to) - Date.parse(win.from)))) : 1;
-  const pacePts = goalPts && running ? Math.round(goalPts * fraction) : null;
+  // The pace mark, the same one the share board, Analytics and the profile
+  // colour by (lib/leaderboard-render.js); null once the window has ended.
+  const paceFraction = running ? paceFractionForWindow(win, now) : null;
+  const pacePts = pacePointsFor(goalPts, paceFraction);
 
   const prevByMember = new Map((prevEntries || []).map((e) => [e.memberId, e.totalPoints || 0]));
   const game = roster?.members || {};
   const rows = (entries || []).map((e) => {
     const g = game[e.memberId] || {};
     const points = e.totalPoints || 0;
-    const band = !goalPts ? null : points >= goalPts ? 'ok' : pacePts !== null && points >= pacePts ? 'pace' : 'behind';
+    // An ended window has no pace: below the goal there is "behind".
+    const status = goalStatusFor(points, goalPts, { pace: pacePts });
+    const band = !status ? null : status === 'low' ? 'behind' : status;
     return {
       id: e.memberId,
       name: e.memberName,
@@ -161,6 +233,8 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
       delta: win ? points - (prevByMember.get(e.memberId) || 0) : null,
       band,
       might: g.might ?? e.might ?? null,
+      guards: e.guardsLevel ?? null,
+      goldPass: e.goldPass ?? null,
       role: g.role ?? null,
       joinedAt: g.joinedAt ? g.joinedAt * 1000 : null,
       burning: g.burning === true,
@@ -172,6 +246,9 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
 
   board = {
     el, rows, goalPts, pacePts, running, win, rerender,
+    // For Copy data: every member in rank order, with the goal and pace the
+    // rows were judged by.
+    copy: { entries, period, offset, rolloverHr, goalWeeklyPoints: weekly, paceFraction },
     // With a goal the bar spans up to twice it, so one runaway total doesn't
     // squash everyone else's bar to a sliver (the number shows the real total).
     scaleMax: goalPts
@@ -202,7 +279,41 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
     </div>
     <div data-mb-list>${listHtml()}</div>
   </section>`;
+  setPageActions(pageActionsHtml(`/api${leaderboardQuery(win?.from, win?.to)}&format=csv`, rows.length > 0));
   wire(el);
+}
+
+/**
+ * FAQ, Export CSV (the window on screen) and Copy data, beside the page title.
+ * app.js routes the two buttons (open-leaderboard-faq, leaderboard-copy-data)
+ * to openBoardFaq / copyBoardData below. Export is a plain link: the browser
+ * downloads it, and Content-Disposition names the file.
+ */
+function pageActionsHtml(exportHref, hasRows) {
+  return `<button type="button" class="btn" data-action="open-leaderboard-faq" title="${esc(t('What each chest is worth, and how the board works'))}">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 6.3a1.95 1.95 0 1 1 2.7 1.8c-.52.22-.8.62-.8 1.18v.32" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="currentColor"/></svg>
+      ${esc(t('FAQ'))}
+    </button>
+    <a class="btn" href="${esc(exportHref)}" download title="${esc(t('Download this timeframe as CSV'))}">${esc(t('Export CSV'))}</a>
+    ${hasRows ? `<button type="button" class="btn" data-action="leaderboard-copy-data" title="${esc(t('Copy every player in this timeframe as text'))}">${esc(t('Copy data'))}</button>` : ''}`;
+}
+
+/** The FAQ: what each chest is worth, and how the board works. */
+export function openBoardFaq() {
+  openLeaderboardFaq({
+    // signal: null — the modal is not a page load, so it must not ride the
+    // router's navigation abort signal (api() attaches it to every GET that
+    // doesn't bring its own). With it, any navigation while the FAQ was
+    // loading turned the modal into "Couldn't load the FAQ".
+    load: () => api('/leaderboard/faq', { signal: null }),
+    mode: 'member',
+    rolloverHr: getGameDayRolloverUtcHour(),
+  });
+}
+
+/** Every member of the window on screen as text, for pasting into the game's chat. */
+export function copyBoardData(btn) {
+  if (board?.copy) return copyLeaderboardData(btn, board.copy);
 }
 
 /** The page header already says "Members": this line is the count + the view toggle. */
@@ -261,6 +372,7 @@ function sortRows(rows) {
   const by = {
     points: (a, b) => a.rank - b.rank,
     name: (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+    chests: (a, b) => b.chests - a.chests || a.rank - b.rank,
     // Unknown sorts last, never like a zero.
     might: (a, b) => (b.might ?? -1) - (a.might ?? -1) || a.rank - b.rank,
     joined: (a, b) => (b.joinedAt ?? -1) - (a.joinedAt ?? -1) || a.rank - b.rank,
@@ -297,11 +409,15 @@ function deltaHtml(r) {
 function rowHtml(r) {
   const pct = (v) => `${Math.min(100, (v / board.scaleMax) * 100).toFixed(2)}%`;
   const band = r.band ? BAND_TEXT[r.band] : null;
+  // The chest count first: it is what the points are made of, and on a phone
+  // the line is cut from the end.
   const meta = [
     r.role ? esc(gameRankName(r.role)) : '',
+    esc(tn(r.chests, '{n} chest', '{n} chests', { n: r.chests.toLocaleString() })),
+    r.guards != null ? esc(t('G{level}', { level: r.guards })) : '',
     r.might != null ? esc(t('{n} might', { n: formatMightCompact(r.might) })) : '',
   ].filter(Boolean).join(' · ');
-  const marks = `${r.isYou ? `<span class="mboard-tag is-you">${t('You')}</span>` : ''}${r.burning ? `<span class="mboard-tag is-burning"><span aria-hidden="true">🔥</span> ${t('Burning')}</span>` : ''}`;
+  const marks = `${goldPassBadgeHtml(r.goldPass)}${r.isYou ? `<span class="mboard-tag is-you">${t('You')}</span>` : ''}${r.burning ? `<span class="mboard-tag is-burning"><span aria-hidden="true">🔥</span> ${t('Burning')}</span>` : ''}`;
   return `<li class="mboard-item${r.isYou ? ' is-you' : ''}"><a class="mboard-row" href="${memberHash(r.id)}">
       <span class="mboard-rank">#${r.rank}</span>
       ${avatarHtml({ username: r.name, avatar: r.avatar }, { size: 'md' })}

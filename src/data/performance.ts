@@ -45,7 +45,7 @@ import { rankedRun } from './member-events.js';
 import { getEventOccurrences } from '../external/event-calendar.js';
 import { daysBetweenGameDates, gameDateFor, gameWindow, type WeekStart } from '../utils/game-day.js';
 import { cached, invalidate } from '../utils/ttl-cache.js';
-import { amberPctOrDefault, amberRatioForDays, weeklyGoalForDays, type WeeklyGoalStep } from '../utils/weekly-goal.js';
+import { weeklyGoalForDays, type WeeklyGoalStep } from '../utils/weekly-goal.js';
 import { readGoalHistory } from './goal-history.js';
 import type { TargetTier } from './tinman-parse.js';
 import {
@@ -114,8 +114,6 @@ export interface PerformanceReport {
    * than one step means the goal changed inside this timeframe.
    */
   goalSteps: WeeklyGoalStep[];
-  /** Where amber ("close to goal") starts now, in percent of the goal. */
-  goalAmberPct: number;
   weekStart: WeekStart;
   units: {
     weeks: number;
@@ -136,8 +134,6 @@ export interface PerformanceInput {
   clanId: number;
   timeframe: string;
   weeklyGoal: number | null;
-  /** The clan's amber percent now (null = the default); history covers the past. */
-  goalAmberPct?: number | null;
   weekStart: WeekStart;
   rolloverUtcHour: number;
   nowMs?: number;
@@ -208,17 +204,13 @@ function closedWeeks(input: PerformanceInput, nowMs: number, windowFrom: string,
  */
 interface WeekGoal {
   goal: number | null;
-  /** Where that week's amber band started, as a ratio of its goal. */
-  amber: number;
 }
 
 function goalsForWeeks(input: PerformanceInput, weeks: WeekUnit[]): WeekGoal[] {
-  const amber = amberPctOrDefault(input.goalAmberPct) / 100;
-  if (!input.weeklyGoal || weeks.length === 0) return weeks.map(() => ({ goal: null, amber }));
+  if (!input.weeklyGoal || weeks.length === 0) return weeks.map(() => ({ goal: null }));
   const history = readGoalHistory(getDb(), input.clanId);
   return weeks.map((w) => ({
     goal: weeklyGoalForDays(input.weeklyGoal, history, w.firstDay, w.lastDay),
-    amber: amberRatioForDays(input.goalAmberPct, history, w.firstDay, w.lastDay),
   }));
 }
 
@@ -227,9 +219,8 @@ function goalStepsOf(weeks: WeekUnit[], weekGoals: WeekGoal[]): WeeklyGoalStep[]
   const steps: WeeklyGoalStep[] = [];
   for (let i = weeks.length - 1; i >= 0; i--) {
     const last = steps[steps.length - 1];
-    const amberPct = Math.round(weekGoals[i].amber * 100);
-    if (last && last.weeklyPoints === weekGoals[i].goal && last.amberPct === amberPct) continue;
-    steps.push({ from: weeks[i].firstDay, weeklyPoints: weekGoals[i].goal, amberPct });
+    if (last && last.weeklyPoints === weekGoals[i].goal) continue;
+    steps.push({ from: weeks[i].firstDay, weeklyPoints: weekGoals[i].goal });
   }
   return steps;
 }
@@ -238,7 +229,7 @@ function weekUnits(
   input: PerformanceInput,
   config: PerformanceConfig,
   weeks: WeekUnit[],
-  /** Per week, the goal and amber band it was played under (see goalsForWeeks). */
+  /** Per week, the goal it was played under (see goalsForWeeks). */
   weekGoals: WeekGoal[],
   members: MemberBase[],
   guards: Map<number, MemberGuards>,
@@ -264,14 +255,14 @@ function weekUnits(
     const units: PerformanceUnit[] = [];
     weeks.forEach((w, i) => {
       if (m.tenureStart > w.firstDay) return;
-      const { goal: weekGoal, amber } = weekGoals[i];
+      const { goal: weekGoal } = weekGoals[i];
       if (!weekGoal) return;
       const level = levelOn(guards.get(m.id), w.firstDay) ?? config.assumedGuardsLevel;
       const goal = weekGoal * (config.weeklyGoalScaleByGuards[level] ?? 1);
       if (!(goal > 0)) return;
       const actual = points.get(m.id)?.[i] ?? 0;
       const hit = actual >= goal;
-      const near = !hit && !!config.goalNearMiss && actual >= goal * amber;
+      const near = !hit && !!config.goalNearMiss && actual >= goal * config.goalNearMiss.from;
       units.push({
         ratio: unitRatio(actual, goal),
         hit,
@@ -406,7 +397,6 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
     requiredDays: 0,
     weeklyGoal: input.weeklyGoal,
     goalSteps: [],
-    goalAmberPct: amberPctOrDefault(input.goalAmberPct),
     weekStart: input.weekStart,
     units: { weeks: 0, tinmanRuns: 0, tinmanRunsWithTargets: 0, eventRuns: 0 },
     events: [],
@@ -496,7 +486,7 @@ async function buildReport(input: PerformanceInput, nowMs: number): Promise<Perf
 export function getPerformanceReport(input: PerformanceInput): Promise<PerformanceReport> {
   const nowMs = input.nowMs ?? Date.now();
   const today = gameDateFor(nowMs, input.rolloverUtcHour);
-  const key = `${CACHE_PREFIX}${input.clanId}:${input.timeframe}:${today}:${input.weeklyGoal ?? 0}:${input.goalAmberPct ?? 0}:${input.weekStart}`;
+  const key = `${CACHE_PREFIX}${input.clanId}:${input.timeframe}:${today}:${input.weeklyGoal ?? 0}:${input.weekStart}`;
   if (input.nowMs !== undefined) return buildReport(input, nowMs);
   const pending = cached(key, CACHE_TTL_MS, () => buildReport(input, nowMs));
   // A failed build must not be served from the cache for the next five minutes.

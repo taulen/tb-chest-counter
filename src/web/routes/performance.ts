@@ -34,7 +34,6 @@ export function createPerformanceRouter(): Router {
         clanId,
         timeframe,
         weeklyGoal: resolveWeeklyGoalPoints(clan),
-        goalAmberPct: clan.leaderboardGoalAmberPct,
         weekStart: clan.weekStart,
         rolloverUtcHour: loadConfig().gameDayRolloverUtcHour,
       });

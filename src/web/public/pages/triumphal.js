@@ -3,11 +3,10 @@
 // presentation-only points total (computed in triumphal-chest-repo per
 // individual chest). Points stay separate from the main leaderboard.
 //
-// Built on the UI kit like the Leaderboard (pages/leaderboard.js): the kit's
-// period scrubber (daily/weekly/monthly/yearly/all, the URL anchor scheme the
-// Leaderboard uses), stat tiles, then the shared table core
-// (leaderboardTablePartsHtml: same sort + pagination) in a table card. The
-// public share page keeps the classic card (renderLeaderboardCardHtml).
+// Built on the UI kit: the kit's period scrubber (daily/weekly/monthly/yearly/
+// all, the absolute URL anchors of lib/period.js the Members board uses too),
+// stat tiles, then the shared table core (leaderboardTablePartsHtml: same sort
+// + pagination) in a table card, as on the public share page.
 // Recent chests sit in a collapsed table card at the bottom.
 
 import { api } from '../lib/api.js';
@@ -28,8 +27,8 @@ import {
   getCurrentPeriodOffset,
   setCurrentPeriodOffset,
 } from '../lib/state.js';
-// Period anchor helpers live with the leaderboard page since both
-// surfaces share the same URL-encoding scheme — see pages/leaderboard.js.
+// Period anchors (periodAnchorFromOffset) live in lib/period.js, shared with
+// the Members board's addresses.
 
 const PAGE_SIZE = 25;
 const RECENT_LIMIT = 1000;

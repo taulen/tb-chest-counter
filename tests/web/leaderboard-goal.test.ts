@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatMightCompact,
+  goalKeyText,
   goalRowClassFor,
   goalStatusClassFor,
-  goalWarnThreshold,
+  goalStatusFor,
   leaderboardCopyText,
+  paceFractionForWindow,
+  pacePointsFor,
   scaleGoalForPeriod,
   sortLeaderboardEntries,
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -66,7 +69,8 @@ describe('scaleGoalForPeriod', () => {
   });
 });
 
-describe('goalStatusClassFor', () => {
+// A ratio judge: Tin Man's per-summon targets, which have no clock.
+describe('goalStatusClassFor against a fixed target', () => {
   it('is green at the goal and above', () => {
     expect(goalStatusClassFor(1000, 1000)).toBe('goal-cell-ok');
     expect(goalStatusClassFor(9999, 1000)).toBe('goal-cell-ok');
@@ -92,50 +96,57 @@ describe('goalStatusClassFor', () => {
 });
 
 /**
- * The threshold the UI PRINTS has to be the threshold the cells actually use.
- * This started out as Math.round(goal * 0.66), which rounds down for roughly
- * half of all goals — so the caption named a points total that rendered red on
- * the row directly beneath it. Math.ceil is the first integer that earns amber.
+ * The points goal (Nov 20 2026): amber means ON PACE — at or past the share of
+ * the goal the time gone so far asks for — not a fixed percent of it. The
+ * Members board, the share board, Analytics and the profile all judge through
+ * these, so the pace mark here is the tick on the board's bars.
  */
-describe('goalWarnThreshold', () => {
-  it('names a value that is actually amber, never the red one below it', () => {
-    // The reported case: weekly 7,511 -> daily goal 1,073. Rounding gives 708,
-    // and 708/1073 = 0.6598 which is RED.
-    const daily = scaleGoalForPeriod(7511, 'daily');
-    expect(daily).toBe(1073);
-    expect(goalWarnThreshold(daily)).toBe(709);
-    expect(goalStatusClassFor(709, daily)).toBe('goal-cell-warn');
-    expect(goalStatusClassFor(708, daily)).toBe('goal-cell-low');
+describe('the pace judge', () => {
+  it('puts the pace mark at the goal times the share of the window gone', () => {
+    expect(pacePointsFor(35_000, 0.5)).toBe(17_500);
+    expect(pacePointsFor(35_000, 0)).toBe(0);
+    expect(pacePointsFor(1073, 1 / 3)).toBe(358); // rounded like every board figure
   });
 
-  it('holds for the monthly scaling of a round weekly goal', () => {
-    // Weekly 25,000 -> monthly 107,143. Rounding gives 70,714 (red at
-    // 0.659996); the true cutoff is 70,715.
-    const monthly = scaleGoalForPeriod(25_000, 'monthly');
-    expect(goalWarnThreshold(monthly)).toBe(70_715);
-    expect(goalStatusClassFor(goalWarnThreshold(monthly), monthly)).toBe('goal-cell-warn');
+  it('has no pace mark once the window has ended, or without a goal', () => {
+    expect(pacePointsFor(35_000, 1)).toBeNull();
+    expect(pacePointsFor(35_000, null)).toBeNull();
+    expect(pacePointsFor(null, 0.5)).toBeNull();
+    expect(pacePointsFor(0, 0.5)).toBeNull();
   });
 
-  it('is the smallest amber value across a wide sweep of goals', () => {
-    // Property check rather than more examples: for every goal, the threshold
-    // must be amber and one point less must be red.
-    for (let goal = 1; goal <= 3000; goal++) {
-      const n = goalWarnThreshold(goal);
-      // null only comes back for a goal that is zero, negative or not finite,
-      // none of which this sweep produces — so it is a broken invariant rather
-      // than a case to skip, and saying which goal did it beats a null deref
-      // three lines down.
-      if (n === null) throw new Error(`goal=${goal} produced no amber threshold`);
-      expect(goalStatusClassFor(n, goal), `goal=${goal} n=${n}`).not.toBe('goal-cell-low');
-      if (n > 0) {
-        expect(goalStatusClassFor(n - 1, goal), `goal=${goal} n-1=${n - 1}`).toBe('goal-cell-low');
-      }
-    }
+  it('measures the share of a window on the window itself', () => {
+    const win = { from: '2026-11-15T17:00:00.000Z', to: '2026-11-22T17:00:00.000Z' };
+    const from = Date.parse(win.from);
+    expect(paceFractionForWindow(win, from)).toBe(0);
+    expect(paceFractionForWindow(win, from + 3.5 * 86_400_000)).toBeCloseTo(0.5);
+    // Ended, not started, or no window (All Time): no pace.
+    expect(paceFractionForWindow(win, Date.parse(win.to))).toBeNull();
+    expect(paceFractionForWindow(win, from - 1)).toBeNull();
+    expect(paceFractionForWindow(null)).toBeNull();
   });
 
-  it('has no threshold without a goal', () => {
-    expect(goalWarnThreshold(null)).toBeNull();
-    expect(goalWarnThreshold(0)).toBeNull();
+  it('is green at the goal, amber on pace, red behind it while the window runs', () => {
+    const judge = { pace: 17_500 };
+    expect(goalStatusFor(35_000, 35_000, judge)).toBe('ok');
+    expect(goalStatusFor(17_500, 35_000, judge)).toBe('pace');
+    expect(goalStatusFor(34_999, 35_000, judge)).toBe('pace');
+    expect(goalStatusFor(17_499, 35_000, judge)).toBe('behind');
+    expect(goalStatusClassFor(20_000, 35_000, judge)).toBe('goal-cell-warn');
+    expect(goalRowClassFor(1_000, 35_000, judge)).toBe('goal-row-low');
+  });
+
+  it('is only green or red once the window has ended', () => {
+    const judge = { pace: null };
+    expect(goalStatusFor(35_000, 35_000, judge)).toBe('ok');
+    // 99% of the goal used to be amber ("close to goal"); a finished week has no pace left.
+    expect(goalStatusFor(34_650, 35_000, judge)).toBe('low');
+    expect(goalStatusClassFor(34_650, 35_000, judge)).toBe('goal-cell-low');
+  });
+
+  it('keys the colours for the window on screen', () => {
+    expect(goalKeyText(null)).toBe('✓ green at the goal · ↓ red below');
+    expect(goalKeyText(17_500)).toBe(`✓ green at the goal · ◐ amber on pace (${(17_500).toLocaleString()} by now) · ↓ red behind`);
   });
 });
 
@@ -242,14 +253,24 @@ describe('leaderboardCopyText', () => {
   const n = (x: number) => x.toLocaleString();
 
   it('lists every player with rank, chests, points and goal status, no padding', () => {
+    // An ended window: reached or below, no pace left.
     const lines = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000 }).split('\n');
     expect(lines[0]).toMatch(/^Leaderboard · Weekly · \d{4}-\d{2}-\d{2} - \d{4}-\d{2}-\d{2}$/);
     expect(lines[1]).toBe(`Weekly goal: ${n(25_000)} points`);
     expect(lines.slice(2)).toEqual([
       'Rank Player - Chests - Points - Status',
       `#1 Alice - ${n(1200)} - ${n(30000)} - ● Goal reached`,
-      `#2 Bob - 80 - ${n(18000)} - ◐ Close to goal`,
+      `#2 Bob - 80 - ${n(18000)} - ○ Below goal`,
       '#3 Cara - 5 - 900 - ○ Below goal',
+    ]);
+  });
+
+  it('says on pace / behind pace while the window runs', () => {
+    // Half the week gone: the pace mark is 12,500.
+    const lines = leaderboardCopyText({ entries, period: 'weekly', offset: 0, rolloverHr: 17, goalWeeklyPoints: 25_000, paceFraction: 0.5 }).split('\n');
+    expect(lines.slice(4)).toEqual([
+      `#2 Bob - 80 - ${n(18000)} - ◐ On pace`,
+      '#3 Cara - 5 - 900 - ○ Behind pace',
     ]);
   });
 

@@ -255,11 +255,12 @@ function formatWeeklyDigestMessage(data, options) {
 }
 function formatDigestMessage(data, options) {
     const lines = [options.title];
-    // Deep-link to the matching leaderboard, wrapped in <> so Discord doesn't
-    // expand it into a link-preview card below the message.
+    // Deep-link to the matching window of the Members board (the ranking since
+    // the Leaderboard folded into it, Nov 20 2026), wrapped in <> so Discord
+    // doesn't expand it into a link-preview card below the message.
     if (options.webExternalUrl) {
         const base = options.webExternalUrl.replace(/\/+$/, '');
-        lines.push(`<${base}/#leaderboard?${options.anchor}>`);
+        lines.push(`<${base}/#members?${options.anchor}>`);
     }
     lines.push(`**${data.totalChests.toLocaleString()}** chests · **${data.totalPoints.toLocaleString()}** pts · ` +
         `**${data.activePlayers.toLocaleString()}** players · **${data.scanCount.toLocaleString()}** scans`);

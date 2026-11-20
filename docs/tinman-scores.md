@@ -15,7 +15,7 @@ The rest of this page describes the pasted card. The card sits on the Ancients t
 - **Targets** (v81, `tinman_targets`, one per clan and run): an admin pastes the Ancient planner's *Points per member* card. Its "points each" per tier and its "For N kills" line are kept.
   - Each player is held to their tier's target: their guards level (the Guardsmen tier from research), or G7 when unknown, never T9.
   - The target is always the whole run's, never split per summon: the clan judges the total, so mid-run everyone simply reads as not there yet. The kill count is kept for display only.
-  - The goal colours (`goalStatusClassFor`: green at target, amber from 66%, red below) and their glyph + words are the Leaderboard's.
+  - The goal colours (`goalStatusClassFor` with its default ratio judge: green at target, amber from 66%, red below) and their glyph + words come from `lib/leaderboard-render.js`. The clan's points goal judges by pace instead (`{ pace }`); a Tin Man target has no clock.
   - Players under target are listed in *Below Tin Man target* at the bottom of the page.
 - **Formats** the parser reads (one parser for every event below): markdown tables, tab-separated rows, CSV (`1,Name,"63,965,364"`, unquoted, or `;`-separated), and plain `rank name points` lines. Plain lines may separate name and points with `-` `–` `:` `=` `,`, end in "points"/"pts", carry markdown bold, or lead with a medal instead of a rank. Points can use any thousands separator, but only one kind per number, so a name ending in a digit keeps it (`Fiin SK 3 239,421`). In CSV the name is its own field, so `10,Fiin SK 3,239,421` reads as "Fiin SK 3" even unquoted. Lines it can't read are reported back, never dropped silently.
 

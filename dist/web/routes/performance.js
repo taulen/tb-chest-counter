@@ -35,7 +35,6 @@ function createPerformanceRouter() {
                 clanId,
                 timeframe,
                 weeklyGoal: (0, leaderboard_handler_js_1.resolveWeeklyGoalPoints)(clan),
-                goalAmberPct: clan.leaderboardGoalAmberPct,
                 weekStart: clan.weekStart,
                 rolloverUtcHour: (0, index_js_1.loadConfig)().gameDayRolloverUtcHour,
             });

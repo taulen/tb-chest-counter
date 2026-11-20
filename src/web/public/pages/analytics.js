@@ -44,9 +44,10 @@ import {
   emptyHtml, errorStateHtml, refusalText, wireRetry, asList,
 } from '../lib/ui-kit.js';
 import {
-  scaleGoalForPeriod, goalDaysForPeriod, goalWarnThreshold, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
+  scaleGoalForPeriod, goalDaysForPeriod, goalStatusClassFor, goalCellContentHtml, goalCellTitle,
+  goalKeyText, pacePointsFor, paceFractionForWindow,
 } from '../lib/leaderboard-render.js';
-import { weeklyGoalForWindow, amberRatioForWindow } from '../lib/weekly-goal.js';
+import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { readToken } from '../lib/theme.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
 import { loadGameArt, chestIconHtml, chestLabelHtml, hasChestArt } from '../lib/game-art.js';
@@ -546,9 +547,13 @@ function windowGoal() {
   return scaleGoalForPeriod(weeklyGoalForWindow(goalInfo, period, periodOffset), period);
 }
 
-/** Where amber starts for the window on screen: the clan's own percent then. */
-function windowAmberRatio() {
-  return amberRatioForWindow(goalInfo, period, periodOffset);
+/**
+ * The pace mark for the window on screen — amber is "on pace" against it, as on
+ * the Members board — or null once the window has ended (green or red only).
+ */
+function windowPacePoints(periodGoal) {
+  if (period === 'all') return null;
+  return pacePointsFor(periodGoal, paceFractionForWindow(computeGameWindow(period, periodOffset)));
 }
 
 function paceBandHtml(current) {
@@ -620,8 +625,7 @@ function contributorsCardHtml(current) {
   const all = asList(current.contributors);
   const windowDays = current.windowDays ?? windowData?.windowDays ?? null;
   const periodGoal = windowGoal();
-  const amber = windowAmberRatio();
-  const warnAt = goalWarnThreshold(periodGoal, amber);
+  const amber = { pace: windowPacePoints(periodGoal) };
 
   // "Sustained" is turning up often AND not depending on one big day. Both
   // halves are needed: five sessions can still be one real evening and four
@@ -633,7 +637,7 @@ function contributorsCardHtml(current) {
   const rows = contributorsSustainedOnly && canFilter ? all.filter(sustained) : all;
 
   const goalHint = periodGoal
-    ? `<p class="ui-sub">${t('Goal {goal} pts / member · ◐ amber from {warn} · ↓ red below', { goal: periodGoal.toLocaleString(), warn: warnAt.toLocaleString() })}</p>`
+    ? `<p class="ui-sub">${t('Goal {goal} pts / member', { goal: periodGoal.toLocaleString() })} · ${esc(goalKeyText(amber.pace))}</p>`
     : '';
 
   const minDays = windowDays ? Math.ceil(windowDays * SUSTAINED_MIN_ACTIVE_RATIO) : 0;

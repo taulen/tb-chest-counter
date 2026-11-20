@@ -15,7 +15,7 @@ import { getClanById, listGoalHistory, type Clan } from '../../data/repositories
 import type { LeaderboardEntry } from '../../models/types.js';
 import { loadConfig } from '../../config/index.js';
 import { currentGameDate, gameDateFor, gameWindow, type WeekStart } from '../../utils/game-day.js';
-import { amberPctOrDefault, weeklyGoalForDays, type WeeklyGoalStep } from '../../utils/weekly-goal.js';
+import { weeklyGoalForDays, type WeeklyGoalStep } from '../../utils/weekly-goal.js';
 
 function isValidIso(s: string | undefined): s is string {
   return !!s && !Number.isNaN(new Date(s).getTime());
@@ -100,8 +100,6 @@ export function queryLeaderboard(
  */
 export interface LeaderboardFeatures {
   goalWeeklyPoints: number | null;
-  /** Where amber starts, in percent of the goal, for the FAQ's colour answer. */
-  goalAmberPct: number;
   guards: boolean;
   might: boolean;
   goldPass: boolean;
@@ -135,7 +133,6 @@ function leaderboardFeatures(clan: Clan | null, clanId: number): LeaderboardFeat
   const rows = queryLeaderboard(clanId, { from: undefined, to: undefined, includeAllMembers: true });
   return {
     goalWeeklyPoints: resolveWeeklyGoalPoints(clan),
-    goalAmberPct: amberPctOrDefault(clan?.leaderboardGoalAmberPct),
     // Same predicates the two pages use to decide their columns.
     guards: rows.some((e) => e.guardsLevel != null),
     might: rows.some((e) => e.might != null || e.heroLevel != null),
@@ -187,17 +184,13 @@ export function resolveWeeklyGoalPoints(clan: Pick<Clan, 'leaderboardGoalEnabled
  */
 export function resolveWeeklyGoal(clan: Clan | null | undefined): {
   weeklyPoints: number | null;
-  /** Where amber starts, in percent of the goal (the clan's, or the default 66). */
-  amberPct: number;
   history: WeeklyGoalStep[];
 } {
   const weeklyPoints = resolveWeeklyGoalPoints(clan);
-  const amberPct = amberPctOrDefault(clan?.leaderboardGoalAmberPct);
-  if (!clan || weeklyPoints === null) return { weeklyPoints, amberPct, history: [] };
+  if (!clan || weeklyPoints === null) return { weeklyPoints, history: [] };
   return {
     weeklyPoints,
-    amberPct,
-    history: listGoalHistory(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints, amberPct: s.amberPct ?? null })),
+    history: listGoalHistory(clan.id).map((s) => ({ from: s.from, weeklyPoints: s.weeklyPoints })),
   };
 }
 

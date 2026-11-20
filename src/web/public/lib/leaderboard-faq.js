@@ -1,4 +1,4 @@
-// Leaderboard FAQ modal, shared by the authenticated /#leaderboard page and
+// Leaderboard FAQ modal, shared by the Members board (#members) and
 // the public share page — same reasoning as leaderboard-render.js: one
 // renderer, so the two can never explain the board differently.
 //
@@ -21,8 +21,6 @@ import { loadGameArt, chestLabelHtml } from './game-art.js';
 
 const REPO_URL = 'https://github.com/taulen/tb-chest-counter';
 
-// Mirrors GOAL_WARN_RATIO in leaderboard-render.js, as the reader sees it.
-const GOAL_WARN_PCT = 66;
 
 const fmt = (n) => Number(n).toLocaleString();
 
@@ -180,7 +178,7 @@ function timeframesAnswerHtml(rolloverHr, weekStart) {
 }
 
 function renderHowTab({ mode, rolloverHr, board, notCounted }) {
-  const { goalWeeklyPoints = null, goalAmberPct = GOAL_WARN_PCT, guards = false, might = false, goldPass = false, weekStart = 'sunday' } = board || {};
+  const { goalWeeklyPoints = null, guards = false, might = false, goldPass = false, weekStart = 'sunday' } = board || {};
   const items = [];
 
   items.push(qa(t('How are points counted?'), `<p>${t("When a member opens a crypt, defeats a monster or earns an event chest, the game posts a gift in the clan's Gifts tab saying who earned it and where it came from. The clan's scanner collects those gifts and credits each one to that member, worth the points shown on the <em>Chest points</em> tab.")}</p>`));
@@ -201,11 +199,11 @@ function renderHowTab({ mode, rolloverHr, board, notCounted }) {
   if (excluded.length) items.push(qa(t("What doesn't count?"), `<ul>${excluded.join('')}</ul>`));
 
   if (Number.isFinite(goalWeeklyPoints) && goalWeeklyPoints > 0) {
-    items.push(qa(t('What do the row colours mean?'), `<p>${tn(
+    items.push(qa(t('What do the colours mean?'), `<p>${tn(
       goalWeeklyPoints,
-      "The clan's goal is <strong>{n}</strong> point a week, scaled to the timeframe you're viewing. ✓ Green: goal reached. ◐ Amber: at least {pct}% of it. ↓ Red: below that. The symbol in front of each member's points says the same as the colour.",
-      "The clan's goal is <strong>{n}</strong> points a week, scaled to the timeframe you're viewing. ✓ Green: goal reached. ◐ Amber: at least {pct}% of it. ↓ Red: below that. The symbol in front of each member's points says the same as the colour.",
-      { n: fmt(goalWeeklyPoints), pct: goalAmberPct },
+      "The clan's goal is <strong>{n}</strong> point a week, scaled to the timeframe you're viewing. ✓ Green: goal reached. ◐ Amber: on pace — at least the share of the goal the time gone so far asks for. ↓ Red: behind that. Once a timeframe has ended there is no pace left, only the goal: green or red. The symbol beside each member's points says the same as the colour.",
+      "The clan's goal is <strong>{n}</strong> points a week, scaled to the timeframe you're viewing. ✓ Green: goal reached. ◐ Amber: on pace — at least the share of the goal the time gone so far asks for. ↓ Red: behind that. Once a timeframe has ended there is no pace left, only the goal: green or red. The symbol beside each member's points says the same as the colour.",
+      { n: fmt(goalWeeklyPoints) },
     )}</p>`));
   }
   if (guards) {

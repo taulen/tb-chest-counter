@@ -82,15 +82,8 @@ import {
   changeAuditPage,
 } from './pages/users.js';
 import {
-  renderLeaderboard,
-  setLeaderboardSort,
-  changeLeaderboardPage,
-  setPeriod,
-  changePeriodOffset,
-  navigateToLeaderboard,
-  openLeaderboardFaqModal,
-  copyLeaderboardToClipboard,
-} from './pages/leaderboard.js';
+  BOARD_PERIODS, presetMembersBoard, setMembersBoardWindow, openBoardFaq, copyBoardData,
+} from './pages/members-board.js';
 import { renderHome } from './pages/home.js';
 import {
   renderMembers,
@@ -171,9 +164,9 @@ import {
 } from './pages/admin.js';
 
 let currentPage = 'dashboard';
-// Leaderboard state moved into ./pages/leaderboard.js (sort/page) and
-// ./lib/state.js (currentPeriod / currentPeriodOffset, since the URL
-// hash router writes them).
+// The Triumphal period lives in ./lib/state.js (currentPeriod /
+// currentPeriodOffset, since the URL hash router writes them); the Members
+// board keeps its own (pages/members-board.js), preset from the URL below.
 let currentUser = null; // { id, username, role }
 // Cached game-day rollover hour in UTC. Populated from any /api/stats
 // response and used by date helpers that need to know "what is today's
@@ -424,14 +417,14 @@ if (contentEl) {
   initSortableHeaders(contentEl);
   // One handler for the page body and the header's action slot (#pageActions,
   // outside #content): a [data-action] button a page puts beside its title
-  // (Leaderboard: FAQ, Copy data) did nothing when only #content listened.
+  // (the Members board: FAQ, Copy data) did nothing when only #content listened.
   const onPageAction = async (event) => {
     const target = event.target.closest('[data-action]');
     if (!target) return;
 
     const action = target.dataset.action;
 
-    if (action === 'set-period') return setPeriod(target.dataset.period, navigateTo);
+
     if (action === 'set-chest-drill-period') return setChestDrillPeriod(target.dataset.period, navigateTo);
     if (action === 'toggle-chest-collector') {
       // Ignore clicks that land on the member link so the user can still
@@ -439,13 +432,8 @@ if (contentEl) {
       if (event.target.closest('a')) return;
       return toggleChestCollectorRow(target);
     }
-    if (action === 'leaderboard-period-prev') return changePeriodOffset(1, navigateTo);
-    if (action === 'leaderboard-period-next') return changePeriodOffset(-1, navigateTo);
-    if (action === 'leaderboard-page-prev') return changeLeaderboardPage(-1, loadPage);
-    if (action === 'leaderboard-page-next') return changeLeaderboardPage(1, loadPage);
-    if (action === 'sort-leaderboard') return setLeaderboardSort(target.dataset.sortKey, loadPage);
-    if (action === 'open-leaderboard-faq') return openLeaderboardFaqModal();
-    if (action === 'leaderboard-copy-data') return copyLeaderboardToClipboard(target);
+    if (action === 'open-leaderboard-faq') return openBoardFaq();
+    if (action === 'leaderboard-copy-data') return copyBoardData(target);
     if (action === 'sort-triumphal') return setTriumphalSort(target.dataset.sortKey, loadPage);
     if (action === 'triumphal-page-prev') return changeTriumphalPage(-1, loadPage);
     if (action === 'triumphal-page-next') return changeTriumphalPage(1, loadPage);
@@ -866,7 +854,7 @@ async function renderRoute(page, content) {
   switch (page) {
     case 'dashboard': await renderHome(content); break;
     case 'analytics': await renderAnalytics(content); break;
-    case 'leaderboard': await renderLeaderboard(content, { navigate: navigateTo }); break;
+
     case 'triumphal': {
       // A tab of My Clan with its own address (the period selector lives in
       // it): with My Clan on screen only the tab's panel changes.
@@ -905,7 +893,7 @@ async function renderRoute(page, content) {
 
 // ─── Home (#dashboard) lives in ./pages/home.js — imported above. ───
 // ─── Analytics + Chest Drill-Down moved to ./pages/analytics.js — imported above. ───
-// ─── Leaderboard moved to ./pages/leaderboard.js — imported above. ───
+// ─── The Leaderboard folded into the Members board (Nov 20 2026): pages/members-board.js. ───
 // ─── Members moved to ./pages/members.js — imported above. ───
 // ─── Sessions moved to ./pages/sessions.js — imported above. ───
 
@@ -1072,7 +1060,6 @@ async function triggerScan(scope, btn) {
 
 
 
-// Leaderboard helpers moved to ./pages/leaderboard.js — imported above.
 // Period math helpers moved to ./lib/period.js.
 
 
@@ -1080,11 +1067,33 @@ function syncRouteFromHash() {
   const { page, params } = parseHashRoute();
   currentPage = page;
 
-  // Leaderboard and Triumphal share the same period state + URL anchor
-  // scheme. URL takes precedence; if no period param is present, fall
-  // back to the persisted choice (default 'weekly') so a fresh visit
-  // honours the user's preference.
-  if (page === 'leaderboard' || page === 'triumphal') {
+  // The Members board is the clan's ranking (the Leaderboard folded into it on
+  // Nov 20 2026). A window in the URL (#members?period=weekly&week=…, the
+  // absolute anchors the board writes) opens it on that window. An old
+  // #leaderboard link — bookmarks, Discord digests, shared links — lands on the
+  // board too, on the window it named, with the address rewritten in place so
+  // Back doesn't bounce through the old route.
+  if (page === 'members' || page === 'leaderboard') {
+    const period = params.get('period');
+    const named = BOARD_PERIODS.includes(period) ? { period, offset: periodOffsetFromAnchor(period, params) } : null;
+    // An old link is a fresh landing: the board, unfiltered. Back onto the
+    // board's own address keeps its search and band unless the window moved.
+    if (page === 'leaderboard') presetMembersBoard(named ?? {});
+    else if (named) setMembersBoardWindow(named);
+    if (page === 'leaderboard') {
+      currentPage = 'members';
+      try {
+        history.replaceState(history.state, '', buildHash('members', Object.fromEntries(params)));
+      } catch { /* the board still opens; the address keeps the old route */ }
+    }
+    setCurrentPeriodOffset(0);
+    return;
+  }
+
+  // Triumphal keeps its own period state + URL anchor scheme. URL takes
+  // precedence; if no period param is present, fall back to the persisted
+  // choice (default 'weekly') so a fresh visit honours the user's preference.
+  if (page === 'triumphal') {
     const rawPeriod = params.get('period');
     const period = ['daily', 'weekly', 'monthly', 'yearly', 'all'].includes(rawPeriod)
       ? rawPeriod
@@ -1095,7 +1104,7 @@ function syncRouteFromHash() {
   }
 
   // Non-period pages don't read these, but reset offset so we don't
-  // leak a stale "two weeks ago" anchor onto the next leaderboard visit.
+  // leak a stale "two weeks ago" anchor onto the next Triumphal visit.
   // Period itself is left alone — it's the user's persisted preference.
   setCurrentPeriodOffset(0);
 }
@@ -1128,7 +1137,7 @@ function updateNavState() {
 const PAGE_SUBTITLES = {
   dashboard: t('The clan at a glance'),
   analytics: t('Trends, breakdowns and who carries the clan'),
-  leaderboard: t('Points and chests, ranked'),
+
   performance: t('Who beats their goals, and who falls short'),
   might: t('Power over time, member by member'),
   resources: t('Clan Capital donations'),
@@ -1207,7 +1216,6 @@ function navigateTo(page, params = {}) {
   window.location.hash = nextHash;
 }
 
-// navigateToLeaderboard moved to ./pages/leaderboard.js — imported above.
 
 // parseHashRoute and buildHash moved to ./lib/ui.js — imported above.
 // buildTypeSegments / fillDailySeries / formatGameDayLabel moved to

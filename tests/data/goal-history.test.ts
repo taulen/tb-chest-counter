@@ -54,14 +54,13 @@ describe('writeGoalStep', () => {
     expect(steps()).toEqual([{ from: '2026-10-04', weeklyPoints: 30_000 }]);
   });
 
-  it('records a change to the amber percent alone as a step of its own', () => {
-    writeGoalStep(getDb(), 1, '2026-10-04', 30_000, 'a');
-    writeGoalStep(getDb(), 1, '2026-10-11', 30_000, 'b', 80);
-    writeGoalStep(getDb(), 1, '2026-10-18', 30_000, 'c', 80);
-    expect(readGoalHistory(getDb(), 1).map(({ from, amberPct }) => ({ from, amberPct }))).toEqual([
-      { from: '2026-10-04', amberPct: null },
-      { from: '2026-10-11', amberPct: 80 },
-    ]);
+  it('clears a retired amber percent from a step it rewrites', () => {
+    // amber_pct (v94) is unread since amber became "on pace" (Nov 20 2026).
+    getDb().prepare(`INSERT INTO clan_goal_history (clan_id, effective_from, weekly_points, amber_pct, set_at)
+      VALUES (1, '2026-10-04', 30000, 80, 'a')`).run();
+    writeGoalStep(getDb(), 1, '2026-10-04', 35_000, 'b');
+    const row = getDb().prepare('SELECT weekly_points AS w, amber_pct AS a FROM clan_goal_history WHERE clan_id = 1').get();
+    expect(row).toEqual({ w: 35_000, a: null });
   });
 });
 

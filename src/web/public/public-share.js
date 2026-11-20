@@ -11,13 +11,14 @@
 
 import { esc, formatDate, formatCountdown } from './lib/ui.js';
 import { computeGameWindow } from './lib/period.js';
-import { weeklyGoalForWindow, amberRatioForWindow } from './lib/weekly-goal.js';
+import { weeklyGoalForWindow } from './lib/weekly-goal.js';
 import { setGameDayRolloverUtcHour, setWeekStart, getWeekStart } from './lib/state.js';
 import {
   sortLeaderboardEntries,
   leaderboardTablePartsHtml,
   copyLeaderboardData,
   leaderboardWindowLabel,
+  paceFractionForWindow,
 } from './lib/leaderboard-render.js';
 import { initLeaderboardBreakdown, breakdownNameHtml } from './lib/leaderboard-breakdown.js';
 import {
@@ -372,13 +373,15 @@ function start() {
     const pageEntries = sorted.slice(startIdx, startIdx + PAGE_SIZE);
     // The goal this window was played under, not necessarily today's.
     const goalWeeklyPoints = weeklyGoalForWindow(goalInfo, period, offset);
-    const goalWarnRatio = amberRatioForWindow(goalInfo, period, offset);
-    lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints, goalWarnRatio };
+    // Amber is "on pace" while the window runs, as on the Members board; an
+    // ended window is green or red.
+    const paceFraction = paceFractionForWindow(computeGameWindow(period, offset));
+    lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints, paceFraction };
 
-    // The signed-in Leaderboard's layout (the kit's reference page): the period
-    // scrubber, the top three, the goal line, the ranked table in a table card.
-    // The table core is the same lib/leaderboard-render.js code, so the two
-    // boards can never disagree.
+    // The period scrubber, the top three, the goal line, the ranked table in a
+    // table card — the old signed-in Leaderboard's layout, which folded into
+    // the Members board on Nov 20 2026. The goal judging is the same
+    // lib/leaderboard-render.js code the board uses, so the two never disagree.
     const { goalHintHtml, tableHtml, paginationHtml } = leaderboardTablePartsHtml({
       pageEntries,
       totalEntries: sorted.length,
@@ -394,7 +397,7 @@ function start() {
       showMight,
       showGuards,
       goalWeeklyPoints,
-      goalWarnRatio,
+      paceFraction,
       tableClass: 'ui-table',
     });
     const weekStart = getWeekStart();
@@ -622,7 +625,6 @@ function start() {
     ctEnabled = !!info.ctEnabled;
     goalInfo = {
       weeklyPoints: Number.isFinite(info.leaderboardWeeklyGoalPoints) ? info.leaderboardWeeklyGoalPoints : null,
-      amberPct: Number.isFinite(info.leaderboardGoalAmberPct) ? info.leaderboardGoalAmberPct : null,
       history: Array.isArray(info.leaderboardGoalHistory) ? info.leaderboardGoalHistory : [],
     };
     if (ctEnabled) {

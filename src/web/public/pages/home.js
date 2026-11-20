@@ -410,7 +410,7 @@ function topTile(ctx, span) {
         <span class="ui-row-n">${num(r.points)}</span>
       </li>`).join('')}</ol>`
     : `<p class="ui-copy">${esc(t('Nobody collected a chest in this timeframe.'))}</p>`;
-  return tile('top', t('Top collectors'), body, { span, link: tileLink('#leaderboard', t('Leaderboard')) });
+  return tile('top', t('Top collectors'), body, { span, link: tileLink('#members', t('Members')) });
 }
 
 /** Biggest changes in points against the period before (cut at the same point while it runs). */
