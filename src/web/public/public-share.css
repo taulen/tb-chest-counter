@@ -143,15 +143,8 @@
   animation: faq-new-pulse 1.8s ease-out infinite;
 }
 
-/* The board: the scrubber with Copy data beside it. */
-.share-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-}
-.share-toolbar .ui-period { flex: 1 1 auto; min-width: 0; }
+/* The board (lib/ranking-board.js, as on Members): Copy data sits in its head
+   line, beside the member count. */
 .share-copy { flex: none; min-height: 40px; }
 
 /* The podium cards are buttons here (they open the player's breakdown; there
@@ -180,7 +173,7 @@
   .share-prefs { width: 100%; }
   .share-pref-select { flex: 1 1 0; min-height: 44px; font-size: 16px; }
   .share-main { padding: 14px 16px 32px; }
-  .share-copy { width: 100%; min-height: 44px; }
+  .share-copy { min-height: 44px; }
   .share-podium-pic { min-width: 44px; }
 }
 /* Below ~420px the "& access" half goes, so the strip doesn't need to scroll. */

@@ -1,52 +1,53 @@
-// Members → the ranking board (redesign phase 2a, design C): every member's
-// chest points for a period as a bar against the clan's goal line and a pace
-// line, banded ✓ Reached / ◐ On pace / ↓ Behind. The roster table it replaced
-// as the default is one toggle away (pages/members.js renders it).
+// Members → the ranking board (redesign phase 2a, design C): the top three as a
+// podium, then every member's chest points for a period as a bar against the
+// clan's goal line and a pace line, banded ✓ Reached / ◐ On pace / ↓ Behind.
+// The roster table it replaced as the default is one toggle away
+// (pages/members.js renders it).
 //
 // Since Nov 20 2026 it is also THE leaderboard: the separate Leaderboard page
-// (podium + ranked table) folded into it at the clan's request, bringing the
-// Yearly timeframe, chest counts, Guards and the Gold Pass mark, and FAQ /
-// Export CSV / Copy data beside the page title. The window rides in the URL
+// folded into it at the clan's request, bringing the Year timeframe, chest
+// counts, Guards, the Gold Pass mark, the podium, and FAQ / Export CSV / Copy
+// data beside the page title. The window rides in the URL
 // (#members?period=weekly&week=…, the same absolute anchors the Leaderboard
 // used), and old #leaderboard links land here on the window they named.
 //
-// Data: /leaderboard for the window (all members, canonical rank) and for the
-// window before it (the "vs last week" delta — cut at the same point of the
-// week while this one is still running, so it compares like with like),
-// /leaderboard/goal (the goal THIS window was played under), /game/roster
-// (picture, in-game rank, "you", the city on the map) and
-// /game/clan/roster-changes (who joined or left lately).
+// The board itself is lib/ranking-board.js, shared with the public share page.
+// This page fetches and adds what only a signed-in member sees: /game/roster
+// (picture, in-game rank, might, join date, "you", burning on the map), each
+// row opening the member's profile.
 
 import { api } from '../lib/api.js';
-import { esc, memberHash, formatDateShort, formatRelativeTime, buildHash } from '../lib/ui.js';
+import { esc, memberHash, buildHash } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
-import { computeGameWindow, periodAnchorFromOffset } from '../lib/period.js';
-import {
-  scaleGoalForPeriod, formatMightCompact, goalStatusFor, pacePointsFor, paceFractionForWindow, copyLeaderboardData,
-} from '../lib/leaderboard-render.js';
+import { periodAnchorFromOffset } from '../lib/period.js';
+import { copyLeaderboardData } from '../lib/leaderboard-render.js';
 import { openLeaderboardFaq } from '../lib/leaderboard-faq.js';
-import { goldPassBadgeHtml } from '../lib/guards-format.js';
 import {
-  BANDS as KIT_BANDS, segHtml, periodScrubberHtml, wirePeriodScrubber, errorStateHtml, refusalText, wireRetry,
-  setPageActions,
+  BOARD_PERIODS, BOARD_BANDS, boardQuery, boardWindows, buildBoard, podiumHtml, summaryHtml, toolsHtml, listHtml,
+  wireBoardControls,
+} from '../lib/ranking-board.js';
+import {
+  segHtml, periodScrubberHtml, wirePeriodScrubber, errorStateHtml, refusalText, wireRetry, setPageActions,
 } from '../lib/ui-kit.js';
-import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
 import { getCurrentUser, getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
-import { gameRankName } from '../lib/game-facts.js';
 import { avatarHtml } from '../lib/avatar.js';
 
-const DAY_MS = 86_400_000;
-export const BOARD_PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
-const PERIODS = BOARD_PERIODS;
+export { BOARD_PERIODS };
 const SORTS = ['points', 'name', 'chests', 'might', 'joined'];
-const BANDS = ['all', 'ok', 'pace', 'behind'];
 const VIEW_KEY = 'tb.members.view';
-const NOTE_DAYS = 7;
-const NOTE_NAMES = 5;
 
-const state = { period: 'weekly', offset: 0, band: 'all', sort: 'points', query: '' };
+const state = { period: 'weekly', offset: 0, band: 'all', sort: 'points', reverse: false, query: '' };
 /** The last load, so search / sort / band only redraw the list. */
 let board = null;
+let rerenderPage = null;
+
+// A member opens their profile; the picture is their account's (own photo,
+// else their linked hero, else the initial).
+const LOOK = {
+  tag: 'a',
+  attrs: (r) => `href="${memberHash(r.id)}"`,
+  pic: (r, size) => avatarHtml({ username: r.name, avatar: r.avatar }, { size }),
+};
 
 /** 'board' (default) or 'table', remembered per browser. */
 export function getMembersView() {
@@ -68,8 +69,8 @@ function setMembersView(view) {
  * next draw of Members starts on the board, filtered, for that window.
  */
 export function presetMembersBoard({ band = 'all', period, offset } = {}) {
-  if (BANDS.includes(band)) state.band = band;
-  if (PERIODS.includes(period)) state.period = period;
+  if (BOARD_BANDS.includes(band)) state.band = band;
+  if (BOARD_PERIODS.includes(period)) state.period = period;
   if (Number.isInteger(offset) && offset >= 0) state.offset = offset;
   state.query = '';
   setMembersView('board');
@@ -81,7 +82,7 @@ export function presetMembersBoard({ band = 'all', period, offset } = {}) {
  * window — Back from a profile — and the band resets when the window moves.
  */
 export function setMembersBoardWindow({ period, offset }) {
-  if (!PERIODS.includes(period) || !Number.isInteger(offset) || offset < 0) return;
+  if (!BOARD_PERIODS.includes(period) || !Number.isInteger(offset) || offset < 0) return;
   if (state.period !== period || state.offset !== offset) {
     state.period = period;
     state.offset = offset;
@@ -119,24 +120,6 @@ export function wireMembersViewToggle(root, rerender) {
   }
 }
 
-const SORT_LABEL = {
-  points: () => t('Points'), name: () => t('Name'), chests: () => t('Chests'), might: () => t('Might'), joined: () => t('Joined'),
-};
-const BAND_TEXT = KIT_BANDS;
-const DELTA_LABEL = {
-  daily: { now: () => t('vs yesterday by now'), past: () => t('vs the day before') },
-  weekly: { now: () => t('vs last week by now'), past: () => t('vs the week before') },
-  monthly: { now: () => t('vs last month by now'), past: () => t('vs the month before') },
-  yearly: { now: () => t('vs last year by now'), past: () => t('vs the year before') },
-};
-
-function leaderboardQuery(from, to) {
-  const p = new URLSearchParams({ includeAll: '1' });
-  if (from) p.set('from', from);
-  if (to) p.set('to', to);
-  return `/leaderboard?${p}`;
-}
-
 /**
  * The board's window as URL params — `{ period, week: '2026-11-15' }` — the
  * absolute anchors the Leaderboard's links always used, so a copied link opens
@@ -172,23 +155,13 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
   const rolloverHr = getGameDayRolloverUtcHour();
   const weekStart = getWeekStart();
   const { period, offset } = state;
-  const win = computeGameWindow(period, offset, rolloverHr, weekStart);
-  const now = Date.now();
-  const running = !!win && offset === 0;
-  // The window before, cut at the same point while this one is still running.
-  let prevQuery = null;
-  if (win) {
-    const prev = computeGameWindow(period, offset + 1, rolloverHr, weekStart);
-    const elapsed = now - Date.parse(win.from);
-    const prevTo = running ? new Date(Math.min(Date.parse(prev.from) + elapsed, Date.parse(prev.to))).toISOString() : prev.to;
-    prevQuery = leaderboardQuery(prev.from, prevTo);
-  }
-  let [entries, prevEntries, goal, roster, changes] = await Promise.all([
-    api(leaderboardQuery(win?.from, win?.to)),
-    prevQuery ? api(prevQuery).catch(() => []) : Promise.resolve([]),
+  const windows = boardWindows({ period, offset, rolloverHr, weekStart });
+  const { win, prev } = windows;
+  let [entries, prevEntries, goal, roster] = await Promise.all([
+    api(boardQuery('/leaderboard', win?.from, win?.to)),
+    prev ? api(boardQuery('/leaderboard', prev.from, prev.to)).catch(() => null) : Promise.resolve(null),
     api('/leaderboard/goal').catch(() => null),
     api('/game/roster').catch(() => ({ members: {} })),
-    api(`/game/clan/roster-changes?limit=40`).catch(() => ({ entries: [] })),
   ]);
   // A later click (another period) already started its own draw.
   if (state.period !== period || state.offset !== offset) return;
@@ -207,80 +180,48 @@ export async function renderMembersBoard(el, { tabsHtml = '', rerender } = {}) {
     wireRetry(el, () => renderMembersBoard(el, { tabsHtml, rerender }));
     return;
   }
-  if (!Array.isArray(prevEntries)) prevEntries = [];
+  if (!Array.isArray(prevEntries)) prevEntries = null;
 
-  const weekly = period === 'all' ? null : weeklyGoalForWindow(goal, period, offset, rolloverHr, weekStart);
-  const goalPts = period === 'all' ? null : scaleGoalForPeriod(weekly, period, weekStart);
-  // The pace mark, the same one the share board, Analytics and the profile
-  // colour by (lib/leaderboard-render.js); null once the window has ended.
-  const paceFraction = running ? paceFractionForWindow(win, now) : null;
-  const pacePts = pacePointsFor(goalPts, paceFraction);
-
-  const prevByMember = new Map((prevEntries || []).map((e) => [e.memberId, e.totalPoints || 0]));
   const game = roster?.members || {};
-  const rows = (entries || []).map((e) => {
-    const g = game[e.memberId] || {};
-    const points = e.totalPoints || 0;
-    // An ended window has no pace: below the goal there is "behind".
-    const status = goalStatusFor(points, goalPts, { pace: pacePts });
-    const band = !status ? null : status === 'low' ? 'behind' : status;
-    return {
-      id: e.memberId,
-      name: e.memberName,
-      rank: e.rank,
-      points,
-      chests: e.totalChests || 0,
-      delta: win ? points - (prevByMember.get(e.memberId) || 0) : null,
-      band,
-      might: g.might ?? e.might ?? null,
-      guards: e.guardsLevel ?? null,
-      goldPass: e.goldPass ?? null,
-      role: g.role ?? null,
-      joinedAt: g.joinedAt ? g.joinedAt * 1000 : null,
-      burning: g.burning === true,
-      mapSeenAt: g.mapSeenAt ?? null,
-      isYou: g.isYou === true,
-      avatar: g.avatar ?? null,
-    };
+  board = buildBoard({
+    entries, prevEntries, goal, period, offset, rolloverHr, weekStart, windows,
+    extra: (e) => {
+      const g = game[e.memberId] || {};
+      return {
+        might: g.might ?? e.might ?? null,
+        role: g.role ?? null,
+        joinedAt: g.joinedAt ? g.joinedAt * 1000 : null,
+        burning: g.burning === true,
+        isYou: g.isYou === true,
+        avatar: g.avatar ?? null,
+      };
+    },
   });
-
-  board = {
-    el, rows, goalPts, pacePts, running, win, rerender,
-    // For Copy data: every member in rank order, with the goal and pace the
-    // rows were judged by.
-    copy: { entries, period, offset, rolloverHr, goalWeeklyPoints: weekly, paceFraction },
-    // With a goal the bar spans up to twice it, so one runaway total doesn't
-    // squash everyone else's bar to a sliver (the number shows the real total).
-    scaleMax: goalPts
-      ? Math.max(goalPts * 1.25, Math.min(Math.max(...rows.map((r) => r.points), 0), goalPts * 2))
-      : Math.max(...rows.map((r) => r.points), 1),
-    changes: Array.isArray(changes?.entries) ? changes.entries : [],
-  };
+  rerenderPage = rerender;
 
   el.innerHTML = `${tabsHtml}<section class="mboard" aria-label="${esc(t('Ranking board'))}">
-    ${headHtml(rows.length)}
-    ${periodScrubberHtml({ periods: PERIODS, period: state.period, offset: state.offset, rolloverHr, weekStart, win: board.win })}
-    ${notesHtml()}
-    ${summaryHtml()}
-    <div class="mboard-tools">
-      <label class="mboard-search"><span class="visually-hidden">${t('Find a member')}</span>
-        <input type="search" id="membersBoardSearch" class="input" placeholder="${esc(t('Find a member'))}" value="${esc(state.query)}" autocomplete="off"></label>
-      <div class="mboard-sort" role="group" aria-label="${esc(t('Sort by'))}">
-        <span class="ui-eyebrow" aria-hidden="true">${t('Sort by')}</span>
-        ${SORTS.map((s) => `<button type="button" class="ui-chip${state.sort === s ? ' is-active' : ''}" aria-pressed="${state.sort === s}" data-mb-sort="${s}">${SORT_LABEL[s]()}</button>`).join('')}
-      </div>
-      ${/* The phone's sort: one compact select beside the search (style.css swaps them). */''}
-      <label class="mboard-sort-pick" title="${esc(t('Sort by'))}">
-        <span class="mboard-sort-icon" aria-hidden="true">⇅</span><span class="visually-hidden">${t('Sort by')}</span>
-        <select class="input" data-mb-sort-select>
-          ${SORTS.map((s) => `<option value="${s}"${state.sort === s ? ' selected' : ''}>${SORT_LABEL[s]()}</option>`).join('')}
-        </select>
-      </label>
-    </div>
-    <div data-mb-list>${listHtml()}</div>
+    ${headHtml(board.rows.length)}
+    ${periodScrubberHtml({ periods: BOARD_PERIODS, period, offset, rolloverHr, weekStart, win })}
+    ${podiumHtml(board, LOOK)}
+    ${summaryHtml(board, state)}
+    ${toolsHtml(state, SORTS)}
+    <div data-mb-list>${listHtml(board, state, LOOK, { pinned: pinnedRows() })}</div>
   </section>`;
-  setPageActions(pageActionsHtml(`/api${leaderboardQuery(win?.from, win?.to)}&format=csv`, rows.length > 0));
+  setPageActions(pageActionsHtml(`/api${boardQuery('/leaderboard', win?.from, win?.to)}&format=csv`, board.rows.length > 0));
   wire(el);
+}
+
+/** Every one of your players (alts, v130), in board order, pinned on top for a member. */
+function pinnedRows() {
+  return getCurrentUser()?.role === 'user' ? board.rows.filter((r) => r.isYou) : [];
+}
+
+/** The page header already says "Members": this line is the count + the view toggle. */
+function headHtml(count) {
+  return `<div class="mboard-head">
+      <p class="mboard-sub">${tn(count, '{n} member', '{n} members', { n: count })}<span class="mboard-hint"> · ${t('select a member for their profile')}</span></p>
+      ${membersViewToggleHtml('board')}
+    </div>`;
 }
 
 /**
@@ -316,165 +257,13 @@ export function copyBoardData(btn) {
   if (board?.copy) return copyLeaderboardData(btn, board.copy);
 }
 
-/** The page header already says "Members": this line is the count + the view toggle. */
-function headHtml(count) {
-  return `<div class="mboard-head">
-      <p class="mboard-sub">${tn(count, '{n} member', '{n} members', { n: count })}<span class="mboard-hint"> · ${t('select a member for their profile')}</span></p>
-      ${membersViewToggleHtml('board')}
-    </div>`;
-}
-
-/** Plain facts, never alerts: who burns on the map, who joined, who left. */
-function notesHtml() {
-  const lines = [];
-  const names = (list) => {
-    const shown = list.slice(0, NOTE_NAMES).join(', ');
-    return list.length > NOTE_NAMES ? t('{names} and {n} more', { names: shown, n: list.length - NOTE_NAMES }) : shown;
-  };
-  const burning = board.rows.filter((r) => r.burning);
-  if (burning.length) {
-    const seen = burning.map((r) => r.mapSeenAt).filter(Boolean).sort().pop();
-    lines.push(`<li><span aria-hidden="true">🔥</span> ${t('Burning on the map: {names}', { names: esc(names(burning.map((r) => r.name))) })}${seen ? ` <span class="ui-note-when">· ${esc(t('map read {when}', { when: formatRelativeTime(seen) }))}</span>` : ''}</li>`);
-  }
-  const since = Date.now() - NOTE_DAYS * DAY_MS;
-  const recent = board.changes.filter((c) => Date.parse(c.at) >= since);
-  const fmt = (c) => `${c.name} (${formatDateShort(c.at)})`;
-  const joined = recent.filter((c) => c.kind === 'joined' || c.kind === 'returned' || c.kind === 'restored').map(fmt);
-  const left = recent.filter((c) => c.kind === 'left').map(fmt);
-  if (joined.length) lines.push(`<li><span aria-hidden="true">→</span> ${t('Joined in the last 7 days: {names}', { names: esc(names(joined)) })}</li>`);
-  if (left.length) lines.push(`<li><span aria-hidden="true">←</span> ${t('Left in the last 7 days: {names}', { names: esc(names(left)) })}</li>`);
-  return lines.length ? `<ul class="ui-notes">${lines.join('')}</ul>` : '';
-}
-
-/** The band chips with counts, and the goal / pace numbers they are measured against. */
-function summaryHtml() {
-  if (!board.goalPts) {
-    return `<p class="mboard-goal-line">${board.win ? t('No points goal is set for this clan, so the board ranks by points only.') : t('All time: ranked by points, no goal applies.')}</p>`;
-  }
-  const count = (b) => (b === 'all' ? board.rows.length : board.rows.filter((r) => r.band === b).length);
-  const bands = BANDS.filter((b) => b !== 'pace' || board.pacePts !== null);
-  const chip = (b) => {
-    const s = BAND_TEXT[b];
-    const label = s ? `<span aria-hidden="true">${s.glyph}</span> ${s.label()}` : t('All');
-    return `<button type="button" class="ui-chip ui-band-chip band-${b}${state.band === b ? ' is-active' : ''}" aria-pressed="${state.band === b}" data-mb-band="${b}">${label} <span class="ui-chip-n">${count(b)}</span></button>`;
-  };
-  const goalText = t('Goal {n}', { n: board.goalPts.toLocaleString() });
-  const pace = board.pacePts !== null
-    ? `<span class="ui-key-sep" aria-hidden="true">·</span><span class="ui-key ui-key-pace" aria-hidden="true"></span>${esc(t('pace now {n}', { n: board.pacePts.toLocaleString() }))}`
-    : '';
-  return `<div class="mboard-summary">
-      <div class="mboard-bands" role="group" aria-label="${esc(t('Show'))}">${bands.map(chip).join('')}</div>
-      <p class="mboard-goal-line"><span class="ui-key ui-key-goal" aria-hidden="true"></span>${esc(goalText)}${pace}</p>
-    </div>`;
-}
-
-function sortRows(rows) {
-  const by = {
-    points: (a, b) => a.rank - b.rank,
-    name: (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-    chests: (a, b) => b.chests - a.chests || a.rank - b.rank,
-    // Unknown sorts last, never like a zero.
-    might: (a, b) => (b.might ?? -1) - (a.might ?? -1) || a.rank - b.rank,
-    joined: (a, b) => (b.joinedAt ?? -1) - (a.joinedAt ?? -1) || a.rank - b.rank,
-  }[state.sort];
-  return [...rows].sort(by);
-}
-
-function listHtml() {
-  const q = state.query.trim().toLowerCase();
-  const shown = sortRows(board.rows.filter((r) => (state.band === 'all' || r.band === state.band) && (!q || r.name.toLowerCase().includes(q))));
-  // Every one of your players (alts, v130), in board order.
-  const pinYou = getCurrentUser()?.role === 'user' ? board.rows.filter((r) => r.isYou) : [];
-  if (!board.rows.length) return `<p class="ui-empty">${t('No members yet.')}</p>`;
-  const you = pinYou.length ? `<div class="mboard-you"><h3 class="mboard-group">${t('You')}</h3><ol class="mboard-list">${pinYou.map(rowHtml).join('')}</ol></div>` : '';
-  if (!shown.length) return `${you}<p class="ui-empty">${t('Nobody matches this filter.')}</p>`;
-  // Grouped under the band headings when ranked by points against a goal.
-  if (state.sort === 'points' && board.goalPts && state.band === 'all') {
-    const groups = ['ok', 'pace', 'behind'].map((b) => [b, shown.filter((r) => r.band === b)]).filter(([, list]) => list.length);
-    return you + groups.map(([b, list]) => `<h3 class="mboard-group band-${b}"><span aria-hidden="true">${BAND_TEXT[b].glyph}</span> ${BAND_TEXT[b].label()} <span class="ui-chip-n">${list.length}</span></h3>
-      <ol class="mboard-list">${list.map(rowHtml).join('')}</ol>`).join('');
-  }
-  return `${you}<ol class="mboard-list">${shown.map(rowHtml).join('')}</ol>`;
-}
-
-function deltaHtml(r) {
-  if (r.delta === null) return '';
-  const label = DELTA_LABEL[state.period]?.[board.running ? 'now' : 'past']?.() ?? '';
-  const cls = r.delta > 0 ? 'is-up' : r.delta < 0 ? 'is-down' : 'is-flat';
-  const glyph = r.delta > 0 ? '▲' : r.delta < 0 ? '▼' : '±';
-  const n = r.delta === 0 ? '0' : Math.abs(r.delta).toLocaleString();
-  return `<span class="mboard-delta ${cls}" title="${esc(label)}"><span aria-hidden="true">${glyph}</span> ${n}<span class="visually-hidden"> ${esc(label)}</span></span>`;
-}
-
-function rowHtml(r) {
-  const pct = (v) => `${Math.min(100, (v / board.scaleMax) * 100).toFixed(2)}%`;
-  const band = r.band ? BAND_TEXT[r.band] : null;
-  // The chest count first: it is what the points are made of, and on a phone
-  // the line is cut from the end.
-  const meta = [
-    r.role ? esc(gameRankName(r.role)) : '',
-    esc(tn(r.chests, '{n} chest', '{n} chests', { n: r.chests.toLocaleString() })),
-    r.guards != null ? esc(t('G{level}', { level: r.guards })) : '',
-    r.might != null ? esc(t('{n} might', { n: formatMightCompact(r.might) })) : '',
-  ].filter(Boolean).join(' · ');
-  const marks = `${goldPassBadgeHtml(r.goldPass)}${r.isYou ? `<span class="mboard-tag is-you">${t('You')}</span>` : ''}${r.burning ? `<span class="mboard-tag is-burning"><span aria-hidden="true">🔥</span> ${t('Burning')}</span>` : ''}`;
-  return `<li class="mboard-item${r.isYou ? ' is-you' : ''}"><a class="mboard-row" href="${memberHash(r.id)}">
-      <span class="mboard-rank">#${r.rank}</span>
-      ${avatarHtml({ username: r.name, avatar: r.avatar }, { size: 'md' })}
-      <span class="mboard-who"><span class="mboard-name-line"><span class="mboard-name">${esc(r.name)}</span>${marks}</span>${meta ? `<span class="mboard-meta">${meta}</span>` : ''}</span>
-      <span class="ui-bar" aria-hidden="true">
-        <span class="ui-bar-fill${r.band ? ` band-${r.band}` : ''}" style="--w:${pct(r.points)}"></span>
-        ${board.pacePts !== null ? `<span class="ui-bar-tick is-pace" style="--x:${pct(board.pacePts)}"></span>` : ''}
-        ${board.goalPts ? `<span class="ui-bar-tick is-goal" style="--x:${pct(board.goalPts)}"></span>` : ''}
-      </span>
-      <span class="mboard-pts"><span class="mboard-pts-n">${r.points.toLocaleString()}</span><span class="visually-hidden"> ${t('points')}</span>${deltaHtml(r)}</span>
-      <span class="ui-band${r.band ? ` band-${r.band}` : ''}">${band ? `<span aria-hidden="true">${band.glyph}</span> ${band.label()}` : ''}</span>
-    </a></li>`;
-}
-
-function redrawList() {
-  const list = board?.el.querySelector('[data-mb-list]');
-  if (list) list.innerHTML = listHtml();
-}
-
-function redrawAll() {
-  const summary = board.el.querySelector('.mboard-summary');
-  if (summary) summary.outerHTML = summaryHtml();
-  for (const b of board.el.querySelectorAll('[data-mb-sort]')) {
-    const on = b.dataset.mbSort === state.sort;
-    b.classList.toggle('is-active', on);
-    b.setAttribute('aria-pressed', String(on));
-  }
-  const pick = board.el.querySelector('[data-mb-sort-select]');
-  if (pick && pick.value !== state.sort) pick.value = state.sort;
-  redrawList();
-}
-
 function wire(el) {
   const root = el.querySelector('.mboard');
-  wireMembersViewToggle(root, () => board.rerender?.());
-  root.addEventListener('click', (e) => {
-    const target = e.target instanceof Element ? e.target.closest('button') : null;
-    if (!target || !root.contains(target)) return;
-    if (target.dataset.mbSort) {
-      state.sort = target.dataset.mbSort;
-      redrawAll();
-    } else if (target.dataset.mbBand) {
-      state.band = target.dataset.mbBand;
-      redrawAll();
-    }
-  });
-  const redraw = () => renderMembersBoard(el, { tabsHtml: el.querySelector('.view-tabs')?.outerHTML ?? '', rerender: board.rerender });
+  wireMembersViewToggle(root, () => rerenderPage?.());
+  wireBoardControls(root, { state, sorts: SORTS, get: () => ({ board, look: LOOK, pinned: pinnedRows() }) });
+  const redraw = () => renderMembersBoard(el, { tabsHtml: el.querySelector('.view-tabs')?.outerHTML ?? '', rerender: rerenderPage });
   wirePeriodScrubber(root, {
     onPeriod: (p) => { state.period = p; state.offset = 0; state.band = 'all'; void redraw(); },
     onStep: (delta) => { state.offset = Math.max(0, state.offset + delta); state.band = 'all'; void redraw(); },
-  });
-  root.querySelector('[data-mb-sort-select]')?.addEventListener('change', (e) => {
-    state.sort = SORTS.includes(e.target.value) ? e.target.value : 'points';
-    redrawAll();
-  });
-  root.querySelector('#membersBoardSearch')?.addEventListener('input', (e) => {
-    state.query = e.target.value;
-    redrawList();
   });
 }

@@ -10,20 +10,19 @@
 //    name. It never takes the pointer (pointer-events: none), so running the
 //    mouse down the board moves it from row to row instead of parking on top of
 //    the rows below; once one is open, the next row's swaps in without waiting.
-//  - Click / tap the player's name, or Enter on it → the same overview in a
-//    modal that scrolls. That is the phone path (no hover there, and a tap
-//    anywhere else on the row still expands it — mobile-rows.js leaves buttons
-//    alone) and the keyboard path. It is also where a card too long to show in
-//    full is read: the card says so.
+//  - Click / tap the member (the board row is one button, Nov 20 2026; the
+//    podium cards too), or Enter on it → the same overview in a modal that
+//    scrolls. That is the phone path (no hover there) and the keyboard path.
+//    It is also where a card too long to show in full is read: the card says so.
 //
 // The page owns the data: `load(memberId)` fetches for the window it is
 // showing, `context(memberId)` names the member, their rank and that window,
 // and it calls reset() whenever it re-fetches the board — a scan may have added
 // chests, and the rows the card was anchored to are gone.
 //
-// The public share page uses it; the signed-in board links each name to the
-// member's profile instead, which has all of this and more. Keep the imports to
-// what that page can load (no session, no router).
+// The public share page uses it (rows from lib/ranking-board.js); the signed-in
+// board links each member to their profile instead, which has all of this and
+// more. Keep the imports to what that page can load (no session, no router).
 
 import { esc, escapeHtml, contentModal } from './ui.js';
 import { t, tn, tGame } from './i18n.js';
@@ -42,18 +41,12 @@ const TWO_COLUMN_LINES = 14;
 // The card's two-column form is ~860px; below this viewport it stays one column.
 const TWO_COLUMN_MIN_VIEWPORT = 1100;
 
-const ROW_SELECTOR = '.leaderboard-table tbody tr';
+// A board row (lib/ranking-board.js) holds one trigger: the row's own button,
+// carrying the member id the card and modal fetch by.
+const ROW_SELECTOR = '.mboard-item';
 const TRIGGER_SELECTOR = '[data-breakdown-member]';
 
 const fmt = (n) => Number(n || 0).toLocaleString();
-
-/**
- * The player cell for a board that offers the breakdown: the name as a button
- * (it opens the modal), carrying the member id the card and modal fetch by.
- */
-export function breakdownNameHtml(entry) {
-  return `<button type="button" class="lb-name-btn" data-breakdown-member="${Number(entry.memberId)}" aria-haspopup="dialog">${escapeHtml(entry.memberName)}</button>`;
-}
 
 // ─── Rendering ────────────────────────────────────────────────
 
@@ -224,8 +217,8 @@ export function initLeaderboardBreakdown(root, { load, context }) {
    */
   function place() {
     if (!card || !cardRow) return;
-    const trigger = cardRow.querySelector(TRIGGER_SELECTOR);
-    const anchor = trigger?.closest('.name-badged') || trigger || cardRow;
+    // The name block, so the card starts after the name and its marks.
+    const anchor = cardRow.querySelector('.mboard-who') || cardRow;
     const a = anchor.getBoundingClientRect();
     const r = cardRow.getBoundingClientRect();
     const viewW = document.documentElement.clientWidth;

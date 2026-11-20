@@ -10,9 +10,12 @@ two files:
 
 Reference pages: **Members board** (`pages/members-board.js`, also the clan's
 ranking since the Leaderboard page folded into it on Nov 20 2026), **Home**
-(`pages/home.js`), and for a ranked table **Triumphal** (`pages/triumphal.js`)
-or the public share page. When a page needs something the kit doesn't have,
-add it to the kit (both files, and this doc), not to the page.
+(`pages/home.js`), and for a ranked table **Triumphal** (`pages/triumphal.js`).
+The ranking board itself (podium, bars against goal and pace, bands, search,
+sort that reverses on a second click) is one build, `lib/ranking-board.js`,
+shared by the Members board and the public share page: change it there, never
+in a page. When a page needs something the kit doesn't have, add it to the kit
+(both files, and this doc), not to the page.
 
 ## Rules that apply to every page
 

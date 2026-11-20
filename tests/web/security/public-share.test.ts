@@ -310,6 +310,17 @@ describe('public share surface (anonymous, token-gated)', () => {
     });
   });
 
+  // ── the board's comparison read (its "vs last week" delta) ───────
+  describe('/leaderboard?compare=1', () => {
+    it('answers like any read but is not counted: one view of the board is one hit', async () => {
+      const board = await request(app).get('/api/public/aAaA11/leaderboard');
+      const compare = await request(app).get('/api/public/aAaA11/leaderboard?compare=1');
+      expect(compare.status).toBe(200);
+      expect(compare.body).toEqual(board.body);
+      expect(getShareLink(1, linkIdA)!.apiHitCount).toBe(1);
+    });
+  });
+
   // ── per-player breakdown: this clan's active members only ────────
   describe('/leaderboard/:memberId/breakdown', () => {
     const memberId = (clanId: number, name: string): number =>

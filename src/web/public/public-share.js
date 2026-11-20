@@ -2,25 +2,21 @@
 // No auth, no user/admin actions, no Discord, no settings — just
 // Leaderboard + (optional) ChestTracker tab.
 //
-// Leaderboard rendering, period math, sort logic and label formatting
-// all flow through the same shared lib/* modules used by the
-// authenticated app — so a fix on the auth side automatically applies
-// here too. The data path is also shared: both `/api/leaderboard` and
+// The board is the Members board's own build (lib/ranking-board.js: podium,
+// bars against the goal and pace, bands, search, sort), so a fix there
+// applies here too; a member opens their chest breakdown instead of a profile.
+// The data path is shared as well: both `/api/leaderboard` and
 // `/api/public/:token/leaderboard` go through the same chest-repo
 // `getLeaderboard()` query.
 
 import { esc, formatDate, formatCountdown } from './lib/ui.js';
 import { computeGameWindow } from './lib/period.js';
-import { weeklyGoalForWindow } from './lib/weekly-goal.js';
 import { setGameDayRolloverUtcHour, setWeekStart, getWeekStart } from './lib/state.js';
+import { copyLeaderboardData, leaderboardWindowLabel } from './lib/leaderboard-render.js';
 import {
-  sortLeaderboardEntries,
-  leaderboardTablePartsHtml,
-  copyLeaderboardData,
-  leaderboardWindowLabel,
-  paceFractionForWindow,
-} from './lib/leaderboard-render.js';
-import { initLeaderboardBreakdown, breakdownNameHtml } from './lib/leaderboard-breakdown.js';
+  BOARD_PERIODS, boardQuery, boardWindows, buildBoard, podiumHtml, summaryHtml, toolsHtml, listHtml, wireBoardControls,
+} from './lib/ranking-board.js';
+import { initLeaderboardBreakdown } from './lib/leaderboard-breakdown.js';
 import {
   renderSnapshotDetailCardHtml,
   renderShareCodeSelect,
@@ -36,8 +32,9 @@ import { periodScrubberHtml, wirePeriodScrubber, errorStateHtml, wireRetry, empt
 import { avatarHtml } from './lib/avatar.js';
 import { heroAvatarHtml } from './lib/game-facts.js';
 
-// The board's windows, as the signed-in Leaderboard offers them.
-const PERIODS = ['daily', 'weekly', 'monthly', 'yearly', 'all'];
+// The board's sorts: the Members board's, less the join date (the game roster
+// behind it is for signed-in members only).
+const SORTS = ['points', 'name', 'chests', 'might'];
 
 // Mirrors SHARE_TOKEN_REGEX on the server: a generated 6-char token OR an
 // admin-chosen vanity key (3-10 chars, a-z0-9). The server already refused to
@@ -61,7 +58,6 @@ if (!token) {
 
 function start() {
   const API = `/api/public/${token}`;
-  const PAGE_SIZE = 25;
 
   let ctEnabled = false;
   // The clan's weekly points goal and its earlier values, from /clan, in the
@@ -89,10 +85,10 @@ function start() {
     }
   })();
   let currentTab = 'leaderboard';
-  let currentPeriod = 'weekly';
-  let currentPeriodOffset = 0;
-  let currentPage = 1;
-  let leaderboardSort = { key: 'rank', dir: 'asc' };
+  // The board's window, band, sort and search (lib/ranking-board.js's state).
+  const boardState = { period: 'weekly', offset: 0, band: 'all', sort: 'points', reverse: false, query: '' };
+  // The board on screen, for the controls' in-place redraws.
+  let shareBoard = null;
   // Which ChestTracker code the tab is showing. null = the clan's live
   // one; set when the visitor picks an archived tracker.
   let selectedShareCode = null;
@@ -138,27 +134,17 @@ function start() {
     });
   }
 
-  // Action names used by the shared leaderboard renderer. The strings
-  // themselves don't matter as long as the local click handler below
-  // and the renderer agree on them — the auth app uses different
-  // strings to keep its multi-page action dispatcher unambiguous.
+  // The board's own buttons (the Copy data button, the FAQ link in the
+  // ChestTracker card); the click handler below routes them.
   const ACTIONS = {
-    setPeriod: 'set-period',
-    periodPrev: 'period-prev',
-    periodNext: 'period-next',
-    pagePrev: 'page-prev',
-    pageNext: 'page-next',
-    sort: 'sort',
     openFaq: 'open-faq',
     copyData: 'copy-data',
   };
-  // What the last leaderboard render showed, for the Copy data button.
-  let lastCopy = null;
   // The board on screen, for the per-player breakdown: which window its rows
-  // are for (a click on another period moves currentPeriod before the new rows
+  // are for (a click on another period moves the state before the new rows
   // land), and each row by member id, so the card can name the member and
   // their rank before its own fetch returns.
-  let boardWindow = { period: currentPeriod, offset: currentPeriodOffset };
+  let boardWindow = { period: boardState.period, offset: boardState.offset };
   let boardEntries = new Map();
   // Hover card + name → modal. Set up in wireEvents.
   let breakdown = null;
@@ -270,42 +256,29 @@ function start() {
     }
   }
 
-  // quiet: a background refresh — no "Loading…" swap, and a failed fetch
-  // leaves the board on screen instead of replacing it with an error.
   // Hero portraits for the podium, by member id. The board's rows carry no
   // pictures, but the breakdown answer (the hover card's) does — game art,
   // public like the board. A portrait doesn't depend on the window, so each
   // member is asked once per visit; null = asked, nobody linked.
   const portraits = new Map();
 
-  /**
-   * The top three of the window by canonical rank, whatever the table's sort:
-   * picture, name, chests, points. A card opens the player's chest breakdown,
-   * like their name in the table. Nothing when nobody has points yet.
-   */
-  function podiumHtml(entries) {
-    const top = entries.filter((e) => (e.totalPoints || 0) > 0 && e.rank <= 3).sort((a, b) => a.rank - b.rank).slice(0, 3);
-    if (!top.length) return '';
-    return `<ol class="lb-podium" aria-label="${esc(t('Top three'))}">
-        ${top.map((e) => `<li class="lb-podium-place place-${e.rank}">
-          <button type="button" class="lb-podium-card" data-breakdown-member="${Number(e.memberId)}" aria-haspopup="dialog">
-            <span class="rank rank-${e.rank} lb-podium-rank">#${e.rank}</span>
-            <span class="share-podium-pic" data-podium-pic="${Number(e.memberId)}">${podiumPicHtml(e)}</span>
-            <span class="lb-podium-who">
-              <span class="lb-podium-name">${esc(e.memberName)}</span>
-              <span class="lb-podium-sub">${esc(tn(e.totalChests || 0, '{n} chest', '{n} chests', { n: (e.totalChests || 0).toLocaleString() }))}</span>
-            </span>
-            <span class="lb-podium-pts"><span class="lb-podium-n">${(e.totalPoints || 0).toLocaleString()}</span> <span class="lb-podium-unit">${esc(t('points'))}</span></span>
-          </button>
-        </li>`).join('')}
-      </ol>`;
+  /** The member's framed hero portrait when known, else their initial. */
+  function podiumPicHtml(r) {
+    const game = portraits.get(r.id);
+    return (game && heroAvatarHtml(game, 44)) || avatarHtml({ username: r.name, avatar: null }, { size: 'lg' });
   }
 
-  /** The member's framed hero portrait when known, else their initial. */
-  function podiumPicHtml(e) {
-    const game = portraits.get(e.memberId);
-    return (game && heroAvatarHtml(game, 44)) || avatarHtml({ username: e.memberName, avatar: null }, { size: 'lg' });
-  }
+  // How a member looks and opens on this board: no profile to link to here
+  // (no auth, no router), so the row and the podium card are buttons that open
+  // the player's chest breakdown, and hovering a row previews it. The podium
+  // fills in hero portraits (loadPodiumPortraits); rows keep the initial.
+  const LOOK = {
+    tag: 'button',
+    attrs: (r) => `type="button" data-breakdown-member="${Number(r.id)}" aria-haspopup="dialog"`,
+    pic: (r, size) => (size === 'lg'
+      ? `<span class="share-podium-pic" data-podium-pic="${Number(r.id)}">${podiumPicHtml(r)}</span>`
+      : avatarHtml({ username: r.name, avatar: null }, { size })),
+  };
 
   /** Fill the podium's portraits the board doesn't carry, once per member. */
   function loadPodiumPortraits(root, win) {
@@ -327,6 +300,8 @@ function start() {
     }
   }
 
+  // quiet: a background refresh — no "Loading…" swap, and a failed fetch
+  // leaves the board on screen instead of replacing it with an error.
   async function renderLeaderboard({ quiet = false } = {}) {
     const seq = ++renderSeq;
     const el = document.getElementById('content');
@@ -337,15 +312,22 @@ function start() {
     }
     // The window this render fetches, kept so the label it paints is the one
     // its numbers belong to.
-    const period = currentPeriod;
-    const offset = currentPeriodOffset;
-    const params = new URLSearchParams({ includeAll: '1' });
-    const win = computeGameWindow(period, offset);
-    if (win) { params.set('from', win.from); params.set('to', win.to); }
+    const { period, offset } = boardState;
+    const weekStart = getWeekStart();
+    const windows = boardWindows({ period, offset, rolloverHr, weekStart });
+    const { win, prev } = windows;
 
     let rows;
+    let prevRows = null;
     try {
-      rows = await fetchJson(`${API}/leaderboard?${params.toString()}`);
+      // The window before rides along for the "vs last week" delta. compare=1
+      // keeps it off the link's usage figures: one view is one read.
+      [rows, prevRows] = await Promise.all([
+        fetchJson(boardQuery(`${API}/leaderboard`, win?.from, win?.to)),
+        prev
+          ? fetchJson(`${boardQuery(`${API}/leaderboard`, prev.from, prev.to)}&compare=1`).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       // A refusal can still arrive as JSON (an object where a list belongs).
       if (!Array.isArray(rows)) throw new Error('not a list');
     } catch {
@@ -362,79 +344,52 @@ function start() {
     boardEntries = new Map(rows.map((e) => [e.memberId, e]));
     breakdown?.reset();
 
-    const sorted = sortLeaderboardEntries(rows, leaderboardSort.key, leaderboardSort.dir);
-    // Whole result set, not the visible page — see the auth page's note.
-    const showMight = rows.some((e) => e.might != null || e.heroLevel != null);
-    const showGuards = rows.some((e) => e.guardsLevel != null);
-    const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-    if (currentPage > totalPages) currentPage = totalPages;
-    if (currentPage < 1) currentPage = 1;
-    const startIdx = (currentPage - 1) * PAGE_SIZE;
-    const pageEntries = sorted.slice(startIdx, startIdx + PAGE_SIZE);
-    // The goal this window was played under, not necessarily today's.
-    const goalWeeklyPoints = weeklyGoalForWindow(goalInfo, period, offset);
-    // Amber is "on pace" while the window runs, as on the Members board; an
-    // ended window is green or red.
-    const paceFraction = paceFractionForWindow(computeGameWindow(period, offset));
-    lastCopy = { entries: sorted, period, offset, rolloverHr, goalWeeklyPoints, paceFraction };
-
-    // The period scrubber, the top three, the goal line, the ranked table in a
-    // table card — the old signed-in Leaderboard's layout, which folded into
-    // the Members board on Nov 20 2026. The goal judging is the same
-    // lib/leaderboard-render.js code the board uses, so the two never disagree.
-    const { goalHintHtml, tableHtml, paginationHtml } = leaderboardTablePartsHtml({
-      pageEntries,
-      totalEntries: sorted.length,
-      currentPage,
-      totalPages,
-      period,
-      sortState: leaderboardSort,
-      pageSize: PAGE_SIZE,
-      // No member profile to link to here (no auth, no router): the name opens
-      // the player's chest breakdown instead, and hovering the row previews it.
-      playerCellHtml: breakdownNameHtml,
-      actions: ACTIONS,
-      showMight,
-      showGuards,
-      goalWeeklyPoints,
-      paceFraction,
-      tableClass: 'ui-table',
+    shareBoard = buildBoard({
+      entries: rows,
+      prevEntries: Array.isArray(prevRows) ? prevRows : null,
+      goal: goalInfo,
+      period, offset, rolloverHr, weekStart, windows,
     });
-    const weekStart = getWeekStart();
-    const copyBtn = sorted.length
+
+    // A background refresh mid-search keeps the visitor typing where they were.
+    const searching = quiet && document.activeElement?.matches?.('[data-mb-search]');
+    const copyBtn = rows.length
       ? `<button type="button" class="btn share-copy" data-action="${ACTIONS.copyData}" title="${esc(t('Copy every player in this timeframe as text'))}">${esc(t('Copy data'))}</button>`
       : '';
-    el.innerHTML = `<div class="lb share-board">
-        <div class="share-toolbar">
-          ${periodScrubberHtml({
-            periods: PERIODS, period, offset, rolloverHr, weekStart,
-            win: computeGameWindow(period, offset, rolloverHr, weekStart),
-          })}
+    el.innerHTML = `<section class="mboard share-board" aria-label="${esc(t('Ranking board'))}">
+        <div class="mboard-head">
+          <p class="mboard-sub">${tn(rows.length, '{n} member', '{n} members', { n: rows.length })}<span class="mboard-hint"> · ${t('select a member for their chests')}</span></p>
           ${copyBtn}
         </div>
-        ${podiumHtml(rows)}
-        ${goalHintHtml}
-        <div class="ui-table-card">
-          ${tableHtml}
-          ${paginationHtml}
-        </div>
-      </div>`;
-    wirePeriodScrubber(el, {
+        ${periodScrubberHtml({ periods: BOARD_PERIODS, period, offset, rolloverHr, weekStart, win })}
+        ${podiumHtml(shareBoard, LOOK)}
+        ${summaryHtml(shareBoard, boardState)}
+        ${toolsHtml(boardState, SORTS)}
+        <div data-mb-list>${listHtml(shareBoard, boardState, LOOK)}</div>
+      </section>`;
+    const root = el.querySelector('.mboard');
+    wireBoardControls(root, { state: boardState, sorts: SORTS, get: () => ({ board: shareBoard, look: LOOK, pinned: [] }) });
+    wirePeriodScrubber(root, {
       onPeriod: (p) => {
         changedTimeframe = true;
-        currentPeriod = p;
-        currentPeriodOffset = 0;
-        currentPage = 1;
+        boardState.period = p;
+        boardState.offset = 0;
+        boardState.band = 'all';
         renderLeaderboard();
       },
       onStep: (delta) => {
-        const next = currentPeriodOffset + delta;
+        const next = boardState.offset + delta;
         if (next < 0) return;
-        currentPeriodOffset = next;
-        currentPage = 1;
+        boardState.offset = next;
+        boardState.band = 'all';
         renderLeaderboard();
       },
     });
+    if (searching) {
+      const input = root.querySelector('[data-mb-search]');
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    }
     loadPodiumPortraits(el, win);
   }
 
@@ -534,11 +489,12 @@ function start() {
       renderCurrentTab();
     });
 
-    // Mobile compact-row expand/collapse (delegated; survives re-renders).
+    // Mobile compact-row expand/collapse for the ChestTracker tab's tables
+    // (delegated; survives re-renders).
     initMobileRows(document.getElementById('content'));
     initSortableHeaders(document.getElementById('content'));
 
-    // Per-player chest breakdown: hover a row, or click / tap a name. Always
+    // Per-player chest breakdown: hover a row, or click / tap a member. Always
     // for the window the board on screen was fetched for.
     breakdown = initLeaderboardBreakdown(document.getElementById('content'), {
       load: (memberId) => {
@@ -562,26 +518,11 @@ function start() {
       const target = ev.target.closest('[data-action]');
       if (!target) return;
       const action = target.dataset.action;
-      // Period changes come from the kit's scrubber (wirePeriodScrubber above).
-      if (action === ACTIONS.pagePrev) {
-        if (currentPage > 1) { currentPage -= 1; renderLeaderboard(); }
-      } else if (action === ACTIONS.pageNext) {
-        currentPage += 1;
-        renderLeaderboard();
-      } else if (action === ACTIONS.sort) {
-        const key = target.dataset.sortKey;
-        if (leaderboardSort.key === key) {
-          leaderboardSort.dir = leaderboardSort.dir === 'asc' ? 'desc' : 'asc';
-        } else {
-          leaderboardSort.key = key;
-          leaderboardSort.dir = (key === 'name' || key === 'rank') ? 'asc' : 'desc';
-        }
-        currentPage = 1;
-        renderLeaderboard();
-      } else if (action === ACTIONS.openFaq) {
+      // Period, band, sort and search are the board's own (wireBoardControls).
+      if (action === ACTIONS.openFaq) {
         openFaq();
       } else if (action === ACTIONS.copyData) {
-        if (lastCopy) copyLeaderboardData(target, lastCopy);
+        if (shareBoard?.copy) copyLeaderboardData(target, shareBoard.copy);
       }
     });
   }

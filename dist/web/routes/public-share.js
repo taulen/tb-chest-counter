@@ -285,9 +285,13 @@ function createPublicShareApiRouter(scanLoop) {
     // /api/leaderboard route, scoped to the clan that owns the token.
     // Both endpoints share queryLeaderboard() so the data, filtering and
     // re-ranking semantics stay identical.
+    //
+    // `compare=1` marks the board's second read — the window before, for its
+    // "vs last week" delta — which is NOT counted as an API hit: one view of the
+    // board is one read of the link, as it was before the delta existed.
     router.get('/:token/leaderboard', (req, res) => {
         const token = paramAsString(req.params.token);
-        const clan = resolveClan(token);
+        const clan = resolveClan(token, { countHit: req.query.compare !== '1' });
         if (!clan) {
             res.status(404).json({ error: 'Not found' });
             return;
