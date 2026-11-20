@@ -404,8 +404,18 @@ Each capture also, every cycle:
   An alt that a merge rule folds into a member another player owns is only
   marked seen there — never linked, renamed or snapshotted from the alt.
 - **reads map tiles** around members' cities (every member's own tile first,
-  then 3×3 around, capped at 60) and keeps vaults plus member-owned objects
-  (`game_map_objects`). Each tile's `[4]` lists its **cities** (43-field
+  then the ≤ 4 tiles within `VAULT_RADIUS` = 10 squares of each city — a
+  Vault of the Ancients goes up by itself within 8–10 squares of the city of
+  the player who raised it (the user, Nov 20 2026) — never cut; then the rest
+  of the 3×3 around while under 60 tiles) and keeps vaults plus member-owned
+  objects (`game_map_objects`). A vault's owner (`[9]`) is the player who
+  raised it; one vault per player per Vaultsday (the run's first day), and it
+  lives 24 h (`[10]` expiry, unix seconds) unless taken down first.
+  **Events → Ancients → Vaults** shows who raised one in the selected run —
+  vaults first seen in its window (`GET /api/tinman/vaults?from=&to=`,
+  `listRaisedVaults`), members without one, and how many vaults of players
+  outside the clan were seen nearby. A vault raised and taken down between two
+  scans is never seen. Each tile's `[4]` lists its **cities** (43-field
   records: `[0]` city id, `[2]` owner, `[3]` 2, `[4]` clan, `[13]` level,
   `[17]` `[realm,x,y]`, **`[25]` 1 = burning (walls down)**, **`[39]` true =
   shield**), confirmed by the user against the map (Nov 2026). Members' state

@@ -654,6 +654,19 @@ export function tileOf(x: number, y: number): number {
 }
 
 /**
+ * Every map tile with a square within `radius` of (x, y) (the box around it,
+ * kept on the 1000×1000 map): at most 4 tiles while the radius is under 10.5.
+ */
+export function tilesWithin(x: number, y: number, radius: number): number[] {
+  const clamp = (v: number): number => Math.min(999, Math.max(0, v));
+  const out = new Set<number>();
+  for (const cx of [clamp(x - radius), clamp(x + radius)]) {
+    for (const cy of [clamp(y - radius), clamp(y + radius)]) out.add(tileOf(cx, cy));
+  }
+  return [...out];
+}
+
+/**
  * Message 601: a city's tech levels (research + hero talents) — the city
  * record's field 17, `{techId: [techId, level]}`. Read from the field itself:
  * the first version searched the reply for a map holding tech 1215, so a

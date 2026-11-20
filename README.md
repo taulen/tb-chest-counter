@@ -122,7 +122,8 @@ that account's session over); `SCAN_PARALLEL=0` scans every clan in turn.
   who left and who was renamed.
 - **Players** — might, hero level, city level, VIP level and Gold Pass.
 - **Clan Capital ledger** — every donation and payout, by member.
-- **Vaults of the Ancients** near members' cities, on the days they exist.
+- **Vaults of the Ancients** near members' cities, on the days they exist,
+  with the player who raised each — shown on **Events → Ancients → Vaults**.
 - **The clan itself** (My Clan page) — its logo drawn from the game's own
   layers, tag and name, members against the member limit, might, wealth
   points, help points, founding date, the medals it displays, the Clan

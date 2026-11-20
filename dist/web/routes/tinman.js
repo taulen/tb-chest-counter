@@ -44,6 +44,8 @@ exports.createTinmanRouter = createTinmanRouter;
  * 1–2 for the other two). None has targets or a Tinman cadence, so those parts
  * are Ancients-only.
  *
+ * Ancients also answers GET /vaults: who raised a Vault of the Ancients.
+ *
  * Mounted at /api/tinman (Ancients) and /api/event-scores/<event> behind
  * requireAuth + requireClanContext. Reading is open to every member;
  * uploading, deleting and settling who a name is are admin-only, and every
@@ -60,6 +62,7 @@ const game_day_js_1 = require("../../utils/game-day.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
 const ancients_game_js_1 = require("../../data/ancients-game.js");
+const game_protocol_repo_js_1 = require("../../data/repositories/game-protocol-repo.js");
 const MAX_TEXT_LENGTH = 200_000;
 /** A real YYYY-MM-DD day, or null. */
 function parseDate(raw) {
@@ -172,6 +175,35 @@ function createTinmanRouter(eventKey = 'ancients') {
             maxSummons: maxRounds,
         });
     });
+    /**
+     * Vaults of the Ancients raised by the clan's players, first seen in
+     * [from, to) (ISO; either may be left out — all time). Read from the map
+     * around members' cities every scan (scheduler/game-protocol-phase.ts);
+     * vaults exist only on an Ancients run's first day. Vaults other players
+     * raised near our cities are counted, not listed. Ancients only.
+     */
+    if (ancients)
+        router.get('/vaults', (req, res) => {
+            const bound = (raw) => {
+                if (raw === undefined || raw === '')
+                    return null;
+                const ms = typeof raw === 'string' ? Date.parse(raw) : NaN;
+                return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
+            };
+            const from = bound(req.query.from);
+            const to = bound(req.query.to);
+            if (from === undefined || to === undefined) {
+                res.status(400).json({ error: 'from and to must be dates' });
+                return;
+            }
+            const vaults = (0, game_protocol_repo_js_1.listRaisedVaults)(req.clanId, from, to);
+            const raised = vaults.filter((v) => v.inClan);
+            res.json({
+                raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => v),
+                outsiders: vaults.length - raised.length,
+                since: (0, game_protocol_repo_js_1.mapReadSince)(req.clanId),
+            });
+        });
     /** Paste one summon's cumulative ranking. Re-sending a summon replaces it. */
     router.put('/:date/summons/:summon', auth_js_1.requireAdmin, async (req, res) => {
         const clanId = req.clanId;

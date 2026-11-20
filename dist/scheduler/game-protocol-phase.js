@@ -200,8 +200,16 @@ function saveCityGear(clanId, playerId, city, names, at, only) {
     }
     return changed;
 }
-/** Map tiles per cycle (members' city tiles + their neighbours). */
+/**
+ * Map tiles per cycle (members' city tiles + their neighbours). Members' own
+ * tiles and their vault reach are always read, even past this.
+ */
 const MAX_TILES_PER_CYCLE = 60;
+/**
+ * A Vault of the Ancients goes up by itself within 8–10 map squares of the
+ * city of the player who raised it (the user, Nov 20 2026).
+ */
+const VAULT_RADIUS = 10;
 const TILE_BATCH = 9;
 // Varied, short gaps between reads (utils/request-gap.ts), never one fixed tick.
 const pause = () => (0, request_gap_js_1.requestGap)(request_gap_js_1.READ_GAP[0], request_gap_js_1.READ_GAP[1]);
@@ -602,19 +610,25 @@ async function collectExtras(clanId, d, clanFrame) {
     }
     try {
         // Every member's own tile first, so the cap never drops a member's city
-        // (its shield and burning state come from it), then the tiles around.
+        // (its shield and burning state come from it); then the tiles within a
+        // vault's reach of each city (≤ 4 each), so a member's vault is always
+        // read; then the rest of the 3×3 around, for other member-owned objects.
         const own = new Set();
+        const vaultReach = new Set();
         const around = new Set();
         for (const m of d.record.members) {
             const pos = d.byId.get(m.playerId)?.position;
             if (!pos || pos[0] !== d.client.realmId)
                 continue;
             own.add((0, messages_js_1.tileOf)(pos[1], pos[2]));
+            for (const t of (0, messages_js_1.tilesWithin)(pos[1], pos[2], VAULT_RADIUS))
+                vaultReach.add(t);
             for (const dx of [-20, 0, 20])
                 for (const dy of [-20, 0, 20])
                     around.add((0, messages_js_1.tileOf)(pos[1] + dx, pos[2] + dy));
         }
-        const list = [...new Set([...own, ...around])].filter((t) => t >= 0).slice(0, Math.max(MAX_TILES_PER_CYCLE, own.size));
+        const list = [...new Set([...own, ...vaultReach, ...around])].filter((t) => t >= 0)
+            .slice(0, Math.max(MAX_TILES_PER_CYCLE, own.size + vaultReach.size));
         const memberIds = new Set(d.record.members.map((m) => m.playerId));
         const rows = [];
         const cities = new Map();

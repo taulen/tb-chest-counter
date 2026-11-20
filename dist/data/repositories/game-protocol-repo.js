@@ -21,6 +21,8 @@ exports.playersWithCaptains = playersWithCaptains;
 exports.citySnapshotPlayers = citySnapshotPlayers;
 exports.cityChangedSinceRead = cityChangedSinceRead;
 exports.saveMapObjects = saveMapObjects;
+exports.listRaisedVaults = listRaisedVaults;
+exports.mapReadSince = mapReadSince;
 exports.saveCityStatuses = saveCityStatuses;
 exports.saveRawSnapshot = saveRawSnapshot;
 exports.rawCitiesMissingData = rawCitiesMissingData;
@@ -468,6 +470,47 @@ function saveMapObjects(clanId, objects, now = new Date().toISOString()) {
         }
     })();
     return fresh;
+}
+/**
+ * Vaults of the Ancients seen on the map around the clan's cities whose first
+ * sighting falls in [from, to) — either bound may be omitted. The map object's
+ * owner is the player who raised it (one vault per player per Vaultsday, the
+ * first day of an Ancients run). Oldest sighting first.
+ */
+function listRaisedVaults(clanId, from, to) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT o.object_id, o.level, o.realm, o.x, o.y, o.owner_id, o.first_seen, o.last_seen,
+            m.id AS member_id, m.name AS member_name, gp.name AS player_name
+       FROM game_map_objects o
+       LEFT JOIN members m ON m.clan_id = o.clan_id AND m.game_player_id = o.owner_id
+       LEFT JOIN game_players gp ON gp.clan_id = o.clan_id AND gp.player_id = o.owner_id
+      WHERE o.clan_id = ? AND o.object_name LIKE '%vault%'
+        AND (? IS NULL OR o.first_seen >= ?) AND (? IS NULL OR o.first_seen < ?)
+      ORDER BY o.first_seen, o.object_id`).all(clanId, from ?? null, from ?? null, to ?? null, to ?? null);
+    return rows.map((r) => ({
+        objectId: r.object_id,
+        level: r.level,
+        realm: r.realm,
+        x: r.x,
+        y: r.y,
+        ownerId: r.owner_id,
+        memberId: r.member_id,
+        ownerName: r.member_name ?? r.player_name,
+        inClan: r.member_id !== null || r.player_name !== null,
+        firstSeen: r.first_seen,
+        lastSeen: r.last_seen,
+    }));
+}
+/**
+ * When the map around the clan's cities was first read, or null: the oldest
+ * map object or city-status row (a clan whose map never held a vault still
+ * has the latter).
+ */
+function mapReadSince(clanId) {
+    const row = (0, database_js_1.getDb)().prepare(`SELECT MIN(t) AS since FROM (
+       SELECT MIN(first_seen) AS t FROM game_map_objects WHERE clan_id = ?
+       UNION ALL SELECT MIN(changed_at) FROM game_city_status_history WHERE clan_id = ?
+     )`).get(clanId, clanId);
+    return row.since;
 }
 /**
  * Shield and burning state of member cities, as the map shows them (v112).

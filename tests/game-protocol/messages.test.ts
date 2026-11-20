@@ -12,6 +12,7 @@ import {
   parsePlayers,
   splitCityReply,
   tileOf,
+  tilesWithin,
 } from '../../src/game-protocol/messages.js';
 import { buildLoginBody, classifySitePage, loginHumanArray, parseSitePage } from '../../src/game-protocol/client.js';
 
@@ -153,6 +154,17 @@ describe('game messages', () => {
     ]);
     expect(tileOf(549, 527)).toBe(26 * 50 + 27);
     expect(tileOf(0, 0)).toBe(0);
+  });
+
+  it('lists the tiles within a vault radius of a city: at most 4, on the map', () => {
+    // Mid-tile: x 535..555 spans tiles 26 and 27; y 517..537 spans rows 25 and 26.
+    expect(tilesWithin(545, 527, 10).sort((a, b) => a - b)).toEqual([25 * 50 + 26, 25 * 50 + 27, 26 * 50 + 26, 26 * 50 + 27]);
+    // Wholly inside one tile.
+    expect(tilesWithin(550, 530, 9)).toEqual([26 * 50 + 27]);
+    // At the map's corner nothing falls off the edge (no negative or wrapped tile).
+    expect(tilesWithin(3, 4, 10).sort((a, b) => a - b)).toEqual([0]);
+    expect(tilesWithin(985, 2, 10).sort((a, b) => a - b)).toEqual([48, 49]);
+    expect(tilesWithin(999, 999, 10)).toEqual([49 * 50 + 49]);
   });
 
   it('reads cities from map tiles (312 tile [4]): shield = field 39, burning = field 25', () => {

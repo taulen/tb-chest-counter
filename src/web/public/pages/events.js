@@ -41,6 +41,7 @@ import {
 } from '../lib/period.js';
 import { formatResourceAmount, formatResourceCompact } from '../lib/resource-format.js';
 import { mountTinmanScores, prefetchTinmanScores } from './tinman-scores.js';
+import { fetchVaults, mountVaults, vaultsCount, resetVaultsPage } from './ancients-vaults.js';
 import { fetchGameStandings, mountGameStandings, renderGameRankings } from './game-standings.js';
 import {
   subTabsHtml, segHtml, periodScrubberHtml, wirePeriodScrubber, setPageActions, tileHtml,
@@ -71,8 +72,12 @@ const SCORES_EVENT_KEYS = new Set(['ancients', 'olympus', 'ragnarok', 'dark-omen
 // stays put while they step through runs, and Scores stays open on an empty
 // run (an admin about to paste day 1) — except that a Scores pick still falls
 // back to Participants on the next run that has no scores.
-let eventsViewPick = 'scores';  // 'scores' | 'participants' — the last tab clicked
+let eventsViewPick = 'scores';  // 'scores' | 'participants' | 'vaults' — the last tab clicked
 let eventsView = 'scores';      // the tab shown for the current run
+// Ancients only: who raised a Vault of the Ancients in the window
+// (pages/ancients-vaults.js) — its own view tab beside Scores and Participants.
+const VAULTS_EVENT_KEY = 'ancients';
+let vaultsData = null;
 
 let period = 'weekly';   // same game-week system as the rest of the site
 let periodOffset = 0;    // 0 = current period, 1 = previous, …
@@ -335,6 +340,8 @@ async function reload() {
   const scoresPending = SCORES_EVENT_KEYS.has(currentEventKey)
     ? prefetchTinmanScores(currentEventKey, scoresDateForSelection()).catch(() => null)
     : Promise.resolve(null);
+  const vaultsPending = currentEventKey === VAULTS_EVENT_KEY ? fetchVaults(from, to) : Promise.resolve(null);
+  resetVaultsPage();
   try {
     const [breakdown, membersRes] = await Promise.all([
       api(`/events/${encodeURIComponent(currentEventKey)}?${qs}`),
@@ -353,7 +360,10 @@ async function reload() {
   // null (couldn't tell) keeps the pick: the card shows its own load error.
   const hasScores = await scoresPending;
   gameStandings = await gamePending;
-  eventsView = eventsViewPick === 'scores' && hasScores === false && !gameStandings ? 'participants' : eventsViewPick;
+  vaultsData = await vaultsPending;
+  // A Vaults pick means Scores on an event without vaults.
+  const pick = eventsViewPick === 'vaults' && currentEventKey !== VAULTS_EVENT_KEY ? 'scores' : eventsViewPick;
+  eventsView = pick === 'scores' && hasScores === false && !gameStandings ? 'participants' : pick;
   await loadFinishReward(from, to);
   await loadEssence(from, to);
   // Run-over-run history. Independent of the selected occurrence — it is
@@ -932,6 +942,7 @@ function paint() {
   // the game covers the run (routes/tinman.ts), so no separate game card and
   // nothing folded — the card drops its paste form on its own.
   const tinmanFromGame = currentEventKey === 'ancients';
+  const hasVaults = currentEventKey === VAULTS_EVENT_KEY;
   const scoresPanel = tinmanFromGame
     ? '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'
     : `<div class="game-standings-mount"></div>${gameStandings
@@ -945,12 +956,14 @@ function paint() {
           // Essence column under Participants — "Scores" would say neither.
           { value: 'scores', label: currentEventKey === 'dark-omens' ? t('Damage') : t('Scores') },
           { value: 'participants', label: t('Participants ({count})', { count: cache.uniqueParticipants || 0 }) },
+          ...(hasVaults ? [{ value: 'vaults', label: t('Vaults ({count})', { count: vaultsCount(vaultsData) }) }] : []),
         ],
         current: eventsView,
         attr: 'ev-view',
       })}</div>
       <div class="ev-panel" data-ev-panel="scores"${eventsView === 'scores' ? '' : ' hidden'}>${scoresPanel}</div>
-      <div class="ev-panel" data-ev-panel="participants"${eventsView === 'participants' ? '' : ' hidden'}>${participantsHtml}</div>`
+      <div class="ev-panel" data-ev-panel="participants"${eventsView === 'participants' ? '' : ' hidden'}>${participantsHtml}</div>
+      ${hasVaults ? `<div class="ev-panel ev-vaults" data-ev-panel="vaults"${eventsView === 'vaults' ? '' : ' hidden'}></div>` : ''}`
     : `<div class="game-standings-mount"></div>${participantsHtml}`;
 
   // The event's own name and line, with the timeframe control beside them;
@@ -973,6 +986,7 @@ function paint() {
   wire(el);
   wireViews(el);
   if (!tinmanFromGame) mountGameStandings(el.querySelector('.game-standings-mount'), gameStandings);
+  if (hasVaults) mountVaults(el.querySelector('.ev-vaults'), { data: vaultsData, members: activeMembers, to: periodWindow().to });
   if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
       event: currentEventKey,
@@ -1014,6 +1028,7 @@ function wire(el) {
   });
 
   el.querySelectorAll('th.sortable').forEach((th) => {
+    if (th.closest('.ev-vaults')) return;  // the Vaults view sorts its own table
     th.addEventListener('click', () => {
       const key = th.dataset.sortKey;
       if (sort.key === key) {

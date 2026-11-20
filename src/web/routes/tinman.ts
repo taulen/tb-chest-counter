@@ -8,6 +8,8 @@
  * 1–2 for the other two). None has targets or a Tinman cadence, so those parts
  * are Ancients-only.
  *
+ * Ancients also answers GET /vaults: who raised a Vault of the Ancients.
+ *
  * Mounted at /api/tinman (Ancients) and /api/event-scores/<event> behind
  * requireAuth + requireClanContext. Reading is open to every member;
  * uploading, deleting and settling who a name is are admin-only, and every
@@ -30,6 +32,7 @@ import {
 import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
 import { getEventOccurrences } from '../../external/event-calendar.js';
 import { ancientsRunForDay, buildGameTinman } from '../../data/ancients-game.js';
+import { listRaisedVaults, mapReadSince } from '../../data/repositories/game-protocol-repo.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 
@@ -143,6 +146,34 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
       seasonalKingdom: skDays !== null,
       dates: tinmanRepo.listTinmanDates(clanId, 30, eventKey),
       maxSummons: maxRounds,
+    });
+  });
+
+  /**
+   * Vaults of the Ancients raised by the clan's players, first seen in
+   * [from, to) (ISO; either may be left out — all time). Read from the map
+   * around members' cities every scan (scheduler/game-protocol-phase.ts);
+   * vaults exist only on an Ancients run's first day. Vaults other players
+   * raised near our cities are counted, not listed. Ancients only.
+   */
+  if (ancients) router.get('/vaults', (req, res) => {
+    const bound = (raw: unknown): string | null | undefined => {
+      if (raw === undefined || raw === '') return null;
+      const ms = typeof raw === 'string' ? Date.parse(raw) : NaN;
+      return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
+    };
+    const from = bound(req.query.from);
+    const to = bound(req.query.to);
+    if (from === undefined || to === undefined) {
+      res.status(400).json({ error: 'from and to must be dates' });
+      return;
+    }
+    const vaults = listRaisedVaults(req.clanId!, from, to);
+    const raised = vaults.filter((v) => v.inClan);
+    res.json({
+      raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => v),
+      outsiders: vaults.length - raised.length,
+      since: mapReadSince(req.clanId!),
     });
   });
 

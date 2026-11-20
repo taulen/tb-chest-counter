@@ -5289,6 +5289,11 @@ details > table {
 .events-table th.num,
 .events-level-table th.num { text-align: right; }
 .events-level-table .col-level { width: 48%; }
+/* Ancients → Vaults (pages/ancients-vaults.js): who raised a vault. */
+.events-vaults-table { table-layout: fixed; width: 100%; }
+.events-vaults-table th.num { text-align: right; }
+.events-vaults-table col.col-num { width: 90px; }
+.events-vaults-table col.col-date { width: 170px; }
 .events-zero { color: var(--text-muted); }
 /* Header/cell markers on a column whose rule resolved to nothing. */
 .events-unresolved-mark {
@@ -5370,6 +5375,11 @@ details > table {
   .ev-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .ev-stat .ui-big { font-size: 22px; }
   .ev-views .ui-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+  /* Three views (Ancients: Scores | Participants | Vaults): each as wide as
+     its words instead of equal thirds, so a long one (ru «Сокровищницы»)
+     wraps between words rather than being cut. */
+  .ev-views .ui-seg:has(> .ui-seg-btn:nth-child(3)) { display: flex; }
+  .ev-views .ui-seg:has(> .ui-seg-btn:nth-child(3)) > .ui-seg-btn { flex: 1 1 auto; min-width: min-content; padding: 0 10px; line-height: 1.25; }
 }
 
 /* ─── Resources: per-member donated cards (member detail page) ────────────

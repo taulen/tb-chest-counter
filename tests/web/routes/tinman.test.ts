@@ -17,6 +17,7 @@ import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import * as userRepo from '../../../src/data/repositories/user-repo.js';
 import { getDb } from '../../../src/data/database.js';
 import { saveEventRead, saveEventRun, saveEventStandings } from '../../../src/data/repositories/game-event-repo.js';
+import { saveMapObjects } from '../../../src/data/repositories/game-protocol-repo.js';
 
 const DATE = '2026-10-23';
 const PASTE = '| Rank | Name | Points |\n| :--- | :--- | :--- |\n| 1 | Frostbite | 59,878,655 |\n| 2 | Stranger | 10 |';
@@ -136,6 +137,48 @@ describe('/api/tinman', () => {
     expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(200);
     const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
     expect(get.body.summons).toEqual([]);
+  });
+
+  describe('vaults raised', () => {
+    const FROST_ID = 4599909974049;
+    const ROSTER_ONLY = 4599909974050;  // in the clan's roster, no member row linked
+    const OUTSIDER = 4599909979999;
+    const vault = (objectId: number, ownerId: number, level: number) => ({
+      objectId, type: 150300 + level, name: 'Vault of the Ancients', level, realm: 7, x: 544, y: 534, ownerId, expiresAt: 1794936330,
+    });
+
+    beforeEach(() => {
+      const db = getDb();
+      db.prepare('UPDATE members SET game_player_id = ? WHERE id = ?').run(FROST_ID, frost);
+      db.prepare(
+        `INSERT INTO game_players (clan_id, player_id, name, first_seen, last_seen) VALUES (1, ?, 'Roster Only', '2026-11-01', '2026-11-01')`,
+      ).run(ROSTER_ONLY);
+      saveMapObjects(1, [vault(1, FROST_ID, 29), vault(2, ROSTER_ONLY, 24), vault(3, OUTSIDER, 34)], '2026-11-16T18:00:00.000Z');
+      saveMapObjects(1, [{ ...vault(4, 777, 0), name: 'Mimic Chest', type: 133335 }], '2026-11-16T18:00:00.000Z');
+      saveMapObjects(1, [vault(5, FROST_ID, 29)], '2026-11-22T18:00:00.000Z');  // the next run
+      saveMapObjects(2, [vault(6, FROST_ID, 39)], '2026-11-16T18:00:00.000Z');  // another clan's map
+    });
+
+    it("lists the clan's raisers in the window, counts outsiders, and leaves other objects out", async () => {
+      const get = await send('get', '/api/tinman/vaults?from=2026-11-16T17:00:00.000Z&to=2026-11-18T17:00:00.000Z', 'user1');
+      expect(get.status).toBe(200);
+      expect(get.body.raised).toMatchObject([
+        { objectId: 1, level: 29, memberId: frost, ownerName: 'Frostbite' },
+        { objectId: 2, level: 24, memberId: null, ownerName: 'Roster Only' },
+      ]);
+      expect(get.body.outsiders).toBe(1);
+      expect(get.body.since).toBe('2026-11-16T18:00:00.000Z');
+    });
+
+    it('reads all time without bounds, and refuses a bound that is not a date', async () => {
+      const all = await send('get', '/api/tinman/vaults', 'user1');
+      expect(all.body.raised.map((v: { objectId: number }) => v.objectId)).toEqual([1, 2, 5]);
+      expect((await send('get', '/api/tinman/vaults?from=soon', 'user1')).status).toBe(400);
+    });
+
+    it('is Ancients only', async () => {
+      expect((await send('get', '/api/event-scores/olympus/vaults', 'user1')).status).toBe(404);
+    });
   });
 
   describe('from the game', () => {

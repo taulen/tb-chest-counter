@@ -19,6 +19,7 @@ exports.parseCityRecord = parseCityRecord;
 exports.parseMapObjects = parseMapObjects;
 exports.parseMapCities = parseMapCities;
 exports.tileOf = tileOf;
+exports.tilesWithin = tilesWithin;
 exports.parseCityTechs = parseCityTechs;
 exports.parseEventList = parseEventList;
 exports.isEventRunning = isEventRunning;
@@ -444,6 +445,19 @@ function parseMapCities(frame) {
 /** Map tile id (20×20 squares, 50 tiles per row) holding a coordinate. */
 function tileOf(x, y) {
     return Math.floor(y / 20) * 50 + Math.floor(x / 20);
+}
+/**
+ * Every map tile with a square within `radius` of (x, y) (the box around it,
+ * kept on the 1000×1000 map): at most 4 tiles while the radius is under 10.5.
+ */
+function tilesWithin(x, y, radius) {
+    const clamp = (v) => Math.min(999, Math.max(0, v));
+    const out = new Set();
+    for (const cx of [clamp(x - radius), clamp(x + radius)]) {
+        for (const cy of [clamp(y - radius), clamp(y + radius)])
+            out.add(tileOf(cx, cy));
+    }
+    return [...out];
 }
 /**
  * Message 601: a city's tech levels (research + hero talents) — the city
