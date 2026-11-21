@@ -154,6 +154,17 @@ async function fakeScannerStatus(ctx) {
     if (json.nextScanInMs == null && !json.scanning && !json.due) json.nextScanInMs = 3659e3;
     return route.fulfill({ response: res, json });
   });
+  // And each clan's own next scan (Home's Clans tile, since every clan has
+  // its own schedule — Nov 2026): no loop, so every one came back null.
+  await ctx.route('**/api/clans/switcher', async (route) => {
+    const res = await route.fetch();
+    let json;
+    try { json = await res.json(); } catch (_) { return route.fulfill({ response: res }); }
+    for (const c of json.clans ?? []) {
+      if (c.isActive && !c.nextScanAt) c.nextScanAt = new Date(Date.now() + 3659e3).toISOString();
+    }
+    return route.fulfill({ response: res, json });
+  });
 }
 
 async function settle(page) {

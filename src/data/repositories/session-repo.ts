@@ -179,23 +179,22 @@ export function getLastCompletedSession(clanId: number): ScanSession | null {
 }
 
 /**
- * The newest `completed_at` across a set of clans (ISO string), or null if
- * none have completed a scan. Used by the scan loop's startup deferral:
- * the loop runs one global cycle over every active clan per tick, so the
- * decision to skip an immediate scan on redeploy must consider the most
- * recent completion across all of them — keying off a single clan made a
- * redeploy scan immediately whenever a different clan was scanned last.
+ * Every clan's newest COMPLETED scan (epoch ms), keyed by clan id; clans with
+ * none are absent. Seeds the scan loop's per-clan schedule on startup, so a
+ * redeploy waits out each clan's own interval instead of scanning at once.
  */
-export function getLatestCompletedAt(clanIds: number[]): string | null {
-  if (clanIds.length === 0) return null;
-  const db = getDb();
-  const placeholders = clanIds.map(() => '?').join(', ');
-  const row = db.prepare(
-    `SELECT completed_at FROM scan_sessions
-     WHERE clan_id IN (${placeholders}) AND status = ? AND completed_at IS NOT NULL
-     ORDER BY completed_at DESC LIMIT 1`,
-  ).get(...clanIds, ScanStatus.COMPLETED) as { completed_at: string } | undefined;
-  return row?.completed_at ?? null;
+export function getLastCompletedAtByClan(): Map<number, number> {
+  const rows = getDb().prepare(
+    `SELECT clan_id, MAX(completed_at) AS completed_at FROM scan_sessions
+     WHERE status = ? AND completed_at IS NOT NULL AND clan_id IS NOT NULL
+     GROUP BY clan_id`,
+  ).all(ScanStatus.COMPLETED) as Array<{ clan_id: number; completed_at: string }>;
+  const out = new Map<number, number>();
+  for (const r of rows) {
+    const ms = Date.parse(r.completed_at);
+    if (Number.isFinite(ms)) out.set(r.clan_id, ms);
+  }
+  return out;
 }
 
 /**

@@ -111,17 +111,12 @@ function createApiRouter(scanLoop) {
         res.json(stats);
     });
     // GET /api/status
-    // The next-scan countdown is scoped by role so admins of inactive
-    // clans don't see a misleading timer for a cycle that won't touch
-    // their clan:
-    //   - Superadmins always see the global cycle timer regardless of
-    //     which clan is selected in the dropdown — that timer reflects
-    //     the next sweep across every active clan.
-    //   - Regular admins see the timer only when their own clan is in
-    //     the active rotation. If their clan is inactive (or no scan is
-    //     scheduled at all), nextScanAt is null and `clanInactive` flags
-    //     it so the frontend can render a clear message instead of an
-    //     empty header.
+    // The next-scan countdown is the clan being viewed: every clan is on its
+    // own schedule (its own interval from the Clans page, else the global
+    // one), so that clan's next scan is the one that means anything here. If
+    // the clan is inactive, nextScanAt is null and `clanInactive` flags it so
+    // the frontend can render a clear message instead of an empty header. A
+    // superadmin with no clan in view sees the soonest scan of any clan.
     router.get('/status', (req, res) => {
         let nextScanAt;
         let clanInactive = false;
@@ -132,7 +127,7 @@ function createApiRouter(scanLoop) {
         // anyone below admin, and downgrade the state dot to 'idle' so
         // there's no error-styled UI either.
         const isAdminish = req.user?.role === 'admin' || isSuperadmin;
-        if (isSuperadmin) {
+        if (isSuperadmin && !req.clanId) {
             nextScanAt = scanLoop?.getNextScanAt() ?? null;
         }
         else if (req.clanId) {

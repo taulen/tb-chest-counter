@@ -18,9 +18,9 @@ const chat_commands_js_1 = require("./clans/chat-commands.js");
  * sub-routers, so it has to be set up at the level where the routes
  * live.
  */
-function createClansRouter() {
+function createClansRouter(scanLoop) {
     const router = (0, express_1.Router)();
-    router.use((0, crud_js_1.createCrudRouter)());
+    router.use((0, crud_js_1.createCrudRouter)(scanLoop));
     router.use((0, discord_js_1.createDiscordRouter)());
     router.use((0, chesttracker_js_1.createChestTrackerRouter)());
     router.use((0, leaderboard_goal_js_1.createLeaderboardGoalRouter)());

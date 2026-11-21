@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { ScanLoop } from '../../scheduler/loop.js';
 import { createCrudRouter } from './clans/crud.js';
 import { createDiscordRouter } from './clans/discord.js';
 import { createChestTrackerRouter } from './clans/chesttracker.js';
@@ -16,10 +17,10 @@ import { createChatCommandsRouter } from './clans/chat-commands.js';
  * sub-routers, so it has to be set up at the level where the routes
  * live.
  */
-export function createClansRouter(): Router {
+export function createClansRouter(scanLoop?: ScanLoop): Router {
   const router = Router();
 
-  router.use(createCrudRouter());
+  router.use(createCrudRouter(scanLoop));
   router.use(createDiscordRouter());
   router.use(createChestTrackerRouter());
   router.use(createLeaderboardGoalRouter());

@@ -32,6 +32,7 @@
 - On startup, any PENDING scan sessions from prior crashes are marked FAILED.
 - **Scans read the game directly** ([protocol-scan.ts](src/scheduler/protocol-scan.ts), Nov 2026): capture → record every gift keyed by `game_gift_id` → claim it (15013) → ledger rows keyed by `game_entry_id`. Recording comes BEFORE claiming, and a claim is permanent in-game, so a scan that fails or is aborted **keeps every chest it already saved**; the session is only rolled back when it has nothing on disk. Decide that from a DB row count (`persistedChestCount` in [scan-finalize.ts](src/scheduler/scan-finalize.ts)), never from `result.newChests`.
 - A scan-in-progress guard prevents concurrent scans.
+- **Every clan is on its own schedule** ([scan-due.ts](src/scheduler/scan-due.ts), Nov 2026): its Clans-page interval (floor 10 min, `MIN_CLAN_SCAN_INTERVAL_MINUTES`) else the global one, counted from its last scan. The timer fires for the soonest clan due; a cycle scans only the clans due by then. `getNextScanAtForClan` is one clan's next scan (headers, Home), `getNextScanAt` the soonest of all (the deploy gate). Until then `scan_interval_minutes` was stored but nothing read it.
 - Members, might/hero snapshots and departures come from the game every scan ([member-sync.ts](src/game-protocol/member-sync.ts)). The browser/OCR scanner (calibration, OCR might and resource-history captures) was removed in Nov 2026; history it recorded stays readable. The only browser left is the login bridge's.
 
 ## Read before changing that area

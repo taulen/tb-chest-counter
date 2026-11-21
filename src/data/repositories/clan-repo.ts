@@ -178,7 +178,9 @@ function rowToClan(row: Record<string, unknown>): Clan {
     shortCode,
     slug: row.slug as string,
     gameUrl: row.game_url as string,
-    scanIntervalMinutes: (row.scan_interval_minutes as number | null) ?? null,
+    scanIntervalMinutes: row.scan_interval_minutes == null
+      ? null
+      : Math.max(MIN_CLAN_SCAN_INTERVAL_MINUTES, row.scan_interval_minutes as number),
     isActive: !!(row.is_active as number),
     createdAt: row.created_at as string,
     createdBy: (row.created_by as number | null) ?? null,
@@ -344,6 +346,14 @@ export function setClanActive(id: number, active: boolean): void {
   const db = getDb();
   db.prepare('UPDATE clans SET is_active = ? WHERE id = ?').run(active ? 1 : 0, id);
 }
+
+/**
+ * The shortest scan interval a clan may have of its own. Each scan signs in to
+ * the game on the clan's scanner account, and a redeploy waits for a 5-minute
+ * gap before the next scan (scripts/deploy-when-idle.mjs): a clan scanned every
+ * 5 minutes never leaves one. Older rows below it read as the floor.
+ */
+export const MIN_CLAN_SCAN_INTERVAL_MINUTES = 10;
 
 export function setClanScanIntervalMinutes(id: number, minutes: number | null): void {
   const db = getDb();

@@ -6,7 +6,7 @@ exports.createSession = createSession;
 exports.updateSession = updateSession;
 exports.getRecentSessions = getRecentSessions;
 exports.getLastCompletedSession = getLastCompletedSession;
-exports.getLatestCompletedAt = getLatestCompletedAt;
+exports.getLastCompletedAtByClan = getLastCompletedAtByClan;
 exports.getFirstCompletedAtOrAfter = getFirstCompletedAtOrAfter;
 exports.getSessionById = getSessionById;
 exports.getSessionClanId = getSessionClanId;
@@ -173,22 +173,21 @@ function getLastCompletedSession(clanId) {
     return row ? rowToSession(row) : null;
 }
 /**
- * The newest `completed_at` across a set of clans (ISO string), or null if
- * none have completed a scan. Used by the scan loop's startup deferral:
- * the loop runs one global cycle over every active clan per tick, so the
- * decision to skip an immediate scan on redeploy must consider the most
- * recent completion across all of them — keying off a single clan made a
- * redeploy scan immediately whenever a different clan was scanned last.
+ * Every clan's newest COMPLETED scan (epoch ms), keyed by clan id; clans with
+ * none are absent. Seeds the scan loop's per-clan schedule on startup, so a
+ * redeploy waits out each clan's own interval instead of scanning at once.
  */
-function getLatestCompletedAt(clanIds) {
-    if (clanIds.length === 0)
-        return null;
-    const db = (0, database_js_1.getDb)();
-    const placeholders = clanIds.map(() => '?').join(', ');
-    const row = db.prepare(`SELECT completed_at FROM scan_sessions
-     WHERE clan_id IN (${placeholders}) AND status = ? AND completed_at IS NOT NULL
-     ORDER BY completed_at DESC LIMIT 1`).get(...clanIds, enums_js_1.ScanStatus.COMPLETED);
-    return row?.completed_at ?? null;
+function getLastCompletedAtByClan() {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT clan_id, MAX(completed_at) AS completed_at FROM scan_sessions
+     WHERE status = ? AND completed_at IS NOT NULL AND clan_id IS NOT NULL
+     GROUP BY clan_id`).all(enums_js_1.ScanStatus.COMPLETED);
+    const out = new Map();
+    for (const r of rows) {
+        const ms = Date.parse(r.completed_at);
+        if (Number.isFinite(ms))
+            out.set(r.clan_id, ms);
+    }
+    return out;
 }
 /**
  * `completed_at` (ISO) of the earliest COMPLETED scan that finished at or after

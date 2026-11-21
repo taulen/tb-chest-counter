@@ -663,11 +663,14 @@ function digestKindsFor(ctx, rollover) {
  * anyway. Two scan intervals, floored at an hour: a scan already running at
  * the rollover doesn't count, so the qualifying one can legitimately finish
  * well over one interval later. Only reached when scanning is paused or
- * keeps failing — a digest a few hours late beats one never sent.
+ * keeps failing — a digest a few hours late beats one never sent. The
+ * clan's own interval when it has one: each clan scans on its own schedule.
  */
-async function digestFallbackMs() {
+async function digestFallbackMs(clanId) {
     const { loadConfig } = await import('../config/index.js');
-    return Math.max(60 * 60 * 1000, loadConfig().scanIntervalMs * 2);
+    const { clanIntervalMs } = await import('../scheduler/scan-due.js');
+    const intervalMs = clanIntervalMs((0, clan_repo_js_1.getClanById)(clanId)?.scanIntervalMinutes ?? null, loadConfig().scanIntervalMs);
+    return Math.max(60 * 60 * 1000, intervalMs * 2);
 }
 /**
  * Queue the digest for the game day that closed at `rollover`, to be sent
@@ -699,7 +702,7 @@ async function armDigest(clanId, rollover, kinds) {
         await sendDigestsForRollover(clanId, rollover, kinds);
         return;
     }
-    const fallbackMs = await digestFallbackMs();
+    const fallbackMs = await digestFallbackMs(clanId);
     const fallbackTimer = setTimeout(() => {
         const current = clans.get(clanId);
         if (!current?.pendingDigest || current.pendingDigest.rollover.getTime() !== rollover.getTime())

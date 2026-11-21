@@ -571,14 +571,15 @@ function clansTile(ctx) {
   const byId = new Map(ctx.overview.map((o) => [o.id, o]));
   const runningIds = new Set((ctx.status?.activity?.clans ?? (ctx.status?.activity ? [ctx.status.activity] : [])).map((c) => c.clanId));
   const activeId = getCurrentUser()?.activeClan?.id ?? getCurrentUser()?.clanId ?? null;
+  // Each clan is on its own schedule (its own interval, else the global one).
   // A future time: formatRelativeTime is for the past and turned every future
   // moment into "just now" (beside a scanner card saying "in 47m").
-  const nextMs = Date.parse(ctx.status?.nextScanAt ?? '');
-  const next = runningIds.size
-    ? t('A scan cycle is running')
-    : Number.isFinite(nextMs) && nextMs > Date.now()
-      ? t('Next scan cycle in {time}', { time: timeLeftUntil(ctx.status.nextScanAt) })
-      : null;
+  const nextScan = (c) => {
+    if (!c.isActive || runningIds.has(c.id) || !c.nextScanAt) return '';
+    const ms = Date.parse(c.nextScanAt);
+    if (!Number.isFinite(ms)) return '';
+    return `<span class="ui-sub">${esc(ms > Date.now() ? t('Next scan in {time}', { time: timeLeftUntil(c.nextScanAt) }) : t('Next scan: now'))}</span>`;
+  };
   const rows = ctx.clans.map((c) => {
     const o = byId.get(c.id) || {};
     const st = c.needsReauth ? { cls: 'is-bad', glyph: '!', text: t('Needs re-authentication') }
@@ -593,14 +594,13 @@ function clansTile(ctx) {
         ${logo}
         <span class="home-clan-text">
           <span class="home-clan-name">${esc(c.name)}</span>
-          <span class="ui-sub">${c.kingdom ? `${esc(t('Kingdom #{n}', { n: c.kingdom }))} · ` : ''}${c.lastScanAt ? esc(t('Scanned {when}', { when: formatRelativeTime(c.lastScanAt) })) : esc(t('Not scanned yet'))}</span>
+          <span class="ui-sub">${c.kingdom ? `${esc(t('Kingdom #{n}', { n: c.kingdom }))} · ` : ''}${c.lastScanAt ? esc(t('Scanned {when}', { when: formatRelativeTime(c.lastScanAt) })) : esc(t('Not scanned yet'))}</span>${nextScan(c)}
         </span>
         <span class="home-clan-today"><span class="home-clan-n">${num(o.chestsToday)}</span><span class="ui-sub">${t('chests today')}</span></span>
         <span class="shell-clan-status ${st.cls}"><span aria-hidden="true">${st.glyph}</span> ${esc(st.text)}</span>
       </button></li>`;
   });
-  const body = `${next ? `<p class="ui-sub">${esc(next)}</p>` : ''}
-    <ul class="home-clans">${rows.join('')}</ul>`;
+  const body = `<ul class="home-clans">${rows.join('')}</ul>`;
   return tile('clans', t('Clans'), body, { span: 12, link: tileLink('#clans', t('Manage clans')) });
 }
 

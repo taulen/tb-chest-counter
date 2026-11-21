@@ -48,11 +48,16 @@ const logger_js_1 = require("../utils/logger.js");
 const scan_finalize_js_1 = require("./scan-finalize.js");
 const clan_scan_schedule_js_1 = require("./clan-scan-schedule.js");
 const scan_lanes_js_1 = require("./scan-lanes.js");
+const scan_due_js_1 = require("./scan-due.js");
 const log = (0, logger_js_1.childLogger)('scanner');
 /**
- * The scan scheduler. Every cycle scans every active clan straight from the
- * game's own servers (runProtocolClanScan → game-protocol-phase.ts →
- * protocol-scan.ts → chat-capture.ts). See docs/game-protocol.md.
+ * The scan scheduler. Scans read each clan straight from the game's own
+ * servers (runProtocolClanScan → game-protocol-phase.ts → protocol-scan.ts →
+ * chat-capture.ts). See docs/game-protocol.md.
+ *
+ * Every active clan is on its own schedule (scan-due.ts): its own interval
+ * from the Clans page, else the global one. The timer fires when the soonest
+ * clan is due, and that cycle scans every clan due by then.
  *
  * Clans on DIFFERENT Total Battle accounts scan at the same time; clans on
  * the same account one after another, in one lane (scan-lanes.ts), because a
@@ -68,7 +73,16 @@ class ScanLoop {
     timer = null;
     /** Browser-free login check of every active clan, every 30 min (session-check.ts). */
     sessionCheckTimer = null;
-    nextScanAt = null; // epoch ms when the next scheduled scan fires
+    /**
+     * Epoch ms the timer fires next: the soonest clan's due time. null before
+     * start() and after stop(); kept through a pause (see pause()).
+     */
+    nextScanAt = null;
+    /**
+     * Each clan's last scan, epoch ms: the end of the cycle that scanned it, or
+     * of its manual scan. Seeded from the DB on start(). Drives scan-due.ts.
+     */
+    lastScanAt = new Map();
     /**
      * Safety timer armed whenever the loop is paused. A pause is only ever
      * meant to be temporary (the login bridge pauses us while it's open),
@@ -189,33 +203,21 @@ class ScanLoop {
         void import('../game-protocol/tech-trees.js').then((m) => m.loadTechTrees()).catch((err) => {
             log.warn({ noAlert: true }, `Tech trees not available yet: ${String(err)}`);
         });
-        // If a recent successful scan exists, defer the first cycle instead of
-        // running immediately on startup. Avoids redundant scans on container
-        // redeploys when the previous scan completed within one interval.
-        //
-        // The loop runs one global cycle over every active clan per tick, so
-        // the relevant "last scan" is the newest completion across all of them.
-        // Keying off clan #1 alone made a redeploy scan immediately whenever
-        // another clan was scanned most recently — e.g. a manual scan of clan #2
-        // — even though the global countdown still had time left.
-        const activeClanIds = (0, clan_repo_js_1.listClans)({ activeOnly: true }).map((c) => c.id);
-        const clanIdsToCheck = activeClanIds.length > 0 ? activeClanIds : [this.lastClanId];
-        const lastCompletedAt = sessionRepo.getLatestCompletedAt(clanIdsToCheck);
-        if (lastCompletedAt) {
-            const elapsedMs = Date.now() - new Date(lastCompletedAt).getTime();
-            if (elapsedMs >= 0 && elapsedMs < this.config.scanIntervalMs) {
-                const remainingMs = this.config.scanIntervalMs - elapsedMs;
-                const remainingMin = Math.round(remainingMs / 60_000);
-                log.info(`Last scan across active clans completed ${Math.round(elapsedMs / 60_000)} min ago - deferring first scan by ${remainingMin} min`);
-                this.scheduleNextCycle(remainingMs);
-                return;
-            }
+        // Each clan's last completed scan anchors its schedule, so a redeploy
+        // waits out every clan's own interval instead of scanning at once; a clan
+        // whose interval has run out (or that never completed a scan) is due now.
+        for (const [clanId, at] of sessionRepo.getLastCompletedAtByClan()) {
+            if (at <= Date.now())
+                this.lastScanAt.set(clanId, at);
         }
-        // Seed the timer with an estimated next-scan time before the first
-        // cycle starts. Without this seed `getNextScanAt()` returns null for the
-        // whole first cycle and the dashboard header shows a blank countdown
-        // until scheduleNextCycle() writes the precise timestamp.
-        this.nextScanAt = Date.now() + this.config.scanIntervalMs;
+        const now = Date.now();
+        const soonest = (0, scan_due_js_1.soonestDue)(this.schedule(), now) ?? now;
+        if (soonest > now) {
+            log.info(`No clan is due yet - first scan in ${Math.round((soonest - now) / 60_000)} min`);
+            this.scheduleNextCycle(soonest - now);
+            return;
+        }
+        this.nextScanAt = now;
         await this.runCycle();
     }
     stop() {
@@ -356,16 +358,12 @@ class ScanLoop {
         if (this.running)
             return;
         this.running = true;
-        let delay;
-        if (this.nextScanAt !== null) {
-            const remaining = this.nextScanAt - Date.now();
-            // Already-overdue cycles get a short grace window so any post-
-            // login cookie/storage settling completes before we scan.
-            delay = remaining > 0 ? remaining : 5_000;
-        }
-        else {
-            delay = this.config.scanIntervalMs;
-        }
+        // Clans skipped by the pause were never marked scanned, so they are due.
+        const now = Date.now();
+        const soonest = (0, scan_due_js_1.soonestDue)(this.schedule(), now);
+        // Already-overdue scans get a short grace window so any post-login
+        // cookie/storage settling completes before we scan.
+        const delay = soonest === null ? this.config.scanIntervalMs : soonest > now ? soonest - now : 5_000;
         log.info(`Scan loop resumed (next scan in ${Math.round(delay / 60_000)} min)`);
         this.scheduleNextCycle(delay);
     }
@@ -414,45 +412,58 @@ class ScanLoop {
         return n;
     }
     /**
-     * Returns the epoch ms when the next scheduled scan will fire,
-     * or null if no scan is scheduled. Global timer — every active clan
-     * gets scanned in the same cycle, so this is the same wall-clock time
-     * for every clan that's in the rotation.
+     * Epoch ms the timer fires next — the soonest clan's scan — or null when
+     * the loop isn't scheduling. For "is any scan coming up" (the deploy gate);
+     * one clan's next scan is getNextScanAtForClan.
      */
     getNextScanAt() {
         return this.nextScanAt;
     }
     /**
-     * Per-clan view of the next-scan timer. Returns the global timer when
-     * `clanId` is in the active rotation, otherwise null. Used by
-     * `/api/status` so a regular admin whose clan has been deactivated
-     * doesn't see a misleading countdown for a scan that won't touch their
-     * clan. Superadmins should call `getNextScanAt()` directly to see the
-     * global cycle regardless of the dropdown.
+     * The rotation — every active clan, or clan #1 alone when none is active
+     * (the boot-time fallback) — with each clan's interval and last scan.
+     */
+    schedule() {
+        const active = (0, clan_repo_js_1.listClans)({ activeOnly: true });
+        const rotation = active.length > 0
+            ? active.map((c) => ({ id: c.id, minutes: c.scanIntervalMinutes }))
+            : [{ id: 1, minutes: null }];
+        return rotation.map((c) => ({
+            id: c.id,
+            intervalMs: (0, scan_due_js_1.clanIntervalMs)(c.minutes, this.config.scanIntervalMs),
+            lastScanAt: this.lastScanAt.get(c.id) ?? null,
+        }));
+    }
+    /**
+     * When one clan's next scheduled scan is due (its own interval after its
+     * last scan; in the past while it waits its turn), or null when it isn't in
+     * the active rotation or the loop isn't scheduling.
      */
     getNextScanAtForClan(clanId) {
         if (this.nextScanAt === null)
             return null;
-        const active = (0, clan_repo_js_1.listClans)({ activeOnly: true });
-        if (active.length === 0) {
-            // Boot-time fallback: runCycle defaults to clan #1 when no active
-            // clans exist. Mirror that here so the very first run still shows
-            // a countdown for the seed clan.
-            return clanId === 1 ? this.nextScanAt : null;
-        }
-        return active.some((c) => c.id === clanId) ? this.nextScanAt : null;
+        const clan = this.schedule().find((c) => c.id === clanId);
+        if (!clan)
+            return null;
+        const now = Date.now();
+        // Scanned by a cycle still running on other lanes: it counts as scanned
+        // when the cycle ends, so a full interval from now is the lower bound.
+        if (this.cycle?.attempted.has(clanId) && this.cycle.done.has(clanId))
+            return now + clan.intervalMs;
+        return (0, scan_due_js_1.dueAt)(clan, now);
     }
     /**
      * One clan's place in the schedule, for the public share page — right for
-     * every clan while a cycle runs, where the global timer is only right for
-     * the cycle as a whole. See clan-scan-schedule.ts.
+     * every clan while a cycle runs, where its due time is only right between
+     * cycles. See clan-scan-schedule.ts.
      */
     getClanScanSchedule(clanId) {
+        const clan = this.schedule().find((c) => c.id === clanId);
         return (0, clan_scan_schedule_js_1.resolveClanScanSchedule)({
             clanId,
             now: Date.now(),
             nextScanAt: this.getNextScanAtForClan(clanId),
-            intervalMs: this.config.scanIntervalMs,
+            intervalMs: clan?.intervalMs ?? this.config.scanIntervalMs,
             cycleOrder: this.cycle?.order ?? [],
             cycleDoneCount: 0,
             doneClanIds: this.cycle ? [...this.cycle.done] : [],
@@ -516,6 +527,31 @@ class ScanLoop {
         this.nextScanAt = Date.now() + delayMs;
         this.timer = setTimeout(() => { void this.runCycle(); }, delayMs);
     }
+    /**
+     * Arm the timer for the soonest clan due. Clans scanning or queued right
+     * now are left out: the end of that scan re-arms. Never under a second, so
+     * a clan that somehow stays due can't spin the loop.
+     */
+    armNext() {
+        const now = Date.now();
+        const waiting = this.schedule().filter((c) => !this.isClanScanQueuedOrRunning(c.id));
+        const soonest = (0, scan_due_js_1.soonestDue)(waiting, now);
+        if (soonest === null)
+            return;
+        this.scheduleNextCycle(Math.max(1_000, soonest - now));
+    }
+    /** Re-arm between cycles (a running cycle re-arms when it ends; a paused loop on resume). */
+    rearmIfIdle() {
+        if (this.running && !this.cycle)
+            this.armNext();
+    }
+    /**
+     * A clan's interval or active flag changed (Clans page): re-arm so the
+     * change applies now, not after the scan the timer was armed for.
+     */
+    scheduleChanged() {
+        this.rearmIfIdle();
+    }
     /** The lane a clan scans in right now. */
     laneOf(clanId) {
         return (0, scan_lanes_js_1.laneKeyFor)((0, scan_account_repo_js_1.getClanScanAccount)(clanId), this.parallel());
@@ -543,7 +579,11 @@ class ScanLoop {
             return this.scanClan(clanId, 'manual', lane);
         }).catch((err) => {
             log.warn({ noAlert: true }, `Clan #${clanId}: the scan to answer a chat request failed (the next scan answers it): ${String(err)}`);
-        }).finally(() => this.queued.delete(clanId));
+        }).finally(() => {
+            this.queued.delete(clanId);
+            // The timer left this clan out while it scanned (armNext).
+            this.rearmIfIdle();
+        });
     }
     async triggerManualScan(targetClanId) {
         const clanId = targetClanId ?? this.lastClanId;
@@ -551,15 +591,8 @@ class ScanLoop {
             log.info(`Manual scan of clan #${clanId} requested but it is already scanning or queued - rejecting`);
             return { success: false, chestsFound: 0, newChests: 0, errors: 0, giftsData: [], triumphalData: [], alreadyRunning: true };
         }
-        // Cancel any pending scheduled cycle - the manual scan replaces it,
-        // and we'll reschedule the next one for a full interval after this scan.
-        // A running cycle reschedules at its own end instead.
-        if (this.timer && !this.cycle) {
-            clearTimeout(this.timer);
-            this.timer = null;
-            this.nextScanAt = null;
-            log.info('Cleared pending scheduled scan - manual scan will replace it');
-        }
+        // Other clans keep their own schedule; this clan's next scheduled scan
+        // moves to a full interval after this one (below).
         const lane = this.laneOf(clanId);
         this.queued.add(clanId);
         let result;
@@ -578,14 +611,8 @@ class ScanLoop {
         finally {
             this.queued.delete(clanId);
         }
-        // Reschedule the next cycle to run a full interval after this manual scan
-        if (this.running && !this.cycle && !this.timer) {
-            const delay = this.stateMachine.isError()
-                ? Math.min(this.config.scanIntervalMs * 3, 1800_000)
-                : this.config.scanIntervalMs;
-            this.scheduleNextCycle(delay);
-            log.info(`Next scheduled scan in ${Math.round(delay / 60000)} minute(s)`);
-        }
+        this.lastScanAt.set(clanId, Date.now());
+        this.rearmIfIdle();
         return result;
     }
     /**
@@ -601,56 +628,44 @@ class ScanLoop {
             log.info('Manual scan-all requested but a cycle is already running - rejecting');
             return;
         }
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = null;
-            this.nextScanAt = null;
-            log.info('Cleared pending scheduled scan - manual scan-all will replace it');
-        }
         if (!this.running) {
             log.info('Manual scan-all requested but the scan loop is not running');
             return;
         }
-        // runCycle iterates active clans, scans each, and schedules the next
-        // cycle at its tail. Pass 'manual' so each per-clan scan_sessions
-        // row records the correct trigger_source — otherwise this path
-        // looked indistinguishable from a scheduled cycle in scan history.
-        await this.runCycle('manual');
+        // runCycle scans every active clan (not only the due ones), clears the
+        // pending timer and re-arms at its tail. Pass 'manual' so each per-clan
+        // scan_sessions row records the correct trigger_source — otherwise this
+        // path looked indistinguishable from a scheduled cycle in scan history.
+        await this.runCycle('manual', 'all');
     }
     getScanIntervalMs() {
         return this.config.scanIntervalMs;
     }
+    /** The global interval: every clan without one of its own. Applies at once. */
     setScanIntervalMs(nextIntervalMs) {
-        const prevIntervalMs = this.config.scanIntervalMs;
         this.config.scanIntervalMs = nextIntervalMs;
         log.info(`Scan interval updated to ${Math.round(nextIntervalMs / 1000)}s`);
-        // If there's a pending scheduled scan, recompute its fire time so the
-        // change takes effect immediately. Use the same "start" anchor (current
-        // nextScanAt - prevInterval) and add the new interval on top of that.
-        if (this.running && this.runs.size === 0 && !this.cycle && this.nextScanAt !== null && this.timer) {
-            const anchor = this.nextScanAt - prevIntervalMs; // when the last scan finished
-            const newNextAt = anchor + nextIntervalMs;
-            const remaining = Math.max(0, newNextAt - Date.now());
-            log.info(`Rescheduling next scan based on new interval: ${Math.round(remaining / 60000)} min remaining`);
-            this.scheduleNextCycle(remaining);
-        }
+        this.rearmIfIdle();
     }
     /** Scanning while any clan scans; otherwise what the last scan left behind. */
     getState() {
         return this.runs.size > 0 ? enums_js_1.AppState.SCANNING : this.stateMachine.getState();
     }
     /**
-     * One full sweep across every active clan. Called from the timer for
-     * scheduled cycles and from `triggerManualScanAllClans` when a
-     * superadmin clicks "Scan all clans". The trigger source is threaded
-     * down so the resulting scan_sessions row carries the correct
-     * `trigger_source`.
+     * One sweep: from the timer, every clan that is due (scan-due.ts); from
+     * `triggerManualScanAllClans` ("Scan all clans"), every active clan. The
+     * trigger source is threaded down so the resulting scan_sessions row
+     * carries the correct `trigger_source`. A clan already scanning or queued
+     * (a manual scan) is left out.
      *
      * Every lane walks its clans in cycle order while the lanes run side by
      * side; clans whose account is unknown run alone, after them. A manual scan
      * already queued on a lane goes first there.
+     *
+     * At the end every clan the cycle got to counts as scanned at that moment,
+     * and the timer is re-armed for the soonest clan due.
      */
-    async runCycle(triggerSource = 'scheduled') {
+    async runCycle(triggerSource = 'scheduled', scope = 'due') {
         if (!this.running)
             return;
         // A cycle is already running (e.g. "Scan All Clans" when the timer fired):
@@ -665,9 +680,17 @@ class ScanLoop {
             clearTimeout(this.timer);
             this.timer = null;
         }
-        const activeClans = (0, clan_repo_js_1.listClans)({ activeOnly: true });
-        const order = (activeClans.length > 0 ? activeClans : [{ id: 1 }]).map((c) => c.id);
-        const cycle = { order, done: new Set() };
+        const now = Date.now();
+        const schedule = this.schedule();
+        const order = (scope === 'all' ? schedule.map((c) => c.id) : (0, scan_due_js_1.dueClanIds)(schedule, now))
+            .filter((id) => !this.isClanScanQueuedOrRunning(id));
+        if (order.length === 0) {
+            // Nothing due after all (an interval was raised, a clan deactivated,
+            // or its manual scan is running): wait for the soonest clan.
+            this.armNext();
+            return;
+        }
+        const cycle = { order, done: new Set(), attempted: new Set() };
         this.cycle = cycle;
         const accounts = (0, scan_account_repo_js_1.getClanScanAccounts)();
         const plan = (0, scan_lanes_js_1.planLanes)(order, (id) => accounts.get(id) ?? null, this.parallel());
@@ -687,20 +710,23 @@ class ScanLoop {
         for (const id of plan.exclusive)
             enqueue(scan_lanes_js_1.EXCLUSIVE, id);
         await Promise.all(jobs);
-        if (this.running) {
-            // Always retry at the normal scan interval. Most failures are
-            // transient (a game server hiccup, a brief network blip) and the
-            // configured interval (typically 60-120 min) is already a gentle
-            // retry cadence. The state machine still tracks consecutive failures
-            // for visibility.
-            const errorCount = this.stateMachine.getErrorCount();
-            if (errorCount > 0) {
-                log.info(`Next scan in ${Math.round(this.config.scanIntervalMs / 60_000)} min (consecutive failures: ${errorCount})`);
-            }
-            this.scheduleNextCycle(this.config.scanIntervalMs);
-        }
+        // Every clan the cycle got to, scanned, failed or skipped for having no
+        // login, waits a full interval of its own from here, so clans on one
+        // interval stay in step. A failure retries at the normal interval too:
+        // most are transient, and the state machine still counts them. Clans a
+        // pause skipped stay due, for resume().
+        const end = Date.now();
+        for (const id of cycle.attempted)
+            this.lastScanAt.set(id, end);
         if (this.cycle === cycle)
             this.cycle = null;
+        if (this.running) {
+            const errorCount = this.stateMachine.getErrorCount();
+            this.armNext();
+            if (errorCount > 0 && this.nextScanAt !== null) {
+                log.info(`Next scan in ${Math.round((this.nextScanAt - end) / 60_000)} min (consecutive failures: ${errorCount})`);
+            }
+        }
     }
     /** One clan's turn in a cycle, on its lane. */
     async cycleScan(clanId, triggerSource, lane, cycle) {
@@ -709,6 +735,7 @@ class ScanLoop {
             // Paused (the login bridge) or stopped meanwhile: the rest of the cycle is skipped.
             if (!this.running)
                 return;
+            cycle.attempted.add(clanId);
             // A clan that has never been signed in has no session to scan with;
             // it enters the rotation once the login bridge has saved one.
             const hasLogin = this.hooks.hasLogin ? this.hooks.hasLogin(clanId) : fs_1.default.existsSync((0, clan_paths_js_1.clanStorageStatePath)(clanId));

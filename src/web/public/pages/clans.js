@@ -1145,7 +1145,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
           <div><label for="clan-name-${clan.id}">${t('Name')}</label><input id="clan-name-${clan.id}" class="input" type="text" value="${escapeHtml(clan.baseName ?? clan.name)}"></div>
           <div>
             <label>${t('Scan interval (minutes; blank = global)')}</label>
-            <input id="clan-interval-${clan.id}" class="input" type="number" min="1" value="${intervalVal}" placeholder="${intervalPlaceholder}">
+            <input id="clan-interval-${clan.id}" class="input" type="number" min="10" value="${intervalVal}" placeholder="${intervalPlaceholder}">
           </div>
           <div class="form-row-grow">
             <label>${t('Public URL (blank = global)')}</label>
@@ -1154,8 +1154,8 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
           <button class="btn" data-action="clan-rename" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         <p class="muted-copy hint-text mt-8">${t('The short code (e.g. CWB) stands in for the name where space is tight, like the scan card when several clans scan at once.')}</p>
+        <p class="muted-copy hint-text mt-8">${t('Each clan scans on its own interval, counted from its last scan. At least 10 minutes.')}</p>
         <p class="muted-copy hint-text mt-8">${t("Public URL is the domain this clan's members use. The Discord digest link and the share-link URLs below are built on it.")}</p>
-        <p class="warning-text hint-text mt-8">⚠ ${t('Leave the scan interval blank for normal operation — only override for testing.')}</p>
         ` : ''}
 
         <hr class="section-divider">

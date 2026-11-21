@@ -520,7 +520,7 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   // Multi-clan management. Superadmin CRUD + clan switcher (activate
   // endpoint) live here. Mounted before the catch-all /api router so
   // /api/clans doesn't collide with anything in api.ts.
-  app.use('/api/clans', createClansRouter());
+  app.use('/api/clans', createClansRouter(scanLoop));
 
   // The login bridge pauses the scan loop while it's open (a scan's direct
   // game login would take over the session being signed in). Wire its teardown hook so the

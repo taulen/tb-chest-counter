@@ -364,8 +364,10 @@ the time since deploy means you are not talking to the app.
 
 - Each clan is a row in the `clans` table with its own storage dirs under
   `data/clans/<id>/`, Discord settings, ChestTracker settings, share links,
-  chest point values, optional scan interval, week shape, public URL, and
-  active/needs-reauth status.
+  chest point values, optional scan interval of its own (at least 10 minutes;
+  blank = the System page's), week shape, public URL, and active/needs-reauth
+  status. Each clan is scanned on its own schedule, an interval after its
+  last scan.
 - Every clan is scanned through its own saved login, one clan at a time. One
   website account may hold logins for several clans.
 - **Roles:** `superadmin` (no clan, sees/manages all clans and users), `admin`

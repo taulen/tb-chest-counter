@@ -18,6 +18,7 @@ const auth_js_1 = require("../../middleware/auth.js");
 const logger_js_1 = require("../../../utils/logger.js");
 const _shared_js_1 = require("./_shared.js");
 const log = (0, logger_js_1.childLogger)('clans-route');
+const isoOrNull = (ms) => (ms === null ? null : new Date(ms).toISOString());
 /** `:linkId` as a positive integer, or null when the segment isn't one. */
 function parseLinkId(raw) {
     const n = Number(Array.isArray(raw) ? raw[0] : raw);
@@ -27,7 +28,7 @@ function parseLinkId(raw) {
  * Clan CRUD: list, fetch, create, rename, delete, public share-link
  * generate/disable, and the superadmin "switch active clan" route.
  */
-function createCrudRouter() {
+function createCrudRouter(scanLoop) {
     const router = (0, _shared_js_1.createClanSubRouter)();
     /**
      * List clans visible to the caller. Superadmin sees all; admin/user sees
@@ -111,6 +112,8 @@ function createCrudRouter() {
                 kingdom: info?.realm ?? null,
                 logoUrl: (0, clan_logo_js_1.clanLogoUrl)(info?.logo ?? null),
                 lastScanAt: (0, session_repo_js_1.getLastCompletedSession)(clan.id)?.completedAt ?? null,
+                // Its own schedule (Home's Clans tile); null when inactive or not scheduling.
+                nextScanAt: isoOrNull(scanLoop?.getNextScanAtForClan(clan.id) ?? null),
                 isActive: clan.isActive,
                 ...(admin ? { needsReauth: clan.needsReauth } : {}),
             };
@@ -202,6 +205,7 @@ function createCrudRouter() {
                 createdBy: req.user?.id ?? null,
             });
             (0, user_repo_js_1.logAction)(req.user.id, 'clan.create', { clanId: clan.id, name });
+            scanLoop?.scheduleChanged();
             res.status(201).json({ clan: (0, _shared_js_1.publicClan)(clan) });
         }
         catch (err) {
@@ -213,7 +217,7 @@ function createCrudRouter() {
     /**
      * Update the clan's display name + slug + game URL + scan interval.
      * Superadmin only. Renames preserve clan_id, so historical data stays
-     * attached.
+     * attached. A new interval or active flag re-arms the scan timer at once.
      */
     router.put('/:clanId', auth_js_1.requireSuperAdmin, (req, res) => {
         const id = req.parsedClanId;
@@ -246,8 +250,8 @@ function createCrudRouter() {
         if ('scanIntervalMinutes' in (req.body ?? {})) {
             const raw = req.body.scanIntervalMinutes;
             const parsed = raw === null || raw === '' ? null : Number(raw);
-            if (parsed !== null && (!Number.isFinite(parsed) || parsed < 1)) {
-                res.status(400).json({ error: 'scanIntervalMinutes must be null or a positive number' });
+            if (parsed !== null && (!Number.isFinite(parsed) || parsed < clan_repo_js_1.MIN_CLAN_SCAN_INTERVAL_MINUTES)) {
+                res.status(400).json({ error: `Scan interval: at least ${clan_repo_js_1.MIN_CLAN_SCAN_INTERVAL_MINUTES} minutes, or blank for the global default` });
                 return;
             }
             (0, clan_repo_js_1.setClanScanIntervalMinutes)(id, parsed);
@@ -263,6 +267,8 @@ function createCrudRouter() {
         if ('isActive' in (req.body ?? {})) {
             (0, clan_repo_js_1.setClanActive)(id, !!req.body.isActive);
         }
+        if ('scanIntervalMinutes' in (req.body ?? {}) || 'isActive' in (req.body ?? {}))
+            scanLoop?.scheduleChanged();
         (0, user_repo_js_1.logAction)(req.user.id, 'clan.update', { clanId: id });
         const fresh = (0, clan_repo_js_1.getClanById)(id);
         res.json({ clan: fresh ? (0, _shared_js_1.publicClan)(fresh) : null });
@@ -431,6 +437,7 @@ function createCrudRouter() {
             return;
         }
         (0, user_repo_js_1.logAction)(req.user.id, 'clan.delete', { clanId: id, soft: true });
+        scanLoop?.scheduleChanged();
         res.json({ ok: true, soft: true, name: target.name });
     });
     /** Put a soft-deleted clan back. Nothing moved, so this is the flag flip. */
@@ -447,6 +454,7 @@ function createCrudRouter() {
             return;
         }
         (0, user_repo_js_1.logAction)(req.user.id, 'clan.restore', { clanId: id });
+        scanLoop?.scheduleChanged();
         res.json({ ok: true, clanId: id, name: target.name });
     });
     /**
