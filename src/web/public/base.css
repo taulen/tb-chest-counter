@@ -95,6 +95,29 @@ html { scrollbar-gutter: stable; }
   border: 0;
 }
 
+/* ─── Links in running text ─────────────────────────────────────
+   A bare <a> — a link inside a sentence ("…paste the table from Tools →
+   Ancient planner", "see it on GitHub ↗") — is the one gold accent with a
+   quiet underline, never the browser's blue/purple. Nothing styled these
+   before, so every such link on every page fell back to the browser's
+   default colours.
+   Only class-less anchors: a link with a class is a designed component
+   (nav item, row name, button, tile) and styles itself. :where() keeps this
+   at zero specificity, so a context rule (`.shell-nav a`, `.ui-row-who a`)
+   still wins on whatever it sets. Write a new inline link as a plain
+   <a href> and it looks right; don't add a page-local colour for it. */
+:where(a:not([class])) {
+  color: var(--accent-gold);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+:where(a:not([class])):hover {
+  color: var(--accent-gold-hover);
+  text-decoration-color: currentColor;
+}
+
 /* ─── Theme tokens ──────────────────────────────────────────────
    Colors are declared once on :root (= dark, the original palette)
    and overridden in the [data-theme="light"] / [data-theme="oled"]

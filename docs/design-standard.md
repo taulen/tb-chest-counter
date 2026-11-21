@@ -236,6 +236,7 @@ hold:
 | `t('…')` with a literal; `tGame()` for game names | Build a translated string from pieces |
 | Phone first, then desktop; OLED first, then light | Design on a desktop in Dark and shrink it |
 | Links for navigation (sub-tabs, rows) | `onclick` on a div, or buttons that change the URL by hand |
+| A link in a sentence is a plain `<a href>` (base.css makes every class-less link gold with a quiet underline) | A page-local colour for an inline link, or leaving one in browser blue |
 
 ## Checking a page
 

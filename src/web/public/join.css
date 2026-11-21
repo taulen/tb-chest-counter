@@ -129,7 +129,3 @@
 .join-footer[hidden] {
   display: none;
 }
-.join-footer a {
-  color: var(--accent-gold);
-  text-underline-offset: 3px;
-}
