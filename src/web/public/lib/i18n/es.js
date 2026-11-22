@@ -903,6 +903,8 @@ export const ui = {
   "by {n} members": { one: "por {n} miembro", other: "por {n} miembros" },
   "No vault seen": "Sin bóveda vista",
   "of {n} members": { one: "de {n} miembro", other: "de {n} miembros" },
+  "Still standing": "Aún en pie",
+  "of {n} vaults": { one: "de {n} bóveda", other: "de {n} bóvedas" },
   "Vaults": "Bóvedas",
   "Page {page} of {pages}": "Página {page} de {pages}",
   "Raised by ({count})": "Levantadas por ({count})",

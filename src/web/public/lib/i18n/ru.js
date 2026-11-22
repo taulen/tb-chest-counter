@@ -903,6 +903,8 @@ export const ui = {
   "by {n} members": { one: "{n} участником", few: "{n} участниками", many: "{n} участниками", other: "{n} участниками" },
   "No vault seen": "Без сокровищницы",
   "of {n} members": { one: "из {n} участника", few: "из {n} участников", many: "из {n} участников", other: "из {n} участника" },
+  "Still standing": "Ещё стоят",
+  "of {n} vaults": { one: "из {n} сокровищницы", few: "из {n} сокровищниц", many: "из {n} сокровищниц", other: "из {n} сокровищницы" },
   "Vaults": "Сокровищницы",
   "Page {page} of {pages}": "Стр. {page} из {pages}",
   "Raised by ({count})": "Подняли ({count})",

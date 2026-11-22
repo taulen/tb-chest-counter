@@ -22,7 +22,8 @@ import { t, tn } from '../lib/i18n.js';
 
 const PAGE_SIZE = 25;
 
-let sort = { key: 'level', dir: 'desc' };
+// Opens on the ones still standing, then the most recently taken down.
+let sort = { key: 'down', dir: 'asc' };
 let page = 1;
 let noVaultOpen = false;
 
@@ -175,15 +176,19 @@ function vaultsHtml(data, members, to) {
   const raisedIds = new Set(rows.map((r) => r.memberId).filter(Boolean));
   const eligible = members.filter((m) => !to || !m.firstSeen || m.firstSeen < to);
   const without = eligible.filter((m) => !raisedIds.has(m.id));
+  // Vaults (not raisers) the newest scan still saw.
+  const standing = data.raised.filter((v) => v.standing === true).length;
 
-  const stat = (label, value, sub = '', lead = false) => `<div class="ui-tile ev-stat${lead ? ' is-lead' : ''}">
-      <span class="ui-stat-label">${esc(label)}</span>
+  const stat = (label, value, sub = '', lead = false, glyph = '') => `<div class="ui-tile ev-stat${lead ? ' is-lead' : ''}">
+      <span class="ui-stat-label">${glyph}${esc(label)}</span>
       <span class="ui-big">${value}</span>
       ${sub ? `<span class="ui-sub">${esc(sub)}</span>` : ''}
     </div>`;
   const tiles = `<div class="ev-stats">
       ${stat(t('Vaults raised'), data.raised.length.toLocaleString(), tn(rows.length, 'by {n} member', 'by {n} members'), true)}
       ${stat(t('No vault seen'), without.length.toLocaleString(), tn(eligible.length, 'of {n} member', 'of {n} members'))}
+      ${stat(t('Still standing'), standing.toLocaleString(), tn(data.raised.length, 'of {n} vault', 'of {n} vaults'), false,
+        '<span class="vault-mark is-standing" aria-hidden="true">✗</span>')}
     </div>`;
 
   const showCount = rows.some((r) => r.count > 1);

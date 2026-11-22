@@ -903,6 +903,8 @@ export const ui = {
   "by {n} members": { one: "par {n} membre", other: "par {n} membres" },
   "No vault seen": "Aucune Chambre Forte vue",
   "of {n} members": { one: "sur {n} membre", other: "sur {n} membres" },
+  "Still standing": "Encore debout",
+  "of {n} vaults": { one: "sur {n} Chambre Forte", other: "sur {n} Chambres Fortes" },
   "Vaults": "Chambres",
   "Page {page} of {pages}": "Page {page} sur {pages}",
   "Raised by ({count})": "Dressées par ({count})",

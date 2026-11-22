@@ -903,6 +903,8 @@ export const ui = {
   "by {n} members": { one: "von {n} Mitglied", other: "von {n} Mitgliedern" },
   "No vault seen": "Keine Schatzkammer gesehen",
   "of {n} members": { one: "von {n} Mitglied", other: "von {n} Mitgliedern" },
+  "Still standing": "Stehen noch",
+  "of {n} vaults": { one: "von {n} Schatzkammer", other: "von {n} Schatzkammern" },
   "Vaults": "Kammern",
   "Page {page} of {pages}": "Seite {page} von {pages}",
   "Raised by ({count})": "Errichtet von ({count})",
