@@ -9,8 +9,10 @@
 // One row per member (a member raises one vault a run; over All time the
 // count is how many runs they raised one in), sortable, 25 a page, and the
 // active members with none folded away under it — like "Did not participate".
-// First seen = the first scan that saw it; last seen = the last scan it still
-// stood at (the map pass reads a standing vault's tile until it is gone).
+// First seen = the first scan that saw it. The mark says whether it still
+// stood at the newest scan (the map pass reads a standing vault's tile until
+// it is gone): a green ✓ once it was taken down, a red ✗ while it stands. Its
+// hover is the last scan that saw it — the take-down happened after that.
 
 import { api } from '../lib/api.js';
 import { esc, memberLink, formatDate, formatDateShort } from '../lib/ui.js';
@@ -59,7 +61,21 @@ function seenWhen(iso) {
   return `${formatDateShort(iso)} ${time}`;
 }
 
-/** One row per raiser: their vaults' levels, count and first sighting. */
+/**
+ * A row's take-down mark and its words: "Taken down · last seen Today 07:14"
+ * (✓, green) or "Still standing · last seen …" (✗, red). The words go in the
+ * hover and to screen readers; colour is never the only signal.
+ */
+function downMark(r) {
+  const time = seenWhen(r.lastSeen);
+  const words = r.standing
+    ? t('Still standing · last seen {time}', { time })
+    : t('Taken down · last seen {time}', { time });
+  const glyph = `<span class="vault-mark ${r.standing ? 'is-standing' : 'is-down'}" aria-hidden="true">${r.standing ? '✗' : '✓'}</span>`;
+  return { glyph, words };
+}
+
+/** One row per raiser: their vaults' levels, count, first sighting and whether one still stands. */
 function raisersOf(raised) {
   const byKey = new Map();
   for (const v of raised) {
@@ -80,6 +96,8 @@ function raisersOf(raised) {
       count: r.vaults.length,
       firstSeen: r.vaults.map((v) => v.firstSeen).sort()[0],
       lastSeen: r.vaults.map((v) => v.lastSeen).sort().at(-1),
+      // Over All time a raiser has a vault per run; any still up counts.
+      standing: r.vaults.some((v) => v.standing === true),
     };
   });
 }
@@ -92,7 +110,8 @@ function sorted(rows) {
     if (sort.key === 'name') d = byName(a, b) * dir;
     else if (sort.key === 'count') d = (a.count - b.count) * dir;
     else if (sort.key === 'seen') d = a.firstSeen.localeCompare(b.firstSeen) * dir;
-    else if (sort.key === 'last') d = a.lastSeen.localeCompare(b.lastSeen) * dir;
+    // Still standing sorts first ascending, then the most recently seen.
+    else if (sort.key === 'down') d = ((a.standing ? 0 : 1) - (b.standing ? 0 : 1) || b.lastSeen.localeCompare(a.lastSeen)) * dir;
     else d = (a.topLevel - b.topLevel) * dir;
     return d || byName(a, b);
   });
@@ -115,7 +134,7 @@ export function mountVaults(el, { data, members, to }) {
       th.addEventListener('click', () => {
         const key = th.dataset.sortKey;
         if (sort.key === key) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
-        else sort = { key, dir: key === 'name' || key === 'seen' || key === 'last' ? 'asc' : 'desc' };
+        else sort = { key, dir: key === 'name' || key === 'seen' || key === 'down' ? 'asc' : 'desc' };
         page = 1;
         paint();
       });
@@ -178,12 +197,14 @@ function vaultsHtml(data, members, to) {
   const pageRows = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const body = pageRows.map((r) => {
     const where = r.vaults.filter((v) => v.x !== null && v.y !== null).map((v) => `${v.x}:${v.y}`).join(', ');
+    const mark = downMark(r);
+    // Phone: the mark and its words ride under the name; First Seen opens with the row.
     return `<tr>
-      <td data-label="${esc(t('Player'))}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}</span><span class="mrow-sub">${esc(seenWhen(r.firstSeen))}</span></td>
+      <td data-label="${esc(t('Player'))}" data-role="primary"><span class="mrow-name">${memberLink(r.memberId, r.name)}</span><span class="mrow-sub">${mark.glyph} ${esc(mark.words)}</span></td>
       <td data-label="${esc(t('Level'))}" class="col-num" data-role="metric"${where ? ` title="${esc(where)}"` : ''}>${esc(r.levels.join(', '))}</td>
       ${showCount ? `<td data-label="${esc(t('Vaults'))}" class="col-num">${r.count.toLocaleString()}</td>` : ''}
-      <td data-label="${esc(t('First Seen'))}" class="col-date" data-role="hidden" title="${esc(formatDate(r.firstSeen))}">${esc(seenWhen(r.firstSeen))}</td>
-      <td data-label="${esc(t('Last Seen'))}" class="col-date" title="${esc(formatDate(r.lastSeen))}">${esc(seenWhen(r.lastSeen))}</td>
+      <td data-label="${esc(t('First Seen'))}" class="col-date" title="${esc(formatDate(r.firstSeen))}">${esc(seenWhen(r.firstSeen))}</td>
+      <td data-label="${esc(t('Taken down'))}" class="col-mark" data-role="hidden" title="${esc(mark.words)}">${mark.glyph}<span class="visually-hidden">${esc(mark.words)}</span></td>
     </tr>`;
   }).join('');
   const pagination = all.length > PAGE_SIZE
@@ -197,13 +218,13 @@ function vaultsHtml(data, members, to) {
       <h2 class="ev-section-title" id="ev-vaults-title">${esc(t('Raised by ({count})', { count: rows.length }))}</h2>
       <div class="ui-table-card">
         <table class="table-responsive ui-table events-vaults-table">
-          <colgroup><col class="col-member"><col class="col-num">${showCount ? '<col class="col-num">' : ''}<col class="col-date"><col class="col-date"></colgroup>
+          <colgroup><col class="col-member"><col class="col-num">${showCount ? '<col class="col-num">' : ''}<col class="col-date"><col class="col-mark"></colgroup>
           <thead><tr>
             ${th('name', t('Player'))}
             ${th('level', t('Level'), 'num')}
             ${showCount ? th('count', t('Vaults'), 'num') : ''}
             ${th('seen', t('First Seen'), 'col-date')}
-            ${th('last', t('Last Seen'), 'col-date')}
+            ${th('down', t('Taken down'), 'col-mark')}
           </tr></thead>
           <tbody>${body}</tbody>
         </table>

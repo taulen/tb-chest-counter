@@ -907,6 +907,9 @@ export const ui = {
   "Page {page} of {pages}": "Стр. {page} из {pages}",
   "Raised by ({count})": "Подняли ({count})",
   "Every member raised a vault.": "Каждый участник поднял сокровищницу.",
+  "Taken down": "Взята",
+  "Taken down · last seen {time}": "Взята · последний раз {time}",
+  "Still standing · last seen {time}": "Стоит · последний раз {time}",
   "No vault seen ({count})": "Без сокровищницы ({count})",
   // pages/chats.js
   "Clan chat": "Чат клана",

@@ -421,7 +421,11 @@ Each capture also, every cycle:
   read every scan; in 3½ days it found one other member-owned object, a Mimic
   Chest.) **Events → Ancients → Vaults** shows who raised one in the selected
   run — vaults first seen in its window (`GET /api/tinman/vaults?from=&to=`,
-  `listRaisedVaults`) with first and last seen, members without one, and how
+  `listRaisedVaults`) with first seen and a take-down mark — green ✓ once it
+  is gone, red ✗ while the newest map pass still saw it (`standing`: its
+  `last_seen` ≥ `MAX(game_players.map_seen_at)`, which the pass stamps with
+  the same time; hover = last seen, so the take-down came after it) —
+  members without one, and how
   many vaults of players outside the clan were seen nearby. A vault raised and
   taken down between two scans is never seen. Each tile's `[4]` lists its **cities** (43-field
   records: `[0]` city id, `[2]` owner, `[3]` 2, `[4]` clan, `[13]` level,

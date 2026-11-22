@@ -180,7 +180,9 @@ function createTinmanRouter(eventKey = 'ancients') {
      * [from, to) (ISO; either may be left out — all time). Read from the map
      * around members' cities every scan (scheduler/game-protocol-phase.ts);
      * vaults exist only on an Ancients run's first day. Vaults other players
-     * raised near our cities are counted, not listed. Ancients only.
+     * raised near our cities are counted, not listed. Each vault says whether
+     * it still stood at the newest map pass (`standing`, as of `lastScanAt`).
+     * Ancients only.
      */
     if (ancients)
         router.get('/vaults', (req, res) => {
@@ -198,10 +200,19 @@ function createTinmanRouter(eventKey = 'ancients') {
             }
             const vaults = (0, game_protocol_repo_js_1.listRaisedVaults)(req.clanId, from, to);
             const raised = vaults.filter((v) => v.inClan);
+            // Standing = seen by the newest map pass. The pass stamps the vaults it
+            // sees and the cities it reads with the same `now`, and keeps reading a
+            // standing member vault's tile until it is gone or expired — so a vault
+            // missing from it was taken down (or ran out) since its last_seen.
+            const lastScanAt = (0, game_protocol_repo_js_1.lastMapPassAt)(req.clanId);
             res.json({
-                raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => v),
+                raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => ({
+                    ...v,
+                    standing: lastScanAt !== null && v.lastSeen >= lastScanAt,
+                })),
                 outsiders: vaults.length - raised.length,
                 since: (0, game_protocol_repo_js_1.mapReadSince)(req.clanId),
+                lastScanAt,
             });
         });
     /** Paste one summon's cumulative ranking. Re-sending a summon replaces it. */

@@ -32,7 +32,7 @@ import {
 import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
 import { getEventOccurrences } from '../../external/event-calendar.js';
 import { ancientsRunForDay, buildGameTinman } from '../../data/ancients-game.js';
-import { listRaisedVaults, mapReadSince } from '../../data/repositories/game-protocol-repo.js';
+import { lastMapPassAt, listRaisedVaults, mapReadSince } from '../../data/repositories/game-protocol-repo.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 
@@ -154,7 +154,9 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
    * [from, to) (ISO; either may be left out — all time). Read from the map
    * around members' cities every scan (scheduler/game-protocol-phase.ts);
    * vaults exist only on an Ancients run's first day. Vaults other players
-   * raised near our cities are counted, not listed. Ancients only.
+   * raised near our cities are counted, not listed. Each vault says whether
+   * it still stood at the newest map pass (`standing`, as of `lastScanAt`).
+   * Ancients only.
    */
   if (ancients) router.get('/vaults', (req, res) => {
     const bound = (raw: unknown): string | null | undefined => {
@@ -170,10 +172,19 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
     }
     const vaults = listRaisedVaults(req.clanId!, from, to);
     const raised = vaults.filter((v) => v.inClan);
+    // Standing = seen by the newest map pass. The pass stamps the vaults it
+    // sees and the cities it reads with the same `now`, and keeps reading a
+    // standing member vault's tile until it is gone or expired — so a vault
+    // missing from it was taken down (or ran out) since its last_seen.
+    const lastScanAt = lastMapPassAt(req.clanId!);
     res.json({
-      raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => v),
+      raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => ({
+        ...v,
+        standing: lastScanAt !== null && v.lastSeen >= lastScanAt,
+      })),
       outsiders: vaults.length - raised.length,
       since: mapReadSince(req.clanId!),
+      lastScanAt,
     });
   });
 

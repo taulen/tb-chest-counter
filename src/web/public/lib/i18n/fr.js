@@ -907,6 +907,9 @@ export const ui = {
   "Page {page} of {pages}": "Page {page} sur {pages}",
   "Raised by ({count})": "Dressées par ({count})",
   "Every member raised a vault.": "Chaque membre a dressé une Chambre Forte.",
+  "Taken down": "Abattue",
+  "Taken down · last seen {time}": "Abattue · vue en dernier {time}",
+  "Still standing · last seen {time}": "Debout · vue en dernier {time}",
   "No vault seen ({count})": "Aucune Chambre Forte vue ({count})",
   // pages/chats.js
   "Clan chat": "Chat du clan",

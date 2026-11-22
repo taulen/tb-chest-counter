@@ -5294,6 +5294,15 @@ details > table {
 .events-vaults-table th.num { text-align: right; }
 .events-vaults-table col.col-num { width: 90px; }
 .events-vaults-table col.col-date { width: 170px; }
+.events-vaults-table col.col-mark { width: 130px; }
+.events-vaults-table th.col-mark,
+.events-vaults-table td.col-mark { text-align: center; }
+/* Taken down (✓, green) or still standing (✗, red) at the newest scan; the
+   words ride in the hover and a .visually-hidden span. */
+.vault-mark { font-weight: 800; }
+.vault-mark.is-down { color: var(--accent-green); }
+.vault-mark.is-standing { color: var(--accent-red); }
+.events-vaults-table td.col-mark .vault-mark { font-size: 16px; }
 .events-zero { color: var(--text-muted); }
 /* Header/cell markers on a column whose rule resolved to nothing. */
 .events-unresolved-mark {

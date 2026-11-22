@@ -176,6 +176,20 @@ describe('/api/tinman', () => {
       expect((await send('get', '/api/tinman/vaults?from=soon', 'user1')).status).toBe(400);
     });
 
+    it('marks a vault standing only when the newest map pass saw it', async () => {
+      // No pass has read a member city yet: nothing is known to stand.
+      const before = await send('get', '/api/tinman/vaults', 'user1');
+      expect(before.body.lastScanAt).toBeNull();
+      expect(before.body.raised.every((v: { standing: boolean }) => v.standing === false)).toBe(true);
+
+      // The pass that saw vault 5 also read the cities (same timestamp).
+      getDb().prepare('UPDATE game_players SET map_seen_at = ? WHERE clan_id = 1').run('2026-11-22T18:00:00.000Z');
+      const after = await send('get', '/api/tinman/vaults', 'user1');
+      expect(after.body.lastScanAt).toBe('2026-11-22T18:00:00.000Z');
+      expect(after.body.raised.map((v: { objectId: number; standing: boolean }) => [v.objectId, v.standing]))
+        .toEqual([[1, false], [2, false], [5, true]]);
+    });
+
     it('is Ancients only', async () => {
       expect((await send('get', '/api/event-scores/olympus/vaults', 'user1')).status).toBe(404);
     });
