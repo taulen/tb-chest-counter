@@ -1639,7 +1639,6 @@ export const ui = {
   "Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.": "Фильтр источника <code>{declared}</code> не совпадает ни с одним источником сундуков, поэтому использующее его правило отключено.",
   "<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.": "<code>{declared}</code> — устаревшее написание <strong>{resolved}</strong>: сундуки ниже <em>учитываются</em>, но запись в каталоге стоит исправить.",
   "<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.": "<code>{declared}</code> не совпадает ни с одним сундуком, поэтому в столбце 0. Либо название неверно, либо такой сундук ещё ни разу не сканировался.",
-  "of {n} participants": { one: "из {n} участника", few: "из {n} участников", many: "из {n} участников", other: "из {n} участника" },
   "Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it": "Участники, у которых игра показывала Золотой пропуск в этом цикле, — только с середины цикла, когда сайт начал это читать",
   "Members the game showed with the Gold Pass at some point in this cycle": "Участники, у которых игра в какой-то момент этого цикла показывала Золотой пропуск",
   "Gold Pass in the cycle shown, as the game reported it": "Золотой пропуск в показанном цикле по данным игры",

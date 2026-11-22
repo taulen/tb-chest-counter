@@ -1639,7 +1639,6 @@ export const ui = {
   "Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.": "Der Quellfilter <code>{declared}</code> passt auf keine Truhenquelle, daher ist die Regel, die ihn nutzt, abgeschaltet.",
   "<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.": "<code>{declared}</code> ist eine veraltete Schreibweise von <strong>{resolved}</strong> — die Truhen unten <em>werden</em> gezählt, aber der Katalogeintrag sollte korrigiert werden.",
   "<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.": "<code>{declared}</code> passt auf keine Truhe, daher zeigt die Spalte 0. Entweder ist der Name falsch oder die Truhe wurde nie gescannt.",
-  "of {n} participants": { one: "von {n} Teilnehmer", other: "von {n} Teilnehmern" },
   "Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it": "Mitglieder, die das Spiel in diesem Zyklus mit Goldenem Pass zeigte – erst ab der Zyklusmitte, als diese Seite begann, das zu lesen",
   "Members the game showed with the Gold Pass at some point in this cycle": "Mitglieder, die das Spiel irgendwann in diesem Zyklus mit Goldenem Pass zeigte",
   "Gold Pass in the cycle shown, as the game reported it": "Goldener Pass im gezeigten Zyklus, laut Spiel",

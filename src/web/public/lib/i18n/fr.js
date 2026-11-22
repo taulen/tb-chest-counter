@@ -1639,7 +1639,6 @@ export const ui = {
   "Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.": "Le filtre de source <code>{declared}</code> ne correspond à aucune source de coffre, la règle qui l'utilise est donc désactivée.",
   "<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.": "<code>{declared}</code> est une ancienne orthographe de <strong>{resolved}</strong> — les coffres ci-dessous <em>sont</em> comptés, mais l'entrée du catalogue devrait être corrigée.",
   "<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.": "<code>{declared}</code> ne correspond à aucun coffre, sa colonne affiche donc 0. Soit le nom est faux, soit le coffre n'a jamais été scanné.",
-  "of {n} participants": { one: "sur {n} participant", other: "sur {n} participants" },
   "Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it": "Membres que le jeu a montrés avec le Passe Doré ce cycle — seulement depuis que ce site a commencé à le lire, en cours de cycle",
   "Members the game showed with the Gold Pass at some point in this cycle": "Membres que le jeu a montrés avec le Passe Doré à un moment de ce cycle",
   "Gold Pass in the cycle shown, as the game reported it": "Passe Doré dans le cycle affiché, d'après le jeu",

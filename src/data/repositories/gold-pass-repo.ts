@@ -5,9 +5,11 @@
  * whenever it changes.
  *
  * "This cycle" is the flag right now. Any other window — the Events →
- * Triumphal tab's cycles, "last cycle" — counts a member when their flag was on
- * at any point inside it, which is only known from when the clan's game history
- * starts. A window wholly before that has no answer and says so (`basis`).
+ * Triumphal tab's cycles, "last cycle" — counts a member when a scan inside it
+ * saw their flag on (goldPassForWindow: the game resets every pass when a cycle
+ * ends, so the flag from before a window says nothing about it), which is only
+ * known from when the clan's game history starts. A window wholly before that
+ * has no answer and says so (`basis`).
  *
  * Until Nov 2026 holders were inferred from a Union Chest plus the exact 250k
  * Scientific Tractates line it donates; that inference is retired
@@ -84,24 +86,46 @@ function historyStart(clanId: number): string | null {
 }
 
 /**
- * Gold Pass holders over [fromIso, toIso): every member whose flag was on at
- * some point inside it. A history row is written only when a player's record
- * changes, so the flag at the window's start is the newest row before it.
- * Returns a SHARED cached object.
+ * Gold Pass holders over [fromIso, toIso): every member a scan INSIDE the window
+ * saw with the flag on. A history row is written only when a player's record
+ * changes, so that is either
+ *   - a history row inside the window with the flag on, or
+ *   - no row inside it at all, the flag on in the newest row before it, and the
+ *     player read again since the window opened (game_players.last_seen) — the
+ *     scans in between saw it unchanged.
+ * The flag carried in from before the window is never enough on its own. The
+ * game switches every pass off at the Triumphal reset, so on Nov 21 2026 the
+ * old rule counted last cycle's holders who never bought again (the first scan
+ * after the reset writes their "off" row inside the window), and players who
+ * had left the clan before the window opened (no read since): 105 holders
+ * against the game's 92. Returns a SHARED cached object.
  */
 export function goldPassForWindow(clanId: number, fromIso: string, toIso: string): GoldPassWindow {
   return cached(`goldpass:${clanId}:${fromIso}:${toIso}`, CACHE_TTL_MS, () => {
     const first = historyStart(clanId);
     if (!first || first >= toIso) return { basis: 'none', memberIds: new Set<number>() };
     const rows = getDb().prepare(`
+      WITH inside AS (
+        SELECT player_id, MAX(gold_pass) AS gold_pass
+          FROM game_player_history
+         WHERE clan_id = @clanId AND captured_at >= @from AND captured_at < @to
+         GROUP BY player_id
+      ),
+      held AS (
+        SELECT player_id FROM inside WHERE gold_pass = 1
+        UNION
+        SELECT g.player_id
+          FROM game_players g
+         WHERE g.clan_id = @clanId AND g.last_seen >= @from
+           AND g.player_id NOT IN (SELECT player_id FROM inside)
+           AND (SELECT h.gold_pass FROM game_player_history h
+                 WHERE h.clan_id = g.clan_id AND h.player_id = g.player_id AND h.captured_at < @from
+                 ORDER BY h.captured_at DESC LIMIT 1) = 1
+      )
       SELECT DISTINCT m.id AS memberId
-        FROM game_player_history h
-        JOIN members m ON m.clan_id = h.clan_id AND m.game_player_id = h.player_id
-       WHERE h.clan_id = ? AND h.gold_pass = 1 AND h.captured_at < ?
-         AND (h.captured_at >= ? OR h.captured_at = (
-           SELECT MAX(p.captured_at) FROM game_player_history p
-            WHERE p.clan_id = h.clan_id AND p.player_id = h.player_id AND p.captured_at < ?))
-    `).all(clanId, toIso, fromIso, fromIso) as Array<{ memberId: number }>;
+        FROM held
+        JOIN members m ON m.clan_id = @clanId AND m.game_player_id = held.player_id
+    `).all({ clanId, from: fromIso, to: toIso }) as Array<{ memberId: number }>;
     return {
       basis: first <= fromIso ? 'game' : 'partial',
       memberIds: new Set(rows.map((r) => r.memberId)),

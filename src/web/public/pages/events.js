@@ -760,10 +760,17 @@ function paint() {
   // Triumphal only: who held a Gold Pass in the cycle on screen, as the game
   // reported it (the API sends it only for that event). A cycle from before the
   // game history starts has no answer, so no count rather than a zero.
+  // The count is of the clan as it is now, out of its members — the same
+  // figure as Analytics' "Gold Pass now" / "last cycle". Holders are not a
+  // subset of the participants (a pass holder may not have collected a Union
+  // Chest yet), so "of N participants" read as 105 of 73. Rows of players who
+  // have left still carry their badge.
   const goldPassIds = new Set(Array.isArray(cache.goldPass?.memberIds) ? cache.goldPass.memberIds : []);
+  const rosterIds = new Set(activeMembers.map((m) => m.id));
+  const goldPassHeld = rosterIds.size > 0 ? [...goldPassIds].filter((id) => rosterIds.has(id)).length : goldPassIds.size;
   const goldPassCard = cache.goldPass && cache.goldPass.basis !== 'none'
-    ? stat(t('Gold Pass'), goldPassIds.size.toLocaleString(), {
-      sub: tn(cache.uniqueParticipants || 0, 'of {n} participant', 'of {n} participants'),
+    ? stat(t('Gold Pass'), goldPassHeld.toLocaleString(), {
+      sub: rosterIds.size > 0 ? tn(rosterIds.size, 'of {n} member', 'of {n} members') : '',
       title: cache.goldPass.basis === 'partial'
         ? t('Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it')
         : t('Members the game showed with the Gold Pass at some point in this cycle'),

@@ -117,12 +117,13 @@ describe('gold-pass-repo (the game\'s flag)', () => {
   });
   afterEach(() => cleanup());
 
-  function player(clanId: number, memberId: number, playerId: number, goldPass: boolean): void {
+  /** A game player linked to the member; `lastSeen` is the newest scan that read them. */
+  function player(clanId: number, memberId: number, playerId: number, goldPass: boolean, lastSeen = ''): void {
     getDb().prepare('UPDATE members SET game_player_id = ? WHERE id = ?').run(playerId, memberId);
     getDb().prepare(
       `INSERT INTO game_players (clan_id, player_id, name, gold_pass, first_seen, last_seen)
-       VALUES (?, ?, 'p', ?, '', '')`,
-    ).run(clanId, playerId, goldPass ? 1 : 0);
+       VALUES (?, ?, 'p', ?, '', ?)`,
+    ).run(clanId, playerId, goldPass ? 1 : 0, lastSeen);
   }
 
   /** A history row: the record as one scan read it. */
@@ -142,18 +143,29 @@ describe('gold-pass-repo (the game\'s flag)', () => {
     expect(getGoldPassStatuses(1, Date.now(), ROLLOVER)).toEqual(new Map([[holder, 'current']]));
   });
 
-  it('counts a window from the history, carrying the flag in from before it', () => {
+  it('counts a window from what scans inside it saw, never the flag carried in alone', () => {
+    const SCANNED = '2026-11-21T00:00:00.000Z';
     const early = member(1, 'early');
     const late = member(1, 'late');
     const lapsed = member(1, 'lapsed');
-    player(1, early, 101, true);
-    player(1, late, 102, true);
-    player(1, lapsed, 103, false);
-    seen(1, 101, '2026-10-01T00:00:00.000Z', true); // on before the window, still on
+    const reset = member(1, 'reset');
+    const gone = member(1, 'gone');
+    player(1, early, 101, true, SCANNED);
+    player(1, late, 102, true, SCANNED);
+    player(1, lapsed, 103, false, SCANNED);
+    player(1, reset, 104, false, SCANNED);
+    player(1, gone, 105, true, '2026-10-15T00:00:00.000Z');
+    seen(1, 101, '2026-10-01T00:00:00.000Z', true); // on before the window, read again inside it unchanged
     seen(1, 102, '2026-10-01T00:00:00.000Z', false);
     seen(1, 102, '2026-10-25T00:00:00.000Z', true); // switched on inside it
     seen(1, 103, '2026-10-01T00:00:00.000Z', true);
     seen(1, 103, '2026-10-10T00:00:00.000Z', false); // off before the window
+    // Last cycle's holder: the game resets the pass, the first scan after
+    // the reset writes "off" — not a holder of this cycle.
+    seen(1, 104, '2026-10-01T00:00:00.000Z', true);
+    seen(1, 104, '2026-10-22T18:00:00.000Z', false);
+    // Left the clan before the window opened with the flag on: never read since.
+    seen(1, 105, '2026-10-01T00:00:00.000Z', true);
 
     const w = goldPassForWindow(1, '2026-10-22T17:00:00.000Z', '2026-11-21T17:00:00.000Z');
     expect(w.basis).toBe('game');

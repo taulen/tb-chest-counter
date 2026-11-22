@@ -1639,7 +1639,6 @@ export const ui = {
   "Source filter <code>{declared}</code> matches no chest source, so the rule using it is switched off.": "El filtro de origen <code>{declared}</code> no coincide con ningún origen de cofre, así que la regla que lo usa está desactivada.",
   "<code>{declared}</code> is a stale spelling of <strong>{resolved}</strong> — the chests below <em>are</em> counted, but the catalog entry should be corrected.": "<code>{declared}</code> es una grafía antigua de <strong>{resolved}</strong>: los cofres de abajo <em>sí</em> se cuentan, pero hay que corregir la entrada del catálogo.",
   "<code>{declared}</code> matches no chest, so its column reads 0. Either the name is wrong or the chest has never been scanned.": "<code>{declared}</code> no coincide con ningún cofre, así que su columna marca 0. O el nombre es incorrecto o ese cofre nunca se ha escaneado.",
-  "of {n} participants": { one: "de {n} participante", other: "de {n} participantes" },
   "Members the game showed with the Gold Pass in this cycle — only from part way in, when this site started reading it": "Miembros que el juego mostró con Pase de oro en este ciclo, solo desde que este sitio empezó a leerlo, a mitad de ciclo",
   "Members the game showed with the Gold Pass at some point in this cycle": "Miembros que el juego mostró con Pase de oro en algún momento de este ciclo",
   "Gold Pass in the cycle shown, as the game reported it": "Pase de oro en el ciclo mostrado, según el juego",
