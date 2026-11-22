@@ -2774,7 +2774,7 @@ export const ui = {
   "Targets · {n} kills": { one: "Objetivos · {n} muerte", other: "Objetivos · {n} muertes" },
   "Unknown guards level counts as G7.": "Un nivel de guardias desconocido cuenta como G7.",
   "Targets for this run": "Objetivos de esta edición",
-  "Paste the Points per member table from Tools → Ancient planner, e.g.": "Pega la tabla Puntos por miembro de Herramientas → Planificador de antiguos, p. ej.",
+  "One line per tier with its points each, or the Points per member table from Tools → Ancient planner, e.g.": "Una línea por nivel con los puntos de cada uno, o la tabla Puntos por miembro de Herramientas → Planificador de antiguos, p. ej.",
   "Points each per guards tier, for the whole run. Saving again replaces the targets.": "Puntos de cada uno por nivel de guardias, para toda la edición. Guardar de nuevo reemplaza los objetivos.",
   "Save targets": "Guardar objetivos",
   "Remove targets": "Quitar objetivos",

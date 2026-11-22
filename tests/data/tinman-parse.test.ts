@@ -196,4 +196,10 @@ describe('parseTierTargets', () => {
     expect(parseTierTargets('G9 61.3M\nG8 27,200,000\n| G7 | 59 members | 10.9M | 643M | 33.5% |').tiers)
       .toEqual({ g9: 61.3e6, g8: 27.2e6, g7: 10.9e6 });
   });
+
+  it('reads short hand-typed lines in any case', () => {
+    expect(parseTierTargets('g7 1.3m\ng6 600k\nG5 250K')).toEqual({
+      tiers: { g7: 1.3e6, g6: 600e3, g5: 250e3 }, kills: null, skipped: [],
+    });
+  });
 });

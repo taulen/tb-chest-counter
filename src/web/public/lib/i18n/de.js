@@ -2774,7 +2774,7 @@ export const ui = {
   "Targets · {n} kills": { one: "Ziele · {n} Kill", other: "Ziele · {n} Kills" },
   "Unknown guards level counts as G7.": "Unbekanntes Gardisten-Level zählt als G7.",
   "Targets for this run": "Ziele für diesen Durchlauf",
-  "Paste the Points per member table from Tools → Ancient planner, e.g.": "Füge die Tabelle Punkte pro Mitglied aus Werkzeuge → Ahnen-Planer ein, z. B.",
+  "One line per tier with its points each, or the Points per member table from Tools → Ancient planner, e.g.": "Eine Zeile pro Tier mit den Punkten pro Person, oder die Tabelle Punkte pro Mitglied aus Werkzeuge → Ahnen-Planer, z. B.",
   "Points each per guards tier, for the whole run. Saving again replaces the targets.": "Punkte pro Person je Gardisten-Tier für den ganzen Durchlauf. Erneutes Speichern ersetzt die Ziele.",
   "Save targets": "Ziele speichern",
   "Remove targets": "Ziele entfernen",

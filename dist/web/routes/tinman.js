@@ -78,6 +78,19 @@ function validDate(raw, today) {
     const date = parseDate(raw);
     return date && date <= today ? date : null;
 }
+/**
+ * A day a run's targets can be saved for: up to one Ancients cycle ahead.
+ * Targets are a plan, set before or during a run, and a run is filed under its
+ * Tinman day — its LAST day — so a live run's date is still ahead until then
+ * (game day Nov 21 at 07:00 UTC, run Nov 21–22 filed under Nov 22).
+ */
+function validTargetDate(raw, today) {
+    const date = parseDate(raw);
+    if (!date)
+        return null;
+    const limit = new Date(Date.parse(`${today}T00:00:00Z`) + game_day_js_1.ANCIENTS_CYCLE_DAYS * 86_400_000).toISOString().slice(0, 10);
+    return date <= limit ? date : null;
+}
 /** 1–max exactly, or null. Strict on purpose: clamping would file a "summon 9" paste under 8. */
 function parseSummon(raw, max) {
     const n = Number(raw);
@@ -277,21 +290,26 @@ function createTinmanRouter(eventKey = 'ancients') {
     });
     /**
      * The run's per-tier targets, pasted from the Ancient planner's "Points per
-     * member" table. Re-sending replaces them. Ancients only.
+     * member" table or typed as "G7 1.3M" lines. Re-sending replaces them.
+     * Ancients only. The live run's day is still ahead (validTargetDate).
      */
     if (ancients)
         router.put('/:date/targets', auth_js_1.requireAdmin, (req, res) => {
             const clanId = req.clanId;
-            const date = validDate(req.params.date, today());
+            const date = validTargetDate(req.params.date, today());
+            if (!date) {
+                res.status(400).json({ error: 'Targets can be set for a past run, the live one or the next one.' });
+                return;
+            }
             const text = typeof req.body?.text === 'string' ? req.body.text : '';
-            if (!date || !text.trim() || text.length > MAX_TEXT_LENGTH) {
+            if (!text.trim() || text.length > MAX_TEXT_LENGTH) {
                 res.status(400).json({ error: 'Paste the Points per member table first.' });
                 return;
             }
             const parsed = (0, tinman_parse_js_1.parseTierTargets)(text);
             if (Object.keys(parsed.tiers).length === 0) {
                 res.status(400).json({
-                    error: 'No tier targets found. Expected lines like "G9  6 members  61.3M  368M  19.2%".',
+                    error: 'No tier targets found. Expected lines like "G7 1.3M", or the Points per member table.',
                     skipped: parsed.skipped.slice(0, 5),
                 });
                 return;
@@ -303,7 +321,7 @@ function createTinmanRouter(eventKey = 'ancients') {
     if (ancients)
         router.delete('/:date/targets', auth_js_1.requireAdmin, (req, res) => {
             const clanId = req.clanId;
-            const date = validDate(req.params.date, today());
+            const date = validTargetDate(req.params.date, today());
             if (!date || !tinmanRepo.deleteTinmanTargets(clanId, date)) {
                 res.status(404).json({ error: 'No targets for that run.' });
                 return;

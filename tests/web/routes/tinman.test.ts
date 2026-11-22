@@ -132,6 +132,19 @@ describe('/api/tinman', () => {
     expect((await send('get', `/api/tinman?date=${DATE}`, 'user1')).body.targets).toBeNull();
   });
 
+  it('saves targets for a run whose Tinman day is still ahead, up to one cycle out', async () => {
+    // The live run is filed under its last day: targets are planned before it.
+    const ahead = await send('put', '/api/tinman/2026-10-29/targets', 'admin1', { text: 'g7 1.3m\ng6 600k\ng5 250k' });
+    expect(ahead.status).toBe(200);
+    expect(ahead.body.targets.tiers).toEqual({ g7: 1_300_000, g6: 600_000, g5: 250_000 });
+    expect((await send('get', '/api/tinman?date=2026-10-29', 'user1')).body.targets.tiers.g6).toBe(600_000);
+    expect((await send('delete', '/api/tinman/2026-10-29/targets', 'admin1')).status).toBe(200);
+
+    const tooFar = await send('put', '/api/tinman/2026-10-30/targets', 'admin1', { text: 'G7 1.3M' });
+    expect(tooFar.status).toBe(400);
+    expect(tooFar.body.error).toMatch(/live one or the next/);
+  });
+
   it('deletes a summon', async () => {
     await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
     expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(200);

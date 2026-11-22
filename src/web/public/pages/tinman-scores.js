@@ -397,7 +397,7 @@ function targetsPanelHtml() {
     <div class="tinman-upload">
       <label class="tinman-upload-row" for="tinmanTargets">${t('Targets for this run')}</label>
       <textarea id="tinmanTargets" class="input tinman-text" rows="7" spellcheck="false"
-        placeholder="${t('Paste the Points per member table from Tools → Ancient planner, e.g.')}&#10;For 3 kills, already lowered for a 15% overshoot.&#10;G9 	6 members 	61.3M 	368M 	19.2%&#10;G8 	33 members 	27.2M 	898M 	46.9%">${esc(targetsText)}</textarea>
+        placeholder="${t('One line per tier with its points each, or the Points per member table from Tools → Ancient planner, e.g.')}&#10;G7 1.3M&#10;G6 600K&#10;G5 250K">${esc(targetsText)}</textarea>
       <p class="muted-copy tinman-hint">${t('Points each per guards tier, for the whole run. Saving again replaces the targets.')}</p>
       <div class="tinman-upload-actions">
         <button type="button" class="btn btn-primary" data-tinman="save-targets">${t('Save targets')}</button>

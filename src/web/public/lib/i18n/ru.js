@@ -2774,7 +2774,7 @@ export const ui = {
   "Targets · {n} kills": { one: "Цели · {n} убийство", few: "Цели · {n} убийства", many: "Цели · {n} убийств", other: "Цели · {n} убийств" },
   "Unknown guards level counts as G7.": "Неизвестный уровень гвардейцев считается G7.",
   "Targets for this run": "Цели на этот запуск",
-  "Paste the Points per member table from Tools → Ancient planner, e.g.": "Вставьте таблицу «Очки на участника» из Инструменты → Планировщик Древних, например.",
+  "One line per tier with its points each, or the Points per member table from Tools → Ancient planner, e.g.": "По строке на уровень с очками на каждого — или таблица «Очки на участника» из Инструменты → Планировщик Древних, например.",
   "Points each per guards tier, for the whole run. Saving again replaces the targets.": "Очки на каждый уровень гвардейцев за весь запуск. Повторное сохранение заменяет цели.",
   "Save targets": "Сохранить цели",
   "Remove targets": "Удалить цели",
