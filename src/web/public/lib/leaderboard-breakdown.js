@@ -89,11 +89,14 @@ function sectionHtml(section, totalPoints) {
         <span class="lbb-num lbb-pts" role="cell">${fmt(r.points)}</span>
       </div>`;
   }).join('');
+  // A one-line section's totals are that line's numbers: the heading leaves
+  // them to it rather than print the same pair twice.
+  const totals = section.rows.length > 1;
   return `<div class="lbb-section" role="rowgroup">
       <div class="lbb-line lbb-section-head" role="row">
         <span class="lbb-src" role="rowheader">${escapeHtml(pointsSectionTitle(section.key) || section.key)}</span>
-        <span class="lbb-num" role="cell">${fmt(section.chests)}</span>
-        <span class="lbb-num" role="cell">${fmt(section.points)}</span>
+        <span class="lbb-num" role="cell">${totals ? fmt(section.chests) : ''}</span>
+        <span class="lbb-num" role="cell">${totals ? fmt(section.points) : ''}</span>
       </div>
       ${rows}
     </div>`;

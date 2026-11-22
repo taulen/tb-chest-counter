@@ -6650,36 +6650,41 @@ table.faq-matrix { min-width: 460px; }
 }
 .lbb-colhead {
   padding-top: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
-.lbb-section + .lbb-section { margin-top: 6px; }
+/* Each section is one block, ruled off from the next: the heading carries
+   the section's totals (the loudest numbers in it), its lines sit indented
+   under it in a quieter voice. */
+.lbb-section { padding-top: 6px; }
+.lbb-section + .lbb-section {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
 .lbb-section-head {
-  margin-bottom: 2px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .lbb-section-head .lbb-src { color: var(--accent-gold); }
 /* The fill is the line's share of the member's points — a bar chart read
    down the card, so what made the score stands out without reading a number. */
 .lbb-row {
   border-radius: 4px;
+  color: var(--text-secondary);
   background-image: linear-gradient(90deg, var(--accent-gold-bg-strong) 0 var(--lbb-share, 0%), transparent var(--lbb-share, 0%));
 }
-.lbb-row .lbb-pts {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.lbb-row.is-zero,
-.lbb-row.is-zero .lbb-pts {
-  color: var(--text-muted);
-  font-weight: 400;
-}
+.lbb-row .lbb-src { padding-left: 12px; }
+.lbb-row .lbb-pts { color: var(--text-primary); }
+/* A line that scored nothing fades only its points: dimming the whole line
+   made a section of them read as a different kind of list from its neighbours. */
+.lbb-row.is-zero .lbb-pts { color: var(--text-muted); }
 .lbb-empty {
   margin: 6px 0;
   font-size: 13px;
