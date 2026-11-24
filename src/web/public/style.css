@@ -11660,6 +11660,16 @@ details.ui-fold:not([open]) { gap: 0; }
   transition: background var(--transition), color var(--transition), box-shadow var(--transition);
 }
 .ui-seg-btn:hover { color: var(--text-primary); }
+/* segLinksHtml: the same buttons as links (a second level of addresses). */
+a.ui-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ui-seg-btn[aria-current="page"],
 .ui-seg-btn.is-active {
   background: var(--accent-gold-bg-strong);
   color: var(--accent-gold);
@@ -12392,6 +12402,8 @@ button.mboard-row {
 .chest-rewards-page,
 .sess-page,
 .ext-page { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* Overview / Totals / Admin under My Clan's sub-tab bar: as wide as its words. */
+.rs-page > .ui-seg { align-self: flex-start; max-width: 100%; overflow-x: auto; }
 .rs-controls .ui-period { flex: 1 1 auto; }
 .rs-scope select { min-height: 44px; max-width: 260px; }
 .rs-stat-value { font-size: 22px; }

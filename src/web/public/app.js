@@ -134,7 +134,6 @@ import {
   pasteIntoLoginSession,
 } from './pages/clans.js';
 import {
-  renderResourcesAdmin,
   changeResourcesPage,
   setResourcesFilter,
   sortResources,
@@ -144,8 +143,6 @@ import {
   handleResourcesTxSave,
   handleResourcesTxCancel,
 } from './pages/resources.js';
-import { renderResourcesOverview } from './pages/resources-overview.js';
-import { renderResourcesTotals } from './pages/resources-totals.js';
 import { renderResourcesChestRewards } from './pages/resources-chest-rewards.js';
 import { renderEvents } from './pages/events.js';
 import { renderTools } from './pages/tools.js';
@@ -647,15 +644,31 @@ if ('scrollRestoration' in window.history) {
 /** Set by the router when the *next* render lands on a different page. */
 let resetScrollAfterRender = false;
 
+/** My Clan → Resources' addresses → the section each opens. */
+const RESOURCES_ROUTES = new Map([
+  ['resources', 'overview'],
+  ['resources/totals', 'totals'],
+  ['resources/admin', 'admin'],
+]);
+
+/**
+ * A route that is My Clan on one of its tabs: #clan[/<tab>], #triumphal and
+ * #resources[/totals|/admin] (#resources/chests is Chest rewards' old address).
+ */
+function isClanRoute(p) {
+  return p === 'clan' || p === 'triumphal' || p.startsWith('clan/') || RESOURCES_ROUTES.has(p);
+}
+
 window.addEventListener('hashchange', () => {
   // A newer build went live while this tab was open: load it, on this route.
   if (reloadIfNewBuild()) return;
   void checkLiveBuild();
   const previousPage = currentPage;
   syncRouteFromHash();
-  // My Clan's tabs have their own addresses (#clan/<tab>, #triumphal) but are
-  // one page: moving between them keeps the scroll position.
-  const pageGroup = (p) => (p === 'clan' || p === 'triumphal' || p.startsWith('clan/') ? 'clan' : p);
+  // My Clan's tabs have their own addresses (#clan/<tab>, #triumphal,
+  // #resources[/…]) but are one page: moving between them keeps the scroll
+  // position.
+  const pageGroup = (p) => (isClanRoute(p) ? 'clan' : p);
   if (pageGroup(currentPage) !== pageGroup(previousPage)) {
     // Twice, deliberately. Now, so the outgoing page doesn't sit at its old
     // offset for however long the new page's fetches take; and again once the
@@ -802,24 +815,17 @@ async function renderRoute(page, content) {
       return;
     }
   }
-  // Resources is a three-tab page: #resources = Overview (landing),
+  // My Clan on a section: #clan/research, #clan/rankings, … — and Resources,
+  // a tab of My Clan with its own three addresses: #resources = Overview,
   // #resources/totals = per-member totals, #resources/admin = the ledger.
   // Chest rewards has its own menu entry (#chest-rewards); its old address
-  // under Resources still opens it.
-  if (page === 'resources/admin') {
-    await renderResourcesAdmin(content);
-    return;
-  }
-  if (page === 'resources/totals') {
-    await renderResourcesTotals(content);
-    return;
-  }
-  // My Clan on a section: #clan/research, #clan/rankings, …
-  if (page.startsWith('clan/')) {
-    const tab = decodeURIComponent(page.slice('clan/'.length));
+  // under Resources still opens it (below).
+  const resourcesSection = RESOURCES_ROUTES.get(page);
+  if (page.startsWith('clan/') || resourcesSection) {
+    const tab = resourcesSection ? 'resources' : decodeURIComponent(page.slice('clan/'.length));
     // My Clan already on screen (a tab click): switch the panel in place.
-    if (!(await switchClanTab(content, tab))) {
-      setClanTab(tab);
+    if (!(await switchClanTab(content, tab, resourcesSection))) {
+      setClanTab(tab, resourcesSection);
       await renderClan(content);
     }
     return;
@@ -878,7 +884,6 @@ async function renderRoute(page, content) {
     case 'external':
       await renderExternal(content, navigateTo);
       break;
-    case 'resources': await renderResourcesOverview(content); break;
     case 'users': await renderUsers(content); break;
     case 'clans': await renderClans(content, refreshClanIndicator); break;
     case 'system': await renderSystem(content); break;
@@ -1115,9 +1120,8 @@ function updateNavState() {
   else if (currentPage.startsWith('session/')) navPage = 'sessions';
   else if (currentPage.startsWith('chest/') || currentPage.startsWith('source/')) navPage = 'analytics';
   else if (currentPage === 'resources/chests') navPage = 'chest-rewards';
-  else if (currentPage === 'triumphal' || currentPage.startsWith('clan/')) navPage = 'clan';
+  else if (isClanRoute(currentPage)) navPage = 'clan';
   else if (currentPage === 'might') navPage = 'members';
-  else if (currentPage.startsWith('resources')) navPage = 'resources';
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('tools')) navPage = 'tools';
   else if (currentPage.startsWith('admin/')) navPage = 'admin';
@@ -1140,7 +1144,6 @@ const PAGE_SUBTITLES = {
 
   performance: t('Who beats their goals, and who falls short'),
   might: t('Power over time, member by member'),
-  resources: t('Clan Capital donations'),
   'chest-rewards': t("What the clan's opened chests paid out"),
   events: t('Event runs and who took part'),
   tools: t('Calculators for planning events'),

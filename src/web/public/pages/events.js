@@ -45,7 +45,7 @@ import { fetchVaults, mountVaults, vaultsCount, resetVaultsPage } from './ancien
 import { fetchGameStandings, mountGameStandings, renderGameRankings } from './game-standings.js';
 import {
   subTabsHtml, segHtml, periodScrubberHtml, wirePeriodScrubber, setPageActions, tileHtml,
-  notesHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, asList,
+  notesHtml, emptyHtml, errorStateHtml, refusalText, wireRetry, asList, centreCurrentSubTab,
 } from '../lib/ui-kit.js';
 import { getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -276,12 +276,9 @@ function eventScheduleTag(e) {
 }
 
 // On a phone the tab strip scrolls sideways: bring the current event into
-// view (scrollLeft only — never scrolls the page). A no-op where it wraps.
+// view (the kit's centreCurrentSubTab). A no-op where it wraps.
 function centreCurrentTab(root) {
-  const strip = root.querySelector('.ev-tabs .ui-subtabs');
-  const tab = strip?.querySelector('[aria-current="page"]');
-  if (!strip || !tab || strip.scrollWidth <= strip.clientWidth) return;
-  strip.scrollLeft = Math.max(0, tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2);
+  centreCurrentSubTab(root.querySelector('.ev-tabs .ui-subtabs'));
 }
 
 // Compact countdown to an upcoming ISO timestamp, single unit, stepping down as

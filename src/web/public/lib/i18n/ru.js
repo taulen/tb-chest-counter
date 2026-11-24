@@ -34,7 +34,6 @@ export const ui = {
   "Trends, breakdowns and who carries the clan": "Тренды, разбивки и кто тянет клан",
   "Who beats their goals, and who falls short": "Кто перевыполняет цели, а кто не дотягивает",
   "Power over time, member by member": "Могущество во времени, по участникам",
-  "Clan Capital donations": "Пожертвования в Столицу клана",
   "What the clan's opened chests paid out": "Что принесли открытые кланом сундуки",
   "Event runs and who took part": "Запуски событий и участники",
   "Calculators for planning events": "Калькуляторы для планирования событий",

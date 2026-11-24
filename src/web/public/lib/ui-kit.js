@@ -53,6 +53,17 @@ export function subTabsHtml({ label, items, current }) {
 }
 
 /**
+ * On a phone a sub-tab bar is a strip that scrolls sideways: bring its current
+ * tab into view (scrollLeft only — never scrolls the page). A no-op where the
+ * bar fits or wraps. Call it after drawing the bar.
+ */
+export function centreCurrentSubTab(strip) {
+  const tab = strip?.querySelector('[aria-current="page"]');
+  if (!strip || !tab || strip.scrollWidth <= strip.clientWidth) return;
+  strip.scrollLeft = Math.max(0, tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2);
+}
+
+/**
  * A segmented control (one choice of a few): `items` is `[{ value, label }]`,
  * the chosen one aria-pressed. Wire clicks on `[data-<attr>]`.
  */
@@ -60,6 +71,19 @@ export function segHtml({ label, items, current, attr }) {
   return `<div class="ui-seg" role="group" aria-label="${esc(label)}">
       ${items.map((it) => `<button type="button" class="ui-seg-btn${it.value === current ? ' is-active' : ''}" aria-pressed="${it.value === current}" data-${attr}="${esc(it.value)}">${esc(it.label)}</button>`).join('')}
     </div>`;
+}
+
+/**
+ * The segmented control's look for a second level of ADDRESSES inside a
+ * sub-tab (My Clan → Resources: Overview / Totals / Admin), where a second
+ * sub-tab bar under the first would read as one muddled strip. Real links,
+ * like subTabsHtml: `items` is `[{ key, label, href }]`, the current one
+ * aria-current="page".
+ */
+export function segLinksHtml({ label, items, current }) {
+  return `<nav class="ui-seg" aria-label="${esc(label)}">
+      ${items.map((it) => `<a class="ui-seg-btn" href="${esc(it.href)}"${it.key === current ? ' aria-current="page"' : ''}>${esc(it.label)}</a>`).join('')}
+    </nav>`;
 }
 
 /** "2026-11-15 → 2026-11-21" → "2026-11-15 → 21"; across a month "→ 12-05"; anything else as it is. */

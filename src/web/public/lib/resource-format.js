@@ -9,7 +9,7 @@ import { esc } from './ui.js';
 import { getCurrentUser } from './state.js';
 import { t, tGame } from './i18n.js';
 import { resourceIconUrl } from './game-art.js';
-import { subTabsHtml } from './ui-kit.js';
+import { segLinksHtml } from './ui-kit.js';
 
 /**
  * Format a resource amount for display. Speedups are stored in hours and
@@ -93,11 +93,13 @@ export function resourceIconOnly(name) {
  * still enforce this server-side — this is just UI hygiene.
  */
 export function resourceTabsHtml(active) {
-  // The kit's sub-tab bar (docs/design-standard.md): real links to the
-  // existing routes, so #resources/totals and #resources/admin keep working.
+  // Resources is a tab of My Clan (Nov 2026: it left the main menu), so its
+  // own sections sit under My Clan's sub-tab bar as the kit's segmented links
+  // (docs/design-standard.md): real links to the existing routes, so
+  // #resources/totals and #resources/admin keep working.
   const user = getCurrentUser();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
-  return subTabsHtml({
+  return segLinksHtml({
     label: t('Resources'),
     current: active,
     items: [

@@ -16,8 +16,10 @@
 //           five categories, the top 100 with logos, this clan highlighted
 //           (pinned under the list when outside it), its rank by day; loaded
 //           when the tab opens (/api/game/clan/rankings). Treasury: the
-//           capital's stock per item, each with its own game icon. History: one
-//           row per game day. Joins & leaves: who joined, left or came back
+//           capital's stock per item, each with its own game icon. Resources:
+//           what members donated to the Clan Capital (#resources, /totals,
+//           /admin — pages/resources-*.js). History: one row per game day.
+//           Joins & leaves: who joined, left or came back
 //           (pages/clan-roster.js). Triumphal Chests (pages/triumphal.js).
 //
 // The trees come from /api/game/tech-trees (the same file the profile uses);
@@ -30,39 +32,58 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt, resourceIconUrl } from '../lib/game-art.js';
 import {
   subTabsHtml, tileHtml, statTileHtml, statTilesHtml, tableCardHtml, emptyHtml,
-  errorStateHtml, refusalText, wireRetry, asList,
+  errorStateHtml, refusalText, wireRetry, asList, centreCurrentSubTab,
 } from '../lib/ui-kit.js';
 import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js';
 import { renderTriumphal } from './triumphal.js';
 import { mountRoster, rosterPanelHtml } from './clan-roster.js';
+import { renderResourcesOverview } from './resources-overview.js';
+import { renderResourcesTotals } from './resources-totals.js';
+import { renderResourcesAdmin } from './resources.js';
 
 const PHONE = '(max-width: 640px)';
 const CHANGES_SHOWN = 60;
 const HISTORY_SHOWN = 30;
 
-/** The open tab and tree, kept while navigating within the SPA. */
-const view = { tab: 'research', tree: null, rankKind: 7, rankPage: null };
+/** The open tab, Resources section and tree, kept while navigating within the SPA. */
+const view = { tab: 'research', resources: 'overview', tree: null, rankKind: 7, rankPage: null };
 
-// My Clan's sections. Triumphal Chests is a tab here too (Nov 2026: it left the
-// main menu). Every tab has an address (#clan/<tab>, #triumphal — Triumphal's
-// period selector lives in it); the sub-tab bar is links to those addresses,
-// and the router switches only the panel while My Clan is on screen
-// (switchClanTab): the header and stats stay put.
+// My Clan's sections. Triumphal Chests and Resources are tabs here too (Nov
+// 2026: both left the main menu). Every tab has an address (#clan/<tab>,
+// #triumphal — Triumphal's period selector lives in it — and #resources, with
+// its own sections at #resources/totals and #resources/admin); the sub-tab bar
+// is links to those addresses, and the router switches only the panel while
+// My Clan is on screen (switchClanTab): the header and stats stay put.
 const CLAN_TABS = [
   { key: 'research', label: () => t('Research') },
   { key: 'rankings', label: () => t('Rankings') },
   { key: 'treasury', label: () => t('Treasury') },
+  { key: 'resources', label: () => t('Resources') },
   { key: 'history', label: () => t('History') },
   { key: 'roster', label: () => t('Joins & leaves') },
   { key: 'triumphal', label: () => t('Triumphal Chests') },
 ];
 
-/** Open My Clan on a section (#clan/<tab>, #triumphal). */
-export function setClanTab(key) {
+/** Tabs drawn from their own data: shown even when the clan itself couldn't be read. */
+const OWN_DATA_TABS = new Set(['triumphal', 'resources']);
+
+/** Resources' sections, each its own address (lib/resource-format.js resourceTabsHtml). */
+const RESOURCE_SECTIONS = {
+  overview: renderResourcesOverview,
+  totals: renderResourcesTotals,
+  admin: renderResourcesAdmin,
+};
+
+/**
+ * Open My Clan on a section (#clan/<tab>, #triumphal, #resources[/<section>]).
+ * `sub` picks Resources' section.
+ */
+export function setClanTab(key, sub) {
   if (CLAN_TABS.some((tb) => tb.key === key)) view.tab = key;
+  if (key === 'resources') view.resources = RESOURCE_SECTIONS[sub] ? sub : 'overview';
 }
 
-const tabHash = (key) => (key === 'triumphal' ? '#triumphal' : `#clan/${key}`);
+const tabHash = (key) => (key === 'triumphal' ? '#triumphal' : key === 'resources' ? '#resources' : `#clan/${key}`);
 
 /** The sub-tab bar: one link per section, the open one marked. */
 function clanTabsHtml(active) {
@@ -73,10 +94,30 @@ function clanTabsHtml(active) {
   });
 }
 
+/**
+ * A phone's sideways strip opens on the tab a link landed on (#resources,
+ * #triumphal sit past the first screenful). Only on a full render: a tab
+ * tapped in place is already in view.
+ */
+function centreClanTab(content) {
+  centreCurrentSubTab(content.querySelector('.clan-page > .ui-subtabs'));
+}
+
 /** Fill the Triumphal Chests panel (or container) in place. */
 async function mountTriumphal(content) {
   const box = content.querySelector('[data-clan-triumphal]');
   if (box) await renderTriumphal(box);
+}
+
+/** Fill the Resources panel with its open section (Overview, Totals, Admin). */
+async function mountResources(content) {
+  const box = content.querySelector('[data-clan-resources]');
+  if (box) await RESOURCE_SECTIONS[view.resources](box);
+}
+
+/** The holder of a tab drawn from its own data. */
+function ownDataBoxHtml(key) {
+  return key === 'triumphal' ? '<div data-clan-triumphal></div>' : '<div data-clan-resources></div>';
 }
 
 /** The clan data My Clan is showing (the Rankings panel pins this clan from it). */
@@ -93,6 +134,7 @@ async function mountPanel(content, key) {
   if (key === 'rankings' && clanData) await mountRankings(content, clanData);
   else if (key === 'roster') await mountRoster(content);
   else if (key === 'triumphal') await mountTriumphal(content);
+  else if (key === 'resources') await mountResources(content);
 }
 
 /** Show `key`'s panel and mark its link; every other panel hides. */
@@ -107,10 +149,11 @@ function showPanel(content, key) {
 /**
  * Switch to a tab while My Clan is already on screen: only the panel changes,
  * nothing above it moves. False when My Clan isn't mounted (render it then).
+ * `sub` picks Resources' section; a Resources action's reload lands here too.
  */
-export async function switchClanTab(content, key) {
+export async function switchClanTab(content, key, sub) {
   if (!CLAN_TABS.some((tb) => tb.key === key) || !content.querySelector('[data-clan-page]')) return false;
-  view.tab = key;
+  setClanTab(key, sub);
   showPanel(content, key);
   await mountPanel(content, key);
   return true;
@@ -169,26 +212,30 @@ export async function renderClan(content) {
     data = null;
   }
   // A refusal (a 429, a 500's { error, ref }) or a failed read: say so, offer
-  // Try again — the strip stays, so Triumphal Chests is still reachable.
+  // Try again — the strip stays, so Triumphal Chests and Resources (their own
+  // data) are still reachable.
+  const ownData = OWN_DATA_TABS.has(view.tab);
   const why = refusalText(data);
   if (data === null || why) {
     content.innerHTML = `<div class="clan-page">${clanTabsHtml(view.tab)}
-        ${view.tab === 'triumphal'
-          ? '<div data-clan-triumphal></div>'
+        ${ownData
+          ? ownDataBoxHtml(view.tab)
           : `<div class="ui-tile span-12">${errorStateHtml(t("Couldn't load the clan. Try again in a minute."), why)}</div>`}
       </div>`;
-    wireRetry(content, () => renderClan(content));
-    if (view.tab === 'triumphal') await mountTriumphal(content);
+    centreClanTab(content);
+    if (ownData) await mountPanel(content, view.tab);
+    else wireRetry(content, () => renderClan(content));
     return;
   }
   if (!data.linked) {
-    // No game data (yet): the strip stays, so Triumphal Chests is reachable.
+    // No game data (yet): the strip stays, so Triumphal Chests and Resources are reachable.
     content.innerHTML = `<div class="clan-page">${clanTabsHtml(view.tab)}
-        ${view.tab === 'triumphal'
-          ? '<div data-clan-triumphal></div>'
+        ${ownData
+          ? ownDataBoxHtml(view.tab)
           : noteTile(t("The clan hasn't been read from the game yet. The next scan reads it."))}
       </div>`;
-    if (view.tab === 'triumphal') await mountTriumphal(content);
+    centreClanTab(content);
+    if (ownData) await mountPanel(content, view.tab);
     return;
   }
 
@@ -205,14 +252,18 @@ export async function renderClan(content) {
       ${panel('research', researchHtml(clanTrees, levels, data.techs))}
       ${panel('rankings', '<div data-clan-rankings></div>')}
       ${panel('treasury', treasuryHtml(data.treasury))}
+      ${panel('resources', ownDataBoxHtml('resources'))}
       ${panel('history', historyHtml(asList(data.history)))}
       ${panel('roster', rosterPanelHtml())}
-      ${panel('triumphal', '<div data-clan-triumphal></div>')}
+      ${panel('triumphal', ownDataBoxHtml('triumphal'))}
     </div>`;
 
   clanData = data;
+  centreClanTab(content);
   wireTrees(content, clanTrees, levels, trees);
-  if (view.tab === 'triumphal') await mountTriumphal(content);
+  // A whole page in a tab (Triumphal, Resources) is awaited, so the router's
+  // scroll reset and <details> restore run after it; the rest fill in behind.
+  if (OWN_DATA_TABS.has(view.tab)) await mountPanel(content, view.tab);
   else mountPanel(content, view.tab);
   // The rank tile is a link to #clan/rankings: open it on that ranking. When
   // Rankings is already drawn, redraw it on that ranking now (no fetch); the

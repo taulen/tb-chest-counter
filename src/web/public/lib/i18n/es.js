@@ -34,7 +34,6 @@ export const ui = {
   "Trends, breakdowns and who carries the clan": "Tendencias, desgloses y quién sostiene al clan",
   "Who beats their goals, and who falls short": "Quién supera sus objetivos y quién se queda corto",
   "Power over time, member by member": "Poder a lo largo del tiempo, miembro a miembro",
-  "Clan Capital donations": "Donaciones a la Capital del clan",
   "What the clan's opened chests paid out": "Lo que dieron los cofres abiertos del clan",
   "Event runs and who took part": "Ediciones de eventos y quién participó",
   "Calculators for planning events": "Calculadoras para planificar eventos",

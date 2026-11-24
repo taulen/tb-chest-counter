@@ -98,6 +98,10 @@ A past window is judged against the goal it was played under:
 - `segHtml({ label, items: [{ value, label }], current, attr })` picks one of a
   few: Board | Table, Day/Week. It uses `aria-pressed`; wire clicks on
   `[data-<attr>]`.
+- `segLinksHtml({ label, items: [{ key, label, href }], current })` is the same
+  look as links, for a second level of addresses inside a sub-tab (My Clan →
+  Resources: Overview / Totals / Admin). Never a second sub-tab bar under the
+  first: two strips read as one muddled row.
 - `.ui-chip` (`.is-active`, `.ui-chip-n` for a count) is for filters with
   counts (the bands). A row of chips scrolls sideways on a phone.
 

@@ -62,9 +62,11 @@ function destroyChart() {
 
 // Rebuild the chart with fresh theme tokens when the user switches theme —
 // Chart.js snapshots colors at construction, so a CSS-variable flip needs
-// a destroy + redraw. No-op unless the overview is currently on screen.
+// a destroy + redraw. No-op unless the overview is what its holder shows: the
+// holder (My Clan's Resources panel) outlives it — Totals and Admin draw into
+// the same one, and it stays in the document while another tab is open.
 document.addEventListener('themechange', () => {
-  if (mountedEl && document.contains(mountedEl) && cache) paint();
+  if (mountedEl?.isConnected && mountedEl.querySelector(':scope > [data-rs-overview]') && cache) paint();
 });
 
 // ─── Date helpers (transaction_date is a plain 'YYYY-MM-DD' calendar date) ──
@@ -301,7 +303,7 @@ export async function renderResourcesOverview(el) {
   // controls (edit / delete) live on the separate Admin tab.
   mountedEl = el;
   setPageActions('');
-  el.innerHTML = `<div class="rs-page">${resourceTabsHtml('overview')}${emptyHtml(t('Loading resources…'))}</div>`;
+  el.innerHTML = `<div class="rs-page" data-rs-overview>${resourceTabsHtml('overview')}${emptyHtml(t('Loading resources…'))}</div>`;
 
   // The game's resource icons (lib/game-art.js) are in before the first paint.
   await Promise.all([fetchData(), loadGameArt()]);
@@ -334,7 +336,7 @@ function paint() {
   // and offers Try again instead of drawing an all-zero dashboard.
   if (cache.failed) {
     destroyChart();
-    el.innerHTML = `<div class="rs-page">
+    el.innerHTML = `<div class="rs-page" data-rs-overview>
         ${resourceTabsHtml('overview')}
         ${controlsHtml(members)}
         ${errorStateHtml(t('The resources could not be loaded.'), cache.failed.trim())}
@@ -359,7 +361,7 @@ function paint() {
   const buckets = meaningfulBuckets();
   if (buckets.length && !buckets.includes(view.bucket)) view.bucket = buckets[buckets.length - 1];
 
-  el.innerHTML = `<div class="rs-page">
+  el.innerHTML = `<div class="rs-page" data-rs-overview>
       ${resourceTabsHtml('overview')}
       ${controlsHtml(members)}
       <div class="ui-grid">

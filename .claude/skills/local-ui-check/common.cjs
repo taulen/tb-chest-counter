@@ -34,6 +34,7 @@ const PAGES = {
   triumphal: '/#triumphal',
   resources: '/#resources',
   chestrewards: '/#chest-rewards',
+  restotals: '/#resources/totals',
   resadmin: '/#resources/admin',
   sessions: '/#sessions',
   external: '/#external',
