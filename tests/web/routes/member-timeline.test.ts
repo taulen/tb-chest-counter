@@ -2,7 +2,7 @@
 // baseline of each source left out, a member's merges and the player's own
 // changes on one list, paged by cursor.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { createMemberTimelineRouter } from '../../../src/web/routes/member-timeline.js';
@@ -107,7 +107,17 @@ describe('/api/game/members/:id/timeline', () => {
     audit.run(2, 'rename_member', JSON.stringify({ id: '999', newName: 'Nim the Typed' }), '2026-05-01T09:00:00.000Z');
     audit.run(1, 'merge_player', JSON.stringify({ from: 'Nim the Typed', to: 'Nimduen', clanId: 1 }), '2026-05-02T11:00:00.000Z');
 
-    const titles = (await get(`/api/game/members/${memberId}/timeline?groups=titles`, 'user1')).body;
+    // Read while the title is still held: a title runs out 7 days after it was
+    // given, so from 2026-11-23 the real clock added a "ran out" entry and
+    // this failed on every run (only Date is faked; the request's I/O is real).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+    let titles;
+    try {
+      titles = (await get(`/api/game/members/${memberId}/timeline?groups=titles`, 'user1')).body;
+    } finally {
+      vi.useRealTimers();
+    }
     expect(titles.entries).toEqual([expect.objectContaining({
       kind: 'titles', group: 'titles', day: '2026-11-15', at: '2026-11-16T10:00:00.000Z',
       items: [expect.objectContaining({ titleId: 29, name: 'Prefect', change: 'received' })],
