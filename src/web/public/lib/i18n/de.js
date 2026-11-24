@@ -2792,7 +2792,7 @@ export const ui = {
   "Day in progress": "Tag läuft",
   "Points scored so far on day {day} — it is still running": "Bisher an Tag {day} erzielte Punkte – er läuft noch",
   "Overall points": "Gesamtpunkte",
-  "Points scored each day in the overall ranking — the clan's score is its sum. Points scored between a day's last scan and its 17:00 UTC end count on the next day.": "Täglich erzielte Punkte in der Gesamtrangliste – die Punktzahl des Clans ist ihre Summe. Punkte zwischen dem letzten Scan eines Tages und seinem Ende um 17:00 UTC zählen zum nächsten Tag.",
+  "Points scored each day in the overall ranking — the clan's score is its sum. Points scored between a day's last scan and its 17:00 UTC end count on the next day; the last day keeps everything until the event closes.": "Täglich erzielte Punkte in der Gesamtrangliste – die Punktzahl des Clans ist ihre Summe. Punkte zwischen dem letzten Scan eines Tages und seinem Ende um 17:00 UTC zählen zum nächsten Tag; der letzte Tag behält alles bis zum Ende des Events.",
   "Stage points": "Etappenpunkte",
   "Each day's stage ranking, as the game shows it under the stage.": "Die Rangliste der Etappe jedes Tages, wie das Spiel sie unter der Etappe zeigt.",
   "Clan #{n}": "Clan #{n}",

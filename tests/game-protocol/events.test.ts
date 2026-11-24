@@ -238,6 +238,21 @@ describe('Olympus from the game', () => {
     expect(buildGameOlympus(CLAN, '2026-11-01', ROLLOVER, Date.parse('2026-11-25T13:00:00Z'))).toBeNull();
   });
 
+  it('keeps everything read after day 5\'s 17:00 end on day 5 — there is no day 6 — so it adds up to the final total', () => {
+    seed();
+    // Day 4 ends Nov 27 17:00; day 5's last read before its end, then one in the closing hour.
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 80000, rank: 1 }, { playerId: 2, points: 40000, rank: 2 }], '2026-11-27T12:00:00Z');
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 90000, rank: 1 }, { playerId: 2, points: 45000, rank: 2 }], '2026-11-28T16:31:00Z');
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 97000, rank: 1 }, { playerId: 2, points: 45000, rank: 2 }], '2026-11-28T17:40:00Z');
+    const g = buildGameOlympus(CLAN, '2026-11-23', ROLLOVER, Date.parse('2026-11-29T10:00:00Z'))!;
+    expect(g.days).toEqual([1, 2, 3, 4, 5]);
+    const p1 = g.players.find((p) => p.rawName === '#1')!;
+    expect(p1.cumulative[5]).toBe(97000); // the closing-hour read, not the 16:31 one
+    expect(p1.total).toBe(97000);
+    expect(Object.values(p1.perSummon).reduce((a, b) => a + b, 0)).toBe(p1.total);
+    expect(p1.perSummon[5]).toBe(17000); // 97,000 − day 4's 80,000
+  });
+
   it('falls back to the stage points when the run has no Olympus points (read before 82003)', () => {
     saveEventRun(CLAN, { type: 1025, run: 8, occurrence: 23, state: 1, startsAt: s('2026-11-23T17:00:51Z'), endsAt: s('2026-11-24T17:00:00Z') },
       { code: 'multistage', title: 'Trial of the Chimera' }, '2026-11-24T10:01:56Z');

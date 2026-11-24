@@ -2792,7 +2792,7 @@ export const ui = {
   "Day in progress": "День идёт",
   "Points scored so far on day {day} — it is still running": "Очки, набранные пока за день {day}, — он ещё идёт",
   "Overall points": "Общие очки",
-  "Points scored each day in the overall ranking — the clan's score is its sum. Points scored between a day's last scan and its 17:00 UTC end count on the next day.": "Очки за каждый день в общем рейтинге — счёт клана равен их сумме. Очки, набранные между последним сканированием дня и его концом в 17:00 UTC, идут в следующий день.",
+  "Points scored each day in the overall ranking — the clan's score is its sum. Points scored between a day's last scan and its 17:00 UTC end count on the next day; the last day keeps everything until the event closes.": "Очки за каждый день в общем рейтинге — счёт клана равен их сумме. Очки, набранные между последним сканированием дня и его концом в 17:00 UTC, идут в следующий день; последний день сохраняет всё до закрытия события.",
   "Stage points": "Очки этапа",
   "Each day's stage ranking, as the game shows it under the stage.": "Рейтинг этапа каждого дня — как его показывает игра в окне этапа.",
   "Clan #{n}": "Клан #{n}",

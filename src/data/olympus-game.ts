@@ -9,7 +9,8 @@
  *     Cumulative over the run, so a day's points are the step between the
  *     reads either side of the day's 17:00 UTC end: a member's points at a
  *     moment are their newest standing-history row at or before it. Points
- *     scored between a day's last read and its end land on the next day.
+ *     scored between a day's last read and its end land on the next day —
+ *     except on day 5, which keeps every read until the event closes.
  *   - Stage points: the day's stage's own Clan members ranking (day 1 Trial
  *     of the Chimera … day 5 Trial of Briareus), which starts from zero.
  *
@@ -198,7 +199,9 @@ export function buildGameOlympus(clanId: number, date: string, rolloverUtcHour: 
       };
       let prev = 0;
       for (const d of days) {
-        const cum = pointsAt(Math.min(start + d * DAY_MS, nowMs));
+        // The last day has no next day: it keeps every read until the event
+        // closes (an hour after its 17:00 end), so its total is the final one.
+        const cum = d === RUN_DAYS ? (h.length ? h[h.length - 1].points : 0) : pointsAt(Math.min(start + d * DAY_MS, nowMs));
         cumulative[d] = cum;
         perDay[d] = cum - prev;
         prev = cum;
