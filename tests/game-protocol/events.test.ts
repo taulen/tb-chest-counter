@@ -15,7 +15,7 @@ import { asIdRecord, buildEvents } from '../../src/game-protocol/static-data.js'
 import { catalogKeyForEventTitle, olympusStageDay } from '../../src/game-protocol/event-mapping.js';
 import {
   eventGroupKey, getEventStandings, getMatchup, groupEventRuns, isShortRun, listEventRuns, matchupClansWithoutName, saveEventRun,
-  saveEventStandings, saveMatchup, summarizeEventRuns,
+  listableEventRuns, saveEventStandings, saveMatchup, summarizeEventRuns,
 } from '../../src/data/repositories/game-event-repo.js';
 import { buildGameOlympus, olympusGameRunDates } from '../../src/data/olympus-game.js';
 import { getDb } from '../../src/data/database.js';
@@ -202,6 +202,19 @@ describe('event standings storage', () => {
       [243, 1, 0, null],
       [242, 3, 2, { playerId: 2, points: 500 }],
     ]);
+  });
+
+  it('leaves out a run the game gives no name while nobody has points in it', () => {
+    saveEventRun(CLAN, entry, { code: 'clandoom_epic', title: 'Rise of the Ancients' }, '2026-11-17T12:00:00Z');
+    saveEventStandings(CLAN, RUN, [{ playerId: 1, points: 0, rank: 1 }], '2026-11-17T12:00:00Z');
+    const nameless = { eventType: 1029, run: 1, occurrence: 7 };
+    saveEventRun(CLAN, { ...entry, type: 1029, run: 1, occurrence: 7 }, { code: '', title: '' }, '2026-11-17T12:00:00Z');
+    saveEventStandings(CLAN, nameless, [{ playerId: 1, points: 0, rank: 1 }], '2026-11-17T12:00:00Z');
+    // A named run without points stays; the nameless one goes.
+    expect(listableEventRuns(CLAN, listEventRuns(CLAN)).map((r) => r.eventType)).toEqual([1024]);
+    // Once someone scores in it, it is listed.
+    saveEventStandings(CLAN, nameless, [{ playerId: 1, points: 5, rank: 1 }], '2026-11-17T13:00:00Z');
+    expect(listableEventRuns(CLAN, listEventRuns(CLAN)).map((r) => r.eventType).sort()).toEqual([1024, 1029]);
   });
 
   it('keys an event by its code, a code-less one by its type, and tells the short tournaments apart by length', () => {

@@ -331,7 +331,7 @@ function createGameRouter() {
     /**
      * Event standings read from the game (Events → In-game rankings).
      * `events`: every event the scans saw standings for, one entry each (the
-     * picker). `runs`, newest first: `?event=<group>` every run of that event;
+     * picker), less the nameless ones nobody scored in (listableEventRuns). `runs`, newest first: `?event=<group>` every run of that event;
      * else the runs overlapping `?from=&to=` (ISO; the last 7 days without
      * them). Each run carries its head count and leader, never its standings
      * (/events/standings).
@@ -340,7 +340,7 @@ function createGameRouter() {
         const clanId = req.clanId;
         const nowSec = Math.floor(Date.now() / 1000);
         const q = req.query;
-        const all = (0, game_event_repo_js_1.listEventRuns)(clanId);
+        const all = (0, game_event_repo_js_1.listableEventRuns)(clanId, (0, game_event_repo_js_1.listEventRuns)(clanId));
         const events = (0, game_event_repo_js_1.groupEventRuns)(all).map((g) => ({ ...g, eventKey: (0, event_mapping_js_1.catalogKeyForEventTitle)(g.title) }));
         let picked;
         if (q.event) {

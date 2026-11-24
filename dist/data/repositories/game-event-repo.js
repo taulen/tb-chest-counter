@@ -13,6 +13,7 @@ exports.listEventRuns = listEventRuns;
 exports.isShortRun = isShortRun;
 exports.eventGroupKey = eventGroupKey;
 exports.groupEventRuns = groupEventRuns;
+exports.listableEventRuns = listableEventRuns;
 exports.summarizeEventRuns = summarizeEventRuns;
 exports.getEventStandings = getEventStandings;
 exports.saveMatchup = saveMatchup;
@@ -175,6 +176,17 @@ function groupEventRuns(runs) {
             out.set(key, { key, title: r.title, eventType: r.eventType, short: isShortRun(r), runs: 1 });
     }
     return [...out.values()];
+}
+/**
+ * The runs worth listing: all but those the game gives no name AND nobody has
+ * points in. Type 1029 is one — nameless, three months long, never a point —
+ * and sat under Live now as "Event 1029" saying nothing. One that gains points
+ * is listed again.
+ */
+function listableEventRuns(clanId, runs) {
+    const key = (r) => `${r.eventType}:${r.run}:${r.occurrence}`;
+    const quiet = new Set(summarizeEventRuns(clanId, runs.filter((r) => !r.title)).filter((s) => s.withPoints === 0).map(key));
+    return quiet.size ? runs.filter((r) => !quiet.has(key(r))) : runs;
 }
 /** Each run's head count and leader, one indexed query per run, in the order given. */
 function summarizeEventRuns(clanId, runs) {

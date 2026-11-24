@@ -255,6 +255,18 @@ export interface EventRunSummary extends StoredEventRun {
   leader: { playerId: number; points: number } | null;
 }
 
+/**
+ * The runs worth listing: all but those the game gives no name AND nobody has
+ * points in. Type 1029 is one — nameless, three months long, never a point —
+ * and sat under Live now as "Event 1029" saying nothing. One that gains points
+ * is listed again.
+ */
+export function listableEventRuns(clanId: number, runs: StoredEventRun[]): StoredEventRun[] {
+  const key = (r: EventRunKey) => `${r.eventType}:${r.run}:${r.occurrence}`;
+  const quiet = new Set(summarizeEventRuns(clanId, runs.filter((r) => !r.title)).filter((s) => s.withPoints === 0).map(key));
+  return quiet.size ? runs.filter((r) => !quiet.has(key(r))) : runs;
+}
+
 /** Each run's head count and leader, one indexed query per run, in the order given. */
 export function summarizeEventRuns(clanId: number, runs: StoredEventRun[]): EventRunSummary[] {
   // With exactly one MIN() aggregate, SQLite takes the bare player_id/points

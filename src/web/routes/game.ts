@@ -60,7 +60,8 @@ import { describeArtifact } from '../../game-protocol/artifacts.js';
 import { CAPTAIN_GEAR_POSITIONS, describeItem, HERO_ENTRY_ID, HERO_GEAR_POSITIONS } from '../../game-protocol/equipment.js';
 import { catalogKeyForEventTitle } from '../../game-protocol/event-mapping.js';
 import {
-  eventGroupKey, getEventRun, getEventStandings, groupEventRuns, isShortRun, listEventRuns, summarizeEventRuns, type StoredEventRun,
+  eventGroupKey, getEventRun, getEventStandings, groupEventRuns, isShortRun, listableEventRuns, listEventRuns, summarizeEventRuns,
+  type StoredEventRun,
 } from '../../data/repositories/game-event-repo.js';
 import { heroLevelView } from '../../game-protocol/hero-levels.js';
 import { hallOfFameView } from '../../game-protocol/factions.js';
@@ -367,7 +368,7 @@ export function createGameRouter(): Router {
   /**
    * Event standings read from the game (Events → In-game rankings).
    * `events`: every event the scans saw standings for, one entry each (the
-   * picker). `runs`, newest first: `?event=<group>` every run of that event;
+   * picker), less the nameless ones nobody scored in (listableEventRuns). `runs`, newest first: `?event=<group>` every run of that event;
    * else the runs overlapping `?from=&to=` (ISO; the last 7 days without
    * them). Each run carries its head count and leader, never its standings
    * (/events/standings).
@@ -376,7 +377,7 @@ export function createGameRouter(): Router {
     const clanId = req.clanId!;
     const nowSec = Math.floor(Date.now() / 1000);
     const q = req.query as Record<string, string | undefined>;
-    const all = listEventRuns(clanId);
+    const all = listableEventRuns(clanId, listEventRuns(clanId));
     const events = groupEventRuns(all).map((g) => ({ ...g, eventKey: catalogKeyForEventTitle(g.title) }));
     let picked: StoredEventRun[];
     if (q.event) {

@@ -1188,7 +1188,9 @@ window (the kit scrubber) — live now, the short rotating tournaments (runs
 under 12 h, `isShortRun`: War Tools, Battle Training…) folded one row per
 tournament, then each game day's runs; `?event=<key>` every run of one event;
 `?run=<type>-<run>-<occurrence>` one run's standings. An event picker (every
-event read, events then tournaments) is on all three. `GET /api/game/events`
+event read, events then tournaments) is on all three; a run the game gives no
+name stays out while nobody has points in it (`listableEventRuns`: type 1029,
+nameless and three months long, sat under Live now as "Event 1029"). `GET /api/game/events`
 answers a window (`from`/`to`) or one event (`event`) with each run's head count
 and #1 (`summarizeEventRuns`), never its standings. On
 **Events → Ancients** the Tin Man card itself is the game's per-summon table
