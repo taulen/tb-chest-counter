@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.SHORT_RUN_SECONDS = void 0;
 exports.saveEventRun = saveEventRun;
 exports.touchEventRun = touchEventRun;
 exports.saveEventStandings = saveEventStandings;
@@ -9,7 +10,10 @@ exports.listStandingHistory = listStandingHistory;
 exports.liveEventRun = liveEventRun;
 exports.listRunsOfType = listRunsOfType;
 exports.listEventRuns = listEventRuns;
-exports.latestEventRuns = latestEventRuns;
+exports.isShortRun = isShortRun;
+exports.eventGroupKey = eventGroupKey;
+exports.groupEventRuns = groupEventRuns;
+exports.summarizeEventRuns = summarizeEventRuns;
 exports.getEventStandings = getEventStandings;
 exports.saveMatchup = saveMatchup;
 exports.getMatchup = getMatchup;
@@ -24,7 +28,6 @@ exports.getEventRun = getEventRun;
  */
 const database_js_1 = require("../database.js");
 const olympus_js_1 = require("../../game-protocol/olympus.js");
-const event_mapping_js_1 = require("../../game-protocol/event-mapping.js");
 const OPEN_ENDED = 4294967295;
 /** Record (or refresh) a run the list showed running. */
 function saveEventRun(clanId, e, meta, now = new Date().toISOString()) {
@@ -133,24 +136,62 @@ function listEventRuns(clanId) {
       ORDER BY COALESCE(r.starts_at, 0) DESC, r.last_read DESC`).all(clanId).map(rowToRun);
 }
 /**
- * The latest run per event (same code = same event; a code-less run groups by
- * its type). Olympus shares one code between its overall ranking and its five
- * stages: those are two entries — the overall ranking and the latest stage —
- * and its other sub-events one each by title.
+ * A run shorter than this is one of the game's rotating tournaments (War
+ * Tools, Battle Training, Capital Challenge…: 2–5 hours, several a day), not
+ * an event of a day or more. Told apart by length, not by a `_tournament`
+ * code: Summon Mastery (scrolls_tournament) runs two days.
  */
-function latestEventRuns(clanId) {
-    const seen = new Set();
-    const out = [];
-    for (const r of listEventRuns(clanId)) {
-        const group = r.code === olympus_js_1.OLYMPUS_CODE
-            ? (r.eventType === olympus_js_1.OLYMPUS_EVENT_TYPE ? r.code : (0, event_mapping_js_1.olympusStageDay)(r.title) !== null ? `${r.code}:stage` : `${r.code}:${r.title}`)
-            : r.code || `type:${r.eventType}`;
-        if (seen.has(group))
-            continue;
-        seen.add(group);
-        out.push(r);
+exports.SHORT_RUN_SECONDS = 12 * 3600;
+/** Whether the run is one of the short rotating tournaments (SHORT_RUN_SECONDS). */
+function isShortRun(r) {
+    return r.startsAt !== null && r.endsAt !== null && r.endsAt - r.startsAt < exports.SHORT_RUN_SECONDS;
+}
+const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+/**
+ * The event a run is a run of, as a key that is safe in an address
+ * (#events/in-game?event=<key>): the game's code — the same code is the same
+ * event — and a code-less run by its type (`type-1029`). Olympus's overall
+ * ranking and its stages share one code: the ranking keeps the code, each
+ * stage and other sub-event is its own event by title
+ * (`multistage.trial-of-the-chimera`).
+ */
+function eventGroupKey(r) {
+    if (!r.code)
+        return `type-${r.eventType}`;
+    const code = /^[a-z0-9_]+$/.test(r.code) ? r.code : slugify(r.code) || `type-${r.eventType}`;
+    if (r.code === olympus_js_1.OLYMPUS_CODE && r.eventType !== olympus_js_1.OLYMPUS_EVENT_TYPE)
+        return `${code}.${slugify(r.title) || r.eventType}`;
+    return code;
+}
+/** Runs (newest first, as listEventRuns gives them) folded into one entry per event (eventGroupKey). */
+function groupEventRuns(runs) {
+    const out = new Map();
+    for (const r of runs) {
+        const key = eventGroupKey(r);
+        const g = out.get(key);
+        if (g)
+            g.runs++;
+        else
+            out.set(key, { key, title: r.title, eventType: r.eventType, short: isShortRun(r), runs: 1 });
     }
-    return out;
+    return [...out.values()];
+}
+/** Each run's head count and leader, one indexed query per run, in the order given. */
+function summarizeEventRuns(clanId, runs) {
+    // With exactly one MIN() aggregate, SQLite takes the bare player_id/points
+    // from the row holding it: the best rank's.
+    const stmt = (0, database_js_1.getDb)().prepare(`SELECT COUNT(*) AS members, COALESCE(SUM(points > 0), 0) AS with_points, MIN(rank) AS top_rank, player_id, points
+       FROM game_event_standings
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?`);
+    return runs.map((r) => {
+        const s = stmt.get(clanId, r.eventType, r.run, r.occurrence);
+        return {
+            ...r,
+            members: s.members,
+            withPoints: s.with_points,
+            leader: s.top_rank !== null && s.player_id !== null && (s.points ?? 0) > 0 ? { playerId: s.player_id, points: s.points ?? 0 } : null,
+        };
+    });
 }
 /** A run's standings, best first, with each player's previous points. */
 function getEventStandings(clanId, key) {

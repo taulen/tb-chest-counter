@@ -76,6 +76,10 @@ function eventRunApi(r, nowSec) {
         occurrence: r.occurrence,
         code: r.code,
         title: r.title,
+        /** The event it is a run of (Events → In-game rankings ?event=). */
+        group: (0, game_event_repo_js_1.eventGroupKey)(r),
+        /** One of the short rotating tournaments (2–5 h). */
+        short: (0, game_event_repo_js_1.isShortRun)(r),
         eventKey: (0, event_mapping_js_1.catalogKeyForEventTitle)(r.title),
         startsAt: r.startsAt ? new Date(r.startsAt * 1000).toISOString() : null,
         endsAt: r.endsAt ? new Date(r.endsAt * 1000).toISOString() : null,
@@ -325,24 +329,43 @@ function createGameRouter() {
         });
     });
     /**
-     * Event standings read from the game (Events page): the latest run of every
-     * event the scans saw, with the site's event key where the catalog knows it,
-     * its window and its top three.
+     * Event standings read from the game (Events → In-game rankings).
+     * `events`: every event the scans saw standings for, one entry each (the
+     * picker). `runs`, newest first: `?event=<group>` every run of that event;
+     * else the runs overlapping `?from=&to=` (ISO; the last 7 days without
+     * them). Each run carries its head count and leader, never its standings
+     * (/events/standings).
      */
     router.get('/events', (req, res) => {
         const clanId = req.clanId;
         const nowSec = Math.floor(Date.now() / 1000);
-        const runs = (0, game_event_repo_js_1.latestEventRuns)(clanId).map((r) => {
-            const standings = (0, game_event_repo_js_1.getEventStandings)(clanId, r);
-            const names = playerNames(clanId, standings.slice(0, 3).map((s) => s.playerId));
-            return {
-                ...eventRunApi(r, nowSec),
-                members: standings.length,
-                withPoints: standings.filter((s) => s.points > 0).length,
-                top: standings.slice(0, 3).map((s) => ({ rank: s.rank, points: s.points, ...names.get(s.playerId) })),
-            };
+        const q = req.query;
+        const all = (0, game_event_repo_js_1.listEventRuns)(clanId);
+        const events = (0, game_event_repo_js_1.groupEventRuns)(all).map((g) => ({ ...g, eventKey: (0, event_mapping_js_1.catalogKeyForEventTitle)(g.title) }));
+        let picked;
+        if (q.event) {
+            picked = all.filter((r) => (0, game_event_repo_js_1.eventGroupKey)(r) === q.event);
+        }
+        else {
+            let from = q.from ? Math.floor(Date.parse(q.from) / 1000) : NaN;
+            let to = q.to ? Math.ceil(Date.parse(q.to) / 1000) : NaN;
+            if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
+                from = nowSec - 7 * 86_400;
+                to = nowSec + 1;
+            }
+            picked = all.filter((r) => (r.startsAt ?? 0) < to && (r.endsAt === null || r.endsAt > from));
+        }
+        const summaries = (0, game_event_repo_js_1.summarizeEventRuns)(clanId, picked);
+        const names = playerNames(clanId, [...new Set(summaries.flatMap((s) => (s.leader ? [s.leader.playerId] : [])))]);
+        res.json({
+            events,
+            runs: summaries.map((s) => ({
+                ...eventRunApi(s, nowSec),
+                members: s.members,
+                withPoints: s.withPoints,
+                leader: s.leader ? { points: s.leader.points, ...names.get(s.leader.playerId) } : null,
+            })),
         });
-        res.json({ runs });
     });
     /**
      * One run's standings: `?type=&run=&occurrence=`, or `?event=<catalog key>`

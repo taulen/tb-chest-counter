@@ -14,7 +14,8 @@ import { figurineSummons } from '../../src/game-protocol/ancients.js';
 import { asIdRecord, buildEvents } from '../../src/game-protocol/static-data.js';
 import { catalogKeyForEventTitle, olympusStageDay } from '../../src/game-protocol/event-mapping.js';
 import {
-  getEventStandings, getMatchup, latestEventRuns, listEventRuns, matchupClansWithoutName, saveEventRun, saveEventStandings, saveMatchup,
+  eventGroupKey, getEventStandings, getMatchup, groupEventRuns, isShortRun, listEventRuns, matchupClansWithoutName, saveEventRun,
+  saveEventStandings, saveMatchup, summarizeEventRuns,
 } from '../../src/data/repositories/game-event-repo.js';
 import { buildGameOlympus, olympusGameRunDates } from '../../src/data/olympus-game.js';
 import { getDb } from '../../src/data/database.js';
@@ -174,7 +175,7 @@ describe('event standings storage', () => {
     expect(hist.n).toBe(3); // two baseline rows + one move
   });
 
-  it('keeps a finished run when the event comes round again, and lists the latest run per event', () => {
+  it('keeps a finished run when the event comes round again, and folds the runs into one entry per event', () => {
     saveEventRun(CLAN, entry, { code: 'clandoom_epic', title: 'Rise of the Ancients' }, '2026-11-17T12:00:00Z');
     saveEventStandings(CLAN, RUN, [{ playerId: 1, points: 100, rank: 1 }], '2026-11-17T12:00:00Z');
     const next = { ...entry, occurrence: 243, startsAt: 1795366800, endsAt: 1795453200 };
@@ -184,8 +185,35 @@ describe('event standings storage', () => {
     saveEventRun(CLAN, { ...entry, type: 1006, occurrence: 462 }, { code: 'traderoutes', title: 'Trade Routes' }, '2026-11-17T12:00:00Z');
 
     expect(listEventRuns(CLAN).map((r) => r.occurrence)).toEqual([243, 242]);
-    expect(latestEventRuns(CLAN).map((r) => [r.code, r.occurrence])).toEqual([['clandoom_epic', 243]]);
+    expect(groupEventRuns(listEventRuns(CLAN))).toEqual([{ key: 'clandoom_epic', title: 'Rise of the Ancients', eventType: 1024, short: false, runs: 2 }]);
     expect(getEventStandings(CLAN, RUN)[0].points).toBe(100); // the finished run's standings stay
+  });
+
+  it("summarises each run: who the game lists, who has points, and the best rank's player", () => {
+    saveEventRun(CLAN, entry, { code: 'clandoom_epic', title: 'Rise of the Ancients' }, '2026-11-17T12:00:00Z');
+    saveEventStandings(CLAN, RUN, [
+      { playerId: 2, points: 500, rank: 1 }, { playerId: 1, points: 100, rank: 2 }, { playerId: 3, points: 0, rank: 3 },
+    ], '2026-11-17T12:00:00Z');
+    // A run nobody scored in yet has no leader.
+    const quiet = { ...entry, occurrence: 243 };
+    saveEventRun(CLAN, quiet, { code: 'clandoom_epic', title: 'Rise of the Ancients' }, '2026-11-23T18:00:00Z');
+    saveEventStandings(CLAN, { ...RUN, occurrence: 243 }, [{ playerId: 1, points: 0, rank: 1 }], '2026-11-23T18:00:00Z');
+    expect(summarizeEventRuns(CLAN, listEventRuns(CLAN)).map((r) => [r.occurrence, r.members, r.withPoints, r.leader])).toEqual([
+      [243, 1, 0, null],
+      [242, 3, 2, { playerId: 2, points: 500 }],
+    ]);
+  });
+
+  it('keys an event by its code, a code-less one by its type, and tells the short tournaments apart by length', () => {
+    expect(eventGroupKey({ eventType: 1015, code: 'resource_collection_tournament', title: 'War Tools' })).toBe('resource_collection_tournament');
+    expect(eventGroupKey({ eventType: 1029, code: '', title: '' })).toBe('type-1029');
+    expect(eventGroupKey({ eventType: 1032, code: 'multistage', title: 'TRIALS OF OLYMPUS' })).toBe('multistage');
+    expect(eventGroupKey({ eventType: 1025, code: 'multistage', title: 'Trial of the Chimera' })).toBe('multistage.trial-of-the-chimera');
+    const h = 3600;
+    expect(isShortRun({ startsAt: 0, endsAt: 3.5 * h })).toBe(true); // War Tools
+    expect(isShortRun({ startsAt: 0, endsAt: 24 * h })).toBe(false); // Hellforge's day
+    expect(isShortRun({ startsAt: 0, endsAt: 48 * h })).toBe(false); // Summon Mastery, a "_tournament" code
+    expect(isShortRun({ startsAt: 0, endsAt: null })).toBe(false); // open-ended
   });
 });
 
@@ -290,7 +318,9 @@ describe('Olympus from the game', () => {
     // Only the two still unnamed are read again.
     expect(matchupClansWithoutName(CLAN, UMBRELLA).sort((a, b) => a - b)).toEqual([1172526071839, 1297080123906]);
     expect(buildGameOlympus(CLAN, '2026-11-23', ROLLOVER, Date.parse('2026-11-25T13:00:00Z'))!.matchup?.clans).toHaveLength(3);
-    // In-game rankings: TRIALS OF OLYMPUS and the newest stage, not one hiding the other.
-    expect(latestEventRuns(CLAN).map((r) => r.title)).toEqual(['Trial of the Basilisk', 'TRIALS OF OLYMPUS']);
+    // In-game rankings: TRIALS OF OLYMPUS and each stage its own event, not one hiding the other.
+    expect(groupEventRuns(listEventRuns(CLAN)).map((g) => [g.key, g.runs])).toEqual([
+      ['multistage.trial-of-the-basilisk', 1], ['multistage.trial-of-the-chimera', 1], ['multistage', 1],
+    ]);
   });
 });

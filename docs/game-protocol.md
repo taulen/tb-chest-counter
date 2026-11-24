@@ -1175,12 +1175,22 @@ the catalog's `calendarNames` / name, case- and accent-insensitive
 and Ancients' Treasure → ancients, TRIALS OF OLYMPUS and its five stages →
 olympus, DARK OMENS → dark-omens, Ragnarök → ragnarok. Anything else (Trade
 Routes, Summon Mastery, Prime Arena, …) is stored and shown under the game's
-own title. Events → In-game rankings lists Olympus twice — the overall
-ranking and the newest stage — since they share one code.
+own title. One event is one code (`eventGroupKey`: the code, a code-less run by
+its type); Olympus's overall ranking keeps the code `multistage` and each stage
+is its own event by title (`multistage.trial-of-the-chimera`), since they share
+it.
 
 Shown: a "Standings from the game" card on the event's page (the run the
 selected timeframe covers; the hand-pasted standings card folds away under it),
-and **Events → In-game rankings** — the latest run of every event read. On
+and **Events → In-game rankings** (Nov 24 2026; one tile per event had grown to
+~40 a clan after a week). Three addresses: `#events/in-game` is a Week/Day
+window (the kit scrubber) — live now, the short rotating tournaments (runs
+under 12 h, `isShortRun`: War Tools, Battle Training…) folded one row per
+tournament, then each game day's runs; `?event=<key>` every run of one event;
+`?run=<type>-<run>-<occurrence>` one run's standings. An event picker (every
+event read, events then tournaments) is on all three. `GET /api/game/events`
+answers a window (`from`/`to`) or one event (`event`) with each run's head count
+and #1 (`summarizeEventRuns`), never its standings. On
 **Events → Ancients** the Tin Man card itself is the game's per-summon table
 (below).
 
