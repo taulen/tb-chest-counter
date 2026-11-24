@@ -9489,6 +9489,17 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .tinman-game-strip { align-items: center; }
 .tinman-game-strip .tinman-chip-meta { font-size: 12.5px; }
 .tinman-chip.tinman-chip-plain { padding: 5px 12px; }
+/* Olympus from the game (pages/tinman-scores.js): days still ahead, the
+   clan-vs-clan matchup with the clan's own row marked, the measure toggle. */
+.tinman-chip.is-upcoming { opacity: 0.6; }
+.olympus-matchup { padding: 10px 20px 0; }
+.olympus-matchup h3 { margin: 0 0 4px; }
+.olympus-matchup .ui-row.is-own .ui-row-name,
+.olympus-matchup .ui-row.is-own .ui-row-n { color: var(--accent-gold); }
+.olympus-matchup .tinman-note { padding: 6px 0 0; }
+.olympus-measure { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 20px 0; }
+.olympus-measure .ui-seg { flex: none; }
+.olympus-measure .tinman-note { flex: 1 1 260px; margin: 0; padding: 0; }
 .tinman-col-sub.tinman-col-live { color: var(--accent-green); }
 .tinman-table td.tinman-live-cell { background: var(--accent-green-bg); }
 .tinman-raw { color: var(--text-secondary); font-style: italic; }

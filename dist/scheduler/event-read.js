@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.readEventStandings = readEventStandings;
 const messages_js_1 = require("../game-protocol/messages.js");
 const ancients_js_1 = require("../game-protocol/ancients.js");
+const olympus_js_1 = require("../game-protocol/olympus.js");
 const game_event_repo_js_1 = require("../data/repositories/game-event-repo.js");
 const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo.js");
 async function readEventStandings(clanId, client, key, opts) {
@@ -22,8 +23,11 @@ async function readEventStandings(clanId, client, key, opts) {
             progress = null;
         await opts.pause?.();
     }
-    const frame = await client.eventStandings(key.eventType, key.run);
-    const standings = (0, messages_js_1.parseEventStandings)(frame);
+    // Trials of Olympus answers 38003 with every member at 0: its Clan members
+    // tab is 82003 (game-protocol/olympus.ts).
+    const olympus = key.eventType === olympus_js_1.OLYMPUS_EVENT_TYPE;
+    const frame = olympus ? await client.olympusMembers(key.eventType, key.run) : await client.eventStandings(key.eventType, key.run);
+    const standings = olympus ? (0, messages_js_1.parseOlympusMembers)(frame) : (0, messages_js_1.parseEventStandings)(frame);
     if (!standings.length)
         return null;
     if (opts.entry)

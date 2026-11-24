@@ -234,7 +234,10 @@ async function loadPasted(pastedApi, r) {
   try {
     const res = await api(`/event-scores/${pastedApi}?date=${encodeURIComponent(r.scoresDate)}`);
     if (res?.error) return { kind: 'error' };
-    const days = (res.summons || []).map((s) => s.summon).sort((a, b) => a - b);
+    // A run read from the game (Olympus) carries its days and each player's
+    // points after each day itself; nothing is pasted for it.
+    const fromGame = Array.isArray(res.game?.days) && res.game.days.length > 0;
+    const days = fromGame ? [...res.game.days] : (res.summons || []).map((s) => s.summon).sort((a, b) => a - b);
     if (!days.length) return { kind: 'none-pasted' };
     const players = (res.players || []).map((p) => ({
       key: p.memberId ? `m:${p.memberId}` : `n:${String(p.rawName || p.name).trim().toLowerCase()}`,
@@ -242,7 +245,7 @@ async function loadPasted(pastedApi, r) {
       name: p.name,
       cumulative: p.cumulative || {},
     }));
-    return { kind: 'pasted', days, players };
+    return { kind: 'pasted', days, players, fromGame };
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
     return { kind: 'error' };
@@ -335,6 +338,11 @@ function statusHtml() {
     case 'pasted': {
       const day = pickedDay();
       const last = src.days[src.days.length - 1];
+      if (src.fromGame) {
+        return day === last
+          ? tn(src.players.length, '{n} player in the ranking read from the game, through day {day}.', '{n} players in the ranking read from the game, through day {day}.', { day })
+          : tn(src.players.length, '{n} player · scores as they stood after day {day}, read from the game.', '{n} players · scores as they stood after day {day}, read from the game.', { day });
+      }
       return day === last
         ? tn(src.players.length, '{n} player in the ranking pasted after day {day}.', '{n} players in the ranking pasted after day {day}.', { day })
         : tn(src.players.length, '{n} player · scores as they stood after day {day} (day {last} is pasted too).', '{n} players · scores as they stood after day {day} (day {last} is pasted too).', { day, last });

@@ -190,6 +190,10 @@ const jsonUrls = (list) => [...list.matchAll(/"([^"]+)"/g)].map((u) => u[1].repl
  * the client asks it for the event list (24001) — a realm server never answers
  * that (Nov 2026: every scan's event read failed "no 24001 reply" until this).
  * It is the page's `rating_url`, else realm 100000's logic_url.
+ *
+ * Two more servers the Olympus window talks to (Nov 24 2026 recording): the
+ * `rating_proxy_url` (its Clan ranking, 82000) and the `reg_url` (which
+ * kingdom a rival clan is in, before asking that kingdom for its name).
  */
 function parseSitePage(html) {
     const suid = html.match(/"suid":"([a-z0-9]+:\d+)"/)?.[1] ?? null;
@@ -201,7 +205,10 @@ function parseSitePage(html) {
     }
     const rating = html.match(/"rating_url":\[([^\]]*)\]/);
     const ratingUrls = rating ? jsonUrls(rating[1]) : (realmUrls.get(RATING_REALM_ID) ?? []);
-    return { suid, realmUrls, ratingUrls };
+    const proxy = html.match(/"rating_proxy_url":"([^"]+)"/);
+    const ratingProxyUrl = proxy ? proxy[1].replace(/\\\//g, '/') : null;
+    const reg = html.match(/"reg_url":\[([^\]]*)\]/);
+    return { suid, realmUrls, ratingUrls, ratingProxyUrl, regUrls: reg ? jsonUrls(reg[1]) : [] };
 }
 function tokenFromSetCookie(setCookies) {
     for (const c of setCookies) {
@@ -221,13 +228,13 @@ async function fetchSiteBootstrap(jar) {
         throw new GameProtocolError(`GET /en/ → HTTP ${res.status}`);
     const html = await res.text();
     const token = tokenFromSetCookie(res.headers.getSetCookie());
-    const { suid, realmUrls, ratingUrls } = parseSitePage(html);
+    const { suid, realmUrls, ratingUrls, ratingProxyUrl, regUrls } = parseSitePage(html);
     if (classifySitePage(res.status, html) === 'logged-out')
         throw new SessionLoggedOutError();
     if (!token || !suid) {
         throw new GameProtocolError('totalbattle.com returned an unexpected page (no token or account id) — not treated as a logout');
     }
-    return { token, suid, realmUrls, ratingUrls };
+    return { token, suid, realmUrls, ratingUrls, ratingProxyUrl, regUrls };
 }
 async function getGameStartData(boot, jar, device) {
     const body = {
@@ -341,12 +348,15 @@ class GameClient {
     session;
     suid;
     ratingUrl;
+    servers;
     seq = 1;
     constructor(url, playerId, realmId, clanId, nickname, session, 
     /** The website user id (`tb:<n>`), which is also the chat (Sendbird) user id. */
     suid = '', 
     /** The rating server (the site page's rating_url): the event list (24001) is asked there, never on the realm. */
-    ratingUrl = null) {
+    ratingUrl = null, 
+    /** Every kingdom's server, the rating proxy and the registration server, from the site page. */
+    servers = { realmUrls: new Map(), ratingProxyUrl: null, regUrl: null }) {
         this.url = url;
         this.playerId = playerId;
         this.realmId = realmId;
@@ -355,6 +365,7 @@ class GameClient {
         this.session = session;
         this.suid = suid;
         this.ratingUrl = ratingUrl;
+        this.servers = servers;
     }
     static connect(opts) {
         return oneSiteCallAtATime(() => GameClient.connectNow(opts));
@@ -387,17 +398,21 @@ class GameClient {
         const profile = Array.isArray(root) && Array.isArray(root[6]) ? root[6][2] : undefined;
         const nickname = Array.isArray(profile) && typeof profile[0] === 'string' ? profile[0] : '';
         const clanId = Array.isArray(profile) && Array.isArray(profile[1]) && typeof profile[1][0] === 'number' ? profile[1][0] : 0;
-        return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session, boot.suid, boot.ratingUrls[0] ?? null);
+        return new GameClient(url, start.playerId, start.realmId, clanId, nickname, session, boot.suid, boot.ratingUrls[0] ?? null, {
+            realmUrls: boot.realmUrls,
+            ratingProxyUrl: boot.ratingProxyUrl,
+            regUrl: boot.regUrls[0] ?? null,
+        });
     }
     /**
      * Send one message and return every message in the reply. `url` is the
      * realm server unless given: the rating server takes the same session and
      * the same running request number (the client numbers both from one counter).
      */
-    async request(type, body, url = this.url) {
+    async request(type, body, url = this.url, headers = {}) {
         this.seq += 1;
         const frame = (0, codec_js_1.encodeFrame)([type, this.seq, [[this.playerId], this.session], ''], body);
-        return (0, codec_js_1.messages)((0, codec_js_1.decodeFrames)(await post(url, frame)));
+        return (0, codec_js_1.messages)((0, codec_js_1.decodeFrames)(await post(url, frame, headers)));
     }
     /** The first reply message of `type`, or throw. */
     async ask(type, body, url = this.url) {
@@ -427,6 +442,50 @@ class GameClient {
     eventProgress(type, run) {
         return this.ask(38000, [[[type, run]]]);
     }
+    /** Trials of Olympus' Ranking → Clan members (82003): the members' Olympus points. Read-only. */
+    olympusMembers(type, run) {
+        return this.ask(82003, [[[type, run]]]);
+    }
+    /** The clan's Olympus matchup (82001): its group id, which the Clan ranking is asked by. Read-only. */
+    olympusGroup(type, run) {
+        return this.ask(82001, [[[type, run]]]);
+    }
+    /** Olympus' Ranking → Clan ranking (82000), asked on the rating proxy: the matchup's clans and their scores. Read-only. */
+    olympusClanRanking(type, run, groupId) {
+        const proxy = this.servers.ratingProxyUrl;
+        if (!proxy)
+            return Promise.reject(new GameProtocolError('the site page lists no rating proxy (rating_proxy_url)'));
+        return this.ask(82000, [[[type, run], groupId]], `${proxy.replace(/\/$/, '')}/`);
+    }
+    /** Olympus' Ranking → Clan rewards (82002): the clan's minimum score and the rewards per place. Read-only. */
+    olympusRewards(type, run) {
+        return this.ask(82002, [[[type, run]]]);
+    }
+    /** Olympus' Talents → Clan Talents (74003): the clan's talent levels. Read-only. */
+    olympusClanTalents(type, run) {
+        return this.ask(74003, [[[type, run]]]);
+    }
+    /**
+     * Which kingdom each clan is in — what the client asks the registration
+     * server (message 192, also named in an `x-command-id` header) before
+     * reading a rival clan on its own kingdom's server. The reply is
+     * `[[kingdom, …]]` in the order asked (Nov 24 2026: CCH, GOF → 213, 157).
+     * Read-only. Null when the site page lists no registration server.
+     */
+    async clanKingdoms(clanIds) {
+        const regUrl = this.servers.regUrl;
+        if (!regUrl || !clanIds.length)
+            return null;
+        const reply = (await this.request(192, [[clanIds.map((id) => [id])]], regUrl, { 'x-command-id': '192' })).find((m) => m.type === 192);
+        if (!reply)
+            throw new GameProtocolError('no 192 reply');
+        const list = Array.isArray(reply.body[0]) && Array.isArray(reply.body[0][0]) ? reply.body[0][0] : [];
+        return clanIds.map((_, i) => (typeof list[i] === 'number' ? list[i] : null));
+    }
+    /** A kingdom's own server, from the site page; null when it lists none. */
+    kingdomUrl(kingdom) {
+        return kingdom === this.realmId ? this.url : this.servers.realmUrls.get(kingdom)?.[0] ?? null;
+    }
     /**
      * The clan's headline numbers (25): might and wealth points — what the game
      * asks for whenever its clan window opens. Read-only.
@@ -449,9 +508,14 @@ class GameClient {
     clanRanking(kind, count = 100) {
         return this.ask(23, [[kind, count, [], false]]);
     }
-    /** Any clans' headline (15200): logo, tag, name, members / limit, might — what the ranking list shows. Read-only. */
-    clanSummaries(clanIds) {
-        return this.ask(15200, [[clanIds.map((id) => [id])]]);
+    /**
+     * Any clans' headline (15200): logo, tag, name, members / limit, might — what
+     * the ranking list shows. A clan of another kingdom is asked on that
+     * kingdom's server (`url`, see kingdomUrl), with the same session, as the
+     * client does for Olympus' rival clans. Read-only.
+     */
+    clanSummaries(clanIds, url = this.url) {
+        return this.ask(15200, [[clanIds.map((id) => [id])]], url);
     }
     players(playerIds) {
         return this.ask(402, [[playerIds.map((id) => [id])]]);
@@ -497,10 +561,10 @@ class GameClient {
     }
 }
 exports.GameClient = GameClient;
-async function post(url, body) {
+async function post(url, body, extraHeaders = {}) {
     const res = await fetch(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/octet-stream', accept: '*/*', origin: SITE, referer: `${SITE}/`, 'user-agent': exports.USER_AGENT },
+        headers: { 'content-type': 'application/octet-stream', accept: '*/*', origin: SITE, referer: `${SITE}/`, 'user-agent': exports.USER_AGENT, ...extraHeaders },
         body: new Uint8Array(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });

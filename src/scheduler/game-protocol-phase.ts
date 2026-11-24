@@ -51,6 +51,8 @@ import {
   type PlayerRecord,
 } from '../game-protocol/messages.js';
 import { readEventStandings } from './event-read.js';
+import { readOlympusMatchup } from './olympus-read.js';
+import { OLYMPUS_EVENT_TYPE } from '../game-protocol/olympus.js';
 import { TilePlan } from './map-plan.js';
 import { ANCIENTS_TREASURE_EVENT_TYPE } from '../game-protocol/ancients.js';
 import { listRunsOfType } from '../data/repositories/game-event-repo.js';
@@ -425,6 +427,13 @@ async function collectEvents(clanId: number, d: CaptureData, now: string): Promi
         rows += got.rows;
         moved += got.moved;
         if (got.summonsLeft !== null) summons = `, Tin Man summons left ${got.summonsLeft}${got.summonsMax !== null ? ` of ${got.summonsMax}` : ''}`;
+      }
+      if (e.type === OLYMPUS_EVENT_TYPE) {
+        await pause();
+        const note = await readOlympusMatchup(clanId, d.client, { eventType: e.type, run: e.run, occurrence: e.occurrence }, {
+          now, gameDate: d.gameDate, pause, ownClanId: d.client.clanId || d.record.clanId,
+        }).catch((err) => `olympus matchup failed: ${String(err)}`);
+        summons += `, ${note}`;
       }
     } catch {
       // Not every event has a clan-members tab; nothing to keep.

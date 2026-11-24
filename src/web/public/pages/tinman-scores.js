@@ -21,6 +21,7 @@ import { getCurrentUser } from '../lib/state.js';
 import { formatCompact } from '../lib/ancient-planner.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { goalStatusClassFor, goalRowClassFor, goalCellContentHtml, goalCellTitle } from '../lib/leaderboard-render.js';
+import { segHtml } from '../lib/ui-kit.js';
 
 const PAGE_SIZE = 25;
 
@@ -61,6 +62,9 @@ const EVENTS = {
     gapWarn: (count, ranks) => tn(count, '{n} rank is missing from the paste ({ranks}). The copy probably skipped that row — their points aren\'t in this summon. Paste the full list again to replace it.', '{n} ranks are missing from the paste ({ranks}). The copy probably skipped those rows — their points aren\'t in this summon. Paste the full list again to replace it.', { n: count, ranks }),
     deleteConfirm: (n) => t('Delete the pasted scores for summon {summon}? Its points move to the next pasted summon.', { summon: n }),
     deleteTitle: () => t('Delete summon scores'),
+    fromGameTitle: () => t('Read from the game every few minutes while the event runs — nothing to paste.'),
+    liveBadge: () => t('Summon in progress'),
+    liveTitle: (n) => t('Points scored so far in summon {summon} — it is still running', { summon: n }),
   },
   olympus: dayEvent('olympus', () => tGame('Olympus'), () => tGame('Trials of Olympus')),
   ragnarok: dayEvent('ragnarok', () => tGame('Ragnarok'), () => tGame('Ragnarok')),
@@ -116,6 +120,10 @@ function dayEventSentences(name, fullName) {
     gapWarn: (count, ranks) => tn(count, '{n} rank is missing from the paste ({ranks}). The copy probably skipped that row — their points aren\'t in this day\'s scores. Paste the full list again to replace it.', '{n} ranks are missing from the paste ({ranks}). The copy probably skipped those rows — their points aren\'t in this day\'s scores. Paste the full list again to replace it.', { n: count, ranks }),
     deleteConfirm: (n) => t('Delete the pasted scores for day {day}? Its points move to the next pasted day.', { day: n }),
     deleteTitle: () => t('Delete day scores'),
+    // A run read from the game (Olympus, data/olympus-game.ts).
+    fromGameTitle: () => t('Read from the game every scan — nothing to paste.'),
+    liveBadge: () => t('Day in progress'),
+    liveTitle: (n) => t('Points scored so far on day {day} — it is still running', { day: n }),
   };
 }
 
@@ -146,6 +154,20 @@ let targetsResult = null;
 /** Second mount at the bottom of the page for "Below target", like "Did not participate". */
 let belowEl = null;
 let belowOpen = false;
+/** Olympus from the game: which points the day columns show — 'olympus' (the event's ranking) or 'stage' (each day's stage ranking). */
+let measure = 'olympus';
+
+/** Olympus from the game with both measures: the one shown. */
+function stageMeasure() {
+  return !!data?.game && Array.isArray(data.game.stages) && (measure === 'stage' || !data.game.olympusPoints);
+}
+
+/** A row's numbers in the measure shown: per column, total, columns played. */
+function measured(p) {
+  if (!stageMeasure() || !data.game.olympusPoints) return { per: p.perSummon, total: p.total, played: p.played };
+  const per = p.stagePoints || {};
+  return { per, total: p.stageTotal || 0, played: Object.values(per).filter((v) => v > 0).length };
+}
 
 /** Not every member's research has been read; a member without a level is held to G7. */
 const ASSUMED_TIER = 'g7';
@@ -248,7 +270,7 @@ async function load() {
 function cardHtml(body, actions) {
   const date = data && loadedFor === requested ? data.date : (requested && requested !== 'all' ? requested : '');
   const fromGame = data && loadedFor === requested && data.game
-    ? ` <span class="tinman-game-badge" title="${t('Read from the game every few minutes while the event runs — nothing to paste.')}">${t('From the game')}</span>`
+    ? ` <span class="tinman-game-badge" title="${esc(L.fromGameTitle())}">${t('From the game')}</span>`
     : '';
   return `
     <div class="card tinman-card">
@@ -272,7 +294,7 @@ function cardHtml(body, actions) {
  */
 function summonColumns() {
   if (data?.game) {
-    return (data.game.columns || []).map((c) => ({ summon: c.first, last: c.last, live: c.live, uploaded: true, covers: [], game: true }));
+    return (data.game.columns || []).map((c) => ({ summon: c.first, last: c.last, live: c.live, title: c.title || '', uploaded: true, covers: [], game: true }));
   }
   const uploaded = new Map((data?.summons || []).map((s) => [s.summon, s]));
   const highest = Math.max(0, ...uploaded.keys());
@@ -292,23 +314,26 @@ function summonColumns() {
 
 function sortedPlayers(cols) {
   const players = [...(data?.players || [])];
-  players.forEach((p, i) => { p._rank = i + 1; }); // server order: total desc
+  // Server order: total desc — Olympus points; the stage points rank on their own.
+  if (stageMeasure() && data.game.olympusPoints) players.sort((a, b) => measured(b).total - measured(a).total || a.name.localeCompare(b.name));
+  players.forEach((p, i) => { p._rank = i + 1; });
   // A summon column that no longer exists (another run) sorts by total instead.
   const key = sort.key.startsWith('s:') && !cols.some((c) => c.uploaded && `s:${c.summon}` === sort.key)
     ? 'total'
     : sort.key;
   const mul = sort.dir === 'asc' ? 1 : -1;
   const val = (p) => {
+    const m = measured(p);
     if (key === 'name') return p.name.toLowerCase();
     if (key === 'rank') return p._rank;
-    if (key === 'played') return p.played;
+    if (key === 'played') return m.played;
     if (key === 'tier') return Number(tierOf(p).key.slice(1)) - (tierOf(p).assumed ? 0.5 : 0);
     if (key === 'pct') {
       const e = expectedFor(p);
       return e ? p.total / e : -1;
     }
-    if (key.startsWith('s:')) return p.perSummon[Number(key.slice(2))] ?? -1;
-    return p.total;
+    if (key.startsWith('s:')) return m.per[Number(key.slice(2))] ?? -1;
+    return m.total;
   };
   players.sort((a, b) => {
     const av = val(a);
@@ -499,16 +524,73 @@ function tierBadgeHtml(tier) {
 /** A run the game covers: where it comes from, summons left, a summon scoring now, when it was read. */
 function gameStripHtml() {
   const g = data.game;
+  if (Array.isArray(g.stages)) return olympusStripHtml(g);
   const parts = [];
   if (g.summonsLeft !== null && g.summonsMax) {
     parts.push(`<span class="tinman-chip tinman-chip-plain"><strong>${t('Summons left: {left} of {max}', { left: g.summonsLeft, max: g.summonsMax })}</strong></span>`);
   }
-  if ((g.columns || []).some((c) => c.live)) parts.push(`<span class="game-run-badge is-live">● ${t('Summon in progress')}</span>`);
+  if ((g.columns || []).some((c) => c.live)) parts.push(`<span class="game-run-badge is-live">● ${esc(L.liveBadge())}</span>`);
   parts.push(`<span class="tinman-chip-meta">${t('Read {time}', { time: esc(formatRelativeTime(g.readAt)) })}</span>`);
   const note = !g.reads
     ? t('This run was read before summons were tracked — totals only.')
     : !(g.columns || []).length ? t('No summons yet this run.') : '';
   return `<div class="tinman-chips tinman-game-strip">${parts.join('')}</div>${note ? `<p class="muted-copy tinman-note">${note}</p>` : ''}`;
+}
+
+/**
+ * Olympus from the game: the five days with their stages, which points the
+ * columns show, and the clan-vs-clan matchup (Ranking → Clan ranking) with
+ * the score the clan needs for rewards.
+ */
+function olympusStripHtml(g) {
+  const days = g.stages.map((s) => `<span class="tinman-chip tinman-chip-plain${s.state === 'upcoming' ? ' is-upcoming' : ''}">
+      <strong>${esc(L.short(s.day))}</strong> ${esc(tGame(s.title))}${s.live ? ` <span class="game-run-badge is-live">● ${esc(L.liveBadge())}</span>` : ''}
+    </span>`).join('');
+  const toggle = g.olympusPoints
+    ? segHtml({
+      label: t('Show'),
+      items: [
+        { value: 'olympus', label: t('Overall points') },
+        { value: 'stage', label: t('Stage points') },
+      ],
+      current: stageMeasure() ? 'stage' : 'olympus',
+      attr: 'olympus-measure',
+    })
+    : '';
+  const note = stageMeasure()
+    ? t('Each day\'s stage ranking, as the game shows it under the stage.')
+    : t('Points scored each day in the overall ranking — the clan\'s score is its sum. Points scored between a day\'s last scan and its 17:00 UTC end count on the next day.');
+  return `<div class="tinman-chips tinman-game-strip">${days}<span class="tinman-chip-meta">${t('Read {time}', { time: esc(formatRelativeTime(g.readAt)) })}</span></div>
+    ${matchupHtml(g.matchup)}
+    <div class="olympus-measure">${toggle}<p class="muted-copy tinman-note">${esc(note)}</p></div>`;
+}
+
+/** The matchup's clans, best first, ours marked; the reward minimum under them. */
+function matchupHtml(m) {
+  if (!m || !(m.clans || []).length) return '';
+  const own = m.clans.find((c) => c.own);
+  const rows = m.clans.map((c) => {
+    const name = c.name ? `${c.tag ? `[${esc(c.tag)}] ` : ''}${esc(c.name)}` : esc(t('Clan #{n}', { n: c.gameClanId }));
+    const sub = [
+      c.kingdom ? t('Kingdom #{n}', { n: c.kingdom }) : '',
+      c.members !== null && c.memberLimit ? `${c.members}/${c.memberLimit}` : '',
+    ].filter(Boolean).map(esc).join(' · ');
+    return `<li class="ui-row${c.own ? ' is-own' : ''}">
+        <span class="ui-rank">#${c.rank}</span>
+        <span class="ui-row-main"><span class="ui-row-name">${name}</span>${sub ? `<span class="ui-row-sub">${sub}</span>` : ''}</span>
+        <span class="ui-row-n">${Number(c.points).toLocaleString()}</span>
+      </li>`;
+  }).join('');
+  const goal = m.rewardMinPoints && own
+    ? `<p class="muted-copy tinman-note">${own.points >= m.rewardMinPoints
+      ? esc(t('The clan has the {min} points rewards need.', { min: m.rewardMinPoints.toLocaleString() }))
+      : esc(t('Rewards need {min} points — {left} to go.', { min: m.rewardMinPoints.toLocaleString(), left: (m.rewardMinPoints - own.points).toLocaleString() }))}</p>`
+    : '';
+  return `<div class="olympus-matchup">
+      <h3 class="ui-sub">${esc(t('Clan ranking'))}</h3>
+      <ol class="ui-rows">${rows}</ol>
+      ${goal}
+    </div>`;
 }
 
 function summonsStripHtml(admin) {
@@ -569,10 +651,11 @@ function tableHtml(cols) {
   const summonHeads = cols.map((c) => {
     if (c.game) {
       const sub = c.live ? `<span class="tinman-col-sub tinman-col-live">${t('in progress')}</span>` : '';
-      const title = c.last > c.summon
+      const said = c.last > c.summon
         ? t('Points scored in summons {first}–{last}: they ran back to back, so the reads can\'t split them', { first: c.summon, last: c.last })
-        : c.live ? t('Points scored so far in summon {summon} — it is still running', { summon: c.summon }) : L.scoredIn(c.summon);
-      return th(`s:${c.summon}`, `${colLabel(c)}${sub}`, 'num', title);
+        : c.live ? L.liveTitle(c.summon) : L.scoredIn(c.summon);
+      // An Olympus day names its stage.
+      return th(`s:${c.summon}`, `${colLabel(c)}${sub}`, 'num', c.title ? `${tGame(c.title)} — ${said}` : said);
     }
     if (!c.uploaded) {
       return `<th class="num tinman-missing-col" title="${L.notPasted(c.summon)}">${sLabel(c.summon)}<span class="tinman-col-sub">${t('not uploaded')}</span></th>`;
@@ -596,11 +679,12 @@ function tableHtml(cols) {
       : p.matchKind === 'fuzzy' && p.rawName !== p.name
         ? ` <span class="tinman-tag tinman-tag-fuzzy" title="${t('Pasted as “{name}” — matched by spelling', { name: esc(p.rawName) })}">≈</span>`
         : '';
+    const m = measured(p);
     const cells = cols.map((c) => {
       if (!c.uploaded) return `<td class="num tinman-missing-col" data-label="${sLabel(c.summon)}"><span class="events-zero">·</span></td>`;
       const label = colLabel(c);
       const live = c.live ? ' tinman-live-cell' : '';
-      const v = p.perSummon[c.summon];
+      const v = m.per[c.summon];
       if (v === undefined) return `<td class="num${live}" data-label="${label}"><span class="events-zero" title="${L.notInRanking()}">–</span></td>`;
       if (v === 0) return `<td class="num${live}" data-label="${label}"><span class="events-zero" title="${L.noPoints()}">—</span></td>`;
       return `<td class="num${v < 0 ? ' tool-short' : ''}${live}" data-label="${label}" title="${v.toLocaleString()}">${formatCompact(v)}</td>`;
@@ -608,12 +692,14 @@ function tableHtml(cols) {
     const tier = tierOf(p);
     const expected = expectedFor(p);
     const full = data.targets?.tiers?.[tier.key];
-    const totalTitle = expected !== null ? goalCellTitle(p.total, expected) : p.total.toLocaleString();
+    const totalTitle = expected !== null ? goalCellTitle(p.total, expected) : m.total.toLocaleString();
     const targetCell = expected !== null
       ? `<td class="num" data-label="${t('Target')}" title="${esc(t('{points} for the run', { points: Math.round(full).toLocaleString() }))}">${formatCompact(expected)}</td>`
       : `<td class="num" data-label="${t('Target')}"><span class="events-zero">—</span></td>`;
     const pastedCount = cols.filter((c) => c.uploaded).length;
     const playedText = !data.game ? L.played(p.played, pastedCount)
+      : Array.isArray(data.game.stages)
+        ? tn(pastedCount, '{played} of {n} day', '{played} of {n} days', { n: pastedCount, played: m.played })
       : cols.some((c) => c.last > c.summon)
         ? tn(pastedCount, '{played} of {n} column', '{played} of {n} columns', { n: pastedCount, played: p.played })
         : tn(pastedCount, '{played} of {n} summon', '{played} of {n} summons', { n: pastedCount, played: p.played });
@@ -622,9 +708,9 @@ function tableHtml(cols) {
       <td data-role="primary"><span class="mrow-name">${nameHtml}${tag}</span><span class="mrow-sub">${L.hasTargets ? `${tierLabel(tier)} · ${playedText}` : playedText}</span></td>
       ${L.hasTargets ? `<td data-label="${t('Tier')}">${tierBadgeHtml(tier)}</td>` : ''}
       ${cells}
-      <td class="num ${expected !== null ? goalStatusClassFor(p.total, expected) : ''}" data-role="metric" data-label="${t('Total')}" title="${esc(totalTitle)}">${expected !== null ? goalCellContentHtml(p.total, expected, `<strong>${formatCompact(p.total)}</strong>`) : `<strong>${formatCompact(p.total)}</strong>`}</td>
+      <td class="num ${expected !== null ? goalStatusClassFor(p.total, expected) : ''}" data-role="metric" data-label="${t('Total')}" title="${esc(totalTitle)}">${expected !== null ? goalCellContentHtml(p.total, expected, `<strong>${formatCompact(p.total)}</strong>`) : `<strong>${formatCompact(m.total)}</strong>`}</td>
       ${L.hasTargets ? targetCell : ''}
-      <td class="num" data-role="hidden">${p.played}</td>
+      <td class="num" data-role="hidden">${m.played}</td>
     </tr>`;
   }).join('');
 
@@ -743,6 +829,14 @@ function wire() {
     btn.addEventListener('click', () => {
       page += btn.dataset.tinmanPage === 'next' ? 1 : -1;
       if (page < 1) page = 1;
+      paint();
+    });
+  });
+  el.querySelectorAll('[data-olympus-measure]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (measure === btn.dataset.olympusMeasure) return;
+      measure = btn.dataset.olympusMeasure;
+      page = 1;
       paint();
     });
   });

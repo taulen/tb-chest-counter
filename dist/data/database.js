@@ -2705,6 +2705,51 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // v136 — Trials of Olympus' clan-vs-clan matchup, read every scan while it
+        // runs (game-protocol/olympus.ts; recorded Nov 24 2026):
+        //   game_event_matchups       per run: the matchup group (82001) and the
+        //                             score the clan needs for rewards (82002);
+        //   game_event_matchup_clans  per run and clan of the matchup, ours too:
+        //                             rank and score (82000, rating proxy), and
+        //                             the rival's kingdom (registration server)
+        //                             and headline (15200 on its kingdom's server)
+        //                             — tag, name, members, might.
+        // The members' Olympus points are the umbrella run's standings (82003).
+        // IF NOT EXISTS: runMigrations may replay this.
+        version: 136,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS game_event_matchups (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          group_id INTEGER,
+          reward_min_points INTEGER,
+          read_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence)
+        );
+        CREATE TABLE IF NOT EXISTS game_event_matchup_clans (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          event_type INTEGER NOT NULL,
+          run INTEGER NOT NULL,
+          occurrence INTEGER NOT NULL,
+          game_clan_id INTEGER NOT NULL,
+          rank INTEGER NOT NULL,
+          points INTEGER NOT NULL,
+          kingdom INTEGER,
+          tag TEXT,
+          name TEXT,
+          members INTEGER,
+          member_limit INTEGER,
+          might INTEGER,
+          read_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, event_type, run, occurrence, game_clan_id)
+        );
+      `);
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

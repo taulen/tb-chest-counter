@@ -118,7 +118,10 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'game_clan_tech_history.clan_id',
     'game_clan_techs.clan_id',
     'game_clan_treasury.clan_id',
-    // Event standings from the game (v121) and every read of them (v123).
+    // Event standings from the game (v121), every read of them (v123), and
+    // Olympus' clan-vs-clan matchup (v136).
+    'game_event_matchup_clans.clan_id',
+    'game_event_matchups.clan_id',
     'game_event_reads.clan_id',
     'game_event_runs.clan_id',
     'game_event_standing_history.clan_id',
@@ -455,6 +458,12 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO game_event_reads (clan_id, event_type, run, occurrence, read_at, source, members, total_points, changed, summons_left, summons_max, summons_used, boss_id) VALUES (?, 1024, 1, 242, ?, 'poll', 99, 52586600, 1, 1, 2, 1, 6130)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_event_matchups (clan_id, event_type, run, occurrence, group_id, reward_min_points, read_at) VALUES (?, 1032, 1, 23, 590, 600000, ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO game_event_matchup_clans (clan_id, event_type, run, occurrence, game_clan_id, rank, points, kingdom, tag, name, read_at) VALUES (?, 1032, 1, 23, 674309866701, 2, 173519, 157, 'GOF', 'Godfather 3 new', ?)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO clan_scan_accounts (clan_id, account, player_id, source, updated_at) VALUES (?, 'tb:85164216', 1297080171719, 'scan', ?)`,

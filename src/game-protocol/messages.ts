@@ -793,3 +793,66 @@ export function parseEventProgress(frame: Frame): GameEventProgress | null {
   }
   return { occurrence: num(head[0]), bossId: num(head[1]), summonsLeft: num(head[2]), artifacts };
 }
+
+// ---------------------------------------------------------------------------
+// Trials of Olympus (game-protocol/olympus.ts). Recorded Nov 24 2026 from CWB's
+// Olympus window: Ranking → Clan members / Clan ranking / Clan rewards.
+// ---------------------------------------------------------------------------
+
+/**
+ * Message 82003 (ask `[[[1032, run]]]`): Olympus' Ranking → Clan members —
+ * `[rank, [playerId], points]` per member in body[0][0]. Its 38003 answers
+ * every member at 0; this is the tab the game shows (Aegladad 33,000 #1, and
+ * the 82 rows summed to CWB's clan score, 393,845).
+ */
+export function parseOlympusMembers(frame: Frame): GameEventStanding[] {
+  const out: GameEventStanding[] = [];
+  for (const row of arr(arr(arr(frame.body)[0])[0])) {
+    const r = arr(row);
+    const rank = num(r[0]);
+    const playerId = id1(r[1]);
+    const points = num(r[2]);
+    if (playerId === null || points === null || rank === null) continue;
+    out.push({ playerId, points, rank });
+  }
+  return out;
+}
+
+/** Message 82001 (ask `[[[1032, run]]]`): `[[groupId], …]` — the clan's matchup, asked for its Clan ranking (82000). */
+export function parseOlympusGroup(frame: Frame): number | null {
+  return num(arr(arr(arr(frame.body)[0])[0])[0]);
+}
+
+/** One clan in an Olympus matchup. */
+export interface OlympusClanScore {
+  rank: number;
+  clanId: number;
+  points: number;
+}
+
+/**
+ * Message 82000 (ask `[[[1032, run], groupId]]`, on the site page's
+ * rating_proxy_url): Ranking → Clan ranking — `[rank, [clanId], points]` per
+ * clan of the matchup (CWB 393,845, GOF 173,519, CCH 142,295).
+ */
+export function parseOlympusClanRanking(frame: Frame): OlympusClanScore[] {
+  const out: OlympusClanScore[] = [];
+  for (const row of arr(arr(arr(frame.body)[0])[0])) {
+    const r = arr(row);
+    const rank = num(r[0]);
+    const clanId = id1(r[1]);
+    const points = num(r[2]);
+    if (rank === null || clanId === null || points === null) continue;
+    out.push({ rank, clanId, points });
+  }
+  return out;
+}
+
+/**
+ * Message 82002 (ask `[[[1032, run]]]`): Ranking → Clan rewards — `[[minPoints,
+ * [[1, [rewardIds…]] per place]]]`. Only the minimum is read: "To earn rewards,
+ * the Clan must score a minimum of 600K".
+ */
+export function parseOlympusRewardMinimum(frame: Frame): number | null {
+  return num(arr(arr(arr(frame.body)[0])[0])[0]);
+}

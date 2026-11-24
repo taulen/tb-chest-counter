@@ -676,6 +676,16 @@
   },
   {
     "type": "table",
+    "name": "game_event_matchup_clans",
+    "sql": "CREATE TABLE game_event_matchup_clans ( clan_id INTEGER NOT NULL REFERENCES clans(id), event_type INTEGER NOT NULL, run INTEGER NOT NULL, occurrence INTEGER NOT NULL, game_clan_id INTEGER NOT NULL, rank INTEGER NOT NULL, points INTEGER NOT NULL, kingdom INTEGER, tag TEXT, name TEXT, members INTEGER, member_limit INTEGER, might INTEGER, read_at TEXT NOT NULL, PRIMARY KEY (clan_id, event_type, run, occurrence, game_clan_id) )"
+  },
+  {
+    "type": "table",
+    "name": "game_event_matchups",
+    "sql": "CREATE TABLE game_event_matchups ( clan_id INTEGER NOT NULL REFERENCES clans(id), event_type INTEGER NOT NULL, run INTEGER NOT NULL, occurrence INTEGER NOT NULL, group_id INTEGER, reward_min_points INTEGER, read_at TEXT NOT NULL, PRIMARY KEY (clan_id, event_type, run, occurrence) )"
+  },
+  {
+    "type": "table",
     "name": "game_event_reads",
     "sql": "CREATE TABLE game_event_reads ( clan_id INTEGER NOT NULL REFERENCES clans(id), event_type INTEGER NOT NULL, run INTEGER NOT NULL, occurrence INTEGER NOT NULL, read_at TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'scan', members INTEGER NOT NULL, total_points INTEGER NOT NULL, changed INTEGER NOT NULL, summons_left INTEGER, summons_max INTEGER, summons_used INTEGER, boss_id INTEGER, PRIMARY KEY (clan_id, event_type, run, occurrence, read_at) )"
   },

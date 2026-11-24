@@ -942,10 +942,11 @@ function paint() {
   // "Below target") and Participants (everything chest-based), one choice of
   // two — the kit's segmented control — so neither has to be scrolled past.
   const hasScores = SCORES_EVENT_KEYS.has(currentEventKey);
-  // Ancients: the Tin Man card is itself the game's per-summon view whenever
-  // the game covers the run (routes/tinman.ts), so no separate game card and
-  // nothing folded — the card drops its paste form on its own.
-  const tinmanFromGame = currentEventKey === 'ancients';
+  // Ancients and Olympus: the scores card is itself the game's per-summon /
+  // per-day view whenever the game covers the run (routes/tinman.ts), so no
+  // separate game card and nothing folded — the card drops its paste form on
+  // its own.
+  const tinmanFromGame = currentEventKey === 'ancients' || currentEventKey === 'olympus';
   const hasVaults = currentEventKey === VAULTS_EVENT_KEY;
   const scoresPanel = tinmanFromGame
     ? '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'

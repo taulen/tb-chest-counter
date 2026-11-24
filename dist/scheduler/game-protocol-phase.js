@@ -32,6 +32,8 @@ const session_health_js_1 = require("./session-health.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
 const messages_js_1 = require("../game-protocol/messages.js");
 const event_read_js_1 = require("./event-read.js");
+const olympus_read_js_1 = require("./olympus-read.js");
+const olympus_js_1 = require("../game-protocol/olympus.js");
 const map_plan_js_1 = require("./map-plan.js");
 const ancients_js_1 = require("../game-protocol/ancients.js");
 const game_event_repo_js_1 = require("../data/repositories/game-event-repo.js");
@@ -320,6 +322,13 @@ async function collectEvents(clanId, d, now) {
                 moved += got.moved;
                 if (got.summonsLeft !== null)
                     summons = `, Tin Man summons left ${got.summonsLeft}${got.summonsMax !== null ? ` of ${got.summonsMax}` : ''}`;
+            }
+            if (e.type === olympus_js_1.OLYMPUS_EVENT_TYPE) {
+                await pause();
+                const note = await (0, olympus_read_js_1.readOlympusMatchup)(clanId, d.client, { eventType: e.type, run: e.run, occurrence: e.occurrence }, {
+                    now, gameDate: d.gameDate, pause, ownClanId: d.client.clanId || d.record.clanId,
+                }).catch((err) => `olympus matchup failed: ${String(err)}`);
+                summons += `, ${note}`;
             }
         }
         catch {

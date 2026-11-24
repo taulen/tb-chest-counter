@@ -254,6 +254,15 @@ describe('direct client building blocks', () => {
     expect(parseSitePage(`x"suid":"tb:1" ${realm}`).ratingUrls).toEqual([]);
   });
 
+  it('finds the rating proxy and the registration server the Olympus window uses', () => {
+    const page = 'x"suid":"tb:1" "rating_proxy_url":"https:\\/\\/rating-proxy.totalbattle.com","realms":[] '
+      + '"reg_url":["https:\\/\\/reg-server.production-us.totalbattle.com\\/rpc"],"reg_rpc_url":["https:\\/\\/reg-server.production-us.totalbattle.com\\/jsonrpc"]';
+    const { ratingProxyUrl, regUrls } = parseSitePage(page);
+    expect(ratingProxyUrl).toBe('https://rating-proxy.totalbattle.com');
+    expect(regUrls).toEqual(['https://reg-server.production-us.totalbattle.com/rpc']);
+    expect(parseSitePage('x"suid":"tb:1"')).toMatchObject({ ratingProxyUrl: null, regUrls: [] });
+  });
+
   it('lays the login human data out in the client order: 12 fields, two blanks, the rest', () => {
     const device = { deviceId: 'fpc' + '0'.repeat(32), fingerprintId: '123456789', firstWebVisitTs: 1794566702, firstWebVisitRnd: '1794566702840' };
     const arr = loginHumanArray({ ip: '10.0.0.1', continent_code: 'EU', country_code: 'NO', lang: 'en', email: 'a@b.c' }, device);

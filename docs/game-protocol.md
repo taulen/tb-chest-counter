@@ -1172,9 +1172,11 @@ Titles come from T44 (`names.json` `events`, "type,run" → code, title key,
 English title). A run maps onto the site's events by its English title against
 the catalog's `calendarNames` / name, case- and accent-insensitive
 ([event-mapping.ts](../src/game-protocol/event-mapping.ts)): Rise of the Ancients
-and Ancients' Treasure → ancients, TRIALS OF OLYMPUS → olympus, DARK OMENS →
-dark-omens, Ragnarök → ragnarok. Anything else (Trade Routes, Summon Mastery,
-Prime Arena, …) is stored and shown under the game's own title.
+and Ancients' Treasure → ancients, TRIALS OF OLYMPUS and its five stages →
+olympus, DARK OMENS → dark-omens, Ragnarök → ragnarok. Anything else (Trade
+Routes, Summon Mastery, Prime Arena, …) is stored and shown under the game's
+own title. Events → In-game rankings lists Olympus twice — the overall
+ranking and the newest stage — since they share one code.
 
 Shown: a "Standings from the game" card on the event's page (the run the
 selected timeframe covers; the hand-pasted standings card folds away under it),
@@ -1221,6 +1223,46 @@ timestamp).
   login bridge has scanning paused (which drops every session). Ticks once a
   minute and reads on the last tick before the interval would pass, so reads
   are never further apart than the interval while the session lives.
+
+### Trials of Olympus (v136)
+
+Recorded Nov 24 2026 from CWB's Olympus window (research/tools/capture.mjs).
+Olympus is an umbrella event, TRIALS OF OLYMPUS (type 1032, opens an hour
+before day 1 and closes an hour after day 5), plus five stages, each a game
+event with its own Clan members ranking (38003, from zero), one per game day:
+Trial of the Chimera, Trial of the Basilisk, Lava Fountain Trial, Trial of
+Tartaros, Trial of Briareus ([olympus.ts](../src/game-protocol/olympus.ts);
+known by title, since the stage's type and run differ between variants: CWB's
+were 1025/8, 1025/9, 1022/43, 1022/45, 1025/10). All share the code
+`multistage`, as do "Pursuit of Lava Oil" (a catch-up) and "Sealed in Flame"
+(PvP), which are not days.
+
+**The umbrella's 38003 answers every member at 0** while the game showed
+33,000. Its Ranking tab is read with other messages, every scan while it runs
+([event-read.ts](../src/scheduler/event-read.ts),
+[olympus-read.ts](../src/scheduler/olympus-read.ts)):
+
+| Message | Server | Ask | Reply |
+|---|---|---|---|
+| 82003 | kingdom | `[[[1032, run]]]` | Clan members: `[rank, [playerId], points]`; stored as the umbrella's standings (+ history). The 82 rows summed to the clan's score, 393,845 |
+| 82001 | kingdom | `[[[1032, run]]]` | `[[groupId], …]` — the matchup (590) |
+| 82000 | `rating_proxy_url` | `[[[1032, run], groupId]]` | Clan ranking: `[rank, [clanId], points]` per clan of the matchup |
+| 82002 | kingdom | `[[[1032, run]]]` | `[[minPoints, [[1, [rewardIds…]] per place]]]` — "the Clan must score a minimum of 600K"; only the minimum is read |
+| 74003 | kingdom | `[[[1032, run]]]` | Clan Talents `[{6..10: level}, pointsLeft, …]` (stage 1..5) — archived (`olympus_talents`), not decoded: the "+50%" per level needs the talent table |
+| 74001 | kingdom | `[[[1032, run]]]` | the signed-in account's own Personal Talents — not read |
+| 77000 | kingdom | `[[[1032, run]]]` | the five stages `[type, run]` in order, the account's own goals done/total — not read |
+| 192 | `reg_url` | `[[[clanId], …]]`, header `x-command-id: 192` | `[[kingdom, …]]` in the order asked — which kingdom a rival clan is in (CCH 213, GOF 157) |
+| 15200 | the rival's kingdom | `[[[clanId]]]` | its headline (tag, name, members, might) — same session, as the client does |
+
+Both new servers come from the site page (`rating_proxy_url`, `reg_url`). The
+rivals' members' points aren't visible in the game and aren't asked for.
+Stored: `game_event_matchups` (group, reward minimum) and
+`game_event_matchup_clans` (rank, score, kingdom, headline; a rival's
+headline is read once per run). Shown on Events → Olympus
+([tinman-scores.md](tinman-scores.md#olympus-from-the-game)).
+
+Dark Omens (code `sabotage`) is clan-vs-clan too; expect the same shape with
+other message numbers, and record its window when it next runs.
 
 ## Names (static data)
 

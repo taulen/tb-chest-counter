@@ -6,7 +6,7 @@ Shares a clan reward pot (Dragon Coins and clan fragments) over the players of o
 
 | Event | Basis | Read from |
 |---|---|---|
-| Olympus | Points | `/api/event-scores/olympus?date=<scoresDate>`, the cumulative ranking pasted on Events → Olympus |
+| Olympus | Points | `/api/event-scores/olympus?date=<scoresDate>`: the members' Olympus points read from the game (`game.days` + each player's `cumulative`, since Nov 24 2026), else the cumulative ranking pasted on Events → Olympus |
 | Dark Omens | Omen Essence donated (default) | `/api/resources/summary?from&to` over the run's window, the same numbers as the Essence column on Events → Dark Omens |
 | Dark Omens | Spoils of Dread damage | `/api/event-scores/dark-omens?date=<scoresDate>`, pasted on Events → Dark Omens ([tinman-scores.md](tinman-scores.md)) |
 

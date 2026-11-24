@@ -31,7 +31,8 @@ import {
 } from '../../utils/game-day.js';
 import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
 import { getEventOccurrences } from '../../external/event-calendar.js';
-import { ancientsRunForDay, buildGameTinman } from '../../data/ancients-game.js';
+import { ancientsRunForDay, buildGameTinman, type GameTinman } from '../../data/ancients-game.js';
+import { buildGameOlympus, olympusGameRunDates, type GameOlympus } from '../../data/olympus-game.js';
 import { lastMapPassAt, listRaisedVaults, mapReadSince } from '../../data/repositories/game-protocol-repo.js';
 
 const MAX_TEXT_LENGTH = 200_000;
@@ -102,6 +103,7 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
   const router = Router();
   const today = () => currentGameDate(loadConfig().gameDayRolloverUtcHour);
   const ancients = eventKey === 'ancients';
+  const olympus = eventKey === 'olympus';
   const maxRounds = tinmanRepo.SCORE_EVENTS[eventKey].maxRounds;
   const round = ancients ? 'summon' : 'day';
   const action = (name: string) => (ancients ? `tinman_${name}` : `${eventKey}_${name}`);
@@ -119,8 +121,15 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
   router.get('/', async (req, res) => {
     const clanId = req.clanId!;
     const t = today();
+    const rollover = loadConfig().gameDayRolloverUtcHour;
     const skDays = ancients ? await seasonalTinmanDays(clanId) : null;
-    const newestPasted = () => tinmanRepo.listTinmanDates(clanId, 1, eventKey)[0] ?? t;
+    // Olympus runs the game covers count as runs too (data/olympus-game.ts).
+    const runDates = () => {
+      const pasted = tinmanRepo.listTinmanDates(clanId, 30, eventKey);
+      if (!olympus) return pasted;
+      return [...new Set([...pasted, ...olympusGameRunDates(clanId, rollover)])].sort().reverse().slice(0, 30);
+    };
+    const newestPasted = () => runDates().find((d) => d <= t) ?? t;
     const date = req.query.date !== undefined
       ? parseDate(req.query.date)
       : skDays ? skDays.find((d) => d <= t) ?? newestPasted()
@@ -137,9 +146,16 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
     // replace the pasted ones for a run the game covers: one read since reads
     // were kept (v123), or game standings and nothing pasted. A run pasted by
     // hand before that keeps its pasted per-summon table.
-    const gameRun = ancients ? ancientsRunForDay(clanId, date, loadConfig().gameDayRolloverUtcHour) : null;
-    const gameTable = gameRun ? buildGameTinman(clanId, gameRun) : null;
-    const game = gameTable && (gameTable.reads > 0 || !pasted.summons.length) ? gameTable : null;
+    // Olympus: its days from the game (members' Olympus points and the stage
+    // rankings) for any run with nothing pasted — every run since Nov 2026.
+    let game: GameTinman | GameOlympus | null = null;
+    if (ancients) {
+      const gameRun = ancientsRunForDay(clanId, date, rollover);
+      const gameTable = gameRun ? buildGameTinman(clanId, gameRun) : null;
+      if (gameTable && (gameTable.reads > 0 || !pasted.summons.length)) game = gameTable;
+    } else if (olympus && !pasted.summons.length) {
+      game = buildGameOlympus(clanId, date, rollover);
+    }
     const standings = game
       ? { date, summons: [], players: game.players, review: [] }
       : pasted;
@@ -157,7 +173,7 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
         : isTinmanDay(date),
       // Which schedule isTinmanDay was judged by, so the card words its warning.
       seasonalKingdom: skDays !== null,
-      dates: tinmanRepo.listTinmanDates(clanId, 30, eventKey),
+      dates: runDates(),
       maxSummons: maxRounds,
     });
   });

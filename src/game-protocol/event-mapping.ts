@@ -5,8 +5,13 @@
  * "Ragnarök", "Dark Omens") and the catalog name. No per-event code: an event
  * the catalog doesn't know stays unmapped and is shown under the game's own
  * title.
+ *
+ * Olympus' five stages are game events of their own ("Trial of the Chimera" …
+ * "Trial of Briareus", game-protocol/olympus.ts) and map onto olympus too —
+ * they are its days.
  */
 import { EVENT_CATALOG } from '../config/event-catalog.js';
+import { OLYMPUS_STAGES } from './olympus.js';
 
 /** Case-, accent- and spacing-insensitive form of a title. */
 export function normalizeEventTitle(s: string): string {
@@ -23,6 +28,7 @@ function titleIndex(): Map<string, string> {
       if (k && !index.has(k)) index.set(k, e.key);
     }
   }
+  for (const s of OLYMPUS_STAGES) index.set(normalizeEventTitle(s.title), 'olympus');
   return index;
 }
 
@@ -30,4 +36,13 @@ function titleIndex(): Map<string, string> {
 export function catalogKeyForEventTitle(title: string): string | null {
   if (!title) return null;
   return titleIndex().get(normalizeEventTitle(title)) ?? null;
+}
+
+let stageIndex: Map<string, number> | null = null;
+
+/** The day of an Olympus run a game event title is the stage of, or null when it is no Olympus stage. */
+export function olympusStageDay(title: string): number | null {
+  if (!title) return null;
+  stageIndex ??= new Map(OLYMPUS_STAGES.map((s) => [normalizeEventTitle(s.title), s.day]));
+  return stageIndex.get(normalizeEventTitle(title)) ?? null;
 }

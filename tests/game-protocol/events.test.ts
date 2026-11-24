@@ -6,13 +6,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Frame, Wire } from '../../src/game-protocol/codec.js';
-import { isEventRunning, parseEventList, parseEventProgress, parseEventStandings } from '../../src/game-protocol/messages.js';
+import {
+  isEventRunning, parseEventList, parseEventProgress, parseEventStandings,
+  parseOlympusClanRanking, parseOlympusGroup, parseOlympusMembers, parseOlympusRewardMinimum,
+} from '../../src/game-protocol/messages.js';
 import { figurineSummons } from '../../src/game-protocol/ancients.js';
 import { asIdRecord, buildEvents } from '../../src/game-protocol/static-data.js';
-import { catalogKeyForEventTitle } from '../../src/game-protocol/event-mapping.js';
+import { catalogKeyForEventTitle, olympusStageDay } from '../../src/game-protocol/event-mapping.js';
 import {
-  getEventStandings, latestEventRuns, listEventRuns, saveEventRun, saveEventStandings,
+  getEventStandings, getMatchup, latestEventRuns, listEventRuns, matchupClansWithoutName, saveEventRun, saveEventStandings, saveMatchup,
 } from '../../src/data/repositories/game-event-repo.js';
+import { buildGameOlympus, olympusGameRunDates } from '../../src/data/olympus-game.js';
 import { getDb } from '../../src/data/database.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
@@ -101,6 +105,39 @@ describe('event titles (T44)', () => {
     expect(catalogKeyForEventTitle('Trade Routes')).toBeNull(); // shown under the game's own title
     expect(catalogKeyForEventTitle('')).toBeNull();
   });
+
+  it('knows Olympus\' five stages as its days, and maps them onto olympus', () => {
+    expect(['Trial of the Chimera', 'Trial of the Basilisk', 'Lava Fountain Trial', 'Trial of Tartaros', 'Trial of Briareus']
+      .map(olympusStageDay)).toEqual([1, 2, 3, 4, 5]);
+    expect(catalogKeyForEventTitle('Trial of the Chimera')).toBe('olympus');
+    // Same code, not a day: the catch-up and the PvP sub-event, and the umbrella itself.
+    expect(olympusStageDay('Pursuit of Lava Oil')).toBeNull();
+    expect(olympusStageDay('Sealed in Flame')).toBeNull();
+    expect(olympusStageDay('TRIALS OF OLYMPUS')).toBeNull();
+  });
+});
+
+describe('Olympus messages (recorded Nov 24 2026, CWB)', () => {
+  it('reads the Clan members tab (82003): rank, player, Olympus points', () => {
+    const body: Wire[] = [[[[45, [390842355323], 0], [1, [1297080248731], 33000], [2, [1297080262943], 22500], [3, [1297080372208], 22500]]]];
+    expect(parseOlympusMembers(frame(82003, body))).toEqual([
+      { playerId: 390842355323, points: 0, rank: 45 },
+      { playerId: 1297080248731, points: 33000, rank: 1 },
+      { playerId: 1297080262943, points: 22500, rank: 2 },
+      { playerId: 1297080372208, points: 22500, rank: 3 },
+    ]);
+    expect(parseOlympusMembers(frame(82003, [[[]]]))).toEqual([]);
+  });
+
+  it('reads the matchup group (82001), the clan ranking (82000) and the reward minimum (82002)', () => {
+    expect(parseOlympusGroup(frame(82001, [[[590], null, null, null]]))).toBe(590);
+    expect(parseOlympusClanRanking(frame(82000, [[[[1, [1297080123906], 393845], [2, [674309866701], 173519], [3, [1172526071839], 142295]]]]))).toEqual([
+      { rank: 1, clanId: 1297080123906, points: 393845 },
+      { rank: 2, clanId: 674309866701, points: 173519 },
+      { rank: 3, clanId: 1172526071839, points: 142295 },
+    ]);
+    expect(parseOlympusRewardMinimum(frame(82002, [[[600000, [[1, [3000110, 3000606]], [1, [3000616]], [1, [3000626]]]]]]))).toBe(600000);
+  });
 });
 
 describe('event standings storage', () => {
@@ -149,5 +186,96 @@ describe('event standings storage', () => {
     expect(listEventRuns(CLAN).map((r) => r.occurrence)).toEqual([243, 242]);
     expect(latestEventRuns(CLAN).map((r) => [r.code, r.occurrence])).toEqual([['clandoom_epic', 243]]);
     expect(getEventStandings(CLAN, RUN)[0].points).toBe(100); // the finished run's standings stay
+  });
+});
+
+describe('Olympus from the game', () => {
+  let cleanup: () => void;
+  beforeEach(() => { ({ cleanup } = makeTestDb()); });
+  afterEach(() => cleanup());
+
+  const CLAN = 1;
+  const ROLLOVER = 17;
+  const s = (iso: string) => Date.parse(iso) / 1000;
+  const UMBRELLA = { eventType: 1032, run: 1, occurrence: 23 };
+  const STAGE1 = { eventType: 1025, run: 8, occurrence: 23 };
+  const STAGE2 = { eventType: 1025, run: 9, occurrence: 23 };
+
+  /** The Nov 23 2026 run, as the scans would have stored it, read on day 2. */
+  function seed(): void {
+    // The overall ranking opens an hour before day 1 (game day Nov 22) and closes an hour after day 5.
+    saveEventRun(CLAN, { type: 1032, run: 1, occurrence: 23, state: 1, startsAt: s('2026-11-23T16:05:07Z'), endsAt: s('2026-11-28T18:00:00Z') },
+      { code: 'multistage', title: 'TRIALS OF OLYMPUS' }, '2026-11-23T19:23:38Z');
+    // 38003's zeros first (before Nov 24), then 82003: 33,000 by 15:01 on day 1, more after its 17:00 end.
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 0, rank: 1 }, { playerId: 2, points: 0, rank: 2 }], '2026-11-23T19:23:38Z');
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 33000, rank: 1 }, { playerId: 2, points: 22500, rank: 2 }], '2026-11-24T15:01:00Z');
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 40000, rank: 1 }, { playerId: 2, points: 22500, rank: 2 }], '2026-11-24T17:31:00Z');
+    saveEventStandings(CLAN, UMBRELLA, [{ playerId: 1, points: 50000, rank: 1 }, { playerId: 2, points: 30000, rank: 2 }], '2026-11-25T12:00:00Z');
+    // Day 1's and day 2's stages, each its own ranking from zero; player 3 only in stage 1.
+    saveEventRun(CLAN, { type: 1025, run: 8, occurrence: 23, state: 1, startsAt: s('2026-11-23T17:00:51Z'), endsAt: s('2026-11-24T17:00:00Z') },
+      { code: 'multistage', title: 'Trial of the Chimera' }, '2026-11-24T15:01:00Z');
+    saveEventStandings(CLAN, STAGE1, [{ playerId: 1, points: 2422955, rank: 1 }, { playerId: 2, points: 746974, rank: 2 }, { playerId: 3, points: 100, rank: 3 }], '2026-11-24T15:01:00Z');
+    saveEventRun(CLAN, { type: 1025, run: 9, occurrence: 23, state: 1, startsAt: s('2026-11-24T17:00:51Z'), endsAt: s('2026-11-25T17:00:00Z') },
+      { code: 'multistage', title: 'Trial of the Basilisk' }, '2026-11-25T12:00:00Z');
+    saveEventStandings(CLAN, STAGE2, [{ playerId: 1, points: 500, rank: 1 }, { playerId: 2, points: 0, rank: 2 }], '2026-11-25T12:00:00Z');
+  }
+
+  it('splits the Olympus points into days at the 17:00 UTC resets, beside each day\'s stage points', () => {
+    seed();
+    expect(olympusGameRunDates(CLAN, ROLLOVER)).toEqual(['2026-11-23']);
+    const g = buildGameOlympus(CLAN, '2026-11-23', ROLLOVER, Date.parse('2026-11-25T13:00:00Z'))!;
+    expect(g.olympusPoints).toBe(true);
+    expect(g.days).toEqual([1, 2]);
+    expect(g.columns.map((c) => [c.first, c.live, c.title])).toEqual([[1, false, 'Trial of the Chimera'], [2, true, 'Trial of the Basilisk']]);
+    expect(g.stages.map((x) => x.state)).toEqual(['read', 'read', 'upcoming', 'upcoming', 'upcoming']);
+    expect(g.players.map((p) => [p.rawName, p.cumulative, p.perSummon, p.total, p.stagePoints, p.stageTotal, p.played])).toEqual([
+      // Points read after day 1's end (17:31) count on day 2.
+      ['#1', { 1: 33000, 2: 50000 }, { 1: 33000, 2: 17000 }, 50000, { 1: 2422955, 2: 500 }, 2423455, 2],
+      ['#2', { 1: 22500, 2: 30000 }, { 1: 22500, 2: 7500 }, 30000, { 1: 746974, 2: 0 }, 746974, 2],
+      ['#3', { 1: 0, 2: 0 }, { 1: 0, 2: 0 }, 0, { 1: 100 }, 100, 0],
+    ]);
+    // Another run's day: nothing.
+    expect(buildGameOlympus(CLAN, '2026-11-01', ROLLOVER, Date.parse('2026-11-25T13:00:00Z'))).toBeNull();
+  });
+
+  it('falls back to the stage points when the run has no Olympus points (read before 82003)', () => {
+    saveEventRun(CLAN, { type: 1025, run: 8, occurrence: 23, state: 1, startsAt: s('2026-11-23T17:00:51Z'), endsAt: s('2026-11-24T17:00:00Z') },
+      { code: 'multistage', title: 'Trial of the Chimera' }, '2026-11-24T10:01:56Z');
+    saveEventStandings(CLAN, STAGE1, [{ playerId: 1, points: 2422955, rank: 2 }, { playerId: 9, points: 4225110, rank: 1 }], '2026-11-24T10:01:56Z');
+    const g = buildGameOlympus(CLAN, '2026-11-23', ROLLOVER, Date.parse('2026-11-24T11:00:00Z'))!;
+    expect([g.olympusPoints, g.days]).toEqual([false, []]);
+    expect(g.players.map((p) => [p.rawName, p.perSummon, p.total, p.rank])).toEqual([
+      ['#9', { 1: 4225110 }, 4225110, 1],
+      ['#1', { 1: 2422955 }, 2422955, 2],
+    ]);
+  });
+
+  it('keeps the matchup, rivals\' headlines once read, and lists the overall ranking beside the latest stage', () => {
+    seed();
+    const clans = [
+      { gameClanId: 1297080123906, rank: 1, points: 393845 },
+      { gameClanId: 674309866701, rank: 2, points: 173519 },
+      { gameClanId: 1172526071839, rank: 3, points: 142295 },
+    ];
+    saveMatchup(CLAN, UMBRELLA, { groupId: 590, rewardMinPoints: 600000, clans }, '2026-11-24T15:01:00Z');
+    expect(matchupClansWithoutName(CLAN, UMBRELLA)).toHaveLength(3);
+    saveMatchup(CLAN, UMBRELLA, {
+      groupId: 590, rewardMinPoints: 600000,
+      clans: [{ ...clans[1], kingdom: 157, tag: 'GOF', name: 'Godfather 3 new', members: 72, memberLimit: 100, might: 14220448468 }],
+    }, '2026-11-24T15:01:00Z');
+    // A later read of the scores alone keeps the headline.
+    saveMatchup(CLAN, UMBRELLA, { groupId: null, rewardMinPoints: null, clans: clans.map((c) => ({ ...c, points: c.points + 1 })) }, '2026-11-24T16:31:00Z');
+    const m = getMatchup(CLAN, UMBRELLA)!;
+    expect([m.groupId, m.rewardMinPoints, m.readAt]).toEqual([590, 600000, '2026-11-24T16:31:00Z']);
+    expect(m.clans.map((c) => [c.rank, c.points, c.kingdom, c.tag, c.members])).toEqual([
+      [1, 393846, null, null, null],
+      [2, 173520, 157, 'GOF', 72],
+      [3, 142296, null, null, null],
+    ]);
+    // Only the two still unnamed are read again.
+    expect(matchupClansWithoutName(CLAN, UMBRELLA).sort((a, b) => a - b)).toEqual([1172526071839, 1297080123906]);
+    expect(buildGameOlympus(CLAN, '2026-11-23', ROLLOVER, Date.parse('2026-11-25T13:00:00Z'))!.matchup?.clans).toHaveLength(3);
+    // In-game rankings: TRIALS OF OLYMPUS and the newest stage, not one hiding the other.
+    expect(latestEventRuns(CLAN).map((r) => r.title)).toEqual(['Trial of the Basilisk', 'TRIALS OF OLYMPUS']);
   });
 });

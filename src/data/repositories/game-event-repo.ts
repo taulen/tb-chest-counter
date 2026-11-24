@@ -7,6 +7,8 @@
  */
 import { getDb } from '../database.js';
 import type { GameEventEntry, GameEventStanding } from '../../game-protocol/messages.js';
+import { OLYMPUS_CODE, OLYMPUS_EVENT_TYPE } from '../../game-protocol/olympus.js';
+import { olympusStageDay } from '../../game-protocol/event-mapping.js';
 
 export interface EventRunKey {
   eventType: number;
@@ -194,12 +196,19 @@ export function listEventRuns(clanId: number): StoredEventRun[] {
   ).all(clanId) as Parameters<typeof rowToRun>[0][]).map(rowToRun);
 }
 
-/** The latest run per event (same code = same event; a code-less run groups by its type). */
+/**
+ * The latest run per event (same code = same event; a code-less run groups by
+ * its type). Olympus shares one code between its overall ranking and its five
+ * stages: those are two entries — the overall ranking and the latest stage —
+ * and its other sub-events one each by title.
+ */
 export function latestEventRuns(clanId: number): StoredEventRun[] {
   const seen = new Set<string>();
   const out: StoredEventRun[] = [];
   for (const r of listEventRuns(clanId)) {
-    const group = r.code || `type:${r.eventType}`;
+    const group = r.code === OLYMPUS_CODE
+      ? (r.eventType === OLYMPUS_EVENT_TYPE ? r.code : olympusStageDay(r.title) !== null ? `${r.code}:stage` : `${r.code}:${r.title}`)
+      : r.code || `type:${r.eventType}`;
     if (seen.has(group)) continue;
     seen.add(group);
     out.push(r);
@@ -250,6 +259,101 @@ export function getEventStandings(clanId: number, key: EventRunKey): EventStandi
       updatedAt: r.updated_at,
     };
   });
+}
+
+// ─── Clan-vs-clan matchup (v136, Trials of Olympus) ─────────────────────────
+
+export interface MatchupClan {
+  gameClanId: number;
+  rank: number;
+  points: number;
+  /** The kingdom the clan is in (the registration server's answer); null until read. */
+  kingdom: number | null;
+  tag: string | null;
+  name: string | null;
+  members: number | null;
+  memberLimit: number | null;
+  might: number | null;
+}
+
+export interface Matchup {
+  groupId: number | null;
+  /** The score the clan needs for any reward (Olympus: 600K). */
+  rewardMinPoints: number | null;
+  readAt: string;
+  /** Best first. */
+  clans: MatchupClan[];
+}
+
+/** Record the run's matchup: group, reward minimum, and every clan's rank and score (headlines kept when not re-read). */
+export function saveMatchup(
+  clanId: number,
+  key: EventRunKey,
+  m: { groupId: number | null; rewardMinPoints: number | null; clans: Array<Pick<MatchupClan, 'gameClanId' | 'rank' | 'points'> & Partial<MatchupClan>> },
+  now = new Date().toISOString(),
+): void {
+  const db = getDb();
+  const k = [clanId, key.eventType, key.run, key.occurrence] as const;
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO game_event_matchups (clan_id, event_type, run, occurrence, group_id, reward_min_points, read_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (clan_id, event_type, run, occurrence) DO UPDATE SET
+         group_id = COALESCE(excluded.group_id, game_event_matchups.group_id),
+         reward_min_points = COALESCE(excluded.reward_min_points, game_event_matchups.reward_min_points),
+         read_at = excluded.read_at`,
+    ).run(...k, m.groupId, m.rewardMinPoints, now);
+    const upsert = db.prepare(
+      `INSERT INTO game_event_matchup_clans
+         (clan_id, event_type, run, occurrence, game_clan_id, rank, points, kingdom, tag, name, members, member_limit, might, read_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (clan_id, event_type, run, occurrence, game_clan_id) DO UPDATE SET
+         rank = excluded.rank, points = excluded.points, read_at = excluded.read_at,
+         kingdom = COALESCE(excluded.kingdom, game_event_matchup_clans.kingdom),
+         tag = COALESCE(excluded.tag, game_event_matchup_clans.tag),
+         name = COALESCE(excluded.name, game_event_matchup_clans.name),
+         members = COALESCE(excluded.members, game_event_matchup_clans.members),
+         member_limit = COALESCE(excluded.member_limit, game_event_matchup_clans.member_limit),
+         might = COALESCE(excluded.might, game_event_matchup_clans.might)`,
+    );
+    for (const c of m.clans) {
+      upsert.run(...k, c.gameClanId, c.rank, c.points, c.kingdom ?? null, c.tag ?? null, c.name ?? null,
+        c.members ?? null, c.memberLimit ?? null, c.might ?? null, now);
+    }
+  })();
+}
+
+/** The run's matchup, or null when none was read. */
+export function getMatchup(clanId: number, key: EventRunKey): Matchup | null {
+  const db = getDb();
+  const head = db.prepare(
+    'SELECT group_id, reward_min_points, read_at FROM game_event_matchups WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?',
+  ).get(clanId, key.eventType, key.run, key.occurrence) as { group_id: number | null; reward_min_points: number | null; read_at: string } | undefined;
+  if (!head) return null;
+  const clans = db.prepare(
+    `SELECT game_clan_id, rank, points, kingdom, tag, name, members, member_limit, might FROM game_event_matchup_clans
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ? ORDER BY rank, points DESC`,
+  ).all(clanId, key.eventType, key.run, key.occurrence) as Array<{
+    game_clan_id: number; rank: number; points: number; kingdom: number | null; tag: string | null; name: string | null;
+    members: number | null; member_limit: number | null; might: number | null;
+  }>;
+  return {
+    groupId: head.group_id,
+    rewardMinPoints: head.reward_min_points,
+    readAt: head.read_at,
+    clans: clans.map((c) => ({
+      gameClanId: c.game_clan_id, rank: c.rank, points: c.points, kingdom: c.kingdom, tag: c.tag, name: c.name,
+      members: c.members, memberLimit: c.member_limit, might: c.might,
+    })),
+  };
+}
+
+/** Rival clans of the run whose headline isn't stored yet (the scan reads those once). */
+export function matchupClansWithoutName(clanId: number, key: EventRunKey): number[] {
+  return (getDb().prepare(
+    `SELECT game_clan_id FROM game_event_matchup_clans
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ? AND (name IS NULL OR kingdom IS NULL)`,
+  ).all(clanId, key.eventType, key.run, key.occurrence) as Array<{ game_clan_id: number }>).map((r) => r.game_clan_id);
 }
 
 /** One run's stored row, or null. */

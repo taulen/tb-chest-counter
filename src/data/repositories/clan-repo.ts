@@ -895,6 +895,8 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM game_clan_rankings WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_clan_ranking_lists WHERE clan_id = ?').run(id);
     // Event standings from the game (v120).
+    db.prepare('DELETE FROM game_event_matchup_clans WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM game_event_matchups WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_event_reads WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_event_standing_history WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM game_event_standings WHERE clan_id = ?').run(id);

@@ -13,8 +13,9 @@
  * holds no standings (nothing stored).
  */
 import type { GameClient } from '../game-protocol/client.js';
-import { parseEventProgress, parseEventStandings, type GameEventEntry, type GameEventProgress } from '../game-protocol/messages.js';
+import { parseEventProgress, parseEventStandings, parseOlympusMembers, type GameEventEntry, type GameEventProgress } from '../game-protocol/messages.js';
 import { ANCIENTS_EVENT_TYPE, figurineSummons } from '../game-protocol/ancients.js';
+import { OLYMPUS_EVENT_TYPE } from '../game-protocol/olympus.js';
 import { saveEventRead, saveEventRun, saveEventStandings, touchEventRun, type EventRunKey } from '../data/repositories/game-event-repo.js';
 import { saveRawSnapshot } from '../data/repositories/game-protocol-repo.js';
 
@@ -55,8 +56,11 @@ export async function readEventStandings(
     await opts.pause?.();
   }
 
-  const frame = await client.eventStandings(key.eventType, key.run);
-  const standings = parseEventStandings(frame);
+  // Trials of Olympus answers 38003 with every member at 0: its Clan members
+  // tab is 82003 (game-protocol/olympus.ts).
+  const olympus = key.eventType === OLYMPUS_EVENT_TYPE;
+  const frame = olympus ? await client.olympusMembers(key.eventType, key.run) : await client.eventStandings(key.eventType, key.run);
+  const standings = olympus ? parseOlympusMembers(frame) : parseEventStandings(frame);
   if (!standings.length) return null;
 
   if (opts.entry) saveEventRun(clanId, opts.entry.e, { code: opts.entry.code, title: opts.entry.title }, opts.now);

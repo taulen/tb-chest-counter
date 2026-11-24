@@ -11,6 +11,9 @@ exports.listRunsOfType = listRunsOfType;
 exports.listEventRuns = listEventRuns;
 exports.latestEventRuns = latestEventRuns;
 exports.getEventStandings = getEventStandings;
+exports.saveMatchup = saveMatchup;
+exports.getMatchup = getMatchup;
+exports.matchupClansWithoutName = matchupClansWithoutName;
 exports.getEventRun = getEventRun;
 /**
  * Event standings read from the game (v121): every running event's "Clan
@@ -20,6 +23,8 @@ exports.getEventRun = getEventRun;
  * move; the first read of a run is its baseline (stored, never a "change").
  */
 const database_js_1 = require("../database.js");
+const olympus_js_1 = require("../../game-protocol/olympus.js");
+const event_mapping_js_1 = require("../../game-protocol/event-mapping.js");
 const OPEN_ENDED = 4294967295;
 /** Record (or refresh) a run the list showed running. */
 function saveEventRun(clanId, e, meta, now = new Date().toISOString()) {
@@ -127,12 +132,19 @@ function listEventRuns(clanId) {
                      WHERE s.clan_id = r.clan_id AND s.event_type = r.event_type AND s.run = r.run AND s.occurrence = r.occurrence)
       ORDER BY COALESCE(r.starts_at, 0) DESC, r.last_read DESC`).all(clanId).map(rowToRun);
 }
-/** The latest run per event (same code = same event; a code-less run groups by its type). */
+/**
+ * The latest run per event (same code = same event; a code-less run groups by
+ * its type). Olympus shares one code between its overall ranking and its five
+ * stages: those are two entries — the overall ranking and the latest stage —
+ * and its other sub-events one each by title.
+ */
 function latestEventRuns(clanId) {
     const seen = new Set();
     const out = [];
     for (const r of listEventRuns(clanId)) {
-        const group = r.code || `type:${r.eventType}`;
+        const group = r.code === olympus_js_1.OLYMPUS_CODE
+            ? (r.eventType === olympus_js_1.OLYMPUS_EVENT_TYPE ? r.code : (0, event_mapping_js_1.olympusStageDay)(r.title) !== null ? `${r.code}:stage` : `${r.code}:${r.title}`)
+            : r.code || `type:${r.eventType}`;
         if (seen.has(group))
             continue;
         seen.add(group);
@@ -169,6 +181,56 @@ function getEventStandings(clanId, key) {
             updatedAt: r.updated_at,
         };
     });
+}
+/** Record the run's matchup: group, reward minimum, and every clan's rank and score (headlines kept when not re-read). */
+function saveMatchup(clanId, key, m, now = new Date().toISOString()) {
+    const db = (0, database_js_1.getDb)();
+    const k = [clanId, key.eventType, key.run, key.occurrence];
+    db.transaction(() => {
+        db.prepare(`INSERT INTO game_event_matchups (clan_id, event_type, run, occurrence, group_id, reward_min_points, read_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (clan_id, event_type, run, occurrence) DO UPDATE SET
+         group_id = COALESCE(excluded.group_id, game_event_matchups.group_id),
+         reward_min_points = COALESCE(excluded.reward_min_points, game_event_matchups.reward_min_points),
+         read_at = excluded.read_at`).run(...k, m.groupId, m.rewardMinPoints, now);
+        const upsert = db.prepare(`INSERT INTO game_event_matchup_clans
+         (clan_id, event_type, run, occurrence, game_clan_id, rank, points, kingdom, tag, name, members, member_limit, might, read_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (clan_id, event_type, run, occurrence, game_clan_id) DO UPDATE SET
+         rank = excluded.rank, points = excluded.points, read_at = excluded.read_at,
+         kingdom = COALESCE(excluded.kingdom, game_event_matchup_clans.kingdom),
+         tag = COALESCE(excluded.tag, game_event_matchup_clans.tag),
+         name = COALESCE(excluded.name, game_event_matchup_clans.name),
+         members = COALESCE(excluded.members, game_event_matchup_clans.members),
+         member_limit = COALESCE(excluded.member_limit, game_event_matchup_clans.member_limit),
+         might = COALESCE(excluded.might, game_event_matchup_clans.might)`);
+        for (const c of m.clans) {
+            upsert.run(...k, c.gameClanId, c.rank, c.points, c.kingdom ?? null, c.tag ?? null, c.name ?? null, c.members ?? null, c.memberLimit ?? null, c.might ?? null, now);
+        }
+    })();
+}
+/** The run's matchup, or null when none was read. */
+function getMatchup(clanId, key) {
+    const db = (0, database_js_1.getDb)();
+    const head = db.prepare('SELECT group_id, reward_min_points, read_at FROM game_event_matchups WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?').get(clanId, key.eventType, key.run, key.occurrence);
+    if (!head)
+        return null;
+    const clans = db.prepare(`SELECT game_clan_id, rank, points, kingdom, tag, name, members, member_limit, might FROM game_event_matchup_clans
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ? ORDER BY rank, points DESC`).all(clanId, key.eventType, key.run, key.occurrence);
+    return {
+        groupId: head.group_id,
+        rewardMinPoints: head.reward_min_points,
+        readAt: head.read_at,
+        clans: clans.map((c) => ({
+            gameClanId: c.game_clan_id, rank: c.rank, points: c.points, kingdom: c.kingdom, tag: c.tag, name: c.name,
+            members: c.members, memberLimit: c.member_limit, might: c.might,
+        })),
+    };
+}
+/** Rival clans of the run whose headline isn't stored yet (the scan reads those once). */
+function matchupClansWithoutName(clanId, key) {
+    return (0, database_js_1.getDb)().prepare(`SELECT game_clan_id FROM game_event_matchup_clans
+      WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ? AND (name IS NULL OR kingdom IS NULL)`).all(clanId, key.eventType, key.run, key.occurrence).map((r) => r.game_clan_id);
 }
 /** One run's stored row, or null. */
 function getEventRun(clanId, key) {

@@ -29,3 +29,14 @@ Trials of Olympus (days 1–5), Ragnarok (days 1–2) and Dark Omens (days 1–2
 - **API:** `/api/event-scores/olympus`, `/api/event-scores/ragnarok` and `/api/event-scores/dark-omens`, the same paths as `/api/tinman` (a "summon" in the path is the day). There are no targets, no guards tiers, and no cadence warning. With no `?date=`, it shows the newest pasted run.
 - **Assumed cumulative**, like Ancients: each paste is the ranking as it stands after that day. If the in-game ranking ever turns out to reset per day, the per-day columns would read as negative steps.
 - Audit actions: `<event>_upload`, `<event>_delete`, `<event>_assign` (e.g. `olympus_upload`, `dark-omens_upload`).
+
+## Olympus from the game
+
+Since Nov 24 2026 the Olympus card fills itself for every run with nothing pasted ([olympus-game.ts](../src/data/olympus-game.ts), protocol in [game-protocol.md](game-protocol.md#trials-of-olympus-v136)), marked **From the game**, without a paste form. The paste form remains for runs the game didn't cover. The card shows:
+
+- **The five days with their stages** (D1 Trial of the Chimera … D5 Trial of Briareus), the running day marked, days still ahead dimmed.
+- **Overall points per day** (the members' Olympus points), the default view. This is the ranking admins used to paste: the umbrella event's Clan members tab, read every scan and kept with history. A day's points are the step between the reads either side of its 17:00 UTC end, so points scored after a day's last scan land on the next day. Total and rank are the game's.
+- **Stage points**, the toggle. Each day's stage has its own ranking, which starts from zero, so the total is their sum. A run read before Nov 24 2026 has stage points only and shows no toggle.
+- **The clan ranking**: the matchup's clans, best first, with the clan's own row in gold, each rival's tag, name, kingdom ("Kingdom #157") and members, and how far the clan is from the reward minimum.
+
+Tools → Rewards splits by the same Olympus points, as they stood after the picked day ([rewards-tool.md](rewards-tool.md)). Runs are keyed by their first game day, as pasted ones are: stage n read on game day d belongs to the run that started on d − (n − 1).
