@@ -5170,6 +5170,10 @@ details > table {
 /* Compact cells so the matrix fits without horizontal scroll. */
 .resources-totals-table th,
 .resources-totals-table td { padding: 6px 6px; }
+/* The resource columns are sized to their names (fitNameColumns): 4px sides
+   give German its last ~60px at 1440, where "Drachenmünzen" needs its own. */
+.resources-totals-table th.rtype-th,
+.resources-totals-table td.col-num { padding-left: 4px; padding-right: 4px; }
 .resources-totals-table td.col-num { font-size: 0.82rem; }
 .resources-totals-zero { color: var(--text-muted); }
 
@@ -5185,10 +5189,21 @@ details > table {
   line-height: 1.15;
 }
 .rtype-head .resource-icon-img { width: 26px; height: 26px; }
+/* The game's own names, which can't be shortened ("Drachenmünzen",
+   "Wissenschaftliche Arbeiten"): a caption in normal case (uppercase made a
+   single German word twice the column). Each column is as wide as its name's
+   longest word (resources-totals.js fitNameColumns), so names wrap between
+   words; hyphenation and a break anywhere are only the last resort, so a name
+   never runs into the next column. */
 .rtype-head-name {
+  max-width: 100%;
   font-size: 0.68rem;
   font-weight: 600;
   color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 .rtype-head-arrow {
   font-size: 0.62rem;

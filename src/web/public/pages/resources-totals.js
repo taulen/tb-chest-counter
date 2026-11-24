@@ -197,6 +197,46 @@ function paint() {
 
   if (cache.failed) wireRetry(el, reload);
   wire(el);
+  const table = el.querySelector('.resources-totals-table');
+  if (table) {
+    fitNameColumns(table);
+    // Measured again once the web font is in: the fallback font's widths differ.
+    document.fonts?.ready.then(() => { if (table.isConnected) fitNameColumns(table); });
+  }
+}
+
+/** The narrowest a resource column gets: its icon and a compact amount ("123.4M") fit. */
+const MIN_NAME_COL = 52;
+let measureCtx = null;
+
+/**
+ * Size each resource column to the longest word of its name. The names are
+ * the game's own and can't be shortened ("Drachenmünzen", "Wissenschaftliche
+ * Arbeiten", "ускоритель"), and `hyphens: auto` doesn't hyphenate in Chrome or
+ * Edge on Windows, so a fixed narrow column cut them mid-word. Measured from
+ * the names alone, so the widths follow the language and never move with
+ * sorting, paging or the period (the table stays table-layout: fixed); the
+ * browser shares the spare width out, and a table too wide for the card
+ * scrolls inside it.
+ */
+function fitNameColumns(table) {
+  const cols = table.querySelectorAll('col.col-rtype');
+  const names = table.querySelectorAll('.rtype-head-name');
+  if (!cols.length || cols.length !== names.length) return;
+  const th = names[0].closest('th');
+  if (!th) return;
+  const nameStyle = getComputedStyle(names[0]);
+  const thStyle = getComputedStyle(th);
+  const pad = (parseFloat(thStyle.paddingLeft) || 0) + (parseFloat(thStyle.paddingRight) || 0);
+  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+  if (!measureCtx) return;
+  measureCtx.font = `${nameStyle.fontStyle} ${nameStyle.fontWeight} ${nameStyle.fontSize} ${nameStyle.fontFamily}`;
+  names.forEach((name, i) => {
+    const words = name.textContent.trim().split(/\s+/);
+    const longest = Math.max(0, ...words.map((w) => measureCtx.measureText(w).width));
+    // +2: rounding between canvas and layout must never push a last letter over.
+    cols[i].style.width = `${Math.max(MIN_NAME_COL, Math.ceil(longest + pad + 2))}px`;
+  });
 }
 
 function wire(el) {
