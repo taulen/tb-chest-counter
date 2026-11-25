@@ -380,6 +380,28 @@ describe('Olympus from the game', () => {
     ]);
   });
 
+  it("files Sealed in Flame as day 3.5 — its own ranking, with the official places, never in a total", () => {
+    seed();
+    // Lava Fountain day (day 3, game day Nov 25): Sealed in Flame runs beside the stage.
+    saveEventRun(CLAN, { type: 1015, run: 81, occurrence: 9, state: 1, startsAt: s('2026-11-25T17:01:08Z'), endsAt: s('2026-11-26T17:10:00Z') },
+      { code: 'multistage', title: 'Sealed in Flame' }, '2026-11-25T23:09:32Z');
+    saveEventStandings(CLAN, { eventType: 1015, run: 81, occurrence: 9 }, [
+      { playerId: 1, points: 1378863072, rank: 5 },
+      { playerId: 2, points: 0, rank: 0 }, // outside the top 100
+    ], '2026-11-25T23:09:32Z');
+    const g = buildGameOlympus(CLAN, '2026-11-23', ROLLOVER, Date.parse('2026-11-25T23:30:00Z'))!;
+    expect(g.side).toEqual([{ day: 3.5, title: 'Sealed in Flame', live: true }]);
+    // The days and totals are what they were without it.
+    expect(g.columns.map((c) => c.first)).toEqual([1, 2, 3]);
+    const p1 = g.players.find((p) => p.rawName === '#1')!;
+    const p2 = g.players.find((p) => p.rawName === '#2')!;
+    expect([p1.side, p1.total, p1.stageTotal]).toEqual([{ 3.5: { points: 1378863072, rank: 5 } }, 50000, 2423455]);
+    expect(p2.side).toEqual({ 3.5: { points: 0, rank: 0 } });
+    expect(g.players.find((p) => p.rawName === '#3')!.side).toEqual({});
+    // Another run's days don't take it.
+    expect(buildGameOlympus(CLAN, '2026-11-01', ROLLOVER, Date.parse('2026-11-25T23:30:00Z'))).toBeNull();
+  });
+
   it('keeps the matchup, rivals\' headlines once read, and lists the overall ranking beside the latest stage', () => {
     seed();
     const clans = [

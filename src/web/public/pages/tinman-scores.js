@@ -249,7 +249,11 @@ function cardHtml(body, actions) {
  */
 function summonColumns() {
   if (data?.game) {
-    return (data.game.columns || []).map((c) => ({ summon: c.first, last: c.last, live: c.live, title: c.title || '', uploaded: true, covers: [], game: true }));
+    const cols = (data.game.columns || []).map((c) => ({ summon: c.first, last: c.last, live: c.live, title: c.title || '', uploaded: true, covers: [], game: true }));
+    // Olympus' side events (Sealed in Flame as day 3.5) between the days:
+    // their own ranking, never in the total.
+    const side = (data.game.side || []).map((x) => ({ summon: x.day, last: x.day, live: x.live, title: x.title || '', uploaded: true, covers: [], game: true, side: true }));
+    return [...cols, ...side].sort((a, b) => a.summon - b.summon);
   }
   const uploaded = new Map((data?.summons || []).map((s) => [s.summon, s]));
   const highest = Math.max(0, ...uploaded.keys());
@@ -287,7 +291,11 @@ function sortedPlayers(cols) {
       const e = expectedFor(p);
       return e ? p.total / e : -1;
     }
-    if (key.startsWith('s:')) return m.per[Number(key.slice(2))] ?? -1;
+    if (key.startsWith('s:')) {
+      const n = Number(key.slice(2));
+      if (cols.some((c) => c.side && c.summon === n)) return p.side?.[n]?.rank ? p.side[n].points : -1;
+      return m.per[n] ?? -1;
+    }
     return m.total;
   };
   players.sort((a, b) => {
@@ -498,7 +506,9 @@ function gameStripHtml() {
  * the score the clan needs for rewards.
  */
 function olympusStripHtml(g) {
-  const days = g.stages.map((s) => `<span class="tinman-chip tinman-chip-plain${s.state === 'upcoming' ? ' is-upcoming' : ''}">
+  // The five days, and any side event read (Sealed in Flame as day 3.5) between them.
+  const chips = [...g.stages, ...(g.side || []).map((x) => ({ ...x, state: 'read' }))].sort((a, b) => a.day - b.day);
+  const days = chips.map((s) => `<span class="tinman-chip tinman-chip-plain${s.state === 'upcoming' ? ' is-upcoming' : ''}">
       <strong>${esc(L.short(s.day))}</strong> ${esc(tGame(s.title))}${s.live ? ` <span class="game-run-badge is-live">● ${esc(L.liveBadge())}</span>` : ''}
     </span>`).join('');
   const toggle = g.olympusPoints
@@ -515,9 +525,10 @@ function olympusStripHtml(g) {
   const note = stageMeasure()
     ? t('Each day\'s stage ranking, as the game shows it under the stage.')
     : t('Points scored each day in the overall ranking — the clan\'s score is its sum. Points scored between a day\'s last scan and its 17:00 UTC end count on the next day; the last day keeps everything until the event closes.');
+  const sideNotes = (g.side || []).map((x) => `<p class="muted-copy tinman-note olympus-side-note"><strong>${esc(L.short(x.day))} ${esc(tGame(x.title))}</strong>: ${esc(t("Its own ranking across the matchup's clans, with the official place. Not part of the total."))}</p>`).join('');
   return `<div class="tinman-chips tinman-game-strip">${days}<span class="tinman-chip-meta">${t('Read {time}', { time: esc(formatRelativeTime(g.readAt)) })}</span></div>
     ${matchupHtml(g.matchup)}
-    <div class="olympus-measure">${toggle}<p class="muted-copy tinman-note">${esc(note)}</p></div>`;
+    <div class="olympus-measure">${toggle}<p class="muted-copy tinman-note">${esc(note)}</p>${sideNotes}</div>`;
 }
 
 /** The matchup's clans, best first, ours marked; the reward minimum under them. */
@@ -575,6 +586,10 @@ function tableHtml(cols) {
   // A game column the reads couldn't split covers several summons: "S2–3".
   const colLabel = (c) => (c.game && c.last > c.summon ? t('S{first}–{last}', { first: c.summon, last: c.last }) : sLabel(c.summon));
   const summonHeads = cols.map((c) => {
+    if (c.side) {
+      const sub = c.live ? `<span class="tinman-col-sub tinman-col-live">${t('in progress')}</span>` : '';
+      return th(`s:${c.summon}`, `${colLabel(c)}${sub}`, 'num', `${tGame(c.title)} — ${t("Its own ranking across the matchup's clans, with the official place. Not part of the total.")}`);
+    }
     if (c.game) {
       const sub = c.live ? `<span class="tinman-col-sub tinman-col-live">${t('in progress')}</span>` : '';
       const said = c.last > c.summon
@@ -607,6 +622,13 @@ function tableHtml(cols) {
         : '';
     const m = measured(p);
     const cells = cols.map((c) => {
+      if (c.side) {
+        const label = colLabel(c);
+        const live = c.live ? ' tinman-live-cell' : '';
+        const x = p.side?.[c.summon];
+        if (!x || !x.rank) return `<td class="num${live}" data-label="${label}"><span class="events-zero" title="${t('Not in its top 100')}">–</span></td>`;
+        return `<td class="num${live}" data-label="${label}" title="${esc(t('#{rank} in {event} — {points} points', { rank: x.rank, event: tGame(c.title), points: x.points.toLocaleString() }))}"><span>${formatCompact(x.points)}<span class="tinman-col-sub">#${x.rank}</span></span></td>`;
+      }
       if (!c.uploaded) return `<td class="num tinman-missing-col" data-label="${sLabel(c.summon)}"><span class="events-zero">·</span></td>`;
       const label = colLabel(c);
       const live = c.live ? ' tinman-live-cell' : '';
@@ -622,7 +644,7 @@ function tableHtml(cols) {
     const targetCell = expected !== null
       ? `<td class="num" data-label="${t('Target')}" title="${esc(t('{points} for the run', { points: Math.round(full).toLocaleString() }))}">${formatCompact(expected)}</td>`
       : `<td class="num" data-label="${t('Target')}"><span class="events-zero">—</span></td>`;
-    const pastedCount = cols.filter((c) => c.uploaded).length;
+    const pastedCount = cols.filter((c) => c.uploaded && !c.side).length;
     const playedText = !data.game ? L.played(p.played, pastedCount)
       : Array.isArray(data.game.stages)
         ? tn(pastedCount, '{played} of {n} day', '{played} of {n} days', { n: pastedCount, played: m.played })

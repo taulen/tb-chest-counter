@@ -17,9 +17,13 @@
  * Runs are keyed like the pasted ones, by their first game day: stage n read
  * on game day d belongs to the run that started on d − (n − 1); the umbrella
  * run is the one running on that first day.
+ *
+ * Side events: a run ranked across the whole matchup (Sealed in Flame, on
+ * Lava Fountain day) sits between the days as "day n.5" — n the day it ran
+ * on. Its own ranking, with the game's places; never part of a total.
  */
 import { gameDateFor } from '../utils/game-day.js';
-import { OLYMPUS_EVENT_TYPE, OLYMPUS_STAGES } from '../game-protocol/olympus.js';
+import { isMatchupRankedRun, OLYMPUS_EVENT_TYPE, OLYMPUS_STAGES } from '../game-protocol/olympus.js';
 import { olympusStageDay } from '../game-protocol/event-mapping.js';
 import {
   getEventStandings, getMatchup, listEventRuns, listRunsOfType, listStandingHistory, type Matchup, type StoredEventRun,
@@ -65,6 +69,25 @@ function stageRuns(clanId: number, rolloverUtcHour: number): StageRun[] {
   return out;
 }
 
+/**
+ * The run's side events (isMatchupRankedRun), keyed by "day n.5": n is the day
+ * of the run it started on. Two of one day keep the one read last.
+ */
+function sideRuns(clanId: number, date: string, rolloverUtcHour: number): Map<number, StoredEventRun> {
+  const out = new Map<number, StoredEventRun>();
+  for (const run of listEventRuns(clanId)) {
+    if (!isMatchupRankedRun(run)) continue;
+    const gameDay = runGameDay(run, rolloverUtcHour);
+    if (gameDay === null) continue;
+    const n = Math.round((Date.parse(`${gameDay}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / DAY_MS) + 1;
+    if (n < 1 || n > RUN_DAYS) continue;
+    const day = n + 0.5;
+    const had = out.get(day);
+    if (!had || run.lastRead > had.lastRead) out.set(day, run);
+  }
+  return out;
+}
+
 /** The umbrella run (TRIALS OF OLYMPUS) on during the run's first game day — it opens an hour or so before day 1. */
 function umbrellaRun(clanId: number, date: string, rolloverUtcHour: number): StoredEventRun | null {
   const from = dayStartMs(date, rolloverUtcHour) / 1000;
@@ -104,6 +127,15 @@ export interface GameOlympusStage {
   live: boolean;
 }
 
+/** A side event of the run (Sealed in Flame): its own matchup-wide ranking. */
+export interface GameOlympusSide {
+  /** Where it sits: the day it ran on + 0.5 (Sealed in Flame on day 3: 3.5). */
+  day: number;
+  /** As the game names it (tGame at display). */
+  title: string;
+  live: boolean;
+}
+
 export interface GameOlympusPlayer {
   memberId: number | null;
   name: string;
@@ -120,6 +152,8 @@ export interface GameOlympusPlayer {
   stageTotal: number;
   /** Days with points in them. */
   played: number;
+  /** Each side event's points and official place (rank 0: outside its top 100), by its day (3.5). Absent: not read. */
+  side: Record<number, { points: number; rank: number }>;
   /** The game's rank in the Olympus ranking (by stage points when there is none). */
   rank: number;
 }
@@ -133,6 +167,8 @@ export interface GameOlympus {
   columns: GameOlympusColumn[];
   /** All five days. */
   stages: GameOlympusStage[];
+  /** Side events read for the run (Sealed in Flame as day 3.5), in day order. */
+  side: GameOlympusSide[];
   /** The run has Olympus points (82003); false: stage points only (read before Nov 24 2026). */
   olympusPoints: boolean;
   /** Days `cumulative` holds, for Tools → Rewards; empty without Olympus points. */
@@ -156,6 +192,7 @@ export function buildGameOlympus(clanId: number, date: string, rolloverUtcHour: 
   }
   const umbrella = umbrellaRun(clanId, date, rolloverUtcHour);
   const olympus = umbrella ? getEventStandings(clanId, umbrella) : [];
+  const sides = [...sideRuns(clanId, date, rolloverUtcHour)].sort((a, b) => a[0] - b[0]);
   const olympusPoints = olympus.some((s) => s.points > 0);
   if (!byDay.size && !olympusPoints) return null;
 
@@ -169,10 +206,12 @@ export function buildGameOlympus(clanId: number, date: string, rolloverUtcHour: 
 
   const stageRows = new Map([...byDay].map(([d, r]) => [d, new Map(getEventStandings(clanId, r).map((s) => [s.playerId, s]))]));
   const olympusRows = new Map(olympus.map((s) => [s.playerId, s]));
+  const sideRows = sides.map(([d, r]) => [d, new Map(getEventStandings(clanId, r).map((s) => [s.playerId, s]))] as const);
   const history = umbrella && olympusPoints ? listStandingHistory(clanId, umbrella) : new Map<number, Array<{ points: number; at: string }>>();
 
   const ids = new Set<number>(olympusRows.keys());
   for (const rows of stageRows.values()) for (const id of rows.keys()) ids.add(id);
+  for (const [, rows] of sideRows) for (const s of rows.values()) if (s.rank > 0) ids.add(s.playerId);
   const names = gamePlayerNames(clanId, [...ids]);
 
   const players: GameOlympusPlayer[] = [...ids].map((playerId) => {
@@ -208,6 +247,11 @@ export function buildGameOlympus(clanId: number, date: string, rolloverUtcHour: 
       }
     }
     const per = olympusPoints ? perDay : stagePoints;
+    const side: Record<number, { points: number; rank: number }> = {};
+    for (const [d, rows] of sideRows) {
+      const row = rows.get(playerId);
+      if (row) side[d] = { points: row.points, rank: row.rank };
+    }
     const n = names.get(playerId);
     const name = n?.name || `#${playerId}`;
     return {
@@ -217,13 +261,14 @@ export function buildGameOlympus(clanId: number, date: string, rolloverUtcHour: 
       stagePoints, stageTotal,
       played: Object.values(per).filter((v) => v > 0).length,
       rank: olympusRows.get(playerId)?.rank ?? 0,
+      side,
     };
   });
   players.sort((a, b) => b.total - a.total || b.stageTotal - a.stageTotal || a.name.localeCompare(b.name));
   if (!olympusPoints) players.forEach((p, i) => { p.rank = i + 1; });
 
   const today = gameDateFor(nowMs, rolloverUtcHour);
-  const runs = [...byDay.values(), ...(umbrella ? [umbrella] : [])];
+  const runs = [...byDay.values(), ...sides.map(([, r]) => r), ...(umbrella ? [umbrella] : [])];
   return {
     live: days.some(dayLive) && (umbrella ? isLive(umbrella) : [...byDay.values()].some(isLive)),
     readAt: runs.reduce((m, r) => (r.lastRead > m ? r.lastRead : m), runs[0].lastRead),
@@ -237,6 +282,7 @@ export function buildGameOlympus(clanId: number, date: string, rolloverUtcHour: 
         live: dayLive(s.day),
       };
     }),
+    side: sides.map(([d, r]) => ({ day: d, title: r.title, live: isLive(r) })),
     olympusPoints,
     days: olympusPoints ? days : [],
     matchup: matchupWithOwn(clanId, umbrella),

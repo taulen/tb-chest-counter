@@ -9463,6 +9463,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 .olympus-measure { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 20px 0; }
 .olympus-measure .ui-seg { flex: none; }
 .olympus-measure .tinman-note { flex: 1 1 260px; margin: 0; padding: 0; }
+/* A side event's line (Sealed in Flame, D3.5) sits under the measure note, full width. */
+.olympus-measure .tinman-note.olympus-side-note { flex-basis: 100%; }
 .tinman-col-sub.tinman-col-live { color: var(--accent-green); }
 .tinman-table td.tinman-live-cell { background: var(--accent-green-bg); }
 .tinman-raw { color: var(--text-secondary); font-style: italic; }
