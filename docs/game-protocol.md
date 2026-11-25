@@ -1307,21 +1307,36 @@ Flame) sent to `rating_proxy_url`, and the kingdom-server messages around them:
 |---|---|---|---|
 | 24001 | rating proxy (and `rating_url`) | every event the realm knows (see Event standings) | yes, on `rating_url` |
 | 24002 | rating proxy | `[[type, run], [scope, group]] → [points, rank, n]` per run for the **signed-in account only** (the client polls it ~every 30 s while a window is open) | no — our own account's line only |
-| 24003 | rating proxy | an event's Ranking tab: top 100 players of its scope + points per kingdom | Sealed in Flame only |
+| 24003 | rating proxy | an event's Ranking tab: top 100 players of its scope + top 100 kingdoms; worldwide except a matchup scope (below) | Sealed in Flame only |
 | 24400 | rating proxy | `[[type, run]]` → `{kingdom: n}` for ~380 kingdoms — which bracket each kingdom is in for a cross-kingdom event (1001/1: mostly 6) | no |
 | 82000 | rating proxy | Olympus' clan ranking | yes |
 | 24203 | kingdom | each run's ranking `[scope, group]` (the client polls it) | for Sealed in Flame |
 | 24201 | kingdom | `[[type, run], …, total]` per run for the signed-in account; the last field is its kingdom's total in the run's ranking (K260's 7,236,997,949) | no |
-| 24500 | kingdom | `[[type, run]]` → the clan's reward tiers (Rise of the Ancients: tier, points needed, claimed, rewards) | no |
+| 24500 | kingdom | `[[type, run]]` → reward tiers: tier, points needed, claimed, rewards (asked for Triumphal Challenge!, 1018/1: 7.9B, 18B, 33B…) | no |
 | 82004 / 82005 | rival kingdom / kingdom | Olympus: the rival clans' ids, and each one's `[kingdom, x, y]` | no |
 | 191 | `reg_url` | player ids → kingdom (the "[K157]" tags of a ranking) | no |
 
-**Not known yet:** what 24003 returns for the other scopes. Most runs are
-`[1, 1]`, Rise of the Ancients `[19, 1]`, others `[11, 36]`, `[8, 25]`,
-`[4, 1]`. If it's each event's kingdom-wide top 100, every event's official
-rank of our top members is readable the same way. Record the Ranking tab of
-a few events (Rise of the Ancients, a tournament, an Olympus stage) before
-reading any of them.
+**The other scopes are worldwide** (recorded Nov 25 2026, the Ranking tab of
+Lava Fountain Trial, War Tools, Pursuit of Experience `[1, 1]`, Pharaoh's
+Bazaar `[4, 1]`, Triumphal Challenge! `[19, 1]`, Doomsday `[11, 36]`):
+
+- the players are the top 100 of every kingdom (War Tools #1 5.2M, K260
+  nowhere near) — **none of our 375 members in any of the six clans was in
+  any of them**, against 37 in Sealed in Flame's;
+- body[0][0][2] is the top 100 **kingdoms** with their totals (K260: #35 in
+  Lava Fountain Trial, #17 in War Tools, #40 in Pharaoh's Bazaar, #59 in
+  Triumphal Challenge!); Doomsday `[11, 36]` is a bracket of 62 kingdoms
+  without K260;
+- body[0][0][1] is empty except for Triumphal Challenge!, where it holds a
+  second top 100 (ids not our clans' — likely clans);
+- body[0][1], the own line, is `[ownRank, 0, kingdomRank]`: the signed-in
+  player's place (0 outside the list; taulen #8 in Sealed in Flame) and their
+  kingdom's place among the kingdoms (0 outside the top 100) — the same third
+  value 24002 reports.
+
+So for any event but a matchup-scoped one, 24003 holds nothing about our
+members; only the kingdom's place. Not read. Rise of the Ancients (1024) and
+Prime Arena `[8, 25]` weren't recorded.
 
 ## Names (static data)
 

@@ -771,7 +771,8 @@ export interface GameEventRatingScope {
  * it for the running events): `[[type, run], [scope, group], [1, 1]]` per run
  * in body[0][0]. The pair is what the Ranking tab (24003) is asked with. Nov
  * 25 2026, CWB: most runs `[1, 1]`; Sealed in Flame `[6, 590]` — 590 is the
- * Olympus matchup group (82001); Rise of the Ancients `[19, 1]`.
+ * Olympus matchup group (82001); Triumphal Challenge! `[19, 1]`, Doomsday
+ * `[11, 36]`, Prime Arena `[8, 25]`.
  */
 export function parseEventRatingScopes(frame: Frame): GameEventRatingScope[] {
   const out: GameEventRatingScope[] = [];
