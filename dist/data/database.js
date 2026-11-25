@@ -2773,6 +2773,51 @@ const MIGRATIONS = [
                 database.exec('ALTER TABLE members DROP COLUMN despaced_name');
         },
     },
+    {
+        // The game's names are the names (Nov 25 2026). Every stored chest and every
+        // hand-written list already used the game's spelling; 14 sources still carried
+        // the OCR era's, and the scan kept filing the game's spelling under them. Each
+        // moves onto the game's name — renamed in place, or folded into the row that
+        // already carries it. Point keys are unchanged for all but "Bank Delete", whose
+        // records are triumphal (scored by chest name, not source key) and which has no
+        // point value of its own. Measured on prod first. Replay-safe: a spelling no
+        // longer stored is skipped.
+        version: 139,
+        run: (database) => {
+            const RENAMES = [
+                ['Lvl 10-14 Vault of the Ancients', 'Level 10–14 Vault of the Ancients'],
+                ['Lvl 15-19 Vault of the Ancients', 'Level 15–19 Vault of the Ancients'],
+                ['Lvl 20-24 Vault of the Ancients', 'Level 20–24 Vault of the Ancients'],
+                ['Lvl 25-29 Vault of the Ancients', 'Level 25–29 Vault of the Ancients'],
+                ['Lvl 30-34 Vault of the Ancients', 'Level 30–34 Vault of the Ancients'],
+                ['Lvl 35-39 Vault of the Ancients', 'Level 35–39 Vault of the Ancients'],
+                ['Lvl 40-44 Vault of the Ancients', 'Level 40–44 Vault of the Ancients'],
+                ['Lvl 45-45 Vault of the Ancients', 'Level 45 Vault of the Ancients'],
+                ['Lvl 20-24 Raid Runic squad', 'Lvl 20–24 Raid Runic squad'],
+                ['Lvl 25-29 Raid Runic squad', 'Lvl 25–29 Raid Runic squad'],
+                ['Lvl 30-34 Raid Runic squad', 'Lvl 30–34 Raid Runic squad'],
+                ['Lvl 35-39 Raid Runic squad', 'Lvl 35–39 Raid Runic squad'],
+                ['Lvl 40-44 Raid Runic squad', 'Lvl 40–44 Raid Runic squad'],
+                ['Bank Delete', 'Bank'],
+            ];
+            const idOf = database.prepare('SELECT id FROM chest_sources WHERE source = ?');
+            database.transaction(() => {
+                for (const [from, to] of RENAMES) {
+                    const old = idOf.get(from);
+                    if (!old)
+                        continue;
+                    const target = idOf.get(to);
+                    if (!target) {
+                        database.prepare('UPDATE chest_sources SET source = ? WHERE id = ?').run(to, old.id);
+                        continue;
+                    }
+                    database.prepare('UPDATE chest_records SET chest_source_id = ? WHERE chest_source_id = ?').run(target.id, old.id);
+                    database.prepare('UPDATE triumphal_chest_records SET chest_source_id = ? WHERE chest_source_id = ?').run(target.id, old.id);
+                    database.prepare('DELETE FROM chest_sources WHERE id = ?').run(old.id);
+                }
+            })();
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

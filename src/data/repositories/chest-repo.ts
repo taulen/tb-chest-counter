@@ -4,7 +4,7 @@ import * as chestSummaryRepo from './chest-summary-repo.js';
 import { invalidateScanStats } from './session-repo.js';
 import { invalidateReviewQueueCount } from './review-queue-repo.js';
 import { invalidateSourceKeySummary } from './source-points-repo.js';
-import { getSourceRarity, sourceSpellingKey } from '../source-names.js';
+import { getSourceRarity } from '../source-names.js';
 import { childLogger } from '../../utils/logger.js';
 import { cached, invalidate } from '../../utils/ttl-cache.js';
 import type { ChestRecord, MemberStats, LeaderboardEntry } from '../../models/types.js';
@@ -148,33 +148,8 @@ export function getOrCreateChestSourceId(source: string): number | null {
   const exact = db.prepare('SELECT id FROM chest_sources WHERE source = ?').get(source) as { id: number } | undefined;
   if (exact) return exact.id;
 
-  // No exact row. Before minting a new one, reuse an existing source that is
-  // the SAME source spelled differently — PaddleOCR drops inter-word spaces
-  // ("Level10rareCrypt") that Tesseract/history kept ("Level 10 rare Crypt"),
-  // reads the same accent both ways ("Jörmungandr Shop" / "Jormungandr Shop"),
-  // and abbreviates Level as Lvl — and all of those must resolve to one
-  // chest_sources row so scoring, aggregates and the admin Source Points UI
-  // don't split into duplicates. Prefer the variant with the most existing
-  // records (the dominant historical spelling). This scan only runs for
-  // genuinely-new source strings (rare), over a tiny table.
-  //
-  // sourceSpellingKey, not canonicalSourceKey: this is a row-identity question,
-  // not a scoring one, so it can fold Lvl/Level too. That also stops migration
-  // v63 from undoing itself — once it deletes a duplicate spelling, the next
-  // scan reading that spelling misses the exact fast path above and lands here.
-  const canon = sourceSpellingKey(source);
-  if (canon) {
-    const candidates = db.prepare('SELECT id, source FROM chest_sources').all() as { id: number; source: string }[];
-    let bestId: number | null = null;
-    let bestCnt = -1;
-    for (const c of candidates) {
-      if (sourceSpellingKey(c.source) !== canon) continue;
-      const cnt = (db.prepare('SELECT COUNT(*) AS n FROM chest_records WHERE chest_source_id = ?').get(c.id) as { n: number }).n;
-      if (cnt > bestCnt) { bestCnt = cnt; bestId = c.id; }
-    }
-    if (bestId !== null) return bestId;
-  }
-
+  // No exact row: a new source. Names are the game's own, verbatim, so a
+  // different spelling IS a different source (no spelling fold since Nov 25 2026).
   // Genuinely new source type — insert it.
   const row = db.prepare(`
     INSERT INTO chest_sources (source, rarity) VALUES (?, ?)

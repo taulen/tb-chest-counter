@@ -37,12 +37,11 @@ The browser-driven OCR scanner this replaced (with its calibration wizard,
 member-capture onboarding and OCR might / Clan Capital captures) was removed in
 Nov 2026; the only browser left is the login bridge's.
 
-Names: game names are exact, so no correction runs. Each resolves to the
-spelling already stored for it when `normalizeGiftText`
-([`gift-text.ts`](../src/game-protocol/gift-text.ts)) matches (the OCR era
-stored "Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), so
-point values keep keying on the same names. (Chest/source merge rules applied
-here until Nov 25 2026, when merging was removed.) A chest's type (common … legendary, arena) stays the site's
+Names: the game's own, written verbatim — nothing maps them onto older
+spellings (Nov 25 2026; v139 moved the OCR era's "Lvl 25-29 Vault of the
+Ancients" and the like onto the game's "Level 25–29 …"). Point values key on a
+slug derived from the source name (`getSourceKey`), which those renames left
+unchanged. (Chest/source merge rules applied here until Nov 25 2026.) A chest's type (common … legendary, arena) stays the site's
 own `CHEST_TYPES`, not the item quality grade (T8 f10), which follows the crypt
 level rather than the chest — see [chest-identity.md](chest-identity.md#chest-types).
 
@@ -1360,7 +1359,6 @@ skipped unbuilt), about 7 s. The decoded tables hold ~700 MB of heap at the
 peak; the four language passes add under a second and ~150 MB of short-lived
 heap (measured Nov 2026), inside the container's 1,536 MB.
 
-The game's source text differs from what the OCR era stored in places ("Level
-25–29 Vault of the Ancients" vs our "Lvl 25-29 …"); the protocol scan maps each
-game name onto the stored spelling (`normalizeGiftText`) so history stays
-continuous.
+The game's source text differed from what the OCR era stored in places ("Level
+25–29 Vault of the Ancients" vs "Lvl 25-29 …"); v139 (Nov 25 2026) renamed the
+stored rows to the game's names, and the scan writes the game's names verbatim.

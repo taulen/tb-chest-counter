@@ -20,7 +20,6 @@ const database_js_1 = require("../database.js");
 const logger_js_1 = require("../../utils/logger.js");
 const event_catalog_js_1 = require("../../config/event-catalog.js");
 const source_names_js_1 = require("../source-names.js");
-const name_normalize_js_1 = require("../../utils/name-normalize.js");
 const log = (0, logger_js_1.childLogger)('event-repo');
 // One warn per (event, declared name) per process. Deliberately NOT log-throttle:
 // that coalesces bursts within a rolling window, and this is a permanent config
@@ -33,10 +32,6 @@ function warnOnce(eventKey, message) {
         return;
     warnedConfig.add(k);
     log.warn(message);
-}
-/** Accent-, case- and punctuation-insensitive identity of a chest name. */
-function foldKey(s) {
-    return (0, name_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 // captured_at is INTEGER ms post-v30; convert at the boundary (same shape
 // as chest-repo.ts / triumphal-chest-repo.ts).
@@ -103,39 +98,23 @@ function resolvePredicate(def) {
     const db = (0, database_js_1.getDb)();
     const allChests = db.prepare('SELECT id, name FROM chests ORDER BY id').all();
     const byExact = new Map();
-    const byFold = new Map();
     const chestIdToNameAll = new Map();
     for (const c of allChests) {
         byExact.set(c.name, c);
         chestIdToNameAll.set(c.id, c.name);
-        const k = foldKey(c.name);
-        if (!k)
-            continue;
-        // Two rows folding to the same key shouldn't happen (config-integrity flags
-        // it if it ever does); the oldest wins, the spelling the scan resolves a
-        // game name to (protocol-scan's storedNames, oldest row first).
-        if (!byFold.has(k))
-            byFold.set(k, c);
     }
     const configErrors = [];
     const deadColumns = new Map();
-    /** Exact → folded. Records a config error for anything past tier 1. */
+    /** The game's name, exactly. Records a config error when it isn't stored. */
     const resolveName = (declared) => {
         const exact = byExact.get(declared);
         if (exact)
             return exact;
-        const hit = byFold.get(foldKey(declared));
-        configErrors.push({ declared, resolvedTo: hit ? hit.name : null, kind: 'chest' });
-        if (hit) {
-            warnOnce(def.key, `Events catalog: "${declared}" is a stale spelling of "${hit.name}" — its chests are still `
-                + `counted, but fix the literal in src/config/event-catalog.ts (event "${def.key}").`);
-        }
-        else {
-            warnOnce(def.key, `Events catalog: "${declared}" matches no chest — its column on the "${def.key}" event `
-                + 'will read 0. Fix the literal in src/config/event-catalog.ts, or ignore if the chest '
-                + 'has genuinely never been scanned.');
-        }
-        return hit ?? null;
+        configErrors.push({ declared, resolvedTo: null, kind: 'chest' });
+        warnOnce(def.key, `Events catalog: "${declared}" matches no chest — its column on the "${def.key}" event `
+            + 'will read 0. Use the game\'s exact name in src/config/event-catalog.ts, or ignore if the '
+            + 'chest has genuinely never been scanned.');
+        return null;
     };
     const allSources = db.prepare('SELECT id, source FROM chest_sources').all();
     const sourceIdToLevel = new Map();
@@ -144,13 +123,11 @@ function resolvePredicate(def) {
         sourceIdToLevel.set(s.id, (0, source_names_js_1.parseSourceLevel)(s.source));
         sourceIdToText.set(s.id, s.source);
     }
-    // Fold BOTH sides. Lowercasing alone was the source-side twin of the chest bug:
-    // an unaccented needle could never match "Jörmungandr Shop", and migration v63
-    // makes the accented spelling the surviving one for every duplicated source.
+    // Case-insensitive containment over the game's source names.
     const sourcesMatching = (contains) => {
-        const needle = (0, name_normalize_js_1.foldDiacritics)(contains).toLowerCase();
+        const needle = contains.toLowerCase();
         return allSources
-            .filter((s) => (0, name_normalize_js_1.foldDiacritics)(s.source || '').toLowerCase().includes(needle))
+            .filter((s) => (s.source || '').toLowerCase().includes(needle))
             .map((s) => s.id);
     };
     const chestIdToColumn = new Map();

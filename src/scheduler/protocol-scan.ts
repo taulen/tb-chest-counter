@@ -35,7 +35,6 @@ import {
   UNTRACKED_RESOURCE_SLUGS,
 } from '../data/repositories/resource-repo.js';
 import { chestTypeFor } from '../data/chest-names.js';
-import { normalizeGiftText } from '../game-protocol/gift-text.js';
 import { parseClaimRewards } from '../game-protocol/messages.js';
 import { ledgerToRows } from '../game-protocol/ledger-rows.js';
 import { makeMemberResolver } from '../game-protocol/member-sync.js';
@@ -79,24 +78,11 @@ export interface ProtocolScanTally {
   warnings: string[];
 }
 
-/** Stored spelling for each normalised name, oldest row first. */
-function storedNames(sql: string): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const r of getDb().prepare(sql).all() as Array<{ v: string }>) {
-    const k = normalizeGiftText(r.v);
-    if (!out.has(k)) out.set(k, r.v);
-  }
-  return out;
-}
-
 export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): Promise<ProtocolScanTally> {
   const { clanId, sessionId } = ctx;
   const tally: ProtocolScanTally = { gifts: [], triumphal: [], alreadyRecorded: 0, claimed: 0, claimFailures: 0, resourceRows: 0, warnings: [] };
   const memberFor = makeMemberResolver(clanId, d.memberIds);
   const schedule = loadPointSchedule(clanId);
-  const chestNames = storedNames('SELECT name AS v FROM chests ORDER BY id');
-  const sourceNames = storedNames('SELECT source AS v FROM chest_sources ORDER BY id');
-  const stored = (names: Map<string, string>, name: string) => names.get(normalizeGiftText(name)) ?? name;
   const countGift = {
     1: getDb().prepare('SELECT COUNT(*) AS n FROM chest_records WHERE clan_id = ? AND game_gift_id = ?'),
     2: getDb().prepare('SELECT COUNT(*) AS n FROM triumphal_chest_records WHERE clan_id = ? AND game_gift_id = ?'),
@@ -113,8 +99,9 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     if (missing <= 0) continue;
 
     if (!g.chestName) unnamed.add(g.giftType);
-    const chestName = stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`);
-    const source = stored(sourceNames, g.sourceName);
+    // The game's own names, verbatim (Nov 25 2026): no mapping onto older spellings.
+    const chestName = g.chestName || `Unknown gift ${g.giftType}`;
+    const source = g.sourceName;
     const chestType = chestTypeFor(chestName);
     const senderName = g.senderName || d.byId.get(g.senderId)?.name || '';
     const memberId = memberFor(g.senderId, senderName) ?? memberFor(0, UNKNOWN_SENDER);

@@ -33,7 +33,6 @@ import { listClans } from './repositories/clan-repo.js';
 import { getSourceKeySummary, type SourceKeySummary } from './repositories/source-points-repo.js';
 import { sourceCategory } from './source-categories.js';
 import { canonicalSourceKey, getDefaultPointsFor, parseSourceLevelRange } from './source-names.js';
-import { foldDiacritics } from '../utils/name-normalize.js';
 
 /** One row per crypt/citadel type, one column per level. */
 export interface PointsGuideMatrix {
@@ -137,7 +136,7 @@ function rangeFromSource(source: string, fallback: number): { from: number; to: 
  */
 export function placeChest(key: string, source: string, chest: string): Placement {
   const canon = canonicalSourceKey(key);
-  const foldedChest = foldDiacritics(chest).toLowerCase();
+  const foldedChest = chest.toLowerCase();
 
   let m = /^(common|rare|epic|tartaros) (\d+)$/.exec(key);
   if (m) {

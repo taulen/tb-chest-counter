@@ -26,11 +26,9 @@
  *     the restore must land on the row the live database already has rather than
  *     mint a second one. Only the rows this clan actually referenced are
  *     considered; a restore should not import chest names the install never saw.
- *     A chest lands on the live row of the same name, or else on the oldest
- *     live row it folds onto (accents, case, spacing, punctuation — `despace`),
- *     so an older spelling ("Jormungandr's Chest") joins the live chest instead
- *     of being re-created as a duplicate next to it. Only a chest the install
- *     has never held is added, under the backup's own spelling and type.
+ *     A chest lands on the live row of the same name (the game's, exactly);
+ *     only a chest the install has never held is added, under the backup's
+ *     own name and type.
  *
  * Foreign keys stay ON throughout and the whole thing is one transaction: a
  * mapping mistake aborts the restore rather than writing half a clan.
@@ -67,7 +65,6 @@ import zlib from 'zlib';
 import Database from 'better-sqlite3';
 import { getDb, syncSourceRarities } from './database.js';
 import { declaredChestType } from './chest-names.js';
-import { despace } from '../utils/name-normalize.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('clan-restore');
@@ -418,11 +415,8 @@ export function restoreClanFromBackup(
         // instead of resurrecting the variant. Oldest live row first, the
         // spelling the scan resolves a game name to as well.
         const liveExact = new Map<string, number>();
-        const liveFolded = new Map<string, number>();
         const remember = (name: string, id: number): void => {
-          liveExact.set(name, id);
-          const k = despace(name);
-          if (k && !liveFolded.has(k)) liveFolded.set(k, id);
+          if (!liveExact.has(name)) liveExact.set(name, id);
         };
         for (const r of db.prepare('SELECT id, name FROM main.chests ORDER BY id').all() as { id: number; name: string }[]) {
           remember(r.name, r.id);
@@ -434,7 +428,7 @@ export function restoreClanFromBackup(
         const insertMap = db.prepare('INSERT INTO temp.map_chest (old, new) VALUES (?, ?)');
         let added = 0;
         for (const c of srcChests) {
-          let id = liveExact.get(c.name) ?? liveFolded.get(despace(c.name));
+          let id = liveExact.get(c.name);
           if (id === undefined) {
             id = (insertChest.get(c.name, declaredChestType(c.name) ?? c.chest_type) as { id: number }).id;
             remember(c.name, id);

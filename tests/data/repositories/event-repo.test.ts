@@ -601,22 +601,23 @@ describe('event breakdown: stale and dead catalog references', () => {
     return member;
   }
 
-  it('counts the chests even when the catalog spells the name the old way', () => {
-    // The catalog now says "Jörmungandr's Chest"; store it the plain way, which
-    // is what a rename in the other direction looks like. The corrector knows
-    // both, so the records must still be found.
+  it('matches the game\'s name exactly — another spelling is another chest', () => {
+    // Names are the game's own, verbatim (Nov 25 2026): the catalog says
+    // "Jörmungandr's Chest", as the game does, and nothing folds an unaccented
+    // spelling onto it any more.
+    ({ cleanup } = makeTestDb());
+    seedChest("Jörmungandr's Chest", 4);
+    const b = getEventBreakdown('ragnarok', 1);
+    expect(b?.players[0]?.counts.Jormungandr).toBe(4);
+    expect(b?.configErrors.find((e) => e.declared === "Jörmungandr's Chest")).toBeUndefined();
+    cleanup();
+
     ({ cleanup } = makeTestDb());
     seedChest("Jormungandr's Chest", 4);
-
-    const b = getEventBreakdown('ragnarok', 1);
-    expect(b?.totalChests).toBe(4);
-    expect(b?.players[0]?.counts.Jormungandr).toBe(4);
-
-    // …and it says the literal needs fixing rather than passing silently.
-    const err = b?.configErrors.find((e) => e.declared === "Jörmungandr's Chest");
-    expect(err).toMatchObject({ resolvedTo: "Jormungandr's Chest", kind: 'chest' });
-    // The column is real, so it must NOT be marked unresolved.
-    expect(b?.columns.find((c) => c.key === 'Jormungandr')?.unresolved).toBeUndefined();
+    const stale = getEventBreakdown('ragnarok', 1);
+    expect(stale?.configErrors.find((e) => e.declared === "Jörmungandr's Chest"))
+      .toMatchObject({ resolvedTo: null, kind: 'chest' });
+    expect(stale?.columns.find((c) => c.key === 'Jormungandr')?.unresolved).toBe(true);
   });
 
   it('marks a column whose chest matches nothing, instead of showing a bare 0', () => {
@@ -649,12 +650,9 @@ describe('event breakdown: stale and dead catalog references', () => {
     );
   });
 
-  it('matches an accented source through an unaccented needle', () => {
-    // sourcesMatching folds both sides now. Before, an ASCII needle could never
-    // match an accented source — the source-side twin of the anchor bug, and
-    // migration v63 makes the accented spelling the surviving one.
+  it('matches a source by plain, case-insensitive text', () => {
     ({ cleanup } = makeTestDb());
-    seedChest('Sapphire Chest', 6, 'Lvl 35-39 Vàult of the Ancients');
+    seedChest('Sapphire Chest', 6, 'Level 35–39 Vault of the Ancients');
 
     const b = getEventBreakdown('ancients', 1);
     expect(b?.players[0]?.counts['Vault']).toBe(6);

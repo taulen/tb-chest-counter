@@ -20,7 +20,6 @@ import {
   type EventLevelBucket,
 } from '../../config/event-catalog.js';
 import { parseSourceLevel, parseSourceLevelRange } from '../source-names.js';
-import { foldDiacritics } from '../../utils/name-normalize.js';
 
 const log = childLogger('event-repo');
 
@@ -49,11 +48,6 @@ function warnOnce(eventKey: string, message: string): void {
   if (warnedConfig.has(k)) return;
   warnedConfig.add(k);
   log.warn(message);
-}
-
-/** Accent-, case- and punctuation-insensitive identity of a chest name. */
-function foldKey(s: string): string {
-  return foldDiacritics(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 // captured_at is INTEGER ms post-v30; convert at the boundary (same shape
@@ -257,44 +251,28 @@ function resolvePredicate(def: EventDefinition): ResolvedPredicate {
     name: string;
   }>;
   const byExact = new Map<string, { id: number; name: string }>();
-  const byFold = new Map<string, { id: number; name: string }>();
   const chestIdToNameAll = new Map<number, string>();
   for (const c of allChests) {
     byExact.set(c.name, c);
     chestIdToNameAll.set(c.id, c.name);
-    const k = foldKey(c.name);
-    if (!k) continue;
-    // Two rows folding to the same key shouldn't happen (config-integrity flags
-    // it if it ever does); the oldest wins, the spelling the scan resolves a
-    // game name to (protocol-scan's storedNames, oldest row first).
-    if (!byFold.has(k)) byFold.set(k, c);
   }
 
   const configErrors: EventConfigError[] = [];
   const deadColumns = new Map<string, 'chest' | 'source'>();
 
-  /** Exact → folded. Records a config error for anything past tier 1. */
+  /** The game's name, exactly. Records a config error when it isn't stored. */
   const resolveName = (declared: string): { id: number; name: string } | null => {
     const exact = byExact.get(declared);
     if (exact) return exact;
 
-    const hit = byFold.get(foldKey(declared));
-    configErrors.push({ declared, resolvedTo: hit ? hit.name : null, kind: 'chest' });
-    if (hit) {
-      warnOnce(
-        def.key,
-        `Events catalog: "${declared}" is a stale spelling of "${hit.name}" — its chests are still `
-        + `counted, but fix the literal in src/config/event-catalog.ts (event "${def.key}").`,
-      );
-    } else {
-      warnOnce(
-        def.key,
-        `Events catalog: "${declared}" matches no chest — its column on the "${def.key}" event `
-        + 'will read 0. Fix the literal in src/config/event-catalog.ts, or ignore if the chest '
-        + 'has genuinely never been scanned.',
-      );
-    }
-    return hit ?? null;
+    configErrors.push({ declared, resolvedTo: null, kind: 'chest' });
+    warnOnce(
+      def.key,
+      `Events catalog: "${declared}" matches no chest — its column on the "${def.key}" event `
+      + 'will read 0. Use the game\'s exact name in src/config/event-catalog.ts, or ignore if the '
+      + 'chest has genuinely never been scanned.',
+    );
+    return null;
   };
 
   const allSources = db.prepare('SELECT id, source FROM chest_sources').all() as Array<{
@@ -307,13 +285,11 @@ function resolvePredicate(def: EventDefinition): ResolvedPredicate {
     sourceIdToLevel.set(s.id, parseSourceLevel(s.source));
     sourceIdToText.set(s.id, s.source);
   }
-  // Fold BOTH sides. Lowercasing alone was the source-side twin of the chest bug:
-  // an unaccented needle could never match "Jörmungandr Shop", and migration v63
-  // makes the accented spelling the surviving one for every duplicated source.
+  // Case-insensitive containment over the game's source names.
   const sourcesMatching = (contains: string): number[] => {
-    const needle = foldDiacritics(contains).toLowerCase();
+    const needle = contains.toLowerCase();
     return allSources
-      .filter((s) => foldDiacritics(s.source || '').toLowerCase().includes(needle))
+      .filter((s) => (s.source || '').toLowerCase().includes(needle))
       .map((s) => s.id);
   };
 

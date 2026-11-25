@@ -32,7 +32,6 @@
 
 import { getDb } from './database.js';
 import { EVENT_CATALOG } from '../config/event-catalog.js';
-import { foldDiacritics } from '../utils/name-normalize.js';
 import { childLogger } from '../utils/logger.js';
 
 const log = childLogger('clan-rewards');
@@ -46,11 +45,6 @@ function warnOnce(key: string, message: string, noAlert = false): void {
   warned.add(key);
   if (noAlert) log.warn({ noAlert: true }, message);
   else log.warn(message);
-}
-
-/** Accent-, case- and punctuation-insensitive identity of a chest name. */
-function foldKey(s: string): string {
-  return foldDiacritics(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -80,12 +74,7 @@ export function clanRewardChestIds(): number[] {
     name: string;
   }>;
   const byExact = new Map<string, number>();
-  const byFold = new Map<string, number>();
-  for (const row of rows) {
-    byExact.set(row.name, row.id);
-    const folded = foldKey(row.name);
-    if (folded && !byFold.has(folded)) byFold.set(folded, row.id);
-  }
+  for (const row of rows) byExact.set(row.name, row.id);
 
   const declared = clanRewardChestNames();
   const ids: number[] = [];
@@ -95,30 +84,19 @@ export function clanRewardChestIds(): number[] {
       ids.push(exact);
       continue;
     }
-    const hit = byFold.get(foldKey(name));
-    if (hit !== undefined) {
-      ids.push(hit);
-      warnOnce(
-        name,
-        `Clan-reward chest "${name}" is a stale spelling of a chest the database holds under `
-          + 'another name. Still excluded from member rankings, but correct the literal in '
-          + 'src/config/event-catalog.ts.',
-      );
-    } else {
-      // noAlert, and not an error on its own: a fresh install holds no chests
-      // at all, and pre-declaring one is supported — so this is the normal
-      // state of a clan that has never placed in that event. Lighting the
-      // System dot for it is the noise checkConfigIntegrity is careful to
-      // avoid; that sweep already reports the same names properly, against a
-      // database that actually has chest records.
-      warnOnce(
-        name,
-        `Clan-reward chest "${name}" matches no chest in the database, so nothing is excluded `
-          + 'for it. Expected until the chest is first scanned; otherwise the name in '
-          + 'src/config/event-catalog.ts is wrong.',
-        true,
-      );
-    }
+    // noAlert, and not an error on its own: a fresh install holds no chests
+    // at all, and pre-declaring one is supported — so this is the normal
+    // state of a clan that has never placed in that event. Lighting the
+    // System dot for it is the noise checkConfigIntegrity is careful to
+    // avoid; that sweep already reports the same names properly, against a
+    // database that actually has chest records.
+    warnOnce(
+      name,
+      `Clan-reward chest "${name}" matches no chest in the database, so nothing is excluded `
+        + 'for it. Expected until the chest is first scanned; otherwise use the game\'s exact name in '
+        + 'src/config/event-catalog.ts.',
+      true,
+    );
   }
 
   return ids;

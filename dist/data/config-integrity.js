@@ -27,12 +27,8 @@ exports.checkConfigIntegrity = checkConfigIntegrity;
 exports.reportConfigIntegrity = reportConfigIntegrity;
 const logger_js_1 = require("../utils/logger.js");
 const event_catalog_js_1 = require("../config/event-catalog.js");
-const name_normalize_js_1 = require("../utils/name-normalize.js");
 const source_names_js_1 = require("./source-names.js");
 const log = (0, logger_js_1.childLogger)('config-integrity');
-function foldKey(s) {
-    return (0, name_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
-}
 /**
  * Every name-keyed reference that no longer resolves.
  *
@@ -51,14 +47,8 @@ function checkConfigIntegrity(database) {
     const add = (f) => { findings.push(f); };
     const chests = database.prepare('SELECT id, name FROM chests ORDER BY id').all();
     const chestNames = new Set(chests.map((c) => c.name));
-    const chestByFold = new Map();
-    for (const c of chests) {
-        const k = foldKey(c.name);
-        if (k && !chestByFold.has(k))
-            chestByFold.set(k, c.name);
-    }
     const sources = database.prepare('SELECT id, source FROM chest_sources').all();
-    const sourceTexts = sources.map((s) => (0, name_normalize_js_1.foldDiacritics)(s.source || '').toLowerCase());
+    const sourceTexts = sources.map((s) => (s.source || '').toLowerCase());
     // ── Event catalog ────────────────────────────────────────────────────
     for (const def of event_catalog_js_1.EVENT_CATALOG) {
         for (const rule of def.rules) {
@@ -66,32 +56,18 @@ function checkConfigIntegrity(database) {
             for (const name of declared) {
                 if (chestNames.has(name))
                     continue;
-                const live = chestByFold.get(foldKey(name));
-                if (live) {
-                    // The Jörmungandr shape: the literal disagrees with a name the DB
-                    // really carries. Unambiguous, and a one-line fix.
-                    add({
-                        kind: 'event-catalog/chest-name-stale',
-                        severity: 'error',
-                        subject: `${def.key}: "${name}"`,
-                        detail: `The Events catalog spells this chest "${name}" but the database has it as "${live}".`,
-                        fix: `Change it to "${live}" in src/config/event-catalog.ts (event "${def.key}").`,
-                    });
-                }
-                else {
-                    // Could equally be a chest the clan has simply never collected, which
-                    // the catalog explicitly allows — so this informs, it doesn't nag.
-                    add({
-                        kind: 'event-catalog/chest-name-dead',
-                        severity: 'warning',
-                        subject: `${def.key}: "${name}"`,
-                        detail: `No chest in the database is named "${name}", so its column on the "${def.key}" event reads 0.`,
-                        fix: 'Fine if that chest has never been scanned; otherwise fix the name in src/config/event-catalog.ts.',
-                    });
-                }
+                // Could equally be a chest the clan has simply never collected, which
+                // the catalog explicitly allows — so this informs, it doesn't nag.
+                add({
+                    kind: 'event-catalog/chest-name-dead',
+                    severity: 'warning',
+                    subject: `${def.key}: "${name}"`,
+                    detail: `No chest in the database is named "${name}", so its column on the "${def.key}" event reads 0.`,
+                    fix: 'Fine if that chest has never been scanned; otherwise use the game\'s exact name in src/config/event-catalog.ts.',
+                });
             }
             if (rule.sourceContains) {
-                const needle = (0, name_normalize_js_1.foldDiacritics)(rule.sourceContains).toLowerCase();
+                const needle = rule.sourceContains.toLowerCase();
                 if (!sourceTexts.some((s) => s.includes(needle))) {
                     // Kills the whole rule, chest half included.
                     add({
@@ -152,56 +128,6 @@ function checkConfigIntegrity(database) {
                 fix: 'Fine for a seeded value the clan has never received; otherwise fix it on the Triumphal Chest Points card.',
             });
         }
-    }
-    // ── Duplicate spellings (the tripwire for the whole bug class) ───────
-    const bySpelling = new Map();
-    for (const s of sources) {
-        const k = (0, source_names_js_1.sourceSpellingKey)(s.source);
-        if (!k)
-            continue;
-        const g = bySpelling.get(k);
-        if (g)
-            g.push(s.source);
-        else
-            bySpelling.set(k, [s.source]);
-    }
-    for (const [, variants] of bySpelling) {
-        if (variants.length < 2)
-            continue;
-        add({
-            kind: 'chest-sources/duplicate-spelling',
-            severity: 'warning',
-            subject: variants.join('" / "'),
-            detail: 'One real source is stored under several spellings, so it splits across two rows in analytics and drill-downs.',
-            fix: 'Migration v63 cleared the historical ones, so a new pair means one got past getOrCreateChestSourceId (or the game now spells a source two ways). Fold them with a migration.',
-        });
-    }
-    // The scan resolves a game name to the stored spelling that normalises the
-    // same (protocol-scan's storedNames), but getOrCreateChestId itself has no
-    // reuse scan (its chest_sources sibling does), so a spelling that gets past
-    // that fold mints its own row. Nothing has gone wrong yet; this is the guard
-    // that says when it does.
-    const byChestFold = new Map();
-    for (const c of chests) {
-        const k = foldKey(c.name);
-        if (!k)
-            continue;
-        const g = byChestFold.get(k);
-        if (g)
-            g.push(c.name);
-        else
-            byChestFold.set(k, [c.name]);
-    }
-    for (const [, variants] of byChestFold) {
-        if (variants.length < 2)
-            continue;
-        add({
-            kind: 'chests/duplicate-spelling',
-            severity: 'warning',
-            subject: variants.join('" / "'),
-            detail: 'One chest is stored under several spellings, splitting its records across two ids.',
-            fix: 'Merge them on the Merge Rules admin page.',
-        });
     }
     return findings;
 }

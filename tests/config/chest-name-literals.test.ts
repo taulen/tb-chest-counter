@@ -24,7 +24,10 @@ import { describe, it, expect } from 'vitest';
 import { EVENT_CATALOG } from '../../src/config/event-catalog.js';
 import { SOURCE_CHEST_POINTS } from '../../src/data/source-names.js';
 import { CHEST_TYPES, TRIUMPHAL_CHEST_NAMES } from '../../src/data/chest-names.js';
-import { despace } from '../../src/utils/name-normalize.js';
+
+/** Accent-, case- and punctuation-blind: two literals that collide here spell one chest two ways. */
+const spellingKey = (name: string): string =>
+  name.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** Every chest-name literal in the code → where it is written. */
 function chestLiterals(): Map<string, string[]> {
@@ -61,7 +64,7 @@ describe('chest-name literals', () => {
   it('spells every chest one way across the code', () => {
     const byKey = new Map<string, Set<string>>();
     for (const name of chestLiterals().keys()) {
-      const k = despace(name);
+      const k = spellingKey(name);
       byKey.set(k, (byKey.get(k) ?? new Set()).add(name));
     }
     const literals = chestLiterals();

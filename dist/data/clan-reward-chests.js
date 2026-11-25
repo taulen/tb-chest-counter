@@ -36,7 +36,6 @@ exports.clanRewardChestIds = clanRewardChestIds;
 exports.clanRewardExclusionSql = clanRewardExclusionSql;
 const database_js_1 = require("./database.js");
 const event_catalog_js_1 = require("../config/event-catalog.js");
-const name_normalize_js_1 = require("../utils/name-normalize.js");
 const logger_js_1 = require("../utils/logger.js");
 const log = (0, logger_js_1.childLogger)('clan-rewards');
 // One line per bad name for the life of the process. NOT log-throttle: this is
@@ -51,10 +50,6 @@ function warnOnce(key, message, noAlert = false) {
         log.warn({ noAlert: true }, message);
     else
         log.warn(message);
-}
-/** Accent-, case- and punctuation-insensitive identity of a chest name. */
-function foldKey(s) {
-    return (0, name_normalize_js_1.foldDiacritics)(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 /**
  * Every chest name the catalog declares as a clan reward. Derived from
@@ -79,13 +74,8 @@ function clanRewardChestNames() {
 function clanRewardChestIds() {
     const rows = (0, database_js_1.getDb)().prepare('SELECT id, name FROM chests ORDER BY id').all();
     const byExact = new Map();
-    const byFold = new Map();
-    for (const row of rows) {
+    for (const row of rows)
         byExact.set(row.name, row.id);
-        const folded = foldKey(row.name);
-        if (folded && !byFold.has(folded))
-            byFold.set(folded, row.id);
-    }
     const declared = clanRewardChestNames();
     const ids = [];
     for (const name of declared) {
@@ -94,24 +84,15 @@ function clanRewardChestIds() {
             ids.push(exact);
             continue;
         }
-        const hit = byFold.get(foldKey(name));
-        if (hit !== undefined) {
-            ids.push(hit);
-            warnOnce(name, `Clan-reward chest "${name}" is a stale spelling of a chest the database holds under `
-                + 'another name. Still excluded from member rankings, but correct the literal in '
-                + 'src/config/event-catalog.ts.');
-        }
-        else {
-            // noAlert, and not an error on its own: a fresh install holds no chests
-            // at all, and pre-declaring one is supported — so this is the normal
-            // state of a clan that has never placed in that event. Lighting the
-            // System dot for it is the noise checkConfigIntegrity is careful to
-            // avoid; that sweep already reports the same names properly, against a
-            // database that actually has chest records.
-            warnOnce(name, `Clan-reward chest "${name}" matches no chest in the database, so nothing is excluded `
-                + 'for it. Expected until the chest is first scanned; otherwise the name in '
-                + 'src/config/event-catalog.ts is wrong.', true);
-        }
+        // noAlert, and not an error on its own: a fresh install holds no chests
+        // at all, and pre-declaring one is supported — so this is the normal
+        // state of a clan that has never placed in that event. Lighting the
+        // System dot for it is the noise checkConfigIntegrity is careful to
+        // avoid; that sweep already reports the same names properly, against a
+        // database that actually has chest records.
+        warnOnce(name, `Clan-reward chest "${name}" matches no chest in the database, so nothing is excluded `
+            + 'for it. Expected until the chest is first scanned; otherwise use the game\'s exact name in '
+            + 'src/config/event-catalog.ts.', true);
     }
     return ids;
 }

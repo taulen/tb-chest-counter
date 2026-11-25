@@ -31,10 +31,11 @@ const ROSTER: ClanMember[] = [
 ].map((n, i) => mk(n, i + 1));
 
 describe('exactMatchMember', () => {
-  it('matches case- and accent-insensitively, on aliases too', () => {
+  it('matches case-insensitively, on aliases too', () => {
     expect(exactMatchMember('melmaran', ROSTER)?.name).toBe('Melmaran');
     expect(exactMatchMember('Mel', [mk('Melmaran', 1, ['Mel'])])?.name).toBe('Melmaran');
-    expect(exactMatchMember('Creme A la mode Pie', ROSTER)?.name).toBe('Crème À la mode Pie');
+    expect(exactMatchMember('crème à la mode pie', ROSTER)?.name).toBe('Crème À la mode Pie');
+    expect(exactMatchMember('Creme A la mode Pie', ROSTER)).toBeNull(); // accents are part of the name
     expect(exactMatchMember('', ROSTER)).toBeNull();
   });
 

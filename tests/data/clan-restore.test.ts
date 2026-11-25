@@ -305,25 +305,25 @@ describe('restoreClanFromBackup', () => {
     expect(orphans.n).toBe(0);
   });
 
-  it('lands a chest spelled differently in the backup on the live row of that chest', () => {
-    // The live install now holds the chest under another spelling (an accent,
-    // as with "Jormungandr's Chest" → "Jörmungandr's Chest"). The backup's rows
-    // must join the live chest, not resurrect the old spelling next to it.
+  it('lands a backup\'s chest on the live row of exactly that name, and keeps another spelling apart', () => {
+    // Names are the game's own, matched exactly (Nov 25 2026): a chest the live
+    // install holds under another spelling is another chest, so the backup's
+    // rows come back under the backup's own name.
     const db = getDb();
     hardDeleteClanLikeSeptember(2);
     db.prepare("UPDATE chests SET name = 'Épic Chest' WHERE name = 'Epic Chest'").run();
-    const live = db.prepare("SELECT id FROM chests WHERE name = 'Épic Chest'").get() as { id: number };
     const chestsBefore = (db.prepare('SELECT COUNT(*) n FROM chests').get() as { n: number }).n;
 
     restoreClanFromBackup(backupPath, 2);
 
-    expect((db.prepare('SELECT COUNT(*) n FROM chests').get() as { n: number }).n).toBe(chestsBefore);
-    expect(db.prepare("SELECT id FROM chests WHERE name = 'Epic Chest'").get()).toBeUndefined();
-    const onLive = db.prepare(
+    expect((db.prepare('SELECT COUNT(*) n FROM chests').get() as { n: number }).n).toBe(chestsBefore + 1);
+    const restored = db.prepare("SELECT id FROM chests WHERE name = 'Epic Chest'").get() as { id: number } | undefined;
+    expect(restored).toBeDefined();
+    const onRestored = db.prepare(
       'SELECT (SELECT COUNT(*) FROM chest_records WHERE clan_id = 2 AND chest_id = ?)'
       + ' + (SELECT COUNT(*) FROM triumphal_chest_records WHERE clan_id = 2 AND chest_id = ?) AS n',
-    ).get(live.id, live.id) as { n: number };
-    expect(onLive.n).toBeGreaterThan(0);
+    ).get(restored!.id, restored!.id) as { n: number };
+    expect(onRestored.n).toBeGreaterThan(0);
   });
 
   it('refuses when a live clan already holds that name', () => {

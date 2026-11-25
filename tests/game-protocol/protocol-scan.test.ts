@@ -174,13 +174,13 @@ describe('recordAndClaim', () => {
     expect(rows('chest_records').map((r) => r.gift)).toEqual([20, 21]);
   });
 
-  it('files a chest under the stored spelling of its source', async () => {
+  it('files a chest under the game\'s own source name, not an older stored spelling', async () => {
     const miana = upsertMember('Miana', 1).id;
     getDb().prepare("INSERT INTO chest_sources (source) VALUES ('Lvl 25-29 Vault of the Ancients')").run();
     await recordAndClaim(ctx(sessionRepo.createSession('manual', 1).id), capture([
       gift(30, 501, 'Miana', { chestName: 'Sapphire Chest', sourceName: 'Level 25–29 Vault of the Ancients' }),
     ], new Map([[501, miana]])));
-    expect(rows('chest_records')[0].source).toBe('Lvl 25-29 Vault of the Ancients');
+    expect(rows('chest_records')[0].source).toBe('Level 25–29 Vault of the Ancients');
   });
 
   it('credits a gift from a player who has left without bringing them back', async () => {

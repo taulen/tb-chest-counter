@@ -63,11 +63,10 @@ describe('clan-reward chests', () => {
     expect(clanRewardExclusionSql()).toBe('');
   });
 
-  it('still resolves a reward the game has renamed', () => {
-    // Accent/case/punctuation fold, same tiers as resolvePredicate. A rename
-    // must not quietly re-credit 1006 chests to the recipient.
-    const renamed = insertChest('olympus  elite  chest');
-    expect(clanRewardChestIds()).toContain(renamed);
+  it('matches the reward chest by its exact name only', () => {
+    // Names are the game's own, matched exactly (Nov 25 2026).
+    const other = insertChest('olympus  elite  chest');
+    expect(clanRewardChestIds()).not.toContain(other);
   });
 
   it('never emits a fragment naming a non-integer id', () => {

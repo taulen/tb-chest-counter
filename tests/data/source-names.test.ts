@@ -5,7 +5,6 @@ import {
   isKnownSourceKey,
   parseSourceLevelRange,
   canonicalSourceKey,
-  sourceSpellingKey,
   getSourceRarity,
 } from '../../src/data/source-names.js';
 
@@ -112,51 +111,6 @@ describe('space-insensitive source keys (PaddleOCR drops inter-word spaces)', ()
     expect(getDefaultPointsForKey('clanwealth')).toBe(getDefaultPointsForKey('clan wealth'));
     expect(getDefaultPointsForKey('clanwealth')).toBe(1);
     expect(getDefaultPointsForKey('lvl3034raidrunicsquad')).toBe(30);
-  });
-
-  describe('sourceSpellingKey', () => {
-    // Row identity, not scoring. Every pair below is a real duplicate that was
-    // sitting in production as two separate chest_sources rows (11 pairs total),
-    // splitting one source across two entries in analytics and drill-downs.
-    it.each([
-      ['Jörmungandr Shop', 'Jormungandr Shop'],
-      ['Epic Jörmungandr squad', 'Epic Jormungandr squad'],
-      ["Hermes' Store", 'Hermes’ Store'],
-      ['Sakura of Plenty', 'Sakura of Plenty‏'],
-      ['Level 10 Crypt', 'Level10 Crypt'],
-      ['Level 10 rare Crypt', 'Level10 rare Crypt'],
-      ['Level 15 epic Crypt', 'Level15 epic Crypt'],
-      ['Lvl 35-39 Vault of the Ancients', 'Level 35-39 Vault of the Ancients'],
-      ['Lvl 40-44 Vault of the Ancients', 'Level 40-44 Vault of the Ancients'],
-    ])('treats "%s" and "%s" as one source', (a, b) => {
-      expect(sourceSpellingKey(a)).toBe(sourceSpellingKey(b));
-    });
-
-    it('folds the glued PaddleOCR reading of Lvl, where a word boundary would not fire', () => {
-      expect(sourceSpellingKey('Lvl35-39Vault')).toBe(sourceSpellingKey('Level 35-39 Vault'));
-    });
-
-    it('keeps two genuinely different sources apart even when they score the same', () => {
-      // getSourceKey reduces a crypt to tier + level, so two differently named
-      // crypts of one level both derive "common 10". Grouping rows on the
-      // derived key would fuse them; the spelling key keeps them apart.
-      expect(getSourceKey('Level 10 Crypt')).toBe(getSourceKey('Level 10 Sand Crypt'));
-      expect(sourceSpellingKey('Level 10 Crypt')).not.toBe(sourceSpellingKey('Level 10 Sand Crypt'));
-    });
-
-    it('gives a Tartaros crypt its own key rather than the common one', () => {
-      // It used to fuse with the common crypt of its level; it drops only the
-      // Tartaros Chest and pays its own ladder (migration v77).
-      expect(getSourceKey('Tartaros Crypt level 10')).toBe('tartaros 10');
-      expect(getSourceKey('Level 10 Crypt')).toBe('common 10');
-    });
-
-    it('is stricter than canonicalSourceKey only where scoring does not care', () => {
-      // canonicalSourceKey stays as it is because it keys live scoring config;
-      // the Lvl/Level fold is the one thing this adds on top.
-      expect(canonicalSourceKey('Lvl 35-39 Vault')).not.toBe(canonicalSourceKey('Level 35-39 Vault'));
-      expect(sourceSpellingKey('Lvl 35-39 Vault')).toBe(sourceSpellingKey('Level 35-39 Vault'));
-    });
   });
 
 

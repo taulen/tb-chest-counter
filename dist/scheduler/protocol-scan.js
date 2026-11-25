@@ -66,7 +66,6 @@ const triumphalChestRepo = __importStar(require("../data/repositories/triumphal-
 const source_points_repo_js_1 = require("../data/repositories/source-points-repo.js");
 const resource_repo_js_1 = require("../data/repositories/resource-repo.js");
 const chest_names_js_1 = require("../data/chest-names.js");
-const gift_text_js_1 = require("../game-protocol/gift-text.js");
 const messages_js_1 = require("../game-protocol/messages.js");
 const ledger_rows_js_1 = require("../game-protocol/ledger-rows.js");
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
@@ -82,24 +81,11 @@ const CLAIM_CHESTS_MAX = 100;
 const UNKNOWN_SENDER = '[Unknown]';
 /** Ledger items already reported as untracked in this process (one System note each). */
 const reportedUnmapped = new Set();
-/** Stored spelling for each normalised name, oldest row first. */
-function storedNames(sql) {
-    const out = new Map();
-    for (const r of (0, database_js_1.getDb)().prepare(sql).all()) {
-        const k = (0, gift_text_js_1.normalizeGiftText)(r.v);
-        if (!out.has(k))
-            out.set(k, r.v);
-    }
-    return out;
-}
 async function recordAndClaim(ctx, d) {
     const { clanId, sessionId } = ctx;
     const tally = { gifts: [], triumphal: [], alreadyRecorded: 0, claimed: 0, claimFailures: 0, resourceRows: 0, warnings: [] };
     const memberFor = (0, member_sync_js_1.makeMemberResolver)(clanId, d.memberIds);
     const schedule = (0, source_points_repo_js_1.loadPointSchedule)(clanId);
-    const chestNames = storedNames('SELECT name AS v FROM chests ORDER BY id');
-    const sourceNames = storedNames('SELECT source AS v FROM chest_sources ORDER BY id');
-    const stored = (names, name) => names.get((0, gift_text_js_1.normalizeGiftText)(name)) ?? name;
     const countGift = {
         1: (0, database_js_1.getDb)().prepare('SELECT COUNT(*) AS n FROM chest_records WHERE clan_id = ? AND game_gift_id = ?'),
         2: (0, database_js_1.getDb)().prepare('SELECT COUNT(*) AS n FROM triumphal_chest_records WHERE clan_id = ? AND game_gift_id = ?'),
@@ -116,8 +102,9 @@ async function recordAndClaim(ctx, d) {
             continue;
         if (!g.chestName)
             unnamed.add(g.giftType);
-        const chestName = stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`);
-        const source = stored(sourceNames, g.sourceName);
+        // The game's own names, verbatim (Nov 25 2026): no mapping onto older spellings.
+        const chestName = g.chestName || `Unknown gift ${g.giftType}`;
+        const source = g.sourceName;
         const chestType = (0, chest_names_js_1.chestTypeFor)(chestName);
         const senderName = g.senderName || d.byId.get(g.senderId)?.name || '';
         const memberId = memberFor(g.senderId, senderName) ?? memberFor(0, UNKNOWN_SENDER);

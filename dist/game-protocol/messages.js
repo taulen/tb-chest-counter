@@ -24,6 +24,8 @@ exports.parseCityTechs = parseCityTechs;
 exports.parseEventList = parseEventList;
 exports.isEventRunning = isEventRunning;
 exports.parseEventStandings = parseEventStandings;
+exports.parseEventRatingScopes = parseEventRatingScopes;
+exports.parseEventRanking = parseEventRanking;
 exports.parseEventProgress = parseEventProgress;
 exports.parseOlympusMembers = parseOlympusMembers;
 exports.parseOlympusGroup = parseOlympusGroup;
@@ -536,6 +538,59 @@ function parseEventStandings(frame) {
         out.push({ playerId, points, rank });
     }
     return out;
+}
+/**
+ * Message 24203 (ask `[[[[type, run], …]]]`, realm server — the client polls
+ * it for the running events): `[[type, run], [scope, group], [1, 1]]` per run
+ * in body[0][0]. The pair is what the Ranking tab (24003) is asked with. Nov
+ * 25 2026, CWB: most runs `[1, 1]`; Sealed in Flame `[6, 590]` — 590 is the
+ * Olympus matchup group (82001); Rise of the Ancients `[19, 1]`.
+ */
+function parseEventRatingScopes(frame) {
+    const out = [];
+    for (const row of arr(arr(arr(frame.body)[0])[0])) {
+        const r = arr(row);
+        const key = arr(r[0]);
+        const sg = arr(r[1]);
+        const type = num(key[0]);
+        const run = num(key[1]);
+        const scope = num(sg[0]);
+        const group = num(sg[1]);
+        if (type === null || run === null || scope === null || group === null)
+            continue;
+        out.push({ type, run, scope, group });
+    }
+    return out;
+}
+/**
+ * Message 24003 (ask `[[[[playerId], [clanId], realm], [[type, run], [scope,
+ * group], [0, 0]]]]` on the site page's rating_proxy_url): the event window's
+ * Ranking tab — body[0][0] = `[[rows], [[]], [[[kingdom, points], …]]]`, rows
+ * `[[playerId], points]` best first (the top 100; the game numbers them 1, 2,
+ * 3…), then body[0][1] the signed-in account's own line. Recorded Nov 25 2026
+ * from Sealed in Flame: 94 rows from all three clans of the Olympus matchup,
+ * Vit 1,923,026,108 #1, FENRØTH 1,317,904,810 #2, as the game showed; the
+ * kingdom totals K260 7,236,997,949 · K157 · K213.
+ */
+function parseEventRanking(frame) {
+    const root = arr(arr(arr(frame.body)[0])[0]);
+    const rows = [];
+    for (const row of arr(root[0])) {
+        const r = arr(row);
+        const playerId = id1(r[0]);
+        const points = num(r[1]);
+        if (playerId === null || points === null)
+            continue;
+        rows.push({ playerId, points, rank: rows.length + 1 });
+    }
+    const kingdoms = [];
+    for (const k of arr(arr(root[2])[0])) {
+        const kingdom = num(arr(k)[0]);
+        const points = num(arr(k)[1]);
+        if (kingdom !== null && points !== null)
+            kingdoms.push({ kingdom, points });
+    }
+    return { rows, kingdoms };
 }
 /**
  * Message 38000 (ask `[[[type, run]]]`, what the client sends as the event

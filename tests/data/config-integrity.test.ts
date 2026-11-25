@@ -95,18 +95,18 @@ describe('checkConfigIntegrity', () => {
     expect(checkConfigIntegrity(db)).toEqual([]);
   });
 
-  it('flags a catalog literal that disagrees with a name the DB really holds', () => {
-    // The anchor bug: the chest exists, the catalog spells it differently.
+  it('treats a catalog literal spelled other than the stored name as matching nothing', () => {
+    // Names are matched exactly (Nov 25 2026): the catalog uses the game's name,
+    // and a differently spelled stored chest is another chest.
     const db = freshDb();
     seedHealthy(db);
     db.prepare('UPDATE chests SET name = ? WHERE name = ?')
       .run("Jormungandr's Chest", "Jörmungandr's Chest");
 
     const findings = checkConfigIntegrity(db);
-    const stale = findings.find((f) => f.kind === 'event-catalog/chest-name-stale');
-    expect(stale).toBeDefined();
-    expect(stale?.severity).toBe('error');
-    expect(stale?.detail).toContain("Jormungandr's Chest");
+    expect(findings.find((f) => f.kind === 'event-catalog/chest-name-stale')).toBeUndefined();
+    expect(findings.find((f) => f.kind === 'event-catalog/chest-name-dead' && f.subject.includes("Jörmungandr's Chest")))
+      .toMatchObject({ severity: 'warning' });
   });
 
   it('flags a catalog literal matching nothing, but only as a warning', () => {
@@ -152,22 +152,6 @@ describe('checkConfigIntegrity', () => {
        VALUES (1, 'rise of the anclents event', '', 25, ?)`,
     ).run(NOW);
     expect(kinds(db)).toContain('source-points/source-key-dead');
-  });
-
-  it('flags two spellings of one source, the tripwire that keeps v63 done', () => {
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare('INSERT INTO chest_sources (source) VALUES (?)').run('Jormungandr Shop');
-    expect(kinds(db)).toContain('chest-sources/duplicate-spelling');
-  });
-
-  it('flags two spellings of one chest', () => {
-    // getOrCreateChestId has no canonical reuse scan (its chest_sources sibling
-    // does), so this is the guard behind that deferral.
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare('INSERT INTO chests (name, chest_type) VALUES (?, ?)').run('Runic  Chest', 'common');
-    expect(kinds(db)).toContain('chests/duplicate-spelling');
   });
 
   it('stays quiet about seeded triumphal values until a triumphal chest is scanned', () => {

@@ -5,7 +5,6 @@ exports.parseSourceLevel = parseSourceLevel;
 exports.parseSourceLevelRange = parseSourceLevelRange;
 exports.getSourceKey = getSourceKey;
 exports.canonicalSourceKey = canonicalSourceKey;
-exports.sourceSpellingKey = sourceSpellingKey;
 exports.getDefaultPointsForKey = getDefaultPointsForKey;
 exports.getDefaultPointsFor = getDefaultPointsFor;
 exports.hasDefaultPointsFor = hasDefaultPointsFor;
@@ -333,36 +332,6 @@ function deriveSourceKey(source) {
  */
 function canonicalSourceKey(key) {
     return (0, name_normalize_js_1.foldDiacritics)(key).toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-/**
- * True when two `chest_sources` STRINGS are the same real source spelled
- * differently — the test for "don't mint a second row for this".
- *
- * Deliberately a sibling of `canonicalSourceKey` rather than a widening of it.
- * That one is load-bearing for SCORING: it keys `SOURCE_POINTS_CANONICAL` and
- * the point-lookup cache, and production already stores overrides under keys
- * like "lvl 30 34 raid runic squad", so changing its semantics re-keys live
- * admin config. This one only decides row identity, so it can be more
- * aggressive — it additionally folds the game's own Lvl/Level abbreviation,
- * which OCR emits both ways ("Lvl 35-39 Vault of the Ancients" and
- * "Level 35-39 Vault of the Ancients" are one source, and prod holds both).
- * Scoring is unaffected either way, because getSourceKey already collapses that
- * pair to the same structured key.
- *
- * Unqualified `lvl` → `level`, not `\blvl\b`: PaddleOCR glues the number on
- * ("Lvl35-39"), where a word boundary never fires because "l" and "3" are both
- * word characters.
- *
- * NOT the same as `getSourceKey`, which is derived and lossier — it reduces a
- * crypt to tier + level, so any two crypt strings of one tier and level derive
- * the same key ("common 10") whether or not the game treats them as one
- * source. Grouping rows on that would fuse them.
- */
-function sourceSpellingKey(source) {
-    return (0, name_normalize_js_1.foldDiacritics)(source)
-        .toLowerCase()
-        .replace(/lvl/g, 'level')
-        .replace(/[^a-z0-9]/g, '');
 }
 // Canonical-form index of the hardcoded point table, so a spaceless key from
 // PaddleOCR ("clanwealth", "lvl3034raidrunicsquad") still resolves to the

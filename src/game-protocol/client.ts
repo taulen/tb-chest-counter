@@ -501,6 +501,26 @@ export class GameClient {
     return this.ask(38000, [[[type, run]]]);
   }
 
+  /**
+   * Each run's ranking scope and group (24203 — what the client polls for the
+   * running events): what its Ranking tab (24003) is asked with. Read-only.
+   */
+  eventRatingScopes(runs: Array<{ type: number; run: number }>): Promise<Frame> {
+    return this.ask(24203, [[runs.map((r) => [r.type, r.run])]]);
+  }
+
+  /**
+   * An event's Ranking tab (24003), asked on the rating proxy with the run's
+   * scope and group from 24203: the top 100 players best first, every clan
+   * the scope spans (Sealed in Flame: the three clans of the Olympus matchup).
+   * Read-only.
+   */
+  eventRanking(type: number, run: number, scope: number, group: number): Promise<Frame> {
+    const proxy = this.servers.ratingProxyUrl;
+    if (!proxy) return Promise.reject(new GameProtocolError('the site page lists no rating proxy (rating_proxy_url)'));
+    return this.ask(24003, [[[[this.playerId], [this.clanId], this.realmId], [[type, run], [scope, group], [0, 0]]]], `${proxy.replace(/\/$/, '')}/`);
+  }
+
   /** Trials of Olympus' Ranking → Clan members (82003): the members' Olympus points. Read-only. */
   olympusMembers(type: number, run: number): Promise<Frame> {
     return this.ask(82003, [[[type, run]]]);
