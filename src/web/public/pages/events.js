@@ -938,21 +938,14 @@ function paint() {
     </section>
     ${nonParticipantsHtml}`;
 
-  // Events with pasted scores split the page: Scores (the card plus Ancients'
+  // Events with their own scores split the page: Scores (the card plus Ancients'
   // "Below target") and Participants (everything chest-based), one choice of
   // two — the kit's segmented control — so neither has to be scrolled past.
   const hasScores = SCORES_EVENT_KEYS.has(currentEventKey);
-  // Ancients and Olympus: the scores card is itself the game's per-summon /
-  // per-day view whenever the game covers the run (routes/tinman.ts), so no
-  // separate game card and nothing folded — the card drops its paste form on
-  // its own.
-  const tinmanFromGame = currentEventKey === 'ancients' || currentEventKey === 'olympus';
+  // The scores card is the game's per-summon / per-day view of the run
+  // (data/event-scores.ts), so a scores event has no separate game card.
   const hasVaults = currentEventKey === VAULTS_EVENT_KEY;
-  const scoresPanel = tinmanFromGame
-    ? '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'
-    : `<div class="game-standings-mount"></div>${gameStandings
-      ? `<details class="card-collapsible events-paste-fold" data-section-key="events-paste"><summary>${esc(t('Standings pasted by hand'))}<span class="card-header-hint">${esc(t('Not needed while the game\'s standings are read every scan.'))}</span></summary><div class="tinman-mount"></div></details><div class="tinman-below-mount"></div>`
-      : '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>'}`;
+  const scoresPanel = '<div class="tinman-mount"></div><div class="tinman-below-mount"></div>';
   const viewsHtml = hasScores
     ? `<div class="ev-views">${segHtml({
         label: t('Show'),
@@ -990,13 +983,12 @@ function paint() {
   centreCurrentTab(el);
   wire(el);
   wireViews(el);
-  if (!tinmanFromGame) mountGameStandings(el.querySelector('.game-standings-mount'), gameStandings);
+  if (!hasScores) mountGameStandings(el.querySelector('.game-standings-mount'), gameStandings);
   if (hasVaults) mountVaults(el.querySelector('.ev-vaults'), { data: vaultsData, members: activeMembers, to: periodWindow().to });
   if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
       event: currentEventKey,
       date: scoresDateForSelection(),
-      members: activeMembers,
       belowEl: el.querySelector('.tinman-below-mount'),
     })
       .catch(() => { /* the card reports its own load failure */ });

@@ -69,6 +69,7 @@ const event_catalog_js_1 = require("../config/event-catalog.js");
 const chest_summary_repo_js_1 = require("./repositories/chest-summary-repo.js");
 const guards_repo_js_1 = require("./repositories/guards-repo.js");
 const tinmanRepo = __importStar(require("./repositories/tinman-repo.js"));
+const event_scores_js_1 = require("./event-scores.js");
 const member_events_js_1 = require("./member-events.js");
 const event_calendar_js_1 = require("../external/event-calendar.js");
 const game_day_js_1 = require("../utils/game-day.js");
@@ -200,11 +201,12 @@ function tinmanUnits(clanId, config, today, windowFrom, members, guards) {
     let runsWithTargets = 0;
     // A run is in the window when its Tinman day (its last day) is, and only once
     // it's over: mid-run everyone simply reads as not there yet.
-    const dates = tinmanRepo.listTinmanDates(clanId, 10_000, 'ancients')
+    const dates = (0, event_scores_js_1.eventScoreDates)(clanId, 'ancients', 10_000)
         .filter((d) => d < today && d >= windowFrom);
     for (const date of dates) {
-        const standings = tinmanRepo.getTinmanStandings(clanId, date, 'ancients');
-        if (standings.summons.length === 0)
+        // The game's table, or a run pasted before the game was read (event-scores.ts).
+        const standings = (0, event_scores_js_1.getEventScores)(clanId, 'ancients', date);
+        if (!standings.players.length)
             continue;
         const totals = new Map();
         for (const p of standings.players)

@@ -1,5 +1,6 @@
-// /api/tinman with real auth: any member reads, only admins paste, delete and
-// assign — and always into their own clan.
+// /api/tinman and /api/event-scores/<event> with real auth: any member reads a
+// run's scores (from the game, or pasted before the game was read); only admins
+// set targets — and always in their own clan. Pasting is gone (Nov 25 2026).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
@@ -18,9 +19,13 @@ import * as userRepo from '../../../src/data/repositories/user-repo.js';
 import { getDb } from '../../../src/data/database.js';
 import { saveEventRead, saveEventRun, saveEventStandings } from '../../../src/data/repositories/game-event-repo.js';
 import { saveMapObjects } from '../../../src/data/repositories/game-protocol-repo.js';
+import { insertPastedRound } from '../../helpers/pasted-scores.js';
+import type { ScoreEventKey } from '../../../src/data/repositories/tinman-repo.js';
 
 const DATE = '2026-10-23';
-const PASTE = '| Rank | Name | Points |\n| :--- | :--- | :--- |\n| 1 | Frostbite | 59,878,655 |\n| 2 | Stranger | 10 |';
+/** A round as it was pasted before pasting was removed. */
+const pasted = (date: string, summon: number, eventKey: ScoreEventKey = 'ancients', clanId = 1) =>
+  insertPastedRound({ clanId, date, summon, eventKey, rows: [['Frostbite', 59_878_655], ['Stranger', 10]] });
 
 describe('/api/tinman', () => {
   let app: express.Express;
@@ -65,16 +70,24 @@ describe('/api/tinman', () => {
     return r;
   };
 
-  it('lets an admin paste a summon and any member read it', async () => {
-    const put = await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
-    expect(put.status).toBe(200);
-    expect(put.body.result).toMatchObject({ rows: 2, matched: 1, unmatched: 1, skipped: 0 });
-
+  it('lets any member read a run pasted before the game was read', async () => {
+    pasted(DATE, 1);
     const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
     expect(get.status).toBe(200);
     expect(get.body.isTinmanDay).toBe(true);
-    expect(get.body.summons).toMatchObject([{ summon: 1, uploadedBy: 'a1', rows: 2, unmatched: 1 }]);
+    expect(get.body.game).toBeNull();
+    expect(get.body.summons).toMatchObject([{ summon: 1, uploadedBy: 'test', rows: 2, unmatched: 1 }]);
     expect(get.body.players[0]).toMatchObject({ memberId: frost, total: 59_878_655 });
+    expect(get.body).not.toHaveProperty('review');
+  });
+
+  it('has no paste, delete or name-assignment endpoints any more', async () => {
+    pasted(DATE, 1);
+    expect((await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: '| 1 | Ace | 5 |' })).status).toBe(404);
+    expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(404);
+    expect((await send('put', `/api/tinman/${DATE}/assign`, 'admin1', { rawName: 'Stranger', memberId: null })).status).toBe(404);
+    expect((await send('put', `/api/event-scores/ragnarok/${DATE}/summons/1`, 'admin1', { text: '| 1 | Ace | 5 |' })).status).toBe(404);
+    expect((await send('get', `/api/tinman?date=${DATE}`, 'user1')).body.summons).toHaveLength(1);
   });
 
   it('defaults to the newest Tinman day', async () => {
@@ -90,30 +103,6 @@ describe('/api/tinman', () => {
     expect((await send('get', '/api/tinman?date=2026-13-01', 'user1')).status).toBe(400);
   });
 
-  it('refuses writes to a plain member', async () => {
-    expect((await send('put', `/api/tinman/${DATE}/summons/1`, 'user1', { text: PASTE })).status).toBe(403);
-    expect((await send('put', `/api/tinman/${DATE}/assign`, 'user1', { rawName: 'Stranger', memberId: null })).status).toBe(403);
-    expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'user1')).status).toBe(403);
-  });
-
-  it('rejects a paste with no readable rows, a bad summon, or a future day', async () => {
-    const empty = await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: 'hello there' });
-    expect(empty.status).toBe(400);
-    expect(empty.body.skipped).toEqual(['hello there']);
-    expect((await send('put', `/api/tinman/${DATE}/summons/9`, 'admin1', { text: PASTE })).status).toBe(400);
-    expect((await send('put', '/api/tinman/2026-10-29/summons/1', 'admin1', { text: PASTE })).status).toBe(400);
-  });
-
-  it('assigns a name for the run, and keeps another clan out of it', async () => {
-    await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
-    // Clan 2's admin can't reach clan 1's member or run.
-    expect((await send('put', `/api/tinman/${DATE}/assign`, 'admin2', { rawName: 'Stranger', memberId: frost })).status).toBe(404);
-    const ok = await send('put', `/api/tinman/${DATE}/assign`, 'admin1', { rawName: 'Stranger', memberId: null });
-    expect(ok.status).toBe(200);
-    const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
-    expect(get.body.review).toMatchObject([{ rawName: 'Stranger', matchKind: 'rejected' }]);
-  });
-
   it('stores per-tier targets for the run, admin-only, and returns them with guards levels', async () => {
     const text = 'For 3 kills, already lowered for a 15% overshoot.\nG9 \t6 members \t61.3M \t368M \t19.2%\nG7 \t59 members \t10.9M \t643M \t33.5%';
     expect((await send('put', `/api/tinman/${DATE}/targets`, 'user1', { text })).status).toBe(403);
@@ -121,7 +110,7 @@ describe('/api/tinman', () => {
     expect(put.status).toBe(200);
     expect(put.body.targets).toMatchObject({ tiers: { g9: 61_300_000, g7: 10_900_000 }, kills: 3, savedBy: 'a1' });
 
-    await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
+    pasted(DATE, 1);
     const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
     expect(get.body.targets.kills).toBe(3);
     // No donation evidence in this test DB, so the level is unknown.
@@ -143,13 +132,6 @@ describe('/api/tinman', () => {
     const tooFar = await send('put', '/api/tinman/2026-10-30/targets', 'admin1', { text: 'G7 1.3M' });
     expect(tooFar.status).toBe(400);
     expect(tooFar.body.error).toMatch(/live one or the next/);
-  });
-
-  it('deletes a summon', async () => {
-    await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
-    expect((await send('delete', `/api/tinman/${DATE}/summons/1`, 'admin1')).status).toBe(200);
-    const get = await send('get', `/api/tinman?date=${DATE}`, 'user1');
-    expect(get.body.summons).toEqual([]);
   });
 
   describe('vaults raised', () => {
@@ -229,7 +211,7 @@ describe('/api/tinman', () => {
     });
 
     it('splits the run into summons from the game, instead of the paste', async () => {
-      await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
+      pasted(DATE, 1);
       read('2026-10-23T18:00:00.000Z', 2, { 100: 0, 101: 0 });
       read('2026-10-23T18:10:00.000Z', 1, { 100: 400, 101: 100 }); // summon 1 scoring
       read('2026-10-23T18:20:00.000Z', 1, { 100: 400, 101: 100 }); // flat: it ended
@@ -265,80 +247,50 @@ describe('/api/tinman', () => {
       expect(bare.body.game).toMatchObject({ reads: 0, columns: [] });
       expect(bare.body.players[0]).toMatchObject({ memberId: frost, total: 700 });
 
-      await send('put', `/api/tinman/${DATE}/summons/1`, 'admin1', { text: PASTE });
-      const pasted = await send('get', `/api/tinman?date=${DATE}`, 'user1');
-      expect(pasted.body.game).toBeNull();
-      expect(pasted.body.summons).toHaveLength(1);
+      pasted(DATE, 1);
+      const hand = await send('get', `/api/tinman?date=${DATE}`, 'user1');
+      expect(hand.body.game).toBeNull();
+      expect(hand.body.summons).toHaveLength(1);
     });
   });
 
-  describe('Olympus (per day)', () => {
-    const OLY = '2026-10-21';
+  describe('the per-day events', () => {
+    const DAY = '2026-10-21';
 
-    it('takes days 1–5 only, files them apart from Ancients, and has no targets', async () => {
-      const put = await send('put', `/api/event-scores/olympus/${OLY}/summons/5`, 'admin1', { text: PASTE });
-      expect(put.status).toBe(200);
-      expect(put.body.warning).toBeNull();
-      expect((await send('put', `/api/event-scores/olympus/${OLY}/summons/6`, 'admin1', { text: PASTE })).status).toBe(400);
-      expect((await send('put', `/api/event-scores/olympus/${OLY}/summons/1`, 'user1', { text: PASTE })).status).toBe(403);
-      expect((await send('put', `/api/event-scores/olympus/${OLY}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
-
-      const get = await send('get', `/api/event-scores/olympus?date=${OLY}`, 'user1');
-      expect(get.body).toMatchObject({ maxSummons: 5, targets: null, isTinmanDay: null, dates: [OLY] });
-      expect(get.body.summons).toMatchObject([{ summon: 5, rows: 2 }]);
-      expect((await send('get', `/api/tinman?date=${OLY}`, 'user1')).body.summons).toEqual([]);
+    it('reads each event\'s pasted run apart from the others on the same day, with no targets', async () => {
+      pasted(DAY, 5, 'olympus');
+      pasted(DAY, 2, 'ragnarok');
+      const olympus = await send('get', `/api/event-scores/olympus?date=${DAY}`, 'user1');
+      expect(olympus.body).toMatchObject({ maxSummons: 5, targets: null, isTinmanDay: null, dates: [DAY] });
+      expect(olympus.body.summons).toMatchObject([{ summon: 5, rows: 2 }]);
+      const ragnarok = await send('get', `/api/event-scores/ragnarok?date=${DAY}`, 'user1');
+      expect(ragnarok.body).toMatchObject({ maxSummons: 2, dates: [DAY] });
+      expect(ragnarok.body.summons).toMatchObject([{ summon: 2 }]);
+      expect((await send('get', `/api/event-scores/dark-omens?date=${DAY}`, 'user1')).body.summons).toEqual([]);
+      expect((await send('get', `/api/tinman?date=${DAY}`, 'user1')).body.summons).toEqual([]);
+      expect((await send('put', `/api/event-scores/olympus/${DAY}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
     });
 
-    it('defaults to the newest pasted run', async () => {
-      await send('put', `/api/event-scores/olympus/${OLY}/summons/1`, 'admin1', { text: PASTE });
-      expect((await send('get', '/api/event-scores/olympus', 'user1')).body.date).toBe(OLY);
+    it('defaults to the newest run with scores', async () => {
+      pasted(DAY, 1, 'olympus');
+      expect((await send('get', '/api/event-scores/olympus', 'user1')).body.date).toBe(DAY);
     });
-  });
 
-  describe('Ragnarok (per day)', () => {
-    const RAG = '2026-10-21';
+    it('reads a Ragnarök run from the game, split into its days, and lists it among the runs', async () => {
+      const RUN = { eventType: 1026, run: 2, occurrence: 108 };
+      // 2026-10-21 17:00 → 10-23 17:00 UTC: a two-day run, read on each day.
+      saveEventRun(1, {
+        type: 1026, run: 2, occurrence: 108, state: 1,
+        startsAt: Date.parse('2026-10-21T17:00:40Z') / 1000, endsAt: Date.parse('2026-10-23T17:00:00Z') / 1000,
+      }, { code: 'ragnarok', title: 'Ragnarök' }, '2026-10-22T12:00:00.000Z');
+      getDb().prepare('UPDATE members SET game_player_id = 100 WHERE id = ?').run(frost);
+      saveEventStandings(1, RUN, [{ playerId: 100, points: 5_000, rank: 1 }], '2026-10-22T12:00:00.000Z');
+      saveEventStandings(1, RUN, [{ playerId: 100, points: 12_000, rank: 1 }], '2026-10-23T12:00:00.000Z');
 
-    it('takes days 1–2 only, files them apart from Olympus on the same day, and has no targets', async () => {
-      const put = await send('put', `/api/event-scores/ragnarok/${RAG}/summons/2`, 'admin1', { text: PASTE });
-      expect(put.status).toBe(200);
-      expect(put.body.warning).toBeNull();
-      expect((await send('put', `/api/event-scores/ragnarok/${RAG}/summons/3`, 'admin1', { text: PASTE })).status).toBe(400);
-      expect((await send('put', `/api/event-scores/ragnarok/${RAG}/summons/1`, 'user1', { text: PASTE })).status).toBe(403);
-      expect((await send('put', `/api/event-scores/ragnarok/${RAG}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
-
-      const get = await send('get', `/api/event-scores/ragnarok?date=${RAG}`, 'user1');
-      expect(get.body).toMatchObject({ maxSummons: 2, targets: null, isTinmanDay: null, dates: [RAG] });
-      expect(get.body.summons).toMatchObject([{ summon: 2, rows: 2 }]);
-      expect((await send('get', `/api/event-scores/olympus?date=${RAG}`, 'user1')).body.summons).toEqual([]);
-
-      expect((await send('delete', `/api/event-scores/ragnarok/${RAG}/summons/2`, 'admin1')).status).toBe(200);
-      const actions = getDb().prepare("SELECT action FROM audit_log WHERE action LIKE 'ragnarok_%' ORDER BY id").all();
-      expect(actions).toEqual([{ action: 'ragnarok_upload' }, { action: 'ragnarok_delete' }]);
-    });
-  });
-
-  describe('Dark Omens — Spoils of Dread damage (per day)', () => {
-    const OMENS = '2026-10-15';
-
-    it('takes days 1–2 only, files them apart from Ragnarok on the same day, and has no targets', async () => {
-      await send('put', `/api/event-scores/ragnarok/${OMENS}/summons/1`, 'admin1', { text: PASTE });
-      const put = await send('put', `/api/event-scores/dark-omens/${OMENS}/summons/1`, 'admin1', { text: PASTE });
-      expect(put.status).toBe(200);
-      expect(put.body.result).toMatchObject({ rows: 2, matched: 1, unmatched: 1 });
-      expect((await send('put', `/api/event-scores/dark-omens/${OMENS}/summons/3`, 'admin1', { text: PASTE })).status).toBe(400);
-      expect((await send('put', `/api/event-scores/dark-omens/${OMENS}/summons/2`, 'user1', { text: PASTE })).status).toBe(403);
-      expect((await send('put', `/api/event-scores/dark-omens/${OMENS}/targets`, 'admin1', { text: 'G9 61.3M' })).status).toBe(404);
-
-      const get = await send('get', `/api/event-scores/dark-omens?date=${OMENS}`, 'user1');
-      expect(get.body).toMatchObject({ maxSummons: 2, targets: null, dates: [OMENS] });
-      expect(get.body.players.map((p: { name: string; total: number }) => [p.name, p.total]))
-        .toEqual([['Frostbite', 59_878_655], ['Stranger', 10]]);
-
-      // Deleting the Dark Omens day leaves the Ragnarok run on that date alone.
-      expect((await send('delete', `/api/event-scores/dark-omens/${OMENS}/summons/1`, 'admin1')).status).toBe(200);
-      expect((await send('get', `/api/event-scores/ragnarok?date=${OMENS}`, 'user1')).body.summons).toMatchObject([{ summon: 1 }]);
-      const actions = getDb().prepare("SELECT action FROM audit_log WHERE action LIKE 'dark-omens_%' ORDER BY id").all();
-      expect(actions).toEqual([{ action: 'dark-omens_upload' }, { action: 'dark-omens_delete' }]);
+      const get = await send('get', '/api/event-scores/ragnarok', 'user1');
+      expect(get.body).toMatchObject({ date: DAY, dates: [DAY], summons: [] });
+      expect(get.body.game).toMatchObject({ days: [1, 2] });
+      expect(get.body.players[0]).toMatchObject({ memberId: frost, perSummon: { 1: 5_000, 2: 7_000 }, cumulative: { 1: 5_000, 2: 12_000 }, total: 12_000 });
     });
   });
 
@@ -384,19 +336,10 @@ describe('/api/tinman', () => {
       expect((await send('get', '/api/tinman?date=2026-11-16', 'user1')).body.isTinmanDay).toBe(false);
     });
 
-    it('warns about a paste filed off its calendar, and not about one on it', async () => {
-      const off = await send('put', '/api/tinman/2026-11-16/summons/1', 'admin1', { text: PASTE });
-      expect(off.status).toBe(200);
-      expect(off.body.warning).toMatch(/Seasonal Kingdom calendar/);
-      const on = await send('put', '/api/tinman/2026-11-13/summons/1', 'admin1', { text: PASTE });
-      expect(on.body.warning).toBeNull();
-      // Nov 17's Tinman day is today, not past, so Nov 13's run isn't a cycle old yet.
-      expect(on.body.staleWarning).toBeNull();
-    });
-
     it('leaves a normal-kingdom clan on the 6-day cadence', async () => {
-      const put = await send('put', '/api/tinman/2026-11-16/summons/1', 'admin2', { text: PASTE });
-      expect(put.body.warning).toBeNull(); // Nov 16 is a Tinman day on Oct 23 + 6k
+      const get = await send('get', '/api/tinman?date=2026-11-16', 'admin2');
+      expect(get.body.isTinmanDay).toBe(true); // Nov 16 is a Tinman day on Oct 23 + 6k
+      expect(get.body.seasonalKingdom).toBe(false);
     });
   });
 });

@@ -1,61 +1,37 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SCORE_EVENTS = exports.TINMAN_MAX_SUMMONS = void 0;
-exports.matchTinmanRows = matchTinmanRows;
-exports.saveTinmanSummon = saveTinmanSummon;
-exports.deleteTinmanSummon = deleteTinmanSummon;
-exports.assignTinmanName = assignTinmanName;
 exports.getTinmanStandings = getTinmanStandings;
 exports.listTinmanDates = listTinmanDates;
 exports.getTinmanTargets = getTinmanTargets;
 exports.saveTinmanTargets = saveTinmanTargets;
 exports.deleteTinmanTargets = deleteTinmanTargets;
 /**
- * Rise of the Ancients (Tinman) standings, pasted in after each summon.
+ * Event standings pasted by hand before the game was read (Nov 2026): Rise of
+ * the Ancients per summon, and Trials of Olympus, Ragnarok and Dark Omens per
+ * day. Pasting is gone (Nov 25 2026); the scores come from the game
+ * (data/event-scores.ts). These rows stay readable for the runs the game never
+ * read, and nothing writes them any more.
  *
- * The in-game ranking is CUMULATIVE over the run: it never resets between
- * summons, it only grows as players hit the Tin Man. So each upload is a full
- * snapshot, keyed by (clan, Tinman game day, summon), and what a player scored
- * IN a summon is the difference from their previous snapshot. Some play every
- * summon, some only one; a player missing from a later snapshot carries their
- * last total forward rather than dropping to zero.
+ * The in-game ranking is CUMULATIVE over the run: each upload was a full
+ * snapshot, keyed by (clan, run day, summon), and what a player scored IN a
+ * summon is the difference from their previous snapshot. A player missing from
+ * a later snapshot carries their last total forward.
  *
- * ── Matching pasted names to members ─────────────────────────────────────────
- *
- * Same order as the might capture's resolveMember, for the same reasons:
- *   1. a player merge rule outranks everything, and matches EXACTLY;
- *   2. every exact pass (name, alias, despaced key) across active AND inactive
- *      members before any distance pass;
- *   3. then the fuzzy tier (utils/fuzzy.ts), active members first.
- * A member can be claimed once per upload: exact matches go first, and a fuzzy
- * hit on a member someone else already holds is left unmatched for review
- * rather than handing one player two rows.
- *
- * An admin's correction sticks: assigning a name sets it on every summon of
- * that run, adds the pasted spelling as the member's alias (so the next run
- * matches it exactly), and a later upload of the same run reuses the decision —
- * including "this is nobody" on a fuzzy match.
- *
- * Nothing here ever creates a member. A pasted list is not evidence that a new
- * player exists the way a scan is; an unknown name stays unknown until an admin
- * says who it is.
+ * Also the Ancients per-tier targets (tinman_targets): a plan pasted from the
+ * Ancient planner, not a score, so still written here.
  */
 const database_js_1 = require("../database.js");
-const member_repo_js_1 = require("./member-repo.js");
-const name_resolver_js_1 = require("../name-resolver.js");
-const name_normalize_js_1 = require("../../utils/name-normalize.js");
 const tinman_parse_js_1 = require("../tinman-parse.js");
 const ttl_cache_js_1 = require("../../utils/ttl-cache.js");
 exports.TINMAN_MAX_SUMMONS = 8;
 /**
- * Events whose clan ranking is pasted in round by round. Ancients is the
- * original (per summon, with targets); Trials of Olympus (five days),
- * Ragnarok (two) and Dark Omens (two) file the same kind of cumulative ranking
- * per day. Dark Omens' is the Spoils of Dread damage ranking — the event's
- * other measure, Omen Essence donated, comes from resource tracking instead. A
- * run is keyed by `tinman_date` whatever the event: the Tinman day for
- * Ancients, the run's first game day for the per-day events. `summon` is the
- * round — the day, for those.
+ * Events with a score table. Ancients is per summon, with targets; Trials of
+ * Olympus (five days), Ragnarok and Dark Omens per day. Dark Omens' is the
+ * Spoils of Dread damage ranking — the event's other measure, Omen Essence
+ * donated, comes from resource tracking. A run is keyed by `tinman_date`
+ * whatever the event: the Tinman day for Ancients, the run's first game day
+ * for the per-day events. `summon` is the round — the day, for those.
  */
 exports.SCORE_EVENTS = {
     ancients: { maxRounds: exports.TINMAN_MAX_SUMMONS },
@@ -69,126 +45,6 @@ exports.SCORE_EVENTS = {
  */
 function dropPerformanceCache(clanId) {
     (0, ttl_cache_js_1.invalidate)(`performance:${clanId}:`);
-}
-/** Normalised identity of a pasted name, for carrying decisions between uploads. */
-function nameKey(raw) {
-    return (0, name_normalize_js_1.despace)(raw) || raw.trim().toLowerCase();
-}
-/**
- * Decisions an admin already made for this run, by pasted name: a manual
- * assignment, or a rejected fuzzy match. Taken from the run's other summons.
- */
-function priorDecisions(clanId, eventKey, date, exceptSummon) {
-    const rows = (0, database_js_1.getDb)().prepare(`
-    SELECT s.raw_name AS rawName, s.member_id AS memberId, s.match_kind AS kind
-    FROM tinman_scores s JOIN tinman_uploads u ON u.id = s.upload_id
-    WHERE u.clan_id = ? AND u.event_key = ? AND u.tinman_date = ? AND u.summon != ?
-      AND s.match_kind IN ('manual', 'rejected')
-    ORDER BY u.summon DESC
-  `).all(clanId, eventKey, date, exceptSummon);
-    const out = new Map();
-    for (const r of rows) {
-        const key = nameKey(r.rawName);
-        if (out.has(key))
-            continue; // newest summon's decision wins
-        const member = r.memberId ? (0, member_repo_js_1.getMemberById)(r.memberId, clanId) : null;
-        if (r.kind === 'manual' && !member)
-            continue; // member since deleted
-        out.set(key, { member, kind: r.kind });
-    }
-    return out;
-}
-/** Match every pasted row to a member — data/name-resolver.ts, with this run's own decisions first. */
-function matchTinmanRows(clanId, rows, prior = new Map()) {
-    const preset = rows.map((r) => prior.get(nameKey(r.name)));
-    return (0, name_resolver_js_1.resolveNamesToMembers)(clanId, rows.map((r) => r.name), preset);
-}
-/** Store one summon's standings, replacing any earlier upload of the same summon. */
-function saveTinmanSummon(input) {
-    const { clanId, date, summon, rows } = input;
-    const eventKey = input.eventKey ?? 'ancients';
-    const db = (0, database_js_1.getDb)();
-    const resolved = matchTinmanRows(clanId, rows, priorDecisions(clanId, eventKey, date, summon));
-    const tx = db.transaction(() => {
-        const old = db.prepare('SELECT id FROM tinman_uploads WHERE clan_id = ? AND event_key = ? AND tinman_date = ? AND summon = ?').get(clanId, eventKey, date, summon);
-        if (old) {
-            db.prepare('DELETE FROM tinman_scores WHERE upload_id = ?').run(old.id);
-            db.prepare('DELETE FROM tinman_uploads WHERE id = ?').run(old.id);
-        }
-        const upload = db.prepare(`
-      INSERT INTO tinman_uploads (clan_id, event_key, tinman_date, summon, uploaded_by, uploaded_at)
-      VALUES (?, ?, ?, ?, ?, ?) RETURNING id
-    `).get(clanId, eventKey, date, summon, input.uploadedBy, new Date().toISOString());
-        const insert = db.prepare(`
-      INSERT INTO tinman_scores (upload_id, clan_id, rank, raw_name, member_id, match_kind, points)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-        rows.forEach((r, i) => {
-            insert.run(upload.id, clanId, r.rank, r.name, resolved[i].member?.id ?? null, resolved[i].kind, r.points);
-        });
-        return Boolean(old);
-    });
-    const replaced = tx();
-    dropPerformanceCache(clanId);
-    return {
-        rows: rows.length,
-        matched: resolved.filter((r) => r.member).length,
-        fuzzy: resolved.filter((r) => r.kind === 'fuzzy').length,
-        unmatched: resolved.filter((r) => !r.member).length,
-        replaced,
-    };
-}
-/** Remove one summon's upload. False when there was none. */
-function deleteTinmanSummon(clanId, date, summon, eventKey = 'ancients') {
-    const db = (0, database_js_1.getDb)();
-    const row = db.prepare('SELECT id FROM tinman_uploads WHERE clan_id = ? AND event_key = ? AND tinman_date = ? AND summon = ?').get(clanId, eventKey, date, summon);
-    if (!row)
-        return false;
-    db.transaction(() => {
-        db.prepare('DELETE FROM tinman_scores WHERE upload_id = ?').run(row.id);
-        db.prepare('DELETE FROM tinman_uploads WHERE id = ?').run(row.id);
-    })();
-    dropPerformanceCache(clanId);
-    return true;
-}
-/**
- * Settle who a pasted name is, for every summon of this run. A member id
- * assigns it (and records the spelling as that member's alias, so it matches
- * exactly from now on); null marks it as nobody in the clan. Returns the
- * number of rows changed — 0 when the name isn't in this run.
- */
-function assignTinmanName(clanId, date, rawName, memberId, eventKey = 'ancients') {
-    const db = (0, database_js_1.getDb)();
-    const member = memberId === null ? null : (0, member_repo_js_1.getMemberById)(memberId, clanId);
-    if (memberId !== null && !member)
-        return -1;
-    const ids = db.prepare(`
-    SELECT s.id AS id, s.raw_name AS rawName FROM tinman_scores s JOIN tinman_uploads u ON u.id = s.upload_id
-    WHERE u.clan_id = ? AND u.event_key = ? AND u.tinman_date = ?
-  `).all(clanId, eventKey, date);
-    const key = nameKey(rawName);
-    const targets = ids.filter((r) => nameKey(r.rawName) === key).map((r) => r.id);
-    if (targets.length === 0)
-        return 0;
-    db.transaction(() => {
-        const upd = db.prepare('UPDATE tinman_scores SET member_id = ?, match_kind = ? WHERE id = ?');
-        for (const id of targets)
-            upd.run(member?.id ?? null, member ? 'manual' : 'rejected', id);
-        if (member) {
-            // One player, one row per summon: whoever else this run had on that
-            // member (a fuzzy guess) goes back to the review list.
-            db.prepare(`
-        UPDATE tinman_scores SET member_id = NULL, match_kind = 'unmatched'
-        WHERE member_id = ? AND match_kind != 'manual'
-          AND upload_id IN (SELECT id FROM tinman_uploads WHERE clan_id = ? AND event_key = ? AND tinman_date = ?)
-      `).run(member.id, clanId, eventKey, date);
-        }
-    })();
-    dropPerformanceCache(clanId);
-    if (member && nameKey(member.name) !== key && !member.aliases.some((a) => nameKey(a) === key)) {
-        (0, member_repo_js_1.addAlias)(member.id, rawName.trim(), clanId);
-    }
-    return targets.length;
 }
 function getTinmanStandings(clanId, date, eventKey = 'ancients') {
     const db = (0, database_js_1.getDb)();
@@ -211,7 +67,7 @@ function getTinmanStandings(clanId, date, eventKey = 'ancients') {
   `).all(clanId, eventKey, date);
     const byKey = new Map();
     for (const s of scores) {
-        const key = s.memberId ? `m:${s.memberId}` : `n:${nameKey(s.rawName)}`;
+        const key = s.memberId ? `m:${s.memberId}` : `n:${s.rawName.trim().toLowerCase()}`;
         let p = byKey.get(key);
         if (!p) {
             p = {
@@ -242,21 +98,10 @@ function getTinmanStandings(clanId, date, eventKey = 'ancients') {
         p.total = prev;
     }
     const players = [...byKey.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-    const review = players
-        .filter((p) => !p.memberId || p.matchKind === 'fuzzy')
-        .map((p) => ({
-        rawName: p.rawName, matchKind: p.matchKind, memberId: p.memberId,
-        memberName: p.memberId ? p.name : null, points: p.total,
-    }));
     return {
         date,
-        summons: uploads.map(({ id: _id, ...u }) => ({
-            ...u,
-            unmatched: u.unmatched ?? 0,
-            missingRanks: (0, tinman_parse_js_1.missingRanks)(scores.filter((s) => s.summon === u.summon).map((s) => ({ rank: s.rank, name: '', points: 0 }))),
-        })),
+        summons: uploads.map(({ id: _id, ...u }) => ({ ...u, unmatched: u.unmatched ?? 0 })),
         players,
-        review,
     };
 }
 /** Run days this clan has standings for (Tinman days, for Ancients), newest first. */

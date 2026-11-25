@@ -1182,8 +1182,10 @@ is its own event by title (`multistage.trial-of-the-chimera`), since they share
 it.
 
 Shown: a "Standings from the game" card on the event's page (the run the
-selected timeframe covers; the hand-pasted standings card folds away under it),
-and **Events → In-game rankings** (Nov 24 2026; one tile per event had grown to
+selected timeframe covers) for events without a scores card — Ancients,
+Olympus, Ragnarok and Dark Omens show their per-summon / per-day table
+instead ([tinman-scores.md](tinman-scores.md); pasting was removed Nov 25
+2026) — and **Events → In-game rankings** (Nov 24 2026; one tile per event had grown to
 ~40 a clan after a week). Three addresses: `#events/in-game` is a Week/Day
 window (the kit scrubber) — live now, the short rotating tournaments (runs
 under 12 h, `isShortRun`: War Tools, Battle Training…) folded one row per

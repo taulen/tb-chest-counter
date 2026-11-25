@@ -20,8 +20,8 @@ vi.mock('../../src/external/event-calendar.js', async (importOriginal) => ({
 
 import { getDb } from '../../src/data/database.js';
 import { getMemberEventsOverview } from '../../src/data/member-events.js';
-import { saveTinmanSummon } from '../../src/data/repositories/tinman-repo.js';
 import { makeTestDb } from '../helpers/test-db.js';
+import { insertPastedRound } from '../helpers/pasted-scores.js';
 
 const CLAN = 1;
 const ROLLOVER = 17;
@@ -36,11 +36,9 @@ function member(name: string): number {
   ).get(CLAN, name, name.toLowerCase(), name.toLowerCase(), now, now) as { id: number }).id;
 }
 
+/** An Olympus day as it was pasted before the game was read. */
 function pasteOlympusDay(day: number, rows: Array<[string, number]>): void {
-  saveTinmanSummon({
-    clanId: CLAN, date: '2026-11-01', summon: day, uploadedBy: 'test', eventKey: 'olympus',
-    rows: rows.map(([name, points], i) => ({ rank: i + 1, name, points })),
-  });
+  insertPastedRound({ clanId: CLAN, date: '2026-11-01', summon: day, eventKey: 'olympus', rows });
 }
 
 async function olympusRuns(memberId: number) {

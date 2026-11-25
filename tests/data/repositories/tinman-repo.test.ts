@@ -1,25 +1,27 @@
+/**
+ * Event standings pasted before the game was read (tinman-repo.ts): read-only
+ * now, still shown for the runs the game never read. Plus the Ancients targets,
+ * which are still pasted.
+ */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../../src/data/database.js';
 import * as tinman from '../../../src/data/repositories/tinman-repo.js';
-import { addMergeRule } from '../../../src/data/repositories/merge-repo.js';
-import { getMemberById } from '../../../src/data/repositories/member-repo.js';
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
+import { insertPastedRound } from '../../helpers/pasted-scores.js';
 
 let cleanup: () => void;
 const DATE = '2026-10-23';
 
-function addMember(clanId: number, name: string, active = 1): number {
+function addMember(clanId: number, name: string): number {
   const now = new Date().toISOString();
-  const row = getDb().prepare(
+  return (getDb().prepare(
     `INSERT INTO members (clan_id, name, normalized_name, despaced_name, first_seen, last_seen, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-  ).get(clanId, name, name.toLowerCase(), name.toLowerCase().replace(/\s+/g, ''), now, now, active) as { id: number };
-  return row.id;
+     VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
+  ).get(clanId, name, name.toLowerCase(), name.toLowerCase().replace(/\s+/g, ''), now, now) as { id: number }).id;
 }
 
-const rows = (...r: Array<[string, number]>) => r.map(([name, points], i) => ({ rank: i + 1, name, points }));
-const save = (summon: number, r: ReturnType<typeof rows>) =>
-  tinman.saveTinmanSummon({ clanId: 1, date: DATE, summon, rows: r, uploadedBy: 'taulen' });
+const paste = (summon: number, rows: Array<[string, number]>, eventKey?: tinman.ScoreEventKey) =>
+  insertPastedRound({ clanId: 1, date: DATE, summon, rows, eventKey });
 const player = (name: string) => tinman.getTinmanStandings(1, DATE).players.find((p) => p.name === name);
 
 beforeEach(() => {
@@ -28,13 +30,13 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe('tinman standings', () => {
+describe('pasted tinman standings', () => {
   it('turns cumulative snapshots into points per summon', () => {
     addMember(1, 'Frostbite');
     addMember(1, 'Ace');
-    save(1, rows(['Frostbite', 20_000_000], ['Ace', 0]));
-    save(2, rows(['Frostbite', 45_000_000], ['Ace', 4_000_000]));
-    save(3, rows(['Frostbite', 59_878_655], ['Ace', 4_000_000]));
+    paste(1, [['Frostbite', 20_000_000], ['Ace', 0]]);
+    paste(2, [['Frostbite', 45_000_000], ['Ace', 4_000_000]]);
+    paste(3, [['Frostbite', 59_878_655], ['Ace', 4_000_000]]);
 
     expect(player('Frostbite')).toMatchObject({
       perSummon: { 1: 20_000_000, 2: 25_000_000, 3: 14_878_655 }, total: 59_878_655, played: 3,
@@ -45,81 +47,25 @@ describe('tinman standings', () => {
 
   it('puts a missed summon\'s points on the next summon that was pasted', () => {
     addMember(1, 'Frostbite');
-    save(1, rows(['Frostbite', 20_000_000]));
-    save(3, rows(['Frostbite', 59_000_000])); // summon 2 never pasted
+    paste(1, [['Frostbite', 20_000_000]]);
+    paste(3, [['Frostbite', 59_000_000]]); // summon 2 never pasted
     const s = tinman.getTinmanStandings(1, DATE);
     expect(s.summons.map((u) => u.summon)).toEqual([1, 3]);
     expect(player('Frostbite')).toMatchObject({ perSummon: { 1: 20_000_000, 3: 39_000_000 }, total: 59_000_000 });
   });
 
-  it('replaces a summon when it is pasted again', () => {
+  it('keeps a name nobody was assigned to as its own player, counted in the upload', () => {
     addMember(1, 'Ace');
-    save(1, rows(['Ace', 100]));
-    const again = save(1, rows(['Ace', 250]));
-    expect(again.replaced).toBe(true);
-    expect(tinman.getTinmanStandings(1, DATE).summons).toHaveLength(1);
-    expect(player('Ace')?.total).toBe(250);
-  });
-
-  it('matches exactly, by alias, and by spelling — including the Cyrillic look-alike from a real paste', () => {
-    addMember(1, 'Mikam Chaosraven');
-    const lady = addMember(1, 'Lady C');
-    getDb().prepare("UPDATE members SET aliases = '[\"LadyC II\"]' WHERE id = ?").run(lady);
-    const result = save(1, rows(['MиkaM Chaosraven', 511_824], ['LadyC II', 30_464_799], ['Nobody Known', 5]));
-    expect(result).toMatchObject({ rows: 3, matched: 2, fuzzy: 1, unmatched: 1 });
-
+    paste(1, [['Ace', 10], ['Nobody Known', 5]]);
+    paste(2, [['Ace', 30], ['Nobody Known', 9]]);
     const s = tinman.getTinmanStandings(1, DATE);
-    expect(s.players.find((p) => p.rawName === 'MиkaM Chaosraven')).toMatchObject({ name: 'Mikam Chaosraven', matchKind: 'fuzzy' });
-    expect(s.players.find((p) => p.rawName === 'LadyC II')).toMatchObject({ memberId: lady, matchKind: 'exact' });
-    expect(s.review.map((r) => r.rawName).sort()).toEqual(['MиkaM Chaosraven', 'Nobody Known']);
-  });
-
-  it('never hands one member two rows: an exact claim beats a fuzzy one', () => {
-    addMember(1, 'Ironhide');
-    save(1, rows(['Ironhyde', 10], ['Ironhide', 20]));
-    const s = tinman.getTinmanStandings(1, DATE);
-    expect(s.players.find((p) => p.rawName === 'Ironhide')?.matchKind).toBe('exact');
-    expect(s.players.find((p) => p.rawName === 'Ironhyde')?.memberId).toBeNull();
-  });
-
-  it('honours player merge rules', () => {
-    addMember(1, 'Lady C');
-    addMember(1, 'Zz Placeholder');
-    addMergeRule('player', 'Ladyyy Ceee', 'Lady C', 1);
-    save(1, rows(['Ladyyy Ceee', 7]));
-    expect(player('Lady C')?.matchKind).toBe('exact');
-  });
-
-  it('remembers an admin\'s assignment across the run, and as an alias for future runs', () => {
-    const tash = addMember(1, 'TASH II');
-    save(1, rows(['T A S H 2!!', 100]));
-    expect(tinman.assignTinmanName(1, DATE, 'T A S H 2!!', tash)).toBe(1);
-    save(2, rows(['T A S H 2!!', 300]));
-    expect(player('TASH II')).toMatchObject({ matchKind: 'manual', perSummon: { 1: 100, 2: 200 } });
-    expect(getMemberById(tash, 1)?.aliases).toContain('T A S H 2!!');
-  });
-
-  it('keeps a rejected spelling match rejected on the next upload', () => {
-    addMember(1, 'Ironhide');
-    save(1, rows(['Ironhyde', 10]));
-    expect(tinman.assignTinmanName(1, DATE, 'Ironhyde', null)).toBe(1);
-    save(2, rows(['Ironhyde', 30]));
-    const p = tinman.getTinmanStandings(1, DATE).players.find((x) => x.rawName === 'Ironhyde');
-    expect(p).toMatchObject({ memberId: null, matchKind: 'rejected', total: 30 });
-  });
-
-  it('follows a player merge instead of dropping the match', () => {
-    addMember(1, 'Fiin SK 2');
-    const target = addMember(1, 'Fiin SK II');
-    save(1, rows(['Fiin SK 2', 63_965_364]));
-    addMergeRule('player', 'Fiin SK 2', 'Fiin SK II', 1);
-    const p = tinman.getTinmanStandings(1, DATE).players[0];
-    expect(p).toMatchObject({ memberId: target, total: 63_965_364 });
+    expect(s.players.map((p) => [p.rawName, p.memberId === null, p.total])).toEqual([['Ace', false, 30], ['Nobody Known', true, 9]]);
+    expect(s.summons.map((u) => u.unmatched)).toEqual([1, 1]);
   });
 
   it('keeps clans apart', () => {
     addMember(1, 'Ace');
-    save(1, rows(['Ace', 5]));
+    paste(1, [['Ace', 5]]);
     expect(tinman.getTinmanStandings(2, DATE).players).toEqual([]);
     expect(tinman.listTinmanDates(1)).toEqual([DATE]);
     expect(tinman.listTinmanDates(2)).toEqual([]);
@@ -127,17 +73,23 @@ describe('tinman standings', () => {
 
   it('keeps Olympus days apart from an Ancients run on the same day', () => {
     addMember(1, 'Ace');
-    save(1, rows(['Ace', 5]));
-    tinman.saveTinmanSummon({ clanId: 1, date: DATE, summon: 1, rows: rows(['Ace', 900], ['Nobody', 3]), uploadedBy: 'taulen', eventKey: 'olympus' });
-    tinman.assignTinmanName(1, DATE, 'Nobody', null, 'olympus');
-
+    paste(1, [['Ace', 5]]);
+    paste(1, [['Ace', 900]], 'olympus');
     expect(tinman.getTinmanStandings(1, DATE).players).toMatchObject([{ name: 'Ace', total: 5 }]);
-    const olympus = tinman.getTinmanStandings(1, DATE, 'olympus');
-    expect(olympus.players.map((p) => [p.rawName, p.total, p.matchKind])).toEqual([['Ace', 900, 'exact'], ['Nobody', 3, 'rejected']]);
+    expect(tinman.getTinmanStandings(1, DATE, 'olympus').players).toMatchObject([{ name: 'Ace', total: 900 }]);
     expect(tinman.listTinmanDates(1, 30, 'olympus')).toEqual([DATE]);
+    expect(tinman.listTinmanDates(1, 30, 'ragnarok')).toEqual([]);
+  });
+});
 
-    expect(tinman.deleteTinmanSummon(1, DATE, 1, 'olympus')).toBe(true);
-    expect(tinman.getTinmanStandings(1, DATE).summons).toHaveLength(1);
-    expect(tinman.listTinmanDates(1, 30, 'olympus')).toEqual([]);
+describe('tinman targets', () => {
+  it('saves, replaces and removes a run\'s targets', () => {
+    tinman.saveTinmanTargets({ clanId: 1, date: DATE, tiers: { g7: 1_300_000 }, kills: 3, savedBy: 'taulen' });
+    expect(tinman.getTinmanTargets(1, DATE)).toMatchObject({ tiers: { g7: 1_300_000 }, kills: 3 });
+    tinman.saveTinmanTargets({ clanId: 1, date: DATE, tiers: { g6: 600_000 }, kills: null, savedBy: 'taulen' });
+    expect(tinman.getTinmanTargets(1, DATE)?.tiers).toEqual({ g6: 600_000 });
+    expect(tinman.getTinmanTargets(2, DATE)).toBeNull();
+    expect(tinman.deleteTinmanTargets(1, DATE)).toBe(true);
+    expect(tinman.getTinmanTargets(1, DATE)).toBeNull();
   });
 });

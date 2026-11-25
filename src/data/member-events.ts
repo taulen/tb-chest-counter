@@ -14,15 +14,17 @@
  * ranking is cached per clan, not per member, so paging through profiles pays
  * for it once; a chest write drops the cache (notifyChestDataChanged).
  *
- * Olympus, Ragnarok and Dark Omens also have the event's own ranking pasted in
- * day by day (Events → Scores). A run that has one is ranked by it — that is
- * the event's result; chests are only what it paid out — and a run nobody
- * pasted falls back to the chest ranking. Ancients' pasted scores have their
- * own card (Tin Man scores), so its row stays on chests.
+ * Olympus, Ragnarok and Dark Omens also have the event's own ranking, day by
+ * day (Events → Scores; read from the game, or pasted before it was —
+ * event-scores.ts). A run that has one is ranked by it — that is the event's
+ * result; chests are only what it paid out — and a run without one falls back
+ * to the chest ranking. Ancients' scores have their own card (Tin Man scores),
+ * so its row stays on chests.
  */
 import { getEventCatalogSummary, getEventDef } from '../config/event-catalog.js';
 import * as eventRepo from './repositories/event-repo.js';
 import * as tinmanRepo from './repositories/tinman-repo.js';
+import { eventScoreDates, getEventScores, type ScoreEventKey } from './event-scores.js';
 import { getGuardsSummaries } from './repositories/guards-repo.js';
 import { getClanWeekStart } from './repositories/clan-repo.js';
 import { getEventOccurrences } from '../external/event-calendar.js';
@@ -122,24 +124,24 @@ export function rankedRun(key: string, clanId: number, from: string, to: string)
 
 type RunWindow = Omit<MemberEventRun, 'points' | 'chests' | 'source' | 'rank' | 'participants' | 'chestPoints'>;
 
-/** Events ranked by their pasted standings on the profile (see the file header). */
-const PASTED_RANKING_EVENTS: ReadonlySet<string> = new Set<tinmanRepo.ScoreEventKey>(['olympus', 'ragnarok', 'dark-omens']);
-/** Pasted runs looked up per event: far more than the recent runs shown. */
-const PASTED_DATES_LOOKUP = 30;
+/** Events ranked by their own scores on the profile (see the file header). */
+const SCORE_RANKING_EVENTS: ReadonlySet<string> = new Set<ScoreEventKey>(['olympus', 'ragnarok', 'dark-omens']);
+/** Scored runs looked up per event: far more than the recent runs shown. */
+const SCORE_DATES_LOOKUP = 30;
 
-function isPastedRankingEvent(key: string): key is tinmanRepo.ScoreEventKey {
-  return PASTED_RANKING_EVENTS.has(key);
+function isScoreRankingEvent(key: string): key is ScoreEventKey {
+  return SCORE_RANKING_EVENTS.has(key);
 }
 
 /**
- * The member's line in a run's pasted standings, filed under the run's first
- * game day (its runDay) as the Events page files them. The standings come in
- * ranking order, with names nobody is assigned to counted as the players they are.
+ * The member's line in a run's scores (from the game, or pasted before it was
+ * read), filed under the run's first game day (its runDay) as the Events page
+ * files them. The players come in ranking order.
  */
-function pastedRun(
-  key: tinmanRepo.ScoreEventKey, clanId: number, runDay: string, memberId: number,
+function scoredRun(
+  key: ScoreEventKey, clanId: number, runDay: string, memberId: number,
 ): Pick<MemberEventRun, 'points' | 'rank' | 'participants'> {
-  const players = tinmanRepo.getTinmanStandings(clanId, runDay, key).players;
+  const players = getEventScores(clanId, key, runDay).players;
   const i = players.findIndex((p) => p.memberId === memberId);
   return {
     points: i >= 0 ? players[i].total : 0,
@@ -189,12 +191,12 @@ async function runWindows(
 }
 
 function tinmanOverview(clanId: number, memberId: number, today: string): MemberEventsOverview['tinman'] {
-  const dates = tinmanRepo.listTinmanDates(clanId, TINMAN_RUNS);
+  const dates = eventScoreDates(clanId, 'ancients', TINMAN_RUNS);
   if (!dates.length) return null;
   const level = getGuardsSummaries(clanId, today).get(memberId)?.level ?? null;
   const tier = level ? `g${level}` : ASSUMED_TIER;
   const runs = dates.map((date) => {
-    const standings = tinmanRepo.getTinmanStandings(clanId, date);
+    const standings = getEventScores(clanId, 'ancients', date);
     const i = standings.players.findIndex((p) => p.memberId === memberId);
     const p = i >= 0 ? standings.players[i] : null;
     const target = tinmanRepo.getTinmanTargets(clanId, date)?.tiers[tier as keyof tinmanRepo.TinmanTargets['tiers']];
@@ -204,7 +206,7 @@ function tinmanOverview(clanId: number, memberId: number, today: string): Member
       rank: p ? i + 1 : null,
       players: standings.players.length,
       played: p?.played ?? 0,
-      summons: standings.summons.length,
+      summons: standings.game ? standings.game.columns.length : standings.summons.length,
       target: target ?? null,
     };
   });
@@ -219,15 +221,15 @@ export async function getMemberEventsOverview(
   const today = gameDateFor(Date.now(), rollover);
   const events = await Promise.all(getEventCatalogSummary().map(async (e) => {
     const { mode, windows } = await runWindows(e.key, clanId, rollover);
-    const scoreKey = isPastedRankingEvent(e.key) ? e.key : null;
-    const pasted = scoreKey ? new Set(tinmanRepo.listTinmanDates(clanId, PASTED_DATES_LOOKUP, scoreKey)) : null;
+    const scoreKey = isScoreRankingEvent(e.key) ? e.key : null;
+    const scored = scoreKey ? new Set(eventScoreDates(clanId, scoreKey, SCORE_DATES_LOOKUP)) : null;
     const runs = windows.map((w): MemberEventRun => {
       const ranked = rankedRun(e.key, clanId, w.from, w.to);
       const mine = ranked.byMember.get(memberId);
       const chestPoints = mine?.points ?? 0;
       const chests = mine?.chests ?? 0;
-      if (scoreKey && pasted?.has(w.runDay)) {
-        return { ...w, ...pastedRun(scoreKey, clanId, w.runDay, memberId), chests, source: 'scores', chestPoints };
+      if (scoreKey && scored?.has(w.runDay)) {
+        return { ...w, ...scoredRun(scoreKey, clanId, w.runDay, memberId), chests, source: 'scores', chestPoints };
       }
       return {
         ...w,

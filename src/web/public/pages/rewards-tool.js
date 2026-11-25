@@ -4,11 +4,12 @@
 // of typed as name>score lines.
 //
 // Where the scores come from, per event:
-//  - Olympus: the cumulative clan ranking pasted on Events → Olympus, as it
-//    stood after the picked day (the latest pasted, unless told otherwise).
+//  - Olympus: the cumulative clan ranking on Events → Olympus, read from the
+//    game, as it stood after the picked day (the latest, unless told otherwise).
 //  - Dark Omens: Omen Essence donated in the run's window (resource tracking,
 //    the same numbers as the Essence column on Events → Dark Omens), or the
-//    Spoils of Dread damage ranking pasted on Events → Dark Omens.
+//    Spoils of Dread damage ranking on Events → Dark Omens, read from the game.
+// Runs pasted by hand before the game was read keep their pasted rankings.
 //
 // Anyone can be left out (an alt, a leader who takes no share); their part is
 // spread over everyone else by score. Players the roster no longer lists start
@@ -35,22 +36,23 @@ const EXCLUDED_KEY = 'tbcc.rewards.excluded.v1';
 const ESSENCE_SLUG = 'omen-essence';
 
 /**
- * What a split can be based on. `pasted` bases read /event-scores/<api>; the
+ * What a split can be based on. `scores` bases read /event-scores/<api> (the
+ * event's own ranking, read from the game); the
  * essence one reads Resources.
  */
 const BASES = {
   olympus: {
-    pasted: 'olympus',
+    scores: 'olympus',
     label: () => t('{event} scores', { event: esc(tGame('Olympus')) }),
     column: () => t('Points'),
   },
   damage: {
-    pasted: 'dark-omens',
+    scores: 'dark-omens',
     label: () => t('{event} damage', { event: esc(tGame('Spoils of Dread')) }),
     column: () => t('Damage'),
   },
   essence: {
-    pasted: null,
+    scores: null,
     label: () => t('{resource} donated', { resource: esc(tGame('Omen Essence')) }),
     column: () => t('Essence'),
   },
@@ -116,7 +118,7 @@ export async function renderRewardsTool(mount) {
     basisByEvent,
     runs: [],
     runIdx: 0,
-    /** Pasted day the scores are read after; null = the latest pasted. */
+    /** Day the scores are read after; null = the latest. */
     day: null,
     /** What the picked run and basis yielded — see loadSource(). */
     source: null,
@@ -190,18 +192,18 @@ async function loadEvent(root) {
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
   }
-  // No calendar (a feed outage): the pasted rankings still know their runs.
-  if (!runs.length) runs = await pastedRunsFallback();
+  // No calendar (a feed outage): the scored runs still know their dates.
+  if (!runs.length) runs = await scoredRunsFallback();
   if (token !== rs.token) return;
   rs.runs = runs;
   await loadSource(root, token);
 }
 
-async function pastedRunsFallback() {
-  const pastedApi = EVENTS[rs.event].bases.map((b) => BASES[b].pasted).find(Boolean);
-  if (!pastedApi) return [];
+async function scoredRunsFallback() {
+  const scoresApi = EVENTS[rs.event].bases.map((b) => BASES[b].scores).find(Boolean);
+  if (!scoresApi) return [];
   try {
-    const res = await api(`/event-scores/${pastedApi}`);
+    const res = await api(`/event-scores/${scoresApi}`);
     return (res?.dates || []).slice(0, MAX_RUNS).map((d) => ({ label: d, scoresDate: d, from: null, to: null, isCurrent: false, estimated: false }));
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
@@ -220,7 +222,7 @@ async function loadSource(root, token = ++rs.token) {
   const r = run();
   let source;
   if (!r) source = { kind: 'no-runs' };
-  else if (basis().pasted) source = await loadPasted(basis().pasted, r);
+  else if (basis().scores) source = await loadScores(basis().scores, r);
   else source = await loadEssence(r);
   if (token !== rs.token) return;
   rs.source = source;
@@ -229,23 +231,23 @@ async function loadSource(root, token = ++rs.token) {
   paintResults(root);
 }
 
-async function loadPasted(pastedApi, r) {
+async function loadScores(scoresApi, r) {
   if (!r.scoresDate) return { kind: 'error' };
   try {
-    const res = await api(`/event-scores/${pastedApi}?date=${encodeURIComponent(r.scoresDate)}`);
+    const res = await api(`/event-scores/${scoresApi}?date=${encodeURIComponent(r.scoresDate)}`);
     if (res?.error) return { kind: 'error' };
-    // A run read from the game (Olympus) carries its days and each player's
-    // points after each day itself; nothing is pasted for it.
+    // A run read from the game carries its days and each player's points after
+    // each day itself; a run pasted before that has its pasted days.
     const fromGame = Array.isArray(res.game?.days) && res.game.days.length > 0;
     const days = fromGame ? [...res.game.days] : (res.summons || []).map((s) => s.summon).sort((a, b) => a - b);
-    if (!days.length) return { kind: 'none-pasted' };
+    if (!days.length) return { kind: 'no-scores' };
     const players = (res.players || []).map((p) => ({
       key: p.memberId ? `m:${p.memberId}` : `n:${String(p.rawName || p.name).trim().toLowerCase()}`,
       memberId: p.memberId ?? null,
       name: p.name,
       cumulative: p.cumulative || {},
     }));
-    return { kind: 'pasted', days, players, fromGame };
+    return { kind: 'scores', days, players, fromGame };
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
     return { kind: 'error' };
@@ -304,7 +306,7 @@ function sourceHtml() {
     ? `<select id="rw-run" class="input tool-select" data-rw="run">${rs.runs.map((r, i) => `<option value="${i}" ${i === rs.runIdx ? 'selected' : ''}>${esc(runOptionLabel(r))}</option>`).join('')}</select>`
     : `<span class="tool-muted">${rs.loading ? t('Loading…') : t('No runs to pick from')}</span>`;
   const src = rs.source;
-  const daySelect = src?.kind === 'pasted'
+  const daySelect = src?.kind === 'scores'
     ? `<div class="tool-inline-field rewards-inline">
         <label for="rw-day">${t('Scores after')}</label>
         <select id="rw-day" class="input tool-select" data-rw="day">${src.days.map((d) => `<option value="${d}" ${d === pickedDay() ? 'selected' : ''}>${esc(t('Day {day}', { day: d }))}</option>`).join('')}</select>
@@ -321,21 +323,17 @@ function sourceHtml() {
     <p class="muted-copy rewards-status" role="status">${statusHtml()}</p>`;
 }
 
-/** The pasted day the scores are read after: the picked one, else the latest. */
+/** The day the scores are read after: the picked one, else the latest. */
 function pickedDay() {
   const days = rs.source?.days || [];
   return days.includes(rs.day) ? rs.day : days[days.length - 1] ?? null;
-}
-
-function eventsLink() {
-  return `<a href="#events/${esc(rs.event)}">${t('Events → {event}', { event: esc(EVENTS[rs.event].name()) })}</a>`;
 }
 
 function statusHtml() {
   const src = rs.source;
   if (rs.loading || !src) return t('Loading…');
   switch (src.kind) {
-    case 'pasted': {
+    case 'scores': {
       const day = pickedDay();
       const last = src.days[src.days.length - 1];
       if (src.fromGame) {
@@ -351,14 +349,14 @@ function statusHtml() {
       return tn(src.players.length, '{n} member donated {resource} between {from} and {to}.', '{n} members donated {resource} between {from} and {to}.', {
         resource: esc(tGame('Omen Essence')), from: esc(src.from), to: esc(src.to),
       });
-    case 'none-pasted':
-      return t('Nothing pasted for this run yet — an admin adds the ranking on {link} after each day.', { link: eventsLink() });
+    case 'no-scores':
+      return t('No scores for this run yet — they are read from the game while the event runs.');
     case 'no-essence':
       return t('Nobody donated {resource} between {from} and {to}.', { resource: esc(tGame('Omen Essence')), from: esc(src.from), to: esc(src.to) });
     case 'no-window':
       return t('The event calendar is unavailable, so this run\'s dates aren\'t known.');
     case 'no-runs':
-      return t('No runs to pick from — the event calendar is unavailable and nothing has been pasted.');
+      return t('No runs to pick from — the event calendar is unavailable and the game has no scores for this event yet.');
     default:
       return t('Could not load the scores.');
   }
@@ -390,11 +388,11 @@ function potsCardHtml() {
 /** The players with their score for the current pick, ranked; null while there are none. */
 function rankedPlayers() {
   const src = rs.source;
-  if (!src || (src.kind !== 'pasted' && src.kind !== 'essence')) return null;
+  if (!src || (src.kind !== 'scores' && src.kind !== 'essence')) return null;
   const day = pickedDay();
   const players = src.players.map((p) => ({
     ...p,
-    score: src.kind === 'pasted' ? scoreAfterDay(p.cumulative, day) : p.score,
+    score: src.kind === 'scores' ? scoreAfterDay(p.cumulative, day) : p.score,
     left: !!(p.memberId && rs.activeIds && !rs.activeIds.has(p.memberId)),
     unmatched: !p.memberId,
   }));
@@ -666,8 +664,8 @@ function howItWorksHtml() {
           <li>${t('<strong>The split.</strong> Each player gets the pot × their score ÷ everyone\'s total, rounded down. The units left over go one each to the largest remainders, so the parts always add up to the pot.')}</li>
           <li>${t('<strong>Leaving someone out.</strong> Untick them: they get nothing, and their part is spread over everyone else by score. Who you leave out is remembered in this browser.')}</li>
           <li>${t('<strong>Left the clan.</strong> Players the roster no longer lists start unticked — a reward can only be sent to a member.')}</li>
-          <li>${t('<strong>{olympus}.</strong> The clan ranking pasted on Events → {olympus}, as it stood after the day you pick. The ranking keeps growing through the run, so the last day is the whole run.', { olympus: esc(tGame('Olympus')) })}</li>
-          <li>${t('<strong>{omens}.</strong> {essence} donated during the run, from resource tracking, or the {spoils} damage ranking pasted on Events → {omens}.', { omens: esc(tGame('Dark Omens')), essence: esc(tGame('Omen Essence')), spoils: esc(tGame('Spoils of Dread')) })}</li>
+          <li>${t('<strong>{olympus}.</strong> The clan ranking on Events → {olympus}, read from the game, as it stood after the day you pick. The ranking keeps growing through the run, so the last day is the whole run.', { olympus: esc(tGame('Olympus')) })}</li>
+          <li>${t('<strong>{omens}.</strong> {essence} donated during the run, from resource tracking, or the {spoils} damage ranking on Events → {omens}, read from the game.', { omens: esc(tGame('Dark Omens')), essence: esc(tGame('Omen Essence')), spoils: esc(tGame('Spoils of Dread')) })}</li>
         </ul>
         <p class="muted-copy">${t('Splits like {link}. Where a leftover fragment could go either way, it may land on a different player.', { link: `<a href="https://totalcalculator.org/rewards.php" target="_blank" rel="noopener">${t('totalcalculator.org\'s rewards page')}</a>` })}</p>
       </div>

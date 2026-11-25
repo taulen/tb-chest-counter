@@ -9428,7 +9428,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   background: var(--bg-surface);
 }
 .tinman-upload-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
-.tinman-summon-select { max-width: 300px; }
 .tinman-text {
   max-width: none;
   width: 100%;
@@ -9456,17 +9455,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 .tinman-chip strong { color: var(--accent-gold); white-space: nowrap; }
 .tinman-chip-meta { color: var(--text-muted); }
-.tinman-chip-del {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 16px;
-  line-height: 1;
-  padding: 0 6px;
-  cursor: pointer;
-  border-radius: 999px;
-}
-.tinman-chip-del:hover { color: var(--accent-red); background: var(--accent-red-bg); }
 
 .tinman-table { table-layout: fixed; }
 .tinman-table .col-played { width: 80px; }
@@ -9515,18 +9503,8 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 }
 .tinman-tag-fuzzy { cursor: help; }
 
-.tinman-review { border-top: 1px solid var(--border); }
-.tinman-review > summary.card-header h2 { font-size: 14px; }
-.tinman-review .card-body { padding: 0 20px 16px; }
-.tinman-review-table { table-layout: fixed; min-width: 0; }
-.tinman-review-table .col-num { width: 90px; }
-.tinman-review-table .col-action { width: 100px; }
-.tinman-review-table th.num, .tinman-review-table td.num { text-align: right; }
-.tinman-assign { max-width: 260px; }
 .tinman-table .col-rank { width: 64px; }
 .tinman-table .col-member { width: 220px; }
-.tinman-review-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.tinman-review-head .tinman-hint { margin: 6px 0 10px; }
 
 /* Tin Man targets: the strip under the summon chips, the Tier column, and the
    same goal colours the boards use (green at the target, amber from 66%,
@@ -11354,19 +11332,6 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
 @media (max-width: 760px) {
   .gr-pick { flex: 1 1 100%; }
 }
-/* The hand-pasted standings, folded while the game's are read. */
-.events-paste-fold { margin: 0 0 16px; }
-.events-paste-fold > summary {
-  cursor: pointer;
-  padding: 8px 4px;
-  color: var(--text-secondary);
-  font-weight: 600;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: baseline;
-}
-.events-paste-fold > summary .card-header-hint { font-weight: 400; }
 @media (max-width: 640px) {
   .game-standings-table col.col-points { width: 110px; }
 }

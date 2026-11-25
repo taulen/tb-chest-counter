@@ -41,6 +41,7 @@ import {
 } from './repositories/chest-summary-repo.js';
 import { getGuardsLevels, type MemberGuards } from './repositories/guards-repo.js';
 import * as tinmanRepo from './repositories/tinman-repo.js';
+import { eventScoreDates, getEventScores } from './event-scores.js';
 import { rankedRun } from './member-events.js';
 import { getEventOccurrences } from '../external/event-calendar.js';
 import { daysBetweenGameDates, gameDateFor, gameWindow, type WeekStart } from '../utils/game-day.js';
@@ -296,11 +297,12 @@ function tinmanUnits(
 
   // A run is in the window when its Tinman day (its last day) is, and only once
   // it's over: mid-run everyone simply reads as not there yet.
-  const dates = tinmanRepo.listTinmanDates(clanId, 10_000, 'ancients')
+  const dates = eventScoreDates(clanId, 'ancients', 10_000)
     .filter((d) => d < today && d >= windowFrom);
   for (const date of dates) {
-    const standings = tinmanRepo.getTinmanStandings(clanId, date, 'ancients');
-    if (standings.summons.length === 0) continue;
+    // The game's table, or a run pasted before the game was read (event-scores.ts).
+    const standings = getEventScores(clanId, 'ancients', date);
+    if (!standings.players.length) continue;
     const totals = new Map<number, number>();
     for (const p of standings.players) if (p.memberId !== null) totals.set(p.memberId, p.total);
 

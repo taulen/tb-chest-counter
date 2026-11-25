@@ -6,12 +6,14 @@ Shares a clan reward pot (Dragon Coins and clan fragments) over the players of o
 
 | Event | Basis | Read from |
 |---|---|---|
-| Olympus | Points | `/api/event-scores/olympus?date=<scoresDate>`: the members' Olympus points read from the game (`game.days` + each player's `cumulative`, since Nov 24 2026), else the cumulative ranking pasted on Events → Olympus |
+| Olympus | Points | `/api/event-scores/olympus?date=<scoresDate>`: the members' Olympus points read from the game (`game.days` + each player's `cumulative`) |
 | Dark Omens | Omen Essence donated (default) | `/api/resources/summary?from&to` over the run's window, the same numbers as the Essence column on Events → Dark Omens |
-| Dark Omens | Spoils of Dread damage | `/api/event-scores/dark-omens?date=<scoresDate>`, pasted on Events → Dark Omens ([tinman-scores.md](tinman-scores.md)) |
+| Dark Omens | Spoils of Dread damage | `/api/event-scores/dark-omens?date=<scoresDate>`, read from the game ([tinman-scores.md](tinman-scores.md); unverified until a Dark Omens run is read) |
 
-- **Runs** are `/api/events/<event>/occurrences`, newest first, capped at 12. If the calendar feed is down, a pasted basis falls back to the pasted run dates. Essence then has no window and says so.
-- **A pasted ranking is cumulative**, so "Scores after day N" reads each player's newest snapshot at or before day N (`scoreAfterDay`), carrying a missed day forward the way the Events card does. The default is the latest pasted day.
+Nothing is pasted any more (Nov 25 2026); a run pasted before the game read it keeps its pasted ranking, with its pasted days.
+
+- **Runs** are `/api/events/<event>/occurrences`, newest first, capped at 12. If the calendar feed is down, a scores basis falls back to the dates of the runs with scores. Essence then has no window and says so.
+- **The ranking is cumulative**, so "Scores after day N" reads each player's points as they stood after day N (`scoreAfterDay`), carrying a missed day forward the way the Events card does. The default is the latest day.
 - **Essence comes from the Clan Capital ledger**, which every scan reads for every clan. A run with no Omen Essence donated in its window says so ("Nobody donated…"); split by damage instead.
 
 ## The split

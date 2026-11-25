@@ -35,25 +35,23 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createTinmanRouter = createTinmanRouter;
 /**
- * Rise of the Ancients (Tinman) standings, pasted in after each summon — shown
- * on Events → Ancients. See data/repositories/tinman-repo.ts.
+ * An event's own scores, read from the game (data/event-scores.ts): Rise of
+ * the Ancients (Tinman) per summon on Events → Ancients, and Trials of Olympus,
+ * Ragnarok and Dark Omens' Spoils of Dread damage per day on their tabs — the
+ * same table Tools → Rewards splits by. Runs pasted by hand before the game
+ * read them stay readable; nothing is pasted any more (Nov 25 2026).
  *
- * The same router serves Trials of Olympus, Ragnarok and Dark Omens' Spoils of
- * Dread damage ranking (Events → Olympus / Ragnarok / Dark Omens), pasted per
- * day: a "summon" in the paths below is then the run's day (1–5 for Olympus,
- * 1–2 for the other two). None has targets or a Tinman cadence, so those parts
- * are Ancients-only.
- *
- * Ancients also answers GET /vaults: who raised a Vault of the Ancients.
+ * Ancients also has per-tier targets (pasted from the Ancient planner — a plan,
+ * not a score) and answers GET /vaults: who raised a Vault of the Ancients.
  *
  * Mounted at /api/tinman (Ancients) and /api/event-scores/<event> behind
- * requireAuth + requireClanContext. Reading is open to every member;
- * uploading, deleting and settling who a name is are admin-only, and every
- * query is scoped to the caller's active clan.
+ * requireAuth + requireClanContext. Reading is open to every member; targets
+ * are admin-only, and every query is scoped to the caller's active clan.
  */
 const express_1 = require("express");
 const tinmanRepo = __importStar(require("../../data/repositories/tinman-repo.js"));
 const tinman_parse_js_1 = require("../../data/tinman-parse.js");
+const event_scores_js_1 = require("../../data/event-scores.js");
 const guards_repo_js_1 = require("../../data/repositories/guards-repo.js");
 const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const auth_js_1 = require("../middleware/auth.js");
@@ -61,8 +59,6 @@ const index_js_1 = require("../../config/index.js");
 const game_day_js_1 = require("../../utils/game-day.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
-const ancients_game_js_1 = require("../../data/ancients-game.js");
-const olympus_game_js_1 = require("../../data/olympus-game.js");
 const game_protocol_repo_js_1 = require("../../data/repositories/game-protocol-repo.js");
 const MAX_TEXT_LENGTH = 200_000;
 /** A real YYYY-MM-DD day, or null. */
@@ -73,11 +69,6 @@ function parseDate(raw) {
     if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== raw)
         return null;
     return raw;
-}
-/** A day that can be written to: a past or the current game day. */
-function validDate(raw, today) {
-    const date = parseDate(raw);
-    return date && date <= today ? date : null;
 }
 /**
  * A day a run's targets can be saved for: up to one Ancients cycle ahead.
@@ -91,11 +82,6 @@ function validTargetDate(raw, today) {
         return null;
     const limit = new Date(Date.parse(`${today}T00:00:00Z`) + game_day_js_1.ANCIENTS_CYCLE_DAYS * 86_400_000).toISOString().slice(0, 10);
     return date <= limit ? date : null;
-}
-/** 1–max exactly, or null. Strict on purpose: clamping would file a "summon 9" paste under 8. */
-function parseSummon(raw, max) {
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 1 && n <= max ? n : null;
 }
 /** The newest Tinman day at or before today on the cadence — the default run. */
 function latestTinmanDay(today) {
@@ -131,68 +117,37 @@ function createTinmanRouter(eventKey = 'ancients') {
     const router = (0, express_1.Router)();
     const today = () => (0, game_day_js_1.currentGameDate)((0, index_js_1.loadConfig)().gameDayRolloverUtcHour);
     const ancients = eventKey === 'ancients';
-    const olympus = eventKey === 'olympus';
     const maxRounds = tinmanRepo.SCORE_EVENTS[eventKey].maxRounds;
-    const round = ancients ? 'summon' : 'day';
-    const action = (name) => (ancients ? `tinman_${name}` : `${eventKey}_${name}`);
     /**
      * Standings for one run (`?date=` its day; default: the newest). The per-day
      * events have no cadence to fall back on, so their default is the newest
-     * pasted run.
+     * run with scores.
      *
-     * A future day reads as a run with nothing pasted yet, not an error: a live
+     * A future day reads as a run with no scores yet, not an error: a live
      * Ancients run files its scores under its last (Tinman) day, which is still
      * ahead until that day, and the Events page opens on Participants only when
-     * this read says the run is empty. Writes keep the past-or-today rule.
+     * this read says the run is empty.
      */
     router.get('/', async (req, res) => {
         const clanId = req.clanId;
         const t = today();
-        const rollover = (0, index_js_1.loadConfig)().gameDayRolloverUtcHour;
         const skDays = ancients ? await seasonalTinmanDays(clanId) : null;
-        // Olympus runs the game covers count as runs too (data/olympus-game.ts).
-        const runDates = () => {
-            const pasted = tinmanRepo.listTinmanDates(clanId, 30, eventKey);
-            if (!olympus)
-                return pasted;
-            return [...new Set([...pasted, ...(0, olympus_game_js_1.olympusGameRunDates)(clanId, rollover)])].sort().reverse().slice(0, 30);
-        };
-        const newestPasted = () => runDates().find((d) => d <= t) ?? t;
+        const dates = (0, event_scores_js_1.eventScoreDates)(clanId, eventKey);
+        const newest = () => dates.find((d) => d <= t) ?? t;
         const date = req.query.date !== undefined
             ? parseDate(req.query.date)
-            : skDays ? skDays.find((d) => d <= t) ?? newestPasted()
-                : ancients ? latestTinmanDay(t) : newestPasted();
+            : skDays ? skDays.find((d) => d <= t) ?? newest()
+                : ancients ? latestTinmanDay(t) : newest();
         if (!date) {
             res.status(400).json({ error: 'date must be a game day, YYYY-MM-DD' });
             return;
         }
         // Each matched player's guards level (from research), so the page can hold their
         // total against their tier's target. Null = unknown (the page assumes G7).
-        const pasted = tinmanRepo.getTinmanStandings(clanId, date, eventKey);
+        const standings = (0, event_scores_js_1.getEventScores)(clanId, eventKey, date);
         const guards = ancients ? (0, guards_repo_js_1.getGuardsSummaries)(clanId, t) : null;
-        // The game's own standings, split into summons (data/ancients-game.ts),
-        // replace the pasted ones for a run the game covers: one read since reads
-        // were kept (v123), or game standings and nothing pasted. A run pasted by
-        // hand before that keeps its pasted per-summon table.
-        // Olympus: its days from the game (members' Olympus points and the stage
-        // rankings) for any run with nothing pasted — every run since Nov 2026.
-        let game = null;
-        if (ancients) {
-            const gameRun = (0, ancients_game_js_1.ancientsRunForDay)(clanId, date, rollover);
-            const gameTable = gameRun ? (0, ancients_game_js_1.buildGameTinman)(clanId, gameRun) : null;
-            if (gameTable && (gameTable.reads > 0 || !pasted.summons.length))
-                game = gameTable;
-        }
-        else if (olympus && !pasted.summons.length) {
-            game = (0, olympus_game_js_1.buildGameOlympus)(clanId, date, rollover);
-        }
-        const standings = game
-            ? { date, summons: [], players: game.players, review: [] }
-            : pasted;
-        const { players: _gamePlayers, ...gameMeta } = game ?? { players: null };
         res.json({
             ...standings,
-            game: game ? gameMeta : null,
             players: standings.players.map((p) => ({
                 ...p,
                 guardsLevel: p.memberId ? guards?.get(p.memberId)?.level ?? null : null,
@@ -203,7 +158,7 @@ function createTinmanRouter(eventKey = 'ancients') {
                     : (0, game_day_js_1.isTinmanDay)(date),
             // Which schedule isTinmanDay was judged by, so the card words its warning.
             seasonalKingdom: skDays !== null,
-            dates: runDates(),
+            dates,
             maxSummons: maxRounds,
         });
     });
@@ -247,66 +202,6 @@ function createTinmanRouter(eventKey = 'ancients') {
                 lastScanAt,
             });
         });
-    /** Paste one summon's cumulative ranking. Re-sending a summon replaces it. */
-    router.put('/:date/summons/:summon', auth_js_1.requireAdmin, async (req, res) => {
-        const clanId = req.clanId;
-        const date = validDate(req.params.date, today());
-        const summon = parseSummon(req.params.summon, maxRounds);
-        if (!date || !summon) {
-            res.status(400).json({ error: `Need a game day and a ${round} from 1 to ${maxRounds}.` });
-            return;
-        }
-        const text = typeof req.body?.text === 'string' ? req.body.text : '';
-        if (!text.trim() || text.length > MAX_TEXT_LENGTH) {
-            res.status(400).json({ error: 'Paste the ranking text first.' });
-            return;
-        }
-        const parsed = (0, tinman_parse_js_1.parseTinmanStandings)(text);
-        if (parsed.rows.length === 0) {
-            res.status(400).json({
-                error: 'No ranking rows found. Expected lines like "| 1 | Name | 63,965,364 |", "1,Name,\\"63,965,364\\"" or "1 Name 63,965,364".',
-                skipped: parsed.skipped.slice(0, 5),
-            });
-            return;
-        }
-        const result = tinmanRepo.saveTinmanSummon({
-            clanId, date, summon, rows: parsed.rows, uploadedBy: req.user.username, eventKey,
-        });
-        (0, user_repo_js_1.logAction)(req.user.id, action('upload'), { clanId, date, summon, ...result });
-        const t = today();
-        const ageDays = (0, game_day_js_1.daysBetweenGameDates)(date, t);
-        const skDays = ancients ? await seasonalTinmanDays(clanId) : null;
-        // An SK run is "more than a cycle old" once a later Tinman day has fully
-        // passed — the 6-day count below is the normal kingdom's cadence.
-        const stale = skDays
-            ? skDays.some((d) => d > date && d < t)
-            : ageDays !== null && ageDays > game_day_js_1.ANCIENTS_CYCLE_DAYS;
-        let warning = null;
-        if (skDays) {
-            if (skDays.length && !skDays.includes(date))
-                warning = `${date} isn't a Tinman day on the Seasonal Kingdom calendar.`;
-        }
-        else if (ancients && !(0, game_day_js_1.isTinmanDay)(date)) {
-            warning = `${date} isn't a Tinman day on the usual 6-day cadence.`;
-        }
-        res.json({
-            ok: true,
-            result: { ...result, skipped: parsed.skipped.length, skippedSample: parsed.skipped.slice(0, 5), missingRanks: (0, tinman_parse_js_1.missingRanks)(parsed.rows) },
-            warning,
-            staleWarning: ancients && stale ? 'This run is more than a cycle old.' : null,
-        });
-    });
-    router.delete('/:date/summons/:summon', auth_js_1.requireAdmin, (req, res) => {
-        const clanId = req.clanId;
-        const date = validDate(req.params.date, today());
-        const summon = parseSummon(req.params.summon, maxRounds);
-        if (!date || !summon || !tinmanRepo.deleteTinmanSummon(clanId, date, summon, eventKey)) {
-            res.status(404).json({ error: `No upload for that ${round}.` });
-            return;
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, action('delete'), { clanId, date, summon });
-        res.json({ ok: true });
-    });
     /**
      * The run's per-tier targets, pasted from the Ancient planner's "Points per
      * member" table or typed as "G7 1.3M" lines. Re-sending replaces them.
@@ -348,29 +243,6 @@ function createTinmanRouter(eventKey = 'ancients') {
             (0, user_repo_js_1.logAction)(req.user.id, 'tinman_targets_delete', { clanId, date });
             res.json({ ok: true });
         });
-    /** Settle who a pasted name is, for the whole run: { rawName, memberId | null }. */
-    router.put('/:date/assign', auth_js_1.requireAdmin, (req, res) => {
-        const clanId = req.clanId;
-        const date = validDate(req.params.date, today());
-        const rawName = typeof req.body?.rawName === 'string' ? req.body.rawName : '';
-        const memberIdRaw = req.body?.memberId;
-        const memberId = memberIdRaw === null ? null : Number(memberIdRaw);
-        if (!date || !rawName.trim() || (memberId !== null && !Number.isInteger(memberId))) {
-            res.status(400).json({ error: 'Need a run date, the pasted name, and a member id (or null).' });
-            return;
-        }
-        const changed = tinmanRepo.assignTinmanName(clanId, date, rawName, memberId, eventKey);
-        if (changed === -1) {
-            res.status(404).json({ error: 'Member not found' });
-            return;
-        }
-        if (changed === 0) {
-            res.status(404).json({ error: 'That name is not in this run.' });
-            return;
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, action('assign'), { clanId, date, rawName, memberId });
-        res.json({ ok: true, changed });
-    });
     return router;
 }
 //# sourceMappingURL=tinman.js.map

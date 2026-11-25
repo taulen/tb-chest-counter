@@ -587,7 +587,7 @@ function eventRunLabel(run) {
 }
 
 /**
- * A run's points for its Points cell. Pasted event scores run to hundreds of
+ * A run's points for its Points cell. Event scores run to hundreds of
  * millions (Ragnarok), which a 110px column can't hold in full: those read
  * compact, with the exact figure in the cell's title.
  */
@@ -595,16 +595,16 @@ function eventRunPointsText(run) {
   return run.source === 'scores' && run.points >= 1_000_000 ? formatCompact(run.points) : run.points.toLocaleString();
 }
 
-/** The Points cell's tooltip for a run ranked by the pasted event ranking. */
+/** The Points cell's tooltip for a run ranked by the event's own ranking. */
 function eventRunScoreTitle(run) {
-  return t('From the pasted event ranking · {points} chest points', { points: run.chestPoints.toLocaleString() });
+  return t('From the event\'s own ranking · {points} chest points', { points: run.chestPoints.toLocaleString() });
 }
 
 /**
  * The member's points over the event's recent runs, oldest on the left, scaled
  * to their own best. A run they had no chest in is a gap, not a zero bar — same
- * rule as the Events page's run-over-run chart. Runs ranked by the pasted event
- * ranking (member-events.ts) are scaled to their best pasted score, the others
+ * rule as the Events page's run-over-run chart. Runs ranked by the event's own
+ * ranking (member-events.ts) are scaled to their best score, the others
  * to their best chest points: the two units never share a scale.
  */
 function eventRunsSparkHtml(event) {

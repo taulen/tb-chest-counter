@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { addMergeRule, loadPlayerNameCanonicaliser } from '../../../src/data/repositories/merge-repo.js';
 import { getAllMembers, upsertMember } from '../../../src/data/repositories/member-repo.js';
-import { exactMatchMember, fuzzyMatchMember } from '../../../src/utils/fuzzy.js';
+import { exactMatchMember } from '../../../src/utils/fuzzy.js';
 import { getDb } from '../../../src/data/database.js';
 import { makeTestDb, seedChestData } from '../../helpers/test-db.js';
 
@@ -441,7 +441,6 @@ describe('merge-repo: a player merge rule sticks on every read path', () => {
 
     const members = getAllMembers(true, clanId);
     expect(exactMatchMember('Ma Chaosraven', members)?.name).toBe('Mikam Chaosraven');
-    expect(fuzzyMatchMember('Ma Chaosraven', members)?.name).toBe('Mikam Chaosraven');
   });
 
   it('lets the resource paths resolve it, rather than inserting a second row', () => {
