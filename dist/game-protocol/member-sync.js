@@ -12,10 +12,12 @@ exports.makeMemberResolver = makeMemberResolver;
  *   1. already linked → that member;
  *   2. else link an unlinked member whose name matches exactly (accent- and
  *      space-insensitive, aliases included — exactMatchMember);
- *   3. else link an unlinked ACTIVE member that fuzzy-matches (a stored OCR misread) AND
- *      whose latest might is within ±15 % of the game's — the might check is
- *      what makes a fuzzy link safe enough to do automatically;
- *   4. else create the member under its exact game name and link it.
+ *   3. else create the member under its exact game name and link it.
+ * There is no fuzzy step any more (removed Nov 25 2026). It was the bridge for
+ * OCR misreads stored before the protocol scan, linked when the might agreed
+ * within ±15 %; by then every active member of every live clan was linked, so
+ * it could no longer find a candidate. A near-miss name an admin knows is the
+ * same player is a player merge rule.
  * Then: the member takes the game's exact name (old name kept as an alias,
  * rename audited), is marked seen, gets the day's might/hero snapshot, and
  * members linked to players no longer in the clan record are marked as left.
@@ -48,19 +50,12 @@ function manuallyNamedMembers() {
     return out;
 }
 const log = (0, logger_js_1.childLogger)('member-sync');
-const MIGHT_TOLERANCE = 0.15;
 /** The scan's placeholder for unreadable senders; never a clan member to retire. */
 const UNKNOWN_MEMBER_NAME = '[Unknown]';
 /** Never treat a member list this short as the whole clan (a bad read must not retire everyone). */
 const MIN_ROSTER_FOR_DEPARTURES = 5;
 function linkedMembers(clanId) {
     return new Map((0, database_js_1.getDb)().prepare('SELECT game_player_id, id FROM members WHERE clan_id = ? AND game_player_id IS NOT NULL').all(clanId).map((r) => [r.game_player_id, r.id]));
-}
-function latestMight(clanId) {
-    return new Map((0, database_js_1.getDb)().prepare(`SELECT s.member_id, s.power FROM member_snapshots s
-        JOIN (SELECT member_id, MAX(captured_at) AS at FROM member_snapshots WHERE clan_id = ? GROUP BY member_id) l
-          ON l.member_id = s.member_id AND l.at = s.captured_at
-       WHERE s.clan_id = ? AND s.power > 0`).all(clanId, clanId).map((r) => [r.member_id, r.power]));
 }
 function link(clanId, memberId, playerId) {
     try {
@@ -78,7 +73,6 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
     const linkedIds = new Set(linked.values());
     const all = [...(0, member_repo_js_1.getAllMembers)(true, clanId), ...(0, member_repo_js_1.getAllMembers)(false, clanId).filter((m) => !m.isActive)];
     const unlinked = () => all.filter((m) => !linkedIds.has(m.id));
-    const might = latestMight(clanId);
     const result = { linked: 0, newlyLinked: 0, created: 0, renamed: 0, departed: 0, mergedByRule: 0, memberIds: new Map() };
     /** Players whose member is linked to them — the only ones that may rename, re-role or snapshot it. */
     const owned = new Set();
@@ -93,14 +87,7 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
         let memberId = linked.get(rm.playerId);
         if (memberId === undefined) {
             const name = canonical(p.name);
-            const candidates = unlinked();
-            let match = (0, fuzzy_js_1.exactMatchMember)(name, candidates);
-            if (!match) {
-                const fuzzy = (0, fuzzy_js_1.fuzzyMatchMember)(name, candidates.filter((m) => m.isActive));
-                const known = fuzzy ? might.get(fuzzy.id) : undefined;
-                if (fuzzy && known && p.might && Math.abs(known - p.might) / p.might <= MIGHT_TOLERANCE)
-                    match = fuzzy;
-            }
+            const match = (0, fuzzy_js_1.exactMatchMember)(name, unlinked());
             if (!match && name !== p.name) {
                 // The rule points at a member another player already owns: an alt the
                 // admin merged into a main. Count the alt as seen there, but never link,

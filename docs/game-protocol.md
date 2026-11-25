@@ -385,9 +385,10 @@ Each capture also, every cycle:
 
 - **syncs members** ([`member-sync.ts`](../src/game-protocol/member-sync.ts)):
   `members.game_player_id` links a member to the game's permanent player id.
-  First link: exact name (after the clan's player merge rules), else a fuzzy
-  name whose last might is within ±15 %, else a new member under the exact game
-  name. Linked members take the game's spelling (old name kept as an alias,
+  First link: exact name (after the clan's player merge rules), else a new
+  member under the exact game name (the fuzzy-name-plus-might step for OCR
+  misreads was removed Nov 25 2026 — every live clan's members were linked by
+  then). Linked members take the game's spelling (old name kept as an alias,
   `rename_member` audited with `source: 'game'`) — unless an admin chose the
   name: a player merge rule naming the game name wins (its target is shown —
   Cyrillic game names merged into readable ones stay readable), then a name

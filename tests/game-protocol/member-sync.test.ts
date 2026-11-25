@@ -2,9 +2,9 @@
  * Member sync from the game's own roster (game-protocol/member-sync.ts).
  *
  * The game's player id is permanent, so once a member is linked to it every
- * later cycle is exact. The risky step is the FIRST link of an existing
- * OCR-built member: an exact name links outright, a fuzzy one only when the
- * might agrees — a wrong link would rename someone else's history.
+ * later cycle is exact. The FIRST link of an existing member is by exact name
+ * only — a wrong link would rename someone else's history, so a near-miss
+ * spelling is a new member, never a guess.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
@@ -47,19 +47,9 @@ describe('syncMembersFromGame', () => {
     expect(snap).toEqual({ power: 12_500_000, level: 140 });
   });
 
-  it('links a fuzzy OCR name only when the might agrees, then takes the game’s spelling', () => {
+  it('never links a near-miss spelling, even with the same might — it is a new member', () => {
     const ocr = upsertMember('Kordobrek1', 1).id;
     saveSnapshots(1, '2026-11-15', '2026-11-15T20:00:00.000Z', [{ memberId: ocr, might: 20_000_000, level: 150 }]);
-    const p = player(202, 'Kordobrekl', 20_400_000);
-    const r = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
-    expect(r).toMatchObject({ newlyLinked: 1, created: 0, renamed: 1 });
-    expect(row(ocr).name).toBe('Kordobrekl');
-    expect(JSON.parse(row(ocr).aliases)).toContain('Kordobrek1');
-  });
-
-  it('creates a new member instead when a fuzzy match has a different might', () => {
-    const ocr = upsertMember('Kordobrek1', 1).id;
-    saveSnapshots(1, '2026-11-15', '2026-11-15T20:00:00.000Z', [{ memberId: ocr, might: 5_000_000, level: 90 }]);
     const p = player(202, 'Kordobrekl', 20_400_000);
     const r = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
     expect(r).toMatchObject({ newlyLinked: 0, created: 1, renamed: 0 });

@@ -7,10 +7,12 @@
  *   1. already linked → that member;
  *   2. else link an unlinked member whose name matches exactly (accent- and
  *      space-insensitive, aliases included — exactMatchMember);
- *   3. else link an unlinked ACTIVE member that fuzzy-matches (a stored OCR misread) AND
- *      whose latest might is within ±15 % of the game's — the might check is
- *      what makes a fuzzy link safe enough to do automatically;
- *   4. else create the member under its exact game name and link it.
+ *   3. else create the member under its exact game name and link it.
+ * There is no fuzzy step any more (removed Nov 25 2026). It was the bridge for
+ * OCR misreads stored before the protocol scan, linked when the might agreed
+ * within ±15 %; by then every active member of every live clan was linked, so
+ * it could no longer find a candidate. A near-miss name an admin knows is the
+ * same player is a player merge rule.
  * Then: the member takes the game's exact name (old name kept as an alias,
  * rename audited), is marked seen, gets the day's might/hero snapshot, and
  * members linked to players no longer in the clan record are marked as left.
@@ -28,7 +30,7 @@ import { loadPlayerNameCanonicaliser } from '../data/repositories/merge-repo.js'
 import { saveSnapshots } from '../data/repositories/might-repo.js';
 import { logSystemAction } from '../data/repositories/user-repo.js';
 import { syncLinkedAccounts } from '../data/repositories/account-invite-repo.js';
-import { exactMatchMember, fuzzyMatchMember } from '../utils/fuzzy.js';
+import { exactMatchMember } from '../utils/fuzzy.js';
 import { childLogger } from '../utils/logger.js';
 import type { ClanMember } from '../models/types.js';
 import type { ClanMember as GameClanMember, PlayerRecord } from './messages.js';
@@ -53,7 +55,6 @@ export function manuallyNamedMembers(): Map<number, string> {
 
 const log = childLogger('member-sync');
 
-const MIGHT_TOLERANCE = 0.15;
 /** The scan's placeholder for unreadable senders; never a clan member to retire. */
 const UNKNOWN_MEMBER_NAME = '[Unknown]';
 /** Never treat a member list this short as the whole clan (a bad read must not retire everyone). */
@@ -75,17 +76,6 @@ function linkedMembers(clanId: number): Map<number, number> {
   return new Map(
     (getDb().prepare('SELECT game_player_id, id FROM members WHERE clan_id = ? AND game_player_id IS NOT NULL').all(clanId) as
       Array<{ game_player_id: number; id: number }>).map((r) => [r.game_player_id, r.id]),
-  );
-}
-
-function latestMight(clanId: number): Map<number, number> {
-  return new Map(
-    (getDb().prepare(
-      `SELECT s.member_id, s.power FROM member_snapshots s
-        JOIN (SELECT member_id, MAX(captured_at) AS at FROM member_snapshots WHERE clan_id = ? GROUP BY member_id) l
-          ON l.member_id = s.member_id AND l.at = s.captured_at
-       WHERE s.clan_id = ? AND s.power > 0`,
-    ).all(clanId, clanId) as Array<{ member_id: number; power: number }>).map((r) => [r.member_id, r.power]),
   );
 }
 
@@ -111,7 +101,6 @@ export function syncMembersFromGame(
   const linkedIds = new Set(linked.values());
   const all = [...getAllMembers(true, clanId), ...getAllMembers(false, clanId).filter((m) => !m.isActive)];
   const unlinked = (): ClanMember[] => all.filter((m) => !linkedIds.has(m.id));
-  const might = latestMight(clanId);
   const result: MemberSyncResult = { linked: 0, newlyLinked: 0, created: 0, renamed: 0, departed: 0, mergedByRule: 0, memberIds: new Map() };
   /** Players whose member is linked to them — the only ones that may rename, re-role or snapshot it. */
   const owned = new Set<number>();
@@ -127,13 +116,7 @@ export function syncMembersFromGame(
     let memberId = linked.get(rm.playerId);
     if (memberId === undefined) {
       const name = canonical(p.name);
-      const candidates = unlinked();
-      let match = exactMatchMember(name, candidates);
-      if (!match) {
-        const fuzzy = fuzzyMatchMember(name, candidates.filter((m) => m.isActive));
-        const known = fuzzy ? might.get(fuzzy.id) : undefined;
-        if (fuzzy && known && p.might && Math.abs(known - p.might) / p.might <= MIGHT_TOLERANCE) match = fuzzy;
-      }
+      const match = exactMatchMember(name, unlinked());
       if (!match && name !== p.name) {
         // The rule points at a member another player already owns: an alt the
         // admin merged into a main. Count the alt as seen there, but never link,
