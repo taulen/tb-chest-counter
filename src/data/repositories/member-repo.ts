@@ -1,40 +1,9 @@
 import { getDb } from '../database.js';
 import { invalidate } from '../../utils/ttl-cache.js';
-import { despace } from '../../utils/name-normalize.js';
 import type { ClanMember } from '../../models/types.js';
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-/**
- * Find a member by the despaced key when `normalized_name` didn't match.
- *
- * `normalized_name` keeps single spaces, so it treats every OCR spacing variant of
- * one player as a different person: a member written letter-by-letter in game
- * ("J I Z Z I C A") gained a fresh row for "JIZZICA", another for "JI ZZICA", and
- * another for "JIZZI C A", each one a separate leaderboard entry the admin had to
- * merge by hand. `despaced_name` (v66) is the same name with spacing and punctuation
- * removed, so all of those resolve to the row that already exists.
- *
- * Ordered rather than `LIMIT 1` on whatever SQLite hands back, because on a database
- * that already accumulated variants there is more than one candidate until the admin
- * merges them: prefer an active row over a soft-removed one, then the oldest id — the
- * original the duplicates split off from.
- *
- * Runs only as a fallback. An exact `normalized_name` hit still wins, so nothing that
- * matched before can change target.
- */
-function findByDespacedKey(
-  db: ReturnType<typeof getDb>,
-  clanId: number,
-  key: string,
-): Record<string, unknown> | undefined {
-  if (!key) return undefined;
-  return db.prepare(
-    `SELECT * FROM members WHERE clan_id = ? AND despaced_name = ?
-     ORDER BY is_active DESC, id ASC LIMIT 1`,
-  ).get(clanId, key) as Record<string, unknown> | undefined;
 }
 
 /**
@@ -64,13 +33,14 @@ function rowToMember(row: Record<string, unknown>): ClanMember {
 export function upsertMember(name: string, clanId: number): ClanMember {
   const db = getDb();
   const normalized = normalizeName(name);
-  const despaced = despace(name);
   const now = new Date().toISOString();
 
-  const existing = (db.prepare(
+  // Exact name (case-folded) or an alias. No spacing-insensitive fallback any
+  // more (Nov 25 2026): it existed for OCR spacing variants, and with exact game
+  // names it could only hand a new player "Raven" an existing "Ra ven"'s row.
+  const existing = db.prepare(
     'SELECT * FROM members WHERE clan_id = ? AND normalized_name = ?',
-  ).get(clanId, normalized) as Record<string, unknown> | undefined)
-    ?? findByDespacedKey(db, clanId, despaced);
+  ).get(clanId, normalized) as Record<string, unknown> | undefined;
 
   if (existing) {
     // Seeing this name again auto-reactivates a previously removed
@@ -96,9 +66,9 @@ export function upsertMember(name: string, clanId: number): ClanMember {
   }
 
   const result = db.prepare(
-    `INSERT INTO members (clan_id, name, normalized_name, despaced_name, aliases, first_seen, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(clanId, name.trim(), normalized, despaced, '[]', now, now);
+    `INSERT INTO members (clan_id, name, normalized_name, aliases, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(clanId, name.trim(), normalized, '[]', now, now);
 
   return {
     id: result.lastInsertRowid as number,
@@ -166,10 +136,9 @@ export function findMemberByName(name: string, clanId: number): ClanMember | nul
   const db = getDb();
   const normalized = normalizeName(name);
 
-  const row = (db.prepare(
+  const row = db.prepare(
     'SELECT * FROM members WHERE clan_id = ? AND normalized_name = ?',
-  ).get(clanId, normalized) as Record<string, unknown> | undefined)
-    ?? findByDespacedKey(db, clanId, despace(name));
+  ).get(clanId, normalized) as Record<string, unknown> | undefined;
 
   return row ? rowToMember(row) : null;
 }
@@ -224,13 +193,9 @@ export function addAlias(memberId: number, alias: string, clanId: number): void 
 export function renameMember(id: number, newName: string, clanId: number): void {
   const db = getDb();
   const normalized = normalizeName(newName);
-  // despaced_name moves with the rename, or the row keeps answering to its old
-  // key and the very next scan that reads the corrected spelling walks straight
-  // past it. That would make the one manual fix an admin is asked to do — set the
-  // spelling right once — the one thing that doesn't stick.
   db.prepare(
-    'UPDATE members SET name = ?, normalized_name = ?, despaced_name = ? WHERE id = ? AND clan_id = ?',
-  ).run(newName.trim(), normalized, despace(newName), id, clanId);
+    'UPDATE members SET name = ?, normalized_name = ? WHERE id = ? AND clan_id = ?',
+  ).run(newName.trim(), normalized, id, clanId);
   // Post-D4 there is no player_name column on chest_records — every
   // read resolves the display name via JOIN to members, so a rename
   // here propagates to every record that points at this member_id

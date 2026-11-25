@@ -2779,6 +2779,19 @@ const MIGRATIONS: Migration[] = [
       database.exec('DROP TABLE IF EXISTS merge_rules');
     },
   },
+  {
+    // members.despaced_name (v66) and its index: a member's name with spacing
+    // and punctuation stripped, so OCR's spacing variants of one player ("J I Z
+    // Z I C A" / "JIZZICA") found the same row. Names come from the game exactly
+    // now (Nov 25 2026), and the fold could only hand a new player "Raven" an
+    // existing "Ra ven"'s row. Guarded: runMigrations may replay this.
+    version: 138,
+    run: (database): void => {
+      database.exec('DROP INDEX IF EXISTS idx_members_despaced');
+      const cols = database.prepare('PRAGMA table_info(members)').all() as Array<{ name: string }>;
+      if (cols.some((c) => c.name === 'despaced_name')) database.exec('ALTER TABLE members DROP COLUMN despaced_name');
+    },
+  },
 ];
 
 /**

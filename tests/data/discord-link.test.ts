@@ -22,9 +22,9 @@ afterEach(() => cleanup());
 function member(name: string, clanId = 1): number {
   const now = new Date().toISOString();
   return (getDb().prepare(
-    `INSERT INTO members (clan_id, name, normalized_name, despaced_name, aliases, first_seen, last_seen, is_active)
-     VALUES (?, ?, ?, ?, '[]', ?, ?, 1) RETURNING id`,
-  ).get(clanId, name, name.toLowerCase(), name.toLowerCase(), now, now) as { id: number }).id;
+    `INSERT INTO members (clan_id, name, normalized_name, aliases, first_seen, last_seen, is_active)
+     VALUES (?, ?, ?, '[]', ?, ?, 1) RETURNING id`,
+  ).get(clanId, name, name.toLowerCase(), now, now) as { id: number }).id;
 }
 
 describe('discord member links', () => {

@@ -211,11 +211,6 @@
   },
   {
     "type": "index",
-    "name": "idx_members_despaced",
-    "sql": "CREATE INDEX idx_members_despaced ON members(clan_id, despaced_name)"
-  },
-  {
-    "type": "index",
     "name": "idx_members_game_player",
     "sql": "CREATE UNIQUE INDEX idx_members_game_player ON members (clan_id, game_player_id) WHERE game_player_id IS NOT NULL"
   },
@@ -817,7 +812,7 @@
   {
     "type": "table",
     "name": "members",
-    "sql": "CREATE TABLE members ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id) DEFAULT 1, name TEXT NOT NULL, normalized_name TEXT NOT NULL, aliases TEXT DEFAULT '[]', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, is_active INTEGER DEFAULT 1, level INTEGER DEFAULT 0, power INTEGER DEFAULT 0, clan_role TEXT DEFAULT '', despaced_name TEXT NOT NULL DEFAULT '', left_at TEXT, game_player_id INTEGER, UNIQUE(clan_id, normalized_name) )"
+    "sql": "CREATE TABLE members ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id) DEFAULT 1, name TEXT NOT NULL, normalized_name TEXT NOT NULL, aliases TEXT DEFAULT '[]', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, is_active INTEGER DEFAULT 1, level INTEGER DEFAULT 0, power INTEGER DEFAULT 0, clan_role TEXT DEFAULT '', left_at TEXT, game_player_id INTEGER, UNIQUE(clan_id, normalized_name) )"
   },
   {
     "type": "table",

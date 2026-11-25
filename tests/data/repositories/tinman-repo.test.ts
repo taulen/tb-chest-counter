@@ -15,9 +15,9 @@ const DATE = '2026-10-23';
 function addMember(clanId: number, name: string): number {
   const now = new Date().toISOString();
   return (getDb().prepare(
-    `INSERT INTO members (clan_id, name, normalized_name, despaced_name, first_seen, last_seen, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
-  ).get(clanId, name, name.toLowerCase(), name.toLowerCase().replace(/\s+/g, ''), now, now) as { id: number }).id;
+    `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active)
+     VALUES (?, ?, ?, ?, ?, 1) RETURNING id`,
+  ).get(clanId, name, name.toLowerCase(), now, now) as { id: number }).id;
 }
 
 const paste = (summon: number, rows: Array<[string, number]>, eventKey?: tinman.ScoreEventKey) =>

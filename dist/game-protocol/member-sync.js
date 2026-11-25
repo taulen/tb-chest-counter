@@ -92,7 +92,7 @@ function syncMembersFromGame(clanId, roster, players, gameDate, now = new Date()
                 const created = (0, member_repo_js_1.upsertMember)(name, clanId);
                 if (!linkedIds.has(created.id) && link(clanId, created.id, rm.playerId)) {
                     memberId = created.id;
-                    // upsertMember also finds members by alias and despaced name (and
+                    // upsertMember also finds members by alias (and
                     // reactivates them) — only a row that did not exist is "created".
                     if (all.some((m) => m.id === created.id)) {
                         result.newlyLinked++;
@@ -227,7 +227,7 @@ function makeMemberResolver(clanId, rosterMembers) {
                 const found = (0, member_repo_js_1.upsertMember)(target, clanId);
                 const before = prior.get(found.id);
                 if (before) {
-                    // upsertMember found an existing member (alias / despaced name) and
+                    // upsertMember found an existing member (by name or alias) and
                     // stamped it seen + active; a player outside the clan must not.
                     db.prepare('UPDATE members SET is_active = ?, left_at = ?, last_seen = ? WHERE id = ?')
                         .run(before.is_active, before.left_at, before.last_seen, found.id);

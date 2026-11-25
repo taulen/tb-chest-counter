@@ -86,8 +86,8 @@ describe('event scores: which source a run comes from', () => {
     seedTwoDayRagnarok();
     const now = new Date().toISOString();
     getDb().prepare(
-      `INSERT INTO members (clan_id, name, normalized_name, despaced_name, first_seen, last_seen, is_active)
-       VALUES (?, 'Ace', 'ace', 'ace', ?, ?, 1)`,
+      `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active)
+       VALUES (?, 'Ace', 'ace', ?, ?, 1)`,
     ).run(CLAN, now, now);
     insertPastedRound({ clanId: CLAN, date: '2026-10-28', summon: 1, eventKey: 'ragnarok', rows: [['Ace', 120], ['Nobody', 3]] });
     insertPastedRound({ clanId: CLAN, date: '2026-10-28', summon: 2, eventKey: 'ragnarok', rows: [['Ace', 200], ['Nobody', 3]] });

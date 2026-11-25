@@ -3,9 +3,9 @@ import { exactMatchMember } from '../../src/utils/fuzzy.js';
 import type { ClanMember } from '../../src/models/types.js';
 
 /**
- * exactMatchMember: a name or alias, case- and accent-folded, else the despaced
- * key. The edit-distance matcher that sat beside it (built for OCR misreads) is
- * gone — names come from the game exactly.
+ * exactMatchMember: a name or alias, case- and accent-folded, nothing looser.
+ * The edit-distance matcher and the spacing-insensitive pass (built for OCR
+ * misreads) are gone — names come from the game exactly.
  */
 /**
  * Build a member the way the database actually stores one.
@@ -43,9 +43,10 @@ describe('exactMatchMember', () => {
     expect(exactMatchMember('FELI 2', [mk('FELI', 1)])).toBeNull();
   });
 
-  it('does not let a despaced hit outrank an exactly-spelled member', () => {
-    const roster = [mk('ABCD', 1), mk('A B C D', 2)];
-    expect(exactMatchMember('A B C D', roster)?.id).toBe(2);
-    expect(exactMatchMember('ABCD', roster)?.id).toBe(1);
+  it('never matches across spacing: "Ra ven" and "Raven" are two players', () => {
+    expect(exactMatchMember('Raven', [mk('Ra ven', 1)])).toBeNull();
+    const roster = [mk('Raven', 1), mk('Ra ven', 2)];
+    expect(exactMatchMember('Ra ven', roster)?.id).toBe(2);
+    expect(exactMatchMember('raven', roster)?.id).toBe(1);
   });
 });

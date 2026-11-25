@@ -35,9 +35,9 @@ const isActive = (id: number): number =>
 function seedMember(name: string, aliases: string[] = []): number {
   const now = new Date().toISOString();
   const id = (getDb().prepare(
-    `INSERT INTO members (clan_id, name, normalized_name, despaced_name, aliases, first_seen, last_seen, is_active)
-     VALUES (1, ?, ?, ?, ?, ?, ?, 1) RETURNING id`,
-  ).get(name, name.toLowerCase(), name.toLowerCase().replace(/\s/g, ''), JSON.stringify(aliases), now, now) as { id: number }).id;
+    `INSERT INTO members (clan_id, name, normalized_name, aliases, first_seen, last_seen, is_active)
+     VALUES (1, ?, ?, ?, ?, ?, 1) RETURNING id`,
+  ).get(name, name.toLowerCase(), JSON.stringify(aliases), now, now) as { id: number }).id;
   return id;
 }
 

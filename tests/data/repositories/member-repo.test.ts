@@ -187,72 +187,16 @@ describe('member-repo: multi-clan scoping', () => {
     });
   });
 
-  // ── the despaced key (v66) ──────────────────────────────────────────────────
-  //
-  // normalized_name keeps single spaces, so it read every OCR spacing variant of one
-  // player as a separate person: "J I Z Z I C A" grew a row for "JIZZICA", another
-  // for "JI ZZICA", another for "JIZZI C A". Each was its own leaderboard entry and
-  // its own hand-written merge rule.
-
-  describe('spacing variants resolve to one member', () => {
-    it('does not create a second row for a differently-spaced reading', () => {
-      const original = upsertMember('J I Z Z I C A', clanA);
-      for (const read of ['JIZZICA', 'JI ZZICA', 'JIZZI C A', 'JI ZZI C A']) {
-        expect(upsertMember(read, clanA).id).toBe(original.id);
-      }
-      expect(getAllMembers(false, clanA).filter((m) => m.name.includes('Z'))).toHaveLength(1);
-      // And the roster keeps the spacing it was given — the key is a lookup key only.
-      expect(getMemberById(original.id, clanA)!.name).toBe('J I Z Z I C A');
-    });
-
-    it('resolves the same way whichever spelling was seen first', () => {
-      const original = upsertMember('JIZZICA', clanB);
-      expect(upsertMember('J I Z Z I C A', clanB).id).toBe(original.id);
-      expect(findMemberByName('JI ZZI C A', clanB)!.id).toBe(original.id);
-    });
-
-    it('stays scoped to its clan', () => {
-      const a = upsertMember('J I Z Z I C A', clanA);
-      const b = upsertMember('JIZZICA', clanB);
+  describe('names match exactly (case-folded), never by spacing', () => {
+    it('keeps differently-spaced names as different members', () => {
+      // The spacing-insensitive key (members.despaced_name, v66) was for OCR's
+      // spacing variants; it went Nov 25 2026 (v138). Game names are exact, and
+      // "Ra ven" and "Raven" are two players.
+      const a = upsertMember('Ra ven', clanA);
+      const b = upsertMember('Raven', clanA);
       expect(b.id).not.toBe(a.id);
-      expect(findMemberByName('JIZZICA', clanA)!.id).toBe(a.id);
-      expect(findMemberByName('J I Z Z I C A', clanB)!.id).toBe(b.id);
-    });
-
-    it('carries the key through a rename, so fixing the spelling once sticks', () => {
-      // The whole promise of the feature: an admin corrects the name once and the
-      // next scan that reads it correctly lands on the same row. Leave despaced_name
-      // behind on the rename and the row keeps answering to the misread key instead,
-      // so the very next scan mints the duplicate that was just cleaned up.
-      const m = upsertMember('J1ZZICA', clanA);
-      renameMember(m.id, 'J I Z Z I C A', clanA);
-      expect(upsertMember('JIZZICA', clanA).id).toBe(m.id);
-      expect(upsertMember('J I Z Z I C A', clanA).id).toBe(m.id);
-      expect(getAllMembers(false, clanA)).toHaveLength(1);
-    });
-
-    it('leaves genuinely different names apart', () => {
-      const a = upsertMember('J I Z Z I C A', clanA);
-      const b = upsertMember('JIMMICA', clanA);
-      expect(b.id).not.toBe(a.id);
-    });
-
-    it('prefers an exact normalized_name hit over a despaced one', () => {
-      // The despaced lookup is a fallback. Anything that matched before must still
-      // reach the same row, or this silently redirects existing traffic.
-      const spaced = upsertMember('A B C D', clanA);
-      const joined = upsertMember('ABCD', clanA);
-      expect(joined.id).toBe(spaced.id);
-
-      // With both rows already present (the pre-v66 state an admin has yet to merge),
-      // an exact spelling still wins over the despaced fallback.
-      const db = getDb();
-      db.prepare(
-        `INSERT INTO members (clan_id, name, normalized_name, despaced_name, aliases, first_seen, last_seen)
-         VALUES (?, 'ABCD', 'abcd', 'abcd', '[]', '2026-01-01', '2026-01-01')`,
-      ).run(clanA);
-      expect(findMemberByName('ABCD', clanA)!.name).toBe('ABCD');
-      expect(findMemberByName('A B C D', clanA)!.name).toBe('A B C D');
+      expect(findMemberByName('Raven', clanA)!.id).toBe(b.id);
+      expect(upsertMember('raven', clanA).id).toBe(b.id); // case still folds
     });
   });
 });

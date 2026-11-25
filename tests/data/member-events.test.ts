@@ -31,9 +31,9 @@ let cleanup: () => void;
 function member(name: string): number {
   const now = new Date().toISOString();
   return (getDb().prepare(
-    `INSERT INTO members (clan_id, name, normalized_name, despaced_name, first_seen, last_seen, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
-  ).get(CLAN, name, name.toLowerCase(), name.toLowerCase(), now, now) as { id: number }).id;
+    `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active)
+     VALUES (?, ?, ?, ?, ?, 1) RETURNING id`,
+  ).get(CLAN, name, name.toLowerCase(), now, now) as { id: number }).id;
 }
 
 /** An Olympus day as it was pasted before the game was read. */
