@@ -129,7 +129,7 @@ async function runGameProtocolCapture(clanId, opts) {
             const sync = (0, member_sync_js_1.syncMembersFromGame)(clanId, record.members, players, gameDate);
             memberIds = sync.memberIds;
             syncNote = `members linked ${sync.linked} (+${sync.newlyLinked} matched, +${sync.created} new, ` +
-                `${sync.renamed} renamed, ${sync.departed} left${sync.mergedByRule ? `, ${sync.mergedByRule} alts by merge rule` : ''})`;
+                `${sync.renamed} renamed, ${sync.departed} left)`;
         }
         catch (err) {
             log.warn({ noAlert: true }, `Clan #${clanId} member sync failed (capture data kept): ${String(err)}`);

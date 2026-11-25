@@ -153,63 +153,6 @@ function checkConfigIntegrity(database) {
             });
         }
     }
-    // ── Merge rules ──────────────────────────────────────────────────────
-    const rules = database.prepare("SELECT clan_id, type, from_value, to_value FROM merge_rules WHERE type IN ('chest','source')").all();
-    for (const r of rules) {
-        const live = r.type === 'chest'
-            ? chestNames.has(r.to_value)
-            : sources.some((s) => s.source === r.to_value);
-        if (live)
-            continue;
-        add({
-            kind: 'merge-rules/dead-target',
-            severity: 'warning',
-            subject: `clan ${r.clan_id}: "${r.from_value}" → "${r.to_value}"`,
-            detail: `This ${r.type} merge rule rewrites onto a name nothing currently uses, so it would mint a fresh row rather than merge into an existing one.`,
-            fix: 'Check the destination spelling on the Merge Rules admin page, or delete the rule.',
-        });
-    }
-    // ── Player merge rules that have come undone ─────────────────────────
-    //
-    // The sweep above deliberately skipped type='player' — and that omission is
-    // what let the bug this checks for run unseen for days. A player rule's
-    // from_value should not exist as a member: the merge folded that row away when
-    // the rule was written. If it is back, something re-created it, and the rule is
-    // not going to stop it happening again on its own.
-    //
-    // That is a warning rather than an error because the reappearance is not itself
-    // data loss — the rows are split between two members, both recoverable — and
-    // because the whole point is that a duplicate is created by a capture, not by a
-    // misconfiguration, so it can legitimately be true for a few minutes before an
-    // admin acts on it.
-    const playerRules = database.prepare("SELECT clan_id, from_value, to_value FROM merge_rules WHERE type = 'player'").all();
-    const memberName = database.prepare('SELECT id FROM members WHERE clan_id = ? AND name = ? COLLATE NOCASE');
-    for (const r of playerRules) {
-        if (memberName.get(r.clan_id, r.from_value)) {
-            add({
-                kind: 'merge-rules/player-resplit',
-                severity: 'warning',
-                subject: `clan ${r.clan_id}: "${r.from_value}" → "${r.to_value}"`,
-                detail: 'A merged-away spelling is back on the roster as its own member, so this '
-                    + "player's chests, might history and resources are splitting across two rows again.",
-                fix: 'Re-submit the rule on the Merge Rules admin page (or merge the entry from the '
-                    + 'New Members queue) — that re-runs the data merge and deletes the duplicate row. '
-                    + 'It should not come back a third time: every capture path now resolves readings '
-                    + 'through the rules before creating anything.',
-            });
-            continue;
-        }
-        if (!memberName.get(r.clan_id, r.to_value)) {
-            add({
-                kind: 'merge-rules/dead-target',
-                severity: 'warning',
-                subject: `clan ${r.clan_id}: "${r.from_value}" → "${r.to_value}"`,
-                detail: 'This player merge rule rewrites onto a name that is not on the roster, so it '
-                    + 'would create that member rather than merge into an existing one.',
-                fix: 'Check the destination spelling on the Merge Rules admin page, or delete the rule.',
-            });
-        }
-    }
     // ── Duplicate spellings (the tripwire for the whole bug class) ───────
     const bySpelling = new Map();
     for (const s of sources) {
@@ -230,7 +173,7 @@ function checkConfigIntegrity(database) {
             severity: 'warning',
             subject: variants.join('" / "'),
             detail: 'One real source is stored under several spellings, so it splits across two rows in analytics and drill-downs.',
-            fix: 'Merge them on the Merge Rules admin page. Migration v63 cleared the historical ones, so a new pair means one got past getOrCreateChestSourceId.',
+            fix: 'Migration v63 cleared the historical ones, so a new pair means one got past getOrCreateChestSourceId (or the game now spells a source two ways). Fold them with a migration.',
         });
     }
     // The scan resolves a game name to the stored spelling that normalises the

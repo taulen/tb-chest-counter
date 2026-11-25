@@ -821,11 +821,6 @@
   },
   {
     "type": "table",
-    "name": "merge_rules",
-    "sql": "CREATE TABLE merge_rules ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id) DEFAULT 1, type TEXT NOT NULL CHECK(type IN ('player', 'chest', 'source')), from_value TEXT NOT NULL, to_value TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(clan_id, type, from_value) )"
-  },
-  {
-    "type": "table",
     "name": "player_avatars",
     "sql": "CREATE TABLE player_avatars ( player_id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL, mime TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, bytes BLOB NOT NULL, uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL, updated_at TEXT NOT NULL )"
   },

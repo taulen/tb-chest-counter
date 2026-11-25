@@ -1,5 +1,4 @@
 import * as chestRepo from '../data/repositories/chest-repo.js';
-import * as mergeRepo from '../data/repositories/merge-repo.js';
 import * as sourcePointsRepo from '../data/repositories/source-points-repo.js';
 import { getDb } from '../data/database.js';
 import { getSourceKey, getDefaultPointsForKey, isKnownSourceKey } from '../data/source-names.js';
@@ -24,7 +23,6 @@ const CATALOG_SCHEMA_VERSION = 3;
 export function exportCatalog(clanId: number): object {
   const names = chestRepo.getDistinctChestNames(clanId);
   const sources = chestRepo.getDistinctChestSources(clanId);
-  const mergeRules = mergeRepo.getMergeRules(clanId);
   const sourcePointOverrides = sourcePointsRepo.getAllOverrides(clanId);
 
   // Index overrides by sourceKey so we can fold name-specific rows into
@@ -186,18 +184,12 @@ export function exportCatalog(clanId: number): object {
       totalChestNames: chestNames.length,
       totalDistinctSources: sources.length,
       totalSourceKeys: sourceKeys.length,
-      totalMergeRules: mergeRules.length,
       totalSourcePointOverrides: sourcePointOverrides.length,
       totalUnparseableSources: unparseableSources.length,
     },
     chestNames,
     sourceKeys,
     unparseableSources: unparseableSources.sort((a, b) => a.source.localeCompare(b.source)),
-    mergeRules: mergeRules
-      .map((r) => ({ type: r.type, fromValue: r.fromValue, toValue: r.toValue }))
-      .sort((a, b) =>
-        a.type.localeCompare(b.type) || a.fromValue.localeCompare(b.fromValue),
-      ),
     sourcePointOverrides: sourcePointOverrides
       .map((o) => ({ sourceKey: o.sourceKey, chestName: o.chestName, pointValue: o.pointValue }))
       .sort((a, b) =>

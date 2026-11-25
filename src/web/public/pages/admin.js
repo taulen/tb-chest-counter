@@ -3,8 +3,7 @@
 //
 //   review  — only while something needs attention: triumphal chests without a
 //             package value (the OCR-era sections were retired in Nov 2026).
-//   members — member rename + delete, player merge rules.
-//   chests  — chest-name and chest-source merge rules.
+//   members — rename, remove and restore members.
 //   points  — the Chest Points board (points-board.js) and Triumphal Chest Points.
 //
 // Bare #admin lands on Review while it has anything, else on Members. Each tab
@@ -19,7 +18,7 @@
 import { api, apiPost, apiPut, apiDelete, mustOk } from '../lib/api.js';
 import {
   $, esc, formatDate, memberLink, memberHash,
-  notify, confirmDialog, contentModal,
+  notify, confirmDialog,
 } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
@@ -27,23 +26,7 @@ import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
 import { mountPointsBoard } from './points-board.js';
 import { subTabsHtml, asList, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
 
-/**
- * A `<option>` for a merge / reassign dropdown, suffixed with how many chest
- * records sit behind the value.
- *
- * Without the count these lists are flat alphabetical name soup, and nothing
- * distinguishes a real player or chest from an OCR misread of one — which is
- * exactly what the operator is here to find. Three records next to four
- * thousand is the tell. `0 chests` is spelled out rather than omitted so a
- * name carrying no data at all is just as obvious as a name carrying almost
- * none.
- */
-function countedOption(value, count) {
-  const n = Number(count) || 0;
-  return `<option value="${esc(value)}">${esc(value)} (${tn(n, '{n} chest', '{n} chests')})</option>`;
-}
-
-const ADMIN_TABS = ['review', 'members', 'chests', 'points'];
+const ADMIN_TABS = ['review', 'members', 'points'];
 
 /**
  * Everything the Admin nav dot counts, or null when nav-status failed. The
@@ -69,7 +52,6 @@ function adminTabsHtml(active, count) {
   }
   items.push(
     { key: 'members', label: t('Members'), href: '#admin/members' },
-    { key: 'chests', label: t('Chests'), href: '#admin/chests' },
     { key: 'points', label: t('Points'), href: '#admin/points' },
   );
   return subTabsHtml({ label: t('Page sections'), items, current: active });
@@ -104,7 +86,6 @@ export async function renderAdmin(el, requested = '') {
   let body;
   if (tab === 'review') body = await reviewTab();
   else if (tab === 'members') body = await membersTab();
-  else if (tab === 'chests') body = await chestsTab();
   else body = await pointsTab(isSuperadmin);
 
   el.innerHTML = `${adminTabsHtml(tab, attentionCount(await navStatusP))}${body.html}`;
@@ -128,32 +109,21 @@ async function reviewTab() {
   };
 }
 
-/**
- * Members sorted by name and split active / removed, plus memberId → chest
- * count. Merge-player + rename dropdowns only target active members — merging
- * into a removed identity would silently resurrect them, which isn't what the
- * operator clicked.
- */
-function rosterFor(members, memberChestCounts) {
+/** Members sorted by name and split active / removed. */
+function rosterFor(members) {
   const sorted = [...(Array.isArray(members) ? members : [])]
     .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
   return {
     activeMembers: sorted.filter((m) => m.isActive !== false),
     removedMembers: sorted.filter((m) => m.isActive === false),
-    // From its own admin route (see the comment there). Guarded because an
-    // `{ error }` body would otherwise turn every count into NaN rather than
-    // the honest 0.
-    chestCounts: memberChestCounts && !memberChestCounts.error ? memberChestCounts : {},
   };
 }
 
-/** Edit Members and Merge Player Names. */
+/** Edit Members: rename, remove, restore. */
 async function membersTab() {
-  const [members, memberChestCounts, stats, playerRulesRaw] = await Promise.all([
+  const [members, stats] = await Promise.all([
     api('/members?include=inactive'),
-    api('/admin/member-chest-counts'),
     api('/stats'),
-    api('/admin/merge-rules?type=player'),
   ]);
   // The tab's main list: a refusal (429, a 500's { error, ref }) is an object,
   // not a member list — say so with Try again instead of drawing an empty tab.
@@ -166,12 +136,10 @@ async function membersTab() {
   // Edit Members lists active rows by default; the soft-deleted ones
   // hide behind a "Show removed members" toggle so the table doesn't
   // get cluttered.
-  const playerRules = asList(playerRulesRaw);
-  const { activeMembers, removedMembers, chestCounts } = rosterFor(members, memberChestCounts);
-  const memberOption = (m) => countedOption(m.name, chestCounts[m.id]);
+  const { activeMembers, removedMembers } = rosterFor(members);
 
   const html = `
-    <p class="ui-copy admin-intro">${t('Edit names, remove duplicates, and merge two names that belong to the same player.')}</p>
+    <p class="ui-copy admin-intro">${t('Rename, remove or restore members. Renames in the game follow on their own.')}</p>
 
     <div class="card">
       <div class="card-header"><h2>${t('Edit Members ({count})', { count: activeMembers.length })}</h2></div>
@@ -212,163 +180,6 @@ async function membersTab() {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header"><h2>${t('Merge Player Names')}</h2></div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Join two spellings of one player into one. Updates existing records and every future scan.')}</p>
-        <div class="inline-form-row">
-          <div>
-            <label>${t('Wrong name')}</label>
-            <select id="mergePlayerFrom" class="input">
-              <option value="">${t('Select...')}</option>
-              ${activeMembers.map(memberOption).join('')}
-            </select>
-          </div>
-          <span class="arrow-sep">→</span>
-          <div>
-            <label>${t('Correct Name')}</label>
-            <select id="mergePlayerTo" class="input">
-              ${playerMergeOptionsHtml(activeMembers, chestCounts)}
-            </select>
-          </div>
-          <button class="btn btn-primary" data-action="do-merge-player">${t('Merge')}</button>
-        </div>
-        ${playerMergeCustomHtml('mergePlayerToCustom', { className: 'mb-16' })}
-        ${playerRules.length > 0 ? `<details>
-          <summary class="collapse-toggle">${tn(playerRules.length, '{n} active player merge rule', '{n} active player merge rules', { n: playerRules.length })}</summary>
-          <table class="ui-table table-responsive merge-rules-table">
-            <colgroup>
-              <col class="col-merge-from">
-              <col class="col-merge-to">
-              <col class="col-merge-created">
-              <col class="col-actions">
-            </colgroup>
-            <thead><tr><th>${t('From')}</th><th>${t('To')}</th><th>${t('Created')}</th><th></th></tr></thead>
-            <tbody>
-              ${playerRules.map((r) => `<tr>
-                <td data-label="${t('From')}" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
-                <td data-label="${t('To')}" data-role="hidden">${esc(r.toValue)}</td>
-                <td data-label="${t('Created')}">${formatDate(r.createdAt)}</td>
-                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">${t('Delete')}</button></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </details>` : `<p class="muted-copy">${t('No active player merge rules.')}</p>`}
-      </div>
-    </div>
-  `;
-  return { html };
-}
-
-/** Merge Chest Names and Merge Chest Sources. */
-async function chestsTab() {
-  const [chestRulesRaw, sourceRulesRaw, chestTypesRaw, chestSourcesRaw] = await Promise.all([
-    api('/admin/merge-rules?type=chest'),
-    api('/admin/merge-rules?type=source'),
-    api('/admin/unique-chests'),
-    api('/admin/unique-sources'),
-  ]);
-  // asList: a refusal answers with an object, never a list to map over.
-  const [chestRules, sourceRules, chestTypes, chestSources] = [chestRulesRaw, sourceRulesRaw, chestTypesRaw, chestSourcesRaw].map(asList);
-
-  const html = `
-    <div class="card">
-      <div class="card-header"><h2>${t('Merge Chest Names')}</h2></div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Map an old or misspelled chest name to the correct one. Applies to existing records and future scans.')}</p>
-        <div class="inline-form-row">
-          <div>
-            <label>${t('Wrong name')}</label>
-            <select id="mergeChestFrom" class="input">
-              <option value="">${t('Select...')}</option>
-              ${chestTypes.map((c) => countedOption(c.name, c.count)).join('')}
-            </select>
-          </div>
-          <span class="arrow-sep">→</span>
-          <div>
-            <label>${t('Correct Name')}</label>
-            <select id="mergeChestTo" class="input">
-              <option value="">${t('Select...')}</option>
-              ${chestTypes.map((c) => countedOption(c.name, c.count)).join('')}
-            </select>
-          </div>
-          <button class="btn btn-primary" data-action="do-merge-chest">${t('Merge')}</button>
-        </div>
-        <div class="merge-custom-row mb-16">
-          <label for="mergeChestToCustom">${t('Or type a custom Correct Name (overrides the dropdown above)')}</label>
-          <input type="text" id="mergeChestToCustom" class="input" placeholder="${t('Custom name…')}">
-        </div>
-        ${chestRules.length > 0 ? `<details>
-          <summary class="collapse-toggle">${tn(chestRules.length, '{n} active chest merge rule', '{n} active chest merge rules', { n: chestRules.length })}</summary>
-          <table class="ui-table table-responsive merge-rules-table">
-            <colgroup>
-              <col class="col-merge-from">
-              <col class="col-merge-to">
-              <col class="col-merge-created">
-              <col class="col-actions">
-            </colgroup>
-            <thead><tr><th>${t('From')}</th><th>${t('To')}</th><th>${t('Created')}</th><th></th></tr></thead>
-            <tbody>
-              ${chestRules.map((r) => `<tr>
-                <td data-label="${t('From')}" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
-                <td data-label="${t('To')}" data-role="hidden">${esc(r.toValue)}</td>
-                <td data-label="${t('Created')}">${formatDate(r.createdAt)}</td>
-                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">${t('Delete')}</button></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </details>` : `<p class="muted-copy">${t('No active chest merge rules.')}</p>`}
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><h2>${t('Merge Chest Sources')}</h2></div>
-      <div class="card-body card-body-padded">
-        <p class="muted-copy mb-12">${t('Map an old or misspelled source to the correct one (e.g. "Level 5 Crypt." → "Level 5 Crypt"). Applies to existing records and future scans.')}</p>
-        <div class="inline-form-row">
-          <div>
-            <label>${t('Wrong name')}</label>
-            <select id="mergeSourceFrom" class="input">
-              <option value="">${t('Select...')}</option>
-              ${chestSources.map((s) => countedOption(s.source, s.count)).join('')}
-            </select>
-          </div>
-          <span class="arrow-sep">→</span>
-          <div>
-            <label>${t('Correct Source')}</label>
-            <select id="mergeSourceTo" class="input">
-              <option value="">${t('Select...')}</option>
-              ${chestSources.map((s) => countedOption(s.source, s.count)).join('')}
-            </select>
-          </div>
-          <button class="btn btn-primary" data-action="do-merge-source">${t('Merge')}</button>
-        </div>
-        <div class="merge-custom-row mb-16">
-          <label for="mergeSourceToCustom">${t('Or type a custom Correct Source (overrides the dropdown above)')}</label>
-          <input type="text" id="mergeSourceToCustom" class="input" placeholder="${t('Custom source…')}">
-        </div>
-        ${sourceRules.length > 0 ? `<details>
-          <summary class="collapse-toggle">${tn(sourceRules.length, '{n} active source merge rule', '{n} active source merge rules', { n: sourceRules.length })}</summary>
-          <table class="ui-table table-responsive merge-rules-table">
-            <colgroup>
-              <col class="col-merge-from">
-              <col class="col-merge-to">
-              <col class="col-merge-created">
-              <col class="col-actions">
-            </colgroup>
-            <thead><tr><th>${t('From')}</th><th>${t('To')}</th><th>${t('Created')}</th><th></th></tr></thead>
-            <tbody>
-              ${sourceRules.map((r) => `<tr>
-                <td data-label="${t('From')}" data-role="primary"><span class="mrow-name">${esc(r.fromValue)}</span><span class="mrow-sub">→ ${esc(r.toValue)}</span></td>
-                <td data-label="${t('To')}" data-role="hidden">${esc(r.toValue)}</td>
-                <td data-label="${t('Created')}">${formatDate(r.createdAt)}</td>
-                <td class="col-actions"><button class="btn btn-tight btn-danger" data-action="delete-rule" data-rule-id="${r.id}">${t('Delete')}</button></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </details>` : `<p class="muted-copy">${t('No active source merge rules.')}</p>`}
-      </div>
-    </div>
   `;
   return { html };
 }
@@ -400,94 +211,6 @@ async function pointsTab(isSuperadmin) {
 // router's loadPage) so this module never has to import it from app.js (would
 // be a circular dep). Called with no page, it redraws the current route — the
 // Admin tab the action was taken on.
-
-// ─── Player merge: one form, two hosts ───
-// The Merge Player Names card here and the Merge dialog on the Members page
-// render the same pieces and submit through submitPlayerMerge, so a change
-// below lands on both.
-
-/** Dropdown options for a merge target: every active member with their chest count. */
-function playerMergeOptionsHtml(members, counts, exclude = null) {
-  return `<option value="">${t('Select...')}</option>${members
-    .filter((m) => m.name !== exclude)
-    .map((m) => countedOption(m.name, counts[m.id]))
-    .join('')}`;
-}
-
-function playerMergeCustomHtml(id, { className = '', inputClass = 'input', value = '' } = {}) {
-  return `<div class="merge-custom-row ${className}">
-    <label for="${id}">${t('Or type a custom Correct Name (overrides the dropdown above)')}</label>
-    <input type="text" id="${id}" class="${inputClass}" placeholder="${t('Custom name…')}" value="${esc(value)}">
-  </div>`;
-}
-
-/**
- * Picking a player copies the name into the text field, so the field always
- * shows the name that will be used and typing over it is the override its
- * label promises. The dropdown used to win silently over anything typed.
- */
-export function syncPlayerMergeCustom(select, custom) {
-  if (select?.value && custom) custom.value = select.value;
-}
-
-function playerMergeTarget(select, custom) {
-  return (custom?.value || '').trim() || select?.value || '';
-}
-
-/** Validate, merge, run `afterMerge` (the rerender), then report. True on success. */
-async function submitPlayerMerge(fromName, toName, afterMerge) {
-  if (!fromName || !toName) { notify(t('Select both players'), t('Cannot merge')); return false; }
-  if (fromName === toName) { notify(t('Cannot merge a player with itself'), t('Cannot merge')); return false; }
-  const result = await apiPost('/admin/merge-players', { fromName, toName });
-  if (result?.error) { notify(result.error, t('Merge failed')); return false; }
-  await afterMerge?.();
-  // `note` is set when an existing rule already covered this spelling, so the rules
-  // list won't have grown. Say so — silently not adding the row is what left admins
-  // writing the same rule four times over.
-  notify(
-    `${t('Merged "{from}" into "{to}".', { from: fromName, to: toName })}${result?.note ? ` ${result.note}` : ''}`,
-    t('Merge complete'),
-  );
-  return true;
-}
-
-export async function doMergePlayer(rerender) {
-  const scrollY = window.scrollY;
-  await submitPlayerMerge(
-    $('#mergePlayerFrom').value,
-    playerMergeTarget($('#mergePlayerTo'), $('#mergePlayerToCustom')),
-    async () => {
-      if (typeof rerender === 'function') await rerender();
-      window.scrollTo(0, scrollY);
-    },
-  );
-}
-
-export async function doMergeChest(rerender) {
-  const from = $('#mergeChestFrom').value;
-  const to = $('#mergeChestTo').value || ($('#mergeChestToCustom')?.value || '').trim();
-  if (!from || !to) return notify(t('Select both chest names'), t('Cannot merge'));
-  if (from === to) return notify(t('Cannot merge a chest with itself'), t('Cannot merge'));
-  const scrollY = window.scrollY;
-  const result = await apiPost('/admin/merge-rules', { type: 'chest', fromValue: from, toValue: to });
-  if (result?.error) return notify(result.error, t('Merge failed'));
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
-  notify(t('Merged "{from}" into "{to}".', { from, to }), t('Merge complete'));
-}
-
-export async function doMergeSource(rerender) {
-  const from = $('#mergeSourceFrom').value;
-  const to = $('#mergeSourceTo').value || ($('#mergeSourceToCustom')?.value || '').trim();
-  if (!from || !to) return notify(t('Select both source values'), t('Cannot merge'));
-  if (from === to) return notify(t('Cannot merge a source with itself'), t('Cannot merge'));
-  const scrollY = window.scrollY;
-  const result = await apiPost('/admin/merge-rules', { type: 'source', fromValue: from, toValue: to });
-  if (result?.error) return notify(result.error, t('Merge failed'));
-  if (typeof rerender === 'function') await rerender();
-  window.scrollTo(0, scrollY);
-  notify(t('Merged "{from}" into "{to}".', { from, to }), t('Merge complete'));
-}
 
 // Triumphal Chest Points — global, superadmin-managed scoring for the
 // Bank Gifts tab (the per-chest sibling of the Chest Points card). `rows` come from
@@ -610,16 +333,6 @@ function renderReviewQueueSection(queue) {
   `;
 }
 
-export async function deleteRule(id, rerender) {
-  const ok = await confirmDialog(
-    t('Delete this merge rule? Existing records that were already rewritten by this rule are not reverted, but future scans will stop auto-applying it.'),
-    { title: t('Delete merge rule'), confirmLabel: t('Delete'), cancelLabel: t('Cancel'), danger: true },
-  );
-  if (!ok) return;
-  if (!await mustOk(apiDelete(`/admin/merge-rules/${id}`), t('Delete rule failed'))) return;
-  if (typeof rerender === 'function') rerender();
-}
-
 export async function saveMemberName(id) {
   const input = $(`#member-name-${id}`);
   if (!input) return;
@@ -663,52 +376,4 @@ export async function restoreMemberById(id, name, rerender) {
   if (!ok) return;
   if (!await mustOk(apiPost(`/members/${id}/restore`, {}), t('Restore member failed'))) return;
   if (rerender) rerender();
-}
-
-/**
- * The Members page's Merge button: the Merge Player Names form in a dialog,
- * with the misread fixed to the row it was opened from. Like the card, the
- * text field starts on the misread so a casing fix is an edit, not a retype.
- */
-export async function promptMergePlayerById(id, rerender) {
-  const [members, counts] = await Promise.all([api('/members'), api('/admin/member-chest-counts')]);
-  if (!Array.isArray(members)) return;
-  const member = members.find((m) => m.id === id);
-  if (!member?.name) return;
-  const sorted = [...members].sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()));
-
-  const modal = contentModal({
-    title: t('Merge Player'),
-    html: `
-      <p class="modal-body">${t('Merge "{name}" into which player name?', { name: esc(member.name) })}</p>
-      <div class="modal-form">
-        <label class="modal-form-label" for="mergeDialogTo">${t('Correct Name')}</label>
-        <select id="mergeDialogTo" class="input modal-input">
-          ${playerMergeOptionsHtml(sorted, counts && !counts.error ? counts : {}, member.name)}
-        </select>
-        ${playerMergeCustomHtml('mergeDialogToCustom', { inputClass: 'input modal-input', value: member.name })}
-        <p class="modal-form-hint">${t('Join two spellings of one player into one. Updates existing records and every future scan.')}</p>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" type="button" data-merge-dialog="cancel">${t('Cancel')}</button>
-        <button class="btn btn-primary" type="button" data-merge-dialog="merge">${t('Merge')}</button>
-      </div>`,
-  });
-  if (!modal) return;
-  const root = modal.content;
-  const select = root.querySelector('#mergeDialogTo');
-  const custom = root.querySelector('#mergeDialogToCustom');
-  const merge = async () => {
-    const ok = await submitPlayerMerge(member.name, playerMergeTarget(select, custom), async () => {
-      modal.close();
-      if (typeof rerender === 'function') await rerender('members');
-    });
-    if (!ok) custom.focus();
-  };
-  select.addEventListener('change', () => syncPlayerMergeCustom(select, custom));
-  custom.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); merge(); }
-  });
-  root.querySelector('[data-merge-dialog="cancel"]').addEventListener('click', () => modal.close());
-  root.querySelector('[data-merge-dialog="merge"]').addEventListener('click', merge);
 }

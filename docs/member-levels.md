@@ -9,4 +9,4 @@ Players used to post their levels in the in-game chat, e.g. `taulen: G8/M8/S7/E8
 
 Removed with it: the parser, its repository and route (`/api/member-levels`), the admin card, its strings, and the profile's "posted in chat" Dragon stat.
 
-**Kept: the `member_level_reports` table (v82) and every row in it**, as the record of what players said. Nothing reads it any more. Clan delete and restore still handle the table, and a player merge still repoints its `member_id`, so its rows stay consistent; the audit log's `member_levels_import` entries keep their label on the Users page. [name-resolver.ts](../src/data/name-resolver.ts), which the import shared with the event standings paste, stays for that paste.
+**Kept: the `member_level_reports` table (v82) and every row in it**, as the record of what players said. Nothing reads it any more. Clan delete and restore still handle the table; the audit log's `member_levels_import` entries keep their label on the Users page. The name resolver the import shared with the event standings paste went with that paste (Nov 25 2026).

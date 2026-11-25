@@ -63,7 +63,6 @@ exports.recordAndClaim = recordAndClaim;
 const database_js_1 = require("../data/database.js");
 const chestRepo = __importStar(require("../data/repositories/chest-repo.js"));
 const triumphalChestRepo = __importStar(require("../data/repositories/triumphal-chest-repo.js"));
-const merge_repo_js_1 = require("../data/repositories/merge-repo.js");
 const source_points_repo_js_1 = require("../data/repositories/source-points-repo.js");
 const resource_repo_js_1 = require("../data/repositories/resource-repo.js");
 const chest_names_js_1 = require("../data/chest-names.js");
@@ -97,8 +96,6 @@ async function recordAndClaim(ctx, d) {
     const { clanId, sessionId } = ctx;
     const tally = { gifts: [], triumphal: [], alreadyRecorded: 0, claimed: 0, claimFailures: 0, resourceRows: 0, warnings: [] };
     const memberFor = (0, member_sync_js_1.makeMemberResolver)(clanId, d.memberIds);
-    const chestMerge = (0, merge_repo_js_1.loadMergeRules)('chest', clanId);
-    const sourceMerge = (0, merge_repo_js_1.loadMergeRules)('source', clanId);
     const schedule = (0, source_points_repo_js_1.loadPointSchedule)(clanId);
     const chestNames = storedNames('SELECT name AS v FROM chests ORDER BY id');
     const sourceNames = storedNames('SELECT source AS v FROM chest_sources ORDER BY id');
@@ -119,8 +116,8 @@ async function recordAndClaim(ctx, d) {
             continue;
         if (!g.chestName)
             unnamed.add(g.giftType);
-        const chestName = (0, merge_repo_js_1.applyMergeRulesCached)(chestMerge, stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`));
-        const source = (0, merge_repo_js_1.applyMergeRulesCached)(sourceMerge, stored(sourceNames, g.sourceName));
+        const chestName = stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`);
+        const source = stored(sourceNames, g.sourceName);
         const chestType = (0, chest_names_js_1.chestTypeFor)(chestName);
         const senderName = g.senderName || d.byId.get(g.senderId)?.name || '';
         const memberId = memberFor(g.senderId, senderName) ?? memberFor(0, UNKNOWN_SENDER);

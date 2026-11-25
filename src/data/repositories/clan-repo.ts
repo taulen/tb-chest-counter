@@ -845,7 +845,6 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     db.prepare('DELETE FROM scan_sessions WHERE clan_id = ?').run(id);
 
     // 3. Remaining clan-scoped tables.
-    db.prepare('DELETE FROM merge_rules WHERE clan_id = ?').run(id);
     // Per-clan chest points (v86) and their history (v99); the values first,
     // they point at the history's dated steps. triumphal_chest_points stays global.
     db.prepare('DELETE FROM source_point_overrides WHERE clan_id = ?').run(id);

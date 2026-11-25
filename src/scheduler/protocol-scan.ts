@@ -27,7 +27,6 @@
 import { getDb } from '../data/database.js';
 import * as chestRepo from '../data/repositories/chest-repo.js';
 import * as triumphalChestRepo from '../data/repositories/triumphal-chest-repo.js';
-import { applyMergeRulesCached, loadMergeRules } from '../data/repositories/merge-repo.js';
 import { getPointsForSourceAt, loadPointSchedule } from '../data/repositories/source-points-repo.js';
 import {
   createBatch,
@@ -94,8 +93,6 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
   const { clanId, sessionId } = ctx;
   const tally: ProtocolScanTally = { gifts: [], triumphal: [], alreadyRecorded: 0, claimed: 0, claimFailures: 0, resourceRows: 0, warnings: [] };
   const memberFor = makeMemberResolver(clanId, d.memberIds);
-  const chestMerge = loadMergeRules('chest', clanId);
-  const sourceMerge = loadMergeRules('source', clanId);
   const schedule = loadPointSchedule(clanId);
   const chestNames = storedNames('SELECT name AS v FROM chests ORDER BY id');
   const sourceNames = storedNames('SELECT source AS v FROM chest_sources ORDER BY id');
@@ -116,8 +113,8 @@ export async function recordAndClaim(ctx: ProtocolScanContext, d: CaptureData): 
     if (missing <= 0) continue;
 
     if (!g.chestName) unnamed.add(g.giftType);
-    const chestName = applyMergeRulesCached(chestMerge, stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`));
-    const source = applyMergeRulesCached(sourceMerge, stored(sourceNames, g.sourceName));
+    const chestName = stored(chestNames, g.chestName || `Unknown gift ${g.giftType}`);
+    const source = stored(sourceNames, g.sourceName);
     const chestType = chestTypeFor(chestName);
     const senderName = g.senderName || d.byId.get(g.senderId)?.name || '';
     const memberId = memberFor(g.senderId, senderName) ?? memberFor(0, UNKNOWN_SENDER);

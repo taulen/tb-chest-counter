@@ -2,7 +2,7 @@
 
 Chest *records* are keyed properly: `chest_records.chest_id` → `chests.id`, so a rename never loses data. What is keyed by **name** is the configuration layer, and that is where renames bite:
 
-- `src/config/event-catalog.ts` literals, `SOURCE_CHEST_POINTS` and `CHEST_TYPES` in the source tree; `source_point_overrides.chest_name` / `.source_key`, `triumphal_chest_points.chest_name`, `merge_rules.from_value` / `.to_value` in the database.
+- `src/config/event-catalog.ts` literals, `SOURCE_CHEST_POINTS` and `CHEST_TYPES` in the source tree; `source_point_overrides.chest_name` / `.source_key`, `triumphal_chest_points.chest_name` in the database.
 - Chests are stored by **name**. Since Nov 17 2026 every chest arrives under the game's own name (the scan maps a gift type to a chest name and a source name, [protocol-scan.ts](../src/scheduler/protocol-scan.ts)), resolved to the spelling already stored when one normalises the same. Rows from the OCR era arrived as read strings and keep the spelling they were stored with. `chests.id` is a per-install autoincrement that a committed source file can't reference, and the game's gift type is a chest *and* a source, so a name is the only possible entry point; the fix is never "use ids in the catalog", it's that a stranded name must not be silent.
 - Every one of those surfaces fails identically: **a zero that reads like a result.** That is why the Ragnarok/Jörmungandr rename went unnoticed for weeks.
 
@@ -12,7 +12,7 @@ Three things now stand in the way, in order of when they fire:
 2. `resolvePredicate` ([event-repo.ts](../src/data/repositories/event-repo.ts)) and `clanRewardChestIds` ([clan-reward-chests.ts](../src/data/clan-reward-chests.ts)) resolve exact → accent/case/punctuation-folded, so a stale literal still gets the right number, and flag themselves on the page and in the log instead of dropping the rule. Two stored rows folding together resolve to the oldest, the spelling the scan resolves a game name to.
 3. `checkConfigIntegrity` ([config-integrity.ts](../src/data/config-integrity.ts)) sweeps every name-keyed table at boot. Errors light the System nav dot; warnings are `noAlert`. Returns nothing on a database with no chest records — a fresh install has an empty `chests` table and pre-declaring a chest is supported.
 
-Stored names are history: nothing renames a `chests` row on boot any more. The OCR-era corrector (`correctChestName`, its name catalog and `cleanupChestNames`, which reconciled every row through it on each boot) went with the screenshot scanner; nothing produces misread spellings now, and the old ones were folded long ago (or are folded by the clan's merge rules — adding a chest merge rule repoints the records). A clan restore lands a backup's chest on the live row of the same exact or folded name ([clan-restore.ts](../src/data/clan-restore.ts)).
+Stored names are history: nothing renames a `chests` row on boot any more. The OCR-era corrector (`correctChestName`, its name catalog and `cleanupChestNames`, which reconciled every row through it on each boot) went with the screenshot scanner; nothing produces misread spellings now, and the old ones were folded long ago. Merge rules (and the Admin Chests tab that wrote them) were removed Nov 25 2026, v137 drops `merge_rules`; a chest the game renames is folded with a migration. A clan restore lands a backup's chest on the live row of the same exact or folded name ([clan-restore.ts](../src/data/clan-restore.ts)).
 
 ## Chest types
 

@@ -4,10 +4,7 @@ import fs from 'fs';
 import { childLogger } from '../utils/logger.js';
 import { declaredChestType, TRIUMPHAL_PACKAGE_POINTS } from './chest-names.js';
 import { getSourceKey, getSourceRarity, sourceSpellingKey, canonicalSourceKey } from './source-names.js';
-import { despace } from '../utils/name-normalize.js';
 import { reportConfigIntegrity } from './config-integrity.js';
-import { repairAldrin } from './repair-aldrin-2026-11.js';
-import { repairCutNames } from './repair-cut-names-2026-11.js';
 import { splitClanShortCodes } from './clan-short-code.js';
 import { backfillGoalHistory } from './goal-history.js';
 import { DEFAULT_CONFIG } from '../config/defaults.js';
@@ -1095,13 +1092,12 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // Data only: clan #3's Cauldron → Aldrin rename, whose Nov 3 chests the gift
-    // scan filed under "Ilrin". See repair-aldrin-2026-11.ts. Guarded on member
-    // id + name + clan, so a no-op anywhere else and safe to replay.
+    // Retired: a one-time data repair for clan #3 (Cauldron → Aldrin, Nov 3 2026).
+    // It ran on prod; it was guarded to a no-op on any other database, and its
+    // module went with the merge rules it used (Nov 25 2026). The version stays
+    // so the sequence has no gap.
     version: 91,
-    run: (database): void => {
-      database.transaction(() => repairAldrin(database))();
-    },
+    run: (): void => {},
   },
   {
     // Likely-rename merge suggestions an admin marked "not the same player"
@@ -1321,14 +1317,12 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // One-time repair: member names the member-list reader cut at a kingdom number
-    // ("Living SK7" read as "Living S") and that a merge then kept as the surviving
-    // name — SK7's 41 hand-named members, Nov 13 2026. See repair-cut-names-2026-11.ts.
-    // Generic and guarded, so another database or a replay is a no-op.
+    // Retired: a one-time repair of member names the OCR member-list reader cut at
+    // a kingdom number (SK7, Nov 13 2026). It ran on prod and was a no-op
+    // anywhere else; its module went with the merge rules it repointed
+    // (Nov 25 2026). The version stays so the sequence has no gap.
     version: 101,
-    run: (database): void => {
-      database.transaction(() => repairCutNames(database))();
-    },
+    run: (): void => {},
   },
   {
     // Game protocol capture (Nov 2026): what the game server itself says, read
@@ -2769,6 +2763,20 @@ const MIGRATIONS: Migration[] = [
           PRIMARY KEY (clan_id, event_type, run, occurrence, game_clan_id)
         );
       `);
+    },
+  },
+  {
+    // Merge rules are gone (Nov 25 2026). They rewrote OCR misreads of player,
+    // chest and source names to the right spelling — player rules also folded
+    // an alt into its main — and the game gives every name exactly, with a
+    // player's renames followed through their permanent id. The admins had
+    // already deleted the live clans' player rules; what was left were deleted
+    // clans' rules and OCR source fixes ("Level 10 Crypt Delete") no game name
+    // matches. Records a merge already folded stay folded.
+    // IF EXISTS: runMigrations may replay this.
+    version: 137,
+    run: (database): void => {
+      database.exec('DROP TABLE IF EXISTS merge_rules');
     },
   },
 ];

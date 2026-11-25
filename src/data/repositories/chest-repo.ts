@@ -1199,28 +1199,6 @@ export function getDistinctChestSources(clanId: number): { source: string; count
 }
 
 /**
- * Chest-record counts per member for one clan, keyed by member id.
- *
- * Feeds the Admin page's merge / reassign dropdowns. A member name carrying a
- * handful of records next to one carrying thousands is almost always an OCR
- * misread of that same player, and the count is the only thing that makes the
- * two distinguishable in a flat alphabetical list. Members with no records at
- * all are absent from the map — callers should default to 0.
- */
-export function getChestCountsByMember(clanId: number): Record<number, number> {
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT member_id, COUNT(*) AS cnt
-    FROM chest_records
-    WHERE clan_id = ?
-    GROUP BY member_id
-  `).all(clanId) as { member_id: number; cnt: number }[];
-  const counts: Record<number, number> = {};
-  for (const r of rows) counts[r.member_id] = r.cnt;
-  return counts;
-}
-
-/**
  * Returns one row per distinct chest_name with its most recent chest_type
  * and how many chest_records have that name.
  */

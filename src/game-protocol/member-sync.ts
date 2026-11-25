@@ -2,17 +2,15 @@
  * Bring our members in line with what the game says, keyed on the game's
  * permanent player id (members.game_player_id, v103).
  *
- * For every member of the clan record (name first run through the clan's
- * player merge rules):
+ * For every member of the clan record:
  *   1. already linked → that member;
  *   2. else link an unlinked member whose name matches exactly (accent- and
- *      space-insensitive, aliases included — exactMatchMember);
+ *      case-insensitive, aliases included — exactMatchMember);
  *   3. else create the member under its exact game name and link it.
- * There is no fuzzy step any more (removed Nov 25 2026). It was the bridge for
- * OCR misreads stored before the protocol scan, linked when the might agreed
- * within ±15 %; by then every active member of every live clan was linked, so
- * it could no longer find a candidate. A near-miss name an admin knows is the
- * same player is a player merge rule.
+ * There is no fuzzy step and no merge rule any more (both removed Nov 25 2026):
+ * they bridged OCR misreads stored before the protocol scan, and by then every
+ * active member of every live clan was linked to its player id, which follows
+ * a player through every rename.
  * Then: the member takes the game's exact name (old name kept as an alias,
  * rename audited), is marked seen, gets the day's might/hero snapshot, and
  * members linked to players no longer in the clan record are marked as left.
@@ -26,7 +24,6 @@ import {
   renameMember,
   upsertMember,
 } from '../data/repositories/member-repo.js';
-import { loadPlayerNameCanonicaliser } from '../data/repositories/merge-repo.js';
 import { saveSnapshots } from '../data/repositories/might-repo.js';
 import { logSystemAction } from '../data/repositories/user-repo.js';
 import { syncLinkedAccounts } from '../data/repositories/account-invite-repo.js';
@@ -66,8 +63,6 @@ export interface MemberSyncResult {
   created: number;
   renamed: number;
   departed: number;
-  /** Players an admin merge rule folds into a member another player owns (alts). */
-  mergedByRule: number;
   /** game player id → our member id, for every current clan member. */
   memberIds: Map<number, number>;
 }
@@ -101,13 +96,9 @@ export function syncMembersFromGame(
   const linkedIds = new Set(linked.values());
   const all = [...getAllMembers(true, clanId), ...getAllMembers(false, clanId).filter((m) => !m.isActive)];
   const unlinked = (): ClanMember[] => all.filter((m) => !linkedIds.has(m.id));
-  const result: MemberSyncResult = { linked: 0, newlyLinked: 0, created: 0, renamed: 0, departed: 0, mergedByRule: 0, memberIds: new Map() };
+  const result: MemberSyncResult = { linked: 0, newlyLinked: 0, created: 0, renamed: 0, departed: 0, memberIds: new Map() };
   /** Players whose member is linked to them — the only ones that may rename, re-role or snapshot it. */
   const owned = new Set<number>();
-
-  // A player merge rule is the admin saying "this name IS that member" — it
-  // decides the match.
-  const canonical = loadPlayerNameCanonicaliser(clanId);
   const manualNames = manuallyNamedMembers();
 
   for (const rm of roster) {
@@ -115,19 +106,8 @@ export function syncMembersFromGame(
     if (!p) continue;
     let memberId = linked.get(rm.playerId);
     if (memberId === undefined) {
-      const name = canonical(p.name);
+      const name = p.name;
       const match = exactMatchMember(name, unlinked());
-      if (!match && name !== p.name) {
-        // The rule points at a member another player already owns: an alt the
-        // admin merged into a main. Count the alt as seen there, but never link,
-        // rename, re-role or snapshot that member from the alt's record.
-        const owner = exactMatchMember(name, all);
-        if (owner) {
-          result.memberIds.set(rm.playerId, owner.id);
-          result.mergedByRule++;
-          continue;
-        }
-      }
       if (match) {
         if (link(clanId, match.id, rm.playerId)) {
           memberId = match.id;
@@ -160,19 +140,14 @@ export function syncMembersFromGame(
     result.memberIds.set(rm.playerId, memberId);
     owned.add(rm.playerId);
 
-    // The name the site shows. The admins' choice wins over the game's
-    // spelling (user, Nov 2026: "use the merges done manually as the truth" —
-    // the sync had renamed Follador, Kadal, ShERKhAN… straight back to the
-    // Cyrillic game names an admin had just merged into them):
-    //   1. a player merge rule naming this game name → the rule's target;
-    //   2. else a name an admin set by hand (latest rename was manual) → kept;
-    //   3. else the game's spelling, the old name kept as an alias.
+    // The name the site shows. An admin's choice wins over the game's spelling
+    // (user, Nov 2026: "use the merges done manually as the truth"):
+    //   1. a name an admin set by hand (latest rename was manual) → kept;
+    //   2. else the game's spelling, the old name kept as an alias.
+    // Player merge rules used to come first; they were removed Nov 25 2026.
     const member = all.find((m) => m.id === memberId);
-    const ruled = canonical(p.name);
     const manual = manualNames.get(memberId);
-    const wanted = ruled !== p.name ? ruled
-      : manual !== undefined && member?.name === manual ? manual
-        : p.name;
+    const wanted = manual !== undefined && member?.name === manual ? manual : p.name;
     if (member && member.name !== wanted) {
       try {
         renameMember(memberId, wanted, clanId);
@@ -241,7 +216,7 @@ export function syncMembersFromGame(
  * undo the departure the sync just recorded:
  *   1. current roster → the synced member;
  *   2. a member already linked to the player id → that member;
- *   3. the member with that exact name (after merge rules) → that member, and
+ *   3. the member with that exact name → that member, and
  *      linked to the player when it has no link yet;
  *   4. else a new member under the game name, linked, and marked left when the
  *      player is not in the clan.
@@ -251,7 +226,6 @@ export function makeMemberResolver(
   clanId: number,
   rosterMembers: Map<number, number>,
 ): (playerId: number, name: string) => number | null {
-  const canonical = loadPlayerNameCanonicaliser(clanId);
   const cache = new Map<number, number | null>(rosterMembers);
   const db = getDb();
   let all: ClanMember[] | null = null;
@@ -267,7 +241,7 @@ export function makeMemberResolver(
     if (linkedRow) {
       id = linkedRow.id;
     } else if (name) {
-      const target = canonical(name);
+      const target = name;
       all ??= getAllMembers(false, clanId);
       const match = exactMatchMember(target, all);
       if (match) {

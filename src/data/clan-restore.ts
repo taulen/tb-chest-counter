@@ -667,16 +667,6 @@ export function restoreClanFromBackup(
         orIgnore: true,
       }));
 
-      for (const table of ['merge_rules']) {
-        record(table, copyTable(db, {
-          table,
-          where: `s.clan_id = ${sourceClanId}`,
-          drop: ['id'],
-          map: { clan_id: String(targetId) },
-          orIgnore: true,
-        }));
-      }
-
       // Chest points are the clan's own since v86. A backup from before that
       // holds one global table — the values this clan was scored with — so
       // that table becomes the restored clan's.

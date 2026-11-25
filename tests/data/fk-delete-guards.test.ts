@@ -3,7 +3,6 @@ import { getDb } from '../../src/data/database.js';
 import { deleteClan } from '../../src/data/repositories/clan-repo.js';
 import { deleteUser } from '../../src/data/repositories/user-repo.js';
 import { deleteOrphanedEmptyMembers } from '../../src/data/repositories/chest-repo.js';
-import { addMergeRule } from '../../src/data/repositories/merge-repo.js';
 import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
 
 /**
@@ -30,10 +29,10 @@ import { makeTestDb, seedTwoClans } from '../helpers/test-db.js';
  */
 
 const DELETE_PATHS: Record<string, string> = {
-  members: 'merge-repo.addMergeRule(player), chest-repo.deleteOrphanedEmptyMembers, clan-repo.deleteClan',
+  members: 'chest-repo.deleteOrphanedEmptyMembers, clan-repo.deleteClan',
   users: 'user-repo.deleteUser',
   clans: 'clan-repo.deleteClan',
-  chest_sources: 'merge-repo.addMergeRule(source), database.ts migration v63',
+  chest_sources: 'database.ts migration v63',
 };
 
 const EXPECTED_CHILDREN: Record<string, string[]> = {
@@ -149,7 +148,6 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'member_guards_reports.clan_id',
     'member_level_reports.clan_id',
     'members.clan_id',
-    'merge_rules.clan_id',
     'resource_capture_cursor.clan_id',
     'resource_icon_templates.clan_id',
     'resource_transactions.clan_id',
@@ -309,10 +307,6 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
 
   db.prepare(
     "INSERT INTO audit_log (user_id, clan_id, action, details, created_at) VALUES (2, ?, 'guard', '{}', ?)",
-  ).run(clanId, now);
-  db.prepare(
-    `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-     VALUES (?, 'player', 'Zed', 'Zoe', ?)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO review_acknowledgments (clan_id, category, acknowledged_at)
@@ -641,54 +635,6 @@ describe('hard-delete paths: survive a fully-populated schema', () => {
     expect(db.prepare('SELECT COUNT(*) c FROM stack_presets WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
     // Nor their photo.
     expect(db.prepare('SELECT COUNT(*) c FROM user_avatars WHERE user_id = ?').get(userId)).toEqual({ c: 0 });
-  });
-
-  it('a player merge survives a member referenced from every child table', () => {
-    const { clanId, memberId } = seedEverything();
-    const db = getDb();
-    const now = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active)
-       VALUES (?, 'Yara', 'yara', ?, ?, 1)`,
-    ).run(clanId, now, now);
-
-    expect(() => addMergeRule('player', 'Zoe', 'Yara', clanId)).not.toThrow();
-    expect(db.prepare('SELECT id FROM members WHERE id = ?').get(memberId)).toBeUndefined();
-    // The cascade would have let the merge "succeed" by deleting it; it moved.
-    const report = db.prepare(
-      `SELECT m.name AS name FROM member_guards_reports r JOIN members m ON m.id = r.member_id`,
-    ).get() as { name: string } | undefined;
-    expect(report?.name).toBe('Yara');
-    const levels = db.prepare(
-      `SELECT m.name AS name FROM member_level_reports r JOIN members m ON m.id = r.member_id`,
-    ).get() as { name: string } | undefined;
-    expect(levels?.name).toBe('Yara');
-    // SET NULL would have let it "survive" as an unmatched name; it moved.
-    const score = db.prepare(
-      `SELECT m.name AS name FROM tinman_scores s JOIN members m ON m.id = s.member_id`,
-    ).get() as { name: string } | undefined;
-    expect(score?.name).toBe('Yara');
-  });
-
-  it('a source merge leaves no record pointing at the deleted source row', () => {
-    // addMergeRule(source) ends in DELETE FROM chest_sources, and both
-    // chest_records and triumphal_chest_records reference it. seedEverything
-    // gives 'Guard Source' one of each.
-    const { clanId } = seedEverything();
-    const db = getDb();
-
-    expect(() => addMergeRule('source', 'Guard Source', 'Guard Source Renamed', clanId)).not.toThrow();
-    expect(db.prepare("SELECT id FROM chest_sources WHERE source = 'Guard Source'").get())
-      .toBeUndefined();
-    for (const table of ['chest_records', 'triumphal_chest_records']) {
-      const dangling = db.prepare(
-        `SELECT COUNT(*) c FROM ${table}
-         WHERE chest_source_id IS NOT NULL
-           AND chest_source_id NOT IN (SELECT id FROM chest_sources)`,
-      ).get() as { c: number };
-      expect(dangling.c, `${table} left a dangling chest_source_id`).toBe(0);
-    }
-    expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
   it('deleteOrphanedEmptyMembers skips blank members that still hold data', () => {

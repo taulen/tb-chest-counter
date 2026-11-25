@@ -45,7 +45,7 @@ The v93 migration rebuilt the past from the audit log's `clan.leaderboard_goal.u
 
 ## Tenure
 
-Tenure starts at the earliest of `members.first_seen`, the member's first chest day and their first might reading. `first_seen` alone is wrong after a rename: the surviving row is usually the new nick's, while the merge repoints the old nick's chests and readings. Player merges also keep `MIN(first_seen)` from now on (merge-repo).
+Tenure starts at the earliest of `members.first_seen`, the member's first chest day and their first might reading. `first_seen` alone was wrong after an OCR-era merge: the surviving row was usually the new nick's, while the merge repointed the old nick's chests and readings. (Merging was removed Nov 25 2026; a rename now keeps the member row, linked to the game's player id.)
 
 A member is shown only with enough days in the clan within the timeframe: `requiredPresentDays`. The rest are listed under "Too new to judge".
 

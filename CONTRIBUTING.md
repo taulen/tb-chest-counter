@@ -54,8 +54,7 @@ the app for everyone routed through that location for most of a day.
 They exist because this codebase has a recurring failure shape: **configuration
 that silently resolves to nothing**, which looks exactly like a real result of
 zero. Each guard pins one such surface — catalog chest names against the name
-corrector, the setup wizard's asset allowlist against its real import graph, every path
-that creates a member against the clan's player merge rules.
+corrector and the setup wizard's asset allowlist against its real import graph.
 
 If you add configuration that is keyed by a name, a path or a list, add the
 guard with it.

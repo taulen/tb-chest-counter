@@ -304,7 +304,6 @@ describe('role-gate enforcement (real auth + real routes)', () => {
     const ADMIN_TIER: Array<{ name: string; method: 'get' | 'post' | 'put' | 'delete'; path: string; body?: object }> = [
       { name: 'GET /auth/users', method: 'get', path: '/api/auth/users' },
       { name: 'GET /auth/audit-log', method: 'get', path: '/api/auth/audit-log' },
-      { name: 'GET /admin/merge-rules', method: 'get', path: '/api/admin/merge-rules?type=player' },
       { name: 'GET /admin/source-points', method: 'get', path: '/api/admin/source-points' },
       { name: 'GET /admin/triumphal-points', method: 'get', path: '/api/admin/triumphal-points' },
     ];

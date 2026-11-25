@@ -9,7 +9,6 @@ vi.mock('../../src/external/event-calendar.js', async (importOriginal) => ({
 
 import { getDb } from '../../src/data/database.js';
 import { getPerformanceReport } from '../../src/data/performance.js';
-import { addMergeRule } from '../../src/data/repositories/merge-repo.js';
 import { writeGoalStep } from '../../src/data/goal-history.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
@@ -217,14 +216,3 @@ describe('performance report', () => {
   });
 });
 
-describe('player merge', () => {
-  it('keeps the earlier first_seen of the two rows', () => {
-    const oldNick = member('OldNick', '2026-05-01T10:00:00Z');
-    const newNick = member('NewNick', '2026-10-28T10:00:00Z');
-    addMergeRule('player', 'OldNick', 'NewNick', CLAN);
-    const db = getDb();
-    expect(db.prepare('SELECT id FROM members WHERE id = ?').get(oldNick)).toBeUndefined();
-    expect((db.prepare('SELECT first_seen AS f FROM members WHERE id = ?').get(newNick) as { f: string }).f)
-      .toBe('2026-05-01T10:00:00Z');
-  });
-});

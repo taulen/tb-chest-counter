@@ -9,7 +9,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { upsertMember } from '../../src/data/repositories/member-repo.js';
-import { addMergeRule } from '../../src/data/repositories/merge-repo.js';
 import { saveSnapshots } from '../../src/data/repositories/might-repo.js';
 import { syncMembersFromGame } from '../../src/game-protocol/member-sync.js';
 import type { ClanMember, PlayerRecord } from '../../src/game-protocol/messages.js';
@@ -69,21 +68,6 @@ describe('syncMembersFromGame', () => {
     expect(JSON.parse(row(id).aliases)).toContain('OldName');
   });
 
-  it('keeps the name an admin merged a Cyrillic game name into — the game spelling is only an alias', () => {
-    // The admin merged the game's "Кадал" into a readable "Kadal" (Nov 17 2026);
-    // the sync used to rename the member straight back to "Кадал".
-    addMergeRule('player', 'Кадал', 'Kadal', 1);
-    const p = player(404, 'Кадал', 2_000_000);
-    const r = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
-    const id = r.memberIds.get(404)!;
-    expect(row(id).name).toBe('Kadal');
-    expect(JSON.parse(row(id).aliases)).toContain('Кадал');
-    // And on every later scan.
-    const again = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
-    expect(again.renamed).toBe(0);
-    expect(row(id).name).toBe('Kadal');
-  });
-
   it('keeps a name an admin set by hand, while an untouched member follows the game', () => {
     const p = player(505, 'Нимдуен', 2_000_000);
     const first = syncMembersFromGame(1, rosterOf([p]), [p], DAY, NOW);
@@ -99,20 +83,13 @@ describe('syncMembersFromGame', () => {
     expect(JSON.parse(row(id).aliases)).toContain('Нимдуен');
   });
 
-  it('honours an admin merge rule: an alt counts toward its main without touching the main’s link or might', () => {
+  it('keeps a second account as its own member, linked to its own player id', () => {
     const main = player(401, 'MainPlayer', 30_000_000, 180);
-    syncMembersFromGame(1, rosterOf([main]), [main], DAY, NOW);
-    const mainId = (getDb().prepare('SELECT id FROM members WHERE game_player_id = 401').get() as { id: number }).id;
-    addMergeRule('player', 'FarmAccount', 'MainPlayer', 1);
-
     const alt = player(402, 'FarmAccount', 2_000_000, 40);
     const r = syncMembersFromGame(1, rosterOf([main, alt]), [main, alt], DAY, NOW);
-    expect(r).toMatchObject({ mergedByRule: 1, created: 0, renamed: 0 });
-    expect(r.memberIds.get(402)).toBe(mainId);
-    expect(row(mainId)).toMatchObject({ name: 'MainPlayer', game_player_id: 401 });
-    const snap = getDb().prepare('SELECT power, level FROM member_snapshots WHERE member_id = ? AND game_date = ?').get(mainId, DAY);
-    expect(snap).toEqual({ power: 30_000_000, level: 180 });
-    expect(memberCount()).toBe(1);
+    expect(r).toMatchObject({ created: 2, renamed: 0 });
+    expect(r.memberIds.get(401)).not.toBe(r.memberIds.get(402));
+    expect(row(r.memberIds.get(402)!)).toMatchObject({ name: 'FarmAccount', game_player_id: 402 });
   });
 
   it('marks linked members who left the clan, but never on a suspiciously short roster', () => {

@@ -51,7 +51,6 @@ const event_calendar_js_1 = require("../../external/event-calendar.js");
 const eventScheduleRepo = __importStar(require("../../data/repositories/event-schedule-repo.js"));
 const memberRepo = __importStar(require("../../data/repositories/member-repo.js"));
 const sessionRepo = __importStar(require("../../data/repositories/session-repo.js"));
-const mergeRepo = __importStar(require("../../data/repositories/merge-repo.js"));
 const sourcePointsRepo = __importStar(require("../../data/repositories/source-points-repo.js"));
 const pointsBoard = __importStar(require("../../data/points-board.js"));
 const triumphalPointsRepo = __importStar(require("../../data/repositories/triumphal-points-repo.js"));
@@ -1606,87 +1605,6 @@ function createApiRouter(scanLoop) {
         memberRepo.restoreMember(memberId, req.clanId ?? 1);
         (0, user_repo_js_1.logAction)(req.user.id, 'restore_member', { name: member.name });
         res.json({ ok: true });
-    });
-    // --- Admin: Merge Rules (require admin role) ---
-    // GET /api/admin/merge-rules?type=player|chest|source
-    router.get('/admin/merge-rules', auth_js_1.requireAdmin, (req, res) => {
-        const type = req.query.type;
-        res.json(mergeRepo.getMergeRules(req.clanId ?? 1, type));
-    });
-    // POST /api/admin/merge-rules { type, fromValue, toValue }
-    router.post('/admin/merge-rules', auth_js_1.requireAdmin, (req, res) => {
-        const { type, fromValue, toValue } = req.body;
-        if (!type || !fromValue || !toValue) {
-            return res.status(400).json({ error: 'type, fromValue, toValue required' });
-        }
-        try {
-            const rule = mergeRepo.addMergeRule(type, fromValue, toValue, req.clanId ?? 1);
-            (0, user_repo_js_1.logAction)(req.user.id, `merge_${type}`, { from: fromValue, to: toValue, clanId: req.clanId ?? 1 });
-            res.json(rule);
-        }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            // A rejected (too-generic) rule is a client error, not a server fault.
-            if (err instanceof mergeRepo.InvalidMergeRuleError) {
-                return res.status(400).json({ error: message });
-            }
-            res.status(500).json({ error: `Merge failed: ${message}` });
-        }
-    });
-    // DELETE /api/admin/merge-rules/:id
-    router.delete('/admin/merge-rules/:id', auth_js_1.requireAdmin, (req, res) => {
-        (0, user_repo_js_1.logAction)(req.user.id, 'delete_merge_rule', { id: String(req.params.id) });
-        mergeRepo.deleteMergeRule((0, parse_int_js_1.parseBoundedInt)(req.params.id, 0, { min: 1 }), req.clanId ?? 1);
-        res.json({ ok: true });
-    });
-    // POST /api/admin/merge-players { fromName, toName }
-    router.post('/admin/merge-players', auth_js_1.requireAdmin, (req, res) => {
-        const { fromName, toName } = req.body;
-        if (!fromName || !toName) {
-            return res.status(400).json({ error: 'fromName, toName required' });
-        }
-        // Mirror the /admin/merge-rules handler: a rejected (too-generic) rule
-        // is a client error, and anything else must still come back as JSON
-        // rather than an unhandled 500 the admin page can't render.
-        let note;
-        try {
-            note = mergeRepo.addMergeRule('player', fromName, toName, req.clanId ?? 1).note;
-        }
-        catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (err instanceof mergeRepo.InvalidMergeRuleError) {
-                return res.status(400).json({ error: message });
-            }
-            return res.status(500).json({ error: `Merge failed: ${message}` });
-        }
-        (0, user_repo_js_1.logAction)(req.user.id, 'merge_player', { from: fromName, to: toName, clanId: req.clanId ?? 1 });
-        res.json({ ok: true, message: `Merged "${fromName}" → "${toName}"`, note });
-    });
-    // GET /api/admin/unique-chests
-    router.get('/admin/unique-chests', auth_js_1.requireAdmin, (req, res) => {
-        const clanId = req.clanId ?? 1;
-        const distinct = chestRepo.getDistinctChestNames(clanId);
-        const withTypes = distinct.map((d) => ({
-            name: d.name,
-            currentType: d.currentType || 'unknown',
-            // Record count travels with the name so the merge dropdowns can show
-            // how much data sits behind each one — a 3-record name next to a
-            // 4,000-record one is the tell that the first is an OCR misread.
-            count: d.count,
-        }));
-        res.json(withTypes);
-    });
-    // GET /api/admin/unique-sources
-    router.get('/admin/unique-sources', auth_js_1.requireAdmin, (req, res) => {
-        res.json(chestRepo.getDistinctChestSources(req.clanId ?? 1));
-    });
-    // GET /api/admin/member-chest-counts
-    // { memberId: recordCount } for the active clan. Same purpose as the count
-    // on unique-chests/unique-sources, but members come from /members, which is
-    // shared with non-admin pages — so the counts ride on their own admin route
-    // rather than fattening that payload for everyone.
-    router.get('/admin/member-chest-counts', auth_js_1.requireAdmin, (req, res) => {
-        res.json(chestRepo.getChestCountsByMember(req.clanId ?? 1));
     });
     // GET /api/admin/source-points
     // The Chest Points board for the active clan: one line per chest source with

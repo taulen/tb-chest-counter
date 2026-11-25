@@ -61,7 +61,6 @@ exports.getChestHistoryForSourceAndMember = getChestHistoryForSourceAndMember;
 exports.reassignChestsToMember = reassignChestsToMember;
 exports.deleteOrphanedEmptyMembers = deleteOrphanedEmptyMembers;
 exports.getDistinctChestSources = getDistinctChestSources;
-exports.getChestCountsByMember = getChestCountsByMember;
 exports.getDistinctChestNames = getDistinctChestNames;
 exports.getChestBreakdowns = getChestBreakdowns;
 exports.foldChestTypeGroups = foldChestTypeGroups;
@@ -1016,28 +1015,6 @@ function getDistinctChestSources(clanId) {
     ORDER BY cs.source COLLATE NOCASE
   `).all(clanId);
     return rows.map((r) => ({ source: r.chest_source, count: r.cnt }));
-}
-/**
- * Chest-record counts per member for one clan, keyed by member id.
- *
- * Feeds the Admin page's merge / reassign dropdowns. A member name carrying a
- * handful of records next to one carrying thousands is almost always an OCR
- * misread of that same player, and the count is the only thing that makes the
- * two distinguishable in a flat alphabetical list. Members with no records at
- * all are absent from the map — callers should default to 0.
- */
-function getChestCountsByMember(clanId) {
-    const db = (0, database_js_1.getDb)();
-    const rows = db.prepare(`
-    SELECT member_id, COUNT(*) AS cnt
-    FROM chest_records
-    WHERE clan_id = ?
-    GROUP BY member_id
-  `).all(clanId);
-    const counts = {};
-    for (const r of rows)
-        counts[r.member_id] = r.cnt;
-    return counts;
 }
 /**
  * Returns one row per distinct chest_name with its most recent chest_type

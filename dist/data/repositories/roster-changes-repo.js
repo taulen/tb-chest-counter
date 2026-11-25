@@ -11,8 +11,6 @@ exports.recentRankChanges = recentRankChanges;
  * read is clan-scoped; a clan is a few hundred rows of each.
  */
 const database_js_1 = require("../database.js");
-const merge_repo_js_1 = require("./merge-repo.js");
-const fuzzy_js_1 = require("../../utils/fuzzy.js");
 function parseAliases(raw) {
     try {
         const v = JSON.parse(raw || '[]');
@@ -31,18 +29,11 @@ function loadRosterSources(clanId) {
         firstSeen: r.first_seen, lastSeen: r.last_seen, isActive: r.is_active === 1, leftAt: r.left_at,
     }));
     const byPlayer = new Map(rows.filter((r) => r.game_player_id !== null).map((r) => [r.game_player_id, r.id]));
-    // A player no member is linked to is an alt an admin's merge rule folds into
-    // a main (the member sync counts it there and never links it) — or a
-    // newcomer whose name a linked member already owns, which stays on its own.
-    const canonical = (0, merge_repo_js_1.loadPlayerNameCanonicaliser)(clanId);
+    // A player no member is linked to is a newcomer whose name a linked member
+    // already owns, which stays on its own.
     const players = db.prepare('SELECT player_id, name, joined_at, in_clan FROM game_players WHERE clan_id = ? ORDER BY player_id').all(clanId).map((p) => {
         const linked = byPlayer.get(p.player_id);
-        let memberId = linked ?? null;
-        if (memberId === null) {
-            const ruled = canonical(p.name);
-            if (ruled !== p.name)
-                memberId = (0, fuzzy_js_1.exactMatchMember)(ruled, members)?.id ?? null;
-        }
+        const memberId = linked ?? null;
         return { playerId: p.player_id, name: p.name, joinedAt: p.joined_at, inClan: p.in_clan === 1, memberId, linked: linked !== undefined };
     });
     // Departures are logged by the sync with the clan; a restore before the

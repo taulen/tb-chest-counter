@@ -40,9 +40,9 @@ Nov 2026; the only browser left is the login bridge's.
 Names: game names are exact, so no correction runs. Each resolves to the
 spelling already stored for it when `normalizeGiftText`
 ([`gift-text.ts`](../src/game-protocol/gift-text.ts)) matches (the OCR era
-stored "Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), then
-the clan's chest/source merge rules apply as before, so point values keep keying
-on the same names. A chest's type (common … legendary, arena) stays the site's
+stored "Lvl 25-29 Vault of the Ancients", the game says "Level 25–29 …"), so
+point values keep keying on the same names. (Chest/source merge rules applied
+here until Nov 25 2026, when merging was removed.) A chest's type (common … legendary, arena) stays the site's
 own `CHEST_TYPES`, not the item quality grade (T8 f10), which follows the crypt
 level rather than the chest — see [chest-identity.md](chest-identity.md#chest-types).
 
@@ -385,15 +385,13 @@ Each capture also, every cycle:
 
 - **syncs members** ([`member-sync.ts`](../src/game-protocol/member-sync.ts)):
   `members.game_player_id` links a member to the game's permanent player id.
-  First link: exact name (after the clan's player merge rules), else a new
-  member under the exact game name (the fuzzy-name-plus-might step for OCR
-  misreads was removed Nov 25 2026 — every live clan's members were linked by
-  then). Linked members take the game's spelling (old name kept as an alias,
-  `rename_member` audited with `source: 'game'`) — unless an admin chose the
-  name: a player merge rule naming the game name wins (its target is shown —
-  Cyrillic game names merged into readable ones stay readable), then a name
-  set by a manual rename; the game's spelling is always kept as an alias
-  (Nov 17 2026, after the sync renamed six merged members back). The Admin
+  First link: exact name, else a new member under the exact game name (the
+  fuzzy-name-plus-might step for OCR misreads and the player merge rules were
+  removed Nov 25 2026 — every live clan's members were linked by then, and the
+  player id follows a player through every rename). Linked members take the
+  game's spelling (old name kept as an alias, `rename_member` audited with
+  `source: 'game'`) — unless an admin renamed the member by hand, which wins;
+  the game's spelling is always kept as an alias. The Admin
   review queue's "Likely Renames" (a might/level guesser, v92) was retired in
   Nov 2026 (v120 drops its table): the game reports renames through the player id. They get `clan_role`, are marked
   seen and get the day's might + hero-level snapshot. With a roster of ≥ 5,
@@ -402,8 +400,7 @@ Each capture also, every cycle:
   and unlinked rows from the OCR era/old spellings.
   `[Unknown]` is exempt. Gift senders and ledger players outside the roster are
   credited through `makeMemberResolver`, which never reactivates anyone.
-  An alt that a merge rule folds into a member another player owns is only
-  marked seen there — never linked, renamed or snapshotted from the alt.
+  A second account is its own member, linked to its own player id.
 - **reads map tiles** around members' cities ([map-plan.ts](../src/scheduler/map-plan.ts)
   decides which, 9 per 312 request): every member's own tile, every scan;
   the tile of each member vault still standing at the last pass (its "last
@@ -880,8 +877,7 @@ the rows). Nothing new is stored; it reads what the member sync already keeps:
 - **Joined**: `game_players.joined_at` — the game's own join time (clan record
   `[2]` `joinedAt`) of the player's *current* stint, for every player ever seen
   in the clan (`in_clan` 1 or 0). The game overwrites it on a rejoin, so an
-  earlier stint's join is never shown. An alt a merge rule folds into a main
-  shows under the main, "as" its game name.
+  earlier stint's join is never shown.
 - **Came back**: a join after a recorded leave of the same member, or of a
   member the site already had on the roster more than an hour before the join
   (`members.first_seen` earlier) — they were in the clan before.

@@ -6,8 +6,6 @@
  * read is clan-scoped; a clan is a few hundred rows of each.
  */
 import { getDb } from '../database.js';
-import { loadPlayerNameCanonicaliser } from './merge-repo.js';
-import { exactMatchMember } from '../../utils/fuzzy.js';
 import type { RosterAudit, RosterMember, RosterPlayer, RosterSources } from '../roster-changes.js';
 
 type MemberRow = {
@@ -36,19 +34,13 @@ export function loadRosterSources(clanId: number): RosterSources {
   }));
   const byPlayer = new Map(rows.filter((r) => r.game_player_id !== null).map((r) => [r.game_player_id as number, r.id]));
 
-  // A player no member is linked to is an alt an admin's merge rule folds into
-  // a main (the member sync counts it there and never links it) — or a
-  // newcomer whose name a linked member already owns, which stays on its own.
-  const canonical = loadPlayerNameCanonicaliser(clanId);
+  // A player no member is linked to is a newcomer whose name a linked member
+  // already owns, which stays on its own.
   const players: RosterPlayer[] = (db.prepare(
     'SELECT player_id, name, joined_at, in_clan FROM game_players WHERE clan_id = ? ORDER BY player_id',
   ).all(clanId) as Array<{ player_id: number; name: string; joined_at: number | null; in_clan: number }>).map((p) => {
     const linked = byPlayer.get(p.player_id);
-    let memberId = linked ?? null;
-    if (memberId === null) {
-      const ruled = canonical(p.name);
-      if (ruled !== p.name) memberId = exactMatchMember(ruled, members)?.id ?? null;
-    }
+    const memberId = linked ?? null;
     return { playerId: p.player_id, name: p.name, joinedAt: p.joined_at, inClan: p.in_clan === 1, memberId, linked: linked !== undefined };
   });
 

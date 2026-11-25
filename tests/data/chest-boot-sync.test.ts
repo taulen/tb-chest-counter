@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { initDatabase, closeDb, getDb } from '../../src/data/database.js';
-import { applyMergeRules } from '../../src/data/repositories/merge-repo.js';
 import { invalidate } from '../../src/utils/ttl-cache.js';
 import { resetSummaryStateForTests } from '../../src/data/repositories/chest-summary-repo.js';
 
@@ -54,28 +53,6 @@ function bootAndSeed(dbPath: string, seed: (db: ReturnType<typeof getDb>) => voi
   seed(db);
   closeDb();
 }
-
-describe('merge rule fuzzy matching folds accents', () => {
-  it('matches an unaccented reading against an accented rule', () => {
-    // normalize() ran `[^a-z0-9]` without folding first, so the "ö" of
-    // "Jörmungandr Shop" was DELETED rather than turned into an "o"
-    // ("jrmungandrshop"). The accented and unaccented readings of one source
-    // therefore never compared equal — the last unfolded normalizer left after
-    // v61/v62 fixed the same defect elsewhere.
-    const dbPath = freshPath();
-    closeDb();
-    initDatabase(dbPath);
-    const db = getDb();
-    db.prepare(
-      `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-       VALUES (1, 'source', 'Jörmungandr Shop', 'Jormungandr Store', ?)`,
-    ).run(NOW);
-
-    expect(applyMergeRules('source', 'Jormungandr Shop', 1)).toBe('Jormungandr Store');
-    // And the other direction.
-    expect(applyMergeRules('source', 'Jörmungandr Shop', 1)).toBe('Jormungandr Store');
-  });
-});
 
 describe('syncChestTypes (boot-time type pass)', () => {
   it('gives a stored chest the type CHEST_TYPES declares, and leaves undeclared names alone', () => {

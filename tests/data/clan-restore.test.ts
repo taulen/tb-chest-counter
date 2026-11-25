@@ -98,11 +98,6 @@ function seedEverything(clanId: number): void {
   ).run(clanId, now);
 
   db.prepare(
-    `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-     VALUES (?, 'player', ?, 'Alice', ?)`,
-  ).run(clanId, `Ailce${clanId}`, now);
-
-  db.prepare(
     `INSERT INTO review_acknowledgments (clan_id, category, acknowledged_at) VALUES (?, 'member', ?)`,
   ).run(clanId, now);
 
@@ -201,7 +196,6 @@ const SCOPED_COUNTS: Record<string, (clanId: number) => string> = {
   tinman_scores: (c) => `SELECT COUNT(*) n FROM tinman_scores WHERE clan_id = ${c}`,
   tinman_targets: (c) => `SELECT COUNT(*) n FROM tinman_targets WHERE clan_id = ${c}`,
   chest_daily_summary: (c) => `SELECT COUNT(*) n FROM chest_daily_summary WHERE clan_id = ${c}`,
-  merge_rules: (c) => `SELECT COUNT(*) n FROM merge_rules WHERE clan_id = ${c}`,
   review_acknowledgments: (c) => `SELECT COUNT(*) n FROM review_acknowledgments WHERE clan_id = ${c}`,
   resource_upload_batches: (c) => `SELECT COUNT(*) n FROM resource_upload_batches WHERE clan_id = ${c}`,
   resource_transactions: (c) => `SELECT COUNT(*) n FROM resource_transactions WHERE clan_id = ${c}`,

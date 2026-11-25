@@ -27,6 +27,11 @@ describe('/api/guards', () => {
   let member2: number;
 
   beforeEach(() => {
+    // The readings below are dated 2026-11-17 and a level goes stale after
+    // GUARDS_STALE_DAYS (7): on the real clock this test turned red at the
+    // 2026-11-25 17:00 UTC rollover. Pinned a day after the readings.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T12:00:00Z'));
     cleanup = makeTestDb().cleanup;
     undoTrees = useResearchTrees();
     seedTwoClans();
@@ -48,6 +53,7 @@ describe('/api/guards', () => {
   afterEach(() => {
     undoTrees();
     cleanup();
+    vi.useRealTimers();
   });
 
   const send = (method: 'get' | 'post' | 'delete', path: string, who: keyof typeof cookies, body?: object) => {

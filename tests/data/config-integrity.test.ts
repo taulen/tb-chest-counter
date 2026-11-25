@@ -154,60 +154,6 @@ describe('checkConfigIntegrity', () => {
     expect(kinds(db)).toContain('source-points/source-key-dead');
   });
 
-  it('flags a merge rule pointing at a destination nothing uses', () => {
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare(
-      `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-       VALUES (1, 'source', 'Level 20-24 Vault of the Ancients:', 'Lvl 20-24 Vault of the Ancients:', ?)`,
-    ).run(NOW);
-    expect(kinds(db)).toContain('merge-rules/dead-target');
-  });
-
-  it('flags a merged-away player spelling that is back on the roster', () => {
-    // The tripwire that was missing. This sweep skipped type='player' entirely, so
-    // when the daily might capture kept re-creating names an admin had already merged
-    // — because nothing outside the gift scan read the rules — there was no signal at
-    // all. A player rule's from_value existing as a member means the merge came undone.
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare(
-      `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active)
-       VALUES (1, 'Ma Chaosraven', 'ma chaosraven', ?, ?, 1),
-              (1, 'Mikam Chaosraven', 'mikam chaosraven', ?, ?, 1)`,
-    ).run(NOW, NOW, NOW, NOW);
-    db.prepare(
-      `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-       VALUES (1, 'player', 'Ma Chaosraven', 'Mikam Chaosraven', ?)`,
-    ).run(NOW);
-    expect(kinds(db)).toContain('merge-rules/player-resplit');
-  });
-
-  it('stays quiet about a player rule whose merge is still holding', () => {
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare(
-      `INSERT INTO members (clan_id, name, normalized_name, first_seen, last_seen, is_active)
-       VALUES (1, 'Mikam Chaosraven', 'mikam chaosraven', ?, ?, 1)`,
-    ).run(NOW, NOW);
-    db.prepare(
-      `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-       VALUES (1, 'player', 'Ma Chaosraven', 'Mikam Chaosraven', ?)`,
-    ).run(NOW);
-    expect(kinds(db)).not.toContain('merge-rules/player-resplit');
-    expect(kinds(db)).not.toContain('merge-rules/dead-target');
-  });
-
-  it('flags a player rule whose destination is not on the roster', () => {
-    const db = freshDb();
-    seedHealthy(db);
-    db.prepare(
-      `INSERT INTO merge_rules (clan_id, type, from_value, to_value, created_at)
-       VALUES (1, 'player', 'Ma Chaosraven', 'Mikam Chaosraven', ?)`,
-    ).run(NOW);
-    expect(kinds(db)).toContain('merge-rules/dead-target');
-  });
-
   it('flags two spellings of one source, the tripwire that keeps v63 done', () => {
     const db = freshDb();
     seedHealthy(db);

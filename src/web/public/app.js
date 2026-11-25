@@ -148,16 +148,10 @@ import { renderEvents } from './pages/events.js';
 import { renderTools } from './pages/tools.js';
 import {
   renderAdmin,
-  doMergePlayer,
-  syncPlayerMergeCustom,
-  doMergeChest,
-  doMergeSource,
   saveAllTriumphalPoints,
-  deleteRule,
   saveMemberName,
   deleteMemberById,
   restoreMemberById,
-  promptMergePlayerById,
 } from './pages/admin.js';
 
 let currentPage = 'dashboard';
@@ -482,14 +476,9 @@ if (contentEl) {
     if (action === 'login-session-paste') return pasteIntoLoginSession();
     if (action === 'restart-container') return restartContainer();
     if (action === 'refresh-log-buffer') return refreshLogBuffer(loadPage);
-    if (action === 'prompt-merge-member') return promptMergePlayerById(Number.parseInt(target.dataset.memberId || '0', 10), loadPage);
     if (action === 'save-member') return saveMemberName(Number.parseInt(target.dataset.memberId || '0', 10));
     if (action === 'delete-member') return deleteMemberById(Number.parseInt(target.dataset.memberId || '0', 10), target.dataset.memberName, loadPage);
     if (action === 'restore-member') return restoreMemberById(Number.parseInt(target.dataset.memberId || '0', 10), target.dataset.memberName, loadPage);
-    if (action === 'do-merge-player') return doMergePlayer(loadPage);
-    if (action === 'delete-rule') return deleteRule(Number.parseInt(target.dataset.ruleId || '0', 10), loadPage);
-    if (action === 'do-merge-chest') return doMergeChest(loadPage);
-    if (action === 'do-merge-source') return doMergeSource(loadPage);
     if (action === 'save-all-triumphal-points') return saveAllTriumphalPoints(loadPage);
     if (action === 'save-schedule-correction') return saveScheduleCorrection(loadPage);
     if (action === 'delete-schedule-correction') return deleteScheduleCorrection(Number.parseInt(target.dataset.correctionId || '0', 10), loadPage);
@@ -537,26 +526,6 @@ if (contentEl) {
       const guestClanId = Number.parseInt(select.dataset.guestClanId || '0', 10);
       if (guestClanId) return changeGuestClanRole(userId, guestClanId, select.value, loadPage);
       return changeRole(userId, select.value, loadPage);
-    }
-
-    // When picking a misread on any of the merge forms, prefill
-    // the "or type custom" field with the same value so the user only
-    // needs to edit the casing/typo instead of retyping it.
-    // For players the text field is also what gets merged (see
-    // syncPlayerMergeCustom), so a misread must not overwrite a Correct
-    // Name already picked.
-    if (select.id === 'mergePlayerFrom' && !$('#mergePlayerTo')?.value) {
-      const customInput = $('#mergePlayerToCustom');
-      if (customInput) customInput.value = select.value;
-    }
-    if (select.id === 'mergePlayerTo') syncPlayerMergeCustom(select, $('#mergePlayerToCustom'));
-    if (select.id === 'mergeChestFrom') {
-      const customInput = $('#mergeChestToCustom');
-      if (customInput) customInput.value = select.value;
-    }
-    if (select.id === 'mergeSourceFrom') {
-      const customInput = $('#mergeSourceToCustom');
-      if (customInput) customInput.value = select.value;
     }
 
     if (select.classList.contains('resource-filter-select')) {

@@ -416,12 +416,6 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
   });
 
   describe('admin read paths', () => {
-    it('GET /api/admin/merge-rules', async () => {
-      const res = await request(app).get('/api/admin/merge-rules');
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-    });
-
     it('GET /api/admin/source-points', async () => {
       const res = await request(app).get('/api/admin/source-points');
       expect(res.status).toBe(200);
@@ -436,28 +430,6 @@ describe('api.ts GET endpoints — read-path smoke coverage', () => {
       // name/source/member lists were retired in Nov 2026).
       expect(res.body).toHaveProperty('triumphalChests');
       expect(res.body).not.toHaveProperty('members');
-    });
-
-    it('GET /api/admin/unique-chests', async () => {
-      const res = await request(app).get('/api/admin/unique-chests');
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-    });
-
-    it('GET /api/admin/unique-sources', async () => {
-      const res = await request(app).get('/api/admin/unique-sources');
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-    });
-
-    it('GET /api/admin/member-chest-counts', async () => {
-      const res = await request(app).get('/api/admin/member-chest-counts');
-      expect(res.status).toBe(200);
-      // memberId → count map; every value must be a number, because the
-      // admin dropdowns render it directly and a string would read as NaN.
-      expect(typeof res.body).toBe('object');
-      expect(Array.isArray(res.body)).toBe(false);
-      for (const v of Object.values(res.body)) expect(typeof v).toBe('number');
     });
   });
 });

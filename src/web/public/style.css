@@ -3862,15 +3862,6 @@ details > table {
   flex: 1;
 }
 
-/* Standalone "or type a custom value" row — sits beneath an
-   inline-form-row whose primary control is a dropdown. Spans the full
-   width and indents slightly so it reads as a follow-up to the main
-   row instead of a fresh field. */
-.merge-custom-row {
-  margin-top: 8px;
-  max-width: 480px;
-}
-
 /* Subtle horizontal rule used between sub-sections inside a card. */
 .section-divider {
   border: 0;
@@ -4291,22 +4282,6 @@ details > table {
 .audit-table .col-audit-time { width: 160px; }
 .audit-table .col-audit-user { width: 140px; }
 .audit-table .col-audit-action { width: 200px; }
-
-/* Admin merge-rules tables: lock widths so the trailing Delete button
-   column stays a fixed pill no matter how long the from/to strings are.
-   Mirrors the locked-width pattern used by Members and Leaderboard. */
-.merge-rules-table {
-  table-layout: fixed;
-}
-.merge-rules-table .col-merge-from { width: 40%; }
-.merge-rules-table .col-merge-to { width: 40%; }
-.merge-rules-table .col-merge-created { width: 180px; }
-.merge-rules-table td[data-label="From"],
-.merge-rules-table td[data-label="To"] {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /* Slug + numeric id annotation rendered alongside the clan card title.
    Lighter weight so the name remains the primary read. */

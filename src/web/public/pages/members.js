@@ -274,7 +274,7 @@ export function renderMembersTable(el) {
               ${/* Remove is the Admin page's own action (app.js's delete-member):
                     a soft delete, restored from Admin → Members. GET /members
                     lists active members only, so the reload drops the row. */''}
-              ${isAdmin ? `<td class="col-actions nowrap"><button class="btn btn-tight" data-action="prompt-merge-member" data-member-id="${m.id}">${t('Merge')}</button><button class="btn btn-tight btn-danger ml-4" data-action="delete-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">${t('Remove')}</button></td>` : ''}
+              ${isAdmin ? `<td class="col-actions nowrap"><button class="btn btn-tight btn-danger" data-action="delete-member" data-member-id="${m.id}" data-member-name="${esc(m.name)}">${t('Remove')}</button></td>` : ''}
             </tr>`;
             }).join('')}
           </tbody></table>`}
