@@ -1627,6 +1627,7 @@ export const ui = {
   "Standings from the game": "Classement du jeu",
   "Read {time}": "Lu {time}",
   "The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved.": "L'onglet Membres du clan de la fenêtre de l'événement, lu dans le jeu à chaque scan. La variation est depuis la lecture précédant le dernier changement de points.",
+  "The event window's Ranking tab, read from the game every scan: our members' official places among every clan of the matchup. Members outside its top 100 have no rank.": "L'onglet Classement de la fenêtre de l'événement, lu dans le jeu à chaque scan : les places officielles de nos membres parmi tous les clans de l'affrontement. Les membres hors de son top 100 n'ont pas de rang.",
   "Event {type}": "Événement {type}",
   "{n} members with points": { one: "{n} membre avec des points", other: "{n} membres avec des points" },
   "All events": "Tous les événements",

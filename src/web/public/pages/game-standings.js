@@ -72,11 +72,14 @@ function standingsTableHtml(rows, page) {
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const p = Math.min(Math.max(1, page), pages);
   const slice = rows.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
+  // A rank of null: a member outside the top 100 of a run ranked across its
+  // matchup (Sealed in Flame) — no place and no points the game shows.
+  const none = '<span class="muted-copy">—</span>';
   const body = slice.map((r) => `<tr>
-      <td data-label="${t('Rank')}" data-role="lead"><span class="rank rank-${r.rank}">#${r.rank}</span></td>
+      <td data-label="${t('Rank')}" data-role="lead">${r.rank ? `<span class="rank rank-${r.rank}">#${r.rank}</span>` : none}</td>
       <td data-label="${t('Member')}" data-role="primary"><span class="mrow-name">${whoCell(r)}</span></td>
-      <td data-label="${t('Points')}" class="num" data-role="metric">${Number(r.points).toLocaleString()}</td>
-      <td data-label="${t('Change')}" class="num" data-role="hidden">${changeCell(r)}</td>
+      <td data-label="${t('Points')}" class="num" data-role="metric">${r.rank ? Number(r.points).toLocaleString() : none}</td>
+      <td data-label="${t('Change')}" class="num" data-role="hidden">${r.rank ? changeCell(r) : none}</td>
     </tr>`).join('');
   return `<div class="ui-table-card">
       <table class="table-responsive ui-table game-standings-table">
@@ -89,6 +92,13 @@ function standingsTableHtml(rows, page) {
       </table>
       ${paginationHtml(p, pages, tn(rows.length, '{n} member', '{n} members', { n: rows.length }))}
     </div>`;
+}
+
+/** What the standings are: the Clan members tab, or (a run ranked across its matchup) our members' places in the Ranking tab. */
+function standingsCopy(run) {
+  return run.matchupRanked
+    ? t("The event window's Ranking tab, read from the game every scan: our members' official places among every clan of the matchup. Members outside its top 100 have no rank.")
+    : t("The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved.");
 }
 
 /** The standings card for an event page; nothing when the game gave no standings for that window. */
@@ -105,7 +115,7 @@ export function mountGameStandings(el, data) {
           <span class="ui-sub" title="${esc(formatDate(run.readAt))}">${esc(t('Read {time}', { time: formatRelativeTime(run.readAt) }))}</span>
         </div>
         <p class="ui-sub">${esc(tGame(run.title || ''))} · ${runStatusHtml(run)}</p>
-        <p class="ui-copy">${esc(t("The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved."))}</p>
+        <p class="ui-copy">${esc(standingsCopy(run))}</p>
         ${standingsTableHtml(standings, page)}
       </section>`;
     el.querySelectorAll('[data-gs-page]').forEach((b) => b.addEventListener('click', () => {
@@ -435,7 +445,7 @@ async function renderRunView(el, key) {
           </div>
           ${status ? `<p class="ui-sub">${status}</p>` : ''}
           <div class="gr-links">${links}</div>
-          <p class="ui-copy">${esc(t("The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved."))}</p>
+          <p class="ui-copy">${esc(standingsCopy(run))}</p>
           ${standingsTableHtml(standings, page)}
         </section>
       </div>`;

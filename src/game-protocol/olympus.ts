@@ -28,6 +28,21 @@ export const OLYMPUS_CODE = 'multistage';
  */
 export const OLYMPUS_EVENT_TYPE = 1032;
 
+/**
+ * Olympus sub-events ranked across the whole matchup, not per clan: their
+ * Clan members tab (38003) answers every member at 0, and the game's Ranking
+ * tab is 24003 on the rating proxy, scoped to the matchup group (24203 gives
+ * `[6, 590]`) — the top 100 players of all three clans. Recorded Nov 25 2026.
+ * Known by English title, like the stages.
+ */
+export const OLYMPUS_MATCHUP_RANKED_TITLES: readonly string[] = ['Sealed in Flame'];
+
+/** A run whose standings are our members' places in the matchup's Ranking tab (OLYMPUS_MATCHUP_RANKED_TITLES). */
+export function isMatchupRankedRun(r: { code: string; title: string }): boolean {
+  const title = r.title.trim().toLowerCase();
+  return r.code === OLYMPUS_CODE && OLYMPUS_MATCHUP_RANKED_TITLES.some((t) => t.toLowerCase() === title);
+}
+
 /** The run's days in order: day n is stage n. */
 export const OLYMPUS_STAGES: ReadonlyArray<{ day: number; title: string }> = [
   { day: 1, title: 'Trial of the Chimera' },

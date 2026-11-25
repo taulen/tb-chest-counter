@@ -33,6 +33,7 @@ const messages_js_1 = require("../../game-protocol/messages.js");
 const artifacts_js_1 = require("../../game-protocol/artifacts.js");
 const equipment_js_1 = require("../../game-protocol/equipment.js");
 const event_mapping_js_1 = require("../../game-protocol/event-mapping.js");
+const olympus_js_1 = require("../../game-protocol/olympus.js");
 const game_event_repo_js_1 = require("../../data/repositories/game-event-repo.js");
 const hero_levels_js_1 = require("../../game-protocol/hero-levels.js");
 const factions_js_1 = require("../../game-protocol/factions.js");
@@ -81,6 +82,8 @@ function eventRunApi(r, nowSec) {
         /** One of the short rotating tournaments (2–5 h). */
         short: (0, game_event_repo_js_1.isShortRun)(r),
         eventKey: (0, event_mapping_js_1.catalogKeyForEventTitle)(r.title),
+        /** Ranked across its matchup (Sealed in Flame): ranks are the game's Ranking tab's, members outside its top 100 have none. */
+        matchupRanked: (0, olympus_js_1.isMatchupRankedRun)(r),
         startsAt: r.startsAt ? new Date(r.startsAt * 1000).toISOString() : null,
         endsAt: r.endsAt ? new Date(r.endsAt * 1000).toISOString() : null,
         live: (r.startsAt ?? 0) <= nowSec && (r.endsAt === null || r.endsAt > nowSec),
@@ -400,7 +403,8 @@ function createGameRouter() {
         res.json({
             run: eventRunApi(run, nowSec),
             standings: standings.map((s) => ({
-                rank: s.rank,
+                // 0 = no rank (outside a matchup-ranked run's top 100).
+                rank: s.rank || null,
                 points: s.points,
                 previousPoints: s.previousPoints,
                 changedAt: s.changedAt,

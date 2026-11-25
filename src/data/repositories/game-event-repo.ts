@@ -270,9 +270,10 @@ export function listableEventRuns(clanId: number, runs: StoredEventRun[]): Store
 /** Each run's head count and leader, one indexed query per run, in the order given. */
 export function summarizeEventRuns(clanId: number, runs: StoredEventRun[]): EventRunSummary[] {
   // With exactly one MIN() aggregate, SQLite takes the bare player_id/points
-  // from the row holding it: the best rank's.
+  // from the row holding it: the best rank's. Rank 0 is "no rank" (a member
+  // outside a matchup-ranked run's top 100), never the leader.
   const stmt = getDb().prepare(
-    `SELECT COUNT(*) AS members, COALESCE(SUM(points > 0), 0) AS with_points, MIN(rank) AS top_rank, player_id, points
+    `SELECT COUNT(*) AS members, COALESCE(SUM(points > 0), 0) AS with_points, MIN(NULLIF(rank, 0)) AS top_rank, player_id, points
        FROM game_event_standings
       WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?`,
   );
@@ -292,6 +293,7 @@ export function summarizeEventRuns(clanId: number, runs: StoredEventRun[]): Even
 export interface EventStandingRow {
   playerId: number;
   points: number;
+  /** 0 = no rank: a member outside the top 100 of a matchup-ranked run (Sealed in Flame). */
   rank: number;
   /** Points at the read before the latest change; null for the run's first read (the baseline). */
   previousPoints: number | null;
@@ -300,13 +302,13 @@ export interface EventStandingRow {
   updatedAt: string;
 }
 
-/** A run's standings, best first, with each player's previous points. */
+/** A run's standings, best first (members without a rank last), with each player's previous points. */
 export function getEventStandings(clanId: number, key: EventRunKey): EventStandingRow[] {
   const db = getDb();
   const rows = db.prepare(
     `SELECT player_id, points, rank, updated_at FROM game_event_standings
       WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?
-      ORDER BY rank, points DESC`,
+      ORDER BY rank = 0, rank, points DESC`,
   ).all(clanId, key.eventType, key.run, key.occurrence) as Array<{ player_id: number; points: number; rank: number; updated_at: string }>;
   // The two newest history rows per player: [latest, previous].
   const hist = db.prepare(

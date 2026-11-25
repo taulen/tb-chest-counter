@@ -1627,6 +1627,7 @@ export const ui = {
   "Standings from the game": "Рейтинг из игры",
   "Read {time}": "Прочитано {time}",
   "The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved.": "Вкладка «Члены клана» окна события, читается из игры при каждом сканировании. Изменение — с чтения перед последним изменением очков.",
+  "The event window's Ranking tab, read from the game every scan: our members' official places among every clan of the matchup. Members outside its top 100 have no rank.": "Вкладка «Рейтинг» окна события, читается из игры при каждом сканировании: официальные места наших участников среди всех кланов противостояния. У участников вне топ-100 места нет.",
   "Event {type}": "Событие {type}",
   "{n} members with points": { one: "{n} участник с очками", few: "{n} участника с очками", many: "{n} участников с очками", other: "{n} участника с очками" },
   "All events": "Все события",

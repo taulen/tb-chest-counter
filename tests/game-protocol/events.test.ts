@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Frame, Wire } from '../../src/game-protocol/codec.js';
 import {
-  isEventRunning, parseEventList, parseEventProgress, parseEventStandings,
+  isEventRunning, parseEventList, parseEventProgress, parseEventRanking, parseEventRatingScopes, parseEventStandings,
   parseOlympusClanRanking, parseOlympusGroup, parseOlympusMembers, parseOlympusRewardMinimum,
 } from '../../src/game-protocol/messages.js';
 import { figurineSummons } from '../../src/game-protocol/ancients.js';
@@ -18,6 +18,8 @@ import {
   listableEventRuns, saveEventStandings, saveMatchup, summarizeEventRuns,
 } from '../../src/data/repositories/game-event-repo.js';
 import { buildGameOlympus, olympusGameRunDates } from '../../src/data/olympus-game.js';
+import { isMatchupRankedRun } from '../../src/game-protocol/olympus.js';
+import { overlayRanking } from '../../src/scheduler/event-read.js';
 import { getDb } from '../../src/data/database.js';
 import { makeTestDb } from '../helpers/test-db.js';
 
@@ -141,6 +143,65 @@ describe('Olympus messages (recorded Nov 24 2026, CWB)', () => {
   });
 });
 
+describe('Sealed in Flame: the Ranking tab across the matchup (recorded Nov 25 2026, CWB)', () => {
+  it("reads each run's ranking scope (24203): Sealed in Flame is the matchup group", () => {
+    const body: Wire[] = [[[
+      [[1015, 81], [6, 590], [1, 1]],
+      [[1018, 1], [19, 1], [1, 1]],
+      [[1022, 43], [1, 1], [1, 1]],
+    ]]];
+    expect(parseEventRatingScopes(frame(24203, body))).toEqual([
+      { type: 1015, run: 81, scope: 6, group: 590 },
+      { type: 1018, run: 1, scope: 19, group: 1 },
+      { type: 1022, run: 43, scope: 1, group: 1 },
+    ]);
+  });
+
+  it('reads the Ranking tab (24003): players of every clan best first, numbered 1, 2, 3…, and the kingdom totals', () => {
+    // The top of the recorded reply: Vit [K157], FENRØTH [K260], Creams Mystery Pie [K260], LizDidntDoIt [K260], Chief G [K157].
+    const body: Wire[] = [[[
+      [[[[382252267348], 1923026108], [[1297080180790], 1317904810], [[1297080461547], 906994769], [[1297080260638], 868251456], [[4522600564552], 849335099]]],
+      [[]],
+      [[[260, 7236997949], [157, 5973022904], [213, 1892258839]]],
+    ], [0, 0, 1]]];
+    const r = parseEventRanking(frame(24003, body));
+    expect(r.rows.map((x) => [x.rank, x.playerId, x.points])).toEqual([
+      [1, 382252267348, 1923026108],
+      [2, 1297080180790, 1317904810],
+      [3, 1297080461547, 906994769],
+      [4, 1297080260638, 868251456],
+      [5, 4522600564552, 849335099],
+    ]);
+    expect(r.kingdoms).toEqual([{ kingdom: 260, points: 7236997949 }, { kingdom: 157, points: 5973022904 }, { kingdom: 213, points: 1892258839 }]);
+    expect(parseEventRanking(frame(24003, [[[[[]], [[]], [[]]], [0, 0, 0]]]))).toEqual({ rows: [], kingdoms: [] });
+  });
+
+  it('keeps only our members, with their official place; a member outside the list has no rank (0) and no points', () => {
+    // The Clan members tab answers every member at 0 points.
+    const members = [
+      { playerId: 1297080180790, points: 0, rank: 1 },
+      { playerId: 1297080260638, points: 0, rank: 2 },
+      { playerId: 111, points: 0, rank: 3 },
+    ];
+    const ranking = [
+      { playerId: 382252267348, points: 1923026108, rank: 1 }, // a rival: left out
+      { playerId: 1297080180790, points: 1317904810, rank: 2 },
+      { playerId: 1297080260638, points: 868251456, rank: 4 },
+    ];
+    expect(overlayRanking(members, ranking)).toEqual([
+      { playerId: 1297080180790, points: 1317904810, rank: 2 },
+      { playerId: 1297080260638, points: 868251456, rank: 4 },
+      { playerId: 111, points: 0, rank: 0 },
+    ]);
+  });
+
+  it('knows Sealed in Flame by its code and English title', () => {
+    expect(isMatchupRankedRun({ code: 'multistage', title: 'Sealed in Flame' })).toBe(true);
+    expect(isMatchupRankedRun({ code: 'multistage', title: 'Lava Fountain Trial' })).toBe(false);
+    expect(isMatchupRankedRun({ code: 'some_tournament', title: 'Sealed in Flame' })).toBe(false);
+  });
+});
+
 describe('event standings storage', () => {
   let cleanup: () => void;
   beforeEach(() => { ({ cleanup } = makeTestDb()); });
@@ -201,6 +262,19 @@ describe('event standings storage', () => {
     expect(summarizeEventRuns(CLAN, listEventRuns(CLAN)).map((r) => [r.occurrence, r.members, r.withPoints, r.leader])).toEqual([
       [243, 1, 0, null],
       [242, 3, 2, { playerId: 2, points: 500 }],
+    ]);
+  });
+
+  it('lists members without a rank (0) last and never makes one the leader', () => {
+    saveEventRun(CLAN, entry, { code: 'multistage', title: 'Sealed in Flame' }, '2026-11-25T20:00:00Z');
+    saveEventStandings(CLAN, RUN, [
+      { playerId: 1, points: 0, rank: 0 },
+      { playerId: 2, points: 868251456, rank: 4 },
+      { playerId: 3, points: 1317904810, rank: 2 },
+    ], '2026-11-25T20:00:00Z');
+    expect(getEventStandings(CLAN, RUN).map((r) => [r.playerId, r.rank])).toEqual([[3, 2], [2, 4], [1, 0]]);
+    expect(summarizeEventRuns(CLAN, listEventRuns(CLAN)).map((r) => [r.members, r.withPoints, r.leader])).toEqual([
+      [3, 2, { playerId: 3, points: 1317904810 }],
     ]);
   });
 

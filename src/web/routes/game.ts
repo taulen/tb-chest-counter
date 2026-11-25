@@ -59,6 +59,7 @@ import { CLAN_RANKING_KINDS } from '../../game-protocol/messages.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
 import { CAPTAIN_GEAR_POSITIONS, describeItem, HERO_ENTRY_ID, HERO_GEAR_POSITIONS } from '../../game-protocol/equipment.js';
 import { catalogKeyForEventTitle } from '../../game-protocol/event-mapping.js';
+import { isMatchupRankedRun } from '../../game-protocol/olympus.js';
 import {
   eventGroupKey, getEventRun, getEventStandings, groupEventRuns, isShortRun, listableEventRuns, listEventRuns, summarizeEventRuns,
   type StoredEventRun,
@@ -112,6 +113,8 @@ function eventRunApi(r: StoredEventRun, nowSec: number) {
     /** One of the short rotating tournaments (2–5 h). */
     short: isShortRun(r),
     eventKey: catalogKeyForEventTitle(r.title),
+    /** Ranked across its matchup (Sealed in Flame): ranks are the game's Ranking tab's, members outside its top 100 have none. */
+    matchupRanked: isMatchupRankedRun(r),
     startsAt: r.startsAt ? new Date(r.startsAt * 1000).toISOString() : null,
     endsAt: r.endsAt ? new Date(r.endsAt * 1000).toISOString() : null,
     live: (r.startsAt ?? 0) <= nowSec && (r.endsAt === null || r.endsAt > nowSec),
@@ -435,7 +438,8 @@ export function createGameRouter(): Router {
     res.json({
       run: eventRunApi(run, nowSec),
       standings: standings.map((s) => ({
-        rank: s.rank,
+        // 0 = no rank (outside a matchup-ranked run's top 100).
+        rank: s.rank || null,
         points: s.points,
         previousPoints: s.previousPoints,
         changedAt: s.changedAt,

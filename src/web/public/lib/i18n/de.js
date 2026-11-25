@@ -1627,6 +1627,7 @@ export const ui = {
   "Standings from the game": "Rangliste aus dem Spiel",
   "Read {time}": "Gelesen {time}",
   "The event window's Clan members tab, read from the game every scan. The change is since the read before the points last moved.": "Der Reiter Clanmitglieder des Event-Fensters, bei jedem Scan aus dem Spiel gelesen. Die Änderung gilt seit dem Lesen vor der letzten Punkteänderung.",
+  "The event window's Ranking tab, read from the game every scan: our members' official places among every clan of the matchup. Members outside its top 100 have no rank.": "Der Reiter Rangliste des Event-Fensters, bei jedem Scan aus dem Spiel gelesen: die offiziellen Plätze unserer Mitglieder unter allen Clans des Duells. Mitglieder außerhalb der Top 100 haben keinen Rang.",
   "Event {type}": "Event {type}",
   "{n} members with points": { one: "{n} Mitglied mit Punkten", other: "{n} Mitglieder mit Punkten" },
   "All events": "Alle Events",

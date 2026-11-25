@@ -455,11 +455,11 @@ class GameClient {
      * the scope spans (Sealed in Flame: the three clans of the Olympus matchup).
      * Read-only.
      */
-    eventRanking(type, run, scope, group) {
+    eventRanking(type, run, scope, group, clanId = this.clanId) {
         const proxy = this.servers.ratingProxyUrl;
         if (!proxy)
             return Promise.reject(new GameProtocolError('the site page lists no rating proxy (rating_proxy_url)'));
-        return this.ask(24003, [[[[this.playerId], [this.clanId], this.realmId], [[type, run], [scope, group], [0, 0]]]], `${proxy.replace(/\/$/, '')}/`);
+        return this.ask(24003, [[[[this.playerId], [clanId], this.realmId], [[type, run], [scope, group], [0, 0]]]], `${proxy.replace(/\/$/, '')}/`);
     }
     /** Trials of Olympus' Ranking → Clan members (82003): the members' Olympus points. Read-only. */
     olympusMembers(type, run) {

@@ -799,7 +799,7 @@ export interface GameEventRanking {
 /**
  * Message 24003 (ask `[[[[playerId], [clanId], realm], [[type, run], [scope,
  * group], [0, 0]]]]` on the site page's rating_proxy_url): the event window's
- * Ranking tab — body[0][0] = `[[rows], [[]], [[[kingdom, points], …]]]`, rows
+ * Ranking tab — body[0][0] = `[[[rows]], [[]], [[[kingdom, points], …]]]`, rows
  * `[[playerId], points]` best first (the top 100; the game numbers them 1, 2,
  * 3…), then body[0][1] the signed-in account's own line. Recorded Nov 25 2026
  * from Sealed in Flame: 94 rows from all three clans of the Olympus matchup,
@@ -809,7 +809,7 @@ export interface GameEventRanking {
 export function parseEventRanking(frame: Frame): GameEventRanking {
   const root = arr(arr(arr(frame.body)[0])[0]);
   const rows: GameEventStanding[] = [];
-  for (const row of arr(root[0])) {
+  for (const row of arr(arr(root[0])[0])) {
     const r = arr(row);
     const playerId = id1(r[0]);
     const points = num(r[1]);

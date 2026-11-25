@@ -19,7 +19,8 @@
  * (messages.ts, recorded that day).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OLYMPUS_STAGES = exports.OLYMPUS_EVENT_TYPE = exports.OLYMPUS_CODE = void 0;
+exports.OLYMPUS_STAGES = exports.OLYMPUS_MATCHUP_RANKED_TITLES = exports.OLYMPUS_EVENT_TYPE = exports.OLYMPUS_CODE = void 0;
+exports.isMatchupRankedRun = isMatchupRankedRun;
 exports.OLYMPUS_CODE = 'multistage';
 /**
  * The umbrella event's type (every run in names.json — 1032,1 … 1032,4 — is
@@ -28,6 +29,19 @@ exports.OLYMPUS_CODE = 'multistage';
  * (scheduler/olympus-read.ts).
  */
 exports.OLYMPUS_EVENT_TYPE = 1032;
+/**
+ * Olympus sub-events ranked across the whole matchup, not per clan: their
+ * Clan members tab (38003) answers every member at 0, and the game's Ranking
+ * tab is 24003 on the rating proxy, scoped to the matchup group (24203 gives
+ * `[6, 590]`) — the top 100 players of all three clans. Recorded Nov 25 2026.
+ * Known by English title, like the stages.
+ */
+exports.OLYMPUS_MATCHUP_RANKED_TITLES = ['Sealed in Flame'];
+/** A run whose standings are our members' places in the matchup's Ranking tab (OLYMPUS_MATCHUP_RANKED_TITLES). */
+function isMatchupRankedRun(r) {
+    const title = r.title.trim().toLowerCase();
+    return r.code === exports.OLYMPUS_CODE && exports.OLYMPUS_MATCHUP_RANKED_TITLES.some((t) => t.toLowerCase() === title);
+}
 /** The run's days in order: day n is stage n. */
 exports.OLYMPUS_STAGES = [
     { day: 1, title: 'Trial of the Chimera' },

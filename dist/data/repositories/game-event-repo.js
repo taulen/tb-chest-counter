@@ -191,8 +191,9 @@ function listableEventRuns(clanId, runs) {
 /** Each run's head count and leader, one indexed query per run, in the order given. */
 function summarizeEventRuns(clanId, runs) {
     // With exactly one MIN() aggregate, SQLite takes the bare player_id/points
-    // from the row holding it: the best rank's.
-    const stmt = (0, database_js_1.getDb)().prepare(`SELECT COUNT(*) AS members, COALESCE(SUM(points > 0), 0) AS with_points, MIN(rank) AS top_rank, player_id, points
+    // from the row holding it: the best rank's. Rank 0 is "no rank" (a member
+    // outside a matchup-ranked run's top 100), never the leader.
+    const stmt = (0, database_js_1.getDb)().prepare(`SELECT COUNT(*) AS members, COALESCE(SUM(points > 0), 0) AS with_points, MIN(NULLIF(rank, 0)) AS top_rank, player_id, points
        FROM game_event_standings
       WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?`);
     return runs.map((r) => {
@@ -205,12 +206,12 @@ function summarizeEventRuns(clanId, runs) {
         };
     });
 }
-/** A run's standings, best first, with each player's previous points. */
+/** A run's standings, best first (members without a rank last), with each player's previous points. */
 function getEventStandings(clanId, key) {
     const db = (0, database_js_1.getDb)();
     const rows = db.prepare(`SELECT player_id, points, rank, updated_at FROM game_event_standings
       WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?
-      ORDER BY rank, points DESC`).all(clanId, key.eventType, key.run, key.occurrence);
+      ORDER BY rank = 0, rank, points DESC`).all(clanId, key.eventType, key.run, key.occurrence);
     // The two newest history rows per player: [latest, previous].
     const hist = db.prepare(`SELECT player_id, points, changed_at FROM game_event_standing_history
       WHERE clan_id = ? AND event_type = ? AND run = ? AND occurrence = ?

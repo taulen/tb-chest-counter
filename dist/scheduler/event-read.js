@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.readEventStandings = readEventStandings;
+exports.overlayRanking = overlayRanking;
 const messages_js_1 = require("../game-protocol/messages.js");
 const ancients_js_1 = require("../game-protocol/ancients.js");
 const olympus_js_1 = require("../game-protocol/olympus.js");
@@ -27,9 +28,16 @@ async function readEventStandings(clanId, client, key, opts) {
     // tab is 82003 (game-protocol/olympus.ts).
     const olympus = key.eventType === olympus_js_1.OLYMPUS_EVENT_TYPE;
     const frame = olympus ? await client.olympusMembers(key.eventType, key.run) : await client.eventStandings(key.eventType, key.run);
-    const standings = olympus ? (0, messages_js_1.parseOlympusMembers)(frame) : (0, messages_js_1.parseEventStandings)(frame);
+    let standings = olympus ? (0, messages_js_1.parseOlympusMembers)(frame) : (0, messages_js_1.parseEventStandings)(frame);
     if (!standings.length)
         return null;
+    if (opts.ranking) {
+        await opts.pause?.();
+        const r = opts.ranking;
+        const ranked = await client.eventRanking(key.eventType, key.run, r.scope, r.group, r.gameClanId);
+        (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'event_ranking', ref, opts.gameDate, ranked.body, opts.now);
+        standings = overlayRanking(standings, (0, messages_js_1.parseEventRanking)(ranked).rows);
+    }
     if (opts.entry)
         (0, game_event_repo_js_1.saveEventRun)(clanId, opts.entry.e, { code: opts.entry.code, title: opts.entry.title }, opts.now);
     else
@@ -50,5 +58,16 @@ async function readEventStandings(clanId, client, key, opts) {
     });
     (0, game_protocol_repo_js_1.saveRawSnapshot)(clanId, 'event', ref, opts.gameDate, frame.body, opts.now);
     return { rows: standings.length, moved: saved.moved, changed: saved.changed, summonsLeft, summonsMax: figurine };
+}
+/**
+ * A matchup-ranked run's standings: the clan's members as its Clan members tab
+ * lists them, each with their place and points in the game's Ranking tab
+ * (players of every clan of the matchup; only ours are kept). A member who
+ * isn't in it — the tab shows the top 100 — has rank 0, "no rank", and 0
+ * points.
+ */
+function overlayRanking(members, ranking) {
+    const placed = new Map(ranking.map((r) => [r.playerId, r]));
+    return members.map((m) => placed.get(m.playerId) ?? { playerId: m.playerId, points: 0, rank: 0 });
 }
 //# sourceMappingURL=event-read.js.map

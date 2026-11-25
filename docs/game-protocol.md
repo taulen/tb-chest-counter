@@ -1265,7 +1265,8 @@ were 1025/8, 1025/9, 1022/43, 1022/45, 1025/10). All share the code
 | 15200 | the rival's kingdom | `[[[clanId]]]` | its headline (tag, name, members, might) — same session, as the client does |
 
 Both new servers come from the site page (`rating_proxy_url`, `reg_url`). The
-rivals' members' points aren't visible in the game and aren't asked for.
+rivals' members' Olympus points aren't visible in the game and aren't asked
+for (Sealed in Flame's Ranking tab, below, does list rival players).
 Stored: `game_event_matchups` (group, reward minimum) and
 `game_event_matchup_clans` (rank, score, kingdom, headline; a rival's
 headline is read once per run). Shown on Events → Olympus
@@ -1273,6 +1274,54 @@ headline is read once per run). Shown on Events → Olympus
 
 Dark Omens (code `sabotage`) is clan-vs-clan too; expect the same shape with
 other message numbers, and record its window when it next runs.
+
+### Sealed in Flame: the Ranking tab (24003, Nov 25 2026)
+
+Sealed in Flame (`multistage.pvp`, CWB's run 1015/81, Lava Fountain day) is
+fought between the players of all three clans of the Olympus matchup. Its
+Clan members tab (38003) answers all 81 members at 0. The game's Ranking tab
+is the top 100 players of the matchup, any clan ("[K157] Vit
+1,923,026,108"), asked on the **rating proxy**:
+
+1. 24203 (kingdom server) `[[[[type, run], …]]]` → `[[type, run], [scope, group], [1, 1]]`
+   per run. Sealed in Flame: `[6, 590]`, 590 being the matchup group (82001).
+2. 24003 (rating proxy) `[[[[playerId], [clanId], realm], [[type, run], [scope, group], [0, 0]]]]`
+   → body[0][0] = `[[[rows]], [[]], [[[kingdom, points], …]]]`, rows
+   `[[playerId], points]` best first (94 when recorded: everyone who had
+   scored), then body[0][1] the signed-in account's own line.
+
+The scan reads both for a run titled Sealed in Flame (`isMatchupRankedRun`,
+[olympus.ts](../src/game-protocol/olympus.ts)): the members stay the Clan
+members tab's, each with their place and points in the Ranking tab; a member
+outside it is stored with rank 0 = "no rank" (sorted last, never the leader,
+"—" on the page). The 24003 reply is archived whole (`event_ranking`, rival
+players included). Without a scope (24203 failed) the run isn't read at all:
+its Clan members tab alone would only store zeros.
+
+### What the rating proxy serves
+
+Every message the two recordings (Nov 24 Olympus window, Nov 25 Sealed in
+Flame) sent to `rating_proxy_url`, and the kingdom-server messages around them:
+
+| Message | Server | Holds | Read by the scan |
+|---|---|---|---|
+| 24001 | rating proxy (and `rating_url`) | every event the realm knows (see Event standings) | yes, on `rating_url` |
+| 24002 | rating proxy | `[[type, run], [scope, group]] → [points, rank, n]` per run for the **signed-in account only** (the client polls it ~every 30 s while a window is open) | no — our own account's line only |
+| 24003 | rating proxy | an event's Ranking tab: top 100 players of its scope + points per kingdom | Sealed in Flame only |
+| 24400 | rating proxy | `[[type, run]]` → `{kingdom: n}` for ~380 kingdoms — which bracket each kingdom is in for a cross-kingdom event (1001/1: mostly 6) | no |
+| 82000 | rating proxy | Olympus' clan ranking | yes |
+| 24203 | kingdom | each run's ranking `[scope, group]` (the client polls it) | for Sealed in Flame |
+| 24201 | kingdom | `[[type, run], …, total]` per run for the signed-in account; the last field is its kingdom's total in the run's ranking (K260's 7,236,997,949) | no |
+| 24500 | kingdom | `[[type, run]]` → the clan's reward tiers (Rise of the Ancients: tier, points needed, claimed, rewards) | no |
+| 82004 / 82005 | rival kingdom / kingdom | Olympus: the rival clans' ids, and each one's `[kingdom, x, y]` | no |
+| 191 | `reg_url` | player ids → kingdom (the "[K157]" tags of a ranking) | no |
+
+**Not known yet:** what 24003 returns for the other scopes. Most runs are
+`[1, 1]`, Rise of the Ancients `[19, 1]`, others `[11, 36]`, `[8, 25]`,
+`[4, 1]`. If it's each event's kingdom-wide top 100, every event's official
+rank of our top members is readable the same way. Record the Ranking tab of
+a few events (Rise of the Ancients, a tournament, an Olympus stage) before
+reading any of them.
 
 ## Names (static data)
 

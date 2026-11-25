@@ -309,12 +309,34 @@ async function collectEvents(clanId, d, now) {
     let rows = 0;
     let moved = 0;
     let summons = '';
+    const rankingNotes = [];
+    const gameClanId = d.client.clanId || d.record.clanId;
+    // Runs ranked across their matchup (Sealed in Flame) are read with their
+    // Ranking tab too, asked by the scope and group the game gives (24203).
+    const meta = (e) => d.names.events?.[`${e.type},${e.run}`];
+    const ranked = running.filter((e) => (0, olympus_js_1.isMatchupRankedRun)({ code: meta(e)?.code ?? '', title: meta(e)?.title ?? '' }));
+    const scopes = new Map();
+    if (ranked.length) {
+        try {
+            for (const s of (0, messages_js_1.parseEventRatingScopes)(await d.client.eventRatingScopes(ranked)))
+                scopes.set(`${s.type},${s.run}`, s);
+        }
+        catch (err) {
+            rankingNotes.push(`ranking scopes unreadable: ${String(err instanceof Error ? err.message : err)}`);
+        }
+        await pause();
+    }
     for (const e of running) {
-        const meta = d.names.events?.[`${e.type},${e.run}`];
+        const m = meta(e);
+        const scope = scopes.get(`${e.type},${e.run}`);
+        // A matchup-ranked run without its scope isn't read: its Clan members tab alone is all zeros.
+        if (ranked.includes(e) && !scope)
+            continue;
         try {
             const got = await (0, event_read_js_1.readEventStandings)(clanId, d.client, { eventType: e.type, run: e.run, occurrence: e.occurrence }, {
                 now, gameDate: d.gameDate, source: 'scan', pause,
-                entry: { e, code: meta?.code ?? '', title: meta?.title ?? '' },
+                entry: { e, code: m?.code ?? '', title: m?.title ?? '' },
+                ranking: scope ? { scope: scope.scope, group: scope.group, gameClanId } : undefined,
             });
             read++;
             if (got) {
@@ -326,17 +348,21 @@ async function collectEvents(clanId, d, now) {
             if (e.type === olympus_js_1.OLYMPUS_EVENT_TYPE) {
                 await pause();
                 const note = await (0, olympus_read_js_1.readOlympusMatchup)(clanId, d.client, { eventType: e.type, run: e.run, occurrence: e.occurrence }, {
-                    now, gameDate: d.gameDate, pause, ownClanId: d.client.clanId || d.record.clanId,
+                    now, gameDate: d.gameDate, pause, ownClanId: gameClanId,
                 }).catch((err) => `olympus matchup failed: ${String(err)}`);
                 summons += `, ${note}`;
             }
         }
-        catch {
-            // Not every event has a clan-members tab; nothing to keep.
+        catch (err) {
+            // Not every event has a clan-members tab; nothing to keep. A ranking
+            // that failed is worth a word in the scan's note.
+            if (scope)
+                rankingNotes.push(`${m?.title || `${e.type},${e.run}`} ranking unreadable: ${String(err instanceof Error ? err.message : err)}`);
         }
         await pause();
     }
-    return { note: `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)${summons}`, treasure };
+    const notes = rankingNotes.map((n) => `, ${n}`).join('');
+    return { note: `events: ${running.length} running, ${read} read, ${rows} member rows (${moved} moved)${summons}${notes}`, treasure };
 }
 async function collectClan(clanId, d, now) {
     const rec = d.record;
