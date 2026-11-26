@@ -107,6 +107,15 @@ describe('notePatch', () => {
     expect(readPatchNotes(res.id!, notesDir)!.sections[0].entries[0].name).toBe('Colosseum Blueprint');
   });
 
+  it('the first run skips identical data re-published under a new hash: it compares by content', async () => {
+    const REPUB = 'dddddddddddddddd-cat2'; // other static hash, same translations, same content
+    names(A, A, '2026-11-20T21:09:09.599Z', { gifts: {} });
+    names(REPUB, REPUB, '2026-11-25T22:00:00.000Z', { gifts: { 17146: { chest: 'Colosseum Blueprint', source: '' } } });
+    names(B, B, '2026-11-25T23:31:14.655Z', { gifts: { 17146: { chest: 'Colosseum Blueprint', source: '' } } });
+    const res = await notePatch(deps({ current: { names: B, art: null } }));
+    expect(readPatchNotes(res.id!, notesDir)!.names).toEqual({ from: A, to: B });
+  });
+
   it('an index of an older format is noted afresh', async () => {
     names(A, A, '2026-11-20T21:09:09.599Z', { gifts: {} });
     names(B, B, '2026-11-25T23:31:14.655Z', { gifts: { 1: { chest: 'New', source: '' } } });

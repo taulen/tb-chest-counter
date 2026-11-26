@@ -37,7 +37,7 @@ exports.summarizeNotes = summarizeNotes;
  */
 const notes_sections_js_1 = require("./notes-sections.js");
 /** Bump when what a note holds changes: an index of an older format is noted afresh (the newest patch against the one before it). */
-exports.PATCH_NOTES_FORMAT = 2;
+exports.PATCH_NOTES_FORMAT = 3;
 exports.NOTE_LANGS = ['en', 'de', 'es', 'fr', 'ru'];
 const KIND_ORDER = { added: 0, revealed: 1, renamed: 2, changed: 3, removed: 4 };
 // ---------------------------------------------------------------------------

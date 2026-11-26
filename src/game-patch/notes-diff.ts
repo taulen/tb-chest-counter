@@ -16,7 +16,7 @@
 import { IGNORED_KEYS, sectionDef, sectionOrder, type SectionCtx, type SectionDef, type SectionSource, type ValueLine } from './notes-sections.js';
 
 /** Bump when what a note holds changes: an index of an older format is noted afresh (the newest patch against the one before it). */
-export const PATCH_NOTES_FORMAT = 2;
+export const PATCH_NOTES_FORMAT = 3;
 export const NOTE_LANGS = ['en', 'de', 'es', 'fr', 'ru'] as const;
 export type NoteLang = (typeof NOTE_LANGS)[number];
 export type LangTexts = Partial<Record<NoteLang, string>>;

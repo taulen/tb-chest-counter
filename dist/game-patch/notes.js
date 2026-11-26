@@ -110,16 +110,24 @@ function builtAtOf(file) {
         return null;
     }
 }
+/** A names.json's content, bookkeeping aside — what two versions are compared by. */
+function namesContent(file) {
+    const names = readJson(file);
+    if (!names)
+        return null;
+    for (const k of ['version', 'builtAt', 'format', 'textLanguages'])
+        delete names[k];
+    return JSON.stringify(names);
+}
 /**
- * The first run's "from": the names version on disk read before `current`,
- * preferring the newest with OTHER static data — the patch before. A patch
- * often lands in steps (static data, then a translations fix, or the other
- * way round), and the version between two steps of one patch holds the same
- * content: comparing with it showed nothing (prod, Nov 26 2026).
+ * The first run's "from": the newest names version on disk read before
+ * `current` whose CONTENT differs — the patch before. A patch lands in steps
+ * and the game re-publishes identical data under a new hash, so the version
+ * read just before can hold the very same content: comparing with it showed
+ * nothing but art (prod, Nov 26 2026, twice — by date, then by static hash).
  */
 function previousNamesOnDisk(dir, current) {
     const mine = builtAtOf(path_1.default.join(dir, current, 'names.json'));
-    const staticOf = (key) => key.split('-')[0];
     let entries = [];
     try {
         entries = fs_1.default.readdirSync(dir);
@@ -132,7 +140,9 @@ function previousNamesOnDisk(dir, current) {
         .map((key) => ({ key, at: builtAtOf(path_1.default.join(dir, key, 'names.json')) }))
         .filter((c) => !!c.at && !(mine && c.at >= mine))
         .sort((a, b) => b.at.localeCompare(a.at));
-    return (older.find((c) => staticOf(c.key) !== staticOf(current)) ?? older[0])?.key ?? null;
+    const now = namesContent(path_1.default.join(dir, current, 'names.json'));
+    const differs = older.find((c) => namesContent(path_1.default.join(dir, c.key, 'names.json')) !== now);
+    return (differs ?? older[0])?.key ?? null;
 }
 /** The art catalogue served before `current` (the art store's state). */
 function previousArtOnDisk(dir, current) {
@@ -383,7 +393,8 @@ async function notePatch(deps = {}) {
     const s = (0, notes_diff_js_1.summarizeNotes)(notes);
     log.info(`Game patch notes ${notes.id}: ${Object.entries(s.counts).map(([k, v]) => `${v} ${k}`).join(', ')}` +
         (s.highlights.length ? ` — ${s.highlights.map((h) => h.name).join(', ')}` : '') +
-        (notes.textsError ? ` (texts: ${notes.textsError})` : ''));
+        (notes.textsError ? ` (texts: ${notes.textsError})` : '') +
+        ` [names ${notes.names ? `${notes.names.from} → ${notes.names.to}` : 'unchanged'}; art ${notes.art ? `${notes.art.from} → ${notes.art.to}` : 'unchanged'}]`);
     return { status: 'noted', id: notes.id };
 }
 let failed = null;
