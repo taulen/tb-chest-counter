@@ -54,7 +54,7 @@ const statusOf = (treeId) => status?.trees?.[treeId] || null;
 
 /** "◌ Not live" for a tree nobody has started (glyph + words, never colour alone). */
 export function notLiveTagHtml(treeId) {
-  return statusOf(treeId)?.live === false ? `<span class="tl-tag">◌ ${esc(t('Not live'))}</span>` : '';
+  return statusOf(treeId)?.live === false ? `<span class="tlv-tag">◌ ${esc(t('Not live'))}</span>` : '';
 }
 
 /** One line over a tree nobody has started: not in the game yet, and since when its data has been there. */
@@ -65,12 +65,12 @@ export function notLiveNoteHtml(tree) {
     ? t('none of the clans this site reads has started it')
     : t('none of the players this site reads has started it');
   const since = s.firstSeen ? t("In the game's data since at least {date}.", { date: s.firstSeen.slice(0, 10) }) : '';
-  return `<p class="tl-notlive">◌ <b>${esc(t('Not live yet'))}</b>: ${esc(who)}. ${esc(since)}</p>`;
+  return `<p class="tlv-notlive">◌ <b>${esc(t('Not live yet'))}</b>: ${esc(who)}. ${esc(since)}</p>`;
 }
 
 /** What a research is paid in, as the game describes it: "Skylands Points — Earned by collecting Campaign Chest rewards." */
 export function currencyNoteHtml(itemIds, items) {
-  const lines = [...new Set(itemIds)].map((id) => items?.[id]).filter((it) => it?.tooltip).map((it) => `<p class="tl-currency">${it.iconUrl ? `<img src="${esc(it.iconUrl)}" alt="" decoding="async">` : ''}<span><b>${esc(tGame(it.name))}</b>: ${esc(it.tooltip)}</span></p>`);
+  const lines = [...new Set(itemIds)].map((id) => items?.[id]).filter((it) => it?.tooltip).map((it) => `<p class="tlv-currency">${it.iconUrl ? `<img src="${esc(it.iconUrl)}" alt="" decoding="async">` : ''}<span><b>${esc(tGame(it.name))}</b>: ${esc(it.tooltip)}</span></p>`);
   return lines.join('');
 }
 
@@ -93,9 +93,9 @@ export function costHtml(cost, items) {
     const item = items?.[id];
     const name = item ? tGame(item.name) : `#${id}`;
     const exact = Number(amount).toLocaleString('en-US');
-    return `<span class="tl-cost" title="${esc(`${exact} ${name}`)}">${item?.iconUrl ? `<img src="${esc(item.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}<span>${esc(formatCompact(amount))}</span><span class="visually-hidden"> ${esc(name)}</span></span>`;
+    return `<span class="tlv-cost" title="${esc(`${exact} ${name}`)}">${item?.iconUrl ? `<img src="${esc(item.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}<span>${esc(formatCompact(amount))}</span><span class="visually-hidden"> ${esc(name)}</span></span>`;
   });
-  return parts.length ? parts.join('') : '<span class="tl-none">—</span>';
+  return parts.length ? parts.join('') : '<span class="tlv-none">—</span>';
 }
 
 /** Sum of costs per item. */
@@ -120,44 +120,44 @@ export function levelsPanelHtml(node, data, { current = 0 } = {}) {
     : '');
   const left = list.filter((l) => l.level > current);
   const scope = current > 0 ? left : list;
-  const totals = scope.length ? `<div class="tl-totals">
-      <div class="tl-total"><span class="ui-stat-label">${esc(current > 0 ? t('Left to max') : t('All levels'))}</span><span class="tl-total-value">${costHtml(sumCosts(scope), items)}</span></div>
-      <div class="tl-total"><span class="ui-stat-label">${esc(t('Research time'))}</span><span class="tl-total-value">${esc(formatSeconds(scope.reduce((s, l) => s + (l.seconds || 0), 0)))}</span></div>
-      <div class="tl-total"><span class="ui-stat-label">${esc(t('Might'))}</span><span class="tl-total-value">+${esc(formatCompact(scope.reduce((s, l) => s + (l.might || 0), 0)))}</span></div>
+  const totals = scope.length ? `<div class="tlv-totals">
+      <div class="tlv-total"><span class="ui-stat-label">${esc(current > 0 ? t('Left to max') : t('All levels'))}</span><span class="tlv-total-value">${costHtml(sumCosts(scope), items)}</span></div>
+      <div class="tlv-total"><span class="ui-stat-label">${esc(t('Research time'))}</span><span class="tlv-total-value">${esc(formatSeconds(scope.reduce((s, l) => s + (l.seconds || 0), 0)))}</span></div>
+      <div class="tlv-total"><span class="ui-stat-label">${esc(t('Might'))}</span><span class="tlv-total-value">+${esc(formatCompact(scope.reduce((s, l) => s + (l.might || 0), 0)))}</span></div>
     </div>` : `<p class="ui-sub">${esc(t('Maxed: nothing left to research.'))}</p>`;
   let lastBuilding = '';
   const rows = list.map((l) => {
     const needs = buildingName(l.building);
-    const note = needs && needs !== lastBuilding ? `<span class="tl-needs">${esc(needs)}</span>` : '';
+    const note = needs && needs !== lastBuilding ? `<span class="tlv-needs">${esc(needs)}</span>` : '';
     lastBuilding = needs || lastBuilding;
     const state = l.level <= current ? ' is-done' : l.level === current + 1 && current > 0 ? ' is-next' : '';
-    const bonus = (l.lines || []).map(([text, value]) => `<span class="tl-line"><span>${esc(tGame(text))}</span> <b>${esc(value)}</b></span>`).join('');
-    return `<tr class="tl-row${state}">
-        <td class="num tl-lv">${l.level}${l.level <= current ? ' ✓' : ''}</td>
-        <td class="tl-bonus">${bonus || '—'}${note}</td>
-        <td class="tl-cost-cell">${costHtml(l.cost, items)}</td>
+    const bonus = (l.lines || []).map(([text, value]) => `<span class="tlv-line"><span>${esc(tGame(text))}</span> <b>${esc(value)}</b></span>`).join('');
+    return `<tr class="tlv-row${state}">
+        <td class="num tlv-lv">${l.level}${l.level <= current ? ' ✓' : ''}</td>
+        <td class="tlv-bonus">${bonus || '—'}${note}</td>
+        <td class="tlv-cost-cell">${costHtml(l.cost, items)}</td>
         <td class="num">${esc(formatSeconds(l.seconds))}</td>
         <td class="num">${l.might ? `+${esc(formatCompact(l.might))}` : '—'}</td>
       </tr>`;
   }).join('');
-  return `<div class="tl-panel">
-      <div class="tl-head">
-        ${node.iconUrl ? `<img class="tl-icon" src="${esc(node.iconUrl)}" alt="" decoding="async">` : ''}
-        <div class="tl-title">
-          <span class="tl-name">${esc(tGame(node.name))}</span>
+  return `<div class="tlv-panel">
+      <div class="tlv-head">
+        ${node.iconUrl ? `<img class="tlv-icon" src="${esc(node.iconUrl)}" alt="" decoding="async">` : ''}
+        <div class="tlv-title">
+          <span class="tlv-name">${esc(tGame(node.name))}</span>
           ${node.description ? `<span class="ui-sub">${esc(node.description)}</span>` : ''}
           ${current > 0 ? `<span class="ui-sub">${esc(t('Level {level} of {max}', { level: current, max: list.length }))}</span>` : ''}
         </div>
       </div>
       ${totals}
       ${currencyNoteHtml(list.flatMap((l) => Object.keys(l.cost || {})), items)}
-      <div class="tl-scroll">
-        <table class="ui-table tl-table">
+      <div class="tlv-scroll">
+        <table class="ui-table tlv-table">
           <thead><tr><th class="num">${esc(t('Lv'))}</th><th>${esc(t('Bonus'))}</th><th>${esc(t('Cost'))}</th><th class="num">${esc(t('Time'))}</th><th class="num">${esc(t('Might'))}</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="ui-sub tl-source">${esc(t("From the game's own files; research time before speed bonuses."))}</p>
+      <p class="ui-sub tlv-source">${esc(t("From the game's own files; research time before speed bonuses."))}</p>
     </div>`;
 }
 
@@ -168,9 +168,9 @@ export function levelsPanelHtml(node, data, { current = 0 } = {}) {
  */
 export function wireTreeLevels(viewEl, getTree, levels = {}) {
   let slot = viewEl.nextElementSibling;
-  if (!slot || !slot.classList.contains('tl-slot')) {
+  if (!slot || !slot.classList.contains('tlv-slot')) {
     slot = document.createElement('div');
-    slot.className = 'tl-slot';
+    slot.className = 'tlv-slot';
     viewEl.after(slot);
   }
   const open = async (techId) => {
