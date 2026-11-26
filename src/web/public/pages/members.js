@@ -32,6 +32,7 @@ import {
 import { t, tn, tGame } from '../lib/i18n.js';
 import { memberTechPanelHtml, mountMemberTechs } from './member-techs.js';
 import { memberCaptainsPanelHtml, mountMemberCaptains } from './member-captains.js';
+import { memberSpeedsPanelHtml, mountMemberSpeeds } from './member-speeds.js';
 import { memberTitlesHtml, wireMemberTitles } from './member-titles.js';
 import { memberTimelinePanelHtml, mountMemberTimeline } from './member-timeline.js';
 import {
@@ -1514,6 +1515,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       { key: 'research', label: t('Research'), hint: '', html: memberTechPanelHtml('research') },
       { key: 'talents', label: t('Talents'), hint: '', html: memberTechPanelHtml('talent') },
       { key: 'captains', label: t('Captains'), hint: t('Captains, gear, artifacts, Hall of Fame and the Dragon'), html: memberCaptainsPanelHtml() },
+      { key: 'speeds', label: t('Speed bonuses'), hint: t('Research, construction and troop training speed, where they come from and how they moved'), html: memberSpeedsPanelHtml() },
     ] : []),
     // Everything recorded about the member, newest first (member-timeline.js).
     { key: 'timeline', label: t('Timeline'), hint: t('Everything recorded, newest first'), html: memberTimelinePanelHtml() },
@@ -1545,6 +1547,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       mountMemberTechs(page, data.id, key === 'research' ? 'research' : 'talent', game?.tiers ?? null);
     }
     if (key === 'captains') mountMemberCaptains(page, data.id);
+    if (key === 'speeds') mountMemberSpeeds(page, data.id);
     if (key === 'timeline') mountMemberTimeline(page, data.id);
   };
   profile.mountProfile(page, {

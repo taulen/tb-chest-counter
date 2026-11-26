@@ -159,8 +159,10 @@ export async function renderCostsTool(mount) {
       paint(root);
     } else if (e.target.dataset?.ct === 'speed') {
       cs.speed = Math.max(0, Math.min(100_000, Number(e.target.value) || 0));
-      save(SPEED_KEY, cs.speed);
+      // A linked reader's field starts from the game every visit; only a typed number is remembered.
+      if (cs.gameSpeed === null) save(SPEED_KEY, cs.speed);
       paintTierResult(root);
+      paintSpeedState(root);
     }
   });
   root.addEventListener('change', async (e) => {
@@ -189,8 +191,9 @@ export async function renderCostsTool(mount) {
   });
   root.addEventListener('click', (e) => {
     if (e.target.closest('[data-ct-reset]')) {
-      // Back to the game: every line from where the player is to their next tier.
+      // Back to the game: every line from where the player is to their next tier, their research speed.
       cs.range = { family: cs.family };
+      if (cs.gameSpeed !== null) cs.speed = cs.gameSpeed;
       paintTiers(root);
       root.querySelector('[data-ct="to"]')?.focus();
       return;
@@ -249,7 +252,30 @@ function applyProgress(p) {
   cs.me = player?.readAt && asList(player.path).length ? { ...player, levels: player.levels || {}, path: asList(player.path) } : null;
   cs.unread = player && !player.readAt ? player : null;
   cs.clan = p?.clan?.readAt ? p.clan : null;
+  // Their research speed from their city (city-speeds.ts) fills the field; typing another is exploring too.
+  const pct = Number(player?.researchSpeed?.pct);
+  cs.gameSpeed = cs.me && Number.isFinite(pct) ? Math.round(pct * 10) / 10 : null;
+  cs.gameSpeedAt = cs.gameSpeed !== null ? player.researchSpeed.readAt : null;
+  if (cs.gameSpeed !== null) cs.speed = cs.gameSpeed;
   if (cs.me) cs.range = { family: cs.family };
+}
+
+/** Is the speed field the game's number? */
+const speedFromGame = () => cs.gameSpeed !== null && cs.speed === cs.gameSpeed;
+
+/** Under the speed field: where the number came from, while it is the game's. */
+function speedHintHtml() {
+  return speedFromGame()
+    ? `<span class="ct-speed-from" title="${esc(formatDate(cs.gameSpeedAt))}">✓ ${esc(t('From your city, read {when}', { when: formatRelativeTime(cs.gameSpeedAt) }))}</span>`
+    : '';
+}
+
+/** Typing in the speed field repaints only what depends on it, never the field. */
+function paintSpeedState(root) {
+  const hint = root.querySelector('.ct-speed-hint-slot');
+  if (hint) hint.innerHTML = speedHintHtml();
+  const me = root.querySelector('.ct-me');
+  if (me) me.outerHTML = meRowHtml();
 }
 
 /** A family as the linked player still has it (their tier, what is left of each step), or null. */
@@ -277,7 +303,9 @@ function familyRange(fam) {
 
 /** Has the reader moved away from what the game says about them, in any line? */
 function movedFromGame() {
-  return !!cs.me && cs.families.some((f) => {
+  if (!cs.me) return false;
+  if (cs.gameSpeed !== null && cs.speed !== cs.gameSpeed) return true;
+  return cs.families.some((f) => {
     const r = familyRange(f);
     const d = defaultRange(f);
     return r.from !== d.from || r.to !== d.to;
@@ -381,7 +409,8 @@ function paintTiers(root) {
       <span class="ct-arrow" aria-hidden="true">→</span>
       <label class="ct-field"><span class="ct-field-label">${esc(t('To'))}</span><select class="input" data-ct="to">${toOptions}</select></label>
       <label class="ct-field ct-speed"><span class="ct-field-label">${esc(t('Your research speed bonus'))}</span>
-        <span class="ct-speed-input"><input class="input" type="number" inputmode="numeric" min="0" step="1" value="${cs.speed}" data-ct="speed" aria-describedby="ct-speed-hint"><span aria-hidden="true">%</span></span>
+        <span class="ct-speed-input"><input class="input" type="number" inputmode="decimal" min="0" step="any" value="${cs.speed}" data-ct="speed" aria-describedby="ct-speed-hint"><span aria-hidden="true">%</span></span>
+        <span class="ct-speed-hint-slot">${speedHintHtml()}</span>
       </label>
     </div>
     <div class="ct-ladder" role="group" aria-label="${esc(t('One tier at a time'))}">${ladder}</div>

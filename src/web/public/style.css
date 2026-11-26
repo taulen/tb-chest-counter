@@ -9603,7 +9603,9 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .ct-arrow { align-self: center; padding-top: 18px; font-size: 20px; font-weight: 800; color: var(--accent-gold); }
 .ct-speed { margin-left: auto; }
 .ct-speed-input { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-weight: 700; }
-.ct-speed-input input { width: 96px; min-height: 44px; font-size: 16px; }
+.ct-speed-input input { width: 110px; min-height: 44px; font-size: 16px; }
+.ct-speed-hint-slot:empty { display: none; }
+.ct-speed-from { font-size: 11.5px; font-weight: 600; color: var(--accent-green-soft-text); }
 .ct-ladder { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
 .ct-rung {
   flex: 1 0 78px;
@@ -10315,6 +10317,44 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 
 .tech-changes-table col.col-date {
   width: 170px;
+}
+
+/* ─── Member profile: Speed bonuses (pages/member-speeds.js) ───
+   The game's Statistics page speeds, where they come from, how they moved. */
+.member-speeds { display: flex; flex-direction: column; gap: 14px; }
+.sp-card { display: flex; flex-direction: column; gap: 12px; }
+.sp-stats .ui-stat { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-elevated); }
+.sp-stats .ui-stat:first-child { border-color: var(--accent-gold-border); }
+.sp-spark { display: block; width: 100%; height: 28px; margin-top: 4px; }
+.sp-spark polyline { fill: none; stroke: var(--accent-gold); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.sp-note { margin: 0; }
+/* Four short columns fit a phone: no fallback scroll (table:not(.table-responsive) asks 520px). */
+table.sp-table { table-layout: fixed; width: 100%; min-width: 0; }
+.sp-table .col-pct { width: 24%; }
+.sp-table th[scope="row"] { font-size: 13px; font-weight: 600; letter-spacing: normal; text-transform: none; color: var(--text-primary); text-align: left; overflow-wrap: anywhere; }
+.sp-table th, .sp-table td { padding: 8px 10px; }
+.sp-table th:first-child { padding-left: 16px; }
+.sp-table th:last-child, .sp-table td:last-child { padding-right: 16px; }
+.sp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sp-table td.is-zero { color: var(--text-muted); }
+.sp-table tfoot th, .sp-table tfoot td { font-weight: 800; border-top: 1px solid var(--border-strong); }
+.sp-changes { list-style: none; margin: 0; padding: 0; }
+.sp-change { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto auto; align-items: center; gap: 4px 12px; padding: 8px 16px; border-top: 1px solid var(--row-divider); font-size: 13px; }
+.sp-change-date { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.sp-change-stat { font-weight: 600; color: var(--text-primary); }
+.sp-change-values { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sp-more { margin: 0; padding: 8px 16px 12px; }
+@media (max-width: 640px) {
+  .sp-table th, .sp-table td { padding: 8px 6px; font-size: 12.5px; }
+  /* "Исследование", "Строительство": a fifth of a phone, so the heads wrap, in plain case. */
+  .sp-table thead th { font-size: 10.5px; letter-spacing: 0; text-transform: none; white-space: normal; hyphens: auto; overflow-wrap: anywhere; vertical-align: bottom; }
+  .sp-table th:first-child { padding-left: 12px; }
+  .sp-table th:last-child, .sp-table td:last-child { padding-right: 12px; }
+  .sp-table .col-pct { width: 22%; }
+  .sp-table th[scope="row"] { font-size: 12px; hyphens: auto; overflow-wrap: break-word; }
+  /* Date and stat on one line, the values and the change under them. */
+  .sp-change { grid-template-columns: auto minmax(0, 1fr); padding: 8px 12px; }
+  .sp-change-values { grid-column: 1; }
 }
 
 /* ─── Member profile: Captains (pages/member-captains.js) ─── */

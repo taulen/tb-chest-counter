@@ -6,6 +6,7 @@ exports.gamePlayerIdForMember = gamePlayerIdForMember;
 exports.getGamePlayer = getGamePlayer;
 exports.getGamePlayersByMember = getGamePlayersByMember;
 exports.getLatestCity = getLatestCity;
+exports.getPlayerSpeeds = getPlayerSpeeds;
 exports.getPlayerTechs = getPlayerTechs;
 exports.getPlayerTechChanges = getPlayerTechChanges;
 exports.getPlayerGoldIngotsDaily = getPlayerGoldIngotsDaily;
@@ -88,6 +89,22 @@ function getLatestCity(clanId, playerId) {
         buildings: JSON.parse(r.buildings || '{}'),
         dragon: JSON.parse(r.hero || '{}'),
     };
+}
+/**
+ * A player's city speeds (city-speeds.ts), one per game day the city was read
+ * and worked out, oldest first.
+ */
+function getPlayerSpeeds(clanId, playerId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT game_date, captured_at, speeds FROM game_city_snapshots
+      WHERE clan_id = ? AND player_id = ? AND speeds IS NOT NULL ORDER BY game_date`).all(clanId, playerId);
+    const out = [];
+    for (const r of rows) {
+        try {
+            out.push({ gameDate: r.game_date, capturedAt: r.captured_at, speeds: JSON.parse(r.speeds) });
+        }
+        catch { /* a damaged row is skipped */ }
+    }
+    return out;
 }
 /** techId → level, plus when the levels were last read. */
 function getPlayerTechs(clanId, playerId) {

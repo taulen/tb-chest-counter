@@ -8,6 +8,7 @@
 import { getDb } from '../database.js';
 import { avatarFrameImage, gameArtUrl, heroAvatarImage } from '../../game-art/index.js';
 import { HERO_ENTRY_ID } from '../../game-protocol/equipment.js';
+import type { CitySpeeds } from '../../game-protocol/city-speeds.js';
 
 export interface GamePlayerProfile {
   playerId: number;
@@ -132,6 +133,24 @@ export function getLatestCity(clanId: number, playerId: number): GameCitySnapsho
     buildings: JSON.parse(r.buildings || '{}'),
     dragon: JSON.parse(r.hero || '{}'),
   };
+}
+
+/**
+ * A player's city speeds (city-speeds.ts), one per game day the city was read
+ * and worked out, oldest first.
+ */
+export function getPlayerSpeeds(clanId: number, playerId: number): Array<{ gameDate: string; capturedAt: string; speeds: CitySpeeds }> {
+  const rows = getDb().prepare(
+    `SELECT game_date, captured_at, speeds FROM game_city_snapshots
+      WHERE clan_id = ? AND player_id = ? AND speeds IS NOT NULL ORDER BY game_date`,
+  ).all(clanId, playerId) as Array<{ game_date: string; captured_at: string; speeds: string }>;
+  const out: Array<{ gameDate: string; capturedAt: string; speeds: CitySpeeds }> = [];
+  for (const r of rows) {
+    try {
+      out.push({ gameDate: r.game_date, capturedAt: r.captured_at, speeds: JSON.parse(r.speeds) as CitySpeeds });
+    } catch { /* a damaged row is skipped */ }
+  }
+  return out;
 }
 
 /** techId → level, plus when the levels were last read. */

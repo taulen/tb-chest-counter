@@ -600,6 +600,36 @@ Belt out and Chronoglyph in). Checked against the game's artifact book
 efficiency 130%", star level 21 (four stars and a partial fifth) "136%",
 random bonuses Epic Crypt +100%, Common / Rare / Epic +50%.
 
+### Speeds (city field 14 + T20)
+
+The game's Statistics page ("Research speed: 2026.3%", construction, troop
+training) is the sum of the city's effects, so it is worked out for **every**
+member ([city-speeds.ts](../src/game-protocol/city-speeds.ts)) and stored per
+city read in `game_city_snapshots.speeds` (v141; the archive replay fills the
+60 days of reads it keeps). **T20** f3 entries are `[kind, textRef, [],
+[cond], 0, value ×10000, flat]`: kind **0** construction speed, **2** troop
+training, **17** research; `textRef` is only the line's text, except that a
+training line with a troop type's own text ("Guardsmen's training speed")
+applies to that type alone — the general text is the one every research line
+uses. names.json (format 13) keeps `speeds.effects` (effect → [c, t, r] %) and
+`speeds.techs` (tech → level → effect).
+
+Field 14's source bits: 2 research and Hall of Fame, 4 the main buildings at
+their level (Academy 45 = +300 % research), 32 Barracks and walls (T17), 16
+gear with its gems and enchantments (the hero and the three line-up captains
+only — a benched captain's preset is not in field 14 and not in the game's
+total), 128 captain levels and star levels (one captain's level = +1 %
+research per level), 256 titles, 1 / 8192 / 16384 artifacts, 2048 / 4096
+shop offers. **Not in field 14**: VIP (tech 1000, the player record's level:
++33 % at VIP 21) and the clan's research (10113 / 10130 "Research speed": +50 %
+at level 10) — both added by level. Checked on Nov 26 2026 against a member's
+Statistics page: 2016.25 vs 2026.3 (research), 1335.75 vs 1345.8
+(construction) — the same +10 % on both from a boost that runs out (the clan's
+7-day bonus items, `clanbonus13/14`, or a speed item: neither reaches the
+site); training 2249 vs 2374. The game rounds to one decimal. Members →
+profile → Speed bonuses shows the three, where they come from and every
+change; Tools → Costs fills the reader's research speed from it.
+
 **Message 61000** (sent at login, body `[[]]`) lists the signed-in account's
 own artifacts, worn or not: `[[{$pairs: [[type], [[type], [cityId],
 [starLevel], [level, xp], [{slot: [bonusEffectId]}, null]]]…}, {$pairs:

@@ -25,6 +25,7 @@ import {
   getPlayerEquipment,
   getPlayerEquipmentChanges,
   getPlayerGoldIngotsDaily,
+  getPlayerSpeeds,
   getPlayerTechChanges,
   getPlayerTechs,
   getPlayerTitles,
@@ -223,6 +224,37 @@ export function createGameRouter(): Router {
     const { levels, readAt } = getPlayerTechs(clanId, playerId);
     const since = new Date(Date.now() - CHANGES_DAYS * 86_400_000).toISOString();
     res.json({ linked: true, levels, readAt, changes: getPlayerTechChanges(clanId, playerId, since) });
+  });
+
+  /**
+   * A member's construction, troop training and research speed — the game's
+   * Statistics page, from their city (city-speeds.ts) — the latest read with
+   * where each comes from, and one point per game day read since (history).
+   */
+  router.get('/members/:memberId/speeds', (req, res) => {
+    const clanId = req.clanId!;
+    const memberId = Number.parseInt(String(req.params.memberId), 10);
+    if (!Number.isFinite(memberId) || !getMemberById(memberId, clanId)) {
+      res.status(404).json({ error: 'Member not found' });
+      return;
+    }
+    const playerId = gamePlayerIdForMember(memberId, clanId);
+    if (playerId === null) {
+      res.json({ linked: false, latest: null, history: [] });
+      return;
+    }
+    const rows = getPlayerSpeeds(clanId, playerId);
+    const last = rows[rows.length - 1] ?? null;
+    res.json({
+      linked: true,
+      latest: last ? { gameDate: last.gameDate, readAt: last.capturedAt, speeds: last.speeds } : null,
+      history: rows.map((r) => ({
+        gameDate: r.gameDate,
+        research: r.speeds.research.total,
+        construction: r.speeds.construction.total,
+        training: r.speeds.training.total,
+      })),
+    });
   });
 
   /**
@@ -738,7 +770,11 @@ export function createGameRouter(): Router {
       const [trees, levels] = await Promise.all([loadTechTrees(), loadTechLevels()]);
       if (!levels) throw new Error('no research levels');
       const path = tiersForPlayer(memoTierCosts(trees, levels), mine.levels, levels);
-      res.json({ ...base, player: { ...who, readAt: mine.readAt, levels: mine.levels, path: leanTiers(path) } });
+      // Their research speed from the last city read (city-speeds.ts): what the calculator divides by.
+      const speeds = getPlayerSpeeds(clanId, link.playerId);
+      const last = speeds[speeds.length - 1];
+      const researchSpeed = last ? { pct: last.speeds.research.total, readAt: last.capturedAt } : null;
+      res.json({ ...base, player: { ...who, readAt: mine.readAt, levels: mine.levels, path: leanTiers(path), researchSpeed } });
     } catch {
       res.status(503).json({ error: 'Research costs are not available yet' });
     }

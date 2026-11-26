@@ -2856,6 +2856,19 @@ const MIGRATIONS = [
       `);
         },
     },
+    {
+        // game_city_snapshots.speeds: the city's construction, troop training and
+        // research speed when it was read, and where each comes from (JSON,
+        // city-speeds.ts) — the game's Statistics page, per member per day, so a
+        // profile shows how they moved. NULL = not worked out (the archive replay
+        // fills what it still holds). Guarded: runMigrations may replay this.
+        version: 141,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(game_city_snapshots)').all();
+            if (!cols.some((c) => c.name === 'speeds'))
+                database.exec('ALTER TABLE game_city_snapshots ADD COLUMN speeds TEXT');
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

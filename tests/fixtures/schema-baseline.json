@@ -632,7 +632,7 @@
   {
     "type": "table",
     "name": "game_city_snapshots",
-    "sql": "CREATE TABLE game_city_snapshots ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, game_date TEXT NOT NULL, captured_at TEXT NOT NULL, tech_count INTEGER NOT NULL DEFAULT 0, buildings TEXT NOT NULL DEFAULT '{}', hero TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (clan_id, player_id, game_date) )"
+    "sql": "CREATE TABLE game_city_snapshots ( clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, game_date TEXT NOT NULL, captured_at TEXT NOT NULL, tech_count INTEGER NOT NULL DEFAULT 0, buildings TEXT NOT NULL DEFAULT '{}', hero TEXT NOT NULL DEFAULT '{}', speeds TEXT, PRIMARY KEY (clan_id, player_id, game_date) )"
   },
   {
     "type": "table",

@@ -285,15 +285,57 @@ export function saveCitySnapshot(
   clanId: number,
   playerId: number,
   gameDate: string,
-  snap: { techCount: number; buildings: unknown; dragon: unknown },
+  snap: { techCount: number; buildings: unknown; dragon: unknown; speeds?: unknown },
   now = new Date().toISOString(),
 ): void {
   // The `hero` column holds the city's field 26 — the DRAGON (named before
-  // that was known; CityRecord.dragon).
+  // that was known; CityRecord.dragon). `speeds`: city-speeds.ts, or NULL.
   getDb().prepare(
-    `INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon));
+    `INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero, speeds)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon),
+    snap.speeds ? JSON.stringify(snap.speeds) : null);
+}
+
+/**
+ * Work out a game day's speeds from an archived reply of that day (the
+ * replay: speeds were stored from Nov 26 2026, the archive holds the 60 days
+ * before). A day without a snapshot row is left alone — the replay never
+ * invents a read. Returns whether a row changed.
+ */
+export function updateCitySpeeds(clanId: number, playerId: number, gameDate: string, speeds: unknown): boolean {
+  const json = JSON.stringify(speeds);
+  return getDb().prepare(
+    'UPDATE game_city_snapshots SET speeds = ? WHERE clan_id = ? AND player_id = ? AND game_date = ? AND speeds IS NOT ?',
+  ).run(json, clanId, playerId, gameDate, json).changes > 0;
+}
+
+/** A player's VIP level when `iso` was read: the player history's, else today's. */
+export function vipAt(clanId: number, playerId: number, iso: string): number | null {
+  const db = getDb();
+  const h = db.prepare(
+    'SELECT vip FROM game_player_history WHERE clan_id = ? AND player_id = ? AND captured_at <= ? AND vip IS NOT NULL ORDER BY captured_at DESC LIMIT 1',
+  ).get(clanId, playerId, iso) as { vip: number } | undefined;
+  if (h) return h.vip;
+  const p = db.prepare('SELECT vip FROM game_players WHERE clan_id = ? AND player_id = ?').get(clanId, playerId) as { vip: number | null } | undefined;
+  return p?.vip ?? null;
+}
+
+/**
+ * The clan's research levels when `iso` was read: each tech's latest level
+ * by then; one first read after `iso` counts from its first level (the
+ * clan's research was first read with the first city reads).
+ */
+export function clanTechLevelsAt(clanId: number, iso: string): Record<string, number> {
+  const rows = getDb().prepare(
+    'SELECT tech_id, level, changed_at FROM game_clan_tech_history WHERE clan_id = ? ORDER BY changed_at',
+  ).all(clanId) as Array<{ tech_id: number; level: number; changed_at: string }>;
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    const k = String(r.tech_id);
+    if (r.changed_at <= iso || !(k in out)) out[k] = r.level;
+  }
+  return out;
 }
 
 /**

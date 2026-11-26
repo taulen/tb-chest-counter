@@ -158,11 +158,18 @@ export const TABLE_DRAGONS = 73;
  * points for 7 days (604800).
  */
 export const TABLE_TITLES = 29;
+/**
+ * T20 Effects: f3 `[[kind, textRef, [], [cond], 0, value, flat]]` — value a
+ * multiplier ×10000 (10050 = +0.5 %). Kind 0 is construction speed, 2 troop
+ * training speed, 17 research speed (a city's field 14 lists the effects it
+ * has; city-speeds.ts sums them the way the game's Statistics page does).
+ */
+export const TABLE_EFFECTS = 20;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
   TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS, TABLE_FACTIONS,
-  TABLE_DRAGONS, TABLE_TITLES,
+  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS,
   // The client config, for the tech trees' and Academy tabs' names (game-texts).
   TABLE_CLIENT_CONFIG,
 ];
@@ -208,6 +215,8 @@ export interface GameNames {
   items?: Record<string, GameItem>;
   /** Titles (T29) by id: name, bonus text, source, how long they last, icons. Format 11+. */
   titles?: Record<string, GameTitle>;
+  /** What effects add to a city's construction, troop training and research speed (T20). Format 13+. */
+  speeds?: GameSpeeds;
   /** NAMES_FORMAT the file was built with; an older one is rebuilt once. */
   format?: number;
   /**
@@ -216,6 +225,21 @@ export interface GameNames {
    * rebuild, at most every few hours.
    */
   textLanguages?: string[];
+}
+
+/** [construction, troop training, research] speed in percent (+0.5 → 0.5). */
+export type SpeedTriple = [number, number, number];
+
+/**
+ * The speeds a city's effects add up to (city-speeds.ts). `effects` holds
+ * every T20 effect that gives any of the three; `techs` every research level
+ * whose effect does — the city record leaves VIP's and the clan's research
+ * out, so those are looked up by level.
+ */
+export interface GameSpeeds {
+  effects: Record<string, SpeedTriple>;
+  /** Tech id → level → its effect id (a key of `effects`). */
+  techs: Record<string, Record<string, number>>;
 }
 
 /** A title as T29 defines it (English; tGame translates the texts). */
@@ -442,10 +466,11 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * Stats, Might; 8: the Hall of Fame's factions and the real names of techs
  * 800–803; 9: the Dragon (T73); 10: items — kind, quality grade, resource pack
  * amounts and speedup durations, for the chest rewards; 11: titles (T29);
- * 12: texts-<lang>.json beside it, the names in the site's other languages —
- * Nov 2026); a cached file with an older format is rebuilt.
+ * 12: texts-<lang>.json beside it, the names in the site's other languages;
+ * 13: speeds — what each effect adds to construction, training and research
+ * speed — Nov 2026); a cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 12;
+export const NAMES_FORMAT = 13;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -849,7 +874,52 @@ export function buildNames(
     factions, ...(hallOfFame ? { hallOfFame } : {}),
     ...(dragon ? { dragon } : {}),
     titles: buildTitles(tables.get(TABLE_TITLES), str, vec, en),
+    speeds: buildSpeeds(tables.get(TABLE_EFFECTS), rows(TABLE_TECHS)),
   };
+}
+
+/** Effect kinds (T20 f3 entry [0]) behind the Statistics page's three speeds. */
+const SPEED_KIND = { construction: 0, training: 2, research: 17 } as const;
+
+/**
+ * What every effect adds to construction, troop training and research speed,
+ * and which research levels carry such an effect. Checked against the game's
+ * Statistics page (Nov 26 2026: research 2026.3 %, construction 1345.8 %):
+ * every construction and research entry counts; for training only the
+ * general one — the entries whose text is a troop type's own ("Guardsmen's
+ * training speed") apply to that type alone. The general text is the one
+ * research speed always uses. Pure.
+ */
+export function buildSpeeds(effects: Record<string, Wire> | undefined, techRows: Array<[string, Wire[]]>): GameSpeeds {
+  const entriesOf = (row: Wire): Wire[][] => (Array.isArray(row) && Array.isArray(row[3]) ? row[3].filter((e): e is Wire[] => Array.isArray(e)) : []);
+  const textCount = new Map<Wire, number>();
+  for (const row of Object.values(effects ?? {})) {
+    for (const e of entriesOf(row)) if (e[0] === SPEED_KIND.research) textCount.set(e[1], (textCount.get(e[1]) ?? 0) + 1);
+  }
+  const general = [...textCount].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const round = (v: number): number => Math.round(v * 100) / 100;
+  const out: GameSpeeds = { effects: {}, techs: {} };
+  for (const [id, row] of Object.entries(effects ?? {})) {
+    const sum: SpeedTriple = [0, 0, 0];
+    for (const e of entriesOf(row)) {
+      if (typeof e[5] !== 'number' || e[5] === 0) continue;
+      const pct = (e[5] - 10000) / 100;
+      if (e[0] === SPEED_KIND.construction) sum[0] += pct;
+      else if (e[0] === SPEED_KIND.training && e[1] === general) sum[1] += pct;
+      else if (e[0] === SPEED_KIND.research) sum[2] += pct;
+    }
+    if (sum.some((v) => v !== 0)) out.effects[id] = [round(sum[0]), round(sum[1]), round(sum[2])];
+  }
+  for (const [id, row] of techRows) {
+    const levels = row[5];
+    if (!levels || typeof levels !== 'object' || Array.isArray(levels)) continue;
+    const byLevel: Record<string, number> = {};
+    for (const lv of Object.values(levels as Record<string, Wire>)) {
+      if (Array.isArray(lv) && typeof lv[0] === 'number' && typeof lv[1] === 'number' && out.effects[String(lv[1])]) byLevel[String(lv[0])] = lv[1];
+    }
+    if (Object.keys(byLevel).length) out.techs[id] = byLevel;
+  }
+  return out;
 }
 
 /**
