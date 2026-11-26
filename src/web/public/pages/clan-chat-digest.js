@@ -6,23 +6,20 @@
 import { escapeHtml, notify, confirmDialog, formatDate } from '../lib/ui.js';
 import { t, LANGUAGES } from '../lib/i18n.js';
 
-/** The collapsed section on the clan card. */
+/** The section on the clan card's In-game tab. */
 export function chatDigestSectionHtml(clanId) {
   return `
-        <hr class="section-divider">
-        <details class="clan-subsection" id="clan-chat-digest-details-${clanId}">
-        <summary class="clan-subsection-summary"><h3>${t('In-game chat digest')}</h3></summary>
+        <section class="clan-section" id="clan-chat-digest-details-${clanId}">
+        <h3 class="clan-section-title">${t('In-game chat digest')}</h3>
         <div class="mt-12" id="clan-chat-digest-${clanId}"><p class="muted-copy">${t('Loading…')}</p></div>
-        </details>`;
+        </section>`;
 }
 
-/** Load the section the first time it is opened (the element is fresh every render, so nothing stacks). */
+/** Load the section when its tab is shown (the element is fresh every render, so nothing stacks). */
 export function attachChatDigest(root, clanId) {
-  const details = root.querySelector(`#clan-chat-digest-details-${clanId}`);
-  if (!details) return;
-  details.addEventListener('toggle', () => {
-    if (details.open) void loadChatDigest(root, clanId);
-  });
+  const section = root.querySelector(`#clan-chat-digest-details-${clanId}`);
+  // Only while its tab is on screen: a hidden tab panel loads nothing.
+  if (section && !section.closest('[hidden]')) void loadChatDigest(root, clanId);
 }
 
 async function loadChatDigest(root, clanId) {

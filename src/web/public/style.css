@@ -4808,6 +4808,16 @@ details > table {
   font-weight: 600;
 }
 
+/* Clans: the clan card's tab panels (#clans/<tab>, pages/clans.js) show their
+   sections open, one under the other — each headed like the folds they were. */
+.clan-section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.clan-tab-panel > .clan-section-title + .muted-copy { margin-top: 6px; }
+
 /* ─── Resources page ─── */
 
 .input-tight {

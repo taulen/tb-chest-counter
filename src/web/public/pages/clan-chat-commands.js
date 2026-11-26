@@ -1,7 +1,7 @@
 // Clans → "Chat commands": members message the clan's scanner account one
 // word in the game ("me", "top", …) and get their numbers back in that chat
 // (scheduler/chat-commands.ts, docs/chat-commands.md). Off by default; loaded
-// when the section opens. Built like "Account invites via chat" (its styles):
+// when its tab (Clans → In-game) is shown. Built like "Account invites via chat" (its styles):
 // one line on what it is, the switch as a row that saves on change, the
 // commands, the fine print folded into "How it works", then recent commands.
 
@@ -9,23 +9,20 @@ import { escapeHtml, notify, formatDate, memberLink } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 
-/** The collapsed section on the clan card. */
+/** The section on the clan card's In-game tab. */
 export function chatCommandsSectionHtml(clanId) {
   return `
-        <hr class="section-divider">
-        <details class="clan-subsection" id="clan-chat-commands-details-${clanId}">
-        <summary class="clan-subsection-summary"><h3>${t('Chat commands')}</h3></summary>
+        <section class="clan-section" id="clan-chat-commands-details-${clanId}">
+        <h3 class="clan-section-title">${t('Chat commands')}</h3>
         <div class="mt-12" id="clan-chat-commands-${clanId}"><p class="muted-copy">${t('Loading…')}</p></div>
-        </details>`;
+        </section>`;
 }
 
-/** Load the section the first time it is opened (the element is fresh every render). */
+/** Load the section when its tab is shown (the element is fresh every render, so nothing stacks). */
 export function attachChatCommands(root, clanId) {
-  const details = root.querySelector(`#clan-chat-commands-details-${clanId}`);
-  if (!details) return;
-  details.addEventListener('toggle', () => {
-    if (details.open) void loadChatCommands(root, clanId);
-  });
+  const section = root.querySelector(`#clan-chat-commands-details-${clanId}`);
+  // Only while its tab is on screen: a hidden tab panel loads nothing.
+  if (section && !section.closest('[hidden]')) void loadChatCommands(root, clanId);
 }
 
 async function loadChatCommands(root, clanId) {

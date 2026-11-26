@@ -19,23 +19,20 @@ function titleText() {
   return t('{coins} back to members', { coins: tGame(COINS) });
 }
 
-/** The collapsed section on the clan card. */
+/** The section on the clan card's In-game tab. */
 export function dragonCoinsSectionHtml(clanId) {
   return `
-        <hr class="section-divider">
-        <details class="clan-subsection" id="clan-dragon-coins-details-${clanId}">
-        <summary class="clan-subsection-summary"><h3>${escapeHtml(titleText())}</h3></summary>
+        <section class="clan-section" id="clan-dragon-coins-details-${clanId}">
+        <h3 class="clan-section-title">${escapeHtml(titleText())}</h3>
         <div class="mt-12" id="clan-dragon-coins-${clanId}"><p class="muted-copy">${t('Loading…')}</p></div>
-        </details>`;
+        </section>`;
 }
 
-/** Load the section the first time it is opened (the element is fresh every render). */
+/** Load the section when its tab is shown (the element is fresh every render, so nothing stacks). */
 export function attachDragonCoins(root, clanId) {
-  const details = root.querySelector(`#clan-dragon-coins-details-${clanId}`);
-  if (!details) return;
-  details.addEventListener('toggle', () => {
-    if (details.open) void loadDragonCoins(root, clanId);
-  });
+  const section = root.querySelector(`#clan-dragon-coins-details-${clanId}`);
+  // Only while its tab is on screen: a hidden tab panel loads nothing.
+  if (section && !section.closest('[hidden]')) void loadDragonCoins(root, clanId);
 }
 
 async function loadDragonCoins(root, clanId) {

@@ -1,4 +1,4 @@
-# Dragon Coins back to members (Clans → Dragon Coins back to members)
+# Dragon Coins back to members (Clans → In-game)
 
 When a member collects an event reward that pays Dragon Coins, the game sends
 those coins to the clan treasury under the member's name. A Leader or Superior

@@ -825,6 +825,11 @@ async function renderRoute(page, content) {
     await renderAdmin(content, page.startsWith('admin/') ? decodeURIComponent(page.slice('admin/'.length)) : '');
     return;
   }
+  // Clans: #clans = the Clan tab; #clans/<tab> = another tab of the clan card.
+  if (page === 'clans' || page.startsWith('clans/')) {
+    await renderClans(content, refreshClanIndicator, page.startsWith('clans/') ? decodeURIComponent(page.slice('clans/'.length)) : '');
+    return;
+  }
 
   switch (page) {
     case 'dashboard': await renderHome(content); break;
@@ -854,7 +859,6 @@ async function renderRoute(page, content) {
       await renderExternal(content, navigateTo);
       break;
     case 'users': await renderUsers(content); break;
-    case 'clans': await renderClans(content, refreshClanIndicator); break;
     case 'system': await renderSystem(content); break;
     default:
       // Try as a member name
@@ -1094,6 +1098,7 @@ function updateNavState() {
   else if (currentPage.startsWith('events')) navPage = 'events';
   else if (currentPage.startsWith('tools')) navPage = 'tools';
   else if (currentPage.startsWith('admin/')) navPage = 'admin';
+  else if (currentPage.startsWith('clans/')) navPage = 'clans';
   else if (currentPage.startsWith('system')) navPage = 'system';
   // The sidebar's link and the phone tab bar's both say where you are.
   $$('nav a[data-page]').forEach((a) => {

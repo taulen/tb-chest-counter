@@ -1,6 +1,6 @@
 // Clans → "Account invites via chat": players DM the clan's scanner account a
 // keyword and get a code for /join back (scheduler/chat-invites.ts,
-// docs/account-invites.md). Off by default; loaded when the section opens.
+// docs/account-invites.md). Off by default; loaded when its tab (Clans → In-game) is shown.
 //
 // Layout: one line on what it is, then the two settings as rows that save
 // the moment they change (a switch; Off / Dry run / On), the site name as a
@@ -18,23 +18,20 @@ import { getCurrentUser } from '../lib/state.js';
  */
 const madeCodes = new Map();
 
-/** The collapsed section on the clan card. */
+/** The section on the clan card's In-game tab. */
 export function accountInvitesSectionHtml(clanId) {
   return `
-        <hr class="section-divider">
-        <details class="clan-subsection" id="clan-account-invites-details-${clanId}">
-        <summary class="clan-subsection-summary"><h3>${t('Account invites via chat')}</h3></summary>
+        <section class="clan-section" id="clan-account-invites-details-${clanId}">
+        <h3 class="clan-section-title">${t('Account invites via chat')}</h3>
         <div class="mt-12" id="clan-account-invites-${clanId}"><p class="muted-copy">${t('Loading…')}</p></div>
-        </details>`;
+        </section>`;
 }
 
-/** Load the section the first time it is opened (the element is fresh every render). */
+/** Load the section when its tab is shown (the element is fresh every render, so nothing stacks). */
 export function attachAccountInvites(root, clanId) {
-  const details = root.querySelector(`#clan-account-invites-details-${clanId}`);
-  if (!details) return;
-  details.addEventListener('toggle', () => {
-    if (details.open) void loadAccountInvites(root, clanId);
-  });
+  const section = root.querySelector(`#clan-account-invites-details-${clanId}`);
+  // Only while its tab is on screen: a hidden tab panel loads nothing.
+  if (section && !section.closest('[hidden]')) void loadAccountInvites(root, clanId);
 }
 
 async function loadAccountInvites(root, clanId) {

@@ -28,7 +28,7 @@ import {
   computeGameWindowDates, customWeekStart, CUSTOM_WEEK_MAX_DAYS, CUSTOM_WEEK_MIN_DAYS, formatPeriodLabel,
   isCustomWeek, isTinmanWeek, parseCustomWeek, weekdayName, weekLengthDays,
 } from '../lib/period.js';
-import { setPageActions, errorStateHtml, refusalText, wireRetry } from '../lib/ui-kit.js';
+import { setPageActions, errorStateHtml, refusalText, wireRetry, subTabsHtml, centreCurrentSubTab } from '../lib/ui-kit.js';
 
 export { saveLoginSession, cancelLoginSession, reloadLoginSession, pasteIntoLoginSession };
 
@@ -177,9 +177,41 @@ export function startLoginSession(clanId) {
   });
 }
 
+// ─── Tabs ───
+
+/**
+ * The clan card's tabs (#clans/<tab>), each a group of the settings that go
+ * together — they were one long column of folds until Nov 26 2026. Every tab's
+ * sections are rendered and only the current one is shown, so the page's
+ * wiring always finds its elements; the In-game sections fetch their data only
+ * while their tab is on screen.
+ */
+const CLAN_TABS = ['clan', 'week', 'game', 'integrations', 'share'];
+/** The tab on screen: the router sets it, the page's own re-renders keep it. */
+let clansTab = 'clan';
+/** The header's Add Clan was pressed on another tab: open the form once the Clan tab is drawn. */
+let openAddOnRender = false;
+
+function clanTabsHtml(current) {
+  const items = [
+    { key: 'clan', label: t('Clan') },
+    { key: 'week', label: t('Week & goal') },
+    { key: 'game', label: t('In-game') },
+    { key: 'integrations', label: t('Integrations') },
+    { key: 'share', label: t('Share links') },
+  ].map((it) => ({ ...it, href: it.key === 'clan' ? '#clans' : `#clans/${it.key}` }));
+  return subTabsHtml({ label: t('Page sections'), items, current });
+}
+
 // ─── renderClans ───
 
-export async function renderClans(el, refreshClanIndicator) {
+/**
+ * @param {string} [requested]  the part of the route after `clans/` ('' for
+ *   bare #clans); left out by the page's own re-renders, which keep the tab.
+ */
+export async function renderClans(el, refreshClanIndicator, requested) {
+  if (requested !== undefined) clansTab = CLAN_TABS.includes(requested) ? requested : 'clan';
+  const tab = clansTab;
   // Remember the render context so a login-bridge save can re-render this
   // page (see startLoginSession's onSaved above).
   activeRenderCtx = { el, refreshClanIndicator };
@@ -235,9 +267,10 @@ export async function renderClans(el, refreshClanIndicator) {
     : '');
 
   el.innerHTML = `
-    <p class="ui-copy clans-intro">${isSuperAdmin
+    ${clanTabsHtml(tab)}
+    ${tab === 'clan' ? `<p class="ui-copy clans-intro">${isSuperAdmin
       ? t("Each clan has its own member roster, chest data, Total Battle login, Discord channel, and ChestTracker share code. The scanner reads every active clan in turn on each scheduled interval.")
-      : t("Manage your clan's Discord and ChestTracker integrations and refresh the Total Battle login session.")}</p>
+      : t("Manage your clan's Discord and ChestTracker integrations and refresh the Total Battle login session.")}</p>` : ''}
 
     <!-- Login bridge panel — shared with the setup wizard via
          lib/login-bridge.js. Rendered as a centered modal over the page
@@ -247,7 +280,9 @@ export async function renderClans(el, refreshClanIndicator) {
          belongs to. -->
     ${loginBridgePanelHTML({ modal: true, bonusLinks: true })}
 
-    ${isSuperAdmin ? `
+    ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl, tab)).join('')}
+
+    ${isSuperAdmin && tab === 'clan' ? `
     <details class="card card-collapsible" data-section-key="clans-add" id="clansAdd">
       <summary class="card-header"><h2>${t('Add Clan')}</h2></summary>
       <div class="card-body card-body-padded">
@@ -260,17 +295,29 @@ export async function renderClans(el, refreshClanIndicator) {
       </div>
     </details>
     ` : ''}
-
-    ${clans.map((c) => renderClanCard(c, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl)).join('')}
   `;
+  centreCurrentSubTab(el.querySelector('.ui-subtabs'));
 
-  // The header's Add Clan opens the folded form and puts the cursor in it.
-  document.querySelector('[data-clans-open-add]')?.addEventListener('click', () => {
+  // The header's Add Clan opens the folded form (on the Clan tab) and puts the
+  // cursor in it; from another tab it goes to the Clan tab first.
+  const openAddForm = () => {
     const form = el.querySelector('#clansAdd');
     if (!form) return;
     form.open = true;
     form.scrollIntoView({ block: 'start', behavior: 'smooth' });
     form.querySelector('#newClanShortCode')?.focus({ preventScroll: true });
+  };
+  if (openAddOnRender && tab === 'clan') {
+    openAddOnRender = false;
+    openAddForm();
+  }
+  document.querySelector('[data-clans-open-add]')?.addEventListener('click', () => {
+    if (tab === 'clan') {
+      openAddForm();
+      return;
+    }
+    openAddOnRender = true;
+    window.location.hash = '#clans';
   });
 
   // Wire up create + per-clan controls. These actions are clan-page-
@@ -1112,7 +1159,7 @@ async function loadDiscordDirectory(el, clanId, guildId) {
   }
 }
 
-function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl) {
+function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultPublicUrl, tab = 'clan') {
   const intervalVal = clan.scanIntervalMinutes ?? '';
   const intervalPlaceholder = Number.isFinite(defaultScanIntervalMinutes)
     ? t('default: {value}', { value: defaultScanIntervalMinutes })
@@ -1141,6 +1188,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         <h2>${escapeHtml(clan.name)} <span class="muted-copy clan-card-meta">#${clan.id} · ${escapeHtml(clan.slug)}<span id="clan-sk-marker-${clan.id}"${clan.seasonalKingdom ? '' : ' hidden'}> · ${t('Seasonal Kingdom')}</span></span></h2>
       </div>
       <div class="card-body card-body-padded">
+        <div class="clan-tab-panel" data-clan-panel="clan"${tab === 'clan' ? '' : ' hidden'}>
         ${isSuperAdmin ? `
         <div class="inline-form-row">
           <div class="clan-code-field"><label for="clan-code-${clan.id}">${t('Short code')}</label><input id="clan-code-${clan.id}" class="input" type="text" maxlength="8" value="${escapeHtml(clan.shortCode || '')}" autocomplete="off" spellcheck="false"></div>
@@ -1157,19 +1205,94 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         </div>
         <p class="muted-copy hint-text mt-8">${t('The short code (e.g. CWB) stands in for the name where space is tight, like the scan card when several clans scan at once.')}</p>
         <p class="muted-copy hint-text mt-8">${t('Each clan scans on its own interval, counted from its last scan. At least 10 minutes.')}</p>
-        <p class="muted-copy hint-text mt-8">${t("Public URL is the domain this clan's members use. The Discord digest link and the share-link URLs below are built on it.")}</p>
+        <p class="muted-copy hint-text mt-8">${t("Public URL is the domain this clan's members use. The Discord digest link and the share links are built on it.")}</p>
         ` : ''}
 
-        <hr class="section-divider">
-        <h3>${t('Browser session')} ${renderAuthBadge(clan)}</h3>
+        ${isSuperAdmin ? '<hr class="section-divider">' : ''}
+        <h3 class="clan-section-title">${t('Browser session')} ${renderAuthBadge(clan)}</h3>
         <p class="muted-copy">${renderAuthCopy(clan)} ${t("The in-app browser opens in a large window over the page; sign in and click <em>Save session</em> when you're fully in-game.")}</p>
         <div class="actions">
           <button class="btn btn-primary" data-action="login-session-start" data-clan-id="${clan.id}">${clan.authenticated ? t('Refresh login') : t('Log in to Total Battle')}</button>
         </div>
 
+
         <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Discord')}</h3></summary>
+        <section class="clan-section">
+        <h3 class="clan-section-title">${t('Seasonal Kingdom')}</h3>
+        <div class="mt-12">
+        <p class="muted-copy mb-8">${t('Turn this on for a clan playing in a <strong>Seasonal Kingdom</strong>. Its events then follow the Seasonal Kingdom calendar, where most events come round every few days instead of every few weeks. That calendar decides the event runs on the Events and Performance pages.')}</p>
+        <div class="inline-form-row">
+          <label class="checkbox-row"><input type="checkbox" id="clan-sk-${clan.id}" ${clan.seasonalKingdom ? 'checked' : ''}> ${t('This clan plays in a Seasonal Kingdom')}</label>
+          <button class="btn btn-primary" data-action="clan-sk-save" data-clan-id="${clan.id}">${t('Save')}</button>
+        </div>
+        <p class="muted-copy mt-8">${t('A clan on Tinman to Tinman weeks keeps them when this is switched: they follow the Tinman days of the kingdom it plays in.')}</p>
+        </div>
+        </section>
+
+        ${isSuperAdmin ? `
+        <hr class="section-divider">
+        <div class="actions">
+          <button class="btn btn-danger" data-action="clan-delete" data-clan-id="${clan.id}" data-clan-name="${escapeHtml(clan.name)}">${t('Delete clan')}</button>
+        </div>
+        ` : ''}
+        </div>
+        <div class="clan-tab-panel" data-clan-panel="week"${tab === 'week' ? '' : ' hidden'}>
+        <section class="clan-section">
+        <h3 class="clan-section-title">${t('Week')}</h3>
+        <div class="mt-12">
+        <p class="muted-copy mb-8">${t("What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.")} ${t('Changing it re-cuts past weeks too.')}</p>
+        <div class="inline-form-row">
+          <div><label for="clan-week-start-${clan.id}">${t('Week runs')}</label>
+            <select id="clan-week-start-${clan.id}" class="input" data-saved="${escapeHtml(clan.weekStart)}">
+              <option value="sunday" ${clan.weekStart === 'sunday' ? 'selected' : ''}>${weekStartLabel('sunday')}</option>
+              <option value="${tinmanWeekFor(clan.seasonalKingdom)}" data-tinman ${isTinmanWeek(clan.weekStart) ? 'selected' : ''}>${weekStartLabel(tinmanWeekFor(clan.seasonalKingdom))}</option>
+              <option value="custom" ${customWeek ? 'selected' : ''}>${t('Custom')}</option>
+            </select>
+          </div>
+          <div data-week-custom="${clan.id}" ${customWeek ? '' : 'hidden'}><label for="clan-week-first-${clan.id}">${t('A week starts on')}</label>
+            <input id="clan-week-first-${clan.id}" class="input" type="date" lang="sv" value="${weekFields.anchor}">
+          </div>
+          <div data-week-custom="${clan.id}" ${customWeek ? '' : 'hidden'}><label for="clan-week-days-${clan.id}">${t('Days per week')}</label>
+            <input id="clan-week-days-${clan.id}" class="input week-days-input" type="number" min="${CUSTOM_WEEK_MIN_DAYS}" max="${CUSTOM_WEEK_MAX_DAYS}" step="1" value="${weekFields.days}">
+          </div>
+          <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">${t('Save')}</button>
+        </div>
+        <p class="muted-copy mt-8" id="clan-week-hint-${clan.id}"></p>
+        <p class="muted-copy mt-4" id="clan-week-preview-${clan.id}"></p>
+        </div>
+        </section>
+        <hr class="section-divider">
+        <section class="clan-section">
+        <h3 class="clan-section-title">${t('Leaderboard goal')}</h3>
+        <div class="mt-12">
+        <p class="muted-copy mb-8">${t("Judges each member's points against a target on the Members board, the public share link, Analytics and their profile: <strong>green</strong> at the goal, <strong>amber</strong> while they are on pace for it (at least the share of it the time gone so far asks for), <strong>red</strong> behind that. A finished week has no pace left, so it is green or red.")}</p>
+        <p class="muted-copy mb-8">${t("Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.")}</p>
+        <div class="inline-form-row">
+          <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> ${t('Show the goal and its colours')}</label>
+        </div>
+        <div class="inline-form-row mt-8">
+          <div><label>${t('Weekly points goal per member')}</label><input id="clan-goal-points-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.leaderboardWeeklyGoalPoints ?? ''}" placeholder="${t('e.g. 25000')}"></div>
+
+          <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">${t('Save')}</button>
+        </div>
+        <p class="muted-copy mt-8" id="clan-goal-preview-${clan.id}"></p>
+        <p class="muted-copy mt-8">${t('A new goal counts from the start of the week it is saved in. Finished weeks keep the goal they were played under.')}</p>
+        <div id="clan-goal-history-${clan.id}">${goalHistoryHtml(clan.goalHistory)}</div>
+        </div>
+        </section>
+        </div>
+        <div class="clan-tab-panel" data-clan-panel="game"${tab === 'game' ? '' : ' hidden'}>
+${chatDigestSectionHtml(clan.id)}
+        <hr class="section-divider">
+${chatCommandsSectionHtml(clan.id)}
+        <hr class="section-divider">
+${accountInvitesSectionHtml(clan.id)}
+        <hr class="section-divider">
+${dragonCoinsSectionHtml(clan.id)}
+        </div>
+        <div class="clan-tab-panel" data-clan-panel="integrations"${tab === 'integrations' ? '' : ' hidden'}>
+        <section class="clan-section">
+        <h3 class="clan-section-title">${t('Discord')}</h3>
         <div class="mt-12">
         <details class="mb-12">
           <summary class="collapse-toggle">${t('How do I set this up?')}</summary>
@@ -1234,15 +1357,10 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         </div>
         ${renderDigestStatus(clan)}
         </div>
-        </details>
-${chatDigestSectionHtml(clan.id)}
-${accountInvitesSectionHtml(clan.id)}
-${chatCommandsSectionHtml(clan.id)}
-${dragonCoinsSectionHtml(clan.id)}
-
+        </section>
         <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('ChestTracker')}</h3></summary>
+        <section class="clan-section">
+        <h3 class="clan-section-title">${t('ChestTracker')}</h3>
         <div class="mt-12">
         <div class="inline-form-row">
           <div><label>${t('Share code')}</label><input id="clan-ct-code-${clan.id}" class="input" type="text" value="${escapeHtml(clan.ctShareCode)}" placeholder="${t('leave blank to disable')}"></div>
@@ -1251,70 +1369,11 @@ ${dragonCoinsSectionHtml(clan.id)}
           <button class="btn btn-primary" data-action="clan-ct-save" data-clan-id="${clan.id}">${t('Save')}</button>
         </div>
         </div>
-        </details>
-
-        <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Seasonal Kingdom')}</h3></summary>
-        <div class="mt-12">
-        <p class="muted-copy mb-8">${t('Turn this on for a clan playing in a <strong>Seasonal Kingdom</strong>. Its events then follow the Seasonal Kingdom calendar, where most events come round every few days instead of every few weeks. That calendar decides the event runs on the Events and Performance pages.')}</p>
-        <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-sk-${clan.id}" ${clan.seasonalKingdom ? 'checked' : ''}> ${t('This clan plays in a Seasonal Kingdom')}</label>
-          <button class="btn btn-primary" data-action="clan-sk-save" data-clan-id="${clan.id}">${t('Save')}</button>
+        </section>
         </div>
-        <p class="muted-copy mt-8">${t('A clan on Tinman to Tinman weeks keeps them when this is switched: they follow the Tinman days of the kingdom it plays in.')}</p>
-        </div>
-        </details>
-
-        <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Week')}</h3></summary>
-        <div class="mt-12">
-        <p class="muted-copy mb-8">${t("What <strong>Weekly</strong> means for this clan, everywhere: Leaderboard, Dashboard, Members, Analytics, the public share link and the Discord bot. The ChestTracker tab keeps ChestTracker's own Sunday weeks.")} ${t('Changing it re-cuts past weeks too.')}</p>
-        <div class="inline-form-row">
-          <div><label for="clan-week-start-${clan.id}">${t('Week runs')}</label>
-            <select id="clan-week-start-${clan.id}" class="input" data-saved="${escapeHtml(clan.weekStart)}">
-              <option value="sunday" ${clan.weekStart === 'sunday' ? 'selected' : ''}>${weekStartLabel('sunday')}</option>
-              <option value="${tinmanWeekFor(clan.seasonalKingdom)}" data-tinman ${isTinmanWeek(clan.weekStart) ? 'selected' : ''}>${weekStartLabel(tinmanWeekFor(clan.seasonalKingdom))}</option>
-              <option value="custom" ${customWeek ? 'selected' : ''}>${t('Custom')}</option>
-            </select>
-          </div>
-          <div data-week-custom="${clan.id}" ${customWeek ? '' : 'hidden'}><label for="clan-week-first-${clan.id}">${t('A week starts on')}</label>
-            <input id="clan-week-first-${clan.id}" class="input" type="date" lang="sv" value="${weekFields.anchor}">
-          </div>
-          <div data-week-custom="${clan.id}" ${customWeek ? '' : 'hidden'}><label for="clan-week-days-${clan.id}">${t('Days per week')}</label>
-            <input id="clan-week-days-${clan.id}" class="input week-days-input" type="number" min="${CUSTOM_WEEK_MIN_DAYS}" max="${CUSTOM_WEEK_MAX_DAYS}" step="1" value="${weekFields.days}">
-          </div>
-          <button class="btn btn-primary" data-action="clan-week-start-save" data-clan-id="${clan.id}">${t('Save')}</button>
-        </div>
-        <p class="muted-copy mt-8" id="clan-week-hint-${clan.id}"></p>
-        <p class="muted-copy mt-4" id="clan-week-preview-${clan.id}"></p>
-        </div>
-        </details>
-
-        <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Leaderboard goal')}</h3></summary>
-        <div class="mt-12">
-        <p class="muted-copy mb-8">${t("Judges each member's points against a target on the Members board, the public share link, Analytics and their profile: <strong>green</strong> at the goal, <strong>amber</strong> while they are on pace for it (at least the share of it the time gone so far asks for), <strong>red</strong> behind that. A finished week has no pace left, so it is green or red.")}</p>
-        <p class="muted-copy mb-8">${t("Set the <strong>weekly</strong> target only — the Daily, Monthly and Yearly views scale it from that one number (goal &divide; the week's length in days, set under Week), so the timeframes can never state goals that contradict each other. The All&nbsp;Time view has no goal: there's no period length to scale by.")}</p>
-        <div class="inline-form-row">
-          <label class="checkbox-row"><input type="checkbox" id="clan-goal-enabled-${clan.id}" ${clan.leaderboardGoalEnabled ? 'checked' : ''}> ${t('Show the goal and its colours')}</label>
-        </div>
-        <div class="inline-form-row mt-8">
-          <div><label>${t('Weekly points goal per member')}</label><input id="clan-goal-points-${clan.id}" class="input" type="number" min="1" step="1" value="${clan.leaderboardWeeklyGoalPoints ?? ''}" placeholder="${t('e.g. 25000')}"></div>
-
-          <button class="btn btn-primary" data-action="clan-goal-save" data-clan-id="${clan.id}">${t('Save')}</button>
-        </div>
-        <p class="muted-copy mt-8" id="clan-goal-preview-${clan.id}"></p>
-        <p class="muted-copy mt-8">${t('A new goal counts from the start of the week it is saved in. Finished weeks keep the goal they were played under.')}</p>
-        <div id="clan-goal-history-${clan.id}">${goalHistoryHtml(clan.goalHistory)}</div>
-        </div>
-        </details>
-
-        <hr class="section-divider">
-        <details class="clan-subsection">
-        <summary class="clan-subsection-summary"><h3>${t('Public share link')}</h3></summary>
+        <div class="clan-tab-panel" data-clan-panel="share"${tab === 'share' ? '' : ' hidden'}>
+        <section class="clan-section">
+        <h3 class="clan-section-title">${t('Public share link')}</h3>
         <div class="mt-12">
         <p class="muted-copy mb-8">${clan.ctShareCode ? t("Anyone with one of these URLs can view this clan's leaderboard and ChestTracker tab — no login required.") : t("Anyone with one of these URLs can view this clan's leaderboard — no login required.")} ${t('Each link counts its own visits, so give every place you post one its own link and Analytics will tell you which is actually being used. Disabling a link stops that URL immediately and leaves the others alone; you can restore it later from Analytics &amp; history.')}</p>
         ${(clan.shareLinks || []).length ? `
@@ -1340,14 +1399,8 @@ ${dragonCoinsSectionHtml(clan.id)}
           <button class="btn btn-ghost btn-sm" data-action="clan-share-analytics" data-clan-id="${clan.id}">${CHART_ICON_SVG}<span>${t('Analytics &amp; history')}</span></button>
         </div>
         </div>
-        </details>
-
-        ${isSuperAdmin ? `
-        <hr class="section-divider">
-        <div class="actions">
-          <button class="btn btn-danger" data-action="clan-delete" data-clan-id="${clan.id}" data-clan-name="${escapeHtml(clan.name)}">${t('Delete clan')}</button>
+        </section>
         </div>
-        ` : ''}
       </div>
     </div>
   `;
