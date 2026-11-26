@@ -221,6 +221,16 @@ levels) names the fields; read Nov 26 2026:
   (`/api/game/research-costs`, Tools → Costs, which until Nov 26 2026 was a
   hand copy of kingdom289.com's sheet — the game's numbers agreed with it
   where the sheet wasn't wrong).
+- **What a tier costs** ([tier-costs.ts](../src/game-protocol/tier-costs.ts), Tools → Costs'
+  calculator): every level records the research it asks for (`needs`,
+  `[tech, level]`; conditions are never OR'd, a `!HasTech` only means "not this
+  level yet"), so "G5 → G6" is exact: what tier 6's unlocks need, level by
+  level, beyond tier 5's — the unlocks plus training cost IV and march speed IV
+  (102B Valor for all four G6 units, 75.36B for one: 9B + 2 × 33.18B, as the old
+  sheet had it). What no tier needs is optional where it opens (carrying
+  capacity, captains — the "only 2 of 3 are needed" rule, from the game).
+  Tiers are troop-tiers.ts' (II trees continue at 8, crypts = numeral × 5).
+  Research time is before speed bonuses; the page divides by the reader's bonus.
 - **Live yet?** `/api/game/tech-tree-status`: per tree whether any player (a
   clan, for a clan tree) the site reads has a level in it, and since when this
   install has seen it in the data ([tech-first-seen.ts](../src/game-protocol/tech-first-seen.ts),

@@ -6,7 +6,9 @@
  */
 import { describe, it, expect } from 'vitest';
 // Plain ESM with no DOM access at import time.
-import { BLUEPRINTS, LEVEL_COLUMNS, levelValues, mergeLevelRows, treeCurrency } from '../../src/web/public/lib/research-costs.js';
+import {
+  BLUEPRINTS, LEVEL_COLUMNS, levelValues, mergeLevelRows, rangeSteps, stepOfTech, sumSteps, treeCurrency, withSpeed,
+} from '../../src/web/public/lib/research-costs.js';
 
 const lv = (amounts: number[], item = '8', seconds = 300) => amounts.map((a) => ({ cost: { [item]: a }, seconds }));
 
@@ -48,5 +50,33 @@ describe('research costs from the game', () => {
 
   it('prices blueprints at 10 Gold each', () => {
     for (const b of BLUEPRINTS) expect(b.gold).toBe(b.blueprints * 10);
+  });
+});
+
+describe('tier by tier', () => {
+  const family = {
+    steps: [
+      { tier: 5, label: 'G5', cost: { 8: 9e9 }, seconds: 100, might: 1, buildings: { 1: 25 }, items: [{ techId: 1215 }], optional: [] },
+      { tier: 6, label: 'G6', cost: { 8: 102e9 }, seconds: 200, might: 2, buildings: { 1: 30 }, items: [{ techId: 1230 }, { techId: 1215 }], optional: [{ techId: 1235 }] },
+      { tier: 7, label: 'G7', cost: { 8: 1.33e12 }, seconds: 300, might: 3, buildings: { 1: 35 }, items: [{ techId: 1237 }], optional: [] },
+    ],
+  };
+
+  it('a range is the steps after "from" up to "to", and its totals add up', () => {
+    expect(rangeSteps(family, 5, 7).map((s: { label: string }) => s.label)).toEqual(['G6', 'G7']);
+    expect(rangeSteps(family, 0, 5).map((s: { label: string }) => s.label)).toEqual(['G5']);
+    expect(sumSteps(rangeSteps(family, 5, 7))).toEqual({ cost: { 8: 102e9 + 1.33e12 }, seconds: 500, might: 5, buildings: { 1: 35 } });
+  });
+
+  it("divides research time by the reader's speed bonus", () => {
+    expect(withSpeed(400, 300)).toBe(100);
+    expect(withSpeed(400, 0)).toBe(400);
+    expect(withSpeed(400, -5)).toBe(400);
+  });
+
+  it('puts each research under the first tier that needs it, the optional ones where they open', () => {
+    const where = stepOfTech(family);
+    expect(where.get(1215)).toEqual({ tier: 5, label: 'G5', optional: false });
+    expect(where.get(1235)).toEqual({ tier: 6, label: 'G6', optional: true });
   });
 });

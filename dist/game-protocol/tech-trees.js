@@ -81,7 +81,7 @@ const NEEDED_TABLES = [client_config_js_1.TABLE_CLIENT_CONFIG, static_data_js_1.
 const COL_UNIT = 390;
 const ROW_UNIT = 165;
 /** Bump when the build changes what a cached tech-trees.json holds: an older one is rebuilt once. */
-exports.TREES_FORMAT = 3;
+exports.TREES_FORMAT = 4;
 // ---------------------------------------------------------------------------
 // Pure decoding
 // ---------------------------------------------------------------------------
@@ -268,11 +268,21 @@ function buildTechLevels(version, src, trees) {
                     lines = [];
                 }
                 let building;
+                // Every research this level asks for, at the level it asks (never OR'd;
+                // a "!HasTech" is only "not this level yet") — what a tier's path adds up.
+                const needs = new Map();
                 for (const ref of Array.isArray(lv[3]) ? lv[3] : []) {
-                    for (const m of (str(ref) ?? '').matchAll(/HasBuildingLevel\((\d+),(\d+)/g)) {
+                    const cond = str(ref) ?? '';
+                    for (const m of cond.matchAll(/HasBuildingLevel\((\d+),(\d+)/g)) {
                         const at = [Number(m[1]), Number(m[2])];
                         if (!building || at[1] > building[1])
                             building = at;
+                    }
+                    for (const m of cond.matchAll(/(!?)HasTech\((\d+),(\d+)/g)) {
+                        const other = Number(m[2]);
+                        if (m[1] || other === node.techId)
+                            continue;
+                        needs.set(other, Math.max(needs.get(other) ?? 0, Number(m[3])));
                     }
                 }
                 if (building && !(String(building[0]) in buildings)) {
@@ -288,6 +298,7 @@ function buildTechLevels(version, src, trees) {
                     might: num(lv[5]),
                     lines,
                     ...(building ? { building } : {}),
+                    ...(needs.size ? { needs: [...needs] } : {}),
                 });
             }
             if (list.length)

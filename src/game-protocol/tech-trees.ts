@@ -116,7 +116,7 @@ export interface TechTree {
 }
 
 /** Bump when the build changes what a cached tech-trees.json holds: an older one is rebuilt once. */
-export const TREES_FORMAT = 3;
+export const TREES_FORMAT = 4;
 
 /** One level of a research, as the game's tables give it (T21 level row + its T12 Factory row). */
 export interface TechLevel {
@@ -129,6 +129,8 @@ export interface TechLevel {
   might: number;
   /** Its bonus lines in the game's English: [text, value] ("Clan Duel points", "+5%"). */
   lines: Array<[string, string]>;
+  /** Other research this level asks for: [tech id, level] (tier-costs.ts adds a tier's path up from these). */
+  needs?: Array<[number, number]>;
   /** A building it asks for beyond the tree: [building id, level] (the Capitol at 9). */
   building?: [number, number];
 }
@@ -349,10 +351,19 @@ export function buildTechLevels(version: string, src: TreeSources, trees: TechTr
           lines = [];
         }
         let building: [number, number] | undefined;
+        // Every research this level asks for, at the level it asks (never OR'd;
+        // a "!HasTech" is only "not this level yet") — what a tier's path adds up.
+        const needs = new Map<number, number>();
         for (const ref of Array.isArray(lv[3]) ? lv[3] : []) {
-          for (const m of (str(ref) ?? '').matchAll(/HasBuildingLevel\((\d+),(\d+)/g)) {
+          const cond = str(ref) ?? '';
+          for (const m of cond.matchAll(/HasBuildingLevel\((\d+),(\d+)/g)) {
             const at: [number, number] = [Number(m[1]), Number(m[2])];
             if (!building || at[1] > building[1]) building = at;
+          }
+          for (const m of cond.matchAll(/(!?)HasTech\((\d+),(\d+)/g)) {
+            const other = Number(m[2]);
+            if (m[1] || other === node.techId) continue;
+            needs.set(other, Math.max(needs.get(other) ?? 0, Number(m[3])));
           }
         }
         if (building && !(String(building[0]) in buildings)) {
@@ -367,6 +378,7 @@ export function buildTechLevels(version: string, src: TreeSources, trees: TechTr
           might: num(lv[5]),
           lines,
           ...(building ? { building } : {}),
+          ...(needs.size ? { needs: [...needs] } : {}),
         });
       }
       if (list.length) out[String(node.techId)] = list;

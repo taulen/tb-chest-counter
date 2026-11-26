@@ -26,6 +26,7 @@ const member_timeline_js_1 = require("../../data/member-timeline.js");
 const index_js_1 = require("../../config/index.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const tech_first_seen_js_1 = require("../../game-protocol/tech-first-seen.js");
+const tier_costs_js_1 = require("../../game-protocol/tier-costs.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_2 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
@@ -641,7 +642,27 @@ function createGameRouter() {
                 nodes: rows([...t.nodes].sort((a, b) => a.col - b.col || a.row - b.row)),
                 unplaced: rows(t.unplaced ?? []),
             }));
-            res.json({ version: raw.version, trees: out, items: await costItems(all, levels.items) });
+            // A troop tier step by step (tier-costs.ts): "G5 → G6" and what it takes.
+            const tiers = (0, tier_costs_js_1.tierCosts)(raw, levels);
+            // Every research a path or a table names, by id: its name and picture.
+            const techs = {};
+            for (const t of raw.trees) {
+                for (const n of [...t.nodes, ...(t.unplaced ?? [])]) {
+                    techs[String(n.techId)] = { name: n.name, iconUrl: iconOf.get(n.techId) ?? (n.icon ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(n.icon)) : null) };
+                }
+            }
+            for (const f of tiers)
+                for (const s of f.steps)
+                    for (const it of [...s.items, ...s.optional])
+                        all.push(...(levels.techs[String(it.techId)] ?? []));
+            res.json({
+                version: raw.version,
+                trees: out,
+                tiers,
+                techs,
+                buildings: levels.buildings,
+                items: await costItems(all, levels.items),
+            });
         }
         catch {
             res.status(503).json({ error: 'Research costs are not available yet' });

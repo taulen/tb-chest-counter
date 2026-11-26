@@ -51,6 +51,7 @@ import { pageNewestFirst } from '../../data/member-timeline.js';
 import { loadConfig } from '../../config/index.js';
 import { loadTechLevels, loadTechTrees, type TechLevel, type TechTrees } from '../../game-protocol/tech-trees.js';
 import { firstSeenFor } from '../../game-protocol/tech-first-seen.js';
+import { tierCosts } from '../../game-protocol/tier-costs.js';
 import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
 import { CLAN_RANKING_ICONS, safeArtName } from '../../game-art/selection.js';
@@ -682,7 +683,24 @@ export function createGameRouter(): Router {
           nodes: rows([...t.nodes].sort((a, b) => a.col - b.col || a.row - b.row)),
           unplaced: rows(t.unplaced ?? []),
         }));
-      res.json({ version: raw.version, trees: out, items: await costItems(all, levels.items) });
+      // A troop tier step by step (tier-costs.ts): "G5 → G6" and what it takes.
+      const tiers = tierCosts(raw, levels);
+      // Every research a path or a table names, by id: its name and picture.
+      const techs: Record<string, { name: string; iconUrl: string | null }> = {};
+      for (const t of raw.trees) {
+        for (const n of [...t.nodes, ...(t.unplaced ?? [])]) {
+          techs[String(n.techId)] = { name: n.name, iconUrl: iconOf.get(n.techId) ?? (n.icon ? gameArtUrl(safeArtName(n.icon)) : null) };
+        }
+      }
+      for (const f of tiers) for (const s of f.steps) for (const it of [...s.items, ...s.optional]) all.push(...(levels.techs[String(it.techId)] ?? []));
+      res.json({
+        version: raw.version,
+        trees: out,
+        tiers,
+        techs,
+        buildings: levels.buildings,
+        items: await costItems(all, levels.items),
+      });
     } catch {
       res.status(503).json({ error: 'Research costs are not available yet' });
     }

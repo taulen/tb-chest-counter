@@ -53,6 +53,47 @@ export function mergeLevelRows(nodes, valuesOf) {
   return out;
 }
 
+// ─── Tier by tier (src/game-protocol/tier-costs.ts): "G5 → G6" ───
+
+/** The steps of a family from tier `from` (exclusive; 0 = nothing yet) to `to` (inclusive). */
+export function rangeSteps(family, from, to) {
+  return (family?.steps || []).filter((s) => s.tier > from && s.tier <= to);
+}
+
+/** A range's totals: cost per item, research time, Might, the highest level each building is asked for. */
+export function sumSteps(steps) {
+  const out = { cost: {}, seconds: 0, might: 0, buildings: {} };
+  for (const s of steps) {
+    for (const [id, n] of Object.entries(s.cost || {})) out.cost[id] = (out.cost[id] || 0) + n;
+    out.seconds += s.seconds || 0;
+    out.might += s.might || 0;
+    for (const [b, lv] of Object.entries(s.buildings || {})) out.buildings[b] = Math.max(out.buildings[b] || 0, lv);
+  }
+  return out;
+}
+
+/** Research time with the player's research speed bonus (+300% = 4× as fast). */
+export function withSpeed(seconds, bonusPct) {
+  const b = Math.max(0, Number(bonusPct) || 0);
+  return seconds / (1 + b / 100);
+}
+
+/**
+ * Where each research of a family sits on the way up: the first step that
+ * needs it, or the step where it opens without being needed (optional).
+ * techId → { tier, label, optional }.
+ */
+export function stepOfTech(family) {
+  const out = new Map();
+  for (const s of family?.steps || []) {
+    for (const it of s.items) if (!out.has(it.techId)) out.set(it.techId, { tier: s.tier, label: s.label, optional: false });
+  }
+  for (const s of family?.steps || []) {
+    for (const it of s.optional) if (!out.has(it.techId)) out.set(it.techId, { tier: s.tier, label: s.label, optional: true });
+  }
+  return out;
+}
+
 /** Blueprints per upgrade level, and their Gold: 10 per blueprint at every level. kingdom289.com (Apr 2026). */
 export const BLUEPRINTS = [
   [10, 320],
