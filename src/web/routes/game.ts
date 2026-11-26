@@ -49,7 +49,8 @@ import { buildRosterChanges, countRosterChanges, filterRosterChanges } from '../
 import { loadRosterSources, recentRankChanges, rosterReadSince } from '../../data/repositories/roster-changes-repo.js';
 import { pageNewestFirst } from '../../data/member-timeline.js';
 import { loadConfig } from '../../config/index.js';
-import { loadTechTrees, type TechTrees } from '../../game-protocol/tech-trees.js';
+import { loadTechLevels, loadTechTrees, type TechLevel, type TechTrees } from '../../game-protocol/tech-trees.js';
+import { firstSeenFor } from '../../game-protocol/tech-first-seen.js';
 import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
 import { CLAN_RANKING_ICONS, safeArtName } from '../../game-art/selection.js';
@@ -597,5 +598,129 @@ export function createGameRouter(): Router {
     }
   });
 
+  /**
+   * Per tree: since when this install has seen it in the game's data, and
+   * whether it is live — any player (a clan, for a clan tree) the site reads
+   * has a level in it. Only yes/no leaves here, never whose; null = no data yet.
+   */
+  router.get('/tech-tree-status', async (_req, res) => {
+    try {
+      const trees = await loadTechTrees();
+      const seen = firstSeenFor(trees);
+      const started = startedTechs();
+      const out: Record<string, { firstSeen: string | null; live: boolean | null }> = {};
+      for (const t of trees.trees) {
+        const ids = [...t.nodes, ...(t.unplaced ?? [])].map((n) => n.techId);
+        const set = t.kind === 'clan' ? started.clans : started.players;
+        out[String(t.id)] = { firstSeen: seen.trees[String(t.id)] ?? null, live: set.size ? ids.some((id) => set.has(id)) : null };
+      }
+      res.json({ trees: out, since: Object.values(seen.trees).sort()[0] ?? null });
+    } catch {
+      res.status(503).json({ error: 'Research trees are not available yet' });
+    }
+  });
+
+  /**
+   * One tree's research level by level: cost, time, Might, bonus lines and
+   * the building a level asks for (tech-trees.ts buildTechLevels), with the
+   * cost items' names and icons. For a Research tab's node and What's new.
+   */
+  router.get('/tech-trees/:id/levels', async (req, res) => {
+    try {
+      const [trees, levels] = await Promise.all([loadTechTrees(), loadTechLevels()]);
+      const tree = trees.trees.find((t) => t.id === Number(req.params.id));
+      if (!tree || !levels) {
+        res.status(404).json({ error: 'No levels for this tree' });
+        return;
+      }
+      const techs: Record<string, TechLevel[]> = {};
+      for (const n of [...tree.nodes, ...(tree.unplaced ?? [])]) {
+        const list = levels.techs[String(n.techId)];
+        if (list) techs[String(n.techId)] = list;
+      }
+      res.json({ tree: tree.id, techs, items: await costItems(Object.values(techs).flat(), levels.items), buildings: levels.buildings });
+    } catch {
+      res.status(503).json({ error: 'Research levels are not available yet' });
+    }
+  });
+
+  /**
+   * Tools → Costs: every research and clan tree, its research in the tree's
+   * order (left to right, top to bottom), each level's cost and time — the
+   * game's own numbers, read every patch.
+   */
+  router.get('/research-costs', async (_req, res) => {
+    try {
+      const [raw, levels] = await Promise.all([loadTechTrees(), loadTechLevels()]);
+      if (!levels) {
+        res.status(503).json({ error: 'Research levels are not available yet' });
+        return;
+      }
+      type Tree = TechTrees['trees'][number];
+      type IconTree = Omit<Tree, 'nodes'> & { iconUrl: string | null; nodes: Array<Tree['nodes'][number] & { iconUrl: string | null }> };
+      const withIcons = treesWithIcons(raw) as { trees: IconTree[] };
+      const iconOf = new Map(withIcons.trees.flatMap((t) => t.nodes.map((n) => [n.techId, n.iconUrl] as const)));
+      const all: TechLevel[] = [];
+      const rows = (nodes: Array<{ techId: number; name: string; icon: string }>) => nodes.map((n) => {
+        const list = levels.techs[String(n.techId)] ?? [];
+        all.push(...list);
+        return {
+          techId: n.techId,
+          name: n.name,
+          iconUrl: iconOf.get(n.techId) ?? (n.icon ? gameArtUrl(safeArtName(n.icon)) : null),
+          levels: list.map((l) => ({ cost: l.cost, seconds: l.seconds })),
+        };
+      });
+      const out = withIcons.trees
+        .filter((t) => (t.kind === 'research' || t.kind === 'clan') && (t.nodes.length || t.unplaced?.length))
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          kind: t.kind,
+          tab: t.tab,
+          iconUrl: t.iconUrl,
+          nodes: rows([...t.nodes].sort((a, b) => a.col - b.col || a.row - b.row)),
+          unplaced: rows(t.unplaced ?? []),
+        }));
+      res.json({ version: raw.version, trees: out, items: await costItems(all, levels.items) });
+    } catch {
+      res.status(503).json({ error: 'Research costs are not available yet' });
+    }
+  });
+
   return router;
+}
+
+/** Tech ids any player / any clan the site reads has a level in; an hour old is fresh enough. */
+let startedMemo: { at: number; players: Set<number>; clans: Set<number> } | null = null;
+function startedTechs(): { players: Set<number>; clans: Set<number> } {
+  if (startedMemo && Date.now() - startedMemo.at < 3600_000) return startedMemo;
+  const db = getDb();
+  const ids = (sql: string): Set<number> => new Set((db.prepare(sql).all() as Array<{ id: number }>).map((r) => r.id));
+  startedMemo = {
+    at: Date.now(),
+    players: ids('SELECT DISTINCT tech_id AS id FROM game_player_techs WHERE level > 0'),
+    clans: ids('SELECT DISTINCT tech_id AS id FROM game_clan_techs WHERE level > 0'),
+  };
+  return startedMemo;
+}
+
+/**
+ * The items levels cost, by id: the game's name, its own description of the
+ * item ("Earned by collecting Campaign Chest rewards") and icon.
+ */
+async function costItems(
+  levels: TechLevel[],
+  known: Record<string, { name: string; tooltip: string }> = {},
+): Promise<Record<string, { name: string; tooltip: string; iconUrl: string | null }>> {
+  const ids = new Set<number>();
+  for (const l of levels) for (const id of Object.keys(l.cost)) ids.add(Number(id));
+  const names = await loadGameNames().catch(() => null);
+  const icons = await itemIconUrls([...ids]);
+  const out: Record<string, { name: string; tooltip: string; iconUrl: string | null }> = {};
+  for (const id of ids) {
+    const k = known[String(id)];
+    out[String(id)] = { name: k?.name || names?.gifts?.[String(id)]?.chest || `#${id}`, tooltip: k?.tooltip ?? '', iconUrl: icons.get(id) ?? null };
+  }
+  return out;
 }

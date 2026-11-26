@@ -207,6 +207,27 @@ levels) names the fields; read Nov 26 2026:
   Scientific Tractates (20) for the clan's, Battle Crests (9270000) for the
   Clan Duel ones. Guardsmen's training cost I: 300 Valor / 300 s at level 1,
   450,000 / 36 h at 10 — Tools → Costs' sheet agrees.
+- **T8 Items**: f3 the name vector, **f4 the item's own description** ("Skylands
+  Points: Earned by collecting Campaign Chest rewards. Needed in order to
+  research technologies.") — not `item.tooltip.<the name's code>`, which for
+  the resources is another item's text (Valor points: name n0040, tooltip n0285).
+- **Built every patch** with the trees ([tech-trees.ts](../src/game-protocol/tech-trees.ts)
+  `buildTechLevels`, `TREES_FORMAT` 3): `tech-levels.json` beside
+  `tech-trees.json` — per research every level's cost, time, Might, bonus lines
+  and building ("Needs the Capitol building at level 9"; building 1 is the
+  Academy *building*, levels 1–45, not the research screen), the currencies'
+  names and descriptions. Served per tree (`/api/game/tech-trees/:id/levels`,
+  a node's panel on the Research tabs and in What's new) and whole
+  (`/api/game/research-costs`, Tools → Costs, which until Nov 26 2026 was a
+  hand copy of kingdom289.com's sheet — the game's numbers agreed with it
+  where the sheet wasn't wrong).
+- **Live yet?** `/api/game/tech-tree-status`: per tree whether any player (a
+  clan, for a clan tree) the site reads has a level in it, and since when this
+  install has seen it in the data ([tech-first-seen.ts](../src/game-protocol/tech-first-seen.ts),
+  `data/game-static/first-seen.json`, back-filled from every cached copy — the
+  game's files carry no dates, so it is "since at least"). Modernization II:
+  in our first copy (Nov 18 2026), 0 of 380 players started by Nov 26, paid in
+  Skylands Points.
 - **T9 Units** row `UnitStatic`: `[unitId, name, tier, texts, smallVisual,
   bigVisual, priceHospAttack, priceHospDefend, isWall, hospDefenderCooldown,
   attackPower (strength, f10), scoutPower, health (f12), crit, food,

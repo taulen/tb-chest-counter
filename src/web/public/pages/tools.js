@@ -51,7 +51,7 @@ export async function renderTools(el, toolKey) {
   if (tool.key === 'ancient') await renderAncientPlanner(mount);
   else if (tool.key === 'citadel') await renderCitadelTool(mount);
   else if (tool.key === 'stacks') await renderStacksTool(mount);
-  else if (tool.key === 'costs') renderCostsTool(mount);
+  else if (tool.key === 'costs') await renderCostsTool(mount);
   else if (tool.key === 'rewards') await renderRewardsTool(mount);
   else if (tool.key === 'whats-new') await renderWhatsNew(mount);
 }

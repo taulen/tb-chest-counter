@@ -1,7 +1,7 @@
 // One screenshot, for looking at something the layout check flagged.
 //   node .claude/skills/local-ui-check/snap.cjs <page> <lang> <desk|phone> [options]
 //     --el <css>      shoot just this element (first visible match)
-//     --click <css>   click this first (e.g. #userMenuBtn, #hamburgerBtn)
+//     --click <css>   click this first (e.g. #userMenuBtn, #hamburgerBtn); repeat to click several in turn
 //     --full          full-page shot
 //     --signed-out    no session (login page as a visitor sees it)
 // Every <details> is opened first, so collapsed sections are in the shot.
@@ -14,7 +14,8 @@ const [key, lang = 'en', vpName = 'desk', ...rest] = process.argv.slice(2);
 if (!key) throw new Error('usage: snap.cjs <page> <lang> <desk|phone> [--el css] [--click css] [--full] [--signed-out]');
 const opt = (name) => { const i = rest.indexOf(name); return i === -1 ? null : rest[i + 1]; };
 const el = opt('--el');
-const click = opt('--click');
+// --click may repeat: each is clicked in turn (open a modal, then a node in it).
+const clicks = rest.flatMap((a, i) => (a === '--click' && rest[i + 1] ? [rest[i + 1]] : []));
 
 (async () => {
   const outDir = path.join(RUN_DIR, 'snaps');
@@ -28,9 +29,9 @@ const click = opt('--click');
   await page.goto(BASE + pageUrl(key), { waitUntil: 'networkidle' });
   await settle(page);
   await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true; }));
-  if (click) {
-    await page.click(click);
-    await page.waitForTimeout(500);
+  for (const click of clicks) {
+    await page.locator(`${click} >> visible=true`).first().click();
+    await page.waitForTimeout(700);
   }
   if (el) {
     const target = page.locator(`${el} >> visible=true`).first();

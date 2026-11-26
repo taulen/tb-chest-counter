@@ -14,6 +14,7 @@ import { contentModal, esc, formatRelativeTime, openCropLightbox } from '../lib/
 import { emptyHtml, errorStateHtml, foldHtml, refusalText, statTileHtml, statTilesHtml, wireRetry } from '../lib/ui-kit.js';
 import { getLanguage, t, tn, tGame } from '../lib/i18n.js';
 import { treeHtml } from './member-techs.js';
+import { loadTreeStatus, notLiveNoteHtml, notLiveTagHtml, wireTreeLevels } from '../lib/tech-levels.js';
 
 const PHONE = '(max-width: 640px)';
 /** Entries shown before "Show all". */
@@ -317,7 +318,7 @@ function unplacedHtml(note) {
   if (!shown.length) return '';
   const tiles = shown.map((n) => {
     const name = KEY_LIKE.test(n.name) ? humanize(n.name.split('.').pop()) : tGame(n.name);
-    return `<li class="wn-unplaced-node${fresh.has(n.techId) && note.kind !== 'added' ? ' is-new' : ''}" title="${esc([name, n.description || ''].filter(Boolean).join('\n'))}">
+    return `<li class="wn-unplaced-node${fresh.has(n.techId) && note.kind !== 'added' ? ' is-new' : ''}" data-tech-id="${n.techId}" role="button" tabindex="0" title="${esc([name, n.description || ''].filter(Boolean).join('\n'))}">
       ${n.iconUrl ? `<img src="${esc(n.iconUrl)}" alt="" loading="lazy" decoding="async">` : '<span class="wn-unplaced-blank" aria-hidden="true"></span>'}
       <span class="wn-unplaced-text"><span class="wn-unplaced-name">${esc(name)}</span><span class="wn-unplaced-max">${esc(t('max {max}', { max: n.maxLevel }))}</span></span>
     </li>`;
@@ -337,10 +338,16 @@ function treeOpener(note, allTrees) {
     const html = `<div class="wn-tree">
         ${note.tree.description ? `<p class="ui-copy">${esc(tGame(note.tree.description))}</p>` : ''}
         ${raised}
-        ${note.tree.nodes.length ? treeHtml(note.tree, {}, { trees: allTrees }, phone, { preview: true, newIds: note.kind === 'added' ? null : newIds }) : ''}
-        ${unplacedHtml(note)}
+        ${notLiveNoteHtml(note.tree)}
+        <p class="ui-sub">${esc(t('Tap a research for its levels: cost, time and bonus.'))}</p>
+        <div class="wn-tree-view">
+          ${note.tree.nodes.length ? treeHtml(note.tree, {}, { trees: allTrees }, phone, { preview: true, newIds: note.kind === 'added' ? null : newIds }) : ''}
+          ${unplacedHtml(note)}
+        </div>
       </div>`;
-    contentModal({ title: tGame(note.tree.name), html, wide: true, className: 'wn-tree-modal' });
+    const modal = contentModal({ title: tGame(note.tree.name), html, wide: true, className: 'wn-tree-modal' });
+    const view = modal?.content.querySelector('.wn-tree-view');
+    if (view) wireTreeLevels(view, () => note.tree, {});
   };
 }
 
@@ -360,6 +367,7 @@ function treesHtml(notes) {
           <span class="wn-tree-name">${esc(tGame(n.tree.name))}</span>
           ${n.tree.tab ? `<span class="wn-tree-tab">${esc(tGame(n.tree.tab))}</span>` : ''}
           <span class="wn-tree-facts">${esc(facts)}</span>
+          ${notLiveTagHtml(n.tree.id)}
           ${n.tree.description ? `<span class="wn-tree-desc">${esc(tGame(n.tree.description))}</span>` : ''}
         </span>
         ${badgeHtml(n.kind === 'added' ? 'added' : 'changed')}
@@ -625,7 +633,7 @@ export async function renderWhatsNew(mount) {
   mount.innerHTML = `<p class="muted-copy">${esc(t('Loading…'))}</p>`;
   let list;
   try {
-    list = await api('/game-updates');
+    [list] = await Promise.all([api('/game-updates'), loadTreeStatus()]);
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
     list = null;

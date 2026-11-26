@@ -9570,6 +9570,14 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 
 .costs-filters { display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 0; }
 .costs-search { max-width: 360px; }
+.costs-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.costs-filter-row .costs-search { flex: 1 1 220px; }
+.costs-chip-group { display: flex; flex-direction: column; gap: 4px; }
+.costs-chip-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.costs-chip-icon { width: 18px; height: 18px; object-fit: contain; margin-right: 6px; vertical-align: -4px; }
+.costs-row-icon { width: 22px; height: 22px; object-fit: contain; margin-right: 6px; vertical-align: -6px; }
+.costs-unit-icon { width: 18px; height: 18px; object-fit: contain; margin-right: 4px; vertical-align: -4px; }
+.costs-source { padding: 10px 20px 16px; margin: 0; }
 .costs-chips { margin-bottom: 12px; }
 .costs-empty { padding: 16px 20px; margin: 0; }
 
@@ -10118,6 +10126,54 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
   color: var(--accent-gold);
   font-weight: 600;
 }
+
+/* A node opens its levels under the tree (lib/tech-levels.js). */
+.tech-node[data-tech-id] { cursor: pointer; }
+.tech-node[data-tech-id]:hover,
+.tech-node[data-tech-id]:focus-visible { box-shadow: 0 0 0 2px var(--accent-gold-border); }
+.tech-node.is-picked,
+.wn-unplaced-node.is-picked { box-shadow: 0 0 0 2px var(--accent-gold); }
+.wn-unplaced-node[data-tech-id] { cursor: pointer; }
+
+/* A research's levels: totals, then one row a level. */
+.tl-slot:empty { display: none; }
+.tl-slot { margin-top: 14px; }
+.tl-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--accent-gold-border); border-radius: 12px; background: var(--bg-elevated); min-width: 0; }
+.tl-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tl-icon { flex: none; width: 48px; height: 48px; object-fit: contain; }
+.tl-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tl-name { font-size: 16px; font-weight: 800; color: var(--text-primary); }
+.tl-totals { display: flex; flex-wrap: wrap; gap: 8px; }
+.tl-total { display: flex; flex-direction: column; gap: 2px; min-width: 120px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+.tl-total-value { font-size: 16px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -14px; padding: 0 14px; }
+.tl-table { width: 100%; min-width: 460px; font-size: 13px; }
+.tl-table th, .tl-table td { padding: 6px 8px; vertical-align: top; }
+.tl-lv { width: 44px; white-space: nowrap; color: var(--text-secondary); }
+.tl-bonus { min-width: 0; }
+.tl-line { display: block; }
+.tl-line b { color: var(--accent-gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+.tl-needs { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-secondary); }
+.tl-cost { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tl-cost img { width: 18px; height: 18px; object-fit: contain; }
+.tl-total-value .tl-cost img { width: 20px; height: 20px; }
+.tl-none { color: var(--text-muted); }
+.tl-row.is-done td { color: var(--text-muted); }
+.tl-row.is-done .tl-line b { color: var(--text-muted); }
+.tl-row.is-next td { background: var(--accent-gold-bg); }
+.tl-source { margin: 0; }
+/* A tree nobody the site reads has started: not in the game yet (lib/tech-levels.js). */
+.tl-tag { display: inline-flex; align-items: center; gap: 3px; align-self: flex-start; padding: 1px 7px; border-radius: 999px; border: 1px dashed var(--border-strong); font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; color: var(--text-secondary); white-space: nowrap; }
+.tech-tree-btn .tl-tag { margin-left: 4px; }
+.pb-chip .tl-tag { margin-left: 6px; }
+.tl-notlive { margin: 0 0 10px; padding: 8px 12px; border: 1px dashed var(--border-strong); border-radius: 10px; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.tl-notlive b { color: var(--text-primary); }
+.tl-currency { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.tl-currency img { flex: none; width: 22px; height: 22px; object-fit: contain; }
+.tl-currency b { color: var(--text-primary); }
+.costs-note-slot:empty { display: none; }
+.costs-note-slot { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+.costs-note-slot .tl-notlive { margin: 0; }
 
 .tech-changes-table col.col-level {
   width: 90px;

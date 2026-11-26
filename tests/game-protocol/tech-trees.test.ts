@@ -4,6 +4,9 @@ import { TABLE_TECHS } from '../../src/game-protocol/static-data.js';
 import {
   TABLE_CLIENT_CONFIG,
   TREES_FORMAT,
+  TABLE_BUILDINGS,
+  TABLE_FACTORY,
+  buildTechLevels,
   asTreeLayout,
   buildTechTrees,
   layoutFromBundle,
@@ -218,6 +221,42 @@ describe('tech trees from static data + client layouts', () => {
     const en2 = new Map([...en, ['tech.name.30001', 'Army strength I']]);
     const built2 = buildTechTrees('v1', { ...src, en: en2, tables: new Map<number, Wire>([[TABLE_CLIENT_CONFIG, t1], [TABLE_TECHS, t21b]]) }, layouts);
     expect(built2.trees.find((t) => t.id === 30)).toMatchObject({ name: '', nodes: [], unplaced: [{ techId: 30001, name: 'Army strength I' }] });
+  });
+
+  it("reads every level's cost and time (T12), Might and bonus lines (T21), and the building it asks for", () => {
+    const props = (lines: Array<[string, string]>, might: string) => s(JSON.stringify({
+      props: [...lines.map(([propText, propValue]) => ({ icon: '', propText, propValue })), { icon: '1_power_22', propText: 'tech_level.client_info.n0014', propValue: might }],
+    }));
+    // [level, effectId, factoryPosId, [conditions], clientInfo, ratingContribution, cronId]
+    const levels = {
+      1: [1, 9270001, 9270001, [s('HasBuildingLevel(15,9,1)')], props([['tech_level.client_info.duel_bonus', '+5%']], '1290'), 1290, 0],
+      2: [2, 9270002, 9270002, [s('HasTech(27000,1,10)&&HasBuildingLevel(15,9,1)')], props([['tech_level.client_info.duel_bonus', '+10%']], '2580'), 1290, 0],
+    };
+    const t21b: Record<string, Wire> = { ...t21, 27000: [27000, vec(s('tech.name.27000')), vec(s('tech.desc.27000')), s('duel_72'), 1, levels] };
+    // FactoryPosStatic: [id, positionType, price [{item: amount}, {}, 1], instant, reward, cond, cond, produceTime, …]
+    const t12: Record<string, Wire> = {
+      9270001: [9270001, 1, [{ 9270000: 100 }, {}, 1], [{}, {}, 2], [], [0], [0], 540],
+      9270002: [9270002, 1, [{ 9270000: 110 }, {}, 1], [{}, {}, 2], [], [0], [0], 1080],
+    };
+    const t14: Record<string, Wire> = { 15: [15, 9, 5, vec(s('building.name.capitol'))] };
+    // T8: f3 name vector, f4 the item's own description.
+    const t8: Record<string, Wire> = { 9270000: [9270000, 1, 0, vec(s('item.name.clan_duel_medal')), vec(s('item.tooltip.clan_duel_medal'))] };
+    const en2 = new Map([...en, ['tech.name.27000', 'Scoutpost points'], ['tech_level.client_info.duel_bonus', 'Duel Points bonus'], ['building.name.capitol', 'Capitol'], ['item.name.clan_duel_medal', 'Battle Crest'], ['item.tooltip.clan_duel_medal', 'Available in the Clan Duel event.']]);
+    const src2: TreeSources = {
+      ...src,
+      en: en2,
+      tables: new Map<number, Wire>([[TABLE_CLIENT_CONFIG, t1], [TABLE_TECHS, t21b], [TABLE_FACTORY, t12], [TABLE_BUILDINGS, t14], [8, t8]]),
+    };
+    const trees = buildTechTrees('v1', src2, layouts);
+    const built2 = buildTechLevels('v1', src2, trees.trees);
+    expect(built2.techs['27000']).toEqual([
+      { level: 1, cost: { 9270000: 100 }, seconds: 540, might: 1290, lines: [['Duel Points bonus', '+5%']], building: [15, 9] },
+      { level: 2, cost: { 9270000: 110 }, seconds: 1080, might: 1290, lines: [['Duel Points bonus', '+10%']], building: [15, 9] },
+    ]);
+    expect(built2.buildings).toEqual({ 15: 'Capitol' });
+    expect(built2.items).toEqual({ 9270000: { name: 'Battle Crest', tooltip: 'Available in the Clan Duel event.' } });
+    // A level with no Factory row costs nothing it can say.
+    expect(built2.techs['1197'][0]).toMatchObject({ level: 1, cost: {}, seconds: 0 });
   });
 
   it('builds nothing from a missing client config', () => {

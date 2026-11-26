@@ -11,6 +11,7 @@ exports.createGameRouter = createGameRouter;
  * not linked to a game player yet answers `{ linked: false }`, not an error.
  */
 const express_1 = require("express");
+const database_js_1 = require("../../data/database.js");
 const game_player_names_js_1 = require("../../data/game-player-names.js");
 const member_repo_js_1 = require("../../data/repositories/member-repo.js");
 const game_profile_repo_js_1 = require("../../data/repositories/game-profile-repo.js");
@@ -24,6 +25,7 @@ const roster_changes_repo_js_1 = require("../../data/repositories/roster-changes
 const member_timeline_js_1 = require("../../data/member-timeline.js");
 const index_js_1 = require("../../config/index.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
+const tech_first_seen_js_1 = require("../../game-protocol/tech-first-seen.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_2 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
@@ -556,6 +558,127 @@ function createGameRouter() {
             res.status(503).json({ error: 'Research trees are not available yet' });
         }
     });
+    /**
+     * Per tree: since when this install has seen it in the game's data, and
+     * whether it is live — any player (a clan, for a clan tree) the site reads
+     * has a level in it. Only yes/no leaves here, never whose; null = no data yet.
+     */
+    router.get('/tech-tree-status', async (_req, res) => {
+        try {
+            const trees = await (0, tech_trees_js_1.loadTechTrees)();
+            const seen = (0, tech_first_seen_js_1.firstSeenFor)(trees);
+            const started = startedTechs();
+            const out = {};
+            for (const t of trees.trees) {
+                const ids = [...t.nodes, ...(t.unplaced ?? [])].map((n) => n.techId);
+                const set = t.kind === 'clan' ? started.clans : started.players;
+                out[String(t.id)] = { firstSeen: seen.trees[String(t.id)] ?? null, live: set.size ? ids.some((id) => set.has(id)) : null };
+            }
+            res.json({ trees: out, since: Object.values(seen.trees).sort()[0] ?? null });
+        }
+        catch {
+            res.status(503).json({ error: 'Research trees are not available yet' });
+        }
+    });
+    /**
+     * One tree's research level by level: cost, time, Might, bonus lines and
+     * the building a level asks for (tech-trees.ts buildTechLevels), with the
+     * cost items' names and icons. For a Research tab's node and What's new.
+     */
+    router.get('/tech-trees/:id/levels', async (req, res) => {
+        try {
+            const [trees, levels] = await Promise.all([(0, tech_trees_js_1.loadTechTrees)(), (0, tech_trees_js_1.loadTechLevels)()]);
+            const tree = trees.trees.find((t) => t.id === Number(req.params.id));
+            if (!tree || !levels) {
+                res.status(404).json({ error: 'No levels for this tree' });
+                return;
+            }
+            const techs = {};
+            for (const n of [...tree.nodes, ...(tree.unplaced ?? [])]) {
+                const list = levels.techs[String(n.techId)];
+                if (list)
+                    techs[String(n.techId)] = list;
+            }
+            res.json({ tree: tree.id, techs, items: await costItems(Object.values(techs).flat(), levels.items), buildings: levels.buildings });
+        }
+        catch {
+            res.status(503).json({ error: 'Research levels are not available yet' });
+        }
+    });
+    /**
+     * Tools → Costs: every research and clan tree, its research in the tree's
+     * order (left to right, top to bottom), each level's cost and time — the
+     * game's own numbers, read every patch.
+     */
+    router.get('/research-costs', async (_req, res) => {
+        try {
+            const [raw, levels] = await Promise.all([(0, tech_trees_js_1.loadTechTrees)(), (0, tech_trees_js_1.loadTechLevels)()]);
+            if (!levels) {
+                res.status(503).json({ error: 'Research levels are not available yet' });
+                return;
+            }
+            const withIcons = treesWithIcons(raw);
+            const iconOf = new Map(withIcons.trees.flatMap((t) => t.nodes.map((n) => [n.techId, n.iconUrl])));
+            const all = [];
+            const rows = (nodes) => nodes.map((n) => {
+                const list = levels.techs[String(n.techId)] ?? [];
+                all.push(...list);
+                return {
+                    techId: n.techId,
+                    name: n.name,
+                    iconUrl: iconOf.get(n.techId) ?? (n.icon ? (0, index_js_2.gameArtUrl)((0, selection_js_1.safeArtName)(n.icon)) : null),
+                    levels: list.map((l) => ({ cost: l.cost, seconds: l.seconds })),
+                };
+            });
+            const out = withIcons.trees
+                .filter((t) => (t.kind === 'research' || t.kind === 'clan') && (t.nodes.length || t.unplaced?.length))
+                .map((t) => ({
+                id: t.id,
+                name: t.name,
+                kind: t.kind,
+                tab: t.tab,
+                iconUrl: t.iconUrl,
+                nodes: rows([...t.nodes].sort((a, b) => a.col - b.col || a.row - b.row)),
+                unplaced: rows(t.unplaced ?? []),
+            }));
+            res.json({ version: raw.version, trees: out, items: await costItems(all, levels.items) });
+        }
+        catch {
+            res.status(503).json({ error: 'Research costs are not available yet' });
+        }
+    });
     return router;
+}
+/** Tech ids any player / any clan the site reads has a level in; an hour old is fresh enough. */
+let startedMemo = null;
+function startedTechs() {
+    if (startedMemo && Date.now() - startedMemo.at < 3600_000)
+        return startedMemo;
+    const db = (0, database_js_1.getDb)();
+    const ids = (sql) => new Set(db.prepare(sql).all().map((r) => r.id));
+    startedMemo = {
+        at: Date.now(),
+        players: ids('SELECT DISTINCT tech_id AS id FROM game_player_techs WHERE level > 0'),
+        clans: ids('SELECT DISTINCT tech_id AS id FROM game_clan_techs WHERE level > 0'),
+    };
+    return startedMemo;
+}
+/**
+ * The items levels cost, by id: the game's name, its own description of the
+ * item ("Earned by collecting Campaign Chest rewards") and icon.
+ */
+async function costItems(levels, known = {}) {
+    const ids = new Set();
+    for (const l of levels)
+        for (const id of Object.keys(l.cost))
+            ids.add(Number(id));
+    const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
+    const icons = await (0, item_icons_js_1.itemIconUrls)([...ids]);
+    const out = {};
+    for (const id of ids) {
+        const k = known[String(id)];
+        out[String(id)] = { name: k?.name || names?.gifts?.[String(id)]?.chest || `#${id}`, tooltip: k?.tooltip ?? '', iconUrl: icons.get(id) ?? null };
+    }
+    return out;
 }
 //# sourceMappingURL=game.js.map

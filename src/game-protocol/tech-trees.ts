@@ -52,7 +52,18 @@ const UNITY_PLATFORM = 'webgl';
 const ENGLISH = 'csv_en_US';
 const FETCH_TIMEOUT_MS = 120_000;
 
-const NEEDED_TABLES = [TABLE_CLIENT_CONFIG, TABLE_TECHS];
+/**
+ * T12 Factory (FactoryPosStatic): what a research level costs and how long it
+ * takes, keyed by the level's factoryPosId. T14 Buildings: the names of the
+ * buildings a level asks for (f3 name vector). T8 Items: what a level is paid
+ * in — its name (f3) and the game's own description of it (f4: "Skylands
+ * Points: Earned by collecting Campaign Chest rewards").
+ * See docs/game-protocol.md → "Research levels, costs and units".
+ */
+export const TABLE_FACTORY = 12;
+export const TABLE_BUILDINGS = 14;
+const TABLE_ITEMS = 8;
+const NEEDED_TABLES = [TABLE_CLIENT_CONFIG, TABLE_TECHS, TABLE_FACTORY, TABLE_BUILDINGS, TABLE_ITEMS];
 
 /** The client's node pitch in layout units: one column, one row. */
 const COL_UNIT = 390;
@@ -105,7 +116,33 @@ export interface TechTree {
 }
 
 /** Bump when the build changes what a cached tech-trees.json holds: an older one is rebuilt once. */
-export const TREES_FORMAT = 2;
+export const TREES_FORMAT = 3;
+
+/** One level of a research, as the game's tables give it (T21 level row + its T12 Factory row). */
+export interface TechLevel {
+  level: number;
+  /** What it costs: T8 item id → amount (Valor points 8, Conquest points 9, Scientific Tractates 20, Battle Crests 9270000…). */
+  cost: Record<string, number>;
+  /** Research time in seconds, before speed bonuses (T12 f7). */
+  seconds: number;
+  /** Might it adds (T21 level f5, ratingContribution). */
+  might: number;
+  /** Its bonus lines in the game's English: [text, value] ("Clan Duel points", "+5%"). */
+  lines: Array<[string, string]>;
+  /** A building it asks for beyond the tree: [building id, level] (the Capitol at 9). */
+  building?: [number, number];
+}
+
+/** Every tree's research, level by level — tech-levels.json beside tech-trees.json. */
+export interface TechLevels {
+  version: string;
+  /** Tech id → its levels, in order. */
+  techs: Record<string, TechLevel[]>;
+  /** Item id → what levels are paid in: the game's name and its own description of it. */
+  items?: Record<string, { name: string; tooltip: string }>;
+  /** Building id → the game's name, for the buildings a level asks for. */
+  buildings: Record<string, string>;
+}
 
 export interface TechTrees {
   /** `${static version key}:${asset catalog}` — changes whenever any source does. */
@@ -271,6 +308,92 @@ export function buildTechTrees(version: string, src: TreeSources, layouts: TreeL
   return { version, builtAt: new Date().toISOString(), format: TREES_FORMAT, trees };
 }
 
+/**
+ * Every level of every research a tree holds (placed or not): cost and time
+ * from its T12 Factory row, Might and bonus lines from the T21 level row, the
+ * building level its condition asks for. Pure; unit-tested.
+ */
+export function buildTechLevels(version: string, src: TreeSources, trees: TechTree[]): TechLevels {
+  const { str, text, vecText } = resolver(src);
+  const t21 = src.tables.get(TABLE_TECHS);
+  const techs: Record<string, Wire> = isRecord(t21) ? (t21 as Record<string, Wire>) : {};
+  const t12 = src.tables.get(TABLE_FACTORY);
+  const factory: Record<string, Wire> = isRecord(t12) ? (t12 as Record<string, Wire>) : {};
+  const t14 = src.tables.get(TABLE_BUILDINGS);
+  const buildingRows: Record<string, Wire> = isRecord(t14) ? (t14 as Record<string, Wire>) : {};
+  const num = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'bigint' ? Number(v) : Number(v) || 0);
+
+  const out: Record<string, TechLevel[]> = {};
+  const buildings: Record<string, string> = {};
+  for (const tree of trees) {
+    for (const node of [...tree.nodes, ...(tree.unplaced ?? [])]) {
+      const row = techs[String(node.techId)];
+      const levels = Array.isArray(row) && isRecord(row[5]) ? (row[5] as Record<string, Wire>) : {};
+      const list: TechLevel[] = [];
+      for (const key of Object.keys(levels).map(Number).filter(Number.isFinite).sort((a, b) => a - b)) {
+        const lv = levels[String(key)];
+        if (!Array.isArray(lv)) continue;
+        // FactoryPosStatic: [id, positionType, price [{item: amount}, {}, n], …, f7 produceTime]
+        const pos = factory[String(lv[2])];
+        const price = Array.isArray(pos) && Array.isArray(pos[2]) && isRecord(pos[2][0]) ? (pos[2][0] as Record<string, unknown>) : {};
+        const cost: Record<string, number> = {};
+        for (const [item, amount] of Object.entries(price)) if (num(amount) > 0) cost[item] = num(amount);
+        let lines: Array<[string, string]> = [];
+        try {
+          const props = (JSON.parse(str(lv[4]) ?? '{}') as { props?: Array<{ icon?: string; propText?: string; propValue?: unknown }> }).props ?? [];
+          lines = props
+            // The Might line ("1_power_22") is `might`.
+            .filter((p) => typeof p.propText === 'string' && p.propText && p.icon !== '1_power_22')
+            .map((p): [string, string] => [src.en.get(p.propText as string) ?? (p.propText as string), String(p.propValue ?? '')]);
+        } catch {
+          lines = [];
+        }
+        let building: [number, number] | undefined;
+        for (const ref of Array.isArray(lv[3]) ? lv[3] : []) {
+          for (const m of (str(ref) ?? '').matchAll(/HasBuildingLevel\((\d+),(\d+)/g)) {
+            const at: [number, number] = [Number(m[1]), Number(m[2])];
+            if (!building || at[1] > building[1]) building = at;
+          }
+        }
+        if (building && !(String(building[0]) in buildings)) {
+          const b = buildingRows[String(building[0])];
+          const name = Array.isArray(b) ? (vecText(b[3]) ?? text(b[3])) : undefined;
+          if (name) buildings[String(building[0])] = name;
+        }
+        list.push({
+          level: key,
+          cost,
+          seconds: Array.isArray(pos) ? num(pos[7]) : 0,
+          might: num(lv[5]),
+          lines,
+          ...(building ? { building } : {}),
+        });
+      }
+      if (list.length) out[String(node.techId)] = list;
+    }
+  }
+  // What the levels are paid in, as the game describes it: T8 f3 the item's
+  // name vector, f4 its tooltip vector. (Not "item.tooltip.<the name's code>":
+  // the resources' codes differ — Valor points is item.name.n0040 and
+  // item.tooltip.n0285, and n0040's tooltip is another item's.)
+  const t8 = src.tables.get(TABLE_ITEMS);
+  const itemRows: Record<string, Wire> = isRecord(t8) ? (t8 as Record<string, Wire>) : {};
+  const items: Record<string, { name: string; tooltip: string }> = {};
+  for (const list of Object.values(out)) {
+    for (const l of list) {
+      for (const id of Object.keys(l.cost)) {
+        if (items[id]) continue;
+        const row = itemRows[id];
+        if (!Array.isArray(row)) continue;
+        const name = vecText(row[3]) ?? '';
+        const tooltip = vecText(row[4]) ?? '';
+        if (name) items[id] = { name, tooltip };
+      }
+    }
+  }
+  return { version, techs: out, items, buildings };
+}
+
 /** A layout TextAsset's JSON, or null when it isn't one. */
 export function asTreeLayout(v: unknown): TreeLayout | null {
   if (!isRecord(v) || typeof v.name !== 'string' || !Array.isArray(v.techs)) return null;
@@ -397,7 +520,7 @@ async function fetchLayouts(unityCatalog: string, names: string[]): Promise<{ la
   return { layouts, missing };
 }
 
-async function buildFromCdn(v: TreeVersion): Promise<TechTrees> {
+async function buildFromCdn(v: TreeVersion): Promise<{ trees: TechTrees; levels: TechLevels }> {
   const [stringsBuf, vectorsBuf, tablesBuf, en] = await Promise.all([
     fetchBuffer(STATIC_BASE + v.files.strings),
     fetchBuffer(STATIC_BASE + v.files.vectors),
@@ -415,7 +538,8 @@ async function buildFromCdn(v: TreeVersion): Promise<TechTrees> {
   const { layouts, missing } = await fetchLayouts(v.unityCatalog, branches.map((b) => b.tree));
   if (!layouts.length) throw new Error(`no tree layout could be read: ${missing.slice(0, 3).join('; ')}`);
   if (missing.length) log.warn({ noAlert: true }, `Tech trees without a layout, left out: ${missing.join('; ')}`);
-  return buildTechTrees(v.version, src, layouts);
+  const trees = buildTechTrees(v.version, src, layouts);
+  return { trees, levels: buildTechLevels(v.version, src, trees.trees) };
 }
 
 // ---------------------------------------------------------------------------
@@ -423,6 +547,7 @@ async function buildFromCdn(v: TreeVersion): Promise<TechTrees> {
 // ---------------------------------------------------------------------------
 
 const TREES_FILE = 'tech-trees.json';
+const LEVELS_FILE = 'tech-levels.json';
 
 /** Cache of the game's static data. GAME_STATIC_DIR overrides it for local runs and tools, never needed in prod. */
 function staticDir(): string {
@@ -485,8 +610,9 @@ export async function loadTechTrees(): Promise<TechTrees> {
       log.info(`Building tech trees for ${v.version}`);
       const started = Date.now();
       let trees: TechTrees;
+      let levels: TechLevels;
       try {
-        trees = await buildFromCdn(v);
+        ({ trees, levels } = await buildFromCdn(v));
       } catch (err) {
         failedBuild = { version: v.version, at: Date.now(), error: String(err) };
         const cached = memo ?? newestCachedTrees();
@@ -495,14 +621,17 @@ export async function loadTechTrees(): Promise<TechTrees> {
         throw err;
       }
       fs.mkdirSync(path.dirname(file), { recursive: true });
+      // Levels first: a trees file says the levels beside it are there.
+      fs.writeFileSync(path.join(path.dirname(file), LEVELS_FILE), JSON.stringify(levels));
       fs.writeFileSync(file, JSON.stringify(trees));
       log.info(
         `Tech trees ${v.version} built in ${Math.round((Date.now() - started) / 1000)}s: ${trees.trees.length} trees, ` +
-        `${trees.trees.reduce((n, t) => n + t.nodes.length, 0)} nodes`,
+        `${trees.trees.reduce((n, t) => n + t.nodes.length, 0)} nodes, ${Object.keys(levels.techs).length} researches' levels`,
       );
       failedBuild = null;
       reportReaderOk('trees', v.version);
       memo = trees;
+      levelsMemo = levels;
       return trees;
     })().finally(() => {
       building = null;
@@ -531,8 +660,30 @@ export function cachedTechTrees(): TechTrees | null {
   return memo;
 }
 
+let levelsMemo: TechLevels | null = null;
+
+/**
+ * Every research's levels (cost, time, Might, bonuses) for the trees
+ * loadTechTrees serves, from tech-levels.json beside them; null when those
+ * trees came without one (an older cache serving while a patch can't be read).
+ */
+export async function loadTechLevels(): Promise<TechLevels | null> {
+  const trees = await loadTechTrees();
+  if (levelsMemo?.version === trees.version) return levelsMemo;
+  const file = path.join(staticDir(), trees.version.split(':')[0], LEVELS_FILE);
+  try {
+    const levels = JSON.parse(fs.readFileSync(file, 'utf8')) as TechLevels;
+    if (levels.version !== trees.version) return null;
+    levelsMemo = levels;
+    return levels;
+  } catch {
+    return null;
+  }
+}
+
 /** Test seam. */
 export function resetTechTreesMemo(): void {
   memo = null;
+  levelsMemo = null;
   failedBuild = null;
 }

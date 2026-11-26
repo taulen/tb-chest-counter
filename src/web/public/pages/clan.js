@@ -35,6 +35,7 @@ import {
   errorStateHtml, refusalText, wireRetry, asList, centreCurrentSubTab,
 } from '../lib/ui-kit.js';
 import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js';
+import { loadTreeStatus, notLiveNoteHtml, notLiveTagHtml, wireTreeLevels } from '../lib/tech-levels.js';
 import { renderTriumphal } from './triumphal.js';
 import { mountRoster, rosterPanelHtml } from './clan-roster.js';
 import { renderResourcesOverview } from './resources-overview.js';
@@ -206,6 +207,8 @@ export async function renderClan(content) {
       api('/game/clan'),
       loadTrees().catch(() => null),
       loadGameArt(),
+      // Which trees are live yet (lib/tech-levels.js); never rejects but on a logout.
+      loadTreeStatus(),
     ]);
   } catch (err) {
     if (err?.name === 'AbortError') return;
@@ -402,6 +405,7 @@ function researchHtml(clanTrees, levels, techs) {
         ${tr.iconUrl ? `<img class="tech-tree-btn-icon" src="${esc(tr.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}
         <span class="tech-tree-btn-name">${esc(tGame(tr.name))}</span>
         <span class="tech-tree-btn-pct">${p.pct}%</span>
+        ${notLiveTagHtml(tr.id)}
       </button>`;
     }).join('')}
   </div>`;
@@ -428,9 +432,11 @@ function wireTrees(root, clanTrees, levels, trees) {
   const phone = window.matchMedia(PHONE);
   const draw = () => {
     const tree = clanTrees.find((tr) => tr.id === view.tree);
-    viewEl.innerHTML = treeHtml(tree, levels, trees, phone.matches);
+    viewEl.innerHTML = notLiveNoteHtml(tree) + treeHtml(tree, levels, trees, phone.matches);
   };
   draw();
+  // Tap a node: its levels (Scientific Tractates, time, bonus, what's left to max) under the tree.
+  const picked = wireTreeLevels(viewEl, () => clanTrees.find((tr) => tr.id === view.tree), levels);
   phone.addEventListener?.('change', () => { if (viewEl.isConnected) draw(); });
   root.querySelectorAll('[data-clan-tree]').forEach((btn) => btn.addEventListener('click', () => {
     view.tree = Number(btn.dataset.clanTree);
@@ -439,6 +445,7 @@ function wireTrees(root, clanTrees, levels, trees) {
       b.classList.toggle('is-active', on);
       b.setAttribute('aria-pressed', String(on));
     });
+    picked.clear();
     draw();
   }));
 }

@@ -13,6 +13,7 @@ import { api } from '../lib/api.js';
 import { esc, formatDate, formatGameDayShort } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { gameDayKeyFor } from '../lib/period.js';
+import { loadTreeStatus, notLiveNoteHtml, notLiveTagHtml, wireTreeLevels } from '../lib/tech-levels.js';
 
 // Layout grids, in CSS px. Desktop: a step per game column and per game row.
 // Phone (turned): node size, the gap between the three columns, and the step
@@ -64,7 +65,8 @@ export async function mountMemberTechs(root, memberId, kind, tiers) {
   let trees;
   let techs;
   try {
-    [trees, techs] = await Promise.all([loadTrees(), api(`/game/members/${memberId}/techs`)]);
+    // The trees' status (live yet? since when?) rides along; it never rejects.
+    [trees, techs] = await Promise.all([loadTrees(), api(`/game/members/${memberId}/techs`), loadTreeStatus()]);
   } catch {
     el.innerHTML = noteCard(t("Couldn't load the research trees. Try again in a minute."));
     return;
@@ -110,6 +112,7 @@ function render(el, kind, trees, techs, tiers) {
             ${tr.iconUrl ? `<img class="tech-tree-btn-icon" src="${esc(tr.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}
             <span class="tech-tree-btn-name">${esc(tGame(tr.name))}</span>
             <span class="tech-tree-btn-pct">${p.pct}%</span>
+            ${notLiveTagHtml(tr.id)}
           </button>`;
         }).join('')}
       </div>
@@ -132,9 +135,11 @@ function render(el, kind, trees, techs, tiers) {
   const phone = window.matchMedia(PHONE);
   const draw = () => {
     const tree = list.find((tr) => tr.id === openTree[kind]);
-    view.innerHTML = treeHtml(tree, levels, trees, phone.matches);
+    view.innerHTML = notLiveNoteHtml(tree) + treeHtml(tree, levels, trees, phone.matches);
   };
   draw();
+  // Tap a node: its levels (cost, time, bonus, what's left to max) under the tree.
+  const picked = wireTreeLevels(view, () => list.find((tr) => tr.id === openTree[kind]), levels);
   // Turning the phone (or resizing past the breakpoint) redraws the other way.
   phone.addEventListener?.('change', () => { if (view.isConnected) draw(); });
   el.querySelectorAll('.tech-tree-btn').forEach((btn) => btn.addEventListener('click', () => {
@@ -144,6 +149,7 @@ function render(el, kind, trees, techs, tiers) {
       b.classList.toggle('is-active', on);
       b.setAttribute('aria-pressed', String(on));
     });
+    picked.clear();
     draw();
   }));
 }
@@ -294,7 +300,8 @@ export function treeHtml(tree, levels, trees, phone = false, opts = {}) {
       outside.length ? t('Also needs: {list}', { list: outside.join(', ') }) : '',
     ].filter(Boolean).join('\n');
     const label = preview ? `${tGame(n.name)}: ${t('max {max}', { max: n.maxLevel })}` : `${tGame(n.name)}: ${lvl} / ${n.maxLevel}`;
-    return `<div class="tech-node ${state}" style="left:${x(n)}px;top:${y(n)}px;width:${NODE_W}px;height:${NODE_H}px" title="${esc(title)}" role="img" aria-label="${esc(label)}">
+    // A node opens its levels (cost, time, bonus) under the tree: lib/tech-levels.js wireTreeLevels.
+    return `<div class="tech-node ${state}" data-tech-id="${n.techId}" style="left:${x(n)}px;top:${y(n)}px;width:${NODE_W}px;height:${NODE_H}px" title="${esc(title)}" role="button" tabindex="0" aria-label="${esc(label)}">
         ${n.iconUrl ? `<img class="tech-node-icon" src="${esc(n.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}
         <span class="tech-node-text">
           <span class="tech-node-name">${esc(tGame(n.name))}</span>
