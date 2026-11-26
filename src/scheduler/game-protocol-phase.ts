@@ -88,6 +88,7 @@ import {
   saveCitySnapshot,
   updateCityDragon,
   updateCitySpeeds,
+  updateCityStats,
   vipAt,
   clanTechLevelsAt,
   saveGifts,
@@ -107,6 +108,7 @@ import {
 import { syncMembersFromGame } from '../game-protocol/member-sync.js';
 import { artifactsFromEffects } from '../game-protocol/artifacts.js';
 import { citySpeeds } from '../game-protocol/city-speeds.js';
+import { cityStats } from '../game-protocol/city-stats.js';
 import { captainEquipment, HERO_ENTRY_ID } from '../game-protocol/equipment.js';
 import { currentGameDate } from '../utils/game-day.js';
 import { READ_GAP, requestGap } from '../utils/request-gap.js';
@@ -292,7 +294,7 @@ const CITY_BATCH = 20;
 // titles (Nov 2026): field 21, the titles a player holds (game-protocol/titles.ts)
 // — the player record carries them every scan from now on; the archive gives
 // them history from the first archived read, with each grant's event id.
-export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1, heroEntry: 1, titles: 1, speeds: 1 } as const;
+export const CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1, heroEntry: 1, titles: 1, speeds: 1, stats: 1 } as const;
 type CityParser = keyof typeof CITY_PARSERS;
 
 const HERO_ONLY: ReadonlySet<number> = new Set([HERO_ENTRY_ID]);
@@ -692,6 +694,7 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
     // same for speeds (format 13).
     if (!d.names.artifacts) due.delete('artifacts');
     if (!d.names.speeds) due.delete('speeds');
+    if (!d.names.cityStats) due.delete('stats');
     if (due.size) {
       let replies = 0;
       let rows = 0;
@@ -705,13 +708,13 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
           if (hero) rows += saveHeroEntryFromArchive(clanId, raw.refId, hero, raw.capturedAt);
         }
         if (due.has('titles') && city.titles) rows += saveTitles(clanId, raw.refId, city.titles, raw.capturedAt);
-        if (due.has('speeds') && d.names.speeds) {
+        if ((due.has('speeds') && d.names.speeds) || (due.has('stats') && d.names.cityStats)) {
           // VIP and the clan's research as they were when the city was read.
-          const speeds = citySpeeds(city.effects, d.names.speeds, {
-            vip: vipAt(clanId, raw.refId, raw.capturedAt),
-            clanLevels: clanTechLevelsAt(clanId, raw.capturedAt),
-          });
+          const extra = { vip: vipAt(clanId, raw.refId, raw.capturedAt), clanLevels: clanTechLevelsAt(clanId, raw.capturedAt) };
+          const speeds = due.has('speeds') && d.names.speeds ? citySpeeds(city.effects, d.names.speeds, extra) : null;
           if (speeds && updateCitySpeeds(clanId, raw.refId, raw.gameDate, speeds)) rows++;
+          const stats = due.has('stats') && d.names.cityStats ? cityStats(city.effects, d.names.cityStats, extra) : null;
+          if (stats && updateCityStats(clanId, raw.refId, raw.gameDate, stats)) rows++;
         }
         replies++;
       }
@@ -811,7 +814,9 @@ async function collectExtras(clanId: number, d: CaptureData, clanFrame: Frame): 
           // The Statistics page's speeds (city-speeds.ts): field 14, VIP from
           // the player record and the clan's research, both read this scan.
           const speeds = d.names.speeds ? citySpeeds(city.effects, d.names.speeds, { vip: p.vip, clanLevels }) : null;
-          saveCitySnapshot(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, dragon: city.dragon, speeds }, now);
+          // Every other bonus too (city-stats.ts): production, army, crypts…
+          const stats = d.names.cityStats ? cityStats(city.effects, d.names.cityStats, { vip: p.vip, clanLevels }) : null;
+          saveCitySnapshot(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, dragon: city.dragon, speeds, stats }, now);
           // Field 9 also holds the hero (id 1, no T75 row): kept for its level
           // and XP (no history row); otherwise named captains only.
           const captains = city.captains.filter((c) => c.id === HERO_ENTRY_ID || d.names.captains?.[String(c.id)]);

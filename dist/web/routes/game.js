@@ -27,6 +27,7 @@ const index_js_1 = require("../../config/index.js");
 const tech_trees_js_1 = require("../../game-protocol/tech-trees.js");
 const tech_first_seen_js_1 = require("../../game-protocol/tech-first-seen.js");
 const tier_costs_js_1 = require("../../game-protocol/tier-costs.js");
+const city_stats_js_1 = require("../../game-protocol/city-stats.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_2 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
@@ -68,6 +69,8 @@ function treesWithIcons(trees) {
     return value;
 }
 const CHANGES_DAYS = 90;
+/** Bonus changes one profile request sends at most (newest first). */
+const STAT_CHANGES_MAX = 200;
 /** Joins & leaves: a page, the most one request may ask for, and the header's window. */
 const ROSTER_PAGE_DEFAULT = 50;
 const ROSTER_PAGE_MAX = 200;
@@ -217,6 +220,35 @@ function createGameRouter() {
                 construction: r.speeds.construction.total,
                 training: r.speeds.training.total,
             })),
+        });
+    });
+    /**
+     * A member's every city bonus (city-stats.ts): the latest read and the
+     * first one ("kind:label" → [percent, flat]), and every change between
+     * reads, newest first.
+     */
+    router.get('/members/:memberId/stats', (req, res) => {
+        const clanId = req.clanId;
+        const memberId = Number.parseInt(String(req.params.memberId), 10);
+        if (!Number.isFinite(memberId) || !(0, member_repo_js_1.getMemberById)(memberId, clanId)) {
+            res.status(404).json({ error: 'Member not found' });
+            return;
+        }
+        const playerId = (0, game_profile_repo_js_1.gamePlayerIdForMember)(memberId, clanId);
+        if (playerId === null) {
+            res.json({ linked: false, latest: null, first: null, changes: [], changeCount: 0 });
+            return;
+        }
+        const rows = (0, game_profile_repo_js_1.getPlayerStats)(clanId, playerId);
+        const last = rows[rows.length - 1] ?? null;
+        const first = rows[0] ?? null;
+        const changes = (0, city_stats_js_1.statChanges)(rows);
+        res.json({
+            linked: true,
+            latest: last ? { gameDate: last.gameDate, readAt: last.capturedAt, stats: last.stats } : null,
+            first: first ? { gameDate: first.gameDate, stats: first.stats } : null,
+            changes: changes.slice(0, STAT_CHANGES_MAX),
+            changeCount: changes.length,
         });
     });
     /**

@@ -9,6 +9,7 @@ exports.saveGifts = saveGifts;
 exports.saveLedger = saveLedger;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
+exports.updateCityStats = updateCityStats;
 exports.updateCitySpeeds = updateCitySpeeds;
 exports.vipAt = vipAt;
 exports.clanTechLevelsAt = clanTechLevelsAt;
@@ -243,9 +244,15 @@ function saveTechs(clanId, playerId, techs, now = new Date().toISOString()) {
 }
 function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toISOString()) {
     // The `hero` column holds the city's field 26 — the DRAGON (named before
-    // that was known; CityRecord.dragon). `speeds`: city-speeds.ts, or NULL.
-    (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero, speeds)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon), snap.speeds ? JSON.stringify(snap.speeds) : null);
+    // that was known; CityRecord.dragon). `speeds`: city-speeds.ts, `stats`:
+    // city-stats.ts, or NULL.
+    (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero, speeds, stats)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon), snap.speeds ? JSON.stringify(snap.speeds) : null, snap.stats ? JSON.stringify(snap.stats) : null);
+}
+/** The same as updateCitySpeeds for every bonus (city-stats.ts). */
+function updateCityStats(clanId, playerId, gameDate, stats) {
+    const json = JSON.stringify(stats);
+    return (0, database_js_1.getDb)().prepare('UPDATE game_city_snapshots SET stats = ? WHERE clan_id = ? AND player_id = ? AND game_date = ? AND stats IS NOT ?').run(json, clanId, playerId, gameDate, json).changes > 0;
 }
 /**
  * Work out a game day's speeds from an archived reply of that day (the

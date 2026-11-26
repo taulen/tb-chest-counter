@@ -42,6 +42,7 @@ const game_protocol_repo_js_1 = require("../data/repositories/game-protocol-repo
 const member_sync_js_1 = require("../game-protocol/member-sync.js");
 const artifacts_js_1 = require("../game-protocol/artifacts.js");
 const city_speeds_js_1 = require("../game-protocol/city-speeds.js");
+const city_stats_js_1 = require("../game-protocol/city-stats.js");
 const equipment_js_1 = require("../game-protocol/equipment.js");
 const game_day_js_1 = require("../utils/game-day.js");
 const request_gap_js_1 = require("../utils/request-gap.js");
@@ -189,7 +190,7 @@ const CITY_BATCH = 20;
 // titles (Nov 2026): field 21, the titles a player holds (game-protocol/titles.ts)
 // — the player record carries them every scan from now on; the archive gives
 // them history from the first archived read, with each grant's event id.
-exports.CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1, heroEntry: 1, titles: 1, speeds: 1 };
+exports.CITY_PARSERS = { artifacts: 1, equipment: 1, heroEquipment: 1, dragon: 1, heroEntry: 1, titles: 1, speeds: 1, stats: 1 };
 const HERO_ONLY = new Set([equipment_js_1.HERO_ENTRY_ID]);
 /** Artifacts (field 14) and the hero's and captains' equipment (fields 9 + 10) of one city read. */
 function saveCityGear(clanId, playerId, city, names, at, only) {
@@ -591,6 +592,8 @@ async function collectExtras(clanId, d, clanFrame) {
             due.delete('artifacts');
         if (!d.names.speeds)
             due.delete('speeds');
+        if (!d.names.cityStats)
+            due.delete('stats');
         if (due.size) {
             let replies = 0;
             let rows = 0;
@@ -608,13 +611,14 @@ async function collectExtras(clanId, d, clanFrame) {
                 }
                 if (due.has('titles') && city.titles)
                     rows += (0, game_protocol_repo_js_1.saveTitles)(clanId, raw.refId, city.titles, raw.capturedAt);
-                if (due.has('speeds') && d.names.speeds) {
+                if ((due.has('speeds') && d.names.speeds) || (due.has('stats') && d.names.cityStats)) {
                     // VIP and the clan's research as they were when the city was read.
-                    const speeds = (0, city_speeds_js_1.citySpeeds)(city.effects, d.names.speeds, {
-                        vip: (0, game_protocol_repo_js_1.vipAt)(clanId, raw.refId, raw.capturedAt),
-                        clanLevels: (0, game_protocol_repo_js_1.clanTechLevelsAt)(clanId, raw.capturedAt),
-                    });
+                    const extra = { vip: (0, game_protocol_repo_js_1.vipAt)(clanId, raw.refId, raw.capturedAt), clanLevels: (0, game_protocol_repo_js_1.clanTechLevelsAt)(clanId, raw.capturedAt) };
+                    const speeds = due.has('speeds') && d.names.speeds ? (0, city_speeds_js_1.citySpeeds)(city.effects, d.names.speeds, extra) : null;
                     if (speeds && (0, game_protocol_repo_js_1.updateCitySpeeds)(clanId, raw.refId, raw.gameDate, speeds))
+                        rows++;
+                    const stats = due.has('stats') && d.names.cityStats ? (0, city_stats_js_1.cityStats)(city.effects, d.names.cityStats, extra) : null;
+                    if (stats && (0, game_protocol_repo_js_1.updateCityStats)(clanId, raw.refId, raw.gameDate, stats))
                         rows++;
                 }
                 replies++;
@@ -725,7 +729,9 @@ async function collectExtras(clanId, d, clanFrame) {
                     // The Statistics page's speeds (city-speeds.ts): field 14, VIP from
                     // the player record and the clan's research, both read this scan.
                     const speeds = d.names.speeds ? (0, city_speeds_js_1.citySpeeds)(city.effects, d.names.speeds, { vip: p.vip, clanLevels }) : null;
-                    (0, game_protocol_repo_js_1.saveCitySnapshot)(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, dragon: city.dragon, speeds }, now);
+                    // Every other bonus too (city-stats.ts): production, army, crypts…
+                    const stats = d.names.cityStats ? (0, city_stats_js_1.cityStats)(city.effects, d.names.cityStats, { vip: p.vip, clanLevels }) : null;
+                    (0, game_protocol_repo_js_1.saveCitySnapshot)(clanId, p.playerId, d.gameDate, { techCount: Object.keys(city.techs).length, buildings: city.buildings, dragon: city.dragon, speeds, stats }, now);
                     // Field 9 also holds the hero (id 1, no T75 row): kept for its level
                     // and XP (no history row); otherwise named captains only.
                     const captains = city.captains.filter((c) => c.id === equipment_js_1.HERO_ENTRY_ID || d.names.captains?.[String(c.id)]);

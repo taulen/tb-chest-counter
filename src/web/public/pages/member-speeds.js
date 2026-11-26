@@ -1,8 +1,11 @@
-// "Speed bonuses" sheet on a member profile: the three speeds of the game's
+// "City bonuses" sheet on a member profile: the three speeds of the game's
 // Statistics page — research, construction and troop training — worked out
 // from the member's city every time it is read (GET /api/game/members/:id/
 // speeds; src/game-protocol/city-speeds.ts), where each comes from, and how
-// they moved, one point per game day read.
+// they moved, one point per game day read. Under them every other bonus the
+// city has, as the game names it — production per resource, strength, health
+// and march speed per troop type, crypts, points… (GET …/stats;
+// city-stats.ts) — and every change.
 //
 // They are the PERMANENT bonuses: research, buildings, the gear on the hero and
 // the line-up captains, captains, titles, artifacts, VIP and the clan's
@@ -11,8 +14,8 @@
 
 import { api } from '../lib/api.js';
 import { esc, formatDate, formatDateShort, formatRelativeTime } from '../lib/ui.js';
-import { t } from '../lib/i18n.js';
-import { emptyHtml, statHtml, tableCardHtml } from '../lib/ui-kit.js';
+import { t, tGame } from '../lib/i18n.js';
+import { emptyHtml, foldHtml, statHtml, tableCardHtml } from '../lib/ui-kit.js';
 
 /** The Statistics page's order, in the game's words; `short` heads a table column (four columns fit a phone). */
 const STATS = [
@@ -37,6 +40,44 @@ const SOURCE_LABEL = {
 
 /** Changes listed at most; older ones are counted. */
 const MAX_CHANGES = 40;
+
+/**
+ * Every bonus, grouped by its effect kind (T20; city-stats.ts keys them
+ * "kind:label"). A kind not listed goes under Other. `open`: unfolded at first.
+ */
+const GROUPS = [
+  { key: 'speeds', title: () => t('Speeds'), kinds: [0, 2, 17, 24, 25, 26], open: true },
+  { key: 'production', title: () => t('Production and storage'), kinds: [1, 9, 15, 72], open: true },
+  { key: 'army', title: () => t('Army'), kinds: [3, 4, 5, 6, 7, 8, 20, 22, 23, 28, 56, 59, 93, 101, 102] },
+  { key: 'crypts', title: () => t('Crypts'), kinds: [10, 11, 12, 21, 73] },
+  { key: 'points', title: () => t('Points and experience'), kinds: [18, 19] },
+  { key: 'captains', title: () => t('Captains'), kinds: [67, 75, 84] },
+  { key: 'other', title: () => t('Other'), kinds: [] },
+];
+
+/** "17:Research speed" → { kind, label }. */
+function splitStat(stat) {
+  const i = stat.indexOf(':');
+  return { kind: Number(stat.slice(0, i)), label: stat.slice(i + 1) };
+}
+
+/** [percent, flat] as the game prints a bonus: "+541%", "−78%", "+11,000", or both. */
+export function statValueText([pct, flat]) {
+  const sign = (v) => (v > 0 ? '+' : '−');
+  const parts = [];
+  if (pct) parts.push(`${sign(pct)}${pctText(Math.abs(pct))}`);
+  if (flat) parts.push(`${sign(flat)}${Math.abs(flat).toLocaleString('en-US')}`);
+  return parts.join(' · ') || '0';
+}
+
+/** A bonus's move as words with its arrow; '' when it didn't move. */
+function statDeltaHtml(from, to) {
+  const dp = Math.round((to[0] - from[0]) * 10) / 10;
+  const df = Math.round(to[1] - from[1]);
+  if (!dp && !df) return '';
+  const up = (dp || df) > 0;
+  return `<span class="ui-delta ${up ? 'is-up' : 'is-down'}"><span aria-hidden="true">${up ? '▲' : '▼'}</span> ${esc(statValueText([dp, df]))}</span>`;
+}
 
 /** 2016.25 → "2,016.3%", as the game rounds it. */
 export function pctText(v) {
@@ -92,8 +133,13 @@ export async function mountMemberSpeeds(root, memberId) {
   if (!el || el.dataset.mounted === String(memberId)) return;
   el.dataset.mounted = String(memberId);
   let data;
+  let stats = null;
   try {
-    data = await api(`/game/members/${memberId}/speeds`);
+    // Every bonus rides along; the speeds stand without it.
+    [data, stats] = await Promise.all([
+      api(`/game/members/${memberId}/speeds`),
+      api(`/game/members/${memberId}/stats`).catch(() => null),
+    ]);
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
     data = null;
@@ -106,10 +152,10 @@ export async function mountMemberSpeeds(root, memberId) {
     el.innerHTML = noteCard(t("This member's city hasn't been read from the game yet. It is read once a day."));
     return;
   }
-  el.innerHTML = speedsHtml(data);
+  el.innerHTML = speedsHtml(data, stats?.latest ? stats : null);
 }
 
-function speedsHtml(data) {
+function speedsHtml(data, stats) {
   const history = Array.isArray(data.history) ? data.history : [];
   const first = history[0];
   const latest = data.latest.speeds;
@@ -131,7 +177,66 @@ function speedsHtml(data) {
       <p class="ui-sub sp-note">${esc(t("As the game's Statistics page adds them up. Boosts that run out — speed items, clan bonuses — don't reach the site, so the game shows more while one runs."))}</p>
     </section>
     ${breakdownHtml(latest)}
-    ${changesHtml(history)}`;
+    ${stats ? everyBonusHtml(stats) : ''}
+    ${stats ? statChangesHtml(stats) : changesHtml(history)}`;
+}
+
+/** Every bonus of the city, a fold per group: the bonus, what it is now, how it moved since the first read. */
+function everyBonusHtml(stats) {
+  const now = stats.latest.stats || {};
+  const first = stats.first?.stats || {};
+  const since = stats.first?.gameDate && stats.first.gameDate !== stats.latest.gameDate ? stats.first.gameDate : null;
+  const placed = new Set(GROUPS.flatMap((g) => g.kinds));
+  const groupOf = (kind) => GROUPS.find((g) => g.kinds.includes(kind)) || GROUPS[GROUPS.length - 1];
+  const byGroup = new Map(GROUPS.map((g) => [g.key, []]));
+  for (const [stat, value] of Object.entries(now)) {
+    const { kind, label } = splitStat(stat);
+    byGroup.get((placed.has(kind) ? groupOf(kind) : GROUPS[GROUPS.length - 1]).key).push({ stat, kind, label, value });
+  }
+  const folds = GROUPS.map((g) => {
+    const rows = byGroup.get(g.key).sort((a, b) => a.kind - b.kind || tGame(a.label).localeCompare(tGame(b.label)));
+    if (!rows.length) return '';
+    const body = `
+      <table class="ui-table sp-table sp-all">
+        <colgroup><col class="col-bonus"><col class="col-now"><col class="col-since"></colgroup>
+        <thead><tr><th scope="col">${esc(t('Bonus'))}</th><th scope="col" class="num">${esc(t('Now'))}</th><th scope="col" class="num">${since ? esc(t('Since {date}', { date: formatDateShort(since) })) : ''}</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr>
+            <th scope="row">${esc(tGame(r.label))}</th>
+            <td class="num">${esc(statValueText(r.value))}</td>
+            <td class="num">${since ? statDeltaHtml(first[r.stat] || [0, 0], r.value) : ''}</td>
+          </tr>`).join('')}</tbody>
+      </table>`;
+    return foldHtml({ key: `member-bonus-${g.key}`, title: `${esc(g.title())} <span class="sp-count">${rows.length}</span>`, body, open: !!g.open, cls: 'sp-group' });
+  }).join('');
+  return `
+    <section class="ui-tile sp-every" aria-labelledby="sp-every-title">
+      <div class="ui-tile-head"><h2 class="ui-tile-title" id="sp-every-title">${esc(t('Every bonus'))}</h2><span class="ui-sub">${esc(t('As the game names them; boosts that run out are not included'))}</span></div>
+      ${folds}
+    </section>`;
+}
+
+/** Every bonus that moved, newest first. */
+function statChangesHtml(stats) {
+  const changes = Array.isArray(stats.changes) ? stats.changes : [];
+  const total = Number(stats.changeCount) || changes.length;
+  const since = stats.first?.gameDate;
+  const body = changes.length
+    ? `<ul class="sp-changes">${changes.slice(0, MAX_CHANGES).map((c) => {
+        const { label } = splitStat(c.stat);
+        return `<li class="sp-change">
+          <span class="sp-change-date">${esc(formatDateShort(c.gameDate))}</span>
+          <span class="sp-change-stat">${esc(tGame(label))}</span>
+          <span class="sp-change-values">${esc(statValueText(c.from))} → ${esc(statValueText(c.to))}</span>
+          ${statDeltaHtml(c.from, c.to)}
+        </li>`;
+      }).join('')}</ul>${total > MAX_CHANGES ? `<p class="ui-sub sp-more">${esc(t('… and {n} earlier', { n: total - MAX_CHANGES }))}</p>` : ''}`
+    : `<div class="ui-card-pad">${emptyHtml(since ? t('No change since {date}', { date: formatDateShort(since) }) : t('No changes yet'))}</div>`;
+  return tableCardHtml({
+    title: esc(t('Changes')),
+    hint: since ? esc(t('Since {date}, one read a day', { date: formatDateShort(since) })) : '',
+    body,
+    cls: 'sp-history',
+  });
 }
 
 /** Where each speed comes from: one row per source, the biggest first. */

@@ -10344,6 +10344,14 @@ table.sp-table { table-layout: fixed; width: 100%; min-width: 0; }
 .sp-change-stat { font-weight: 600; color: var(--text-primary); }
 .sp-change-values { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sp-more { margin: 0; padding: 8px 16px 12px; }
+/* Every bonus: a fold per group, each a three-column table. */
+.sp-every { display: flex; flex-direction: column; gap: 10px; }
+.sp-group { display: block; width: 100%; }
+.sp-group .ui-fold-body { padding: 0; }
+.sp-count { margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--subtle-bg-strong); color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: 0; vertical-align: 1px; }
+.sp-all .col-now { width: 26%; }
+.sp-all .col-since { width: 26%; }
+.sp-all td .ui-delta { font-size: 12px; }
 @media (max-width: 640px) {
   .sp-table th, .sp-table td { padding: 8px 6px; font-size: 12.5px; }
   /* "Исследование", "Строительство": a fifth of a phone, so the heads wrap, in plain case. */
@@ -10351,6 +10359,8 @@ table.sp-table { table-layout: fixed; width: 100%; min-width: 0; }
   .sp-table th:first-child { padding-left: 12px; }
   .sp-table th:last-child, .sp-table td:last-child { padding-right: 12px; }
   .sp-table .col-pct { width: 22%; }
+  .sp-all .col-now { width: 30%; }
+  .sp-all .col-since { width: 28%; }
   .sp-table th[scope="row"] { font-size: 12px; hyphens: auto; overflow-wrap: break-word; }
   /* Date and stat on one line, the values and the change under them. */
   .sp-change { grid-template-columns: auto minmax(0, 1fr); padding: 8px 12px; }

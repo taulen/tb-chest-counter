@@ -9,6 +9,7 @@ import { getDb } from '../database.js';
 import { avatarFrameImage, gameArtUrl, heroAvatarImage } from '../../game-art/index.js';
 import { HERO_ENTRY_ID } from '../../game-protocol/equipment.js';
 import type { CitySpeeds } from '../../game-protocol/city-speeds.js';
+import type { CityStats } from '../../game-protocol/city-stats.js';
 
 export interface GamePlayerProfile {
   playerId: number;
@@ -148,6 +149,21 @@ export function getPlayerSpeeds(clanId: number, playerId: number): Array<{ gameD
   for (const r of rows) {
     try {
       out.push({ gameDate: r.game_date, capturedAt: r.captured_at, speeds: JSON.parse(r.speeds) as CitySpeeds });
+    } catch { /* a damaged row is skipped */ }
+  }
+  return out;
+}
+
+/** A player's every city bonus (city-stats.ts), one per game day read and worked out, oldest first. */
+export function getPlayerStats(clanId: number, playerId: number): Array<{ gameDate: string; capturedAt: string; stats: CityStats }> {
+  const rows = getDb().prepare(
+    `SELECT game_date, captured_at, stats FROM game_city_snapshots
+      WHERE clan_id = ? AND player_id = ? AND stats IS NOT NULL ORDER BY game_date`,
+  ).all(clanId, playerId) as Array<{ game_date: string; captured_at: string; stats: string }>;
+  const out: Array<{ gameDate: string; capturedAt: string; stats: CityStats }> = [];
+  for (const r of rows) {
+    try {
+      out.push({ gameDate: r.game_date, capturedAt: r.captured_at, stats: JSON.parse(r.stats) as CityStats });
     } catch { /* a damaged row is skipped */ }
   }
   return out;

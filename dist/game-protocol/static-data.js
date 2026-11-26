@@ -67,6 +67,7 @@ const path_1 = __importDefault(require("path"));
 const zlib_1 = __importDefault(require("zlib"));
 const codec_js_1 = require("./codec.js");
 const client_config_js_1 = require("./client-config.js");
+const city_stats_js_1 = require("./city-stats.js");
 const game_texts_js_1 = require("./game-texts.js");
 const logger_js_1 = require("../utils/logger.js");
 const status_js_1 = require("../game-patch/status.js");
@@ -221,9 +222,10 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * amounts and speedup durations, for the chest rewards; 11: titles (T29);
  * 12: texts-<lang>.json beside it, the names in the site's other languages;
  * 13: speeds — what each effect adds to construction, training and research
- * speed — Nov 2026); a cached file with an older format is rebuilt.
+ * speed; 14: cityStats — every effect line named, a city's every bonus — Nov
+ * 2026); a cached file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 13;
+exports.NAMES_FORMAT = 14;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -633,6 +635,7 @@ function buildNames(version, strings, vectors, tables, en) {
         ...(dragon ? { dragon } : {}),
         titles: buildTitles(tables.get(exports.TABLE_TITLES), str, vec, en),
         speeds: buildSpeeds(tables.get(exports.TABLE_EFFECTS), rows(exports.TABLE_TECHS)),
+        cityStats: (0, city_stats_js_1.buildCityStats)(tables, str, vec, en),
     };
 }
 /** Effect kinds (T20 f3 entry [0]) behind the Statistics page's three speeds. */
@@ -704,8 +707,9 @@ function nameTexts(version, strings, vectors, tables, lookup) {
 }
 /** A build's texts without the fields that are not text (version, build time, numbers-only tables). */
 function textParts(t) {
-    const { version: _v, builtAt: _b, format: _f, heroLevels: _h, items: _i, ...rest } = t.names;
-    return { names: rest, trees: t.trees, tabs: t.tabs };
+    const { version: _v, builtAt: _b, format: _f, heroLevels: _h, items: _i, speeds: _s, cityStats, ...rest } = t.names;
+    // cityStats' tens of thousands of effects are numbers: only its labels are text.
+    return { names: { ...rest, cityStatLabels: cityStats?.labels ?? {} }, trees: t.trees, tabs: t.tabs };
 }
 /**
  * The names build in every site language: the English build (with a lookup

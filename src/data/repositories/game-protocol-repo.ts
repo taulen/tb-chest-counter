@@ -285,16 +285,25 @@ export function saveCitySnapshot(
   clanId: number,
   playerId: number,
   gameDate: string,
-  snap: { techCount: number; buildings: unknown; dragon: unknown; speeds?: unknown },
+  snap: { techCount: number; buildings: unknown; dragon: unknown; speeds?: unknown; stats?: unknown },
   now = new Date().toISOString(),
 ): void {
   // The `hero` column holds the city's field 26 — the DRAGON (named before
-  // that was known; CityRecord.dragon). `speeds`: city-speeds.ts, or NULL.
+  // that was known; CityRecord.dragon). `speeds`: city-speeds.ts, `stats`:
+  // city-stats.ts, or NULL.
   getDb().prepare(
-    `INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero, speeds)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero, speeds, stats)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon),
-    snap.speeds ? JSON.stringify(snap.speeds) : null);
+    snap.speeds ? JSON.stringify(snap.speeds) : null, snap.stats ? JSON.stringify(snap.stats) : null);
+}
+
+/** The same as updateCitySpeeds for every bonus (city-stats.ts). */
+export function updateCityStats(clanId: number, playerId: number, gameDate: string, stats: unknown): boolean {
+  const json = JSON.stringify(stats);
+  return getDb().prepare(
+    'UPDATE game_city_snapshots SET stats = ? WHERE clan_id = ? AND player_id = ? AND game_date = ? AND stats IS NOT ?',
+  ).run(json, clanId, playerId, gameDate, json).changes > 0;
 }
 
 /**

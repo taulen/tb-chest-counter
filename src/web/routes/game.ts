@@ -26,6 +26,7 @@ import {
   getPlayerEquipmentChanges,
   getPlayerGoldIngotsDaily,
   getPlayerSpeeds,
+  getPlayerStats,
   getPlayerTechChanges,
   getPlayerTechs,
   getPlayerTitles,
@@ -53,6 +54,7 @@ import { loadConfig } from '../../config/index.js';
 import { loadTechLevels, loadTechTrees, type TechLevel, type TechLevels, type TechTrees } from '../../game-protocol/tech-trees.js';
 import { firstSeenFor } from '../../game-protocol/tech-first-seen.js';
 import { tierCosts, tiersForPlayer, type FamilyTiers } from '../../game-protocol/tier-costs.js';
+import { statChanges } from '../../game-protocol/city-stats.js';
 import { loadGameNames, type GameNames } from '../../game-protocol/static-data.js';
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
 import { CLAN_RANKING_ICONS, safeArtName } from '../../game-art/selection.js';
@@ -98,6 +100,8 @@ function treesWithIcons(trees: TechTrees): unknown {
 }
 
 const CHANGES_DAYS = 90;
+/** Bonus changes one profile request sends at most (newest first). */
+const STAT_CHANGES_MAX = 200;
 /** Joins & leaves: a page, the most one request may ask for, and the header's window. */
 const ROSTER_PAGE_DEFAULT = 50;
 const ROSTER_PAGE_MAX = 200;
@@ -254,6 +258,36 @@ export function createGameRouter(): Router {
         construction: r.speeds.construction.total,
         training: r.speeds.training.total,
       })),
+    });
+  });
+
+  /**
+   * A member's every city bonus (city-stats.ts): the latest read and the
+   * first one ("kind:label" → [percent, flat]), and every change between
+   * reads, newest first.
+   */
+  router.get('/members/:memberId/stats', (req, res) => {
+    const clanId = req.clanId!;
+    const memberId = Number.parseInt(String(req.params.memberId), 10);
+    if (!Number.isFinite(memberId) || !getMemberById(memberId, clanId)) {
+      res.status(404).json({ error: 'Member not found' });
+      return;
+    }
+    const playerId = gamePlayerIdForMember(memberId, clanId);
+    if (playerId === null) {
+      res.json({ linked: false, latest: null, first: null, changes: [], changeCount: 0 });
+      return;
+    }
+    const rows = getPlayerStats(clanId, playerId);
+    const last = rows[rows.length - 1] ?? null;
+    const first = rows[0] ?? null;
+    const changes = statChanges(rows);
+    res.json({
+      linked: true,
+      latest: last ? { gameDate: last.gameDate, readAt: last.capturedAt, stats: last.stats } : null,
+      first: first ? { gameDate: first.gameDate, stats: first.stats } : null,
+      changes: changes.slice(0, STAT_CHANGES_MAX),
+      changeCount: changes.length,
     });
   });
 

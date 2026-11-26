@@ -2869,6 +2869,19 @@ const MIGRATIONS = [
                 database.exec('ALTER TABLE game_city_snapshots ADD COLUMN speeds TEXT');
         },
     },
+    {
+        // game_city_snapshots.stats: every bonus of the city when it was read —
+        // production, army strength and health per troop type, march speed,
+        // crypts… — "kind:label" → [percent, flat] (JSON, city-stats.ts). NULL =
+        // not worked out (the archive replay fills what it holds). Guarded:
+        // runMigrations may replay this.
+        version: 142,
+        run: (database) => {
+            const cols = database.prepare('PRAGMA table_info(game_city_snapshots)').all();
+            if (!cols.some((c) => c.name === 'stats'))
+                database.exec('ALTER TABLE game_city_snapshots ADD COLUMN stats TEXT');
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

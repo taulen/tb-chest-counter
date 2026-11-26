@@ -7,6 +7,7 @@ exports.getGamePlayer = getGamePlayer;
 exports.getGamePlayersByMember = getGamePlayersByMember;
 exports.getLatestCity = getLatestCity;
 exports.getPlayerSpeeds = getPlayerSpeeds;
+exports.getPlayerStats = getPlayerStats;
 exports.getPlayerTechs = getPlayerTechs;
 exports.getPlayerTechChanges = getPlayerTechChanges;
 exports.getPlayerGoldIngotsDaily = getPlayerGoldIngotsDaily;
@@ -101,6 +102,19 @@ function getPlayerSpeeds(clanId, playerId) {
     for (const r of rows) {
         try {
             out.push({ gameDate: r.game_date, capturedAt: r.captured_at, speeds: JSON.parse(r.speeds) });
+        }
+        catch { /* a damaged row is skipped */ }
+    }
+    return out;
+}
+/** A player's every city bonus (city-stats.ts), one per game day read and worked out, oldest first. */
+function getPlayerStats(clanId, playerId) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT game_date, captured_at, stats FROM game_city_snapshots
+      WHERE clan_id = ? AND player_id = ? AND stats IS NOT NULL ORDER BY game_date`).all(clanId, playerId);
+    const out = [];
+    for (const r of rows) {
+        try {
+            out.push({ gameDate: r.game_date, capturedAt: r.captured_at, stats: JSON.parse(r.stats) });
         }
         catch { /* a damaged row is skipped */ }
     }

@@ -630,6 +630,36 @@ site); training 2249 vs 2374. The game rounds to one decimal. Members →
 profile → Speed bonuses shows the three, where they come from and every
 change; Tools → Costs fills the reader's research speed from it.
 
+### Every bonus (city field 14, named)
+
+Beyond the three speeds, every bonus a city has is kept per read
+(`game_city_snapshots.stats`, v142; [city-stats.ts](../src/game-protocol/city-stats.ts)):
+production per resource, storage, strength / health / march speed / carrying
+capacity per troop type, training cost, crypts, points, the captains' stats…
+— ~105 for a developed city, shown under Members → profile → City bonuses with
+every change between reads.
+
+T20 lines carry no text; the game prints them in its windows, in the effect's
+line order: a research level (T21 levels `[1]` effect, `[4]` props), a hero
+or captain level (T10 f7 `[6]`, `[7]`), a captain star level (T75 f12 `[6]`,
+`[7]`), gear (T11 f6, f9), an artifact star and level (T111 `[2]`, `[4]`; T112
+`[1]`, `[4]`). Pairing those (same number of lines, every value agrees) votes
+a text key per (kind, target). **Read by position**: a row's other numbers
+(levels, price ids) are often ids of effects AND of props strings too —
+walking rows generically paired the wrong lines. Only a line whose value no
+other line of the effect shares votes (VIP prints its dozen "+1 %" lines in
+another order), and a text belongs to the kind most of its votes came from.
+
+`target` is a VECTOR of ids — units, resources (2 Silver … 6 Food, 13 Tar),
+crypts; empty = everything. Its pool index moves between patches, so stats are
+keyed by the text, `"kind:English label"` (the kind keeps the clan's own
+"Research speed", kind 48, apart from the city's, 17). A line aimed at several
+resources is split into each one's line, so "Food production" holds everything
+that raises food. The clan's research only adds to bonuses the city already
+has (the rest of it is the clan's own). Checked: the three speeds come out of
+this exactly as city-speeds.ts has them. names.json format 14 (`cityStats`,
+~1.4 MB: 47k effects); texts-<lang>.json translates the labels.
+
 **Message 61000** (sent at login, body `[[]]`) lists the signed-in account's
 own artifacts, worn or not: `[[{$pairs: [[type], [[type], [cityId],
 [starLevel], [level, xp], [{slot: [bonusEffectId]}, null]]]…}, {$pairs:

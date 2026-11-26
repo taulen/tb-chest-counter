@@ -1515,7 +1515,7 @@ function renderMemberDetail(data, chestPage, triumphalPage = { chests: [], total
       { key: 'research', label: t('Research'), hint: '', html: memberTechPanelHtml('research') },
       { key: 'talents', label: t('Talents'), hint: '', html: memberTechPanelHtml('talent') },
       { key: 'captains', label: t('Captains'), hint: t('Captains, gear, artifacts, Hall of Fame and the Dragon'), html: memberCaptainsPanelHtml() },
-      { key: 'speeds', label: t('Speed bonuses'), hint: t('Research, construction and troop training speed, where they come from and how they moved'), html: memberSpeedsPanelHtml() },
+      { key: 'speeds', label: t('City bonuses'), hint: t('Speeds, production, army, crypts and more: where they come from and how they moved'), html: memberSpeedsPanelHtml() },
     ] : []),
     // Everything recorded about the member, newest first (member-timeline.js).
     { key: 'timeline', label: t('Timeline'), hint: t('Everything recorded, newest first'), html: memberTimelinePanelHtml() },
