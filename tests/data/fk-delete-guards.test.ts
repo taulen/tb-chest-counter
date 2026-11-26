@@ -103,6 +103,9 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'clan_goal_history.clan_id',
     'clan_scan_accounts.clan_id',
     'discord_member_links.clan_id',
+    // Dragon Coins back to members (v140).
+    'dragon_coin_return_settings.clan_id',
+    'dragon_coin_returns.clan_id',
     // Game protocol capture (v102, v103).
     'game_capture_runs.clan_id',
     'game_city_snapshots.clan_id',

@@ -23,6 +23,7 @@ import { t, tn, tGame } from '../lib/i18n.js';
 import { attachChatDigest, chatDigestSectionHtml } from './clan-chat-digest.js';
 import { attachAccountInvites, accountInvitesSectionHtml } from './clan-account-invites.js';
 import { attachChatCommands, chatCommandsSectionHtml } from './clan-chat-commands.js';
+import { attachDragonCoins, dragonCoinsSectionHtml } from './clan-dragon-coins.js';
 import {
   computeGameWindowDates, customWeekStart, CUSTOM_WEEK_MAX_DAYS, CUSTOM_WEEK_MIN_DAYS, formatPeriodLabel,
   isCustomWeek, isTinmanWeek, parseCustomWeek, weekdayName, weekLengthDays,
@@ -702,6 +703,7 @@ export async function renderClans(el, refreshClanIndicator) {
   for (const clan of clans) attachChatDigest(el, clan.id);
   for (const clan of clans) attachAccountInvites(el, clan.id);
   for (const clan of clans) attachChatCommands(el, clan.id);
+  for (const clan of clans) attachDragonCoins(el, clan.id);
 
   for (const clan of clans) {
     // Populate the Discord dropdowns without being asked. The lookup is a
@@ -1236,6 +1238,7 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
 ${chatDigestSectionHtml(clan.id)}
 ${accountInvitesSectionHtml(clan.id)}
 ${chatCommandsSectionHtml(clan.id)}
+${dragonCoinsSectionHtml(clan.id)}
 
         <hr class="section-divider">
         <details class="clan-subsection">

@@ -8,7 +8,7 @@
  * at or below that. No rate limit has ever been seen from the game server.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.READ_GAP = exports.CLAIM_GAP = void 0;
+exports.TREASURY_SEND_GAP = exports.READ_GAP = exports.CLAIM_GAP = void 0;
 exports.gapMs = gapMs;
 exports.requestGap = requestGap;
 /** A whole number of milliseconds, uniformly in [minMs, maxMs]. */
@@ -25,4 +25,9 @@ function requestGap(minMs, maxMs) {
 exports.CLAIM_GAP = [25, 75];
 /** Between batched reads (cities, map tiles, clan objects). */
 exports.READ_GAP = [30, 90];
+/**
+ * Between Dragon Coins sends from the clan treasury: one member at a time, as
+ * the treasury's own send works; unhurried, since each one pays out.
+ */
+exports.TREASURY_SEND_GAP = [1500, 3500];
 //# sourceMappingURL=request-gap.js.map

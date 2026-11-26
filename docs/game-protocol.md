@@ -1122,7 +1122,8 @@ form for each value — 181 captured requests re-encode byte-identical.
 |---|---|---|
 | 15000 | `[[[[clanId], 2147483647]]]` | clan record: `[0]` clan id, `[1]` tag/name/description, `[2]` members `[[id], role, joinedAt]`, `[3]` ~860 `[[id], ts, 0]` (departures), `[13]` gifts `[giftId, [senderId], giftType, expiresAt, count, tab]` |
 | 402 | `[[[id], [id], …]]` | player records: `[1]` suid, `[2]` name, `[4]` hero avatar (T13), `[5]` city look and `[6]` portrait frame (T52 customizations; v114), `[7]` hero level, `[8]` city level, `[9]` VIP, `[10]` might, `[11]` clan id, `[13]` clan tag, `[15]` `[realm,x,y]`, `[16]` city id, `[17]` Gold Ingots (public in the game; v110 keeps the current value on `game_players.gold_ingots` and the game day's latest in `game_player_daily` — they tick up every few minutes, so they are not part of `game_player_history`'s change check), `[19]` titles held `[[titleId, assignedAt]]` and `[20]` how often each was received `[[titleId, count]]` (v125, see Titles), `[22]` `[1]` = Gold Pass |
-| 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days (second value is not a filter) |
+| 15031 | `[[[clanId], 0]]` | ledger `[entryId, [playerId], kind, resource, ts, [{res: amount}]]`, ~14 days. The client asks `[[[clanId], sinceTs]]` after a treasury send and got only the new entry (Nov 26 2026) |
+| 15019 | `[[[[resourceId, amount]], [playerId]]]` | **sends from the clan treasury to one member** (Leader / Superior; one member per request — the game has no multi-send). Success is `[[]]`, and the next 15031 lists it as a kind-1 entry. Recorded Nov 26 2026 (31 Dragon Coins ×1). IRREVERSIBLE; only [dragon-coin-returns.md](dragon-coin-returns.md) sends it |
 | 601 | `[[[[[cityId], 0, 2147483647], [[cityId2], 0, 2147483647], …]]]` (one or many) | city details (all records in `body[0][0]`): `[1][0]` owner, `[9]` captains (see above), `[12]` buildings, `[17]` `{techId: [techId, level]}` research and hero talents, `[26]` the player's dragon (not the hero), `[30]` own army. `[5]` is the inventory `{itemId: [itemId, amount]}` (item 2 = Silver) — filled only in the signed-in account's own city; every other player's reply has it empty, so other players' resources are not readable |
 | 312 | `[[[tileIds], [versions], [], []]]` | per 20×20 tile `[tileId, version, …, [4] cities, [5] objects]`; `tile = floor(y/20)*50 + floor(x/20)` |
 | 25 | `[[[clanId]]]` | clan might (key 1) and wealth points (key 7) — see "The clan itself" |
@@ -1143,7 +1144,12 @@ Triumphal; `count` is chests in the entry (Bank bundles 3 or 30). Gift ids are
 sequential per clan, so gaps are losses. Ledger kinds seen: 4 donation (res 20
 Scientific Tractates, 31 Dragon Coins, 21–23 Boards/Cement/Steel, 74284 Magic
 Seeds), 7 Forest Essence (74285), 3 basic resources (2–6), 2 speed-up with item
-counts (2050 1h, 2051 3h, 2052 8h, 2053 15h, 2054 24h, 2055 72h).
+counts (2050 1h, 2051 3h, 2052 8h, 2053 15h, 2054 24h, 2055 72h). A member's event reward that pays Dragon Coins sends
+them to the treasury as kind 4 under that member (CWB: 48 on Nov 4–5 2026, one
+per member). What the CLAN wins (Dark Omens, Olympus, the Seasonal Kingdom) is
+kind 5 or 8 under the Leader at the reset (Nov 6 18:00: 525,000 Dragon Coins +
+27.5M Scientific Tractates + 700 clan fragments for CWB). Kind 1 = a payout to a
+member (15019 or by hand).
 
 ## Event standings (v121)
 

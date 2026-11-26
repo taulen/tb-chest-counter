@@ -74,6 +74,10 @@ services:
       # opt-in daily digest, Clans → In-game chat digest). 1 = nothing is ever
       # sent; reading chat is unaffected. See docs/chat-digest.md.
       - CHAT_SEND_DISABLED=${CHAT_SEND_DISABLED:-0}
+      # Kill switch for Dragon Coins back to members (Clans → Dragon Coins back
+      # to members): 1 = nothing is ever sent from a clan treasury, whatever
+      # the clans' switches say. See docs/dragon-coin-returns.md.
+      - DRAGON_COIN_RETURNS_DISABLED=${DRAGON_COIN_RETURNS_DISABLED:-0}
       # Scan clans on DIFFERENT Total Battle accounts at the same time; clans on
       # one account always stay in one lane, one after another (a game login
       # takes over the account's session). 0 = every clan one after another, as

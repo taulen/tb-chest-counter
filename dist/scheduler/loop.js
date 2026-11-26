@@ -822,6 +822,20 @@ class ScanLoop {
             result.newChests = tally.gifts.length;
             result.errors = tally.claimFailures;
             const done = (0, scan_finalize_js_1.finalizeScanSuccess)(this.buildScanFinalizeContext(run), result, scanSession.id, tally.warnings.length ? tally.warnings.join('\n') : null);
+            // Dragon Coins back to the members who brought them into the treasury
+            // (opt-in per clan; Leader/Superior scanner only; never what the clan
+            // itself won — dragon-coin-returns.ts). Right after the ledger read.
+            // Never throws.
+            {
+                const { getDragonCoinReturnSettings } = await import('../data/repositories/dragon-coin-return-repo.js');
+                if (getDragonCoinReturnSettings(clanId).enabled) {
+                    report('Sending Dragon Coins back to members…');
+                    const { runDragonCoinReturns } = await import('./dragon-coin-returns.js');
+                    const coinNote = await runDragonCoinReturns(clanId, { client: capture.data.client, record: capture.data.record });
+                    if (coinNote)
+                        log.info(`Clan #${clanId} ${coinNote}`);
+                }
+            }
             // After the scan is final, on the same game session: the slower
             // collection (member cities, map tiles, raw archive) — kept out of
             // the way of opening chests — then chat (clan chat + the account's

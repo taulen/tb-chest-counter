@@ -2836,6 +2836,44 @@ const MIGRATIONS: Migration[] = [
       })();
     },
   },
+  {
+    // v140 — Dragon Coins back to members (docs/dragon-coin-returns.md): the
+    // Dragon Coins a member wins in an event go to the clan treasury (ledger
+    // kind 4); with the clan's switch on, the scanner account (Leader or
+    // Superior) sends each member theirs back (15019, recorded Nov 26 2026).
+    //   dragon_coin_return_settings  the per-clan switch and when it went on —
+    //                                only coins that arrive after it are sent;
+    //   dragon_coin_returns          one row per send, reserved before it goes
+    //                                out: the member, the amount, the ledger
+    //                                entries it pays back, the outcome, and the
+    //                                ledger payout (kind 1) that confirms it.
+    // IF NOT EXISTS: runMigrations may replay this.
+    version: 140,
+    run: (database): void => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS dragon_coin_return_settings (
+          clan_id INTEGER PRIMARY KEY REFERENCES clans(id),
+          enabled INTEGER NOT NULL DEFAULT 0,
+          enabled_at INTEGER,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS dragon_coin_returns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          player_id INTEGER NOT NULL,
+          amount INTEGER NOT NULL,
+          donation_entry_ids TEXT NOT NULL,
+          status TEXT NOT NULL,
+          reason TEXT,
+          created_at INTEGER NOT NULL,
+          sent_at INTEGER,
+          ledger_entry_id INTEGER,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_dragon_coin_returns_clan ON dragon_coin_returns(clan_id, created_at);
+      `);
+    },
+  },
 ];
 
 /**

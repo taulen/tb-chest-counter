@@ -654,6 +654,17 @@ export class GameClient {
     for (const [id, n] of Object.entries(gifts)) body[id] = n;
     return this.ask(15013, [[body]]);
   }
+
+  /**
+   * Send one resource from the clan treasury to one member (15019 — the
+   * treasury's send, one member at a time; recorded Nov 26 2026:
+   * `[[[[31, 1]], [playerId]]]` → `[[]]`, and the ledger lists it at once as
+   * a kind-1 entry). Only a Leader or Superior may. IRREVERSIBLE; used only by
+   * scheduler/dragon-coin-returns.ts.
+   */
+  sendFromTreasury(playerId: number, resourceId: number, amount: number): Promise<Frame> {
+    return this.ask(15019, [[[[resourceId, amount]], [playerId]]]);
+  }
 }
 
 async function post(url: string, body: Buffer, extraHeaders: Record<string, string> = {}): Promise<Buffer> {

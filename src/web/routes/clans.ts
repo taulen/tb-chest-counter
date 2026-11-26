@@ -9,6 +9,7 @@ import { createSeasonalKingdomRouter } from './clans/seasonal-kingdom.js';
 import { createChatDigestRouter } from './clans/chat-digest.js';
 import { createAccountInvitesRouter } from './clans/account-invites.js';
 import { createChatCommandsRouter } from './clans/chat-commands.js';
+import { createDragonCoinReturnsRouter } from './clans/dragon-coin-returns.js';
 
 /**
  * `/api/clans` is split into sub-routers, composed here. Each
@@ -29,6 +30,7 @@ export function createClansRouter(scanLoop?: ScanLoop): Router {
   router.use(createChatDigestRouter());
   router.use(createAccountInvitesRouter());
   router.use(createChatCommandsRouter());
+  router.use(createDragonCoinReturnsRouter());
 
   return router;
 }

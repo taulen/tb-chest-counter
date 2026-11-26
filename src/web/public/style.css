@@ -1696,6 +1696,19 @@ label {
   .chat-cmd-list { grid-template-columns: 1fr; gap: 2px; }
   .chat-cmd-list span { margin-bottom: 6px; }
 }
+/* ─── Clans → Dragon Coins back to members (pages/clan-dragon-coins.js) ───
+   Built on the invite panel above; its tables keep their column widths
+   (table-layout fixed) and the amounts line up right, the coin icon first. */
+.dc-table { table-layout: fixed; width: 100%; }
+.dc-table .dc-col-player { width: 34%; }
+.dc-table .dc-col-amount { width: 22%; }
+.dc-table .dc-col-when { width: 20%; }
+.dc-table th, .dc-table td { overflow: hidden; text-overflow: ellipsis; }
+.dc-table td:last-child { white-space: normal; }
+.dc-table th.num, .dc-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dc-table th .resource-icon-img, .dc-amount .resource-icon-img { width: 18px; height: 18px; margin-right: 4px; vertical-align: -4px; }
+.dc-amount { white-space: nowrap; }
+.dc-held-fold .table-wrap { margin-top: 6px; }
 
 .invite-how { padding-top: 10px; border-top: 1px solid var(--border); }
 .invite-how > summary {

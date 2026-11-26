@@ -136,6 +136,11 @@
   },
   {
     "type": "index",
+    "name": "idx_dragon_coin_returns_clan",
+    "sql": "CREATE INDEX idx_dragon_coin_returns_clan ON dragon_coin_returns(clan_id, created_at)"
+  },
+  {
+    "type": "index",
     "name": "idx_game_capture_runs_clan",
     "sql": "CREATE INDEX idx_game_capture_runs_clan ON game_capture_runs (clan_id, started_at)"
   },
@@ -598,6 +603,16 @@
     "type": "table",
     "name": "discord_member_links",
     "sql": "CREATE TABLE discord_member_links ( clan_id INTEGER NOT NULL REFERENCES clans(id), discord_user_id TEXT NOT NULL, member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE, linked_at TEXT NOT NULL, PRIMARY KEY (clan_id, discord_user_id) )"
+  },
+  {
+    "type": "table",
+    "name": "dragon_coin_return_settings",
+    "sql": "CREATE TABLE dragon_coin_return_settings ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), enabled INTEGER NOT NULL DEFAULT 0, enabled_at INTEGER, updated_at TEXT NOT NULL )"
+  },
+  {
+    "type": "table",
+    "name": "dragon_coin_returns",
+    "sql": "CREATE TABLE dragon_coin_returns ( id INTEGER PRIMARY KEY AUTOINCREMENT, clan_id INTEGER NOT NULL REFERENCES clans(id), player_id INTEGER NOT NULL, amount INTEGER NOT NULL, donation_entry_ids TEXT NOT NULL, status TEXT NOT NULL, reason TEXT, created_at INTEGER NOT NULL, sent_at INTEGER, ledger_entry_id INTEGER, updated_at TEXT NOT NULL )"
   },
   {
     "type": "table",

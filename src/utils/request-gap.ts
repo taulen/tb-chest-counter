@@ -23,3 +23,8 @@ export function requestGap(minMs: number, maxMs: number): Promise<void> {
 export const CLAIM_GAP: readonly [number, number] = [25, 75];
 /** Between batched reads (cities, map tiles, clan objects). */
 export const READ_GAP: readonly [number, number] = [30, 90];
+/**
+ * Between Dragon Coins sends from the clan treasury: one member at a time, as
+ * the treasury's own send works; unhurried, since each one pays out.
+ */
+export const TREASURY_SEND_GAP: readonly [number, number] = [1500, 3500];

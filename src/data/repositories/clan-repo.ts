@@ -911,6 +911,9 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     // Chat commands (v135).
     db.prepare('DELETE FROM chat_command_requests WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM chat_command_settings WHERE clan_id = ?').run(id);
+    // Dragon Coins back to members (v140).
+    db.prepare('DELETE FROM dragon_coin_returns WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM dragon_coin_return_settings WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM user_game_links WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM user_clan_main WHERE clan_id = ?').run(id);
     // In-game chat (v104).

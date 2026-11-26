@@ -11,6 +11,7 @@ const seasonal_kingdom_js_1 = require("./clans/seasonal-kingdom.js");
 const chat_digest_js_1 = require("./clans/chat-digest.js");
 const account_invites_js_1 = require("./clans/account-invites.js");
 const chat_commands_js_1 = require("./clans/chat-commands.js");
+const dragon_coin_returns_js_1 = require("./clans/dragon-coin-returns.js");
 /**
  * `/api/clans` is split into sub-routers, composed here. Each
  * sub-router owns its own concerns and installs its own `:clanId`
@@ -29,6 +30,7 @@ function createClansRouter(scanLoop) {
     router.use((0, chat_digest_js_1.createChatDigestRouter)());
     router.use((0, account_invites_js_1.createAccountInvitesRouter)());
     router.use((0, chat_commands_js_1.createChatCommandsRouter)());
+    router.use((0, dragon_coin_returns_js_1.createDragonCoinReturnsRouter)());
     return router;
 }
 //# sourceMappingURL=clans.js.map
