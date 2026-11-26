@@ -1120,7 +1120,7 @@ const PAGE_SUBTITLES = {
   might: t('Power over time, member by member'),
   'chest-rewards': t("What the clan's opened chests paid out"),
   events: t('Event runs and who took part'),
-  tools: t('Calculators for planning events'),
+  tools: t("Calculators for planning, and what's new in the game"),
   triumphal: t('Bank gifts and triumphal packages'),
   members: t('Everyone in the clan'),
   clan: t('The clan as the game shows it: research, treasury, wealth'),

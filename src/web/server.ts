@@ -24,6 +24,7 @@ import { createGameTextsRouter } from './routes/game-texts.js';
 import { createResourcesDataRouter } from './routes/resources.js';
 import { createMightRouter } from './routes/might.js';
 import { createGameRouter } from './routes/game.js';
+import { createGameUpdatesRouter } from './routes/game-updates.js';
 import { createMemberTimelineRouter } from './routes/member-timeline.js';
 import { createChatRouter } from './routes/chat.js';
 import { createGuardsRouter } from './routes/guards.js';
@@ -556,6 +557,8 @@ export function startWebServer(port: number, scanLoop?: ScanLoop, options: WebSe
   app.use('/api/game', requireAuth, requireClanContext, createGameRouter());
   // A member's timeline (profile → Timeline), same gate as the game routes.
   app.use('/api/game', requireAuth, requireClanContext, createMemberTimelineRouter());
+  // Tools → What's new: what each game patch added (game data, the same for every clan).
+  app.use('/api/game-updates', requireAuth, createGameUpdatesRouter());
   // The stored clan chat (Chats page): any member of the active clan reads it;
   // private messages are never served (the router is pinned to clan channels).
   app.use('/api/chat', requireAuth, requireClanContext, createChatRouter());

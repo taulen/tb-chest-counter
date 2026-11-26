@@ -7,6 +7,8 @@ exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = ex
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
+exports.fetchCatalogTexts = fetchCatalogTexts;
+exports.catalogOfNamesKey = catalogOfNamesKey;
 exports.readTables = readTables;
 exports.asIdRecord = asIdRecord;
 exports.buildNames = buildNames;
@@ -351,6 +353,22 @@ async function fetchTranslationsZip(index, name) {
     if (!entry)
         throw new Error(`translations index has no ${name}`);
     return fetchBuffer(TRANSLATIONS_BASE + entry.fileName);
+}
+/**
+ * One translations catalogue's texts ("49206e7320e37a92.json"): every English
+ * text, or a language's texts limited to `keep`. The CDN keeps a catalogue's
+ * files after the next patch, which is what lets the patch notes compare two
+ * of them (game-patch/notes.ts).
+ */
+async function fetchCatalogTexts(catalog, lang, keep) {
+    const index = await fetchTranslationsIndex(catalog);
+    const zip = await fetchTranslationsZip(index, lang === 'en' ? ENGLISH : game_texts_js_1.GAME_TEXT_LANGUAGES[lang]);
+    return parseTranslationsCsv(unzipFirst(zip).toString('utf8'), keep);
+}
+/** The translations catalogue a names version key was built from ("…-49206e7320e37a92" → "49206e7320e37a92.json"). */
+function catalogOfNamesKey(key) {
+    const m = /^[0-9a-f]{16}-([0-9a-z]+)$/i.exec(key);
+    return m ? `${m[1]}.json` : null;
 }
 /** A language's zip, or null (logged) when it can't be had — the names never wait on a translation. */
 async function fetchLanguageZip(index, lang) {

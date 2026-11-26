@@ -598,6 +598,28 @@ async function fetchTranslationsZip(index: TranslationsIndex, name: string): Pro
   return fetchBuffer(TRANSLATIONS_BASE + entry.fileName);
 }
 
+/**
+ * One translations catalogue's texts ("49206e7320e37a92.json"): every English
+ * text, or a language's texts limited to `keep`. The CDN keeps a catalogue's
+ * files after the next patch, which is what lets the patch notes compare two
+ * of them (game-patch/notes.ts).
+ */
+export async function fetchCatalogTexts(
+  catalog: string,
+  lang: 'en' | GameTextLanguage,
+  keep?: ReadonlySet<string>,
+): Promise<Map<string, string>> {
+  const index = await fetchTranslationsIndex(catalog);
+  const zip = await fetchTranslationsZip(index, lang === 'en' ? ENGLISH : GAME_TEXT_LANGUAGES[lang]);
+  return parseTranslationsCsv(unzipFirst(zip).toString('utf8'), keep);
+}
+
+/** The translations catalogue a names version key was built from ("…-49206e7320e37a92" → "49206e7320e37a92.json"). */
+export function catalogOfNamesKey(key: string): string | null {
+  const m = /^[0-9a-f]{16}-([0-9a-z]+)$/i.exec(key);
+  return m ? `${m[1]}.json` : null;
+}
+
 /** A language's zip, or null (logged) when it can't be had — the names never wait on a translation. */
 async function fetchLanguageZip(index: TranslationsIndex, lang: GameTextLanguage): Promise<Buffer | null> {
   for (let attempt = 1; ; attempt++) {

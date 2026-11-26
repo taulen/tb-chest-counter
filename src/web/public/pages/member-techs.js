@@ -209,8 +209,27 @@ function treeSummaryHtml(tree, levels) {
     </div>`;
 }
 
-export function treeHtml(tree, levels, trees, phone = false) {
+/** A tree nobody has researched yet (Tools → What's new): its size, and how much of it is new. */
+function previewSummaryHtml(tree, newIds) {
+  const total = tree.nodes.reduce((sum, n) => sum + (n.maxLevel || 0), 0);
+  const fresh = newIds ? tree.nodes.filter((n) => newIds.has(n.techId)).length : 0;
+  const cell = (label, value, cls = '') => `<div class="tech-sum${cls}"><span class="tech-sum-value">${value}</span><span class="tech-sum-label">${label}</span></div>`;
+  return `<div class="tech-summary">
+      ${cell(t('Research'), tree.nodes.length)}
+      ${cell(t('Levels'), total.toLocaleString('en-US'))}
+      ${fresh && fresh < tree.nodes.length ? cell(t('New'), fresh, ' is-done') : ''}
+    </div>`;
+}
+
+/**
+ * A tree as the game draws it. `levels` is a player's (or the clan's)
+ * research; `opts.preview` draws it with no one's levels — each node's max
+ * level, the ones in `opts.newIds` marked new (Tools → What's new).
+ */
+export function treeHtml(tree, levels, trees, phone = false, opts = {}) {
   if (!tree) return '';
+  const preview = !!opts.preview;
+  const newIds = opts.newIds || null;
   const tall = phone;
   const NODE_W = tall ? PHONE_GRID.nodeW : DESK.nodeW;
   const NODE_H = tall ? PHONE_GRID.nodeH : DESK.nodeH;
@@ -230,7 +249,7 @@ export function treeHtml(tree, levels, trees, phone = false) {
     for (const r of n.requires || []) {
       const from = byId.get(r.techId);
       if (!from) continue;
-      const met = (levels[r.techId] ?? 0) >= r.level;
+      const met = !preview && (levels[r.techId] ?? 0) >= r.level;
       let d;
       if (tall) {
         const x1 = x(from) + NODE_W / 2;
@@ -254,34 +273,38 @@ export function treeHtml(tree, levels, trees, phone = false) {
 
   const STATE_CLASS = { done: 'is-maxed', progress: 'is-partial', available: 'is-available', locked: 'is-locked' };
   const nodes = tree.nodes.map((n) => {
-    const lvl = Math.min(levels[n.techId] ?? 0, n.maxLevel);
-    const st = nodeState(n, levels);
-    const state = STATE_CLASS[st];
-    const levelText = st === 'done'
-      ? t('L{level}/{max} · Done', { level: lvl, max: n.maxLevel })
-      : st === 'available'
-        ? t('Available · max {max}', { max: n.maxLevel })
-        : t('L{level}/{max}', { level: lvl, max: n.maxLevel });
+    const lvl = preview ? 0 : Math.min(levels[n.techId] ?? 0, n.maxLevel);
+    const st = nodeState(n, preview ? {} : levels);
+    const isNew = !!newIds?.has(n.techId);
+    const state = preview ? `is-preview${isNew ? ' is-new' : ''}` : STATE_CLASS[st];
+    const levelText = preview
+      ? (isNew ? `✦ ${t('New')} · ${t('max {max}', { max: n.maxLevel })}` : t('max {max}', { max: n.maxLevel }))
+      : st === 'done'
+        ? t('L{level}/{max} · Done', { level: lvl, max: n.maxLevel })
+        : st === 'available'
+          ? t('Available · max {max}', { max: n.maxLevel })
+          : t('L{level}/{max}', { level: lvl, max: n.maxLevel });
     const outside = (n.requires || []).filter((r) => !byId.has(r.techId)).map((r) => {
       const o = allNodes.get(r.techId);
       return o ? `${tGame(o.node.name)} ${r.level} (${tGame(o.tree.name)})` : '';
     }).filter(Boolean);
     const title = [
-      `${tGame(n.name)} — ${lvl}/${n.maxLevel}`,
+      preview ? `${tGame(n.name)} — ${t('max {max}', { max: n.maxLevel })}` : `${tGame(n.name)} — ${lvl}/${n.maxLevel}`,
       n.description || '',
       outside.length ? t('Also needs: {list}', { list: outside.join(', ') }) : '',
     ].filter(Boolean).join('\n');
-    return `<div class="tech-node ${state}" style="left:${x(n)}px;top:${y(n)}px;width:${NODE_W}px;height:${NODE_H}px" title="${esc(title)}" role="img" aria-label="${esc(`${tGame(n.name)}: ${lvl} / ${n.maxLevel}`)}">
+    const label = preview ? `${tGame(n.name)}: ${t('max {max}', { max: n.maxLevel })}` : `${tGame(n.name)}: ${lvl} / ${n.maxLevel}`;
+    return `<div class="tech-node ${state}" style="left:${x(n)}px;top:${y(n)}px;width:${NODE_W}px;height:${NODE_H}px" title="${esc(title)}" role="img" aria-label="${esc(label)}">
         ${n.iconUrl ? `<img class="tech-node-icon" src="${esc(n.iconUrl)}" alt="" loading="lazy" decoding="async">` : ''}
         <span class="tech-node-text">
           <span class="tech-node-name">${esc(tGame(n.name))}</span>
           <span class="tech-node-level">${esc(levelText)}</span>
         </span>
-        <span class="tech-node-bar" style="--tech-fill:${n.maxLevel ? Math.round((lvl / n.maxLevel) * 100) : 0}%"></span>
+        ${preview ? '' : `<span class="tech-node-bar" style="--tech-fill:${n.maxLevel ? Math.round((lvl / n.maxLevel) * 100) : 0}%"></span>`}
       </div>`;
   }).join('');
 
-  return `${treeSummaryHtml(tree, levels)}
+  return `${preview ? previewSummaryHtml(tree, newIds) : treeSummaryHtml(tree, levels)}
     <div class="tech-tree-scroll${tall ? ' is-tall' : ''}">
       <div class="tech-tree-canvas" style="width:${width}px;height:${height}px">
         <svg class="tech-links" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${links.join('')}</svg>

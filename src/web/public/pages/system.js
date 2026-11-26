@@ -352,6 +352,7 @@ function gamePatchBodyHtml(data) {
     <ul class="ui-rows">${data.readers.map((r) => gamePatchRowHtml(r, data.clientVersion)).join('')}</ul>
     <div class="inline-form-row mt-8">
       <button type="button" class="btn btn-tight" data-game-patch-check${data.running ? ' disabled' : ''}>${esc(data.running ? t('Checking…') : t('Check now'))}</button>
+      <a class="ui-tile-link" href="#tools/whats-new">${esc(t("What the patch added (Tools → What's new)"))} →</a>
     </div>`;
 }
 

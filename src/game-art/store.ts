@@ -29,7 +29,7 @@ import { isUnityFs } from './unityfs.js';
 import { extractImages, extractTexts, pickImages } from './extract.js';
 import { cutAtlasRegion, parseSpineAtlas } from './spine.js';
 import { encodePng } from './png.js';
-import { selectArt, safeArtName, ART_CATEGORIES, SPINE_REGIONS, LIBRARY_MAX_SIDE, type ArtCategory } from './selection.js';
+import { selectArt, safeArtName, ART_CATEGORIES, SPINE_REGIONS, LIBRARY_MAX_SIDE, OPTIONAL_CATEGORIES, PATCH_MAX_SIDE, type ArtCategory } from './selection.js';
 import { loadArtStatic, type ArtStatic } from './art-static.js';
 import {
   avatarFrameImageFrom,
@@ -77,12 +77,13 @@ export interface GameArtImage {
  * the chest rewards; 11: titles' round icons and pictures (T29), for the
  * profile header; 12: every tree's picture (T1 branches), every sprite name
  * names.json carries (`named`) and every UI icon in the catalogue (`icons`,
- * ~2,600 small images) — extract before a page needs it — Nov 2026). Bump this with
+ * ~2,600 small images) — extract before a page needs it — Nov 2026; 13: what a
+ * patch added to the catalogue (`patch`), for Tools → What's new). Bump this with
  * every change to the selection or mappings: an index built with an older one
  * is re-extracted on the next run — reusing every image it already has, so only
  * the new bundles download — instead of waiting for a game patch.
  */
-export const ART_SELECTION_VERSION = 12;
+export const ART_SELECTION_VERSION = 13;
 
 export interface GameArtIndex {
   /** The catalogue hash; also the URL version segment. */
@@ -442,7 +443,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   const addresses: string[] = [];
   for (const e of catalog) addresses.push(...e.addresses);
   const names = await loadNames(opts);
-  const selected = selectArt(addresses, st, resourceNames, names);
+  const selected = selectArt(addresses, st, resourceNames, names, freshAddresses(dir, state, version, addresses));
 
   // address → bundle (first listing wins), then bundle → wanted addresses
   const bundleOf = new Map<string, CatalogEntry>();
@@ -463,7 +464,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   const images: Record<string, GameArtImage> = {};
   // Failures of bundles with a picture the app shows: too many abort the run.
   const failures: string[] = [];
-  // The catch-alls (`named`, `icons`) are best effort: a failure there is
+  // The catch-alls (`named`, `icons`, `patch`) are best effort: a failure there is
   // counted, retried next run when it was the download, never fatal.
   const optionalFailures: string[] = [];
   const retry: string[] = [];
@@ -523,6 +524,10 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
         skipped.add(addr);
         continue;
       }
+      if (cat === 'patch' && Math.max(img.image.width, img.image.height) > PATCH_MAX_SIDE) {
+        skipped.add(addr);
+        continue;
+      }
       let pixels = img.image;
       const region = SPINE_REGIONS.get(addr);
       if (region) {
@@ -546,7 +551,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
       try {
         await processBundle(next[0], next[1]);
       } catch (err) {
-        const optional = [...next[1].values()].every((c) => c === 'named' || c === 'icons');
+        const optional = [...next[1].values()].every((c) => OPTIONAL_CATEGORIES.has(c));
         (optional ? optionalFailures : failures).push(`${next[0]}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
@@ -554,7 +559,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   await Promise.all(workers);
 
   const total = work.size;
-  const required = [...work.values()].filter((w) => [...w.values()].some((c) => c !== 'named' && c !== 'icons')).length;
+  const required = [...work.values()].filter((w) => [...w.values()].some((c) => !OPTIONAL_CATEGORIES.has(c))).length;
   if (!Object.keys(images).length || failures.length > Math.max(10, required * MAX_FAILED_SHARE)) {
     fs.rmSync(tmp, { recursive: true, force: true });
     throw new Error(`${failures.length} of ${total} bundles failed (e.g. ${failures[0] ?? 'no images'})`);
@@ -616,6 +621,26 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     warner.warn('bundles', `Game art ${version}: ${failures.length} bundle(s) failed, e.g. ${failures.slice(0, 3).join('; ')}`);
   }
   return { status: 'updated', version, images: Object.keys(images).length };
+}
+
+/**
+ * What this catalogue added since the one before it (the `patch` catch-all):
+ * the addresses whose names the previous catalogue's list lacks. The one
+ * before is the served version when this run moves to a new catalogue, and
+ * `previous` when it rebuilds the served one (a selection bump). Without the
+ * previous list nothing counts as new — never the whole catalogue.
+ */
+function freshAddresses(dir: string, state: StateFile | null, version: string, addresses: string[]): string[] {
+  const before = state?.current && state.current !== version ? state.current : state?.previous ?? null;
+  if (!before || before === version) return [];
+  let known: Set<string>;
+  try {
+    known = new Set(fs.readFileSync(path.join(dir, before, CATALOG_NAMES_FILE), 'utf8').split('\n'));
+  } catch {
+    return [];
+  }
+  if (known.size < 2) return [];
+  return addresses.filter((a) => !known.has(safeArtName(a)));
 }
 
 /** names.json for the `named` catch-all; null (nothing named) when it can't be had. */

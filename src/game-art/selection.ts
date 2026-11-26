@@ -15,6 +15,12 @@
  *   - `icons`: every catalogue address that is a UI icon by its name
  *     (LIBRARY_ART), at most LIBRARY_MAX_SIDE px — ~2,200 more small images
  *     (selection 11 took 3,190 addresses, 12 takes 5,416; docs/game-protocol.md).
+ * And one more, for Tools → What's new (game-patch/notes.ts):
+ *   - `patch`: what the catch-alls leave of the addresses this catalogue added
+ *     since the previous one (a patch's new city looks, monuments, tutorial
+ *     screens, citizen sprites), at most PATCH_MAX_SIDE px, PATCH_MAX_ADDRESSES
+ *     a patch. A patch adds ~150 addresses; the next patch's run drops them
+ *     again unless another category wants them.
  * An address in more than one category goes to the first in ART_CATEGORIES.
  */
 import type { ArtStatic } from './art-static.js';
@@ -27,10 +33,32 @@ import type { ArtStatic } from './art-static.js';
  * `items`: every other item icon (T8) that no category above took — a clan
  * treasury or inventory row shows its item's own icon (by item id).
  *
- * `named` and `icons` last: the catch-alls (see the file header).
+ * `named`, `icons` and `patch` last: the catch-alls (see the file header).
  */
-export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items', 'named', 'icons'] as const;
+export const ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items', 'named', 'icons', 'patch'] as const;
 export type ArtCategory = (typeof ART_CATEGORIES)[number];
+/** Best effort: a bundle of only these failing never fails the run. */
+export const OPTIONAL_CATEGORIES: ReadonlySet<ArtCategory> = new Set(['named', 'icons', 'patch']);
+
+/** The `patch` catch-all: a picture bigger than this on either side is skipped. */
+export const PATCH_MAX_SIDE = 1024;
+/** The `patch` catch-all takes at most this many addresses (a huge content drop stays a bounded download). */
+export const PATCH_MAX_ADDRESSES = 400;
+/**
+ * Never in the `patch` catch-all: animations and bundles of parts, audio,
+ * per-language pictures, the world map, the "_old" copies.
+ */
+export const PATCH_DENY: readonly RegExp[] = [
+  /^(?:.*_)?(?:anim|animation|spine|artbundle|bundle|vfx|sound|voice|music|sfx)(?:_.*)?$/,
+  /^(?:map|realm|mini|minimap)_[a-z0-9_]*$/,
+  /^[a-z0-9_]+_(?:en|ru|de|fr|it|pl|pt|nl|es|sp|tr)$/,
+  /^[a-z0-9_]+_old$/,
+];
+
+/** Would the `patch` catch-all take `address` (when it is new in this catalogue)? */
+export function isPatchArt(address: string): boolean {
+  return !PATCH_DENY.some((p) => p.test(address));
+}
 
 /**
  * The `icons` catch-all: every catalogue address that is a UI icon by its
@@ -193,6 +221,8 @@ export const ART_PATTERNS: Record<ArtCategory, RegExp[]> = {
   named: [],
   // isLibraryArt (LIBRARY_ART minus LIBRARY_DENY), applied in selectArt.
   icons: [],
+  // What the catalogue added since the previous one (selectArt's `fresh`).
+  patch: [],
 };
 
 /** Keys whose string values are sprite names, wherever they sit in names.json. */
@@ -286,18 +316,32 @@ export function staticIconsByCategory(st: ArtStatic | null, resourceNames: Reado
  * The addresses to extract, each with its category. Only addresses the
  * catalogue actually lists are returned. `names` is names.json (see
  * staticIconsByCategory); without it the `named` catch-all is empty.
+ * `fresh` is what this catalogue added since the previous one (the `patch`
+ * catch-all); without it that catch-all is empty.
  */
 export function selectArt(
   catalogAddresses: Iterable<string>,
   st: ArtStatic | null,
   resourceNames: ReadonlySet<string> = new Set(),
   names: unknown = null,
+  fresh: Iterable<string> = [],
 ): Map<string, ArtCategory> {
   const available = new Set<string>();
   for (const a of catalogAddresses) available.add(a.toLowerCase());
   const fromStatic = staticIconsByCategory(st, resourceNames, names);
   const out = new Map<string, ArtCategory>();
   for (const cat of ART_CATEGORIES) {
+    if (cat === 'patch') {
+      let taken = 0;
+      for (const raw of [...fresh].map((a) => a.toLowerCase()).sort()) {
+        if (taken >= PATCH_MAX_ADDRESSES) break;
+        if (available.has(raw) && !out.has(raw) && isPatchArt(raw)) {
+          out.set(raw, cat);
+          taken++;
+        }
+      }
+      continue;
+    }
     for (const a of fromStatic[cat]) if (available.has(a) && !out.has(a)) out.set(a, cat);
     const patterns = ART_PATTERNS[cat];
     const matches = cat === 'icons' ? isLibraryArt : (a: string): boolean => patterns.some((p) => p.test(a));

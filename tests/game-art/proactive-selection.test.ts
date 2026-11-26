@@ -10,7 +10,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildArtStatic, type ArtStatic } from '../../src/game-art/art-static.js';
 import {
-  ART_KEYS, LIBRARY_ART, LIBRARY_DENY, LIBRARY_MAX_SIDE, artNamesFromGameNames, isLibraryArt, selectArt,
+  ART_KEYS, LIBRARY_ART, LIBRARY_DENY, LIBRARY_MAX_SIDE, PATCH_MAX_ADDRESSES, artNamesFromGameNames, isLibraryArt, selectArt,
 } from '../../src/game-art/selection.js';
 import { ART_SELECTION_VERSION, CATALOG_NAMES_FILE, ensureGameArt, gameArtUrl, loadIndex, resetGameArtMemo } from '../../src/game-art/store.js';
 import { CLASS_TEXTURE2D } from '../../src/game-art/serialized-file.js';
@@ -108,6 +108,30 @@ describe('the `icons` catch-all', () => {
     const st = emptyStatic({ techs: { 1: { name: 'T', icon: 'tech_alpha_72' } } });
     const sel = selectArt(['tech_alpha_72', 'misc_thing_72'], st);
     expect(Object.fromEntries(sel)).toEqual({ tech_alpha_72: 'research', misc_thing_72: 'icons' });
+  });
+});
+
+describe('the `patch` catch-all (Tools → What\'s new)', () => {
+  it("takes what this catalogue added and nothing else claims; never animations or the world map", () => {
+    const catalogue = ['old_scene', 'monument_guardsmen_strength', 'citizen_captain_king_arthur', 'xmas26_frame_72', 'boudica_unit_spine', 'map_new_realm', 'tutorial_pvp_ladder_coliseum'];
+    const fresh = ['monument_guardsmen_strength', 'citizen_captain_king_arthur', 'xmas26_frame_72', 'boudica_unit_spine', 'map_new_realm', 'tutorial_pvp_ladder_coliseum', 'not_in_catalogue'];
+    const sel = selectArt(catalogue, null, new Set(), null, fresh);
+    expect(Object.fromEntries(sel)).toEqual({
+      // A UI icon by its name stays the `icons` catch-all's.
+      xmas26_frame_72: 'icons',
+      monument_guardsmen_strength: 'patch',
+      citizen_captain_king_arthur: 'patch',
+      tutorial_pvp_ladder_coliseum: 'patch',
+    });
+  });
+
+  it('takes nothing without the previous catalogue to compare with', () => {
+    expect(selectArt(['monument_guardsmen_strength'], null).size).toBe(0);
+  });
+
+  it('is bounded per patch', () => {
+    const many = Array.from({ length: PATCH_MAX_ADDRESSES + 50 }, (_, i) => `scene_${String(i).padStart(4, '0')}`);
+    expect(selectArt(many, null, new Set(), null, many).size).toBe(PATCH_MAX_ADDRESSES);
   });
 });
 

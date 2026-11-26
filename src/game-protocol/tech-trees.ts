@@ -89,19 +89,30 @@ export interface TechTree {
   name: string;
   description: string;
   kind: TechTreeKind;
-  /** Academy tab ("Unlock" / "Boost") for research trees; null elsewhere. */
+  /** Academy tab ("Unlock" / "Boost" / "Clan Duel") for research trees; null elsewhere. */
   tab: string | null;
   /** The branch's sprite. */
   icon: string;
   /** The client's layout asset name ("guardTree"). */
   layout: string;
   nodes: TechTreeNode[];
+  /**
+   * The branch's techs its layout doesn't place (yet): a patch often ships a
+   * tree's research before the client draws all of it — Army boost had 104
+   * techs and a layout of 36 on Nov 25 2026. Same fields, no position.
+   */
+  unplaced?: Array<Omit<TechTreeNode, 'col' | 'row'>>;
 }
+
+/** Bump when the build changes what a cached tech-trees.json holds: an older one is rebuilt once. */
+export const TREES_FORMAT = 2;
 
 export interface TechTrees {
   /** `${static version key}:${asset catalog}` — changes whenever any source does. */
   version: string;
   builtAt: string;
+  /** TREES_FORMAT it was built with (absent = 1). */
+  format?: number;
   trees: TechTree[];
 }
 
@@ -190,47 +201,74 @@ export function buildTechTrees(version: string, src: TreeSources, layouts: TreeL
   const layoutOf = new Map(layouts.map((l) => [l.name.toLowerCase(), l]));
   const kindOf = (b: BranchDef): TechTreeKind => {
     if (b.type === 'heroAbility') return talentIds.length === 0 || talentIds.includes(b.id) ? 'talent' : 'other';
+    // A tree in an Academy tab is the player's research, whatever its layout is
+    // called: the Clan Duel trees ("clanDuelTree27") are researched by each
+    // player with Battle Crests, in the Academy's "Clan Duel" tab.
+    if (tabOf.has(b.id)) return 'research';
     if (b.type === 'clanTalents' || /^clan/i.test(b.tree)) return 'clan';
     return b.type === 'tech' ? 'research' : 'other';
+  };
+
+  // Every tech by its branch (T21 f4): what a layout doesn't place is kept too.
+  // Retired techs ("(!!!)Irrelevant(!!!)") stay out: they are history, not news.
+  const byBranch = new Map<number, string[]>();
+  for (const [id, row] of Object.entries(techs)) {
+    if (!Array.isArray(row) || typeof row[4] !== 'number') continue;
+    if ((vecText(row[2]) ?? '').includes('(!!!)')) continue;
+    if (!byBranch.has(row[4])) byBranch.set(row[4], []);
+    byBranch.get(row[4])!.push(id);
+  }
+  const nodeOf = (id: number): Omit<TechTreeNode, 'col' | 'row'> | null => {
+    const row = techs[String(id)];
+    if (!Array.isArray(row)) return null;
+    const levels = isRecord(row[5]) ? (row[5] as Record<string, Wire>) : {};
+    const description = vecText(row[2]) ?? '';
+    const icon = str(row[3]) ?? '';
+    return {
+      techId: id,
+      name: vecText(row[1]) ?? text(row[1]) ?? `#${id}`,
+      // Retired techs carry a placeholder description "(!!!)Irrelevant(!!!)".
+      description: description.includes('(!!!)') ? '' : description,
+      icon: /^[\w-]+$/.test(icon) ? icon : '',
+      maxLevel: Object.keys(levels).length,
+      requires: requirementsOf(id, levels, str),
+    };
   };
 
   const trees: TechTree[] = [];
   for (const b of readBranches(src)) {
     const layout = layoutOf.get(b.tree.toLowerCase());
-    if (!layout) continue;
     const nodes: TechTreeNode[] = [];
-    for (const pos of layout.techs) {
-      const row = techs[String(pos.id)];
-      if (!Array.isArray(row)) continue;
-      const levels = isRecord(row[5]) ? (row[5] as Record<string, Wire>) : {};
-      const description = vecText(row[2]) ?? '';
-      const icon = str(row[3]) ?? '';
-      nodes.push({
-        techId: pos.id,
-        name: vecText(row[1]) ?? text(row[1]) ?? `#${pos.id}`,
-        // Retired techs carry a placeholder description "(!!!)Irrelevant(!!!)".
-        description: description.includes('(!!!)') ? '' : description,
-        icon: /^[\w-]+$/.test(icon) ? icon : '',
-        maxLevel: Object.keys(levels).length,
-        col: half(pos.x / COL_UNIT),
-        row: half(-pos.y / ROW_UNIT),
-        requires: requirementsOf(pos.id, levels, str),
-      });
+    const placed = new Set<number>();
+    for (const pos of layout?.techs ?? []) {
+      const node = nodeOf(pos.id);
+      if (!node) continue;
+      placed.add(pos.id);
+      nodes.push({ ...node, col: half(pos.x / COL_UNIT), row: half(-pos.y / ROW_UNIT) });
     }
-    if (!nodes.length) continue;
+    const unplaced = (byBranch.get(b.id) ?? [])
+      .map(Number)
+      .filter((id) => !placed.has(id))
+      .sort((x, y) => x - y)
+      .map(nodeOf)
+      .filter((n): n is Omit<TechTreeNode, 'col' | 'row'> => !!n && n.maxLevel > 0 && !/^#\d+$/.test(n.name));
+    // A tree the client doesn't draw yet but whose research is in the game's
+    // data is kept (nodes empty) — the Research pages skip it, What's new shows it.
+    if (!nodes.length && !unplaced.length) continue;
     trees.push({
       id: b.id,
-      name: b.name || layout.name,
+      name: b.name || layout?.name || '',
       description: b.description,
       kind: kindOf(b),
       tab: tabOf.get(b.id) ?? null,
       icon: b.visual,
       layout: b.tree,
       nodes,
+      ...(unplaced.length ? { unplaced } : {}),
     });
   }
   trees.sort((a, b) => (rank.get(a.id) ?? 1e6 + a.id) - (rank.get(b.id) ?? 1e6 + b.id));
-  return { version, builtAt: new Date().toISOString(), trees };
+  return { version, builtAt: new Date().toISOString(), format: TREES_FORMAT, trees };
 }
 
 /** A layout TextAsset's JSON, or null when it isn't one. */
@@ -427,11 +465,11 @@ export async function loadTechTrees(): Promise<TechTrees> {
     }
     throw err;
   }
-  if (memo?.version === v.version) return memo;
+  if (memo?.version === v.version && (memo.format ?? 1) >= TREES_FORMAT) return memo;
   const file = path.join(staticDir(), v.dirKey, TREES_FILE);
   if (fs.existsSync(file)) {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as TechTrees;
-    if (cached.version === v.version) {
+    if (cached.version === v.version && (cached.format ?? 1) >= TREES_FORMAT) {
       memo = cached;
       reportReaderOk('trees', v.version);
       return cached;

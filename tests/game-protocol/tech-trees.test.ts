@@ -3,6 +3,7 @@ import { encodeValues, type Wire } from '../../src/game-protocol/codec.js';
 import { TABLE_TECHS } from '../../src/game-protocol/static-data.js';
 import {
   TABLE_CLIENT_CONFIG,
+  TREES_FORMAT,
   asTreeLayout,
   buildTechTrees,
   layoutFromBundle,
@@ -173,6 +174,50 @@ describe('tech trees from static data + client layouts', () => {
       { techId: 700, level: 3, atLevel: 3 },
     ]);
     expect(tree(18).nodes[0].requires).toEqual([]);
+  });
+
+  it("keeps a tree's research its layout doesn't place, never a retired one", () => {
+    // Not yet named by the game (its name is still a text key): research all the same.
+    expect(tree(1).unplaced?.map((n) => n.techId)).toEqual([9999]);
+    const t21b: Record<string, Wire> = {
+      ...t21,
+      1300: tech(1300, '', 1, ['Enabled()', 'HasTech(1300,1,10)']),
+      1301: tech(1301, '', 1, ['Enabled()'], { desc: 'tech.desc.retired' }),
+    };
+    const en2 = new Map([...en, ['tech.name.1300', 'Guardsmen health I'], ['tech.name.1301', 'Old thing']]);
+    const built2 = buildTechTrees('v1', { ...src, en: en2, tables: new Map<number, Wire>([[TABLE_CLIENT_CONFIG, t1], [TABLE_TECHS, t21b]]) }, layouts);
+    const guards = built2.trees.find((t) => t.id === 1)!;
+    expect(guards.nodes.map((n) => n.techId)).toEqual([1197, 1198, 1200]);
+    expect(guards.unplaced?.map((n) => n.techId)).toEqual([1300, 9999]);
+    expect(guards.unplaced?.[0]).toEqual({ techId: 1300, name: 'Guardsmen health I', description: 'tech.desc.1300', icon: 'tech_1300_72', maxLevel: 2, requires: [] });
+    expect(built2.format).toBe(TREES_FORMAT);
+  });
+
+  it("calls a tree in an Academy tab the player's research, whatever its layout's name (the Clan Duel trees)", () => {
+    const academy2 = {
+      ...academy,
+      branches: [...academy.branches, { id: 27, name: 'cfg.b27.name', tree: 'clanDuelTree27', type: 'tech', visual: 'duel_72' }],
+      tabs: [...academy.tabs, { id: 3, name: 'cfg.tab3', branches: [27] }],
+    };
+    const t1b: Wire = [[s('academy/branches'), s(JSON.stringify(academy2))], [s('hero_info'), s(JSON.stringify(heroInfo))]];
+    const t21b: Record<string, Wire> = { ...t21, 27000: tech(27000, '', 27, ['Enabled()']), 27008: tech(27008, '', 27, ['Enabled()']) };
+    const en2 = new Map([...en, ['cfg.b27.name', 'Clan Duel'], ['cfg.tab3', 'Clan Duel'], ['tech.name.27000', 'Scoutpost points'], ['tech.name.27008', 'Speedup points']]);
+    const built2 = buildTechTrees('v1', { ...src, en: en2, tables: new Map<number, Wire>([[TABLE_CLIENT_CONFIG, t1b], [TABLE_TECHS, t21b]]) }, [
+      ...layouts,
+      { name: 'clanDuelTree27', techs: [{ id: 27000, x: 0, y: 0 }] },
+    ]);
+    const duel = built2.trees.find((t) => t.id === 27)!;
+    expect([duel.kind, duel.tab]).toEqual(['research', 'Clan Duel']);
+    expect(duel.unplaced?.map((n) => n.name)).toEqual(['Speedup points']);
+    // A clan tree outside the Academy stays the clan's.
+    expect(built2.trees.find((t) => t.id === 12)!.kind).toBe('clan');
+  });
+
+  it('keeps a declared tree the client has no layout for yet, when its research is in the data', () => {
+    const t21b: Record<string, Wire> = { ...t21, 30001: tech(30001, '', 30, ['Enabled()']) };
+    const en2 = new Map([...en, ['tech.name.30001', 'Army strength I']]);
+    const built2 = buildTechTrees('v1', { ...src, en: en2, tables: new Map<number, Wire>([[TABLE_CLIENT_CONFIG, t1], [TABLE_TECHS, t21b]]) }, layouts);
+    expect(built2.trees.find((t) => t.id === 30)).toMatchObject({ name: '', nodes: [], unplaced: [{ techId: 30001, name: 'Army strength I' }] });
   });
 
   it('builds nothing from a missing client config', () => {

@@ -86,9 +86,49 @@ PlayerSettings has no type tree in a player build and its offsets move with
 the engine, so the version is found as the one length-prefixed string shaped
 `N.N.N` in the object; none or two different ones fail loudly.
 
+## What's new (Tools → What's new, every member)
+
+Every patch is also **compared with the one before**, and what it added is a
+page: `#tools/whats-new`, a slim note on Home for a week, and a link from
+System → Game Patch. A patch ships content long before it goes live (art first,
+then data, then texts), so this is where a coming feature shows first: the
+Nov 25 2026 patch carried the Clan Duel and Army boost trees, the Ascendant
+Arena, Warlords' Brawl, a reworked Temple, four captains revealed from
+placeholders and King Arthur / Shaka Zulu as art only.
+
+Built by `game-patch/notes.ts` after the readers on every watcher pass (cheap
+when nothing moved), so the first run on a volume notes the newest patch
+against the one before it on disk. Four parts, all diffs of the game's own files
+(`game-patch/notes-diff.ts`, pure):
+
+| Part | From | Shows |
+|---|---|---|
+| Sections | `names.json` and the art slice `static-<key>.json`, every key | added, **revealed** (a placeholder given its name: blank, a text key, or a name the game stamped on several ids — "Artemisia" ×5), renamed, changed (values compared as numbers: "+30%" = "+30,0%"), removed |
+| Research trees | `tech-trees.json` | a new tree drawn as the game draws it (`treeHtml` preview), a grown one with its new nodes marked, and research the layout doesn't place yet (`unplaced`) |
+| Texts | both translation catalogues from the CDN, English whole + de/es/fr/ru for what changed | grouped by feature (`textGroupKey`), titled by the feature's own window; new help windows as **guides** |
+| Art | both catalogues' `catalog-names.txt` | a gallery of new pictures no entry shows, grouped by stem; each named by the art slice (`artNamesByStem`) and the texts that hold every part of its stem (`artTextKeys`) |
+
+**Adding a kind of data needs nothing**: a key the registry doesn't know is
+diffed and listed anyway (`genericSection`, rows). To make it read better, add
+an entry to `SECTION_DEFS` in [notes-sections.ts](../src/game-patch/notes-sections.ts)
+(name, sub line, pictures, drill-down detail, which values count as a change)
+and to `SECTION_VIEWS` in [pages/whats-new.js](../src/web/public/pages/whats-new.js)
+(label, layout: portraits / tiles / rows, the drill-down's facts).
+
+The art selection's `patch` catch-all (selection 13) extracts what a catalogue
+added since the previous one (≤ 1024 px, ≤ 400 a patch, no animations), so the
+gallery has pictures beyond the icon catch-all's.
+
+Kept: `data/game-patch-notes/index.json` (last noted versions + a summary per
+patch) and `<id>.json` per patch, the newest 60. Pictures resolve against the
+current art at request time; a patch whose art is gone shows names. A renamed
+chest the site stores under its old name is an alerting warning (fold it with a
+migration, [chest-identity.md](chest-identity.md)).
+
 ## Files
 
 - `data/game-patch.json`: the watcher's fingerprint and every reader's status.
+- `data/game-patch-notes/`: What's new, one file per patch.
 - `data/game-art/client-version.json`: the client build hash and its version.
 - `data/game-static/<key>/names.json`, `tech-trees.json`: per static version.
 - `data/game-art/<catalogue>/`: per art version (current + previous kept).

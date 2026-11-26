@@ -31,6 +31,7 @@ import { renderCitadelTool } from './citadel-tool.js';
 import { renderStacksTool } from './stacks-tool.js';
 import { renderCostsTool } from './costs-tool.js';
 import { renderRewardsTool } from './rewards-tool.js';
+import { renderWhatsNew } from './whats-new.js';
 
 const TOOLS = [
   { key: 'ancient', name: t('Ancient planner') },
@@ -38,6 +39,8 @@ const TOOLS = [
   { key: 'stacks', name: t('Stacks') },
   { key: 'costs', name: t('Costs') },
   { key: 'rewards', name: t('Rewards') },
+  // What each game patch added (pages/whats-new.js): game data, the same for every clan.
+  { key: 'whats-new', name: t("What's new") },
 ];
 
 /** Bare #tools → the first tool; an unknown key falls back the same way. */
@@ -50,6 +53,7 @@ export async function renderTools(el, toolKey) {
   else if (tool.key === 'stacks') await renderStacksTool(mount);
   else if (tool.key === 'costs') renderCostsTool(mount);
   else if (tool.key === 'rewards') await renderRewardsTool(mount);
+  else if (tool.key === 'whats-new') await renderWhatsNew(mount);
 }
 
 /** The kit's sub-tab bar: real links to #tools/<key> (old links keep working). */

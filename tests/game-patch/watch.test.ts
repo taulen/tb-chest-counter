@@ -70,6 +70,21 @@ describe('fingerprintFromConfig', () => {
 });
 
 describe('checkGamePatch', () => {
+  it('notes what the patch added after the readers — and on every check, so notes catch up', async () => {
+    const r = runs();
+    const note = vi.fn(async () => { r.calls.push('note'); });
+    await checkGamePatch({ fetchImpl, runs: r, note });
+    expect(r.calls).toEqual(['names', 'trees', 'art', 'client', 'note']);
+    markAllOk();
+    r.calls.length = 0;
+    await checkGamePatch({ fetchImpl, runs: r, note, force: true });
+    expect(note).toHaveBeenLastCalledWith(true);
+    r.calls.length = 0;
+    await checkGamePatch({ fetchImpl, runs: r, note });
+    // Nothing to read, still a note pass (cheap when nothing moved).
+    expect(r.calls).toEqual(['note']);
+  });
+
   it('reads everything the first time it sees the game, then nothing while the patch is unchanged and read', async () => {
     const r = runs();
     expect((await checkGamePatch({ fetchImpl, runs: r })).ran).toEqual(['names', 'trees', 'art', 'client']);

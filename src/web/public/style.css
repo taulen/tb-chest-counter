@@ -8655,6 +8655,296 @@ details[open] > summary:not(.card-header, .collapse-toggle, .warn-row)::before {
   .tool-stat .ui-big { font-size: 22px; }
 }
 
+/* ─── Tools → What's new (pages/whats-new.js) ────────────────────────
+   A game patch's finds: the spotlight of big cards, research trees as
+   cards that open the game's tree, a card grid per kind of game data (the
+   game's own pictures), the game's own guides and texts, the new art. */
+.wn { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wn .ui-fold { margin-bottom: 0; }
+.wn-intro { max-width: 80ch; }
+.wn-switcher {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent-gold-bg), transparent 70%), var(--bg-card);
+}
+.wn-switcher .btn { min-width: 44px; min-height: 44px; font-size: 20px; line-height: 1; }
+.wn-switcher-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: center; }
+.wn-switcher-title { font-size: 18px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.01em; }
+.wn-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wn-stats .ui-stat-tile[data-wn-jump] { cursor: pointer; }
+.wn-stats .ui-stat-tile[data-wn-jump]:hover,
+.wn-stats .ui-stat-tile[data-wn-jump]:focus-visible { border-color: var(--accent-gold-border); }
+.wn-grid { gap: 16px; }
+.wn-section { scroll-margin-top: 80px; }
+
+/* Kind badges: glyph + word, never colour alone. */
+.wn-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+.wn-badge.is-added { color: var(--accent-gold); border-color: var(--accent-gold-border); background: var(--accent-gold-bg); }
+.wn-badge.is-revealed { color: var(--accent-purple); border-color: color-mix(in srgb, var(--accent-purple) 45%, transparent); }
+.wn-badge.is-renamed { color: var(--accent-blue); border-color: color-mix(in srgb, var(--accent-blue) 45%, transparent); }
+.wn-badge.is-removed { color: var(--text-muted); }
+.wn-count { margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+
+/* Rarity (captains 1–4, artifacts 4–6) and item quality (1–8) tint a card. */
+.wn-card, .wn-spot, .wn-detail { --wn-tint: var(--border-strong); }
+.wn-r-1 { --wn-tint: var(--accent-blue); }
+.wn-r-2 { --wn-tint: var(--accent-purple); }
+.wn-r-3 { --wn-tint: var(--accent-gold); }
+.wn-r-4 { --wn-tint: var(--accent-red); }
+.wn-r-5 { --wn-tint: var(--accent-gold); }
+.wn-r-6 { --wn-tint: var(--accent-red); }
+.wn-q-3 { --wn-tint: var(--accent-green); }
+.wn-q-4 { --wn-tint: var(--accent-blue); }
+.wn-q-5 { --wn-tint: var(--accent-purple); }
+.wn-q-6, .wn-q-8 { --wn-tint: var(--accent-gold); }
+.wn-q-7 { --wn-tint: var(--accent-red); }
+
+/* Pictures: the game's own, contained; a letter where there is none yet. */
+.wn-pic, .wn-row-pic, .wn-spot-pic, .wn-detail-pic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+}
+.wn-pic img, .wn-row-pic img, .wn-spot-pic img, .wn-detail-pic img { width: 100%; height: 100%; object-fit: contain; }
+.wn-pic.is-empty, .wn-row-pic.is-empty, .wn-spot-pic.is-empty, .wn-detail-pic.is-empty,
+.wn-spot-pic.is-glyph {
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-weight: 800;
+  font-size: 22px;
+}
+.wn-pic { width: 72px; height: 72px; }
+.wn-row-pic { width: 32px; height: 32px; }
+.wn-layered img { position: absolute; inset: 0; }
+.wn-layered .wn-layer-face { inset: 8%; width: 84%; height: 84%; }
+
+/* The spotlight: the patch's biggest finds, big. */
+.wn-spotlight {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.wn-spot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px 10px 14px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--wn-tint) 60%, var(--border));
+  background:
+    radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--wn-tint) 30%, transparent), transparent 68%),
+    var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.wn-spot.is-tree { --wn-tint: var(--accent-gold); }
+.wn-spot:hover, .wn-spot:focus-visible { transform: translateY(-2px); border-color: var(--wn-tint); }
+.wn-spot-pic { width: 96px; height: 96px; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--wn-tint) 40%, transparent)); }
+.wn-spot-pic.is-glyph { font-size: 40px; color: var(--accent-gold); filter: none; }
+.wn-spot-kind { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.wn-spot-name { font-size: 15px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+
+/* Research trees: a card each, opening the tree as the game draws it. */
+.wn-trees { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.wn-tree-card {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  grid-template-areas: "icon text badge" "icon cta cta";
+  gap: 6px 12px;
+  align-items: start;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--accent-gold-border);
+  background: linear-gradient(160deg, var(--accent-gold-bg), transparent 60%), var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wn-tree-card:hover, .wn-tree-card:focus-visible { border-color: var(--accent-gold); }
+.wn-tree-icon { grid-area: icon; width: 64px; height: 64px; object-fit: contain; }
+.wn-tree-icon.is-empty { border-radius: 12px; background: var(--bg-card); }
+.wn-tree-text { grid-area: text; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wn-tree-name { font-size: 16px; font-weight: 800; }
+.wn-tree-tab { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-gold); }
+.wn-tree-facts { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.wn-tree-desc { font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+.wn-tree-card .wn-badge { grid-area: badge; }
+.wn-tree-cta { grid-area: cta; font-size: 13px; font-weight: 700; color: var(--accent-gold); }
+.modal-card.wn-tree-modal { max-width: min(1240px, 96vw); }
+.wn-tree-modal .wn-tree { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* On a phone the tree turns on its side in a narrow modal: room for the names. */
+.wn-tree-modal .tech-tree-scroll.is-tall .tech-node { gap: 4px; padding: 5px 5px 8px; }
+.wn-tree-modal .tech-tree-scroll.is-tall .tech-node-icon { width: 24px; height: 24px; }
+/* A tree's research the game doesn't draw yet. */
+.wn-unplaced { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.wn-unplaced-node { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--bg-card); }
+.wn-unplaced-node.is-new { border-style: solid; border-color: var(--accent-gold-border); background: linear-gradient(var(--accent-gold-bg), var(--accent-gold-bg)), var(--bg-card); }
+.wn-unplaced-node img, .wn-unplaced-blank { flex: none; width: 32px; height: 32px; object-fit: contain; }
+.wn-unplaced-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wn-unplaced-name { font-size: 12px; line-height: 1.25; color: var(--text-primary); overflow-wrap: anywhere; }
+.wn-unplaced-max { font-size: 11px; color: var(--text-secondary); }
+.tech-node.is-preview { border-color: var(--border-strong); }
+.tech-node.is-preview.is-new {
+  border-color: var(--accent-gold-border);
+  background: linear-gradient(var(--accent-gold-bg), var(--accent-gold-bg)), var(--bg-card);
+}
+.tech-node.is-preview.is-new .tech-node-level { color: var(--accent-gold); font-weight: 600; }
+
+/* A kind's entries: cards (pictures first) or rows. */
+.wn-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.wn-cards.is-portraits { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.wn-cell { min-width: 0; }
+.wn-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--wn-tint) 45%, var(--border));
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--wn-tint) 18%, transparent), transparent 70%),
+    var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+}
+button.wn-card { cursor: pointer; }
+button.wn-card:hover, button.wn-card:focus-visible { border-color: var(--wn-tint); }
+.wn-card.is-portrait .wn-pic { width: 88px; height: 88px; }
+.wn-card-name { font-size: 13px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.wn-card-sub { font-size: 11.5px; line-height: 1.3; color: var(--text-secondary); overflow-wrap: anywhere; }
+.wn-rows .wn-row { gap: 10px; }
+.wn-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.wn-row-main { cursor: pointer; }
+/* A find's name is the point: it wraps, never ellipses. */
+.wn-row .ui-row-name { white-space: normal; overflow-wrap: anywhere; }
+button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
+.wn-section:not(.is-all) .is-extra { display: none; }
+.wn-more { align-self: flex-start; }
+
+/* A drill-down: the picture big, the facts beside it. */
+.wn-detail { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; }
+.wn-detail-art {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--wn-tint) 50%, var(--border));
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--wn-tint) 30%, transparent), transparent 72%), var(--bg-elevated);
+}
+.wn-detail-art img { max-width: 100%; max-height: 260px; object-fit: contain; }
+.wn-detail-pic { width: 128px; height: 128px; }
+.wn-detail-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wn-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wn-detail-sub { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.wn-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wn-change { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.wn-change-label { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.wn-change-values { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wn-change-values s { color: var(--text-muted); }
+.wn-none { font-style: italic; }
+
+/* The game's own words: guides and texts. */
+.wn-folds { display: flex; flex-direction: column; gap: 10px; }
+/* A feature's title and counts can run to two lines on a phone: keep it off the edge. */
+.wn-folds .ui-fold.is-inset > summary.ui-fold-head { padding-top: 8px; padding-bottom: 8px; }
+.wn-fold-count { margin-left: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-secondary); }
+.wn-guide-part { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 8px; }
+.wn-guide-title { margin: 6px 0 0; font-size: 14px; font-weight: 700; color: var(--accent-gold); }
+.wn-ph { padding: 0 5px; border-radius: 5px; background: var(--bg-card); border: 1px dashed var(--border-strong); font-size: 0.92em; color: var(--text-secondary); }
+.wn-texts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wn-text { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; line-height: 1.45; color: var(--text-primary); overflow-wrap: anywhere; }
+.wn-text:last-child { border-bottom: 0; }
+.wn-text.is-changed { display: flex; flex-direction: column; gap: 4px; }
+.wn-text-was { color: var(--text-muted); text-decoration: line-through; }
+.wn-text.is-removed { color: var(--text-muted); text-decoration: line-through; }
+
+/* The new art: a gallery; each picture opens big. */
+.wn-gallery { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.wn-art {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: zoom-in;
+}
+.wn-art:hover, .wn-art:focus-visible { border-color: var(--accent-gold-border); }
+.wn-art-pic { width: 96px; height: 96px; display: grid; place-items: center; }
+.wn-art-pic img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.wn-art-name { font-size: 11.5px; line-height: 1.25; color: var(--text-secondary); text-align: center; overflow-wrap: anywhere; }
+.wn-art.is-about { cursor: pointer; border-color: color-mix(in srgb, var(--accent-gold) 35%, var(--border)); }
+.wn-art.is-about .wn-art-name { color: var(--text-primary); font-weight: 600; }
+.wn-detail-art.is-gallery { display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 10px; padding: 12px; }
+.wn-art-big { display: grid; place-items: center; max-width: 100%; }
+.wn-art-big img { max-width: 100%; max-height: 220px; object-fit: contain; }
+.wn-about-names { margin: 0; padding-left: 18px; font-size: 14px; color: var(--text-primary); }
+.wn-art-names { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.wn-art-names li { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+
+@media (max-width: 640px) {
+  .wn-switcher-title { font-size: 16px; }
+  .wn-spotlight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .wn-spot-pic { width: 80px; height: 80px; }
+  .wn-cards, .wn-cards.is-portraits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wn-gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wn-art-pic { width: 72px; height: 72px; }
+  .wn-detail { grid-template-columns: minmax(0, 1fr); }
+  .wn-detail-art { min-height: 140px; }
+  .wn-trees { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ─── Tools → Citadel ────────────────────────────────────────────────
    Army editor + simulated fight. Compact on purpose: one row per troop, the
    two coin-flip outcomes side by side, the strike list folded away. */
@@ -12190,6 +12480,25 @@ button.mboard-row {
    Desktop: a 12-column grid, tiles span 4 / 6 / 8 / 12. A tablet: halves.
    A phone: one column, in the order the role's tile list gives. */
 .home { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* A game patch in the last week: one line, linking to Tools → What's new. */
+.home-patch-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-gold-border);
+  border-radius: 14px;
+  background: linear-gradient(120deg, var(--accent-gold-bg), transparent 65%), var(--bg-card);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.home-patch-note:hover, .home-patch-note:focus-visible { border-color: var(--accent-gold); }
+.home-patch-note-glyph { flex: none; font-size: 20px; color: var(--accent-gold); }
+.home-patch-note-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-patch-note-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-gold); }
+.home-patch-note-what { font-size: 14px; font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.home-patch-note-go { flex: none; font-size: 18px; font-weight: 700; color: var(--accent-gold); }
 /* The board's phone rule centres .ui-bar (a grid row there); in a flex
    column that shrinks it to nothing, so Home's bars always stretch. */
 .ui-bar.home-bar { align-self: stretch; width: 100%; height: 10px; background: var(--bg-input); box-shadow: inset 0 0 0 1px var(--border); }

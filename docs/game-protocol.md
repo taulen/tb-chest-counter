@@ -176,6 +176,44 @@ heuristic reader (`game-protocol/unity-assets.ts`, which scanned the raw
 payload for length-prefixed JSON) was removed in Nov 2026 after both gave the
 same 24 live layouts.
 
+**Whose tree it is** is the client config's, not the layout's name: a tree in
+an Academy tab (`academy/branches` tabs: "Unlock", "Boost", and since Nov 25
+2026 "Clan Duel") is the player's research, whatever its layout is called — the
+Clan Duel trees' layouts are `clanDuelTree27` / `clanDuelPowerTree28`, yet they
+cost the player's Battle Crests (item 9270000) and need the player's Capitol
+(building 15) at level 9, where the clan's trees (Clan territories, Allies)
+cost Scientific Tractates (item 20) and need clan building 10003. Only a tree
+outside the Academy named `clan…` (or of type `clanTalents`) is the clan's.
+**A tree keeps the research its layout doesn't place** (`unplaced`, every
+non-retired T21 tech of its branch, T21 f4): a patch ships research before the
+client draws it — Army boost had 104 techs and a layout of 36 on Nov 25 2026.
+The Research pages draw `nodes` only; Tools → What's new lists the rest.
+`TREES_FORMAT` (2) rebuilds an older cached tech-trees.json once.
+
+### Research levels, costs and units: the static rows by field name
+
+The client's IL2CPP metadata (`StaticAll`, see "How it was found" under Hero
+levels) names the fields; read Nov 26 2026:
+
+- **T21 Techs** row `TechStatic`: `[techId, name, description, visual,
+  branchId, …, levels]` — f5 levels `{level: TechLevelStatic}` =
+  `[level, effectId, factoryPosId, conditionLearn [refs], clientInfo (props
+  JSON: the level's bonus lines, and a "1_power_22" line = its Might),
+  ratingContribution (Might per level), cronId]`.
+- **T12 Factory** row `FactoryPosStatic`, keyed by a level's `factoryPosId`:
+  `[id, positionType, price [{itemId: amount}, {}, 1], reward, conditions…,
+  …, f7 produceTime (seconds, before speed bonuses), …]`. Research is paid in
+  T8 items: Valor points (8) and Conquest points (9) for the player's trees,
+  Scientific Tractates (20) for the clan's, Battle Crests (9270000) for the
+  Clan Duel ones. Guardsmen's training cost I: 300 Valor / 300 s at level 1,
+  450,000 / 36 h at 10 — Tools → Costs' sheet agrees.
+- **T9 Units** row `UnitStatic`: `[unitId, name, tier, texts, smallVisual,
+  bigVisual, priceHospAttack, priceHospDefend, isWall, hospDefenderCooldown,
+  attackPower (strength, f10), scoutPower, health (f12), crit, food,
+  leadershipSupply, masterySupply, dominanceSupply, speed, loadCapacity, …]`
+  — f10 and f12 are verified (art-static.ts); the rest are named by the
+  metadata, not yet checked against the game's screens.
+
 Served public and path-versioned (`/game-art/<catalog>/<name>.png`, immutable)
 per [cloudflare-caching.md](cloudflare-caching.md); `GET /api/game-art` gives the
 names and mappings. Mappings: hero portrait by `game_players.hero_avatar` (= T13

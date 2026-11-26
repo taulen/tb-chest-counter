@@ -96,7 +96,7 @@ export async function renderHome(el) {
   const analyticsIsThisWeek = period === 'weekly' && offset === 0;
 
   const [entries, prevEntries, goal, roster, analytics, events, recent, records,
-    changes, ranks, weekCover, clans, overview, status] = await Promise.all([
+    changes, ranks, weekCover, clans, overview, status, gameUpdates] = await Promise.all([
     api(leaderboardQuery(win?.from, win?.to)),
     prevQuery ? api(prevQuery).catch(() => []) : Promise.resolve([]),
     api('/leaderboard/goal').catch(() => null),
@@ -113,6 +113,8 @@ export async function renderHome(el) {
     isSuper ? api('/clans/switcher').catch(() => null) : Promise.resolve(null),
     isSuper ? api('/clans/overview').catch(() => null) : Promise.resolve(null),
     isSuper ? api('/status').catch(() => null) : Promise.resolve(null),
+    // What the latest game patch added (Tools → What's new).
+    api('/game-updates').catch(() => null),
     // The chests' pictures (never rejects).
     loadGameArt(),
   ]);
@@ -159,10 +161,35 @@ export async function renderHome(el) {
 
   const tiles = isAdmin ? leaderTiles(ctx) : memberTiles(ctx);
   el.innerHTML = `<div class="home">
+      ${gamePatchNoteHtml(asList(gameUpdates?.patches)[0])}
       ${periodScrubberHtml({ periods: PERIODS, period: ctx.period, offset: ctx.offset, rolloverHr: ctx.rolloverHr, weekStart: ctx.weekStart, win: ctx.win })}
       <div class="ui-grid">${tiles.join('')}</div>
     </div>`;
   wire(el, ctx);
+}
+
+/** How long Home mentions a game patch. */
+const PATCH_NOTE_DAYS = 7;
+
+/**
+ * A game patch in the last week: one line of what it brought, linking to
+ * Tools → What's new. A fact, not a call to action.
+ */
+function gamePatchNoteHtml(patch) {
+  if (!patch?.date || Date.now() - Date.parse(patch.date) > PATCH_NOTE_DAYS * DAY_MS) return '';
+  const names = asList(patch.highlights).map((h) => tGame(h.name)).filter(Boolean);
+  const shown = names.slice(0, 4).join(', ');
+  const what = shown
+    ? (names.length > 4 ? t('{names} and more', { names: shown }) : shown)
+    : t('new game data and texts');
+  return `<a class="home-patch-note" href="#tools/whats-new">
+      <span class="home-patch-note-glyph" aria-hidden="true">✦</span>
+      <span class="home-patch-note-text">
+        <span class="home-patch-note-title">${esc(t('New in Total Battle · {date}', { date: patch.date.slice(0, 10) }))}</span>
+        <span class="home-patch-note-what">${esc(what)}</span>
+      </span>
+      <span class="home-patch-note-go" aria-hidden="true">→</span>
+    </a>`;
 }
 
 // ─── Layouts per role ───

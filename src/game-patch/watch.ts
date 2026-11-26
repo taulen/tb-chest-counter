@@ -75,6 +75,19 @@ export interface PatchCheckOptions {
   force?: boolean;
   runs?: PatchReaderRuns;
   fetchImpl?: typeof fetch;
+  /**
+   * Note what the patch added (notes.ts, Tools → What's new), after the
+   * readers. Default: the real one — or none when `runs` are stubbed (tests).
+   */
+  note?: ((force: boolean) => Promise<unknown>) | null;
+}
+
+async function defaultNote(force: boolean): Promise<unknown> {
+  // The trees the notes compare are tech-trees.json on disk: bring them up to
+  // the reader's current format first (a no-op when they already are).
+  await import('../game-protocol/tech-trees.js').then((m) => m.loadTechTrees()).catch(() => undefined);
+  const { notePatchSafely } = await import('./notes.js');
+  return notePatchSafely({ force });
 }
 
 let running: Promise<PatchCheckResult> | null = null;
@@ -133,19 +146,23 @@ async function runCheck(opts: PatchCheckOptions): Promise<PatchCheckResult> {
     return !st.ok && Date.now() - Date.parse(st.checkedAt) >= RETRY_MS;
   };
   const toRun = PATCH_READERS.filter(due);
-  if (!toRun.length) return { changed, ran: [] };
-
-  const runs = opts.runs ?? (await defaultRuns());
-  if (opts.force) runs.clearRetries();
-  // In order: art selects by name (names), and its client download records the
-  // client version, sparing the client reader a second download.
-  for (const r of toRun) {
-    try {
-      await runs[r]();
-    } catch {
-      // each reader reports its own failure to status.ts
+  if (toRun.length) {
+    const runs = opts.runs ?? (await defaultRuns());
+    if (opts.force) runs.clearRetries();
+    // In order: art selects by name (names), and its client download records the
+    // client version, sparing the client reader a second download.
+    for (const r of toRun) {
+      try {
+        await runs[r]();
+      } catch {
+        // each reader reports its own failure to status.ts
+      }
     }
   }
+  // Every check, not only on a change: cheap when nothing moved, and it is
+  // how notes catch up (the first run on a volume, a failed build's retry).
+  const note = opts.note === undefined ? (opts.runs ? null : defaultNote) : opts.note;
+  if (note) await note(!!opts.force).catch(() => undefined);
   return { changed, ran: toRun };
 }
 

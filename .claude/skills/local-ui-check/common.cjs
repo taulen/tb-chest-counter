@@ -31,6 +31,7 @@ const PAGES = {
   stacks: '/#tools/stacks',
   costs: '/#tools/costs',
   rewards: '/#tools/rewards',
+  whatsnew: '/#tools/whats-new',
   triumphal: '/#triumphal',
   resources: '/#resources',
   chestrewards: '/#chest-rewards',

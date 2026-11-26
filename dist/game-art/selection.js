@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_KEYS = exports.ART_PATTERNS = exports.CLAN_RANKING_ICONS = exports.SPINE_REGIONS = exports.DRAGON_ART = exports.FACTION_ART = exports.FACTION_WINDOWS = exports.STATUS_ART = exports.EVENT_ART = exports.LIBRARY_MAX_SIDE = exports.LIBRARY_DENY = exports.LIBRARY_ART = exports.ART_CATEGORIES = void 0;
+exports.CHEST_ITEM_NAME = exports.RESOURCE_ITEM_MAX_ID = exports.ART_KEYS = exports.ART_PATTERNS = exports.CLAN_RANKING_ICONS = exports.SPINE_REGIONS = exports.DRAGON_ART = exports.FACTION_ART = exports.FACTION_WINDOWS = exports.STATUS_ART = exports.EVENT_ART = exports.LIBRARY_MAX_SIDE = exports.LIBRARY_DENY = exports.LIBRARY_ART = exports.PATCH_DENY = exports.PATCH_MAX_ADDRESSES = exports.PATCH_MAX_SIDE = exports.OPTIONAL_CATEGORIES = exports.ART_CATEGORIES = void 0;
+exports.isPatchArt = isPatchArt;
 exports.isLibraryArt = isLibraryArt;
 exports.artNamesFromGameNames = artNamesFromGameNames;
 exports.isChestName = isChestName;
@@ -16,9 +17,29 @@ exports.safeArtName = safeArtName;
  * `items`: every other item icon (T8) that no category above took — a clan
  * treasury or inventory row shows its item's own icon (by item id).
  *
- * `named` and `icons` last: the catch-alls (see the file header).
+ * `named`, `icons` and `patch` last: the catch-alls (see the file header).
  */
-exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items', 'named', 'icons'];
+exports.ART_CATEGORIES = ['heroes', 'frames', 'cities', 'troops', 'research', 'chests', 'resources', 'clan', 'events', 'status', 'factions', 'dragon', 'titles', 'ui', 'items', 'named', 'icons', 'patch'];
+/** Best effort: a bundle of only these failing never fails the run. */
+exports.OPTIONAL_CATEGORIES = new Set(['named', 'icons', 'patch']);
+/** The `patch` catch-all: a picture bigger than this on either side is skipped. */
+exports.PATCH_MAX_SIDE = 1024;
+/** The `patch` catch-all takes at most this many addresses (a huge content drop stays a bounded download). */
+exports.PATCH_MAX_ADDRESSES = 400;
+/**
+ * Never in the `patch` catch-all: animations and bundles of parts, audio,
+ * per-language pictures, the world map, the "_old" copies.
+ */
+exports.PATCH_DENY = [
+    /^(?:.*_)?(?:anim|animation|spine|artbundle|bundle|vfx|sound|voice|music|sfx)(?:_.*)?$/,
+    /^(?:map|realm|mini|minimap)_[a-z0-9_]*$/,
+    /^[a-z0-9_]+_(?:en|ru|de|fr|it|pl|pt|nl|es|sp|tr)$/,
+    /^[a-z0-9_]+_old$/,
+];
+/** Would the `patch` catch-all take `address` (when it is new in this catalogue)? */
+function isPatchArt(address) {
+    return !exports.PATCH_DENY.some((p) => p.test(address));
+}
 /**
  * The `icons` catch-all: every catalogue address that is a UI icon by its
  * name. Measured on the live catalogue (c508dcac…, Nov 18 2026) beyond what
@@ -172,6 +193,8 @@ exports.ART_PATTERNS = {
     named: [],
     // isLibraryArt (LIBRARY_ART minus LIBRARY_DENY), applied in selectArt.
     icons: [],
+    // What the catalogue added since the previous one (selectArt's `fresh`).
+    patch: [],
 };
 /** Keys whose string values are sprite names, wherever they sit in names.json. */
 exports.ART_KEYS = /^(?:icon|inactiveIcon|art|visual|smallIcon|mobileIcon|rewardIcon|bigIcon|stainedGlass|banner|frameIcon|frame|back)$/;
@@ -288,14 +311,28 @@ function staticIconsByCategory(st, resourceNames, names = null) {
  * The addresses to extract, each with its category. Only addresses the
  * catalogue actually lists are returned. `names` is names.json (see
  * staticIconsByCategory); without it the `named` catch-all is empty.
+ * `fresh` is what this catalogue added since the previous one (the `patch`
+ * catch-all); without it that catch-all is empty.
  */
-function selectArt(catalogAddresses, st, resourceNames = new Set(), names = null) {
+function selectArt(catalogAddresses, st, resourceNames = new Set(), names = null, fresh = []) {
     const available = new Set();
     for (const a of catalogAddresses)
         available.add(a.toLowerCase());
     const fromStatic = staticIconsByCategory(st, resourceNames, names);
     const out = new Map();
     for (const cat of exports.ART_CATEGORIES) {
+        if (cat === 'patch') {
+            let taken = 0;
+            for (const raw of [...fresh].map((a) => a.toLowerCase()).sort()) {
+                if (taken >= exports.PATCH_MAX_ADDRESSES)
+                    break;
+                if (available.has(raw) && !out.has(raw) && isPatchArt(raw)) {
+                    out.set(raw, cat);
+                    taken++;
+                }
+            }
+            continue;
+        }
         for (const a of fromStatic[cat])
             if (available.has(a) && !out.has(a))
                 out.set(a, cat);
