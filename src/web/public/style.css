@@ -9659,7 +9659,32 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .ct-optional { border-top: 1px dashed var(--border-strong); }
 .ct-optional > summary { cursor: pointer; padding: 10px 14px; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
 .ct-optional[open] > summary { border-bottom: 1px dashed var(--border); }
+.ct-result { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* A linked reader: whose research, as of when, and the way back to it. */
+.ct-me { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 36px; }
+.ct-me-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.ct-me-name { font-size: 15px; font-weight: 800; color: var(--text-primary); }
+.ct-me-pick { min-height: 36px; min-width: 0; max-width: 220px; font-size: 15px; font-weight: 700; }
+.ct-me-read { font-size: 12.5px; color: var(--text-secondary); }
+.ct-me-state, .ct-reset { margin-left: auto; }
+.ct-me-state { font-size: 12.5px; font-weight: 600; color: var(--accent-green-soft-text); }
+.ct-family-btn.is-mine .ct-family-letter { font-variant-numeric: tabular-nums; }
+.ct-family-next { font-size: 11.5px; font-weight: 600; line-height: 1.2; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Relative: a rung's screen-reader words stay inside the sideways-scrolling ladder instead of widening the page. */
+.ct-rung.is-done { position: relative; color: var(--text-muted); background: var(--subtle-bg); }
+.ct-rung.is-done .ct-rung-cost { color: var(--accent-green-soft-text); font-weight: 800; }
+.ct-done { margin: 0; padding: 8px 14px; border-radius: 10px; background: var(--accent-green-bg); color: var(--accent-green-soft-text); font-size: 13px; font-weight: 600; }
+.ct-step-of { margin-left: 6px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.ct-had { color: var(--accent-green-soft-text); font-weight: 600; }
+.ct-unit.is-had { color: var(--text-muted); }
+.ct-unit.is-had .ct-unit-cost { color: var(--accent-green-soft-text); font-weight: 600; }
 .costs-section-sub { font-weight: 500; color: var(--text-muted); }
+/* "Every research": the levels the player (the clan, in its trees) has, crossed out. */
+.costs-have { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--subtle-bg-strong); color: var(--text-secondary); font-size: 10.5px; font-weight: 700; vertical-align: 1px; white-space: nowrap; }
+.costs-have.is-full { background: var(--accent-green-bg); color: var(--accent-green-soft-text); }
+.costs-table td.is-had { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.costs-ladder-item.is-had { color: var(--text-muted); text-decoration: line-through; }
+.costs-have-note { margin: 0; }
 @media (max-width: 640px) {
   .ct-speed { margin-left: 0; width: 100%; }
   .ct-field select { min-width: 110px; }
@@ -9668,6 +9693,10 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
   /* Kept for screen readers, out of sight: whole names don't fit a fifth of a phone. */
   .ct-family-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .ct-family-current { display: block; margin-top: -4px; }
+  /* A phone's line buttons say the player's tier; the chosen line's next step is right below. */
+  .ct-family-next { display: none; }
+  .ct-family-btn.is-mine .ct-family-letter { font-size: 18px; }
+  .ct-me-pick { max-width: 100%; }
   .ct-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .ct-tile { padding: 10px 12px; }
   .ct-tile-value { font-size: 20px; }

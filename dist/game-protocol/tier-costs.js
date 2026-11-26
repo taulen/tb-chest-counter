@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tierCosts = tierCosts;
+exports.tiersForPlayer = tiersForPlayer;
 /**
  * What a troop tier costs — "G5 → G6", "S6 → S7", "C25 → C30" — worked out from
  * the game's own prerequisites, the question players ask of Tools → Costs.
@@ -17,6 +18,12 @@ exports.tierCosts = tierCosts;
  * the family's trees that opens at that tier but that no tier needs (the
  * user's "only 2 of 3 are needed": carrying capacity is a dead end) — shown as
  * optional, never counted. Pure; tests/game-protocol/tier-costs.test.ts.
+ *
+ * tiersForPlayer takes one player's research levels off every step — what is
+ * left of it for them — and finds their tier the way the rest of the site
+ * does (the highest unit they have unlocked), for Tools → Costs' "from where
+ * you are". Steps still add up: every step up to tier N is everything tier N
+ * needs minus what they have.
  */
 const troop_tiers_js_1 = require("./troop-tiers.js");
 const LETTER = { guardsmen: 'G', specialists: 'S', engineers: 'E', monsters: 'M', crypts: 'C' };
@@ -147,32 +154,73 @@ function tierCosts(trees, levels) {
                 units: [],
                 optional: (optionalAt.get(i) ?? []).sort((a, b) => (order.get(a.techId) ?? 1e9) - (order.get(b.techId) ?? 1e9)),
             };
-            for (const it of items) {
-                addCost(step.cost, it.cost);
-                step.seconds += it.seconds;
-                step.might += it.might;
-                for (const l of levels.techs[String(it.techId)] ?? []) {
-                    if (l.level <= it.from || l.level > it.to || !l.building)
-                        continue;
-                    const [b, lv] = l.building;
-                    step.buildings[String(b)] = Math.max(step.buildings[String(b)] ?? 0, lv);
-                }
-            }
+            Object.assign(step, totals(items, levels));
             // A unit alone: what it needs beyond the tier before.
             for (const unit of step.unlocks) {
-                const alone = diff(before, closure([...before, [unit, 1]], levels), levels, order);
-                const cost = {};
-                let seconds = 0;
-                for (const it of alone) {
-                    addCost(cost, it.cost);
-                    seconds += it.seconds;
-                }
-                step.units.push({ techId: unit, cost, seconds });
+                step.units.push(unitCost(unit, diff(before, closure([...before, [unit, 1]], levels), levels, order)));
             }
             return step;
         });
         out.push({ family, letter: LETTER[family], trees: FAMILY_TREES[family], steps });
     }
     return out;
+}
+/** What path items add up to: cost, time, Might, the highest level each building is asked for. */
+function totals(items, levels) {
+    const out = { cost: {}, seconds: 0, might: 0, buildings: {} };
+    for (const it of items) {
+        addCost(out.cost, it.cost);
+        out.seconds += it.seconds;
+        out.might += it.might;
+        for (const l of levels.techs[String(it.techId)] ?? []) {
+            if (l.level <= it.from || l.level > it.to || !l.building)
+                continue;
+            const [b, lv] = l.building;
+            out.buildings[String(b)] = Math.max(out.buildings[String(b)] ?? 0, lv);
+        }
+    }
+    return out;
+}
+function unitCost(techId, items) {
+    const cost = {};
+    let seconds = 0;
+    for (const it of items) {
+        addCost(cost, it.cost);
+        seconds += it.seconds;
+    }
+    return { techId, cost, seconds, items };
+}
+/** A path item as a player still has it: from the level they have; null when they have all of it. */
+function leftOf(it, have, levels) {
+    const had = have[String(it.techId)] ?? 0;
+    if (had >= it.to)
+        return null;
+    return had > it.from ? span(it.techId, had, it.to, levels) : it;
+}
+/**
+ * Every family's steps as one player still has them: each step's research
+ * from the levels they have, what is left of each unit alone and of the
+ * optional research, and their tier (the site's G6) with the next one. A step
+ * they have all of keeps its place with nothing in it.
+ */
+function tiersForPlayer(families, have, levels) {
+    const left = (items) => items.map((it) => leftOf(it, have, levels)).filter((it) => it !== null);
+    return families.map((f) => {
+        let current = f.family === 'crypts' ? 1 : 0;
+        for (const s of f.steps)
+            if (s.unlocks.some((u) => (have[String(u)] ?? 0) >= 1))
+                current = Math.max(current, s.tier);
+        const steps = f.steps.map((s) => {
+            const items = left(s.items);
+            return {
+                ...s,
+                items,
+                ...totals(items, levels),
+                units: s.units.map((u) => unitCost(u.techId, left(u.items))),
+                optional: left(s.optional),
+            };
+        });
+        return { ...f, steps, current, next: f.steps.find((s) => s.tier > current)?.tier ?? null };
+    });
 }
 //# sourceMappingURL=tier-costs.js.map

@@ -94,6 +94,32 @@ export function stepOfTech(family) {
   return out;
 }
 
+/**
+ * A tier as players write it, whether or not the family has a step for it —
+ * G6, S8, C30 (crypts by level, numeral × 5: Crypts I is free, C5). Null for 0,
+ * nothing yet (the caller words it).
+ */
+export function tierLabel(family, tier) {
+  if (!tier) return null;
+  const step = (family?.steps || []).find((s) => s.tier === tier);
+  if (step) return step.label;
+  return family?.family === 'crypts' ? `C${tier * 5}` : `${family?.letter || ''}${tier}`;
+}
+
+/** Tiers in a row folded into one: G1 G2 G3 G5 → "G1–G3, G5" (`tiers` in the family's order). */
+export function foldTiers(family, tiers) {
+  const order = (family?.steps || []).map((s) => s.tier);
+  const idx = [...new Set(tiers)].map((t) => order.indexOf(t)).filter((i) => i >= 0).sort((a, b) => a - b);
+  const runs = [];
+  for (const i of idx) {
+    const run = runs[runs.length - 1];
+    if (run && i === run[1] + 1) run[1] = i;
+    else runs.push([i, i]);
+  }
+  const label = (i) => family.steps[i].label;
+  return runs.map(([a, b]) => (a === b ? label(a) : `${label(a)}–${label(b)}`)).join(', ');
+}
+
 /** Blueprints per upgrade level, and their Gold: 10 per blueprint at every level. kingdom289.com (Apr 2026). */
 export const BLUEPRINTS = [
   [10, 320],

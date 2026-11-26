@@ -231,6 +231,17 @@ levels) names the fields; read Nov 26 2026:
   capacity, captains — the "only 2 of 3 are needed" rule, from the game).
   Tiers are troop-tiers.ts' (II trees continue at 8, crypts = numeral × 5).
   Research time is before speed bonuses; the page divides by the reader's bonus.
+- **From where you are** (`tiersForPlayer`, `/api/game/research-progress`):
+  an account linked to a game player gets that player's levels taken off every
+  step — what is LEFT, item by item ("Lv 9–10, you have Lv 8"), each unit alone
+  and the optional research too — and their tier the site's way (highest unit
+  unlocked). Steps still add up: every step up to tier N is everything N needs
+  minus what they have. Tools → Costs starts each line at "You now (G8) → G9",
+  shows the tiers on the line buttons, and "Reset to my in-game research"
+  appears once the reader picks another range. Only the caller's own players
+  (alts: a dropdown, `?player=`); the same response carries the clan's levels,
+  which tick off the clan trees in "Every research". The levels are the last
+  daily research read — research since then isn't counted yet.
 - **Live yet?** `/api/game/tech-tree-status`: per tree whether any player (a
   clan, for a clan tree) the site reads has a level in it, and since when this
   install has seen it in the data ([tech-first-seen.ts](../src/game-protocol/tech-first-seen.ts),

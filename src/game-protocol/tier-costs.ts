@@ -14,6 +14,12 @@
  * the family's trees that opens at that tier but that no tier needs (the
  * user's "only 2 of 3 are needed": carrying capacity is a dead end) — shown as
  * optional, never counted. Pure; tests/game-protocol/tier-costs.test.ts.
+ *
+ * tiersForPlayer takes one player's research levels off every step — what is
+ * left of it for them — and finds their tier the way the rest of the site
+ * does (the highest unit they have unlocked), for Tools → Costs' "from where
+ * you are". Steps still add up: every step up to tier N is everything tier N
+ * needs minus what they have.
  */
 import { unlockIndex, type TroopFamily } from './troop-tiers.js';
 import type { TechLevels, TechTrees } from './tech-trees.js';
@@ -43,9 +49,17 @@ export interface TierStep {
   /** Building id → the level this step's research asks for at most. */
   buildings: Record<string, number>;
   /** Each unit of the tier alone, from the tier before. */
-  units: Array<{ techId: number; cost: Record<string, number>; seconds: number }>;
+  units: UnitCost[];
   /** Research that opens at this tier but that no tier needs: its levels no tier asks for. */
   optional: PathItem[];
+}
+
+export interface UnitCost {
+  techId: number;
+  cost: Record<string, number>;
+  seconds: number;
+  /** Its path from the tier before (what a player still has to research of it). */
+  items: PathItem[];
 }
 
 export interface FamilyTiers {
@@ -55,6 +69,13 @@ export interface FamilyTiers {
   /** The research trees the family's tiers are unlocked in (Guardsmen I, Guardsmen II). */
   trees: number[];
   steps: TierStep[];
+}
+
+export interface PlayerFamilyTiers extends FamilyTiers {
+  /** Their tier: the highest one they have a unit of (crypts: Crypts I is free, so 1); 0 = none yet. */
+  current: number;
+  /** The first tier above it; null at the top. */
+  next: number | null;
 }
 
 const LETTER: Record<TroopFamily, string> = { guardsmen: 'G', specialists: 'S', engineers: 'E', monsters: 'M', crypts: 'C' };
@@ -183,30 +204,72 @@ export function tierCosts(trees: TechTrees, levels: TechLevels): FamilyTiers[] {
         units: [],
         optional: (optionalAt.get(i) ?? []).sort((a, b) => (order.get(a.techId) ?? 1e9) - (order.get(b.techId) ?? 1e9)),
       };
-      for (const it of items) {
-        addCost(step.cost, it.cost);
-        step.seconds += it.seconds;
-        step.might += it.might;
-        for (const l of levels.techs[String(it.techId)] ?? []) {
-          if (l.level <= it.from || l.level > it.to || !l.building) continue;
-          const [b, lv] = l.building;
-          step.buildings[String(b)] = Math.max(step.buildings[String(b)] ?? 0, lv);
-        }
-      }
+      Object.assign(step, totals(items, levels));
       // A unit alone: what it needs beyond the tier before.
       for (const unit of step.unlocks) {
-        const alone = diff(before, closure([...before, [unit, 1]], levels), levels, order);
-        const cost: Record<string, number> = {};
-        let seconds = 0;
-        for (const it of alone) {
-          addCost(cost, it.cost);
-          seconds += it.seconds;
-        }
-        step.units.push({ techId: unit, cost, seconds });
+        step.units.push(unitCost(unit, diff(before, closure([...before, [unit, 1]], levels), levels, order)));
       }
       return step;
     });
     out.push({ family, letter: LETTER[family], trees: FAMILY_TREES[family], steps });
   }
   return out;
+}
+
+/** What path items add up to: cost, time, Might, the highest level each building is asked for. */
+function totals(items: PathItem[], levels: TechLevels): Pick<TierStep, 'cost' | 'seconds' | 'might' | 'buildings'> {
+  const out: Pick<TierStep, 'cost' | 'seconds' | 'might' | 'buildings'> = { cost: {}, seconds: 0, might: 0, buildings: {} };
+  for (const it of items) {
+    addCost(out.cost, it.cost);
+    out.seconds += it.seconds;
+    out.might += it.might;
+    for (const l of levels.techs[String(it.techId)] ?? []) {
+      if (l.level <= it.from || l.level > it.to || !l.building) continue;
+      const [b, lv] = l.building;
+      out.buildings[String(b)] = Math.max(out.buildings[String(b)] ?? 0, lv);
+    }
+  }
+  return out;
+}
+
+function unitCost(techId: number, items: PathItem[]): UnitCost {
+  const cost: Record<string, number> = {};
+  let seconds = 0;
+  for (const it of items) {
+    addCost(cost, it.cost);
+    seconds += it.seconds;
+  }
+  return { techId, cost, seconds, items };
+}
+
+/** A path item as a player still has it: from the level they have; null when they have all of it. */
+function leftOf(it: PathItem, have: Record<string, number>, levels: TechLevels): PathItem | null {
+  const had = have[String(it.techId)] ?? 0;
+  if (had >= it.to) return null;
+  return had > it.from ? span(it.techId, had, it.to, levels) : it;
+}
+
+/**
+ * Every family's steps as one player still has them: each step's research
+ * from the levels they have, what is left of each unit alone and of the
+ * optional research, and their tier (the site's G6) with the next one. A step
+ * they have all of keeps its place with nothing in it.
+ */
+export function tiersForPlayer(families: FamilyTiers[], have: Record<string, number>, levels: TechLevels): PlayerFamilyTiers[] {
+  const left = (items: PathItem[]): PathItem[] => items.map((it) => leftOf(it, have, levels)).filter((it): it is PathItem => it !== null);
+  return families.map((f) => {
+    let current = f.family === 'crypts' ? 1 : 0;
+    for (const s of f.steps) if (s.unlocks.some((u) => (have[String(u)] ?? 0) >= 1)) current = Math.max(current, s.tier);
+    const steps = f.steps.map((s): TierStep => {
+      const items = left(s.items);
+      return {
+        ...s,
+        items,
+        ...totals(items, levels),
+        units: s.units.map((u) => unitCost(u.techId, left(u.items))),
+        optional: left(s.optional),
+      };
+    });
+    return { ...f, steps, current, next: f.steps.find((s) => s.tier > current)?.tier ?? null };
+  });
 }

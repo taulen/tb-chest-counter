@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 // Plain ESM with no DOM access at import time.
 import {
-  BLUEPRINTS, LEVEL_COLUMNS, levelValues, mergeLevelRows, rangeSteps, stepOfTech, sumSteps, treeCurrency, withSpeed,
+  BLUEPRINTS, LEVEL_COLUMNS, foldTiers, levelValues, mergeLevelRows, rangeSteps, stepOfTech, sumSteps, tierLabel, treeCurrency, withSpeed,
 } from '../../src/web/public/lib/research-costs.js';
 
 const lv = (amounts: number[], item = '8', seconds = 300) => amounts.map((a) => ({ cost: { [item]: a }, seconds }));
@@ -78,5 +78,21 @@ describe('tier by tier', () => {
     const where = stepOfTech(family);
     expect(where.get(1215)).toEqual({ tier: 5, label: 'G5', optional: false });
     expect(where.get(1235)).toEqual({ tier: 6, label: 'G6', optional: true });
+  });
+
+  it("writes a tier as players do, the steps' own labels first; crypts by level", () => {
+    const guards = { family: 'guardsmen', letter: 'G', ...family };
+    expect(tierLabel(guards, 6)).toBe('G6');
+    expect(tierLabel(guards, 3)).toBe('G3');
+    expect(tierLabel(guards, 0)).toBeNull();
+    // Crypts I needs no research, so it has no step: still C5.
+    expect(tierLabel({ family: 'crypts', letter: 'C', steps: [{ tier: 2, label: 'C10' }] }, 1)).toBe('C5');
+  });
+
+  it('folds the tiers a player has done into runs', () => {
+    const guards = { steps: ['G1', 'G2', 'G3', 'G4', 'G5', 'G6'].map((label, i) => ({ tier: i + 1, label })) };
+    expect(foldTiers(guards, [1, 2, 3, 5])).toBe('G1–G3, G5');
+    expect(foldTiers(guards, [4])).toBe('G4');
+    expect(foldTiers(guards, [])).toBe('');
   });
 });

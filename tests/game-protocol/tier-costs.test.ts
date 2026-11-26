@@ -5,7 +5,7 @@
 // game's (Guardsmen I + II, Valor points = item 8).
 
 import { describe, expect, it } from 'vitest';
-import { tierCosts } from '../../src/game-protocol/tier-costs.js';
+import { tierCosts, tiersForPlayer } from '../../src/game-protocol/tier-costs.js';
 import type { TechLevel, TechLevels, TechTrees } from '../../src/game-protocol/tech-trees.js';
 
 const node = (techId: number, name: string, maxLevel: number, col: number, row = 0) => ({ techId, name, description: '', icon: '', maxLevel, col, row, requires: [] });
@@ -60,10 +60,11 @@ describe('tierCosts', () => {
   });
 
   it("prices each unit alone: Archers II needs only training cost, not carrying capacity", () => {
-    expect(step('G2').units).toEqual([
+    expect(step('G2').units.map(({ techId, cost, seconds }) => ({ techId, cost, seconds }))).toEqual([
       { techId: 1201, cost: { 8: 300 + 700 + 1800 + 45000 }, seconds: 400 },
       { techId: 1203, cost: { 8: 300 + 700 + 1800 + 300 + 700 + 45000 }, seconds: 600 },
     ]);
+    expect(step('G2').units[0].items.map((i) => [i.techId, i.from, i.to])).toEqual([[1200, 0, 3], [1201, 0, 1]]);
   });
 
   it('lists what no tier needs as optional where it opens, never research the game does not draw', () => {
@@ -74,5 +75,49 @@ describe('tierCosts', () => {
     const g1 = noRiders.steps.find((s) => s.label === 'G1')!;
     expect(g1.optional.map((o) => [o.techId, o.from, o.to, o.cost])).toEqual([[1202, 0, 2, { 8: 1000 }]]);
     expect(noRiders.steps.flatMap((s) => s.optional.map((o) => o.techId))).not.toContain(9999);
+  });
+});
+
+describe('tiersForPlayer', () => {
+  const families = tierCosts(trees, levels);
+  // Both G1 units, training cost done, carrying capacity to level 1, one G2
+  // unit (Archers II): G2 by the site's count.
+  const have = { 1197: 1, 1198: 1, 1200: 3, 1202: 1, 1201: 1 };
+  const [guards] = tiersForPlayer(families, have, levels);
+  const step = (label: string) => guards.steps.find((s) => s.label === label)!;
+
+  it("finds their tier the site's way — the highest unit they have — and the next one", () => {
+    expect([guards.current, guards.next]).toEqual([2, 8]);
+    const [fresh] = tiersForPlayer(families, {}, levels);
+    expect([fresh.current, fresh.next]).toEqual([0, 1]);
+  });
+
+  it('takes what they have off each step, level by level', () => {
+    expect(step('G1').items).toEqual([]);
+    expect(step('G1').cost).toEqual({});
+    // Carrying capacity from level 1 on, then Riders II; training cost and Archers II are theirs.
+    expect(step('G2').items.map((i) => [i.techId, i.from, i.to])).toEqual([[1202, 1, 2], [1203, 0, 1]]);
+    expect(step('G2').cost).toEqual({ 8: 700 + 45000 });
+    // The Academy level only training cost's last level asked for: done.
+    expect(step('G2').buildings).toEqual({});
+    // Untouched steps stay as they were.
+    expect(step('G8').cost).toEqual(families[0].steps.find((s) => s.label === 'G8')!.cost);
+  });
+
+  it('prices what is left of each unit alone: nothing for the one they have', () => {
+    expect(step('G2').units.map((u) => [u.techId, u.cost])).toEqual([
+      [1201, {}],
+      [1203, { 8: 700 + 45000 }],
+    ]);
+  });
+
+  it('keeps only the optional research they have not finished', () => {
+    const noRiders = tierCosts(
+      { ...trees, trees: [{ ...trees.trees[0], nodes: trees.trees[0].nodes.filter((n) => n.techId !== 1203) }, trees.trees[1]] },
+      levels,
+    );
+    const g1 = (h: Record<string, number>) => tiersForPlayer(noRiders, h, levels)[0].steps.find((s) => s.label === 'G1')!.optional;
+    expect(g1({ 1202: 1 }).map((o) => [o.techId, o.from, o.to, o.cost])).toEqual([[1202, 1, 2, { 8: 700 }]]);
+    expect(g1({ 1202: 2 })).toEqual([]);
   });
 });

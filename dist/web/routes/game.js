@@ -643,7 +643,7 @@ function createGameRouter() {
                 unplaced: rows(t.unplaced ?? []),
             }));
             // A troop tier step by step (tier-costs.ts): "G5 → G6" and what it takes.
-            const tiers = (0, tier_costs_js_1.tierCosts)(raw, levels);
+            const tiers = leanTiers(memoTierCosts(raw, levels));
             // Every research a path or a table names, by id: its name and picture.
             const techs = {};
             for (const t of raw.trees) {
@@ -668,7 +668,61 @@ function createGameRouter() {
             res.status(503).json({ error: 'Research costs are not available yet' });
         }
     });
+    /**
+     * Tools → Costs for the one asking: the research of the game player their
+     * account is linked to in this clan (their main, or `?player=` one of their
+     * other linked players) — levels, troop tiers and every tier's path with
+     * what they already have taken off (tier-costs.ts tiersForPlayer) — and the
+     * clan's own research levels. Only the caller's own players; an account
+     * linked to none gets `player: null`.
+     */
+    router.get('/research-progress', async (req, res) => {
+        const clanId = req.clanId;
+        const links = req.user ? (0, account_invite_repo_js_1.linksInClan)(req.user.id, clanId) : [];
+        const asked = Number.parseInt(String(req.query.player ?? ''), 10);
+        const link = links.find((l) => l.playerId === asked) ?? (req.user ? (0, account_invite_repo_js_1.mainLink)(req.user.id, clanId) : null);
+        const clan = (0, game_clan_repo_js_1.getClanTechs)(clanId);
+        const base = {
+            players: links.map((l) => ({ playerId: l.playerId, name: l.playerName })),
+            clan: clan.readAt ? clan : null,
+        };
+        if (!link) {
+            res.json({ ...base, player: null });
+            return;
+        }
+        const who = { playerId: link.playerId, name: link.playerName };
+        const mine = (0, game_profile_repo_js_1.getPlayerTechs)(clanId, link.playerId);
+        if (!mine.readAt) {
+            res.json({ ...base, player: { ...who, readAt: null } });
+            return;
+        }
+        try {
+            const [trees, levels] = await Promise.all([(0, tech_trees_js_1.loadTechTrees)(), (0, tech_trees_js_1.loadTechLevels)()]);
+            if (!levels)
+                throw new Error('no research levels');
+            const path = (0, tier_costs_js_1.tiersForPlayer)(memoTierCosts(trees, levels), mine.levels, levels);
+            res.json({ ...base, player: { ...who, readAt: mine.readAt, levels: mine.levels, path: leanTiers(path) } });
+        }
+        catch {
+            res.status(503).json({ error: 'Research costs are not available yet' });
+        }
+    });
     return router;
+}
+/** Every family's tier steps, worked out once per trees + levels version. */
+let tierMemo = null;
+function memoTierCosts(trees, levels) {
+    const key = `${trees.version}|${levels.version}`;
+    if (tierMemo?.key !== key)
+        tierMemo = { key, value: (0, tier_costs_js_1.tierCosts)(trees, levels) };
+    return tierMemo.value;
+}
+/** Tiers as the page reads them: a unit alone is its total, not its path. */
+function leanTiers(families) {
+    return families.map((f) => ({
+        ...f,
+        steps: f.steps.map((s) => ({ ...s, units: s.units.map((u) => ({ techId: u.techId, cost: u.cost, seconds: u.seconds })) })),
+    }));
 }
 /** Tech ids any player / any clan the site reads has a level in; an hour old is fresh enough. */
 let startedMemo = null;
