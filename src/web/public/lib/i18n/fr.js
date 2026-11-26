@@ -1737,6 +1737,7 @@ export const ui = {
   "{names} and more": "{names} et plus",
   "new game data and texts": "nouvelles données et nouveaux textes du jeu",
   "New in Total Battle · {date}": "Nouveau dans Total Battle · {date}",
+  "Hide until the next patch": "Masquer jusqu’au prochain patch",
   "of {n} in the clan": "sur {n} dans le clan",
   "Chests collected": "Coffres obtenus",
   "Your week": "Ta semaine",

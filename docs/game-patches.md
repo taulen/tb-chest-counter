@@ -89,7 +89,9 @@ the engine, so the version is found as the one length-prefixed string shaped
 ## What's new (Tools → What's new, every member)
 
 Every patch is also **compared with the one before**, and what it added is a
-page: `#tools/whats-new`, a slim note on Home for a week, and a link from
+page: `#tools/whats-new`, a slim note on Home (for a week; until followed, put away with ✕
+or What's new is visited — per browser, back with the next patch; an account made
+after the patch sees it only while the patch is ≤3 days old), and a link from
 System → Game Patch. A patch ships content long before it goes live (art first,
 then data, then texts), so this is where a coming feature shows first: the
 Nov 25 2026 patch carried the Clan Duel and Army boost trees, the Ascendant

@@ -23,7 +23,7 @@ import {
   periodScrubberHtml, wirePeriodScrubber, tileHtml, tileLinkHtml, deltaHtml, bandHtml, barHtml as kitBarHtml, asList,
 } from '../lib/ui-kit.js';
 import { weeklyGoalForWindow } from '../lib/weekly-goal.js';
-import { getCurrentUser, getGameDayRolloverUtcHour, getWeekStart } from '../lib/state.js';
+import { getCurrentUser, getGameDayRolloverUtcHour, getWeekStart, getSeenGamePatchId, markGamePatchSeen } from '../lib/state.js';
 import { gameRankName } from '../lib/game-facts.js';
 import { avatarHtml } from '../lib/avatar.js';
 import { loadGameArt, chestLabelHtml } from '../lib/game-art.js';
@@ -161,7 +161,7 @@ export async function renderHome(el) {
 
   const tiles = isAdmin ? leaderTiles(ctx) : memberTiles(ctx);
   el.innerHTML = `<div class="home">
-      ${gamePatchNoteHtml(asList(gameUpdates?.patches)[0])}
+      ${gamePatchNoteHtml(asList(gameUpdates?.patches)[0], user)}
       ${periodScrubberHtml({ periods: PERIODS, period: ctx.period, offset: ctx.offset, rolloverHr: ctx.rolloverHr, weekStart: ctx.weekStart, win: ctx.win })}
       <div class="ui-grid">${tiles.join('')}</div>
     </div>`;
@@ -170,26 +170,48 @@ export async function renderHome(el) {
 
 /** How long Home mentions a game patch. */
 const PATCH_NOTE_DAYS = 7;
+/** An account made after the patch: the patch is news to it only this long. */
+const PATCH_NOTE_NEW_ACCOUNT_DAYS = 3;
 
 /**
- * A game patch in the last week: one line of what it brought, linking to
- * Tools → What's new. A fact, not a call to action.
+ * Whether Home mentions this patch: within the week, and not yet seen in this
+ * browser (the note followed or dismissed, or What's new visited — the next
+ * patch brings it back). An account made after the patch hears of it only
+ * while it's a few days old: older than that, it isn't news to them.
  */
-function gamePatchNoteHtml(patch) {
-  if (!patch?.date || Date.now() - Date.parse(patch.date) > PATCH_NOTE_DAYS * DAY_MS) return '';
+function showPatchNote(patch, user) {
+  const at = Date.parse(patch?.date);
+  if (!patch?.id || !Number.isFinite(at)) return false;
+  if (getSeenGamePatchId() === patch.id) return false;
+  const age = Date.now() - at;
+  const joined = Date.parse(user?.createdAt);
+  const days = Number.isFinite(joined) && joined > at ? PATCH_NOTE_NEW_ACCOUNT_DAYS : PATCH_NOTE_DAYS;
+  return age <= days * DAY_MS;
+}
+
+/**
+ * A game patch not yet seen: one line of what it brought, linking to
+ * Tools → What's new, with ✕ to put it away. A fact, not a call to action.
+ */
+function gamePatchNoteHtml(patch, user) {
+  if (!showPatchNote(patch, user)) return '';
   const names = asList(patch.highlights).map((h) => tGame(h.name)).filter(Boolean);
   const shown = names.slice(0, 4).join(', ');
   const what = shown
     ? (names.length > 4 ? t('{names} and more', { names: shown }) : shown)
     : t('new game data and texts');
-  return `<a class="home-patch-note" href="#tools/whats-new">
-      <span class="home-patch-note-glyph" aria-hidden="true">✦</span>
-      <span class="home-patch-note-text">
-        <span class="home-patch-note-title">${esc(t('New in Total Battle · {date}', { date: patch.date.slice(0, 10) }))}</span>
-        <span class="home-patch-note-what">${esc(what)}</span>
-      </span>
-      <span class="home-patch-note-go" aria-hidden="true">→</span>
-    </a>`;
+  const hide = t('Hide until the next patch');
+  return `<div class="home-patch-note" data-home-patch="${esc(patch.id)}">
+      <a class="home-patch-note-link" href="#tools/whats-new">
+        <span class="home-patch-note-glyph" aria-hidden="true">✦</span>
+        <span class="home-patch-note-text">
+          <span class="home-patch-note-title">${esc(t('New in Total Battle · {date}', { date: patch.date.slice(0, 10) }))}</span>
+          <span class="home-patch-note-what">${esc(what)}</span>
+        </span>
+        <span class="home-patch-note-go" aria-hidden="true">→</span>
+      </a>
+      <button type="button" class="home-patch-note-close" data-home-patch-close aria-label="${esc(hide)}" title="${esc(hide)}">✕</button>
+    </div>`;
 }
 
 // ─── Layouts per role ───
@@ -680,6 +702,16 @@ function wire(el, ctx) {
     });
   }
   el.querySelector('[data-home-add-clan]')?.addEventListener('click', () => openAddClanDialog());
+  // The patch note, followed or put away, stays away until the next patch.
+  const note = el.querySelector('[data-home-patch]');
+  if (note) {
+    const id = note.dataset.homePatch;
+    note.querySelector('.home-patch-note-link')?.addEventListener('click', () => markGamePatchSeen(id));
+    note.querySelector('[data-home-patch-close]')?.addEventListener('click', () => {
+      markGamePatchSeen(id);
+      note.remove();
+    });
+  }
   for (const b of el.querySelectorAll('[data-home-clan]')) {
     b.addEventListener('click', async () => {
       const id = Number(b.dataset.homeClan);

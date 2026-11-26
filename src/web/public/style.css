@@ -12723,20 +12723,41 @@ button.mboard-row {
    Desktop: a 12-column grid, tiles span 4 / 6 / 8 / 12. A tablet: halves.
    A phone: one column, in the order the role's tile list gives. */
 .home { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-/* A game patch in the last week: one line, linking to Tools → What's new. */
+/* A game patch not yet seen: one line, linking to Tools → What's new, with ✕
+   to put it away until the next patch. The link and ✕ are siblings (a button
+   can't sit inside a link). */
 .home-patch-note {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: stretch;
   min-height: 52px;
-  padding: 10px 14px;
   border: 1px solid var(--accent-gold-border);
   border-radius: 14px;
   background: linear-gradient(120deg, var(--accent-gold-bg), transparent 65%), var(--bg-card);
+}
+.home-patch-note:has(.home-patch-note-link:hover),
+.home-patch-note:has(:focus-visible) { border-color: var(--accent-gold); }
+.home-patch-note-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px 10px 14px;
+  border-radius: 14px 0 0 14px;
   color: var(--text-primary);
   text-decoration: none;
 }
-.home-patch-note:hover, .home-patch-note:focus-visible { border-color: var(--accent-gold); }
+.home-patch-note-close {
+  flex: none;
+  width: 44px;
+  border: 0;
+  border-radius: 0 14px 14px 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.home-patch-note-close:hover, .home-patch-note-close:focus-visible { color: var(--text-primary); background: var(--accent-gold-bg); }
 .home-patch-note-glyph { flex: none; font-size: 20px; color: var(--accent-gold); }
 .home-patch-note-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .home-patch-note-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-gold); }

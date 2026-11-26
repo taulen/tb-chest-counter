@@ -37,7 +37,7 @@
 
 ## Read before changing that area
 
-- **Game patches** — names, research trees, art and the login's client version rebuild from the game's files every patch; one that can't be read keeps the previous patch's, alerts on System (→ Game Patch card) and opens a `game-patch` GitHub issue from the hourly canary. Fixing one starts with `node scripts/game-patch-check.mjs`. Every patch is also diffed against the last into Tools → What's new (every member; Home notes it for a week) — a new kind of game data shows with nothing to do, a nicer view is one entry in `notes-sections.ts` + `whats-new.js`: [docs/game-patches.md](docs/game-patches.md)
+- **Game patches** — names, research trees, art and the login's client version rebuild from the game's files every patch; one that can't be read keeps the previous patch's, alerts on System (→ Game Patch card) and opens a `game-patch` GitHub issue from the hourly canary. Fixing one starts with `node scripts/game-patch-check.mjs`. Every patch is also diffed against the last into Tools → What's new (every member; Home notes it for a week or until seen) — a new kind of game data shows with nothing to do, a nicer view is one entry in `notes-sections.ts` + `whats-new.js`: [docs/game-patches.md](docs/game-patches.md)
 - Game protocol / direct client (src/game-protocol; it IS the scan since Nov 17 2026; game_* tables v102–v103; never present an old website token — it ends the account's session): [docs/game-protocol.md](docs/game-protocol.md)
 - Adding a resource type the game introduced (migration + icon): [docs/game-protocol.md](docs/game-protocol.md)
 - Guards levels (Guardsmen tier from research) and Gold Pass (the game's flag; no donation inference any more): [docs/guards-and-gold-pass.md](docs/guards-and-gold-pass.md)

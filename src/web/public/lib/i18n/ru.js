@@ -1737,6 +1737,7 @@ export const ui = {
   "{names} and more": "{names} и другое",
   "new game data and texts": "новые игровые данные и тексты",
   "New in Total Battle · {date}": "Новое в Total Battle · {date}",
+  "Hide until the next patch": "Скрыть до следующего патча",
   "of {n} in the clan": "из {n} в клане",
   "Chests collected": "Собрано сундуков",
   "Your week": "Твоя неделя",

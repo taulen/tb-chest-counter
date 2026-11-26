@@ -15,6 +15,7 @@ import { emptyHtml, errorStateHtml, foldHtml, refusalText, statTileHtml, statTil
 import { getLanguage, t, tn, tGame } from '../lib/i18n.js';
 import { treeHtml } from './member-techs.js';
 import { loadTreeStatus, notLiveNoteHtml, notLiveTagHtml, wireTreeLevels } from '../lib/tech-levels.js';
+import { markGamePatchSeen } from '../lib/state.js';
 
 const PHONE = '(max-width: 640px)';
 /** Entries shown before "Show all". */
@@ -648,6 +649,8 @@ export async function renderWhatsNew(mount) {
     mount.innerHTML = `<div class="ui-tile span-12">${emptyHtml(t('No game patch has been compared yet. The next one shows here as soon as the game publishes it.'))}</div>`;
     return;
   }
+  // Seen here: Home's note for this patch stays away until the next one.
+  markGamePatchSeen(patches[0].id);
   if (!patches.some((p) => p.id === selected)) selected = patches[0].id;
   mount.innerHTML = `<div class="wn">
       <p class="ui-copy wn-intro">${esc(t("Read from the game's own files the moment it patched. Much of it isn't in the game yet: a patch ships new content before it goes live."))}</p>

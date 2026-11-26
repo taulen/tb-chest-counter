@@ -137,6 +137,28 @@ export function markSystemWarningsSeen() {
   }
 }
 
+// The newest game patch this browser has seen — through Home's note (followed
+// or dismissed) or a visit to Tools → What's new. Home's note stays away until
+// a newer patch arrives. Per-browser, like the System last-seen above.
+const SEEN_GAME_PATCH_KEY = 'seenGamePatchId';
+
+export function getSeenGamePatchId() {
+  try {
+    return localStorage.getItem(SEEN_GAME_PATCH_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function markGamePatchSeen(id) {
+  if (!id) return;
+  try {
+    localStorage.setItem(SEEN_GAME_PATCH_KEY, String(id));
+  } catch {
+    // ignore — private-mode / sandboxed iframes
+  }
+}
+
 // AbortSignal for the in-flight page load. The router (app.js) installs
 // a fresh one on every navigation and aborts the previous one; the api()
 // wrapper attaches it to GET reads so a slow or retrying response can't

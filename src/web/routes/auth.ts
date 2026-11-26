@@ -106,6 +106,9 @@ export function createAuthRouter(): Router {
         clanId: u.clanId,
         theme: u.theme,
         language: u.language,
+        // When the account was made: Home's patch note is news to an account
+        // made after the patch only while that patch is a few days old.
+        createdAt: u.createdAt,
         multiClan: u.role !== 'superadmin' && userRepo.listSwitchableClans(u.id).length > 1,
         // The picture beside the account: its photo, else its game hero in
         // the clan being viewed, else its initial (avatar-repo).
