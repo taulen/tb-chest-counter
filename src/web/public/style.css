@@ -8902,6 +8902,9 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .wn-text:last-child { border-bottom: 0; }
 .wn-text.is-changed { display: flex; flex-direction: column; gap: 4px; }
 .wn-text-was { color: var(--text-muted); text-decoration: line-through; }
+/* A reworded text as one line: lost words struck, new words marked (glyph-free, so not colour alone: strike + underline). */
+.wn-text-diff del { color: var(--text-muted); text-decoration: line-through; }
+.wn-text-diff ins { text-decoration: underline; text-decoration-color: var(--accent-gold); text-underline-offset: 3px; color: var(--accent-gold); background: var(--accent-gold-bg); border-radius: 3px; padding: 0 2px; }
 .wn-text.is-removed { color: var(--text-muted); text-decoration: line-through; }
 
 /* The new art: a gallery; each picture opens big. */

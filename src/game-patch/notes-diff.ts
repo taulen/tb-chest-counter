@@ -15,7 +15,8 @@
  */
 import { IGNORED_KEYS, sectionDef, sectionOrder, type SectionCtx, type SectionDef, type SectionSource, type ValueLine } from './notes-sections.js';
 
-export const PATCH_NOTES_FORMAT = 1;
+/** Bump when what a note holds changes: an index of an older format is noted afresh (the newest patch against the one before it). */
+export const PATCH_NOTES_FORMAT = 2;
 export const NOTE_LANGS = ['en', 'de', 'es', 'fr', 'ru'] as const;
 export type NoteLang = (typeof NOTE_LANGS)[number];
 export type LangTexts = Partial<Record<NoteLang, string>>;
@@ -455,30 +456,35 @@ export interface TextPlan {
 /** A title the group's own window shows: short, no placeholders, no markup. */
 const usableTitle = (text: string | undefined): boolean => !!text && text.length <= 48 && !/[%<]/.test(text) && text.trim().length > 1;
 
+/**
+ * The group's own title: only its window's (`<feature>.title`,
+ * `.header.title`, `.window.title`, `.info.title`, `.name`). A title deeper
+ * down names one part of it — booster_categories' "Shield of Peace" is one
+ * category among many (Nov 26 2026) — so none is better than that.
+ */
 function findGroupTitle(prefixes: Set<string>, en: ReadonlyMap<string, string>): string | undefined {
-  const rank = (k: string): number => {
-    if (/\.header\.title$/.test(k)) return 0;
-    if (/\.window\.title$/.test(k)) return 1;
-    if (/\.info\.title$/.test(k)) return 2;
-    if (/\.title$/.test(k)) return 3;
-    return 9;
-  };
-  let best: string | undefined;
-  for (const [k, text] of en) {
-    const r = rank(k);
-    if (r === 9 || !usableTitle(text)) continue;
-    let hit = false;
-    for (const p of prefixes) if (k.startsWith(`${p}.`)) { hit = true; break; }
-    if (!hit) continue;
-    if (!best || r < rank(best) || (r === rank(best) && k.length < best.length)) best = k;
+  for (const suffix of ['header.title', 'window.title', 'info.title', 'title', 'name']) {
+    for (const p of prefixes) {
+      const k = `${p}.${suffix}`;
+      if (usableTitle(en.get(k))) return k;
+    }
   }
-  return best;
+  return undefined;
+}
+
+/**
+ * A text as compared: its words, not its punctuation, spacing or case — a
+ * full stop added ("5 times" → "5 times."), "Lv.%level%" → "Lv. %level%" is
+ * no change worth listing.
+ */
+export function normalizeText(s: string): string {
+  return s.toLowerCase().replace(/<[^>]*>/g, '').replace(/\\n/g, ' ').replace(/[^\p{L}\p{N}%]+/gu, '');
 }
 
 /** What changed between two English catalogues, and which keys each part needs in every language. */
 export function planTexts(prevEn: ReadonlyMap<string, string>, nextEn: ReadonlyMap<string, string>): TextPlan {
   let added = [...nextEn.keys()].filter((k) => !prevEn.has(k));
-  let changed = [...nextEn.keys()].filter((k) => prevEn.has(k) && normalizeValue(prevEn.get(k)!) !== normalizeValue(nextEn.get(k)!));
+  let changed = [...nextEn.keys()].filter((k) => prevEn.has(k) && normalizeText(prevEn.get(k)!) !== normalizeText(nextEn.get(k)!));
   let removed = [...prevEn.keys()].filter((k) => !nextEn.has(k));
   const total = added.length + changed.length + removed.length;
   let truncated = 0;

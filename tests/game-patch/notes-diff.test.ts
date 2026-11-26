@@ -229,6 +229,24 @@ describe('texts', () => {
     expect(duel.changed[0]).toEqual({ key: 'client.clan_duels.rating.title', text: { en: 'RANKING', de: 'RANGLISTE' }, was: { en: 'RATING', de: 'WERTUNG' } });
   });
 
+  it('a full stop, spacing or case is no rewording; a group takes only its own window\'s title', () => {
+    const prev = new Map([
+      ['client_config.value.booster_categories.categories.march_description', 'Increases march speed by 5 times\\nIt does not stack'],
+      ['client.dragon.skill_level_label', 'Lv.%level%'],
+      ['client.clan_duels.rating.title', 'RATING'],
+    ]);
+    const next = new Map([
+      ['client_config.value.booster_categories.categories.march_description', 'Increases march speed by 5 times.\\nIt does not stack.'],
+      ['client_config.value.booster_categories.categories.shield.title', 'Shield of Peace'],
+      ['client.dragon.skill_level_label', 'Lv. %level%'],
+      ['client.clan_duels.rating.title', 'RANKING'],
+    ]);
+    const plan = planTexts(prev, next);
+    expect(plan.changed).toEqual(['client.clan_duels.rating.title']);
+    // One category's title is not the group's: "Shield of Peace" named a march-speed text.
+    expect(plan.groups.get('booster_categories')).toEqual({ added: ['client_config.value.booster_categories.categories.shield.title'], changed: [], removed: [] });
+  });
+
   it('a group is the first segment past the namespaces', () => {
     expect(textGroupKey('client.new_temple.delete.title')).toBe('new_temple');
     expect(textGroupKey('global_tournament.client.value.prime_arena_3v3_op.banner_special_title')).toBe('prime_arena_3v3_op');

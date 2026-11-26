@@ -7,6 +7,7 @@ exports.NOTES_WARNING_KEY = exports.MAX_PATCHES = void 0;
 exports.notesDir = notesDir;
 exports.readNotesIndex = readNotesIndex;
 exports.readPatchNotes = readPatchNotes;
+exports.previousNamesOnDisk = previousNamesOnDisk;
 exports.buildPatchNotes = buildPatchNotes;
 exports.notePatch = notePatch;
 exports.notePatchSafely = notePatchSafely;
@@ -109,10 +110,16 @@ function builtAtOf(file) {
         return null;
     }
 }
-/** The names version on disk read just before `current` (the first run's "from"). */
+/**
+ * The first run's "from": the names version on disk read before `current`,
+ * preferring the newest with OTHER static data — the patch before. A patch
+ * often lands in steps (static data, then a translations fix, or the other
+ * way round), and the version between two steps of one patch holds the same
+ * content: comparing with it showed nothing (prod, Nov 26 2026).
+ */
 function previousNamesOnDisk(dir, current) {
     const mine = builtAtOf(path_1.default.join(dir, current, 'names.json'));
-    let best = null;
+    const staticOf = (key) => key.split('-')[0];
     let entries = [];
     try {
         entries = fs_1.default.readdirSync(dir);
@@ -120,16 +127,12 @@ function previousNamesOnDisk(dir, current) {
     catch {
         return null;
     }
-    for (const key of entries) {
-        if (key === current || !VERSION_DIR_RE.test(key))
-            continue;
-        const at = builtAtOf(path_1.default.join(dir, key, 'names.json'));
-        if (!at || (mine && at >= mine))
-            continue;
-        if (!best || at > best.at)
-            best = { key, at };
-    }
-    return best?.key ?? null;
+    const older = entries
+        .filter((key) => key !== current && VERSION_DIR_RE.test(key))
+        .map((key) => ({ key, at: builtAtOf(path_1.default.join(dir, key, 'names.json')) }))
+        .filter((c) => !!c.at && !(mine && c.at >= mine))
+        .sort((a, b) => b.at.localeCompare(a.at));
+    return (older.find((c) => staticOf(c.key) !== staticOf(current)) ?? older[0])?.key ?? null;
 }
 /** The art catalogue served before `current` (the art store's state). */
 function previousArtOnDisk(dir, current) {
@@ -307,7 +310,9 @@ async function notePatch(deps = {}) {
     const artDir = deps.artDir ?? defaultArtDir();
     const now = (deps.now ?? (() => new Date()))();
     const cur = deps.current ?? currentVersions();
-    const idx = readNotesIndex(dir);
+    // An index from an older format starts over: the newest patch is noted again, the new way.
+    const stored = readNotesIndex(dir);
+    const idx = stored && (stored.format ?? 1) >= notes_diff_js_1.PATCH_NOTES_FORMAT ? stored : null;
     const fromNames = idx ? idx.names : cur.names ? previousNamesOnDisk(staticDir, cur.names) : null;
     const fromArt = idx ? idx.art : cur.art ? previousArtOnDisk(artDir, cur.art) : null;
     const namesMoved = !!cur.names && !!fromNames && cur.names !== fromNames;

@@ -53,6 +53,49 @@ function gameTextHtml(s) {
     .replace(/\n/g, '<br>');
 }
 
+/** One word of the game's text, escaped, a placeholder marked. */
+function wordHtml(w) {
+  return esc(w).replace(/%([A-Za-z0-9_.:]+)%/g, (_, name) => `<span class="wn-ph">${esc(humanize(name.toLowerCase()))}</span>`);
+}
+
+/**
+ * A reworded text as one line: words it lost struck, words it gained marked
+ * (an LCS over words, punctuation and case aside). Very long texts fall back
+ * to before / after.
+ */
+function wordDiffHtml(was, now) {
+  const words = (s) => String(s || '').replace(/\\n/g, ' ').replace(/<[^>]*>/g, '').split(/\s+/).filter(Boolean);
+  const key = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, '');
+  const a = words(was);
+  const b = words(now);
+  if (a.length * b.length > 60_000) {
+    return `<span class="wn-text-was">${gameTextHtml(was)}</span><span class="wn-text-now">${gameTextHtml(now)}</span>`;
+  }
+  const lcs = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i][j] = key(a[i]) === key(b[j]) ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && key(a[i]) === key(b[j])) {
+      out.push(wordHtml(b[j]));
+      i++;
+      j++;
+    } else if (j < b.length && (i >= a.length || lcs[i][j + 1] >= lcs[i + 1][j])) {
+      out.push(`<ins>${wordHtml(b[j])}</ins>`);
+      j++;
+    } else {
+      out.push(`<del>${wordHtml(a[i])}</del>`);
+      i++;
+    }
+  }
+  return `<span class="wn-text-diff">${out.join(' ')}</span>`;
+}
+
 /** A text in the reader's language, English when the game has none in it. */
 const inLang = (x) => (x ? x[getLanguage()] ?? x.en ?? '' : '');
 
@@ -384,30 +427,45 @@ function textsHtml(notes) {
       ? `<section class="ui-tile span-12 wn-section" id="wn-texts"><div class="ui-tile-head"><h2 class="ui-tile-title">${esc(t('Game texts'))}</h2></div>${emptyHtml(t("This patch's texts couldn't be compared: the game no longer serves the previous ones."))}</section>`
       : '';
   }
-  const folds = notes.texts.map((g) => {
-    const label = TEXT_GROUP_LABELS[g.key]?.() ?? (inLang(g.title) || humanize(g.key));
+  const labelOf = (g) => TEXT_GROUP_LABELS[g.key]?.() ?? (inLang(g.title) || humanize(g.key));
+  const changedHtml = (x) => `<li class="wn-text is-changed">${wordDiffHtml(inLang(x.was), inLang(x.text))}</li>`;
+  // A feature with new or removed texts is a fold of its own; one that was only
+  // reworded joins the "Reworded" fold at the end — polish, not news.
+  const features = notes.texts.filter((g) => g.added.length || g.removed.length);
+  const polished = notes.texts.filter((g) => !g.added.length && !g.removed.length && g.changed.length);
+  const folds = features.map((g) => {
     const counts = [
       g.added.length ? tn(g.added.length, '{n} new', '{n} new', { n: g.added.length }) : '',
       g.changed.length ? tn(g.changed.length, '{n} reworded', '{n} reworded', { n: g.changed.length }) : '',
       g.removed.length ? tn(g.removed.length, '{n} removed', '{n} removed', { n: g.removed.length }) : '',
     ].filter(Boolean).join(' · ');
     const added = g.added.map((x) => `<li class="wn-text">${gameTextHtml(inLang(x.text))}</li>`).join('');
-    const changed = g.changed.map((x) => `<li class="wn-text is-changed"><span class="wn-text-was">${gameTextHtml(inLang(x.was))}</span><span class="wn-text-now">${gameTextHtml(inLang(x.text))}</span></li>`).join('');
+    const changed = g.changed.map(changedHtml).join('');
     const removed = g.removed.map((x) => `<li class="wn-text is-removed">${gameTextHtml(inLang(x.text))}</li>`).join('');
     const body = `${added ? `<ul class="wn-texts">${added}</ul>` : ''}
       ${changed ? `<div class="captain-detail-section">${esc(t('Reworded'))}</div><ul class="wn-texts">${changed}</ul>` : ''}
       ${removed ? `<div class="captain-detail-section">${esc(t('Removed'))}</div><ul class="wn-texts">${removed}</ul>` : ''}`;
     return foldHtml({
       key: `wn-texts-${g.key || 'other'}`,
-      title: `${esc(label)} <span class="wn-fold-count">${esc(counts)}</span>`,
+      title: `${esc(labelOf(g))} <span class="wn-fold-count">${esc(counts)}</span>`,
       body,
       inset: true,
     });
-  }).join('');
+  });
+  if (polished.length) {
+    const n = polished.reduce((sum, g) => sum + g.changed.length, 0);
+    const body = polished.map((g) => `<div class="captain-detail-section">${esc(labelOf(g))}</div><ul class="wn-texts">${g.changed.map(changedHtml).join('')}</ul>`).join('');
+    folds.push(foldHtml({
+      key: 'wn-texts-reworded',
+      title: `${esc(t('Reworded'))} <span class="wn-fold-count">${esc(tn(n, '{n} reworded', '{n} reworded', { n }))}</span>`,
+      body,
+      inset: true,
+    }));
+  }
   const cut = notes.textsTruncated ? `<p class="ui-sub">${esc(tn(notes.textsTruncated, '{n} more text not shown', '{n} more texts not shown', { n: notes.textsTruncated }))}</p>` : '';
   return `<section class="ui-tile span-12 wn-section" id="wn-texts">
       <div class="ui-tile-head"><h2 class="ui-tile-title">${esc(t('Game texts'))}</h2><span class="ui-sub">${esc(t('Grouped by feature, the most new first'))}</span></div>
-      <div class="wn-folds">${folds}</div>
+      <div class="wn-folds">${folds.join('')}</div>
       ${cut}
     </section>`;
 }

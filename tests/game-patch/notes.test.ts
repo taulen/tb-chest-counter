@@ -97,6 +97,26 @@ describe('notePatch', () => {
     expect(await notePatch(deps({ current: { names: B, art: ART2 } }))).toEqual({ status: 'unchanged' });
   });
 
+  it('the first run skips a step of the same patch: it compares with the version of other static data', async () => {
+    const SAME = 'bbbbbbbbbbbbbbbb-cat1'; // the patch's static data with the old translations, read in between
+    names(A, A, '2026-11-20T21:09:09.599Z', { gifts: {} });
+    names(SAME, SAME, '2026-11-25T22:00:00.000Z', { gifts: { 17146: { chest: 'Colosseum Blueprint', source: '' } } });
+    names(B, B, '2026-11-25T23:31:14.655Z', { gifts: { 17146: { chest: 'Colosseum Blueprint', source: '' } } });
+    const res = await notePatch(deps({ current: { names: B, art: null } }));
+    expect(readPatchNotes(res.id!, notesDir)!.names).toEqual({ from: A, to: B });
+    expect(readPatchNotes(res.id!, notesDir)!.sections[0].entries[0].name).toBe('Colosseum Blueprint');
+  });
+
+  it('an index of an older format is noted afresh', async () => {
+    names(A, A, '2026-11-20T21:09:09.599Z', { gifts: {} });
+    names(B, B, '2026-11-25T23:31:14.655Z', { gifts: { 1: { chest: 'New', source: '' } } });
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.writeFileSync(path.join(notesDir, 'index.json'), JSON.stringify({ format: 1, names: B, art: null, patches: [{ id: 'old', date: 'x', counts: {}, highlights: [] }] }));
+    const res = await notePatch(deps({ current: { names: B, art: null } }));
+    expect(res.status).toBe('noted');
+    expect(patchList(notesDir).map((p) => p.id)).toEqual([res.id]);
+  });
+
   it('a fresh volume with nothing before it starts from here', async () => {
     names(B, B, '2026-11-25T23:31:14.655Z');
     expect(await notePatch(deps({ current: { names: B, art: null } }))).toEqual({ status: 'baseline' });

@@ -154,23 +154,28 @@ function builtAtOf(file: string): string | null {
   }
 }
 
-/** The names version on disk read just before `current` (the first run's "from"). */
-function previousNamesOnDisk(dir: string, current: string): string | null {
+/**
+ * The first run's "from": the names version on disk read before `current`,
+ * preferring the newest with OTHER static data — the patch before. A patch
+ * often lands in steps (static data, then a translations fix, or the other
+ * way round), and the version between two steps of one patch holds the same
+ * content: comparing with it showed nothing (prod, Nov 26 2026).
+ */
+export function previousNamesOnDisk(dir: string, current: string): string | null {
   const mine = builtAtOf(path.join(dir, current, 'names.json'));
-  let best: { key: string; at: string } | null = null;
+  const staticOf = (key: string): string => key.split('-')[0];
   let entries: string[] = [];
   try {
     entries = fs.readdirSync(dir);
   } catch {
     return null;
   }
-  for (const key of entries) {
-    if (key === current || !VERSION_DIR_RE.test(key)) continue;
-    const at = builtAtOf(path.join(dir, key, 'names.json'));
-    if (!at || (mine && at >= mine)) continue;
-    if (!best || at > best.at) best = { key, at };
-  }
-  return best?.key ?? null;
+  const older = entries
+    .filter((key) => key !== current && VERSION_DIR_RE.test(key))
+    .map((key) => ({ key, at: builtAtOf(path.join(dir, key, 'names.json')) }))
+    .filter((c): c is { key: string; at: string } => !!c.at && !(mine && c.at >= mine))
+    .sort((a, b) => b.at.localeCompare(a.at));
+  return (older.find((c) => staticOf(c.key) !== staticOf(current)) ?? older[0])?.key ?? null;
 }
 
 /** The art catalogue served before `current` (the art store's state). */
@@ -363,7 +368,9 @@ export async function notePatch(deps: NotePatchDeps = {}): Promise<NotePatchResu
   const artDir = deps.artDir ?? defaultArtDir();
   const now = (deps.now ?? (() => new Date()))();
   const cur = deps.current ?? currentVersions();
-  const idx = readNotesIndex(dir);
+  // An index from an older format starts over: the newest patch is noted again, the new way.
+  const stored = readNotesIndex(dir);
+  const idx = stored && (stored.format ?? 1) >= PATCH_NOTES_FORMAT ? stored : null;
   const fromNames = idx ? idx.names : cur.names ? previousNamesOnDisk(staticDir, cur.names) : null;
   const fromArt = idx ? idx.art : cur.art ? previousArtOnDisk(artDir, cur.art) : null;
   const namesMoved = !!cur.names && !!fromNames && cur.names !== fromNames;
