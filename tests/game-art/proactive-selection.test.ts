@@ -129,8 +129,8 @@ function textureBundle(name: string, w: number, h: number): Buffer {
 }
 
 function catalogue(entries: Array<{ bundle: string; addresses: string[] }>): Buffer {
-  const parts: Buffer[] = [Buffer.from([0x49, 0x17, 0x50, 0x2e, 0x30, 0x38, 0x00, 0x00])];
   const u32 = (n: number): Buffer => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
+  const parts: Buffer[] = [Buffer.from([0x49, 0x17, 0x50, 0x2e]), u32(entries.length)];
   const str = (s: string): Buffer => Buffer.concat([u32(Buffer.byteLength(s)), Buffer.from(s)]);
   for (const e of entries) {
     parts.push(str(e.addresses[0]), u32(0), Buffer.from(e.bundle, 'hex'), Buffer.from(e.bundle, 'hex'), u32(e.addresses.length));

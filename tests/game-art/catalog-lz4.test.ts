@@ -5,13 +5,16 @@ import { parseCatalog, addressIndex, nameIndex, catalogVersionFromConfig } from 
 import { lz4BlockDecompress } from '../../src/game-art/lz4.js';
 import { lz4Encode, lz4Literal } from './synthetic-bundle.js';
 
-function catalogBytes(entries: Array<{ name: string; group: number; content: string; bundle: string; addresses: string[] }>): Buffer {
-  const parts: Buffer[] = [Buffer.from([0x49, 0x17, 0x50, 0x2e, 0x30, 0x38, 0x00, 0x00])];
+function catalogBytes(
+  entries: Array<{ name: string; group: number; content: string; bundle: string; addresses: string[] }>,
+  declared = entries.length,
+): Buffer {
   const u32 = (v: number): Buffer => {
     const b = Buffer.alloc(4);
     b.writeUInt32LE(v);
     return b;
   };
+  const parts: Buffer[] = [Buffer.from([0x49, 0x17, 0x50, 0x2e]), u32(declared)];
   const str = (s: string): Buffer => Buffer.concat([u32(Buffer.byteLength(s)), Buffer.from(s)]);
   for (const e of entries) {
     parts.push(str(e.name), u32(e.group), Buffer.from(e.content, 'hex'), Buffer.from(e.bundle, 'hex'), u32(e.addresses.length));
@@ -62,6 +65,15 @@ describe('parseCatalog', () => {
     bad[0] = 0;
     expect(() => parseCatalog(bad)).toThrow(/header/);
     expect(() => parseCatalog(buf.subarray(0, buf.length - 3))).toThrow(/truncated/);
+  });
+
+  it('reads bytes 4–7 as the entry count, not a fixed header (the Nov 2026 patch: 14384 → 14523 entries)', () => {
+    // 14384 entries wrote "08\0\0" there, which was once taken for magic; any
+    // other count must parse too, and a count that disagrees is refused.
+    const one = [{ name: 'a', group: 0, content: H1, bundle: H2, addresses: ['a'] }];
+    expect(parseCatalog(catalogBytes(one))).toHaveLength(1);
+    expect(catalogBytes(one).subarray(4, 8).toString('hex')).toBe('01000000');
+    expect(() => parseCatalog(catalogBytes(one, 14384))).toThrow(/declares 14384 entries but holds 1/);
   });
 
   it('takes the webgl catalogue version from the versions config', () => {

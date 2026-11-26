@@ -7,7 +7,7 @@
  *   assets-unity.totalbattle.dev/webgl/<bundle hash>   → a UnityFS bundle
  *
  * Catalogue format (little-endian), observed Nov 2026:
- *   8-byte header "I\x17P.08\0\0", then one entry per bundle to the end:
+ *   4-byte magic "I\x17P.", u32 entry count, then that many entries to the end:
  *     u32 n, n bytes   bundle name
  *     u32              group (0–5; the client's load priority, not the asset type)
  *     16 bytes         content hash (not a URL)
@@ -15,12 +15,17 @@
  *     u32 k, k × (u32 n, n bytes)  addresses: the lower-cased names of the assets inside
  * Almost every bundle holds one asset named like the bundle; atlases such as
  * "flags" or "money_required_tutorial" list each sprite's address.
+ *
+ * The count is NOT part of the magic: 14384 entries read as "08\0\0", which was
+ * taken for a fixed header until the Nov 25 2026 patch (14523 entries) made
+ * every catalogue "not a catalogue" — research trees and art updates stopped.
  */
 
 export const VERSIONS_URL = 'https://versions.totalbattle.com/config?branch=current&simple=true';
 export const UNITY_BASE = 'https://assets-unity.totalbattle.dev/webgl/';
 
-const HEADER = Buffer.from([0x49, 0x17, 0x50, 0x2e, 0x30, 0x38, 0x00, 0x00]);
+const MAGIC = Buffer.from([0x49, 0x17, 0x50, 0x2e]);
+const HEADER_LENGTH = 8; // magic + u32 entry count
 
 export interface CatalogEntry {
   name: string;
@@ -33,11 +38,12 @@ export interface CatalogEntry {
 }
 
 export function parseCatalog(buf: Buffer): CatalogEntry[] {
-  if (buf.length < HEADER.length || !buf.subarray(0, HEADER.length).equals(HEADER)) {
+  if (buf.length < HEADER_LENGTH || !buf.subarray(0, MAGIC.length).equals(MAGIC)) {
     throw new Error('not a catalogue: unexpected header');
   }
+  const declared = buf.readUInt32LE(MAGIC.length);
   const entries: CatalogEntry[] = [];
-  let o = HEADER.length;
+  let o = HEADER_LENGTH;
   const need = (n: number): void => {
     if (o + n > buf.length) throw new Error(`catalogue truncated at ${o}`);
   };
@@ -70,6 +76,9 @@ export function parseCatalog(buf: Buffer): CatalogEntry[] {
     const addresses: string[] = [];
     for (let i = 0; i < count; i++) addresses.push(str().toLowerCase());
     entries.push({ name, group, contentHash, bundle, addresses });
+  }
+  if (entries.length !== declared) {
+    throw new Error(`catalogue declares ${declared} entries but holds ${entries.length}`);
   }
   return entries;
 }

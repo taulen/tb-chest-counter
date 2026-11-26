@@ -38,6 +38,7 @@ import { TABLE_CLIENT_CONFIG, academyTabs, clientConfig, readBranchDefs, type Br
 import { UNITY_BASE, nameIndex, parseCatalog } from '../game-art/catalog.js';
 import { extractTexts } from '../game-art/extract.js';
 import { childLogger } from '../utils/logger.js';
+import { resolveEntries } from '../utils/log-buffer.js';
 
 export { TABLE_CLIENT_CONFIG, type BranchDef };
 
@@ -394,10 +395,21 @@ let memo: TechTrees | null = null;
 let building: Promise<TechTrees> | null = null;
 
 /**
+ * A game version whose trees failed to build. Not rebuilt (~67 MB of
+ * downloads) on every page load and scan: retried after FAILED_BUILD_RETRY_MS,
+ * the last trees built being served meanwhile.
+ */
+let failedBuild: { version: string; at: number; error: string } | null = null;
+const FAILED_BUILD_RETRY_MS = 30 * 60_000;
+const BUILD_FAILED_KEY = 'tech-trees:build-failed';
+
+/**
  * Trees for the live game version: from memory, else the on-disk cache, else
  * rebuilt from the CDN (~67 MB of static data plus ~25 small layout bundles,
  * once per game patch). Falls back to the newest cached trees when the
- * versions endpoint can't be reached.
+ * versions endpoint can't be reached, or when a patch's trees can't be built
+ * (a format change in the game's files) — one patch old beats a blank
+ * Research tab. Throws only when there are no trees at all.
  */
 export async function loadTechTrees(): Promise<TechTrees> {
   let v: TreeVersion;
@@ -420,17 +432,38 @@ export async function loadTechTrees(): Promise<TechTrees> {
       return cached;
     }
   }
+  if (failedBuild?.version === v.version && Date.now() - failedBuild.at < FAILED_BUILD_RETRY_MS) {
+    const cached = memo ?? newestCachedTrees();
+    if (cached) return cached;
+    throw new Error(failedBuild.error);
+  }
   if (!building) {
     building = (async () => {
       log.info(`Building tech trees for ${v.version}`);
       const started = Date.now();
-      const trees = await buildFromCdn(v);
+      let trees: TechTrees;
+      try {
+        trees = await buildFromCdn(v);
+      } catch (err) {
+        failedBuild = { version: v.version, at: Date.now(), error: String(err) };
+        const cached = memo ?? newestCachedTrees();
+        log.warn(
+          { resolveKey: BUILD_FAILED_KEY },
+          `Tech trees for game version ${v.version} could not be built (${String(err)}); ` +
+          (cached ? `serving the previous version's (${cached.version}) until a build succeeds.` : 'none to serve.') +
+          ` Retried every ${FAILED_BUILD_RETRY_MS / 60_000} min.`,
+        );
+        if (cached) return cached;
+        throw err;
+      }
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify(trees));
       log.info(
         `Tech trees ${v.version} built in ${Math.round((Date.now() - started) / 1000)}s: ${trees.trees.length} trees, ` +
         `${trees.trees.reduce((n, t) => n + t.nodes.length, 0)} nodes`,
       );
+      failedBuild = null;
+      resolveEntries(BUILD_FAILED_KEY);
       memo = trees;
       return trees;
     })().finally(() => {
@@ -463,4 +496,5 @@ export function cachedTechTrees(): TechTrees | null {
 /** Test seam. */
 export function resetTechTreesMemo(): void {
   memo = null;
+  failedBuild = null;
 }
