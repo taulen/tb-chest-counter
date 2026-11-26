@@ -38,7 +38,7 @@ import { TABLE_CLIENT_CONFIG, academyTabs, clientConfig, readBranchDefs, type Br
 import { UNITY_BASE, nameIndex, parseCatalog } from '../game-art/catalog.js';
 import { extractTexts } from '../game-art/extract.js';
 import { childLogger } from '../utils/logger.js';
-import { resolveEntries } from '../utils/log-buffer.js';
+import { reportReaderFailed, reportReaderOk } from '../game-patch/status.js';
 
 export { TABLE_CLIENT_CONFIG, type BranchDef };
 
@@ -401,7 +401,11 @@ let building: Promise<TechTrees> | null = null;
  */
 let failedBuild: { version: string; at: number; error: string } | null = null;
 const FAILED_BUILD_RETRY_MS = 30 * 60_000;
-const BUILD_FAILED_KEY = 'tech-trees:build-failed';
+
+/** Lift the retry wait (System → Game Patch → Check now). */
+export function clearTechTreesRetry(): void {
+  failedBuild = null;
+}
 
 /**
  * Trees for the live game version: from memory, else the on-disk cache, else
@@ -429,6 +433,7 @@ export async function loadTechTrees(): Promise<TechTrees> {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as TechTrees;
     if (cached.version === v.version) {
       memo = cached;
+      reportReaderOk('trees', v.version);
       return cached;
     }
   }
@@ -447,12 +452,7 @@ export async function loadTechTrees(): Promise<TechTrees> {
       } catch (err) {
         failedBuild = { version: v.version, at: Date.now(), error: String(err) };
         const cached = memo ?? newestCachedTrees();
-        log.warn(
-          { resolveKey: BUILD_FAILED_KEY },
-          `Tech trees for game version ${v.version} could not be built (${String(err)}); ` +
-          (cached ? `serving the previous version's (${cached.version}) until a build succeeds.` : 'none to serve.') +
-          ` Retried every ${FAILED_BUILD_RETRY_MS / 60_000} min.`,
-        );
+        reportReaderFailed('trees', v.version, cached?.version ?? null, err);
         if (cached) return cached;
         throw err;
       }
@@ -463,7 +463,7 @@ export async function loadTechTrees(): Promise<TechTrees> {
         `${trees.trees.reduce((n, t) => n + t.nodes.length, 0)} nodes`,
       );
       failedBuild = null;
-      resolveEntries(BUILD_FAILED_KEY);
+      reportReaderOk('trees', v.version);
       memo = trees;
       return trees;
     })().finally(() => {

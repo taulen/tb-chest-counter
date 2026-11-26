@@ -54,6 +54,8 @@ const art_static_js_1 = require("./art-static.js");
 const mappings_js_1 = require("./mappings.js");
 const unit_frames_js_1 = require("./unit-frames.js");
 const webgl_client_js_1 = require("./webgl-client.js");
+const status_js_1 = require("../game-patch/status.js");
+const client_version_js_1 = require("../game-patch/client-version.js");
 const log = (0, logger_js_1.childLogger)('game-art');
 /** Daily check failures repeat with the same cause; one line per 6 h is plenty. */
 const warner = (0, log_throttle_js_1.createCoalescedWarner)((m) => log.warn({ noAlert: true }, m), 6 * 60 * 60 * 1000);
@@ -239,6 +241,8 @@ const CATALOG_TIMEOUT_MS = 120_000;
 /** A run with more failed bundles than this share is thrown away. */
 const MAX_FAILED_SHARE = 0.2;
 let inFlight = null;
+/** The catalogue version the run in flight is reading, once it knows it. */
+let attempting = null;
 /**
  * Bring the art up to the live game version. Never throws; concurrent calls
  * share one run.
@@ -246,11 +250,22 @@ let inFlight = null;
 function ensureGameArt(opts = {}) {
     if (inFlight)
         return inFlight;
+    attempting = null;
     inFlight = runEnsure(opts)
+        .then((result) => {
+        (0, status_js_1.reportReaderOk)('art', result.version ?? attempting ?? '');
+        return result;
+    })
         .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
-        warner.warn(`fail:${msg}`, `Game art update failed, keeping the served version: ${msg}`);
-        return { status: 'failed', version: readState(opts.dir ?? gameArtDir())?.current ?? null, error: msg };
+        const served = readState(opts.dir ?? gameArtDir())?.current ?? null;
+        // A patch we could not read alerts (game-patch/status.ts); not knowing
+        // the live version means the versions endpoint failed — not a patch.
+        if (attempting)
+            (0, status_js_1.reportReaderFailed)('art', attempting, served, err);
+        else
+            warner.warn(`fail:${msg}`, `Game art update failed, keeping the served version: ${msg}`);
+        return { status: 'failed', version: served, error: msg };
     })
         .finally(() => {
         inFlight = null;
@@ -291,6 +306,7 @@ async function runEnsure(opts) {
     fs_1.default.mkdirSync(dir, { recursive: true });
     const config = JSON.parse((await fetchBuffer(fetchImpl, catalog_js_1.VERSIONS_URL, 30_000)).toString('utf8'));
     const version = (0, catalog_js_1.catalogVersionFromConfig)(config);
+    attempting = version;
     let client = null;
     try {
         client = (0, webgl_client_js_1.webglClientVersionFromConfig)(config);
@@ -322,7 +338,7 @@ async function runEnsure(opts) {
         let frames = null;
         if (!existing.client && client) {
             try {
-                frames = await collectUnitFrames(fetchImpl, client, path_1.default.join(dir, version), null, null, existing.images);
+                frames = await collectUnitFrames(fetchImpl, client, dir, path_1.default.join(dir, version), null, null, existing.images);
             }
             catch (err) {
                 warner.warn('ui', `Game art ${version}: unit frames unavailable, troop icons stay unframed (${errText(err)})`);
@@ -486,7 +502,7 @@ async function runEnsure(opts) {
     let frames = null;
     if (client) {
         try {
-            frames = await collectUnitFrames(fetchImpl, client, tmp, prev, prevDir, {});
+            frames = await collectUnitFrames(fetchImpl, client, dir, tmp, prev, prevDir, {});
         }
         catch (err) {
             warner.warn('ui', `Game art ${version}: unit frames unavailable from client ${client} (${errText(err)})`);
@@ -565,8 +581,9 @@ const CLIENT_TIMEOUT_MS = 300_000;
  * from the previous version when it read the same build, else extracted from
  * the build's data file. Names in `skip` are never written (adding frames to a
  * live version only ever adds files). Throws when the build yields none.
+ * A download also records the build's client version in `artDir`.
  */
-async function collectUnitFrames(fetchImpl, client, outDir, prev, prevDir, skip) {
+async function collectUnitFrames(fetchImpl, client, artDir, outDir, prev, prevDir, skip) {
     const wanted = (0, unit_frames_js_1.clientUiTextures)();
     if (prev && prevDir && prev.client === client && wanted.every((w) => prev.images[(0, selection_js_1.safeArtName)(w)])) {
         const copied = copyUnitFrames(prev, prevDir, outDir);
@@ -574,7 +591,16 @@ async function collectUnitFrames(fetchImpl, client, outDir, prev, prevDir, skip)
             return copied;
     }
     const names = new Set(wanted);
-    const { images: found, errors } = (0, webgl_client_js_1.extractClientTextures)(await fetchBuffer(fetchImpl, (0, webgl_client_js_1.webglDataUrl)(client), CLIENT_TIMEOUT_MS, 2), (n) => names.has(n));
+    const bundle = (0, webgl_client_js_1.readClientBundle)(await fetchBuffer(fetchImpl, (0, webgl_client_js_1.webglDataUrl)(client), CLIENT_TIMEOUT_MS, 2));
+    // The same file carries the build's version, which the scan's login sends:
+    // read it here rather than download the ~43 MB again for it.
+    try {
+        (0, client_version_js_1.rememberClientVersion)(client, (0, webgl_client_js_1.clientVersionFromBundle)(bundle), artDir);
+    }
+    catch (err) {
+        (0, status_js_1.reportReaderFailed)('client', client, (0, client_version_js_1.clientVersionInfo)(artDir).version, err);
+    }
+    const { images: found, errors } = (0, webgl_client_js_1.texturesFromClientBundle)(bundle, (n) => names.has(n));
     if (!found.length)
         throw new Error(errors[0] ?? 'no unit frame textures in the client build');
     const images = {};

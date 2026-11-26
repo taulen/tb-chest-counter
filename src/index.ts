@@ -15,6 +15,7 @@ import { needsSetup } from './setup-wizard.js';
 import { DEFAULT_CONFIG } from './config/defaults.js';
 import { BUILD_INFO } from './utils/build-info.js';
 import { startGameArtSchedule } from './game-art/store.js';
+import { startGamePatchWatch } from './game-patch/watch.js';
 
 /**
  * Two-line startup banner sized to fit whichever of the title /
@@ -112,6 +113,10 @@ async function main(): Promise<void> {
   // Game art from the game's CDN: checked 30 s after startup, then daily.
   // Non-blocking and never throws; a failed check keeps the served version.
   startGameArtSchedule();
+  // A game patch is noticed within 10 min and every reader of the game's
+  // files (names, trees, art, client version) runs at once; one it can't
+  // read alerts on System. See docs/game-patches.md.
+  startGamePatchWatch();
 
   if (dashboardOnly) {
     // Dashboard-only mode: no scanning. startWebServer

@@ -79,6 +79,11 @@ services:
       # takes over the account's session). 0 = every clan one after another, as
       # before. See scheduler/scan-lanes.ts.
       - SCAN_PARALLEL=${SCAN_PARALLEL:-1}
+      # The client version the scan's login sends follows the live game build
+      # (read once per client patch; System → Game Patch shows it). Set this
+      # only to force one — e.g. if a build's version is ever misread. Empty =
+      # follow the game. See docs/game-patches.md.
+      - GAME_CLIENT_VERSION=${GAME_CLIENT_VERSION:-}
     ports:
       - "${HOST_WEB_PORT:-3010}:3000"
     # iGPU passthrough for the login bridge's GPU rendering. Requires /dev/dri

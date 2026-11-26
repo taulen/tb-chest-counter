@@ -12,6 +12,7 @@ const setup_wizard_js_1 = require("./setup-wizard.js");
 const defaults_js_1 = require("./config/defaults.js");
 const build_info_js_1 = require("./utils/build-info.js");
 const store_js_1 = require("./game-art/store.js");
+const watch_js_1 = require("./game-patch/watch.js");
 /**
  * Two-line startup banner sized to fit whichever of the title /
  * build-info subtitle is wider. The subtitle pulls from BUILD_INFO so
@@ -98,6 +99,10 @@ async function main() {
     // Game art from the game's CDN: checked 30 s after startup, then daily.
     // Non-blocking and never throws; a failed check keeps the served version.
     (0, store_js_1.startGameArtSchedule)();
+    // A game patch is noticed within 10 min and every reader of the game's
+    // files (names, trees, art, client version) runs at once; one it can't
+    // read alerts on System. See docs/game-patches.md.
+    (0, watch_js_1.startGamePatchWatch)();
     if (dashboardOnly) {
         // Dashboard-only mode: no scanning. startWebServer
         // already logs "Web dashboard running at http://localhost:..." so

@@ -79,6 +79,9 @@ const db_backup_js_1 = require("../../utils/db-backup.js");
 const backup_upload_js_1 = require("../backup-upload.js");
 const clan_restore_js_1 = require("../../data/clan-restore.js");
 const log_buffer_js_1 = require("../../utils/log-buffer.js");
+const status_js_1 = require("../../game-patch/status.js");
+const watch_js_1 = require("../../game-patch/watch.js");
+const client_version_js_1 = require("../../game-patch/client-version.js");
 const leaderboard_handler_js_1 = require("./leaderboard-handler.js");
 function createPreImportBackup() {
     const dbPath = path_1.default.resolve(process.env.DB_PATH || './data/tb-chests.db');
@@ -1932,6 +1935,26 @@ function createApiRouter(scanLoop) {
         catch (err) {
             res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
         }
+    });
+    // GET /api/admin/game-patch — System → Game Patch: the live game patch and
+    // what each reader of the game's files made of it (game-patch/status.ts).
+    router.get('/admin/game-patch', auth_js_1.requireSuperAdmin, (_req, res) => {
+        const s = (0, status_js_1.readPatchStatus)();
+        res.json({
+            running: (0, watch_js_1.gamePatchCheckRunning)(),
+            fingerprint: s.fingerprint ?? null,
+            patchSeenAt: s.patchSeenAt ?? null,
+            lastCheckAt: s.lastCheckAt ?? null,
+            lastCheckError: s.lastCheckError ?? null,
+            readers: status_js_1.PATCH_READERS.map((reader) => ({ reader, ...(s.readers[reader] ?? {}) })),
+            clientVersion: (0, client_version_js_1.clientVersionInfo)(),
+        });
+    });
+    // POST /api/admin/game-patch/check — read the live patch now, retry waits
+    // lifted. Runs in the background (art can take minutes); poll the GET.
+    router.post('/admin/game-patch/check', auth_js_1.requireSuperAdmin, (_req, res) => {
+        void (0, watch_js_1.checkGamePatch)({ force: true });
+        res.json({ started: true });
     });
     return router;
 }

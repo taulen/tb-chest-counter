@@ -7,7 +7,7 @@ import { $, $$, esc, notify, confirmDialog, promptDialog, formatDate } from '../
 import { getCurrentUser, getLastSeenSystemWarningAt } from '../lib/state.js';
 import { warningHeadline, hasMoreThanHeadline, splitWarnings } from '../lib/warning-digest.js';
 import { t, tn, tGame, getLanguage } from '../lib/i18n.js';
-import { errorStateHtml, wireRetry } from '../lib/ui-kit.js';
+import { errorStateHtml, notesHtml, wireRetry } from '../lib/ui-kit.js';
 
 function joinAnd(items) {
   try {
@@ -274,6 +274,130 @@ export async function deleteScheduleCorrection(id, rerender) {
   window.scrollTo(0, scrollY);
 }
 
+// ─── Game Patch ───
+// What each reader of the game's files made of the live game patch: names and
+// texts, research trees, art, the client version the scan's login sends
+// (src/game-patch/status.ts; docs/game-patches.md). One that can't be read
+// keeps the previous patch's and lights the System dot until it reads.
+
+const PATCH_READER_LABELS = {
+  names: t('Game names and texts'),
+  trees: t('Research trees'),
+  art: t('Game art'),
+  client: t('Client version'),
+};
+
+const CLIENT_VERSION_SOURCES = {
+  game: t('read from the game build'),
+  fallback: t('built-in fallback'),
+  env: t('set by GAME_CLIENT_VERSION'),
+};
+
+/** A game version id for a row: every long hash cut to 8 characters. */
+function shortPatchVersion(v) {
+  return String(v ?? '').replace(/[0-9a-f]{9,}/g, (h) => h.slice(0, 8)) || '?';
+}
+
+function gamePatchRowHtml(r, clientVersion) {
+  const label = PATCH_READER_LABELS[r.reader] || r.reader;
+  const version = shortPatchVersion(r.live);
+  let band = '';
+  let state = esc(t('Not checked yet'));
+  let sub = '';
+  if (r.checkedAt && r.ok) {
+    band = 'band-ok';
+    state = `<span aria-hidden="true">✓</span> ${esc(t('Read'))}`;
+    sub = t('Version {version} · checked {date}', { version, date: formatDate(r.checkedAt) });
+  } else if (r.checkedAt && r.served) {
+    band = 'band-pace';
+    state = `<span aria-hidden="true">!</span> ${esc(t('Previous patch'))}`;
+    sub = t("Can't read version {version} since {date} — still serving {served}", {
+      version, date: formatDate(r.failingSince || r.checkedAt), served: shortPatchVersion(r.served),
+    });
+  } else if (r.checkedAt) {
+    band = 'band-behind';
+    state = `<span aria-hidden="true">✗</span> ${esc(t('Not available'))}`;
+    sub = t("Can't read version {version} since {date} — nothing to serve", {
+      version, date: formatDate(r.failingSince || r.checkedAt),
+    });
+  }
+  const lines = sub ? [esc(sub)] : [];
+  if (r.reader === 'client' && clientVersion?.version) {
+    lines.push(esc(t('Sent at login: {version} ({source})', {
+      version: clientVersion.version,
+      source: CLIENT_VERSION_SOURCES[clientVersion.source] || clientVersion.source,
+    })));
+  }
+  if (r.checkedAt && !r.ok && r.error) lines.push(`<span class="game-patch-error">${esc(r.error)}</span>`);
+  return `<li class="ui-row game-patch-row">
+      <div class="ui-row-main">
+        <span class="ui-row-name">${esc(label)}</span>
+        ${lines.map((l) => `<span class="ui-row-sub">${l}</span>`).join('')}
+      </div>
+      <div class="ui-row-n"><span class="ui-band ${band}">${state}</span></div>
+    </li>`;
+}
+
+function gamePatchBodyHtml(data) {
+  const notes = [];
+  if (data.patchSeenAt) {
+    notes.push(esc(t('Live patch first seen {seen} · checked {checked}', {
+      seen: formatDate(data.patchSeenAt), checked: formatDate(data.lastCheckAt),
+    })));
+  }
+  if (data.lastCheckError) notes.push(esc(t("The game's versions endpoint failed: {error}", { error: data.lastCheckError })));
+  return `
+    <p class="muted-copy mb-12">${esc(t("Every game update is read as soon as it appears. When part of one can't be read, the previous patch's stays in use and the System dot lights until it reads."))}</p>
+    ${notesHtml(notes)}
+    <ul class="ui-rows">${data.readers.map((r) => gamePatchRowHtml(r, data.clientVersion)).join('')}</ul>
+    <div class="inline-form-row mt-8">
+      <button type="button" class="btn btn-tight" data-game-patch-check${data.running ? ' disabled' : ''}>${esc(data.running ? t('Checking…') : t('Check now'))}</button>
+    </div>`;
+}
+
+function gamePatchCardHtml(data) {
+  const ok = data && Array.isArray(data.readers);
+  const failing = ok ? data.readers.filter((r) => r.checkedAt && !r.ok).length : 0;
+  const badge = !ok ? ''
+    : failing ? ` <span class="chest-type epic">${esc(tn(failing, "{n} can't be read", "{n} can't be read", { n: failing }))}</span>`
+      : ` <span class="muted-copy">· ${esc(t('all read'))}</span>`;
+  return `
+    <details class="card card-collapsible" data-section-key="system-game-patch">
+      <summary class="card-header"><h2>${esc(t('Game Patch'))}${badge}</h2></summary>
+      <div class="card-body card-body-padded" id="gamePatchBody">
+        ${ok ? gamePatchBodyHtml(data) : `<p class="muted-copy">${esc(t('The game patch status is unavailable right now.'))}</p>`}
+      </div>
+    </details>`;
+}
+
+/** Check now: start a check, then poll until it finishes and repaint the page. */
+function wireGamePatchCheck(root) {
+  const body = root.querySelector('#gamePatchBody');
+  body?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-game-patch-check]');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = t('Checking…');
+    const res = await apiPost('/admin/game-patch/check', {}).catch((err) => ({ error: err?.message || String(err) }));
+    if (res?.error) {
+      btn.disabled = false;
+      btn.textContent = t('Check now');
+      notify(t("Couldn't start the check: {error}", { error: res.error }), t('Error'));
+      return;
+    }
+    // Art can take minutes after a patch; give up polling after ~10.
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      if (!body.isConnected) return;
+      const data = await api('/admin/game-patch').catch(() => null);
+      if (data && !data.running) {
+        if (body.isConnected) renderSystem(root);
+        return;
+      }
+    }
+  });
+}
+
 export async function renderSystem(el) {
   if (getCurrentUser()?.role !== 'superadmin') {
     el.innerHTML = `<div class="empty-state"><p>${t('Super admin access required.')}</p></div>`;
@@ -293,8 +417,9 @@ export async function renderSystem(el) {
   let logBufferResp;
   let scanHealth;
   let eventSchedule;
+  let gamePatch;
   try {
-    [settings, backupsResp, deletedClansResp, logBufferResp, scanHealth, eventSchedule] = await Promise.all([
+    [settings, backupsResp, deletedClansResp, logBufferResp, scanHealth, eventSchedule, gamePatch] = await Promise.all([
       api('/admin/settings'),
       api('/admin/backups').catch(() => ({ backups: [] })),
       // Lives on /api/clans, not /api/admin — the clan router owns clan state.
@@ -304,6 +429,7 @@ export async function renderSystem(el) {
       api('/admin/log-buffer').catch(() => ({ entries: [] })),
       api('/admin/scan-health').catch(() => ({ scans: [] })),
       api('/admin/event-schedule').catch(() => null),
+      api('/admin/game-patch').catch(() => null),
     ]);
   } catch (err) {
     // A navigation aborted this load — don't paint an error over the
@@ -345,6 +471,8 @@ export async function renderSystem(el) {
     <p class="ui-copy system-intro">${t('Instance-wide settings that affect every clan: scan cadence, event dates and container lifecycle. Each card is collapsed by default — click the header to expand.')}</p>
 
     ${scanHealthCardHtml(scanHealth?.scans)}
+
+    ${gamePatchCardHtml(gamePatch)}
 
     <details class="card card-collapsible" data-section-key="system-scan-interval">
       <summary class="card-header"><h2>${t('Scan Interval')}</h2></summary>
@@ -434,6 +562,7 @@ export async function renderSystem(el) {
   `;
 
   wireScanHealthFilter(el);
+  wireGamePatchCheck(el);
   // Repaint any in-flight import status into the freshly-rendered DOM.
   renderTransferStatus();
 }

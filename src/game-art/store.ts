@@ -40,7 +40,15 @@ import {
   type TroopStats,
 } from './mappings.js';
 import { clientUiTextures, itemFrameArt, unitFrameArt } from './unit-frames.js';
-import { extractClientTextures, webglClientVersionFromConfig, webglDataUrl } from './webgl-client.js';
+import {
+  clientVersionFromBundle,
+  readClientBundle,
+  texturesFromClientBundle,
+  webglClientVersionFromConfig,
+  webglDataUrl,
+} from './webgl-client.js';
+import { reportReaderFailed, reportReaderOk } from '../game-patch/status.js';
+import { clientVersionInfo, rememberClientVersion } from '../game-patch/client-version.js';
 
 const log = childLogger('game-art');
 /** Daily check failures repeat with the same cause; one line per 6 h is plenty. */
@@ -303,6 +311,8 @@ const CATALOG_TIMEOUT_MS = 120_000;
 const MAX_FAILED_SHARE = 0.2;
 
 let inFlight: Promise<EnsureGameArtResult> | null = null;
+/** The catalogue version the run in flight is reading, once it knows it. */
+let attempting: string | null = null;
 
 /**
  * Bring the art up to the live game version. Never throws; concurrent calls
@@ -310,11 +320,20 @@ let inFlight: Promise<EnsureGameArtResult> | null = null;
  */
 export function ensureGameArt(opts: EnsureGameArtOptions = {}): Promise<EnsureGameArtResult> {
   if (inFlight) return inFlight;
+  attempting = null;
   inFlight = runEnsure(opts)
+    .then((result) => {
+      reportReaderOk('art', result.version ?? attempting ?? '');
+      return result;
+    })
     .catch((err: unknown): EnsureGameArtResult => {
       const msg = err instanceof Error ? err.message : String(err);
-      warner.warn(`fail:${msg}`, `Game art update failed, keeping the served version: ${msg}`);
-      return { status: 'failed', version: readState(opts.dir ?? gameArtDir())?.current ?? null, error: msg };
+      const served = readState(opts.dir ?? gameArtDir())?.current ?? null;
+      // A patch we could not read alerts (game-patch/status.ts); not knowing
+      // the live version means the versions endpoint failed — not a patch.
+      if (attempting) reportReaderFailed('art', attempting, served, err);
+      else warner.warn(`fail:${msg}`, `Game art update failed, keeping the served version: ${msg}`);
+      return { status: 'failed', version: served, error: msg };
     })
     .finally(() => {
       inFlight = null;
@@ -355,6 +374,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
 
   const config = JSON.parse((await fetchBuffer(fetchImpl, VERSIONS_URL, 30_000)).toString('utf8')) as unknown;
   const version = catalogVersionFromConfig(config);
+  attempting = version;
   let client: string | null = null;
   try {
     client = webglClientVersionFromConfig(config);
@@ -385,7 +405,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
     let frames: UnitFrames | null = null;
     if (!existing.client && client) {
       try {
-        frames = await collectUnitFrames(fetchImpl, client, path.join(dir, version), null, null, existing.images);
+        frames = await collectUnitFrames(fetchImpl, client, dir, path.join(dir, version), null, null, existing.images);
       } catch (err) {
         warner.warn('ui', `Game art ${version}: unit frames unavailable, troop icons stay unframed (${errText(err)})`);
       }
@@ -546,7 +566,7 @@ async function runEnsure(opts: EnsureGameArtOptions): Promise<EnsureGameArtResul
   let frames: UnitFrames | null = null;
   if (client) {
     try {
-      frames = await collectUnitFrames(fetchImpl, client, tmp, prev, prevDir, {});
+      frames = await collectUnitFrames(fetchImpl, client, dir, tmp, prev, prevDir, {});
     } catch (err) {
       warner.warn('ui', `Game art ${version}: unit frames unavailable from client ${client} (${errText(err)})`);
     }
@@ -636,10 +656,12 @@ interface UnitFrames {
  * from the previous version when it read the same build, else extracted from
  * the build's data file. Names in `skip` are never written (adding frames to a
  * live version only ever adds files). Throws when the build yields none.
+ * A download also records the build's client version in `artDir`.
  */
 async function collectUnitFrames(
   fetchImpl: typeof fetch,
   client: string,
+  artDir: string,
   outDir: string,
   prev: GameArtIndex | null,
   prevDir: string | null,
@@ -651,10 +673,15 @@ async function collectUnitFrames(
     if (copied) return copied;
   }
   const names = new Set(wanted);
-  const { images: found, errors } = extractClientTextures(
-    await fetchBuffer(fetchImpl, webglDataUrl(client), CLIENT_TIMEOUT_MS, 2),
-    (n) => names.has(n),
-  );
+  const bundle = readClientBundle(await fetchBuffer(fetchImpl, webglDataUrl(client), CLIENT_TIMEOUT_MS, 2));
+  // The same file carries the build's version, which the scan's login sends:
+  // read it here rather than download the ~43 MB again for it.
+  try {
+    rememberClientVersion(client, clientVersionFromBundle(bundle), artDir);
+  } catch (err) {
+    reportReaderFailed('client', client, clientVersionInfo(artDir).version, err);
+  }
+  const { images: found, errors } = texturesFromClientBundle(bundle, (n) => names.has(n));
   if (!found.length) throw new Error(errors[0] ?? 'no unit frame textures in the client build');
   const images: Record<string, GameArtImage> = {};
   for (const img of found) {

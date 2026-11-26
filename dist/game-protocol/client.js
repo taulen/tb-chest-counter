@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GameClient = exports.WrongAccountError = exports.SessionLoggedOutError = exports.GameProtocolError = exports.DEFAULT_CLIENT_VERSION = exports.USER_AGENT = void 0;
+exports.GameClient = exports.WrongAccountError = exports.SessionLoggedOutError = exports.GameProtocolError = exports.USER_AGENT = void 0;
 exports.classifySitePage = classifySitePage;
 exports.checkSiteSession = checkSiteSession;
 exports.oneSiteCallAtATime = oneSiteCallAtATime;
@@ -40,16 +40,16 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const codec_js_1 = require("./codec.js");
 const site_session_js_1 = require("./site-session.js");
+const client_version_js_1 = require("../game-patch/client-version.js");
 const SITE = 'https://totalbattle.com';
 const RPC_URL = `${SITE}/restapi/totalbattle/web/`;
 const CHROME = '157.0.0.0';
 exports.USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36`;
 /**
- * The WebGL client's build version, sent at login. It isn't published in any
- * text endpoint (it's compiled into the game build), so it's a constant here;
- * a login failure after a game update is the cue to refresh it.
+ * The WebGL client's build version, sent at login, is the live build's own
+ * (game-patch/client-version.ts reads it from the build each client patch);
+ * GAME_CLIENT_VERSION overrides it, a hand-set fallback covers "not read yet".
  */
-exports.DEFAULT_CLIENT_VERSION = process.env.GAME_CLIENT_VERSION || '349.9.1116';
 const REQUEST_TIMEOUT_MS = 60_000;
 const ALL_FIELDS = 2147483647;
 class GameProtocolError extends Error {
@@ -387,13 +387,14 @@ class GameClient {
         const url = boot.realmUrls.get(start.realmId)?.[0];
         if (!url)
             throw new GameProtocolError(`no game server listed for realm ${start.realmId}`);
-        const loginFrame = (0, codec_js_1.encodeFrame)([203, 1, [[start.playerId], ZERO_SESSION], ''], buildLoginBody(start, boot.suid, device, opts.clientVersion ?? exports.DEFAULT_CLIENT_VERSION));
+        const clientVersion = opts.clientVersion ?? (0, client_version_js_1.gameClientVersion)();
+        const loginFrame = (0, codec_js_1.encodeFrame)([203, 1, [[start.playerId], ZERO_SESSION], ''], buildLoginBody(start, boot.suid, device, clientVersion));
         const reply = (0, codec_js_1.messages)((0, codec_js_1.decodeFrames)(await post(url, loginFrame))).find((m) => m.type === 203);
         // Reply body[0]: [ [playerId], 0, sessionId, …, [ [playerId], [[suid], …, realm, …], [nickname, [clanId], …] ], … ]
         const root = reply?.body[0];
         const session = Array.isArray(root) ? root[2] : undefined;
         if (!session || typeof session !== 'object' || !('$bin' in session) || session.$bin !== 12) {
-            throw new GameProtocolError('game login did not return a session (the client version may be outdated)');
+            throw new GameProtocolError(`game login did not return a session (sent client version ${clientVersion}; System → Game Patch shows the live build's)`);
         }
         const profile = Array.isArray(root) && Array.isArray(root[6]) ? root[6][2] : undefined;
         const nickname = Array.isArray(profile) && typeof profile[0] === 'string' ? profile[0] : '';

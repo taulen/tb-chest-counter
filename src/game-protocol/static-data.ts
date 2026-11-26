@@ -50,6 +50,7 @@ import {
   type GameTextLanguage,
 } from './game-texts.js';
 import { childLogger } from '../utils/logger.js';
+import { reportReaderFailed, reportReaderOk } from '../game-patch/status.js';
 
 export type { TextLookup };
 
@@ -1359,6 +1360,15 @@ let building: { key: string; promise: Promise<GameNames> } | null = null;
 const textsRetryAt = new Map<string, number>();
 const TEXTS_RETRY_MS = 6 * 3600_000;
 
+/** A patch whose names failed to build; retried after FAILED_BUILD_RETRY_MS. */
+let failedBuild: { key: string; at: number; error: string } | null = null;
+const FAILED_BUILD_RETRY_MS = 30 * 60_000;
+
+/** Lift the retry wait (System → Game Patch → Check now). */
+export function clearGameNamesRetry(): void {
+  failedBuild = null;
+}
+
 /** Every site language's texts were written with these names — or a rebuild for them waits its turn. */
 function textsSettled(names: GameNames, key: string): boolean {
   if (GAME_TEXT_LANGUAGE_CODES.every((l) => names.textLanguages?.includes(l))) return true;
@@ -1368,7 +1378,8 @@ function textsSettled(names: GameNames, key: string): boolean {
 /**
  * Names for the live game version: from memory, else from the on-disk cache,
  * else rebuilt from the CDN. Falls back to the newest cached names when the
- * versions endpoint can't be reached, because stale names beat no names.
+ * versions endpoint can't be reached or a patch's names can't be built,
+ * because stale names beat no names; throws only when there are none at all.
  */
 export async function loadGameNames(): Promise<GameNames> {
   let version: StaticVersion;
@@ -1391,11 +1402,33 @@ export async function loadGameNames(): Promise<GameNames> {
     if ((cached.format ?? 1) >= NAMES_FORMAT && textsSettled(cached, key)) {
       memo = cached;
       useGameTextsDir(path.dirname(file));
+      reportReaderOk('names', key);
       return memo;
     }
   }
+  if (failedBuild?.key === key && Date.now() - failedBuild.at < FAILED_BUILD_RETRY_MS) {
+    const cached = memo ?? newestCachedNames();
+    if (cached) return cached;
+    throw new Error(failedBuild.error);
+  }
   if (building?.key === key) return building.promise;
-  const promise = buildAndCacheNames(version, key, file);
+  // A patch whose names can't be built (a format change in the game's files)
+  // serves the newest names on disk — stale names beat no names — and is
+  // retried every FAILED_BUILD_RETRY_MS, not on every caller.
+  const promise = buildAndCacheNames(version, key, file).then(
+    (names) => {
+      failedBuild = null;
+      reportReaderOk('names', key);
+      return names;
+    },
+    (err: unknown) => {
+      failedBuild = { key, at: Date.now(), error: String(err) };
+      const cached = memo ?? newestCachedNames();
+      reportReaderFailed('names', key, cached?.version ?? null, err);
+      if (cached) return cached;
+      throw err;
+    },
+  );
   building = { key, promise };
   try {
     return await promise;
@@ -1468,5 +1501,6 @@ function newestCachedNames(): GameNames | null {
 /** Test seam. */
 export function resetGameNamesMemo(): void {
   memo = null;
+  failedBuild = null;
   textsRetryAt.clear();
 }

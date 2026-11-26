@@ -54,6 +54,9 @@ import {
 } from '../backup-upload.js';
 import { inspectBackupClans, restoreClanFromBackup } from '../../data/clan-restore.js';
 import { getEntries as getLogEntries, latestEntryAt as latestLogEntryAt } from '../../utils/log-buffer.js';
+import { PATCH_READERS, readPatchStatus } from '../../game-patch/status.js';
+import { checkGamePatch, gamePatchCheckRunning } from '../../game-patch/watch.js';
+import { clientVersionInfo } from '../../game-patch/client-version.js';
 import {
   parseLeaderboardQuery,
   queryLeaderboard,
@@ -2062,6 +2065,28 @@ export function createApiRouter(scanLoop?: ScanLoop): Router {
     } catch (err) {
       res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
     }
+  });
+
+  // GET /api/admin/game-patch — System → Game Patch: the live game patch and
+  // what each reader of the game's files made of it (game-patch/status.ts).
+  router.get('/admin/game-patch', requireSuperAdmin, (_req, res) => {
+    const s = readPatchStatus();
+    res.json({
+      running: gamePatchCheckRunning(),
+      fingerprint: s.fingerprint ?? null,
+      patchSeenAt: s.patchSeenAt ?? null,
+      lastCheckAt: s.lastCheckAt ?? null,
+      lastCheckError: s.lastCheckError ?? null,
+      readers: PATCH_READERS.map((reader) => ({ reader, ...(s.readers[reader] ?? {}) })),
+      clientVersion: clientVersionInfo(),
+    });
+  });
+
+  // POST /api/admin/game-patch/check — read the live patch now, retry waits
+  // lifted. Runs in the background (art can take minutes); poll the GET.
+  router.post('/admin/game-patch/check', requireSuperAdmin, (_req, res) => {
+    void checkGamePatch({ force: true });
+    res.json({ started: true });
   });
 
   return router;

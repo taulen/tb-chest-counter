@@ -1,11 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WEBGL_DATA_FILE = exports.WEBGL_CLIENT_BASE = void 0;
+exports.CLIENT_VERSION_RE = exports.WEBGL_DATA_FILE = exports.WEBGL_CLIENT_BASE = void 0;
 exports.webglClientVersionFromConfig = webglClientVersionFromConfig;
 exports.webglDataUrl = webglDataUrl;
 exports.parseUnityWebData = parseUnityWebData;
 exports.readPlayerTexture2D = readPlayerTexture2D;
+exports.readClientBundle = readClientBundle;
+exports.clientVersionFromBundle = clientVersionFromBundle;
+exports.clientVersionFromPlayerSettings = clientVersionFromPlayerSettings;
 exports.extractClientTextures = extractClientTextures;
+exports.texturesFromClientBundle = texturesFromClientBundle;
 /**
  * The game's WebGL client build — where its UI art lives.
  *
@@ -126,16 +130,59 @@ function peekObjectName(data, start, size) {
         return null;
     return data.toString('utf8', start + 4, start + 4 + n);
 }
+/** The UnityFS bundle inside a WebGL client build's data file. */
+function readClientBundle(webData) {
+    const bundleBuf = parseUnityWebData(webData).get('data.unity3d');
+    if (!bundleBuf)
+        throw new Error('client data has no data.unity3d');
+    return (0, unityfs_js_1.readUnityBundle)(bundleBuf);
+}
+const CLASS_PLAYER_SETTINGS = 129;
+exports.CLIENT_VERSION_RE = /^\d{1,4}\.\d{1,4}\.\d{1,6}$/;
+/**
+ * The build's version — PlayerSettings.bundleVersion, i.e. the game's
+ * Application.version ("350.0.1122" in Nov 2026) — which the scan's login
+ * sends. PlayerSettings sits in globalgamemanagers without a type tree, and its
+ * field offsets move with the engine version, so it is not read at an offset.
+ */
+function clientVersionFromBundle(bundle) {
+    const node = bundle.nodes.find((n) => n.path === 'globalgamemanagers');
+    if (!node)
+        throw new Error('client data has no globalgamemanagers');
+    const file = (0, serialized_file_js_1.readSerializedFile)((0, unityfs_js_1.nodeData)(bundle, node));
+    const ps = file.objects.find((o) => o.classId === CLASS_PLAYER_SETTINGS);
+    if (!ps)
+        throw new Error('client data has no PlayerSettings');
+    return clientVersionFromPlayerSettings(file.data.subarray(ps.byteStart, ps.byteStart + ps.byteSize));
+}
+/**
+ * The one length-prefixed string shaped like a version in a PlayerSettings
+ * object (companyName "Scorewarrior", productName "Triumph", bundleVersion…).
+ * None, or two different ones, fails loudly rather than guessing.
+ */
+function clientVersionFromPlayerSettings(obj) {
+    const found = new Set();
+    for (let i = 0; i + 4 <= obj.length; i++) {
+        const n = obj.readUInt32LE(i);
+        if (n < 5 || n > 20 || i + 4 + n > obj.length)
+            continue;
+        const s = obj.toString('latin1', i + 4, i + 4 + n);
+        if (exports.CLIENT_VERSION_RE.test(s))
+            found.add(s);
+    }
+    if (found.size !== 1) {
+        throw new Error(found.size ? `PlayerSettings holds ${found.size} version strings (${[...found].join(', ')})` : 'PlayerSettings holds no version string');
+    }
+    return [...found][0];
+}
 /**
  * Images (top-down, kind 'texture') of the Resources textures a WebGL client
  * build's data file holds, for the names `wanted` accepts (exact names).
  */
 function extractClientTextures(webData, wanted) {
-    const files = parseUnityWebData(webData);
-    const bundleBuf = files.get('data.unity3d');
-    if (!bundleBuf)
-        throw new Error('client data has no data.unity3d');
-    const bundle = (0, unityfs_js_1.readUnityBundle)(bundleBuf);
+    return texturesFromClientBundle(readClientBundle(webData), wanted);
+}
+function texturesFromClientBundle(bundle, wanted) {
     const node = bundle.nodes.find((n) => n.path === 'resources.assets');
     if (!node)
         throw new Error('client data has no resources.assets');

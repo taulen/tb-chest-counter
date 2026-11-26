@@ -22,7 +22,7 @@
  * texture is only accepted when the read ends exactly at the object's size.
  */
 import { BinaryReader } from './binary-reader.js';
-import { readUnityBundle, nodeData, parseEngineVersion } from './unityfs.js';
+import { readUnityBundle, nodeData, parseEngineVersion, type UnityBundle } from './unityfs.js';
 import { readSerializedFile, CLASS_TEXTURE2D } from './serialized-file.js';
 import { decodeTexture, flipRows, textureByteSize } from './texture.js';
 import type { ExtractedImage, ExtractResult } from './extract.js';
@@ -132,15 +132,59 @@ function peekObjectName(data: Buffer, start: number, size: number): string | nul
   return data.toString('utf8', start + 4, start + 4 + n);
 }
 
+/** The UnityFS bundle inside a WebGL client build's data file. */
+export function readClientBundle(webData: Buffer): UnityBundle {
+  const bundleBuf = parseUnityWebData(webData).get('data.unity3d');
+  if (!bundleBuf) throw new Error('client data has no data.unity3d');
+  return readUnityBundle(bundleBuf);
+}
+
+const CLASS_PLAYER_SETTINGS = 129;
+export const CLIENT_VERSION_RE = /^\d{1,4}\.\d{1,4}\.\d{1,6}$/;
+
+/**
+ * The build's version — PlayerSettings.bundleVersion, i.e. the game's
+ * Application.version ("350.0.1122" in Nov 2026) — which the scan's login
+ * sends. PlayerSettings sits in globalgamemanagers without a type tree, and its
+ * field offsets move with the engine version, so it is not read at an offset.
+ */
+export function clientVersionFromBundle(bundle: UnityBundle): string {
+  const node = bundle.nodes.find((n) => n.path === 'globalgamemanagers');
+  if (!node) throw new Error('client data has no globalgamemanagers');
+  const file = readSerializedFile(nodeData(bundle, node));
+  const ps = file.objects.find((o) => o.classId === CLASS_PLAYER_SETTINGS);
+  if (!ps) throw new Error('client data has no PlayerSettings');
+  return clientVersionFromPlayerSettings(file.data.subarray(ps.byteStart, ps.byteStart + ps.byteSize));
+}
+
+/**
+ * The one length-prefixed string shaped like a version in a PlayerSettings
+ * object (companyName "Scorewarrior", productName "Triumph", bundleVersion…).
+ * None, or two different ones, fails loudly rather than guessing.
+ */
+export function clientVersionFromPlayerSettings(obj: Buffer): string {
+  const found = new Set<string>();
+  for (let i = 0; i + 4 <= obj.length; i++) {
+    const n = obj.readUInt32LE(i);
+    if (n < 5 || n > 20 || i + 4 + n > obj.length) continue;
+    const s = obj.toString('latin1', i + 4, i + 4 + n);
+    if (CLIENT_VERSION_RE.test(s)) found.add(s);
+  }
+  if (found.size !== 1) {
+    throw new Error(found.size ? `PlayerSettings holds ${found.size} version strings (${[...found].join(', ')})` : 'PlayerSettings holds no version string');
+  }
+  return [...found][0];
+}
+
 /**
  * Images (top-down, kind 'texture') of the Resources textures a WebGL client
  * build's data file holds, for the names `wanted` accepts (exact names).
  */
 export function extractClientTextures(webData: Buffer, wanted: (name: string) => boolean): ExtractResult {
-  const files = parseUnityWebData(webData);
-  const bundleBuf = files.get('data.unity3d');
-  if (!bundleBuf) throw new Error('client data has no data.unity3d');
-  const bundle = readUnityBundle(bundleBuf);
+  return texturesFromClientBundle(readClientBundle(webData), wanted);
+}
+
+export function texturesFromClientBundle(bundle: UnityBundle, wanted: (name: string) => boolean): ExtractResult {
   const node = bundle.nodes.find((n) => n.path === 'resources.assets');
   if (!node) throw new Error('client data has no resources.assets');
   const file = readSerializedFile(nodeData(bundle, node));

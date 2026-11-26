@@ -1100,9 +1100,11 @@ login into another's file.
 
 The device identity (`deviceId`, fingerprint) is generated once per clan and
 kept in `data/clans/<id>/game-device.json`. The WebGL client version isn't in
-any text endpoint; it's `DEFAULT_CLIENT_VERSION` (override:
-`GAME_CLIENT_VERSION`). A login with no session in the reply after a game
-update is the cue to refresh it.
+any text endpoint, but it is in the build: PlayerSettings.bundleVersion in the
+client data file's `globalgamemanagers` ("350.0.1122" in Nov 2026). Since Nov
+26 2026 the login sends the live build's, read once per client patch
+(`src/game-patch/client-version.ts`); `GAME_CLIENT_VERSION` overrides it and a
+hand-set fallback covers "not read yet". See [game-patches.md](game-patches.md).
 
 ## Wire format
 

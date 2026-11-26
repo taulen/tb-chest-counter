@@ -9,6 +9,7 @@ exports.buildTechTrees = buildTechTrees;
 exports.asTreeLayout = asTreeLayout;
 exports.layoutFromBundle = layoutFromBundle;
 exports.readAnyTables = readAnyTables;
+exports.clearTechTreesRetry = clearTechTreesRetry;
 exports.loadTechTrees = loadTechTrees;
 exports.cachedTechTrees = cachedTechTrees;
 exports.resetTechTreesMemo = resetTechTreesMemo;
@@ -53,7 +54,7 @@ Object.defineProperty(exports, "TABLE_CLIENT_CONFIG", { enumerable: true, get: f
 const catalog_js_1 = require("../game-art/catalog.js");
 const extract_js_1 = require("../game-art/extract.js");
 const logger_js_1 = require("../utils/logger.js");
-const log_buffer_js_1 = require("../utils/log-buffer.js");
+const status_js_1 = require("../game-patch/status.js");
 const log = (0, logger_js_1.childLogger)('tech-trees');
 const VERSIONS_URL = 'https://versions.totalbattle.com/config/?branch=current&simple=true';
 const STATIC_BASE = 'https://assets-client-static.totalbattle.dev/';
@@ -330,7 +331,10 @@ let building = null;
  */
 let failedBuild = null;
 const FAILED_BUILD_RETRY_MS = 30 * 60_000;
-const BUILD_FAILED_KEY = 'tech-trees:build-failed';
+/** Lift the retry wait (System → Game Patch → Check now). */
+function clearTechTreesRetry() {
+    failedBuild = null;
+}
 /**
  * Trees for the live game version: from memory, else the on-disk cache, else
  * rebuilt from the CDN (~67 MB of static data plus ~25 small layout bundles,
@@ -359,6 +363,7 @@ async function loadTechTrees() {
         const cached = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
         if (cached.version === v.version) {
             memo = cached;
+            (0, status_js_1.reportReaderOk)('trees', v.version);
             return cached;
         }
     }
@@ -379,9 +384,7 @@ async function loadTechTrees() {
             catch (err) {
                 failedBuild = { version: v.version, at: Date.now(), error: String(err) };
                 const cached = memo ?? newestCachedTrees();
-                log.warn({ resolveKey: BUILD_FAILED_KEY }, `Tech trees for game version ${v.version} could not be built (${String(err)}); ` +
-                    (cached ? `serving the previous version's (${cached.version}) until a build succeeds.` : 'none to serve.') +
-                    ` Retried every ${FAILED_BUILD_RETRY_MS / 60_000} min.`);
+                (0, status_js_1.reportReaderFailed)('trees', v.version, cached?.version ?? null, err);
                 if (cached)
                     return cached;
                 throw err;
@@ -391,7 +394,7 @@ async function loadTechTrees() {
             log.info(`Tech trees ${v.version} built in ${Math.round((Date.now() - started) / 1000)}s: ${trees.trees.length} trees, ` +
                 `${trees.trees.reduce((n, t) => n + t.nodes.length, 0)} nodes`);
             failedBuild = null;
-            (0, log_buffer_js_1.resolveEntries)(BUILD_FAILED_KEY);
+            (0, status_js_1.reportReaderOk)('trees', v.version);
             memo = trees;
             return trees;
         })().finally(() => {

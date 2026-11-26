@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { decodeFrames, encodeFrame, messages, type Frame, type Wire, type BinValue } from './codec.js';
 import { SiteCookieJar, authTokenAccounts } from './site-session.js';
+import { gameClientVersion } from '../game-patch/client-version.js';
 
 const SITE = 'https://totalbattle.com';
 const RPC_URL = `${SITE}/restapi/totalbattle/web/`;
@@ -28,11 +29,10 @@ const CHROME = '157.0.0.0';
 export const USER_AGENT =
   `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36`;
 /**
- * The WebGL client's build version, sent at login. It isn't published in any
- * text endpoint (it's compiled into the game build), so it's a constant here;
- * a login failure after a game update is the cue to refresh it.
+ * The WebGL client's build version, sent at login, is the live build's own
+ * (game-patch/client-version.ts reads it from the build each client patch);
+ * GAME_CLIENT_VERSION overrides it, a hand-set fallback covers "not read yet".
  */
-export const DEFAULT_CLIENT_VERSION = process.env.GAME_CLIENT_VERSION || '349.9.1116';
 const REQUEST_TIMEOUT_MS = 60_000;
 const ALL_FIELDS = 2147483647;
 
@@ -441,13 +441,16 @@ export class GameClient {
     const url = boot.realmUrls.get(start.realmId)?.[0];
     if (!url) throw new GameProtocolError(`no game server listed for realm ${start.realmId}`);
 
-    const loginFrame = encodeFrame([203, 1, [[start.playerId], ZERO_SESSION], ''], buildLoginBody(start, boot.suid, device, opts.clientVersion ?? DEFAULT_CLIENT_VERSION));
+    const clientVersion = opts.clientVersion ?? gameClientVersion();
+    const loginFrame = encodeFrame([203, 1, [[start.playerId], ZERO_SESSION], ''], buildLoginBody(start, boot.suid, device, clientVersion));
     const reply = messages(decodeFrames(await post(url, loginFrame))).find((m) => m.type === 203);
     // Reply body[0]: [ [playerId], 0, sessionId, …, [ [playerId], [[suid], …, realm, …], [nickname, [clanId], …] ], … ]
     const root = reply?.body[0];
     const session = Array.isArray(root) ? root[2] : undefined;
     if (!session || typeof session !== 'object' || !('$bin' in session) || (session as BinValue).$bin !== 12) {
-      throw new GameProtocolError('game login did not return a session (the client version may be outdated)');
+      throw new GameProtocolError(
+        `game login did not return a session (sent client version ${clientVersion}; System → Game Patch shows the live build's)`,
+      );
     }
     const profile = Array.isArray(root) && Array.isArray(root[6]) ? (root[6][2] as Wire[] | undefined) : undefined;
     const nickname = Array.isArray(profile) && typeof profile[0] === 'string' ? profile[0] : '';

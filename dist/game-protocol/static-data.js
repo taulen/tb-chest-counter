@@ -21,6 +21,7 @@ exports.buildEvents = buildEvents;
 exports.buildHeroLevels = buildHeroLevels;
 exports.conditionTexts = conditionTexts;
 exports.buildFactions = buildFactions;
+exports.clearGameNamesRetry = clearGameNamesRetry;
 exports.loadGameNames = loadGameNames;
 exports.resetGameNamesMemo = resetGameNamesMemo;
 /**
@@ -65,6 +66,7 @@ const codec_js_1 = require("./codec.js");
 const client_config_js_1 = require("./client-config.js");
 const game_texts_js_1 = require("./game-texts.js");
 const logger_js_1 = require("../utils/logger.js");
+const status_js_1 = require("../game-patch/status.js");
 const log = (0, logger_js_1.childLogger)('game-static');
 const VERSIONS_URL = 'https://versions.totalbattle.com/config/?branch=current&simple=true';
 const STATIC_BASE = 'https://assets-client-static.totalbattle.dev/';
@@ -1141,6 +1143,13 @@ let building = null;
  */
 const textsRetryAt = new Map();
 const TEXTS_RETRY_MS = 6 * 3600_000;
+/** A patch whose names failed to build; retried after FAILED_BUILD_RETRY_MS. */
+let failedBuild = null;
+const FAILED_BUILD_RETRY_MS = 30 * 60_000;
+/** Lift the retry wait (System → Game Patch → Check now). */
+function clearGameNamesRetry() {
+    failedBuild = null;
+}
 /** Every site language's texts were written with these names — or a rebuild for them waits its turn. */
 function textsSettled(names, key) {
     if (game_texts_js_1.GAME_TEXT_LANGUAGE_CODES.every((l) => names.textLanguages?.includes(l)))
@@ -1150,7 +1159,8 @@ function textsSettled(names, key) {
 /**
  * Names for the live game version: from memory, else from the on-disk cache,
  * else rebuilt from the CDN. Falls back to the newest cached names when the
- * versions endpoint can't be reached, because stale names beat no names.
+ * versions endpoint can't be reached or a patch's names can't be built,
+ * because stale names beat no names; throws only when there are none at all.
  */
 async function loadGameNames() {
     let version;
@@ -1175,12 +1185,33 @@ async function loadGameNames() {
         if ((cached.format ?? 1) >= exports.NAMES_FORMAT && textsSettled(cached, key)) {
             memo = cached;
             (0, game_texts_js_1.useGameTextsDir)(path_1.default.dirname(file));
+            (0, status_js_1.reportReaderOk)('names', key);
             return memo;
         }
     }
+    if (failedBuild?.key === key && Date.now() - failedBuild.at < FAILED_BUILD_RETRY_MS) {
+        const cached = memo ?? newestCachedNames();
+        if (cached)
+            return cached;
+        throw new Error(failedBuild.error);
+    }
     if (building?.key === key)
         return building.promise;
-    const promise = buildAndCacheNames(version, key, file);
+    // A patch whose names can't be built (a format change in the game's files)
+    // serves the newest names on disk — stale names beat no names — and is
+    // retried every FAILED_BUILD_RETRY_MS, not on every caller.
+    const promise = buildAndCacheNames(version, key, file).then((names) => {
+        failedBuild = null;
+        (0, status_js_1.reportReaderOk)('names', key);
+        return names;
+    }, (err) => {
+        failedBuild = { key, at: Date.now(), error: String(err) };
+        const cached = memo ?? newestCachedNames();
+        (0, status_js_1.reportReaderFailed)('names', key, cached?.version ?? null, err);
+        if (cached)
+            return cached;
+        throw err;
+    });
     building = { key, promise };
     try {
         return await promise;
@@ -1253,6 +1284,7 @@ function newestCachedNames() {
 /** Test seam. */
 function resetGameNamesMemo() {
     memo = null;
+    failedBuild = null;
     textsRetryAt.clear();
 }
 //# sourceMappingURL=static-data.js.map

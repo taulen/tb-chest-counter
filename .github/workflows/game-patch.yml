@@ -1,0 +1,99 @@
+name: Game patch
+
+# Reads every new game patch with this repo's own code, on GitHub's runners —
+# independent of prod — and opens a `game-patch` issue when part of it can't be
+# read (the failed run and the new issue both notify the repo owner). Each
+# patch is checked once: one that reads cleanly is remembered in the Actions
+# cache; one that doesn't is retried every hour, quietly, until a fix makes it
+# read — which closes the issue. See docs/game-patches.md.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: game-patch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Live game patch
+        id: live
+        run: echo "key=$(node scripts/game-patch-check.mjs --fingerprint)" >> "$GITHUB_OUTPUT"
+
+      - name: Already read this patch?
+        id: seen
+        uses: actions/cache/restore@v4
+        with:
+          path: .game-patch-ok
+          key: game-patch-ok-${{ steps.live.outputs.key }}
+          lookup-only: true
+
+      - name: Install
+        if: steps.seen.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Read the patch
+        id: check
+        if: steps.seen.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: node scripts/game-patch-check.mjs --work "$RUNNER_TEMP/game-patch" --report "$RUNNER_TEMP/game-patch-report.md"
+
+      - name: Remember a patch that reads
+        if: steps.seen.outputs.cache-hit != 'true' && steps.check.outcome == 'success'
+        run: mkdir -p .game-patch-ok && echo "${{ steps.live.outputs.key }}" > .game-patch-ok/key
+
+      - name: Save
+        if: steps.seen.outputs.cache-hit != 'true' && steps.check.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: .game-patch-ok
+          key: game-patch-ok-${{ steps.live.outputs.key }}
+
+      - name: Close the issue
+        if: steps.seen.outputs.cache-hit != 'true' && steps.check.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ steps.live.outputs.key }}
+        run: |
+          for n in $(gh issue list --state open --label game-patch --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Game patch \`$KEY\` reads cleanly with \`${GITHUB_SHA::7}\`."
+          done
+
+      - name: Open the issue
+        if: steps.seen.outputs.cache-hit != 'true' && steps.check.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ steps.live.outputs.key }}
+        run: |
+          report="$RUNNER_TEMP/game-patch-report.md"
+          [ -s "$report" ] || echo "The check crashed before writing a report." > "$report"
+          printf '\n\n[Run %s](%s/%s/actions/runs/%s)\n' "$GITHUB_RUN_ID" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> "$report"
+          gh label create game-patch --color B60205 --description "The live game patch can't be read" 2>/dev/null || true
+          title="Game patch $KEY can't be read"
+          open=$(gh issue list --state open --label game-patch --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ -z "$open" ]; then
+            gh issue create --title "$title" --label game-patch --body-file "$report"
+            echo "::error::Game patch $KEY can't be read — issue opened"
+            exit 1
+          fi
+          # Already reported: stay green, so each hourly retry doesn't send another failure email.
+          echo "::warning::Game patch $KEY still can't be read (issue #$open)"
