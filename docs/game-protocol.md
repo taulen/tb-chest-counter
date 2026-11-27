@@ -429,7 +429,8 @@ plus `data` = `{"subs": {"/%0%/": {…, "v": 1}}}` ([chat-text.ts](../src/game-p
 id spaces overlap — `name`), `raid` (`created`,
 `targetStaticId`, `name` = who), `clan` (join / leave / kicked with `kicker` /
 archived), `journal` (attack / crypt / scout / clan_announcement / pvpladder —
-a shared report, `name` = its subject), `spawn_sabotage_spawn_to_enemy`
+a shared report, `name` = its subject, `journalV2EntryId` = what the journal
+service opens it by: [battle-reports.md](battle-reports.md)), `spawn_sabotage_spawn_to_enemy`
 (`spawnerName`, `staticAtomId`, `targetClanName`, `atomCoord`), `clan_spawn`.
 `custom_type` `service` = the game's own posts (raids, joins…). The sender's
 `sender_info` (`realm,playerHex,clanHex,0,rank,tag`) gives the player id

@@ -28,6 +28,7 @@ exports.chatHistoryInfo = chatHistoryInfo;
  */
 const database_js_1 = require("../database.js");
 const chat_text_js_1 = require("../../game-protocol/chat-text.js");
+const battle_report_repo_js_1 = require("./battle-report-repo.js");
 function upsertChatChannel(clanId, c, now = new Date().toISOString()) {
     (0, database_js_1.getDb)().prepare(`INSERT INTO chat_channels (clan_id, channel_url, custom_type, name, member_count, members, last_message_at, max_length, first_seen, last_seen)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -91,6 +92,10 @@ function saveChatMessages(clanId, messages, now = new Date().toISOString()) {
             if (isNew)
                 added++;
         }
+        // Battle reports linked in any chat the clan keeps — the clan chat, a
+        // private message to the scanner account, a picked report chat — are
+        // queued to be read (battle-report-repo.ts, docs/battle-reports.md).
+        (0, battle_report_repo_js_1.recordReportShares)(clanId, messages);
     })();
     return added;
 }

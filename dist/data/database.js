@@ -2882,6 +2882,86 @@ const MIGRATIONS = [
                 database.exec('ALTER TABLE game_city_snapshots ADD COLUMN stats TEXT');
         },
     },
+    {
+        // v143 — Battle reports shared in chat (docs/battle-reports.md): a report
+        // link in any chat the scanner reads is opened on the game's journal
+        // service and kept. Clan announcements shared the same way are kept too
+        // (their text).
+        //   battle_reports        one row per report (a report is the same in
+        //                         every clan that saw it): fetch state, the parsed
+        //                         summary, the Tin Man's level and stacks, and the
+        //                         raw bytes (gzip) so a later reading can re-parse;
+        //   battle_report_shares  which clan saw it, in which chat, shared by whom;
+        //   clan_report_chats     group chats a clan reads reports from besides
+        //                         its clan chat (and the scanner's private chats);
+        //   clans.tinman_required_stacks  the clan's Tin Man rule: hit it only
+        //                         while it has this many stacks (NULL = no rule).
+        // The links already in stored chat are queued here. Guarded: runMigrations
+        // may replay this.
+        version: 143,
+        run: (database) => {
+            database.exec(`
+        CREATE TABLE IF NOT EXISTS battle_reports (
+          entry_id TEXT PRIMARY KEY,
+          entry_type TEXT NOT NULL,
+          target_static_id INTEGER,
+          status TEXT NOT NULL DEFAULT 'pending',
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_try_at INTEGER,
+          last_error TEXT,
+          fetched_at TEXT,
+          report_at INTEGER,
+          kind TEXT,
+          won INTEGER,
+          attacker_player_id INTEGER,
+          tinman_level INTEGER,
+          tinman_stacks INTEGER,
+          summary TEXT,
+          raw BLOB,
+          strike_log BLOB,
+          first_shared_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_battle_reports_status ON battle_reports(status, next_try_at);
+        CREATE INDEX IF NOT EXISTS idx_battle_reports_attacker ON battle_reports(attacker_player_id, report_at);
+        CREATE TABLE IF NOT EXISTS battle_report_shares (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          entry_id TEXT NOT NULL,
+          channel_url TEXT NOT NULL,
+          message_id INTEGER NOT NULL,
+          sender_player_id INTEGER,
+          sender_name TEXT NOT NULL DEFAULT '',
+          shared_at INTEGER NOT NULL,
+          PRIMARY KEY (clan_id, entry_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_battle_report_shares_entry ON battle_report_shares(entry_id);
+        CREATE TABLE IF NOT EXISTS clan_report_chats (
+          clan_id INTEGER NOT NULL REFERENCES clans(id),
+          channel_url TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          added_at TEXT NOT NULL,
+          PRIMARY KEY (clan_id, channel_url)
+        );
+      `);
+            const cols = database.prepare('PRAGMA table_info(clans)').all();
+            if (!cols.some((c) => c.name === 'tinman_required_stacks')) {
+                database.exec('ALTER TABLE clans ADD COLUMN tinman_required_stacks INTEGER');
+            }
+            // Queue every battle report and clan announcement already linked in stored chat.
+            const rows = database.prepare("SELECT clan_id, channel_url, message_id, created_at, sender_player_id, sender_name, data FROM chat_messages WHERE data LIKE '%journalV2EntryId%'").all();
+            const report = database.prepare(`INSERT INTO battle_reports (entry_id, entry_type, target_static_id, first_shared_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (entry_id) DO UPDATE SET first_shared_at = MIN(first_shared_at, excluded.first_shared_at)`);
+            const share = database.prepare(`INSERT INTO battle_report_shares (clan_id, entry_id, channel_url, message_id, sender_player_id, sender_name, shared_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (clan_id, entry_id) DO NOTHING`);
+            for (const r of rows) {
+                for (const link of (0, chat_text_js_1.chatReportLinks)(r.data)) {
+                    if (link.entryType !== 'attack' && link.entryType !== 'clan_announcement')
+                        continue;
+                    report.run(link.entryId, link.entryType, link.staticId || null, r.created_at);
+                    share.run(r.clan_id, link.entryId, r.channel_url, r.message_id, r.sender_player_id, r.sender_name ?? '', r.created_at);
+                }
+            }
+        },
+    },
 ];
 /**
  * Make sure clan #1 exists. The pre-consolidation v16 migration inserted

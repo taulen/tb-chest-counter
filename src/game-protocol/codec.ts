@@ -43,10 +43,18 @@ export type Wire =
 export class WireReader {
   pos: number;
 
+  /**
+   * `journal`: the battle-report service (game-protocol/journal.ts) writes
+   * `0xc7 <n>` before n ordinary values — an "optional" wrapper, not a
+   * MessagePack ext: `c7 01 d9 24 "<uuid>"` is one string. Read that way, every
+   * report recorded on Nov 27 2026 decodes to its last byte; read as an ext,
+   * the wrapper swallows the string's header. Game-server replies never set it.
+   */
   constructor(
     private readonly buf: Buffer,
     pos = 0,
     private readonly end = buf.length,
+    private readonly journal = false,
   ) {
     this.pos = pos;
   }
@@ -129,7 +137,12 @@ export class WireReader {
       case 0xc4: return this.bin(this.bytes(this.u8()));
       case 0xc5: return this.bin(this.bytes(this.num(b.readUInt16LE, 2) as number));
       case 0xc6: return this.bin(this.bytes(this.num(b.readUInt32LE, 4) as number));
-      case 0xc7: { const n = this.u8(); this.u8(); return this.bin(this.bytes(n)); }
+      case 0xc7: {
+        const n = this.u8();
+        if (this.journal) return n === 1 ? this.value() : this.arr(n);
+        this.u8();
+        return this.bin(this.bytes(n));
+      }
       case 0xc8: { const n = this.num(b.readUInt16LE, 2) as number; this.u8(); return this.bin(this.bytes(n)); }
       case 0xc9: { const n = this.num(b.readUInt32LE, 4) as number; this.u8(); return this.bin(this.bytes(n)); }
       case 0xca: return this.num(b.readFloatLE, 4) as number;
@@ -176,7 +189,7 @@ export class WireReader {
       case 0xc4: case 0xd9: return void this.bytes(this.u8());
       case 0xc5: case 0xda: return void this.bytes(len16());
       case 0xc6: case 0xdb: return void this.bytes(len32());
-      case 0xc7: { const n = this.u8(); return void this.bytes(n + 1); }
+      case 0xc7: { const n = this.u8(); return this.journal ? this.skipN(n) : void this.bytes(n + 1); }
       case 0xc8: { const n = len16(); return void this.bytes(n + 1); }
       case 0xc9: { const n = len32(); return void this.bytes(n + 1); }
       case 0xcc: case 0xd0: return void this.bytes(1);
@@ -222,6 +235,14 @@ export class WireReader {
 /** Decode a whole buffer holding exactly one value. */
 export function decodeValue(buf: Buffer): Wire {
   return new WireReader(buf).value();
+}
+
+/** Every value in a buffer of the battle-report service's encoding (`0xc7` wrappers — see WireReader). */
+export function decodeJournalValues(buf: Buffer): Wire[] {
+  const r = new WireReader(buf, 0, buf.length, true);
+  const out: Wire[] = [];
+  while (!r.done) out.push(r.value());
+  return out;
 }
 
 // ---------------------------------------------------------------------------

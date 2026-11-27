@@ -5316,6 +5316,18 @@ details > table {
 .vault-mark.is-down { color: var(--accent-green); }
 .vault-mark.is-standing { color: var(--accent-red); }
 .events-vaults-table td.col-mark .vault-mark { font-size: 16px; }
+/* Ancients → Hits (pages/ancients-hits.js): Tin Man hits shared as battle
+   reports, with the Tin Man's stacks; ✓/✗ against the clan's rule. */
+.events-hits-table { table-layout: fixed; width: 100%; }
+.events-hits-table th.num { text-align: right; }
+.events-hits-table col.col-stacks { width: 130px; }
+.events-hits-table col.col-num { width: 110px; }
+.events-hits-table col.col-date { width: 160px; }
+.events-hits-table col.col-shared { width: 150px; }
+.events-hits-table td.col-shared { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit-mark { font-weight: 800; }
+.hit-mark.is-ok { color: var(--accent-green); }
+.hit-mark.is-below { color: var(--accent-red); }
 .events-zero { color: var(--text-muted); }
 /* Header/cell markers on a column whose rule resolved to nothing. */
 .events-unresolved-mark {

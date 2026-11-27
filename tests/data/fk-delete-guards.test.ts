@@ -87,6 +87,8 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     'account_invite_codes.clan_id',
     'account_invite_settings.clan_id',
     'audit_log.clan_id',
+    // Battle reports shared in the clan's chats (v143).
+    'battle_report_shares.clan_id',
     // In-game chat (v104).
     'chat_channels.clan_id',
     // Chat commands (v135).
@@ -101,6 +103,7 @@ const EXPECTED_CHILDREN: Record<string, string[]> = {
     // The scanner account's sends and mute pauses (v131).
     'chat_send_state.clan_id',
     'clan_goal_history.clan_id',
+    'clan_report_chats.clan_id',
     'clan_scan_accounts.clan_id',
     'discord_member_links.clan_id',
     // Dragon Coins back to members (v140).
@@ -378,6 +381,16 @@ function seedEverything(): { clanId: number; userId: number; memberId: number } 
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO chat_post_channels (clan_id, channel_url, custom_type, name, seen_at) VALUES (?, 'sendbird_group_channel_1', 'publicGroup', 'CWB • Carter', ?)`,
+  ).run(clanId, now);
+  db.prepare(
+    `INSERT INTO battle_reports (entry_id, entry_type, first_shared_at) VALUES ('00000000-0000-4000-8000-00000000000' || ?, 'attack', 1)
+     ON CONFLICT (entry_id) DO NOTHING`,
+  ).run(clanId);
+  db.prepare(
+    `INSERT INTO battle_report_shares (clan_id, entry_id, channel_url, message_id, shared_at) VALUES (?, '00000000-0000-4000-8000-00000000000' || ?, 'triumph_clan_channel_1', 1, 1)`,
+  ).run(clanId, clanId);
+  db.prepare(
+    `INSERT INTO clan_report_chats (clan_id, channel_url, name, added_at) VALUES (?, 'sendbird_group_channel_1', 'Tin Man hits', ?)`,
   ).run(clanId, now);
   db.prepare(
     `INSERT INTO chat_digest_posts (clan_id, game_date, sent_game_date, channel_url, status, text, created_at, updated_at) VALUES (?, '2026-11-15', '2026-11-16', 'sendbird_group_channel_1', 'sent', 'x', ?, ?)`,

@@ -17,6 +17,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseChatSubs = parseChatSubs;
+exports.chatReportLinks = chatReportLinks;
 exports.chatSubCoords = chatSubCoords;
 exports.chatSearchText = chatSearchText;
 exports.chatSenderPlayerId = chatSenderPlayerId;
@@ -40,6 +41,25 @@ function parseChatSubs(data) {
     catch {
         return {};
     }
+}
+/** Every shared report in a message's data payload (docs/battle-reports.md). */
+function chatReportLinks(data) {
+    if (!data || !data.includes('journalV2EntryId'))
+        return [];
+    const out = [];
+    for (const sub of Object.values(parseChatSubs(data))) {
+        if (sub.type !== 'journal')
+            continue;
+        const entryId = sub.journalV2EntryId;
+        if (typeof entryId !== 'string' || !/^[0-9a-f-]{36}$/i.test(entryId))
+            continue;
+        out.push({
+            entryId: entryId.toLowerCase(),
+            entryType: typeof sub.entryType === 'string' ? sub.entryType : '',
+            staticId: typeof sub.staticId === 'number' ? sub.staticId : 0,
+        });
+    }
+    return out;
 }
 const str = (v) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
 /** `K:260 X:808 Y:40` for a sub carrying realm/x/y (also `atomCoord`), else ''. */

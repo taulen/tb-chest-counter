@@ -42,7 +42,9 @@ exports.createTinmanRouter = createTinmanRouter;
  * read them stay readable; nothing is pasted any more (Nov 25 2026).
  *
  * Ancients also has per-tier targets (pasted from the Ancient planner — a plan,
- * not a score) and answers GET /vaults: who raised a Vault of the Ancients.
+ * not a score) and answers GET /vaults: who raised a Vault of the Ancients,
+ * and GET /hits: the Tin Man hits members shared as battle reports, with the
+ * Tin Man's stacks at each (docs/battle-reports.md).
  *
  * Mounted at /api/tinman (Ancients) and /api/event-scores/<event> behind
  * requireAuth + requireClanContext. Reading is open to every member; targets
@@ -60,7 +62,15 @@ const game_day_js_1 = require("../../utils/game-day.js");
 const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
 const game_protocol_repo_js_1 = require("../../data/repositories/game-protocol-repo.js");
+const battle_report_repo_js_1 = require("../../data/repositories/battle-report-repo.js");
 const MAX_TEXT_LENGTH = 200_000;
+/** A query bound as ISO: null when absent, undefined when not a date. */
+function bound(raw) {
+    if (raw === undefined || raw === '')
+        return null;
+    const ms = typeof raw === 'string' ? Date.parse(raw) : NaN;
+    return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
+}
 /** A real YYYY-MM-DD day, or null. */
 function parseDate(raw) {
     if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw))
@@ -173,12 +183,6 @@ function createTinmanRouter(eventKey = 'ancients') {
      */
     if (ancients)
         router.get('/vaults', (req, res) => {
-            const bound = (raw) => {
-                if (raw === undefined || raw === '')
-                    return null;
-                const ms = typeof raw === 'string' ? Date.parse(raw) : NaN;
-                return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
-            };
             const from = bound(req.query.from);
             const to = bound(req.query.to);
             if (from === undefined || to === undefined) {
@@ -200,6 +204,27 @@ function createTinmanRouter(eventKey = 'ancients') {
                 outsiders: vaults.length - raised.length,
                 since: (0, game_protocol_repo_js_1.mapReadSince)(req.clanId),
                 lastScanAt,
+            });
+        });
+    /**
+     * Tin Man hits shared as battle reports (in the clan chat, a private message
+     * to the scanner account or a picked report chat), fought in [from, to):
+     * who, the Tin Man's level and how many stacks it still had. With the clan's
+     * rule (hit it at N stacks) and how the shared reports stand.
+     */
+    if (ancients)
+        router.get('/hits', (req, res) => {
+            const from = bound(req.query.from);
+            const to = bound(req.query.to);
+            if (from === undefined || to === undefined) {
+                res.status(400).json({ error: 'from and to must be dates' });
+                return;
+            }
+            const clanId = req.clanId;
+            res.json({
+                hits: (0, battle_report_repo_js_1.listTinmanHits)(clanId, from, to),
+                requiredStacks: (0, battle_report_repo_js_1.getTinmanRequiredStacks)(clanId),
+                reports: (0, battle_report_repo_js_1.reportCounts)(clanId),
             });
         });
     /**

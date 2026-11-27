@@ -7,6 +7,7 @@ exports.saveChatDigestSettings = saveChatDigestSettings;
 exports.requestTestPost = requestTestPost;
 exports.clearTestRequest = clearTestRequest;
 exports.setPostableChannels = setPostableChannels;
+exports.refreshGroupChats = refreshGroupChats;
 exports.getPostableChannels = getPostableChannels;
 exports.getDigestPost = getDigestPost;
 exports.recentDigestPosts = recentDigestPosts;
@@ -93,6 +94,27 @@ function setPostableChannels(clanId, channels, poster, now = new Date().toISOStr
        ON CONFLICT (clan_id) DO UPDATE SET poster_user_id = excluded.poster_user_id, poster_name = excluded.poster_name,
          channels_checked_at = excluded.channels_checked_at`).run(clanId, poster.userId, poster.name, now, now);
     })();
+}
+/**
+ * The account's group chats as the chat sync lists them every minute (the
+ * battle-report chat picker and the digest's both offer them). Rewritten only
+ * when the chats, names or member counts changed; the digest's own check
+ * (setPostableChannels) also records who posts.
+ */
+function refreshGroupChats(clanId, channels, now = new Date().toISOString()) {
+    const key = (c) => `${c.url}\u0000${c.customType}\u0000${c.name}\u0000${c.memberCount}`;
+    const before = getPostableChannels(clanId).map(key).sort();
+    const after = channels.map(key).sort();
+    if (before.length === after.length && before.every((k, i) => k === after[i]))
+        return false;
+    const db = (0, database_js_1.getDb)();
+    db.transaction(() => {
+        db.prepare('DELETE FROM chat_post_channels WHERE clan_id = ?').run(clanId);
+        const ins = db.prepare('INSERT OR REPLACE INTO chat_post_channels (clan_id, channel_url, custom_type, name, member_count, seen_at) VALUES (?, ?, ?, ?, ?, ?)');
+        for (const c of channels)
+            ins.run(clanId, c.url, c.customType, c.name, c.memberCount, now);
+    })();
+    return true;
 }
 function getPostableChannels(clanId) {
     return (0, database_js_1.getDb)().prepare('SELECT channel_url, custom_type, name, member_count, seen_at FROM chat_post_channels WHERE clan_id = ? ORDER BY name COLLATE NOCASE').all(clanId)

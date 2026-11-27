@@ -22,6 +22,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WireReader = void 0;
 exports.decodeValue = decodeValue;
+exports.decodeJournalValues = decodeJournalValues;
 exports.encodeValues = encodeValues;
 exports.encodeFrame = encodeFrame;
 exports.decodeFrames = decodeFrames;
@@ -30,10 +31,19 @@ exports.pushedEvents = pushedEvents;
 class WireReader {
     buf;
     end;
+    journal;
     pos;
-    constructor(buf, pos = 0, end = buf.length) {
+    /**
+     * `journal`: the battle-report service (game-protocol/journal.ts) writes
+     * `0xc7 <n>` before n ordinary values — an "optional" wrapper, not a
+     * MessagePack ext: `c7 01 d9 24 "<uuid>"` is one string. Read that way, every
+     * report recorded on Nov 27 2026 decodes to its last byte; read as an ext,
+     * the wrapper swallows the string's header. Game-server replies never set it.
+     */
+    constructor(buf, pos = 0, end = buf.length, journal = false) {
         this.buf = buf;
         this.end = end;
+        this.journal = journal;
         this.pos = pos;
     }
     get done() {
@@ -116,6 +126,8 @@ class WireReader {
             case 0xc6: return this.bin(this.bytes(this.num(b.readUInt32LE, 4)));
             case 0xc7: {
                 const n = this.u8();
+                if (this.journal)
+                    return n === 1 ? this.value() : this.arr(n);
                 this.u8();
                 return this.bin(this.bytes(n));
             }
@@ -191,7 +203,7 @@ class WireReader {
             case 0xdb: return void this.bytes(len32());
             case 0xc7: {
                 const n = this.u8();
-                return void this.bytes(n + 1);
+                return this.journal ? this.skipN(n) : void this.bytes(n + 1);
             }
             case 0xc8: {
                 const n = len16();
@@ -254,6 +266,14 @@ exports.WireReader = WireReader;
 /** Decode a whole buffer holding exactly one value. */
 function decodeValue(buf) {
     return new WireReader(buf).value();
+}
+/** Every value in a buffer of the battle-report service's encoding (`0xc7` wrappers — see WireReader). */
+function decodeJournalValues(buf) {
+    const r = new WireReader(buf, 0, buf.length, true);
+    const out = [];
+    while (!r.done)
+        out.push(r.value());
+    return out;
 }
 // ---------------------------------------------------------------------------
 // Encoder

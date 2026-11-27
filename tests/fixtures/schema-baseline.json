@@ -11,6 +11,21 @@
   },
   {
     "type": "index",
+    "name": "idx_battle_report_shares_entry",
+    "sql": "CREATE INDEX idx_battle_report_shares_entry ON battle_report_shares(entry_id)"
+  },
+  {
+    "type": "index",
+    "name": "idx_battle_reports_attacker",
+    "sql": "CREATE INDEX idx_battle_reports_attacker ON battle_reports(attacker_player_id, report_at)"
+  },
+  {
+    "type": "index",
+    "name": "idx_battle_reports_status",
+    "sql": "CREATE INDEX idx_battle_reports_status ON battle_reports(status, next_try_at)"
+  },
+  {
+    "type": "index",
     "name": "idx_chat_command_requests_player",
     "sql": "CREATE INDEX idx_chat_command_requests_player ON chat_command_requests(player_id, requested_at)"
   },
@@ -466,6 +481,16 @@
   },
   {
     "type": "table",
+    "name": "battle_report_shares",
+    "sql": "CREATE TABLE battle_report_shares ( clan_id INTEGER NOT NULL REFERENCES clans(id), entry_id TEXT NOT NULL, channel_url TEXT NOT NULL, message_id INTEGER NOT NULL, sender_player_id INTEGER, sender_name TEXT NOT NULL DEFAULT '', shared_at INTEGER NOT NULL, PRIMARY KEY (clan_id, entry_id) )"
+  },
+  {
+    "type": "table",
+    "name": "battle_reports",
+    "sql": "CREATE TABLE battle_reports ( entry_id TEXT PRIMARY KEY, entry_type TEXT NOT NULL, target_static_id INTEGER, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_try_at INTEGER, last_error TEXT, fetched_at TEXT, report_at INTEGER, kind TEXT, won INTEGER, attacker_player_id INTEGER, tinman_level INTEGER, tinman_stacks INTEGER, summary TEXT, raw BLOB, strike_log BLOB, first_shared_at INTEGER NOT NULL )"
+  },
+  {
+    "type": "table",
     "name": "chat_channels",
     "sql": "CREATE TABLE chat_channels ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, custom_type TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', member_count INTEGER NOT NULL DEFAULT 0, members TEXT NOT NULL DEFAULT '[]', last_message_at INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, history_complete INTEGER NOT NULL DEFAULT 0, max_length INTEGER, PRIMARY KEY (clan_id, channel_url) )"
   },
@@ -581,13 +606,18 @@
   },
   {
     "type": "table",
+    "name": "clan_report_chats",
+    "sql": "CREATE TABLE clan_report_chats ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', added_at TEXT NOT NULL, PRIMARY KEY (clan_id, channel_url) )"
+  },
+  {
+    "type": "table",
     "name": "clan_scan_accounts",
     "sql": "CREATE TABLE clan_scan_accounts ( clan_id INTEGER PRIMARY KEY REFERENCES clans(id), account TEXT NOT NULL, player_id INTEGER, source TEXT NOT NULL, updated_at TEXT NOT NULL )"
   },
   {
     "type": "table",
     "name": "clans",
-    "sql": "CREATE TABLE clans ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, game_url TEXT NOT NULL, scan_interval_minutes INTEGER, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, created_by INTEGER REFERENCES users(id), discord_enabled INTEGER NOT NULL DEFAULT 0, discord_token TEXT NOT NULL DEFAULT '', discord_channel_id TEXT NOT NULL DEFAULT '', discord_guild_id TEXT NOT NULL DEFAULT '', discord_scan_reports_enabled INTEGER NOT NULL DEFAULT 1, discord_only_new_chests INTEGER NOT NULL DEFAULT 0, discord_daily_digest_enabled INTEGER NOT NULL DEFAULT 0, discord_commands_enabled INTEGER NOT NULL DEFAULT 1, ct_share_code TEXT NOT NULL DEFAULT '', ct_poll_interval_hours INTEGER, ct_backfill_weeks INTEGER, discord_daily_digest_share_user_id TEXT NOT NULL DEFAULT '', last_digest_at TEXT NOT NULL DEFAULT '', last_digest_channel_error TEXT NOT NULL DEFAULT '', last_digest_dm_error TEXT NOT NULL DEFAULT '' , needs_reauth INTEGER NOT NULL DEFAULT 0, reauth_failed_at TEXT NOT NULL DEFAULT '', resources_enabled INTEGER NOT NULL DEFAULT 0, last_digest_game_day TEXT NOT NULL DEFAULT '', inactivity_days INTEGER, inactivity_sweep_enabled INTEGER NOT NULL DEFAULT 1, resource_auto_capture INTEGER NOT NULL DEFAULT 1, leaderboard_goal_enabled INTEGER NOT NULL DEFAULT 0, leaderboard_weekly_goal_points INTEGER, deleted_at TEXT NOT NULL DEFAULT '', week_start TEXT NOT NULL DEFAULT 'sunday', ancient_planner_defaults TEXT, public_url TEXT NOT NULL DEFAULT '', discord_weekly_digest_enabled INTEGER NOT NULL DEFAULT 0, last_weekly_digest_at TEXT NOT NULL DEFAULT '', last_weekly_digest_week TEXT NOT NULL DEFAULT '', last_weekly_digest_error TEXT NOT NULL DEFAULT '', leaderboard_goal_amber_pct INTEGER, seasonal_kingdom INTEGER NOT NULL DEFAULT 0, short_code TEXT NOT NULL DEFAULT '')"
+    "sql": "CREATE TABLE clans ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, game_url TEXT NOT NULL, scan_interval_minutes INTEGER, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, created_by INTEGER REFERENCES users(id), discord_enabled INTEGER NOT NULL DEFAULT 0, discord_token TEXT NOT NULL DEFAULT '', discord_channel_id TEXT NOT NULL DEFAULT '', discord_guild_id TEXT NOT NULL DEFAULT '', discord_scan_reports_enabled INTEGER NOT NULL DEFAULT 1, discord_only_new_chests INTEGER NOT NULL DEFAULT 0, discord_daily_digest_enabled INTEGER NOT NULL DEFAULT 0, discord_commands_enabled INTEGER NOT NULL DEFAULT 1, ct_share_code TEXT NOT NULL DEFAULT '', ct_poll_interval_hours INTEGER, ct_backfill_weeks INTEGER, discord_daily_digest_share_user_id TEXT NOT NULL DEFAULT '', last_digest_at TEXT NOT NULL DEFAULT '', last_digest_channel_error TEXT NOT NULL DEFAULT '', last_digest_dm_error TEXT NOT NULL DEFAULT '' , needs_reauth INTEGER NOT NULL DEFAULT 0, reauth_failed_at TEXT NOT NULL DEFAULT '', resources_enabled INTEGER NOT NULL DEFAULT 0, last_digest_game_day TEXT NOT NULL DEFAULT '', inactivity_days INTEGER, inactivity_sweep_enabled INTEGER NOT NULL DEFAULT 1, resource_auto_capture INTEGER NOT NULL DEFAULT 1, leaderboard_goal_enabled INTEGER NOT NULL DEFAULT 0, leaderboard_weekly_goal_points INTEGER, deleted_at TEXT NOT NULL DEFAULT '', week_start TEXT NOT NULL DEFAULT 'sunday', ancient_planner_defaults TEXT, public_url TEXT NOT NULL DEFAULT '', discord_weekly_digest_enabled INTEGER NOT NULL DEFAULT 0, last_weekly_digest_at TEXT NOT NULL DEFAULT '', last_weekly_digest_week TEXT NOT NULL DEFAULT '', last_weekly_digest_error TEXT NOT NULL DEFAULT '', leaderboard_goal_amber_pct INTEGER, seasonal_kingdom INTEGER NOT NULL DEFAULT 0, short_code TEXT NOT NULL DEFAULT '', tinman_required_stacks INTEGER)"
   },
   {
     "type": "table",

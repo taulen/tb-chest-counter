@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { decodeFrames, encodeFrame, messages, type Frame, type Wire, type BinValue } from './codec.js';
 import { SiteCookieJar, authTokenAccounts } from './site-session.js';
+import { findJournalToken } from './journal-token.js';
 import { gameClientVersion } from '../game-patch/client-version.js';
 
 const SITE = 'https://totalbattle.com';
@@ -417,6 +418,8 @@ export class GameClient {
     /** Every kingdom's server, the rating proxy and the registration server, from the site page. */
     private readonly servers: { realmUrls: Map<number, string[]>; ratingProxyUrl: string | null; regUrl: string | null } =
       { realmUrls: new Map(), ratingProxyUrl: null, regUrl: null },
+    /** The battle-report service's token from the login reply (journal-token.ts), or null when it had none. */
+    readonly journalToken: string | null = null,
   ) {}
 
   static connect(opts: ConnectOptions): Promise<GameClient> {
@@ -459,7 +462,7 @@ export class GameClient {
       realmUrls: boot.realmUrls,
       ratingProxyUrl: boot.ratingProxyUrl,
       regUrl: boot.regUrls[0] ?? null,
-    });
+    }, findJournalToken(root ?? null));
   }
 
   /**

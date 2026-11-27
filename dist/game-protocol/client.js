@@ -40,6 +40,7 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const codec_js_1 = require("./codec.js");
 const site_session_js_1 = require("./site-session.js");
+const journal_token_js_1 = require("./journal-token.js");
 const client_version_js_1 = require("../game-patch/client-version.js");
 const SITE = 'https://totalbattle.com';
 const RPC_URL = `${SITE}/restapi/totalbattle/web/`;
@@ -349,6 +350,7 @@ class GameClient {
     suid;
     ratingUrl;
     servers;
+    journalToken;
     seq = 1;
     constructor(url, playerId, realmId, clanId, nickname, session, 
     /** The website user id (`tb:<n>`), which is also the chat (Sendbird) user id. */
@@ -356,7 +358,9 @@ class GameClient {
     /** The rating server (the site page's rating_url): the event list (24001) is asked there, never on the realm. */
     ratingUrl = null, 
     /** Every kingdom's server, the rating proxy and the registration server, from the site page. */
-    servers = { realmUrls: new Map(), ratingProxyUrl: null, regUrl: null }) {
+    servers = { realmUrls: new Map(), ratingProxyUrl: null, regUrl: null }, 
+    /** The battle-report service's token from the login reply (journal-token.ts), or null when it had none. */
+    journalToken = null) {
         this.url = url;
         this.playerId = playerId;
         this.realmId = realmId;
@@ -366,6 +370,7 @@ class GameClient {
         this.suid = suid;
         this.ratingUrl = ratingUrl;
         this.servers = servers;
+        this.journalToken = journalToken;
     }
     static connect(opts) {
         return oneSiteCallAtATime(() => GameClient.connectNow(opts));
@@ -403,7 +408,7 @@ class GameClient {
             realmUrls: boot.realmUrls,
             ratingProxyUrl: boot.ratingProxyUrl,
             regUrl: boot.regUrls[0] ?? null,
-        });
+        }, (0, journal_token_js_1.findJournalToken)(root ?? null));
     }
     /**
      * Send one message and return every message in the reply. `url` is the

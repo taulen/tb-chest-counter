@@ -24,6 +24,7 @@ import { attachChatDigest, chatDigestSectionHtml } from './clan-chat-digest.js';
 import { attachAccountInvites, accountInvitesSectionHtml } from './clan-account-invites.js';
 import { attachChatCommands, chatCommandsSectionHtml } from './clan-chat-commands.js';
 import { attachDragonCoins, dragonCoinsSectionHtml } from './clan-dragon-coins.js';
+import { attachBattleReports, battleReportsSectionHtml } from './clan-battle-reports.js';
 import {
   computeGameWindowDates, customWeekStart, CUSTOM_WEEK_MAX_DAYS, CUSTOM_WEEK_MIN_DAYS, formatPeriodLabel,
   isCustomWeek, isTinmanWeek, parseCustomWeek, weekdayName, weekLengthDays,
@@ -751,6 +752,7 @@ export async function renderClans(el, refreshClanIndicator, requested) {
   for (const clan of clans) attachAccountInvites(el, clan.id);
   for (const clan of clans) attachChatCommands(el, clan.id);
   for (const clan of clans) attachDragonCoins(el, clan.id);
+  for (const clan of clans) attachBattleReports(el, clan.id);
 
   for (const clan of clans) {
     // Populate the Discord dropdowns without being asked. The lookup is a
@@ -1289,6 +1291,8 @@ ${chatCommandsSectionHtml(clan.id)}
 ${accountInvitesSectionHtml(clan.id)}
         <hr class="section-divider">
 ${dragonCoinsSectionHtml(clan.id)}
+        <hr class="section-divider">
+${battleReportsSectionHtml(clan.id)}
         </div>
         <div class="clan-tab-panel" data-clan-panel="integrations"${tab === 'integrations' ? '' : ' hidden'}>
         <section class="clan-section">

@@ -158,6 +158,32 @@ export function setPostableChannels(
   })();
 }
 
+/**
+ * The account's group chats as the chat sync lists them every minute (the
+ * battle-report chat picker and the digest's both offer them). Rewritten only
+ * when the chats, names or member counts changed; the digest's own check
+ * (setPostableChannels) also records who posts.
+ */
+export function refreshGroupChats(
+  clanId: number,
+  channels: Array<{ url: string; customType: string; name: string; memberCount: number }>,
+  now = new Date().toISOString(),
+): boolean {
+  const key = (c: { url: string; customType: string; name: string; memberCount: number }) => `${c.url}\u0000${c.customType}\u0000${c.name}\u0000${c.memberCount}`;
+  const before = getPostableChannels(clanId).map(key).sort();
+  const after = channels.map(key).sort();
+  if (before.length === after.length && before.every((k, i) => k === after[i])) return false;
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare('DELETE FROM chat_post_channels WHERE clan_id = ?').run(clanId);
+    const ins = db.prepare(
+      'INSERT OR REPLACE INTO chat_post_channels (clan_id, channel_url, custom_type, name, member_count, seen_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    for (const c of channels) ins.run(clanId, c.url, c.customType, c.name, c.memberCount, now);
+  })();
+  return true;
+}
+
 export function getPostableChannels(clanId: number): PostableChannel[] {
   return (getDb().prepare(
     'SELECT channel_url, custom_type, name, member_count, seen_at FROM chat_post_channels WHERE clan_id = ? ORDER BY name COLLATE NOCASE',

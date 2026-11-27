@@ -2,7 +2,10 @@
  * Keeps each clan's chat stored: the clan chat and the scanner account's
  * private (1:1) messages (game-protocol/chat.ts, migration v104) — and, only
  * while chat commands are answered there, the clan's digest group chat, read
- * forward from the switch-on (chat-commands.ts commandGroupRead).
+ * forward from the switch-on (chat-commands.ts commandGroupRead) — and the
+ * group chats the clan reads battle reports from (v143, clan_report_chats).
+ * Battle reports linked in any of them are opened between scans on the
+ * journal token of the clan's last login (battle-reports.ts).
  *
  *   - Every scan, on the game session it just signed in with, asks the game for
  *     a chat token, signs in to the chat service and syncs (refreshChatSession).
@@ -31,6 +34,9 @@ import { hasWaitingInviteRequests, processInviteRequests, sendWelcomeCodes } fro
 import { commandGroupRead, hasWaitingChatCommands, processChatCommands } from './chat-commands.js';
 import { POSTABLE_TYPES } from '../game-protocol/chat-send.js';
 import { keptSessionClans, withKeptGameSession } from './event-poller.js';
+import { getReportChats } from '../data/repositories/battle-report-repo.js';
+import { refreshGroupChats } from '../data/repositories/chat-digest-repo.js';
+import { fetchSharedReports } from './battle-reports.js';
 
 const log = childLogger('chat');
 const pollWarner = createCoalescedWarner((m) => log.warn({ noAlert: true }, m), 60 * 60_000);
@@ -54,6 +60,8 @@ interface ClanChat {
   session: ChatSession;
   /** The game's clan id, for the clan channel URL. */
   gameClanId: number;
+  /** The battle-report service's token from the last scan's login (journal-token.ts); null = none or refused. */
+  journalToken?: string | null;
 }
 const sessions = new Map<number, ClanChat>();
 
@@ -98,8 +106,13 @@ async function sync(clanId: number, chat: ClanChat): Promise<{ channels: number;
   // (chat-commands.ts): then the named group chats are listed too, and only
   // that one is kept — read forward from the switch-on, never its history.
   const group = commandGroupRead(clanId);
-  const listed = (await listChannels(chat.session, group ? [...KEPT_TYPES, ...POSTABLE_TYPES] : KEPT_TYPES))
-    .filter((c) => KEPT_TYPES.includes(c.customType) || c.url === group?.url);
+  // The named group chats are always listed too (no extra request): the clan
+  // picks its battle-report chats from them (and the digest its chat), and the
+  // picked ones are read like the private chats — history first, then new lines.
+  const reportChats = new Set(getReportChats(clanId).map((c) => c.url));
+  const all = await listChannels(chat.session, [...KEPT_TYPES, ...POSTABLE_TYPES]);
+  refreshGroupChats(clanId, all.filter((c) => (POSTABLE_TYPES as readonly string[]).includes(c.customType)));
+  const listed = all.filter((c) => KEPT_TYPES.includes(c.customType) || c.url === group?.url || reportChats.has(c.url));
   const clanUrl = `triumph_clan_channel_${chat.gameClanId}`;
   const channels: ChatChannel[] = listed.some((c) => c.url === clanUrl) || !chat.gameClanId
     ? listed
@@ -151,7 +164,7 @@ export async function refreshChatSession(clanId: number, client: GameClient, gam
   try {
     if (!client.suid) return 'chat skipped (no website user id)';
     const session = await chatLogin(client.suid, await client.chatToken());
-    const chat = { session, gameClanId };
+    const chat: ClanChat = { session, gameClanId, journalToken: client.journalToken ?? null };
     keepSession(clanId, chat);
     const r = await sync(clanId, chat);
     return `chat: ${r.channels} channels, ${r.added} new messages`;
@@ -208,6 +221,21 @@ export function maybeScanForChatReplies(clanId: number, now = Date.now()): void 
   replyScanTrigger(clanId);
 }
 
+/**
+ * Battle reports shared in the clan's chats, opened on the last login's
+ * journal token. Its own failures stay here: they never pause chat polling.
+ */
+async function readSharedReports(clanId: number, chat: ClanChat): Promise<void> {
+  if (!chat.journalToken) return;
+  try {
+    const r = await fetchSharedReports(clanId, chat.journalToken);
+    if (r.tokenBad) chat.journalToken = null; // until the next scan's login brings a fresh one
+    if (r.note) log.info(`Clan #${clanId} ${r.note}`);
+  } catch (err) {
+    log.warn({ noAlert: true }, `Clan #${clanId}: battle reports not read this time: ${String(err)}`);
+  }
+}
+
 async function pollOnce(): Promise<void> {
   if (polling) return;
   polling = true;
@@ -246,6 +274,7 @@ async function pollOnce(): Promise<void> {
           });
           if (welcome) log.info(`Clan #${clanId} ${welcome}`);
         }
+        await readSharedReports(clanId, chat);
       } catch (err) {
         // A rejected key (or any failure) waits for the next scan's fresh session.
         dropSession(clanId);

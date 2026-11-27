@@ -33,6 +33,32 @@ export function parseChatSubs(data: string): Record<string, ChatSub> {
   }
 }
 
+/** A report shared in chat: its journal id (journal.ts opens it by this), kind and target map object. */
+export interface ChatReportLink {
+  entryId: string;
+  /** attack / crypt / scout / clan_announcement / pvpladder. */
+  entryType: string;
+  /** The target's T7 map object (0 when the link doesn't say). */
+  staticId: number;
+}
+
+/** Every shared report in a message's data payload (docs/battle-reports.md). */
+export function chatReportLinks(data: string): ChatReportLink[] {
+  if (!data || !data.includes('journalV2EntryId')) return [];
+  const out: ChatReportLink[] = [];
+  for (const sub of Object.values(parseChatSubs(data))) {
+    if (sub.type !== 'journal') continue;
+    const entryId = sub.journalV2EntryId;
+    if (typeof entryId !== 'string' || !/^[0-9a-f-]{36}$/i.test(entryId)) continue;
+    out.push({
+      entryId: entryId.toLowerCase(),
+      entryType: typeof sub.entryType === 'string' ? sub.entryType : '',
+      staticId: typeof sub.staticId === 'number' ? sub.staticId : 0,
+    });
+  }
+  return out;
+}
+
 const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
 
 /** `K:260 X:808 Y:40` for a sub carrying realm/x/y (also `atomCoord`), else ''. */

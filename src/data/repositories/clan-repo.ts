@@ -914,6 +914,10 @@ export function deleteClan(id: number): { ok: true } | { ok: false; reason: stri
     // Dragon Coins back to members (v140).
     db.prepare('DELETE FROM dragon_coin_returns WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM dragon_coin_return_settings WHERE clan_id = ?').run(id);
+    // Battle reports shared in the clan's chats (v143). The reports themselves
+    // (battle_reports) belong to no clan: another clan may have seen the same one.
+    db.prepare('DELETE FROM battle_report_shares WHERE clan_id = ?').run(id);
+    db.prepare('DELETE FROM clan_report_chats WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM user_game_links WHERE clan_id = ?').run(id);
     db.prepare('DELETE FROM user_clan_main WHERE clan_id = ?').run(id);
     // In-game chat (v104).

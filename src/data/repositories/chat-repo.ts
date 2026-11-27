@@ -12,6 +12,7 @@
 import { getDb } from '../database.js';
 import type { ChatChannel, ChatMessage } from '../../game-protocol/chat.js';
 import { chatSearchText, chatSenderPlayerId } from '../../game-protocol/chat-text.js';
+import { recordReportShares } from './battle-report-repo.js';
 
 export function upsertChatChannel(clanId: number, c: ChatChannel, now = new Date().toISOString()): void {
   getDb().prepare(
@@ -85,6 +86,10 @@ export function saveChatMessages(clanId: number, messages: ChatMessage[], now = 
         m.updatedAt ?? 0, m.translations ?? '');
       if (isNew) added++;
     }
+    // Battle reports linked in any chat the clan keeps — the clan chat, a
+    // private message to the scanner account, a picked report chat — are
+    // queued to be read (battle-report-repo.ts, docs/battle-reports.md).
+    recordReportShares(clanId, messages);
   })();
   return added;
 }
