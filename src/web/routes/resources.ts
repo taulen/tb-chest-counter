@@ -15,6 +15,8 @@ import { logAction } from '../../data/repositories/user-repo.js';
 import { buildByChest, buildIncome, loadChestClaims, rewardItemIds } from '../../data/chest-rewards.js';
 import { describeRewardItems } from '../../data/reward-items.js';
 import { loadGameNames } from '../../game-protocol/static-data.js';
+import { clanWonLedgerEntries, ledgerFirstEntryAt } from '../../data/repositories/game-protocol-repo.js';
+import { pickClanWinnings, WINNINGS_AFTER_MS, WINNINGS_BEFORE_MS } from '../../data/clan-winnings.js';
 import { loadConfig } from '../../config/index.js';
 import { resolveAllowedCropPath } from '../../utils/crop-dirs.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -163,6 +165,27 @@ export function createResourcesDataRouter(): Router {
         source: names?.gifts?.[String(id)]?.source ?? '',
       }])),
     });
+  });
+
+  /**
+   * Tools → Rewards: what the clan itself won in the event run whose reset is
+   * `at` (ISO; the calendar's run end) — the Dragon Coins and clan fragments the
+   * game credited to the treasury then (ledger kinds 5/8, data/clan-winnings.ts),
+   * or null. `ledgerSince` is the oldest ledger entry kept, so an older run can
+   * say why it has none.
+   */
+  router.get('/clan-winnings', async (req, res) => {
+    const clanId = req.clanId!;
+    const atMs = Date.parse(String(req.query.at ?? ''));
+    if (!Number.isFinite(atMs)) {
+      res.status(400).json({ error: 'at (ISO timestamp) required' });
+      return;
+    }
+    const names = await loadGameNames().catch(() => null);
+    const entries = clanWonLedgerEntries(clanId, atMs - WINNINGS_BEFORE_MS, atMs + WINNINGS_AFTER_MS);
+    const winnings = pickClanWinnings(entries, atMs, (id) => names?.gifts?.[id]?.chest ?? '');
+    const first = ledgerFirstEntryAt(clanId);
+    res.json({ winnings, ledgerSince: first != null ? new Date(first * 1000).toISOString() : null });
   });
 
   /**

@@ -250,6 +250,28 @@ export function saveLedger(clanId: number, entries: LedgerEntry[], now = new Dat
 }
 
 /**
+ * The clan-won ledger entries (kinds 5/8: what the clan itself won, credited to
+ * the Leader at an event's reset) between two instants, for data/clan-winnings.ts.
+ */
+export function clanWonLedgerEntries(clanId: number, fromMs: number, toMs: number): Array<{ occurredAt: number; amounts: Record<string, number> }> {
+  const rows = getDb().prepare(
+    `SELECT amounts, occurred_at FROM game_ledger
+      WHERE clan_id = ? AND kind IN (5, 8) AND occurred_at BETWEEN ? AND ?`,
+  ).all(clanId, Math.floor(fromMs / 1000), Math.ceil(toMs / 1000)) as Array<{ amounts: string; occurred_at: number }>;
+  return rows.map((r) => {
+    let amounts: Record<string, number> = {};
+    try { amounts = JSON.parse(r.amounts) as Record<string, number>; } catch { amounts = {}; }
+    return { occurredAt: r.occurred_at, amounts };
+  });
+}
+
+/** When the oldest ledger entry the scans kept for this clan happened (epoch s), or null. */
+export function ledgerFirstEntryAt(clanId: number): number | null {
+  const row = getDb().prepare('SELECT MIN(occurred_at) AS first FROM game_ledger WHERE clan_id = ?').get(clanId) as { first: number | null };
+  return row.first ?? null;
+}
+
+/**
  * Research + hero talent levels for one player. Upserts the current level and
  * writes a history row only for techs whose level changed (or are new).
  * Returns how many changed.

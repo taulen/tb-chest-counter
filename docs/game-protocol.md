@@ -1288,7 +1288,8 @@ counts (2050 1h, 2051 3h, 2052 8h, 2053 15h, 2054 24h, 2055 72h). A member's eve
 them to the treasury as kind 4 under that member (CWB: 48 on Nov 4–5 2026, one
 per member). What the CLAN wins (Dark Omens, Olympus, the Seasonal Kingdom) is
 kind 5 or 8 under the Leader at the reset (Nov 6 18:00: 525,000 Dragon Coins +
-27.5M Scientific Tractates + 700 clan fragments for CWB). Kind 1 = a payout to a
+27.5M Scientific Tractates + 700 clan fragments for CWB; Tools → Rewards fills its
+pots from these, [rewards-tool.md](rewards-tool.md#the-pots-what-the-clan-won-from-the-ledger)). Kind 1 = a payout to a
 member (15019 or by hand).
 
 ## Event standings (v121)

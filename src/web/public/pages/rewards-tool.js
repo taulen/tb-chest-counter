@@ -11,6 +11,11 @@
 //    Spoils of Dread damage ranking on Events → Dark Omens, read from the game.
 // Runs pasted by hand before the game was read keep their pasted rankings.
 //
+// The pots fill themselves: what the clan won in the run — the Dragon Coins and
+// clan fragment the game credits to the treasury at its end — is read from the
+// Clan Capital ledger (/resources/clan-winnings). A number typed over it stays
+// until another run is picked; a run the ledger doesn't reach is typed by hand.
+//
 // Anyone can be left out (an alt, a leader who takes no share); their part is
 // spread over everyone else by score. Players the roster no longer lists start
 // left out — a reward can only be sent to someone in the clan. Who is left out
@@ -20,7 +25,7 @@
 // results, so the box being typed in is never replaced.
 
 import { api } from '../lib/api.js';
-import { esc, memberLink, copyTextToClipboard } from '../lib/ui.js';
+import { esc, memberLink, copyTextToClipboard, formatDate } from '../lib/ui.js';
 import { getCurrentUser } from '../lib/state.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { loadGameArt } from '../lib/game-art.js';
@@ -34,6 +39,9 @@ const MAX_RUNS = 12;
 const PREFS_KEY = 'tbcc.rewards.prefs.v1';
 const EXCLUDED_KEY = 'tbcc.rewards.excluded.v1';
 const ESSENCE_SLUG = 'omen-essence';
+const POTS = ['coins', 'fragments'];
+/** How long after a run's end its win may still be on its way (the server's WINNINGS_AFTER_MS). */
+const WIN_PENDING_MS = 4 * 3_600_000;
 
 /**
  * What a split can be based on. `scores` bases read /event-scores/<api> (the
@@ -127,6 +135,11 @@ export async function renderRewardsTool(mount) {
     activeIds: null,
     coins: 0,
     fragments: 0,
+    /** What the clan won in the picked run, from the ledger — see loadWinnings(). */
+    winnings: null,
+    /** Pots holding the ledger's number, not one typed over it. */
+    fromLedger: { coins: false, fragments: false },
+    winningsToken: 0,
     /** Players left out by hand (persisted). */
     excluded: loadExcluded(),
     /** Players who left the clan, put back in by hand (this visit only). */
@@ -182,7 +195,9 @@ async function loadEvent(root) {
   rs.runs = [];
   rs.runIdx = 0;
   rs.source = null;
+  rs.winnings = null;
   paintSource(root);
+  paintPotsSource(root);
   paintResults(root);
 
   let runs = [];
@@ -196,7 +211,56 @@ async function loadEvent(root) {
   if (!runs.length) runs = await scoredRunsFallback();
   if (token !== rs.token) return;
   rs.runs = runs;
+  loadWinnings(root).catch(ignoreAbort);
   await loadSource(root, token);
+}
+
+/** What the clan won in the picked run, from the Clan Capital ledger; fills the pots. */
+async function loadWinnings(root) {
+  const token = ++rs.winningsToken;
+  const r = run();
+  rs.winnings = null;
+  paintPotsSource(root);
+  let w = { kind: 'none' };
+  if (r?.resetAt) {
+    try {
+      const res = await api(`/resources/clan-winnings?at=${encodeURIComponent(r.resetAt)}`);
+      w = res?.winnings
+        ? { kind: 'found', ...res.winnings }
+        : { kind: 'missing', resetAt: r.resetAt, ledgerSince: res?.ledgerSince ?? null };
+    } catch (err) {
+      if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
+      w = { kind: 'error' };
+    }
+  }
+  if (token !== rs.winningsToken) return;
+  rs.winnings = w;
+  applyLedgerPots(root);
+}
+
+/** The pots as the ledger has them; a pot it can't say (several fragment kinds) is null. */
+function ledgerPots() {
+  const w = rs.winnings;
+  if (w?.kind !== 'found') return null;
+  return { coins: w.coins, fragments: w.fragments.length <= 1 ? (w.fragments[0]?.amount ?? 0) : null };
+}
+
+/** Fill the pots from the ledger; a pot still holding another run's ledger number is cleared. */
+function applyLedgerPots(root) {
+  const pots = ledgerPots();
+  for (const key of POTS) {
+    if (pots?.[key] != null) setPot(root, key, pots[key], true);
+    else if (rs.fromLedger[key]) setPot(root, key, 0, false);
+  }
+  paintPotsSource(root);
+  paintResults(root);
+}
+
+function setPot(root, key, value, fromLedger) {
+  rs[key] = value;
+  rs.fromLedger[key] = fromLedger;
+  const input = root.querySelector(`[data-pot="${key}"]`);
+  if (input) input.value = value > 0 ? value.toLocaleString() : '';
 }
 
 async function scoredRunsFallback() {
@@ -378,9 +442,43 @@ function potsCardHtml() {
           ${field('coins', `${resourceIconOnly('Dragon Coins')}${esc(tGame('Dragon Coins'))}`)}
           ${field('fragments', t('Clan fragments'))}
         </div>
+        <p class="muted-copy rewards-status rewards-pots-source" role="status" hidden></p>
         <p class="tool-slider-hint">${t('Whole numbers; 7.5m and 250k work too.')}</p>
       </div>
     </div>`;
+}
+
+function paintPotsSource(root) {
+  const slot = root.querySelector('.rewards-pots-source');
+  if (!slot) return;
+  const html = potsSourceHtml();
+  slot.innerHTML = html;
+  slot.hidden = !html;
+}
+
+/** Where the pots' numbers come from: the ledger, or why it has none for this run. */
+function potsSourceHtml() {
+  const w = rs.winnings;
+  if (!w || w.kind === 'none') return '';
+  if (w.kind === 'error') return t('The Clan Capital ledger could not be read.');
+  if (w.kind === 'missing') {
+    const endMs = Date.parse(w.resetAt);
+    if (Date.now() < endMs + WIN_PENDING_MS) return t('What the clan wins is credited when the run ends and fills in after the next scan.');
+    if (w.ledgerSince && endMs < Date.parse(w.ledgerSince)) {
+      return t('This run ended before the Clan Capital ledger the scans keep begins ({date}).', { date: esc(formatDate(w.ledgerSince).slice(0, 10)) });
+    }
+    return t('Nothing the clan won in this run is in the Clan Capital ledger.');
+  }
+  const when = esc(formatDate(w.creditedAt).slice(0, 16));
+  const items = [
+    w.coins > 0 ? `${fmtInt(w.coins)} ${esc(tGame('Dragon Coins'))}` : '',
+    ...w.fragments.map((f) => `${fmtInt(f.amount)} ${esc(tGame(f.name))}`),
+  ].filter(Boolean);
+  if (!items.length) return t('What the clan won, credited {when}, holds no {coins} or clan fragments.', { when, coins: esc(tGame('Dragon Coins')) });
+  const pots = ledgerPots();
+  const edited = POTS.some((key) => pots[key] != null && rs[key] !== pots[key]);
+  const reset = edited ? ` <button type="button" class="btn btn-tight" data-rw-action="ledger-pots">${t('Use the ledger\'s totals')}</button>` : '';
+  return `${t('From the Clan Capital ledger: {items}, credited {when}.', { items: items.join(' · '), when })}${reset}`;
 }
 
 // ─── Results ───────────────────────────────────────────────────────
@@ -578,7 +676,9 @@ function onClick(e) {
     return;
   }
   const action = e.target.closest('[data-rw-action]')?.dataset.rwAction;
-  if (action === 'include-all') {
+  if (action === 'ledger-pots') {
+    applyLedgerPots(root);
+  } else if (action === 'include-all') {
     const split = currentSplit();
     for (const p of split?.rows ?? []) rs.excluded.delete(p.key);
     saveExcluded();
@@ -618,6 +718,7 @@ function onChange(e) {
   if (el.dataset.rw === 'run') {
     rs.runIdx = Number(el.value) || 0;
     rs.day = null;
+    loadWinnings(root).catch(ignoreAbort);
     loadSource(root).catch(ignoreAbort);
   } else if (el.dataset.rw === 'day') {
     rs.day = Number(el.value);
@@ -632,6 +733,8 @@ function onInput(e) {
   const el = e.target;
   if (el.dataset.pot) {
     rs[el.dataset.pot] = parsePot(el.value);
+    rs.fromLedger[el.dataset.pot] = false;
+    paintPotsSource(root);
     paintResults(root);
   } else if (el.dataset.rw === 'search') {
     rs.query = el.value;
@@ -661,6 +764,7 @@ function howItWorksHtml() {
       <summary class="ui-fold-head"><h2 class="ui-tile-title">${t('How this works')}</h2></summary>
       <div class="ui-fold-body tool-howto">
         <ul>
+          <li>${t('<strong>The pots.</strong> What the clan won in the run — the {coins} and clan fragments the game puts in the treasury when it ends — fill in from the Clan Capital ledger. Type over them to share a different amount.', { coins: esc(tGame('Dragon Coins')) })}</li>
           <li>${t('<strong>The split.</strong> Each player gets the pot × their score ÷ everyone\'s total, rounded down. The units left over go one each to the largest remainders, so the parts always add up to the pot.')}</li>
           <li>${t('<strong>Leaving someone out.</strong> Untick them: they get nothing, and their part is spread over everyone else by score. Who you leave out is remembered in this browser.')}</li>
           <li>${t('<strong>Left the clan.</strong> Players the roster no longer lists start unticked — a reward can only be sent to a member.')}</li>

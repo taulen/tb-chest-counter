@@ -11,6 +11,8 @@ const user_repo_js_1 = require("../../data/repositories/user-repo.js");
 const chest_rewards_js_1 = require("../../data/chest-rewards.js");
 const reward_items_js_1 = require("../../data/reward-items.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
+const game_protocol_repo_js_1 = require("../../data/repositories/game-protocol-repo.js");
+const clan_winnings_js_1 = require("../../data/clan-winnings.js");
 const index_js_1 = require("../../config/index.js");
 const crop_dirs_js_1 = require("../../utils/crop-dirs.js");
 const auth_js_1 = require("../middleware/auth.js");
@@ -146,6 +148,26 @@ function createResourcesDataRouter() {
                     source: names?.gifts?.[String(id)]?.source ?? '',
                 }])),
         });
+    });
+    /**
+     * Tools → Rewards: what the clan itself won in the event run whose reset is
+     * `at` (ISO; the calendar's run end) — the Dragon Coins and clan fragments the
+     * game credited to the treasury then (ledger kinds 5/8, data/clan-winnings.ts),
+     * or null. `ledgerSince` is the oldest ledger entry kept, so an older run can
+     * say why it has none.
+     */
+    router.get('/clan-winnings', async (req, res) => {
+        const clanId = req.clanId;
+        const atMs = Date.parse(String(req.query.at ?? ''));
+        if (!Number.isFinite(atMs)) {
+            res.status(400).json({ error: 'at (ISO timestamp) required' });
+            return;
+        }
+        const names = await (0, static_data_js_1.loadGameNames)().catch(() => null);
+        const entries = (0, game_protocol_repo_js_1.clanWonLedgerEntries)(clanId, atMs - clan_winnings_js_1.WINNINGS_BEFORE_MS, atMs + clan_winnings_js_1.WINNINGS_AFTER_MS);
+        const winnings = (0, clan_winnings_js_1.pickClanWinnings)(entries, atMs, (id) => names?.gifts?.[id]?.chest ?? '');
+        const first = (0, game_protocol_repo_js_1.ledgerFirstEntryAt)(clanId);
+        res.json({ winnings, ledgerSince: first != null ? new Date(first * 1000).toISOString() : null });
     });
     /**
      * Update a single transaction's editable fields.

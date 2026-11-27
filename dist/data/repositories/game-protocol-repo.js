@@ -7,6 +7,8 @@ exports.saveTitles = saveTitles;
 exports.saveTitleCounts = saveTitleCounts;
 exports.saveGifts = saveGifts;
 exports.saveLedger = saveLedger;
+exports.clanWonLedgerEntries = clanWonLedgerEntries;
+exports.ledgerFirstEntryAt = ledgerFirstEntryAt;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
 exports.updateCityStats = updateCityStats;
@@ -217,6 +219,29 @@ function saveLedger(clanId, entries, now = new Date().toISOString()) {
         }
     })();
     return added;
+}
+/**
+ * The clan-won ledger entries (kinds 5/8: what the clan itself won, credited to
+ * the Leader at an event's reset) between two instants, for data/clan-winnings.ts.
+ */
+function clanWonLedgerEntries(clanId, fromMs, toMs) {
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT amounts, occurred_at FROM game_ledger
+      WHERE clan_id = ? AND kind IN (5, 8) AND occurred_at BETWEEN ? AND ?`).all(clanId, Math.floor(fromMs / 1000), Math.ceil(toMs / 1000));
+    return rows.map((r) => {
+        let amounts = {};
+        try {
+            amounts = JSON.parse(r.amounts);
+        }
+        catch {
+            amounts = {};
+        }
+        return { occurredAt: r.occurred_at, amounts };
+    });
+}
+/** When the oldest ledger entry the scans kept for this clan happened (epoch s), or null. */
+function ledgerFirstEntryAt(clanId) {
+    const row = (0, database_js_1.getDb)().prepare('SELECT MIN(occurred_at) AS first FROM game_ledger WHERE clan_id = ?').get(clanId);
+    return row.first ?? null;
 }
 /**
  * Research + hero talent levels for one player. Upserts the current level and
