@@ -56,7 +56,7 @@ const PLAYER = 1241245577338;
 
 function report(): BattleReport {
   return {
-    kind: 'battle', won: true, rounds: 10, targetStaticId: 1817, strikeLogId: 'x',
+    kind: 'battle', won: true, rounds: 10, targetStaticId: 1817, strikeLogId: 'x', targetAt: { realm: 260, x: 471, y: 463 },
     attackers: [{ playerId: PLAYER, armyId: ME, units: ARMY.map(([unit, count]) => ({ unit, count })), killed: { 206: 140 }, effects: [] }],
     defenders: [{ playerId: 1116691496961, armyId: CIT, units: [{ unit: 51, count: 135000 }], killed: {}, effects: [] }],
   };

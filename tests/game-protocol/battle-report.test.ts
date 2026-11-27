@@ -25,7 +25,7 @@ function march(armyId: number, owner: number, units: Array<[number, number]>): W
   const m: Wire[] = new Array(36).fill(0);
   m[0] = [armyId];
   // [[player], [city], 1, set out at 1794084684, …]
-  m[1] = [[owner], [0], 1, 1794084684];
+  m[1] = [[owner], [0], 1, 1794084684, 0, 0, 7, 4, 260, 260, [0], 1, 5, [260, 465, 499], [260, 471, 463]];
   // Effects [id, sourceBits, count] and timed boosts [id, 0, from, to]: one running, one over.
   m[14] = [[31, 2, 1], [2070, 512, 108]];
   m[16] = [[4020, 0, 1769730123, 1814161323], [7802, 0, 1794000000, 1794080000]];
@@ -90,6 +90,10 @@ describe('battle reports', () => {
     expect(r.attackers[0]).toMatchObject({ armyId: 1001, units: [{ unit: 206, count: 475 }, { unit: 214, count: 475 }] });
     expect(r.defenders[0].units).toHaveLength(4);
     expect(r.defenders[0].killed[7541]).toBe(6987638);
+  });
+
+  it('says where the battle was: the march’s target tile', () => {
+    expect(parseBattleReport(tinman)!.targetAt).toEqual({ realm: 260, x: 471, y: 463 });
   });
 
   it('reads the march’s effects, counted, and the boosts running when it set out', () => {

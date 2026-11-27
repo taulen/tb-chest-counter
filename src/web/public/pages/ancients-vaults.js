@@ -8,8 +8,9 @@
 //
 // With a vault chat picked (Clans → In-game → Battle reports, v144 — CWB's
 // "-CWB VAULTS-", where everyone links the vault they raised), the answer also
-// carries the links posted there in the window, each matched to a map vault or
-// not (data/vault-posts.ts). Then a Posted column says who linked theirs (✓)
+// carries the links posted there in the window — a location link, or the
+// battle report of attacking the vault — each matched to a map vault or not
+// (data/vault-posts.ts). Then a Posted column says who linked theirs (✓)
 // and who didn't (✗), a member who posted a vault the map never saw gets a
 // row of their own ("Not seen on the map", the level from the link), and —
 // every member is to post theirs — every active member who didn't post is
@@ -279,7 +280,7 @@ function vaultsHtml(data, members, to) {
   const pageRows = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const body = pageRows.map((r) => {
     const where = [...r.vaults.filter((v) => v.x !== null && v.y !== null).map((v) => `${v.x}:${v.y}`),
-      ...r.posts.filter((p) => p.objectId === null).map((p) => `${p.x}:${p.y}`)].join(', ');
+      ...r.posts.filter((p) => p.objectId === null && p.x !== null && p.y !== null).map((p) => `${p.x}:${p.y}`)].join(', ');
     const mark = downMark(r);
     const post = hasChat ? postMark(r) : null;
     // Phone: the marks and their words ride under the name; First Seen opens with the row.

@@ -7,7 +7,8 @@
  *   report  ["battle", won ("true"/"false"), rounds, ?, ?, ?, ?,
  *            attackers[], defenders[], strikeLogId, …, targetStaticId (14), rewards (15), …]
  *   side    [[realm, playerNo], march, [{}, killed {unit: n}, 1], …]
- *   march   [[armyId], [[playerId], [cityId], 1, setOutAt, …], …, effects (14)
+ *   march   [[armyId], [[playerId], [cityId], 1, setOutAt, …, from (13) [realm, x, y],
+ *            target (14) [realm, x, y], …], …, effects (14)
  *            [[effectId, sourceBits, count]…], boosts (16) [[effectId, 0, from, to]…],
  *            …, units (30) [[unit, count, 0]…], …]
  *   strike  [attacker ("true"/"false"), [armyId], unit, count, damage, c5, c6, 0,
@@ -50,6 +51,8 @@ export interface BattleReport {
   strikeLogId: string | null;
   attackers: BattleSide[];
   defenders: BattleSide[];
+  /** Where the battle was: the attacking march's target tile (K:260 X:471 Y:463 for the user's Elven 10), or null. */
+  targetAt: { realm: number; x: number; y: number } | null;
 }
 
 export interface Strike {
@@ -171,7 +174,17 @@ export function parseBattleReport(bytes: Buffer): BattleReport | null {
     strikeLogId: typeof b[9] === 'string' && b[9] ? b[9] : null,
     attackers: sides(b[7]),
     defenders: sides(b[8]),
+    targetAt: marchTarget(b[7]),
   };
+}
+
+/** The first attacking march's target tile: march[1][14] = [realm, x, y]. */
+function marchTarget(attackers: Wire | undefined): BattleReport['targetAt'] {
+  const side = Array.isArray(attackers) ? attackers[0] : null;
+  const march = Array.isArray(side) && Array.isArray(side[1]) ? side[1] : null;
+  const head = march && Array.isArray(march[1]) ? march[1] : null;
+  const t = head && Array.isArray(head[14]) ? head[14] : null;
+  return t && typeof t[0] === 'number' && typeof t[1] === 'number' && typeof t[2] === 'number' ? { realm: t[0], x: t[1], y: t[2] } : null;
 }
 
 /** A strike log's bytes read into strikes (oldest first); [] when unreadable. */

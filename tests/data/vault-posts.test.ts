@@ -98,6 +98,20 @@ describe('vault links in the vault chat', () => {
     expect(listVaultPosts(2, null, null, TILE)).toEqual([]);
   });
 
+  it('counts the battle report of attacking the vault as posting it (RIDE, WarChild SK on Nov 26)', () => {
+    const report = (entryId: string) => JSON.stringify({ subs: { '/%0%/': {
+      type: 'journal', entryType: 'attack', guid: [260, 117], staticId: 150244, name: 'Vault of the Ancients', v: 1, journalV2EntryId: entryId, source: 'mob_v2',
+    } } });
+    saveChatMessages(1, [msg(6, VAULT_CHAT, '2026-11-21T19:40:00.000Z', report('eeeeeeee-0000-4000-8000-000000000001'))]);
+    setReportChats(1, [{ url: VAULT_CHAT, name: '-CWB VAULTS-', purpose: 'vaults' }]);
+    const posts = listVaultPosts(1, '2026-11-21T17:00:00.000Z', '2026-11-22T17:00:00.000Z', TILE);
+    const viaReport = posts.find((p) => p.messageId === 6)!;
+    // Not read yet: no tile, matched to the poster's own vault of that level.
+    expect(viaReport).toMatchObject({ via: 'report', x: null, y: null, level: 44, objectId: 2 });
+    // Another player's vault of that level isn't taken for it.
+    expect(matchVault({ realm: 260, x: null, y: null, objectType: 150239, atMs: ms('2026-11-21T18:20:00.000Z'), playerId: ME }, TILE)).toBeNull();
+  });
+
   it('keeps what each picked chat is read for', () => {
     setReportChats(1, [{ url: VAULT_CHAT, name: '-CWB VAULTS-', purpose: 'vaults' }, { url: 'sendbird_group_channel_8', name: 'Hits' }]);
     expect(getReportChats(1).map((c) => [c.name, c.purpose])).toEqual([['-CWB VAULTS-', 'vaults'], ['Hits', 'reports']]);
