@@ -505,7 +505,10 @@ Each capture also, every cycle:
   the same time; hover = last seen, so the take-down came after it) —
   members without one, and how
   many vaults of players outside the clan were seen nearby. A vault raised and
-  taken down between two scans is never seen. Each tile's `[4]` lists its **cities** (43-field
+  taken down between two scans is never seen. With a **vault chat** picked
+  (v144 — CWB's "-CWB VAULTS-", where everyone links the vault they raised),
+  the view also says who posted theirs (✓/✗) and lists vaults posted but never
+  seen on the map: [battle-reports.md](battle-reports.md#vault-chats). Each tile's `[4]` lists its **cities** (43-field
   records: `[0]` city id, `[2]` owner, `[3]` 2, `[4]` clan, `[13]` level,
   `[17]` `[realm,x,y]`, **`[25]` 1 = burning (walls down)**, **`[39]` true =
   shield**), confirmed by the user against the map (Nov 2026). Members' state

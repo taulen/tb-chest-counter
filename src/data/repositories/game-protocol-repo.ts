@@ -657,6 +657,8 @@ export function saveMapObjects(clanId: number, objects: MapObjectRow[], now = ne
 
 export interface RaisedVault {
   objectId: number;
+  /** The vault's map object type (T7: 150201–150499; its level = type % 100). */
+  objectType: number;
   level: number | null;
   realm: number | null;
   x: number | null;
@@ -680,7 +682,7 @@ export interface RaisedVault {
  */
 export function listRaisedVaults(clanId: number, from?: string | null, to?: string | null): RaisedVault[] {
   const rows = getDb().prepare(
-    `SELECT o.object_id, o.level, o.realm, o.x, o.y, o.owner_id, o.first_seen, o.last_seen,
+    `SELECT o.object_id, o.object_type, o.level, o.realm, o.x, o.y, o.owner_id, o.first_seen, o.last_seen,
             m.id AS member_id, m.name AS member_name, gp.name AS player_name
        FROM game_map_objects o
        LEFT JOIN members m ON m.clan_id = o.clan_id AND m.game_player_id = o.owner_id
@@ -689,12 +691,13 @@ export function listRaisedVaults(clanId: number, from?: string | null, to?: stri
         AND (? IS NULL OR o.first_seen >= ?) AND (? IS NULL OR o.first_seen < ?)
       ORDER BY o.first_seen, o.object_id`,
   ).all(clanId, from ?? null, from ?? null, to ?? null, to ?? null) as Array<{
-    object_id: number; level: number | null; realm: number | null; x: number | null; y: number | null;
+    object_id: number; object_type: number; level: number | null; realm: number | null; x: number | null; y: number | null;
     owner_id: number | null; first_seen: string; last_seen: string;
     member_id: number | null; member_name: string | null; player_name: string | null;
   }>;
   return rows.map((r) => ({
     objectId: r.object_id,
+    objectType: r.object_type,
     level: r.level,
     realm: r.realm,
     x: r.x,

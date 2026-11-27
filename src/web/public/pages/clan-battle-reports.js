@@ -1,10 +1,13 @@
 // Clans → In-game → "Battle reports": which chats the site reads shared battle
 // reports from, and the clan's Tin Man rule (docs/battle-reports.md). The
 // clan chat and private messages to the scanner account are always read; an
-// admin adds up to five of the account's group chats (a "Tin Man hits" or
-// "citadels" chat keeps the clan chat free of report spam). Built like "Chat
-// commands" (its styles): one line on what it is, a switch per chat that saves
-// on change, the rule, the fine print folded into "How it works".
+// admin adds up to five of the account's group chats, each read for battle
+// reports (a "Tin Man hits" or "citadels" chat keeps the clan chat free of
+// report spam) or for vaults (where members link the vault they raised —
+// Events → Ancients → Vaults matches the links to the map; v144). Built like
+// "Chat commands" (its styles): one line on what it is, Off / Battle reports /
+// Vaults per chat, saved on click, the rule, the fine print folded into "How
+// it works".
 
 import { escapeHtml, notify, formatDate } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
@@ -59,20 +62,29 @@ function renderBattleReports(root, box, clanId, data) {
       <div class="invite-setting-control"><span class="invite-on">✓ ${t('Always')}</span></div>
     </div>`;
 
+  const purposeLabel = (p) => (p === 'vaults' ? t('Vaults') : p === 'reports' ? t('Battle reports') : t('Off'));
   const chatRows = chats.map((c, i) => {
-    const id = `clan-report-chat-${clanId}-${i}`;
+    const labelId = `clan-report-chat-${clanId}-${i}`;
+    const current = c.picked ? c.purpose || 'reports' : null;
     const full = !c.picked && picked.length >= max;
     const state = !c.member
       ? `<span class="invite-off">⚠ ${t('The scanner account is no longer in this chat.')}</span>`
-      : c.picked ? `<span class="invite-on">✓ ${t('Read')}</span>` : `<span class="invite-off">○ ${t('Not read')}</span>`;
+      : current === 'vaults' ? `<span class="invite-on">✓ ${t('Read for the vaults members raised')}</span>`
+        : current === 'reports' ? `<span class="invite-on">✓ ${t('Read for battle reports')}</span>`
+          : `<span class="invite-off">○ ${t('Not read')}</span>`;
+    const buttons = [null, 'reports', 'vaults'].map((p) => {
+      const on = current === p;
+      const disabled = full && p !== null;
+      return `<button type="button" role="radio" class="invite-segmented-btn${on ? ' is-active' : ''}" aria-checked="${on}" data-chat-url="${escapeHtml(c.url)}" data-chat-purpose="${p ?? ''}"${disabled ? ' disabled' : ''}>${escapeHtml(purposeLabel(p))}</button>`;
+    }).join('');
     return `<div class="invite-setting">
       <div class="invite-setting-text">
-        <div class="invite-setting-title"><label for="${id}">${escapeHtml(c.name || t('Unnamed chat'))}</label></div>
+        <div class="invite-setting-title" id="${labelId}">${escapeHtml(c.name || t('Unnamed chat'))}</div>
         <div class="invite-setting-desc">${escapeHtml(tn(c.memberCount || 0, '{n} member', '{n} members'))}</div>
         <div class="invite-setting-state">${state}</div>
         ${full ? `<div class="invite-setting-note">${escapeHtml(t('At most {n} chats.', { n: max }))}</div>` : ''}
       </div>
-      <div class="invite-setting-control"><input type="checkbox" role="switch" class="invite-switch" id="${id}" data-chat-url="${escapeHtml(c.url)}" ${c.picked ? 'checked' : ''} ${full ? 'disabled' : ''}></div>
+      <div class="invite-setting-control"><div class="invite-segmented" role="radiogroup" aria-labelledby="${labelId}">${buttons}</div></div>
     </div>`;
   }).join('');
   const chatsHtml = chats.length
@@ -112,6 +124,7 @@ function renderBattleReports(root, box, clanId, data) {
         <li>${t('A member shares a battle report in a chat the scanner account reads. Between scans the site opens it in the game’s journal, like a member tapping the link, and keeps what it says.')}</li>
         <li>${t('Nothing is posted: the scanner account doesn’t answer a report, in any chat.')}</li>
         <li>${t('Tin Man hits show under Events → Ancients → Hits. Clan announcements shared the same way are kept too.')}</li>
+        <li>${t('A vault chat is where members link the vault they raised. Events → Ancients → Vaults shows who posted theirs and matches each link to the vaults read from the map.')}</li>
         <li>${t('The game keeps a report for about two months. One shared after that can’t be read.')}</li>
         <li>${t('To add a chat, add the scanner account to it in the game. It shows here within a minute.')}</li>
       </ul>
@@ -127,15 +140,19 @@ function renderBattleReports(root, box, clanId, data) {
       ${how}
     </div>`;
 
-  box.querySelectorAll('input[data-chat-url]').forEach((sw) => {
-    sw.addEventListener('change', async () => {
-      const urls = [...box.querySelectorAll('input[data-chat-url]')].filter((x) => x.checked).map((x) => x.dataset.chatUrl);
+  // Off / Battle reports / Vaults: the whole list goes back with this chat's new choice.
+  box.querySelectorAll('[data-chat-purpose]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const url = btn.dataset.chatUrl;
+      const purpose = btn.dataset.chatPurpose || null;
+      const list = chats
+        .map((c) => ({ url: c.url, purpose: c.url === url ? purpose : (c.picked ? c.purpose || 'reports' : null) }))
+        .filter((c) => c.purpose);
       try {
-        await save(clanId, { chats: urls });
+        await save(clanId, { chats: list });
         notify(t('Saved.'), t('Battle reports'));
         void loadBattleReports(root, clanId);
       } catch (err) {
-        sw.checked = !sw.checked;
         notify(t('Save failed: {error}', { error: err.message }), t('Battle reports'));
       }
     });

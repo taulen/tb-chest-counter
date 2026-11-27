@@ -170,16 +170,33 @@ export function reportCounts(clanId: number): { shared: number; read: number; wa
 
 // ── Report chats ───────────────────────────────────────────────────────────
 
-export interface ReportChat { url: string; name: string; addedAt: string }
+/**
+ * What a picked group chat is read for (v144): battle reports, or the vaults
+ * members raised (they link them there — data/vault-posts.ts). Battle reports
+ * linked in a vault chat count too: every picked chat is read.
+ */
+export type ChatPurpose = 'reports' | 'vaults';
+export const CHAT_PURPOSES: readonly ChatPurpose[] = ['reports', 'vaults'];
+
+export interface ReportChat { url: string; name: string; addedAt: string; purpose: ChatPurpose }
 
 export function getReportChats(clanId: number): ReportChat[] {
-  return (getDb().prepare('SELECT channel_url, name, added_at FROM clan_report_chats WHERE clan_id = ? ORDER BY name COLLATE NOCASE')
-    .all(clanId) as Array<{ channel_url: string; name: string; added_at: string }>)
-    .map((r) => ({ url: r.channel_url, name: r.name, addedAt: r.added_at }));
+  return (getDb().prepare('SELECT channel_url, name, added_at, purpose FROM clan_report_chats WHERE clan_id = ? ORDER BY name COLLATE NOCASE')
+    .all(clanId) as Array<{ channel_url: string; name: string; added_at: string; purpose: string }>)
+    .map((r) => ({ url: r.channel_url, name: r.name, addedAt: r.added_at, purpose: r.purpose === 'vaults' ? 'vaults' : 'reports' }));
 }
 
-/** Replace the clan's report chats (a chat kept keeps the day it was added). */
-export function setReportChats(clanId: number, chats: ReadonlyArray<{ url: string; name: string }>, now = new Date().toISOString()): ReportChat[] {
+/** The clan's vault chats: where members link the vaults they raised. */
+export function vaultChats(clanId: number): ReportChat[] {
+  return getReportChats(clanId).filter((c) => c.purpose === 'vaults');
+}
+
+/** Replace the clan's picked chats (a chat kept keeps the day it was added). */
+export function setReportChats(
+  clanId: number,
+  chats: ReadonlyArray<{ url: string; name: string; purpose?: ChatPurpose }>,
+  now = new Date().toISOString(),
+): ReportChat[] {
   const db = getDb();
   db.transaction(() => {
     const keep = new Set(chats.map((c) => c.url));
@@ -187,10 +204,10 @@ export function setReportChats(clanId: number, chats: ReadonlyArray<{ url: strin
       if (!keep.has(old.url)) db.prepare('DELETE FROM clan_report_chats WHERE clan_id = ? AND channel_url = ?').run(clanId, old.url);
     }
     const ins = db.prepare(
-      `INSERT INTO clan_report_chats (clan_id, channel_url, name, added_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (clan_id, channel_url) DO UPDATE SET name = excluded.name`,
+      `INSERT INTO clan_report_chats (clan_id, channel_url, name, added_at, purpose) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (clan_id, channel_url) DO UPDATE SET name = excluded.name, purpose = excluded.purpose`,
     );
-    for (const c of chats.slice(0, MAX_REPORT_CHATS)) ins.run(clanId, c.url, c.name, now);
+    for (const c of chats.slice(0, MAX_REPORT_CHATS)) ins.run(clanId, c.url, c.name, now, c.purpose === 'vaults' ? 'vaults' : 'reports');
   })();
   return getReportChats(clanId);
 }

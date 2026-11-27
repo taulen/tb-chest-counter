@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_REPORT_ATTEMPTS = exports.KEPT_ENTRY_TYPES = exports.TINMAN_STACK_CHOICES = exports.MAX_REPORT_CHATS = void 0;
+exports.CHAT_PURPOSES = exports.MAX_REPORT_ATTEMPTS = exports.KEPT_ENTRY_TYPES = exports.TINMAN_STACK_CHOICES = exports.MAX_REPORT_CHATS = void 0;
 exports.recordReportShares = recordReportShares;
 exports.pendingReports = pendingReports;
 exports.waitingReportCount = waitingReportCount;
@@ -11,6 +11,7 @@ exports.saveFetchedReport = saveFetchedReport;
 exports.markReportFailed = markReportFailed;
 exports.reportCounts = reportCounts;
 exports.getReportChats = getReportChats;
+exports.vaultChats = vaultChats;
 exports.setReportChats = setReportChats;
 exports.getTinmanRequiredStacks = getTinmanRequiredStacks;
 exports.setTinmanRequiredStacks = setTinmanRequiredStacks;
@@ -138,12 +139,17 @@ function reportCounts(clanId) {
      FROM battle_report_shares s JOIN battle_reports r ON r.entry_id = s.entry_id WHERE s.clan_id = ?`).get(clanId);
     return { shared: row.shared, read: row.read ?? 0, waiting: row.waiting ?? 0, unavailable: row.unavailable ?? 0, lastReadAt: row.last_read_at };
 }
+exports.CHAT_PURPOSES = ['reports', 'vaults'];
 function getReportChats(clanId) {
-    return (0, database_js_1.getDb)().prepare('SELECT channel_url, name, added_at FROM clan_report_chats WHERE clan_id = ? ORDER BY name COLLATE NOCASE')
+    return (0, database_js_1.getDb)().prepare('SELECT channel_url, name, added_at, purpose FROM clan_report_chats WHERE clan_id = ? ORDER BY name COLLATE NOCASE')
         .all(clanId)
-        .map((r) => ({ url: r.channel_url, name: r.name, addedAt: r.added_at }));
+        .map((r) => ({ url: r.channel_url, name: r.name, addedAt: r.added_at, purpose: r.purpose === 'vaults' ? 'vaults' : 'reports' }));
 }
-/** Replace the clan's report chats (a chat kept keeps the day it was added). */
+/** The clan's vault chats: where members link the vaults they raised. */
+function vaultChats(clanId) {
+    return getReportChats(clanId).filter((c) => c.purpose === 'vaults');
+}
+/** Replace the clan's picked chats (a chat kept keeps the day it was added). */
 function setReportChats(clanId, chats, now = new Date().toISOString()) {
     const db = (0, database_js_1.getDb)();
     db.transaction(() => {
@@ -152,10 +158,10 @@ function setReportChats(clanId, chats, now = new Date().toISOString()) {
             if (!keep.has(old.url))
                 db.prepare('DELETE FROM clan_report_chats WHERE clan_id = ? AND channel_url = ?').run(clanId, old.url);
         }
-        const ins = db.prepare(`INSERT INTO clan_report_chats (clan_id, channel_url, name, added_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (clan_id, channel_url) DO UPDATE SET name = excluded.name`);
+        const ins = db.prepare(`INSERT INTO clan_report_chats (clan_id, channel_url, name, added_at, purpose) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (clan_id, channel_url) DO UPDATE SET name = excluded.name, purpose = excluded.purpose`);
         for (const c of chats.slice(0, exports.MAX_REPORT_CHATS))
-            ins.run(clanId, c.url, c.name, now);
+            ins.run(clanId, c.url, c.name, now, c.purpose === 'vaults' ? 'vaults' : 'reports');
     })();
     return getReportChats(clanId);
 }

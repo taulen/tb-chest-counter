@@ -72,6 +72,14 @@ Tools → Citadel ("Fill in from a battle report") and Tools → Stacks ("Fill i
 
 Checked on the Nov 7 2026 Elven 30 report (citadel opens): Corax I 5226.5% / 3936.8%, Fire Phoenix I 3736.5%, Vulture VI 3636.5%, Battle Griffin VI and VII 5326.5% — every value the user typed from the cards that day ([report-bonuses.test.ts](../tests/web/report-bonuses.test.ts)). Vulture VII, Royal Lion I and the Ballistae only made capped strikes or hit the walls, so that report leaves them alone; the pages' bonus families fill Royal Lion I from Fire Phoenix I.
 
+## Vault chats
+
+A picked group chat is read **for battle reports or for vaults** (v144, `clan_report_chats.purpose`; Clans → In-game: Off / Battle reports / Vaults per chat, five chats at most). A vault chat is where members link the Vault of the Ancients they raised — CWB's "-CWB VAULTS-" (76 members) and SIN CITY's "#SINSK7 VAULTS#" (98); both scanner accounts were already in them on Nov 27 2026. Every picked chat is read; battle reports linked in a vault chat still count.
+
+A vault link is a shared map location: `coord` with `x`, `y`, `realmId` and `staticId` = the vault's T7 type, 150201–150499, **whose last two digits are its level** (true for all 237 vaults the map pass had seen). [vault-posts.ts](../src/data/vault-posts.ts) reads the links posted in the run's window and matches each to a vault the map pass saw (`game_map_objects`, `listRaisedVaults` — a day either side of the window): same kingdom and tile, **same type**, and a time that fits (posted at most 12 h before the vault was first seen or after it was last seen) — one tile holds several vaults over a run (CWB's 790:162 held a level 39, the user's level 44 and another 39 within a day). The poster's own vault wins; else the one first seen nearest the post. A link counts for the member who posted it (`sender_player_id` → `members.game_player_id`); posters outside the roster aren't listed.
+
+Events → Ancients → Vaults then shows a **Posted** column (✓ with the time / ✗ "Not posted"), a "Not posted" tile (members the map saw with a vault who linked none), and a row for a member who posted a vault the map never saw ("Not seen on the map", the level from the link) — raised out of the map pass's reach, or taken down before a scan. Without a vault chat the view is as before, with a note on where to pick one.
+
 ## Clan announcements
 
 A clan announcement shared in chat is opened the same way (`["clan_announcement", [realm, n], text]`; the chat link's `name` is its author) and kept as `summary = {"v": 1, "announcement": text}`. My Clan → **Announcements** lists them newest first (`GET /api/game/clan/announcements`), each as a one-line headline with the day and author and the whole text folded under it; `/api/game/clan` carries the newest of the last 14 days as `latestAnnouncement`, the strip over My Clan's tabs.

@@ -607,7 +607,7 @@
   {
     "type": "table",
     "name": "clan_report_chats",
-    "sql": "CREATE TABLE clan_report_chats ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', added_at TEXT NOT NULL, PRIMARY KEY (clan_id, channel_url) )"
+    "sql": "CREATE TABLE clan_report_chats ( clan_id INTEGER NOT NULL REFERENCES clans(id), channel_url TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', added_at TEXT NOT NULL, purpose TEXT NOT NULL DEFAULT 'reports', PRIMARY KEY (clan_id, channel_url) )"
   },
   {
     "type": "table",

@@ -549,7 +549,7 @@ function saveMapObjects(clanId, objects, now = new Date().toISOString()) {
  * first day of an Ancients run). Oldest sighting first.
  */
 function listRaisedVaults(clanId, from, to) {
-    const rows = (0, database_js_1.getDb)().prepare(`SELECT o.object_id, o.level, o.realm, o.x, o.y, o.owner_id, o.first_seen, o.last_seen,
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT o.object_id, o.object_type, o.level, o.realm, o.x, o.y, o.owner_id, o.first_seen, o.last_seen,
             m.id AS member_id, m.name AS member_name, gp.name AS player_name
        FROM game_map_objects o
        LEFT JOIN members m ON m.clan_id = o.clan_id AND m.game_player_id = o.owner_id
@@ -559,6 +559,7 @@ function listRaisedVaults(clanId, from, to) {
       ORDER BY o.first_seen, o.object_id`).all(clanId, from ?? null, from ?? null, to ?? null, to ?? null);
     return rows.map((r) => ({
         objectId: r.object_id,
+        objectType: r.object_type,
         level: r.level,
         realm: r.realm,
         x: r.x,

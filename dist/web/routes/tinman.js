@@ -63,6 +63,7 @@ const clan_repo_js_1 = require("../../data/repositories/clan-repo.js");
 const event_calendar_js_1 = require("../../external/event-calendar.js");
 const game_protocol_repo_js_1 = require("../../data/repositories/game-protocol-repo.js");
 const battle_report_repo_js_1 = require("../../data/repositories/battle-report-repo.js");
+const vault_posts_js_1 = require("../../data/vault-posts.js");
 const MAX_TEXT_LENGTH = 200_000;
 /** A query bound as ISO: null when absent, undefined when not a date. */
 function bound(raw) {
@@ -179,7 +180,9 @@ function createTinmanRouter(eventKey = 'ancients') {
      * vaults exist only on an Ancients run's first day. Vaults other players
      * raised near our cities are counted, not listed. Each vault says whether
      * it still stood at the newest map pass (`standing`, as of `lastScanAt`).
-     * Ancients only.
+     * With a vault chat picked (Clans → In-game; v144), `posts` are the vault
+     * links members posted there in the window, each matched to a map vault
+     * (`objectId`) or not (data/vault-posts.ts). Ancients only.
      */
     if (ancients)
         router.get('/vaults', (req, res) => {
@@ -196,6 +199,10 @@ function createTinmanRouter(eventKey = 'ancients') {
             // standing member vault's tile until it is gone or expired — so a vault
             // missing from it was taken down (or ran out) since its last_seen.
             const lastScanAt = (0, game_protocol_repo_js_1.lastMapPassAt)(req.clanId);
+            // Links are matched against the map's vaults of a day either side, so one
+            // first seen just past the window's edge still finds its link.
+            const day = 86_400_000;
+            const around = (0, game_protocol_repo_js_1.listRaisedVaults)(req.clanId, from ? new Date(Date.parse(from) - day).toISOString() : null, to ? new Date(Date.parse(to) + day).toISOString() : null);
             res.json({
                 raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => ({
                     ...v,
@@ -204,6 +211,9 @@ function createTinmanRouter(eventKey = 'ancients') {
                 outsiders: vaults.length - raised.length,
                 since: (0, game_protocol_repo_js_1.mapReadSince)(req.clanId),
                 lastScanAt,
+                vaultChats: (0, battle_report_repo_js_1.vaultChats)(req.clanId).map((c) => c.name),
+                posts: (0, vault_posts_js_1.listVaultPosts)(req.clanId, from, to, around)
+                    .map(({ playerId: _playerId, ...p }) => p),
             });
         });
     /**

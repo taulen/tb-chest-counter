@@ -144,8 +144,8 @@ describe('report chats', () => {
     setReportChats(1, [{ url: GROUP_URL, name: 'Tin Man hits' }], '2026-11-27T10:00:00.000Z');
     setReportChats(1, [{ url: GROUP_URL, name: 'Tin Man hits!' }, { url: 'sendbird_group_channel_8', name: 'Citadels' }], '2026-11-28T10:00:00.000Z');
     expect(getReportChats(1)).toEqual([
-      { url: 'sendbird_group_channel_8', name: 'Citadels', addedAt: '2026-11-28T10:00:00.000Z' },
-      { url: GROUP_URL, name: 'Tin Man hits!', addedAt: '2026-11-27T10:00:00.000Z' },
+      { url: 'sendbird_group_channel_8', name: 'Citadels', addedAt: '2026-11-28T10:00:00.000Z', purpose: 'reports' },
+      { url: GROUP_URL, name: 'Tin Man hits!', addedAt: '2026-11-27T10:00:00.000Z', purpose: 'reports' },
     ]);
     setReportChats(1, []);
     expect(getReportChats(1)).toEqual([]);

@@ -5315,6 +5315,8 @@ details > table {
 .vault-mark { font-weight: 800; }
 .vault-mark.is-down { color: var(--accent-green); }
 .vault-mark.is-standing { color: var(--accent-red); }
+/* Posted in the vault chat but never seen on the map: no take-down to mark. */
+.vault-mark.is-unseen { color: var(--text-muted); }
 .events-vaults-table td.col-mark .vault-mark { font-size: 16px; }
 /* Ancients → Hits (pages/ancients-hits.js): Tin Man hits shared as battle
    reports, with the Tin Man's stacks; ✓/✗ against the clan's rule. */

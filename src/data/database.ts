@@ -2983,6 +2983,21 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // clan_report_chats.purpose — what a picked group chat is read for:
+    // 'reports' (battle reports, v143) or 'vaults' (members link the Vault of
+    // the Ancients they raised, e.g. "-CWB VAULTS-"; Events → Ancients → Vaults
+    // matches the links to the vaults the map pass saw — data/vault-posts.ts).
+    // Every picked chat is read; battle reports linked in a vault chat still
+    // count. Guarded: runMigrations may replay this.
+    version: 144,
+    run: (database): void => {
+      const cols = database.prepare('PRAGMA table_info(clan_report_chats)').all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'purpose')) {
+        database.exec("ALTER TABLE clan_report_chats ADD COLUMN purpose TEXT NOT NULL DEFAULT 'reports'");
+      }
+    },
+  },
 ];
 
 /**

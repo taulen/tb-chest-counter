@@ -31,7 +31,8 @@ import {
 import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
 import { getEventOccurrences } from '../../external/event-calendar.js';
 import { lastMapPassAt, listRaisedVaults, mapReadSince } from '../../data/repositories/game-protocol-repo.js';
-import { getTinmanRequiredStacks, listTinmanHits, reportCounts } from '../../data/repositories/battle-report-repo.js';
+import { getTinmanRequiredStacks, listTinmanHits, reportCounts, vaultChats } from '../../data/repositories/battle-report-repo.js';
+import { listVaultPosts } from '../../data/vault-posts.js';
 
 const MAX_TEXT_LENGTH = 200_000;
 
@@ -150,7 +151,9 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
    * vaults exist only on an Ancients run's first day. Vaults other players
    * raised near our cities are counted, not listed. Each vault says whether
    * it still stood at the newest map pass (`standing`, as of `lastScanAt`).
-   * Ancients only.
+   * With a vault chat picked (Clans → In-game; v144), `posts` are the vault
+   * links members posted there in the window, each matched to a map vault
+   * (`objectId`) or not (data/vault-posts.ts). Ancients only.
    */
   if (ancients) router.get('/vaults', (req, res) => {
     const from = bound(req.query.from);
@@ -166,6 +169,10 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
     // standing member vault's tile until it is gone or expired — so a vault
     // missing from it was taken down (or ran out) since its last_seen.
     const lastScanAt = lastMapPassAt(req.clanId!);
+    // Links are matched against the map's vaults of a day either side, so one
+    // first seen just past the window's edge still finds its link.
+    const day = 86_400_000;
+    const around = listRaisedVaults(req.clanId!, from ? new Date(Date.parse(from) - day).toISOString() : null, to ? new Date(Date.parse(to) + day).toISOString() : null);
     res.json({
       raised: raised.map(({ ownerId: _ownerId, inClan: _inClan, ...v }) => ({
         ...v,
@@ -174,6 +181,9 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
       outsiders: vaults.length - raised.length,
       since: mapReadSince(req.clanId!),
       lastScanAt,
+      vaultChats: vaultChats(req.clanId!).map((c) => c.name),
+      posts: listVaultPosts(req.clanId!, from, to, around)
+        .map(({ playerId: _playerId, ...p }) => p),
     });
   });
 
