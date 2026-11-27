@@ -323,6 +323,25 @@ function newestCache(dir: string): ArtStatic | null {
   return f ? (JSON.parse(fs.readFileSync(f, 'utf8')) as ArtStatic) : null;
 }
 
+let unitsMemo: { file: string; mtimeMs: number; byId: Map<number, ArtUnit> } | null = null;
+
+/**
+ * The game's units (T9: name, tier, base strength and health) by id, from the
+ * newest cache on disk — what a battle report's unit ids mean (the report
+ * gives ids only). Kept in memory until a newer cache is written; empty when
+ * there is none yet.
+ */
+export function cachedArtUnits(dir: string): Map<number, ArtUnit> {
+  const file = cacheFiles(dir)[0];
+  if (!file) return new Map();
+  const mtimeMs = fs.statSync(file).mtimeMs;
+  if (unitsMemo && unitsMemo.file === file && unitsMemo.mtimeMs === mtimeMs) return unitsMemo.byId;
+  const data = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<ArtStatic>;
+  const byId = new Map<number, ArtUnit>((data.units ?? []).map((u) => [u.id, u]));
+  unitsMemo = { file, mtimeMs, byId };
+  return byId;
+}
+
 function pruneCaches(dir: string, keep: number): void {
   for (const f of cacheFiles(dir).slice(keep)) {
     try {

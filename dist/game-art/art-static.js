@@ -7,6 +7,7 @@ exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACTS = exports.TABLE_TITLES = expor
 exports.buildArtStatic = buildArtStatic;
 exports.staticKey = staticKey;
 exports.loadArtStatic = loadArtStatic;
+exports.cachedArtUnits = cachedArtUnits;
 /**
  * The slice of the game's static data the art pipeline needs: which icon each
  * hero avatar, unit, tech and item uses. A separate loader from
@@ -301,6 +302,25 @@ function cacheFiles(dir) {
 function newestCache(dir) {
     const f = cacheFiles(dir)[0];
     return f ? JSON.parse(fs_1.default.readFileSync(f, 'utf8')) : null;
+}
+let unitsMemo = null;
+/**
+ * The game's units (T9: name, tier, base strength and health) by id, from the
+ * newest cache on disk — what a battle report's unit ids mean (the report
+ * gives ids only). Kept in memory until a newer cache is written; empty when
+ * there is none yet.
+ */
+function cachedArtUnits(dir) {
+    const file = cacheFiles(dir)[0];
+    if (!file)
+        return new Map();
+    const mtimeMs = fs_1.default.statSync(file).mtimeMs;
+    if (unitsMemo && unitsMemo.file === file && unitsMemo.mtimeMs === mtimeMs)
+        return unitsMemo.byId;
+    const data = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
+    const byId = new Map((data.units ?? []).map((u) => [u.id, u]));
+    unitsMemo = { file, mtimeMs, byId };
+    return byId;
 }
 function pruneCaches(dir, keep) {
     for (const f of cacheFiles(dir).slice(keep)) {

@@ -24,7 +24,8 @@ import {
 } from '../lib/stack-calc.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
-import { parseBonus, nextFreeName } from './citadel-tool.js';
+import { parseBonus, nextFreeName, reportChoiceLabel } from './citadel-tool.js';
+import { bonusesFromReport } from '../lib/report-bonuses.js';
 
 const DRAFT_KEY = 'tbcc.stacks.draft.v1';
 
@@ -280,6 +281,7 @@ function armyCardHtml(plan) {
         ${levelsHtml(ss.levels)}
         ${ss.presetsError ? `<p class="citadel-note tool-warn">${t('Your saved armies could not be loaded.')}</p>` : ''}
         <p class="citadel-note stacks-intro">${t('The strongest guardsman or specialist you add is the base stack; every other stack is sized from it. Health bonuses are optional: type them from each troop\'s card for exact counts.')}</p>
+        ${ss.rows.length ? `<div class="citadel-from-report"><button type="button" class="btn btn-sm" data-stk-action="from-report">${t('Fill in health from a battle report')}</button></div>` : ''}
         ${ss.rows.length ? `
           <div class="citadel-rows stacks-rows">
             <div class="citadel-row citadel-row-head" aria-hidden="true">
@@ -680,11 +682,62 @@ async function onClick(e) {
     if (details) details.open = true;
   } else if (action === 'march') {
     openMarchList();
+  } else if (action === 'from-report') {
+    await fillHealthFromReport(root);
   } else if (action === 'save') {
     await savePreset(root);
   } else if (action === 'delete') {
     await deletePreset(root);
   }
+}
+
+/**
+ * Health bonuses from one of the player's own battle reports
+ * (lib/report-bonuses.js): exact for every troop the battle hit; a troop's
+ * bonus family (Corax I and II…) shares it.
+ */
+async function fillHealthFromReport(root) {
+  const title = t('Fill in health from a battle report');
+  let res = null;
+  try { res = await api('/tools/report-armies'); } catch { res = null; }
+  const reports = Array.isArray(res?.reports) ? res.reports : null;
+  if (!reports) {
+    await notify(t('Your battle reports could not be loaded.'), title);
+    return;
+  }
+  if (!reports.length) {
+    await notify(res.linked
+      ? t('None of your battle reports has been read yet. Share one in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.')
+      : t('Your account isn’t linked to a player in the game, so the site can’t tell which battle reports are yours.'), title);
+    return;
+  }
+  const shown = reports.slice(0, 5);
+  const choices = shown.map((r, i) => ({ value: String(i), label: reportChoiceLabel(r) })).reverse();
+  const pick = await choiceDialog(t('Your troops’ health bonuses as the game used them in one of your battles: every troop that was hit in it.'), choices, { title });
+  if (pick === null) return;
+  const found = bonusesFromReport(shown[Number(pick)]);
+  const healthOf = (troopId) => {
+    const own = found.get(troopId)?.healthPct ?? null;
+    if (own !== null) return own;
+    const fam = bonusFamily(troopId);
+    if (!fam) return null;
+    for (const [id, v] of found) if (bonusFamily(id) === fam && v.healthPct !== null) return v.healthPct;
+    return null;
+  };
+  let filled = 0;
+  for (const row of ss.rows) {
+    const h = healthOf(row.troopId);
+    if (h === null) continue;
+    row.healthPct = h;
+    filled++;
+  }
+  if (!filled) {
+    await notify(t('None of the troops in your list was hit in that battle, so it doesn’t show their health.'), title);
+    return;
+  }
+  saveDraft();
+  paintAll(root);
+  notify(tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'), title);
 }
 
 function applyPreset(id) {

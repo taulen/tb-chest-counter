@@ -8999,6 +8999,8 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 }
 .citadel-note { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 12px; }
 .citadel-note-when { color: var(--text-muted); }
+/* Citadel / Stacks: "Fill in from a battle report" (lib/report-bonuses.js). */
+.citadel-from-report { margin: 0 0 12px; }
 .citadel-army .ui-tile-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
 
 /* Numbered steps: 1 pick, 2 fill in, 3 read. */

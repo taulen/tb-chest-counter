@@ -7,9 +7,12 @@
  * to every role; saving the clan's defaults is admin-only and lands on the
  * caller's active clan (req.clanId), so an admin can only ever set their own.
  * Citadel and stack presets belong to the signed-in ACCOUNT (req.user.id), any
- * role, and are never visible to anyone else.
+ * role, and are never visible to anyone else — and so do the armies of the
+ * account's own shared battle reports (GET /report-armies).
  */
 import { Router } from 'express';
+import { reportArmiesFor } from '../../data/report-armies.js';
+import { linksForUser } from '../../data/repositories/account-invite-repo.js';
 import { getAncientRoster } from '../../data/ancient-roster.js';
 import { getClanAncientDefaults, setClanAncientDefaults } from '../../data/repositories/clan-repo.js';
 import {
@@ -69,6 +72,17 @@ export function createToolsRouter(): Router {
     });
     logAction(req.user!.id, 'ancient_defaults_save', { clanId, ...parsed.settings });
     res.json({ ok: true, defaults: ancientDefaults(clanId) });
+  });
+
+  /**
+   * The armies of the account's own battle reports (any clan's chat it was
+   * shared in): its linked players' newest battles with a strike log, for
+   * "use the bonuses from a battle report" in Citadel and Stacks. Never anyone
+   * else's.
+   */
+  router.get('/report-armies', async (req, res) => {
+    const players = [...new Set(linksForUser(req.user!.id).map((l) => l.playerId))];
+    res.json({ linked: players.length > 0, reports: await reportArmiesFor(players) });
   });
 
   /** The signed-in account's saved citadel armies. */

@@ -14,7 +14,9 @@
 //    bonuses) unless switched to Manual; elsewhere there is no sizing rule, so
 //    they are typed in or come from a recommended setup.
 // Bonuses change with every captain, artifact or research swap, so nothing
-// ships with any; the page says when they were typed or saved.
+// ships with any; the page says when they were typed or saved. "Fill in from
+// a battle report" takes them from one of the player's own shared reports
+// (lib/report-bonuses.js) — only when asked, and the page says which battle.
 
 import { loadGameArt, troopIconHtml } from '../lib/game-art.js';
 import { api, apiPut, apiDelete } from '../lib/api.js';
@@ -40,6 +42,7 @@ import {
   troopInWindow,
 } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
+import { bonusesFromReport, reportDay } from '../lib/report-bonuses.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 
 /** The count search runs this long after the last keystroke. */
@@ -200,6 +203,7 @@ function loadDraft() {
       countMode: ['auto', 'gm', 'manual'].includes(d.countMode) ? d.countMode : 'auto',
       bonusesAt: typeof d.bonusesAt === 'string' ? d.bonusesAt : null,
       bonusesFrom: typeof d.bonusesFrom === 'string' ? d.bonusesFrom : null,
+      bonusesReport: typeof d.bonusesReport === 'string' ? d.bonusesReport : null,
       decimalComma: d.decimalComma === true,
     };
   } catch {
@@ -210,7 +214,7 @@ function loadDraft() {
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      citadelId: cs.citadelId, rows: cs.rows, countMode: cs.countMode, bonusesAt: cs.bonusesAt, bonusesFrom: cs.bonusesFrom, decimalComma: cs.decimalComma,
+      citadelId: cs.citadelId, rows: cs.rows, countMode: cs.countMode, bonusesAt: cs.bonusesAt, bonusesFrom: cs.bonusesFrom, bonusesReport: cs.bonusesReport, decimalComma: cs.decimalComma,
     }));
   } catch { /* private mode — the draft just isn't kept */ }
 }
@@ -226,6 +230,8 @@ export async function renderCitadelTool(mount) {
     countMode: draft?.countMode ?? 'auto',
     bonusesAt: draft?.bonusesAt ?? null,
     bonusesFrom: draft?.bonusesFrom ?? null,
+    /** The battle report the bonuses were filled in from ("2026-11-07 · Elven Citadel"), or null. */
+    bonusesReport: draft?.bonusesReport ?? null,
     /** Show bonuses with "," — set by what the player last typed. */
     decimalComma: draft?.decimalComma ?? false,
     presets: [],
@@ -471,9 +477,11 @@ function bonusesNoteHtml() {
   if (!cs.bonusesAt) return `<p class="citadel-note">${base}</p>`;
   const stale = Date.now() - new Date(cs.bonusesAt).getTime() > STALE_MS;
   const when = esc(formatRelativeTime(cs.bonusesAt));
-  const from = cs.bonusesFrom
-    ? t('Bonuses from the saved army “{name}”, saved {when}.', { name: esc(cs.bonusesFrom), when })
-    : t('Bonuses entered {when}.', { when });
+  const from = cs.bonusesReport
+    ? t('Bonuses from your battle report {name}, fought {when}.', { name: esc(cs.bonusesReport), when })
+    : cs.bonusesFrom
+      ? t('Bonuses from the saved army “{name}”, saved {when}.', { name: esc(cs.bonusesFrom), when })
+      : t('Bonuses entered {when}.', { when });
   return `<p class="citadel-note">${base} <span class="${stale ? 'tool-warn' : 'citadel-note-when'}">${stale ? '⚠ ' : ''}${from}</span></p>`;
 }
 
@@ -506,6 +514,7 @@ function armyCardHtml(a) {
       </div>
       <div class="tool-tile-body">
         ${bonusesNoteHtml()}
+        ${cs.rows.length ? `<div class="citadel-from-report"><button type="button" class="btn btn-sm" data-cit-action="from-report">${t('Fill in from a battle report')}</button></div>` : ''}
         <p class="citadel-note citadel-count-note">${countModeNote(a)}</p>
         ${cs.rows.length && !cs.rows.some((r) => troopById(r.troopId)?.siegeEngine)
           ? `<p class="citadel-note tool-warn">⚠ ${t('No siege engine in this army: the walls strike first and keep striking each round until they fall. Add one to break them before they hit.')}</p>` : ''}
@@ -811,6 +820,7 @@ function onInput(e) {
     }
     cs.bonusesAt = new Date().toISOString();
     cs.bonusesFrom = null;
+    cs.bonusesReport = null;
   }
   refresh(el.closest('.citadel-tool'));
 }
@@ -863,6 +873,7 @@ function applyPreset(value) {
     cs.countMode = 'manual';
     cs.bonusesAt = p.updatedAt;
     cs.bonusesFrom = p.name;
+    cs.bonusesReport = null;
   }
   saveDraft();
 }
@@ -901,11 +912,86 @@ async function onClick(e) {
     root.querySelector(`.citadel-outcome-pick[data-opener="${cs.logOpener}"]`)?.focus();
   } else if (action === 'march') {
     openMarchList(root);
+  } else if (action === 'from-report') {
+    await fillFromReport(root);
   } else if (action === 'save') {
     await savePreset(root);
   } else if (action === 'delete') {
     await deletePreset(root);
   }
+}
+
+// ─── Bonuses from a battle report ───
+
+/**
+ * One troop's bonuses in a report, or its bonus family's (Phoenix I and Royal
+ * Lion I read the same): the troop's own values first, a family member's for
+ * what the report doesn't show of it.
+ */
+function reportBonusesFor(troopId, found) {
+  const own = found.get(troopId) ?? null;
+  const fam = bonusFamily(troopId);
+  let strengthPct = own?.strengthPct ?? null;
+  let healthPct = own?.healthPct ?? null;
+  if (fam) {
+    for (const [id, v] of found) {
+      if (id === troopId || bonusFamily(id) !== fam) continue;
+      if (strengthPct === null) strengthPct = v.strengthPct;
+      if (healthPct === null) healthPct = v.healthPct;
+    }
+  }
+  return strengthPct === null && healthPct === null ? null : { strengthPct, healthPct };
+}
+
+/** A report in the picker: "2026-11-07 · Elven Citadel". */
+export function reportChoiceLabel(r) {
+  return `${reportDay(r)} · ${r.target?.name ? tGame(r.target.name) : t('Unknown target')}`;
+}
+
+/** The player's newest battles from their shared reports; picking one fills in what it shows. */
+async function fillFromReport(root) {
+  const title = t('Fill in from a battle report');
+  let res = null;
+  try { res = await api('/tools/report-armies'); } catch { res = null; }
+  const reports = Array.isArray(res?.reports) ? res.reports : null;
+  if (!reports) {
+    await notify(t('Your battle reports could not be loaded.'), title);
+    return;
+  }
+  if (!reports.length) {
+    await notify(res.linked
+      ? t('None of your battle reports has been read yet. Share one in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.')
+      : t('Your account isn’t linked to a player in the game, so the site can’t tell which battle reports are yours.'), title);
+    return;
+  }
+  // The newest is the primary (rightmost) button.
+  const shown = reports.slice(0, 5);
+  const choices = shown.map((r, i) => ({ value: String(i), label: reportChoiceLabel(r) })).reverse();
+  const pick = await choiceDialog(
+    t('Your troops’ bonuses as the game used them in one of your battles. Only troops that fought in it are filled in; strength where a strike shows it, health where the troop was hit.'),
+    choices, { title },
+  );
+  if (pick === null) return;
+  const report = shown[Number(pick)];
+  const found = bonusesFromReport(report);
+  let filled = 0;
+  for (const row of cs.rows) {
+    const v = reportBonusesFor(row.troopId, found);
+    if (!v) continue;
+    if (v.strengthPct !== null) row.strengthPct = v.strengthPct;
+    if (v.healthPct !== null) row.healthPct = v.healthPct;
+    filled++;
+  }
+  if (!filled) {
+    await notify(t('None of the troops in your army fought in that battle, or the report doesn’t show their bonuses.'), title);
+    return;
+  }
+  cs.bonusesAt = report.at;
+  cs.bonusesFrom = null;
+  cs.bonusesReport = reportChoiceLabel(report);
+  saveDraft();
+  paintAll(root);
+  notify(tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'), title);
 }
 
 // ─── March list: the counts in the order the game's march screen shows them ───
@@ -1117,6 +1203,7 @@ async function savePreset(root) {
     cs.selectedPreset = `saved:${res.preset.id}`;
     cs.bonusesFrom = res.preset.name;
     cs.bonusesAt = res.preset.updatedAt;
+    cs.bonusesReport = null;
     saveDraft();
     paintAll(root);
   } catch (err) {

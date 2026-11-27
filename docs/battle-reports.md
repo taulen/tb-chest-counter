@@ -62,6 +62,16 @@ announcement  ["clan_announcement", [realm, n], text]
 
 A clan delete removes its shares and picked chats; the reports themselves belong to no clan.
 
+## The calculators
+
+Tools → Citadel ("Fill in from a battle report") and Tools → Stacks ("Fill in health from a battle report") take bonuses from one of the player's **own** reports — the battles of the game players their account is linked to (`user_game_links`), whatever chat they were shared in. `GET /api/tools/report-armies` ([report-armies.ts](../src/data/report-armies.ts)) sends the newest 8 with a strike log: every troop's units and the game's base stats (T9, from the art cache — `cachedArtUnits`), its **health per unit** (the stack's pool on the first hit it took ÷ its units: exact, a full stack's pool is units × unit health) and the **base damage of each strike** it made. [report-bonuses.js](../src/web/public/lib/report-bonuses.js) works out the card bonuses in the browser, where the troops and defenders live:
+
+- **Health** = health per unit ÷ base health − 1. "vs" features never touch health.
+- **Strength**: base damage = units × strength × (1 + bonus + matching "vs" features), so bonus = base ÷ (units × strength) − 1 − features. The base is the log's `extraB` when the strike doubled (it IS the damage before the luck — the simulator's figure to the unit on all four such strikes of the Nov 7 report), else the damage when the target survived. A capped strike without `extraB` shows only a lower bound and is left out, as are hits on the walls (siege rules of their own). Features are known for the citadels' defenders (matched by name and stats); against anything else only a troop without features counts.
+- A unit is the calculator's troop with the same game name and base stats (the troop icons' rule).
+
+Checked on the Nov 7 2026 Elven 30 report (citadel opens): Corax I 5226.5% / 3936.8%, Fire Phoenix I 3736.5%, Vulture VI 3636.5%, Battle Griffin VI and VII 5326.5% — every value the user typed from the cards that day ([report-bonuses.test.ts](../tests/web/report-bonuses.test.ts)). Vulture VII, Royal Lion I and the Ballistae only made capped strikes or hit the walls, so that report leaves them alone; the pages' bonus families fill Royal Lion I from Fire Phoenix I.
+
 ## The fetch
 
 [battle-reports.ts](../src/scheduler/battle-reports.ts), called from the between-scans chat poll ([chat-capture.ts](../src/scheduler/chat-capture.ts)): every minute, per clan with a journal token, up to 20 waiting reports of that clan, newest share first; the strike log of each battle too. Its failures never pause chat polling. An expired or refused token is dropped until the next scan's login.
