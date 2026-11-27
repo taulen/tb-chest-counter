@@ -856,6 +856,21 @@ export function attachCropPreviews(root) {
   });
 }
 
+/**
+ * Re-apply this page's open/closed choices to a part of it that drew itself
+ * after the page's render: a section that loads its own data, or redraws after
+ * a save (the Clans page's In-game sections). Unlike restoreDetailsState it
+ * never changes the scope. Folds that share a summary ("How it works") need
+ * their own data-section-key, or opening one opens them all.
+ */
+export function reapplyDetailsState(container) {
+  if (!container) return;
+  for (const d of container.querySelectorAll('details')) {
+    const key = detailsKey(d);
+    if (key && userDetailsState.has(key)) d.open = userDetailsState.get(key);
+  }
+}
+
 export function restoreDetailsState(container, scope = null) {
   if (scope !== detailsScope) {
     userDetailsState.clear();

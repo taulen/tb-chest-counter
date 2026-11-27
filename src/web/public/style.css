@@ -1708,7 +1708,6 @@ label {
 .dc-table th.num, .dc-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .dc-table th .resource-icon-img, .dc-amount .resource-icon-img { width: 18px; height: 18px; margin-right: 4px; vertical-align: -4px; }
 .dc-amount { white-space: nowrap; }
-.dc-held-fold .table-wrap { margin-top: 6px; }
 
 .invite-how { padding-top: 10px; border-top: 1px solid var(--border); }
 .invite-how > summary {
@@ -1721,7 +1720,10 @@ label {
   cursor: pointer;
 }
 .invite-how > summary:hover { color: var(--text-primary); }
-.invite-how ul {
+/* A folded list (Recent commands · 25, Codes for members · 80): its table or
+   preview a step below the summary. */
+.invite-how > summary ~ * { margin-top: 8px; }
+.invite-how > ul:not(.chat-cmd-list) {
   margin: 6px 0 0;
   padding-left: 18px;
   max-width: 80ch;
@@ -4809,14 +4811,33 @@ details > table {
 }
 
 /* Clans: the clan card's tab panels (#clans/<tab>, pages/clans.js) show their
-   sections open, one under the other — each headed like the folds they were. */
+   sections one under the other. Each opens with a band across the card, its
+   title on a tinted strip ruled above and below, so where one section ends and
+   the next begins reads at a glance however long a tab grows (In-game holds
+   five features, each with settings of its own). The band is the card body's
+   full width: its negative margins are .card-body-padded's padding. */
+.clan-tab-panel > .clan-section:not(:first-child) { margin-top: 28px; }
 .clan-section-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0 -20px;
+  padding: 11px 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--subtle-bg-strong);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
-.clan-tab-panel > .clan-section-title + .muted-copy { margin-top: 6px; }
+/* The first band meets the card's header, whose rule it already has. */
+.clan-tab-panel > .clan-section:first-child > .clan-section-title { margin-top: -20px; border-top: 0; }
+@media (max-width: 640px) {
+  .clan-section-title { margin: 0 -14px; padding: 10px 14px; }
+  .clan-tab-panel > .clan-section:first-child > .clan-section-title { margin-top: -14px; }
+}
 
 /* ─── Resources page ─── */
 

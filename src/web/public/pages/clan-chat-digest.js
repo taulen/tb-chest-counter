@@ -3,7 +3,7 @@
 // Loaded when the section is opened; saving never posts; the test post is
 // queued for the clan's next scan and uses the day's one message.
 
-import { escapeHtml, notify, confirmDialog, formatDate } from '../lib/ui.js';
+import { escapeHtml, notify, confirmDialog, formatDate, reapplyDetailsState } from '../lib/ui.js';
 import { t, LANGUAGES } from '../lib/i18n.js';
 
 /** The section on the clan card's In-game tab. */
@@ -29,6 +29,7 @@ async function loadChatDigest(root, clanId) {
     const r = await fetch(`/api/clans/${clanId}/chat-digest`);
     if (!r.ok) throw new Error(String(r.status));
     renderChatDigest(root, box, clanId, await r.json());
+    reapplyDetailsState(box);
   } catch {
     box.innerHTML = `<p class="warning-text">${t('Could not load the chat digest settings.')}</p>`;
   }
@@ -98,11 +99,13 @@ function renderChatDigest(root, box, clanId, data) {
       <button class="btn btn-primary" type="button" data-chat-digest-save>${t('Save')}</button>
     </div>
     <p class="muted-copy mt-4 hint-text">${t("Only the clan's named group chats the scanner account is in are listed. The post goes out with the first scan after the daily reset, once the game day has closed; saving never posts.")}</p>
-    <h4 class="mt-12">${t('Preview — {date}', { date: escapeHtml(p.gameDate) })}</h4>
-    ${p.text
-      ? `<pre class="chat-digest-preview">${escapeHtml(p.text)}</pre>
-         <p class="muted-copy hint-text">${t('{chars} of {max} characters · {shown} entries', { chars: p.chars, max: p.maxChars, shown: p.shown })}</p>`
-      : `<p class="muted-copy">${t('Nothing was collected that day.')}</p>`}
+    <details class="invite-how mt-12" data-section-key="clan-digest-preview">
+      <summary>${t('Preview — {date}', { date: escapeHtml(p.gameDate) })}</summary>
+      ${p.text
+        ? `<pre class="chat-digest-preview">${escapeHtml(p.text)}</pre>
+           <p class="muted-copy hint-text">${t('{chars} of {max} characters · {shown} entries', { chars: p.chars, max: p.maxChars, shown: p.shown })}</p>`
+        : `<p class="muted-copy">${t('Nothing was collected that day.')}</p>`}
+    </details>
     ${blocked ? `<p class="muted-copy mt-4">${escapeHtml(blocked)}</p>` : ''}
     ${coverage ? `<p class="warning-text mt-4">${escapeHtml(coverage)}</p>` : ''}
     <div class="actions mt-8">
@@ -110,7 +113,9 @@ function renderChatDigest(root, box, clanId, data) {
       ${canTest ? '' : `<span class="muted-copy hint-text">${escapeHtml(testWhy)}</span>`}
     </div>
     ${(data.recent || []).length ? `
-    <div class="table-wrap mt-12">
+    <details class="invite-how mt-12" data-section-key="clan-digest-posts">
+    <summary>${t('Recent posts')} · ${data.recent.length}</summary>
+    <div class="table-wrap">
       <table class="data-table chat-digest-posts">
         <thead><tr><th scope="col">${t('Day')}</th><th scope="col">${t('Group chat')}</th><th scope="col">${t('Status')}</th><th scope="col">${t('Updated')}</th></tr></thead>
         <tbody>
@@ -122,7 +127,8 @@ function renderChatDigest(root, box, clanId, data) {
           </tr>`).join('')}
         </tbody>
       </table>
-    </div>` : ''}
+    </div>
+    </details>` : ''}
   `;
 
   box.querySelector('[data-chat-digest-save]')?.addEventListener('click', async () => {

@@ -6,7 +6,7 @@
 // the moment they change (a switch; Off / Dry run / On), the site name as a
 // sentence with an Edit link, and the fine print folded into "How it works".
 
-import { escapeHtml, notify, formatDate, confirmDialog, memberLink, copyTextToClipboard } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, confirmDialog, memberLink, copyTextToClipboard, reapplyDetailsState } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 import { getCurrentUser } from '../lib/state.js';
@@ -41,6 +41,7 @@ async function loadAccountInvites(root, clanId) {
     const r = await fetch(`/api/clans/${clanId}/account-invites`);
     if (!r.ok) throw new Error(String(r.status));
     renderAccountInvites(root, box, clanId, await r.json());
+    reapplyDetailsState(box);
   } catch {
     box.innerHTML = `<p class="warning-text">${t('Could not load the account invite settings.')}</p>`;
   }
@@ -140,7 +141,7 @@ function renderAccountInvites(root, box, clanId, data) {
       <span class="invite-site-hint">${t('Every clan. Leave it as the public address unless the game should see another name.')}</span>
     </form>` : ''}`;
 
-  const how = `<details class="invite-how">
+  const how = `<details class="invite-how" data-section-key="clan-invites-how">
       <summary>${t('How it works')}</summary>
       <ul>
         <li>${t('Words that ask for a code: {words}', { words: keywords })}</li>
@@ -155,7 +156,8 @@ function renderAccountInvites(root, box, clanId, data) {
   // Dry run: the list it is for — who switching it on would message now.
   const would = s.welcomeMode === 'dry-run' ? (data.wouldGetCode || []) : [];
   const wouldTable = s.welcomeMode === 'dry-run' ? `
-    <h4 class="invite-subhead">${escapeHtml(tn(would.length, '{n} member would get a code', '{n} members would get a code', { n: would.length }))}</h4>
+    <details class="invite-how" data-section-key="clan-invites-would">
+    <summary>${escapeHtml(tn(would.length, '{n} member would get a code', '{n} members would get a code', { n: would.length }))}</summary>
     <p class="ui-sub">${t('Dry run: nothing is sent. Switch to On to send these, one every 10 minutes.')}</p>
     ${would.length ? `<div class="table-wrap invite-would">
       <table class="data-table account-invite-would">
@@ -164,10 +166,12 @@ function renderAccountInvites(root, box, clanId, data) {
           ${would.map((w) => `<tr><td>${memberLink(w.memberId, w.player)}</td><td>${w.joinedAt ? escapeHtml(formatDate(new Date(w.joinedAt * 1000).toISOString()).slice(0, 10)) : ''}</td></tr>`).join('')}
         </tbody>
       </table>
-    </div>` : ''}` : '';
+    </div>` : ''}
+    </details>` : '';
 
   const welcomesTable = s.welcomeMode !== 'dry-run' && (data.welcomes || []).length ? `
-    <h4 class="invite-subhead">${t('Codes for members')} <span class="ui-sub">${data.welcomes.length}</span></h4>
+    <details class="invite-how" data-section-key="clan-invites-welcomes">
+    <summary>${t('Codes for members')} · ${data.welcomes.length}</summary>
     <div class="table-wrap invite-would">
       <table class="data-table account-invite-welcomes">
         <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Joined')}</th><th scope="col">${t('Sent')}</th><th scope="col">${t('Status')}</th><th scope="col">${t('Account')}</th></tr></thead>
@@ -181,10 +185,12 @@ function renderAccountInvites(root, box, clanId, data) {
           </tr>`).join('')}
         </tbody>
       </table>
-    </div>` : '';
+    </div>
+    </details>` : '';
 
   const requestsTable = (data.recent || []).length ? `
-    <h4 class="invite-subhead">${t('Recent code requests')}</h4>
+    <details class="invite-how" data-section-key="clan-invites-requests">
+    <summary>${t('Recent code requests')} · ${data.recent.length}</summary>
     <div class="table-wrap">
       <table class="data-table account-invite-requests">
         <thead><tr><th scope="col">${t('Asked')}</th><th scope="col">${t('Player')}</th><th scope="col">${t('Status')}</th></tr></thead>
@@ -196,7 +202,8 @@ function renderAccountInvites(root, box, clanId, data) {
           </tr>`).join('')}
         </tbody>
       </table>
-    </div>` : '';
+    </div>
+    </details>` : '';
 
   box.innerHTML = `
     <div class="invite-panel">
@@ -208,9 +215,9 @@ function renderAccountInvites(root, box, clanId, data) {
       ${wouldTable}
       ${siteRow}
       ${manualSectionHtml(clanId, data, isSuperAdmin)}
-      ${how}
       ${welcomesTable}
       ${requestsTable}
+      ${how}
     </div>`;
 
   wireManualCodes(root, box, clanId);
@@ -328,6 +335,8 @@ function manualSectionHtml(clanId, data, isSuperAdmin) {
   const headId = `clan-account-manual-head-${clanId}`;
   const isOpen = (c) => !c.usedAt && Date.parse(c.expiresAt) > Date.now();
   const table = codes.length ? `
+      <details class="invite-how" data-section-key="clan-invites-manual">
+      <summary>${t('Codes made here')} · ${codes.length}</summary>
       <div class="table-wrap invite-would">
         <table class="data-table table-responsive account-invite-manual">
           <thead><tr><th scope="col">${t('Player')}</th><th scope="col">${t('Made by')}</th><th scope="col">${t('Made')}</th><th scope="col">${t('Status')}</th><th scope="col"><span class="visually-hidden">${t('Actions')}</span></th></tr></thead>
@@ -341,7 +350,8 @@ function manualSectionHtml(clanId, data, isSuperAdmin) {
             </tr>`).join('')}
           </tbody>
         </table>
-      </div>` : '';
+      </div>
+      </details>` : '';
   return `<section class="invite-manual" aria-labelledby="${headId}">
       <h4 class="invite-subhead" id="${headId}">${t('Make a code yourself')}</h4>
       <p class="invite-setting-desc">${t('For when the scanner account can’t send one — muted, or the player doesn’t read the chat. You pass the code on; it works the same: 72 hours, once, only for that player.')}</p>

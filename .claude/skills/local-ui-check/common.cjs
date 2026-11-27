@@ -46,6 +46,10 @@ const PAGES = {
   adminpoints: '/#admin/points',
   users: '/#users',
   clans: '/#clans',
+  clansweek: '/#clans/week',
+  clansgame: '/#clans/game',
+  clansintegrations: '/#clans/integrations',
+  clansshare: '/#clans/share',
   system: '/#system',
   login: '/login',
 };

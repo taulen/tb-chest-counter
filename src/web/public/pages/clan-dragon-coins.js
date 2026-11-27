@@ -6,7 +6,7 @@
 // switch as a row that saves on change, what's waiting, the fine print folded
 // into "How it works", then recent sends.
 
-import { escapeHtml, notify, formatDate, memberLink } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, memberLink, reapplyDetailsState } from '../lib/ui.js';
 import { t, tn, tGame } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 import { loadGameArt } from '../lib/game-art.js';
@@ -42,6 +42,7 @@ async function loadDragonCoins(root, clanId) {
     const [r] = await Promise.all([fetch(`/api/clans/${clanId}/dragon-coin-returns`), loadGameArt()]);
     if (!r.ok) throw new Error(String(r.status));
     renderDragonCoins(root, box, clanId, await r.json());
+    reapplyDetailsState(box);
   } catch {
     box.innerHTML = `<p class="warning-text">${t('Could not load the {coins} settings.', { coins: escapeHtml(tGame(COINS)) })}</p>`;
   }
@@ -131,7 +132,7 @@ function renderDragonCoins(root, box, clanId, data) {
   const held = data.held || [];
   // Folded: after an event it can be a long list, and nothing in it waits on anyone.
   const heldHtml = !s.enabled || !held.length ? '' : `
-    <details class="invite-how dc-held-fold">
+    <details class="invite-how dc-held-fold" data-section-key="clan-dc-held">
     <summary>${t('Left in the treasury')} · ${held.length}</summary>
     ${tableHtml('dc-held', [t('Player'), coinsHead, t('Arrived'), t('Why')], held.map((h) => `<tr>
       <td data-label="${escapeHtml(t('Player'))}" data-role="primary"><span class="mrow-name">${playerHtml(h)}</span><span class="mrow-sub">${escapeHtml(heldText(h.reason, limits))}</span></td>
@@ -141,7 +142,7 @@ function renderDragonCoins(root, box, clanId, data) {
     </tr>`))}
     </details>`;
 
-  const how = `<details class="invite-how">
+  const how = `<details class="invite-how" data-section-key="clan-dc-how">
       <summary>${t('How it works')}</summary>
       <ul>
         <li>${escapeHtml(t('Only coins a member brings in: when they collect an event reward, the game sends its {coins} to the treasury under their name. What the clan wins (credited to the {leader} at the reset) is never sent.', { coins: tGame(COINS), leader }))}</li>
@@ -155,13 +156,15 @@ function renderDragonCoins(root, box, clanId, data) {
 
   const recent = data.recent || [];
   const recentHtml = !recent.length ? '' : `
-    <h4 class="invite-subhead">${t('Recent sends')}</h4>
+    <details class="invite-how" data-section-key="clan-dc-recent">
+    <summary>${t('Recent sends')} · ${recent.length}</summary>
     ${tableHtml('dc-recent', [t('Player'), coinsHead, t('Sent'), t('Status')], recent.map((r) => `<tr>
       <td data-label="${escapeHtml(t('Player'))}" data-role="primary"><span class="mrow-name">${playerHtml(r)}</span><span class="mrow-sub">${statusText(r, limits)}</span></td>
       <td data-label="${coinsName}" data-role="metric" class="num">${amountHtml(r.amount)}</td>
       <td data-label="${escapeHtml(t('Sent'))}">${whenText(r.at)}</td>
       <td data-label="${escapeHtml(t('Status'))}" data-role="hidden">${statusText(r, limits)}</td>
-    </tr>`))}`;
+    </tr>`))}
+    </details>`;
 
   box.innerHTML = `
     <div class="invite-panel">
@@ -170,8 +173,8 @@ function renderDragonCoins(root, box, clanId, data) {
       <div class="invite-settings">${switchRow}</div>
       ${waitingHtml}
       ${heldHtml}
-      ${how}
       ${recentHtml}
+      ${how}
     </div>`;
 
   // The switch saves on change; a failed save puts it back.

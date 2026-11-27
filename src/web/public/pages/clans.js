@@ -1210,15 +1210,16 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         <p class="muted-copy hint-text mt-8">${t("Public URL is the domain this clan's members use. The Discord digest link and the share links are built on it.")}</p>
         ` : ''}
 
-        ${isSuperAdmin ? '<hr class="section-divider">' : ''}
+        <section class="clan-section">
         <h3 class="clan-section-title">${t('Browser session')} ${renderAuthBadge(clan)}</h3>
+        <div class="mt-12">
         <p class="muted-copy">${renderAuthCopy(clan)} ${t("The in-app browser opens in a large window over the page; sign in and click <em>Save session</em> when you're fully in-game.")}</p>
         <div class="actions">
           <button class="btn btn-primary" data-action="login-session-start" data-clan-id="${clan.id}">${clan.authenticated ? t('Refresh login') : t('Log in to Total Battle')}</button>
         </div>
+        </div>
+        </section>
 
-
-        <hr class="section-divider">
         <section class="clan-section">
         <h3 class="clan-section-title">${t('Seasonal Kingdom')}</h3>
         <div class="mt-12">
@@ -1263,7 +1264,6 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         <p class="muted-copy mt-4" id="clan-week-preview-${clan.id}"></p>
         </div>
         </section>
-        <hr class="section-divider">
         <section class="clan-section">
         <h3 class="clan-section-title">${t('Leaderboard goal')}</h3>
         <div class="mt-12">
@@ -1285,13 +1285,9 @@ function renderClanCard(clan, isSuperAdmin, defaultScanIntervalMinutes, defaultP
         </div>
         <div class="clan-tab-panel" data-clan-panel="game"${tab === 'game' ? '' : ' hidden'}>
 ${chatDigestSectionHtml(clan.id)}
-        <hr class="section-divider">
 ${chatCommandsSectionHtml(clan.id)}
-        <hr class="section-divider">
 ${accountInvitesSectionHtml(clan.id)}
-        <hr class="section-divider">
 ${dragonCoinsSectionHtml(clan.id)}
-        <hr class="section-divider">
 ${battleReportsSectionHtml(clan.id)}
         </div>
         <div class="clan-tab-panel" data-clan-panel="integrations"${tab === 'integrations' ? '' : ' hidden'}>
@@ -1362,7 +1358,6 @@ ${battleReportsSectionHtml(clan.id)}
         ${renderDigestStatus(clan)}
         </div>
         </section>
-        <hr class="section-divider">
         <section class="clan-section">
         <h3 class="clan-section-title">${t('ChestTracker')}</h3>
         <div class="mt-12">

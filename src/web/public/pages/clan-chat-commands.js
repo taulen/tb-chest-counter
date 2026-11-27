@@ -5,7 +5,7 @@
 // one line on what it is, the switch as a row that saves on change, the
 // commands, the fine print folded into "How it works", then recent commands.
 
-import { escapeHtml, notify, formatDate, memberLink } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, memberLink, reapplyDetailsState } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 import { gameRankName } from '../lib/game-facts.js';
 
@@ -32,6 +32,7 @@ async function loadChatCommands(root, clanId) {
     const r = await fetch(`/api/clans/${clanId}/chat-commands`);
     if (!r.ok) throw new Error(String(r.status));
     renderChatCommands(root, box, clanId, await r.json());
+    reapplyDetailsState(box);
   } catch {
     box.innerHTML = `<p class="warning-text">${t('Could not load the chat command settings.')}</p>`;
   }
@@ -121,11 +122,14 @@ function renderChatCommands(root, box, clanId, data) {
     </div>`;
 
   const commands = [...(data.commands || []), 'help', ...(data.leaderCommands || [])];
-  const list = `<ul class="chat-cmd-list">
+  const list = `<details class="invite-how" data-section-key="clan-cmds-list">
+      <summary>${t('Commands')} · ${commands.length}</summary>
+      <ul class="chat-cmd-list">
       ${commands.map((c) => `<li><code translate="no">${escapeHtml(c)}</code><span>${escapeHtml(commandDescription(c))}</span></li>`).join('')}
-    </ul>`;
+      </ul>
+    </details>`;
 
-  const how = `<details class="invite-how">
+  const how = `<details class="invite-how" data-section-key="clan-cmds-how">
       <summary>${t('How it works')}</summary>
       <ul>
         <li>${t('Only members on the roster get an answer. A message that isn’t a command gets no reply.')}</li>
@@ -142,7 +146,8 @@ function renderChatCommands(root, box, clanId, data) {
     </details>`;
 
   const recent = (data.recent || []).length ? `
-    <h4 class="invite-subhead">${t('Recent commands')}</h4>
+    <details class="invite-how" data-section-key="clan-cmds-recent">
+    <summary>${t('Recent commands')} · ${data.recent.length}</summary>
     <div class="table-wrap">
       <table class="data-table chat-cmd-requests">
         <thead><tr><th scope="col">${t('Asked')}</th><th scope="col">${t('Player')}</th><th scope="col">${t('Command')}</th><th scope="col">${t('Status')}</th></tr></thead>
@@ -155,7 +160,8 @@ function renderChatCommands(root, box, clanId, data) {
           </tr>`).join('')}
         </tbody>
       </table>
-    </div>` : '';
+    </div>
+    </details>` : '';
 
   box.innerHTML = `
     <div class="invite-panel">
@@ -165,8 +171,8 @@ function renderChatCommands(root, box, clanId, data) {
       ${notices.map((n) => `<p class="invite-notice">⚠ ${escapeHtml(n)}</p>`).join('')}
       <div class="invite-settings">${switchRow}${groupRow}</div>
       ${list}
-      ${how}
       ${recent}
+      ${how}
     </div>`;
 
   // Each switch saves on change; a failed save puts it back.

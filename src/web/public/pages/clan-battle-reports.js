@@ -9,7 +9,7 @@
 // Vaults per chat, saved on click, the rule, the fine print folded into "How
 // it works".
 
-import { escapeHtml, notify, formatDate } from '../lib/ui.js';
+import { escapeHtml, notify, formatDate, reapplyDetailsState } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
 
 /** The section on the clan card's In-game tab. */
@@ -34,6 +34,7 @@ async function loadBattleReports(root, clanId) {
     const r = await fetch(`/api/clans/${clanId}/battle-reports`);
     if (!r.ok) throw new Error(String(r.status));
     renderBattleReports(root, box, clanId, await r.json());
+    reapplyDetailsState(box);
   } catch {
     box.innerHTML = `<p class="warning-text">${t('Could not load the battle report settings.')}</p>`;
   }
@@ -87,8 +88,9 @@ function renderBattleReports(root, box, clanId, data) {
       <div class="invite-setting-control"><div class="invite-segmented" role="radiogroup" aria-labelledby="${labelId}">${buttons}</div></div>
     </div>`;
   }).join('');
+  // No chat yet: the sentence on its own, not in an empty settings box.
   const chatsHtml = chats.length
-    ? chatRows
+    ? `<div class="invite-settings">${chatRows}</div>`
     : `<p class="muted-copy">${t('The scanner account is in no group chat yet. Add it to a chat in the game; the chat shows here within a minute.')}</p>`;
 
   const ruleLabelId = `clan-tinman-rule-label-${clanId}`;
@@ -118,7 +120,7 @@ function renderBattleReports(root, box, clanId, data) {
     ].filter(Boolean).join(' · ') + (reports.lastReadAt ? ` · ${t('last read {date}', { date: formatDate(reports.lastReadAt) })}` : '')
     : t('No report shared yet.');
 
-  const how = `<details class="invite-how">
+  const how = `<details class="invite-how" data-section-key="clan-reports-how">
       <summary>${t('How it works')}</summary>
       <ul>
         <li>${t('A member shares a battle report in a chat the scanner account reads. Between scans the site opens it in the game’s journal, like a member tapping the link, and keeps what it says.')}</li>
@@ -136,7 +138,7 @@ function renderBattleReports(root, box, clanId, data) {
       <p class="invite-setting-state">${escapeHtml(status)}</p>
       <div class="invite-settings">${always}${ruleRow}</div>
       <h4 class="invite-subhead">${t('Also read these group chats')}</h4>
-      <div class="invite-settings">${chatsHtml}</div>
+      ${chatsHtml}
       ${how}
     </div>`;
 
