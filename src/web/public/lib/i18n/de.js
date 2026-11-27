@@ -943,7 +943,6 @@ export const ui = {
   "{n} posted vaults were not seen on the map: raised out of the map pass’s reach, or taken down before a scan.": { one: "{n} gepostete Schatzkammer wurde nicht auf der Karte gesehen: außerhalb der Reichweite des Kartenlesens errichtet oder vor einem Scan zerstört.", other: "{n} gepostete Schatzkammern wurden nicht auf der Karte gesehen: außerhalb der Reichweite des Kartenlesens errichtet oder vor einem Scan zerstört." },
   "Vaults raised": "Errichtete Schatzkammern",
   "by {n} members": { one: "von {n} Mitglied", other: "von {n} Mitgliedern" },
-  "of {n} members seen on the map": { one: "von {n} Mitglied auf der Karte", other: "von {n} Mitgliedern auf der Karte" },
   "No vault seen": "Keine Schatzkammer gesehen",
   "Still standing": "Stehen noch",
   "of {n} vaults": { one: "von {n} Schatzkammer", other: "von {n} Schatzkammern" },
@@ -953,6 +952,9 @@ export const ui = {
   "Raised by ({count})": "Errichtet von ({count})",
   "Every member raised a vault.": "Jedes Mitglied hat eine Schatzkammer errichtet.",
   "No vault seen ({count})": "Keine Schatzkammer gesehen ({count})",
+  "Not posted in {chats} ({count})": "Nicht in {chats} gepostet ({count})",
+  "Vault seen on the map ({count})": "Kammer auf der Karte gesehen ({count})",
+  "Every member posted their vault.": "Jedes Mitglied hat seine Kammer gepostet.",
   // pages/chats.js
   "Location": "Ort",
   "Copy coordinates": "Koordinaten kopieren",

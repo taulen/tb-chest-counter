@@ -10,8 +10,10 @@
 // "-CWB VAULTS-", where everyone links the vault they raised), the answer also
 // carries the links posted there in the window, each matched to a map vault or
 // not (data/vault-posts.ts). Then a Posted column says who linked theirs (✓)
-// and who didn't (✗), and a member who posted a vault the map never saw gets
-// a row of their own ("Not seen on the map", the level from the link).
+// and who didn't (✗), a member who posted a vault the map never saw gets a
+// row of their own ("Not seen on the map", the level from the link), and —
+// every member is to post theirs — every active member who didn't post is
+// listed right under the tiles, open: vault seen on the map, or none seen.
 //
 // One row per member (a member raises one vault a run; over All time the
 // count is how many runs they raised one in), sortable, 25 a page, and the
@@ -33,6 +35,7 @@ const PAGE_SIZE = 25;
 let sort = { key: 'down', dir: 'asc' };
 let page = 1;
 let noVaultOpen = false;
+let notPostedOpen = true;
 
 /** The run's vaults ({ raised, outsiders, since, vaultChats, posts }), or null when they could not be read. */
 export async function fetchVaults(from, to) {
@@ -126,7 +129,10 @@ function raisersOf(raised, posts) {
   const unseen = new Set(unseenPosts(posts));
   return [...byKey.values()].map((r) => {
     const onlyPosted = r.posts.filter((p) => unseen.has(p));
-    const levels = [...r.vaults.map((v) => v.level ?? 0), ...onlyPosted.map((p) => p.level)].sort((a, b) => b - a);
+    // A member with no vault of their own on the map still has the level their link says
+    // (a link can match a vault the map saw under another owner).
+    const linked = r.vaults.length ? onlyPosted : r.posts.filter((p, i, all) => all.findIndex((q) => q.x === p.x && q.y === p.y && q.objectType === p.objectType) === i);
+    const levels = [...r.vaults.map((v) => v.level ?? 0), ...linked.map((p) => p.level)].sort((a, b) => b - a);
     const seen = r.vaults.length > 0;
     return {
       ...r,
@@ -196,6 +202,8 @@ export function mountVaults(el, { data, members, to }) {
     });
     const fold = el.querySelector('details[data-section-key="events-novault"]');
     if (fold) fold.addEventListener('toggle', () => { noVaultOpen = fold.open; });
+    const np = el.querySelector('details[data-section-key="events-notposted"]');
+    if (np) np.addEventListener('toggle', () => { notPostedOpen = np.open; });
   };
   paint();
 }
@@ -239,8 +247,12 @@ function vaultsHtml(data, members, to) {
   // Vaults (not raisers) the newest scan still saw.
   const standing = data.raised.filter((v) => v.standing === true).length;
   const total = data.raised.length + unseen;
-  const seenRows = rows.filter((r) => r.seen);
-  const notPosted = seenRows.filter((r) => !r.posted).length;
+  // Every member is to post their vault: who didn't, whether the map saw theirs or not.
+  const postedIds = new Set(rows.filter((r) => r.posted).map((r) => r.memberId));
+  const seenIds = new Set(rows.filter((r) => r.seen).map((r) => r.memberId));
+  const notPostedSeen = eligible.filter((m) => !postedIds.has(m.id) && seenIds.has(m.id));
+  const notPostedUnseen = eligible.filter((m) => !postedIds.has(m.id) && !seenIds.has(m.id));
+  const notPosted = notPostedSeen.length + notPostedUnseen.length;
 
   const stat = (label, value, sub = '', lead = false, glyph = '') => `<div class="ui-tile ev-stat${lead ? ' is-lead' : ''}">
       <span class="ui-stat-label">${glyph}${esc(label)}</span>
@@ -249,7 +261,7 @@ function vaultsHtml(data, members, to) {
     </div>`;
   const tiles = `<div class="ev-stats">
       ${stat(t('Vaults raised'), total.toLocaleString(), tn(rows.length, 'by {n} member', 'by {n} members'), true)}
-      ${hasChat ? stat(t('Not posted'), notPosted.toLocaleString(), tn(seenRows.length, 'of {n} member seen on the map', 'of {n} members seen on the map'), false,
+      ${hasChat ? stat(t('Not posted'), notPosted.toLocaleString(), tn(eligible.length, 'of {n} member', 'of {n} members'), false,
         '<span class="vault-mark is-standing" aria-hidden="true">✗</span>') : ''}
       ${stat(t('No vault seen'), without.length.toLocaleString(), tn(eligible.length, 'of {n} member', 'of {n} members'))}
       ${stat(t('Still standing'), standing.toLocaleString(), tn(data.raised.length, 'of {n} vault', 'of {n} vaults'), false,
@@ -314,5 +326,17 @@ function vaultsHtml(data, members, to) {
       <div class="card-body">${noVaultBody}</div>
     </details>`;
 
-  return `${tiles}${table}${noVault}${notesHtml(notes)}`;
+  if (!hasChat) return `${tiles}${table}${noVault}${notesHtml(notes)}`;
+
+  // With a vault chat, everyone who didn't post leads, open: the "No vault seen"
+  // members are its second group, so that fold isn't repeated.
+  const chips = (list) => `<div class="events-np-list">${list.map((m) => `<span class="events-np-item">${memberLink(m.id, m.name)}</span>`).join('')}</div>`;
+  const group = (title, list) => (list.length ? `<h3 class="vaults-np-group">${esc(title)}</h3>${chips(list)}` : '');
+  const notPostedHtml = `<details class="card card-collapsible vaults-notposted" data-section-key="events-notposted"${notPostedOpen ? ' open' : ''}>
+      <summary class="card-header"><h2><span class="vault-mark is-standing" aria-hidden="true">✗</span> ${esc(t('Not posted in {chats} ({count})', { chats: chats.join(', '), count: notPosted }))}</h2></summary>
+      <div class="card-body">${notPosted
+        ? `${group(t('Vault seen on the map ({count})', { count: notPostedSeen.length }), notPostedSeen)}${group(t('No vault seen ({count})', { count: notPostedUnseen.length }), notPostedUnseen)}`
+        : `<p class="empty-state">${esc(t('Every member posted their vault.'))}</p>`}</div>
+    </details>`;
+  return `${tiles}${notPostedHtml}${table}${notesHtml(notes)}`;
 }

@@ -5338,6 +5338,10 @@ details > table {
 .vault-mark.is-standing { color: var(--accent-red); }
 /* Posted in the vault chat but never seen on the map: no take-down to mark. */
 .vault-mark.is-unseen { color: var(--text-muted); }
+/* Every member who didn't post in the vault chat, open under the tiles: vault seen, or none. */
+.vaults-notposted { margin-bottom: 16px; }
+.vaults-np-group { margin: 4px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.vaults-np-group:not(:first-child) { margin-top: 14px; }
 .events-vaults-table td.col-mark .vault-mark { font-size: 16px; }
 /* Ancients → Hits (pages/ancients-hits.js): Tin Man hits shared as battle
    reports, with the Tin Man's stacks; ✓/✗ against the clan's rule. */

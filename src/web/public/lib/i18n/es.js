@@ -943,7 +943,6 @@ export const ui = {
   "{n} posted vaults were not seen on the map: raised out of the map pass’s reach, or taken down before a scan.": { one: "{n} bóveda publicada no se vio en el mapa: levantada fuera del alcance de la lectura del mapa, o derribada antes de un escaneo.", other: "{n} bóvedas publicadas no se vieron en el mapa: levantadas fuera del alcance de la lectura del mapa, o derribadas antes de un escaneo." },
   "Vaults raised": "Bóvedas levantadas",
   "by {n} members": { one: "por {n} miembro", other: "por {n} miembros" },
-  "of {n} members seen on the map": { one: "de {n} miembro visto en el mapa", other: "de {n} miembros vistos en el mapa" },
   "No vault seen": "Sin bóveda vista",
   "Still standing": "Aún en pie",
   "of {n} vaults": { one: "de {n} bóveda", other: "de {n} bóvedas" },
@@ -953,6 +952,9 @@ export const ui = {
   "Raised by ({count})": "Levantadas por ({count})",
   "Every member raised a vault.": "Todos los miembros levantaron una bóveda.",
   "No vault seen ({count})": "Sin bóveda vista ({count})",
+  "Not posted in {chats} ({count})": "Sin publicar en {chats} ({count})",
+  "Vault seen on the map ({count})": "Bóveda vista en el mapa ({count})",
+  "Every member posted their vault.": "Todos los miembros publicaron su bóveda.",
   // pages/chats.js
   "Location": "Ubicación",
   "Copy coordinates": "Copiar coordenadas",

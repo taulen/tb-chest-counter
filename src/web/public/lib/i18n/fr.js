@@ -943,7 +943,6 @@ export const ui = {
   "{n} posted vaults were not seen on the map: raised out of the map pass’s reach, or taken down before a scan.": { one: "{n} chambre forte publiée n’a pas été vue sur la carte : érigée hors de portée de la lecture de la carte, ou détruite avant un scan.", other: "{n} chambres fortes publiées n’ont pas été vues sur la carte : érigées hors de portée de la lecture de la carte, ou détruites avant un scan." },
   "Vaults raised": "Chambres Fortes dressées",
   "by {n} members": { one: "par {n} membre", other: "par {n} membres" },
-  "of {n} members seen on the map": { one: "sur {n} membre vu sur la carte", other: "sur {n} membres vus sur la carte" },
   "No vault seen": "Aucune Chambre Forte vue",
   "Still standing": "Encore debout",
   "of {n} vaults": { one: "sur {n} Chambre Forte", other: "sur {n} Chambres Fortes" },
@@ -953,6 +952,9 @@ export const ui = {
   "Raised by ({count})": "Dressées par ({count})",
   "Every member raised a vault.": "Chaque membre a dressé une Chambre Forte.",
   "No vault seen ({count})": "Aucune Chambre Forte vue ({count})",
+  "Not posted in {chats} ({count})": "Non publié dans {chats} ({count})",
+  "Vault seen on the map ({count})": "Chambre vue sur la carte ({count})",
+  "Every member posted their vault.": "Chaque membre a publié sa chambre.",
   // pages/chats.js
   "Location": "Lieu",
   "Copy coordinates": "Copier les coordonnées",
