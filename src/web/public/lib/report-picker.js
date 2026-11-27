@@ -3,9 +3,10 @@
 // tool's "Whose research"): the viewer's own players, then anyone in the
 // clan who fought or posted a battle that has been read. Below it the picked
 // player's newest battles, each with its target, day, whose army it is and
-// who shared it. Picking one resolves to that battle's army
-// (GET /api/tools/report-armies); the page works out the bonuses
-// (lib/report-bonuses.js).
+// who shared it. Picking one resolves to that battle's army and the player's
+// other battles listed (GET /api/tools/report-armies) — the page works out
+// the bonuses and fills what the battle can't show from those
+// (lib/report-bonuses.js withGapsFilled).
 
 import { api } from './api.js';
 import { esc, contentModal, formatDate } from './ui.js';
@@ -58,7 +59,7 @@ function bodyHtml(data, intro) {
     ${list}${waiting}`;
 }
 
-/** Open the dialog; resolves to the picked battle's army, or null. */
+/** Open the dialog; resolves to { report, reports } — the picked battle's army and the player's battles listed — or null. */
 export async function pickBattleReport({ title, intro }) {
   let data = await load(null);
   return new Promise((resolve) => {
@@ -89,7 +90,7 @@ export async function pickBattleReport({ title, intro }) {
       });
       modal.content.querySelectorAll('[data-rp-index]').forEach((btn) => btn.addEventListener('click', () => {
         const r = data.reports[Number(btn.dataset.rpIndex)];
-        finish(r ?? null);
+        finish(r ? { report: r, reports: data.reports } : null);
         modal.close();
       }));
     };

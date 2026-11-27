@@ -43,7 +43,7 @@ import {
   troopInWindow,
 } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
-import { bonusesFromReport } from '../lib/report-bonuses.js';
+import { withGapsFilled } from '../lib/report-bonuses.js';
 import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 
@@ -948,12 +948,16 @@ function reportBonusesFor(troopId, found) {
 /** Pick a player and one of their battles; fill in what it shows. */
 async function fillFromReport(root) {
   const title = t('Fill in from a battle report');
-  const report = await pickBattleReport({
+  const picked = await pickBattleReport({
     title,
     intro: t('The bonuses the game used in a battle: pick the player, then the battle. Only troops that fought in it are filled in; strength where a strike shows it, health where the troop was hit.'),
   });
-  if (!report) return;
-  const found = bonusesFromReport(report);
+  if (!picked) return;
+  const { report } = picked;
+  // Every troop's card: the march's effects + the army-wide part the report
+  // doesn't carry, measured from a troop the battle shows (or the same army's
+  // nearest battle that day — the notice says which).
+  const { found, borrowed, gapsFrom } = withGapsFilled(report, picked.reports);
   let filled = 0;
   for (const row of cs.rows) {
     const v = reportBonusesFor(row.troopId, found);
@@ -968,10 +972,17 @@ async function fillFromReport(root) {
   }
   cs.bonusesAt = report.at;
   cs.bonusesFrom = null;
-  cs.bonusesReport = `${reportChoiceLabel(report)}${report.attacker?.name ? ` · ${report.attacker.name}` : ''}`;
+  cs.bonusesReport = `${reportChoiceLabel(report)}${report.attacker?.name ? ` · ${report.attacker.name}` : ''}`
+    + (borrowed.length ? ` + ${tn(borrowed.length, '{n} more battle', '{n} more battles')}` : '');
   saveDraft();
   paintAll(root);
-  notify(tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'), title);
+  notify([
+    tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'),
+    ...(gapsFrom ? [t('This battle shows no troop exactly, so the part every card has beyond the report came from the battle {battle}.', { battle: reportChoiceLabel(gapsFrom) })] : []),
+    ...borrowed.map((b) => t('{troops}: from the battle {battle}, which shows what this one can’t.', {
+      troops: b.troopIds.map(troopName).join(', '), battle: reportChoiceLabel(b.report),
+    })),
+  ].join(' '), title);
 }
 
 // ─── March list: the counts in the order the game's march screen shows them ───

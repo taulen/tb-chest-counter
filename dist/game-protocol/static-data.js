@@ -26,6 +26,7 @@ exports.conditionTexts = conditionTexts;
 exports.buildFactions = buildFactions;
 exports.clearGameNamesRetry = clearGameNamesRetry;
 exports.loadGameNames = loadGameNames;
+exports.newestStaticFile = newestStaticFile;
 exports.resetGameNamesMemo = resetGameNamesMemo;
 /**
  * Names for the game's numeric ids, built from Total Battle's own public static
@@ -68,6 +69,7 @@ const zlib_1 = __importDefault(require("zlib"));
 const codec_js_1 = require("./codec.js");
 const client_config_js_1 = require("./client-config.js");
 const city_stats_js_1 = require("./city-stats.js");
+const troop_effects_js_1 = require("./troop-effects.js");
 const game_texts_js_1 = require("./game-texts.js");
 const logger_js_1 = require("../utils/logger.js");
 const status_js_1 = require("../game-patch/status.js");
@@ -222,10 +224,12 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * amounts and speedup durations, for the chest rewards; 11: titles (T29);
  * 12: texts-<lang>.json beside it, the names in the site's other languages;
  * 13: speeds — what each effect adds to construction, training and research
- * speed; 14: cityStats — every effect line named, a city's every bonus — Nov
- * 2026); a cached file with an older format is rebuilt.
+ * speed; 14: cityStats — every effect line named, a city's every bonus; 15:
+ * troop-effects.json beside it — every effect's strength and health lines with
+ * the units they reach, for battle reports' troop cards — Nov 2026); a cached
+ * file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 14;
+exports.NAMES_FORMAT = 15;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -1319,7 +1323,12 @@ async function buildAndCacheNames(version, key, file) {
     ]);
     const zipOf = new Map(game_texts_js_1.GAME_TEXT_LANGUAGE_CODES.map((l, i) => [l, langZips[i]]));
     const en = parseTranslationsCsv(unzipFirst(enZip).toString('utf8'));
-    const { names, texts, drift } = buildNamesInLanguages(key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), readTables(tablesBuf, NEEDED_TABLES), en, (lang) => {
+    const vectors = readWrappedArray(vectorsBuf);
+    const tables = readTables(tablesBuf, NEEDED_TABLES);
+    // Troop cards from battle reports (troop-effects.ts): its own file, read only
+    // when a report army is built — too big for names.json, which stays loaded.
+    const troopEffects = (0, troop_effects_js_1.buildTroopEffects)(tables.get(exports.TABLE_EFFECTS) ?? {}, (ref) => (typeof ref === 'number' && Array.isArray(vectors[ref]) ? vectors[ref] : undefined), key);
+    const { names, texts, drift } = buildNamesInLanguages(key, readWrappedArray(stringsBuf), vectors, tables, en, (lang) => {
         const zip = zipOf.get(lang);
         if (!zip)
             return null;
@@ -1338,6 +1347,7 @@ async function buildAndCacheNames(version, key, file) {
     fs_1.default.mkdirSync(dir, { recursive: true });
     for (const [lang, dict] of texts)
         (0, game_texts_js_1.writeGameTexts)(dir, lang, key, dict);
+    fs_1.default.writeFileSync(path_1.default.join(dir, troop_effects_js_1.TROOP_EFFECTS_FILE), JSON.stringify(troopEffects));
     names.textLanguages = [...texts.keys()];
     if (texts.size < game_texts_js_1.GAME_TEXT_LANGUAGE_CODES.length)
         textsRetryAt.set(key, Date.now() + TEXTS_RETRY_MS);
@@ -1365,6 +1375,20 @@ function newestCachedNames() {
         return null;
     (0, game_texts_js_1.useGameTextsDir)(path_1.default.dirname(files[0]));
     return JSON.parse(fs_1.default.readFileSync(files[0], 'utf8'));
+}
+/**
+ * The newest copy of a file the names build writes beside names.json
+ * (troop-effects.json), or null when none was built yet.
+ */
+function newestStaticFile(name) {
+    const dir = staticDir();
+    if (!fs_1.default.existsSync(dir))
+        return null;
+    const files = fs_1.default.readdirSync(dir)
+        .map((d) => path_1.default.join(dir, d, name))
+        .filter((f) => fs_1.default.existsSync(f))
+        .sort((a, b) => fs_1.default.statSync(b).mtimeMs - fs_1.default.statSync(a).mtimeMs);
+    return files[0] ?? null;
 }
 /** Test seam. */
 function resetGameNamesMemo() {

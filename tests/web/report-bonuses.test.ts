@@ -6,7 +6,8 @@
  * can show must come back exactly as the cards said.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { bonusesFromReport, troopForUnit } from '../../src/web/public/lib/report-bonuses.js';
+import { bonusesFromReport, reportGaps, strikeBonus, troopForUnit, withGapsFilled } from '../../src/web/public/lib/report-bonuses.js';
+import { troopById } from '../../src/web/public/lib/citadel-sim.js';
 import { reportArmiesFor, reportPlayers } from '../../src/data/report-armies.js';
 import { getDb } from '../../src/data/database.js';
 import { saveFetchedReport, recordReportShares } from '../../src/data/repositories/battle-report-repo.js';
@@ -29,6 +30,7 @@ const UNITS = new Map([
   [6034, { name: 'Ent', strength: 73000, health: 219000 }],
   [6035, { name: 'Life Dragon', strength: 240000, health: 720000 }],
   [6070, { name: 'Pegasus Rider', strength: 8200, health: 24600 }],
+  [6031, { name: 'Druid', strength: 900, health: 2700 }],
 ]);
 const ME = 1001;
 const CIT = 2002;
@@ -55,8 +57,8 @@ const PLAYER = 1241245577338;
 function report(): BattleReport {
   return {
     kind: 'battle', won: true, rounds: 10, targetStaticId: 1817, strikeLogId: 'x',
-    attackers: [{ playerId: PLAYER, armyId: ME, units: ARMY.map(([unit, count]) => ({ unit, count })), killed: { 206: 140 } }],
-    defenders: [{ playerId: 1116691496961, armyId: CIT, units: [{ unit: 51, count: 135000 }], killed: {} }],
+    attackers: [{ playerId: PLAYER, armyId: ME, units: ARMY.map(([unit, count]) => ({ unit, count })), killed: { 206: 140 }, effects: [] }],
+    defenders: [{ playerId: 1116691496961, armyId: CIT, units: [{ unit: 51, count: 135000 }], killed: {}, effects: [] }],
   };
 }
 
@@ -82,15 +84,16 @@ async function armies() {
 }
 
 describe('report armies', () => {
-  it('sends each troop’s health per unit from its first hit, and the base damage of strikes that weren’t capped', async () => {
+  it('sends each troop’s health per unit from its first hit, and every strike it made as the log has it', async () => {
     const [a] = await armies();
     expect(a).toMatchObject({ at: '2026-11-07T21:00:35.000Z', target: { staticId: 1817, name: 'Elven Citadel' }, won: true });
     const corax = a.troops.find((t) => t.unit === 206)!;
     expect(corax.unitHealth).toBeCloseTo(4_454_295_273 / 601, 6);
-    // Doubled (extraB = the damage before the luck); a capped strike without one is left out.
-    expect(corax.strikes).toEqual([{ count: 527, base: 1_717_924_086, target: { unit: 6035, ...UNITS.get(6035) } }]);
-    expect(a.troops.find((t) => t.unit === 32)!.strikes[0].base).toBe(369_110_530);
-    expect(a.troops.find((t) => t.unit === 214)!.strikes).toEqual([]);
+    expect(corax.strikes).toEqual([{
+      count: 527, damage: 1_656_000_000, extraA: 0, extraB: 1_717_924_086, capped: true, target: { unit: 6035, ...UNITS.get(6035) },
+    }]);
+    expect(a.troops.find((t) => t.unit === 32)!.strikes[0]).toMatchObject({ damage: 369_110_530, capped: false });
+    expect(a.troops.find((t) => t.unit === 214)!.strikes[0]).toMatchObject({ capped: true, extraB: 0 });
     expect(a.troops.find((t) => t.unit === 191)!.unitHealth).toBeNull();
   });
 
@@ -111,6 +114,54 @@ describe('report armies', () => {
     expect(await reportArmiesFor(PLAYER, { clanId: 2, namesClanId: 2 }, LOOKUPS)).toHaveLength(1);
     // The viewer's own player: every clan's shares.
     expect(await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1 }, LOOKUPS)).toHaveLength(1);
+  });
+});
+
+describe('every troop’s card from one report: its effects + the army-wide part, measured', () => {
+  // The Nov 7 Elven 10 one-of-each fight: each troop's effects sum (troop-effects.ts on the
+  // march, checked in the game data) and what the battle shows exactly — Battle Griffin VII's
+  // doubled strike, Fire Phoenix I's first hit, the Ballistae on the walls. Every other strike
+  // killed its target.
+  const T = (unit: number, card: [number, number], extra: object = {}) => ({
+    unit, ...UNITS.get(unit)!, count: 1, card: { strength: card[0], health: card[1] }, unitHealth: null, strikes: [], ...extra,
+  });
+  const e10 = {
+    entryId: 'e10', at: '2026-11-07T20:51:45.000Z', attacker: { playerId: PLAYER, name: '' }, target: { name: '' }, won: true, sharedBy: '',
+    troops: [
+      T(33, [5226.5, 3921.75], { strikes: [{ count: 1, damage: 270_000, extraA: 0, extraB: 1_845_010, capped: true, target: { unit: 6031, ...UNITS.get(6031)! } }] }),
+      T(191, [3636.5, 2679.75], { unitHealth: 57_316_050 }),
+      T(87, [2177, 1501.75], { strikes: [{ count: 1, damage: 2_700_000, extraA: 2_597_050, extraB: 0, capped: true, target: { unit: 51, ...UNITS.get(51)! } }] }),
+      T(206, [5126.5, 3821.75]),
+      T(214, [3636.5, 2679.75]),
+      T(32, [5226.5, 3921.75]),
+      T(35, [3536.5, 2579.75]),
+    ],
+  };
+
+  it('measures the army-wide part from what the battle shows', () => {
+    const g = reportGaps(e10);
+    expect(g.strength).toBeCloseTo(100, 2);
+    expect(g.health).toBeCloseTo(115, 6);
+  });
+
+  it('gives every troop its card at full precision — those it can’t show too', () => {
+    const found = bonusesFromReport(e10);
+    // The cards read 5226.5 / 3936.8 …: the game's own numbers end in .75.
+    expect(found.get('corax-1')).toEqual({ strengthPct: 5226.5, healthPct: 3936.75 });
+    expect(found.get('royal-lion-1')).toEqual({ strengthPct: 3736.5, healthPct: 2794.75 });
+    expect(found.get('griffin-6')).toEqual({ strengthPct: 5326.5, healthPct: 4036.75 });
+    expect(found.get('griffin-7')).toEqual({ strengthPct: 5326.5, healthPct: 4036.75 });
+    expect(found.get('siege-ballistae-7')).toEqual({ strengthPct: 2277, healthPct: 1616.75 });
+    expect(found.get('fire-phoenix-1')).toEqual({ strengthPct: 3736.5, healthPct: 2794.75 });
+    expect(found.get('vulture-6')).toEqual({ strengthPct: 3636.5, healthPct: 2694.75 });
+  });
+
+  it('takes the army-wide part from the same army’s nearest battle when this one shows nothing', () => {
+    const blind = { ...e10, entryId: 'blind', at: '2026-11-07T21:30:00.000Z', troops: [T(206, [5126.5, 3821.75]), T(214, [3636.5, 2679.75])] };
+    expect(bonusesFromReport(blind).size).toBe(0);
+    const { found, gapsFrom } = withGapsFilled(blind, [blind, e10]);
+    expect(gapsFrom?.entryId).toBe('e10');
+    expect(found.get('corax-1')).toEqual({ strengthPct: 5226.5, healthPct: 3936.75 });
   });
 });
 
@@ -135,19 +186,61 @@ describe('card bonuses from a report', () => {
   it('gives back the bonuses the user typed from the cards that day', async () => {
     const [a] = await armies();
     const found = bonusesFromReport(a);
-    expect(found.get('corax-1')).toEqual({ strengthPct: 5226.5, healthPct: 3936.8 });
+    expect(found.get('corax-1')).toEqual({ strengthPct: 5226.5, healthPct: 3936.75 });
     expect(found.get('fire-phoenix-1')).toEqual({ strengthPct: 3736.5, healthPct: null });
     expect(found.get('vulture-6')?.strengthPct).toBe(3636.5);
     expect(found.get('griffin-6')?.strengthPct).toBe(5326.5);
     expect(found.get('griffin-7')?.strengthPct).toBe(5326.5);
   });
 
-  it('leaves out what the report can’t show: capped strikes, hits on the walls, troops never hit', async () => {
+  it('leaves out what the report can’t show: a strike that killed its target without doubling, a troop never hit', async () => {
     const [a] = await armies();
     const found = bonusesFromReport(a);
     expect(found.has('royal-lion-1')).toBe(false);
     expect(found.has('vulture-7')).toBe(false);
-    expect(found.has('siege-ballistae-7')).toBe(false);
+  });
+
+  it('takes the features out with the log’s own share (extraA), so no feature table is needed', () => {
+    const phoenix = troopById('fire-phoenix-1');
+    const bear = { unit: 6033, ...UNITS.get(6033)! };
+    // Phoenix I on the Bear, doubled and capped: extraB is the base, extraA the features' share of the damage.
+    expect(strikeBonus(phoenix, { count: 26, damage: 792_000_000, extraA: 122_356_363, extraB: 778_635_000, capped: true, target: bear })! * 100)
+      .toBeCloseTo(3736.5, 1);
+    // The Nov 5 one, with that day's 3658.5% on a Pegasus Rider (no features).
+    expect(strikeBonus(phoenix, { count: 26, damage: 516_600_000, extraA: 0, extraB: 644_958_600, capped: true, target: { unit: 6070, ...UNITS.get(6070)! } })! * 100)
+      .toBeCloseTo(3658.5, 1);
+    // Capped without doubling: only what the kill took — no answer.
+    expect(strikeBonus(phoenix, { count: 1, damage: 594_000, extraA: 91_767, extraB: 0, capped: true, target: bear })).toBeNull();
+  });
+
+  it('reads a siege engine from its hits on the walls (×20), killed or not', () => {
+    const ballistae = troopById('siege-ballistae-7');
+    const walls = { unit: 51, ...UNITS.get(51)! };
+    // Nov 7: one Ballistae on Elven 10's walls, and 789 on Elven 30's — the card said 2277%.
+    expect(strikeBonus(ballistae, { count: 1, damage: 2_700_000, extraA: 2_597_050, extraB: 0, capped: true, target: walls })! * 100).toBeCloseTo(2277, 0);
+    expect(strikeBonus(ballistae, { count: 789, damage: 4_050_000_000, extraA: 3_895_575_072, extraB: 0, capped: true, target: walls })! * 100).toBeCloseTo(2277, 0);
+    // Nov 5, 779 of them: 2229%.
+    expect(strikeBonus(ballistae, { count: 779, damage: 4_050_000_000, extraA: 3_896_326_979, extraB: 0, capped: true, target: walls })! * 100).toBeCloseTo(2229, 0);
+  });
+
+  it('fills what the picked battle can’t show from the same army’s battles that day, nearest first', async () => {
+    const [a] = await armies();
+    // The Elven 10 one-of-each fight two minutes earlier: every strike killed its target; only the Phoenix was hit.
+    const e10 = {
+      ...a, entryId: 'e10', at: '2026-11-07T20:51:45.000Z',
+      troops: [
+        { unit: 191, ...UNITS.get(191)!, count: 1, unitHealth: 57_316_050, strikes: [] },
+        { unit: 206, ...UNITS.get(206)!, count: 1, unitHealth: null, strikes: [] },
+      ],
+    };
+    const weekLater = { ...a, entryId: 'later', at: '2026-11-14T20:00:00.000Z' };
+    const { found, borrowed } = withGapsFilled(e10, [e10, a, weekLater]);
+    expect(found.get('fire-phoenix-1')).toEqual({ strengthPct: 3736.5, healthPct: 2794.75 });
+    expect(found.get('corax-1')).toEqual({ strengthPct: 5226.5, healthPct: 3936.75 });
+    expect(borrowed.map((b) => b.report.entryId)).toEqual([a.entryId]);
+    // Another player's army is never mixed in.
+    const other = { ...a, entryId: 'other', attacker: { playerId: PLAYER + 1, name: '' } };
+    expect(withGapsFilled(e10, [e10, other]).borrowed).toEqual([]);
   });
 
   it('matches a unit to the calculator’s troop by game name and base stats', () => {

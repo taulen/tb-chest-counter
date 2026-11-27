@@ -39,6 +39,7 @@ import zlib from 'zlib';
 import { WireReader, type Wire } from './codec.js';
 import { TABLE_CLIENT_CONFIG, academyTabs, readBranchDefs, type TextLookup } from './client-config.js';
 import { buildCityStats, type GameCityStats } from './city-stats.js';
+import { TROOP_EFFECTS_FILE, buildTroopEffects } from './troop-effects.js';
 import {
   GAME_TEXT_LANGUAGES,
   GAME_TEXT_LANGUAGE_CODES,
@@ -471,10 +472,12 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * amounts and speedup durations, for the chest rewards; 11: titles (T29);
  * 12: texts-<lang>.json beside it, the names in the site's other languages;
  * 13: speeds — what each effect adds to construction, training and research
- * speed; 14: cityStats — every effect line named, a city's every bonus — Nov
- * 2026); a cached file with an older format is rebuilt.
+ * speed; 14: cityStats — every effect line named, a city's every bonus; 15:
+ * troop-effects.json beside it — every effect's strength and health lines with
+ * the units they reach, for battle reports' troop cards — Nov 2026); a cached
+ * file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 14;
+export const NAMES_FORMAT = 15;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -1548,8 +1551,17 @@ async function buildAndCacheNames(version: StaticVersion, key: string, file: str
   ]);
   const zipOf = new Map(GAME_TEXT_LANGUAGE_CODES.map((l, i) => [l, langZips[i]]));
   const en = parseTranslationsCsv(unzipFirst(enZip).toString('utf8'));
+  const vectors = readWrappedArray(vectorsBuf);
+  const tables = readTables(tablesBuf, NEEDED_TABLES);
+  // Troop cards from battle reports (troop-effects.ts): its own file, read only
+  // when a report army is built — too big for names.json, which stays loaded.
+  const troopEffects = buildTroopEffects(
+    tables.get(TABLE_EFFECTS) ?? {},
+    (ref) => (typeof ref === 'number' && Array.isArray(vectors[ref]) ? (vectors[ref] as Wire[]) : undefined),
+    key,
+  );
   const { names, texts, drift } = buildNamesInLanguages(
-    key, readWrappedArray(stringsBuf), readWrappedArray(vectorsBuf), readTables(tablesBuf, NEEDED_TABLES), en,
+    key, readWrappedArray(stringsBuf), vectors, tables, en,
     (lang) => {
       const zip = zipOf.get(lang);
       if (!zip) return null;
@@ -1567,6 +1579,7 @@ async function buildAndCacheNames(version: StaticVersion, key: string, file: str
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   for (const [lang, dict] of texts) writeGameTexts(dir, lang, key, dict);
+  fs.writeFileSync(path.join(dir, TROOP_EFFECTS_FILE), JSON.stringify(troopEffects));
   names.textLanguages = [...texts.keys()];
   if (texts.size < GAME_TEXT_LANGUAGE_CODES.length) textsRetryAt.set(key, Date.now() + TEXTS_RETRY_MS);
   // names.json last: its presence says the texts beside it are as complete as they will get.
@@ -1594,6 +1607,20 @@ function newestCachedNames(): GameNames | null {
   if (!files[0]) return null;
   useGameTextsDir(path.dirname(files[0]));
   return JSON.parse(fs.readFileSync(files[0], 'utf8')) as GameNames;
+}
+
+/**
+ * The newest copy of a file the names build writes beside names.json
+ * (troop-effects.json), or null when none was built yet.
+ */
+export function newestStaticFile(name: string): string | null {
+  const dir = staticDir();
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir)
+    .map((d) => path.join(dir, d, name))
+    .filter((f) => fs.existsSync(f))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  return files[0] ?? null;
 }
 
 /** Test seam. */

@@ -7,7 +7,9 @@
  *   report  ["battle", won ("true"/"false"), rounds, ?, ?, ?, ?,
  *            attackers[], defenders[], strikeLogId, …, targetStaticId (14), rewards (15), …]
  *   side    [[realm, playerNo], march, [{}, killed {unit: n}, 1], …]
- *   march   [[armyId], [[playerId], …], …, units (30) [[unit, count, 0]…], …]
+ *   march   [[armyId], [[playerId], [cityId], 1, setOutAt, …], …, effects (14)
+ *            [[effectId, sourceBits, count]…], boosts (16) [[effectId, 0, from, to]…],
+ *            …, units (30) [[unit, count, 0]…], …]
  *   strike  [attacker ("true"/"false"), [armyId], unit, count, damage, c5, c6, 0,
  *            [targetArmyId], targetUnit, targetCount, targetPoolBefore,
  *            targetCountAfter, targetPoolAfter, …]
@@ -31,6 +33,12 @@ export interface BattleSide {
   killed: Record<number, number>;
   /** The march's army id (the strike log names armies by it). */
   armyId: number | null;
+  /**
+   * Every effect on the march (field 14 — research, captains, gear, artifacts…)
+   * and the timed boosts running when it set out (field 16): what its troop
+   * cards add up (troop-effects.ts). Empty for a monster.
+   */
+  effects: Array<{ id: number; count: number }>;
 }
 
 export interface BattleReport {
@@ -123,7 +131,24 @@ function readSide(v: Wire): BattleSide | null {
   const owner = Array.isArray(march[1]) ? firstId(march[1][0]) : null;
   let playerId = owner;
   if (playerId === null && Array.isArray(who) && typeof who[0] === 'number' && typeof who[1] === 'number') playerId = playerIdOf(who[0], who[1]);
-  return { playerId, units: marchUnits(march, killed), killed, armyId: firstId(march[0]) };
+  return { playerId, units: marchUnits(march, killed), killed, armyId: firstId(march[0]), effects: marchEffects(march) };
+}
+
+/** A march's effects (field 14, counted) and the boosts (field 16) running when it set out. */
+function marchEffects(march: Wire[]): Array<{ id: number; count: number }> {
+  const out: Array<{ id: number; count: number }> = [];
+  for (const e of Array.isArray(march[14]) ? march[14] : []) {
+    if (Array.isArray(e) && typeof e[0] === 'number') out.push({ id: e[0], count: typeof e[2] === 'number' && e[2] > 0 ? e[2] : 1 });
+  }
+  const setOut = Array.isArray(march[1]) ? num(march[1][3]) : null;
+  for (const b of Array.isArray(march[16]) ? march[16] : []) {
+    if (!Array.isArray(b) || typeof b[0] !== 'number') continue;
+    const from = num(b[2]);
+    const to = num(b[3]);
+    if (setOut !== null && from !== null && to !== null && (setOut < from || setOut > to)) continue;
+    out.push({ id: b[0], count: 1 });
+  }
+  return out;
 }
 
 /** A report's bytes (journal.ts fetchSharedEntry) read, or null when they aren't a battle. */

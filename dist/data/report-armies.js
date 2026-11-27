@@ -1,5 +1,9 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.loadTroopEffects = loadTroopEffects;
 exports.reportPlayers = reportPlayers;
 exports.reportArmiesFor = reportArmiesFor;
 /**
@@ -12,11 +16,17 @@ exports.reportArmiesFor = reportArmiesFor;
  *  - each troop's units and the game's base strength and health (T9);
  *  - its health per unit with every bonus: the stack's pool on the first hit
  *    it took ÷ its units — exact, a full stack's pool is units × unit health;
- *  - every strike it made with the strike's base damage — the log's extraB
- *    when the strike doubled (that is the damage before the luck), else the
- *    damage when the target survived (not capped). Checked against the Nov 7
- *    2026 Elven 30 report: extraB is the simulator's units × strength ×
- *    (1 + bonus + features) to the unit.
+ *  - its card as the march's own effects add it up (troop-effects.ts: the
+ *    report's field-14 effects and running boosts, every strength / health
+ *    line aimed at its unit) — the card less one army-wide amount the report
+ *    doesn't carry, which the page measures from what the battle shows;
+ *  - every strike it made, as the log has it: the damage dealt (capped at what
+ *    the target had left), extraA — the part of it that came from "vs"
+ *    features (damage × features ÷ (1 + bonus + features): Phoenix I on a
+ *    Bear, 26 units or 1, the same 7.01 / 45.375 share) — and extraB, the
+ *    damage before the luck when the strike doubled (the simulator's units ×
+ *    strength × (1 + bonus + features) to the unit), plus whether it killed
+ *    its target (then the damage is only what that took).
  *
  * Whose: a player's battles are the ones they FOUGHT (the march owner — the
  * army whose bonuses these are) and the ones they POSTED (usually their own;
@@ -24,14 +34,39 @@ exports.reportArmiesFor = reportArmiesFor;
  * player (reportPlayers): their own players see every clan's shares, anyone
  * else only what was shared in the clan being viewed.
  */
+const fs_1 = __importDefault(require("fs"));
+const zlib_1 = __importDefault(require("zlib"));
 const database_js_1 = require("./database.js");
 const art_static_js_1 = require("../game-art/art-static.js");
 const store_js_1 = require("../game-art/store.js");
 const static_data_js_1 = require("../game-protocol/static-data.js");
+const battle_report_js_1 = require("../game-protocol/battle-report.js");
+const troop_effects_js_1 = require("../game-protocol/troop-effects.js");
 const game_player_names_js_1 = require("./game-player-names.js");
+let effectsMemo = null;
+/** The newest troop-effects.json the names build wrote (static-data.ts), kept in memory until a newer one appears. */
+function loadTroopEffects() {
+    const file = (0, static_data_js_1.newestStaticFile)(troop_effects_js_1.TROOP_EFFECTS_FILE);
+    if (!file)
+        return null;
+    const mtimeMs = fs_1.default.statSync(file).mtimeMs;
+    if (effectsMemo?.file === file && effectsMemo.mtimeMs === mtimeMs)
+        return effectsMemo.table;
+    try {
+        const table = JSON.parse(fs_1.default.readFileSync(file, 'utf8'));
+        if (table.format !== troop_effects_js_1.TROOP_EFFECTS_FORMAT)
+            return null;
+        effectsMemo = { file, mtimeMs, table };
+        return table;
+    }
+    catch {
+        return null;
+    }
+}
 const LIVE = {
     units: () => (0, art_static_js_1.cachedArtUnits)((0, store_js_1.gameArtDir)()),
     objects: async () => (await (0, static_data_js_1.loadGameNames)()).objects,
+    troopEffects: loadTroopEffects,
 };
 /** Battles of the dialog: read, with a strike log. */
 const READABLE = `r.status = 'ok' AND r.kind = 'battle' AND r.summary LIKE '%"strikes"%'`;
@@ -95,10 +130,11 @@ async function reportArmiesFor(playerId, opts, lookups = LIVE) {
     if (!ids.length)
         return [];
     const db = (0, database_js_1.getDb)();
-    const row = db.prepare(`SELECT r.entry_id, r.report_at, r.target_static_id, r.won, r.attacker_player_id, r.summary,
+    const row = db.prepare(`SELECT r.entry_id, r.report_at, r.target_static_id, r.won, r.attacker_player_id, r.summary, r.raw,
             (SELECT s.sender_name FROM battle_report_shares s WHERE s.entry_id = r.entry_id ORDER BY s.shared_at LIMIT 1) AS shared_by
      FROM battle_reports r WHERE r.entry_id = ?`);
     const rows = ids.map((id) => row.get(id));
+    const effectsTable = lookups.troopEffects?.() ?? null;
     const units = lookups.units();
     let objects = {};
     try {
@@ -123,17 +159,27 @@ async function reportArmiesFor(playerId, opts, lookups = LIVE) {
         if (!mine)
             continue;
         const strikes = s.strikes ?? [];
+        // The march's effects come from the raw report (kept for every report read): the summary predates them.
+        let effects = null;
+        if (effectsTable && r.raw) {
+            try {
+                effects = (0, battle_report_js_1.parseBattleReport)(zlib_1.default.gunzipSync(r.raw))?.attackers[0]?.effects ?? null;
+            }
+            catch {
+                effects = null;
+            }
+        }
         const troops = mine.units.map(([unit, count]) => {
             const firstHit = strikes.find((x) => x.targetArmyId === mine.army && x.targetUnit === unit && x.targetCount > 0);
             const own = strikes.filter((x) => x.byAttacker && x.armyId === mine.army && x.unit === unit && x.count > 0);
             return {
                 ...unitOf(unit),
                 count,
+                card: effectsTable && effects?.length ? (0, troop_effects_js_1.troopCard)(effectsTable, effects, unit) : null,
                 unitHealth: firstHit ? firstHit.poolBefore / firstHit.targetCount : null,
-                strikes: own.flatMap((x) => {
-                    const base = x.extraB > 0 ? x.extraB : x.countAfter > 0 ? x.damage : 0;
-                    return base > 0 ? [{ count: x.count, base, target: unitOf(x.targetUnit) }] : [];
-                }),
+                strikes: own.map((x) => ({
+                    count: x.count, damage: x.damage, extraA: x.extraA, extraB: x.extraB, capped: x.countAfter === 0, target: unitOf(x.targetUnit),
+                })),
             };
         });
         out.push({

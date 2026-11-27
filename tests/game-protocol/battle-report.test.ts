@@ -24,7 +24,11 @@ const MONSTERS = playerIdOf(260, 1);
 function march(armyId: number, owner: number, units: Array<[number, number]>): Wire[] {
   const m: Wire[] = new Array(36).fill(0);
   m[0] = [armyId];
-  m[1] = [[owner], [0], 1];
+  // [[player], [city], 1, set out at 1794084684, …]
+  m[1] = [[owner], [0], 1, 1794084684];
+  // Effects [id, sourceBits, count] and timed boosts [id, 0, from, to]: one running, one over.
+  m[14] = [[31, 2, 1], [2070, 512, 108]];
+  m[16] = [[4020, 0, 1769730123, 1814161323], [7802, 0, 1794000000, 1794080000]];
   m[30] = units.map(([u, c]) => [u, c, 0]);
   return m;
 }
@@ -86,6 +90,10 @@ describe('battle reports', () => {
     expect(r.attackers[0]).toMatchObject({ armyId: 1001, units: [{ unit: 206, count: 475 }, { unit: 214, count: 475 }] });
     expect(r.defenders[0].units).toHaveLength(4);
     expect(r.defenders[0].killed[7541]).toBe(6987638);
+  });
+
+  it('reads the march’s effects, counted, and the boosts running when it set out', () => {
+    expect(parseBattleReport(tinman)!.attackers[0].effects).toEqual([{ id: 31, count: 1 }, { id: 2070, count: 108 }, { id: 4020, count: 1 }]);
   });
 
   it('takes the player from the march owner, never the short [realm, n] (it keeps only 12 bits)', () => {

@@ -25,7 +25,8 @@ import {
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 import { parseBonus, nextFreeName } from './citadel-tool.js';
-import { bonusesFromReport } from '../lib/report-bonuses.js';
+import { withGapsFilled } from '../lib/report-bonuses.js';
+import { reportChoiceLabel } from '../lib/report-picker.js';
 import { pickBattleReport } from '../lib/report-picker.js';
 
 const DRAFT_KEY = 'tbcc.stacks.draft.v1';
@@ -699,12 +700,14 @@ async function onClick(e) {
  */
 async function fillHealthFromReport(root) {
   const title = t('Fill in health from a battle report');
-  const report = await pickBattleReport({
+  const picked = await pickBattleReport({
     title,
     intro: t('The health bonuses the game used in a battle: pick the player, then the battle. Every troop that was hit in it is filled in.'),
   });
-  if (!report) return;
-  const found = bonusesFromReport(report);
+  if (!picked) return;
+  // Every troop's health card: the march's effects + the army-wide part the
+  // report doesn't carry, measured from a troop the battle hit.
+  const { found, borrowed, gapsFrom } = withGapsFilled(picked.report, picked.reports);
   const healthOf = (troopId) => {
     const own = found.get(troopId)?.healthPct ?? null;
     if (own !== null) return own;
@@ -726,7 +729,13 @@ async function fillHealthFromReport(root) {
   }
   saveDraft();
   paintAll(root);
-  notify(tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'), title);
+  notify([
+    tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'),
+    ...(gapsFrom ? [t('This battle shows no troop exactly, so the part every card has beyond the report came from the battle {battle}.', { battle: reportChoiceLabel(gapsFrom) })] : []),
+    ...borrowed.map((b) => t('{troops}: from the battle {battle}, which shows what this one can’t.', {
+      troops: b.troopIds.map(troopName).join(', '), battle: reportChoiceLabel(b.report),
+    })),
+  ].join(' '), title);
 }
 
 function applyPreset(id) {
