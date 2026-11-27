@@ -112,7 +112,7 @@ function renderBattleReports(root, box, clanId, data) {
         <li>${t('A member shares a battle report in a chat the scanner account reads. Between scans the site opens it in the game’s journal, like a member tapping the link, and keeps what it says.')}</li>
         <li>${t('Nothing is posted: the scanner account doesn’t answer a report, in any chat.')}</li>
         <li>${t('Tin Man hits show under Events → Ancients → Hits. Clan announcements shared the same way are kept too.')}</li>
-        <li>${t('The game keeps a report for some weeks. One shared after it is gone can’t be read.')}</li>
+        <li>${t('The game keeps a report for about two months. One shared after that can’t be read.')}</li>
         <li>${t('To add a chat, add the scanner account to it in the game. It shows here within a minute.')}</li>
       </ul>
     </details>`;

@@ -1245,7 +1245,7 @@ export const ui = {
   "A member shares a battle report in a chat the scanner account reads. Between scans the site opens it in the game’s journal, like a member tapping the link, and keeps what it says.": "Участник делится боевым отчётом в чате, который читает аккаунт-сканер. Между сканированиями сайт открывает его в журнале игры, как участник, нажавший на ссылку, и сохраняет содержимое.",
   "Nothing is posted: the scanner account doesn’t answer a report, in any chat.": "Ничего не публикуется: аккаунт-сканер не отвечает на отчёты ни в одном чате.",
   "Tin Man hits show under Events → Ancients → Hits. Clan announcements shared the same way are kept too.": "Атаки на Tin Man показаны в События → Восстание Древних → Атаки. Объявления клана, которыми поделились так же, тоже сохраняются.",
-  "The game keeps a report for some weeks. One shared after it is gone can’t be read.": "Игра хранит отчёт несколько недель. Отчёт, которым поделились позже, прочитать нельзя.",
+  "The game keeps a report for about two months. One shared after that can’t be read.": "Игра хранит отчёт около двух месяцев. Отчёт, которым поделились позже, прочитать нельзя.",
   "To add a chat, add the scanner account to it in the game. It shows here within a minute.": "Чтобы добавить чат, добавьте в него аккаунт-сканер в игре. Он появится здесь в течение минуты.",
   "Battle reports members share are read from the game: who hit what, both armies, and for the Tin Man how many stacks it still had.": "Боевые отчёты, которыми делятся участники, читаются из игры: кто кого атаковал, обе армии и для Tin Man — сколько отрядов у него оставалось.",
   "Also read these group chats": "Читать также эти групповые чаты",

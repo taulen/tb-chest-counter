@@ -28,7 +28,7 @@ Shares are recorded where chat is saved (`saveChatMessages` → `recordReportSha
 | `1778507014` | `[category, cursor, 0, false, 10, null]` | Pages the account's own journal (not used). |
 | `2485168634` | `[]` | Keep-alive, every 15 s (a short session needs none). |
 
-Reports from Nov 7 still opened on Nov 27: the game keeps them for weeks. A report the game refuses twice is left as `unavailable`.
+**The game keeps a report about two months**: on Nov 27 2026 every report shared up to Sep 21 answered "Main content not found" (status 1) and every one from Sep 22 on opened. A report the game refuses twice is left as `unavailable`.
 
 ## What a report holds
 

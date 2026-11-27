@@ -1245,7 +1245,7 @@ export const ui = {
   "A member shares a battle report in a chat the scanner account reads. Between scans the site opens it in the game’s journal, like a member tapping the link, and keeps what it says.": "Un miembro comparte un informe de batalla en un chat que lee la cuenta del escáner. Entre escaneos, el sitio lo abre en el diario del juego, como un miembro que toca el enlace, y guarda lo que dice.",
   "Nothing is posted: the scanner account doesn’t answer a report, in any chat.": "No se publica nada: la cuenta del escáner no responde a un informe en ningún chat.",
   "Tin Man hits show under Events → Ancients → Hits. Clan announcements shared the same way are kept too.": "Los ataques al Tin Man aparecen en Eventos → Ascenso de los antiguos → Ataques. Los anuncios del clan compartidos de la misma forma también se guardan.",
-  "The game keeps a report for some weeks. One shared after it is gone can’t be read.": "El juego guarda un informe durante algunas semanas. Uno compartido después ya no se puede leer.",
+  "The game keeps a report for about two months. One shared after that can’t be read.": "El juego guarda un informe unos dos meses. Uno compartido después ya no se puede leer.",
   "To add a chat, add the scanner account to it in the game. It shows here within a minute.": "Para añadir un chat, añade la cuenta del escáner a él en el juego. Aparece aquí en menos de un minuto.",
   "Battle reports members share are read from the game: who hit what, both armies, and for the Tin Man how many stacks it still had.": "Los informes de batalla que comparten los miembros se leen del juego: quién atacó qué, ambos ejércitos y, en el Tin Man, cuántas pilas le quedaban.",
   "Also read these group chats": "Leer también estos chats de grupo",
