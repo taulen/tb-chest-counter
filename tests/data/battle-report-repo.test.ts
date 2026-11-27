@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { saveChatMessages, upsertChatChannel } from '../../src/data/repositories/chat-repo.js';
 import {
-  getReportChats, getTinmanRequiredStacks, listAnnouncements, listTinmanHits, markReportFailed, pendingReportsForClan, recordReportShares,
+  getReportChats, getTinmanRequiredStacks, listAnnouncements, listTinmanHits, markReportFailed, pendingReports, recordReportShares,
   reportCounts, saveFetchedReport, setReportChats, setTinmanRequiredStacks,
 } from '../../src/data/repositories/battle-report-repo.js';
 import { playerIdOf, type BattleReport } from '../../src/game-protocol/battle-report.js';
@@ -58,9 +58,15 @@ describe('report shares', () => {
       msg(4, CLAN_URL, link('aaaaaaaa-0000-4000-8000-000000000009', 'scout', 0)),
       msg(5, CLAN_URL, ''),
     ]);
-    expect(pendingReportsForClan(1, T0, 10).map((p) => p.entryId).sort()).toEqual([E1, E2, E3]);
-    // Another clan saw none of them.
-    expect(pendingReportsForClan(2, T0, 10)).toEqual([]);
+    expect(pendingReports(T0, 10, 1).map((p) => p.entryId).sort()).toEqual([E1, E2, E3]);
+  });
+
+  it('reads every clan’s queue with any clan’s token, its own shares first', () => {
+    recordReportShares(2, [msg(1, CLAN_URL, link(E1, 'attack', 6054)), msg(2, CLAN_URL, link(E2))]);
+    recordReportShares(1, [msg(3, CLAN_URL, link(E3, 'attack', 1817), T0 - 60_000)]);
+    // Clan 1's own (older) share first, then clan 2's newest first — an inactive clan's reports get read.
+    expect(pendingReports(T0, 10, 1).map((p) => p.entryId)).toEqual([E3, E2, E1]);
+    expect(pendingReports(T0, 2, 2).map((p) => p.entryId)).toEqual([E2, E1]);
   });
 
   it('keeps one report however often it is shared, and one share per clan', () => {
@@ -73,10 +79,10 @@ describe('report shares', () => {
 
   it('opens the newest share first and backs off a failure, giving up on a report the game refuses twice', () => {
     recordReportShares(1, [msg(1, CLAN_URL, link(E1)), msg(2, CLAN_URL, link(E2))]);
-    expect(pendingReportsForClan(1, T0, 10).map((p) => p.entryId)).toEqual([E2, E1]);
+    expect(pendingReports(T0, 10, 1).map((p) => p.entryId)).toEqual([E2, E1]);
     expect(markReportFailed(E2, 'timeout', { gone: false, nowMs: T0 })).toBe('failed');
-    expect(pendingReportsForClan(1, T0, 10).map((p) => p.entryId)).toEqual([E1]);
-    expect(pendingReportsForClan(1, T0 + 10 * 60_000, 10).map((p) => p.entryId)).toEqual([E2, E1]);
+    expect(pendingReports(T0, 10, 1).map((p) => p.entryId)).toEqual([E1]);
+    expect(pendingReports(T0 + 10 * 60_000, 10, 1).map((p) => p.entryId)).toEqual([E2, E1]);
     expect(markReportFailed(E1, 'status 4', { gone: true, nowMs: T0 })).toBe('failed');
     expect(markReportFailed(E1, 'status 4', { gone: true, nowMs: T0 + 3_600_000 })).toBe('unavailable');
     expect(reportCounts(1)).toMatchObject({ shared: 2, read: 0, waiting: 1, unavailable: 1 });

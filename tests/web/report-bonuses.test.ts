@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bonusesFromReport, troopForUnit } from '../../src/web/public/lib/report-bonuses.js';
-import { reportArmiesFor } from '../../src/data/report-armies.js';
+import { reportArmiesFor, reportPlayers } from '../../src/data/report-armies.js';
 import { getDb } from '../../src/data/database.js';
 import { saveFetchedReport, recordReportShares } from '../../src/data/repositories/battle-report-repo.js';
 import type { BattleReport, Strike } from '../../src/game-protocol/battle-report.js';
@@ -64,11 +64,21 @@ let cleanup: () => void;
 beforeEach(() => { ({ cleanup } = makeTestDb()); seedTwoClans(); });
 afterEach(() => cleanup());
 
+const LOOKUPS = { units: () => UNITS, objects: async () => ({ 1817: 'Elven Citadel' }) };
+const ENTRY = 'dddddddd-0000-4000-8000-000000000001';
+const POSTER = 1241245599999;
+
+/** The Nov 7 battle, shared in `clanId`'s chat by `sender` (player id, name). */
+function share(clanId = 1, sender: [number, string] = [PLAYER, 'taulen'], entryId = ENTRY) {
+  recordReportShares(clanId, [{ channelUrl: 'triumph_clan_channel_1', messageId: 1, createdAt: 1, senderName: sender[1],
+    senderInfo: `121,${sender[0].toString(16)},12c00000202,0,4,CWB`,
+    data: JSON.stringify({ subs: { '/%0%/': { type: 'journal', entryType: 'attack', staticId: 1817, journalV2EntryId: entryId } } }) }]);
+  saveFetchedReport(entryId, { at: 1_794_085_235, type: 'battle', report: report(), raw: Buffer.from([0x90]), strikeLog: null, strikes: STRIKES });
+}
+
 async function armies() {
-  recordReportShares(1, [{ channelUrl: 'whisper_1_2', messageId: 1, createdAt: 1, senderName: '', senderInfo: '',
-    data: JSON.stringify({ subs: { '/%0%/': { type: 'journal', entryType: 'attack', staticId: 1817, journalV2EntryId: 'dddddddd-0000-4000-8000-000000000001' } } }) }]);
-  saveFetchedReport('dddddddd-0000-4000-8000-000000000001', { at: 1_794_085_235, type: 'battle', report: report(), raw: Buffer.from([0x90]), strikeLog: null, strikes: STRIKES });
-  return reportArmiesFor([PLAYER], 8, { units: () => UNITS, objects: async () => ({ 1817: 'Elven Citadel' }) });
+  share();
+  return reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1 }, LOOKUPS);
 }
 
 describe('report armies', () => {
@@ -84,9 +94,40 @@ describe('report armies', () => {
     expect(a.troops.find((t) => t.unit === 191)!.unitHealth).toBeNull();
   });
 
-  it('only for the players asked about', async () => {
+  it('only for the player asked about', async () => {
     await armies();
-    expect(await reportArmiesFor([PLAYER + 1], 8, { units: () => UNITS, objects: async () => ({}) })).toEqual([]);
+    expect(await reportArmiesFor(PLAYER + 1, { clanId: null, namesClanId: 1 }, LOOKUPS)).toEqual([]);
+  });
+
+  it('lists a battle the player posted too, saying whose army it is', async () => {
+    share(1, [POSTER, 'Poster']);
+    const [a] = await reportArmiesFor(POSTER, { clanId: 1, namesClanId: 1 }, LOOKUPS);
+    expect(a).toMatchObject({ attacker: { playerId: PLAYER }, sharedBy: 'Poster' });
+  });
+
+  it('shows another player’s battles only as shared in the clan being viewed', async () => {
+    share(2, [PLAYER, 'taulen']);
+    expect(await reportArmiesFor(PLAYER, { clanId: 1, namesClanId: 1 }, LOOKUPS)).toEqual([]);
+    expect(await reportArmiesFor(PLAYER, { clanId: 2, namesClanId: 2 }, LOOKUPS)).toHaveLength(1);
+    // The viewer's own player: every clan's shares.
+    expect(await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1 }, LOOKUPS)).toHaveLength(1);
+  });
+});
+
+describe('the players to pick from', () => {
+  it('the viewer’s own players first, then whoever fought or posted a battle shared in the clan', () => {
+    share(1, [POSTER, 'Poster']);
+    const own = 4599909976661;
+    const players = reportPlayers(1, [own]);
+    // Named before unnamed (the army's owner here has no game data and never posted).
+    expect(players.map((p) => [p.playerId, p.own, p.battles])).toEqual([[own, true, 0], [POSTER, false, 1], [PLAYER, false, 1]]);
+    expect(players.find((p) => p.playerId === POSTER)?.name).toBe('Poster');
+  });
+
+  it('leaves out a clan’s battles for another clan', () => {
+    share(2, [PLAYER, 'taulen']);
+    expect(reportPlayers(1, [])).toEqual([]);
+    expect(reportPlayers(2, []).map((p) => p.playerId)).toEqual([PLAYER]);
   });
 });
 

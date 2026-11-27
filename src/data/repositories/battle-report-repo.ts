@@ -68,18 +68,27 @@ export function recordReportShares(clanId: number, messages: readonly ShareSourc
 }
 
 /**
- * Reports shared in this clan that wait to be opened, newest share first (an
- * old one may already be gone from the game; a fresh one is what members look
- * for). Failed ones come back once their retry time has passed.
+ * Reports waiting to be opened, `preferClanId`'s own shares first, then every
+ * other clan's — any account can open any shared report, so an inactive clan's
+ * reports (no scans, no token of its own; SINful Knights and Varangian Guard
+ * held ~3,500 on Nov 27 2026) are read with an active clan's token. Newest
+ * share first: an old one may already be gone from the game, a fresh one is
+ * what members look for. Failed ones come back once their retry time passed.
  */
-export function pendingReportsForClan(clanId: number, nowMs: number, limit: number): Array<{ entryId: string; attempts: number }> {
+export function pendingReports(nowMs: number, limit: number, preferClanId: number): Array<{ entryId: string; attempts: number }> {
   return (getDb().prepare(
     `SELECT r.entry_id, r.attempts FROM battle_reports r
      WHERE r.status IN ('pending', 'failed') AND (r.next_try_at IS NULL OR r.next_try_at <= ?)
-       AND EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.clan_id = ? AND s.entry_id = r.entry_id)
-     ORDER BY r.first_shared_at DESC LIMIT ?`,
-  ).all(nowMs, clanId, limit) as Array<{ entry_id: string; attempts: number }>)
+     ORDER BY EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.clan_id = ? AND s.entry_id = r.entry_id) DESC,
+              r.first_shared_at DESC
+     LIMIT ?`,
+  ).all(nowMs, preferClanId, limit) as Array<{ entry_id: string; attempts: number }>)
     .map((r) => ({ entryId: r.entry_id, attempts: r.attempts }));
+}
+
+/** Reports still waiting to be read, every clan's. */
+export function waitingReportCount(): number {
+  return (getDb().prepare("SELECT COUNT(*) AS n FROM battle_reports WHERE status IN ('pending', 'failed')").get() as { n: number }).n;
 }
 
 const gz = (b: Buffer | null): Buffer | null => (b ? zlib.gzipSync(b) : null);

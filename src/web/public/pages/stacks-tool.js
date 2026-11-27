@@ -24,8 +24,9 @@ import {
 } from '../lib/stack-calc.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
-import { parseBonus, nextFreeName, reportChoiceLabel } from './citadel-tool.js';
+import { parseBonus, nextFreeName } from './citadel-tool.js';
 import { bonusesFromReport } from '../lib/report-bonuses.js';
+import { pickBattleReport } from '../lib/report-picker.js';
 
 const DRAFT_KEY = 'tbcc.stacks.draft.v1';
 
@@ -692,30 +693,18 @@ async function onClick(e) {
 }
 
 /**
- * Health bonuses from one of the player's own battle reports
- * (lib/report-bonuses.js): exact for every troop the battle hit; a troop's
- * bonus family (Corax I and II…) shares it.
+ * Health bonuses from a shared battle report (lib/report-picker.js — a player,
+ * then one of their battles; lib/report-bonuses.js): exact for every troop the
+ * battle hit; a troop's bonus family (Corax I and II…) shares it.
  */
 async function fillHealthFromReport(root) {
   const title = t('Fill in health from a battle report');
-  let res = null;
-  try { res = await api('/tools/report-armies'); } catch { res = null; }
-  const reports = Array.isArray(res?.reports) ? res.reports : null;
-  if (!reports) {
-    await notify(t('Your battle reports could not be loaded.'), title);
-    return;
-  }
-  if (!reports.length) {
-    await notify(res.linked
-      ? t('None of your battle reports has been read yet. Share one in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.')
-      : t('Your account isn’t linked to a player in the game, so the site can’t tell which battle reports are yours.'), title);
-    return;
-  }
-  const shown = reports.slice(0, 5);
-  const choices = shown.map((r, i) => ({ value: String(i), label: reportChoiceLabel(r) })).reverse();
-  const pick = await choiceDialog(t('Your troops’ health bonuses as the game used them in one of your battles: every troop that was hit in it.'), choices, { title });
-  if (pick === null) return;
-  const found = bonusesFromReport(shown[Number(pick)]);
+  const report = await pickBattleReport({
+    title,
+    intro: t('The health bonuses the game used in a battle: pick the player, then the battle. Every troop that was hit in it is filled in.'),
+  });
+  if (!report) return;
+  const found = bonusesFromReport(report);
   const healthOf = (troopId) => {
     const own = found.get(troopId)?.healthPct ?? null;
     if (own !== null) return own;

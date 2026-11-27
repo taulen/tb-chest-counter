@@ -7,11 +7,13 @@
  * to every role; saving the clan's defaults is admin-only and lands on the
  * caller's active clan (req.clanId), so an admin can only ever set their own.
  * Citadel and stack presets belong to the signed-in ACCOUNT (req.user.id), any
- * role, and are never visible to anyone else — and so do the armies of the
- * account's own shared battle reports (GET /report-armies).
+ * role, and are never visible to anyone else. GET /report-armies lists the
+ * armies of shared battle reports: the account's own players' from every
+ * clan's chats, anyone else's only as shared in the active clan.
  */
 import { Router } from 'express';
-import { reportArmiesFor } from '../../data/report-armies.js';
+import { reportArmiesFor, reportPlayers } from '../../data/report-armies.js';
+import { waitingReportCount } from '../../data/repositories/battle-report-repo.js';
 import { linksForUser } from '../../data/repositories/account-invite-repo.js';
 import { getAncientRoster } from '../../data/ancient-roster.js';
 import { getClanAncientDefaults, setClanAncientDefaults } from '../../data/repositories/clan-repo.js';
@@ -75,14 +77,26 @@ export function createToolsRouter(): Router {
   });
 
   /**
-   * The armies of the account's own battle reports (any clan's chat it was
-   * shared in): its linked players' newest battles with a strike log, for
-   * "use the bonuses from a battle report" in Citadel and Stacks. Never anyone
-   * else's.
+   * Battle-report armies for "fill in from a battle report" (Citadel, Stacks):
+   * the players to pick from — the account's own (every clan's shares) and
+   * anyone who fought or posted a readable battle in the active clan — and the
+   * picked one's newest battles (`?player=`; default the account's own player
+   * with the most). Another player's battles are only those shared in the
+   * active clan.
    */
   router.get('/report-armies', async (req, res) => {
-    const players = [...new Set(linksForUser(req.user!.id).map((l) => l.playerId))];
-    res.json({ linked: players.length > 0, reports: await reportArmiesFor(players) });
+    const clanId = req.clanId!;
+    const own = [...new Set(linksForUser(req.user!.id).map((l) => l.playerId))];
+    const players = reportPlayers(clanId, own);
+    const asked = Number(req.query.player);
+    const pick = players.find((p) => p.playerId === asked)
+      ?? [...players].filter((p) => p.own).sort((a, b) => b.battles - a.battles)[0]
+      ?? players[0]
+      ?? null;
+    const reports = pick
+      ? await reportArmiesFor(pick.playerId, { clanId: pick.own ? null : clanId, namesClanId: clanId })
+      : [];
+    res.json({ linked: own.length > 0, players, player: pick?.playerId ?? null, reports, waiting: waitingReportCount() });
   });
 
   /** The signed-in account's saved citadel armies. */

@@ -1064,9 +1064,10 @@ export function choiceDialog(message, choices, { title = '', cancelLabel = t('Ca
  *   - `setHtml(html)` — replace the body (e.g. after a recover action)
  *   - `close()`  — dismiss programmatically
  * `className` is added to the card, for a modal that needs its own layout.
+ * `onClose` runs once when it closes, however it was closed.
  * Returns null if #modalRoot is missing.
  */
-export function contentModal({ title = '', html = '', wide = false, className = '' } = {}) {
+export function contentModal({ title = '', html = '', wide = false, className = '', onClose = null } = {}) {
   const root = document.getElementById('modalRoot');
   if (!root) return null;
 
@@ -1097,6 +1098,7 @@ export function contentModal({ title = '', html = '', wide = false, className = 
     overlay.classList.remove('visible');
     setTimeout(() => overlay.remove(), 180);
     release();
+    if (typeof onClose === 'function') onClose();
   };
 
   overlay.querySelector('.modal-close').addEventListener('click', close);

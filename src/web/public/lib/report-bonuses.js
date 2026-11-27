@@ -58,8 +58,3 @@ export function bonusesFromReport(report, troops = TROOPS) {
   }
   return out;
 }
-
-/** "2026-11-07 · Elven Citadel" for a report in a list. */
-export function reportDay(report) {
-  return String(report.at ?? '').slice(0, 10);
-}

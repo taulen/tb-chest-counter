@@ -2,13 +2,15 @@
  * Opens the battle reports and announcements shared in a clan's chats
  * (battle-report-repo.ts) on the game's journal service (journal.ts) and keeps
  * what they say. Runs with the between-scans chat poll (chat-capture.ts), on
- * the journal token of the clan's last scan login, a batch a minute, newest
- * share first. Read-only in the game; never fails anything around it.
+ * the journal token of the clan's last scan login, a batch a minute: the
+ * clan's own shares first, then every other clan's (an inactive clan has no
+ * token of its own), newest share first. Read-only in the game; never fails
+ * anything around it.
  */
 import { JournalSession, fetchJournalItem, fetchSharedEntry } from '../game-protocol/journal.js';
 import { journalTokenExpiry } from '../game-protocol/journal-token.js';
 import { parseAnnouncement, parseBattleReport, parseStrikeLog, type Strike } from '../game-protocol/battle-report.js';
-import { markReportFailed, pendingReportsForClan, saveFetchedReport } from '../data/repositories/battle-report-repo.js';
+import { markReportFailed, pendingReports, saveFetchedReport } from '../data/repositories/battle-report-repo.js';
 import { childLogger } from '../utils/logger.js';
 import { createCoalescedWarner } from '../utils/log-throttle.js';
 
@@ -40,7 +42,8 @@ export async function fetchSharedReports(clanId: number, token: string | null | 
   const exp = journalTokenExpiry(token);
   if (exp !== null && exp * 1000 < now + 60_000) return { note: '', tokenBad: true };
   if (running.has(clanId)) return { note: '', tokenBad: false };
-  const pending = pendingReportsForClan(clanId, now, opts.limit ?? REPORTS_PER_RUN);
+  // The clan's own shares first, then any clan's: a token opens every shared report.
+  const pending = pendingReports(now, opts.limit ?? REPORTS_PER_RUN, clanId);
   if (!pending.length) return { note: '', tokenBad: false };
   running.add(clanId);
   let session: Pick<JournalSession, 'call' | 'close'> | null = null;

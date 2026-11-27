@@ -15,8 +15,9 @@
 //    they are typed in or come from a recommended setup.
 // Bonuses change with every captain, artifact or research swap, so nothing
 // ships with any; the page says when they were typed or saved. "Fill in from
-// a battle report" takes them from one of the player's own shared reports
-// (lib/report-bonuses.js) — only when asked, and the page says which battle.
+// a battle report" takes them from a shared report (lib/report-picker.js:
+// your own player first, or anyone's in the clan; lib/report-bonuses.js) —
+// only when asked, and the page says which battle and whose army.
 
 import { loadGameArt, troopIconHtml } from '../lib/game-art.js';
 import { api, apiPut, apiDelete } from '../lib/api.js';
@@ -42,7 +43,8 @@ import {
   troopInWindow,
 } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
-import { bonusesFromReport, reportDay } from '../lib/report-bonuses.js';
+import { bonusesFromReport } from '../lib/report-bonuses.js';
+import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 
 /** The count search runs this long after the last keystroke. */
@@ -230,7 +232,7 @@ export async function renderCitadelTool(mount) {
     countMode: draft?.countMode ?? 'auto',
     bonusesAt: draft?.bonusesAt ?? null,
     bonusesFrom: draft?.bonusesFrom ?? null,
-    /** The battle report the bonuses were filled in from ("2026-11-07 · Elven Citadel"), or null. */
+    /** The battle report the bonuses were filled in from ("2026-11-07 · Elven Citadel · taulen"), or null. */
     bonusesReport: draft?.bonusesReport ?? null,
     /** Show bonuses with "," — set by what the player last typed. */
     decimalComma: draft?.decimalComma ?? false,
@@ -478,7 +480,7 @@ function bonusesNoteHtml() {
   const stale = Date.now() - new Date(cs.bonusesAt).getTime() > STALE_MS;
   const when = esc(formatRelativeTime(cs.bonusesAt));
   const from = cs.bonusesReport
-    ? t('Bonuses from your battle report {name}, fought {when}.', { name: esc(cs.bonusesReport), when })
+    ? t('Bonuses from the battle report {name}, fought {when}.', { name: esc(cs.bonusesReport), when })
     : cs.bonusesFrom
       ? t('Bonuses from the saved army “{name}”, saved {when}.', { name: esc(cs.bonusesFrom), when })
       : t('Bonuses entered {when}.', { when });
@@ -943,36 +945,14 @@ function reportBonusesFor(troopId, found) {
   return strengthPct === null && healthPct === null ? null : { strengthPct, healthPct };
 }
 
-/** A report in the picker: "2026-11-07 · Elven Citadel". */
-export function reportChoiceLabel(r) {
-  return `${reportDay(r)} · ${r.target?.name ? tGame(r.target.name) : t('Unknown target')}`;
-}
-
-/** The player's newest battles from their shared reports; picking one fills in what it shows. */
+/** Pick a player and one of their battles; fill in what it shows. */
 async function fillFromReport(root) {
   const title = t('Fill in from a battle report');
-  let res = null;
-  try { res = await api('/tools/report-armies'); } catch { res = null; }
-  const reports = Array.isArray(res?.reports) ? res.reports : null;
-  if (!reports) {
-    await notify(t('Your battle reports could not be loaded.'), title);
-    return;
-  }
-  if (!reports.length) {
-    await notify(res.linked
-      ? t('None of your battle reports has been read yet. Share one in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.')
-      : t('Your account isn’t linked to a player in the game, so the site can’t tell which battle reports are yours.'), title);
-    return;
-  }
-  // The newest is the primary (rightmost) button.
-  const shown = reports.slice(0, 5);
-  const choices = shown.map((r, i) => ({ value: String(i), label: reportChoiceLabel(r) })).reverse();
-  const pick = await choiceDialog(
-    t('Your troops’ bonuses as the game used them in one of your battles. Only troops that fought in it are filled in; strength where a strike shows it, health where the troop was hit.'),
-    choices, { title },
-  );
-  if (pick === null) return;
-  const report = shown[Number(pick)];
+  const report = await pickBattleReport({
+    title,
+    intro: t('The bonuses the game used in a battle: pick the player, then the battle. Only troops that fought in it are filled in; strength where a strike shows it, health where the troop was hit.'),
+  });
+  if (!report) return;
   const found = bonusesFromReport(report);
   let filled = 0;
   for (const row of cs.rows) {
@@ -988,7 +968,7 @@ async function fillFromReport(root) {
   }
   cs.bonusesAt = report.at;
   cs.bonusesFrom = null;
-  cs.bonusesReport = reportChoiceLabel(report);
+  cs.bonusesReport = `${reportChoiceLabel(report)}${report.attacker?.name ? ` · ${report.attacker.name}` : ''}`;
   saveDraft();
   paintAll(root);
   notify(tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'), title);

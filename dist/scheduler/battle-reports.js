@@ -6,8 +6,10 @@ exports.fetchSharedReports = fetchSharedReports;
  * Opens the battle reports and announcements shared in a clan's chats
  * (battle-report-repo.ts) on the game's journal service (journal.ts) and keeps
  * what they say. Runs with the between-scans chat poll (chat-capture.ts), on
- * the journal token of the clan's last scan login, a batch a minute, newest
- * share first. Read-only in the game; never fails anything around it.
+ * the journal token of the clan's last scan login, a batch a minute: the
+ * clan's own shares first, then every other clan's (an inactive clan has no
+ * token of its own), newest share first. Read-only in the game; never fails
+ * anything around it.
  */
 const journal_js_1 = require("../game-protocol/journal.js");
 const journal_token_js_1 = require("../game-protocol/journal-token.js");
@@ -30,7 +32,8 @@ async function fetchSharedReports(clanId, token, opts = {}) {
         return { note: '', tokenBad: true };
     if (running.has(clanId))
         return { note: '', tokenBad: false };
-    const pending = (0, battle_report_repo_js_1.pendingReportsForClan)(clanId, now, opts.limit ?? exports.REPORTS_PER_RUN);
+    // The clan's own shares first, then any clan's: a token opens every shared report.
+    const pending = (0, battle_report_repo_js_1.pendingReports)(now, opts.limit ?? exports.REPORTS_PER_RUN, clanId);
     if (!pending.length)
         return { note: '', tokenBad: false };
     running.add(clanId);
