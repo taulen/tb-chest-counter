@@ -13,6 +13,7 @@ exports.getReportChats = getReportChats;
 exports.setReportChats = setReportChats;
 exports.getTinmanRequiredStacks = getTinmanRequiredStacks;
 exports.setTinmanRequiredStacks = setTinmanRequiredStacks;
+exports.listAnnouncements = listAnnouncements;
 exports.listTinmanHits = listTinmanHits;
 /**
  * Battle reports shared in chat (v143, docs/battle-reports.md).
@@ -29,6 +30,7 @@ const database_js_1 = require("../database.js");
 const chat_text_js_1 = require("../../game-protocol/chat-text.js");
 const battle_report_js_1 = require("../../game-protocol/battle-report.js");
 const game_player_names_js_1 = require("../game-player-names.js");
+const announcement_headline_js_1 = require("../announcement-headline.js");
 /** Group chats a clan can read reports from besides its clan chat and private messages. */
 exports.MAX_REPORT_CHATS = 5;
 /** The Tin Man rule's choices: hit it while it still has this many stacks. */
@@ -157,6 +159,34 @@ function getTinmanRequiredStacks(clanId) {
 function setTinmanRequiredStacks(clanId, n) {
     const value = n !== null && exports.TINMAN_STACK_CHOICES.includes(n) ? n : null;
     (0, database_js_1.getDb)().prepare('UPDATE clans SET tinman_required_stacks = ? WHERE id = ?').run(value, clanId);
+}
+/**
+ * Clan announcements shared in the clan's chats and read (docs/battle-reports.md),
+ * newest first, each with its one-line headline (announcement-headline.ts).
+ * `sinceIso` keeps only those announced since then.
+ */
+function listAnnouncements(clanId, limit = 50, sinceIso = null) {
+    const sinceS = sinceIso ? Math.floor(Date.parse(sinceIso) / 1000) : null;
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT r.entry_id, r.report_at, r.summary, m.data
+     FROM battle_report_shares s
+     JOIN battle_reports r ON r.entry_id = s.entry_id
+     LEFT JOIN chat_messages m ON m.clan_id = s.clan_id AND m.channel_url = s.channel_url AND m.message_id = s.message_id
+     WHERE s.clan_id = ? AND r.status = 'ok' AND r.kind = 'clan_announcement' AND r.report_at IS NOT NULL
+       AND (? IS NULL OR r.report_at >= ?)
+     ORDER BY r.report_at DESC LIMIT ?`).all(clanId, sinceS, sinceS, limit);
+    const out = [];
+    for (const r of rows) {
+        let text = '';
+        try {
+            text = String(JSON.parse(r.summary ?? '{}').announcement ?? '');
+        }
+        catch { /* unreadable: skipped */ }
+        if (!text.trim())
+            continue;
+        const author = (0, chat_text_js_1.chatReportLinks)(r.data ?? '').find((l) => l.entryId === r.entry_id)?.name ?? '';
+        out.push({ entryId: r.entry_id, at: new Date(r.report_at * 1000).toISOString(), author, headline: (0, announcement_headline_js_1.announcementHeadline)(text), text });
+    }
+    return out;
 }
 /** Hits on a Tin Man the clan's chats shared, fought in [fromIso, toIso), newest first. */
 function listTinmanHits(clanId, fromIso, toIso) {

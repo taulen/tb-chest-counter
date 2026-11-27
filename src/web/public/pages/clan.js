@@ -21,6 +21,9 @@
 //           /admin — pages/resources-*.js). History: one row per game day.
 //           Joins & leaves: who joined, left or came back
 //           (pages/clan-roster.js). Triumphal Chests (pages/triumphal.js).
+//           Announcements: clan announcements shared in chat, each with a
+//           one-line headline (pages/clan-announcements.js); the newest of
+//           the last two weeks also rides in a strip over the tabs.
 //
 // The trees come from /api/game/tech-trees (the same file the profile uses);
 // only the clan trees the game's clan research holds are shown — tree 17
@@ -38,6 +41,7 @@ import { loadTrees, treeHtml, treeProgress, nodeState } from './member-techs.js'
 import { loadTreeStatus, notLiveNoteHtml, notLiveTagHtml, wireTreeLevels } from '../lib/tech-levels.js';
 import { renderTriumphal } from './triumphal.js';
 import { mountRoster, rosterPanelHtml } from './clan-roster.js';
+import { announcementsPanelHtml, latestAnnouncementHtml, mountAnnouncements } from './clan-announcements.js';
 import { renderResourcesOverview } from './resources-overview.js';
 import { renderResourcesTotals } from './resources-totals.js';
 import { renderResourcesAdmin } from './resources.js';
@@ -57,6 +61,7 @@ const view = { tab: 'research', resources: 'overview', tree: null, rankKind: 7, 
 // My Clan is on screen (switchClanTab): the header and stats stay put.
 const CLAN_TABS = [
   { key: 'research', label: () => t('Research') },
+  { key: 'announcements', label: () => t('Announcements') },
   { key: 'rankings', label: () => t('Rankings') },
   { key: 'treasury', label: () => t('Treasury') },
   { key: 'resources', label: () => t('Resources') },
@@ -134,6 +139,7 @@ let clanData = null;
 async function mountPanel(content, key) {
   if (key === 'rankings' && clanData) await mountRankings(content, clanData);
   else if (key === 'roster') await mountRoster(content);
+  else if (key === 'announcements') await mountAnnouncements(content);
   else if (key === 'triumphal') await mountTriumphal(content);
   else if (key === 'resources') await mountResources(content);
 }
@@ -251,8 +257,10 @@ export async function renderClan(content) {
     <div class="clan-page" data-clan-page>
       ${headerHtml(data)}
       ${statsHtml(data)}
+      ${latestAnnouncementHtml(data.latestAnnouncement)}
       ${clanTabsHtml(view.tab)}
       ${panel('research', researchHtml(clanTrees, levels, data.techs))}
+      ${panel('announcements', announcementsPanelHtml())}
       ${panel('rankings', '<div data-clan-rankings></div>')}
       ${panel('treasury', treasuryHtml(data.treasury))}
       ${panel('resources', ownDataBoxHtml('resources'))}

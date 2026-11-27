@@ -153,7 +153,7 @@ describe('the journal token and chat links', () => {
         journalV2EntryId: 'BCE49D54-B9D9-4429-B272-A8F3C166CC7A', source: 'unity_v2' },
       '/%1%/': { type: 'coord', x: 1, y: 2 },
     } });
-    expect(chatReportLinks(data)).toEqual([{ entryId: 'bce49d54-b9d9-4429-b272-a8f3c166cc7a', entryType: 'attack', staticId: 6054 }]);
+    expect(chatReportLinks(data)).toEqual([{ entryId: 'bce49d54-b9d9-4429-b272-a8f3c166cc7a', entryType: 'attack', staticId: 6054, name: 'Epic Ancient squad' }]);
     expect(chatReportLinks('')).toEqual([]);
     expect(chatReportLinks('{not json')).toEqual([]);
   });

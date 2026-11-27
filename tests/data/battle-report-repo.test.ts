@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { saveChatMessages, upsertChatChannel } from '../../src/data/repositories/chat-repo.js';
 import {
-  getReportChats, getTinmanRequiredStacks, listTinmanHits, markReportFailed, pendingReportsForClan, recordReportShares,
+  getReportChats, getTinmanRequiredStacks, listAnnouncements, listTinmanHits, markReportFailed, pendingReportsForClan, recordReportShares,
   reportCounts, saveFetchedReport, setReportChats, setTinmanRequiredStacks,
 } from '../../src/data/repositories/battle-report-repo.js';
 import { playerIdOf, type BattleReport } from '../../src/game-protocol/battle-report.js';
@@ -114,6 +114,22 @@ describe('Tin Man hits', () => {
     expect(getTinmanRequiredStacks(1)).toBe(4);
     setTinmanRequiredStacks(1, 7);
     expect(getTinmanRequiredStacks(1)).toBeNull();
+  });
+});
+
+describe('clan announcements', () => {
+  it('lists the clan’s announcements newest first with their author and headline', () => {
+    const annc = (entryId: string, author: string) => JSON.stringify({ subs: { '/%0%/': {
+      type: 'journal', entryType: 'clan_announcement', guid: [302, 1], staticId: 0, name: author, v: 1, journalV2EntryId: entryId,
+    } } });
+    saveChatMessages(1, [msg(1, CLAN_URL, annc(E1, 'Leader One')), msg(2, DM_URL, annc(E2, 'Leader Two'))]);
+    saveFetchedReport(E1, { at: 1_795_700_000, type: 'clan_announcement', report: null, raw: Buffer.from([0x90]), strikeLog: null, strikes: null, announcement: 'HELLO ORCAS!\n\nVAULTS AFTER RESET' });
+    saveFetchedReport(E2, { at: 1_795_780_000, type: 'clan_announcement', report: null, raw: Buffer.from([0x90]), strikeLog: null, strikes: null, announcement: 'Tinman times:\nR +0' });
+    expect(listAnnouncements(1).map((a) => [a.author, a.headline])).toEqual([['Leader Two', 'Tinman times'], ['Leader One', 'VAULTS AFTER RESET']]);
+    expect(listAnnouncements(1)[1].text).toBe('HELLO ORCAS!\n\nVAULTS AFTER RESET');
+    // Only those since a moment (the strip over My Clan's tabs), and only the clan's own.
+    expect(listAnnouncements(1, 50, new Date(1_795_750_000_000).toISOString()).map((a) => a.entryId)).toEqual([E2]);
+    expect(listAnnouncements(2)).toEqual([]);
   });
 });
 

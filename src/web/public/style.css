@@ -11408,6 +11408,24 @@ table.sp-table { table-layout: fixed; width: 100%; min-width: 0; }
 .clan-panel[hidden] { display: none; }
 .clan-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .clan-note { min-height: 0; }
+/* The newest clan announcement over the tabs (pages/clan-announcements.js):
+   one line, a link to the Announcements tab. */
+.clan-ann-strip {
+  flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
+  min-height: 0; padding-top: 10px; padding-bottom: 10px;
+  text-decoration: none; color: var(--text-primary);
+}
+.clan-ann-strip:hover .clan-ann-headline { text-decoration: underline; }
+.clan-ann-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-gold); }
+.clan-ann-headline { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.clan-ann-meta, .ann-meta { font-size: 12px; color: var(--text-muted); }
+/* Announcements tab: a headline per announcement, its text folded under it. */
+.ann-list { gap: 0; }
+.ann-item { border-top: 1px solid var(--border); padding: 10px 0; }
+.ann-item:first-child { border-top: 0; padding-top: 0; }
+.ann-item > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; list-style-position: outside; }
+.ann-headline { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.ann-text { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); font-size: 13.5px; line-height: 1.55; }
 .clan-head { gap: 14px; }
 .clan-head-name {
   margin: 0 0 10px;

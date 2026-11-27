@@ -13,6 +13,7 @@ import { getDb } from '../database.js';
 import { chatReportLinks, chatSenderPlayerId } from '../../game-protocol/chat-text.js';
 import { tinmanLevel, tinmanStacks, type BattleReport, type Strike } from '../../game-protocol/battle-report.js';
 import { gamePlayerNames } from '../game-player-names.js';
+import { announcementHeadline } from '../announcement-headline.js';
 
 /** Group chats a clan can read reports from besides its clan chat and private messages. */
 export const MAX_REPORT_CHATS = 5;
@@ -196,6 +197,45 @@ export function getTinmanRequiredStacks(clanId: number): number | null {
 export function setTinmanRequiredStacks(clanId: number, n: number | null): void {
   const value = n !== null && (TINMAN_STACK_CHOICES as readonly number[]).includes(n) ? n : null;
   getDb().prepare('UPDATE clans SET tinman_required_stacks = ? WHERE id = ?').run(value, clanId);
+}
+
+// ── Clan announcements ─────────────────────────────────────────────────────
+
+export interface ClanAnnouncement {
+  entryId: string;
+  /** When it was announced (ISO). */
+  at: string;
+  /** Its author, as the chat link names them ('' when it doesn't). */
+  author: string;
+  headline: string;
+  text: string;
+}
+
+/**
+ * Clan announcements shared in the clan's chats and read (docs/battle-reports.md),
+ * newest first, each with its one-line headline (announcement-headline.ts).
+ * `sinceIso` keeps only those announced since then.
+ */
+export function listAnnouncements(clanId: number, limit = 50, sinceIso: string | null = null): ClanAnnouncement[] {
+  const sinceS = sinceIso ? Math.floor(Date.parse(sinceIso) / 1000) : null;
+  const rows = getDb().prepare(
+    `SELECT r.entry_id, r.report_at, r.summary, m.data
+     FROM battle_report_shares s
+     JOIN battle_reports r ON r.entry_id = s.entry_id
+     LEFT JOIN chat_messages m ON m.clan_id = s.clan_id AND m.channel_url = s.channel_url AND m.message_id = s.message_id
+     WHERE s.clan_id = ? AND r.status = 'ok' AND r.kind = 'clan_announcement' AND r.report_at IS NOT NULL
+       AND (? IS NULL OR r.report_at >= ?)
+     ORDER BY r.report_at DESC LIMIT ?`,
+  ).all(clanId, sinceS, sinceS, limit) as Array<{ entry_id: string; report_at: number; summary: string | null; data: string | null }>;
+  const out: ClanAnnouncement[] = [];
+  for (const r of rows) {
+    let text = '';
+    try { text = String((JSON.parse(r.summary ?? '{}') as { announcement?: unknown }).announcement ?? ''); } catch { /* unreadable: skipped */ }
+    if (!text.trim()) continue;
+    const author = chatReportLinks(r.data ?? '').find((l) => l.entryId === r.entry_id)?.name ?? '';
+    out.push({ entryId: r.entry_id, at: new Date(r.report_at * 1000).toISOString(), author, headline: announcementHeadline(text), text });
+  }
+  return out;
 }
 
 // ── Tin Man hits ───────────────────────────────────────────────────────────

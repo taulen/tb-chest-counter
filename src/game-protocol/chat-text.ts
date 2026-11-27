@@ -40,6 +40,8 @@ export interface ChatReportLink {
   entryType: string;
   /** The target's T7 map object (0 when the link doesn't say). */
   staticId: number;
+  /** The link's subject as the game names it: the target, or an announcement's author ('' when none). */
+  name: string;
 }
 
 /** Every shared report in a message's data payload (docs/battle-reports.md). */
@@ -54,6 +56,7 @@ export function chatReportLinks(data: string): ChatReportLink[] {
       entryId: entryId.toLowerCase(),
       entryType: typeof sub.entryType === 'string' ? sub.entryType : '',
       staticId: typeof sub.staticId === 'number' ? sub.staticId : 0,
+      name: typeof sub.name === 'string' ? sub.name : '',
     });
   }
   return out;

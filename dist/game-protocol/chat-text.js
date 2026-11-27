@@ -57,6 +57,7 @@ function chatReportLinks(data) {
             entryId: entryId.toLowerCase(),
             entryType: typeof sub.entryType === 'string' ? sub.entryType : '',
             staticId: typeof sub.staticId === 'number' ? sub.staticId : 0,
+            name: typeof sub.name === 'string' ? sub.name : '',
         });
     }
     return out;

@@ -72,6 +72,12 @@ Tools → Citadel ("Fill in from a battle report") and Tools → Stacks ("Fill i
 
 Checked on the Nov 7 2026 Elven 30 report (citadel opens): Corax I 5226.5% / 3936.8%, Fire Phoenix I 3736.5%, Vulture VI 3636.5%, Battle Griffin VI and VII 5326.5% — every value the user typed from the cards that day ([report-bonuses.test.ts](../tests/web/report-bonuses.test.ts)). Vulture VII, Royal Lion I and the Ballistae only made capped strikes or hit the walls, so that report leaves them alone; the pages' bonus families fill Royal Lion I from Fire Phoenix I.
 
+## Clan announcements
+
+A clan announcement shared in chat is opened the same way (`["clan_announcement", [realm, n], text]`; the chat link's `name` is its author) and kept as `summary = {"v": 1, "announcement": text}`. My Clan → **Announcements** lists them newest first (`GET /api/game/clan/announcements`), each as a one-line headline with the day and author and the whole text folded under it; `/api/game/clan` carries the newest of the last 14 days as `latestAnnouncement`, the strip over My Clan's tabs.
+
+The headline is rule-based ([announcement-headline.ts](../src/data/announcement-headline.ts)), from the leaders' own words with their capitals kept: lines that only greet ("HELLO CHAOS!", "Hey family,") and one- or two-word exclamations are skipped, a greeting running into the text is dropped ("Dear Chaos, we had…" → "We had…"), then the first sentence of a long line, cut near 100 characters. Tuned on the 23 announcements read by Nov 27 2026. No AI model is involved (the app has none; a real summary would need one and its key).
+
 ## The fetch
 
 [battle-reports.ts](../src/scheduler/battle-reports.ts), called from the between-scans chat poll ([chat-capture.ts](../src/scheduler/chat-capture.ts)): every minute, per clan with a journal token, up to 20 waiting reports of that clan, newest share first; the strike log of each battle too. Its failures never pause chat polling. An expired or refused token is dropped until the next scan's login.

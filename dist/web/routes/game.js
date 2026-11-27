@@ -32,6 +32,7 @@ const static_data_js_1 = require("../../game-protocol/static-data.js");
 const index_js_2 = require("../../game-art/index.js");
 const selection_js_1 = require("../../game-art/selection.js");
 const clan_logo_js_1 = require("../../game-art/clan-logo.js");
+const battle_report_repo_js_1 = require("../../data/repositories/battle-report-repo.js");
 const item_icons_js_1 = require("../../game-art/item-icons.js");
 const messages_js_1 = require("../../game-protocol/messages.js");
 const artifacts_js_1 = require("../../game-protocol/artifacts.js");
@@ -69,6 +70,13 @@ function treesWithIcons(trees) {
     return value;
 }
 const CHANGES_DAYS = 90;
+/** The strip over My Clan's tabs shows the newest announcement of this many days. */
+const LATEST_ANNOUNCEMENT_DAYS = 14;
+/** The clan's newest announcement of the last LATEST_ANNOUNCEMENT_DAYS, headline only, or null. */
+function latestAnnouncement(clanId) {
+    const a = (0, battle_report_repo_js_1.listAnnouncements)(clanId, 1, new Date(Date.now() - LATEST_ANNOUNCEMENT_DAYS * 86_400_000).toISOString())[0];
+    return a ? { entryId: a.entryId, at: a.at, author: a.author, headline: a.headline } : null;
+}
 /** Bonus changes one profile request sends at most (newest first). */
 const STAT_CHANGES_MAX = 200;
 /** Joins & leaves: a page, the most one request may ask for, and the header's window. */
@@ -513,7 +521,17 @@ function createGameRouter() {
                 };
             }),
             techs: { ...(0, game_clan_repo_js_1.getClanTechs)(clanId), changes: (0, game_clan_repo_js_1.getClanTechChanges)(clanId, since) },
+            latestAnnouncement: latestAnnouncement(clanId),
         });
+    });
+    /**
+     * Clan announcements members shared in the clan's chats (or sent the
+     * scanner account), read from the game's journal, newest first, each with a
+     * one-line headline (docs/battle-reports.md). My Clan → Announcements.
+     */
+    router.get('/clan/announcements', (req, res) => {
+        const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit ?? ''), 10) || 50, 1), 200);
+        res.json({ announcements: (0, battle_report_repo_js_1.listAnnouncements)(req.clanId, limit) });
     });
     /**
      * The kingdom's clan rankings as the game's ranking window shows them: each

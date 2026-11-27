@@ -59,6 +59,7 @@ import { loadGameNames, type GameNames } from '../../game-protocol/static-data.j
 import { currentGameArt, gameArtUrl } from '../../game-art/index.js';
 import { CLAN_RANKING_ICONS, safeArtName } from '../../game-art/selection.js';
 import { clanLogoUrl } from '../../game-art/clan-logo.js';
+import { listAnnouncements } from '../../data/repositories/battle-report-repo.js';
 import { itemIconUrls } from '../../game-art/item-icons.js';
 import { CLAN_RANKING_KINDS } from '../../game-protocol/messages.js';
 import { describeArtifact } from '../../game-protocol/artifacts.js';
@@ -100,6 +101,14 @@ function treesWithIcons(trees: TechTrees): unknown {
 }
 
 const CHANGES_DAYS = 90;
+/** The strip over My Clan's tabs shows the newest announcement of this many days. */
+const LATEST_ANNOUNCEMENT_DAYS = 14;
+
+/** The clan's newest announcement of the last LATEST_ANNOUNCEMENT_DAYS, headline only, or null. */
+function latestAnnouncement(clanId: number): { entryId: string; at: string; author: string; headline: string } | null {
+  const a = listAnnouncements(clanId, 1, new Date(Date.now() - LATEST_ANNOUNCEMENT_DAYS * 86_400_000).toISOString())[0];
+  return a ? { entryId: a.entryId, at: a.at, author: a.author, headline: a.headline } : null;
+}
 /** Bonus changes one profile request sends at most (newest first). */
 const STAT_CHANGES_MAX = 200;
 /** Joins & leaves: a page, the most one request may ask for, and the header's window. */
@@ -552,7 +561,18 @@ export function createGameRouter(): Router {
         };
       }),
       techs: { ...getClanTechs(clanId), changes: getClanTechChanges(clanId, since) },
+      latestAnnouncement: latestAnnouncement(clanId),
     });
+  });
+
+  /**
+   * Clan announcements members shared in the clan's chats (or sent the
+   * scanner account), read from the game's journal, newest first, each with a
+   * one-line headline (docs/battle-reports.md). My Clan → Announcements.
+   */
+  router.get('/clan/announcements', (req, res) => {
+    const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit ?? ''), 10) || 50, 1), 200);
+    res.json({ announcements: listAnnouncements(req.clanId!, limit) });
   });
 
   /**

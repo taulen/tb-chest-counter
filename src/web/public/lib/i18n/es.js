@@ -1207,6 +1207,12 @@ export const ui = {
   "asked for a code themselves": "pidió un código por su cuenta",
   "could not open a private chat": "no se pudo abrir un chat privado",
   "Not sent": "No enviado",
+  // pages/clan-announcements.js
+  "Announcement": "Anuncio",
+  "Shared in the clan chat, or sent to the scanner account in a private message: an announcement shows here within a few minutes.": "Compartido en el chat del clan o enviado a la cuenta del escáner por mensaje privado: un anuncio aparece aquí en pocos minutos.",
+  "The headline is the announcement’s first line, greetings left out.": "El titular es la primera línea del anuncio, sin los saludos.",
+  "Couldn't load the announcements. Try again in a minute.": "No se pudieron cargar los anuncios. Inténtalo de nuevo en un minuto.",
+  "No clan announcement has been shared yet.": "Aún no se ha compartido ningún anuncio del clan.",
   // pages/clan-battle-reports.js
   "Battle reports": "Informes de batalla",
   "Could not load the battle report settings.": "No se pudieron cargar los ajustes de informes de batalla.",
@@ -1364,6 +1370,7 @@ export const ui = {
   "No joins or leaves recorded yet.": "Aún no hay ingresos ni salidas registrados.",
   // pages/clan.js
   "Research": "Investigación",
+  "Announcements": "Anuncios",
   "Rankings": "Clasificaciones",
   "Treasury": "Tesorería",
   "History": "Historial",
