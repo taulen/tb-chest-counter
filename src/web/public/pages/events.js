@@ -994,7 +994,7 @@ function paint() {
   wireViews(el);
   if (!hasScores) mountGameStandings(el.querySelector('.game-standings-mount'), gameStandings);
   if (hasVaults) mountVaults(el.querySelector('.ev-vaults'), { data: vaultsData, members: activeMembers, to: periodWindow().to });
-  if (hasVaults) mountHits(el.querySelector('.ev-hits'), { data: hitsData });
+  if (hasVaults) mountHits(el.querySelector('.ev-hits'), { data: hitsData, members: activeMembers, to: periodWindow().to });
   if (hasScores) {
     mountTinmanScores(el.querySelector('.tinman-mount'), {
       event: currentEventKey,

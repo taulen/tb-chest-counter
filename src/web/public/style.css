@@ -5330,6 +5330,17 @@ details > table {
 .hit-mark { font-weight: 800; }
 .hit-mark.is-ok { color: var(--accent-green); }
 .hit-mark.is-below { color: var(--accent-red); }
+.hit-mark.is-mixed { color: var(--accent-amber); }
+/* Members who shared a hit: at the rule / below it / fewest stacks / last hit / status. */
+.events-hits-members { table-layout: fixed; width: 100%; }
+.events-hits-members th.num { text-align: right; }
+.events-hits-members col.col-num { width: 110px; }
+.events-hits-members col.col-date { width: 160px; }
+.events-hits-members col.col-mark { width: 80px; }
+.events-hits-members th.col-mark,
+.events-hits-members td.col-mark { text-align: center; }
+.events-hits-members td.col-mark .hit-mark { font-size: 16px; }
+.events-hits-members td.hits-below-count { color: var(--accent-red); font-weight: 700; }
 .events-zero { color: var(--text-muted); }
 /* Header/cell markers on a column whose rule resolved to nothing. */
 .events-unresolved-mark {
