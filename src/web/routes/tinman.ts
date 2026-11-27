@@ -31,7 +31,7 @@ import {
 import { clanCalendarRealm } from '../../data/repositories/clan-repo.js';
 import { getEventOccurrences } from '../../external/event-calendar.js';
 import { lastMapPassAt, listRaisedVaults, mapReadSince } from '../../data/repositories/game-protocol-repo.js';
-import { getTinmanRequiredStacks, listTinmanHits, reportCounts, vaultChats } from '../../data/repositories/battle-report-repo.js';
+import { listTinmanHits, reportCounts, vaultChats } from '../../data/repositories/battle-report-repo.js';
 import { listVaultPosts } from '../../data/vault-posts.js';
 
 const MAX_TEXT_LENGTH = 200_000;
@@ -190,8 +190,8 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
   /**
    * Tin Man hits shared as battle reports (in the clan chat, a private message
    * to the scanner account or a picked report chat), fought in [from, to):
-   * who, the Tin Man's level and how many stacks it still had. With the clan's
-   * rule (hit it at N stacks) and how the shared reports stand.
+   * who, the Tin Man's level and how many stacks it still had (the rule is
+   * always all 4 — TINMAN_FULL_STACKS), and how the shared reports stand.
    */
   if (ancients) router.get('/hits', (req, res) => {
     const from = bound(req.query.from);
@@ -203,7 +203,6 @@ export function createTinmanRouter(eventKey: tinmanRepo.ScoreEventKey = 'ancient
     const clanId = req.clanId!;
     res.json({
       hits: listTinmanHits(clanId, from, to),
-      requiredStacks: getTinmanRequiredStacks(clanId),
       reports: reportCounts(clanId),
     });
   });

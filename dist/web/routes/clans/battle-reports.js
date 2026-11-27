@@ -13,7 +13,6 @@ const _shared_js_1 = require("./_shared.js");
  * MAX_REPORT_CHATS of the account's group chats, each read for battle reports
  * (a "Tin Man hits" or "citadels" chat) or for vaults (where members link the
  * vault they raised — Events → Ancients → Vaults matches them to the map; v144).
- * Also the clan's Tin Man rule: hit it while it still has N stacks.
  * Clan admins only. Nothing here sends anything in the game.
  */
 function createBattleReportsRouter() {
@@ -38,8 +37,6 @@ function createBattleReportsRouter() {
                     .map((p) => ({ url: p.url, name: p.name, memberCount: 0, picked: true, purpose: p.purpose, member: false })),
             ],
             maxChats: battle_report_repo_js_1.MAX_REPORT_CHATS,
-            requiredStacks: (0, battle_report_repo_js_1.getTinmanRequiredStacks)(id),
-            stackChoices: battle_report_repo_js_1.TINMAN_STACK_CHOICES,
             reports: (0, battle_report_repo_js_1.reportCounts)(id),
         });
     });
@@ -84,16 +81,7 @@ function createBattleReportsRouter() {
             const saved = (0, battle_report_repo_js_1.setReportChats)(id, chosen);
             (0, user_repo_js_1.logAction)(req.user.id, 'clan.battle_report_chats.update', { clanId: id, chats: saved.map((c) => `${c.name} (${c.purpose})`) });
         }
-        if (body.requiredStacks !== undefined) {
-            const n = body.requiredStacks === null || body.requiredStacks === '' ? null : Number(body.requiredStacks);
-            if (n !== null && !battle_report_repo_js_1.TINMAN_STACK_CHOICES.includes(n)) {
-                res.status(400).json({ error: `requiredStacks must be one of ${battle_report_repo_js_1.TINMAN_STACK_CHOICES.join(', ')} or empty` });
-                return;
-            }
-            (0, battle_report_repo_js_1.setTinmanRequiredStacks)(id, n);
-            (0, user_repo_js_1.logAction)(req.user.id, 'clan.tinman_rule.update', { clanId: id, requiredStacks: n });
-        }
-        res.json({ ok: true, chats: (0, battle_report_repo_js_1.getReportChats)(id), requiredStacks: (0, battle_report_repo_js_1.getTinmanRequiredStacks)(id) });
+        res.json({ ok: true, chats: (0, battle_report_repo_js_1.getReportChats)(id) });
     });
     return router;
 }

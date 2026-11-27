@@ -2,8 +2,7 @@ import type { Router } from 'express';
 import { getClanById } from '../../../data/repositories/clan-repo.js';
 import { getPostableChannels } from '../../../data/repositories/chat-digest-repo.js';
 import {
-  CHAT_PURPOSES, MAX_REPORT_CHATS, TINMAN_STACK_CHOICES, getReportChats, getTinmanRequiredStacks, reportCounts, setReportChats,
-  setTinmanRequiredStacks, type ChatPurpose,
+  CHAT_PURPOSES, MAX_REPORT_CHATS, getReportChats, reportCounts, setReportChats, type ChatPurpose,
 } from '../../../data/repositories/battle-report-repo.js';
 import { logAction } from '../../../data/repositories/user-repo.js';
 import { requireClanAdmin } from '../../middleware/auth.js';
@@ -15,7 +14,6 @@ import { createClanSubRouter } from './_shared.js';
  * MAX_REPORT_CHATS of the account's group chats, each read for battle reports
  * (a "Tin Man hits" or "citadels" chat) or for vaults (where members link the
  * vault they raised — Events → Ancients → Vaults matches them to the map; v144).
- * Also the clan's Tin Man rule: hit it while it still has N stacks.
  * Clan admins only. Nothing here sends anything in the game.
  */
 export function createBattleReportsRouter(): Router {
@@ -41,8 +39,6 @@ export function createBattleReportsRouter(): Router {
           .map((p) => ({ url: p.url, name: p.name, memberCount: 0, picked: true, purpose: p.purpose, member: false })),
       ],
       maxChats: MAX_REPORT_CHATS,
-      requiredStacks: getTinmanRequiredStacks(id),
-      stackChoices: TINMAN_STACK_CHOICES,
       reports: reportCounts(id),
     });
   });
@@ -88,16 +84,7 @@ export function createBattleReportsRouter(): Router {
       const saved = setReportChats(id, chosen);
       logAction(req.user!.id, 'clan.battle_report_chats.update', { clanId: id, chats: saved.map((c) => `${c.name} (${c.purpose})`) });
     }
-    if (body.requiredStacks !== undefined) {
-      const n = body.requiredStacks === null || body.requiredStacks === '' ? null : Number(body.requiredStacks);
-      if (n !== null && !(TINMAN_STACK_CHOICES as readonly number[]).includes(n)) {
-        res.status(400).json({ error: `requiredStacks must be one of ${TINMAN_STACK_CHOICES.join(', ')} or empty` });
-        return;
-      }
-      setTinmanRequiredStacks(id, n);
-      logAction(req.user!.id, 'clan.tinman_rule.update', { clanId: id, requiredStacks: n });
-    }
-    res.json({ ok: true, chats: getReportChats(id), requiredStacks: getTinmanRequiredStacks(id) });
+    res.json({ ok: true, chats: getReportChats(id) });
   });
 
   return router;

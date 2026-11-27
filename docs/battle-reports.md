@@ -7,7 +7,7 @@ Recorded and decoded on Nov 27 2026 from a capture of the user opening reports i
 ## Where reports are read from
 
 - **The clan chat** and **private messages to the scanner account**: always. A DM keeps citadel and Tin Man reports out of the clan chat.
-- **Up to five group chats** an admin picks under Clans → In-game → Battle reports (`clan_report_chats`). The scanner account must be in the chat; the chat sync lists the account's group chats every minute (`refreshGroupChats`), so a chat it is added to shows up within a minute. A picked chat is read like the private chats: its history first, then new lines.
+- **Up to five group chats** an admin picks under Clans → In-game → Battle reports (`clan_report_chats`; the list of the account's group chats is folded — it can be long). The scanner account must be in the chat; the chat sync lists the account's group chats every minute (`refreshGroupChats`), so a chat it is added to shows up within a minute. A picked chat is read like the private chats: its history first, then new lines.
 
 Nothing is ever posted. The scanner account doesn't answer a report in any chat (the chat-command rules: no reply to anything that isn't a command).
 
@@ -52,7 +52,7 @@ announcement  ["clan_announcement", [realm, n], text]
 
 - **"Epic Ancient squad" is the Tin Man**: 750 map objects (T7), three runs of 250 — 6000–6249, 7000–7249 (the Seasonal Kingdom's: SK7 on Nov 22 2026), 8000–8249 — one per level 1–250. Level = id − run start + 1 (6054 → 55).
 - Its stacks are monster units 7540–7543. It starts with 4 and drops to 3, 2, 1 as its health goes; the report lists the ones it had when the hit began. **The clan rule is about these stacks, not the attacker's army**: some clans require hitting it at 4 — waiting for fewer gives one player more rewards at the clan's cost.
-- `clans.tinman_required_stacks` (4, 3, 2 or NULL = held to 4) is the rule. Events → Ancients → **Hits** ([ancients-hits.js](../src/web/public/pages/ancients-hits.js)) opens on the clan's members: one row each with hits at the rule, hits below it, the fewest stacks they hit at and their last hit, marked ✓ every hit at the rule / ✗ every hit below / ◐ both (glyph + words; below first), tiles counting each, the active members who shared no hit folded under it, and every single hit folded under that.
+- **The rule is fixed: hit it while it has all 4 stacks** (`TINMAN_FULL_STACKS`; the user, Nov 27 2026: always on, no setting — the v143 `clans.tinman_required_stacks` column is unused). Events → Ancients → **Hits** ([ancients-hits.js](../src/web/public/pages/ancients-hits.js)) opens on the clan's members: one row each with hits at the rule, hits below it, the fewest stacks they hit at and their last hit, marked ✓ every hit at the rule / ✗ every hit below / ◐ both (glyph + words; below first), tiles counting each, the active members who shared no hit folded under it, and every single hit folded under that.
 
 ## Storage (v143)
 

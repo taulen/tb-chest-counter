@@ -17,8 +17,6 @@ import { announcementHeadline } from '../announcement-headline.js';
 
 /** Group chats a clan can read reports from besides its clan chat and private messages. */
 export const MAX_REPORT_CHATS = 5;
-/** The Tin Man rule's choices: hit it while it still has this many stacks. */
-export const TINMAN_STACK_CHOICES = [4, 3, 2] as const;
 /**
  * Shared journal entries that are kept: battles (Tin Man hits, citadels,
  * epics…) and clan announcements (their text, for My Clan). Scout and crypt
@@ -210,19 +208,6 @@ export function setReportChats(
     for (const c of chats.slice(0, MAX_REPORT_CHATS)) ins.run(clanId, c.url, c.name, now, c.purpose === 'vaults' ? 'vaults' : 'reports');
   })();
   return getReportChats(clanId);
-}
-
-// ── The Tin Man rule ───────────────────────────────────────────────────────
-
-export function getTinmanRequiredStacks(clanId: number): number | null {
-  const row = getDb().prepare('SELECT tinman_required_stacks AS n FROM clans WHERE id = ?').get(clanId) as { n: number | null } | undefined;
-  const n = row?.n ?? null;
-  return n !== null && (TINMAN_STACK_CHOICES as readonly number[]).includes(n) ? n : null;
-}
-
-export function setTinmanRequiredStacks(clanId: number, n: number | null): void {
-  const value = n !== null && (TINMAN_STACK_CHOICES as readonly number[]).includes(n) ? n : null;
-  getDb().prepare('UPDATE clans SET tinman_required_stacks = ? WHERE id = ?').run(value, clanId);
 }
 
 // ── Clan announcements ─────────────────────────────────────────────────────

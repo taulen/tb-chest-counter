@@ -1,5 +1,5 @@
 // Clans → In-game → "Battle reports": which chats the site reads shared battle
-// reports from, and the clan's Tin Man rule (docs/battle-reports.md). The
+// reports from (docs/battle-reports.md; the Tin Man rule is fixed: all 4 stacks). The
 // clan chat and private messages to the scanner account are always read; an
 // admin adds up to five of the account's group chats, each read for battle
 // reports (a "Tin Man hits" or "citadels" chat keeps the clan chat free of
@@ -11,6 +11,12 @@
 
 import { escapeHtml, notify, formatDate, reapplyDetailsState } from '../lib/ui.js';
 import { t, tn } from '../lib/i18n.js';
+
+/**
+ * Clans whose group-chat list is open: the list can be long, so it starts
+ * folded, and stays open while an admin picks (every pick redraws the section).
+ */
+const chatsOpen = new Set();
 
 /** The section on the clan card's In-game tab. */
 export function battleReportsSectionHtml(clanId) {
@@ -93,24 +99,6 @@ function renderBattleReports(root, box, clanId, data) {
     ? `<div class="invite-settings">${chatRows}</div>`
     : `<p class="muted-copy">${t('The scanner account is in no group chat yet. Add it to a chat in the game; the chat shows here within a minute.')}</p>`;
 
-  const ruleLabelId = `clan-tinman-rule-label-${clanId}`;
-  const choices = [null, ...(data.stackChoices || [4, 3, 2])];
-  const ruleRow = `<div class="invite-setting">
-      <div class="invite-setting-text">
-        <div class="invite-setting-title" id="${ruleLabelId}">${t('Tin Man rule')}</div>
-        <div class="invite-setting-desc">${t('Hit the Tin Man only while it still has this many stacks of monsters. Events → Ancients → Hits marks every shared hit against it.')}</div>
-      </div>
-      <div class="invite-setting-control">
-        <div class="invite-segmented" role="radiogroup" aria-labelledby="${ruleLabelId}">
-          ${choices.map((n) => {
-            const on = (data.requiredStacks ?? null) === n;
-            const label = n === null ? t('Off') : tn(n, '{n} stack', '{n} stacks');
-            return `<button type="button" role="radio" class="invite-segmented-btn${on ? ' is-active' : ''}" aria-checked="${on}" data-tinman-rule="${n === null ? '' : n}">${escapeHtml(label)}</button>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>`;
-
   const status = reports.shared
     ? [
       tn(reports.shared, '{n} report shared', '{n} reports shared'),
@@ -136,11 +124,16 @@ function renderBattleReports(root, box, clanId, data) {
     <div class="invite-panel">
       <p class="invite-lede">${t('Battle reports members share are read from the game: who hit what, both armies, and for the Tin Man how many stacks it still had.')}</p>
       <p class="invite-setting-state">${escapeHtml(status)}</p>
-      <div class="invite-settings">${always}${ruleRow}</div>
-      <h4 class="invite-subhead">${t('Also read these group chats')}</h4>
-      ${chatsHtml}
+      <div class="invite-settings">${always}</div>
+      <details class="invite-how report-chats-fold" data-section-key="clan-reports-chats"${chatsOpen.has(clanId) ? ' open' : ''}>
+        <summary>${t('Also read these group chats')} · ${picked.length}/${chats.length}${picked.length ? ` — ${escapeHtml(picked.map((c) => c.name || t('Unnamed chat')).join(', '))}` : ''}</summary>
+        ${chatsHtml}
+      </details>
       ${how}
     </div>`;
+
+  const fold = box.querySelector('.report-chats-fold');
+  fold?.addEventListener('toggle', () => { if (fold.open) chatsOpen.add(clanId); else chatsOpen.delete(clanId); });
 
   // Off / Battle reports / Vaults: the whole list goes back with this chat's new choice.
   box.querySelectorAll('[data-chat-purpose]').forEach((btn) => {
@@ -152,18 +145,6 @@ function renderBattleReports(root, box, clanId, data) {
         .filter((c) => c.purpose);
       try {
         await save(clanId, { chats: list });
-        notify(t('Saved.'), t('Battle reports'));
-        void loadBattleReports(root, clanId);
-      } catch (err) {
-        notify(t('Save failed: {error}', { error: err.message }), t('Battle reports'));
-      }
-    });
-  });
-  box.querySelectorAll('[data-tinman-rule]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const raw = btn.dataset.tinmanRule;
-      try {
-        await save(clanId, { requiredStacks: raw === '' ? null : Number(raw) });
         notify(t('Saved.'), t('Battle reports'));
         void loadBattleReports(root, clanId);
       } catch (err) {

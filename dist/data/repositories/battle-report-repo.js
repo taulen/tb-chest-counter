@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHAT_PURPOSES = exports.MAX_REPORT_ATTEMPTS = exports.KEPT_ENTRY_TYPES = exports.TINMAN_STACK_CHOICES = exports.MAX_REPORT_CHATS = void 0;
+exports.CHAT_PURPOSES = exports.MAX_REPORT_ATTEMPTS = exports.KEPT_ENTRY_TYPES = exports.MAX_REPORT_CHATS = void 0;
 exports.recordReportShares = recordReportShares;
 exports.pendingReports = pendingReports;
 exports.waitingReportCount = waitingReportCount;
@@ -13,8 +13,6 @@ exports.reportCounts = reportCounts;
 exports.getReportChats = getReportChats;
 exports.vaultChats = vaultChats;
 exports.setReportChats = setReportChats;
-exports.getTinmanRequiredStacks = getTinmanRequiredStacks;
-exports.setTinmanRequiredStacks = setTinmanRequiredStacks;
 exports.listAnnouncements = listAnnouncements;
 exports.listTinmanHits = listTinmanHits;
 /**
@@ -35,8 +33,6 @@ const game_player_names_js_1 = require("../game-player-names.js");
 const announcement_headline_js_1 = require("../announcement-headline.js");
 /** Group chats a clan can read reports from besides its clan chat and private messages. */
 exports.MAX_REPORT_CHATS = 5;
-/** The Tin Man rule's choices: hit it while it still has this many stacks. */
-exports.TINMAN_STACK_CHOICES = [4, 3, 2];
 /**
  * Shared journal entries that are kept: battles (Tin Man hits, citadels,
  * epics…) and clan announcements (their text, for My Clan). Scout and crypt
@@ -164,16 +160,6 @@ function setReportChats(clanId, chats, now = new Date().toISOString()) {
             ins.run(clanId, c.url, c.name, now, c.purpose === 'vaults' ? 'vaults' : 'reports');
     })();
     return getReportChats(clanId);
-}
-// ── The Tin Man rule ───────────────────────────────────────────────────────
-function getTinmanRequiredStacks(clanId) {
-    const row = (0, database_js_1.getDb)().prepare('SELECT tinman_required_stacks AS n FROM clans WHERE id = ?').get(clanId);
-    const n = row?.n ?? null;
-    return n !== null && exports.TINMAN_STACK_CHOICES.includes(n) ? n : null;
-}
-function setTinmanRequiredStacks(clanId, n) {
-    const value = n !== null && exports.TINMAN_STACK_CHOICES.includes(n) ? n : null;
-    (0, database_js_1.getDb)().prepare('UPDATE clans SET tinman_required_stacks = ? WHERE id = ?').run(value, clanId);
 }
 /**
  * Clan announcements shared in the clan's chats and read (docs/battle-reports.md),

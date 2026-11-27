@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '../../src/data/database.js';
 import { saveChatMessages, upsertChatChannel } from '../../src/data/repositories/chat-repo.js';
 import {
-  getReportChats, getTinmanRequiredStacks, listAnnouncements, listTinmanHits, markReportFailed, pendingReports, recordReportShares,
-  reportCounts, saveFetchedReport, setReportChats, setTinmanRequiredStacks,
+  getReportChats, listAnnouncements, listTinmanHits, markReportFailed, pendingReports, recordReportShares,
+  reportCounts, saveFetchedReport, setReportChats,
 } from '../../src/data/repositories/battle-report-repo.js';
 import { playerIdOf, type BattleReport } from '../../src/game-protocol/battle-report.js';
 import { refreshGroupChats, getPostableChannels } from '../../src/data/repositories/chat-digest-repo.js';
@@ -112,14 +112,6 @@ describe('Tin Man hits', () => {
     // The window is the fight's time, half-open.
     expect(listTinmanHits(1, new Date(1_795_381_332_000).toISOString(), new Date(1_795_400_000_000).toISOString()).map((h) => h.entryId)).toEqual([E1]);
     expect(listTinmanHits(2, null, null)).toEqual([]);
-  });
-
-  it('keeps the clan’s Tin Man rule to the offered choices', () => {
-    expect(getTinmanRequiredStacks(1)).toBeNull();
-    setTinmanRequiredStacks(1, 4);
-    expect(getTinmanRequiredStacks(1)).toBe(4);
-    setTinmanRequiredStacks(1, 7);
-    expect(getTinmanRequiredStacks(1)).toBeNull();
   });
 });
 

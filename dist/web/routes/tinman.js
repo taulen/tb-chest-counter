@@ -219,8 +219,8 @@ function createTinmanRouter(eventKey = 'ancients') {
     /**
      * Tin Man hits shared as battle reports (in the clan chat, a private message
      * to the scanner account or a picked report chat), fought in [from, to):
-     * who, the Tin Man's level and how many stacks it still had. With the clan's
-     * rule (hit it at N stacks) and how the shared reports stand.
+     * who, the Tin Man's level and how many stacks it still had (the rule is
+     * always all 4 — TINMAN_FULL_STACKS), and how the shared reports stand.
      */
     if (ancients)
         router.get('/hits', (req, res) => {
@@ -233,7 +233,6 @@ function createTinmanRouter(eventKey = 'ancients') {
             const clanId = req.clanId;
             res.json({
                 hits: (0, battle_report_repo_js_1.listTinmanHits)(clanId, from, to),
-                requiredStacks: (0, battle_report_repo_js_1.getTinmanRequiredStacks)(clanId),
                 reports: (0, battle_report_repo_js_1.reportCounts)(clanId),
             });
         });

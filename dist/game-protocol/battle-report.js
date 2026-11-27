@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.TINMAN_FULL_STACKS = void 0;
 exports.playerIdOf = playerIdOf;
 exports.parseBattleReport = parseBattleReport;
 exports.parseStrikeLog = parseStrikeLog;
@@ -195,6 +196,11 @@ function parseAnnouncement(bytes) {
  * Kingdom's, SK7 on Nov 22 2026) and 8000–8249 — one per Tin Man level 1–250.
  */
 const TINMAN_BLOCKS = [6000, 7000, 8000];
+/**
+ * The Tin Man's stacks while it is whole — and the rule: hit it only while it
+ * still has all of them (the user, Nov 27 2026: always on, always 4).
+ */
+exports.TINMAN_FULL_STACKS = 4;
 const TINMAN_LEVELS = 250;
 /** The Tin Man's level when `staticId` is a Tin Man, else null. */
 function tinmanLevel(staticId) {

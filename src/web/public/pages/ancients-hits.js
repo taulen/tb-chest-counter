@@ -7,7 +7,7 @@
 // in the clan chat, in a private message to the scanner account or in a chat
 // picked under Clans → In-game is opened on the game's journal and kept
 // (docs/battle-reports.md); GET /api/tinman/hits?from=&to= serves the window's
-// hits with the clan's rule (4 when it has none).
+// hits. The rule is fixed: hit it while it has all 4 stacks.
 //
 // First, one row per member: hits at the rule, hits below it, the fewest
 // stacks they hit at, their last hit, and a mark — ✓ every hit at the rule,
@@ -22,6 +22,8 @@ import { emptyHtml, notesHtml, asList } from '../lib/ui-kit.js';
 import { t, tn } from '../lib/i18n.js';
 
 const PAGE_SIZE = 25;
+/** The rule: hit the Tin Man only while it has all its stacks (battle-report.ts TINMAN_FULL_STACKS). */
+const RULE = 4;
 
 // Opens on the members below the rule.
 let memberSort = { key: 'status', dir: 'asc' };
@@ -31,7 +33,7 @@ let hitPage = 1;
 let noHitOpen = false;
 let everyHitOpen = false;
 
-/** The window's hits ({ hits, requiredStacks, reports }), or null when they could not be read. */
+/** The window's hits ({ hits, reports }), or null when they could not be read. */
 export async function fetchHits(from, to) {
   const qs = new URLSearchParams();
   if (from) qs.set('from', from);
@@ -68,8 +70,7 @@ function when(iso) {
 }
 
 const stacksWords = (n) => tn(n, '{n} stack', '{n} stacks');
-/** The rule in words: "4 stacks", or "3+ stacks" for a lower rule. */
-const ruleWords = (rule) => (rule >= 4 ? stacksWords(4) : t('{n}+ stacks', { n: rule }));
+const ruleWords = (rule) => stacksWords(rule);
 
 const MARK = {
   ok: { glyph: '✓', cls: 'is-ok' },
@@ -204,7 +205,7 @@ export function mountHits(el, { data, members, to }) {
 
 function hitsHtml(data, members, to) {
   if (!data) return emptyHtml(t('The Tin Man hits could not be loaded.'));
-  const rule = data.requiredStacks || 4;
+  const rule = RULE;
   const stacks = ruleWords(rule);
   const reports = data.reports || { waiting: 0 };
   const hits = data.hits;
@@ -213,7 +214,6 @@ function hitsHtml(data, members, to) {
     esc(t('Read from battle reports shared in the clan chat, sent in a private message to the scanner account, or shared in a chat picked under Clans → In-game. A hit nobody shared is not here.')),
     esc(t('The Tin Man starts with 4 stacks of monsters and drops to 3, 2 and 1 as it loses health. The stacks are the ones it had when the hit began.')),
   ];
-  if (!data.requiredStacks) notes.push(esc(t('No Tin Man rule is set for the clan, so hits are held to 4 stacks. An admin can set another under Clans → In-game → Battle reports.')));
   if (reports.waiting > 0) {
     notes.push(esc(tn(reports.waiting, '{n} shared report is still being read.', '{n} shared reports are still being read.')));
   }
