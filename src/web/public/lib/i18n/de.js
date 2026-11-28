@@ -1101,7 +1101,7 @@ export const ui = {
   "Who strikes first after the walls is a coin flip. Average: {lost}.": "Wer nach den Mauern zuerst zuschlägt, ist Zufall. Durchschnitt: {lost}.",
   "no losses": "keine Verluste",
   "{n} troops lost": { one: "{n} Einheit verloren", other: "{n} Einheiten verloren" },
-  "Luck (double damage, hitting two squads) is not included.": "Glück (doppelter Schaden, zwei Trupps treffen) ist nicht berücksichtigt.",
+  "Luck (double damage, hitting two squads, a blocked strike) is not included.": "Glück (doppelter Schaden, zwei Trupps treffen, ein abgewehrter Schlag) ist nicht berücksichtigt.",
   "The walls hold": "Die Mauern halten",
   "No losses": "Keine Verluste",
   "({n} to the walls)": "({n} durch die Mauern)",

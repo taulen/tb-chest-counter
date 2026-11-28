@@ -654,7 +654,7 @@ function paintResults(root, a) {
       ${outcomeHtml(both.citadel, t('If the citadel strikes first'), 'citadel')}
     </div>
     <p class="citadel-avg muted-copy">${t('Who strikes first after the walls is a coin flip. Average: {lost}.', { lost: avg === 0 ? t('no losses') : tn(avg, '{n} troop lost', '{n} troops lost', { n: avg.toLocaleString() }) })}
-      ${t('Luck (double damage, hitting two squads) is not included.')}</p>
+      ${t('Luck (double damage, hitting two squads, a blocked strike) is not included.')}</p>
     ${logHtml(both)}`;
 }
 

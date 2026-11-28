@@ -346,7 +346,7 @@ function cityLookImageFrom(mappings, lookId, cityLevel) {
     const step = [...steps].reverse().find((s) => s <= level) ?? steps[0];
     return icons[String(step)] ?? null;
 }
-const TROOP_FILE = path_1.default.resolve('src', 'web', 'public', 'lib', 'citadel-sim.js');
+const TROOP_FILE = path_1.default.resolve('src', 'web', 'public', 'lib', 'citadel-troops.js');
 /**
  * Every troop Tools → Citadel and → Stacks show, and the citadels' defenders,
  * straight from the frontend's own troop list (a plain ES module with no

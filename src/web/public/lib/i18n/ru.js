@@ -1101,7 +1101,7 @@ export const ui = {
   "Who strikes first after the walls is a coin flip. Average: {lost}.": "Кто бьёт первым после стен — дело случая. В среднем: {lost}.",
   "no losses": "без потерь",
   "{n} troops lost": { one: "потеряна {n} единица", few: "потеряно {n} единицы", many: "потеряно {n} единиц", other: "потеряно {n} единиц" },
-  "Luck (double damage, hitting two squads) is not included.": "Удача (двойной урон, удар по двум отрядам) не учитывается.",
+  "Luck (double damage, hitting two squads, a blocked strike) is not included.": "Удача (двойной урон, удар по двум отрядам, заблокированный удар) не учитывается.",
   "The walls hold": "Стены выстояли",
   "No losses": "Без потерь",
   "({n} to the walls)": "({n} от стен)",

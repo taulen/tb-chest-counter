@@ -1101,7 +1101,7 @@ export const ui = {
   "Who strikes first after the walls is a coin flip. Average: {lost}.": "Quién ataca primero tras los muros es a cara o cruz. Media: {lost}.",
   "no losses": "sin pérdidas",
   "{n} troops lost": { one: "{n} unidad perdida", other: "{n} unidades perdidas" },
-  "Luck (double damage, hitting two squads) is not included.": "La suerte (daño doble, golpear a dos escuadras) no se incluye.",
+  "Luck (double damage, hitting two squads, a blocked strike) is not included.": "La suerte (daño doble, golpear a dos escuadras, un golpe bloqueado) no se incluye.",
   "The walls hold": "Los muros resisten",
   "No losses": "Sin pérdidas",
   "({n} to the walls)": "({n} por los muros)",

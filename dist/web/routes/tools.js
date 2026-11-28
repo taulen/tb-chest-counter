@@ -16,6 +16,8 @@ exports.createToolsRouter = createToolsRouter;
  */
 const express_1 = require("express");
 const report_armies_js_1 = require("../../data/report-armies.js");
+const battle_data_js_1 = require("../../data/battle-data.js");
+const static_data_js_1 = require("../../game-protocol/static-data.js");
 const battle_report_repo_js_1 = require("../../data/repositories/battle-report-repo.js");
 const account_invite_repo_js_1 = require("../../data/repositories/account-invite-repo.js");
 const ancient_roster_js_1 = require("../../data/ancient-roster.js");
@@ -87,6 +89,36 @@ function createToolsRouter() {
             linked: own.length > 0, players, player, reports, waiting: (0, battle_report_repo_js_1.waitingReportCount)(),
             windowDays: report_armies_js_1.REPORT_WINDOW_DAYS, only: citadels ? 'citadels' : null,
         });
+    });
+    /**
+     * Tools → Monsters' game data (data/battle-data.ts): every unit's numbers and
+     * every monster target's army, from the game's own files, rebuilt each patch.
+     * The browser keeps it ten minutes, then revalidates by ETag.
+     */
+    router.get('/battle-data', (req, res) => {
+        const data = (0, battle_data_js_1.battleDataResponse)();
+        if (!data) {
+            // Start the names build (it writes battle-data.json; one build at a time).
+            (0, static_data_js_1.loadGameNames)().catch(() => { });
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(503).json({ error: 'The game data is not built yet. Try again in a few minutes.' });
+            return;
+        }
+        res.setHeader('Cache-Control', 'private, max-age=600');
+        res.setHeader('ETag', data.etag);
+        res.setHeader('Vary', 'Accept-Encoding');
+        if (req.fresh) {
+            res.status(304).end();
+            return;
+        }
+        res.type('application/json');
+        if (req.acceptsEncodings('gzip')) {
+            res.setHeader('Content-Encoding', 'gzip');
+            res.send(data.gzip);
+        }
+        else {
+            res.send(data.body);
+        }
     });
     /** The signed-in account's saved citadel armies. */
     router.get('/citadel-presets', (req, res) => {

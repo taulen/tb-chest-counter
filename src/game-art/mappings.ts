@@ -396,7 +396,7 @@ export function cityLookImageFrom(
   return icons[String(step)] ?? null;
 }
 
-const TROOP_FILE = path.resolve('src', 'web', 'public', 'lib', 'citadel-sim.js');
+const TROOP_FILE = path.resolve('src', 'web', 'public', 'lib', 'citadel-troops.js');
 
 /**
  * Every troop Tools → Citadel and → Stacks show, and the citadels' defenders,

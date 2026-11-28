@@ -13,6 +13,8 @@
  */
 import { Router } from 'express';
 import { REPORT_WINDOW_DAYS, loadCitadels, reportArmiesFor, reportPlayers } from '../../data/report-armies.js';
+import { battleDataResponse } from '../../data/battle-data.js';
+import { loadGameNames } from '../../game-protocol/static-data.js';
 import { waitingReportCount } from '../../data/repositories/battle-report-repo.js';
 import { linksForUser } from '../../data/repositories/account-invite-repo.js';
 import { getAncientRoster } from '../../data/ancient-roster.js';
@@ -103,6 +105,36 @@ export function createToolsRouter(): Router {
       linked: own.length > 0, players, player, reports, waiting: waitingReportCount(),
       windowDays: REPORT_WINDOW_DAYS, only: citadels ? 'citadels' : null,
     });
+  });
+
+  /**
+   * Tools → Monsters' game data (data/battle-data.ts): every unit's numbers and
+   * every monster target's army, from the game's own files, rebuilt each patch.
+   * The browser keeps it ten minutes, then revalidates by ETag.
+   */
+  router.get('/battle-data', (req, res) => {
+    const data = battleDataResponse();
+    if (!data) {
+      // Start the names build (it writes battle-data.json; one build at a time).
+      loadGameNames().catch(() => { /* logged by the build */ });
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).json({ error: 'The game data is not built yet. Try again in a few minutes.' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'private, max-age=600');
+    res.setHeader('ETag', data.etag);
+    res.setHeader('Vary', 'Accept-Encoding');
+    if (req.fresh) {
+      res.status(304).end();
+      return;
+    }
+    res.type('application/json');
+    if (req.acceptsEncodings('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip');
+      res.send(data.gzip);
+    } else {
+      res.send(data.body);
+    }
   });
 
   /** The signed-in account's saved citadel armies. */

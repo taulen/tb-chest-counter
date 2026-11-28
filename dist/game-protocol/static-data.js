@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_EFFECTS = exports.TABLE_TITLES = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_UNITS = exports.TABLE_EFFECTS = exports.TABLE_TITLES = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
@@ -11,6 +11,7 @@ exports.fetchCatalogTexts = fetchCatalogTexts;
 exports.catalogOfNamesKey = catalogOfNamesKey;
 exports.readTables = readTables;
 exports.asIdRecord = asIdRecord;
+exports.makeBattleData = makeBattleData;
 exports.buildNames = buildNames;
 exports.buildSpeeds = buildSpeeds;
 exports.nameTexts = nameTexts;
@@ -70,6 +71,7 @@ const codec_js_1 = require("./codec.js");
 const client_config_js_1 = require("./client-config.js");
 const city_stats_js_1 = require("./city-stats.js");
 const troop_effects_js_1 = require("./troop-effects.js");
+const battle_data_js_1 = require("./battle-data.js");
 const game_texts_js_1 = require("./game-texts.js");
 const logger_js_1 = require("../utils/logger.js");
 const status_js_1 = require("../game-patch/status.js");
@@ -182,6 +184,8 @@ exports.TABLE_TITLES = 29;
  * has; city-speeds.ts sums them the way the game's Statistics page does).
  */
 exports.TABLE_EFFECTS = 20;
+/** T9 Units: stats, tags and "vs" features (battle-data.ts). */
+exports.TABLE_UNITS = 9;
 const NEEDED_TABLES = [
     exports.TABLE_MAP_OBJECTS,
     exports.TABLE_GIFT_TYPES,
@@ -201,6 +205,7 @@ const NEEDED_TABLES = [
     exports.TABLE_DRAGONS,
     exports.TABLE_TITLES,
     exports.TABLE_EFFECTS,
+    exports.TABLE_UNITS,
     // The client config, for the tech trees' and Academy tabs' names (game-texts).
     client_config_js_1.TABLE_CLIENT_CONFIG,
 ];
@@ -227,10 +232,11 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * speed; 14: cityStats — every effect line named, a city's every bonus; 15:
  * troop-effects.json beside it — every effect's strength and health lines with
  * the units they reach, for battle reports' troop cards — Nov 2026; 16:
- * citadels — kind and level, for "fill in from a battle report"); a cached
- * file with an older format is rebuilt.
+ * citadels — kind and level, for "fill in from a battle report"; 17: units —
+ * the names of battle-data.json's units, and battle-data.json beside it, for
+ * Tools → Monsters); a cached file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 16;
+exports.NAMES_FORMAT = 17;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -460,6 +466,29 @@ function asIdRecord(t) {
     }
     return rec;
 }
+/**
+ * battle-data.json (battle-data.ts) from the pools and tables, with names in
+ * the lookup's language. A name whose key has no text in the game's files is
+ * a test or unused object ("atom.name.noobpass_L01_T01") and is left out.
+ */
+function makeBattleData(version, strings, vectors, tables, en) {
+    const str = (ref) => (typeof ref === 'number' && typeof strings[ref] === 'string' ? strings[ref] : undefined);
+    const name = (vref) => {
+        const v = typeof vref === 'number' ? vectors[vref] : undefined;
+        if (!Array.isArray(v) || !v.length)
+            return undefined;
+        const key = str(v[0]);
+        const text = key === undefined ? undefined : en.get(key);
+        if (!text)
+            return undefined;
+        let out = text;
+        for (let i = 1; i + 1 < v.length; i += 2)
+            out = out.replace(str(v[i]) ?? '\u0000', str(v[i + 1]) ?? '');
+        out = out.replace(/\s+/g, ' ').trim();
+        return out && !out.startsWith('{') && !out.startsWith('[') ? out : undefined;
+    };
+    return (0, battle_data_js_1.buildBattleData)(tables.get(exports.TABLE_MAP_OBJECTS), tables.get(exports.TABLE_UNITS), { str, name }, version);
+}
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */
 function buildNames(version, strings, vectors, tables, en) {
     const str = (ref) => (typeof ref === 'number' && typeof strings[ref] === 'string' ? strings[ref] : undefined);
@@ -636,7 +665,8 @@ function buildNames(version, strings, vectors, tables, en) {
     }
     return {
         version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT,
-        gifts, techs, objects, citadels, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+        gifts, techs, objects, citadels, units: (0, battle_data_js_1.battleUnitNames)(makeBattleData(version, strings, vectors, tables, en)),
+        terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
         items,
         events: buildEvents(tables.get(exports.TABLE_TOURNAMENTS), str, en),
         heroLevels: buildHeroLevels(rows(exports.TABLE_HERO_LEVELS)),
@@ -1328,12 +1358,13 @@ async function buildAndCacheNames(version, key, file) {
     ]);
     const zipOf = new Map(game_texts_js_1.GAME_TEXT_LANGUAGE_CODES.map((l, i) => [l, langZips[i]]));
     const en = parseTranslationsCsv(unzipFirst(enZip).toString('utf8'));
+    const strings = readWrappedArray(stringsBuf);
     const vectors = readWrappedArray(vectorsBuf);
     const tables = readTables(tablesBuf, NEEDED_TABLES);
     // Troop cards from battle reports (troop-effects.ts): its own file, read only
     // when a report army is built — too big for names.json, which stays loaded.
     const troopEffects = (0, troop_effects_js_1.buildTroopEffects)(tables.get(exports.TABLE_EFFECTS) ?? {}, (ref) => (typeof ref === 'number' && Array.isArray(vectors[ref]) ? vectors[ref] : undefined), key);
-    const { names, texts, drift } = buildNamesInLanguages(key, readWrappedArray(stringsBuf), vectors, tables, en, (lang) => {
+    const { names, texts, drift } = buildNamesInLanguages(key, strings, vectors, tables, en, (lang) => {
         const zip = zipOf.get(lang);
         if (!zip)
             return null;
@@ -1353,6 +1384,15 @@ async function buildAndCacheNames(version, key, file) {
     for (const [lang, dict] of texts)
         (0, game_texts_js_1.writeGameTexts)(dir, lang, key, dict);
     fs_1.default.writeFileSync(path_1.default.join(dir, troop_effects_js_1.TROOP_EFFECTS_FILE), JSON.stringify(troopEffects));
+    // Tools → Monsters (battle-data.ts). A patch whose armies can't be read keeps
+    // the previous patch's file (newestStaticFile) and says so on System.
+    const battle = makeBattleData(key, strings, vectors, tables, en);
+    if (battle.targets.length && Object.keys(battle.units).length) {
+        fs_1.default.writeFileSync(path_1.default.join(dir, battle_data_js_1.BATTLE_DATA_FILE), JSON.stringify(battle));
+    }
+    else {
+        log.warn(`Battle data: no monster armies found in static data ${key} — Tools → Monsters keeps the previous patch's.`);
+    }
     names.textLanguages = [...texts.keys()];
     if (texts.size < game_texts_js_1.GAME_TEXT_LANGUAGE_CODES.length)
         textsRetryAt.set(key, Date.now() + TEXTS_RETRY_MS);

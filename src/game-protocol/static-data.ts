@@ -40,6 +40,7 @@ import { WireReader, type Wire } from './codec.js';
 import { TABLE_CLIENT_CONFIG, academyTabs, readBranchDefs, type TextLookup } from './client-config.js';
 import { buildCityStats, type GameCityStats } from './city-stats.js';
 import { TROOP_EFFECTS_FILE, buildTroopEffects } from './troop-effects.js';
+import { BATTLE_DATA_FILE, battleUnitNames, buildBattleData, type BattleData } from './battle-data.js';
 import {
   GAME_TEXT_LANGUAGES,
   GAME_TEXT_LANGUAGE_CODES,
@@ -167,11 +168,13 @@ export const TABLE_TITLES = 29;
  * has; city-speeds.ts sums them the way the game's Statistics page does).
  */
 export const TABLE_EFFECTS = 20;
+/** T9 Units: stats, tags and "vs" features (battle-data.ts). */
+export const TABLE_UNITS = 9;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
   TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS, TABLE_FACTIONS,
-  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS,
+  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS, TABLE_UNITS,
   // The client config, for the tech trees' and Academy tabs' names (game-texts).
   TABLE_CLIENT_CONFIG,
 ];
@@ -196,6 +199,12 @@ export interface GameNames {
   objects: Record<string, string>;
   /** Citadels by T7 id: kind and level. Format 16+. */
   citadels?: Record<string, GameCitadel>;
+  /**
+   * Unit names by T9 id — the units battle-data.json carries (a player's
+   * troops and every monster of a target's army), here so the texts build
+   * pairs them with the game's own text in every site language. Format 17+.
+   */
+  units?: Record<string, string>;
   /** Terrain types by T4 id (a chat tile share's staticId → "Dense forest"). Format 5+. */
   terrains?: Record<string, string>;
   heroes: Record<string, { name: string; icon: string }>;
@@ -488,10 +497,11 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * speed; 14: cityStats — every effect line named, a city's every bonus; 15:
  * troop-effects.json beside it — every effect's strength and health lines with
  * the units they reach, for battle reports' troop cards — Nov 2026; 16:
- * citadels — kind and level, for "fill in from a battle report"); a cached
- * file with an older format is rebuilt.
+ * citadels — kind and level, for "fill in from a battle report"; 17: units —
+ * the names of battle-data.json's units, and battle-data.json beside it, for
+ * Tools → Monsters); a cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 16;
+export const NAMES_FORMAT = 17;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -736,6 +746,33 @@ export function asIdRecord(t: Wire): Record<string, Wire> | null {
   return rec;
 }
 
+/**
+ * battle-data.json (battle-data.ts) from the pools and tables, with names in
+ * the lookup's language. A name whose key has no text in the game's files is
+ * a test or unused object ("atom.name.noobpass_L01_T01") and is left out.
+ */
+export function makeBattleData(
+  version: string,
+  strings: Wire[],
+  vectors: Wire[],
+  tables: Map<number, Record<string, Wire>>,
+  en: TextLookup,
+): BattleData {
+  const str = (ref: Wire | undefined): string | undefined => (typeof ref === 'number' && typeof strings[ref] === 'string' ? (strings[ref] as string) : undefined);
+  const name = (vref: Wire | undefined): string | undefined => {
+    const v = typeof vref === 'number' ? vectors[vref] : undefined;
+    if (!Array.isArray(v) || !v.length) return undefined;
+    const key = str(v[0]);
+    const text = key === undefined ? undefined : en.get(key);
+    if (!text) return undefined;
+    let out = text;
+    for (let i = 1; i + 1 < v.length; i += 2) out = out.replace(str(v[i]) ?? '\u0000', str(v[i + 1]) ?? '');
+    out = out.replace(/\s+/g, ' ').trim();
+    return out && !out.startsWith('{') && !out.startsWith('[') ? out : undefined;
+  };
+  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name }, version);
+}
+
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */
 export function buildNames(
   version: string,
@@ -891,7 +928,8 @@ export function buildNames(
   }
   return {
     version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
-    gifts, techs, objects, citadels, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+    gifts, techs, objects, citadels, units: battleUnitNames(makeBattleData(version, strings, vectors, tables, en)),
+    terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
     items,
     events: buildEvents(tables.get(TABLE_TOURNAMENTS), str, en),
     heroLevels: buildHeroLevels(rows(TABLE_HERO_LEVELS)),
@@ -1568,6 +1606,7 @@ async function buildAndCacheNames(version: StaticVersion, key: string, file: str
   ]);
   const zipOf = new Map(GAME_TEXT_LANGUAGE_CODES.map((l, i) => [l, langZips[i]]));
   const en = parseTranslationsCsv(unzipFirst(enZip).toString('utf8'));
+  const strings = readWrappedArray(stringsBuf);
   const vectors = readWrappedArray(vectorsBuf);
   const tables = readTables(tablesBuf, NEEDED_TABLES);
   // Troop cards from battle reports (troop-effects.ts): its own file, read only
@@ -1578,7 +1617,7 @@ async function buildAndCacheNames(version: StaticVersion, key: string, file: str
     key,
   );
   const { names, texts, drift } = buildNamesInLanguages(
-    key, readWrappedArray(stringsBuf), vectors, tables, en,
+    key, strings, vectors, tables, en,
     (lang) => {
       const zip = zipOf.get(lang);
       if (!zip) return null;
@@ -1597,6 +1636,14 @@ async function buildAndCacheNames(version: StaticVersion, key: string, file: str
   fs.mkdirSync(dir, { recursive: true });
   for (const [lang, dict] of texts) writeGameTexts(dir, lang, key, dict);
   fs.writeFileSync(path.join(dir, TROOP_EFFECTS_FILE), JSON.stringify(troopEffects));
+  // Tools → Monsters (battle-data.ts). A patch whose armies can't be read keeps
+  // the previous patch's file (newestStaticFile) and says so on System.
+  const battle = makeBattleData(key, strings, vectors, tables, en);
+  if (battle.targets.length && Object.keys(battle.units).length) {
+    fs.writeFileSync(path.join(dir, BATTLE_DATA_FILE), JSON.stringify(battle));
+  } else {
+    log.warn(`Battle data: no monster armies found in static data ${key} — Tools → Monsters keeps the previous patch's.`);
+  }
   names.textLanguages = [...texts.keys()];
   if (texts.size < GAME_TEXT_LANGUAGE_CODES.length) textsRetryAt.set(key, Date.now() + TEXTS_RETRY_MS);
   // names.json last: its presence says the texts beside it are as complete as they will get.

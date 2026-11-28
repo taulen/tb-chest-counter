@@ -253,14 +253,31 @@ levels) names the fields; read Nov 26 2026:
   bigVisual, priceHospAttack, priceHospDefend, isWall, hospDefenderCooldown,
   attackPower (strength, f10), scoutPower, health (f12), crit, food,
   leadershipSupply, masterySupply, dominanceSupply, speed, loadCapacity, …]`
-  — f10 and f12 are verified (art-static.ts); the rest are named by the
-  metadata, not yet checked against the game's screens.
+  — f10 and f12 are verified (art-static.ts). Verified for battle data
+  (Nov 28 2026, [battle-data.ts](../src/game-protocol/battle-data.ts), against
+  374,502 strikes of shared reports and the wiki's 146 troops): f2 tier, f4
+  icon, f6 the hire price (empty `[{}, {}, 2]` for the map's monsters, which
+  is how a player's units are told apart), **f16 leadership, f17 authority,
+  f18 dominance**, each ×100 (Corax I 2000 = 20, Wyvern 6300 = 63, Fire
+  Phoenix I 5400 = 54 — the metadata's names for f15–f17 are one place off),
+  f23 tags (string refs: MELEE, MOUNTED, BEAST, GUARDSMEN, CITYWALLS,
+  EPICMONSTER…), f38 "vs" features `[[tagRefs], percent, multiplier ×100]`
+  (the multiplier is 2000 on a siege engine's feature against CITYWALLS: the
+  ×20 the citadel reports showed), f39 10 (walls 11). A trained troop or
+  mercenary appears again as a 75xxx row with the same numbers and no march
+  cost; armies carry the lower id.
+- **T7 Map objects**, for armies: f1 type (6 = an army on the map: monster
+  squads, citadels, enemy cities, vaults; 22 Exiles' Grove; 2 a player's
+  city), f6[1] the army `{unitId: count}` (walls are a unit, 51), f15 level,
+  f18 class (1 Common, 2 Rare, 3 Heroic, 4 citadel or enemy city, 5 Epic, 7 a
+  group raid, 8 Vault of the Ancients, 9 Abyss; 0 an older version). Every
+  current citadel's army equals the counts read off in-game march screens.
 
 Served public and path-versioned (`/game-art/<catalog>/<name>.png`, immutable)
 per [cloudflare-caching.md](cloudflare-caching.md); `GET /api/game-art` gives the
 names and mappings. Mappings: hero portrait by `game_players.hero_avatar` (= T13
 row id), every Tools troop and citadel defender (`troops`: TROOPS + DEFENDERS of
-`lib/citadel-sim.js`, by name + exact strength/health against T9 — all 162 match
+`lib/citadel-troops.js` (import-free, re-exported by citadel-sim.js), by name + exact strength/health against T9 — all 162 match
 since the one named from the wiki, "Many-Armed Giant", took the game's
 "Many-Armed Guardian"), tech and talent icons from T21 f3, chests and resources by name,
 captain portraits from T75, and the Ancient planner's pictures (`ancients`,
@@ -1505,10 +1522,10 @@ Each table has its own id space:
 | Table | Holds | Name |
 |---|---|---|
 | 4 | terrain types ("Dense forest") | f2 vector |
-| 7 | map objects | f3 vector |
+| 7 | map objects (armies: f6[1], f15 level, f18 class — battle-data.json, see T7 above) | f3 vector |
 | 8 | gift types — and every item (`items`, format 10: f1 kind, f8/f12 seconds, f10 quality, f7 fixed resource grants; see [Chest rewards](#chest-rewards-its-own-menu-entry-chest-rewards)) | f3 chest name, f14 source template |
 | 13 | hero avatars | f1 name, f3 icon |
-| 9 | units | f1 name, f2 tier (0–10), f4 icon, f10 strength, f12 health |
+| 9 | units (names in names.json `units`, format 17; the numbers in battle-data.json) | f1 name, f2 tier (0–10), f4 icon, f10 strength, f12 health, f16–f18 march cost, f23 tags, f38 features |
 | 21 | techs (research ~1000–1840, talents 25xxx/29xxx) | f1 name, f5 levels |
 | 62 | clan medals | f5 vector (f4 unlock text, f6 tier) |
 | 44 | events (tournaments), `$pairs` keyed `[[type, run], stage]` (asIdRecord joins it: "1024,1,1") | f10 config JSON → `info_title` ("global_tournament.client.value.clandoom_epic.info.title" = Rise of the Ancients) |
