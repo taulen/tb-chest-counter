@@ -51,7 +51,7 @@ import { loadPlayerEconomy, lossCosts, lossCostsHtml, pricesNoteHtml, templeFact
 import { suggestRows, keepSized, levelsSet, levelsLabel, setupStarts } from '../lib/troop-suggest.js';
 import { withGapsFilled } from '../lib/report-bonuses.js';
 import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
-import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
+import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevelChange, loadGameLevels, withGameLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 
 /** The count search runs this long after the last keystroke. */
 const SEARCH_DELAY_MS = 350;
@@ -257,8 +257,11 @@ export async function renderCitadelTool(mount) {
     decimalComma: draft?.decimalComma ?? false,
     presets: [],
     presetsError: false,
-    /** Unlocked troop tiers, per account (server); null = any. */
+    /** Unlocked troop tiers, per account (server); null = any — or the linked player's, from the game. */
     levels: { ...NO_LEVELS },
+    /** The account's saved levels, and the linked player's from their research (lib/troop-levels.js), once loaded. */
+    accountLevels: null,
+    gameLevels: null,
     selectedPreset: '',
     logOpener: 'citadel',
     /** Last count search: { key, ok, counts } — see scheduleSearch(). */
@@ -302,14 +305,20 @@ export async function renderCitadelTool(mount) {
     refresh(root);
   });
   paintAll(root);
-  const [presets, levels] = await Promise.allSettled([api('/tools/citadel-presets'), api('/tools/citadel-levels')]);
-  for (const r of [presets, levels]) {
+  const [presets, levels, game] = await Promise.allSettled([api('/tools/citadel-presets'), api('/tools/citadel-levels'), loadGameLevels()]);
+  for (const r of [presets, levels, game]) {
     const name = r.status === 'rejected' ? r.reason?.name : '';
     if (name === 'UnauthenticatedError' || name === 'AbortError') throw r.reason;
   }
   if (presets.status === 'fulfilled') cs.presets = presets.value?.presets ?? [];
   else cs.presetsError = true;
-  if (levels.status === 'fulfilled' && levels.value?.levels) cs.levels = { ...cs.levels, ...levels.value.levels };
+  if (levels.status === 'fulfilled' && levels.value?.levels) {
+    cs.accountLevels = { ...levels.value.levels };
+    cs.levels = { ...cs.levels, ...levels.value.levels };
+  }
+  // Linked here: the levels come from the player's research, as Tools → Costs does (lib/troop-levels.js).
+  cs.gameLevels = game.status === 'fulfilled' ? game.value : null;
+  cs.levels = withGameLevels(cs.levels, cs.gameLevels);
   paintAll(root);
 }
 
@@ -581,7 +590,7 @@ function topCardHtml() {
         </div>
       </div>
       <p class="citadel-inside"><span class="citadel-inside-label">${t('Inside')}</span>${inside}</p>
-      ${levelsHtml(cs.levels)}
+      ${levelsHtml(cs.levels, cs.gameLevels)}
       ${cs.presetsError ? `<p class="citadel-note tool-warn">${t('Your saved armies could not be loaded.')}</p>` : ''}
     </div>`;
 }
@@ -983,10 +992,23 @@ function onInput(e) {
 function onChange(e) {
   const el = e.target;
   const root = el.closest('.citadel-tool');
+  if (el instanceof HTMLSelectElement && el.hasAttribute('data-level-player')) {
+    // Another of the account's players here: their levels from their research.
+    const state = cs;
+    loadGameLevels(el.value).then((game) => {
+      if (cs !== state || !game) return;
+      cs.gameLevels = game;
+      cs.levels = withGameLevels(cs.levels, game);
+      paintAll(root);
+      root.querySelector('[data-level-player]')?.focus();
+    });
+    return;
+  }
   if (el instanceof HTMLSelectElement && applyLevelChange(cs.levels, el)) {
     paintAll(root);
     root.querySelector(`[data-level-kind="${el.dataset.levelKind}"]`)?.focus();
-    saveLevels(cs.levels).then((saved) => { if (saved && cs) cs.levels = saved; });
+    const state = cs;
+    saveLevelChange(cs.levels, cs.gameLevels, cs.accountLevels).then((saved) => { if (cs === state) cs.levels = saved; });
     return;
   }
   if (el instanceof HTMLSelectElement && el.dataset.cit === 'preset') {
@@ -1045,6 +1067,14 @@ async function onClick(e) {
   const pick = e.target.closest('[data-pick]');
   if (pick) {
     openPicker(pick.closest('.citadel-tool'), pick, pick.dataset.pick === 'add' ? 'add' : Number(pick.dataset.pick));
+    return;
+  }
+  if (e.target.closest('[data-level-reset]')) {
+    // Back to the levels the game read for the player.
+    const root = e.target.closest('.citadel-tool');
+    cs.levels = withGameLevels(cs.levels, cs.gameLevels);
+    paintAll(root);
+    root.querySelector('[data-level-kind="g"]')?.focus();
     return;
   }
   const btn = e.target.closest('[data-cit-action]');

@@ -23,7 +23,7 @@ import {
   MONSTER_MODES,
 } from '../lib/stack-calc.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
-import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
+import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevelChange, loadGameLevels, withGameLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
 import { parseBonus, nextFreeName } from './citadel-tool.js';
 import { withGapsFilled } from '../lib/report-bonuses.js';
 import { reportChoiceLabel } from '../lib/report-picker.js';
@@ -145,6 +145,9 @@ export async function renderStacksTool(mount) {
     selectedPreset: '',
     /** Unlocked troop tiers, per account (shared with Citadel); null = any. */
     levels: { ...NO_LEVELS },
+    /** The account's saved levels, and the linked player's from their research (lib/troop-levels.js), once loaded. */
+    accountLevels: null,
+    gameLevels: null,
   };
   mount.innerHTML = `
     <div class="citadel-tool stacks-tool">
@@ -158,14 +161,20 @@ export async function renderStacksTool(mount) {
   root.addEventListener('input', onInput);
   root.addEventListener('change', onChange);
   paintAll(root);
-  const [presets, levels] = await Promise.allSettled([api('/tools/stack-presets'), api('/tools/citadel-levels')]);
-  for (const r of [presets, levels]) {
+  const [presets, levels, game] = await Promise.allSettled([api('/tools/stack-presets'), api('/tools/citadel-levels'), loadGameLevels()]);
+  for (const r of [presets, levels, game]) {
     const name = r.status === 'rejected' ? r.reason?.name : '';
     if (name === 'UnauthenticatedError' || name === 'AbortError') throw r.reason;
   }
   if (presets.status === 'fulfilled') ss.presets = presets.value?.presets ?? [];
   else ss.presetsError = true;
-  if (levels.status === 'fulfilled' && levels.value?.levels) ss.levels = { ...ss.levels, ...levels.value.levels };
+  if (levels.status === 'fulfilled' && levels.value?.levels) {
+    ss.accountLevels = { ...levels.value.levels };
+    ss.levels = { ...ss.levels, ...levels.value.levels };
+  }
+  // Linked here: the levels come from the player's research, as Tools → Costs does (lib/troop-levels.js).
+  ss.gameLevels = game.status === 'fulfilled' ? game.value : null;
+  ss.levels = withGameLevels(ss.levels, ss.gameLevels);
   if (root.isConnected) paintAll(root);
 }
 
@@ -280,7 +289,7 @@ function armyCardHtml(plan) {
         ${presetsHtml()}
       </div>
       <div class="tool-tile-body">
-        ${levelsHtml(ss.levels)}
+        ${levelsHtml(ss.levels, ss.gameLevels)}
         ${ss.presetsError ? `<p class="citadel-note tool-warn">${t('Your saved armies could not be loaded.')}</p>` : ''}
         <p class="citadel-note stacks-intro">${t('The strongest guardsman or specialist you add is the base stack; every other stack is sized from it. Health bonuses are optional: type them from each troop\'s card for exact counts.')}</p>
         ${ss.rows.length ? `<div class="citadel-from-report"><button type="button" class="btn btn-sm" data-stk-action="from-report">${t('Fill in health from a battle report')}</button></div>` : ''}
@@ -615,10 +624,23 @@ function onInput(e) {
 function onChange(e) {
   const el = e.target;
   const root = el.closest('.stacks-tool');
+  if (el instanceof HTMLSelectElement && el.hasAttribute('data-level-player')) {
+    // Another of the account's players here: their levels from their research.
+    const state = ss;
+    loadGameLevels(el.value).then((game) => {
+      if (ss !== state || !game) return;
+      ss.gameLevels = game;
+      ss.levels = withGameLevels(ss.levels, game);
+      paintAll(root);
+      root.querySelector('[data-level-player]')?.focus();
+    });
+    return;
+  }
   if (el instanceof HTMLSelectElement && applyLevelChange(ss.levels, el)) {
     paintAll(root);
     root.querySelector(`[data-level-kind="${el.dataset.levelKind}"]`)?.focus();
-    saveLevels(ss.levels).then((saved) => { if (saved && ss) ss.levels = saved; });
+    const state = ss;
+    saveLevelChange(ss.levels, ss.gameLevels, ss.accountLevels).then((saved) => { if (ss === state) ss.levels = saved; });
     return;
   }
   if (el instanceof HTMLSelectElement && el.dataset.stk === 'preset') {
@@ -660,6 +682,14 @@ async function onClick(e) {
   const pick = e.target.closest('[data-pick]');
   if (pick) {
     openPicker(pick.closest('.stacks-tool'), pick, pick.dataset.pick === 'add' ? 'add' : Number(pick.dataset.pick));
+    return;
+  }
+  if (e.target.closest('[data-level-reset]')) {
+    // Back to the levels the game read for the player.
+    const root = e.target.closest('.stacks-tool');
+    ss.levels = withGameLevels(ss.levels, ss.gameLevels);
+    paintAll(root);
+    root.querySelector('[data-level-kind="g"]')?.focus();
     return;
   }
   const btn = e.target.closest('[data-stk-action]');

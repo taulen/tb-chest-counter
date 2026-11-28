@@ -48,7 +48,7 @@ import {
 import { tierUnlocked, tierInWindow } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
 import { pickBattleReport, reportChoiceLabel, loadReportArmies } from '../lib/report-picker.js';
-import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelKindLabel } from '../lib/troop-levels.js';
+import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevelChange, loadGameLevels, withGameLevels, levelKindLabel } from '../lib/troop-levels.js';
 import { parseBonus } from './citadel-tool.js';
 
 const DRAFT_KEY = 'tbcc.monsters.draft.v1';
@@ -187,6 +187,9 @@ export async function renderMonsterTool(mount) {
     /** The battle the rows were suggested from ({ label, at }), shown above them; null for rows typed or filled in. */
     suggestedFrom: draft?.suggestedFrom ?? null,
     levels: { ...NO_LEVELS },
+    /** The account's saved levels, and the linked player's from their research (lib/troop-levels.js), once loaded. */
+    accountLevels: null,
+    gameLevels: null,
     logOpener: 'enemy',
     search: null,
     /** The search running now: { key, done, total, phase } (its progress bar), or null. */
@@ -214,8 +217,14 @@ export async function renderMonsterTool(mount) {
   root.addEventListener('change', onChange);
   paintAll(root);
   try {
-    const res = await api('/tools/citadel-levels');
-    if (res?.levels) ms.levels = { ...ms.levels, ...res.levels };
+    const [res, game] = await Promise.all([api('/tools/citadel-levels'), loadGameLevels()]);
+    if (res?.levels) {
+      ms.accountLevels = { ...res.levels };
+      ms.levels = { ...ms.levels, ...res.levels };
+    }
+    // Linked here: the levels come from the player's research, as Tools → Costs does (lib/troop-levels.js).
+    ms.gameLevels = game;
+    ms.levels = withGameLevels(ms.levels, game);
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
   }
@@ -452,7 +461,7 @@ function topCardHtml() {
         <p class="citadel-inside monster-led"><span class="citadel-inside-label">${t('Attack')}</span>${esc(ledByText(target))}</p>` : ''}
       ${lvl && lvl.variants.length > 1 ? `<p class="citadel-note muted-copy">${t('The game keeps more than one version of this level. Pick the one whose army you see on the map.')}</p>` : ''}
       <p class="citadel-note muted-copy monster-citadel-link">${t('Citadels are in {link}: it sizes the siege engine, the first striker and the cleanups the way citadels need.', { link: `<a href="#tools/citadel">${esc(t('Citadel'))}</a>` })}</p>
-      ${levelsHtml(ms.levels)}
+      ${levelsHtml(ms.levels, ms.gameLevels)}
     </div>`;
 }
 
@@ -749,10 +758,23 @@ function onInput(e) {
 function onChange(e) {
   const el = e.target;
   const root = el.closest('.monster-tool');
+  if (el instanceof HTMLSelectElement && el.hasAttribute('data-level-player')) {
+    // Another of the account's players here: their levels from their research.
+    const state = ms;
+    loadGameLevels(el.value).then((game) => {
+      if (ms !== state || !game) return;
+      ms.gameLevels = game;
+      ms.levels = withGameLevels(ms.levels, game);
+      paintAll(root);
+      root.querySelector('[data-level-player]')?.focus();
+    });
+    return;
+  }
   if (el instanceof HTMLSelectElement && applyLevelChange(ms.levels, el)) {
     paintAll(root);
     root.querySelector(`[data-level-kind="${el.dataset.levelKind}"]`)?.focus();
-    saveLevels(ms.levels).then((saved) => { if (saved && ms) ms.levels = saved; });
+    const state = ms;
+    saveLevelChange(ms.levels, ms.gameLevels, ms.accountLevels).then((saved) => { if (ms === state) ms.levels = saved; });
     return;
   }
   if (el instanceof HTMLSelectElement && el.dataset.mon) {
@@ -795,6 +817,14 @@ function onChange(e) {
 }
 
 async function onClick(e) {
+  if (e.target.closest('[data-level-reset]')) {
+    // Back to the levels the game read for the player.
+    const root = e.target.closest('.monster-tool');
+    ms.levels = withGameLevels(ms.levels, ms.gameLevels);
+    paintAll(root);
+    root.querySelector('[data-level-kind="g"]')?.focus();
+    return;
+  }
   const pick = e.target.closest('[data-pick]');
   if (pick) {
     openPicker(pick.closest('.monster-tool'), pick, pick.dataset.pick === 'add' ? 'add' : Number(pick.dataset.pick));

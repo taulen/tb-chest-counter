@@ -800,6 +800,46 @@ export function createGameRouter(): Router {
    * clan's own research levels. Only the caller's own players; an account
    * linked to none gets `player: null`.
    */
+  /**
+   * The linked player's troop levels — their tier in Guardsmen, Specialists,
+   * Monsters and Engineers from their research (tier-costs.ts: the highest
+   * tier they have a unit of) — for the "Your levels" card of Tools → Citadel,
+   * Monsters and Stacks. Picked as Tools → Costs picks: the account's players
+   * in the ACTIVE clan, its main one unless `?player=` names another of them.
+   * `player` null: not linked here; `levels` null: not read from the game yet.
+   */
+  router.get('/research-levels', async (req, res) => {
+    const clanId = req.clanId!;
+    const links = req.user ? linksInClan(req.user.id, clanId) : [];
+    const asked = Number.parseInt(String(req.query.player ?? ''), 10);
+    const link = links.find((l) => l.playerId === asked) ?? (req.user ? mainLink(req.user.id, clanId) : null);
+    const players = links.map((l) => ({ playerId: l.playerId, name: l.playerName }));
+    if (!link) {
+      res.json({ players, player: null });
+      return;
+    }
+    const who = { playerId: link.playerId, name: link.playerName };
+    const mine = getPlayerTechs(clanId, link.playerId);
+    if (!mine.readAt) {
+      res.json({ players, player: { ...who, readAt: null, levels: null } });
+      return;
+    }
+    try {
+      const [trees, levels] = await Promise.all([loadTechTrees(), loadTechLevels()]);
+      if (!levels) throw new Error('no research levels');
+      const tiers = tiersForPlayer(memoTierCosts(trees, levels), mine.levels, levels);
+      // Every player starts at tier 1, and monsters at tier 3 — no lower monster tier exists (the user,
+      // Nov 28 2026): research alone never reads below that.
+      const of = (family: string, floor = 1) => Math.max(floor, tiers.find((f) => f.family === family)?.current ?? floor);
+      res.json({
+        players,
+        player: { ...who, readAt: mine.readAt, levels: { g: of('guardsmen'), s: of('specialists'), m: of('monsters', 3), e: of('engineers') } },
+      });
+    } catch {
+      res.status(503).json({ error: 'Research levels are not available yet' });
+    }
+  });
+
   router.get('/research-progress', async (req, res) => {
     const clanId = req.clanId!;
     const links = req.user ? linksInClan(req.user.id, clanId) : [];
