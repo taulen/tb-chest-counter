@@ -13,7 +13,10 @@
  */
 import { Router } from 'express';
 import { REPORT_WINDOW_DAYS, loadCitadels, reportArmiesFor, reportPlayers } from '../../data/report-armies.js';
-import { battleDataResponse } from '../../data/battle-data.js';
+import { battleDataResponse, loadBattleData } from '../../data/battle-data.js';
+import { playerEconomy } from '../../data/player-economy.js';
+import { latestCityReads } from '../../data/repositories/game-protocol-repo.js';
+import type { CityStats } from '../../game-protocol/city-stats.js';
 import { loadGameNames } from '../../game-protocol/static-data.js';
 import { waitingReportCount } from '../../data/repositories/battle-report-repo.js';
 import { linksForUser } from '../../data/repositories/account-invite-repo.js';
@@ -109,6 +112,30 @@ export function createToolsRouter(): Router {
     res.json({
       linked: own.length > 0, players, player, reports, waiting: waitingReportCount(),
       windowDays: REPORT_WINDOW_DAYS, only: citadels ? 'citadels' : null,
+    });
+  });
+
+  /**
+   * What losses cost the viewer's own linked players (data/player-economy.ts):
+   * per player, the training discounts per troop kind, the Temple's level and
+   * the strength bonus against epic monsters, from their newest city read.
+   * Only the account's own players: Citadel and Monsters plan for them.
+   */
+  router.get('/player-economy', (req, res) => {
+    const links = linksForUser(req.user!.id);
+    const own = [...new Map(links.map((l) => [l.playerId, l])).values()];
+    const reads = new Map(latestCityReads(own.map((l) => l.playerId)).map((r) => [r.playerId, r]));
+    const templeType = loadBattleData()?.temple?.type ?? null;
+    res.json({
+      players: own.map((l) => {
+        const r = reads.get(l.playerId);
+        return {
+          playerId: l.playerId,
+          name: l.playerName,
+          day: r?.gameDate ?? null,
+          ...playerEconomy((r?.stats as CityStats | null) ?? null, r?.buildings ?? null, templeType),
+        };
+      }),
     });
   });
 

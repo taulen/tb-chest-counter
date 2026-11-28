@@ -41,11 +41,13 @@ import {
   troopTier,
   troopUnlocked,
   troopInWindow,
+  PROTECTED_GROUPS,
 } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
 import { searchArmy, cancelArmySearch } from '../lib/army-search.js';
 import { progressHtml, paintProgress } from '../lib/search-progress.js';
 import { loadArmyStarts, startsFrom, citadelExemplars } from '../lib/army-starts.js';
+import { loadPlayerEconomy, lossCosts, lossCostsHtml, pricesNoteHtml, templeFactor } from '../lib/loss-costs.js';
 import { withGapsFilled } from '../lib/report-bonuses.js';
 import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
@@ -210,6 +212,7 @@ function loadDraft() {
       bonusesFrom: typeof d.bonusesFrom === 'string' ? d.bonusesFrom : null,
       bonusesReport: typeof d.bonusesReport === 'string' ? d.bonusesReport : null,
       decimalComma: d.decimalComma === true,
+      pricePlayer: Number.isFinite(d.pricePlayer) ? d.pricePlayer : null,
     };
   } catch {
     return null;
@@ -220,6 +223,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       citadelId: cs.citadelId, rows: cs.rows, countMode: cs.countMode, bonusesAt: cs.bonusesAt, bonusesFrom: cs.bonusesFrom, bonusesReport: cs.bonusesReport, decimalComma: cs.decimalComma,
+      pricePlayer: cs.pricePlayer,
     }));
   } catch { /* private mode — the draft just isn't kept */ }
 }
@@ -251,6 +255,15 @@ export async function renderCitadelTool(mount) {
     search: null,
     /** The search running now: { key, done, total, phase } (its progress bar), or null. */
     progress: null,
+    /** The viewer's own linked players and what their losses cost (lib/loss-costs.js). */
+    economy: [],
+    /** Whose prices: a report's own player, else the first linked one (draft keeps the pick). */
+    pricePlayer: draft?.pricePlayer ?? null,
+    /** That player's training discounts per kind (%), or null: the game's list prices. */
+    discounts: null,
+    /** The game's prices by troop id and the Temple's factors (loadPrices), once loaded. */
+    prices: null,
+    temple: null,
   };
   mount.innerHTML = `
     <div class="citadel-tool">
@@ -265,6 +278,17 @@ export async function renderCitadelTool(mount) {
   root.addEventListener('change', onChange);
   root.addEventListener('pointerdown', onDragStart);
   root.addEventListener('keydown', onDragKey);
+  // What losses cost: the game's prices and the player's discounts and Temple. The
+  // search re-runs once they're in (the discounts are part of its key).
+  const state = cs;
+  Promise.all([loadPlayerEconomy(), loadPrices()]).then(([players, priced]) => {
+    if (cs !== state || !root.isConnected) return;
+    cs.economy = players;
+    cs.prices = priced?.prices ?? null;
+    cs.temple = priced?.temple ?? null;
+    pickPricePlayer();
+    refresh(root);
+  });
   paintAll(root);
   const [presets, levels] = await Promise.allSettled([api('/tools/citadel-presets'), api('/tools/citadel-levels')]);
   for (const r of [presets, levels]) {
@@ -317,17 +341,26 @@ function countMode() {
 
 /** What the search depends on — when this changes, the counts are searched again. */
 function searchKey() {
-  return JSON.stringify([cs.citadelId, cs.rows.map((r) => [r.troopId, r.strengthPct, r.healthPct])]);
+  return JSON.stringify([cs.citadelId, cs.rows.map((r) => [r.troopId, r.strengthPct, r.healthPct]), cs.discounts]);
+}
+
+/** Price for the picked own player (else the first), and take their training discounts. */
+function pickPricePlayer() {
+  if (!cs.economy.some((p) => p.playerId === cs.pricePlayer)) cs.pricePlayer = cs.economy[0]?.playerId ?? null;
+  const p = cs.economy.find((x) => x.playerId === cs.pricePlayer);
+  const d = p?.training ?? null;
+  cs.discounts = d && Object.values(d).some((v) => Number.isFinite(v)) ? d : null;
 }
 
 let searchTimer = null;
 
 let pricesLoading = null;
 /**
- * What a lost troop costs, by Citadel troop id: { train: Silver to train a
- * new one, revive: Gold to revive it } from the game's own data
- * (battle-data.json, a unit matched by name and strength). Null when it can't
- * be loaded: the search then weighs losses by base health, as before.
+ * What a lost troop costs, by Citadel troop id: { prices: { [troopId]: { train:
+ * Silver to train a new one, revive: Gold to revive it } }, temple: the
+ * Temple's factor per level } from the game's own data (battle-data.json, a
+ * unit matched by name and strength). Null when it can't be loaded: the search
+ * then weighs losses by base health, as before, and no costs are shown.
  */
 function loadPrices() {
   if (!pricesLoading) {
@@ -342,8 +375,9 @@ function loadPrices() {
           const u = byName.get(`${t.name.toLowerCase()}|${t.str}`);
           if (u) prices[t.id] = { train: u.train, revive: u.revive };
         }
-        return prices;
+        return { prices, temple: data?.temple ?? null };
       } catch {
+        pricesLoading = null;
         return null;
       }
     })();
@@ -368,8 +402,9 @@ function scheduleSearch(root) {
   searchTimer = setTimeout(async () => {
     if (!cs || searchKey() !== key || !root.isConnected || cs.progress?.key === key) return;
     // Learned starts: other armies' best answers for this citadel, carried over (lib/army-starts.js).
-    const [lib, prices] = await Promise.all([loadArmyStarts(), loadPrices()]);
+    const [lib, priced] = await Promise.all([loadArmyStarts(), loadPrices()]);
     if (!cs || searchKey() !== key || !root.isConnected || cs.progress?.key === key) return;
+    const prices = priced?.prices ?? null;
     const gm = gmCounts(cs.citadelId, cs.rows.map((r) => ({ ...r, healthPct: r.healthPct ?? 0 })));
     const starts = [cs.rows.map((r) => r.count)];
     if (gm.some((n) => n !== null)) starts.push(gm.map((n) => (Number.isFinite(n) ? n : 0)));
@@ -725,7 +760,20 @@ function paintResults(root, a) {
     </div>
     <p class="citadel-avg muted-copy">${t('Who strikes first after the walls is a coin flip. Average: {lost}.', { lost: avg === 0 ? t('no losses') : tn(avg, '{n} troop lost', '{n} troops lost', { n: avg.toLocaleString() }) })}
       ${t('Luck (double damage, hitting two squads, a blocked strike) is not included.')}</p>
+    ${cs.prices && (lostOf(both.you) || lostOf(both.citadel))
+    ? pricesNoteHtml(cs.economy, cs.pricePlayer, { revived: [both.you, both.citadel].some((res) => costOf(res).gold > 0) })
+    : ''}
     ${logHtml(both)}`;
+}
+
+/** What an outcome's losses cost the priced player (lib/loss-costs.js); zeros before the prices are in. */
+function costOf(r) {
+  if (!cs.prices) return { silver: 0, gold: 0, unpriced: 0 };
+  const p = cs.economy.find((x) => x.playerId === cs.pricePlayer);
+  return lossCosts(r.army.filter((s) => s.lost > 0).map((s) => {
+    const def = troopById(s.troopId);
+    return { lost: s.lost, protected: PROTECTED_GROUPS.has(def.group), kind: def.group, ...cs.prices[s.troopId] };
+  }), { discounts: cs.discounts, temple: templeFactor(cs.temple, p?.templeLevel) });
 }
 
 function outcomeHtml(r, title, opener) {
@@ -756,6 +804,7 @@ function outcomeHtml(r, title, opener) {
       <div class="citadel-outcome-head"><h3>${esc(title)}</h3>${verdict}</div>
       ${headline}
       ${list ? `<ul class="citadel-losses">${list}</ul>` : ''}
+      ${lossCostsHtml(costOf(r), 'loss-costs citadel-cost')}
       ${why ? `<p class="citadel-why">${why}</p>` : ''}
       <p class="citadel-meta muted-copy">${meta ? `${meta} · ` : ''}<span class="citadel-outcome-pick-hint">${esc(pick)}${selected ? ' ↓' : ''}</span></p>
       <button type="button" class="citadel-outcome-pick" data-cit-action="log" data-opener="${opener}" aria-pressed="${selected}"
@@ -912,6 +961,14 @@ function onChange(e) {
     paintAll(root);
     return;
   }
+  if (el instanceof HTMLSelectElement && el.hasAttribute('data-price-player')) {
+    // Another linked player's prices: their discounts can change the counts too (the search re-runs).
+    cs.pricePlayer = Number(el.value);
+    pickPricePlayer();
+    refresh(root);
+    root.querySelector('[data-price-player]')?.focus();
+    return;
+  }
   if (el instanceof HTMLInputElement && el.dataset.field && !el.readOnly) {
     // Settle what onInput left: show the stored value back.
     const row = cs.rows[Number(el.dataset.row)];
@@ -1043,6 +1100,11 @@ async function fillFromReport(root) {
   }
   cs.bonusesAt = report.at;
   cs.bonusesFrom = null;
+  // One of the viewer's own players fought it: price the losses at their discounts.
+  if (cs.economy.some((p) => p.playerId === report.attacker?.playerId)) {
+    cs.pricePlayer = report.attacker.playerId;
+    pickPricePlayer();
+  }
   cs.bonusesReport = `${reportChoiceLabel(report)}${report.attacker?.name ? ` · ${report.attacker.name}` : ''}`
     + (borrowed.length ? ` + ${tn(borrowed.length, '{n} more battle', '{n} more battles')}` : '');
   saveDraft();

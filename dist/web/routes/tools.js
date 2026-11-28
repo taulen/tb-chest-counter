@@ -17,6 +17,8 @@ exports.createToolsRouter = createToolsRouter;
 const express_1 = require("express");
 const report_armies_js_1 = require("../../data/report-armies.js");
 const battle_data_js_1 = require("../../data/battle-data.js");
+const player_economy_js_1 = require("../../data/player-economy.js");
+const game_protocol_repo_js_1 = require("../../data/repositories/game-protocol-repo.js");
 const static_data_js_1 = require("../../game-protocol/static-data.js");
 const battle_report_repo_js_1 = require("../../data/repositories/battle-report-repo.js");
 const account_invite_repo_js_1 = require("../../data/repositories/account-invite-repo.js");
@@ -94,6 +96,29 @@ function createToolsRouter() {
         res.json({
             linked: own.length > 0, players, player, reports, waiting: (0, battle_report_repo_js_1.waitingReportCount)(),
             windowDays: report_armies_js_1.REPORT_WINDOW_DAYS, only: citadels ? 'citadels' : null,
+        });
+    });
+    /**
+     * What losses cost the viewer's own linked players (data/player-economy.ts):
+     * per player, the training discounts per troop kind, the Temple's level and
+     * the strength bonus against epic monsters, from their newest city read.
+     * Only the account's own players: Citadel and Monsters plan for them.
+     */
+    router.get('/player-economy', (req, res) => {
+        const links = (0, account_invite_repo_js_1.linksForUser)(req.user.id);
+        const own = [...new Map(links.map((l) => [l.playerId, l])).values()];
+        const reads = new Map((0, game_protocol_repo_js_1.latestCityReads)(own.map((l) => l.playerId)).map((r) => [r.playerId, r]));
+        const templeType = (0, battle_data_js_1.loadBattleData)()?.temple?.type ?? null;
+        res.json({
+            players: own.map((l) => {
+                const r = reads.get(l.playerId);
+                return {
+                    playerId: l.playerId,
+                    name: l.playerName,
+                    day: r?.gameDate ?? null,
+                    ...(0, player_economy_js_1.playerEconomy)(r?.stats ?? null, r?.buildings ?? null, templeType),
+                };
+            }),
         });
     });
     /**

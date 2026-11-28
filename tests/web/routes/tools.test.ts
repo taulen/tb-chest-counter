@@ -17,6 +17,8 @@ import { requireAuth, requireClanContext, SESSION_COOKIE_NAME } from '../../../s
 import { makeTestDb, seedTwoClans } from '../../helpers/test-db.js';
 import * as userRepo from '../../../src/data/repositories/user-repo.js';
 import { BUILT_IN_ANCIENT_DEFAULTS } from '../../../src/config/ancient-planner-defaults.js';
+import { getDb } from '../../../src/data/database.js';
+import { saveCitySnapshot } from '../../../src/data/repositories/game-protocol-repo.js';
 
 const SETTINGS = { level: 135, tomeLevel: 26, missing: 5, trick: 10, margin: 12, unknownAs: 'g6', summons: 4 };
 
@@ -319,5 +321,50 @@ describe('/api/tools/stack-presets', () => {
     const again = await send('put', '/api/tools/stack-presets', 'user1', { name: 'S7', data: { ...DATA, settings: { ...SETTINGS, baseCount: 800 } } });
     expect(again.status).toBe(200);
     expect(again.body.preset.data.settings.baseCount).toBe(800);
+  });
+});
+
+describe('/api/tools/player-economy', () => {
+  let app: express.Express;
+  let cleanup: () => void;
+  let cookies: Record<'user1' | 'user2', string>;
+  let ids: Record<'user1' | 'user2', number>;
+
+  beforeEach(() => {
+    cleanup = makeTestDb().cleanup;
+    seedTwoClans();
+    const su = userRepo.createUser('su', 'Test1234!aA', 'superadmin');
+    const u1 = userRepo.createUser('u1', 'Test1234!aA', 'user', su.id, 1);
+    const u2 = userRepo.createUser('u2', 'Test1234!aA', 'user', su.id, 1);
+    ids = { user1: u1.id, user2: u2.id };
+    cookies = { user1: `${SESSION_COOKIE_NAME}=${userRepo.createSession(u1.id)}`, user2: `${SESSION_COOKIE_NAME}=${userRepo.createSession(u2.id)}` };
+    const link = getDb().prepare('INSERT INTO user_game_links (user_id, clan_id, player_id, player_name, linked_at, synced_at) VALUES (?, 1, ?, ?, ?, ?)');
+    link.run(u1.id, 501, 'Main', '2026-11-01', '2026-11-01');
+    link.run(u1.id, 502, 'Alt', '2026-11-01', '2026-11-01');
+    link.run(u2.id, 601, 'Someone', '2026-11-01', '2026-11-01');
+    // Two reads of the main account: the newer one counts.
+    saveCitySnapshot(1, 501, '2026-11-26', { techCount: 0, buildings: { 8: { type: 9, level: 44 } }, dragon: {}, stats: { "3:Guardsmen's training cost": [-70, 0] } });
+    saveCitySnapshot(1, 501, '2026-11-27', {
+      techCount: 0, buildings: { 8: { type: 9, level: 45 } }, dragon: {},
+      stats: { "3:Guardsmen's training cost": [-78, 0], "3:Specialists' training cost": [-75, 0], '113:Strength of your entire army against epic monsters': [96, 0] },
+    });
+    saveCitySnapshot(1, 601, '2026-11-27', { techCount: 0, buildings: {}, dragon: {}, stats: { "3:Guardsmen's training cost": [-10, 0] } });
+    app = express();
+    app.use(express.json());
+    app.use('/api/tools', requireAuth, requireClanContext, createToolsRouter());
+  });
+
+  afterEach(() => cleanup());
+
+  it('gives each of the account\'s own players their newest read: discounts per kind and the epic bonus; a player never read is still listed', async () => {
+    const r = await request(app).get('/api/tools/player-economy').set('Accept', 'application/json').set('Cookie', cookies.user1);
+    expect(r.status).toBe(200);
+    const main = r.body.players.find((p: { playerId: number }) => p.playerId === 501);
+    expect(main).toMatchObject({ name: 'Main', day: '2026-11-27', training: { guardsmen: -78, specialists: -75, siege: null }, epicStrength: 96 });
+    const alt = r.body.players.find((p: { playerId: number }) => p.playerId === 502);
+    expect(alt).toMatchObject({ name: 'Alt', day: null, training: { guardsmen: null, specialists: null, siege: null }, templeLevel: null });
+    // Another account's player is never in it.
+    expect(r.body.players.map((p: { playerId: number }) => p.playerId).sort()).toEqual([501, 502]);
+    expect(ids.user2).toBeGreaterThan(0);
   });
 });

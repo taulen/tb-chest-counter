@@ -23,9 +23,10 @@ export function enemyKilled(res) {
 
 /**
  * One coin flip's card: verdict, what it cost, what it killed when it isn't
- * won, and a stretched button that picks it for the strike list.
+ * won, and a stretched button that picks it for the strike list. `costs`: an
+ * HTML line of what the losses cost (lib/loss-costs.js lossCostsHtml), or ''.
  */
-export function outcomeHtml(res, { title, opener, selected, view, action }) {
+export function outcomeHtml(res, { title, opener, selected, view, action, costs = '' }) {
   const lostRows = res.army.filter((s) => s.lost > 0);
   const total = lostRows.reduce((x, s) => x + s.lost, 0);
   const verdict = res.won
@@ -56,8 +57,9 @@ export function outcomeHtml(res, { title, opener, selected, view, action }) {
       <div class="citadel-outcome-head"><h3>${esc(title)}</h3>${verdict}</div>
       ${headline}
       ${list ? `<ul class="citadel-losses">${list}</ul>` : ''}
+      ${costs}
       ${why ? `<p class="citadel-why">${why}</p>` : ''}
-      <p class="citadel-meta muted-copy">${meta} · <span class="citadel-outcome-pick-hint">${esc(pick)}${selected ? ' ↓' : ''}</span></p>
+      <p class="citadel-meta muted-copy">${meta} ·<span class="citadel-outcome-pick-hint">${esc(pick)}${selected ? ' ↓' : ''}</span></p>
       <button type="button" class="citadel-outcome-pick" data-${action}="log" data-opener="${esc(opener)}" aria-pressed="${selected}"
         aria-label="${esc(`${title}: ${t('Show the strikes')}`)}"></button>
     </div>`;

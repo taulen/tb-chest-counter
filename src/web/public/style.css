@@ -9436,6 +9436,11 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .search-progress { margin: 8px 0 2px; }
 .search-progress-bar .ui-bar-fill { background: var(--accent-gold); transition: width 160ms linear; }
 @media (prefers-reduced-motion: reduce) { .search-progress-bar .ui-bar-fill { transition: none; } }
+
+/* What a result's losses cost, Citadel and Monsters (lib/loss-costs.js): Silver to train, Gold to revive, and whose prices. */
+.loss-costs { margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.loss-costs-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 0; }
+.loss-costs-player select { max-width: 100%; min-height: 32px; padding: 2px 8px; }
 .citadel-waiting p { margin: 0 0 4px; }
 
 /* Strike list: read like the game's battle report, one hit per line. */

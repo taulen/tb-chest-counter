@@ -11,6 +11,7 @@ exports.clanWonLedgerEntries = clanWonLedgerEntries;
 exports.ledgerFirstEntryAt = ledgerFirstEntryAt;
 exports.saveTechs = saveTechs;
 exports.saveCitySnapshot = saveCitySnapshot;
+exports.latestCityReads = latestCityReads;
 exports.updateCityStats = updateCityStats;
 exports.updateCitySpeeds = updateCitySpeeds;
 exports.vipAt = vipAt;
@@ -273,6 +274,35 @@ function saveCitySnapshot(clanId, playerId, gameDate, snap, now = new Date().toI
     // city-stats.ts, or NULL.
     (0, database_js_1.getDb)().prepare(`INSERT OR REPLACE INTO game_city_snapshots (clan_id, player_id, game_date, captured_at, tech_count, buildings, hero, speeds, stats)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(clanId, playerId, gameDate, now, snap.techCount, JSON.stringify(snap.buildings), JSON.stringify(snap.dragon), snap.speeds ? JSON.stringify(snap.speeds) : null, snap.stats ? JSON.stringify(snap.stats) : null);
+}
+/**
+ * Each player's newest city read that has its bonuses (`stats`), in any clan:
+ * the bonuses and the buildings, for what their losses cost (player-economy.ts).
+ * Players never read are left out.
+ */
+function latestCityReads(playerIds) {
+    if (!playerIds.length)
+        return [];
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT player_id, game_date, stats, buildings FROM game_city_snapshots
+     WHERE stats IS NOT NULL AND player_id IN (${playerIds.map(() => '?').join(',')})
+     ORDER BY player_id, game_date DESC`).all(...playerIds);
+    const out = new Map();
+    for (const r of rows) {
+        if (out.has(r.player_id))
+            continue;
+        let stats = null;
+        let buildings = null;
+        try {
+            stats = JSON.parse(r.stats);
+        }
+        catch { /* unreadable: no bonuses */ }
+        try {
+            buildings = JSON.parse(r.buildings);
+        }
+        catch { /* unreadable: no Temple */ }
+        out.set(r.player_id, { playerId: r.player_id, gameDate: r.game_date, stats, buildings });
+    }
+    return [...out.values()];
 }
 /** The same as updateCitySpeeds for every bonus (city-stats.ts). */
 function updateCityStats(clanId, playerId, gameDate, stats) {

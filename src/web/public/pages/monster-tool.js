@@ -15,10 +15,14 @@ import { api } from '../lib/api.js';
 import { esc, notify, contentModal, copyTextToClipboard, formatRelativeTime } from '../lib/ui.js';
 import { errorStateHtml, wireRetry } from '../lib/ui-kit.js';
 import { t, tn, tGame } from '../lib/i18n.js';
-import { simulateBothArmies } from '../lib/battle-sim.js';
+import { simulateBothArmies, EXPLORE_WORK } from '../lib/battle-sim.js';
+
+/** Monsters' search work: 4× the explore search's default (docs/monster-simulator.md, "Learned starts"). */
+const MONSTER_WORK = 4 * EXPLORE_WORK;
 import { searchArmy, cancelArmySearch } from '../lib/army-search.js';
 import { progressHtml, paintProgress } from '../lib/search-progress.js';
 import { loadArmyStarts, startsFrom, exemplarsFor } from '../lib/army-starts.js';
+import { loadPlayerEconomy, lossCosts, lossCostsHtml, pricesNoteHtml, templeFactor } from '../lib/loss-costs.js';
 
 /**
  * A lost troop's price: a monster or mercenary its revival Gold (`revive`), a
@@ -119,7 +123,7 @@ function loadDraft() {
       decimalComma: d.decimalComma === true,
       suggestPlayer: Number.isFinite(Number(d.suggestPlayer)) && d.suggestPlayer !== null ? Number(d.suggestPlayer) : null,
       suggestedFrom: d.suggestedFrom && typeof d.suggestedFrom.label === 'string' && typeof d.suggestedFrom.at === 'string'
-        ? { label: d.suggestedFrom.label, at: d.suggestedFrom.at, lead: typeof d.suggestedFrom.lead === 'string' ? d.suggestedFrom.lead : null, matched: d.suggestedFrom.matched !== false }
+        ? { label: d.suggestedFrom.label, at: d.suggestedFrom.at, lead: typeof d.suggestedFrom.lead === 'string' ? d.suggestedFrom.lead : null, matched: d.suggestedFrom.matched !== false, epic: d.suggestedFrom.epic === true ? true : d.suggestedFrom.epic === false ? false : null }
         : null,
     };
   } catch {
@@ -187,6 +191,10 @@ export async function renderMonsterTool(mount) {
     search: null,
     /** The search running now: { key, done, total, phase } (its progress bar), or null. */
     progress: null,
+    /** The viewer's own linked players and what their losses cost (lib/loss-costs.js). */
+    economy: [],
+    /** The Suggest player's training discounts per kind (%), or null: the game's list prices. */
+    discounts: null,
   };
   if (!currentTarget()) {
     // A level a patch removed: the same target's nearest level, else the first target.
@@ -219,6 +227,27 @@ export async function renderMonsterTool(mount) {
   if (!ms.ownPlayers.some((p) => p.playerId === ms.suggestPlayer)) ms.suggestPlayer = ms.ownPlayers[0]?.playerId ?? null;
   const slot = root.querySelector('.monster-player-slot');
   if (slot) slot.innerHTML = playerSelectHtml();
+  // What losses cost the Suggest player: their discounts change the counts (the search re-runs).
+  ms.economy = await loadPlayerEconomy();
+  if (!ms || !root.isConnected) return;
+  takeDiscounts();
+  paintAll(root);
+}
+
+/** The Suggest player's training discounts (else the first own player's), or null. */
+function takeDiscounts() {
+  const p = ms.economy.find((x) => x.playerId === ms.suggestPlayer) ?? ms.economy[0] ?? null;
+  const d = p?.training ?? null;
+  ms.discounts = d && Object.values(d).some((v) => Number.isFinite(v)) ? d : null;
+}
+
+/** What an outcome's losses cost the Suggest player (lib/loss-costs.js). */
+function costOf(res) {
+  const p = ms.economy.find((x) => x.playerId === ms.suggestPlayer) ?? ms.economy[0] ?? null;
+  return lossCosts(res.army.filter((s) => s.lost > 0).map((s) => {
+    const def = defOf(ms.rows[s.index]?.unitId ?? s.troopId);
+    return { lost: s.lost, protected: PROTECTED_KINDS.has(def?.kind), kind: def?.kind, train: def?.train, revive: def?.revive };
+  }), { discounts: ms.discounts, temple: templeFactor(ms.data?.temple, p?.templeLevel) });
 }
 
 /** The first Common squad's lowest level: something to look at before a choice. */
@@ -251,7 +280,7 @@ const eventOn = (target) => hasEventMonsters(target, ms.defs);
 const rowDef = (r, target) => withEventBonus(defOf(r.unitId), eventOn(target) ? ms.eventPct : 0);
 
 function searchKey(target) {
-  return JSON.stringify([target?.ids?.[0], ms.eventPct, ms.rows.map((r) => [r.unitId, r.strengthPct, r.healthPct, r.cap])]);
+  return JSON.stringify([target?.ids?.[0], ms.eventPct, ms.rows.map((r) => [r.unitId, r.strengthPct, r.healthPct, r.cap]), ms.discounts]);
 }
 
 let searchTimer = null;
@@ -291,6 +320,10 @@ function scheduleSearch(root, target) {
       worstCase: true,
       scoreWeaker: false,
       protWeaker: true,
+      // 4× Citadel's work (the user's call, Nov 28 2026): on the held-out test only more work closed the
+      // mercenary gap (cases losing more mercenaries than the best known 184 → 57 of 1,715; other losses
+      // ×1.148 → ×1.013), at 3.2 s typical on a desktop, 10–25 s on a phone with the progress bar.
+      work: MONSTER_WORK,
     };
     const tier = Math.max(0, ...params.army.filter((r) => ['guardsmen', 'specialists', 'monsters'].includes(r.def.kind)).map((r) => r.def.tier ?? 0));
     params.starts.push(...startsFrom({
@@ -459,16 +492,28 @@ function suggestedFromHtml() {
   if (!s || !ms.rows.length) return '';
   const stale = Date.now() - new Date(s.at).getTime() > STALE_MS;
   const off = s.matched === false;
+  // An epic battle for a plan against something else, or the other way round, with a
+  // strength bonus against epic monsters (65 of 203 members, Nov 28 2026): say so.
+  const p = ms.economy.find((x) => x.playerId === ms.suggestPlayer);
+  const cur = currentTarget();
+  const epicOff = typeof s.epic === 'boolean' && cur && s.epic !== (cur.cls === EPIC_CLASS) && p?.epicStrength > 0;
   const head = off ? t('Army from your latest battle, led differently from this attack')
     : s.lead === 'hero' ? t('Army from your latest Hero-led battle')
       : s.lead === 'captains' ? t('Army from your latest captain-led battle')
         : s.lead === 'both' ? t('Army from your latest battle led by the Hero with captains')
           : t('Army from your latest battle');
-  return `<p class="monster-source ${stale || off ? 'is-stale' : ''}" role="status">
-      <span class="monster-source-head">${stale || off ? '⚠' : '✓'} ${head}</span>
+  const warn = stale || off || epicOff;
+  return `<p class="monster-source ${warn ? 'is-stale' : ''}" role="status">
+      <span class="monster-source-head">${warn ? '⚠' : '✓'} ${head}</span>
       <span class="monster-source-what">${esc(s.label)} · ${esc(formatRelativeTime(s.at))}${stale ? ` · ${t('troops trained or lost since then are not in it')}` : ''}</span>
+      ${epicOff ? `<span class="monster-source-what">${esc(t('That battle and this target aren’t the same kind (one is an epic). {player} has +{pct}% strength against epic monsters only, so these bonuses may be off by up to that much: share a report against this kind of target.', {
+    player: p.name || t('Unknown player'), pct: p.epicStrength.toLocaleString(),
+  }))}</span>` : ''}
     </p>`;
 }
+
+/** T7 class of Epic squads and bosses (battle-data.ts). */
+const EPIC_CLASS = 5;
 
 /** Which of the viewer's linked players Suggest reads (only when there is more than one). */
 function playerSelectHtml() {
@@ -643,11 +688,16 @@ function paintResults(root, a) {
       <button type="button" class="btn btn-primary citadel-march-btn" data-mon-action="march">${t('March list')}</button>
     </div>
     <div class="citadel-outcomes">
-      ${outcomeHtml(a.both.you, { title: youTitle, opener: 'you', selected: ms.logOpener === 'you', view, action: 'mon-action' })}
-      ${outcomeHtml(a.both.enemy, { title: enemyTitle, opener: 'enemy', selected: ms.logOpener !== 'you', view, action: 'mon-action' })}
+      ${outcomeHtml(a.both.you, { title: youTitle, opener: 'you', selected: ms.logOpener === 'you', view, action: 'mon-action', costs: lossCostsHtml(costOf(a.both.you)) })}
+      ${outcomeHtml(a.both.enemy, { title: enemyTitle, opener: 'enemy', selected: ms.logOpener !== 'you', view, action: 'mon-action', costs: lossCostsHtml(costOf(a.both.enemy)) })}
     </div>
     <p class="citadel-avg muted-copy">${t('Who strikes first is a coin flip. Average: {lost}.', { lost: avg === 0 ? t('no losses') : tn(avg, '{n} troop lost', '{n} troops lost', { n: avg.toLocaleString() }) })}
       ${t('Luck (double damage, hitting two squads, a blocked strike) is not included.')}</p>
+    ${lostOf(a.both.you) || lostOf(a.both.enemy)
+    ? pricesNoteHtml(ms.economy, ms.economy.some((x) => x.playerId === ms.suggestPlayer) ? ms.suggestPlayer : ms.economy[0]?.playerId ?? null, {
+      revived: [a.both.you, a.both.enemy].some((res) => costOf(res).gold > 0), select: false,
+    })
+    : ''}
     ${strikeLogHtml(shown, { title: ms.logOpener === 'you' ? youTitle : enemyTitle, view, sectionKey: 'tools-monsters-log' })}`;
 }
 
@@ -721,7 +771,11 @@ function onChange(e) {
       ms.target = { ...ms.target, level: Number(el.value), variant: 0 };
     } else if (which === 'player') {
       ms.suggestPlayer = Number(el.value) || null;
+      // Their training discounts price the losses (the search re-runs when they differ).
+      takeDiscounts();
       saveDraft();
+      paintAll(root);
+      root.querySelector('[data-mon="player"]')?.focus();
       return;
     } else if (which === 'variant') {
       ms.target = { ...ms.target, variant: Number(el.value) || 0 };
@@ -893,7 +947,11 @@ async function suggestArmy(root, btn) {
   ms.search = null;
   ms.bonusesAt = latest.at;
   ms.bonusesNote = `${reportChoiceLabel(latest)}${latest.attacker?.name ? ` · ${latest.attacker.name}` : ''}`;
-  ms.suggestedFrom = { label: ms.bonusesNote, at: latest.at, lead: ledAs(latest), matched: !!matched || !cur };
+  ms.suggestedFrom = {
+    label: ms.bonusesNote, at: latest.at, lead: ledAs(latest), matched: !!matched || !cur,
+    // Whether that battle was against an epic (class 5): a player's strength against epic monsters is a bonus of its own.
+    epic: targetOfReport(ms.data, latest.target?.staticId)?.cls === EPIC_CLASS,
+  };
   saveDraft();
   paintAll(root);
   if (cur && !matched) {
