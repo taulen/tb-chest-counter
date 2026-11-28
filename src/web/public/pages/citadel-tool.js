@@ -35,6 +35,8 @@ import {
   citadelSearch,
   gmRoles,
   gmCounts,
+  gmCountsInOrder,
+  gmOrder,
   GM_CITADELS,
   bonusFamily,
   marchList,
@@ -426,9 +428,14 @@ function scheduleSearch(root) {
     const [lib, priced] = await Promise.all([loadArmyStarts(), loadPrices()]);
     if (!cs || searchKey() !== key || !root.isConnected || cs.progress?.key === key) return;
     const prices = priced?.prices ?? null;
-    const gm = gmCounts(cs.citadelId, cs.rows.map((r) => ({ ...r, healthPct: r.healthPct ?? 0 })));
+    const sized = cs.rows.map((r) => ({ ...r, healthPct: r.healthPct ?? 0 }));
+    const gm = gmCounts(cs.citadelId, sized);
     const starts = [cs.rows.map((r) => r.count)];
     if (gm.some((n) => n !== null)) starts.push(gm.map((n) => (Number.isFinite(n) ? n : 0)));
+    // game01master's sizing with the rows in ITS role order too, whatever order the page has them in
+    // (citadel-sim.js gmOrder): from the page's order alone Auto missed 66 / 141 for 102 / 178.
+    const gmo = gmCountsInOrder(cs.citadelId, sized);
+    if (gmo.some((n) => n !== null)) starts.push(gmo.map((n) => (Number.isFinite(n) ? n : 0)));
     // cs.discounts: the player's training discounts per kind (guardsmen / specialists / siege, %), when the page has them.
     const params = citadelSearch({ citadelId: cs.citadelId, army: cs.rows, starts, prices, discounts: cs.discounts ?? null });
     if (params) params.starts.push(...startsFrom({ ...citadelExemplars(lib, cs.citadelId), army: params.army, enemy: params.enemy, enemySide: 'citadel', defOf: (k) => troopById(k) }));
@@ -1159,7 +1166,9 @@ async function suggestForLevels(root) {
     : [];
   const rows = suggestRows(cs.levels, cs.rows, setups.flat());
   if (!rows?.length) return;
-  const pool = normalizeRows(rows);
+  // In game01master's role order (siege, first striker, monster, Royal Lion, cleanups): its Counts mode
+  // takes roles from row positions, and the march list reads best that way too.
+  const pool = gmOrder(rows).map((i) => rows[i]);
   const siege = pool.find((r) => isSiege(r.troopId))?.troopId;
   setups = setups.map((ids) => ids.map((id) => (isSiege(id) && siege ? siege : id)));
   const mercCheck = pool.some((r) => troopById(r.troopId)?.group === 'mercenaries');

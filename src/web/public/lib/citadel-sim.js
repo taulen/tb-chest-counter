@@ -329,6 +329,54 @@ export function gmRoles(citadelId, army) {
   });
 }
 
+/** game01master's roles, best candidate first: its setups' first striker, second (a monster), third, cleanups. */
+const GM_FIRST = ['corax-2', 'corax-1', 'griffin-7', 'griffin-6', 'griffin-5'];
+const GM_SECOND = ['fire-phoenix-2', 'fire-phoenix-1', 'manticore'];
+const GM_THIRD = ['royal-lion-2', 'royal-lion-1'];
+const GM_CLEANUPS = ['griffin-7', 'vulture-7', 'griffin-6', 'vulture-6', 'griffin-5', 'vulture-5'];
+
+/**
+ * The rows' indexes in game01master's role order, whatever order the page has
+ * them in: the siege engine, the first striker (Corax II, Corax I, else a
+ * Battle Griffin), the second (Fire Phoenix, Manticore, else the strongest
+ * other monster), the third (Royal Lion), the Griffin and Vulture cleanups,
+ * then every other row as it stood. gmCounts takes roles from row positions,
+ * so rows in another order — "Suggest troops for my levels" lists them by line —
+ * made the Griffin VII the second striker and the Phoenix a cleanup: on the
+ * user's Elven 30 army 74 / 150 Corax and 7 Phoenix lost, and Auto, started
+ * from that, 102 / 178 — against 66 / 141 in game01master's order (Nov 28 2026).
+ */
+export function gmOrder(rows) {
+  const left = rows.map((r, i) => i);
+  const out = [];
+  const take = (pred) => {
+    const k = left.findIndex((i) => pred(rows[i], i));
+    if (k < 0) return false;
+    out.push(left.splice(k, 1)[0]);
+    return true;
+  };
+  const takeFirstOf = (ids) => ids.some((id) => take((r) => r.troopId === id));
+  take((r) => troopById(r.troopId)?.siegeEngine);
+  takeFirstOf(GM_FIRST);
+  if (!takeFirstOf(GM_SECOND)) {
+    const monsters = left.filter((i) => troopById(rows[i].troopId)?.group === 'monsters')
+      .sort((a, b) => troopById(rows[b].troopId).str - troopById(rows[a].troopId).str);
+    if (monsters.length) take((r, i) => i === monsters[0]);
+  }
+  takeFirstOf(GM_THIRD);
+  for (const id of GM_CLEANUPS) take((r) => r.troopId === id);
+  return [...out, ...left];
+}
+
+/** gmCounts with the rows in game01master's role order (gmOrder), handed back in the rows' own order. */
+export function gmCountsInOrder(citadelId, rows) {
+  const order = gmOrder(rows);
+  const counts = gmCounts(citadelId, order.map((i) => rows[i]));
+  const out = rows.map(() => null);
+  order.forEach((i, k) => { out[i] = counts[k]; });
+  return out;
+}
+
 /** game01master's counts for each row (null where it has no rule). Counts are
  *  rounded DOWN on purpose: a bigger stack can change its own target. */
 export function gmCounts(citadelId, army) {
