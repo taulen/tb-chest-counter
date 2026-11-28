@@ -28,7 +28,6 @@ import {
 } from '../lib/ancient-planner.js';
 import { ancientArtUrl, loadGameArt } from '../lib/game-art.js';
 import { renderCitadelTool } from './citadel-tool.js';
-import { renderMonsterTool } from './monster-tool.js';
 import { renderStacksTool } from './stacks-tool.js';
 import { renderCostsTool } from './costs-tool.js';
 import { renderRewardsTool } from './rewards-tool.js';
@@ -37,8 +36,9 @@ import { renderWhatsNew } from './whats-new.js';
 const TOOLS = [
   { key: 'ancient', name: t('Ancient planner') },
   { key: 'citadel', name: t('Citadel') },
-  // Any monster target from the game's own data (pages/monster-tool.js).
-  { key: 'monsters', name: t('Monsters') },
+  // Tools → Monsters (pages/monster-tool.js) is off the site while its count
+  // search is reworked: on citadels it lost far more than Tools → Citadel
+  // (Nov 28 2026, docs/monster-simulator.md). #tools/monsters opens the first tool.
   { key: 'stacks', name: t('Stacks') },
   { key: 'costs', name: t('Costs') },
   { key: 'rewards', name: t('Rewards') },
@@ -53,7 +53,6 @@ export async function renderTools(el, toolKey) {
   const mount = el.querySelector('.tools-mount');
   if (tool.key === 'ancient') await renderAncientPlanner(mount);
   else if (tool.key === 'citadel') await renderCitadelTool(mount);
-  else if (tool.key === 'monsters') await renderMonsterTool(mount);
   else if (tool.key === 'stacks') await renderStacksTool(mount);
   else if (tool.key === 'costs') await renderCostsTool(mount);
   else if (tool.key === 'rewards') await renderRewardsTool(mount);

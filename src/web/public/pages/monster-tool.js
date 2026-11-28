@@ -143,7 +143,11 @@ export async function renderMonsterTool(mount) {
   ms = {
     data,
     defs,
-    families: targetFamilies(data),
+    // Citadels are Tools → Citadel's: it sizes the siege engine, the first
+    // striker and the cleanups the way citadels need (game01master, proven
+    // armies). Here the same engine, without that, lost thousands of T8
+    // guardsmen on Elven 30 where Citadel loses 80-150 (Nov 28 2026).
+    families: targetFamilies(data).filter((g) => g.group !== 'citadel'),
     troops: fieldableUnits(defs),
     sameName: new Set([...names].filter(([, n]) => n > 1).map(([n]) => n)),
     target: draft?.target ?? null,
@@ -357,6 +361,7 @@ function topCardHtml() {
       ${target ? `<p class="citadel-inside"><span class="citadel-inside-label">${t('Inside')}</span>${inside}</p>
         <p class="citadel-inside monster-led"><span class="citadel-inside-label">${t('Attack')}</span>${esc(ledByText(target))}</p>` : ''}
       ${lvl && lvl.variants.length > 1 ? `<p class="citadel-note muted-copy">${t('The game keeps more than one version of this level. Pick the one whose army you see on the map.')}</p>` : ''}
+      <p class="citadel-note muted-copy monster-citadel-link">${t('Citadels are in {link}: it sizes the siege engine, the first striker and the cleanups the way citadels need.', { link: `<a href="#tools/citadel">${esc(t('Citadel'))}</a>` })}</p>
       ${levelsHtml(ms.levels)}
     </div>`;
 }

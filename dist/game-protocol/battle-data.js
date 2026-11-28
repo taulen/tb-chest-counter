@@ -10,6 +10,8 @@ exports.BATTLE_DATA_FORMAT = 3;
 const MAP_ARMY = 6;
 /** T7 f18 of a citadel (and an enemy city). */
 const CLASS_CITADEL = 4;
+/** A citadel's name key: `atom.name.<kind>_stronghold` (the citadels the names build keeps, static-data.ts). */
+const CITADEL_KEY = /^atom\.name\.[a-z]+_stronghold$/;
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const isRow = (r) => Array.isArray(r);
 const nonEmpty = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0;
@@ -92,6 +94,7 @@ function buildBattleData(t7, t9, look, version) {
         fieldable.add(id);
     }
     const groups = new Map();
+    const citadelNames = new Set();
     for (const [id, row] of rowsOf(t7)) {
         if (row[1] !== MAP_ARMY)
             continue;
@@ -99,6 +102,8 @@ function buildBattleData(t7, t9, look, version) {
         const raw = Array.isArray(row[6]) ? row[6][1] : undefined;
         if (!name || !nonEmpty(raw))
             continue;
+        if (CITADEL_KEY.test(look.key?.(row[3]) ?? ''))
+            citadelNames.add(name);
         const army = Object.entries(raw)
             .map(([u, n]) => [Number(u), num(n)])
             .filter(([, n]) => n > 0);
@@ -133,8 +138,14 @@ function buildBattleData(t7, t9, look, version) {
             }
         }
         for (const [name, m] of counts) {
-            const best = m.has(CLASS_CITADEL) ? CLASS_CITADEL : [...m].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
-            liveClass.set(name, best);
+            // A citadel is live only as class 4: Barbarian 25 and Inferno 15 exist only as
+            // class 2 and are not in the game (the user, Nov 28 2026: Elven and Cursed only).
+            if (citadelNames.has(name) || m.has(CLASS_CITADEL)) {
+                if (m.has(CLASS_CITADEL))
+                    liveClass.set(name, CLASS_CITADEL);
+                continue;
+            }
+            liveClass.set(name, [...m].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]);
         }
     }
     const targets = [];

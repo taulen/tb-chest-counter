@@ -2291,6 +2291,7 @@ export const ui = {
   "Pick the target": "Выберите цель",
   "Attack": "Атака",
   "The game keeps more than one version of this level. Pick the one whose army you see on the map.": "В игре есть несколько версий этого уровня. Выберите ту, чью армию вы видите на карте.",
+  "Citadels are in {link}: it sizes the siege engine, the first striker and the cleanups the way citadels need.": "Цитадели — в разделе {link}: там осадное орудие, первый ударный отряд и добивающие подбираются так, как нужно для цитаделей.",
   "Led by the Hero alone: no captains.": "Ведёт только Герой: без капитанов.",
   "Led by the Hero, with up to {n} captains.": { one: "Ведёт Герой, с не более чем {n} капитаном.", few: "Ведёт Герой, с не более чем {n} капитанами.", many: "Ведёт Герой, с не более чем {n} капитанами.", other: "Ведёт Герой, с не более чем {n} капитанами." },
   "Led by up to {n} captains; the Hero can't attack it.": { one: "Ведёт {n} капитан; Герой не может атаковать.", few: "Ведут до {n} капитанов; Герой не может атаковать.", many: "Ведут до {n} капитанов; Герой не может атаковать.", other: "Ведут до {n} капитанов; Герой не может атаковать." },

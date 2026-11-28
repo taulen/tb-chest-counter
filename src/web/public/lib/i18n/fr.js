@@ -2291,6 +2291,7 @@ export const ui = {
   "Pick the target": "Choisis la cible",
   "Attack": "Attaque",
   "The game keeps more than one version of this level. Pick the one whose army you see on the map.": "Le jeu garde plus d'une version de ce niveau. Choisis celle dont tu vois l'armée sur la carte.",
+  "Citadels are in {link}: it sizes the siege engine, the first striker and the cleanups the way citadels need.": "Les citadelles sont dans {link} : on y dimensionne l'engin de siège, le premier attaquant et le nettoyage comme les citadelles l'exigent.",
   "Led by the Hero alone: no captains.": "Mené par le Héros seul : aucun capitaine.",
   "Led by the Hero, with up to {n} captains.": { one: "Mené par le Héros, avec jusqu'à {n} capitaine.", other: "Mené par le Héros, avec jusqu'à {n} capitaines." },
   "Led by up to {n} captains; the Hero can't attack it.": { one: "Mené par {n} capitaine ; le Héros ne peut pas l'attaquer.", other: "Mené par jusqu'à {n} capitaines ; le Héros ne peut pas l'attaquer." },

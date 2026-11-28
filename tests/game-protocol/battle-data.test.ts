@@ -15,11 +15,14 @@ const S: Record<number, string> = {
 // Name vectors → their text (undefined = a key the game's files have no text for).
 const NAMES: Record<number, string | undefined> = {
   100: 'Corax I', 101: 'Bear', 102: 'Citadel Walls', 103: 'Siege Ballistae VII', 104: 'Wyvern', 105: 'Phoenix',
-  200: 'Common Elf squad', 201: 'Elven Citadel', 202: undefined, 203: "Exiles' Grove", 204: 'Rare Elf squad', 205: 'Legendary Elf squad',
+  200: 'Common Elf squad', 201: 'Elven Citadel', 202: undefined, 203: "Exiles' Grove", 204: 'Rare Elf squad', 205: 'Legendary Elf squad', 206: 'Barbarian Citadel',
 };
+// Name keys: citadels are told by the game's own key, atom.name.<kind>_stronghold.
+const KEYS: Record<number, string> = { 201: 'atom.name.elven_stronghold', 206: 'atom.name.barbarian_stronghold' };
 const look = {
   str: (r: Wire | undefined) => (typeof r === 'number' ? S[r] : undefined),
   name: (r: Wire | undefined) => (typeof r === 'number' ? NAMES[r] : undefined),
+  key: (r: Wire | undefined) => (typeof r === 'number' ? KEYS[r] : undefined),
 };
 const PRICED: Wire = [{ 1: 80 }, {}, 1];
 const FREE: Wire = [{}, {}, 2];
@@ -57,6 +60,8 @@ const T7: Record<string, Wire> = {
   1817: obj(1817, 6, 201, { 51: 135000, 6033: 12000 }, 30, 4, 1, 3),
   // An old citadel (class 2) beside the current one (class 4): left out.
   1806: obj(1806, 6, 201, { 51: 41600, 6033: 2400 }, 25, 2, 1, 3),
+  // A citadel that only exists as class 2 (the old citadels' class): not in the game, left out.
+  1902: obj(1902, 6, 206, { 51: 15000, 6033: 500 }, 25, 2, 1, 3),
   // A family that only has older versions (class 0): left out.
   3001: obj(3001, 6, 205, { 6033: 7 }, 15, 0),
   // An older version of a family that has current ones, at a level they don't have: left out too.

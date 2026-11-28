@@ -296,6 +296,74 @@ export function simulateBothArmies(params) {
 
 // ─── Automatic counts: search with the simulator itself ───────────
 
+/**
+ * game01master's sizing made general, as starting counts for the search
+ * (docs/monster-simulator.md). The enemy's stacks strongest first (units ×
+ * strength); each goes to an unused troop that can kill it whole in one strike
+ * within what the player has, the cheapest such (units × what one lost unit
+ * costs) or the one needing the fewest units, sized to do exactly that; the
+ * first of them also gets enough units to live through the strongest enemy
+ * strike on it (game01master's first striker taking the dragon's opening hit),
+ * or not. One siege engine sized to bring the walls down in one strike. Four
+ * starts; the search refines them.
+ *
+ * @param rows      optimizeArmy's rows (def, strengthPct, healthPct, cap, weight)
+ * @param targets   [{ def, n, wall }]
+ * @param perUnit   (rowIndex, target) → damage of one unit of the row on that stack
+ */
+export function roleStarts(rows, targets, perUnit, enemySide = 'enemy') {
+  const enemies = targets.filter((x) => !x.wall).sort((a, b) => b.n * b.def.str - a.n * a.def.str);
+  const walls = targets.find((x) => x.wall) ?? null;
+  const cost = (i) => rows[i].weight ?? rows[i].def.hp;
+  const cap = (i) => (Number.isFinite(rows[i].cap) ? rows[i].cap : Infinity);
+  const unitHp = (i) => rows[i].def.hp * (1 + (Number(rows[i].healthPct) || 0) / 100);
+  // The hardest strike any enemy stack, whole, lands on one stack of this row.
+  const opening = (i) => {
+    const me = makeStack('you', rows[i].def, 1, 0, 0);
+    return enemies.reduce((m, x) => Math.max(m, damageVs(makeStack(enemySide, x.def, x.n), me)), 0);
+  };
+  const out = [];
+  for (const pick of ['cost', 'units']) {
+    for (const absorb of [true, false]) {
+      const counts = rows.map(() => 0);
+      const used = new Set();
+      if (walls) {
+        let best = -1;
+        let bestN = 0;
+        rows.forEach((r, i) => {
+          if (!isSiegeEngine(r.def)) return;
+          const per = perUnit(i, walls);
+          const n = per > 0 ? Math.ceil((walls.n * walls.def.hp) / per) : Infinity;
+          if (n <= cap(i) && (best < 0 || n * cost(i) < bestN * cost(best))) { best = i; bestN = n; }
+        });
+        if (best >= 0) { counts[best] = bestN; used.add(best); }
+      }
+      let first = true;
+      for (const x of enemies) {
+        let best = -1;
+        let bestScore = Infinity;
+        let bestN = 0;
+        rows.forEach((r, i) => {
+          if (used.has(i) || isSiegeEngine(r.def)) return;
+          const per = perUnit(i, x);
+          if (!(per > 0)) return;
+          let n = Math.ceil((x.n * x.def.hp) / per);
+          if (first && absorb) n += Math.ceil(opening(i) / unitHp(i));
+          if (n > cap(i)) return;
+          const score = pick === 'cost' ? n * cost(i) : n;
+          if (score < bestScore) { best = i; bestScore = score; bestN = n; }
+        });
+        if (best < 0) continue;
+        counts[best] = bestN;
+        used.add(best);
+        first = false;
+      }
+      out.push(counts);
+    }
+  }
+  return out;
+}
+
 /** Automatic counts must still win with every bonus this much lower. */
 export const SAFETY = 0.03;
 
@@ -344,12 +412,17 @@ function lossValue(results, rows, worstCase = false) {
  * on the worse coin flip, not the mean: "none if I strike first, 400
  * mercenaries if they do" is not an army to send (the user, Nov 28 2026).
  *
+ * With `roles`, the search also starts from game01master's idea made general
+ * (roleStarts): a local search only improves where it starts, and on the
+ * citadels, where Citadel's answers are known, it found them only from
+ * game01master's counts (Nov 28 2026).
+ *
  * @param {{ army: {def: object, strengthPct?: number|null, healthPct?: number|null, protected?: boolean, cap?: number, weight?: number}[],
  *           enemy: {def: object, count: number}[], budget?: number, starts?: number[][], enemySide?: string,
- *           timeLimitMs?: number, worstCase?: boolean }} p  timeLimitMs: stop improving after this long (a phone, 25 troop types)
+ *           timeLimitMs?: number, worstCase?: boolean, roles?: boolean }} p  timeLimitMs: stop improving after this long (a phone, 25 troop types)
  * @returns {{ ok: boolean, counts: number[], both: any, evaluations: number }}
  */
-export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySide = 'enemy', timeLimitMs = Infinity, worstCase = false }) {
+export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySide = 'enemy', timeLimitMs = Infinity, worstCase = false, roles: useRoles = false }) {
   const until = Date.now() + timeLimitMs;
   if (!army.length) return { ok: false, counts: [], both: null, evaluations: 0 };
   const rows = army.map((r, index) => ({ ...r, index, healthPct: r.healthPct ?? 0 }));
@@ -403,7 +476,7 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
     const next = evaluate(clamp(start));
     if (better(next, best)) best = next;
   }
-  for (const s of starts) {
+  for (const s of [...starts, ...(useRoles ? roleStarts(rows, targets, perUnit, enemySide) : [])]) {
     if (!Array.isArray(s) || s.length !== rows.length || !s.every((n) => Number.isInteger(n) && n >= 0)) continue;
     const cand = evaluate(clamp(s));
     if (better(cand, best)) best = cand;
@@ -426,23 +499,51 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
     return [...set];
   });
 
-  let improved = true;
   const more = () => evaluations < budget && Date.now() < until;
-  while (improved && more()) {
-    improved = false;
-    for (let i = 0; i < rows.length && more(); i++) {
-      const n = best.counts[i];
-      const cands = new Set([0, n - 1, n + 1, ...breaks[i]]);
-      for (const f of [0.5, 0.75, 0.9, 0.97, 1.03, 1.1, 1.33, 2]) cands.add(Math.round(n * f));
-      if (Number.isFinite(caps[i])) cands.add(caps[i]);
-      for (const c of cands) {
-        if (c < 0 || c === n || c > 1e8 || c > caps[i] || !more()) continue;
-        const counts = [...best.counts];
-        counts[i] = c;
-        const cand = evaluate(counts);
-        if (better(cand, best)) {
-          best = cand;
-          improved = true;
+  /** One row at a time, every candidate count, until nothing improves: a local best. */
+  const descend = (from) => {
+    let cur = from;
+    let improved = true;
+    while (improved && more()) {
+      improved = false;
+      for (let i = 0; i < rows.length && more(); i++) {
+        const n = cur.counts[i];
+        const cands = new Set([0, n - 1, n + 1, ...breaks[i]]);
+        for (const f of [0.5, 0.75, 0.9, 0.97, 1.03, 1.1, 1.33, 2]) cands.add(Math.round(n * f));
+        if (Number.isFinite(caps[i])) cands.add(caps[i]);
+        for (const c of cands) {
+          if (c < 0 || c === n || c > 1e8 || c > caps[i] || !more()) continue;
+          const counts = [...cur.counts];
+          counts[i] = c;
+          const cand = evaluate(counts);
+          if (better(cand, cur)) {
+            cur = cand;
+            improved = true;
+          }
+        }
+      }
+    }
+    return cur;
+  };
+  best = descend(best);
+  // With `roles`: kick the local best out of its hole — each row to none, half
+  // or double — and descend again, keeping what beats it, while time lasts.
+  // On the citadels this is what found Citadel's answers without game01master.
+  if (useRoles) {
+    let kicked = true;
+    while (kicked && more()) {
+      kicked = false;
+      for (let i = 0; i < rows.length && more(); i++) {
+        const n = best.counts[i];
+        for (const c of [0, Math.round(n / 2), Math.min(n * 2 || 1, caps[i])]) {
+          if (c === n || c < 0 || c > caps[i] || !more()) continue;
+          const counts = [...best.counts];
+          counts[i] = c;
+          const cand = descend(evaluate(counts));
+          if (better(cand, best)) {
+            best = cand;
+            kicked = true;
+          }
         }
       }
     }

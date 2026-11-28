@@ -500,9 +500,10 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * citadels — kind and level, for "fill in from a battle report"; 17: units —
  * the names of battle-data.json's units, and battle-data.json beside it, for
  * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target;
- * 19: format 3 — revival gold); a cached file with an older format is rebuilt.
+ * 19: format 3 — revival gold; 20: only live citadels, Elven and Cursed); a
+ * cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 19;
+export const NAMES_FORMAT = 20;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -771,7 +772,11 @@ export function makeBattleData(
     out = out.replace(/\s+/g, ' ').trim();
     return out && !out.startsWith('{') && !out.startsWith('[') ? out : undefined;
   };
-  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name }, version);
+  const key = (vref: Wire | undefined): string | undefined => {
+    const v = typeof vref === 'number' ? vectors[vref] : undefined;
+    return Array.isArray(v) && v.length ? str(v[0]) : undefined;
+  };
+  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name, key }, version);
 }
 
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */

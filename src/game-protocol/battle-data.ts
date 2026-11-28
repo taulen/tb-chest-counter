@@ -91,7 +91,12 @@ export interface BattleLookups {
   str: (ref: Wire | undefined) => string | undefined;
   /** A name vector's text, or undefined when its key has no text in the game's files (test or unused objects). */
   name: (vref: Wire | undefined) => string | undefined;
+  /** A name vector's translation key ("atom.name.elven_stronghold"), for telling citadels by the game's own key. */
+  key?: (vref: Wire | undefined) => string | undefined;
 }
+
+/** A citadel's name key: `atom.name.<kind>_stronghold` (the citadels the names build keeps, static-data.ts). */
+const CITADEL_KEY = /^atom\.name\.[a-z]+_stronghold$/;
 
 const num = (v: Wire | undefined): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const isRow = (r: Wire): r is Wire[] => Array.isArray(r);
@@ -175,11 +180,13 @@ export function buildBattleData(
   // Monster targets: one per name, level and army, of the family's live class (below).
   type Cand = { id: number; name: string; level: number; cls: number; hero: boolean; captains: number; army: Array<[number, number]>; key: string };
   const groups = new Map<string, Cand[]>();
+  const citadelNames = new Set<string>();
   for (const [id, row] of rowsOf(t7)) {
     if (row[1] !== MAP_ARMY) continue;
     const name = look.name(row[3]);
     const raw = Array.isArray(row[6]) ? row[6][1] : undefined;
     if (!name || !nonEmpty(raw)) continue;
+    if (CITADEL_KEY.test(look.key?.(row[3]) ?? '')) citadelNames.add(name);
     const army: Array<[number, number]> = Object.entries(raw as Record<string, Wire>)
       .map(([u, n]) => [Number(u), num(n)] as [number, number])
       .filter(([, n]) => n > 0);
@@ -211,8 +218,13 @@ export function buildBattleData(
       }
     }
     for (const [name, m] of counts) {
-      const best = m.has(CLASS_CITADEL) ? CLASS_CITADEL : [...m].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
-      liveClass.set(name, best);
+      // A citadel is live only as class 4: Barbarian 25 and Inferno 15 exist only as
+      // class 2 and are not in the game (the user, Nov 28 2026: Elven and Cursed only).
+      if (citadelNames.has(name) || m.has(CLASS_CITADEL)) {
+        if (m.has(CLASS_CITADEL)) liveClass.set(name, CLASS_CITADEL);
+        continue;
+      }
+      liveClass.set(name, [...m].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]);
     }
   }
   const targets: BattleTarget[] = [];
