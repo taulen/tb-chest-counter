@@ -20,6 +20,7 @@ import { outcomeHtml, strikeLogHtml } from '../lib/battle-result.js';
 import {
   UNIT_GROUPS, PROTECTED_KINDS, unitDefs, fieldableUnits, unitLevel, targetFamilies,
   targetOfReport, hasEventMonsters, withEventBonus, bonusesFromBattle, armyFromBattles,
+  targetCommand, battleCommand, battlesLedFor,
 } from '../lib/monster-army.js';
 import { tierUnlocked, tierInWindow } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
@@ -332,13 +333,25 @@ function topCardHtml() {
           <select class="input" data-mon="level">${levels}</select></label>
         ${variants}
       </div>
-      ${target ? `<p class="citadel-inside"><span class="citadel-inside-label">${t('Inside')}</span>${inside}</p>` : ''}
+      ${target ? `<p class="citadel-inside"><span class="citadel-inside-label">${t('Inside')}</span>${inside}</p>
+        <p class="citadel-inside monster-led"><span class="citadel-inside-label">${t('Attack')}</span>${esc(ledByText(target))}</p>` : ''}
       ${lvl && lvl.variants.length > 1 ? `<p class="citadel-note muted-copy">${t('The game keeps more than one version of this level. Pick the one whose army you see on the map.')}</p>` : ''}
       ${levelsHtml(ms.levels)}
     </div>`;
 }
 
 const formatCount = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n.toLocaleString());
+
+/** "Led by the Hero alone" … — who may lead an attack on the target (the game's own rule). */
+function ledByText(target) {
+  const n = target?.captains ?? 0;
+  switch (targetCommand(target)) {
+    case 'hero': return t('Led by the Hero alone: no captains.');
+    case 'both': return tn(n, 'Led by the Hero, with up to {n} captain.', 'Led by the Hero, with up to {n} captains.');
+    case 'captains': return tn(n, 'Led by {n} captain; the Hero can\'t attack it.', 'Led by up to {n} captains; the Hero can\'t attack it.');
+    default: return '';
+  }
+}
 
 // ─── 2 · Your army ───────────────────────────────────────────────
 
@@ -690,6 +703,8 @@ async function fillFromReport(root) {
     await notify(t('None of the troops in your army fought in that battle, or the report doesn’t show their bonuses.'), title);
     return;
   }
+  // A battle led otherwise (the Hero instead of captains, or the other way) had other bonuses.
+  const ledOtherwise = cur && report.led && battleCommand(report.led) !== targetCommand(cur);
   ms.bonusesAt = report.at;
   ms.bonusesNote = `${reportChoiceLabel(report)}${report.attacker?.name ? ` · ${report.attacker.name}` : ''}`;
   ms.search = null;
@@ -698,6 +713,7 @@ async function fillFromReport(root) {
   notify([
     tn(filled, 'Filled in {n} troop from the battle report.', 'Filled in {n} troops from the battle report.'),
     ...(res.gapsFrom ? [t('This battle shows no troop exactly, so the part every card has beyond the report came from the battle {battle}.', { battle: reportChoiceLabel(res.gapsFrom) })] : []),
+    ...(ledOtherwise ? [t('That battle was led differently from an attack on {target}, so its bonuses may not be the ones you will have: check them.', { target: tGame(cur.name) })] : []),
   ].join(' '), title);
 }
 
@@ -727,7 +743,12 @@ async function suggestArmy(root, btn) {
     await notify(t('No battle of yours from the last {days} days has been read yet. Share a report in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.', { days: res.windowDays ?? 7 }), title);
     return;
   }
-  const rows = armyFromBattles(mine, ms.defs);
+  // Only battles led the way this target must be: the Hero's bonuses and
+  // leadership are not a captain's (a Rare squad is the Hero's alone).
+  const cur0 = currentTarget();
+  const sameLead = cur0 ? battlesLedFor(cur0, mine) : mine;
+  const used = sameLead.length ? sameLead : mine;
+  const rows = armyFromBattles(used, ms.defs);
   if (!rows.length) {
     await notify(t('Your battles show no troops this page can use.'), title);
     return;
@@ -741,10 +762,17 @@ async function suggestArmy(root, btn) {
   }
   ms.countMode = 'auto';
   ms.search = null;
-  ms.bonusesAt = mine[0].at;
-  ms.bonusesNote = tn(mine.length, 'your battle of the last week', 'your {n} battles of the last week');
+  ms.bonusesAt = used[0].at;
+  ms.bonusesNote = sameLead.length
+    ? tn(used.length, 'your battle of the last week led the same way', 'your {n} battles of the last week led the same way')
+    : tn(used.length, 'your battle of the last week', 'your {n} battles of the last week');
   saveDraft();
   paintAll(root);
+  if (!sameLead.length && cur0) {
+    await notify(t('{target}: {how} None of your battles of the last week was led that way, so the suggestion uses them anyway, but the bonuses and how many troops you can send differ with who leads: check them, or share a battle led that way.', {
+      target: tGame(cur0.name), how: ledByText(cur0),
+    }), title);
+  }
 }
 
 // ─── March list ──────────────────────────────────────────────────

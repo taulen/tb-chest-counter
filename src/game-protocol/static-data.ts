@@ -499,9 +499,10 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * the units they reach, for battle reports' troop cards — Nov 2026; 16:
  * citadels — kind and level, for "fill in from a battle report"; 17: units —
  * the names of battle-data.json's units, and battle-data.json beside it, for
- * Tools → Monsters); a cached file with an older format is rebuilt.
+ * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target);
+ * a cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 17;
+export const NAMES_FORMAT = 18;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {

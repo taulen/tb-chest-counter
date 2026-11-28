@@ -29,6 +29,8 @@ function march(armyId: number, owner: number, units: Array<[number, number]>): W
   // Effects [id, sourceBits, count] and timed boosts [id, 0, from, to]: one running, one over.
   m[14] = [[31, 2, 1], [2070, 512, 108]];
   m[16] = [[4020, 0, 1769730123, 1814161323], [7802, 0, 1794000000, 1794080000]];
+  // Commanders [id, …]: the Hero (1) and a captain (T75 27), as a Heroic squad's march has them.
+  m[9] = owner === MONSTERS ? [] : [[1, 0, 5, [armyId]], [27, 1, 0, [armyId]]];
   m[30] = units.map(([u, c]) => [u, c, 0]);
   return m;
 }
@@ -98,6 +100,11 @@ describe('battle reports', () => {
 
   it('reads the march’s effects, counted, and the boosts running when it set out', () => {
     expect(parseBattleReport(tinman)!.attackers[0].effects).toEqual([{ id: 31, count: 1 }, { id: 2070, count: 108 }, { id: 4020, count: 1 }]);
+  });
+
+  it('reads who led the march: the Hero is commander 1, any other id a captain', () => {
+    expect(parseBattleReport(tinman)!.attackers[0].commanders).toEqual([1, 27]);
+    expect(parseBattleReport(tinman)!.defenders[0].commanders).toEqual([]);
   });
 
   it('takes the player from the march owner, never the short [realm, n] (it keeps only 12 bits)', () => {

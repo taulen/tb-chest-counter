@@ -40,7 +40,17 @@ export interface BattleSide {
    * cards add up (troop-effects.ts). Empty for a monster.
    */
   effects: Array<{ id: number; count: number }>;
+  /**
+   * Who led the march (field 9, `[[commanderId, …]…]`): 1 is the Hero, any
+   * other id a captain (T75; the game's hero table keeps the Hero as row 1).
+   * A Rare squad's march is the Hero's alone, a Common squad's one captain's
+   * (docs/monster-simulator.md). Empty for a monster.
+   */
+  commanders: number[];
 }
+
+/** The commander id of the Hero in a march's field 9 (T10 row 1). */
+export const HERO_COMMANDER = 1;
 
 export interface BattleReport {
   kind: string;
@@ -134,7 +144,17 @@ function readSide(v: Wire): BattleSide | null {
   const owner = Array.isArray(march[1]) ? firstId(march[1][0]) : null;
   let playerId = owner;
   if (playerId === null && Array.isArray(who) && typeof who[0] === 'number' && typeof who[1] === 'number') playerId = playerIdOf(who[0], who[1]);
-  return { playerId, units: marchUnits(march, killed), killed, armyId: firstId(march[0]), effects: marchEffects(march) };
+  return { playerId, units: marchUnits(march, killed), killed, armyId: firstId(march[0]), effects: marchEffects(march), commanders: marchCommanders(march) };
+}
+
+/** Field 9's commanders: the first number of each entry. */
+function marchCommanders(march: Wire[]): number[] {
+  const out: number[] = [];
+  for (const c of Array.isArray(march[9]) ? march[9] : []) {
+    const id = Array.isArray(c) ? num(c[0]) : null;
+    if (id !== null) out.push(id);
+  }
+  return out;
 }
 
 /** A march's effects (field 14, counted) and the boosts (field 16) running when it set out. */

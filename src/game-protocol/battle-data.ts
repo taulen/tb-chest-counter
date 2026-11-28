@@ -14,6 +14,10 @@
  *   T7 objects f1 type (6 = a monster or NPC army on the map; 22 Exiles' Grove,
  *              2 a player's city), f3 name vector, f6[1] the army
  *              `{unitId: count}` (walls are a unit too: 51 for citadels),
+ *              f10 whether the Hero may lead the attack, f11 how many captains
+ *              may (0, 1 or 3: Rare squads are the Hero's alone, Common
+ *              squads one captain's, Heroic squads and citadels the Hero's
+ *              with up to three captains — every shared report agrees),
  *              f15 level, f18 class (1 Common, 2 Rare, 3 Heroic, 4 citadel or
  *              enemy city, 5 Epic, 7 a group raid, 8 Vault of the Ancients,
  *              9 Abyss; 0 an older version kept beside the current one).
@@ -27,8 +31,8 @@
 import type { Wire } from './codec.js';
 
 export const BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes. */
-export const BATTLE_DATA_FORMAT = 1;
+/** Bump when the file's shape changes (2: who may lead a target). */
+export const BATTLE_DATA_FORMAT = 2;
 
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
 const MAP_ARMY = 6;
@@ -62,6 +66,10 @@ export interface BattleTarget {
   level: number;
   /** T7 f18 (see above). */
   cls: number;
+  /** Whether the Hero may lead the attack (T7 f10). */
+  hero: boolean;
+  /** How many captains may join it (T7 f11): 0 = the Hero's alone. */
+  captains: number;
   /** [unitId, count], strongest stack first. */
   army: Array<[number, number]>;
 }
@@ -160,7 +168,7 @@ export function buildBattleData(
 
   // Monster targets: one per name, level and army. Older versions (class 0)
   // step aside where the same name and level has a current one.
-  type Cand = { id: number; name: string; level: number; cls: number; army: Array<[number, number]>; key: string };
+  type Cand = { id: number; name: string; level: number; cls: number; hero: boolean; captains: number; army: Array<[number, number]>; key: string };
   const groups = new Map<string, Cand[]>();
   for (const [id, row] of rowsOf(t7)) {
     if (row[1] !== MAP_ARMY) continue;
@@ -175,7 +183,10 @@ export function buildBattleData(
     const level = num(row[15]);
     const g = `${name}|${level}`;
     if (!groups.has(g)) groups.set(g, []);
-    groups.get(g)!.push({ id, name, level, cls: num(row[18]), army, key: JSON.stringify([...army].sort((a, b) => a[0] - b[0])) });
+    const hero = row[10] === 1;
+    const captains = num(row[11]);
+    // Who may lead is part of a target's identity: one version can be the Hero's, another a captain's.
+    groups.get(g)!.push({ id, name, level, cls: num(row[18]), hero, captains, army, key: JSON.stringify([hero, captains, [...army].sort((a, b) => a[0] - b[0])]) });
   }
   const targets: BattleTarget[] = [];
   const used = new Set<number>(fieldable);
@@ -186,7 +197,7 @@ export function buildBattleData(
     for (const c of pick) {
       const t = byArmy.get(c.key);
       if (t) t.ids.push(c.id);
-      else byArmy.set(c.key, { ids: [c.id], name: c.name, level: c.level, cls: c.cls, army: c.army });
+      else byArmy.set(c.key, { ids: [c.id], name: c.name, level: c.level, cls: c.cls, hero: c.hero, captains: c.captains, army: c.army });
     }
     for (const t of byArmy.values()) {
       targets.push(t);

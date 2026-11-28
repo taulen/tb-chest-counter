@@ -39,7 +39,7 @@ import { getDb } from './database.js';
 import { cachedArtUnits } from '../game-art/art-static.js';
 import { gameArtDir } from '../game-art/store.js';
 import { loadGameNames, newestStaticFile, type GameCitadel } from '../game-protocol/static-data.js';
-import { parseBattleReport } from '../game-protocol/battle-report.js';
+import { HERO_COMMANDER, parseBattleReport } from '../game-protocol/battle-report.js';
 import { TROOP_EFFECTS_FILE, TROOP_EFFECTS_FORMAT, troopCard, type TroopEffects } from '../game-protocol/troop-effects.js';
 import { gamePlayerNames } from './game-player-names.js';
 import type { ReportSummary } from './repositories/battle-report-repo.js';
@@ -70,6 +70,12 @@ export interface ReportArmy {
   won: boolean;
   /** Whose army it is (the march owner) and who posted the report. */
   attacker: { playerId: number | null; name: string };
+  /**
+   * Who led the march: the Hero, and how many captains (null when the raw
+   * report can't say). Bonuses and leadership differ with it — a Rare squad
+   * is the Hero's alone, a Common squad one captain's (docs/monster-simulator.md).
+   */
+  led: { hero: boolean; captains: number } | null;
   sharedBy: string;
   troops: ReportTroop[];
 }
@@ -251,10 +257,17 @@ export async function reportArmiesFor(
     const mine = s.attackers[0];
     if (!mine) continue;
     const strikes = s.strikes ?? [];
-    // The march's effects come from the raw report (kept for every report read): the summary predates them.
+    // The march's effects and commanders come from the raw report (kept for every report read): the summary predates them.
     let effects: Array<{ id: number; count: number }> | null = null;
-    if (effectsTable && r.raw) {
-      try { effects = parseBattleReport(zlib.gunzipSync(r.raw))?.attackers[0]?.effects ?? null; } catch { effects = null; }
+    let led: ReportArmy['led'] = null;
+    if (r.raw) {
+      try {
+        const side = parseBattleReport(zlib.gunzipSync(r.raw))?.attackers[0];
+        if (effectsTable) effects = side?.effects ?? null;
+        if (side?.commanders.length) {
+          led = { hero: side.commanders.includes(HERO_COMMANDER), captains: side.commanders.filter((c) => c !== HERO_COMMANDER).length };
+        }
+      } catch { effects = null; }
     }
     const troops: ReportTroop[] = mine.units.map(([unit, count]) => {
       const firstHit = strikes.find((x) => x.targetArmyId === mine.army && x.targetUnit === unit && x.targetCount > 0);
@@ -279,6 +292,7 @@ export async function reportArmiesFor(
       },
       won: r.won === 1,
       attacker: { playerId: r.attacker_player_id, name: r.attacker_player_id !== null ? attackerNames.get(r.attacker_player_id) ?? '' : '' },
+      led,
       sharedBy: r.shared_by ?? '',
       troops,
     });

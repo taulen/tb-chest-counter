@@ -43,8 +43,8 @@ function tinmanReport(stacks: number, level = 55): BattleReport {
   const units = [7540, 7541, 7542, 7543].slice(0, stacks).map((unit) => ({ unit, count: 1000 }));
   return {
     kind: 'battle', won: false, rounds: 6, targetStaticId: 5999 + level, strikeLogId: null, targetAt: null,
-    attackers: [{ playerId: PLAYER, armyId: 1, units: [{ unit: 206, count: 475 }], killed: {}, effects: [] }],
-    defenders: [{ playerId: playerIdOf(260, 1), armyId: 2, units, killed: { 7540: 10, 7541: 5 }, effects: [] }],
+    attackers: [{ playerId: PLAYER, armyId: 1, units: [{ unit: 206, count: 475 }], killed: {}, effects: [], commanders: [27] }],
+    defenders: [{ playerId: playerIdOf(260, 1), armyId: 2, units, killed: { 7540: 10, 7541: 5 }, effects: [], commanders: [] }],
   };
 }
 

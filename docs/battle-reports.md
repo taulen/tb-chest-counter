@@ -46,6 +46,7 @@ announcement  ["clan_announcement", [realm, n], text]
 
 - **A side's player is its march's owner** (`march[1][0][0]`): the full id `members.game_player_id` holds (realm × 2³² + a number). The side's own `[realm, n]` — and a chat link's `guid` — keep only the number's **low 12 bits**: "taulen K260 SK" 4599909976661 = realm 1071, 0x258A55, shows as `[1071, 2645]`. Never key anything on them.
 - **Units** are the army as it stood when the battle began; `killed` is what this battle cost. Unit ids are the game's troop/monster ids (T9).
+- **Commanders**: march field 9, `[[commanderId, …]…]` — 1 is the Hero, any other id a captain (T75). A Rare squad's march is the Hero's alone, a Common squad's one captain's; each target's rule is T7 f10 / f11 ([monster-simulator.md](monster-simulator.md#who-leads-the-hero-or-captains)).
 - **Strike log**: every strike in order, with the exact health pools — the same model Tools → Citadel simulates (a stack's health is a pool; units alive = ⌈pool ÷ unit health⌉). `damage` is what the target took (capped at what it had); `extraA`/`extraB` are the log's two further figures (luck: a doubled strike shows `extraB` = half of `damage`). A **blocked** strike (the target's luck: monster- and beast-type troops of a player's, ~1% of the strikes on them) deals exactly 67% and nothing in the log marks it ([citadel-simulator.md](citadel-simulator.md#how-the-rules-were-obtained)). Damage is logged in whole points.
 
 ## The Tin Man

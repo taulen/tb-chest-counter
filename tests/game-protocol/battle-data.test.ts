@@ -15,7 +15,7 @@ const S: Record<number, string> = {
 // Name vectors → their text (undefined = a key the game's files have no text for).
 const NAMES: Record<number, string | undefined> = {
   100: 'Corax I', 101: 'Bear', 102: 'Citadel Walls', 103: 'Siege Ballistae VII', 104: 'Wyvern', 105: 'Phoenix',
-  200: 'Common Elf squad', 201: 'Elven Citadel', 202: undefined, 203: "Exiles' Grove",
+  200: 'Common Elf squad', 201: 'Elven Citadel', 202: undefined, 203: "Exiles' Grove", 204: 'Rare Elf squad',
 };
 const look = {
   str: (r: Wire | undefined) => (typeof r === 'number' ? S[r] : undefined),
@@ -42,10 +42,10 @@ const T9: Record<string, Wire> = {
   3089: unit(3089, 104, 9, PRICED, 690000, 2070000, [0, 6300, 0], [3], [], 20),
   191: unit(191, 105, 8, PRICED, 660000, 1980000, [0, 0, 5400], [3], [], 20),
 };
-/** A T7 row: [id, type, …, f3 name, …, f6 [{}, army], …, f15 level, …, f18 class]. */
-function obj(id: number, type: number, name: number, army: Record<number, number>, level: number, cls: number): Wire[] {
+/** A T7 row: [id, type, …, f3 name, …, f6 [{}, army], …, f10 Hero may lead, f11 captains, …, f15 level, …, f18 class]. */
+function obj(id: number, type: number, name: number, army: Record<number, number>, level: number, cls: number, hero = 0, captains = 1): Wire[] {
   const r: Wire[] = new Array(30).fill(0);
-  r[0] = id; r[1] = type; r[3] = name; r[6] = [{}, army, [], []]; r[15] = level; r[18] = cls;
+  r[0] = id; r[1] = type; r[3] = name; r[6] = [{}, army, [], []]; r[10] = hero; r[11] = captains; r[15] = level; r[18] = cls;
   return r;
 }
 const T7: Record<string, Wire> = {
@@ -54,7 +54,9 @@ const T7: Record<string, Wire> = {
   1531: obj(1531, 6, 200, { 6033: 780000 }, 30, 1),
   // The same army again under another id: one target, both ids.
   188029: obj(188029, 6, 200, { 6033: 780000 }, 30, 1),
-  1817: obj(1817, 6, 201, { 51: 135000, 6033: 12000 }, 30, 4),
+  1817: obj(1817, 6, 201, { 51: 135000, 6033: 12000 }, 30, 4, 1, 3),
+  // A Rare squad: the Hero's alone.
+  2936: obj(2936, 6, 204, { 6033: 640000 }, 45, 2, 1, 0),
   // No text in the game's files (a test object): left out.
   5000: obj(5000, 6, 202, { 6033: 1 }, 1, 1),
   // Exiles' Grove (type 22): not an ordinary army.
@@ -88,15 +90,22 @@ describe('battle data from the game tables', () => {
 
   it('keeps one target per name, level and army, current versions first', () => {
     const elf = d.targets.filter((t) => t.name === 'Common Elf squad');
-    expect(elf).toEqual([{ ids: [1531, 188029], name: 'Common Elf squad', level: 30, cls: 1, army: [[6033, 780000]] }]);
+    expect(elf).toEqual([{ ids: [1531, 188029], name: 'Common Elf squad', level: 30, cls: 1, hero: false, captains: 1, army: [[6033, 780000]] }]);
   });
 
   it('keeps walls in a citadel\'s army, strongest stack first', () => {
     expect(d.targets.find((t) => t.name === 'Elven Citadel')?.army).toEqual([[51, 135000], [6033, 12000]]);
   });
 
+  it('says who may lead an attack: the Hero alone, captains, or the Hero with captains (T7 f10, f11)', () => {
+    const by = (id: number) => d.targets.find((t) => t.ids.includes(id));
+    expect(by(2936)).toMatchObject({ hero: true, captains: 0 });
+    expect(by(1531)).toMatchObject({ hero: false, captains: 1 });
+    expect(by(1817)).toMatchObject({ hero: true, captains: 3 });
+  });
+
   it('leaves out unnamed objects, Exiles\' Grove and armies with unknown units', () => {
-    expect(d.targets.map((t) => t.ids[0])).toEqual([1531, 1817]);
+    expect(d.targets.map((t) => t.ids[0])).toEqual([1531, 1817, 2936]);
   });
 
   it('names every unit it keeps, for the game texts', () => {

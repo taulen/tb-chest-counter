@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   unitDefs, fieldableUnits, unitLevel, targetGroup, targetFamilies, targetOfReport,
   hasEventMonsters, withEventBonus, eventBonusFromReport, armyFromBattles,
+  targetCommand, battleCommand, battlesLedFor,
 } from '../../src/web/public/lib/monster-army.js';
 
 const DATA = {
@@ -74,6 +75,21 @@ describe('targets', () => {
     expect(hasEventMonsters(DATA.targets[0], defs)).toBe(false);
     expect(withEventBonus(defs.get('206'), 450).vs).toEqual([[['mounted'], 1333, 1], [['epicmonster'], 450, 1]]);
     expect(withEventBonus(defs.get('206'), 0)).toBe(defs.get('206'));
+  });
+});
+
+describe('who leads', () => {
+  it('reads a target\'s rule and a battle\'s march the same way, and keeps the battles that match', () => {
+    const rare = { hero: true, captains: 0 };
+    const common = { hero: false, captains: 1 };
+    const heroic = { hero: true, captains: 3 };
+    expect([rare, common, heroic].map(targetCommand)).toEqual(['hero', 'captains', 'both']);
+    expect(battleCommand({ hero: true, captains: 0 })).toBe('hero');
+    expect(battleCommand({ hero: false, captains: 3 })).toBe('captains');
+    expect(battleCommand(null)).toBeNull();
+    const battles = [{ id: 'a', led: { hero: true, captains: 0 } }, { id: 'b', led: { hero: false, captains: 1 } }, { id: 'c', led: null }];
+    expect(battlesLedFor(rare, battles).map((b: { id: string }) => b.id)).toEqual(['a']);
+    expect(battlesLedFor(common, battles).map((b: { id: string }) => b.id)).toEqual(['b']);
   });
 });
 

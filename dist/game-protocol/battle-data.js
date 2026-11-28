@@ -4,8 +4,8 @@ exports.BATTLE_DATA_FORMAT = exports.BATTLE_DATA_FILE = void 0;
 exports.buildBattleData = buildBattleData;
 exports.battleUnitNames = battleUnitNames;
 exports.BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes. */
-exports.BATTLE_DATA_FORMAT = 1;
+/** Bump when the file's shape changes (2: who may lead a target). */
+exports.BATTLE_DATA_FORMAT = 2;
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
 const MAP_ARMY = 6;
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -104,7 +104,10 @@ function buildBattleData(t7, t9, look, version) {
         const g = `${name}|${level}`;
         if (!groups.has(g))
             groups.set(g, []);
-        groups.get(g).push({ id, name, level, cls: num(row[18]), army, key: JSON.stringify([...army].sort((a, b) => a[0] - b[0])) });
+        const hero = row[10] === 1;
+        const captains = num(row[11]);
+        // Who may lead is part of a target's identity: one version can be the Hero's, another a captain's.
+        groups.get(g).push({ id, name, level, cls: num(row[18]), hero, captains, army, key: JSON.stringify([hero, captains, [...army].sort((a, b) => a[0] - b[0])]) });
     }
     const targets = [];
     const used = new Set(fieldable);
@@ -117,7 +120,7 @@ function buildBattleData(t7, t9, look, version) {
             if (t)
                 t.ids.push(c.id);
             else
-                byArmy.set(c.key, { ids: [c.id], name: c.name, level: c.level, cls: c.cls, army: c.army });
+                byArmy.set(c.key, { ids: [c.id], name: c.name, level: c.level, cls: c.cls, hero: c.hero, captains: c.captains, army: c.army });
         }
         for (const t of byArmy.values()) {
             targets.push(t);

@@ -93,6 +93,34 @@ export function targetFamilies(data) {
   })).filter((g) => g.families.length);
 }
 
+/**
+ * Who leads an attack on a target (battle-data's T7 f10 / f11): 'hero' — the
+ * Hero alone (Rare squads, Basilisk), 'captains' — captains only (Common
+ * squads, Fenrir, the Tin Man, Briareus), 'both' — the Hero with captains
+ * (Heroic squads, citadels). Bonuses and the leadership a march has differ
+ * with it, so a battle only tells about targets led the same way.
+ */
+export function targetCommand(t) {
+  if (!t) return null;
+  if (t.hero && !t.captains) return 'hero';
+  if (!t.hero) return 'captains';
+  return 'both';
+}
+
+/** How a report's march was led, in targetCommand's words; null when the report can't say. */
+export function battleCommand(led) {
+  if (!led) return null;
+  if (led.hero && !led.captains) return 'hero';
+  if (!led.hero) return 'captains';
+  return 'both';
+}
+
+/** The battles led the way this target must be. */
+export function battlesLedFor(target, reports) {
+  const want = targetCommand(target);
+  return (reports ?? []).filter((r) => battleCommand(r.led) === want);
+}
+
 /** The target a report fought (by T7 id), or null. */
 export function targetOfReport(data, staticId) {
   if (staticId === null || staticId === undefined) return null;

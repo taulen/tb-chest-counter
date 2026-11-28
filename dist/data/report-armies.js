@@ -208,11 +208,17 @@ async function reportArmiesFor(players, opts, lookups = LIVE) {
         if (!mine)
             continue;
         const strikes = s.strikes ?? [];
-        // The march's effects come from the raw report (kept for every report read): the summary predates them.
+        // The march's effects and commanders come from the raw report (kept for every report read): the summary predates them.
         let effects = null;
-        if (effectsTable && r.raw) {
+        let led = null;
+        if (r.raw) {
             try {
-                effects = (0, battle_report_js_1.parseBattleReport)(zlib_1.default.gunzipSync(r.raw))?.attackers[0]?.effects ?? null;
+                const side = (0, battle_report_js_1.parseBattleReport)(zlib_1.default.gunzipSync(r.raw))?.attackers[0];
+                if (effectsTable)
+                    effects = side?.effects ?? null;
+                if (side?.commanders.length) {
+                    led = { hero: side.commanders.includes(battle_report_js_1.HERO_COMMANDER), captains: side.commanders.filter((c) => c !== battle_report_js_1.HERO_COMMANDER).length };
+                }
             }
             catch {
                 effects = null;
@@ -241,6 +247,7 @@ async function reportArmiesFor(players, opts, lookups = LIVE) {
             },
             won: r.won === 1,
             attacker: { playerId: r.attacker_player_id, name: r.attacker_player_id !== null ? attackerNames.get(r.attacker_player_id) ?? '' : '' },
+            led,
             sharedBy: r.shared_by ?? '',
             troops,
         });

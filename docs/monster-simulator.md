@@ -10,6 +10,19 @@ Plays an attack on any monster target out strike by strike, for both coin flips:
 - **Targets** (T7 type 6 with an army): name, level (f15), class (f18), army `[[unitId, count]]`, strongest stack first, walls included. One target per name, level and army: where the same name and level has a current version and an older one (class 0), the older steps aside; identical armies under several ids are one target listing every id. Objects whose name key has no text in the game's files (tutorial and test objects) are left out, and so are Exiles' Grove (type 22) and player cities. Nov 28 2026: 1,915 targets.
 - **Names in every language**: names.json `units` holds the same units' names, so the texts build pairs them with the game's own text ([i18n.md](i18n.md)); map objects' names were already there.
 
+## Who leads: the Hero or captains
+
+Each target says who may lead an attack on it (the user, Nov 28 2026: only the Hero can attack a Rare squad), and the game's data has it: **T7 f10 = whether the Hero may lead, f11 = how many captains may join** (battle-data `hero`, `captains`, format 2). A report says who led: **march field 9** lists the commanders, `[[commanderId, …]…]`, where 1 is the Hero (the game's hero table keeps the Hero as row 1, each captain under its T75 id) — `BattleSide.commanders`, report-armies' `led`. Every one of ~1,500 shared reports keeps to its target's rule (Nov 28 2026, `research/monster-sim/commanders.mts`):
+
+| f10 / f11 | Who leads | Targets |
+|---|---|---|
+| 1 / 0 | the Hero alone | Rare squads, Basilisk, Forest Hermit, one Epic Inferno version |
+| 0 / 1 | one captain | Common squads, Epic Fenrir, the Tin Man, Baron Candlemourn, Epic Famine and Greed, raids, vaults |
+| 1 / 3 | the Hero with up to 3 captains (the Hero may stay home) | Heroic squads, citadels, Epic Death, Ashen, Jack Reaper, Shadow City, Vineweaver |
+| 0 / 3 | up to 3 captains | Briareus, Arachne's Swarm, Arcanomancer |
+
+It matters because the bonuses (the Hero's talents and gear, or the captains' skills) and the march's leadership differ with the leader: a Hero-led Rare squad march is not a captain-led Common one. The page shows the rule under the target ("Attack: Led by the Hero alone"), **Suggest** reads only the battles led the same way (`battlesLedFor`; with none it uses all and says why that is a guess), and **Fill in** warns when the battle was led differently. Armageddon is an event (T44), not a map object; which of its epics are the Hero's is whatever f10 / f11 say per target.
+
 ## The engine
 
 [battle-sim.js](../src/web/public/lib/battle-sim.js), shared with Citadel (whose rules, evidence and luck are in [citadel-simulator.md](citadel-simulator.md#how-the-rules-were-obtained)). A unit def is `{ id, str, hp, tags, vs }`; `vs` is either Citadel's `{ tag: percent }` or the game's `[[tags], percent, multiplier]`. Walls are any unit tagged `fortification` or `citywalls`; a siege engine is Citadel's flag or the game's `siege` tag.

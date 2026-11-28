@@ -268,7 +268,9 @@ levels) names the fields; read Nov 26 2026:
   cost; armies carry the lower id.
 - **T7 Map objects**, for armies: f1 type (6 = an army on the map: monster
   squads, citadels, enemy cities, vaults; 22 Exiles' Grove; 2 a player's
-  city), f6[1] the army `{unitId: count}` (walls are a unit, 51), f15 level,
+  city), f6[1] the army `{unitId: count}` (walls are a unit, 51), f10 whether
+  the Hero may lead an attack, f11 how many captains may (0 / 1 / 3: Rare
+  squads are the Hero's alone, Common squads one captain's), f15 level,
   f18 class (1 Common, 2 Rare, 3 Heroic, 4 citadel or enemy city, 5 Epic, 7 a
   group raid, 8 Vault of the Ancients, 9 Abyss; 0 an older version). Every
   current citadel's army equals the counts read off in-game march screens.

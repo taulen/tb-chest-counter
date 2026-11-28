@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TINMAN_FULL_STACKS = void 0;
+exports.TINMAN_FULL_STACKS = exports.HERO_COMMANDER = void 0;
 exports.playerIdOf = playerIdOf;
 exports.parseBattleReport = parseBattleReport;
 exports.parseStrikeLog = parseStrikeLog;
@@ -30,6 +30,8 @@ exports.tinmanStacks = tinmanStacks;
  * so they are a fallback only. Monsters' "player" is 1116691496961 ([260, 1]).
  */
 const codec_js_1 = require("./codec.js");
+/** The commander id of the Hero in a march's field 9 (T10 row 1). */
+exports.HERO_COMMANDER = 1;
 /** A player id from a short [realm, n] — exact only while the id's number fits in 12 bits. */
 function playerIdOf(realm, playerNo) {
     return realm * 2 ** 32 + playerNo;
@@ -92,7 +94,17 @@ function readSide(v) {
     let playerId = owner;
     if (playerId === null && Array.isArray(who) && typeof who[0] === 'number' && typeof who[1] === 'number')
         playerId = playerIdOf(who[0], who[1]);
-    return { playerId, units: marchUnits(march, killed), killed, armyId: firstId(march[0]), effects: marchEffects(march) };
+    return { playerId, units: marchUnits(march, killed), killed, armyId: firstId(march[0]), effects: marchEffects(march), commanders: marchCommanders(march) };
+}
+/** Field 9's commanders: the first number of each entry. */
+function marchCommanders(march) {
+    const out = [];
+    for (const c of Array.isArray(march[9]) ? march[9] : []) {
+        const id = Array.isArray(c) ? num(c[0]) : null;
+        if (id !== null)
+            out.push(id);
+    }
+    return out;
 }
 /** A march's effects (field 14, counted) and the boosts (field 16) running when it set out. */
 function marchEffects(march) {
