@@ -48,6 +48,7 @@ import { searchArmy, cancelArmySearch } from '../lib/army-search.js';
 import { progressHtml, paintProgress } from '../lib/search-progress.js';
 import { loadArmyStarts, startsFrom, citadelExemplars } from '../lib/army-starts.js';
 import { loadPlayerEconomy, lossCosts, lossCostsHtml, pricesNoteHtml, templeFactor } from '../lib/loss-costs.js';
+import { suggestRows, keepSized, levelsSet, levelsLabel, setupStarts } from '../lib/troop-suggest.js';
 import { withGapsFilled } from '../lib/report-bonuses.js';
 import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
@@ -213,6 +214,8 @@ function loadDraft() {
         count: Number.isInteger(r.count) && r.count >= 0 ? r.count : 0,
         strengthPct: num(r.strengthPct),
         healthPct: num(r.healthPct),
+        // Bonus boxes still holding the baseline for the player's levels (lib/troop-suggest.js).
+        baseline: Array.isArray(r.baseline) ? r.baseline.filter((f) => f === 'strengthPct' || f === 'healthPct') : [],
       }))),
       countMode: ['auto', 'gm', 'manual'].includes(d.countMode) ? d.countMode : 'auto',
       bonusesAt: typeof d.bonusesAt === 'string' ? d.bonusesAt : null,
@@ -271,6 +274,8 @@ export async function renderCitadelTool(mount) {
     /** The game's prices by troop id and the Temple's factors (loadPrices), once loaded. */
     prices: null,
     temple: null,
+    /** A "Suggest troops for my levels" waiting for its search ({ mercCheck }), or null — see finishSuggestion. */
+    suggest: null,
   };
   mount.innerHTML = `
     <div class="citadel-tool">
@@ -418,6 +423,8 @@ function scheduleSearch(root) {
     // cs.discounts: the player's training discounts per kind (guardsmen / specialists / siege, %), when the page has them.
     const params = citadelSearch({ citadelId: cs.citadelId, army: cs.rows, starts, prices, discounts: cs.discounts ?? null });
     if (params) params.starts.push(...startsFrom({ ...citadelExemplars(lib, cs.citadelId), army: params.army, enemy: params.enemy, enemySide: 'citadel', defOf: (k) => troopById(k) }));
+    // A suggestion's proven setups, sized by game01master (finishSuggestion, lib/troop-suggest.js).
+    if (params && cs.suggest?.starts) params.starts.push(...cs.suggest.starts.filter((s) => s.length === cs.rows.length));
     const state = cs;
     if (!params) {
       state.search = { key, ok: false, counts: cs.rows.map(() => 0) };
@@ -437,6 +444,7 @@ function scheduleSearch(root) {
     state.progress = null;
     if (!res || searchKey() !== key || !root.isConnected) return;
     cs.search = { key, ok: res.ok, counts: res.counts };
+    if (cs.suggest && finishSuggestion(root, res)) return;
     refresh(root);
   }, SEARCH_DELAY_MS);
 }
@@ -587,6 +595,11 @@ function paintArmy(root, a) {
 
 function bonusesNoteHtml() {
   const base = t('Type each troop\'s strength bonus from its card, read with the captains you will march with; health only where it says “needed”. Bonuses change with every captain, artifact or research swap — update them before every attack.');
+  // A suggestion's baseline bonuses (the user's rule: obvious, and to be replaced, by hand or from a report).
+  if (cs.rows.some((r) => r.baseline?.length)) {
+    return `<p class="citadel-note">${base}</p>
+      <p class="citadel-note tool-warn citadel-baseline-note">⚠ ${esc(t('Marked bonuses are typical for players at your levels ({levels}), not yours: the counts are only a starting point. Replace them with your own — Fill in from a battle report, or type them from your troop cards.', { levels: levelsLabel(cs.levels) }))}</p>`;
+  }
   if (!cs.bonusesAt) return `<p class="citadel-note">${base}</p>`;
   const stale = Date.now() - new Date(cs.bonusesAt).getTime() > STALE_MS;
   const when = esc(formatRelativeTime(cs.bonusesAt));
@@ -627,7 +640,10 @@ function armyCardHtml(a) {
       </div>
       <div class="tool-tile-body">
         ${bonusesNoteHtml()}
-        ${cs.rows.length ? `<div class="citadel-from-report"><button type="button" class="btn btn-sm" data-cit-action="from-report">${t('Fill in from a battle report')}</button></div>` : ''}
+        <div class="citadel-from-report">
+          ${cs.rows.length ? `<button type="button" class="btn btn-sm" data-cit-action="from-report">${t('Fill in from a battle report')}</button>` : ''}
+          <button type="button" class="btn btn-sm" data-cit-action="suggest">${t('Suggest troops for my levels')}</button>
+        </div>
         <p class="citadel-note citadel-count-note">${countModeNote(a)}</p>
         ${cs.rows.length && !cs.rows.some((r) => troopById(r.troopId)?.siegeEngine)
           ? `<p class="citadel-note tool-warn">⚠ ${t('No siege engine in this army: the walls strike first and keep striking each round until they fall. Add one to break them before they hit.')}</p>` : ''}
@@ -686,8 +702,16 @@ function rowHtml(r, i, role, a) {
             : t('Searched by the simulator from your bonuses. Switch Counts to Manual to change it.'),
         }
         : { placeholder: '0' })}
-      ${field('strengthPct', r.strengthPct, t('Strength %'), 0.1, { cls: a.strengthMissing.includes(i) ? 'is-missing' : '', placeholder: t('from card') })}
-      ${field('healthPct', r.healthPct, t('Health %'), 0.1, { cls: a.healthNeeded.has(i) ? 'is-missing' : '', placeholder: healthPlaceholder(i, a) })}
+      ${field('strengthPct', r.strengthPct, t('Strength %'), 0.1, {
+        cls: a.strengthMissing.includes(i) ? 'is-missing' : r.baseline?.includes('strengthPct') ? 'is-baseline' : '',
+        placeholder: t('from card'),
+        title: r.baseline?.includes('strengthPct') ? t('Typical for your levels, not yours: replace it with your own bonus.') : '',
+      })}
+      ${field('healthPct', r.healthPct, t('Health %'), 0.1, {
+        cls: a.healthNeeded.has(i) ? 'is-missing' : r.baseline?.includes('healthPct') ? 'is-baseline' : '',
+        placeholder: healthPlaceholder(i, a),
+        title: r.baseline?.includes('healthPct') ? t('Typical for your levels, not yours: replace it with your own bonus.') : '',
+      })}
       <span class="citadel-row-actions">
         <button type="button" class="citadel-icon-btn is-remove" data-cit-action="remove" data-row="${i}" aria-label="${esc(t('Remove {troop}', { troop: name }))}">✕</button>
       </span>
@@ -937,12 +961,15 @@ function onInput(e) {
     // the player hasn't typed in themselves. So a troop given its own number
     // stays put, now and after a reload (it no longer agrees).
     typedByHand(row).add(field);
+    // The player's own number now: no longer the baseline.
+    if (row.baseline?.length) row.baseline = row.baseline.filter((f) => f !== field);
     const root = el.closest('.citadel-tool');
     for (const k of familyPeers(Number(el.dataset.row))) {
       const peer = cs.rows[k];
       if (typedByHand(peer).has(field)) continue;
       if (peer[field] !== null && peer[field] !== before) continue;
       peer[field] = row[field];
+      if (peer.baseline?.length) peer.baseline = peer.baseline.filter((f) => f !== field);
       const peerInput = root?.querySelector(`[data-row="${k}"][data-field="${field}"]`);
       if (peerInput) peerInput.value = fmtBonus(row[field]);
     }
@@ -1050,6 +1077,8 @@ async function onClick(e) {
     openMarchList(root);
   } else if (action === 'from-report') {
     await fillFromReport(root);
+  } else if (action === 'suggest') {
+    await suggestForLevels(root);
   } else if (action === 'save') {
     await savePreset(root);
   } else if (action === 'delete') {
@@ -1079,6 +1108,99 @@ function reportBonusesFor(troopId, found) {
   return strengthPct === null && healthPct === null ? null : { strengthPct, healthPct };
 }
 
+/**
+ * "Suggest troops for my levels" (lib/troop-suggest.js): every line that
+ * matters at the best tiers the levels unlock, sized by Auto; what it sizes
+ * to 0 is dropped once the search is done (finishSuggestion). Bonuses carry
+ * over from the rows on the page, else start at the baseline, marked.
+ */
+async function suggestForLevels(root) {
+  const title = t('Suggest troops for my levels');
+  if (!levelsSet(cs.levels)) {
+    await notify(t('Set all four of your levels first (Guardsmen, Specialists, Monsters, Engineers, above): the suggestion uses only troops they unlock.'), title);
+    root.querySelector('[data-level-kind]')?.focus();
+    return;
+  }
+  if (cs.rows.length && !(await confirmDialog(t('Replace your army with troops suggested for {levels}? Bonuses you have for the same troops carry over.', { levels: levelsLabel(cs.levels) }), title))) return;
+  // On Elven 25/30 game01master's setups (Corax II, Corax I or Griffin VII first) join the candidates and
+  // start the search from game01master's own sizing: the suggestion can only match or beat them.
+  let setups = GM_CITADELS.has(cs.citadelId)
+    ? [GM_TEMPLATE_C2, GM_TEMPLATE].map((slots) => recommendedRows({ slots })?.map(([id]) => id)).filter(Boolean)
+    : [];
+  const rows = suggestRows(cs.levels, cs.rows, setups.flat());
+  if (!rows?.length) return;
+  const pool = normalizeRows(rows);
+  const siege = pool.find((r) => isSiege(r.troopId))?.troopId;
+  setups = setups.map((ids) => ids.map((id) => (isSiege(id) && siege ? siege : id)));
+  const mercCheck = pool.some((r) => troopById(r.troopId)?.group === 'mercenaries');
+  cs.countMode = 'auto';
+  cs.search = null;
+  cs.selectedPreset = '';
+  // finishSuggestion runs on each search's result. With proven setups (Elven 25/30) it is two steps:
+  // their troops alone first (small and quick), then every candidate starting from that answer — the
+  // search keeps its best, so the suggestion never ends worse than game01master's setup (measured at
+  // G8/G9 baselines: equal or 10-19% less Silver). Then mercenaries out where they'd lose any, and the
+  // rows sized to 0 dropped.
+  if (setups.length) {
+    const inSetups = new Set(setups.flat());
+    cs.rows = pool.filter((r) => inSetups.has(r.troopId));
+    cs.suggest = { stage: 'setups', pool, setups, mercCheck, starts: setupStarts(cs.citadelId, cs.rows, setups) };
+  } else {
+    cs.rows = pool;
+    cs.suggest = { stage: 'pool', mercCheck, starts: [] };
+  }
+  saveDraft();
+  paintAll(root);
+}
+
+/**
+ * A suggestion's search is done. Mercenaries stay only where they lose nothing
+ * (the user's rule) — else they go and the search runs again without them; then
+ * the rows sized to 0 go. Returns whether it repainted.
+ */
+function finishSuggestion(root, res) {
+  const s = cs.suggest;
+  cs.suggest = null;
+  if (!s) return false;
+  if (s.stage === 'setups') {
+    // Step two: every candidate, starting from the setups' answer (where they could win) and game01master's sizing.
+    const from = s.pool.map((r) => {
+      const k = cs.rows.findIndex((x) => x.troopId === r.troopId);
+      return k < 0 || !res.ok ? 0 : res.counts[k];
+    });
+    cs.rows = s.pool;
+    cs.search = null;
+    cs.suggest = { stage: 'pool', mercCheck: s.mercCheck, starts: [...(res.ok ? [from] : []), ...setupStarts(cs.citadelId, s.pool, s.setups)] };
+    saveDraft();
+    paintAll(root);
+    return true;
+  }
+  if (!res.ok) return false;
+  const isMerc = (r) => troopById(r.troopId)?.group === 'mercenaries';
+  if (s.mercCheck && cs.rows.some((r, i) => isMerc(r) && res.counts[i] > 0)) {
+    const both = simulateBoth({ citadelId: cs.citadelId, army: cs.rows.map((r, i) => ({ ...r, count: res.counts[i] })) });
+    const mercLost = [both.you, both.citadel].some((f) => f.army.some((x) => x.lost > 0 && troopById(x.troopId)?.group === 'mercenaries'));
+    if (mercLost) {
+      const keepIdx = cs.rows.map((r, i) => (isMerc(r) ? -1 : i)).filter((i) => i >= 0);
+      cs.rows = keepIdx.map((i) => cs.rows[i]);
+      cs.search = null;
+      // Again without them, from this answer minus its mercenaries.
+      cs.suggest = { stage: 'pool', mercCheck: false, starts: [keepIdx.map((i) => res.counts[i])] };
+      saveDraft();
+      paintAll(root);
+      return true;
+    }
+  }
+  const kept = keepSized(cs.rows, res.counts);
+  if (kept.rows.length) {
+    cs.rows = normalizeRows(kept.rows);
+    cs.search = { key: searchKey(), ok: true, counts: cs.rows.map((r) => r.count) };
+  }
+  saveDraft();
+  paintAll(root);
+  return true;
+}
+
 /** Pick a player and one of their battles; fill in what it shows. */
 async function fillFromReport(root) {
   const title = t('Fill in from a battle report');
@@ -1099,6 +1221,8 @@ async function fillFromReport(root) {
     if (!v) continue;
     if (v.strengthPct !== null) row.strengthPct = v.strengthPct;
     if (v.healthPct !== null) row.healthPct = v.healthPct;
+    // The report's numbers replace a suggestion's baseline.
+    if (row.baseline?.length) row.baseline = row.baseline.filter((f) => v[f] === null || v[f] === undefined);
     filled++;
   }
   if (!filled) {

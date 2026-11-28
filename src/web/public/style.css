@@ -9038,7 +9038,7 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .citadel-note { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 12px; }
 .citadel-note-when { color: var(--text-muted); }
 /* Citadel / Stacks: "Fill in from a battle report" (lib/report-bonuses.js). */
-.citadel-from-report { margin: 0 0 12px; }
+.citadel-from-report { margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px; }
 /* Its dialog (lib/report-picker.js): a player select, then their battles. */
 .rp-modal .rp-intro { margin: 0 0 12px; color: var(--text-secondary); font-size: 13.5px; line-height: 1.5; }
 .rp-player { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; font-size: 12px; color: var(--text-muted); }
@@ -9371,6 +9371,8 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .citadel-field { display: block; min-width: 0; }
 .citadel-num { width: 100%; padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; }
 .citadel-num.is-missing { border-color: var(--accent-amber); background: var(--accent-amber-bg); }
+/* A suggestion's baseline bonus (lib/troop-suggest.js): typical for the levels, not the player's — dashed amber until replaced. */
+.citadel-num.is-baseline { border-style: dashed; border-color: var(--accent-amber); color: var(--accent-amber-text); }
 /* Worked-out counts read as results, not as boxes to fill in. */
 .citadel-num.is-auto { border-color: transparent; background: var(--subtle-bg); color: var(--accent-gold); font-weight: 700; cursor: default; }
 .citadel-num.is-auto:focus { outline: none; box-shadow: none; }
