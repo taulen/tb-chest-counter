@@ -3,6 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.REPORT_WINDOW_DAYS = void 0;
+exports.loadCitadels = loadCitadels;
 exports.loadTroopEffects = loadTroopEffects;
 exports.reportPlayers = reportPlayers;
 exports.reportArmiesFor = reportArmiesFor;
@@ -30,9 +32,16 @@ exports.reportArmiesFor = reportArmiesFor;
  *
  * Whose: a player's battles are the ones they FOUGHT (the march owner — the
  * army whose bonuses these are) and the ones they POSTED (usually their own;
- * a report of someone else's army says whose it is). The viewer picks the
- * player (reportPlayers): their own players see every clan's shares, anyone
- * else only what was shared in the clan being viewed.
+ * a report of someone else's army says whose it is). The dialog opens on the
+ * viewer's own players together and lists anyone else on request
+ * (reportPlayers): their own players see every clan's shares, anyone else
+ * only what was shared in the clan being viewed.
+ *
+ * Only the last REPORT_WINDOW_DAYS: bonuses change with captains and gear, so
+ * an older battle is never what anyone fills in from — and reading every
+ * report's summary for every player made the dialog take seconds to open.
+ * Tools → Citadel asks for citadel battles only (`targets`: the game's
+ * citadels, static-data.ts GameCitadel), each with its level.
  */
 const fs_1 = __importDefault(require("fs"));
 const zlib_1 = __importDefault(require("zlib"));
@@ -43,6 +52,15 @@ const static_data_js_1 = require("../game-protocol/static-data.js");
 const battle_report_js_1 = require("../game-protocol/battle-report.js");
 const troop_effects_js_1 = require("../game-protocol/troop-effects.js");
 const game_player_names_js_1 = require("./game-player-names.js");
+/** The game's citadels by T7 id (names build, format 16+); empty when the names can't be read. */
+async function loadCitadels() {
+    try {
+        return (await (0, static_data_js_1.loadGameNames)()).citadels ?? {};
+    }
+    catch {
+        return {};
+    }
+}
 let effectsMemo = null;
 /** The newest troop-effects.json the names build wrote (static-data.ts), kept in memory until a newer one appears. */
 function loadTroopEffects() {
@@ -66,10 +84,24 @@ function loadTroopEffects() {
 const LIVE = {
     units: () => (0, art_static_js_1.cachedArtUnits)((0, store_js_1.gameArtDir)()),
     objects: async () => (await (0, static_data_js_1.loadGameNames)()).objects,
+    citadels: loadCitadels,
     troopEffects: loadTroopEffects,
 };
-/** Battles of the dialog: read, with a strike log. */
-const READABLE = `r.status = 'ok' AND r.kind = 'battle' AND r.summary LIKE '%"strikes"%'`;
+/** How far back the dialog looks. */
+exports.REPORT_WINDOW_DAYS = 7;
+/**
+ * Battles of the dialog: read, with a strike log, fought in the window. The
+ * time comes first so the summary's text is only searched for those.
+ */
+function readable(f) {
+    const since = Math.floor((f.nowMs ?? Date.now()) / 1000) - exports.REPORT_WINDOW_DAYS * 86_400;
+    const targets = f.targets ?? null;
+    const onTarget = targets === null ? '' : targets.length ? `AND r.target_static_id IN (${targets.map(() => '?').join(',')})` : 'AND 0';
+    return {
+        sql: `r.report_at >= ? AND r.status = 'ok' AND r.kind = 'battle' ${onTarget} AND r.summary LIKE '%"strikes"%'`,
+        args: [since, ...(targets ?? [])],
+    };
+}
 /** A player's name: the clan's (member or game), else the game's anywhere, else what they post under. */
 function namesFor(clanId, ids) {
     const out = new Map();
@@ -90,43 +122,55 @@ function namesFor(clanId, ids) {
 }
 /**
  * The players the viewer can pick: their own (every clan's shares) and anyone
- * who fought or posted a readable battle shared in `clanId`. Own first, then
- * by name.
+ * who fought or posted a readable battle shared in `clanId`, each with their
+ * battles in the window. Own first, then by name. One pass over the window's
+ * shares.
  */
-function reportPlayers(clanId, ownIds) {
-    const db = (0, database_js_1.getDb)();
-    const fought = db.prepare(`SELECT r.attacker_player_id AS p, COUNT(DISTINCT r.entry_id) AS n FROM battle_reports r
-     JOIN battle_report_shares s ON s.entry_id = r.entry_id AND s.clan_id = ?
-     WHERE ${READABLE} AND r.attacker_player_id IS NOT NULL GROUP BY r.attacker_player_id`).all(clanId);
-    const posted = db.prepare(`SELECT s.sender_player_id AS p FROM battle_report_shares s JOIN battle_reports r ON r.entry_id = s.entry_id
-     WHERE s.clan_id = ? AND ${READABLE} AND s.sender_player_id IS NOT NULL GROUP BY s.sender_player_id`).all(clanId);
-    const ids = new Set([...ownIds, ...fought.map((r) => r.p), ...posted.map((r) => r.p)]);
-    const names = namesFor(clanId, [...ids]);
+function reportPlayers(clanId, ownIds, filter = {}) {
+    const { sql, args } = readable(filter);
+    const rows = (0, database_js_1.getDb)().prepare(`SELECT r.entry_id AS e, r.attacker_player_id AS a, s.sender_player_id AS p, s.clan_id AS c
+     FROM battle_reports r JOIN battle_report_shares s ON s.entry_id = r.entry_id
+     WHERE ${sql}`).all(...args);
     const own = new Set(ownIds);
-    return [...ids].map((id) => ({
-        playerId: id,
-        name: names.get(id) ?? '',
-        battles: battleIds(id, own.has(id) ? null : clanId).length,
-        own: own.has(id),
-    }))
-        .filter((p) => p.own || p.battles > 0)
+    const inClan = new Set(rows.filter((r) => r.c === clanId).map((r) => r.e));
+    const battles = new Map(ownIds.map((id) => [id, new Set()]));
+    const add = (id, e) => {
+        // Another player's battles only as shared in this clan; the viewer's own from every clan's.
+        if (id === null || (!own.has(id) && !inClan.has(e)))
+            return;
+        let set = battles.get(id);
+        if (!set)
+            battles.set(id, (set = new Set()));
+        set.add(e);
+    };
+    for (const r of rows) {
+        add(r.a, r.e);
+        add(r.p, r.e);
+    }
+    const names = namesFor(clanId, [...battles.keys()]);
+    return [...battles].map(([id, set]) => ({ playerId: id, name: names.get(id) ?? '', battles: set.size, own: own.has(id) }))
         .sort((a, b) => Number(b.own) - Number(a.own) || Number(!a.name) - Number(!b.name) || a.name.localeCompare(b.name));
 }
-/** A player's readable battles (fought or posted), newest first; `clanId` = only those shared there. */
-function battleIds(playerId, clanId, limit = 1000) {
+/** The players' readable battles (fought or posted), newest first; `clanId` = only those shared there. */
+function battleIds(playerIds, clanId, filter, limit) {
+    if (!playerIds.length)
+        return [];
+    const { sql, args } = readable(filter);
+    const ph = playerIds.map(() => '?').join(',');
     return (0, database_js_1.getDb)().prepare(`SELECT r.entry_id FROM battle_reports r
-     WHERE ${READABLE}
-       AND (r.attacker_player_id = ? OR EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.entry_id = r.entry_id AND s.sender_player_id = ?))
+     WHERE ${sql}
+       AND (r.attacker_player_id IN (${ph}) OR EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.entry_id = r.entry_id AND s.sender_player_id IN (${ph})))
        AND (? IS NULL OR EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.entry_id = r.entry_id AND s.clan_id = ?))
-     ORDER BY r.report_at DESC LIMIT ?`).all(playerId, playerId, clanId, clanId, limit).map((r) => r.entry_id);
+     ORDER BY r.report_at DESC LIMIT ?`).all(...args, ...playerIds, ...playerIds, clanId, clanId, limit).map((r) => r.entry_id);
 }
 /**
- * A player's newest battles with a strike log (fought or posted), newest first.
+ * The newest battles with a strike log of one player or several (the
+ * viewer's own, together), fought or posted, newest first, in the window.
  * `clanId` limits them to what was shared in that clan (anyone but the
  * viewer's own players); `namesClanId` is the clan whose names are used.
  */
-async function reportArmiesFor(playerId, opts, lookups = LIVE) {
-    const ids = battleIds(playerId, opts.clanId, opts.limit ?? 12);
+async function reportArmiesFor(players, opts, lookups = LIVE) {
+    const ids = battleIds(Array.isArray(players) ? players : [players], opts.clanId, opts, opts.limit ?? 20);
     if (!ids.length)
         return [];
     const db = (0, database_js_1.getDb)();
@@ -141,6 +185,11 @@ async function reportArmiesFor(playerId, opts, lookups = LIVE) {
         objects = await lookups.objects();
     }
     catch { /* names unavailable: targets go unnamed */ }
+    let citadels = {};
+    try {
+        citadels = (await lookups.citadels?.()) ?? {};
+    }
+    catch { /* no levels */ }
     const attackerNames = namesFor(opts.namesClanId, [...new Set(rows.map((r) => r.attacker_player_id).filter((p) => p !== null))]);
     const unitOf = (id) => {
         const u = units.get(id);
@@ -185,7 +234,11 @@ async function reportArmiesFor(playerId, opts, lookups = LIVE) {
         out.push({
             entryId: r.entry_id,
             at: new Date(r.report_at * 1000).toISOString(),
-            target: { staticId: r.target_static_id, name: r.target_static_id !== null ? objects[String(r.target_static_id)] ?? '' : '' },
+            target: {
+                staticId: r.target_static_id,
+                name: r.target_static_id !== null ? objects[String(r.target_static_id)] ?? '' : '',
+                level: r.target_static_id !== null ? citadels[String(r.target_static_id)]?.level ?? null : null,
+            },
             won: r.won === 1,
             attacker: { playerId: r.attacker_player_id, name: r.attacker_player_id !== null ? attackerNames.get(r.attacker_player_id) ?? '' : '' },
             sharedBy: r.shared_by ?? '',

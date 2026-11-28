@@ -176,6 +176,17 @@ const NEEDED_TABLES = [
   TABLE_CLIENT_CONFIG,
 ];
 
+/**
+ * A citadel (T7 row named `atom.name.<kind>_stronghold`): its kind ("elven",
+ * "cursed", "barbarian", "inferno") and level (T7 f15: 1811 Elven 10 … 1817
+ * Elven 30, 1814 Cursed 20). Several ids share a kind and level — the game
+ * keeps older versions (1798 is an Elven 10 too).
+ */
+export interface GameCitadel {
+  kind: string;
+  level: number;
+}
+
 export interface GameNames {
   /** `${composite}:${translations}` — changes whenever either source does. */
   version: string;
@@ -183,6 +194,8 @@ export interface GameNames {
   gifts: Record<string, { chest: string; source: string }>;
   techs: Record<string, { name: string; maxLevel: number }>;
   objects: Record<string, string>;
+  /** Citadels by T7 id: kind and level. Format 16+. */
+  citadels?: Record<string, GameCitadel>;
   /** Terrain types by T4 id (a chat tile share's staticId → "Dense forest"). Format 5+. */
   terrains?: Record<string, string>;
   heroes: Record<string, { name: string; icon: string }>;
@@ -474,10 +487,11 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * 13: speeds — what each effect adds to construction, training and research
  * speed; 14: cityStats — every effect line named, a city's every bonus; 15:
  * troop-effects.json beside it — every effect's strength and health lines with
- * the units they reach, for battle reports' troop cards — Nov 2026); a cached
+ * the units they reach, for battle reports' troop cards — Nov 2026; 16:
+ * citadels — kind and level, for "fill in from a battle report"); a cached
  * file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 15;
+export const NAMES_FORMAT = 16;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -778,9 +792,12 @@ export function buildNames(
     techs[String(f.techId)] = { name: f.name, maxLevel: f.maxLevel };
   }
   const objects: GameNames['objects'] = {};
+  const citadels: Record<string, GameCitadel> = {};
   for (const [id, row] of rows(TABLE_MAP_OBJECTS)) {
     const name = vecText(row[3]);
     if (name) objects[id] = name;
+    const kind = /^atom\.name\.([a-z]+)_stronghold$/.exec(str(vec(row[3])?.[0] ?? null) ?? '')?.[1];
+    if (kind && typeof row[15] === 'number' && row[15] > 0) citadels[id] = { kind, level: row[15] };
   }
   const terrains: Record<string, string> = {};
   for (const [id, row] of rows(TABLE_TERRAINS)) {
@@ -874,7 +891,7 @@ export function buildNames(
   }
   return {
     version, builtAt: new Date().toISOString(), format: NAMES_FORMAT,
-    gifts, techs, objects, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+    gifts, techs, objects, citadels, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
     items,
     events: buildEvents(tables.get(TABLE_TOURNAMENTS), str, en),
     heroLevels: buildHeroLevels(rows(TABLE_HERO_LEVELS)),

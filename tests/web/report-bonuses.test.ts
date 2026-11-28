@@ -66,9 +66,28 @@ let cleanup: () => void;
 beforeEach(() => { ({ cleanup } = makeTestDb()); seedTwoClans(); });
 afterEach(() => cleanup());
 
-const LOOKUPS = { units: () => UNITS, objects: async () => ({ 1817: 'Elven Citadel' }) };
+const LOOKUPS = {
+  units: () => UNITS,
+  objects: async () => ({ 1817: 'Elven Citadel', 6054: 'Epic Ancient squad' }),
+  citadels: async () => ({ 1817: { kind: 'elven', level: 30 } }),
+};
 const ENTRY = 'dddddddd-0000-4000-8000-000000000001';
 const POSTER = 1241245599999;
+/** The day after the battle: inside the dialog's week. */
+const NOW = Date.parse('2026-11-08T12:00:00.000Z');
+
+/** Another battle: `entryId` fought by `attacker` against `target` at `at`, posted in clan 1 by the attacker. */
+function shareBattle(entryId: string, opts: { attacker?: number; target?: number; at?: number } = {}) {
+  const attacker = opts.attacker ?? PLAYER;
+  const target = opts.target ?? 1817;
+  recordReportShares(1, [{ channelUrl: 'triumph_clan_channel_1', messageId: 2, createdAt: 1, senderName: 'alt',
+    senderInfo: `121,${attacker.toString(16)},12c00000202,0,4,CWB`,
+    data: JSON.stringify({ subs: { '/%0%/': { type: 'journal', entryType: 'attack', staticId: target, journalV2EntryId: entryId } } }) }]);
+  const r = report();
+  r.targetStaticId = target;
+  r.attackers[0].playerId = attacker;
+  saveFetchedReport(entryId, { at: opts.at ?? 1_794_085_235, type: 'battle', report: r, raw: Buffer.from([0x90]), strikeLog: null, strikes: STRIKES });
+}
 
 /** The Nov 7 battle, shared in `clanId`'s chat by `sender` (player id, name). */
 function share(clanId = 1, sender: [number, string] = [PLAYER, 'taulen'], entryId = ENTRY) {
@@ -80,7 +99,7 @@ function share(clanId = 1, sender: [number, string] = [PLAYER, 'taulen'], entryI
 
 async function armies() {
   share();
-  return reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1 }, LOOKUPS);
+  return reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1, nowMs: NOW }, LOOKUPS);
 }
 
 describe('report armies', () => {
@@ -99,21 +118,51 @@ describe('report armies', () => {
 
   it('only for the player asked about', async () => {
     await armies();
-    expect(await reportArmiesFor(PLAYER + 1, { clanId: null, namesClanId: 1 }, LOOKUPS)).toEqual([]);
+    expect(await reportArmiesFor(PLAYER + 1, { clanId: null, namesClanId: 1, nowMs: NOW }, LOOKUPS)).toEqual([]);
   });
 
   it('lists a battle the player posted too, saying whose army it is', async () => {
     share(1, [POSTER, 'Poster']);
-    const [a] = await reportArmiesFor(POSTER, { clanId: 1, namesClanId: 1 }, LOOKUPS);
+    const [a] = await reportArmiesFor(POSTER, { clanId: 1, namesClanId: 1, nowMs: NOW }, LOOKUPS);
     expect(a).toMatchObject({ attacker: { playerId: PLAYER }, sharedBy: 'Poster' });
   });
 
   it('shows another player’s battles only as shared in the clan being viewed', async () => {
     share(2, [PLAYER, 'taulen']);
-    expect(await reportArmiesFor(PLAYER, { clanId: 1, namesClanId: 1 }, LOOKUPS)).toEqual([]);
-    expect(await reportArmiesFor(PLAYER, { clanId: 2, namesClanId: 2 }, LOOKUPS)).toHaveLength(1);
+    expect(await reportArmiesFor(PLAYER, { clanId: 1, namesClanId: 1, nowMs: NOW }, LOOKUPS)).toEqual([]);
+    expect(await reportArmiesFor(PLAYER, { clanId: 2, namesClanId: 2, nowMs: NOW }, LOOKUPS)).toHaveLength(1);
     // The viewer's own player: every clan's shares.
-    expect(await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1 }, LOOKUPS)).toHaveLength(1);
+    expect(await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1, nowMs: NOW }, LOOKUPS)).toHaveLength(1);
+  });
+
+  it('only from the last week', async () => {
+    share();
+    const later = Date.parse('2026-11-15T12:00:00.000Z');
+    expect(await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1, nowMs: later }, LOOKUPS)).toEqual([]);
+    expect(reportPlayers(1, [], { nowMs: later })).toEqual([]);
+    expect(reportPlayers(1, [PLAYER], { nowMs: later })).toEqual([expect.objectContaining({ playerId: PLAYER, battles: 0 })]);
+  });
+
+  it('citadel battles only when asked, each with the citadel’s level', async () => {
+    share();
+    shareBattle('dddddddd-0000-4000-8000-000000000002', { target: 6054, at: 1_794_090_000 });
+    const all = await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1, nowMs: NOW }, LOOKUPS);
+    expect(all.map((a) => a.target)).toEqual([
+      { staticId: 6054, name: 'Epic Ancient squad', level: null },
+      { staticId: 1817, name: 'Elven Citadel', level: 30 },
+    ]);
+    const citadels = await reportArmiesFor(PLAYER, { clanId: null, namesClanId: 1, nowMs: NOW, targets: [1817] }, LOOKUPS);
+    expect(citadels.map((a) => a.entryId)).toEqual([ENTRY]);
+    expect(reportPlayers(1, [], { nowMs: NOW, targets: [1817] })).toEqual([expect.objectContaining({ playerId: PLAYER, battles: 1 })]);
+    expect(reportPlayers(1, [], { nowMs: NOW, targets: [] })).toEqual([]);
+  });
+
+  it('the viewer’s own accounts together', async () => {
+    const alt = 4599909976661;
+    share();
+    shareBattle('dddddddd-0000-4000-8000-000000000003', { attacker: alt, at: 1_794_090_000 });
+    const both = await reportArmiesFor([PLAYER, alt], { clanId: null, namesClanId: 1, nowMs: NOW }, LOOKUPS);
+    expect(both.map((a) => a.attacker.playerId)).toEqual([alt, PLAYER]);
   });
 });
 
@@ -169,7 +218,7 @@ describe('the players to pick from', () => {
   it('the viewer’s own players first, then whoever fought or posted a battle shared in the clan', () => {
     share(1, [POSTER, 'Poster']);
     const own = 4599909976661;
-    const players = reportPlayers(1, [own]);
+    const players = reportPlayers(1, [own], { nowMs: NOW });
     // Named before unnamed (the army's owner here has no game data and never posted).
     expect(players.map((p) => [p.playerId, p.own, p.battles])).toEqual([[own, true, 0], [POSTER, false, 1], [PLAYER, false, 1]]);
     expect(players.find((p) => p.playerId === POSTER)?.name).toBe('Poster');
@@ -177,8 +226,8 @@ describe('the players to pick from', () => {
 
   it('leaves out a clan’s battles for another clan', () => {
     share(2, [PLAYER, 'taulen']);
-    expect(reportPlayers(1, [])).toEqual([]);
-    expect(reportPlayers(2, []).map((p) => p.playerId)).toEqual([PLAYER]);
+    expect(reportPlayers(1, [], { nowMs: NOW })).toEqual([]);
+    expect(reportPlayers(2, [], { nowMs: NOW }).map((p) => p.playerId)).toEqual([PLAYER]);
   });
 });
 

@@ -12,7 +12,7 @@
  * clan's chats, anyone else's only as shared in the active clan.
  */
 import { Router } from 'express';
-import { reportArmiesFor, reportPlayers } from '../../data/report-armies.js';
+import { REPORT_WINDOW_DAYS, loadCitadels, reportArmiesFor, reportPlayers } from '../../data/report-armies.js';
 import { waitingReportCount } from '../../data/repositories/battle-report-repo.js';
 import { linksForUser } from '../../data/repositories/account-invite-repo.js';
 import { getAncientRoster } from '../../data/ancient-roster.js';
@@ -77,26 +77,32 @@ export function createToolsRouter(): Router {
   });
 
   /**
-   * Battle-report armies for "fill in from a battle report" (Citadel, Stacks):
-   * the players to pick from — the account's own (every clan's shares) and
-   * anyone who fought or posted a readable battle in the active clan — and the
-   * picked one's newest battles (`?player=`; default the account's own player
-   * with the most). Another player's battles are only those shared in the
-   * active clan.
+   * Battle-report armies for "fill in from a battle report" (Citadel, Stacks),
+   * the last REPORT_WINDOW_DAYS only: the players to pick from — the
+   * account's own (every clan's shares) and anyone who fought or posted a
+   * readable battle in the active clan — and the battles. By default the
+   * account's own players' together (`player` = their id when there's one,
+   * 'own' for several, null for none); `?player=<id>` one player's — another
+   * player's only as shared in the active clan. `?only=citadels`: citadel
+   * battles only (Tools → Citadel).
    */
   router.get('/report-armies', async (req, res) => {
     const clanId = req.clanId!;
     const own = [...new Set(linksForUser(req.user!.id).map((l) => l.playerId))];
-    const players = reportPlayers(clanId, own);
-    const asked = Number(req.query.player);
-    const pick = players.find((p) => p.playerId === asked)
-      ?? [...players].filter((p) => p.own).sort((a, b) => b.battles - a.battles)[0]
-      ?? players[0]
-      ?? null;
-    const reports = pick
-      ? await reportArmiesFor(pick.playerId, { clanId: pick.own ? null : clanId, namesClanId: clanId })
+    const citadels = req.query.only === 'citadels' ? await loadCitadels() : null;
+    const filter = { targets: citadels ? Object.keys(citadels).map(Number) : null };
+    const players = reportPlayers(clanId, own, filter);
+    const mine = players.filter((p) => p.own).map((p) => p.playerId);
+    const picked = players.find((p) => String(p.playerId) === String(req.query.player ?? '')) ?? null;
+    const ids = picked ? [picked.playerId] : mine;
+    const player: number | 'own' | null = picked ? picked.playerId : mine.length > 1 ? 'own' : mine[0] ?? null;
+    const reports = ids.length
+      ? await reportArmiesFor(ids, { clanId: picked && !picked.own ? clanId : null, namesClanId: clanId, ...filter })
       : [];
-    res.json({ linked: own.length > 0, players, player: pick?.playerId ?? null, reports, waiting: waitingReportCount() });
+    res.json({
+      linked: own.length > 0, players, player, reports, waiting: waitingReportCount(),
+      windowDays: REPORT_WINDOW_DAYS, only: citadels ? 'citadels' : null,
+    });
   });
 
   /** The signed-in account's saved citadel armies. */

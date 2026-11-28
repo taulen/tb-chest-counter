@@ -90,6 +90,18 @@ describe('game names from static data', () => {
     expect(n.objects['150329']).toBe('Vault of the Ancients');
   });
 
+  it('reads the citadels: the kind from the name key, the level from f15', () => {
+    const s2: Wire[] = [...strings, 'atom.name.elven_stronghold'];
+    const v2: Wire[] = [...vectors, [s2.length - 1]];
+    // 1811's real layout, trimmed: f6 defenders, f7 rewards, f15 the level.
+    const row = (id: number, level: number): Wire => [id, 6, 0, v2.length - 1, 153, 1890, [], [], 1, [], 1, 3, 0, 51, [], level];
+    const t = new Map(tables);
+    t.set(TABLE_MAP_OBJECTS, { 1811: row(1811, 10), 1817: row(1817, 30), 150329: [150329, 6, 0, 5, 0, 0] });
+    const n = buildNames('v1', s2, v2, t, new Map([...en, ['atom.name.elven_stronghold', 'Elven Citadel']]));
+    expect(n.citadels).toEqual({ 1811: { kind: 'elven', level: 10 }, 1817: { kind: 'elven', level: 30 } });
+    expect(n.objects['1817']).toBe('Elven Citadel');
+  });
+
   it('reads captains: rarity label, sprites and the bonuses per star level', () => {
     const n = buildNames('v1', strings, vectors, tables, en);
     expect(n.captains['8']).toEqual({

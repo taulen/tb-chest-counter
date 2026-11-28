@@ -950,6 +950,7 @@ async function fillFromReport(root) {
   const title = t('Fill in from a battle report');
   const picked = await pickBattleReport({
     title,
+    only: 'citadels',
     intro: t('The bonuses the game used in a battle: pick the player, then the battle. Only troops that fought in it are filled in; strength where a strike shows it, health where the troop was hit.'),
   });
   if (!picked) return;

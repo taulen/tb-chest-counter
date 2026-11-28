@@ -226,10 +226,11 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * 13: speeds — what each effect adds to construction, training and research
  * speed; 14: cityStats — every effect line named, a city's every bonus; 15:
  * troop-effects.json beside it — every effect's strength and health lines with
- * the units they reach, for battle reports' troop cards — Nov 2026); a cached
+ * the units they reach, for battle reports' troop cards — Nov 2026; 16:
+ * citadels — kind and level, for "fill in from a battle report"); a cached
  * file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 15;
+exports.NAMES_FORMAT = 16;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -512,10 +513,14 @@ function buildNames(version, strings, vectors, tables, en) {
         techs[String(f.techId)] = { name: f.name, maxLevel: f.maxLevel };
     }
     const objects = {};
+    const citadels = {};
     for (const [id, row] of rows(exports.TABLE_MAP_OBJECTS)) {
         const name = vecText(row[3]);
         if (name)
             objects[id] = name;
+        const kind = /^atom\.name\.([a-z]+)_stronghold$/.exec(str(vec(row[3])?.[0] ?? null) ?? '')?.[1];
+        if (kind && typeof row[15] === 'number' && row[15] > 0)
+            citadels[id] = { kind, level: row[15] };
     }
     const terrains = {};
     for (const [id, row] of rows(exports.TABLE_TERRAINS)) {
@@ -631,7 +636,7 @@ function buildNames(version, strings, vectors, tables, en) {
     }
     return {
         version, builtAt: new Date().toISOString(), format: exports.NAMES_FORMAT,
-        gifts, techs, objects, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
+        gifts, techs, objects, citadels, terrains, heroes, captains, medals, artifacts, equipment, equipmentGrades, inserts,
         items,
         events: buildEvents(tables.get(exports.TABLE_TOURNAMENTS), str, en),
         heroLevels: buildHeroLevels(rows(exports.TABLE_HERO_LEVELS)),

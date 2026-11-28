@@ -22,16 +22,23 @@
  *
  * Whose: a player's battles are the ones they FOUGHT (the march owner — the
  * army whose bonuses these are) and the ones they POSTED (usually their own;
- * a report of someone else's army says whose it is). The viewer picks the
- * player (reportPlayers): their own players see every clan's shares, anyone
- * else only what was shared in the clan being viewed.
+ * a report of someone else's army says whose it is). The dialog opens on the
+ * viewer's own players together and lists anyone else on request
+ * (reportPlayers): their own players see every clan's shares, anyone else
+ * only what was shared in the clan being viewed.
+ *
+ * Only the last REPORT_WINDOW_DAYS: bonuses change with captains and gear, so
+ * an older battle is never what anyone fills in from — and reading every
+ * report's summary for every player made the dialog take seconds to open.
+ * Tools → Citadel asks for citadel battles only (`targets`: the game's
+ * citadels, static-data.ts GameCitadel), each with its level.
  */
 import fs from 'fs';
 import zlib from 'zlib';
 import { getDb } from './database.js';
 import { cachedArtUnits } from '../game-art/art-static.js';
 import { gameArtDir } from '../game-art/store.js';
-import { loadGameNames, newestStaticFile } from '../game-protocol/static-data.js';
+import { loadGameNames, newestStaticFile, type GameCitadel } from '../game-protocol/static-data.js';
 import { parseBattleReport } from '../game-protocol/battle-report.js';
 import { TROOP_EFFECTS_FILE, TROOP_EFFECTS_FORMAT, troopCard, type TroopEffects } from '../game-protocol/troop-effects.js';
 import { gamePlayerNames } from './game-player-names.js';
@@ -58,7 +65,8 @@ export interface ReportArmy {
   entryId: string;
   /** When the battle was fought (ISO). */
   at: string;
-  target: { staticId: number | null; name: string };
+  /** What was attacked; `level` is a citadel's (null for anything else). */
+  target: { staticId: number | null; name: string; level: number | null };
   won: boolean;
   /** Whose army it is (the march owner) and who posted the report. */
   attacker: { playerId: number | null; name: string };
@@ -70,7 +78,17 @@ export interface ReportArmy {
 export interface ReportArmyLookups {
   units: () => Map<number, { name: string; strength: number; health: number }>;
   objects: () => Promise<Record<string, string>>;
+  citadels?: () => Promise<Record<string, GameCitadel>>;
   troopEffects?: () => TroopEffects | null;
+}
+
+/** The game's citadels by T7 id (names build, format 16+); empty when the names can't be read. */
+export async function loadCitadels(): Promise<Record<string, GameCitadel>> {
+  try {
+    return (await loadGameNames()).citadels ?? {};
+  } catch {
+    return {};
+  }
 }
 
 let effectsMemo: { file: string; mtimeMs: number; table: TroopEffects } | null = null;
@@ -94,11 +112,33 @@ export function loadTroopEffects(): TroopEffects | null {
 const LIVE: ReportArmyLookups = {
   units: () => cachedArtUnits(gameArtDir()),
   objects: async () => (await loadGameNames()).objects,
+  citadels: loadCitadels,
   troopEffects: loadTroopEffects,
 };
 
-/** Battles of the dialog: read, with a strike log. */
-const READABLE = `r.status = 'ok' AND r.kind = 'battle' AND r.summary LIKE '%"strikes"%'`;
+/** How far back the dialog looks. */
+export const REPORT_WINDOW_DAYS = 7;
+
+export interface ReportFilter {
+  /** "Now" for the window (tests); default the clock. */
+  nowMs?: number;
+  /** Only battles against these T7 ids (the citadels), or null for every battle. */
+  targets?: number[] | null;
+}
+
+/**
+ * Battles of the dialog: read, with a strike log, fought in the window. The
+ * time comes first so the summary's text is only searched for those.
+ */
+function readable(f: ReportFilter): { sql: string; args: number[] } {
+  const since = Math.floor((f.nowMs ?? Date.now()) / 1000) - REPORT_WINDOW_DAYS * 86_400;
+  const targets = f.targets ?? null;
+  const onTarget = targets === null ? '' : targets.length ? `AND r.target_static_id IN (${targets.map(() => '?').join(',')})` : 'AND 0';
+  return {
+    sql: `r.report_at >= ? AND r.status = 'ok' AND r.kind = 'battle' ${onTarget} AND r.summary LIKE '%"strikes"%'`,
+    args: [since, ...(targets ?? [])],
+  };
+}
 
 export interface ReportPlayer {
   playerId: number;
@@ -126,55 +166,62 @@ function namesFor(clanId: number, ids: number[]): Map<number, string> {
 
 /**
  * The players the viewer can pick: their own (every clan's shares) and anyone
- * who fought or posted a readable battle shared in `clanId`. Own first, then
- * by name.
+ * who fought or posted a readable battle shared in `clanId`, each with their
+ * battles in the window. Own first, then by name. One pass over the window's
+ * shares.
  */
-export function reportPlayers(clanId: number, ownIds: number[]): ReportPlayer[] {
-  const db = getDb();
-  const fought = db.prepare(
-    `SELECT r.attacker_player_id AS p, COUNT(DISTINCT r.entry_id) AS n FROM battle_reports r
-     JOIN battle_report_shares s ON s.entry_id = r.entry_id AND s.clan_id = ?
-     WHERE ${READABLE} AND r.attacker_player_id IS NOT NULL GROUP BY r.attacker_player_id`,
-  ).all(clanId) as Array<{ p: number; n: number }>;
-  const posted = db.prepare(
-    `SELECT s.sender_player_id AS p FROM battle_report_shares s JOIN battle_reports r ON r.entry_id = s.entry_id
-     WHERE s.clan_id = ? AND ${READABLE} AND s.sender_player_id IS NOT NULL GROUP BY s.sender_player_id`,
-  ).all(clanId) as Array<{ p: number }>;
-  const ids = new Set<number>([...ownIds, ...fought.map((r) => r.p), ...posted.map((r) => r.p)]);
-  const names = namesFor(clanId, [...ids]);
+export function reportPlayers(clanId: number, ownIds: number[], filter: ReportFilter = {}): ReportPlayer[] {
+  const { sql, args } = readable(filter);
+  const rows = getDb().prepare(
+    `SELECT r.entry_id AS e, r.attacker_player_id AS a, s.sender_player_id AS p, s.clan_id AS c
+     FROM battle_reports r JOIN battle_report_shares s ON s.entry_id = r.entry_id
+     WHERE ${sql}`,
+  ).all(...args) as Array<{ e: string; a: number | null; p: number | null; c: number }>;
   const own = new Set(ownIds);
-  return [...ids].map((id) => ({
-    playerId: id,
-    name: names.get(id) ?? '',
-    battles: battleIds(id, own.has(id) ? null : clanId).length,
-    own: own.has(id),
-  }))
-    .filter((p) => p.own || p.battles > 0)
+  const inClan = new Set(rows.filter((r) => r.c === clanId).map((r) => r.e));
+  const battles = new Map<number, Set<string>>(ownIds.map((id) => [id, new Set<string>()]));
+  const add = (id: number | null, e: string) => {
+    // Another player's battles only as shared in this clan; the viewer's own from every clan's.
+    if (id === null || (!own.has(id) && !inClan.has(e))) return;
+    let set = battles.get(id);
+    if (!set) battles.set(id, (set = new Set()));
+    set.add(e);
+  };
+  for (const r of rows) {
+    add(r.a, r.e);
+    add(r.p, r.e);
+  }
+  const names = namesFor(clanId, [...battles.keys()]);
+  return [...battles].map(([id, set]) => ({ playerId: id, name: names.get(id) ?? '', battles: set.size, own: own.has(id) }))
     .sort((a, b) => Number(b.own) - Number(a.own) || Number(!a.name) - Number(!b.name) || a.name.localeCompare(b.name));
 }
 
-/** A player's readable battles (fought or posted), newest first; `clanId` = only those shared there. */
-function battleIds(playerId: number, clanId: number | null, limit = 1000): string[] {
+/** The players' readable battles (fought or posted), newest first; `clanId` = only those shared there. */
+function battleIds(playerIds: number[], clanId: number | null, filter: ReportFilter, limit: number): string[] {
+  if (!playerIds.length) return [];
+  const { sql, args } = readable(filter);
+  const ph = playerIds.map(() => '?').join(',');
   return (getDb().prepare(
     `SELECT r.entry_id FROM battle_reports r
-     WHERE ${READABLE}
-       AND (r.attacker_player_id = ? OR EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.entry_id = r.entry_id AND s.sender_player_id = ?))
+     WHERE ${sql}
+       AND (r.attacker_player_id IN (${ph}) OR EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.entry_id = r.entry_id AND s.sender_player_id IN (${ph})))
        AND (? IS NULL OR EXISTS (SELECT 1 FROM battle_report_shares s WHERE s.entry_id = r.entry_id AND s.clan_id = ?))
      ORDER BY r.report_at DESC LIMIT ?`,
-  ).all(playerId, playerId, clanId, clanId, limit) as Array<{ entry_id: string }>).map((r) => r.entry_id);
+  ).all(...args, ...playerIds, ...playerIds, clanId, clanId, limit) as Array<{ entry_id: string }>).map((r) => r.entry_id);
 }
 
 /**
- * A player's newest battles with a strike log (fought or posted), newest first.
+ * The newest battles with a strike log of one player or several (the
+ * viewer's own, together), fought or posted, newest first, in the window.
  * `clanId` limits them to what was shared in that clan (anyone but the
  * viewer's own players); `namesClanId` is the clan whose names are used.
  */
 export async function reportArmiesFor(
-  playerId: number,
-  opts: { clanId: number | null; namesClanId: number; limit?: number },
+  players: number | number[],
+  opts: { clanId: number | null; namesClanId: number; limit?: number } & ReportFilter,
   lookups: ReportArmyLookups = LIVE,
 ): Promise<ReportArmy[]> {
-  const ids = battleIds(playerId, opts.clanId, opts.limit ?? 12);
+  const ids = battleIds(Array.isArray(players) ? players : [players], opts.clanId, opts, opts.limit ?? 20);
   if (!ids.length) return [];
   const db = getDb();
   const row = db.prepare(
@@ -190,6 +237,8 @@ export async function reportArmiesFor(
   const units = lookups.units();
   let objects: Record<string, string> = {};
   try { objects = await lookups.objects(); } catch { /* names unavailable: targets go unnamed */ }
+  let citadels: Record<string, GameCitadel> = {};
+  try { citadels = (await lookups.citadels?.()) ?? {}; } catch { /* no levels */ }
   const attackerNames = namesFor(opts.namesClanId, [...new Set(rows.map((r) => r.attacker_player_id).filter((p): p is number => p !== null))]);
   const unitOf = (id: number): ReportUnit => {
     const u = units.get(id);
@@ -223,7 +272,11 @@ export async function reportArmiesFor(
     out.push({
       entryId: r.entry_id,
       at: new Date(r.report_at * 1000).toISOString(),
-      target: { staticId: r.target_static_id, name: r.target_static_id !== null ? objects[String(r.target_static_id)] ?? '' : '' },
+      target: {
+        staticId: r.target_static_id,
+        name: r.target_static_id !== null ? objects[String(r.target_static_id)] ?? '' : '',
+        level: r.target_static_id !== null ? citadels[String(r.target_static_id)]?.level ?? null : null,
+      },
       won: r.won === 1,
       attacker: { playerId: r.attacker_player_id, name: r.attacker_player_id !== null ? attackerNames.get(r.attacker_player_id) ?? '' : '' },
       sharedBy: r.shared_by ?? '',
