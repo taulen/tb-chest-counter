@@ -176,11 +176,13 @@ export const TABLE_UNITS = 9;
  * to train each troop (battle-data.ts trainingSilver).
  */
 export const TABLE_TRAINING = 12;
+/** T14 buildings: f6 `{level: [...]}`, each level pointing at its window's props text — read for the Temple's revival discount. */
+export const TABLE_BUILDINGS = 14;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
   TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS, TABLE_FACTIONS,
-  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS, TABLE_UNITS, TABLE_TRAINING,
+  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS, TABLE_UNITS, TABLE_TRAINING, TABLE_BUILDINGS,
   // The client config, for the tech trees' and Academy tabs' names (game-texts).
   TABLE_CLIENT_CONFIG,
 ];
@@ -507,10 +509,10 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * the names of battle-data.json's units, and battle-data.json beside it, for
  * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target;
  * 19: format 3 — revival gold; 20: only live citadels, Elven and Cursed; 21:
- * format 4 — training silver, from T12); a cached file with an older format is
- * rebuilt.
+ * format 4 — training silver, from T12; 22: format 5 — the Temple's revival
+ * discount per level, from T14); a cached file with an older format is rebuilt.
  */
-export const NAMES_FORMAT = 21;
+export const NAMES_FORMAT = 22;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -783,7 +785,7 @@ export function makeBattleData(
     const v = typeof vref === 'number' ? vectors[vref] : undefined;
     return Array.isArray(v) && v.length ? str(v[0]) : undefined;
   };
-  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name, key }, version, tables.get(TABLE_TRAINING));
+  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name, key }, version, tables.get(TABLE_TRAINING), tables.get(TABLE_BUILDINGS));
 }
 
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */

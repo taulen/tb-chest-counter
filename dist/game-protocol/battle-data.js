@@ -2,11 +2,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BATTLE_DATA_FORMAT = exports.BATTLE_DATA_FILE = void 0;
 exports.trainingSilver = trainingSilver;
+exports.templeRevival = templeRevival;
 exports.buildBattleData = buildBattleData;
 exports.battleUnitNames = battleUnitNames;
 exports.BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold; 4: training silver). */
-exports.BATTLE_DATA_FORMAT = 4;
+/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold; 4: training silver; 5: the Temple). */
+exports.BATTLE_DATA_FORMAT = 5;
+/** The building level line "Troop revival cost is decreased by" (the Temple's), in a level's props. */
+const REVIVAL_PROP = 'building_level.client_info.n0006';
 /** T12 (the game's buy table) item id of Silver in a price. */
 const SILVER = '2';
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
@@ -62,7 +65,41 @@ function trainingSilver(t12) {
     }
     return out;
 }
-function buildBattleData(t7, t9, look, version, t12) {
+/**
+ * The Temple's revival discount per level, from T14 (buildings: f6 `{level:
+ * [level, …]}`). A level points at its window text — a JSON string with
+ * `props: [{propText, propValue}]` — and the Temple is the building whose
+ * levels carry the revival line (`times(value=5.91)`), found by that text key
+ * rather than by its type id.
+ */
+function templeRevival(t14, str) {
+    for (const [type, row] of rowsOf(t14)) {
+        const levels = row[6];
+        if (!levels || typeof levels !== 'object' || Array.isArray(levels))
+            continue;
+        const times = {};
+        for (const [level, entry] of Object.entries(levels)) {
+            if (!Array.isArray(entry))
+                continue;
+            for (const ref of entry) {
+                const text = typeof ref === 'number' ? str(ref) : undefined;
+                if (!text || !text.includes(REVIVAL_PROP))
+                    continue;
+                try {
+                    const props = JSON.parse(text).props ?? [];
+                    const value = Number(/value=([\d.]+)/.exec(props.find((p) => p.propText === REVIVAL_PROP)?.propValue ?? '')?.[1]);
+                    if (value > 0)
+                        times[level] = value;
+                }
+                catch { /* not a props text */ }
+            }
+        }
+        if (Object.keys(times).length)
+            return { type, times };
+    }
+    return undefined;
+}
+function buildBattleData(t7, t9, look, version, t12, t14) {
     const tagList = (v) => (Array.isArray(v) ? v : []).map((r) => look.str(r)?.toLowerCase()).filter((s) => !!s);
     const trainPrice = trainingSilver(t12);
     // Every unit that can fight, by id.
@@ -206,7 +243,8 @@ function buildBattleData(t7, t9, look, version, t12) {
         const { priced: _p, ...u } = all.get(id);
         units[String(id)] = u;
     }
-    return { format: exports.BATTLE_DATA_FORMAT, version, units, targets };
+    const temple = templeRevival(t14, look.str);
+    return { format: exports.BATTLE_DATA_FORMAT, version, units, targets, ...(temple ? { temple } : {}) };
 }
 /** The English names of the units battle data carries, for names.json (and so the game's own text in every site language). */
 function battleUnitNames(data) {

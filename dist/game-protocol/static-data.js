@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_TRAINING = exports.TABLE_UNITS = exports.TABLE_EFFECTS = exports.TABLE_TITLES = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
+exports.NAMES_FORMAT = exports.BASE_RESOURCE_MAX_ID = exports.VIP_ITEM_KIND = exports.SPEEDUP_ITEM_KINDS = exports.TABLE_BUILDINGS = exports.TABLE_TRAINING = exports.TABLE_UNITS = exports.TABLE_EFFECTS = exports.TABLE_TITLES = exports.TABLE_DRAGONS = exports.TABLE_FACTIONS = exports.TABLE_HERO_LEVELS = exports.TABLE_EQUIPMENT = exports.TABLE_ARTIFACT_BONUSES = exports.TABLE_ARTIFACT_LEVELS = exports.TABLE_ARTIFACT_STARS = exports.TABLE_ARTIFACTS = exports.TABLE_TOURNAMENTS = exports.TABLE_CLAN_MEDALS = exports.TABLE_CAPTAINS = exports.TABLE_TECHS = exports.TABLE_HEROES = exports.TABLE_GIFT_TYPES = exports.TABLE_TERRAINS = exports.TABLE_MAP_OBJECTS = void 0;
 exports.fetchStaticVersion = fetchStaticVersion;
 exports.unzipFirst = unzipFirst;
 exports.parseTranslationsCsv = parseTranslationsCsv;
@@ -193,6 +193,8 @@ exports.TABLE_UNITS = 9;
  * to train each troop (battle-data.ts trainingSilver).
  */
 exports.TABLE_TRAINING = 12;
+/** T14 buildings: f6 `{level: [...]}`, each level pointing at its window's props text — read for the Temple's revival discount. */
+exports.TABLE_BUILDINGS = 14;
 const NEEDED_TABLES = [
     exports.TABLE_MAP_OBJECTS,
     exports.TABLE_GIFT_TYPES,
@@ -214,6 +216,7 @@ const NEEDED_TABLES = [
     exports.TABLE_EFFECTS,
     exports.TABLE_UNITS,
     exports.TABLE_TRAINING,
+    exports.TABLE_BUILDINGS,
     // The client config, for the tech trees' and Academy tabs' names (game-texts).
     client_config_js_1.TABLE_CLIENT_CONFIG,
 ];
@@ -244,10 +247,10 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * the names of battle-data.json's units, and battle-data.json beside it, for
  * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target;
  * 19: format 3 — revival gold; 20: only live citadels, Elven and Cursed; 21:
- * format 4 — training silver, from T12); a cached file with an older format is
- * rebuilt.
+ * format 4 — training silver, from T12; 22: format 5 — the Temple's revival
+ * discount per level, from T14); a cached file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 21;
+exports.NAMES_FORMAT = 22;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -502,7 +505,7 @@ function makeBattleData(version, strings, vectors, tables, en) {
         const v = typeof vref === 'number' ? vectors[vref] : undefined;
         return Array.isArray(v) && v.length ? str(v[0]) : undefined;
     };
-    return (0, battle_data_js_1.buildBattleData)(tables.get(exports.TABLE_MAP_OBJECTS), tables.get(exports.TABLE_UNITS), { str, name, key }, version, tables.get(exports.TABLE_TRAINING));
+    return (0, battle_data_js_1.buildBattleData)(tables.get(exports.TABLE_MAP_OBJECTS), tables.get(exports.TABLE_UNITS), { str, name, key }, version, tables.get(exports.TABLE_TRAINING), tables.get(exports.TABLE_BUILDINGS));
 }
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */
 function buildNames(version, strings, vectors, tables, en) {

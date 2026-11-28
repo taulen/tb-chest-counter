@@ -127,6 +127,24 @@ describe('battle data from the game tables', () => {
     expect(d.units['206'].train).toBeUndefined();
   });
 
+  it('reads the Temple\'s revival discount per level from its window text, found by the revival line', () => {
+    // A level: [level, time, effect, …, props text ref, …]; the props text is a string-pool entry.
+    const POOL: Record<number, string> = {
+      900: JSON.stringify({ props: [{ propText: 'building_level.client_info.n0002', propValue: '1' }, { propText: 'building_level.client_info.n0006', propValue: 'building_level.client_info.times(value=1.04)' }] }),
+      901: JSON.stringify({ props: [{ propText: 'building_level.client_info.n0002', propValue: '260,000' }, { propText: 'building_level.client_info.n0006', propValue: 'building_level.client_info.times(value=5.91)' }] }),
+      902: JSON.stringify({ props: [{ propText: 'building_level.client_info.n0002', propValue: '7' }] }),
+    };
+    const T14: Record<string, Wire> = {
+      // Another building first: no revival line, not the Temple.
+      2: [2, 3, 3, 0, 0, 1, { 1: [1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 902] }],
+      9: [9, 3, 3, 0, 0, 1, { 1: [1, 5, 500, 0, 0, 0, 0, 0, 0, 0, 0, 900], 45: [45, 9, 544, 0, 0, 0, 0, 0, 0, 0, 0, 901] }],
+    };
+    const lookPool = { ...look, str: (r: Wire | undefined) => (typeof r === 'number' ? POOL[r] ?? look.str(r) : undefined) };
+    const p = buildBattleData(T7, T9, lookPool, 'v1', undefined, T14);
+    expect(p.temple).toEqual({ type: 9, times: { 1: 1.04, 45: 5.91 } });
+    expect(d.temple).toBeUndefined();
+  });
+
   it('keeps one target per name, level and army, current versions first', () => {
     const elf = d.targets.filter((t) => t.name === 'Common Elf squad');
     expect(elf).toEqual([{ ids: [1531, 188029], name: 'Common Elf squad', level: 30, cls: 1, hero: false, captains: 1, army: [[6033, 780000]] }]);

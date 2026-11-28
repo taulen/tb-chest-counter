@@ -31,8 +31,11 @@
 import type { Wire } from './codec.js';
 
 export const BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold; 4: training silver). */
-export const BATTLE_DATA_FORMAT = 4;
+/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold; 4: training silver; 5: the Temple). */
+export const BATTLE_DATA_FORMAT = 5;
+
+/** The building level line "Troop revival cost is decreased by" (the Temple's), in a level's props. */
+const REVIVAL_PROP = 'building_level.client_info.n0006';
 
 /** T12 (the game's buy table) item id of Silver in a price. */
 const SILVER = '2';
@@ -89,12 +92,26 @@ export interface BattleTarget {
   army: Array<[number, number]>;
 }
 
+/**
+ * The Temple, where troops lost in an attack are revived: its building type (a
+ * city's `buildings` carry `{type, level}`) and, per level, how many times
+ * cheaper it makes a revival — the game's own "Troop revival cost is decreased
+ * by 5.91 times" (level 45). Checked against the game's level table, Nov 28 2026.
+ */
+export interface TempleRevival {
+  type: number;
+  /** Level → divisor of the revival price (1.04 at level 1 … 5.91 at 45). */
+  times: Record<string, number>;
+}
+
 export interface BattleData {
   format: number;
   /** names.json's version key: the static data it was built from. */
   version: string;
   units: Record<string, BattleUnit>;
   targets: BattleTarget[];
+  /** Absent when the game's files have no building with the revival line. */
+  temple?: TempleRevival;
 }
 
 export interface BattleLookups {
@@ -151,12 +168,42 @@ export function trainingSilver(t12: Record<string, Wire> | undefined): Map<numbe
   return out;
 }
 
+/**
+ * The Temple's revival discount per level, from T14 (buildings: f6 `{level:
+ * [level, …]}`). A level points at its window text — a JSON string with
+ * `props: [{propText, propValue}]` — and the Temple is the building whose
+ * levels carry the revival line (`times(value=5.91)`), found by that text key
+ * rather than by its type id.
+ */
+export function templeRevival(t14: Record<string, Wire> | undefined, str: BattleLookups['str']): TempleRevival | undefined {
+  for (const [type, row] of rowsOf(t14)) {
+    const levels = row[6];
+    if (!levels || typeof levels !== 'object' || Array.isArray(levels)) continue;
+    const times: Record<string, number> = {};
+    for (const [level, entry] of Object.entries(levels as Record<string, Wire>)) {
+      if (!Array.isArray(entry)) continue;
+      for (const ref of entry) {
+        const text = typeof ref === 'number' ? str(ref) : undefined;
+        if (!text || !text.includes(REVIVAL_PROP)) continue;
+        try {
+          const props = (JSON.parse(text) as { props?: Array<{ propText?: string; propValue?: string }> }).props ?? [];
+          const value = Number(/value=([\d.]+)/.exec(props.find((p) => p.propText === REVIVAL_PROP)?.propValue ?? '')?.[1]);
+          if (value > 0) times[level] = value;
+        } catch { /* not a props text */ }
+      }
+    }
+    if (Object.keys(times).length) return { type, times };
+  }
+  return undefined;
+}
+
 export function buildBattleData(
   t7: Record<string, Wire> | undefined,
   t9: Record<string, Wire> | undefined,
   look: BattleLookups,
   version: string,
   t12?: Record<string, Wire>,
+  t14?: Record<string, Wire>,
 ): BattleData {
   const tagList = (v: Wire | undefined): string[] =>
     (Array.isArray(v) ? v : []).map((r) => look.str(r)?.toLowerCase()).filter((s): s is string => !!s);
@@ -288,7 +335,8 @@ export function buildBattleData(
     const { priced: _p, ...u } = all.get(id)!;
     units[String(id)] = u;
   }
-  return { format: BATTLE_DATA_FORMAT, version, units, targets };
+  const temple = templeRevival(t14, look.str);
+  return { format: BATTLE_DATA_FORMAT, version, units, targets, ...(temple ? { temple } : {}) };
 }
 
 /** The English names of the units battle data carries, for names.json (and so the game's own text in every site language). */
