@@ -1075,6 +1075,7 @@ export const ui = {
   "Elven 10–15: {wyvern} + siege": "Эльфийская 10–15: {wyvern} + осада",
   "Elven 20: {wyvern} + {monster} + siege": "Эльфийская 20: {wyvern} + {monster} + осада",
   "Elven {level}: game01master + cleanups": "Эльфийская {level}: game01master + добивание",
+  "Elven {level}: game01master + cleanups, {troop} first": "Эльфийская {level}: game01master + добивание, {troop} первым",
   "needed": "нужно",
   "not hit": "не бьют",
   "if hit": "если бьют",

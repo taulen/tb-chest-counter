@@ -101,6 +101,11 @@ const GM_TEMPLATE = [
   slot('royal-lion-1'),                    // third
   slot('griffin-7'), slot('vulture-7'), slot('griffin-6'), slot('vulture-6'), // cleanups
 ];
+// game01master's G9 setups: Corax II first. Its own sizing and Auto agree on them
+// (the user's cards, Nov 28 2026: Elven 30 36 / 78 Corax II lost against 66 / 141
+// Corax I; Elven 25 7 / 16 against 13 / 29). Offered only where Corax II is
+// unlocked (the slot is required), beside the Corax I setups.
+const GM_TEMPLATE_C2 = [GM_TEMPLATE[0], slot('corax-2', 0, true), ...GM_TEMPLATE.slice(2)];
 const RECOMMENDED = [
   {
     id: 'rec-wyverns',
@@ -119,6 +124,8 @@ const RECOMMENDED = [
   },
   { id: 'rec-gm-25', citadelId: 'elven-25', name: () => t('Elven {level}: game01master + cleanups', { level: 25 }), slots: GM_TEMPLATE },
   { id: 'rec-gm-30', citadelId: 'elven-30', name: () => t('Elven {level}: game01master + cleanups', { level: 30 }), slots: GM_TEMPLATE },
+  { id: 'rec-gm-25-c2', citadelId: 'elven-25', name: () => t('Elven {level}: game01master + cleanups, {troop} first', { level: 25, troop: troopName('corax-2') }), slots: GM_TEMPLATE_C2 },
+  { id: 'rec-gm-30-c2', citadelId: 'elven-30', name: () => t('Elven {level}: game01master + cleanups, {troop} first', { level: 30, troop: troopName('corax-2') }), slots: GM_TEMPLATE_C2 },
 ];
 
 /** Module state — rebuilt on every page render. */
