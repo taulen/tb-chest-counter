@@ -170,11 +170,17 @@ export const TABLE_TITLES = 29;
 export const TABLE_EFFECTS = 20;
 /** T9 Units: stats, tags and "vs" features (battle-data.ts). */
 export const TABLE_UNITS = 9;
+/**
+ * T12 the game's buy table: f2[0] a price `{itemId: amount}`, f4[1] the product
+ * `{id: count}` — the row's own id is not the product's. Read for the Silver
+ * to train each troop (battle-data.ts trainingSilver).
+ */
+export const TABLE_TRAINING = 12;
 const NEEDED_TABLES = [
   TABLE_MAP_OBJECTS, TABLE_GIFT_TYPES, TABLE_HEROES, TABLE_TECHS, TABLE_CAPTAINS,
   TABLE_ARTIFACTS, TABLE_ARTIFACT_STARS, TABLE_ARTIFACT_LEVELS, TABLE_ARTIFACT_BONUSES,
   TABLE_EQUIPMENT, TABLE_CLAN_MEDALS, TABLE_TOURNAMENTS, TABLE_TERRAINS, TABLE_HERO_LEVELS, TABLE_FACTIONS,
-  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS, TABLE_UNITS,
+  TABLE_DRAGONS, TABLE_TITLES, TABLE_EFFECTS, TABLE_UNITS, TABLE_TRAINING,
   // The client config, for the tech trees' and Academy tabs' names (game-texts).
   TABLE_CLIENT_CONFIG,
 ];
@@ -500,10 +506,11 @@ export const BASE_RESOURCE_MAX_ID = 100;
  * citadels — kind and level, for "fill in from a battle report"; 17: units —
  * the names of battle-data.json's units, and battle-data.json beside it, for
  * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target;
- * 19: format 3 — revival gold; 20: only live citadels, Elven and Cursed); a
- * cached file with an older format is rebuilt.
+ * 19: format 3 — revival gold; 20: only live citadels, Elven and Cursed; 21:
+ * format 4 — training silver, from T12); a cached file with an older format is
+ * rebuilt.
  */
-export const NAMES_FORMAT = 20;
+export const NAMES_FORMAT = 21;
 
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS: Record<number, string> = {
@@ -776,7 +783,7 @@ export function makeBattleData(
     const v = typeof vref === 'number' ? vectors[vref] : undefined;
     return Array.isArray(v) && v.length ? str(v[0]) : undefined;
   };
-  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name, key }, version);
+  return buildBattleData(tables.get(TABLE_MAP_OBJECTS), tables.get(TABLE_UNITS), { str, name, key }, version, tables.get(TABLE_TRAINING));
 }
 
 /** Turn pools + tables + English into the compact names we keep. Pure; unit-tested. */

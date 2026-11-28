@@ -99,6 +99,34 @@ describe('battle data from the game tables', () => {
     expect(d.units['75078']).toBeUndefined();
   });
 
+  it('prices a troop in Silver from the buy table by the row\'s product, never by its row id, and never a mercenary', () => {
+    /** A T12 row: [id, …, f2 [price, {}, 1], …, f4 [{}, product, …]]. */
+    const buy = (id: number, price: Record<number, number>, product: Record<number, number>): Wire[] => {
+      const r: Wire[] = new Array(12).fill(0);
+      r[0] = id; r[2] = [price, {}, 1]; r[4] = [{}, product, [], [], 51];
+      return r;
+    };
+    const T12: Record<string, Wire> = {
+      // Row 6 sells the Corax (206); row 206 sells the siege engine (87).
+      6: buy(6, { 2: 34000, 6: 570 }, { 206: 1 }),
+      206: buy(206, { 2: 15000, 6: 250 }, { 87: 1 }),
+      // A later row selling the same troop: the first one counts.
+      900: buy(900, { 2: 99999 }, { 206: 1 }),
+      // A pack of five, or a price in Gold only: not one troop's Silver.
+      11: buy(11, { 2: 1000 }, { 191: 5 }),
+      13: buy(13, { 1: 50 }, { 191: 1 }),
+      // A mercenary is revived, never trained.
+      12: buy(12, { 2: 5000 }, { 3089: 1 }),
+    };
+    const p = buildBattleData(T7, T9, look, 'v1', T12);
+    expect(p.units['206'].train).toBe(34000);
+    expect(p.units['87'].train).toBe(15000);
+    expect(p.units['191'].train).toBeUndefined();
+    expect(p.units['3089'].train).toBeUndefined();
+    // Without the buy table nothing is priced (the shape before format 4).
+    expect(d.units['206'].train).toBeUndefined();
+  });
+
   it('keeps one target per name, level and army, current versions first', () => {
     const elf = d.targets.filter((t) => t.name === 'Common Elf squad');
     expect(elf).toEqual([{ ids: [1531, 188029], name: 'Common Elf squad', level: 30, cls: 1, hero: false, captains: 1, army: [[6033, 780000]] }]);

@@ -31,8 +31,11 @@
 import type { Wire } from './codec.js';
 
 export const BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold). */
-export const BATTLE_DATA_FORMAT = 3;
+/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold; 4: training silver). */
+export const BATTLE_DATA_FORMAT = 4;
+
+/** T12 (the game's buy table) item id of Silver in a price. */
+const SILVER = '2';
 
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
 const MAP_ARMY = 6;
@@ -61,6 +64,14 @@ export interface BattleUnit {
   auth?: number;
   /** Gold to revive one lost in an attack (T9 f6, item 1 = Gold; equals Kaiculator's revival gold for all 53 mercenaries it lists). */
   revive?: number;
+  /**
+   * Silver to train a new one (T12, the row selling one of it; the Food beside
+   * it, ~1/60 of the Silver, is left out). What a lost guardsman, specialist
+   * or siege engine costs — players train those again rather than revive them;
+   * monsters and mercenaries are revived (the user, Nov 28 2026). Absent for
+   * mercenaries: the game sells none.
+   */
+  train?: number;
 }
 
 export interface BattleTarget {
@@ -120,14 +131,36 @@ function kindOf(tags: Set<string>, lead: number, dom: number, auth: number): Uni
   return null;
 }
 
+/**
+ * Silver to train one of each unit, from T12 — the game's buy table: f2[0] the
+ * price `{itemId: amount}`, f4[1] the product `{unitId: count}` (a row's own id
+ * is NOT the unit's). The lowest-id row selling exactly one unit for Silver.
+ */
+export function trainingSilver(t12: Record<string, Wire> | undefined): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const [, row] of rowsOf(t12)) {
+    const price = Array.isArray(row[2]) ? row[2][0] : undefined;
+    const product = Array.isArray(row[4]) ? row[4][1] : undefined;
+    if (!nonEmpty(price) || !nonEmpty(product)) continue;
+    const silver = num((price as Record<string, Wire>)[SILVER]);
+    const items = Object.entries(product as Record<string, Wire>);
+    if (!(silver > 0) || items.length !== 1 || num(items[0][1]) !== 1) continue;
+    const unitId = Number(items[0][0]);
+    if (!out.has(unitId)) out.set(unitId, silver);
+  }
+  return out;
+}
+
 export function buildBattleData(
   t7: Record<string, Wire> | undefined,
   t9: Record<string, Wire> | undefined,
   look: BattleLookups,
   version: string,
+  t12?: Record<string, Wire>,
 ): BattleData {
   const tagList = (v: Wire | undefined): string[] =>
     (Array.isArray(v) ? v : []).map((r) => look.str(r)?.toLowerCase()).filter((s): s is string => !!s);
+  const trainPrice = trainingSilver(t12);
 
   // Every unit that can fight, by id.
   const all = new Map<number, BattleUnit & { priced: boolean }>();
@@ -155,6 +188,8 @@ export function buildBattleData(
       unit.kind = kind;
       const gold = num((row[6] as Wire[])[0] && typeof (row[6] as Wire[])[0] === 'object' ? ((row[6] as Wire[])[0] as Record<string, Wire>)['1'] : undefined);
       if (gold > 0) unit.revive = gold;
+      const silver = trainPrice.get(id);
+      if (silver && kind !== 'mercenaries') unit.train = silver;
       if (kind === 'mercenaries') unit.auth = auth;
       else if (kind === 'monsters') unit.dom = dom;
       else unit.lead = lead;
@@ -164,16 +199,20 @@ export function buildBattleData(
 
   // A trained troop or mercenary appears again under a higher id with the same
   // numbers and no march cost (75xxx): the lowest id is the one armies carry.
-  const seen = new Set<string>();
+  const seen = new Map<string, BattleUnit>();
   const fieldable = new Set<number>();
   for (const [id, u] of all) {
     if (!u.kind) continue;
     const key = `${u.name}|${u.str}|${u.hp}|${u.kind}`;
-    if (seen.has(key)) {
+    const kept = seen.get(key);
+    if (kept) {
+      // Should the shop sell the copy, the one armies carry takes its price.
+      if (u.train && !kept.train) kept.train = u.train;
       delete u.kind;
+      delete u.train;
       continue;
     }
-    seen.add(key);
+    seen.set(key, u);
     fieldable.add(id);
   }
 

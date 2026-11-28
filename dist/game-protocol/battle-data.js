@@ -1,11 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BATTLE_DATA_FORMAT = exports.BATTLE_DATA_FILE = void 0;
+exports.trainingSilver = trainingSilver;
 exports.buildBattleData = buildBattleData;
 exports.battleUnitNames = battleUnitNames;
 exports.BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold). */
-exports.BATTLE_DATA_FORMAT = 3;
+/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold; 4: training silver). */
+exports.BATTLE_DATA_FORMAT = 4;
+/** T12 (the game's buy table) item id of Silver in a price. */
+const SILVER = '2';
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
 const MAP_ARMY = 6;
 /** T7 f18 of a citadel (and an enemy city). */
@@ -37,8 +40,31 @@ function kindOf(tags, lead, dom, auth) {
         return 'specialists';
     return null;
 }
-function buildBattleData(t7, t9, look, version) {
+/**
+ * Silver to train one of each unit, from T12 — the game's buy table: f2[0] the
+ * price `{itemId: amount}`, f4[1] the product `{unitId: count}` (a row's own id
+ * is NOT the unit's). The lowest-id row selling exactly one unit for Silver.
+ */
+function trainingSilver(t12) {
+    const out = new Map();
+    for (const [, row] of rowsOf(t12)) {
+        const price = Array.isArray(row[2]) ? row[2][0] : undefined;
+        const product = Array.isArray(row[4]) ? row[4][1] : undefined;
+        if (!nonEmpty(price) || !nonEmpty(product))
+            continue;
+        const silver = num(price[SILVER]);
+        const items = Object.entries(product);
+        if (!(silver > 0) || items.length !== 1 || num(items[0][1]) !== 1)
+            continue;
+        const unitId = Number(items[0][0]);
+        if (!out.has(unitId))
+            out.set(unitId, silver);
+    }
+    return out;
+}
+function buildBattleData(t7, t9, look, version, t12) {
     const tagList = (v) => (Array.isArray(v) ? v : []).map((r) => look.str(r)?.toLowerCase()).filter((s) => !!s);
+    const trainPrice = trainingSilver(t12);
     // Every unit that can fight, by id.
     const all = new Map();
     for (const [id, row] of rowsOf(t9)) {
@@ -69,6 +95,9 @@ function buildBattleData(t7, t9, look, version) {
             const gold = num(row[6][0] && typeof row[6][0] === 'object' ? row[6][0]['1'] : undefined);
             if (gold > 0)
                 unit.revive = gold;
+            const silver = trainPrice.get(id);
+            if (silver && kind !== 'mercenaries')
+                unit.train = silver;
             if (kind === 'mercenaries')
                 unit.auth = auth;
             else if (kind === 'monsters')
@@ -80,17 +109,22 @@ function buildBattleData(t7, t9, look, version) {
     }
     // A trained troop or mercenary appears again under a higher id with the same
     // numbers and no march cost (75xxx): the lowest id is the one armies carry.
-    const seen = new Set();
+    const seen = new Map();
     const fieldable = new Set();
     for (const [id, u] of all) {
         if (!u.kind)
             continue;
         const key = `${u.name}|${u.str}|${u.hp}|${u.kind}`;
-        if (seen.has(key)) {
+        const kept = seen.get(key);
+        if (kept) {
+            // Should the shop sell the copy, the one armies carry takes its price.
+            if (u.train && !kept.train)
+                kept.train = u.train;
             delete u.kind;
+            delete u.train;
             continue;
         }
-        seen.add(key);
+        seen.set(key, u);
         fieldable.add(id);
     }
     const groups = new Map();
