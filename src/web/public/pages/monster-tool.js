@@ -20,7 +20,7 @@ import { outcomeHtml, strikeLogHtml } from '../lib/battle-result.js';
 import {
   UNIT_GROUPS, PROTECTED_KINDS, unitDefs, fieldableUnits, unitLevel, targetFamilies,
   targetOfReport, hasEventMonsters, withEventBonus, bonusesFromBattle, armyFromBattles,
-  targetCommand, battleCommand, battlesLedFor,
+  targetCommand, battleCommand,
 } from '../lib/monster-army.js';
 import { tierUnlocked, tierInWindow } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
@@ -101,6 +101,9 @@ function loadDraft() {
       bonusesNote: typeof d.bonusesNote === 'string' ? d.bonusesNote : null,
       decimalComma: d.decimalComma === true,
       suggestPlayer: Number.isFinite(Number(d.suggestPlayer)) && d.suggestPlayer !== null ? Number(d.suggestPlayer) : null,
+      suggestedFrom: d.suggestedFrom && typeof d.suggestedFrom.label === 'string' && typeof d.suggestedFrom.at === 'string'
+        ? { label: d.suggestedFrom.label, at: d.suggestedFrom.at, lead: typeof d.suggestedFrom.lead === 'string' ? d.suggestedFrom.lead : null, matched: d.suggestedFrom.matched !== false }
+        : null,
     };
   } catch {
     return null;
@@ -111,7 +114,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       target: ms.target, rows: ms.rows, countMode: ms.countMode, eventPct: ms.eventPct,
-      bonusesAt: ms.bonusesAt, bonusesNote: ms.bonusesNote, decimalComma: ms.decimalComma, suggestPlayer: ms.suggestPlayer,
+      bonusesAt: ms.bonusesAt, bonusesNote: ms.bonusesNote, decimalComma: ms.decimalComma, suggestPlayer: ms.suggestPlayer, suggestedFrom: ms.suggestedFrom,
     }));
   } catch { /* private mode: the draft just isn't kept */ }
 }
@@ -154,6 +157,8 @@ export async function renderMonsterTool(mount) {
     /** The viewer's own linked players (Suggest picks one), and which one. */
     ownPlayers: [],
     suggestPlayer: draft?.suggestPlayer ?? null,
+    /** The battle the rows were suggested from ({ label, at }), shown above them; null for rows typed or filled in. */
+    suggestedFrom: draft?.suggestedFrom ?? null,
     levels: { ...NO_LEVELS },
     logOpener: 'enemy',
     search: null,
@@ -372,7 +377,7 @@ function ledByText(target) {
 // ─── 2 · Your army ───────────────────────────────────────────────
 
 function bonusesNoteHtml() {
-  const base = t('Type each troop\'s strength bonus from its card, read with the captains you will march with; health only where it says “needed”. Or fill them in from one of your shared battles, or let your battles suggest the army.');
+  const base = t('Type each troop\'s strength bonus from its card, read with the captains you will march with; health only where it says “needed”. Or fill them in from one of your shared battles, or let your latest battle suggest the army.');
   if (!ms.bonusesAt) return `<p class="citadel-note monster-bonus-note">${base}</p>`;
   const stale = Date.now() - new Date(ms.bonusesAt).getTime() > STALE_MS;
   const when = esc(formatRelativeTime(ms.bonusesAt));
@@ -380,6 +385,27 @@ function bonusesNoteHtml() {
     ? t('Bonuses from {source}, {when}.', { source: esc(ms.bonusesNote), when })
     : t('Bonuses entered {when}.', { when });
   return `<p class="citadel-note monster-bonus-note">${base} <span class="${stale ? 'tool-warn' : 'citadel-note-when'}">${stale ? '⚠ ' : ''}${from}</span></p>`;
+}
+
+/**
+ * Which battle the suggested army came from, said plainly above the rows: the
+ * player's latest, with its target, day and age (⚠ once it is older than
+ * STALE_MS — troops trained or lost since aren't in it).
+ */
+function suggestedFromHtml() {
+  const s = ms?.suggestedFrom;
+  if (!s || !ms.rows.length) return '';
+  const stale = Date.now() - new Date(s.at).getTime() > STALE_MS;
+  const off = s.matched === false;
+  const head = off ? t('Army from your latest battle, led differently from this attack')
+    : s.lead === 'hero' ? t('Army from your latest Hero-led battle')
+      : s.lead === 'captains' ? t('Army from your latest captain-led battle')
+        : s.lead === 'both' ? t('Army from your latest battle led by the Hero with captains')
+          : t('Army from your latest battle');
+  return `<p class="monster-source ${stale || off ? 'is-stale' : ''}" role="status">
+      <span class="monster-source-head">${stale || off ? '⚠' : '✓'} ${head}</span>
+      <span class="monster-source-what">${esc(s.label)} · ${esc(formatRelativeTime(s.at))}${stale ? ` · ${t('troops trained or lost since then are not in it')}` : ''}</span>
+    </p>`;
 }
 
 /** Which of the viewer's linked players Suggest reads (only when there is more than one). */
@@ -427,14 +453,15 @@ function armyCardHtml(a) {
       </div>
       <div class="tool-tile-body">
         ${bonusesNoteHtml()}
+        ${suggestedFromHtml()}
         <div class="citadel-from-report monster-army-actions">
           <span class="monster-player-slot">${playerSelectHtml()}</span>
-          <button type="button" class="btn btn-sm btn-primary" data-mon-action="suggest">${t('Suggest an army from my battles')}</button>
+          <button type="button" class="btn btn-sm btn-primary" data-mon-action="suggest">${t('Suggest an army from my latest battle')}</button>
           <button type="button" class="btn btn-sm" data-mon-action="from-report">${t('Fill in from a battle report')}</button>
         </div>
         ${eventFieldHtml(a.target)}
         <p class="citadel-note citadel-count-note">${a.auto
-          ? t('Counts: searched by the simulator for the fewest losses with your troops and bonuses. Monsters and mercenaries are kept alive wherever any count can do it. Wins even with every bonus 3% lower. A suggested troop never goes above what you sent in one battle.')
+          ? t('Counts: searched by the simulator for the fewest losses with your troops and bonuses. Monsters and mercenaries are kept alive wherever any count can do it. Wins even with every bonus 3% lower. A suggested troop never goes above what your latest battle had.')
           : t('Counts: you type them.')}</p>
         ${ms.rows.length ? `
           <div class="citadel-rows" role="list">
@@ -446,7 +473,7 @@ function armyCardHtml(a) {
               <span></span>
             </div>
             ${rows}
-          </div>` : `<p class="citadel-empty muted-copy">${t('Add the troops you will send, or let your shared battles suggest an army.')}</p>`}
+          </div>` : `<p class="citadel-empty muted-copy">${t('Add the troops you will send, or let your latest battle suggest an army.')}</p>`}
         <div class="citadel-add">
           <button type="button" class="btn btn-sm citadel-add-btn" data-pick="add" aria-haspopup="listbox" aria-expanded="false" aria-label="${esc(t('Add a troop'))}">${t('+ Add a troop…')}</button>
           <span class="monster-unused-slot">${unusedHtml(a)}</span>
@@ -462,7 +489,7 @@ function rowNote(i, a) {
   const notes = [];
   const lvl = unitLevel(d);
   if (lvl && !tierUnlocked(lvl, ms.levels)) notes.push(t('needs {kind} {n}', { kind: levelKindLabel(lvl[0]), n: lvl[1] }));
-  if (r.cap !== null && r.cap !== undefined) notes.push(t('you sent at most {n}', { n: r.cap.toLocaleString() }));
+  if (r.cap !== null && r.cap !== undefined) notes.push(t('{n} in your latest battle', { n: r.cap.toLocaleString() }));
   if (a.auto && !a.pending && !a.failed && !a.strengthMissing.length && r.count === 0) notes.push(t('none needed'));
   return notes.join(' · ');
 }
@@ -569,7 +596,7 @@ function howItWorksHtml() {
         <ul>
           <li>${t('<strong>The target.</strong> Every monster army and every unit\'s strength, health and “vs” features come from the game\'s own files, read again after every game patch. Monsters fight at exactly those numbers.')}</li>
           <li>${t('<strong>The fight.</strong> The same rules as Tools → Citadel, checked against over 370,000 strikes of the clan\'s shared battle reports: the strongest stack acts first, each stack hits where it deals the most damage, and wounds stay all battle.')}</li>
-          <li>${t('<strong>Suggest an army.</strong> Your shared battles of the last week tell which troops you have, their bonuses with the captains you marched with, and the most of each you sent. The search picks counts from those for the fewest losses; monsters and mercenaries are kept alive wherever it can.')}</li>
+          <li>${t('<strong>Suggest an army.</strong> Your latest shared battle tells which troops you have now, how many, and their bonuses with the captains you marched with. Share a report before you plan. The search picks counts from that army for the fewest losses; monsters and mercenaries are kept alive wherever it can.')}</li>
           <li>${t('<strong>Epic squads and bosses</strong> are not killed in one attack. Manual counts show what your attack does: what you lose, in what order, and how much of the army it kills.')}</li>
         </ul>
         <p class="muted-copy">${t('Not included: luck, the 10% less damage Corruption monsters take, and Exiles\' Grove, whose defenders don\'t fight at their listed numbers.')}</p>
@@ -707,6 +734,7 @@ async function fillFromReport(root) {
       const id = String(tr.unit);
       if (defOf(id)?.kind) sent.set(id, (sent.get(id) ?? 0) + (tr.count || 0));
     }
+    ms.suggestedFrom = null;
     ms.rows = [...sent].map(([unitId, count]) => ({
       unitId, count, strengthPct: res.found.get(unitId)?.strengthPct ?? null, healthPct: res.found.get(unitId)?.healthPct ?? null, cap: null,
     }));
@@ -746,9 +774,9 @@ async function fillFromReport(root) {
   ].join(' '), title);
 }
 
-/** Every troop of the viewer's own battles of the last week, capped at the most they sent, sized by the search. */
+/** Every troop of the chosen player's latest battle, capped at what it had, sized by the search. */
 async function suggestArmy(root, btn) {
-  const title = t('Suggest an army from my battles');
+  const title = t('Suggest an army from my latest battle');
   btn.disabled = true;
   let res = null;
   try {
@@ -773,34 +801,41 @@ async function suggestArmy(root, btn) {
     await notify(t('No battle of yours from the last {days} days has been read yet. Share a report in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.', { days: res.windowDays ?? 7 }), title);
     return;
   }
-  // Only battles led the way this target must be: the Hero's bonuses and
-  // leadership are not a captain's (a Rare squad is the Hero's alone).
-  const cur0 = currentTarget();
-  const sameLead = cur0 ? battlesLedFor(cur0, mine) : mine;
-  const used = sameLead.length ? sameLead : mine;
-  const rows = armyFromBattles(used, ms.defs);
+  // The latest battle alone (the user's rule, Nov 28 2026): what the player
+  // has NOW — troops of a week ago may be gone. Share a report before
+  // planning. The other battles only fill what it can't show (within a day).
+  // The latest battle LED THE WAY THIS TARGET IS (the user, Nov 28 2026): a
+  // Rare squad's march is the Hero's, a Common squad's a captain's, and their
+  // bonuses and leadership differ — so a player shares one report of each.
+  // A Hero-with-captains target takes a Hero-led battle when it has no exact
+  // match. With none at all, the latest battle, said so.
+  const cur = currentTarget();
+  const want = targetCommand(cur);
+  const ledAs = (r) => battleCommand(r.led);
+  const matched = mine.find((r) => ledAs(r) === want) ?? (want === 'both' ? mine.find((r) => r.led?.hero) : undefined) ?? null;
+  const latest = matched ?? mine[0];
+  // Gaps are filled only from battles led the same way (the same bonuses).
+  const context = mine.filter((r) => ledAs(r) === ledAs(latest));
+  const rows = armyFromBattles([latest], ms.defs, context);
   if (!rows.length) {
-    await notify(t('Your battles show no troops this page can use.'), title);
+    await notify(t('Your latest battle shows no troops this page can use.'), title);
     return;
   }
   ms.rows = rows.map((r) => ({ unitId: r.unitId, count: r.cap, strengthPct: r.strengthPct, healthPct: r.healthPct, cap: r.cap }));
-  const cur = currentTarget();
-  const same = cur ? mine.find((r) => targetOfReport(ms.data, r.target?.staticId)?.name === cur.name) : null;
-  if (same && eventOn(cur)) {
-    const v = bonusesFromBattle(same, mine, ms.defs).eventPct;
+  if (cur && eventOn(cur) && targetOfReport(ms.data, latest.target?.staticId)?.name === cur.name) {
+    const v = bonusesFromBattle(latest, context, ms.defs).eventPct;
     if (v !== null) ms.eventPct = Math.max(0, v);
   }
   ms.countMode = 'auto';
   ms.search = null;
-  ms.bonusesAt = used[0].at;
-  ms.bonusesNote = sameLead.length
-    ? tn(used.length, 'your battle of the last week led the same way', 'your {n} battles of the last week led the same way')
-    : tn(used.length, 'your battle of the last week', 'your {n} battles of the last week');
+  ms.bonusesAt = latest.at;
+  ms.bonusesNote = `${reportChoiceLabel(latest)}${latest.attacker?.name ? ` · ${latest.attacker.name}` : ''}`;
+  ms.suggestedFrom = { label: ms.bonusesNote, at: latest.at, lead: ledAs(latest), matched: !!matched || !cur };
   saveDraft();
   paintAll(root);
-  if (!sameLead.length && cur0) {
-    await notify(t('{target}: {how} None of your battles of the last week was led that way, so the suggestion uses them anyway, but the bonuses and how many troops you can send differ with who leads: check them, or share a battle led that way.', {
-      target: tGame(cur0.name), how: ledByText(cur0),
+  if (cur && !matched) {
+    await notify(t('{target}: {how} None of your battles of the last week was led that way, so this is your latest battle, led differently: its bonuses and how many troops you can send may not be what this attack has. Share a report of an attack led that way.', {
+      target: tGame(cur.name), how: ledByText(cur),
     }), title);
   }
 }

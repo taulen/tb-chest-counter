@@ -191,16 +191,19 @@ export function bonusesFromBattle(report, reports, defs) {
 }
 
 /**
- * An army from the player's own battles: every troop they sent, with its
- * newest bonuses and `cap` — the most of it they sent in one battle, which
- * they have at least. Battles newest first. Mercenary purchases of one kind
- * fight as one stack, so a battle's count is their sum.
+ * An army from the player's battles: every troop they sent, with its newest
+ * bonuses and `cap` — the most of it they sent in one battle. Battles newest
+ * first. Mercenary purchases of one kind fight as one stack, so a battle's
+ * count is their sum. Tools → Monsters passes the latest battle alone (what
+ * the player has now; the user's rule, Nov 28 2026) and the rest as `context`,
+ * which only fills what that battle can't show (the same army's battles within
+ * a day, report-bonuses.js withGapsFilled).
  */
-export function armyFromBattles(reports, defs) {
+export function armyFromBattles(reports, defs, context = reports) {
   const rows = new Map();
   for (const r of reports ?? []) {
     let found = null;
-    try { found = withGapsFilled(r, reports, reportTroops(defs)).found; } catch { found = new Map(); }
+    try { found = withGapsFilled(r, context, reportTroops(defs)).found; } catch { found = new Map(); }
     const sent = new Map();
     for (const tr of r.troops ?? []) sent.set(String(tr.unit), (sent.get(String(tr.unit)) ?? 0) + (tr.count || 0));
     for (const [id, count] of sent) {

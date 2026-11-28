@@ -115,5 +115,8 @@ describe('what a player\'s battles say', () => {
     ];
     const rows = armyFromBattles(reports, defs);
     expect(rows.map((r) => [r.unitId, r.cap])).toEqual([['206', 300], ['3079', 450], ['191', 4]]);
+    // Tools → Monsters: the latest battle alone (what the player has now); the rest only fill gaps.
+    const latest = armyFromBattles([reports[0]], defs, reports);
+    expect(latest.map((r) => [r.unitId, r.cap])).toEqual([['206', 100], ['3079', 450]]);
   });
 });

@@ -9506,6 +9506,15 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .monster-tool .citadel-defender { display: inline-flex; align-items: center; gap: 5px; }
 .monster-army-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .monster-player-slot:empty { display: none; }
+/* Which battle a suggested army came from: always visible, amber once old. */
+.monster-source {
+  display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--subtle-bg);
+  font-size: 13px; color: var(--text-secondary);
+}
+.monster-source-head { font-weight: 700; color: var(--text-primary); }
+.monster-source.is-stale { border-color: var(--accent-amber-border); background: var(--accent-amber-bg); }
+.monster-source.is-stale .monster-source-head { color: var(--accent-amber-text); }
 .monster-player-field select { width: auto; max-width: 100%; padding: 5px 8px; }
 .monster-event-field { display: grid; gap: 4px; max-width: 520px; margin: 0 0 12px; font-size: 12.5px; color: var(--text-secondary); }
 .monster-event-field .citadel-num { max-width: 140px; }
