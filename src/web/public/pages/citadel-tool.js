@@ -32,7 +32,7 @@ import {
   troopById,
   citadelById,
   simulateBoth,
-  optimizeCounts,
+  citadelSearch,
   gmRoles,
   gmCounts,
   GM_CITADELS,
@@ -43,6 +43,9 @@ import {
   troopInWindow,
 } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
+import { searchArmy, cancelArmySearch } from '../lib/army-search.js';
+import { progressHtml, paintProgress } from '../lib/search-progress.js';
+import { loadArmyStarts, startsFrom, citadelExemplars } from '../lib/army-starts.js';
 import { withGapsFilled } from '../lib/report-bonuses.js';
 import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelTag, levelKindLabel } from '../lib/troop-levels.js';
@@ -222,6 +225,8 @@ function saveDraft() {
 }
 
 export async function renderCitadelTool(mount) {
+  // A search still running for the page before is of no use now.
+  cancelArmySearch();
   // The troop pictures come from the game's art when it is extracted.
   await loadGameArt();
   closeTroopPicker();
@@ -244,6 +249,8 @@ export async function renderCitadelTool(mount) {
     logOpener: 'citadel',
     /** Last count search: { key, ok, counts } — see scheduleSearch(). */
     search: null,
+    /** The search running now: { key, done, total, phase } (its progress bar), or null. */
+    progress: null,
   };
   mount.innerHTML = `
     <div class="citadel-tool">
@@ -315,16 +322,78 @@ function searchKey() {
 
 let searchTimer = null;
 
-/** Search the counts a moment after the last change, then fill them in place. */
+let pricesLoading = null;
+/**
+ * What a lost troop costs, by Citadel troop id: { train: Silver to train a
+ * new one, revive: Gold to revive it } from the game's own data
+ * (battle-data.json, a unit matched by name and strength). Null when it can't
+ * be loaded: the search then weighs losses by base health, as before.
+ */
+function loadPrices() {
+  if (!pricesLoading) {
+    pricesLoading = (async () => {
+      try {
+        const data = await api('/tools/battle-data');
+        const units = Object.values(data?.units ?? {});
+        if (!units.length) return null;
+        const byName = new Map(units.filter((u) => u.kind).map((u) => [`${String(u.name).toLowerCase()}|${u.str}`, u]));
+        const prices = {};
+        for (const t of TROOPS) {
+          const u = byName.get(`${t.name.toLowerCase()}|${t.str}`);
+          if (u) prices[t.id] = { train: u.train, revive: u.revive };
+        }
+        return prices;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return pricesLoading;
+}
+
+/**
+ * Search the counts a moment after the last change, then fill them in place:
+ * optimizeCounts' explore search (citadel-sim.js citadelSearch → battle-sim.js
+ * optimizeArmySteps) in a Web Worker, its progress on the page
+ * (lib/army-search.js). It stops on work done, not time, so a phone finds the
+ * same army as a computer, only later. A change cancels it.
+ */
 function scheduleSearch(root) {
   clearTimeout(searchTimer);
   const key = searchKey();
-  searchTimer = setTimeout(() => {
-    if (!cs || searchKey() !== key || !root.isConnected) return;
+  if (cs.progress && cs.progress.key !== key) {
+    cancelArmySearch();
+    cs.progress = null;
+  }
+  searchTimer = setTimeout(async () => {
+    if (!cs || searchKey() !== key || !root.isConnected || cs.progress?.key === key) return;
+    // Learned starts: other armies' best answers for this citadel, carried over (lib/army-starts.js).
+    const [lib, prices] = await Promise.all([loadArmyStarts(), loadPrices()]);
+    if (!cs || searchKey() !== key || !root.isConnected || cs.progress?.key === key) return;
     const gm = gmCounts(cs.citadelId, cs.rows.map((r) => ({ ...r, healthPct: r.healthPct ?? 0 })));
     const starts = [cs.rows.map((r) => r.count)];
     if (gm.some((n) => n !== null)) starts.push(gm.map((n) => (Number.isFinite(n) ? n : 0)));
-    const res = optimizeCounts({ citadelId: cs.citadelId, army: cs.rows, starts });
+    // cs.discounts: the player's training discounts per kind (guardsmen / specialists / siege, %), when the page has them.
+    const params = citadelSearch({ citadelId: cs.citadelId, army: cs.rows, starts, prices, discounts: cs.discounts ?? null });
+    if (params) params.starts.push(...startsFrom({ ...citadelExemplars(lib, cs.citadelId), army: params.army, enemy: params.enemy, enemySide: 'citadel', defOf: (k) => troopById(k) }));
+    const state = cs;
+    if (!params) {
+      state.search = { key, ok: false, counts: cs.rows.map(() => 0) };
+      refresh(root);
+      return;
+    }
+    state.progress = { key, done: 0, total: 1, phase: 'starts' };
+    paintProgress(root, state.progress);
+    const res = await searchArmy(params, {
+      onProgress: (p) => {
+        if (state.progress?.key !== key) return;
+        state.progress = { key, done: p.done, total: p.total, phase: p.phase };
+        paintProgress(root, state.progress);
+      },
+    });
+    if (cs !== state || state.progress?.key !== key) return;
+    state.progress = null;
+    if (!res || searchKey() !== key || !root.isConnected) return;
     cs.search = { key, ok: res.ok, counts: res.counts };
     refresh(root);
   }, SEARCH_DELAY_MS);
@@ -628,7 +697,8 @@ function paintResults(root, a) {
     return;
   }
   if (a.pending) {
-    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting"><p>${t('Working out the counts…')}</p></div>`;
+    // aria-live off: the results area announces changes, and the bar moves a few hundred times.
+    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting" aria-live="off">${progressHtml(cs.progress)}</div>`;
     return;
   }
   if (a.failed) {

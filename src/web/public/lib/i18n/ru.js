@@ -616,6 +616,10 @@ export const ui = {
   "{done} of {total} clans done": "Готово кланов: {done} из {total}",
   "Clan {position} of {total}": "Клан {position} из {total}",
   "{n} clans scanning at once": { one: "{n} клан сканируется одновременно", few: "{n} клана сканируются одновременно", many: "{n} кланов сканируются одновременно", other: "{n} клана сканируются одновременно" },
+  // lib/search-progress.js
+  "Improving the best army… {pct}%": "Улучшаем лучшую армию… {pct}%",
+  "Trying starting armies… {pct}%": "Пробуем начальные армии… {pct}%",
+  "Working out the counts…": "Подбираем количества…",
   // lib/shell.js
   "Show the full menu": "Показать всё меню",
   "Fold the menu to icons": "Свернуть меню до значков",
@@ -1120,7 +1124,6 @@ export const ui = {
   "Enter the health bonus for {troop}: as first striker its count depends on it.": "Введите бонус здоровья для {troop}: от него зависит количество первого ударного.",
   "Enter the health bonus for {troop}: it gets hit by {attackers}.": "Введите бонус здоровья для {troop}: по нему бьёт {attackers}.",
   "The result needs these from your own troop cards — they decide every number.": "Для результата нужны эти данные с ваших карточек отрядов — от них зависит каждое число.",
-  "Working out the counts…": "Подбираем количества…",
   "These troops can't take this citadel in both coin flips, even in large numbers.": "Эти отряды не берут цитадель при любом жребии даже в большом количестве.",
   "Add a siege engine for the walls, or stronger troops.": "Добавьте осадное орудие для стен или более сильные отряды.",
   "Enter how many of each troop you send.": "Укажите, сколько каждого отряда отправите.",

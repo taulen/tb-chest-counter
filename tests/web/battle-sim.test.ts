@@ -11,8 +11,8 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { simulateArmies, optimizeArmy, damageVs, makeStack, BLOCKED } from '../../src/web/public/lib/battle-sim.js';
-import { DEFENDERS, troopById } from '../../src/web/public/lib/citadel-sim.js';
+import { simulateArmies, simulateBothArmies, optimizeArmy, optimizeArmySteps, damageVs, makeStack, BLOCKED, SAFETY } from '../../src/web/public/lib/battle-sim.js';
+import { DEFENDERS, CITADELS, troopById, optimizeCounts, gmCounts } from '../../src/web/public/lib/citadel-sim.js';
 
 type Unit = { name: string; tier: number; str: number; hp: number; tags: string[]; vs: Array<[string[], number, number]> };
 type Battle = {
@@ -126,5 +126,115 @@ describe('the engine', () => {
     });
     expect(res.ok).toBe(true);
     expect(res.counts[1]).toBe(0);
+  });
+});
+
+describe('a battle stopped by onLoss (the count search drops a candidate mid-battle)', () => {
+  const bear = { id: 'bear', str: 22000, hp: 66000, tags: ['melee', 'beast'], vs: [[['mounted'], 70, 1]] };
+  const corax = { id: 'corax', str: 61200, hp: 183600, tags: ['flying', 'guardsmen', 'human'], vs: [[['mounted'], 1333, 1]] };
+  const fight = { mine: [{ def: corax, count: 60, strengthPct: 500, healthPct: 300 }], theirs: [{ def: bear, count: 1500 }], opener: 'enemy', keepStrikes: false };
+
+  it('stops at the first loss it refuses, and plays the same battle to the end without it', () => {
+    const full = simulateArmies(fight);
+    expect(full.aborted).toBe(false);
+    const lostFirst = full.army[0].lost;
+    expect(lostFirst).toBeGreaterThan(0);
+    const seen: Array<[number, number]> = [];
+    const stopped = simulateArmies({ ...fight, onLoss: (index: number, units: number) => { seen.push([index, units]); return true; } });
+    expect(stopped.aborted).toBe(true);
+    expect(stopped.reason).toBe('aborted');
+    expect(stopped.won).toBe(false);
+    expect(seen).toHaveLength(1);
+    expect(seen[0][0]).toBe(0);
+    // A callback that never refuses changes nothing.
+    const watched = simulateArmies({ ...fight, onLoss: () => false });
+    expect({ ...watched, aborted: false }).toEqual(full);
+  });
+});
+
+describe('the explore search (Tools → Monsters)', () => {
+  // The user's Elven 25 card bonuses (Nov 7 2026) and Citadel's own data: a known army, a known enemy.
+  const cards: Array<[string, number, number]> = [
+    ['siege-ballistae-7', 2277, 1616.75], ['corax-1', 5226.5, 3936.75], ['fire-phoenix-1', 3736.5, 2794.75],
+    ['royal-lion-1', 3736.5, 2794.75], ['griffin-7', 5326.5, 4036.75], ['vulture-7', 3636.5, 2694.75],
+  ];
+  const army = cards.map(([id, strengthPct, healthPct]) => {
+    const def = troopById(id)!;
+    return { def, strengthPct, healthPct, protected: ['monsters', 'mercenaries'].includes(def.group) };
+  });
+  const e25 = CITADELS.find((c) => c.id === 'elven-25')!;
+  const enemy = [...(e25.units as Array<[string, number]>).map(([id, n]) => ({ def: DEFENDERS[id], count: n })), { def: DEFENDERS.walls, count: e25.walls }];
+  type Played = { won: boolean; army: Array<{ index: number; lost: number }> };
+  const base = { army, enemy, enemySide: 'citadel', explore: true, work: 4e6 };
+  /** optimizeArmy's objective (mean of the flips, base-health weights): protected, then other losses. */
+  const losses = (counts: number[]) => {
+    const lower = (p: number) => ((1 + p / 100) * (1 - SAFETY) - 1) * 100;
+    const play = (rows: typeof army) => simulateBothArmies({ mine: rows.map((r, i) => ({ ...r, count: counts[i] })), theirs: enemy, enemySide: 'citadel' }) as unknown as Record<'you' | 'citadel', Played>;
+    const all = [play(army), play(army.map((r) => ({ ...r, strengthPct: lower(r.strengthPct), healthPct: lower(r.healthPct) })))]
+      .flatMap((b) => [b.you, b.citadel]);
+    let prot = 0;
+    let rest = 0;
+    for (const res of all) for (const s of res.army) (army[s.index].protected ? (prot += s.lost * army[s.index].def.hp) : (rest += s.lost * army[s.index].def.hp));
+    return { won: all.every((r) => r.won), prot: prot / 4, rest: rest / 4 };
+  };
+
+  it('reports progress that never goes back and ends at the total', () => {
+    const seen: Array<{ done: number; total: number; phase: string }> = [];
+    const res = optimizeArmy({ ...base, onProgress: (p: { done: number; total: number; phase: string }) => seen.push(p) });
+    expect(res.ok).toBe(true);
+    expect(seen.length).toBeGreaterThan(20);
+    for (let i = 1; i < seen.length; i++) expect(seen[i].done).toBeGreaterThanOrEqual(seen[i - 1].done);
+    expect(seen.every((p) => p.total === 4e6 && p.done <= p.total && ['starts', 'improve'].includes(p.phase))).toBe(true);
+    expect(seen.at(-1)!.done).toBe(4e6);
+    // 'starts' first; once it says 'improve', it never goes back.
+    expect(seen[0].phase).toBe('starts');
+    const firstImprove = seen.findIndex((p) => p.phase === 'improve');
+    if (firstImprove >= 0) expect(seen.slice(firstImprove).every((p) => p.phase === 'improve')).toBe(true);
+  });
+
+  it('is deterministic: the same army every time, called or stepped', () => {
+    const a = optimizeArmy(base);
+    const b = optimizeArmy(base);
+    expect(b.counts).toEqual(a.counts);
+    const gen = optimizeArmySteps(base);
+    let step = gen.next();
+    while (!step.done) step = gen.next();
+    expect(step.value.counts).toEqual(a.counts);
+  });
+
+  it('wins both coin flips with every bonus 3% lower, and never loses more than the search it replaces', () => {
+    const old = optimizeArmy({ army, enemy, enemySide: 'citadel' });
+    const ex = optimizeArmy(base);
+    const o = losses(old.counts);
+    const x = losses(ex.counts);
+    expect(x.won).toBe(true);
+    expect(x.prot).toBeLessThanOrEqual(o.prot + 1e-6);
+    if (Math.abs(x.prot - o.prot) <= 1e-6) expect(x.rest).toBeLessThanOrEqual(o.rest + 1e-6);
+  });
+
+  it('keeps every row within what the player has', () => {
+    const caps = [400, 150, 10, 40, 60, 2000];
+    const res = optimizeArmy({ ...base, army: army.map((r, i) => ({ ...r, cap: caps[i] })) });
+    expect(res.ok).toBe(true);
+    res.counts.forEach((n: number, i: number) => expect(n).toBeLessThanOrEqual(caps[i]));
+  });
+
+  it('for Citadel ranks on the losses at the bonuses as typed, never worse than the old search (the user’s Elven 25 cards: 15 / 31)', () => {
+    const rows = cards.map(([troopId, strengthPct, healthPct]) => ({ troopId, count: 0, strengthPct, healthPct }));
+    const gm = (gmCounts('elven-25', rows) as Array<number | null>).map((n) => (Number.isFinite(n) ? n as number : 0));
+    const starts = [rows.map(() => 0), gm];
+    const lostUnits = (res: { both: Record<'you' | 'citadel', Played> }) => [res.both.you, res.both.citadel].map((r) => r.army.reduce((a, x) => a + x.lost, 0));
+    const before = optimizeCounts({ citadelId: 'elven-25', army: rows, starts, explore: false });
+    const now = optimizeCounts({ citadelId: 'elven-25', army: rows, starts });
+    expect(lostUnits(before)).toEqual([15, 31]);
+    const [you, them] = lostUnits(now);
+    expect(you).toBeLessThanOrEqual(15);
+    expect(them).toBeLessThanOrEqual(31);
+    expect(now.both.you.won && now.both.citadel.won).toBe(true);
+  });
+
+  it("says so when what the player has can't win", () => {
+    const res = optimizeArmy({ ...base, army: army.map((r) => ({ ...r, cap: 1 })) });
+    expect(res.ok).toBe(false);
   });
 });

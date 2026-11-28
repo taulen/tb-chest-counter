@@ -215,22 +215,78 @@ export function simulateBoth(params) {
 }
 
 /**
- * Counts that win in BOTH coin-flip outcomes with the fewest expected losses,
- * for the troop types and bonuses given (any citadel) — battle-sim.js
- * optimizeArmy, with monsters and mercenaries protected (PROTECTED_GROUPS).
- *
- * @param {{ citadelId: string, army: {troopId: string, count?: number, strengthPct?: number|null, healthPct?: number|null}[], budget?: number, starts?: number[][] }} p
- *        starts: extra starting counts (game01master's, the player's own)
- * @returns {{ ok: boolean, counts: number[], both: any, evaluations: number }}
+ * What one lost troop costs (the user's rule, Nov 28 2026): a normal troop
+ * (guardsmen, specialists, siege) the Silver to train a new one — "we never
+ * revive troops we can build ourselves with just silver" — a monster or a
+ * mercenary its revival Gold. The two are never added: monsters and mercenaries
+ * are ranked first. `price` is { train, revive } from the game's data
+ * (battle-data.json, by troop name); without it, the troop's base health.
  */
-export function optimizeCounts({ citadelId, army, budget = 2500, starts = [] }) {
+/**
+ * @param {{hp: number, group?: string, kind?: string}} def
+ * @param {boolean} prot
+ * @param {{train?: number, revive?: number}|null|undefined} price
+ * @param {Record<string, number>|null} [discounts]  the player's training-cost bonus per kind, in %
+ *        ({ guardsmen: -78, specialists: -75, siege: -76.3 }; game_city_snapshots "3:… training cost")
+ */
+export function lossPrice(def, prot, price, discounts = null) {
+  if (prot) {
+    // Revival discounts scale every revived troop alike: they change no ranking, so they are left out.
+    const g = price?.revive;
+    return Number.isFinite(g) && g > 0 ? g : def.hp;
+  }
+  // A normal troop the game doesn't sell (event troops): its Silver revival price, 10× the gold (T9 f7).
+  const listed = price?.train;
+  const n = listed ?? (price?.revive ? price.revive * 10 : null);
+  if (!(Number.isFinite(n) && n > 0)) return def.hp;
+  // A player's training discount differs per kind (guardsmen, specialists, siege): it changes which loss is cheaper.
+  const pct = listed ? Number(discounts?.[def.group ?? def.kind ?? '']) : NaN;
+  return Number.isFinite(pct) ? n * Math.max(0, 1 + pct / 100) : n;
+}
+
+/**
+ * optimizeArmy's arguments for a citadel, as plain data (the page posts them
+ * to a worker, lib/army-search.js): Citadel's troops with monsters and
+ * mercenaries protected (PROTECTED_GROUPS), the citadel's army, Citadel's
+ * objective (the mean of the coin flips, losses weighed by base health).
+ * Null for an unknown citadel or no rows.
+ */
+/**
+ * @param {{ citadelId: string, army: {troopId: string, strengthPct?: number|null, healthPct?: number|null}[], starts?: number[][],
+ *           prices?: Record<string, {train?: number, revive?: number}>|null, discounts?: Record<string, number>|null }} p
+ *        discounts: the player's training-cost bonus per kind (lossPrice)
+ */
+export function citadelSearch({ citadelId, army, starts = [], prices = null, discounts = null }) {
   const citadel = citadelById(citadelId);
-  if (!citadel || !army.length) return { ok: false, counts: army.map(() => 0), both: null, evaluations: 0 };
+  if (!citadel || !army.length) return null;
   const rows = army.map((r) => {
     const def = troopById(r.troopId);
-    return { def, strengthPct: r.strengthPct, healthPct: r.healthPct, protected: PROTECTED_GROUPS.has(def.group) };
+    const prot = PROTECTED_GROUPS.has(def.group);
+    return { def, strengthPct: r.strengthPct, healthPct: r.healthPct, protected: prot, weight: lossPrice(def, prot, prices?.[def.id], discounts) };
   });
-  const res = optimizeArmy({ army: rows, enemy: citadelArmy(citadel), budget, starts, enemySide: 'citadel' });
+  // The user's rules (Nov 28 2026): rank on the losses at the bonuses as typed — what the page shows;
+  // the 3%-weaker battles must only be won (scoreWeaker false); never worse than the old search (baseline).
+  // baselineStarts: the old search's floor starts from these, even when learned starts are added to `starts`.
+  return { army: rows, enemy: citadelArmy(citadel), starts, enemySide: 'citadel', scoreWeaker: false, baseline: true, baselineStarts: [...starts] };
+}
+
+/**
+ * Counts that win in BOTH coin-flip outcomes, also with every bonus 3% lower,
+ * with the fewest losses at the bonuses as typed (the mean of both flips:
+ * monsters and mercenaries first, PROTECTED_GROUPS, then the rest by base
+ * health; then the smaller army) — battle-sim.js optimizeArmy's explore search
+ * (`explore`, the default since Nov 28 2026), never worse than the old one-start
+ * search it replaced, which also runs as its floor (docs/citadel-simulator.md).
+ *
+ * @param {{ citadelId: string, army: {troopId: string, count?: number, strengthPct?: number|null, healthPct?: number|null}[], budget?: number, starts?: number[][], explore?: boolean,
+ *           prices?: Record<string, {train?: number, revive?: number}>|null, discounts?: Record<string, number>|null }} p
+ *        starts: extra starting counts (game01master's, the player's own); explore false: the old search (budget: its evaluations)
+ * @returns {{ ok: boolean, counts: number[], both: any, evaluations: number }}
+ */
+export function optimizeCounts({ citadelId, army, budget = 2500, starts = [], explore = true, prices = null, discounts = null }) {
+  const params = citadelSearch({ citadelId, army, starts, prices, discounts });
+  if (!params) return { ok: false, counts: army.map(() => 0), both: null, evaluations: 0 };
+  const res = optimizeArmy({ ...params, budget, explore });
   // The search's results carry the engine's shape; the page reads Citadel's (citadelId, both coin flips).
   const both = res.both ? {
     you: { citadelId, ...res.both.you },

@@ -43,7 +43,8 @@ function listJsFiles(dir: string): string[] {
 /** The export names a module provides, for the static forms used in this app. */
 function exportsOf(src: string): Set<string> {
   const names = new Set<string>();
-  for (const m of src.matchAll(/^export\s+(?:async\s+)?function\s+([A-Za-z0-9_$]+)/gm)) {
+  // `function*` too: a generator (battle-sim.js optimizeArmySteps).
+  for (const m of src.matchAll(/^export\s+(?:async\s+)?function\s*\*?\s*([A-Za-z0-9_$]+)/gm)) {
     names.add(m[1]);
   }
   for (const m of src.matchAll(/^export\s+(?:const|let|var|class)\s+([A-Za-z0-9_$]+)/gm)) {

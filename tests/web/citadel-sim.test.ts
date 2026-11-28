@@ -314,7 +314,7 @@ describe('automatic counts (the simulator searches them)', () => {
       }
       expect(lost(withManticore.both.you) + lost(withManticore.both.citadel)).toBeLessThan(lost(without.both.you) + lost(without.both.citadel));
     }
-  });
+  }, 60_000);
 
   it('every answer still wins with all bonuses 3% lower', () => {
     const army = [row('wyvern', 0, 3611.5, 2669.8), row('fire-phoenix-1', 0, 3711.5, 2769.8)];

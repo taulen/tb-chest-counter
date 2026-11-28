@@ -9431,6 +9431,11 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
 .citadel-meta { margin: 8px 0 0; font-size: 12px; }
 .citadel-avg { margin: -6px 0 18px; font-size: 12.5px; }
 .tool-tile.citadel-waiting { display: block; padding: 14px 16px; font-size: 13px; border-left: 3px solid var(--accent-amber); }
+/* The count search's progress, Citadel and Monsters (lib/search-progress.js; it runs in a worker, a phone may take ~10 s). */
+.search-progress-text { font-variant-numeric: tabular-nums; }
+.search-progress { margin: 8px 0 2px; }
+.search-progress-bar .ui-bar-fill { background: var(--accent-gold); transition: width 160ms linear; }
+@media (prefers-reduced-motion: reduce) { .search-progress-bar .ui-bar-fill { transition: none; } }
 .citadel-waiting p { margin: 0 0 4px; }
 
 /* Strike list: read like the game's battle report, one hit per line. */

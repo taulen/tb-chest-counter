@@ -15,7 +15,26 @@ import { api } from '../lib/api.js';
 import { esc, notify, contentModal, copyTextToClipboard, formatRelativeTime } from '../lib/ui.js';
 import { errorStateHtml, wireRetry } from '../lib/ui-kit.js';
 import { t, tn, tGame } from '../lib/i18n.js';
-import { simulateBothArmies, optimizeArmy } from '../lib/battle-sim.js';
+import { simulateBothArmies } from '../lib/battle-sim.js';
+import { searchArmy, cancelArmySearch } from '../lib/army-search.js';
+import { progressHtml, paintProgress } from '../lib/search-progress.js';
+import { loadArmyStarts, startsFrom, exemplarsFor } from '../lib/army-starts.js';
+
+/**
+ * A lost troop's price: a monster or mercenary its revival Gold (`revive`), a
+ * normal troop the Silver to train it (`train`) less the player's training
+ * discount for its kind (`discounts`, % by guardsmen / specialists / siege —
+ * it differs per kind, so it changes which loss is cheaper) — or, for the few
+ * the game doesn't sell (event troops), its Silver revival price, 10× the gold
+ * (T9 f7). Revival discounts scale every revived troop alike and are left out.
+ */
+const lossPrice = (def, prot, discounts = null) => {
+  if (prot) return Number.isFinite(def?.revive) && def.revive > 0 ? def.revive : def?.hp;
+  const n = def?.train ?? (def?.revive ? def.revive * 10 : null);
+  if (!(Number.isFinite(n) && n > 0)) return def?.hp;
+  const pct = def?.train ? Number(discounts?.[def.kind]) : NaN;
+  return Number.isFinite(pct) ? n * Math.max(0, 1 + pct / 100) : n;
+};
 import { outcomeHtml, strikeLogHtml } from '../lib/battle-result.js';
 import {
   UNIT_GROUPS, PROTECTED_KINDS, unitDefs, fieldableUnits, unitLevel, targetFamilies,
@@ -30,8 +49,6 @@ import { parseBonus } from './citadel-tool.js';
 
 const DRAFT_KEY = 'tbcc.monsters.draft.v1';
 const SEARCH_DELAY_MS = 350;
-/** The count search stops improving after this long (a phone, a big suggested army). */
-const SEARCH_TIME_MS = 2500;
 /** Bonuses older than this get an amber "check them" nudge. */
 const STALE_MS = 6 * 3600 * 1000;
 
@@ -123,6 +140,8 @@ function saveDraft() {
 
 export async function renderMonsterTool(mount) {
   closeTroopPicker();
+  // A search still running for the page before is of no use now.
+  cancelArmySearch();
   await loadGameArt();
   let data;
   try {
@@ -166,6 +185,8 @@ export async function renderMonsterTool(mount) {
     levels: { ...NO_LEVELS },
     logOpener: 'enemy',
     search: null,
+    /** The search running now: { key, done, total, phase } (its progress bar), or null. */
+    progress: null,
   };
   if (!currentTarget()) {
     // A level a patch removed: the same target's nearest level, else the first target.
@@ -234,25 +255,61 @@ function searchKey(target) {
 }
 
 let searchTimer = null;
+/**
+ * Search the counts a moment after the last change: the explore search
+ * (battle-sim.js optimizeArmySteps) in a Web Worker, its progress on the
+ * page (lib/army-search.js). It stops on work done, not time, so a phone
+ * finds the same army as a computer, only later. A change cancels it.
+ */
 function scheduleSearch(root, target) {
   clearTimeout(searchTimer);
   const key = searchKey(target);
-  searchTimer = setTimeout(() => {
-    if (!ms || searchKey(currentTarget()) !== key || !root.isConnected) return;
+  if (ms.progress && ms.progress.key !== key) {
+    cancelArmySearch();
+    ms.progress = null;
+  }
+  searchTimer = setTimeout(async () => {
+    if (!ms || searchKey(currentTarget()) !== key || !root.isConnected || ms.progress?.key === key) return;
+    // Learned starts: other armies' best answers for this target, carried over (lib/army-starts.js).
+    const lib = await loadArmyStarts();
+    if (!ms || searchKey(currentTarget()) !== key || !root.isConnected || ms.progress?.key === key) return;
     const prot = (r) => PROTECTED_KINDS.has(defOf(r.unitId).kind);
-    const res = optimizeArmy({
+    const params = {
       army: ms.rows.map((r) => ({
         def: rowDef(r, target), strengthPct: r.strengthPct, healthPct: r.healthPct,
-        // What a loss costs: the gold to revive it (the game's own price), else its health.
-        protected: prot(r), cap: r.cap ?? undefined, weight: defOf(r.unitId).revive,
+        // What a loss costs (the user's rule): a normal troop the Silver to train a new one, a monster or
+        // mercenary its revival Gold (the game's own prices; never added: those two are ranked first).
+        // ms.discounts: the linked player's training discounts per kind, when the page has them.
+        protected: prot(r), cap: r.cap ?? undefined, weight: lossPrice(defOf(r.unitId), prot(r), ms.discounts ?? null),
       })),
       enemy: enemyArmy(target),
       // Also from "no mercenaries or monsters at all": they join only where the rest can't win.
       starts: [ms.rows.map((r) => r.count), ms.rows.map((r) => (prot(r) ? 0 : r.cap ?? r.count))],
-      timeLimitMs: SEARCH_TIME_MS,
-      // Mercenaries and monsters judged on the worse coin flip: none lost either way, wherever that can be done.
+      // The user's rules (Nov 28 2026): losses count at the bonuses as typed — what the page shows —
+      // and the 3%-weaker battles must only be won; mercenaries and monsters are judged on the worst
+      // flip of all four (the weaker battles a margin): none lost either way, wherever that can be done.
       worstCase: true,
+      scoreWeaker: false,
+      protWeaker: true,
+    };
+    const tier = Math.max(0, ...params.army.filter((r) => ['guardsmen', 'specialists', 'monsters'].includes(r.def.kind)).map((r) => r.def.tier ?? 0));
+    params.starts.push(...startsFrom({
+      ...exemplarsFor(lib, String(target.ids?.[0]), target.name, target.level),
+      army: params.army, enemy: params.enemy, tier, defOf: (k) => defOf(k),
+    }));
+    const state = ms;
+    state.progress = { key, done: 0, total: 1, phase: 'starts' };
+    paintProgress(root, state.progress);
+    const res = await searchArmy(params, {
+      onProgress: (p) => {
+        if (state.progress?.key !== key) return;
+        state.progress = { key, done: p.done, total: p.total, phase: p.phase };
+        paintProgress(root, state.progress);
+      },
     });
+    if (ms !== state || state.progress?.key !== key) return;
+    state.progress = null;
+    if (!res || searchKey(currentTarget()) !== key || !root.isConnected) return;
     ms.search = { key, ok: res.ok, counts: res.counts };
     refresh(root);
   }, SEARCH_DELAY_MS);
@@ -562,7 +619,8 @@ function paintResults(root, a) {
     return;
   }
   if (a.pending) {
-    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting"><p>${t('Working out the counts…')}</p></div>`;
+    // aria-live off: the results area announces changes, and the bar moves a few hundred times.
+    el.innerHTML = `${title}<div class="ui-tile tool-tile citadel-waiting" aria-live="off">${progressHtml(ms.progress)}</div>`;
     return;
   }
   if (a.failed) {

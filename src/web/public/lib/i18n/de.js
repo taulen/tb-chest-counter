@@ -616,6 +616,10 @@ export const ui = {
   "{done} of {total} clans done": "{done} von {total} Clans fertig",
   "Clan {position} of {total}": "Clan {position} von {total}",
   "{n} clans scanning at once": { one: "{n} Clan wird gescannt", other: "{n} Clans werden gleichzeitig gescannt" },
+  // lib/search-progress.js
+  "Improving the best army… {pct}%": "Beste Armee wird verbessert… {pct} %",
+  "Trying starting armies… {pct}%": "Startarmeen werden erprobt… {pct} %",
+  "Working out the counts…": "Anzahlen werden berechnet…",
   // lib/shell.js
   "Show the full menu": "Ganzes Menü anzeigen",
   "Fold the menu to icons": "Menü auf Symbole einklappen",
@@ -1120,7 +1124,6 @@ export const ui = {
   "Enter the health bonus for {troop}: as first striker its count depends on it.": "Trage den Gesundheitsbonus für {troop} ein: als erster Angreifer hängt seine Anzahl davon ab.",
   "Enter the health bonus for {troop}: it gets hit by {attackers}.": "Trage den Gesundheitsbonus für {troop} ein: er wird getroffen von {attackers}.",
   "The result needs these from your own troop cards — they decide every number.": "Das Ergebnis braucht diese Werte von deinen eigenen Truppenkarten – sie bestimmen jede Zahl.",
-  "Working out the counts…": "Anzahlen werden berechnet…",
   "These troops can't take this citadel in both coin flips, even in large numbers.": "Diese Truppen nehmen die Zitadelle nicht in beiden Fällen ein, selbst in großer Zahl.",
   "Add a siege engine for the walls, or stronger troops.": "Füge ein Belagerungsgerät für die Mauern oder stärkere Truppen hinzu.",
   "Enter how many of each troop you send.": "Gib an, wie viele von jeder Truppe du schickst.",
