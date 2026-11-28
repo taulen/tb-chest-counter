@@ -31,11 +31,13 @@
 import type { Wire } from './codec.js';
 
 export const BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes (2: who may lead a target). */
-export const BATTLE_DATA_FORMAT = 2;
+/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold). */
+export const BATTLE_DATA_FORMAT = 3;
 
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
 const MAP_ARMY = 6;
+/** T7 f18 of a citadel (and an enemy city). */
+const CLASS_CITADEL = 4;
 
 /** What a player fields a unit as; null for the monsters of the map. */
 export type UnitKind = 'guardsmen' | 'specialists' | 'monsters' | 'mercenaries' | 'siege';
@@ -57,6 +59,8 @@ export interface BattleUnit {
   lead?: number;
   dom?: number;
   auth?: number;
+  /** Gold to revive one lost in an attack (T9 f6, item 1 = Gold; equals Kaiculator's revival gold for all 53 mercenaries it lists). */
+  revive?: number;
 }
 
 export interface BattleTarget {
@@ -144,6 +148,8 @@ export function buildBattleData(
     const kind = priced ? kindOf(new Set(tags), lead, dom, auth) : null;
     if (kind) {
       unit.kind = kind;
+      const gold = num((row[6] as Wire[])[0] && typeof (row[6] as Wire[])[0] === 'object' ? ((row[6] as Wire[])[0] as Record<string, Wire>)['1'] : undefined);
+      if (gold > 0) unit.revive = gold;
       if (kind === 'mercenaries') unit.auth = auth;
       else if (kind === 'monsters') unit.dom = dom;
       else unit.lead = lead;
@@ -166,8 +172,7 @@ export function buildBattleData(
     fieldable.add(id);
   }
 
-  // Monster targets: one per name, level and army. Older versions (class 0)
-  // step aside where the same name and level has a current one.
+  // Monster targets: one per name, level and army, of the family's live class (below).
   type Cand = { id: number; name: string; level: number; cls: number; hero: boolean; captains: number; army: Array<[number, number]>; key: string };
   const groups = new Map<string, Cand[]>();
   for (const [id, row] of rowsOf(t7)) {
@@ -188,11 +193,32 @@ export function buildBattleData(
     // Who may lead is part of a target's identity: one version can be the Hero's, another a captain's.
     groups.get(g)!.push({ id, name, level, cls: num(row[18]), hero, captains, army, key: JSON.stringify([hero, captains, [...army].sort((a, b) => a[0] - b[0])]) });
   }
+  // Which class of a family is the live one. Class 0 never is (older versions:
+  // a "Common Elf squad" of legacy Inferno units, the old Legendary and Epic
+  // Elf/Barbarian/Cursed squads — no shared report ever hit one, Nov 28 2026).
+  // A citadel family keeps its citadels (class 4; its class-2 objects are the
+  // old citadels, 0 of 29 hits); any other its main class (Common Elf squad:
+  // 30 of class 1, 5 stray class-2 objects).
+  const liveClass = new Map<string, number>();
+  {
+    const counts = new Map<string, Map<number, number>>();
+    for (const list of groups.values()) {
+      for (const c of list) {
+        if (c.cls === 0) continue;
+        const m = counts.get(c.name) ?? new Map<number, number>();
+        m.set(c.cls, (m.get(c.cls) ?? 0) + 1);
+        counts.set(c.name, m);
+      }
+    }
+    for (const [name, m] of counts) {
+      const best = m.has(CLASS_CITADEL) ? CLASS_CITADEL : [...m].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+      liveClass.set(name, best);
+    }
+  }
   const targets: BattleTarget[] = [];
   const used = new Set<number>(fieldable);
   for (const list of groups.values()) {
-    const current = list.filter((c) => c.cls !== 0);
-    const pick = current.length ? current : list;
+    const pick = list.filter((c) => c.cls !== 0 && c.cls === liveClass.get(c.name));
     const byArmy = new Map<string, BattleTarget>();
     for (const c of pick) {
       const t = byArmy.get(c.key);

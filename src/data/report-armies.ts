@@ -38,7 +38,7 @@ import zlib from 'zlib';
 import { getDb } from './database.js';
 import { cachedArtUnits } from '../game-art/art-static.js';
 import { gameArtDir } from '../game-art/store.js';
-import { loadGameNames, newestStaticFile, type GameCitadel } from '../game-protocol/static-data.js';
+import { cachedGameNames, loadGameNames, newestStaticFile, type GameCitadel, type GameNames } from '../game-protocol/static-data.js';
 import { HERO_COMMANDER, parseBattleReport } from '../game-protocol/battle-report.js';
 import { TROOP_EFFECTS_FILE, TROOP_EFFECTS_FORMAT, troopCard, type TroopEffects } from '../game-protocol/troop-effects.js';
 import { gamePlayerNames } from './game-player-names.js';
@@ -88,10 +88,20 @@ export interface ReportArmyLookups {
   troopEffects?: () => TroopEffects | null;
 }
 
+/**
+ * The names as built, without the game version check loadGameNames makes on
+ * every call (a network round trip each: the report dialog made two or three
+ * and took 5+ s to open, Nov 28 2026). Built ones are always there after the
+ * first build; only before it does this ask the game.
+ */
+async function namesNow(): Promise<GameNames> {
+  return cachedGameNames() ?? loadGameNames();
+}
+
 /** The game's citadels by T7 id (names build, format 16+); empty when the names can't be read. */
 export async function loadCitadels(): Promise<Record<string, GameCitadel>> {
   try {
-    return (await loadGameNames()).citadels ?? {};
+    return (await namesNow()).citadels ?? {};
   } catch {
     return {};
   }
@@ -117,7 +127,7 @@ export function loadTroopEffects(): TroopEffects | null {
 
 const LIVE: ReportArmyLookups = {
   units: () => cachedArtUnits(gameArtDir()),
-  objects: async () => (await loadGameNames()).objects,
+  objects: async () => (await namesNow()).objects,
   citadels: loadCitadels,
   troopEffects: loadTroopEffects,
 };

@@ -90,7 +90,7 @@ function bodyHtml(data, intro) {
  * and the battles listed — or null. `only: 'citadels'` lists citadel battles only.
  */
 export async function pickBattleReport({ title, intro, only = null }) {
-  let data = await load(null, only);
+  let data = null;
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => {
@@ -98,9 +98,11 @@ export async function pickBattleReport({ title, intro, only = null }) {
       done = true;
       resolve(v);
     };
+    // Open at once, then fill: reading the battles can take a moment, and a
+    // click that shows nothing for seconds reads as a hung page.
     const modal = contentModal({
       title,
-      html: data ? bodyHtml(data, intro) : `<p>${esc(t('The battle reports could not be loaded.'))}</p>`,
+      html: `<p class="rp-intro">${esc(intro)}</p><p class="muted-copy" role="status">${esc(t('Reading the battles…'))}</p>`,
       className: 'rp-modal',
       onClose: () => finish(null),
     });
@@ -123,6 +125,21 @@ export async function pickBattleReport({ title, intro, only = null }) {
         modal.close();
       }));
     };
-    wire();
+    load(null, only).then((first) => {
+      if (done) return;
+      data = first;
+      modal.setHtml(data ? bodyHtml(data, intro) : `<p>${esc(t('The battle reports could not be loaded.'))}</p>`);
+      wire();
+    });
   });
+}
+
+/**
+ * The viewer's own players and their battles of the window (the dialog's
+ * opening state: GET /api/tools/report-armies), or one player's with `player`;
+ * null when it can't be read. For pages that pick from the viewer's own
+ * battles without the dialog (Tools → Monsters' "Suggest an army").
+ */
+export function loadReportArmies(player = null, only = null) {
+  return load(player, only);
 }

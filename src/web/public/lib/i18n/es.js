@@ -591,6 +591,7 @@ export const ui = {
   "No battle of yours from the last {days} days has been read yet. Share a report in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.": "Aún no se ha leído ninguna batalla tuya de los últimos {days} días. Comparte un informe en el chat del clan o envíalo a la cuenta del escáner por mensaje privado; se lee en pocos minutos.",
   "No battle of {name} from the last {days} days has been read yet.": "Aún no se ha leído ninguna batalla de {name} de los últimos {days} días.",
   "this player": "este jugador",
+  "Reading the battles…": "Leyendo las batallas…",
   "The battle reports could not be loaded.": "No se pudieron cargar los informes de batalla.",
   // lib/resource-format.js
   "{days}d {hours}h": "{days}d {hours}h",

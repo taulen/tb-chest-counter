@@ -15,7 +15,7 @@ const S: Record<number, string> = {
 // Name vectors → their text (undefined = a key the game's files have no text for).
 const NAMES: Record<number, string | undefined> = {
   100: 'Corax I', 101: 'Bear', 102: 'Citadel Walls', 103: 'Siege Ballistae VII', 104: 'Wyvern', 105: 'Phoenix',
-  200: 'Common Elf squad', 201: 'Elven Citadel', 202: undefined, 203: "Exiles' Grove", 204: 'Rare Elf squad',
+  200: 'Common Elf squad', 201: 'Elven Citadel', 202: undefined, 203: "Exiles' Grove", 204: 'Rare Elf squad', 205: 'Legendary Elf squad',
 };
 const look = {
   str: (r: Wire | undefined) => (typeof r === 'number' ? S[r] : undefined),
@@ -55,6 +55,12 @@ const T7: Record<string, Wire> = {
   // The same army again under another id: one target, both ids.
   188029: obj(188029, 6, 200, { 6033: 780000 }, 30, 1),
   1817: obj(1817, 6, 201, { 51: 135000, 6033: 12000 }, 30, 4, 1, 3),
+  // An old citadel (class 2) beside the current one (class 4): left out.
+  1806: obj(1806, 6, 201, { 51: 41600, 6033: 2400 }, 25, 2, 1, 3),
+  // A family that only has older versions (class 0): left out.
+  3001: obj(3001, 6, 205, { 6033: 7 }, 15, 0),
+  // An older version of a family that has current ones, at a level they don't have: left out too.
+  999: obj(999, 6, 200, { 6033: 25 }, 39, 0, 1, 3),
   // A Rare squad: the Hero's alone.
   2936: obj(2936, 6, 204, { 6033: 640000 }, 45, 2, 1, 0),
   // No text in the game's files (a test object): left out.
@@ -71,7 +77,7 @@ describe('battle data from the game tables', () => {
   it('keeps a unit\'s numbers, lower-case tags and features with their damage multiplier', () => {
     expect(d.units['206']).toEqual({
       name: 'Corax I', tier: 8, str: 61200, hp: 183600, tags: ['flying', 'guardsmen', 'human'],
-      vs: [[['mounted'], 1333, 1], [['citywalls'], 701, 1]], icon: 'icon_corax', kind: 'guardsmen', lead: 20,
+      vs: [[['mounted'], 1333, 1], [['citywalls'], 701, 1]], icon: 'icon_corax', kind: 'guardsmen', revive: 80, lead: 20,
     });
     expect(d.units['87'].vs).toEqual([[['citywalls'], 740, 20]]);
     expect(d.units['87']).toMatchObject({ kind: 'siege', lead: 10 });

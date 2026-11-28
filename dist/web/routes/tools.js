@@ -74,10 +74,16 @@ function createToolsRouter() {
      */
     router.get('/report-armies', async (req, res) => {
         const clanId = req.clanId;
-        const own = [...new Set((0, account_invite_repo_js_1.linksForUser)(req.user.id).map((l) => l.playerId))];
+        const links = (0, account_invite_repo_js_1.linksForUser)(req.user.id);
+        const own = [...new Set(links.map((l) => l.playerId))];
         const citadels = req.query.only === 'citadels' ? await (0, report_armies_js_1.loadCitadels)() : null;
         const filter = { targets: citadels ? Object.keys(citadels).map(Number) : null };
         const players = (0, report_armies_js_1.reportPlayers)(clanId, own, filter);
+        // An own player the scans haven't named yet takes the name its link was made with.
+        for (const p of players) {
+            if (!p.name && p.own)
+                p.name = links.find((l) => l.playerId === p.playerId && l.playerName)?.playerName ?? '';
+        }
         const mine = players.filter((p) => p.own).map((p) => p.playerId);
         const picked = players.find((p) => String(p.playerId) === String(req.query.player ?? '')) ?? null;
         const ids = picked ? [picked.playerId] : mine;

@@ -4,10 +4,12 @@ exports.BATTLE_DATA_FORMAT = exports.BATTLE_DATA_FILE = void 0;
 exports.buildBattleData = buildBattleData;
 exports.battleUnitNames = battleUnitNames;
 exports.BATTLE_DATA_FILE = 'battle-data.json';
-/** Bump when the file's shape changes (2: who may lead a target). */
-exports.BATTLE_DATA_FORMAT = 2;
+/** Bump when the file's shape changes (2: who may lead a target; 3: revival gold). */
+exports.BATTLE_DATA_FORMAT = 3;
 /** T7 f1 of an army on the map (monster squads, citadels, enemy cities, vaults). */
 const MAP_ARMY = 6;
+/** T7 f18 of a citadel (and an enemy city). */
+const CLASS_CITADEL = 4;
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const isRow = (r) => Array.isArray(r);
 const nonEmpty = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0;
@@ -62,6 +64,9 @@ function buildBattleData(t7, t9, look, version) {
         const kind = priced ? kindOf(new Set(tags), lead, dom, auth) : null;
         if (kind) {
             unit.kind = kind;
+            const gold = num(row[6][0] && typeof row[6][0] === 'object' ? row[6][0]['1'] : undefined);
+            if (gold > 0)
+                unit.revive = gold;
             if (kind === 'mercenaries')
                 unit.auth = auth;
             else if (kind === 'monsters')
@@ -109,11 +114,33 @@ function buildBattleData(t7, t9, look, version) {
         // Who may lead is part of a target's identity: one version can be the Hero's, another a captain's.
         groups.get(g).push({ id, name, level, cls: num(row[18]), hero, captains, army, key: JSON.stringify([hero, captains, [...army].sort((a, b) => a[0] - b[0])]) });
     }
+    // Which class of a family is the live one. Class 0 never is (older versions:
+    // a "Common Elf squad" of legacy Inferno units, the old Legendary and Epic
+    // Elf/Barbarian/Cursed squads — no shared report ever hit one, Nov 28 2026).
+    // A citadel family keeps its citadels (class 4; its class-2 objects are the
+    // old citadels, 0 of 29 hits); any other its main class (Common Elf squad:
+    // 30 of class 1, 5 stray class-2 objects).
+    const liveClass = new Map();
+    {
+        const counts = new Map();
+        for (const list of groups.values()) {
+            for (const c of list) {
+                if (c.cls === 0)
+                    continue;
+                const m = counts.get(c.name) ?? new Map();
+                m.set(c.cls, (m.get(c.cls) ?? 0) + 1);
+                counts.set(c.name, m);
+            }
+        }
+        for (const [name, m] of counts) {
+            const best = m.has(CLASS_CITADEL) ? CLASS_CITADEL : [...m].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+            liveClass.set(name, best);
+        }
+    }
     const targets = [];
     const used = new Set(fieldable);
     for (const list of groups.values()) {
-        const current = list.filter((c) => c.cls !== 0);
-        const pick = current.length ? current : list;
+        const pick = list.filter((c) => c.cls !== 0 && c.cls === liveClass.get(c.name));
         const byArmy = new Map();
         for (const c of pick) {
             const t = byArmy.get(c.key);

@@ -305,17 +305,22 @@ export const SAFETY = 0.03;
  * the rest. Each lost unit is worth its base health, so one Wyvern (2.07M)
  * weighs about eleven Corax I (183.6k) and losing cheap low-tier units is cheap.
  */
-function lossValue(results, rows) {
+function lossValue(results, rows, worstCase = false) {
   let rest = 0;
   let prot = 0;
+  let protWorst = 0;
   for (const res of results) {
+    let p = 0;
     for (const s of res.army) {
       const row = rows[s.index];
-      if (row.protected) prot += s.lost * row.def.hp;
-      else rest += s.lost * row.def.hp;
+      const w = s.lost * (row.weight ?? row.def.hp);
+      if (row.protected) p += w;
+      else rest += w;
     }
+    prot += p;
+    protWorst = Math.max(protWorst, p);
   }
-  return { prot: prot / results.length, rest: rest / results.length };
+  return { prot: worstCase ? protWorst : prot / results.length, rest: rest / results.length };
 }
 
 /**
@@ -334,12 +339,17 @@ function lossValue(results, rows) {
  * then the smaller army (less strength sent). A row's count never goes over
  * its `cap` (what the player has); rows at 0 are left at home.
  *
- * @param {{ army: {def: object, strengthPct?: number|null, healthPct?: number|null, protected?: boolean, cap?: number}[],
+ * A row's `weight` is what one lost unit costs (Tools → Monsters: its revival
+ * gold), else its base health. With `worstCase`, protected losses are judged
+ * on the worse coin flip, not the mean: "none if I strike first, 400
+ * mercenaries if they do" is not an army to send (the user, Nov 28 2026).
+ *
+ * @param {{ army: {def: object, strengthPct?: number|null, healthPct?: number|null, protected?: boolean, cap?: number, weight?: number}[],
  *           enemy: {def: object, count: number}[], budget?: number, starts?: number[][], enemySide?: string,
- *           timeLimitMs?: number }} p  timeLimitMs: stop improving after this long (a phone, 25 troop types)
+ *           timeLimitMs?: number, worstCase?: boolean }} p  timeLimitMs: stop improving after this long (a phone, 25 troop types)
  * @returns {{ ok: boolean, counts: number[], both: any, evaluations: number }}
  */
-export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySide = 'enemy', timeLimitMs = Infinity }) {
+export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySide = 'enemy', timeLimitMs = Infinity, worstCase = false }) {
   const until = Date.now() + timeLimitMs;
   if (!army.length) return { ok: false, counts: [], both: null, evaluations: 0 };
   const rows = army.map((r, index) => ({ ...r, index, healthPct: r.healthPct ?? 0 }));
@@ -363,9 +373,9 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
     const won = results.every((r) => r.won);
     const left = results.reduce((a, res) => a + res.defenders.reduce((x, d) => x + d.alive, 0), 0);
     const power = counts.reduce((a, n, i) => a + n * rows[i].def.str * (1 + (Number(rows[i].strengthPct) || 0) / 100), 0);
-    const l = lossValue([both.you, both[enemySide]], rows);
-    const w = lossValue([weak.you, weak[enemySide]], rows);
-    const prot = won ? (l.prot + w.prot) / 2 : Infinity;
+    const l = lossValue([both.you, both[enemySide]], rows, worstCase);
+    const w = lossValue([weak.you, weak[enemySide]], rows, worstCase);
+    const prot = won ? (worstCase ? Math.max(l.prot, w.prot) : (l.prot + w.prot) / 2) : Infinity;
     const loss = won ? (l.rest + w.rest) / 2 : Infinity;
     return { counts: [...counts], both, won, prot, loss, left, power };
   };

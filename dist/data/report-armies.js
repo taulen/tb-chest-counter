@@ -52,10 +52,19 @@ const static_data_js_1 = require("../game-protocol/static-data.js");
 const battle_report_js_1 = require("../game-protocol/battle-report.js");
 const troop_effects_js_1 = require("../game-protocol/troop-effects.js");
 const game_player_names_js_1 = require("./game-player-names.js");
+/**
+ * The names as built, without the game version check loadGameNames makes on
+ * every call (a network round trip each: the report dialog made two or three
+ * and took 5+ s to open, Nov 28 2026). Built ones are always there after the
+ * first build; only before it does this ask the game.
+ */
+async function namesNow() {
+    return (0, static_data_js_1.cachedGameNames)() ?? (0, static_data_js_1.loadGameNames)();
+}
 /** The game's citadels by T7 id (names build, format 16+); empty when the names can't be read. */
 async function loadCitadels() {
     try {
-        return (await (0, static_data_js_1.loadGameNames)()).citadels ?? {};
+        return (await namesNow()).citadels ?? {};
     }
     catch {
         return {};
@@ -83,7 +92,7 @@ function loadTroopEffects() {
 }
 const LIVE = {
     units: () => (0, art_static_js_1.cachedArtUnits)((0, store_js_1.gameArtDir)()),
-    objects: async () => (await (0, static_data_js_1.loadGameNames)()).objects,
+    objects: async () => (await namesNow()).objects,
     citadels: loadCitadels,
     troopEffects: loadTroopEffects,
 };

@@ -24,7 +24,7 @@ import {
 } from '../lib/monster-army.js';
 import { tierUnlocked, tierInWindow } from '../lib/citadel-sim.js';
 import { openTroopPicker, closeTroopPicker } from '../lib/troop-picker.js';
-import { pickBattleReport, reportChoiceLabel } from '../lib/report-picker.js';
+import { pickBattleReport, reportChoiceLabel, loadReportArmies } from '../lib/report-picker.js';
 import { NO_LEVELS, levelsHtml, applyLevelChange, saveLevels, levelKindLabel } from '../lib/troop-levels.js';
 import { parseBonus } from './citadel-tool.js';
 
@@ -100,6 +100,7 @@ function loadDraft() {
       bonusesAt: typeof d.bonusesAt === 'string' ? d.bonusesAt : null,
       bonusesNote: typeof d.bonusesNote === 'string' ? d.bonusesNote : null,
       decimalComma: d.decimalComma === true,
+      suggestPlayer: Number.isFinite(Number(d.suggestPlayer)) && d.suggestPlayer !== null ? Number(d.suggestPlayer) : null,
     };
   } catch {
     return null;
@@ -110,7 +111,7 @@ function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       target: ms.target, rows: ms.rows, countMode: ms.countMode, eventPct: ms.eventPct,
-      bonusesAt: ms.bonusesAt, bonusesNote: ms.bonusesNote, decimalComma: ms.decimalComma,
+      bonusesAt: ms.bonusesAt, bonusesNote: ms.bonusesNote, decimalComma: ms.decimalComma, suggestPlayer: ms.suggestPlayer,
     }));
   } catch { /* private mode: the draft just isn't kept */ }
 }
@@ -150,6 +151,9 @@ export async function renderMonsterTool(mount) {
     bonusesAt: draft?.bonusesAt ?? null,
     bonusesNote: draft?.bonusesNote ?? null,
     decimalComma: draft?.decimalComma ?? false,
+    /** The viewer's own linked players (Suggest picks one), and which one. */
+    ownPlayers: [],
+    suggestPlayer: draft?.suggestPlayer ?? null,
     levels: { ...NO_LEVELS },
     logOpener: 'enemy',
     search: null,
@@ -178,6 +182,13 @@ export async function renderMonsterTool(mount) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
   }
   if (root.isConnected) paintAll(root);
+  // The viewer's own players, for Suggest's player select (several linked accounts have different armies).
+  const own = await loadReportArmies();
+  if (!ms || !root.isConnected) return;
+  ms.ownPlayers = (own?.players ?? []).filter((p) => p.own);
+  if (!ms.ownPlayers.some((p) => p.playerId === ms.suggestPlayer)) ms.suggestPlayer = ms.ownPlayers[0]?.playerId ?? null;
+  const slot = root.querySelector('.monster-player-slot');
+  if (slot) slot.innerHTML = playerSelectHtml();
 }
 
 /** The first Common squad's lowest level: something to look at before a choice. */
@@ -219,14 +230,19 @@ function scheduleSearch(root, target) {
   const key = searchKey(target);
   searchTimer = setTimeout(() => {
     if (!ms || searchKey(currentTarget()) !== key || !root.isConnected) return;
+    const prot = (r) => PROTECTED_KINDS.has(defOf(r.unitId).kind);
     const res = optimizeArmy({
       army: ms.rows.map((r) => ({
         def: rowDef(r, target), strengthPct: r.strengthPct, healthPct: r.healthPct,
-        protected: PROTECTED_KINDS.has(defOf(r.unitId).kind), cap: r.cap ?? undefined,
+        // What a loss costs: the gold to revive it (the game's own price), else its health.
+        protected: prot(r), cap: r.cap ?? undefined, weight: defOf(r.unitId).revive,
       })),
       enemy: enemyArmy(target),
-      starts: [ms.rows.map((r) => r.count)],
+      // Also from "no mercenaries or monsters at all": they join only where the rest can't win.
+      starts: [ms.rows.map((r) => r.count), ms.rows.map((r) => (prot(r) ? 0 : r.cap ?? r.count))],
       timeLimitMs: SEARCH_TIME_MS,
+      // Mercenaries and monsters judged on the worse coin flip: none lost either way, wherever that can be done.
+      worstCase: true,
     });
     ms.search = { key, ok: res.ok, counts: res.counts };
     refresh(root);
@@ -366,6 +382,14 @@ function bonusesNoteHtml() {
   return `<p class="citadel-note monster-bonus-note">${base} <span class="${stale ? 'tool-warn' : 'citadel-note-when'}">${stale ? '⚠ ' : ''}${from}</span></p>`;
 }
 
+/** Which of the viewer's linked players Suggest reads (only when there is more than one). */
+function playerSelectHtml() {
+  if ((ms?.ownPlayers?.length ?? 0) < 2) return '';
+  const opts = ms.ownPlayers.map((p) => `<option value="${p.playerId}" ${p.playerId === ms.suggestPlayer ? 'selected' : ''}>${esc(p.name || t('Unknown player'))} · ${esc(tn(p.battles, '{n} battle', '{n} battles'))}</option>`).join('');
+  return `<label class="monster-player-field"><span class="visually-hidden">${esc(t('Player'))}</span>
+    <select class="input" data-mon="player">${opts}</select></label>`;
+}
+
 function countModeHtml() {
   const btn = (mode, label, title) => `<button type="button" class="citadel-seg ${ms.countMode === mode ? 'is-active' : ''}" data-mon-action="count-mode" data-mode="${mode}" aria-pressed="${ms.countMode === mode}" title="${esc(title)}">${label}</button>`;
   return `
@@ -404,6 +428,7 @@ function armyCardHtml(a) {
       <div class="tool-tile-body">
         ${bonusesNoteHtml()}
         <div class="citadel-from-report monster-army-actions">
+          <span class="monster-player-slot">${playerSelectHtml()}</span>
           <button type="button" class="btn btn-sm btn-primary" data-mon-action="suggest">${t('Suggest an army from my battles')}</button>
           <button type="button" class="btn btn-sm" data-mon-action="from-report">${t('Fill in from a battle report')}</button>
         </div>
@@ -604,6 +629,10 @@ function onChange(e) {
       ms.target = { name: fam.name, level: nearestLevel(fam, ms.target?.level ?? fam.levels[0].level), variant: 0 };
     } else if (which === 'level') {
       ms.target = { ...ms.target, level: Number(el.value), variant: 0 };
+    } else if (which === 'player') {
+      ms.suggestPlayer = Number(el.value) || null;
+      saveDraft();
+      return;
     } else if (which === 'variant') {
       ms.target = { ...ms.target, variant: Number(el.value) || 0 };
     }
@@ -723,7 +752,8 @@ async function suggestArmy(root, btn) {
   btn.disabled = true;
   let res = null;
   try {
-    res = await api('/tools/report-armies');
+    // That player's battles only: several linked accounts have different armies.
+    res = ms.suggestPlayer ? await loadReportArmies(String(ms.suggestPlayer)) : await api('/tools/report-armies');
   } catch (err) {
     if (err?.name === 'UnauthenticatedError' || err?.name === 'AbortError') throw err;
   } finally {
@@ -738,7 +768,7 @@ async function suggestArmy(root, btn) {
     await notify(t('Your account isn\'t linked to a game player yet. Ask an admin for an invite code, or use “Fill in from a battle report” to pick anyone\'s battle.'), title);
     return;
   }
-  const mine = res.reports.filter((r) => res.players.some((p) => p.own && p.playerId === r.attacker?.playerId));
+  const mine = res.reports.filter((r) => (ms.suggestPlayer ? r.attacker?.playerId === ms.suggestPlayer : res.players.some((p) => p.own && p.playerId === r.attacker?.playerId)));
   if (!mine.length) {
     await notify(t('No battle of yours from the last {days} days has been read yet. Share a report in the clan chat, or send it to the scanner account in a private message; it is read within a few minutes.', { days: res.windowDays ?? 7 }), title);
     return;

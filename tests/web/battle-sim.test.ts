@@ -101,6 +101,23 @@ describe('the engine', () => {
     expect(res.counts[0]).toBeLessThanOrEqual(1);
   });
 
+  it('with worstCase, the worse coin flip loses no more mercenaries than the averaging search would', () => {
+    const merc = { id: 'merc', str: 220000, hp: 660000, tags: ['flying', 'beast'], vs: [] };
+    const decoy = { id: 'decoy', str: 520, hp: 1560, tags: ['melee', 'human'], vs: [] };
+    const army = [
+      { def: merc, strengthPct: 1600, healthPct: 1000, protected: true, cap: 20, weight: 160 },
+      { def: corax, strengthPct: 1000, healthPct: 800, cap: 400, weight: 80 },
+      { def: decoy, strengthPct: 1000, healthPct: 800, cap: 5000, weight: 4 },
+    ];
+    const enemy = [{ def: bear, count: 3000 }];
+    const worst = (res: ReturnType<typeof optimizeArmy>) => Math.max(...[res.both.you, res.both.enemy]
+      .map((r: { army: Array<{ troopId: string; lost: number }> }) => r.army.filter((s) => s.troopId === 'merc').reduce((a, s) => a + s.lost, 0)));
+    const mean = optimizeArmy({ army, enemy });
+    const safe = optimizeArmy({ army, enemy, worstCase: true });
+    expect(safe.ok).toBe(true);
+    expect(worst(safe)).toBeLessThanOrEqual(worst(mean));
+  });
+
   it('leaves a troop at home when it only adds losses', () => {
     const decoy = { id: 'decoy', str: 10, hp: 30, tags: ['melee', 'human'], vs: [] };
     const res = optimizeArmy({

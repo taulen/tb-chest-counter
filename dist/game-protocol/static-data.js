@@ -27,6 +27,7 @@ exports.conditionTexts = conditionTexts;
 exports.buildFactions = buildFactions;
 exports.clearGameNamesRetry = clearGameNamesRetry;
 exports.loadGameNames = loadGameNames;
+exports.cachedGameNames = cachedGameNames;
 exports.newestStaticFile = newestStaticFile;
 exports.resetGameNamesMemo = resetGameNamesMemo;
 /**
@@ -234,10 +235,10 @@ exports.BASE_RESOURCE_MAX_ID = 100;
  * the units they reach, for battle reports' troop cards — Nov 2026; 16:
  * citadels — kind and level, for "fill in from a battle report"; 17: units —
  * the names of battle-data.json's units, and battle-data.json beside it, for
- * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target);
- * a cached file with an older format is rebuilt.
+ * Tools → Monsters; 18: battle-data.json format 2 — who may lead each target;
+ * 19: format 3 — revival gold); a cached file with an older format is rebuilt.
  */
-exports.NAMES_FORMAT = 18;
+exports.NAMES_FORMAT = 19;
 /** T62 f6 medal tier → the game's own tier label key (the clan_medals config's goblet tierName). */
 const MEDAL_TIER_KEYS = {
     1: 'client_config.value.goblet_bronze',
@@ -1408,6 +1409,15 @@ async function buildAndCacheNames(version, key, file) {
         `texts ${[...texts].map(([l, d]) => `${l} ${Object.keys(d).length}`).join(', ') || 'none'}`);
     memo = names;
     return names;
+}
+/**
+ * The names already in memory or on disk, without asking the game for its
+ * version first (loadGameNames does, a network round trip on every call): for
+ * request paths that only read names, where the patch check happens elsewhere
+ * (the game-texts route, every ten minutes; scans). Null before any build.
+ */
+function cachedGameNames() {
+    return memo ?? newestCachedNames();
 }
 function newestCachedNames() {
     const dir = staticDir();
