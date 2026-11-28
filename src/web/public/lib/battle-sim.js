@@ -33,7 +33,11 @@
 // Plain ESM, no DOM access.
 
 const MAX_SIEGE_ROUNDS = 40;
-const MAX_BATTLE_ROUNDS = 60;
+/** A safety stop only. Every shared report ended with a side gone (Nov 2026,
+ *  up to 100 rounds), and players have seen fights of thousands of rounds: the
+ *  game sets no limit we know of. A round in which nothing is damaged stops the
+ *  fight earlier (it could never end). */
+const MAX_BATTLE_ROUNDS = 10000;
 
 /** A health bonus nobody entered: the stack counts as untouchable. That can only
  *  make it MORE attractive as a target (damage is capped at what a target has
@@ -146,8 +150,9 @@ function strongestUnacted(stacks, acted) {
  * @param {'you'|string} p.opener  who opens the first battle round ('you' or the enemy)
  * @param {string} [p.enemySide]  the enemy's side label in the result ('citadel' for Citadel)
  * @param {Record<number,{double?:boolean,second?:boolean,blocked?:boolean}>} [p.luck]  1-based action number → luck (tests)
+ * @param {boolean} [p.keepStrikes]  false: no strike list (the count search plays thousands of battles)
  */
-export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', enemySide = 'enemy', luck = {} }) {
+export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', enemySide = 'enemy', luck = {}, keepStrikes = true }) {
   const mine = [];
   rows.forEach((row, i) => {
     const n = Math.max(0, Math.floor(Number(row.count) || 0));
@@ -160,6 +165,8 @@ export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', en
 
   const strikes = [];
   let action = 0;
+  let roundDamage = 0;
+  let dealtByYou = 0;
   const hit = (actor, target, phase, round) => {
     action += 1;
     const roll = luck[action] || {};
@@ -168,6 +175,9 @@ export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', en
       const before = alive(t);
       t.pool -= dealt;
       t.taken += dealt;
+      roundDamage += dealt;
+      if (actor.side === 'you') dealtByYou += dealt;
+      if (!keepStrikes) return;
       const after = alive(t);
       strikes.push({
         phase, round, side: actor.side, actor: actor.def.id, target: t.def.id, damage: dealt,
@@ -226,6 +236,7 @@ export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', en
       const acted = new Set();
       let side = first;
       let last = null;
+      roundDamage = 0;
       for (;;) {
         const other = side === 'you' ? enemySide : 'you';
         const actor = strongestUnacted(sides[side], acted);
@@ -244,6 +255,8 @@ export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', en
         side = other;
       }
       first = last === 'you' ? enemySide : 'you';
+      // Nobody damaged anything all round: nothing will change, ever.
+      if (roundDamage <= 0) break;
     }
     if (!won && !reason) reason = 'rounds';
   }
@@ -256,6 +269,8 @@ export function simulateArmies({ mine: rows, theirs: enemy, opener = 'enemy', en
     siegeRounds,
     rounds,
     strikes,
+    /** All the damage your stacks dealt, walls included (what an epic's points come from). */
+    dealt: dealtByYou,
     army: mine.map((s) => ({
       index: s.index,
       troopId: s.def.id,
@@ -320,10 +335,12 @@ function lossValue(results, rows) {
  * its `cap` (what the player has); rows at 0 are left at home.
  *
  * @param {{ army: {def: object, strengthPct?: number|null, healthPct?: number|null, protected?: boolean, cap?: number}[],
- *           enemy: {def: object, count: number}[], budget?: number, starts?: number[][], enemySide?: string }} p
+ *           enemy: {def: object, count: number}[], budget?: number, starts?: number[][], enemySide?: string,
+ *           timeLimitMs?: number }} p  timeLimitMs: stop improving after this long (a phone, 25 troop types)
  * @returns {{ ok: boolean, counts: number[], both: any, evaluations: number }}
  */
-export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySide = 'enemy' }) {
+export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySide = 'enemy', timeLimitMs = Infinity }) {
+  const until = Date.now() + timeLimitMs;
   if (!army.length) return { ok: false, counts: [], both: null, evaluations: 0 };
   const rows = army.map((r, index) => ({ ...r, index, healthPct: r.healthPct ?? 0 }));
   const caps = rows.map((r) => (Number.isFinite(r.cap) && r.cap >= 0 ? Math.floor(r.cap) : Infinity));
@@ -339,7 +356,7 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
   let evaluations = 0;
   const evaluate = (counts) => {
     evaluations += 1;
-    const sim = (list) => simulateBothArmies({ mine: list.map((r, i) => ({ ...r, count: counts[i] })), theirs: enemy, enemySide });
+    const sim = (list) => simulateBothArmies({ mine: list.map((r, i) => ({ ...r, count: counts[i] })), theirs: enemy, enemySide, keepStrikes: false });
     const both = sim(rows);
     const weak = sim(weaker);
     const results = [both.you, both[enemySide], weak.you, weak[enemySide]];
@@ -381,7 +398,9 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
     const cand = evaluate(clamp(s));
     if (better(cand, best)) best = cand;
   }
-  if (!best.won) return { ok: false, counts: best.counts, both: best.both, evaluations };
+  // The search plays without strike lists; the answer is played again with them.
+  const withStrikes = (counts) => simulateBothArmies({ mine: rows.map((r, i) => ({ ...r, count: counts[i] })), theirs: enemy, enemySide });
+  if (!best.won) return { ok: false, counts: best.counts, both: withStrikes(best.counts), evaluations };
 
   // Breakpoints per row: counts where its damage just reaches each enemy stack's health.
   const breaks = rows.map((r, i) => {
@@ -398,15 +417,16 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
   });
 
   let improved = true;
-  while (improved && evaluations < budget) {
+  const more = () => evaluations < budget && Date.now() < until;
+  while (improved && more()) {
     improved = false;
-    for (let i = 0; i < rows.length && evaluations < budget; i++) {
+    for (let i = 0; i < rows.length && more(); i++) {
       const n = best.counts[i];
       const cands = new Set([0, n - 1, n + 1, ...breaks[i]]);
       for (const f of [0.5, 0.75, 0.9, 0.97, 1.03, 1.1, 1.33, 2]) cands.add(Math.round(n * f));
       if (Number.isFinite(caps[i])) cands.add(caps[i]);
       for (const c of cands) {
-        if (c < 0 || c === n || c > 1e8 || c > caps[i] || evaluations >= budget) continue;
+        if (c < 0 || c === n || c > 1e8 || c > caps[i] || !more()) continue;
         const counts = [...best.counts];
         counts[i] = c;
         const cand = evaluate(counts);
@@ -417,5 +437,5 @@ export function optimizeArmy({ army, enemy, budget = 2500, starts = [], enemySid
       }
     }
   }
-  return { ok: true, counts: best.counts, both: best.both, evaluations };
+  return { ok: true, counts: best.counts, both: withStrikes(best.counts), evaluations };
 }

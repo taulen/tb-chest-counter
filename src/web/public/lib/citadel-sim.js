@@ -125,7 +125,11 @@ export function troopTier(troopId) {
 
 /** Whether levels { g, s, m, e } (null = any) unlock this troop. */
 export function troopUnlocked(troopId, levels) {
-  const tier = TROOP_TIERS[troopId];
+  return tierUnlocked(TROOP_TIERS[troopId], levels);
+}
+
+/** Whether levels unlock a [kind, tier] (null = not gated). Tools → Monsters passes the game data's. */
+export function tierUnlocked(tier, levels) {
   if (!tier || !levels) return true;
   const cap = levels[tier[0]];
   return cap === null || cap === undefined || tier[1] <= cap;
@@ -145,7 +149,11 @@ export const ALL_LEVELS_SPAN = 9;
  * "any" show everything.
  */
 export function troopInWindow(troopId, levels) {
-  const tier = TROOP_TIERS[troopId];
+  return tierInWindow(TROOP_TIERS[troopId], levels);
+}
+
+/** troopInWindow for a [kind, tier] (null = not gated). */
+export function tierInWindow(tier, levels) {
   if (!tier || !levels) return true;
   const cap = levels[tier[0]];
   if (cap === null || cap === undefined) return true;

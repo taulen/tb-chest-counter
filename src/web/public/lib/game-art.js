@@ -52,7 +52,11 @@ const attr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').rep
  * none (not extracted yet, an index from before frames, or no tier matched).
  */
 function troopFrame(troopId) {
-  const tier = art?.mappings?.troopTiers?.[troopId];
+  return frameForTier(art?.mappings?.troopTiers?.[troopId]);
+}
+
+/** The back, frame and tier badge the game draws a unit of this tier (T9 f2) on, or null. */
+function frameForTier(tier) {
   if (tier === null || tier === undefined) return null;
   const f = art?.mappings?.unitFrames?.[String(tier)];
   const back = gameArtUrl(f?.back);
@@ -61,18 +65,9 @@ function troopFrame(troopId) {
   return { back, frame, badge: gameArtUrl(f.badge), numeral: f.numeral ?? null };
 }
 
-/**
- * A troop's picture: the game's own icon on the game's own back and frame,
- * coloured by its tier with the tier badge in the corner, as the game draws
- * it; the plain icon when there is no frame; or — when the art has no icon
- * (not extracted yet, or no unit matched) — a neutral tile with the name's
- * first letter. `size` is the whole picture, frame and badge included. Only
- * the game's art is ever shown; decorative, the name is beside it.
- */
-export function troopIconHtml(troopId, name, { size = 36, cls = '' } = {}) {
-  const url = troopIconUrl(troopId);
-  const frame = url ? troopFrame(troopId) : null;
-  if (frame) {
+/** An icon on its frame (or plain, or a lettered tile): the markup troopIconHtml and unitIconHtml share. */
+function framedIconHtml(url, frame, name, size, cls) {
+  if (url && frame) {
     const num = frame.numeral ? `<span class="unit-icon-num">${attr(frame.numeral)}</span>` : '';
     const badge = frame.badge ? `<span class="unit-icon-tier"><img src="${attr(frame.badge)}" alt="" decoding="async">${num}</span>` : '';
     return `<span class="unit-icon${cls ? ` ${attr(cls)}` : ''}" style="--unit-size:${size}px;width:${size}px;height:${size}px" aria-hidden="true">`
@@ -86,6 +81,29 @@ export function troopIconHtml(troopId, name, { size = 36, cls = '' } = {}) {
   }
   const letter = (String(name ?? '').trim()[0] ?? '?').toUpperCase();
   return `<span class="troop-icon-ph${cls ? ` ${attr(cls)}` : ''}" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px" aria-hidden="true">${attr(letter)}</span>`;
+}
+
+/**
+ * Any game unit's picture from battle-data.json (its T9 icon name and tier):
+ * every unit icon is extracted, so the monsters of the map have theirs too.
+ * Same markup as troopIconHtml.
+ */
+export function unitIconHtml(unit, name, { size = 36, cls = '' } = {}) {
+  const url = unit?.icon ? gameArtUrl(String(unit.icon).toLowerCase()) : null;
+  return framedIconHtml(url, url ? frameForTier(unit.tier) : null, name, size, cls);
+}
+
+/**
+ * A troop's picture: the game's own icon on the game's own back and frame,
+ * coloured by its tier with the tier badge in the corner, as the game draws
+ * it; the plain icon when there is no frame; or — when the art has no icon
+ * (not extracted yet, or no unit matched) — a neutral tile with the name's
+ * first letter. `size` is the whole picture, frame and badge included. Only
+ * the game's art is ever shown; decorative, the name is beside it.
+ */
+export function troopIconHtml(troopId, name, { size = 36, cls = '' } = {}) {
+  const url = troopIconUrl(troopId);
+  return framedIconHtml(url, url ? troopFrame(troopId) : null, name, size, cls);
 }
 
 /** The game's picture for an Ancient planner key (tome, figurine, clock, tinman), or null. */

@@ -9493,6 +9493,33 @@ button.wn-row-main:hover .ui-row-name { color: var(--accent-gold); }
   .citadel-log-result { grid-column: 3; }
 }
 
+/* ─── Tools → Monsters ───────────────────────────────────────────────
+   Citadel's rows, outcome cards and strike list (lib/battle-result.js); these
+   are the differences: a target picker of selects, no drag column, the event
+   bonus field and the army's two buttons. */
+.monster-tool .citadel-row { grid-template-columns: minmax(150px, 1fr) 96px 112px 112px 30px; }
+.monster-target-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+.monster-target-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.monster-target-field select { min-height: 40px; padding: 6px 8px; }
+.monster-target-name select { min-width: 240px; max-width: 100%; }
+.monster-target-type select { min-width: 200px; max-width: 100%; }
+.monster-tool .citadel-defender { display: inline-flex; align-items: center; gap: 5px; }
+.monster-army-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.monster-event-field { display: grid; gap: 4px; max-width: 520px; margin: 0 0 12px; font-size: 12.5px; color: var(--text-secondary); }
+.monster-event-field .citadel-num { max-width: 140px; }
+.monster-event-field small { font-size: 12px; line-height: 1.45; }
+.monster-unused-slot { margin-left: 8px; }
+.monster-tool .citadel-troop-name .citadel-pop-level { margin-left: 6px; }
+@media (max-width: 640px) {
+  .monster-target-field { flex: 1 1 40%; }
+  .monster-target-name,
+  .monster-target-type { flex: 1 1 100%; }
+  .monster-target-name select,
+  .monster-target-type select { min-width: 0; width: 100%; }
+  .monster-target-field select { width: 100%; }
+  .monster-army-actions .btn { flex: 1 1 auto; min-height: 44px; }
+}
+
 /* ─── Tools → Stacks ─────────────────────────────────────────────────
    Shares the Citadel tab's rows, steps, picker and march list; these are the
    differences: no drag column, a size-and-limits card, and the loss-order table. */

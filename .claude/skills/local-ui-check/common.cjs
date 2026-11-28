@@ -28,6 +28,7 @@ const PAGES = {
   ingame: '/#events/in-game',
   tools: '/#tools',
   citadel: '/#tools/citadel',
+  monsters: '/#tools/monsters',
   stacks: '/#tools/stacks',
   costs: '/#tools/costs',
   rewards: '/#tools/rewards',

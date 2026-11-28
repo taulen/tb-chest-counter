@@ -1,7 +1,7 @@
 // "Your levels": the troop tiers an account has unlocked (Guardsmen,
 // Specialists, Monsters, Engineers) and how many of the top levels the troop
 // picker shows. One set per account, saved on the server
-// (/api/tools/citadel-levels), shared by Tools → Citadel and → Stacks.
+// (/api/tools/citadel-levels), shared by Tools → Citadel, → Monsters and → Stacks.
 //
 // The window rule itself (troopInWindow) is in citadel-sim.js, with the data.
 
@@ -42,7 +42,7 @@ export function levelsHtml(levels) {
       <span class="citadel-inside-label">${t('Your levels')}</span>${selects}
       <label class="citadel-level-field citadel-level-span"><span>${esc(t('Show'))}</span>
         <select class="input citadel-level-select" data-level-kind="span">${spanOpts}</select></label>
-      <span class="citadel-levels-hint muted-copy">${t('Top levels count down from your highest. Saved to your account, for Citadel and Stacks.')}</span>
+      <span class="citadel-levels-hint muted-copy">${t('Top levels count down from your highest. Saved to your account, for Citadel, Monsters and Stacks.')}</span>
     </div>`;
 }
 

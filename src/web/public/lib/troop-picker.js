@@ -1,5 +1,5 @@
 // Troop picker: a listbox with icons and a search box, appended to <body>
-// (a native <select> can't show icons). Used by Tools → Citadel and → Stacks.
+// (a native <select> can't show icons). Used by Tools → Citadel, → Stacks and → Monsters.
 //
 // Grouped by kind, arrow keys + Enter, Escape closes; the wheel scrolls the
 // list and never the page (a page scroll would close it). On phones it is a
@@ -49,6 +49,7 @@ function onViewport(e) {
  * @param {string|null} o.current  the troop the row holds now (always listed, ticked)
  * @param {(def: object) => boolean} o.allow  whether any other troop is offered
  * @param {(id: string) => string} [o.tagHtml]  trusted markup after a name (a level tag)
+ * @param {(troop: object, size: number) => string} [o.iconHtml]  a troop's picture (default: Citadel's troop icons by id)
  * @param {(id: string) => void} o.onPick
  */
 export function openTroopPicker(o) {
@@ -111,7 +112,7 @@ function place() {
 
 function renderList(filter) {
   if (!picker) return;
-  const { troops, groups, current, allow, tagHtml } = picker.opts;
+  const { troops, groups, current, allow, tagHtml, iconHtml } = picker.opts;
   const q = filter.trim().toLowerCase();
   const items = [];
   const html = groups.map(([g, label]) => {
@@ -121,7 +122,7 @@ function renderList(filter) {
     return `<div class="citadel-pop-group" role="presentation">${esc(label)}</div>${opts.map((x) => {
       items.push(x.id);
       return `<div class="citadel-pop-opt ${x.id === current ? 'is-current' : ''}" role="option" id="citadel-opt-${x.id}" data-troop="${x.id}" aria-selected="false">
-        ${troopIconHtml(x.id, tGame(x.name), { size: 28 })}<span>${esc(tGame(x.name))}</span>${tagHtml ? tagHtml(x.id) : ''}${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
+        ${iconHtml ? iconHtml(x, 28) : troopIconHtml(x.id, tGame(x.name), { size: 28 })}<span>${esc(tGame(x.name))}</span>${tagHtml ? tagHtml(x.id) : ''}${x.id === current ? '<span class="citadel-pop-check" aria-hidden="true">✓</span>' : ''}</div>`;
     }).join('')}`;
   }).join('');
   picker.items = items;
